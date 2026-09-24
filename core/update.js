@@ -63,7 +63,8 @@ export function extractChangelogHead(md, maxPoints) {
     let inHead = false;
     for (const raw of lines) {
         const line = String(raw || '').trim();
-        const h = line.match(/^##\s+v?(\d+\.\d+\.\d+)\s*[（(]([^）)]*)[）)]/);
+        // 版本号兼容两位（如 v1.206）与三位（如 v2.0.0）写法
+        const h = line.match(/^##\s+v?(\d+(?:\.\d+){1,2})\s*[（(]([^）)]*)[）)]/);
         if (h) {
             if (inHead) break;
             out.version = h[1];

@@ -98,19 +98,27 @@ export async function checkViaRemote(cfg) {
     const c = cfg || updateConfig();
     const urls = repoRawUrls(c.repo, c.branch);
     if (!urls.manifest) return { ok: false, error: '仓库地址无法解析为 raw 地址' };
-    const man = await getText(urls.manifest);
-    if (!man.ok) return { ok: false, error: man.error || '远端清单不可达' };
+    // ① 远端 manifest.json（首选；仓库根没有该文件时不算致命）
     let remoteVersion = '';
-    try { remoteVersion = String((JSON.parse(man.text) || {}).version || ''); } catch (e) { return { ok: false, error: '远端清单不是合法 JSON' }; }
+    let manifestError = '';
+    const man = await getText(urls.manifest);
+    if (man.ok) {
+        try { remoteVersion = String((JSON.parse(man.text) || {}).version || ''); } catch (e) { manifestError = '远端清单不是合法 JSON'; }
+    } else {
+        manifestError = man.error || '远端清单不可达';
+    }
+    // ② 远端 CHANGELOG.md（版本号兜底 + 更新要点；仓库没有 manifest 时仍可判定，例如 V1 形态仓库）
     let points = [];
-    let remoteChangelogVersion = '';
+    let changelogVersion = '';
     const log = await getText(urls.changelog);
     if (log.ok) {
         const head = extractChangelogHead(log.text, 5);
         points = head.points;
-        remoteChangelogVersion = head.version;
+        changelogVersion = head.version;
     }
-    return { ok: true, remoteVersion: remoteVersion || remoteChangelogVersion, points, via: 'remote-manifest:' + urls.host };
+    const resolved = remoteVersion || changelogVersion;
+    if (!resolved) return { ok: false, error: manifestError || '远端版本不可判定' };
+    return { ok: true, remoteVersion: resolved, points, via: 'remote-manifest:' + urls.host };
 }
 
 /**

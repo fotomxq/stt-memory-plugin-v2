@@ -30,11 +30,11 @@
   ① **首次启动自动检查**（`startupCheckedAt` 未写则必查；之后按 24h 间隔；开关可关，关闭后零远端请求）；
   ② **设置内手动检查**（「🔍 检查更新」按钮，不受开关与间隔限制，结果落盘并在状态行显示）；
   ③ 判定通道优先级 = **ST 原生端点**（`POST /api/extensions/version` 的 `isUpToDate`/commit，Git 真值）
-  → 远端 `manifest.json` + `CHANGELOG.md` 回退（补版本号与更新要点）；端点为「有更新」而版本号相同时判为**同版本新提交**；
+  → 远端 `manifest.json` + `CHANGELOG.md` 回退（补版本号与更新要点；**仓库根无 `manifest.json` 时用 `CHANGELOG.md` 首条版本兜底**）；端点为「有更新」而版本号相同时判为**同版本新提交**；
   ④ 「⬆ 立即更新（ST）」代为调用 `/api/extensions/update`（**仅用户点击**，自动路径永不调用）；
   ⑤ 全部请求 8s 超时、失败静默（不阻塞启动/发送/提取）；扩展**不下载、不写入、不执行远端代码**；
   ⑥ 状态持久化于 `extensionSettings.ftt_memory_v2.update`（`firstRunAt` / `startupCheckedAt` / `lastCheckAt` / `lastResult`），
   `/ftt` 与 `FTT.update()` 可查；新增 `core/update.js`（纯逻辑）、`host/update.js`（编排）、`adapters/update-state.js`（持久化）、
   `docs/更新检查机制.md`。
-- **门禁**：单元 **9 文件 106 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**；版本一致性 **通过**；文档规范 **0 违规**。
+- **门禁**：单元 **9 文件 109 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

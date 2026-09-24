@@ -62,6 +62,28 @@ R.assert('U4 updateConfig 默认取 GitHub 项目地址与 main 分支', (() => 
     R.assert('U9 远端地址来自可配置仓库（GitHub raw + 分支）', calls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin/main/manifest.json'), calls);
 }
 
+// ---------- B2 仓库根没有 manifest.json（例如 V1 形态仓库）→ 用 CHANGELOG 判定 ----------
+{
+    freshHost();
+    const un = installGlobalFetch((url) => {
+        if (url.indexOf('/api/extensions/version') === 0) return { status: 404, body: {} };
+        if (url.endsWith('/manifest.json')) return { status: 404, body: {} };
+        if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v1.206（2026-09-24）\n- 旧版要点\n' };
+        return { status: 404, body: {} };
+    });
+    const r = await runUpdateCheck({ manual: true });
+    un();
+    R.assert('U11 远端无 manifest 时用 CHANGELOG 版本兜底（不误报失败）',
+        r.ok === true && r.judge.remote === '1.206' && r.judge.status === 'older' && r.points.length === 1, [r.judge, r.points]);
+}
+{
+    freshHost();
+    const un = installGlobalFetch(() => ({ status: 404, body: {} }));
+    const r = await runUpdateCheck({ manual: true });
+    un();
+    R.assert('U12 远端两者都不可达 → ok=false 且错误可读', r.ok === false && String(r.error).length > 0, r);
+}
+
 // ---------- C git 说有更新但版本号一致 → 以 git 为准 ----------
 {
     freshHost();
