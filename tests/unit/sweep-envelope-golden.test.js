@@ -85,8 +85,12 @@ R.assert('S6 信封 payload.data 即注入的 state（内部一致；V1 信封�
     return J(e.payload.data) === J(st) && e.payload.scope === e.scope;
 })(), '');
 
-R.assert('S7 信封 hash 为 payload 的双轮 FNV-1a 哈希（内部一致，跨端可校验）',
-    storageEnvelope(fresh()).hash === storageHash(storageEnvelope(fresh()).payload), '');
+R.assert('S7 信封 hash 为 payload 的双轮 FNV-1a 哈希（内部一致，跨端可校验）', (() => {
+    // 注意：必须**用同一个信封**校验自己的 hash —— 信封含 Date.now()，两次构造可能跨毫秒（曾因此误判为失败）
+    const e = storageEnvelope(fresh());
+    const tampered = Object.assign({}, e, { payload: Object.assign({}, e.payload, { data: { atoms: [] } }) });
+    return e.hash === storageHash(e.payload) && e.hash !== storageHash(tampered.payload);
+})(), '');
 R.assert('S8 storageHash 与 V1 逐字符一致（固定样本）', storageHash({ a: 1, b: ['x', 'y'] }) === G.hashSample, storageHash({ a: 1, b: ['x', 'y'] }));
 
 setKernelState(null);
