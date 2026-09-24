@@ -3,6 +3,31 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.0.2（2026-09-24）· 可见性兜底（悬浮入口）+ 更新检查的传输层失败处理
+
+**背景**：用户在 TauriTavern 里仍反馈「看不到面板」，并给出后端日志：
+`ERROR tauritavern::user_error: Failed to get extension version: Internal error: Git handshake failed: An IO error occurred when talking to the server`。
+
+**判断**：这类 `Git handshake failed / IO error` 是**宿主的 git 取远端失败（网络不通）**，属于**更新检查**路径，
+与面板显示无关，也不会阻止扩展加载（宿主把它记为用户级错误）。但它有两个副作用：① 后端日志噪声；
+② 无法区分「扩展名不存在」与「网络不通」，因为此前的 `postJson` 只回报 `HTTP 500`。
+
+**本版改动**：
+1. **悬浮入口兜底**（`ui/floating.js`）：当扩展设置抽屉的三个候选容器**一个都找不到**时，
+   自动在页面右下角显示固定的「FTT」小按钮；点击即以**弹窗**（`callGenericPopup`）展示完整面板；
+   抽屉容器一旦恢复，自动挂回抽屉并**移除**悬浮按钮（不干扰正常用户）。探针连续 4 次挂载失败（约 3 秒）后启用兜底并停止轮询，不再无限重试。
+2. **更新检查的传输层处理**（`host/update.js`）：`postJson` 透传宿主错误文本；
+   识别 `handshake / IO error / network / timeout / fetch failed` 等**网络级**失败后**短路**
+   （不再重复调用 `global` 端点 —— 此前一次检查会触发两次 git 握手，失败时日志翻倍），
+   并进入**会话内退避（6 小时）**；`runStUpdate`（立即更新）同样短路。
+   新增 `resetTransportBackoff()` / `transportBackoffActive()` 便于手动重试与诊断。
+3. 诊断扩展：`FTT.floatingInfo()`、`FTT.openPanel()`；`/ftt-panel` 输出追加悬浮入口状态；
+   面板状态块与 `/ftt` 状态行同样包含。
+
+**验证**：单元新增 B9–B11（无抽屉时启用悬浮 / 无 body 明确拒绝 / 点击弹窗展示面板 / 容器恢复后自动切换）、
+U10（传输层失败只打一次端点 + 进入退避 + 错误分类）；冒烟新增 L5（悬浮兜底全链路）。
+门禁：单元 **23 文件 / 304 断言**、冒烟 **53 项** 全绿。
+
 ## v2.0.1（2026-09-24）· 修复「安装后看不到面板」
 
 **现象**（用户实测）：TauriTavern 里扩展已成功安装（后端日志 `Extension installed: FTT记忆组件 V2 v2.0.0`、

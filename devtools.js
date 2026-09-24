@@ -58,6 +58,8 @@ export function installDevtools(hooks) {
             panelInfo: () => (hooks && typeof hooks.panelInfo === 'function' ? hooks.panelInfo() : null),
             menuInfo: () => (hooks && typeof hooks.menuInfo === 'function' ? hooks.menuInfo() : null),
             forceMount: () => (hooks && typeof hooks.forceMountPanel === 'function' ? hooks.forceMountPanel() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            floatingInfo: () => (hooks && typeof hooks.floatingInfo === 'function' ? hooks.floatingInfo() : null),
+            openPanel: () => (hooks && typeof hooks.openPanelPopup === 'function' ? hooks.openPanelPopup() : Promise.resolve({ ok: false, reason: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

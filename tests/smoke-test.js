@@ -549,6 +549,29 @@ assert('L4 魔杖菜单入口已插入 #extensionsMenu（面板容器异常时�
     return html.indexOf('ftt_v2_menu_btn') >= 0 && !!info && info.menuFound === true;
 })(), (() => { try { return JSON.stringify(globalThis.FTT.menuInfo()); } catch (e) { return String(e.message); } })());
 
+// ---------- L5 悬浮兜底（抽屉容器异常时的最后可见性方案） ----------
+assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以弹窗打开面板 → 抽屉恢复后自动移除', (async () => {
+    const floatMod = await import('../ui/floating.js');
+    const saved = { a: doc._els.extensions_settings2, b: doc._els.extensions_settings, c: doc._els.rm_extensions_block };
+    delete doc._els.extensions_settings2; delete doc._els.extensions_settings; delete doc._els.rm_extensions_block;
+    doc.body = { html: '', insertAdjacentHTML(pos, h) { this.html += String(h); } };
+    const savedPopup = host.ctx.callGenericPopup;
+    const popupHtml = [];
+    host.ctx.callGenericPopup = async (html) => { popupHtml.push(String(html)); return 1; };
+    panelMod.unmountSettingsPanel();
+    const vis = await entry.ensureVisibleEntry();
+    const clickR = await globalThis.FTT.openPanel();
+    host.ctx.callGenericPopup = savedPopup;
+    doc._els.extensions_settings2 = saved.a; doc._els.extensions_settings = saved.b; doc._els.rm_extensions_block = saved.c;
+    const back = await entry.ensureVisibleEntry();
+    return vis.panel.ok === false && vis.floating.ok === true
+        && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0
+        && clickR.ok === true && clickR.via === 'popup' && popupHtml.length === 1
+        && popupHtml[0].indexOf('ftt_v2_settings') >= 0
+        && back.panel.ok === true && back.floating.ok === false
+        && floatMod.floatingInfo().installed === false;
+})(), (() => { try { return JSON.stringify({ body: String(doc.body && doc.body.html || '').length, back: 'ok' }); } catch (e) { return String(e.message); } })());
+
 endpointDown = false;
 uninstallFetch();
 

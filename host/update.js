@@ -59,7 +59,10 @@ async function postJson(path, body) {
         let data = null;
         try { data = await res.json(); } catch (e) { data = null; }
         if (status >= 200 && status < 300) return { ok: true, data: data || {} };
-        return { ok: false, status, error: 'HTTP ' + status };
+        // 把宿主给出的错误文本透传出来（例如 TauriTavern 的「Git handshake failed: …」），
+        //   否则只剩「HTTP 500」，无法区分「扩展名不存在」与「网络不通」。
+        const msg = (data && (data.error || data.message)) ? String(data.error || data.message) : ('HTTP ' + status);
+        return { ok: false, status, error: msg, data };
     } catch (e) {
         return { ok: false, error: String((e && e.message) || e) };
     }
@@ -79,9 +82,34 @@ async function getText(url) {
 }
 
 /** ST 原生版本查询（git 真值）：用户态优先，失败再试全局态 */
+/**
+ * 传输层失败判定：宿主（含 TauriTavern 等原生移植）用 git 取远端真值时，若本机到远端不通，
+ *   后端会返回 「Git handshake failed / IO error」这类**网络级**错误。这种失败再打一次 global 端点
+ *   只会**翻倍**后端日志噪声，故直接短路（返回 transport 标记，由上层决定退避）。
+ */
+export function isTransportFailure(text) {
+    const t = String(text == null ? '' : text);
+    return /handshake|IO error|i\/o|network|timed?\s?out|ECONN|fetch failed|failed to get extension version/i.test(t);
+}
+
+/** 会话内退避：传输层失败后不再反复触发（默认 6 小时；进程内有效，重载页面即重置） */
+let transportBackoffUntil = 0;
+const TRANSPORT_BACKOFF_MS = 6 * 60 * 60 * 1000;
+/** 复位传输层退避（测试与「手动检查」用） */
+export function resetTransportBackoff() { transportBackoffUntil = 0; return true; }
+/** 是否处于传输层退避中（诊断） */
+export function transportBackoffActive() { return Date.now() < transportBackoffUntil; }
+
 export async function checkViaStEndpoint() {
+    if (Date.now() < transportBackoffUntil) {
+        return { ok: false, transport: true, error: '网络不通（本次会话已退避，稍后或手动再试）' };
+    }
     const body = { extensionName: extensionFolder(), global: false };
     let r = await postJson('/api/extensions/version', body);
+    if (!r.ok && isTransportFailure(r.error)) {
+        transportBackoffUntil = Date.now() + TRANSPORT_BACKOFF_MS;
+        return { ok: false, transport: true, error: String(r.error || 'Git 传输失败') };
+    }
     if (!r.ok) r = await postJson('/api/extensions/version', { extensionName: extensionFolder(), global: true });
     if (!r.ok) return { ok: false, error: r.error || 'ST 版本端点不可用' };
     const d = r.data || {};
@@ -165,6 +193,7 @@ export async function runUpdateCheck(opts) {
 /** 显式执行 ST 更新（只有用户点击才会调用；自动路径永不调用） */
 export async function runStUpdate() {
     let r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: false });
+    if (!r.ok && isTransportFailure(r.error)) return { ok: false, error: String(r.error || 'Git 传输失败（网络不通）'), transport: true };
     if (!r.ok) r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: true });
     if (!r.ok) return { ok: false, error: r.error || 'ST 更新端点不可用' };
     const d = r.data || {};

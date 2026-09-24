@@ -115,5 +115,47 @@ await (async () => {
     })(), J(entry.panelMountInfo()));
 })();
 
+// ---------- 悬浮兜底（面板挂不进抽屉时的最后可见性方案） ----------
+await (async () => {
+    const mod = await import('../../ui/floating.js');
+    // 清干净：无任何抽屉容器
+    const saved = { a: doc._els.extensions_settings2, b: doc._els.extensions_settings, c: doc._els.rm_extensions_block };
+    delete doc._els.extensions_settings2; delete doc._els.extensions_settings; delete doc._els.rm_extensions_block;
+    // 桩 document 无 body → 悬浮入口应明确报告不可插入（而不是抛错）
+    const noBody = mod.installFloatingEntry({ onClick: () => undefined });
+    // 给一个「body」再试 → 应插入成功（resolved=false 因桩不解析 HTML）
+    doc.body = { html: '', insertAdjacentHTML(pos, h) { this.html += String(h); } };
+    const okBody = mod.installFloatingEntry({ onClick: () => undefined });
+    const info = mod.floatingInfo();
+    R.assert('B9 无抽屉容器时可启用悬浮入口：无 body 明确拒绝，有 body 则插入并记录诊断', (() => {
+        return noBody.ok === false && String(noBody.reason).indexOf('无 body') >= 0
+            && okBody.ok === true && okBody.inserted === true
+            && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0 && info.bodyFound === true;
+    })(), (() => { try { return J({ noBody, info }); } catch (e) { return String(e.message); } })());
+
+    // 点击悬浮入口 → 以弹窗打开面板（callGenericPopup 收到含面板标记的 HTML）
+    const captured = [];
+    const savedPopup = host.ctx.callGenericPopup;
+    host.ctx.callGenericPopup = async (html) => { captured.push(String(html)); return 1; };
+    const clickR = await entry.openPanelPopup();
+    host.ctx.callGenericPopup = savedPopup;
+    R.assert('B10 悬浮入口点击 → 弹窗展示面板（callGenericPopup 收到含 ftt_v2_settings 的 HTML）', (() => {
+        return clickR.ok === true && clickR.via === 'popup' && captured.length === 1
+            && captured[0].indexOf('ftt_v2_settings') >= 0 && captured[0].indexOf('ftt_v2_cfg_budget') >= 0;
+    })(), { via: clickR.via, calls: captured.length });
+
+    // ensureVisibleEntry：挂不上 → 装悬浮；挂得上 → 拆悬浮
+    const panelMod2 = await import('../../ui/settings-panel.js');
+    panelMod2.unmountSettingsPanel();                 // 先真的卸载，使「挂不上抽屉」成立
+    const r1 = await entry.ensureVisibleEntry();
+    doc._els.extensions_settings2 = saved.a; doc._els.extensions_settings = saved.b; doc._els.rm_extensions_block = saved.c;
+    const r2 = await entry.ensureVisibleEntry();
+    R.assert('B11 可见入口自动切换：挂不上抽屉时装悬浮入口；抽屉恢复后挂上面板并移除悬浮入口', (() => {
+        return r1.panel.ok === false && r1.floating.ok === true
+            && r2.panel.ok === true && r2.floating.ok === false
+            && String(r2.floating.reason).indexOf('无需悬浮入口') >= 0;
+    })(), (() => { try { return J({ r1: { p: r1.panel.ok, f: r1.floating.ok }, r2: { p: r2.panel.ok, f: r2.floating.ok } }); } catch (e) { return String(e.message); } })());
+})();
+
 un();
 R.done();
