@@ -70,7 +70,15 @@
   作用域与空状态、隐藏保护与来源恢复、墓碑分账与幂等、哈希补全与遍历。
   **明确延后**（依赖配置/时钟/全表）：`migrateState`、`contentDedupeArray`、`upsertEntry`/`deleteEntry`、`upsertRelLinks`/`relMaintRun`。
   过程经验（已写入文档）：**宽依赖函数不可用闭包移植** —— 首次尝试闭包膨胀到 148/1067 项，改为显式清单 + 严格静态检查 + 黄金样本兜底。
+- **P1 内核平移（批次 4：配置与时钟层）**：新增 `core/config.js`（1130 行：`defaultCfg` **217 键全量默认配置**、
+  `PROMPT_TEMPLATES_V2` **33 条提示词模板**与 `PROMPT_DEFAULT_VERSION`、`PROMPT_GROUPS`/`PROMPT_LEGACY_SIGS`/破甲预设默认值、
+  `CN_KEY_MAP`（174 项）与 `normalizeDeltaKeys`、`DIMENSIONS`/`DIM_LABELS`、`KIND_MAP` 14 维 get/set）与
+  `core/clock.js`（225 行：剧情时钟族 —— 裁剪/解析/格式化/校验/公元前归一/中文数字/数值化时间戳）；`runtime.js` 增 `log()` 注入钩子。
+  黄金样本 5（`tests/fixtures/v1-golden-config-clock.json`）**15 项断言**：配置整体逐字符相等 + 13 条日期样本贯穿时钟族。
+  **工具缺陷修复**：① 括号配对提取遇正则/字符串花括号失衡 → 改「下一个顶层声明 + 顶层收尾行截断」；
+  ② 截断误切函数内层 `}` → 改为顶层缩进匹配；③ **内核纯净度门禁误判配置键名**（`storage.localStorage`）→ 门禁剔除字符串字面量、
+  排除对象键与属性访问，并用「临时植入真实宿主调用」反向自测确认仍能拦下。
 - **许可确立（AGPL-3.0）**：新增仓库根 `LICENSE`（GNU 官方 AGPL-3.0 全文，逐字未改，**LF 换行、662 行 / 34,523 B，md5 `eb1e647870add0502f8f010b19de32af`**，与 gnu.org 官方 txt 一致）；
   `package.json` 增 `license: AGPL-3.0` 与 `author`；README §7 由「待确认」改为正式许可说明（含 §13 网络交互条款提示）。
-- **门禁**：单元 **13 文件 179 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
+- **门禁**：单元 **14 文件 194 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

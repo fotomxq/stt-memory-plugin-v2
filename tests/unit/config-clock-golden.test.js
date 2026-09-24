@@ -1,0 +1,78 @@
+// ============================================================
+// 单元测试 · 批次 4（core/config.js 配置层 + core/clock.js 时钟族）与 V1 黄金样本一致
+// 黄金样本：tests/fixtures/v1-golden-config-clock.json（V1 源码切片产出）
+// 口径：严格相等（JSON.stringify；键顺序一致）。
+// ============================================================
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { makeReporter } from '../harness/st-mock.js';
+import { cfg, setKernelState } from '../../core/model/runtime.js';
+import { CN_KEY_MAP, DIMENSIONS, DIM_LABELS, PROMPT_DEFAULT_VERSION, PROMPT_GROUPS, PROMPT_TEMPLATES_V2, PROMPT_LEGACY_SIGS, ARMOR_PRESET_V1178_DEFAULT, defaultCfg, KIND_MAP, normalizeDeltaKeys } from '../../core/config.js';
+import { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears } from '../../core/clock.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-config-clock.json'), 'utf8'));
+const R = makeReporter('config-clock-golden V1 移植保真度（批次 4）');
+const I = G.inputs;
+const J = (v) => JSON.stringify(v);
+
+cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
+
+// ---------- 配置层 ----------
+R.assert('C1 defaultCfg 全量默认配置与 V1 逐字符一致（217 键，含 33 条提示词模板）',
+    J(defaultCfg) === J(G.defaultCfg), { keys: Object.keys(defaultCfg).length, want: Object.keys(G.defaultCfg).length });
+R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP) === J(G.cnKeyMap), Object.keys(CN_KEY_MAP).length);
+R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',
+    J(I.DELTAS.map(d => normalizeDeltaKeys(d))) === J(G.deltaCases), I.DELTAS.map(d => normalizeDeltaKeys(d)));
+R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一致',
+    J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
+    && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion
+    && J(Object.keys(PROMPT_TEMPLATES_V2).sort()) === J(G.promptTemplateKeys), [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
+R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致',
+    J(PROMPT_GROUPS) === J(G.promptGroups) && J(Object.keys(PROMPT_LEGACY_SIGS).sort()) === J(G.promptLegacySigsKeys)
+    && J(ARMOR_PRESET_V1178_DEFAULT) === J(G.armorPresetDefault), Object.keys(PROMPT_LEGACY_SIGS).length);
+R.assert('C6 模板并入默认配置（defaultCfg.promptTemplates 与 PROMPT_TEMPLATES_V2 同值）',
+    J(defaultCfg.promptTemplates) === J(PROMPT_TEMPLATES_V2), Object.keys(defaultCfg.promptTemplates).length);
+R.assert('C7 KIND_MAP 维度键与 V1 一致（14 键）+ get/set 读写注入 state', (() => {
+    const st = { atoms: [{ id: 'a1' }] };   // 与黄金样本一致：未定义 currentStates → states.get() 为 undefined
+    setKernelState(st);
+    const g = KIND_MAP.atoms.get().map(x => x.id);
+    KIND_MAP.atoms.set([{ id: 'a2' }]);
+    const after = st.atoms.map(x => x.id);
+    const statesIsArray = Array.isArray(KIND_MAP.states.get());
+    setKernelState(null);
+    return J(Object.keys(KIND_MAP)) === J(G.kindMapKeys) && J({ g, after, statesIsArray }) === J(G.kindRoundTrip);
+})(), Object.keys(KIND_MAP));
+
+// ---------- 时钟族 ----------
+R.assert('K1 clockDateTrim / clockDateParts 与 V1 一致（含公元前 / 空值 / ISO）',
+    J(I.DATES.map(d => clockDateTrim(d))) === J(G.clock.trim) && J(I.DATES.map(d => clockDateParts(clockDateTrim(d)))) === J(G.clock.parts), I.DATES.map(d => clockDateTrim(d)));
+R.assert('K2 clockDateStr / clockDateValid 与 V1 一致',
+    J([[1919, 11, 29], [-221, 1, 2], [9, 1, 1]].map(([y, m, d]) => clockDateStr(y, m, d))) === J(G.clock.str)
+    && J(I.DATES.map(d => clockDateValid(d))) === J(G.clock.valid), I.DATES.map(d => clockDateValid(d)));
+R.assert('K3 clockNormBcText 公元前归一与 V1 一致', J(['公元前221年', '前221年', '公元1919年', '公元前221年11月29日', '无', ''].map(t => clockNormBcText(t))) === J(G.clock.bcNorm), G.clock.bcNorm);
+R.assert('K4 clockYearStr / storyDateMs / storyDateMsFromStr 与 V1 一致',
+    J([1919, -221, 9, 0].map(y => clockYearStr(y))) === J(G.clock.yearStr)
+    && J(['1919-11-29', '-0221-01-02', '1919-11', '1919', ''].map(d => storyDateMs(d))) === J(G.clock.storyMs)
+    && J(['1919-11-29', '-0221-01-02', 'bad'].map(d => storyDateMsFromStr(d))) === J(G.clock.storyMsFromStr), G.clock.storyMs);
+R.assert('K5 clockDateFromParts / clockCnInt / clockValNum / clockValYear 与 V1 一致',
+    J([['1919', '11', '29'], ['-0221', '1', '2'], ['1919'], ['', '2', '3']].map(p => clockDateFromParts(p, '1919-01-01'))) === J(G.clock.dateFromParts)
+    && J(['一九一九', '二二一', '九', '三〇', '', 'abc'].map(t => clockCnInt(t))) === J(G.clock.cnInt)
+    && J([' 12 ', '十一', 'x', ''].map(t => clockValNum(t))) === J(G.clock.valNum)
+    && J(['1919', '公元前221年', 'x'].map(t => clockValYear(t))) === J(G.clock.valYear), G.clock.cnInt);
+R.assert('K6 clockYearOf / clockYearInRange / clockDateLabel / clockMonthDay 与 V1 一致',
+    J(['1919-01-01', '-0221-01-02', '', null].map(t => clockYearOf(t))) === J(G.clock.yearOf)
+    && J([-9999, -221, 0, 1919, 99999].map(y => clockYearInRange(y))) === J(G.clock.yearInRange)
+    && J(['1919-11-29', '-0221-01-02', '1919-11', '', null].map(d => clockDateLabel(d))) === J(G.clock.dateLabel)
+    && J(['1919-11-29', '1919-11', '', null].map(d => clockMonthDay(d))) === J(G.clock.monthDay), G.clock.dateLabel);
+R.assert('K7 clockAnomalyJumpYears 读注入配置（默认 50）', clockAnomalyJumpYears() === G.clock.anomalyCfg, clockAnomalyJumpYears());
+R.assert('K8 注入 cfg 变化可影响校验（阈值 0 = 关闭异常判定）', (() => {
+    const before = clockDateValid('1919-11-29');
+    cfg.clockAnomalyJumpYears = 0;
+    const off = clockDateValid('1919-11-29');
+    cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
+    return before === true && off === true;
+})(), '');
+
+R.done();

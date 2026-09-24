@@ -34,7 +34,7 @@ export const defaultCfg = {
 };
 
 /** 持久化钩子（内核不直接落盘；由 host 层注入 real 实现） */
-let persistHooks = { saveCfg: () => true, saveState: () => true };
+let persistHooks = { saveCfg: () => true, saveState: () => true, log: null };
 /** 注入持久化钩子（host 启动时调用） */
 export function setPersistHooks(next) {
     persistHooks = Object.assign({}, persistHooks, next || {});
@@ -44,6 +44,12 @@ export function setPersistHooks(next) {
 export function saveCfg() {
     try { return persistHooks.saveCfg(); } catch (e) { return false; }
 }
+/** 日志钩子（内核默认 no-op；宿主可注入真实日志） */
+export function log(...args) {
+    try { if (typeof persistHooks.log === 'function') return persistHooks.log(...args); } catch (e) { /* noop */ }
+    return undefined;
+}
+
 /** 同上：`saveState()` */
 export function saveState() {
     try { return persistHooks.saveState(); } catch (e) { return false; }

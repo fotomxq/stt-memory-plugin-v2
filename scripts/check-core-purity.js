@@ -37,7 +37,20 @@ for (const f of files) {
         if (t.startsWith('//')) return;
         const code = line.split('//')[0];
         if (FORBIDDEN_IMPORT.test(code)) issues.push({ file: relative(ROOT, f), line: i + 1, msg: '内核引用了宿主层路径' });
-        if (FORBIDDEN_IDENT.test(code)) issues.push({ file: relative(ROOT, f), line: i + 1, msg: '内核出现宿主/浏览器标识符: ' + (code.match(FORBIDDEN_IDENT) || [])[0] });
+        // 宿主标识符判定：先剔除字符串字面量，再排除「对象键（其后为冒号）」与「属性访问（其前为点）」，
+        //   避免把 `storage: { localStorage: true }` 这类**配置键名**误判为宿主调用。
+        const noStr = code.replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/`(?:[^`\\]|\\.)*`/g, '``');
+        const re = new RegExp(FORBIDDEN_IDENT.source, 'g');
+        let m;
+        while ((m = re.exec(noStr)) !== null) {
+            const name = m[0];
+            const before = noStr.slice(0, m.index).replace(/\s+$/, '');
+            const after = noStr.slice(m.index + name.length).replace(/^\s+/, '');
+            if (/\.$/.test(before) || /\?\.$/.test(before)) continue;   // 属性访问
+            if (/^:/.test(after) && !/^::/.test(after)) continue;          // 对象键
+            issues.push({ file: relative(ROOT, f), line: i + 1, msg: '内核出现宿主/浏览器标识符: ' + name });
+            break;
+        }
     });
     checked++;
 }
