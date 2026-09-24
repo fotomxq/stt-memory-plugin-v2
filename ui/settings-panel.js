@@ -14,6 +14,16 @@ import { consoleAction, writeConsole, bindConsole, consoleConfig } from './conso
 import { maybeAutoCheckOnStartup, runStUpdate, updateStatusText, updateConfig } from '../host/update.js';
 
 const MOUNT_ID = 'extensions_settings2';
+/**
+ * 挂载容器候选（**按序尝试**）：不同酒馆发行版/宿主（含 TauriTavern 等原生移植）里扩展设置区块的 id 并不统一，
+ * 只认一个 id 会导致「装上了但看不到面板」。第一个存在的即用；全都不到 → 记录原因，由入口的轮询稍后重试。
+ */
+export const MOUNT_CANDIDATES = Object.freeze(['extensions_settings2', 'extensions_settings', 'rm_extensions_block']);
+
+/** 最近一次挂载尝试的结果（诊断：/ftt、/ftt-panel、FTT.panelInfo()） */
+let lastMount = { ok: false, via: 'none', container: '', reason: '尚未尝试', at: 0, tries: 0, found: {} };
+/** 本模块**自己**是否已把面板插进 DOM（不用「根节点是否存在」判断 —— 宿主/测试可能预建同名节点） */
+let panelMounted = false;
 
 function escHtml(v) {
     return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -174,14 +184,41 @@ export function statusBlockText() {
     if (s.extract) lines.push('提取：运行 ' + s.extract.runs + ' · 成功 ' + s.extract.ok + ' · 失败 ' + s.extract.fail + (s.extract.lastReason ? '（最近 ' + s.extract.lastReason + '）' : ''));
     if (s.pending !== undefined && s.pending !== null) lines.push('待分析楼层 ' + s.pending + ' 层');
     if (s.store) lines.push('存储：本机缓冲/服务端文件（载入来源 ' + (s.store.via || '—') + '）');
+    const panel = s.panel || panelMountInfo();          // 未注入时取实时状态
+    if (panel) lines.push('面板挂载：' + (panel.ok ? ('已挂载 → #' + (panel.container || '?') + '（' + (panel.via || '') + '）') : ('未挂载（' + (panel.reason || '未知') + '）')));
     return lines.join('\n');
 }
 
-function mountPoint() {
+function docEl() {
+    try { return globalThis.document || null; } catch (e) { return null; }
+}
+
+/** 找到第一个可用的挂载容器（按 MOUNT_CANDIDATES 顺序） */
+function findMount() {
+    const doc = docEl();
+    const found = {};
+    if (!doc || typeof doc.getElementById !== 'function') return { el: null, id: '', found };
+    for (const id of MOUNT_CANDIDATES) {
+        let el = null;
+        try { el = doc.getElementById(id); } catch (e) { el = null; }
+        found[id] = !!el;
+        if (el && !found.__picked) { if (!Object.prototype.hasOwnProperty.call(found, '__picked')) found.__picked = id; return { el, id, found }; }
+    }
+    return { el: null, id: '', found };
+}
+
+/** 挂载状态（诊断用；不触发任何挂载） */
+export function panelMountInfo() {
+    const doc = docEl();
+    const found = {};
     try {
-        const doc = globalThis.document;
-        return doc ? doc.getElementById(MOUNT_ID) : null;
-    } catch (e) { return null; }
+        if (doc && typeof doc.getElementById === 'function') {
+            for (const id of MOUNT_CANDIDATES) found[id] = !!doc.getElementById(id);
+        }
+    } catch (e) { /* 忽略 */ }
+    let root = false;
+    try { root = !!(doc && typeof doc.getElementById === 'function' && doc.getElementById(ROOT_ID)); } catch (e) { root = false; }
+    return Object.assign({}, lastMount, { found, rootMounted: root, mounted: panelMounted, candidates: MOUNT_CANDIDATES.slice() });
 }
 
 /**
@@ -190,11 +227,27 @@ function mountPoint() {
  * @returns {Promise<{ ok: boolean, via: string, reason?: string }>}
  */
 export async function mountSettingsPanel(extra) {
-    const host = mountPoint();
-    if (!host) return { ok: false, via: 'none', reason: '未找到 #' + MOUNT_ID };
-    if (extra && extra.hooks) setPanelHooks(extra.hooks);
-    if (extra && extra.status) setPanelStatus(extra.status);
-    const data = panelData(extra);
+    const o = extra || {};
+    if (o.hooks) setPanelHooks(o.hooks);
+    if (o.status) setPanelStatus(o.status);
+    lastMount.tries += 1;
+    lastMount.at = Date.now();
+    const doc = docEl();
+    // 已由本模块挂载则不再重复插入（force 时强制重挂）
+    if (panelMounted && !o.force) {
+        lastMount = Object.assign(lastMount, { ok: true, via: 'already', reason: '' });
+        return { ok: true, via: 'already', container: lastMount.container, info: panelMountInfo() };
+    }
+    const pick = findMount();
+    const host = pick.el;
+    if (!host) {
+        lastMount = Object.assign(lastMount, {
+            ok: false, via: 'none', container: '', found: pick.found,
+            reason: '未找到扩展设置容器（候选：' + MOUNT_CANDIDATES.join(' / ') + '）',
+        });
+        return { ok: false, via: 'none', container: '', reason: lastMount.reason, info: panelMountInfo() };
+    }
+    const data = panelData(o);
     const ctx = getCtx();
     let html = '';
     try {
@@ -212,9 +265,13 @@ export async function mountSettingsPanel(extra) {
         bindPanelEvents();
         // P5 次批：数据台随面板挂载渲染一次（后续由动作或「刷新数据台」按钮重渲染）
         try { writeConsole(); bindConsole(); } catch (e) { /* 数据台失败不影响面板 */ }
-        return { ok: true, via };
+        panelMounted = true;
+        lastMount = Object.assign(lastMount, { ok: true, via, container: pick.id, reason: '', found: pick.found });
+        try { refreshPanelStatus(); } catch (e) { /* 忽略 */ }
+        return { ok: true, via, container: pick.id, info: panelMountInfo() };
     } catch (e) {
-        return { ok: false, via, reason: String((e && e.message) || e) };
+        lastMount = Object.assign(lastMount, { ok: false, via, container: pick.id, reason: String((e && e.message) || e), found: pick.found });
+        return { ok: false, via, container: pick.id, reason: lastMount.reason, info: panelMountInfo() };
     }
 }
 
@@ -340,9 +397,11 @@ export function currentUpdateConfig() {
 
 /** 卸载面板（disable/delete 时调用） */
 export function unmountSettingsPanel() {
+    panelMounted = false;
+    lastMount = Object.assign(lastMount, { ok: false, via: 'none', reason: '已卸载' });
     const doc = globalThis.document;
     const el = doc && typeof doc.getElementById === 'function' ? doc.getElementById(ROOT_ID) : null;
-    if (!el || !el.parentNode) return false;
+    if (!el || !el.parentNode) return true;              // 桩 DOM 无 DOM 树：视为已清状态
     try { el.parentNode.removeChild(el); return true; } catch (e) { return false; }
 }
 
