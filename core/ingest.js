@@ -125,6 +125,8 @@ function mergeDelta(delta0, floorRange) {
         for (const id of delta.states?.remove || []) { try { tombSet('currentStates', id); } catch (e) { } state.currentStates = (state.currentStates || []).filter(x => x.id !== id && x.subject !== id); }
         // v1.62：状态增改删后顺带调度状态记录衰退（防抖；无剧情时钟时内部自动跳过）
         try { scheduleStateDecay(); } catch (e) { }
+        // v1.63：记忆增改删（=「被想起」）后延迟堆叠调度记忆遗忘清扫（B8-5）
+        try { if (delta.memories && (delta.memories.add || delta.memories.update || delta.memories.remove)) scheduleMemoryForget(); } catch (e) { }
         // v1.101 修复：快照 新增 与 更新 可能同时出现 —— 用 concat 合并处理（旧 `a || b` 在 add 非空时短路丢掉 update）
         for (const s of [].concat(delta.snapshots?.add || [], delta.snapshots?.update || [])) {
             const n = normalizeSnapshot(s);
@@ -458,7 +460,11 @@ function calcTimeDecay(earliestAt, latestAt, nowAt, itemAt, count) {
     try {
         const now = Number(nowAt) || Date.now();
         const item = Number(itemAt);
-        if (!Number.isFinite(item) || item <= 0) return 0;                 // 无时间信息视为新
+        // B8-5 修正（**有意偏差**，V1 为 `item <= 0`）：剧情日期以 2000 为基准换算，**1970 年之前的剧情日期
+        //   得到负毫秒值**，而 V1 的 `item <= 0` 会把它们当成「无时间信息」→ 状态衰退 / 记忆遗忘 / 平行事件衰退
+        //   对 19~20 世纪的剧情**整体失效**（用户常见设定恰好是 1919 一类年份）。V1 注释写的是「无时间信息视为新」，
+        //   故此处按注释语义只判「非有限数值」；负值（公元前 ~ 1969）是合法时间，正常参与衰减。
+        if (!Number.isFinite(item)) return 0;                              // 无时间信息视为新
         const age = Math.max(0, now - item);
         // 1) 多级时间尺度（小时→天→月→年，各占一段权重，1 年以上完全饱和）
         const sHours = Math.min(1, age / DECAY_MS_HOUR);
@@ -1514,4 +1520,9 @@ function applyStateBounds() {
 // 物品规范名：去掉末尾括号说明（（…）(…)【…】）与空白后的名称 —— 「怀表」「银色怀表（旧）」归为同一件
 
 // v1.92：剧情日期推进后顺带调度「状态记录衰退」（B8-2 时钟自动提取会调用）—— 供 clock-extract 复用
-export { mergeDelta, scheduleStateDecay, runStateDecay };
+// B8-5：遗忘域共用助手导出（`core/forget.js` 与测试复用，避免重复实现）
+export {
+    mergeDelta, scheduleStateDecay, runStateDecay,
+    storeMinFor, storeCapFor, enforceDimCaps, repairClampNum, memoryImportance, calcTimeDecay,
+    STORE_LIMITS, DIM_CAP_KEYS,
+};
