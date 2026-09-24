@@ -40,8 +40,25 @@ let endpointDown = false;
 let v1FileName = '';
 let v1FileText = '';
 const fetchCalls = [];
-const uninstallFetch = installGlobalFetch((url) => {
+// B7-2：服务端用户目录文件的内存实现（记忆文件 / 备份 / 快照 / 清单 / 同步日志）
+const srvFiles = new Map();
+const uninstallFetch = installGlobalFetch((url, opts) => {
     fetchCalls.push(url);
+    if (url === '/api/files/upload') {
+        let body = null;
+        try { body = JSON.parse((opts && opts.body) || '{}'); } catch (e) { body = null; }
+        if (!body || !body.name) return { status: 400, body: {} };
+        let text = '';
+        try { text = Buffer.from(String(body.data || ''), 'base64').toString('utf8'); } catch (e) { text = ''; }
+        srvFiles.set(String(body.name), text);
+        return { status: 200, text: 'ok' };
+    }
+    if (url.indexOf('/user/files/') === 0) {
+        const name = decodeURIComponent(url.slice('/user/files/'.length));
+        if (v1FileName && name === v1FileName) return { status: 200, text: v1FileText };
+        if (srvFiles.has(name)) return { status: 200, text: srvFiles.get(name) };
+        return { status: 404, body: {} };
+    }
     if (url === '/api/extensions/version') {
         if (endpointDown) return { status: 404, body: {} };
         return { status: 200, body: { isUpToDate: true, currentCommitHash: 'abc1234def', currentBranchName: 'main' } };
@@ -612,6 +629,69 @@ assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以�
 
 endpointDown = false;
 uninstallFetch();
+
+// ---------- N 跨端同步（B7-2：文件通道 / 清单预判 / 快照文件 / 同步日志 / 刷新与立即同步） ----------
+const syncMod = await import('../adapters/sync.js');
+assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与操作/同步日志 + V1 同名动作按钮齐备', (async () => {
+    await entry.popupAction('tab', { tab: 'settings' });
+    const r = await entry.popupAction('settingsSub', { sub: 'storage' });
+    const html = String(r.html || '');
+    return html.indexOf('记忆文件（服务端 · 核心基准）') >= 0 && html.indexOf('一致性') >= 0
+        && html.indexOf('世界书存储（单向写入 · 由下方开关联动）') >= 0 && html.indexOf('状态与操作') >= 0
+        && html.indexOf('🔄 同步日志（最近 30 条 · 本角色）') >= 0
+        && html.indexOf('data-ftt-action="storageStatusRefresh"') >= 0 && html.indexOf('data-ftt-action="storageSync"') >= 0
+        && html.indexOf('data-ftt-action="storageVerify"') >= 0 && html.indexOf('data-ftt-action="syncLogRefresh"') >= 0
+        && html.indexOf('data-ftt-action="syncLogClear"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0;
+})(), '');
+
+assert('N2 同步日志：记录入队（本端源头 + ts）→ 面板渲染「本地 → 对端 → 同步后」→ 清空即空', (async () => {
+    globalThis.FTT.syncLogClear();
+    globalThis.FTT.syncLogPush({ action: '冒烟记录', mode: '推送', changed: true, localN: 1, remoteN: 2, afterN: 2, localHash: 'abcdef0123456789', remoteHash: 'ffeeddccbbaa9988', afterHash: 'abcdef0123456789', note: '冒烟' });
+    const list = globalThis.FTT.syncLog();
+    const r = await entry.popupAction('settingsSub', { sub: 'storage' });
+    const html = String(r.html || '');
+    const ok = list.length === 1 && list[0].action === '冒烟记录' && String(list[0].src || '').length > 0
+        && html.indexOf('冒烟记录') >= 0 && html.indexOf('本地 1 条') >= 0 && html.indexOf('→ 对端') >= 0 && html.indexOf('→ 同步后') >= 0;
+    globalThis.FTT.syncLogClear();
+    return ok && globalThis.FTT.syncLog().length === 0;
+})(), '');
+
+assert('N3 立即同步（无对端）→ mode=none：写入服务端主文件 + 备份文件，并记一条同步日志', (async () => {
+    const r = await globalThis.FTT.syncNow();
+    const names = Array.from(srvFiles.keys());
+    const log = globalThis.FTT.syncLog();
+    return r.mode === 'none' && names.indexOf(syncMod.stateFileName()) >= 0 && names.indexOf(syncMod.bakFileName()) >= 0
+        && log.length >= 1 && log[0].action === '手动立即同步';
+})(), '');
+
+assert('N4 刷新状态：取服务端最新并合并 → 报告条数/快照数/是否回推；清单与快照文件随写入生成', (async () => {
+    const rep = await globalThis.FTT.syncRefresh();
+    const names = Array.from(srvFiles.keys());
+    return rep.err === '' && !!rep.merged && rep.merged.entries >= 0
+        && names.indexOf(syncMod.metaFileName()) >= 0
+        && globalThis.FTT.syncStatus().file.name === syncMod.stateFileName();
+})(), '');
+
+assert('N5 FTT 同步调试入口齐备（syncStatus / syncInfo / syncSource / syncLogServerStatus / syncVerify）', (async () => {
+    const st = globalThis.FTT.syncStatus();
+    const info = globalThis.FTT.syncInfo();
+    const src = globalThis.FTT.syncSource();
+    const sv = globalThis.FTT.syncLogServerStatus();
+    const ver = await globalThis.FTT.syncVerify();
+    return !!st && st.file.name === syncMod.stateFileName() && st.snapshot.name === syncMod.snapshotFileName()
+        && !!info && info.stateFile === syncMod.stateFileName() && String(src || '').length > 0
+        && sv.file === syncMod.syncLogServerFile() && sv.url === '/user/files/' + syncMod.syncLogServerFile()
+        && Array.isArray(ver.details) && ver.details.length >= 4;
+})(), '');
+
+assert('N6 存储动作经面板分发可达（校验并修复 / 清空日志 / 刷新日志）且回填提示', (async () => {
+    const r1 = await entry.popupAction('storageVerify', {});
+    const r2 = await entry.popupAction('syncLogRefresh', {});
+    const r3 = await entry.popupAction('syncLogClear', {});
+    return r1.ok === true && String(r1.note || '').length > 0
+        && r2.ok === true && String(r2.note || '').length > 0
+        && r3.ok === true && String(r3.note || '').indexOf('清空') >= 0;
+})(), '');
 
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {

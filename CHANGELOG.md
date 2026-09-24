@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.9.0（2026-09-26）· B7-2 跨端同步与镜像（文件通道 + 清单预判 + 快照文件 + 同步日志 + 流量门控）
+
+**本版（B7-2）**：
+1. **内核移植**（新增 `core/cross-sync.js`，取自 V1 `06-存储后端与三型归类.js`）：
+   `dataAggHash` / `diffAtomData` / `mergeDataObjects`（原子级双向合并 + 墓碑过滤 + 已处理楼层并集 + 内容哈希去重 + 传言字段级并集）/
+   `mergeSnapshotStores`（快照链并集重建）/ `snapshotSigOf` / `snapIndexFrom` / `mirrorPushSig` / `atomEntryCount`；
+   新增 `core/sync-log.js`：`syncLogRecordKey` / `syncLogMerge`（服务端交叉并集合并）/ `syncLogPushRecord`（环形 30 条）/
+   `syncLogStat` / `syncLogSource`（设备·浏览器短码）；
+2. **适配层**（新增 `adapters/sync.js`）：记忆文件（主 + `-bak` 备份）读写、**清单(meta)预判**（对端未变 → 跳过大文件下载）、
+   **快照链独立文件**上传/并集合并（承载 `snapStore` + `snapFp`）、`refreshFromServer`（刷新状态：取服务端真值 → 全部候选源并集合并 → 回推）、
+   `crossSyncManual`（立即同步：超集整体替换 / 分歧原子融合，收尾必写备份 + 快照）、`scheduleStorageSync`（保存后 3s 防抖镜像）、
+   两级流量门控（楼层哈希差异 + 镜像推送签名）、`storageVerify`（以最新有效源重写各镜像）、`storageBootstrap`（启动一次对账）；
+   读缓存 + 单飞 + 服务端日志通道失败静默降级；
+3. **接线**：`store.saveStateNow()` 保存后按 `cfg.storage.syncOnSave` 调度镜像；`index.js` 启动即异步对账、
+   接入内核延迟调度钩子 `timerHooks`（**修掉 B7-1 遗留缺陷：此前未接线 → 增量快照在真实环境永不触发**）、
+   `FTT.*` 新增 13 个同步调试入口；`teardown` 清理同步定时器；
+4. **界面**（新增 `ui/sync.js` + 存储页重做）：V1 同款分节（记忆文件 / 原生存储 / 本机缓冲 / 一致性 / 世界书存储 / 状态与操作 / 同步日志）+
+   V1 同名 5 个动作（`storageStatusRefresh` `storageSync` `storageVerify` `syncLogRefresh` `syncLogClear`）+
+   同步日志渲染（本地 → 对端 → 同步后 条数/大小 + 哈希 + 本端源头）；存储页控件表补齐 13 项（墓碑天数、原生通道、
+   世界书 8 项、流量门控 `syncTrafficGuard` 顶层键），设定页控件 **105 → 118**；
+5. **黄金样本 13（oracle = 真实 V1 插件 v1.206）**：`dataAggHash` / `diffAtomData` / `mergeDataObjects`（统计 + 结构指纹 + 合并后聚合哈希）/
+   `mergeSnapshotStores` / `snapshotIndexFrom` / `syncLogRecordKey` / `syncLogMerge` / `syncLogStat` / `syncLogSource` 逐项一致。
+
+**验证**：`tests/unit/cross-sync-golden.test.js` **15 项** + `tests/unit/sync-adapter.test.js` **27 项**（文件通道 / 清单预判 /
+快照并集 / 刷新 / 立即同步四态 / 门控四态 / 同步日志三态 / 校验修复 / 存储页与面板动作）+ 冒烟 **N1–N6**；
+门禁全绿：单元 **31 文件 / 404 断言**、冒烟 **61 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8i-B7-2跨端同步.md` §2）**：通道收敛为两型（无 V1 多后端治理视图与 TauriTavern 原生存储）；
+世界书镜像属 B8（仅保留同名配置键）；文件名为 `ftt2-*` 明文 `.json` 且暂不瘦身/gzip（B9）；
+`latestFloorFingerprint` 按 V1 注释语义修正（V1 把正文传给只收楼层号的函数）；同步不移植「占用管线」，改为长任务在途时拒绝/推迟。
+
 ## v2.8.0（2026-09-25）· B7-1 快照链（内核移植 + 界面 + 真实 V1 黄金样本）
 
 **本版（B7-1）**：

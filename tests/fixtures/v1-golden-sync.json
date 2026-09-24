@@ -1,0 +1,511 @@
+{
+  "floorHash3": "1ofb1mj",
+  "local": {
+    "updatedAt": 5000,
+    "atoms": [
+      {
+        "id": "a1",
+        "text": "剧情一",
+        "title": "剧情一",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      },
+      {
+        "id": "a2",
+        "text": "剧情二甲",
+        "title": "剧情二甲",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 3000
+      },
+      {
+        "id": "a3",
+        "text": "剧情三（仅本地）",
+        "title": "剧情三（仅本地）",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      },
+      {
+        "id": "a4",
+        "text": "待删条目",
+        "title": "待删条目",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      }
+    ],
+    "items": [
+      {
+        "id": "i1",
+        "name": "物品甲",
+        "desc": "物品甲·描述",
+        "count": 1,
+        "updatedAt": 1000
+      },
+      {
+        "id": "i2",
+        "name": "物品乙",
+        "desc": "物品乙·描述",
+        "count": 1,
+        "updatedAt": 1000
+      }
+    ],
+    "plans": [
+      {
+        "id": "p1",
+        "text": "计划甲",
+        "title": "计划甲",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      }
+    ],
+    "rumors": [],
+    "currencies": [
+      {
+        "id": "c1",
+        "who": "甲",
+        "kind": "银元",
+        "amount": 5
+      }
+    ],
+    "processedFloors": [
+      {
+        "f": 1,
+        "h": "h1"
+      },
+      {
+        "f": 3,
+        "h": "local-h3"
+      }
+    ],
+    "deleted": {
+      "atoms": {
+        "a4": 9000
+      }
+    },
+    "deletedH": {},
+    "vars": {
+      "v": "local"
+    },
+    "summaries": [
+      {
+        "id": "s1"
+      }
+    ],
+    "snapStore": []
+  },
+  "remote": {
+    "updatedAt": 8000,
+    "atoms": [
+      {
+        "id": "a1",
+        "text": "剧情一",
+        "title": "剧情一",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      },
+      {
+        "id": "a2",
+        "text": "剧情二乙",
+        "title": "剧情二乙",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      },
+      {
+        "id": "a5",
+        "text": "剧情五（仅远端）",
+        "title": "剧情五（仅远端）",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      }
+    ],
+    "items": [
+      {
+        "id": "i1",
+        "name": "物品甲",
+        "desc": "物品甲·描述",
+        "count": 1,
+        "updatedAt": 1000
+      },
+      {
+        "id": "i2",
+        "name": "物品乙（远端改）",
+        "desc": "物品乙（远端改）·描述",
+        "count": 1,
+        "updatedAt": 7000
+      },
+      {
+        "id": "i3",
+        "name": "物品丙（仅远端）",
+        "desc": "物品丙（仅远端）·描述",
+        "count": 1,
+        "updatedAt": 1000
+      }
+    ],
+    "plans": [
+      {
+        "id": "p1",
+        "text": "计划甲",
+        "title": "计划甲",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      },
+      {
+        "id": "p2",
+        "text": "计划乙（仅远端）",
+        "title": "计划乙（仅远端）",
+        "date": "1919-11-29",
+        "tags": [
+          "甲"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "updatedAt": 1000
+      }
+    ],
+    "rumors": [],
+    "currencies": [
+      {
+        "id": "c1",
+        "who": "甲",
+        "kind": "银元",
+        "amount": 9
+      }
+    ],
+    "processedFloors": [
+      {
+        "f": 2,
+        "h": "h2"
+      },
+      {
+        "f": 3,
+        "h": "1ofb1mj"
+      }
+    ],
+    "deleted": {
+      "atoms": {
+        "a6": 9500
+      }
+    },
+    "deletedH": {},
+    "vars": {
+      "v": "remote"
+    },
+    "summaries": [
+      {
+        "id": "s1"
+      },
+      {
+        "id": "s2"
+      }
+    ],
+    "snapStore": []
+  },
+  "localAgg": "shaexi_mraocp",
+  "remoteAgg": "1r1s46l_12ikos2",
+  "diff": {
+    "same": 3,
+    "onlyLocal": 2,
+    "onlyRemote": 3,
+    "conflict": 2,
+    "conflictWinLocal": 1,
+    "conflictWinRemote": 1
+  },
+  "mergeStat": {
+    "added": 3,
+    "conflictWinLocal": 1,
+    "conflictWinRemote": 1,
+    "same": 3
+  },
+  "merged": {
+    "atoms": [
+      "a1:剧情一",
+      "a2:剧情二甲",
+      "a3:剧情三（仅本地）",
+      "a5:剧情五（仅远端）"
+    ],
+    "items": [
+      "i1:物品甲",
+      "i2:物品乙（远端改）",
+      "i3:物品丙（仅远端）"
+    ],
+    "plans": [
+      "p1:计划甲",
+      "p2:计划乙（仅远端）"
+    ],
+    "processedFloors": [
+      "1:h1",
+      "2:h2",
+      "3:1ofb1mj"
+    ],
+    "deletedAtoms": [
+      "a4",
+      "a6"
+    ],
+    "vars": {
+      "v": "remote"
+    },
+    "summaries": 2,
+    "currencies": [
+      {
+        "id": "c1",
+        "who": "甲",
+        "kind": "银元",
+        "amount": 9
+      }
+    ],
+    "updatedAt": 8000
+  },
+  "mergedAgg": "1rdxuh8_1a894gc",
+  "snapA": [
+    {
+      "id": "root_a",
+      "kind": "root",
+      "ts": "2024-01-01T00:00:00.000Z",
+      "baseId": null,
+      "hash": "ha",
+      "atomsHashes": {
+        "a1": "h1"
+      },
+      "atoms": {}
+    },
+    {
+      "id": "incr_a",
+      "kind": "incr",
+      "ts": "2024-01-02T00:00:00.000Z",
+      "baseId": "root_a",
+      "hash": "hb",
+      "atomsHashes": {
+        "a2": "h2"
+      },
+      "atoms": {}
+    }
+  ],
+  "snapB": [
+    {
+      "id": "root_b",
+      "kind": "root",
+      "ts": "2023-12-31T00:00:00.000Z",
+      "baseId": null,
+      "hash": "hc",
+      "atomsHashes": {
+        "b1": "h1"
+      },
+      "atoms": {}
+    },
+    {
+      "id": "incr_a_copy",
+      "kind": "incr",
+      "ts": "2024-01-03T00:00:00.000Z",
+      "baseId": "root_b",
+      "hash": "hd",
+      "atomsHashes": {
+        "a2": "h2"
+      },
+      "atoms": {}
+    }
+  ],
+  "snapUnion": [
+    "root_b",
+    "root_a",
+    "incr_a"
+  ],
+  "snapIndex": [
+    {
+      "id": "root_a",
+      "kind": "root",
+      "ts": "2024-01-01T00:00:00.000Z",
+      "baseId": null,
+      "hash": "ha",
+      "covered": 1
+    },
+    {
+      "id": "incr_a",
+      "kind": "incr",
+      "ts": "2024-01-02T00:00:00.000Z",
+      "baseId": "root_a",
+      "hash": "hb",
+      "covered": 1
+    },
+    {
+      "id": "root_b",
+      "kind": "root",
+      "ts": "2023-12-31T00:00:00.000Z",
+      "baseId": null,
+      "hash": "hc",
+      "covered": 1
+    },
+    {
+      "id": "incr_a_copy",
+      "kind": "incr",
+      "ts": "2024-01-03T00:00:00.000Z",
+      "baseId": "root_b",
+      "hash": "hd",
+      "covered": 1
+    }
+  ],
+  "mirrorPush": {
+    "same": false,
+    "len": 6,
+    "changed": true,
+    "sig2Differs": true
+  },
+  "mirrorPushUpdatedAtIgnored": true,
+  "logKey": "111|X|保存后镜像|推送|n|1|2|1|L|R|L",
+  "logRec": {
+    "ts": 111,
+    "src": "X",
+    "action": "保存后镜像",
+    "mode": "推送",
+    "note": "n",
+    "localN": 1,
+    "remoteN": 2,
+    "afterN": 1,
+    "localHash": "L",
+    "remoteHash": "R",
+    "afterHash": "L"
+  },
+  "logA": [
+    {
+      "ts": 300,
+      "src": "A",
+      "action": "保存后镜像",
+      "mode": "推送",
+      "note": "x",
+      "localN": 1,
+      "remoteN": 1,
+      "afterN": 1,
+      "localHash": "h",
+      "remoteHash": "r",
+      "afterHash": "h"
+    },
+    {
+      "ts": 200,
+      "src": "A",
+      "action": "刷新状态",
+      "mode": "合并服务端",
+      "note": "y",
+      "localN": 2,
+      "remoteN": 3,
+      "afterN": 2,
+      "localHash": "h2",
+      "remoteHash": "r2",
+      "afterHash": "h2"
+    }
+  ],
+  "logB": [
+    {
+      "ts": 200,
+      "src": "A",
+      "action": "刷新状态",
+      "mode": "合并服务端",
+      "note": "y",
+      "localN": 2,
+      "remoteN": 3,
+      "afterN": 2,
+      "localHash": "h2",
+      "remoteHash": "r2",
+      "afterHash": "h2"
+    },
+    {
+      "ts": 400,
+      "src": "B",
+      "action": "保存后镜像",
+      "mode": "推送(门控)",
+      "note": "z",
+      "localN": 4,
+      "remoteN": 4,
+      "afterN": 4,
+      "localHash": "h4",
+      "remoteHash": "",
+      "afterHash": "h4"
+    }
+  ],
+  "logMerge": [
+    "400:B:推送(门控)",
+    "300:A:推送",
+    "200:A:合并服务端"
+  ],
+  "logMergeCap": 3,
+  "logStat": {
+    "n": 7,
+    "bytes": 1068
+  },
+  "logList": [
+    {
+      "action": "第二条",
+      "mode": "合并",
+      "src": "Windows·Chrome(sjcdmw)·Win32",
+      "hasTs": true,
+      "localN": 2
+    },
+    {
+      "action": "第一条",
+      "mode": "推送",
+      "src": "Windows·Chrome(sjcdmw)·Win32",
+      "hasTs": true,
+      "localN": 1
+    }
+  ],
+  "logListN": 2,
+  "nav": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "language": "zh-CN"
+  },
+  "logSource": "Windows·Chrome(sjcdmw)·Win32",
+  "note": "oracle = 真实 V1 插件 v1.206（tests/unit/helpers.js loadPlugin + makeTavernEnv）；nav 为 oracle 注入的确定性 navigator"
+}

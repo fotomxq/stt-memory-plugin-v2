@@ -20,6 +20,7 @@ import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
+import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
@@ -732,6 +733,12 @@ export async function panelAction(action, payload) {
                                 : ('已采用破甲预设（' + (pr.imported || 0) + ' 字）'))
                 : ('提示词操作失败：' + String(pr.reason || '未知')));
             result = Object.assign(result, pr);
+        }
+        else if (SYNC_ACTIONS.indexOf(a) >= 0) {
+            // 存储页动作（V1 同名：刷新状态 / 立即同步 / 校验并修复 / 刷新日志 / 清空日志）
+            const sr = await syncAction(a, p);
+            setNote(sr.note || '');
+            result = Object.assign(result, sr);
         }
         else if (a === 'settingsSub') {
             const id = String(p.sub || p.kind || '');

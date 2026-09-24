@@ -602,6 +602,90 @@ export const SETTINGS_CONTROLS = {
             "key": "storage.syncLogServer",
             "label": "日志存到服务端（双端可见·推荐开启）",
             "type": "checkbox"
+        },
+        {
+            "key": "storage.deletedKeepDays",
+            "label": "删除墓碑保留（天）",
+            "type": "text"
+        },
+        {
+            "key": "storage.tauriNative",
+            "label": "原生存储通道",
+            "type": "select",
+            "options": [
+                { "v": "auto", "label": "自动（检测到 TauriTavern 即切换）" },
+                { "v": "on", "label": "强制开启（TauriTavern 原生存储）" },
+                { "v": "off", "label": "关闭（始终用酒馆用户目录文件）" }
+            ]
+        },
+        {
+            "key": "storage.worldbookName",
+            "label": "选择世界书",
+            "type": "select",
+            "options": [ { "v": "", "label": "（选择世界书）" } ]
+        },
+        {
+            "key": "storage.worldbookMode",
+            "label": "调取方式",
+            "type": "select",
+            "options": [
+                { "v": "constant", "label": "常驻蓝灯（constant，持续激活）" },
+                { "v": "selective", "label": "绿色关键词触发（selective）" },
+                { "v": "vectorized", "label": "向量触发（vectorized）" }
+            ]
+        },
+        {
+            "key": "storage.worldbookScanDepth",
+            "label": "触发楼层（扫描深度）",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookPosition",
+            "label": "插入位置",
+            "type": "select",
+            "options": [
+                { "v": "at_depth", "label": "系统插入深度 D（at_depth）" },
+                { "v": "before_character_definition", "label": "角色定义前" },
+                { "v": "after_character_definition", "label": "角色定义后" },
+                { "v": "before_author_note", "label": "作者注释前" },
+                { "v": "after_author_note", "label": "作者注释后" },
+                { "v": "outlet", "label": "outlet" }
+            ]
+        },
+        {
+            "key": "storage.worldbookDepth",
+            "label": "插入深度（层）",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookProbability",
+            "label": "激活概率(%)",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookSticky",
+            "label": "黏性(条,可空)",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookCooldown",
+            "label": "冷却(条,可空)",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookDelay",
+            "label": "延迟(楼,可空)",
+            "type": "text"
+        },
+        {
+            "key": "storage.worldbookMaxBytes",
+            "label": "词条内容上限(字节)",
+            "type": "text"
+        },
+        {
+            "key": "syncTrafficGuard",
+            "label": "楼层哈希差异门控（省流量·推荐开启）",
+            "type": "checkbox"
         }
     ],
     "debug": [],
@@ -622,6 +706,7 @@ import { saveKernelCfg } from '../adapters/config-store.js';
 import { VERSION } from '../core/constants.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
+import { storagePageHtml } from './sync.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -684,8 +769,10 @@ export function settingsControlHtml(c) {
     }
     if (type === 'select') {
         const list = Array.isArray(c.options) ? c.options : [];
+        const norm = (o) => (o && typeof o === 'object') ? { v: String(o.v == null ? '' : o.v), label: String(o.label == null ? o.v : o.label) } : { v: String(o == null ? '' : o), label: String(o == null ? '' : o) };
         const cur = String(v == null ? '' : v);
-        const opts = (list.length ? list : [cur]).map((o) => '<option value="' + esc(o) + '"' + (cur === String(o) ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+        const items = (list.length ? list : [cur]).map(norm);
+        const opts = items.map((o) => '<option value="' + esc(o.v) + '"' + (cur === o.v ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('');
         return '<div class="ftt-field"><label>' + esc(label) + '</label><select data-ftt-cfg="' + esc(key) + '">' + opts + '</select></div>';
     }
     if (type === 'textarea') {
@@ -709,6 +796,9 @@ const PENDING_NOTE = {
 export function settingsPageHtml(pageId) {
     const pid = String(pageId || SETTINGS_TABS[0].id);
     const list = Array.isArray(SETTINGS_CONTROLS[pid]) ? SETTINGS_CONTROLS[pid] : [];
+    // 存储页：V1 的**分节布局**（记忆文件 / 原生存储 / 缓冲 / 一致性 / 世界书 / 状态与操作 / 同步日志）
+    //   控件表仍由 SETTINGS_CONTROLS.storage 提供（同名同序），只是不再平铺渲染。
+    if (pid === 'storage') return storagePageHtml(list);
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';

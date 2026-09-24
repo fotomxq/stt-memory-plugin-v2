@@ -10,7 +10,7 @@
 // ============================================================
 import { MODULE_NAME } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
-import { state, setPersistHooks, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
+import { state, cfg as cfgRef, setPersistHooks, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
 import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../core/sweep.js';
@@ -19,6 +19,7 @@ import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
 import { collectAtomHashes } from '../core/merge.js';
 import { scopeId } from '../core/state.js';
 import { stateFileName, uploadStateFile, readStateFile, deleteStateFile } from './user-file.js';
+import { scheduleStorageSync } from './sync.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -43,6 +44,11 @@ export function setStorageHooks(next) {
 
 function kernelState() {
     return state;
+}
+
+/** 保存后是否**不**调度跨端镜像（V1 同名配置键 `cfg.storage.syncOnSave === false`） */
+function mirrorOnSaveDisabled() {
+    try { return !!(cfgRef && cfgRef.storage && cfgRef.storage.syncOnSave === false); } catch (e) { return true; }
 }
 
 async function localforageLib() {
@@ -105,6 +111,9 @@ export async function saveStateNow(opts) {
     }
     lastSave = { at: Date.now(), ok: via.length > 0, via: via.join('+'), bytes, error: '' };
     try { saveSettings(); } catch (e) { /* 忽略 */ }
+    // ⑦ 保存后镜像（V1 `saveState` 末尾的 scheduleStorageSync）：防抖 3s + 楼层/签名双门控
+    //   （`cfg.storage.syncOnSave === false` 时不调度；手动「立即同步」不受此开关影响）
+    try { if (!mirrorOnSaveDisabled()) scheduleStorageSync(false); } catch (e) { /* 忽略 */ }
     return { ok: lastSave.ok, via: lastSave.via, bytes, error: '' };
 }
 

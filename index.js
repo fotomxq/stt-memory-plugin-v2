@@ -32,7 +32,12 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, cfg as cfgRef } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, cfg as cfgRef } from './core/model/runtime.js';
+import {
+    storageBootstrap, scheduleStorageSync, crossSyncManual, refreshFromServer, storageVerify,
+    syncLogList, syncLogClear, syncLogServerMerge, syncLogServerStatus, syncLogPush, syncLocalSource,
+    storageStatusInfo, resetSyncState, syncInfo, fileCacheDropAll,
+} from './adapters/sync.js';
 
 const runtime = {
     ready: false,
@@ -127,6 +132,9 @@ export async function init() {
     try { installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 菜单入口失败不影响功能 */ }
     try { setPopupHooks(popupHooks()); } catch (e) { /* 忽略 */ }
     try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
+    //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
+    try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
         const onFloorChanged = () => {
@@ -268,7 +276,23 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+        installDevtools(Object.assign({
+            importV1: runV1Import, importStatus,
+            // B7-2 跨端同步调试入口（与 V1 `FTT.*` 同名能力：同步状态 / 立即同步 / 刷新 / 校验 / 日志）
+            syncStatus: storageStatusInfo,
+            syncInfo,
+            syncNow: () => crossSyncManual(),
+            syncRefresh: () => refreshFromServer(),
+            syncVerify: () => storageVerify(true),
+            syncLog: () => syncLogList(),
+            syncLogClear: () => syncLogClear(),
+            syncLogMerge: () => syncLogServerMerge({ force: true }),
+            syncLogServerStatus: () => syncLogServerStatus(),
+            syncLogPush: (rec) => syncLogPush(rec || {}),
+            syncSource: () => syncLocalSource(),
+            syncDropCache: () => fileCacheDropAll(),
+            storageBootstrap,
+            scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -483,6 +507,11 @@ export function importStatus() { return runtime.import; }
 function installHostBridges() {
     const ctx = getCtx();
     setIdentityView({ characterName: String((ctx && (ctx.name2 || ctx.name1)) || '') });
+    // 内核延迟调度钩子 → 宿主定时器（快照增量 400ms 防抖依赖它；未接线时内核默认 no-op = 永不建增量快照）
+    setTimerHooks({
+        set: (fn, ms) => setTimeout(fn, Math.max(0, Number(ms) || 0)),
+        clear: (id) => { try { clearTimeout(id); } catch (e) { /* 忽略 */ } },
+    });
     setNotifyHooks({
         toast: (text, kind) => {
             try {
@@ -515,6 +544,7 @@ export function teardown() {
     try { uninstallFloatingEntry(); } catch (e) { /* noop */ }
     try { closePanel(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
+    try { resetSyncState(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
 }

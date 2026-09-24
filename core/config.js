@@ -715,6 +715,9 @@ const defaultCfg = {
     uiShowDrawer: false,          // 是否同时在扩展设置抽屉里渲染面板卡片（默认否 = 只用弹窗）
     uiShowFloating: true,         // 扩展菜单入口不可用时，是否在右下角显示悬浮「FTT」按钮
     uiFirstTab: 'overview',       // 弹窗默认打开的分页（overview | console | extract | settings）
+    // v1.134：同步流量保护总开关（**顶层键**，与 V1 同名同位置）—— 关闭后自动同步不再做
+    //   「楼层哈希差异门控」与「镜像推送签名门控」，回到「每轮全量读 + 写」的旧行为。
+    syncTrafficGuard: true,
     autoSummary: false,
     // v1.96：及时分析（实时模式）—— 开启后发送前分析未摘要楼层(含最新楼)、强制 自动摘取/AI摘要/注入、
     //   分析与提取总基于最新楼层、最新楼层改动自动回滚重分析
