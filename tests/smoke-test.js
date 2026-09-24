@@ -31,7 +31,11 @@ try {
 // ---------- B 有宿主：完整装配 ----------
 // 更新检查桩：ST 版本端点（git 真值）+ 远端清单/更新日志
 const templateHtml = readFileSync(join(ROOT, 'settings.html'), 'utf8');
-let remoteVersion = '2.1.0';
+// 远端样本版本按当前版本推导（发版升级不再打破本断言）
+const remoteVersion = (() => {
+    const m = String(VERSION).split('.').map((x) => Number(x.replace(/\D/g, '')) || 0);
+    return [m[0] || 0, (m[1] || 0) + 1, 0].join('.');
+})();
 let endpointDown = false;
 let v1FileName = '';
 let v1FileText = '';
@@ -44,7 +48,7 @@ const uninstallFetch = installGlobalFetch((url) => {
     }
     if (url.indexOf('/api/extensions/update') === 0) return { status: 200, body: { isUpToDate: false, shortCommitHash: 'beef999' } };
     if (url.endsWith('/manifest.json')) return { status: 200, text: JSON.stringify({ version: remoteVersion }) };
-    if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v2.1.0（2026-10-01）\n\n- 新增：更新检查机制\n' };
+    if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v' + remoteVersion + '（2026-10-01）\n\n- 新增：更新检查机制\n' };
     if (v1FileName && url === '/user/files/' + v1FileName) return { status: 200, text: v1FileText };
     return { status: 404, body: {} };
 });
