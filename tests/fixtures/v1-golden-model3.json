@@ -1,0 +1,860 @@
+{
+  "note": "V1 源码切片（批次 1+2+3）在固定输入下的输出（黄金样本 3）",
+  "inputs": {
+    "LINKS": [
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "who": "角色甲",
+        "how": "participant",
+        "from": "1919-11-29",
+        "at": "1919-11-30",
+        "view": "码头",
+        "deviation": "none",
+        "note": "亲眼所见",
+        "kind": "fact",
+        "public": true
+      },
+      {
+        "dim": "memories",
+        "refId": "m2",
+        "who": "角色乙",
+        "how": "told",
+        "by": "角色丙",
+        "at": "1919-12-01",
+        "deviation": "夸大",
+        "note": "转述",
+        "public": false
+      },
+      {
+        "dim": "plans",
+        "refId": "p1",
+        "who": "角色甲",
+        "how": "author",
+        "deviation": "",
+        "kind": "plan"
+      },
+      {
+        "dim": "suspense",
+        "refId": "s1",
+        "who": "",
+        "how": "bogus-how"
+      },
+      {
+        "dim": "parallels",
+        "refId": "pa1",
+        "who": "角色乙",
+        "how": "bogus-how"
+      },
+      {
+        "dim": "memories",
+        "refId": "",
+        "who": "甲",
+        "how": "witness"
+      },
+      {
+        "dim": "bogus",
+        "refId": "x",
+        "who": "甲",
+        "how": "participant"
+      },
+      null,
+      "x"
+    ],
+    "RUMORS": [
+      {
+        "subject": "码头货栈失窃",
+        "content": "货栈夜里被人搬空，无人察觉。",
+        "objectivity": "客观",
+        "ferment": 20,
+        "stage": "",
+        "carriers": [
+          {
+            "role": "源头",
+            "name": "角色甲"
+          },
+          {
+            "role": "传播者",
+            "name": "角色乙"
+          }
+        ],
+        "media": [
+          {
+            "type": "口耳相传",
+            "durability": 3
+          }
+        ],
+        "chain": [
+          {
+            "kind": "起源",
+            "at": "1919-11-29",
+            "text": "甲目睹"
+          }
+        ],
+        "lineage": {
+          "parent": "",
+          "gen": 1
+        },
+        "pending": {
+          "to": "扩散",
+          "rounds": 1
+        },
+        "tags": [
+          "码头"
+        ],
+        "keywords": [
+          "失窃"
+        ]
+      },
+      {
+        "subject": "船主欠债",
+        "content": "船主欠了赌债，被人上门催讨。",
+        "objectivity": "主观",
+        "ferment": 88,
+        "carriers": "角色甲,角色乙",
+        "media": "报刊",
+        "lineage": {
+          "parent": "码头货栈失窃"
+        }
+      },
+      {
+        "subject": "",
+        "content": ""
+      },
+      {
+        "subject": "第三件事",
+        "content": "某说法在码头上流传。",
+        "ferment": 55,
+        "stage": "发酵",
+        "carriersText": "源头:角色甲;听闻者:角色丁"
+      }
+    ],
+    "CARRIERS_TEXT": "源头:角色甲;传播者:角色乙、角色丙;听闻者:角色丁",
+    "MEDIA_TEXT": "口耳相传,报刊;书信"
+  },
+  "links": [
+    {
+      "id": "lnk_1sssq8c",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "角色甲",
+      "how": "participant",
+      "from": "",
+      "at": "1919-11-30",
+      "view": "码头",
+      "deviation": "unknown",
+      "note": "亲眼所见",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": 0
+    },
+    {
+      "id": "lnk_1sxfoys",
+      "dim": "memories",
+      "refId": "m2",
+      "who": "角色乙",
+      "how": "told",
+      "from": "角色丙",
+      "at": "1919-12-01",
+      "view": "",
+      "deviation": "unknown",
+      "note": "转述",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": 0
+    },
+    {
+      "id": "lnk_1udt06u",
+      "dim": "plans",
+      "refId": "p1",
+      "who": "角色甲",
+      "how": "author",
+      "from": "",
+      "at": "",
+      "view": "",
+      "deviation": "unknown",
+      "note": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": 0
+    },
+    {
+      "id": "lnk_2xk1mn",
+      "dim": "suspense",
+      "refId": "s1",
+      "who": "",
+      "how": "",
+      "from": "",
+      "at": "",
+      "view": "",
+      "deviation": "unknown",
+      "note": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": 0,
+      "kind": "suspense",
+      "public": false,
+      "conceptRef": "",
+      "atomRef": "",
+      "planRef": "",
+      "suspenseRef": "",
+      "memRefs": [],
+      "sourceRefs": []
+    },
+    {
+      "id": "lnk_7w8pd0",
+      "dim": "parallels",
+      "refId": "pa1",
+      "who": "角色乙",
+      "how": "related",
+      "from": "",
+      "at": "",
+      "view": "",
+      "deviation": "unknown",
+      "note": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": 0
+    },
+    null,
+    null,
+    null,
+    null
+  ],
+  "linksOf": {
+    "all": [
+      {
+        "id": "lnk_1sssq8c",
+        "dim": "memories",
+        "refId": "m1",
+        "who": "角色甲",
+        "how": "participant",
+        "from": "",
+        "at": "1919-11-30",
+        "view": "码头",
+        "deviation": "unknown",
+        "note": "亲眼所见",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 0,
+        "updatedAt": 0
+      }
+    ],
+    "missing": [],
+    "count": 0,
+    "orphans": {
+      "rows": 5,
+      "items": 0,
+      "byDim": {
+        "memories": 2,
+        "plans": 1,
+        "suspense": 1,
+        "parallels": 1
+      },
+      "itemDims": {}
+    },
+    "summary": ""
+  },
+  "rumors": [
+    {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈夜里被人搬空，无人察觉。",
+      "objectivity": "客观",
+      "stage": "萌芽",
+      "ferment": 20,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "源头",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "口耳相传",
+          "name": "口耳相传",
+          "at": "",
+          "durability": 3,
+          "active": true
+        }
+      ],
+      "chain": [
+        {
+          "at": "1919-11-29",
+          "round": 0,
+          "kind": "起源",
+          "from": "",
+          "to": "",
+          "note": ""
+        }
+      ],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "码头"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967717,
+      "updatedAt": 1790254967717,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈夜里被人搬空，无人察觉。",
+      "strength": 0.5,
+      "extra": []
+    },
+    {
+      "id": "rum_flz58d",
+      "subject": "船主欠债",
+      "content": "船主欠了赌债，被人上门催讨。",
+      "objectivity": "主观",
+      "stage": "发酵",
+      "ferment": 88,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "传播者",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "报刊",
+          "name": "报刊",
+          "at": "",
+          "durability": 1,
+          "active": true
+        }
+      ],
+      "chain": [],
+      "lineage": {
+        "rootId": "rum_flz58d",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967717,
+      "updatedAt": 1790254967717,
+      "category": "rumors",
+      "title": "船主欠债",
+      "text": "船主欠了赌债，被人上门催讨。",
+      "strength": 0.5,
+      "extra": []
+    },
+    null,
+    {
+      "id": "rum_12j7z4t",
+      "subject": "第三件事",
+      "content": "某说法在码头上流传。",
+      "objectivity": "主观",
+      "stage": "发酵",
+      "ferment": 55,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "源头",
+          "role": "听闻者",
+          "at": ""
+        }
+      ],
+      "media": [],
+      "chain": [],
+      "lineage": {
+        "rootId": "rum_12j7z4t",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "第三件事",
+      "text": "某说法在码头上流传。",
+      "strength": 0.5,
+      "extra": []
+    }
+  ],
+  "rumorIds": [
+    {
+      "id": "rum_45h",
+      "child": "rum_1hg3idl",
+      "key": "码头货栈失窃"
+    },
+    {
+      "id": "rum_45h",
+      "child": "rum_1hg3idl",
+      "key": "船主欠债"
+    },
+    {
+      "id": "rum_45h",
+      "child": "rum_1hg3idl",
+      "key": ""
+    },
+    {
+      "id": "rum_45h",
+      "child": "rum_1hg3idl",
+      "key": "第三件事"
+    }
+  ],
+  "carriers": [
+    [
+      {
+        "who": "源头",
+        "role": "角色甲;传播者:角色乙、角色丙;听闻者:角色丁"
+      }
+    ],
+    [
+      {
+        "who": "角色甲"
+      }
+    ],
+    [],
+    []
+  ],
+  "media": [
+    [
+      {
+        "type": "口耳相传,报刊;书信",
+        "name": "口耳相传,报刊;书信"
+      }
+    ],
+    [
+      {
+        "type": "大字报",
+        "name": "大字报"
+      }
+    ],
+    [],
+    []
+  ],
+  "stages": [
+    {
+      "f": -5,
+      "s": "沉寂"
+    },
+    {
+      "f": 0,
+      "s": "沉寂"
+    },
+    {
+      "f": 10,
+      "s": "消退"
+    },
+    {
+      "f": 30,
+      "s": "萌芽"
+    },
+    {
+      "f": 50,
+      "s": "扩散"
+    },
+    {
+      "f": 70,
+      "s": "发酵"
+    },
+    {
+      "f": 90,
+      "s": "异变"
+    },
+    {
+      "f": 100,
+      "s": "异变"
+    },
+    {
+      "f": 200,
+      "s": "异变"
+    }
+  ],
+  "merge": {
+    "a": {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈夜里被人搬空，无人察觉。",
+      "objectivity": "客观",
+      "stage": "萌芽",
+      "ferment": 20,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "源头",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "口耳相传",
+          "name": "口耳相传",
+          "at": "",
+          "durability": 3,
+          "active": true
+        }
+      ],
+      "chain": [
+        {
+          "at": "1919-11-29",
+          "round": 0,
+          "kind": "起源",
+          "from": "",
+          "to": "",
+          "note": ""
+        }
+      ],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "码头"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈夜里被人搬空，无人察觉。",
+      "strength": 0.5,
+      "extra": []
+    },
+    "b": {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈被搬空且无人察觉，有人说看见陌生人。",
+      "objectivity": "主观",
+      "stage": "发酵",
+      "ferment": 80,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色丁",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [],
+      "chain": [],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "新标签"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈被搬空且无人察觉，有人说看见陌生人。",
+      "strength": 0.5,
+      "extra": []
+    },
+    "merged": {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈夜里被人搬空，无人察觉。",
+      "objectivity": "客观",
+      "stage": "萌芽",
+      "ferment": 20,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "源头",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        },
+        {
+          "who": "角色丁",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "口耳相传",
+          "name": "口耳相传",
+          "at": "",
+          "durability": 3,
+          "active": true
+        }
+      ],
+      "chain": [
+        {
+          "at": "1919-11-29",
+          "round": 0,
+          "kind": "起源",
+          "from": "",
+          "to": "",
+          "note": ""
+        }
+      ],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "码头"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈夜里被人搬空，无人察觉。",
+      "strength": 0.5,
+      "extra": []
+    },
+    "self": {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈夜里被人搬空，无人察觉。",
+      "objectivity": "客观",
+      "stage": "萌芽",
+      "ferment": 20,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "源头",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "口耳相传",
+          "name": "口耳相传",
+          "at": "",
+          "durability": 3,
+          "active": true
+        }
+      ],
+      "chain": [
+        {
+          "at": "1919-11-29",
+          "round": 0,
+          "kind": "起源",
+          "from": "",
+          "to": "",
+          "note": ""
+        }
+      ],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "码头"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈夜里被人搬空，无人察觉。",
+      "strength": 0.5,
+      "extra": []
+    },
+    "empty": {
+      "id": "rum_12cvnyl",
+      "subject": "码头货栈失窃",
+      "content": "货栈夜里被人搬空，无人察觉。",
+      "objectivity": "客观",
+      "stage": "萌芽",
+      "ferment": 20,
+      "pending": null,
+      "carriers": [
+        {
+          "who": "角色甲",
+          "role": "源头",
+          "at": ""
+        },
+        {
+          "who": "角色乙",
+          "role": "传播者",
+          "at": ""
+        }
+      ],
+      "media": [
+        {
+          "type": "口耳相传",
+          "name": "口耳相传",
+          "at": "",
+          "durability": 3,
+          "active": true
+        }
+      ],
+      "chain": [
+        {
+          "at": "1919-11-29",
+          "round": 0,
+          "kind": "起源",
+          "from": "",
+          "to": "",
+          "note": ""
+        }
+      ],
+      "lineage": {
+        "rootId": "rum_12cvnyl",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      },
+      "parallelRefs": [],
+      "source": "",
+      "date": "",
+      "tags": [
+        "码头"
+      ],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "createdAt": 1790254967718,
+      "updatedAt": 1790254967718,
+      "category": "rumors",
+      "title": "码头货栈失窃",
+      "text": "货栈夜里被人搬空，无人察觉。",
+      "strength": 0.5,
+      "extra": []
+    }
+  },
+  "hashes": {
+    "link": "17jkl9u_2d5bbp",
+    "rumor": "10s12dp_1f6o6en",
+    "rumorId": "rum_45h"
+  },
+  "helpers": {
+    "chain": [
+      {
+        "at": "1919-11-29",
+        "round": 0,
+        "kind": "起源",
+        "from": "",
+        "to": "",
+        "note": ""
+      }
+    ],
+    "lineage": {
+      "rootId": "",
+      "parentId": "",
+      "children": [],
+      "generation": 0
+    },
+    "pending": null,
+    "carriersNorm": [
+      {
+        "who": "甲",
+        "role": "源头",
+        "at": ""
+      },
+      {
+        "who": "乙",
+        "role": "传播者",
+        "at": ""
+      },
+      {
+        "who": "丙",
+        "role": "传播者",
+        "at": ""
+      }
+    ],
+    "mediaNorm": [
+      {
+        "type": "口耳相传",
+        "name": "口耳相传",
+        "at": "",
+        "durability": 3,
+        "active": true
+      },
+      {
+        "type": "报刊",
+        "name": "报刊",
+        "at": "",
+        "durability": 1,
+        "active": true
+      }
+    ]
+  }
+}
