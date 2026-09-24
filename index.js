@@ -16,7 +16,9 @@ import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave } from './adapters/store.js';
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow } from './adapters/store.js';
+import { importV1Data } from './adapters/import-v1.js';
+import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
 import { setLastMessageId } from './core/model/runtime.js';
@@ -30,6 +32,7 @@ const runtime = {
     settingsVia: 'none',
     update: { ran: false, reason: '', summary: null },
     store: { via: 'none', scope: '', last: null },
+    import: { runs: 0, last: null },
     chat: { messages: 0, lastMessageId: -1, scopeKey: '' },
     lastError: '',
 };
@@ -47,6 +50,7 @@ export function extraForStatus() {
         interceptor: interceptorStats(),
         store: runtime.store,
         chat: runtime.chat,
+        import: runtime.importSummary || '',
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
     };
 }
@@ -106,9 +110,9 @@ export async function init() {
             CHAT_CHANGED: onChatChanged,
         });
     } catch (e) { runtime.lastError = String((e && e.message) || e); }
-    try { runtime.slash = registerSlashCommand(extraForStatus); } catch (e) { runtime.slash = false; }
+    try { runtime.slash = registerSlashCommand(extraForStatus, { importV1: runV1Import }); } catch (e) { runtime.slash = false; }
     try { runtime.macros = registerMacros(extraForStatus); } catch (e) { runtime.macros = false; }
-    try { installDevtools(); } catch (e) { /* 忽略 */ }
+    try { installDevtools({ importV1: runV1Import, importStatus }); } catch (e) { /* 忽略 */ }
     // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
     try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;
@@ -136,6 +140,34 @@ export async function startupUpdateCheck(opts) {
 export async function checkUpdateNow() {
     return startupUpdateCheck({ manual: true });
 }
+
+/**
+ * V1 数据导入（P2 次批）：默认**干跑**，`apply: true` 才合并写入。
+ * 用户要求（不丢数据 / 可回退）：合并为 append-only（同 id 以当前为准），源数据一律不删。
+ * @param {object} [opts] apply / identity
+ * @returns {Promise<object>} importV1Data 结果（含 report / merged / notes）
+ */
+export async function runV1Import(opts) {
+    const o = opts || {};
+    const apply = o.apply === true;
+    const res = await importV1Data({
+        dryRun: !apply,
+        identity: o.identity,
+        current: kernelState,
+        apply: apply ? async (merged) => {
+            attachKernelState(merged);
+            await saveStateNow({ reason: 'import-v1' });
+        } : null,
+    });
+    const t = (res.report && res.report.totals) || { v1Entries: 0, add: 0, exist: 0, conflict: 0 };
+    runtime.import = { runs: (runtime.import.runs || 0) + 1, last: { at: Date.now(), dryRun: !!res.dryRun, via: res.via, name: res.name, totals: t } };
+    runtime.importSummary = (res.dryRun ? '干跑 ' : '已写入 ') + (res.via ? res.via + '/' + res.name : '无源数据')
+        + '：新增 ' + t.add + ' · 已存在 ' + t.exist + ' · 冲突 ' + t.conflict;
+    return res;
+}
+
+/** 导入状态（/ftt 与 FTT.importStatus()） */
+export function importStatus() { return runtime.import; }
 
 /** 静默保存（事件路径用；失败只记录，不影响交互） */
 export function saveStateNowQuiet(reason) {

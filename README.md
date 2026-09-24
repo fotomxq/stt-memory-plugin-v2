@@ -90,7 +90,10 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 本层由 `tests/unit/store-chat.test.js`（13 项）与 `tests/unit/sweep-envelope-golden.test.js`（8 项）覆盖；
 入口侧 `index.js` 在 `APP_READY` 后执行 `loadMemoryState()`（本机缓冲 → 服务端文件 → 空容器 → 迁移 → 注入内核），
 并接 `CHARACTER_MESSAGE_RENDERED`（刷新视图）、`GENERATION_ENDED`（防抖落盘）、`CHAT_CHANGED`（换作用域重载）。
-尚未完成的导入器 / 快照链 / 跨端同步见 `docs/P2-宿主与存储.md` §6。
+**V1 数据导入器**（`adapters/import-v1.js`）以只读方式发现 V1 数据（服务端 `ftt-state-*` 主文件/备份、旧 settings 信封、本机命名缓存），
+产出逐维度差异报告（`/ftt-import`，默认干跑），`apply` 时按 id **append-only** 合并（同 id 以当前为准、墓碑并集）后走保存流水线，
+**绝不删除 V1 源数据**；命名/作用域派生与 V1 oracle 逐字符对齐（黄金样本 9）。
+尚未完成的快照链 / 跨端同步 / V1 配置迁移见 `docs/P2-宿主与存储.md` §7。
 
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 

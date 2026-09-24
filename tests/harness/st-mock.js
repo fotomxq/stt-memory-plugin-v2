@@ -132,11 +132,14 @@ export function installGlobalFetch(handler) {
         const status = Number(r && r.status != null ? r.status : 200);
         const body = r && r.body !== undefined ? r.body : null;
         const text = r && r.text !== undefined ? r.text : (body === null ? '' : JSON.stringify(body));
+        // V1 主文件是 gzip 字节（`.json.gz`）→ 桩需支持 arrayBuffer()（r.bytes 为 Uint8Array/Buffer 时）
+        const bytes = (r && (r.bytes instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(r.bytes)))) ? new Uint8Array(r.bytes) : null;
         return {
             ok: status >= 200 && status < 300,
             status,
             json: async () => (body === null ? JSON.parse(text) : body),
-            text: async () => String(text),
+            text: async () => (bytes ? Buffer.from(bytes).toString('utf8') : String(text)),
+            arrayBuffer: async () => (bytes ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : new TextEncoder().encode(String(text)).buffer),
         };
     };
     return () => { if (prev === undefined) delete globalThis.fetch; else globalThis.fetch = prev; };

@@ -104,3 +104,39 @@ export async function deleteStateFile(name) {
         return { ok: false, error: String((e && e.message) || e) };
     }
 }
+
+/**
+ * 按字节读取服务端文件（V1 主文件默认是 `.json.gz`，必须取原始字节才能解压）。
+ * @returns {Promise<{ok:boolean, bytes?:Uint8Array, status?:number, error?:string}>}
+ */
+export async function readStateFileBytes(name) {
+    try {
+        const res = await globalThis.fetch('/user/files/' + encodeURIComponent(String(name)), { method: 'GET', headers: requestHeaders() });
+        const status = Number(res && res.status) || 0;
+        if (status < 200 || status >= 300) return { ok: false, status };
+        if (res && typeof res.arrayBuffer === 'function') {
+            const buf = await res.arrayBuffer();
+            return { ok: true, bytes: new Uint8Array(buf), status };
+        }
+        const text = await res.text();
+        return { ok: true, bytes: textToBytes(String(text == null ? '' : text)), status };
+    } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+}
+
+/** 文本 → 字节（无 TextEncoder 时按 UTF-8 手工编码） */
+function textToBytes(text) {
+    try {
+        if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(String(text));
+    } catch (e) { /* 落到手工编码 */ }
+    const out = [];
+    const s = String(text);
+    for (let i = 0; i < s.length; i++) {
+        let c = s.charCodeAt(i);
+        if (c < 0x80) out.push(c);
+        else if (c < 0x800) { out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+        else { out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+    }
+    return new Uint8Array(out);
+}
