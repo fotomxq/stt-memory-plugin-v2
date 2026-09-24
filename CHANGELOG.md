@@ -3,6 +3,32 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.12.0（2026-09-26）· B8-3 时钟域 AI 管线（AI 捕捉正则 + AI 结合正文修复日期时间）
+
+**本版（B8-3）**：
+1. **内核**（新增 `core/clock-ai.js`，取自 V1 `09-AI摘要与楼层处理.js`）：
+   ① 「AI 捕捉正文 → 生成正则」：取最近 N 楼投喂文本 → AI 产出 `{日期正则,时间正则,地点正则,说明}` →
+   **三重校验**（可编译 / 不匹配空串 / 样本确有命中）→ 写入 `cfg.clockDateRegex/clockTimeRegex/clockLocationRegex` →
+   保存配置 → **用样本试算**并回报「已应用/未采用 + 试算结果」；
+   ② 「AI 结合正文修复日期时间」：`clockRepairPack`（上限 `cfg.clockRepairBatch`，默认 20/硬上限 200 + 截断数）、
+   `buildClockRepairPrompt`（【时间锚点】+【近期正文】+【待修复清单】+ 输出契约）、`applyClockRepairResult`
+   （**只允许改 日期/时间**，逐条过 `clockPatrolSafeDate` 安全闸门；不合格丢弃、清除清空、无法判定如实计数）、
+   `runClockRepair`（无异常直接回报；**无可信锚点 → 拒绝执行且不调用 AI**；长任务在途拒绝；AI 无返回不改数据）；
+2. **`host/floors.js` 补投喂文本**：`buildFeedFloorText(maxFloors)`、`buildFeedFloorTextRange(maxFloors, endFloor, opts)`（V1 同款，修复域与后续批次共用）；
+3. **接线**：`index.js` 注入 AI 钩子（`callAi` 走 ST `generateRaw`、`feedText` 走 `host/floors`、`busy` 走 `extractBusy`）
+   —— 内核不直连网络也不读宿主聊天；`FTT.*` 新增 `clockRegexGen` / `clockRepair` / `clockRepairPack`；
+4. **界面**：基础页两个 V1 同名按钮（`clockRegexGen` AI 捕捉正文 → 生成正则、`clockRepair` AI 结合正文修复日期时间）
+   取代原「属后续批次（B8-2）」占位说明；动作进 `CLOCK_ACTIONS` 由面板统一分发并回填提示；
+5. **黄金样本 8 组（oracle = 真实 V1 插件 v1.206 + `stubFetch` 固定 AI 返回）**：正则三重校验 7 例、捕捉正则成功/失败两例
+   （applied/skipped/hits/probe/regexes 全等）、异常清单打包、修复提示词（system+user 逐字符）、应用结果（修正 2/清空 1/丢弃 2/无法判定 1
+   + 状态逐条）、端到端修复（含状态改写）、无可信锚点拒绝。
+
+**验证**：`tests/unit/clock-ai-golden.test.js` **17 项** + 冒烟 **Q1–Q4**；门禁全绿：单元 **34 文件 / 459 断言**、
+冒烟 **76 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8l-B8-3时钟域AI管线.md` §2）**：AI 通道改为宿主 `generateRaw`（V1 自建 OpenAI 兼容请求 + 队列 + 可中断）；
+任务占用以「直接拒绝」替代 V1 的管线 UI 提示；提示词模板来源 V2 用内置 `PROMPT_TEMPLATES_V2`。
+
 ## v2.11.2（2026-09-26）· 注释与文档澄清（行为与 v2.11.1 完全一致）
 
 **本版仅**更新 `host/update.js` 文件头注释与 `docs/更新检查机制.md` 中的通道顺序描述（v2.11.1 已改为 HTTP 优先、

@@ -830,6 +830,61 @@ assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜底入
         && html.indexOf('📆 剧情第 17602 天') >= 0 && typeof globalThis.FTT.clockScene === 'function';
 })(), '');
 
+// ---------- Q 时钟域 AI 管线（B8-3：AI 捕捉正则 + AI 结合正文修复） ----------
+const origGenerateRaw = host.ctx.generateRaw;
+let aiReturn = '{}';
+let aiCallN = 0;
+host.ctx.generateRaw = async () => { aiCallN++; return aiReturn; };
+
+assert('Q1 基础页两条 AI 按钮与 FTT 入口齐备（V1 同名动作名 clockRegexGen / clockRepair）', (async () => {
+    const r = await entry.popupAction('settingsSub', { sub: 'base' });
+    const html = String(r.html || '');
+    return html.indexOf('data-ftt-action="clockRegexGen"') >= 0 && html.indexOf('data-ftt-action="clockRepair"') >= 0
+        && typeof globalThis.FTT.clockRegexGen === 'function' && typeof globalThis.FTT.clockRepair === 'function'
+        && typeof globalThis.FTT.clockRepairPack === 'function';
+})(), '');
+
+assert('Q2 AI 捕捉正文 → 生成正则：三条正则经三重校验后写入 cfg 并给出试算结果', (async () => {
+    host.ctx.chat.push({ is_user: false, mes: '1919年12月1日 傍晚。角色甲在【地点：城市甲·码头】。', name: '角色甲' });
+    rtMod.setLastMessageId(host.ctx.chat.length - 1);
+    aiReturn = JSON.stringify({ '日期正则': '(\\d{4}年\\d{1,2}月\\d{1,2}日)', '时间正则': '(傍晚|清晨|深夜)', '地点正则': '【地点：([^】]+)】', '说明': '冒烟' });
+    const before = aiCallN;
+    const r = await globalThis.FTT.clockRegexGen({ floors: 2 });
+    return r.ok === true && aiCallN > before && r.applied.length === 3 && r.hits.date >= 1 && r.hits.location >= 1
+        && rtMod.cfg.clockDateRegex.indexOf('\\d{4}年') >= 0 && rtMod.cfg.clockTimeRegex.length > 0 && rtMod.cfg.clockLocationRegex.indexOf('地点') >= 0
+        && !!r.probe;
+})(), '');
+
+assert('Q3 AI 结合正文修复日期时间：只改日期/时间字段，其余字段不动；无可信锚点时拒绝且不调用 AI', (async () => {
+    const st = rtMod.state;
+    st.atoms = st.atoms || [];
+    st.atoms.push({ id: 'smoke-ai-1', text: '情节（年份漂移）', title: '情节（年份漂移）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    st.state = st.state || {}; st.state.date = ''; delete st.state.clockManual;
+    aiReturn = JSON.stringify({ '修正': [{ '编号': 1, '日期': '1919-12-01', '依据': '正文为 1919 年' }] });
+    const r = await globalThis.FTT.clockRepair({ silent: true });
+    const fixed = st.atoms.filter((x) => x.id === 'smoke-ai-1')[0];
+    // 无可信锚点场景：清空全部有效日期 → 拒绝且不调用 AI
+    const keepAtoms = st.atoms;
+    st.atoms = [{ id: 'smoke-ai-2', text: '坏日期', title: '坏日期', date: '不是日期', tags: [], uses: 0, floorStart: 1, floorEnd: 2 }];
+    const before = aiCallN;
+    const r2 = await globalThis.FTT.clockRepair({ silent: true });
+    st.atoms = keepAtoms;
+    return r.made >= 1 && fixed.date === '1919-12-01' && fixed.text === '情节（年份漂移）'
+        && r2.noAnchor === true && aiCallN === before;
+})(), '');
+
+assert('Q4 面板动作可达：clockRegexGen / clockRepair 经动作分发执行并回填提示', (async () => {
+    const r1 = await entry.popupAction('clockRegexGen', {});
+    const st = rtMod.state;
+    st.atoms = st.atoms || [];
+    st.atoms.push({ id: 'smoke-ai-3', text: '情节三', title: '情节三', date: '2011-01-01', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    aiReturn = JSON.stringify({ '修正': [{ '编号': 1, '日期': '1919-12-02' }] });
+    const r2 = await entry.popupAction('clockRepair', {});
+    return r1.ok === true && String(r1.note).indexOf('AI 捕捉正则') >= 0 && String(r2.note).indexOf('日期时间修复') >= 0;
+})(), '');
+
+host.ctx.generateRaw = origGenerateRaw;
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

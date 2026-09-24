@@ -241,7 +241,7 @@ await A('U5 动作 clockPatrol（面板分发）：按锚点修复并在提示�
     const st = panelState();
     return r.ok === true && r.detail.fixed === 3 && r.detail.snap && String(r.note).indexOf('巡检 7 条') >= 0
         && String(r.note).indexOf('修复 3 条') >= 0 && String(st.note).indexOf('修复 3 条') >= 0
-        && CLOCK_ACTIONS.length === 5;
+        && CLOCK_ACTIONS.length === 7 && CLOCK_ACTIONS.indexOf('clockRegexGen') >= 0 && CLOCK_ACTIONS.indexOf('clockRepair') >= 0;
 }, (() => ({})));
 
 await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overviewBody → clockSectionHtml）', async () => {
@@ -278,7 +278,7 @@ R.assert('P2 基础页渲染：V1 五节 + 强制开关标记（timelyAnalysis �
         && html.indexOf('剧情时钟自动提取（总览 日期/时间/地点）') >= 0 && html.indexOf('时钟降级与时间巡检（总览）') >= 0
         && html.indexOf('界面特效') >= 0 && forced.length === 3 && html.indexOf('（由「及时分析」强制开启）') >= 0
         && html2.indexOf('disabled') < 0 && html2.indexOf('中文常用 + 标记式（推荐，最全）') >= 0
-        && html.indexOf('（B8-2）') >= 0;
+        && html.indexOf('data-ftt-action="clockRegexGen"') >= 0 && html.indexOf('data-ftt-action="clockRepair"') >= 0;
 })(), '');
 
 un();

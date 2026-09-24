@@ -104,6 +104,10 @@ export function installDevtools(hooks) {
             clockHeader: (text) => (hooks && typeof hooks.clockHeader === 'function' ? hooks.clockHeader(text) : null),
             clockExtractText: (text, prev) => (hooks && typeof hooks.clockExtractText === 'function' ? hooks.clockExtractText(text, prev || {}) : null),
             clockScene: () => (hooks && typeof hooks.clockScene === 'function' ? hooks.clockScene() : ''),
+            // B8-3 时钟域 AI 管线
+            clockRegexGen: (opts) => (hooks && typeof hooks.clockRegexGen === 'function' ? hooks.clockRegexGen(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            clockRepair: (opts) => (hooks && typeof hooks.clockRepair === 'function' ? hooks.clockRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            clockRepairPack: () => (hooks && typeof hooks.clockRepairPack === 'function' ? hooks.clockRepairPack() : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

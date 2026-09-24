@@ -10,6 +10,7 @@ import { storyClockReference } from '../core/clock-extract.js';
 import {
     clockManualState, setClockManual, clearClockManual, runClockPatrolRepair, clockPatrolState,
 } from '../core/clock-patrol.js';
+import { genClockRegexes, runClockRepair } from '../core/clock-ai.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
@@ -150,6 +151,33 @@ export async function clockAction(action, payload) {
             toast('info', had ? '已解除手工锁定，恢复自动提取' : '当前没有手工改写值', '');
             return { ok: true, action: a, note: had ? '已解除手工锁定（恢复自动提取）' : '当前没有手工改写值', detail: { had } };
         }
+        if (a === 'clockRegexGen') {
+            // B8-3：「AI 捕捉正文 → 生成日期/时间/地点正则」（V1 同名动作；样本取最近楼层投喂文本）
+            const r = await genClockRegexes(p.floors ? { floors: p.floors } : {});
+            const note = r.ok
+                ? ('AI 捕捉正则完成：已应用 ' + r.applied.join(' · ') + (r.skipped.length ? '；未采用 ' + r.skipped.join(' / ') : '') + '；试算 日期 ' + (r.probe.date || '（未识别）') + ' · 时间 ' + (r.probe.time || '（未识别）') + ' · 地点 ' + (r.probe.location || '（未识别）'))
+                : (r.blocked ? '任务进行中：已有分析/修复/同步在运行，请稍候再试' : (r.reason === 'no-text' ? 'AI 捕捉正则：最近楼层没有可分析正文' : (r.reason === 'no-ai' ? 'AI 捕捉正则：AI 未返回内容' : ('AI 捕捉正则失败：' + String(r.error || '未知')))));
+            return { ok: r.ok === true, action: a, note, detail: r };
+        }
+        if (a === 'clockRepair') {
+            // B8-3：「AI 结合正文修复日期时间」（V1 同名动作；只改日期与时间字段，逐条过安全闸门）
+            const r = await runClockRepair({});
+            let note;
+            if (r.blocked && r.noAnchor) note = '日期时间修复：缺少可信锚点 → 未调用 AI、未改动数据（请先在总览手工设定剧情日期）';
+            else if (r.blocked) note = '日期时间修复：任务进行中，请稍候再试';
+            else if (r.skipped && r.total === 0) note = '日期时间修复：没有需要修复的日期/时间';
+            else if (r.error === 'no-ai') note = '日期时间修复：AI 未返回内容（未改动数据）';
+            else if (r.error) note = '日期时间修复失败：' + String(r.error).slice(0, 120);
+            else {
+                const parts = [];
+                if (r.applied) parts.push('修正 ' + r.applied + ' 条');
+                if (r.cleared) parts.push('清空 ' + r.cleared + ' 条');
+                if (r.skipped) parts.push('丢弃不合格 ' + r.skipped + ' 条');
+                if (r.unknown) parts.push('无法判定 ' + r.unknown + ' 条');
+                note = '日期时间修复：' + (parts.length ? parts.join(' · ') : 'AI 未给出可用结果') + (r.details && r.details.length ? '；例：' + r.details.slice(0, 3).join('；') : '');
+            }
+            return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
+        }
         if (a === 'clockPatrol') {
             const rep = runClockPatrolRepair({ force: true });
             const src = rep.anchorSource === 'manual' ? '手工改写' : rep.anchorSource === 'clock' ? '当前时钟' : rep.anchorSource === 'plot' ? '最新情节' : rep.anchorSource === 'atoms-majority' ? '原子多数派' : '';
@@ -166,7 +194,7 @@ export async function clockAction(action, payload) {
 }
 
 /** 时钟动作名（供面板分发；与 V1 逐字一致） */
-export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol']);
+export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockRegexGen', 'clockRepair']);
 
 /** 巡检/锚点诊断（FTT.* 与调试用） */
 export function clockUiInfo() {
