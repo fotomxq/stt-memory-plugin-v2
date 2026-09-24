@@ -4,6 +4,7 @@
     "private": true,
     "type": "module",
     "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",
+    "repository": { "type": "git", "url": "git+https://github.com/fotomxq/stt-memory-plugin-v2.git" },
     "scripts": {
         "test": "node tests/unit/run.js",
         "smoke": "node tests/smoke-test.js",

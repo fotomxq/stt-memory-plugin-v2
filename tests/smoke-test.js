@@ -130,7 +130,7 @@ assert('E4 手动检查（按钮）：端点不可用时回退远端清单并报
     return t.indexOf('发现新版本 ' + remoteVersion) >= 0 && st.lastResult.status === 'newer'
         && Array.isArray(st.lastResult.points) && st.lastResult.points.join(' ').indexOf('更新检查机制') >= 0;
 })(), doc.getElementById('fft_v2_updstate') ? String(doc.getElementById('ftt_v2_updstate').textContent) : '');
-assert('E5 更新请求走「配置仓库 → GitHub raw」地址', fetchCalls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin/main/manifest.json'), fetchCalls.slice(0, 6));
+assert('E5 更新请求走「配置仓库 → GitHub raw」地址', fetchCalls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/manifest.json'), fetchCalls.slice(0, 6));
 
 // 立即更新（显式，仅用户点击）
 doc.getElementById('ftt_v2_doupd').dispatch('click');
@@ -147,7 +147,7 @@ assert('E7 /ftt 状态输出含更新行', (() => {
 assert('E8 调试导出含更新状态', (() => {
     const F = globalThis.FTT;
     const u = F && typeof F.update === 'function' ? F.update() : null;
-    return !!u && !!u.config && u.config.repo === 'https://github.com/fotomxq/stt-memory-plugin';
+    return !!u && !!u.config && u.config.repo === 'https://github.com/fotomxq/stt-memory-plugin-v2';
 })(), typeof globalThis.FTT);
 endpointDown = false;
 uninstallFetch();

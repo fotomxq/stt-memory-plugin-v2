@@ -26,7 +26,7 @@ function freshHost() {
     const calls = [];
     const un = installGlobalFetch((url) => {
         calls.push(url);
-        if (url === '/api/extensions/version') return { status: 200, body: { isUpToDate: true, currentCommitHash: 'abc1234def', currentBranchName: 'main', remoteUrl: 'https://github.com/fotomxq/stt-memory-plugin' } };
+        if (url === '/api/extensions/version') return { status: 200, body: { isUpToDate: true, currentCommitHash: 'abc1234def', currentBranchName: 'main', remoteUrl: 'https://github.com/fotomxq/stt-memory-plugin-v2' } };
         return { status: 404, body: {} };
     });
     const r = await runUpdateCheck({});
@@ -59,7 +59,7 @@ R.assert('U4 updateConfig 默认取 GitHub 项目地址与 main 分支', (() => 
     R.assert('U6 远端版本更新 → status=newer + 更新要点提取', r.judge.status === 'newer' && r.judge.remote === '2.1.0' && r.points.length === 2 && r.points[0].indexOf('记忆面板多选') >= 0, [r.judge, r.points]);
     R.assert('U7 hasUpdate 判定为真 + 文案含新版本号', hasUpdate(r) === true && updateStatusText(Object.assign({ at: 1 }, r)).indexOf('发现新版本 2.1.0') >= 0, updateStatusText(r));
     R.assert('U8 端点先试用户态再试全局态（2 次端点请求）', calls.filter(u => u.indexOf('/api/extensions/version') === 0).length === 2, calls);
-    R.assert('U9 远端地址来自可配置仓库（GitHub raw + 分支）', calls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin/main/manifest.json'), calls);
+    R.assert('U9 远端地址来自可配置仓库（GitHub raw + 分支）', calls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/manifest.json'), calls);
 }
 
 // ---------- B2 仓库根没有 manifest.json（例如 V1 形态仓库）→ 用 CHANGELOG 判定 ----------

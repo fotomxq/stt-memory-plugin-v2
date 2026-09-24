@@ -84,7 +84,7 @@ R.assert('V11 summarizeCheck：字段裁剪与默认值', (() => {
     return s.at === 12345 && s.ok === true && s.status === 'newer' && s.points.length === 5 && s.isUpToDate === false && s.error === '';
 })(), '');
 R.assert('V12 默认常量：默认仓库为 GitHub 项目地址 + 分支 main + 24h',
-    DEFAULT_UPDATE_REPO === 'https://github.com/fotomxq/stt-memory-plugin' && DEFAULT_UPDATE_BRANCH === 'main' && DEFAULT_UPDATE_INTERVAL_HOURS === 24,
+    DEFAULT_UPDATE_REPO === 'https://github.com/fotomxq/stt-memory-plugin-v2' && DEFAULT_UPDATE_BRANCH === 'main' && DEFAULT_UPDATE_INTERVAL_HOURS === 24,
     [DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INTERVAL_HOURS]);
 
 R.done();
