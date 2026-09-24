@@ -59,6 +59,10 @@ R.assert('V9 extractChangelogHead：版本 + 日期 + 要点（限条数、去�
     return h.version === '2.1.0' && h.date === '2026-10-01' && h.points.length === 5
         && h.points[0] === '要点一 粗体 代码' && h.points.indexOf('旧要点') < 0;
 })(), '');
+R.assert('V9b extractChangelogHead 兼容两位版本号（V1 形态 v1.206）', (() => {
+    const h = extractChangelogHead('## v1.206（2026-09-24）\n- 要点A\n', 3);
+    return h.version === '1.206' && h.date === '2026-09-24' && h.points.length === 1;
+})(), extractChangelogHead('## v1.206（2026-09-24）\n- 要点A\n', 3));
 R.assert('V10 updateReport：五类文案', (() => {
     const newer = updateReport({ ok: true, via: 'remote-manifest:github', judge: { status: 'newer', current: '2.0.0', remote: '2.1.0' } });
     const same = updateReport({ ok: true, judge: { status: 'same', current: '2.0.0', remote: '2.0.0' } });
