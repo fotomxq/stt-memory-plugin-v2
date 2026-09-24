@@ -6,30 +6,10 @@
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { DIM_CHAR_LIMITS } from '../constants.js';
+import { cfg } from './runtime.js';
 
 // 维度字数硬上限（默认逐字取自 V1 `defaultCfg.dimCharLimits`）
 const defaultCfg = { dimCharLimits: DIM_CHAR_LIMITS };
-/**
- * 生效配置视图（与 V1 的同名全局 `cfg` 等价；**原地修改**，由 host 层从设置注入）。
- * V1 的归一化代码按 `cfg.xxx` 读取；这里保持相同读取方式以逐字移植、便于黄金样本比对。
- */
-export const cfg = {
-    dimCharLimits: Object.assign({}, DIM_CHAR_LIMITS),
-    planStructEnabled: true,
-    planRefsMax: 12,
-    planStepsMax: 20,
-    planHistoryMax: 30,
-    cluesMax: 20,
-};
-/** 注入/覆盖配置（只覆盖传入键；dimCharLimits 为合并） */
-export function setModelOptions(patch) {
-    const p = patch || {};
-    for (const k of Object.keys(p)) {
-        if (k === 'dimCharLimits' && p[k] && typeof p[k] === 'object') Object.assign(cfg.dimCharLimits, p[k]);
-        else cfg[k] = p[k];
-    }
-    return cfg;
-}
 /** 当前维度上限表（只读快照） */
 export function dimCharLimits() { return Object.assign({}, cfg.dimCharLimits); }
 /** V1 原版：按维度上限截断（`cfg.dimCharLimits[dim] || defaultCfg.dimCharLimits[dim] || 300`） */
@@ -225,5 +205,37 @@ function storageHash(obj) {
 // ==================== 服务端/CP 协同 + 删除墓碑 基础工具 ====================
 // ① 与 Cocktail Plus 一致的稳定序列化（递归排序键；null/undefined→'null'）——用于 settings 哈希对齐
 
+const SNAP_GROUP_MAP = {
+    gender: 'identity', birthDate: 'identity', ageNote: 'identity', species: 'identity', occupation: 'identity', title: 'identity', family: 'identity',
+    deceased: 'identity',   // v1.164：已去世开关归入身份组
+    height: 'appearance', build: 'appearance', hair: 'appearance', eyes: 'appearance', skin: 'appearance', distinguishing: 'appearance',
+    traits: 'personality', quirks: 'personality', values: 'personality', speechStyle: 'personality',
+    origin: 'background', history: 'background',
+    emotion: 'mind', currentGoal: 'mind', concern: 'mind',
+    relationToUser: 'social', attitudeToUser: 'social',
+    todos: 'future', commitments: 'future',
+    city: 'location', area: 'location', building: 'location', interior: 'location',
+};
+function splitListText(s) { return normalizeList(String(s ?? '').split(/[,，、;；]/)); }
+
+function normalizeTrackedRoles(v) {
+    try {
+        // 只接受「数组」或「逗号/顿号分隔的字符串」；其它类型（数字/布尔/对象）一律视为无名单
+        if (!Array.isArray(v) && typeof v !== 'string') return [];
+        const arr = Array.isArray(v) ? v : String(v).split(/[,，、;；\n]/);
+        const out = [];
+        for (const x of arr) {
+            const nm = String(x == null ? '' : x).trim().slice(0, 40);
+            if (!nm) continue;
+            if (out.indexOf(nm) >= 0) continue;
+            out.push(nm);
+            if (out.length >= 12) break;   // 上限 12 名（注入/提示词规模可控）
+        }
+        return out;
+    } catch (e) { return []; }
+}
+
 export { dimCap };
+export { normalizeTrackedRoles };
+export { SNAP_GROUP_MAP, splitListText };
 export { mergeTags, makeExtra, extraGet, detectValueType, toChineseField, toChineseCategory, atomTitle, STATE_FIELD_CN, MEMORY_CATEGORY_CN, normStrList, normSteps, normHistory, normIdList, normPhase, PLAN_PHASE_CN, normClues, scenePathArr, clockDateTrim, storageHash };
