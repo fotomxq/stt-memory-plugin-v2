@@ -111,4 +111,10 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 
 ## 7. 许可
 
-待项目负责人确认（官方内容库要求开源 libre 许可；V1 仓库当前未附许可文件）。
+**GNU Affero General Public License v3.0（AGPL-3.0）** —— 见仓库根目录 `LICENSE`（GNU 官方文本，逐字未改）。
+
+- 版权：Copyright (C) 2026 fotomxq
+- 选它的原因：本扩展是**网络服务型软件**（随 SillyTavern 服务端向用户提供功能），AGPL-3.0 的第 13 条
+  「远程网络交互」正好覆盖这一场景，符合官方内容库对开源 libre 许可的要求；
+- 使用/修改/再分发：遵守 AGPL-3.0 全文即可；**修改后对外提供服务时，须按 §13 向使用者提供对应源码**；
+- 本仓库内的 `LICENSE` 为许可原文，**不得修改**；如需在其它作品中引用本扩展，请保留版权与许可声明。

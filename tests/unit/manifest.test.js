@@ -40,6 +40,12 @@ R.assert('M9 扩展目录名与仓库目录一致（renderExtensionTemplateAsync
 })(), [EXTENSION_FOLDER, basename(ROOT)]);
 R.assert('M10 模块名唯一且为 extensionSettings 键', MODULE_NAME === 'ftt_memory_v2', MODULE_NAME);
 R.assert('M11 入口导出装配面（init/teardown/runtimeState/状态摘要）', ['init', 'teardown', 'runtimeState', 'extraForStatus'].every(k => typeof entry[k] === 'function'), '');
-R.assert('M12 未接宿主时导入不产生副作用（runtimeState.ready=false）', entry.runtimeState().ready === false, entry.runtimeState());
+R.assert('M12 许可一致：LICENSE 为 AGPL-3.0 官方文本且 package.json 声明一致', (() => {
+    if (!existsSync(join(ROOT, 'LICENSE'))) return false;
+    const lic = read('LICENSE');
+    return /GNU AFFERO GENERAL PUBLIC LICENSE/.test(lic) && /Version 3, 19 November 2007/.test(lic)
+        && /How to Apply These Terms/.test(lic) && pkg.license === 'AGPL-3.0' && lic.length > 30000;
+})(), pkg.license);
+R.assert('M13 未接宿主时导入不产生副作用（runtimeState.ready=false）', entry.runtimeState().ready === false, entry.runtimeState());
 
 R.done();
