@@ -1,0 +1,1309 @@
+{
+  "mergeExact": {
+    "merged": 2,
+    "items": [
+      {
+        "id": "i1",
+        "name": "铜钥匙",
+        "desc": "开门的旧钥匙，铜锈斑驳。",
+        "location": "背包",
+        "carried": false,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "旧物"
+        ],
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "i3",
+        "name": "银两",
+        "desc": "随身银两。",
+        "location": "钱袋",
+        "carried": true,
+        "qty": 15,
+        "tags": [
+          "货币",
+          "银两",
+          "钱"
+        ],
+        "uses": 6,
+        "floorStart": 3,
+        "floorEnd": 4,
+        "seenDate": "2020-01-04"
+      },
+      {
+        "id": "i5",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器"
+        ],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5,
+        "seenDate": "2020-01-05"
+      },
+      {
+        "id": "i6",
+        "name": "",
+        "desc": "来历不明之物。",
+        "location": "",
+        "carried": false,
+        "qty": null,
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ],
+    "tombs": []
+  },
+  "mergeExactNone": {
+    "merged": 0,
+    "items": [
+      {
+        "id": "k1",
+        "name": "铜钥匙",
+        "desc": "开门的钥匙。",
+        "location": "腰间",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铜"
+        ],
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "seenDate": "2020-01-01"
+      },
+      {
+        "id": "k2",
+        "name": "铁钥匙",
+        "desc": "另一把钥匙。",
+        "location": "背包",
+        "carried": false,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铁"
+        ],
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "k3",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器",
+          "铁"
+        ],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5
+      },
+      {
+        "id": "k4",
+        "name": "",
+        "desc": "来历不明之物。",
+        "location": "",
+        "carried": false,
+        "qty": null,
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ]
+  },
+  "purge": {
+    "r": {
+      "removed": 2,
+      "names": [
+        "旧草鞋(0次·2楼)",
+        "破布条(0次·1楼)"
+      ],
+      "avg": 1.67,
+      "threshold": 0.83,
+      "protectedCount": 3,
+      "skipped": "",
+      "total": 6,
+      "lastFloor": 3,
+      "every": 0
+    },
+    "items": [
+      {
+        "id": "p3",
+        "name": "干粮",
+        "desc": "路上的干粮。",
+        "location": "身上",
+        "carried": true,
+        "qty": 2,
+        "tags": [
+          "食物"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1,
+        "seenDate": "2020-01-01"
+      },
+      {
+        "id": "p4",
+        "name": "无名之物",
+        "desc": "来历不明。",
+        "location": "",
+        "carried": false,
+        "qty": 1,
+        "tags": [
+          "杂物"
+        ],
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 0
+      },
+      {
+        "id": "p5",
+        "name": "银两",
+        "desc": "随身银两。",
+        "location": "钱袋",
+        "carried": false,
+        "qty": 7,
+        "tags": [
+          "货币"
+        ],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1,
+        "seenDate": "2020-01-01"
+      },
+      {
+        "id": "p6",
+        "name": "常用短刀",
+        "desc": "随身短刀。",
+        "location": "腰间",
+        "carried": false,
+        "qty": 1,
+        "tags": [
+          "武器"
+        ],
+        "uses": 10,
+        "floorStart": 1,
+        "floorEnd": 1,
+        "seenDate": "2020-01-01"
+      }
+    ],
+    "tombs": [
+      "p1",
+      "p2"
+    ],
+    "lowUseForget": {
+      "itemFloor": 3
+    }
+  },
+  "purgeAgain": {
+    "removed": 0,
+    "names": [],
+    "avg": 2.5,
+    "threshold": 1.25,
+    "protectedCount": 3,
+    "skipped": "too-recent",
+    "total": 4,
+    "lastFloor": 3,
+    "every": 0
+  },
+  "purgeDisabled": {
+    "removed": 0,
+    "names": [],
+    "avg": 0,
+    "threshold": 0,
+    "protectedCount": 0,
+    "skipped": "long-absent-disabled",
+    "total": 6,
+    "lastFloor": 0
+  },
+  "purgeTooSmall": {
+    "removed": 0,
+    "names": [],
+    "avg": 0,
+    "threshold": 0,
+    "protectedCount": 0,
+    "skipped": "library-too-small",
+    "total": 6,
+    "lastFloor": 0
+  },
+  "purgeAvgLow": {
+    "removed": 0,
+    "names": [],
+    "avg": 1.67,
+    "threshold": 0,
+    "protectedCount": 0,
+    "skipped": "avg-too-low",
+    "total": 6,
+    "lastFloor": 0
+  },
+  "purgeCooldown": {
+    "removed": 0,
+    "names": [],
+    "avg": 0,
+    "threshold": 0,
+    "protectedCount": 0,
+    "skipped": "cooldown",
+    "total": 6,
+    "lastFloor": 0,
+    "cooldown": {
+      "last": 3,
+      "need": 40,
+      "wait": 40,
+      "floor": 3
+    }
+  },
+  "pick": {
+    "entries": [
+      {
+        "n": 1,
+        "group": 1,
+        "idx": 0,
+        "id": "k1",
+        "name": "铜钥匙",
+        "desc": "开门的钥匙。",
+        "qty": 1,
+        "location": "腰间",
+        "carried": true,
+        "uses": 2,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铜"
+        ],
+        "sim": 0.5
+      },
+      {
+        "n": 2,
+        "group": 1,
+        "idx": 1,
+        "id": "k2",
+        "name": "铁钥匙",
+        "desc": "另一把钥匙。",
+        "qty": 1,
+        "location": "背包",
+        "carried": false,
+        "uses": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铁"
+        ],
+        "sim": 0.5
+      },
+      {
+        "n": 3,
+        "group": 2,
+        "idx": 2,
+        "id": "k3",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "qty": 1,
+        "location": "背后",
+        "carried": true,
+        "uses": 1,
+        "tags": [
+          "武器",
+          "铁"
+        ],
+        "sim": 0.25,
+        "defect": "标签数量不合规（需 3-5 个，现 2 个）"
+      },
+      {
+        "n": 4,
+        "group": 2,
+        "idx": 3,
+        "id": "k4",
+        "name": "",
+        "desc": "来历不明之物。",
+        "qty": null,
+        "location": "",
+        "carried": false,
+        "uses": 0,
+        "tags": [],
+        "sim": 0,
+        "defect": "空占位/无意义文本"
+      }
+    ],
+    "clusters": [
+      {
+        "idxs": [
+          0,
+          1
+        ],
+        "size": 2,
+        "maxSim": 0.5,
+        "basis": "tags"
+      }
+    ],
+    "picked": 1,
+    "defects": 2,
+    "singles": 0,
+    "total": 1,
+    "cursor": 0
+  },
+  "cursorAfter": {
+    "items": 0
+  },
+  "prompt": [
+    {
+      "role": "system",
+      "content": "【物品修复】任务：对下方【待核对物品组】逐组判断 —— 同组内是否其实是**同一件东西**（名称近似、标签组高度相关）：是则**融合**为一条并**完善说明**；顺手修正记录错误、补齐标签。清单已由插件在本地按「标签组相关性 / 名称相似」打包成组。\n检查项：\n1. 融合判定从严：只有确指同一物件（同一件的不同叫法、同一件被反复登记）才合并；只是同类（两把不同的钥匙）或只是相关（钥匙与锁）不合并。\n2. 融合写法：选信息最全的一条作「保留」（沿用其 id），其余编号放进「并入」；「说明」写融合后的完整现状与关键流转（≤120 字，取各条中最完整的部分，不要臆造）。\n3. 名称规范：名称只写「是什么」，禁止在名称里用括号塞说明（括号内容并入「说明」）。\n4. 流转修正：结合【近期正文】把 位置 / 携带 / 数量 修正为最新状态（已转交、已换位置、已被销毁时相应更新）；正文没有写到的不要臆造。\n5. 标签补齐（**强制**）：每条物品都必须有 3-5 个标签（品类 / 特征 / 来源归属 / 用途），少于 3 个就用「修订」补到 3-5 个；不要用「物品」「道具」这类泛词。\n6. 数量与货币：货币类融合时数量合计；普通道具数量按正文最新值，不擅自累加。\n7. 明显错误：被误当物品建档的地名、角色名或纯背景陈设，编号放进「删除」。\n输出：只输出一个合法 JSON 对象：{\"合并\":[{\"保留\":1,\"并入\":[2,3],\"名称\":\"…\",\"说明\":\"…\",\"位置\":\"…\",\"数量\":1,\"标签\":[\"…\"]}],\"修订\":[{\"编号\":4,\"字段\":\"说明\",\"值\":\"…\"}],\"删除\":[5]}；「字段」只用 名称 / 说明 / 位置 / 数量 / 携带 / 标签。\n禁止：不新增物品，不改动清单外的编号，不输出清单外的编号，不输出其它维度，不解释，只输出合法 JSON，不加代码块标记。\n只输出 JSON，不要解释。"
+    },
+    {
+      "role": "user",
+      "content": "【近期正文（判断流转/是否同一物件的唯一依据）】\n[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。\n\n【待核对物品组（本次唯一工作对象，共 1 组 / 4 条；同组条目「标签组相关性」或「名称相似」较高，可能指同一物件，也可能只是同类物品）】\n【相关组 1】\n#1 ｜ 名称：铜钥匙 ｜ 相关度：0.50 ｜ 标签：钥匙/工具/铜 ｜ 位置：腰间 ｜ 数量：1 ｜ 携带：是 ｜ 调用：2次\n   说明：开门的钥匙。\n#2 ｜ 名称：铁钥匙 ｜ 相关度：0.50 ｜ 标签：钥匙/工具/铁 ｜ 位置：背包 ｜ 数量：1 ｜ 调用：1次\n   说明：另一把钥匙。\n【缺陷条目（与相关性无关，不参与合并，可修订或删除）】\n#3 ｜ 名称：铁剑 ｜ 相关度：0.25 ｜ 标签：武器/铁 ｜ 位置：背后 ｜ 数量：1 ｜ 携带：是 ｜ 调用：1次 ｜ 问题：标签数量不合规（需 3-5 个，现 2 个）\n   说明：一把铁剑。\n#4 ｜ 名称：（无） ｜ 相关度：0.00 ｜ 标签：（无标签） ｜ 调用：0次 ｜ 问题：空占位/无意义文本\n   说明：来历不明之物。\n\n输出：{\"合并\":[{\"保留\":1,\"并入\":[2,3],\"名称\":\"…\",\"说明\":\"…\",\"位置\":\"…\",\"数量\":1,\"标签\":[\"…\"]}],\"修订\":[{\"编号\":4,\"字段\":\"说明\",\"值\":\"…\"}],\"删除\":[5]}（只输出需要改动的编号；无改动就输出空数组）。"
+    }
+  ],
+  "promptEmpty": null,
+  "feedText": "[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。",
+  "apply": {
+    "counts": {
+      "fused": 1,
+      "revised": 3,
+      "deleted": 2,
+      "removed": 1,
+      "skipped": 0
+    },
+    "items": [
+      {
+        "id": "k1",
+        "name": "钥匙串",
+        "desc": "一串可开正门侧门的钥匙。",
+        "location": "腰间",
+        "carried": true,
+        "qty": 2,
+        "tags": [
+          "钥匙",
+          "工具",
+          "门禁",
+          "铁"
+        ],
+        "keywords": [],
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "k3",
+        "name": "铁剑",
+        "desc": "一柄开了刃的铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 3,
+        "tags": [
+          "武器",
+          "铁"
+        ],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5
+      }
+    ],
+    "tombs": [
+      "k2",
+      "k4"
+    ]
+  },
+  "applyCurrency": {
+    "counts": {
+      "fused": 1,
+      "revised": 0,
+      "deleted": 1,
+      "removed": 1,
+      "skipped": 3
+    },
+    "items": [
+      {
+        "id": "i1",
+        "name": "铜钥匙",
+        "desc": "开门的钥匙。",
+        "location": "腰间",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具"
+        ],
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "seenDate": "2020-01-01"
+      },
+      {
+        "id": "i2",
+        "name": "铜钥匙（旧）",
+        "desc": "合并后的银两。",
+        "location": "背包",
+        "carried": false,
+        "qty": 11,
+        "tags": [
+          "货币",
+          "银两",
+          "钱"
+        ],
+        "keywords": [],
+        "uses": 6,
+        "floorStart": 2,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "i4",
+        "name": "银两（碎银）",
+        "desc": "散碎银两。",
+        "location": "钱袋",
+        "carried": true,
+        "qty": 5,
+        "tags": [
+          "货币",
+          "银两",
+          "钱"
+        ],
+        "uses": 1,
+        "floorStart": 3,
+        "floorEnd": 4,
+        "seenDate": "2020-01-04"
+      },
+      {
+        "id": "i5",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器"
+        ],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5,
+        "seenDate": "2020-01-05"
+      },
+      {
+        "id": "i6",
+        "name": "",
+        "desc": "来历不明之物。",
+        "location": "",
+        "carried": false,
+        "qty": null,
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ],
+    "tombs": [
+      "i3"
+    ]
+  },
+  "applyEdge": {
+    "empty": {
+      "fused": 0,
+      "revised": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0
+    },
+    "noEntries": {
+      "fused": 0,
+      "revised": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0
+    },
+    "nullPick": {
+      "fused": 0,
+      "revised": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0
+    },
+    "notObject": {
+      "fused": 0,
+      "revised": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0
+    }
+  },
+  "applyLimits": {
+    "counts": {
+      "fused": 0,
+      "revised": 2,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 1
+    },
+    "items": [
+      {
+        "id": "k1",
+        "name": "待补充",
+        "desc": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "location": "腰间",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铜"
+        ],
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "seenDate": "2020-01-01"
+      },
+      {
+        "id": "k2",
+        "name": "铁钥匙",
+        "desc": "另一把钥匙。",
+        "location": "背包",
+        "carried": false,
+        "qty": 1,
+        "tags": [
+          "钥匙",
+          "工具",
+          "铁"
+        ],
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "k3",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器",
+          "铁"
+        ],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5
+      },
+      {
+        "id": "k4",
+        "name": "",
+        "desc": "来历不明之物。",
+        "location": "",
+        "carried": false,
+        "qty": null,
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ]
+  },
+  "run": {
+    "res": {
+      "made": 1,
+      "before": 4,
+      "after": 2,
+      "fused": 1,
+      "removed": 1,
+      "revised": 1,
+      "deleted": 2,
+      "skipped": 0,
+      "merged": 0,
+      "purged": 0,
+      "groups": 1,
+      "checked": 4,
+      "keys": [
+        "after",
+        "before",
+        "checked",
+        "deleted",
+        "fused",
+        "groups",
+        "made",
+        "merged",
+        "purged",
+        "removed",
+        "revised",
+        "skipped"
+      ]
+    },
+    "items": [
+      {
+        "id": "k1",
+        "name": "钥匙串",
+        "desc": "一串可开正门侧门的钥匙。",
+        "location": "腰间",
+        "carried": false,
+        "qty": 2,
+        "tags": [
+          "钥匙",
+          "工具",
+          "门禁",
+          "铁"
+        ],
+        "keywords": [],
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "seenDate": "2020-01-02"
+      },
+      {
+        "id": "k3",
+        "name": "铁剑",
+        "desc": "一把铁剑。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器",
+          "铁",
+          "近战"
+        ],
+        "keywords": [],
+        "uses": 1,
+        "floorStart": 5,
+        "floorEnd": 5
+      }
+    ],
+    "tombs": [
+      "k2",
+      "k4"
+    ],
+    "cursor": {
+      "items": 0
+    },
+    "toasts": [
+      [
+        "repair",
+        "开始修复物品数据…",
+        "当前 4 件物品 · 高相关组 1/1 组（本次核对 4 条 · 其中缺陷条目 2）"
+      ],
+      [
+        "success",
+        "物品修复完成",
+        "合并 1 组（-1 件） · 修订 1 件 · 删除 2 件；修复前 4 条 → 修复后 2 条；本轮提交 4 条 / 1 组 / 共 1 组 / 缺陷条目 2；提交标签 #钥匙 #工具 #铜 #铁 #武器；修复后 合并 1 组(-1 条) · 修订 1 条 · 删除 2 条。"
+      ]
+    ],
+    "aiCalls": 1
+  },
+  "runNone": {
+    "res": {
+      "made": 0,
+      "skipped": true,
+      "merged": 0,
+      "purged": 0,
+      "groups": 0,
+      "before": 2,
+      "after": 2,
+      "keys": [
+        "after",
+        "before",
+        "groups",
+        "made",
+        "merged",
+        "purged",
+        "skipped"
+      ]
+    },
+    "items": [
+      {
+        "id": "q1",
+        "name": "长弓",
+        "desc": "一张长弓。",
+        "location": "背后",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "武器",
+          "弓",
+          "远程"
+        ],
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      },
+      {
+        "id": "q2",
+        "name": "药囊",
+        "desc": "一只药囊。",
+        "location": "腰间",
+        "carried": true,
+        "qty": 1,
+        "tags": [
+          "药",
+          "医",
+          "治疗"
+        ],
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 2
+      }
+    ],
+    "toasts": [
+      [
+        "info",
+        "物品修复完成",
+        "未发现达到相关性阈值（0.45）的物品组，无需 AI 判断融合。"
+      ]
+    ],
+    "aiCalls": 0
+  },
+  "runEmpty": {
+    "res": {
+      "made": 0,
+      "skipped": true
+    },
+    "toasts": [
+      [
+        "info",
+        "物品修复：暂无物品",
+        "请先通过「AI 摘要」生成物品或手动添加后再修复。"
+      ]
+    ]
+  },
+  "inputs": {
+    "scenarioMerge": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "i1",
+          "name": "铜钥匙",
+          "desc": "开门的钥匙。",
+          "location": "腰间",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "钥匙",
+            "工具"
+          ],
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "seenDate": "2020-01-01"
+        },
+        {
+          "id": "i2",
+          "name": "铜钥匙（旧）",
+          "desc": "开门的旧钥匙，铜锈斑驳。",
+          "location": "背包",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "钥匙",
+            "工具",
+            "旧物"
+          ],
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 4,
+          "seenDate": "2020-01-02"
+        },
+        {
+          "id": "i3",
+          "name": "银两",
+          "desc": "随身银两。",
+          "location": "钱袋",
+          "carried": true,
+          "qty": 10,
+          "tags": [
+            "货币",
+            "银两",
+            "钱"
+          ],
+          "uses": 5,
+          "floorStart": 3,
+          "floorEnd": 3,
+          "seenDate": "2020-01-03"
+        },
+        {
+          "id": "i4",
+          "name": "银两（碎银）",
+          "desc": "散碎银两。",
+          "location": "钱袋",
+          "carried": true,
+          "qty": 5,
+          "tags": [
+            "货币",
+            "银两",
+            "钱"
+          ],
+          "uses": 1,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "seenDate": "2020-01-04"
+        },
+        {
+          "id": "i5",
+          "name": "铁剑",
+          "desc": "一把铁剑。",
+          "location": "背后",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "武器"
+          ],
+          "uses": 1,
+          "floorStart": 5,
+          "floorEnd": 5,
+          "seenDate": "2020-01-05"
+        },
+        {
+          "id": "i6",
+          "name": "",
+          "desc": "来历不明之物。",
+          "location": "",
+          "carried": false,
+          "qty": null,
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioPick": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "k1",
+          "name": "铜钥匙",
+          "desc": "开门的钥匙。",
+          "location": "腰间",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "钥匙",
+            "工具",
+            "铜"
+          ],
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "seenDate": "2020-01-01"
+        },
+        {
+          "id": "k2",
+          "name": "铁钥匙",
+          "desc": "另一把钥匙。",
+          "location": "背包",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "钥匙",
+            "工具",
+            "铁"
+          ],
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 4,
+          "seenDate": "2020-01-02"
+        },
+        {
+          "id": "k3",
+          "name": "铁剑",
+          "desc": "一把铁剑。",
+          "location": "背后",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "武器",
+            "铁"
+          ],
+          "uses": 1,
+          "floorStart": 5,
+          "floorEnd": 5
+        },
+        {
+          "id": "k4",
+          "name": "",
+          "desc": "来历不明之物。",
+          "location": "",
+          "carried": false,
+          "qty": null,
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioPurge": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "p1",
+          "name": "旧草鞋",
+          "desc": "一双旧草鞋。",
+          "location": "背包",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "鞋",
+            "旧物"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "seenDate": "2020-01-01"
+        },
+        {
+          "id": "p2",
+          "name": "破布条",
+          "desc": "一条破布。",
+          "location": "背包",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "布",
+            "旧物"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "seenDate": "2020-01-02"
+        },
+        {
+          "id": "p3",
+          "name": "干粮",
+          "desc": "路上的干粮。",
+          "location": "身上",
+          "carried": true,
+          "qty": 2,
+          "tags": [
+            "食物"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "seenDate": "2020-01-01"
+        },
+        {
+          "id": "p4",
+          "name": "无名之物",
+          "desc": "来历不明。",
+          "location": "",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "杂物"
+          ],
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0
+        },
+        {
+          "id": "p5",
+          "name": "银两",
+          "desc": "随身银两。",
+          "location": "钱袋",
+          "carried": false,
+          "qty": 7,
+          "tags": [
+            "货币"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "seenDate": "2020-01-01"
+        },
+        {
+          "id": "p6",
+          "name": "常用短刀",
+          "desc": "随身短刀。",
+          "location": "腰间",
+          "carried": false,
+          "qty": 1,
+          "tags": [
+            "武器"
+          ],
+          "uses": 10,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "seenDate": "2020-01-01"
+        }
+      ],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioNone": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "q1",
+          "name": "长弓",
+          "desc": "一张长弓。",
+          "location": "背后",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "武器",
+            "弓",
+            "远程"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "q2",
+          "name": "药囊",
+          "desc": "一只药囊。",
+          "location": "腰间",
+          "carried": true,
+          "qty": 1,
+          "tags": [
+            "药",
+            "医",
+            "治疗"
+          ],
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 2
+        }
+      ],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "deltaApply": {
+      "物品库": {
+        "合并": [
+          {
+            "保留": 1,
+            "并入": [
+              2
+            ],
+            "名称": "钥匙串",
+            "说明": "一串可开正门侧门的钥匙。",
+            "位置": "腰间",
+            "数量": 2,
+            "携带": true,
+            "标签": [
+              "钥匙",
+              "工具",
+              "门禁"
+            ]
+          }
+        ],
+        "修订": [
+          {
+            "编号": 3,
+            "字段": "说明",
+            "值": "一柄开了刃的铁剑。"
+          },
+          {
+            "编号": 3,
+            "字段": "数量",
+            "值": 3
+          },
+          {
+            "编号": 3,
+            "字段": "携带",
+            "值": "是"
+          }
+        ],
+        "删除": [
+          4
+        ]
+      }
+    },
+    "ai": {
+      "合并": [
+        {
+          "保留": 1,
+          "并入": [
+            2
+          ],
+          "名称": "钥匙串",
+          "说明": "一串可开正门侧门的钥匙。",
+          "位置": "腰间",
+          "数量": 2,
+          "标签": [
+            "钥匙",
+            "工具",
+            "门禁"
+          ]
+        }
+      ],
+      "修订": [
+        {
+          "编号": 3,
+          "字段": "标签",
+          "值": "武器,铁,近战"
+        }
+      ],
+      "删除": [
+        4
+      ]
+    },
+    "cfg": {
+      "itemRepairSim": 0.45,
+      "itemRepairMaxClusters": 3,
+      "itemRepairMaxItems": 24,
+      "itemRepairMaxClusterSize": 8,
+      "itemLowUsesMinItems": 3,
+      "itemLowUsesMinAvg": 0,
+      "itemLowUsesRatio": 0.5,
+      "itemLowUsesMinFloors": 1,
+      "itemLowUsesMaxDelete": 2,
+      "itemLowUsesEveryFloors": 0,
+      "storeMinItems": 0,
+      "dimCharLimitsItems": 80,
+      "repairFloors": 10
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（物品修复 runItemRepair / itemMergeExact / itemLowUsesPurge / buildItemRepairPrompt / applyItemMergeGroups）"
+}
