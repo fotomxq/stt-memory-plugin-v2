@@ -6,6 +6,9 @@
 import { EXTENSION_FOLDER, VERSION } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
 import { getSettings, DEFAULT_SETTINGS, setSetting } from '../adapters/settings.js';
+import { cfg } from '../core/model/runtime.js';
+import { DIMENSIONS } from '../core/constants.js';
+import { saveKernelCfg } from '../adapters/config-store.js';
 import { maybeAutoCheckOnStartup, runStUpdate, updateStatusText, updateConfig } from '../host/update.js';
 
 const MOUNT_ID = 'extensions_settings2';
@@ -17,6 +20,70 @@ function escAttr(v) {
     return escHtml(v).replace(/"/g, '&quot;');
 }
 const ROOT_ID = 'ftt_v2_settings';
+
+/** 面板动作钩子（由 index.js 注入：提取 / 导入 / 清空注入）与状态快照（面板只读区） */
+let panelHooks = {};
+let panelStatus = {};
+/** 注入面板钩子（index.js 装配时调用） */
+export function setPanelHooks(hooks) { panelHooks = Object.assign({}, panelHooks, hooks || {}); return panelHooks; }
+/** 注入面板状态（每次刷新时更新只读区） */
+export function setPanelStatus(status) { panelStatus = Object.assign({}, panelStatus, status || {}); return panelStatus; }
+
+/** 面板内 cfg 控件 → 内核配置键（绑定表；测试与排障共用） */
+export const PANEL_CFG_BINDINGS = Object.freeze({
+    ftt_v2_cfg_injp: ['injectCurrentPrompt', 'bool'],
+    ftt_v2_cfg_budget: ['charBudget', 'num'],
+    ftt_v2_cfg_maxatoms: ['maxAtoms', 'num'],
+    ftt_v2_cfg_maxmems: ['maxMemories', 'num'],
+    ftt_v2_cfg_autoext: ['autoExtract', 'bool'],
+});
+
+/**
+ * 应用面板 cfg 控件值（**唯一写入口**：改内核视图 → 持久化到 ST 配置 → 刷新状态块）。
+ * @param {string} id 控件 id（见 PANEL_CFG_BINDINGS）
+ * @param {*} raw 控件值（bool/number）
+ * @returns {{ok:boolean, key?:string, value?:*}}
+ */
+export function applyPanelCfg(id, raw) {
+    const b = PANEL_CFG_BINDINGS[id];
+    if (!b) return { ok: false };
+    const [key, kind] = b;
+    const value = kind === 'bool' ? !!raw : Number(raw);
+    if (!Number.isFinite(value) && kind === 'num') return { ok: false, key };
+    cfg[key] = value;
+    try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+    refreshPanelStatus();
+    return { ok: true, key, value };
+}
+
+/** 维度开关：`data-ftt-dim` 勾选框 → `cfg.dimensionEnabled[kind]` */
+export function applyPanelDim(kind, on) {
+    const k = String(kind || '');
+    if (!k) return { ok: false };
+    cfg.dimensionEnabled = Object.assign({}, cfg.dimensionEnabled || {});
+    cfg.dimensionEnabled[k] = !!on;
+    try { saveKernelCfg(); } catch (e) { /* 忽略 */ }
+    refreshPanelStatus();
+    return { ok: true, kind: k, on: !!on };
+}
+
+/** 刷新只读状态块（动作完成后调用） */
+export function refreshPanelStatus() {
+    const doc = globalThis.document;
+    const el = doc && typeof doc.getElementById === 'function' ? doc.getElementById('ftt_v2_status') : null;
+    const text = statusBlockText();
+    if (el) el.textContent = text;
+    return text;
+}
+
+/** 面板动作结果提示（按钮执行结果显示区） */
+export function setActionNote(text) {
+    const doc = globalThis.document;
+    const el = doc && typeof doc.getElementById === 'function' ? doc.getElementById('ftt_v2_action') : null;
+    const t = String(text == null ? '' : text);
+    if (el) el.textContent = t;
+    return t;
+}
 
 /** 面板数据（模板变量） */
 export function panelData(extra) {
@@ -33,6 +100,15 @@ export function panelData(extra) {
         updateRepo: String(s.updateRepo || ''),
         updateBranch: String(s.updateBranch || ''),
         updateStatus: updateStatusText(),
+        // P5 首批：内核配置（cfg）与状态块
+        cfgInject: cfg.injectCurrentPrompt === true,
+        cfgBudget: Number(cfg.charBudget) || 8000,
+        cfgMaxAtoms: Number(cfg.maxAtoms) || 16,
+        cfgMaxMemories: Number(cfg.maxMemories) || 8,
+        cfgAutoExtract: cfg.autoExtract !== false,
+        dimsHtml: dimsCheckboxHtml(),
+        statusHtml: escHtml(statusBlockText()),
+        actionNote: '',
     }, extra || {});
 }
 
@@ -48,13 +124,53 @@ export function fallbackPanelHtml(data) {
         '<div class="ftt-v2-row"><label>注入记忆</label><input type="checkbox" id="ftt_v2_inject"' + (d.injectEnabled ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label>注入预算（字符）</label><input type="number" id="ftt_v2_budget" value="' + String(d.charBudget) + '"></div>',
         '<div class="ftt-v2-row"><label>自动摘要</label><input type="checkbox" id="ftt_v2_autosum"' + (d.autoSummary ? ' checked' : '') + '></div>',
+        '<div class="ftt-v2-sub">记忆与注入（内核配置）</div>',
+        '<div class="ftt-v2-row"><label>注入当前提示词</label><input type="checkbox" id="ftt_v2_cfg_injp"' + (d.cfgInject ? ' checked' : '') + '></div>',
+        '<div class="ftt-v2-row"><label>注入预算（字符）</label><input type="number" id="ftt_v2_cfg_budget" value="' + String(d.cfgBudget) + '"></div>',
+        '<div class="ftt-v2-row"><label>注入情节条数上限</label><input type="number" id="ftt_v2_cfg_maxatoms" value="' + String(d.cfgMaxAtoms) + '"></div>',
+        '<div class="ftt-v2-row"><label>注入记忆条数上限</label><input type="number" id="ftt_v2_cfg_maxmems" value="' + String(d.cfgMaxMemories) + '"></div>',
+        '<div class="ftt-v2-row"><label>生成结束后自动提取</label><input type="checkbox" id="ftt_v2_cfg_autoext"' + (d.cfgAutoExtract ? ' checked' : '') + '></div>',
+        '<div class="ftt-v2-row ftt-v2-row-col"><label>启用维度</label><div class="ftt-v2-dims" id="ftt_v2_dims">' + String(d.dimsHtml || '') + '</div></div>',
+        '<div class="ftt-v2-note ftt-v2-status" id="ftt_v2_status">' + escHtml(d.statusHtml || '') + '</div>',
+        '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_analyze">🧠 分析未分析楼层</button><button class="menu_button" id="ftt_v2_list">📋 待分析清单</button><button class="menu_button" id="ftt_v2_clearinj">🧹 清空注入</button></div>',
+        '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_imp_dry">📥 V1 导入（干跑）</button><button class="menu_button" id="ftt_v2_imp_apply">📥 V1 导入（写入）</button></div>',
+        '<div class="ftt-v2-note" id="ftt_v2_action"></div>',
         '<div class="ftt-v2-row"><label>启动时自动检查更新</label><input type="checkbox" id="ftt_v2_autoupd"' + (d.autoUpdateCheck ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label>更新检查仓库</label><input type="text" id="ftt_v2_updrepo" value="' + escAttr(d.updateRepo) + '"></div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_checkupd">🔍 检查更新</button><button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button></div>',
         '<div class="ftt-v2-note" id="ftt_v2_updstate" data-ftt-update-state>' + escHtml(d.updateStatus) + '</div>',
-        '<div class="ftt-v2-note">版本 ' + VERSION + ' · 记忆数据请用面板管理（P4 落地）</div>',
+        '<div class="ftt-v2-note">版本 ' + VERSION + ' · 数据台在 P5 后续批次落地</div>',
         '</div></div></div>',
     ].join('');
+}
+
+/**
+ * 维度勾选框（HTML 片段，交给 Handlebars 原样插入）——与 `cfg.dimensionEnabled` 对应。
+ * 供模板与回退 HTML 共用，避免两处不一致。
+ */
+export function dimsCheckboxHtml() {
+    const map = (cfg && cfg.dimensionEnabled) || {};
+    return DIMENSIONS.map((d) => {
+        const on = map[d.kind] !== false;
+        return '<label><input type="checkbox" data-ftt-dim="' + escAttr(d.kind) + '"' + (on ? ' checked' : '') + '>' + escHtml(d.label) + '</label>';
+    }).join('');
+}
+
+/**
+ * 状态块文本（面板顶部只读区）：版本 / 作用域 / 内核配置 / 注入 / 提取 / 待分析。
+ * 数据来自注入的 `extra.status`（index.js 组装），缺失时至少给出配置摘要。
+ */
+export function statusBlockText() {
+    const s = panelStatus || {};
+    const lines = [
+        '版本 ' + VERSION + (s.scope ? ' · 作用域 ' + s.scope : ''),
+        '内核配置 ' + Object.keys(cfg || {}).length + ' 键 · 注入预算 ' + (Number(cfg.charBudget) || 0) + ' 字符',
+    ];
+    if (s.injectChars !== undefined) lines.push('当前注入 ' + s.injectChars + ' 字');
+    if (s.extract) lines.push('提取：运行 ' + s.extract.runs + ' · 成功 ' + s.extract.ok + ' · 失败 ' + s.extract.fail + (s.extract.lastReason ? '（最近 ' + s.extract.lastReason + '）' : ''));
+    if (s.pending !== undefined && s.pending !== null) lines.push('待分析楼层 ' + s.pending + ' 层');
+    if (s.store) lines.push('存储：本机缓冲/服务端文件（载入来源 ' + (s.store.via || '—') + '）');
+    return lines.join('\n');
 }
 
 function mountPoint() {
@@ -72,6 +188,8 @@ function mountPoint() {
 export async function mountSettingsPanel(extra) {
     const host = mountPoint();
     if (!host) return { ok: false, via: 'none', reason: '未找到 #' + MOUNT_ID };
+    if (extra && extra.hooks) setPanelHooks(extra.hooks);
+    if (extra && extra.status) setPanelStatus(extra.status);
     const data = panelData(extra);
     const ctx = getCtx();
     let html = '';
@@ -112,6 +230,54 @@ export function bindPanelEvents() {
     bind('ftt_v2_autoupd', 'autoUpdateCheck', 'bool');
     bind('ftt_v2_updrepo', 'updateRepo', 'text');
 
+    // P5 首批：内核配置控件（改值即写回 ST 配置并刷新状态块）
+    for (const id of Object.keys(PANEL_CFG_BINDINGS)) {
+        const el = doc.getElementById(id);
+        if (!el) continue;
+        el.addEventListener('change', () => applyPanelCfg(id, PANEL_CFG_BINDINGS[id][1] === 'bool' ? !!el.checked : el.value));
+    }
+    // 维度开关（容器内的 data-ftt-dim 勾选框；桩 DOM 无 querySelectorAll → 由 index 传入的维度表渲染后逐个绑定）
+    try {
+        const dimsBox = doc.getElementById('ftt_v2_dims');
+        if (dimsBox && dimsBox.children && dimsBox.children.length) {
+            dimsBox.children.forEach((el) => {
+                const kind = el.getAttribute ? el.getAttribute('data-ftt-dim') : '';
+                if (kind) el.addEventListener('change', () => applyPanelDim(kind, !!el.checked));
+            });
+        }
+    } catch (e) { /* 忽略 */ }
+    bindPanelAction(doc, 'ftt_v2_analyze', async () => {
+        if (typeof panelHooks.extract !== 'function') return setActionNote('提取入口未就绪');
+        setActionNote('分析中…');
+        const r = await panelHooks.extract({});
+        if (r && Array.isArray(r.results)) return setActionNote('分析完成：成功 ' + r.done + ' / ' + r.results.length + (r.note ? '（' + r.note + '）' : ''));
+        return setActionNote(r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + ' 条）') : ('未完成：' + String((r && r.reason) || '未知')));
+    });
+    bindPanelAction(doc, 'ftt_v2_list', async () => {
+        if (typeof panelHooks.pending !== 'function') return setActionNote('清单入口未就绪');
+        const list = panelHooks.pending({}) || [];
+        return setActionNote(list.length ? ('待分析楼层：' + list.join('、')) : '没有待分析楼层');
+    });
+    bindPanelAction(doc, 'ftt_v2_clearinj', async () => {
+        if (typeof panelHooks.clearInject !== 'function') return setActionNote('注入入口未就绪');
+        panelHooks.clearInject();
+        return setActionNote('已清空注入');
+    });
+    bindPanelAction(doc, 'ftt_v2_imp_dry', async () => {
+        if (typeof panelHooks.importV1 !== 'function') return setActionNote('导入入口未就绪');
+        setActionNote('读取 V1 数据…');
+        const r = await panelHooks.importV1({});
+        const t = (r && r.report && r.report.totals) || {};
+        return setActionNote('【干跑】' + (r && r.via ? r.via : '无源数据') + '：新增 ' + (t.add || 0) + ' · 已存在 ' + (t.exist || 0) + ' · 冲突 ' + (t.conflict || 0));
+    });
+    bindPanelAction(doc, 'ftt_v2_imp_apply', async () => {
+        if (typeof panelHooks.importV1 !== 'function') return setActionNote('导入入口未就绪');
+        setActionNote('导入并写入…');
+        const r = await panelHooks.importV1({ apply: true });
+        const t = (r && r.report && r.report.totals) || {};
+        return setActionNote('【已写入】新增 ' + (t.add || 0) + ' 条（源数据未删除）');
+    });
+
     const checkBtn = doc.getElementById('ftt_v2_checkupd');
     if (checkBtn) {
         checkBtn.addEventListener('click', () => {
@@ -131,6 +297,18 @@ export function bindPanelEvents() {
                 .catch(e => setUpdateStatusLine('ST 更新失败：' + String((e && e.message) || e)));
         });
     }
+    return true;
+}
+
+/** 绑定动作按钮（执行中禁用、完成后回填提示；异常只提示不抛） */
+function bindPanelAction(doc, id, run) {
+    const el = doc.getElementById(id);
+    if (!el) return false;
+    el.addEventListener('click', () => {
+        Promise.resolve()
+            .then(run)
+            .catch((e) => setActionNote('操作失败：' + String((e && e.message) || e)));
+    });
     return true;
 }
 

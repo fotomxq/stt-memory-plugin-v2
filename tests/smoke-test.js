@@ -50,7 +50,9 @@ const uninstallFetch = installGlobalFetch((url) => {
 });
 
 const host = makeHost({ templateHtml });
-const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo']);
+const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo',
+    'ftt_v2_cfg_injp', 'ftt_v2_cfg_budget', 'ftt_v2_cfg_maxatoms', 'ftt_v2_cfg_maxmems', 'ftt_v2_cfg_autoext',
+    'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply']);
 const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
@@ -353,6 +355,65 @@ assert('H6 提取失败姿态：AI 不可用时只回报原因，不影响聊天
             && (injectVal === '' || injectVal.indexOf('【FTT记忆注入】') === 0);
     } finally { host.ctx.generateRaw = saved; }
 })(), '');
+
+// ---------- I 设定面板（P5 首批：内核配置控件 + 状态块 + 动作按钮） ----------
+const panelMod = await import('../ui/settings-panel.js');
+
+assert('I1 面板已渲染内核配置控件 / 维度勾选 / 状态块 / 动作按钮（模板渲染）', (() => {
+    const html = doc._els.extensions_settings2.html;
+    // 桩 DOM 的模板渲染不做变量替换（原样写入 html），故状态块文本由 refreshPanelStatus 落地后再断言
+    const statusText = panelMod.refreshPanelStatus();
+    return html.indexOf('ftt_v2_cfg_budget') >= 0 && html.indexOf('ftt_v2_cfg_autoext') >= 0
+        && html.indexOf('ftt_v2_dims') >= 0 && html.indexOf('ftt_v2_status') >= 0
+        && html.indexOf('ftt_v2_analyze') >= 0 && html.indexOf('ftt_v2_imp_dry') >= 0
+        && String(statusText).indexOf('内核配置') >= 0
+        && String(doc._els.ftt_v2_status.textContent).indexOf('提取：') >= 0;
+})(), String(doc._els.ftt_v2_status.textContent || '').slice(0, 80));
+
+assert('I2 面板 cfg 控件：change 事件写回内核配置并持久化到 ST 配置容器', (() => {
+    const el = doc._els.ftt_v2_cfg_autoext;
+    const before = rt.cfg.autoExtract;
+    el.checked = false;
+    el.dispatch('change');
+    const store = host.ctx.extensionSettings.ftt_memory_v2;
+    const persisted = store && store.cfg && store.cfg.autoExtract;
+    const el2 = doc._els.ftt_v2_cfg_budget;
+    el2.value = '6000';
+    el2.dispatch('change');
+    return before !== false && rt.cfg.autoExtract === false && persisted === false
+        && rt.cfg.charBudget === 6000 && store.cfg.charBudget === 6000
+        && panelMod.PANEL_CFG_BINDINGS.ftt_v2_cfg_autoext[0] === 'autoExtract';
+})(), JSON.stringify({ autoExtract: rt.cfg.autoExtract, budget: rt.cfg.charBudget }));
+
+assert('I3 维度开关与状态块刷新：applyPanelDim 写 cfg.dimensionEnabled，状态块随之刷新', (() => {
+    const r = panelMod.applyPanelDim('atoms', false);
+    const txt = panelMod.refreshPanelStatus();
+    return r.ok === true && rt.cfg.dimensionEnabled.atoms === false
+        && String(txt).indexOf('内核配置') >= 0;
+})(), '');
+
+assert('I4 面板动作按钮：待分析清单 / 分析未分析楼层 / 清空注入 均调用注入钩子并回填提示', (async () => {
+    // 复原自动提取开关，避免影响后续动作
+    rt.cfg.autoExtract = true;
+    doc._els.ftt_v2_list.dispatch('click');
+    await new Promise((r) => setTimeout(r, 20));
+    const listNote = String(doc._els.ftt_v2_action.textContent || '');
+    doc._els.ftt_v2_clearinj.dispatch('click');
+    await new Promise((r) => setTimeout(r, 10));
+    const clearNote = String(doc._els.ftt_v2_action.textContent || '');
+    const injectAfter = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
+    const saved = host.ctx.generateRaw;
+    host.ctx.generateRaw = async () => JSON.stringify({ atoms: { add: [{ title: '面板', text: '甲在仓库门口停下脚步并望向码头。', date: '1919-11-29' }] } });
+    try {
+        host.ctx.chat.push({ is_user: false, mes: '甲在仓库门口停下脚步并望向码头。', name: '角色甲' });
+        doc._els.ftt_v2_analyze.dispatch('click');
+        await new Promise((r) => setTimeout(r, 40));
+    } finally { host.ctx.generateRaw = saved; }
+    const analyzeNote = String(doc._els.ftt_v2_action.textContent || '');
+    return (listNote.indexOf('待分析') >= 0 || listNote.indexOf('没有') >= 0)
+        && clearNote.indexOf('已清空注入') >= 0 && injectAfter === ''
+        && (analyzeNote.indexOf('分析完成') >= 0 || analyzeNote.indexOf('新增') >= 0);
+})(), String(doc._els.ftt_v2_action.textContent || ''));
 
 endpointDown = false;
 uninstallFetch();

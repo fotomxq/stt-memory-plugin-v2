@@ -115,6 +115,12 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 `GENERATION_ENDED` 自动提取（受 `cfg.autoExtract` 保护）与忙碌互斥；六类失败姿态一律不抛出、不写台账、不影响聊天。
 详见 `docs/P4-提取编排.md`。
 
+**P5 首批（设定面板）**：`settings.html` + `ui/settings-panel.js` 提供内核配置控件（注入开关/预算/条数上限/自动提取/
+**14 维启用勾选**）、只读状态块（版本·作用域·内核配置键数·注入字数·提取统计·待分析楼层·存储来源）与动作按钮
+（分析未分析楼层 / 待分析清单 / 清空注入 / V1 导入干跑与写入）。面板改动经**唯一写入口** `applyPanelCfg` 落到内核视图并
+经 `saveKernelCfg` 持久化到 ST 配置，读取侧一律取 `cfg.*`（不存在两套配置分叉）；模板不可用时回退 HTML 同样包含这些控件。
+详见 `docs/P5-设定面板.md`。
+
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 
 ### 5.3 硬规则
@@ -141,7 +147,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── i18n/                  # zh-cn / en 词条
 ├── tests/                 # 宿主桩 + 单元 + 冒烟
 ├── scripts/               # 门禁脚本（内核纯净度 / 内核标识符 / 版本一致性 / 文档规范）
-└── docs/                  # P0 探针报告 / 更新检查 / P1 内核平移 / P2 宿主与存储 / P3 注入闭环 / P3b 提取落库 / P4 提取编排
+└── docs/                  # P0 探针报告 / 更新检查 / P1 内核平移 / P2 宿主与存储 / P3 注入闭环 / P3b 提取落库 / P4 提取编排 / P5 设定面板
 ```
 
 ## 7. 许可

@@ -22,6 +22,45 @@
                 <input type="checkbox" id="ftt_v2_autosum" {{#if autoSummary}}checked{{/if}}>
             </div>
             <div class="ftt-v2-sep"></div>
+            <div class="ftt-v2-sub">记忆与注入（内核配置）</div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_cfg_injp"><span>注入当前提示词</span></label>
+                <input type="checkbox" id="ftt_v2_cfg_injp" {{#if cfgInject}}checked{{/if}}>
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_cfg_budget"><span>注入预算（字符）</span></label>
+                <input type="number" id="ftt_v2_cfg_budget" min="500" step="500" value="{{cfgBudget}}">
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_cfg_maxatoms"><span>注入情节条数上限</span></label>
+                <input type="number" id="ftt_v2_cfg_maxatoms" min="1" step="1" value="{{cfgMaxAtoms}}">
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_cfg_maxmems"><span>注入记忆条数上限</span></label>
+                <input type="number" id="ftt_v2_cfg_maxmems" min="1" step="1" value="{{cfgMaxMemories}}">
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_cfg_autoext"><span>生成结束后自动提取</span></label>
+                <input type="checkbox" id="ftt_v2_cfg_autoext" {{#if cfgAutoExtract}}checked{{/if}}>
+            </div>
+            <div class="ftt-v2-row ftt-v2-row-col">
+                <label><span>启用维度（未勾选的分析时不产出）</span></label>
+                <div class="ftt-v2-dims" id="ftt_v2_dims">{{{dimsHtml}}}</div>
+            </div>
+            <div class="ftt-v2-sep"></div>
+            <div class="ftt-v2-sub">状态与动作</div>
+            <div class="ftt-v2-note ftt-v2-status" id="ftt_v2_status">{{{statusHtml}}}</div>
+            <div class="ftt-v2-row ftt-v2-row-actions">
+                <button class="menu_button" id="ftt_v2_analyze">🧠 分析未分析楼层</button>
+                <button class="menu_button" id="ftt_v2_list">📋 待分析清单</button>
+                <button class="menu_button" id="ftt_v2_clearinj">🧹 清空注入</button>
+            </div>
+            <div class="ftt-v2-row ftt-v2-row-actions">
+                <button class="menu_button" id="ftt_v2_imp_dry">📥 V1 导入（干跑）</button>
+                <button class="menu_button" id="ftt_v2_imp_apply">📥 V1 导入（写入）</button>
+            </div>
+            <div class="ftt-v2-note" id="ftt_v2_action">{{actionNote}}</div>
+            <div class="ftt-v2-sep"></div>
             <div class="ftt-v2-row">
                 <label for="ftt_v2_autoupd"><span>启动时自动检查更新</span></label>
                 <input type="checkbox" id="ftt_v2_autoupd" {{#if autoUpdateCheck}}checked{{/if}}>
@@ -35,7 +74,7 @@
                 <button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button>
             </div>
             <div class="ftt-v2-note" id="ftt_v2_updstate" data-ftt-update-state>{{updateStatus}}</div>
-            <div class="ftt-v2-note">版本 {{version}} · 数据台与完整设定项在 P4 落地（见 docs/P0-探针报告.md）</div>
+            <div class="ftt-v2-note">版本 {{version}} · 数据台（条目浏览/编辑/搜索）与高级域在 P5 后续批次落地</div>
         </div>
     </div>
 </div>

@@ -44,3 +44,10 @@
 .ftt-v2-settings .ftt-v2-note[data-ftt-update-state] {
     white-space: pre-wrap;
 }
+
+/* P5 首批：设定面板新增区块 */
+.ftt-v2-sub { font-weight: 600; margin: 6px 0 2px; opacity: .9; }
+.ftt-v2-row-col { display: block; }
+.ftt-v2-dims { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+.ftt-v2-dims label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.ftt-v2-status { white-space: pre-wrap; }

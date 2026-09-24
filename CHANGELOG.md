@@ -91,6 +91,19 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P5 首批：设定面板（本版新增）**：
+  ① `settings.html` 扩展为「基础开关 / 记忆与注入（内核配置）/ 状态与动作 / 更新」四段，新增
+  **注入当前提示词、注入预算、注入情节与记忆条数上限、生成结束后自动提取、14 维启用勾选**；
+  ② `ui/settings-panel.js` 新增唯一写入口 `applyPanelCfg(id, value)`（绑定表 `PANEL_CFG_BINDINGS`）+ `applyPanelDim(kind,on)`
+  —— 改动落到内核 `cfg` 视图并 `saveKernelCfg()` 持久化到 `extensionSettings.ftt_memory_v2.cfg`，随后刷新状态块；
+  读取侧一律取 `cfg.*`，**杜绝「面板显示 settings、内核读 cfg」的两套配置分叉**；
+  ③ 只读状态块（`statusBlockText`）：版本 / 作用域 / 内核配置键数 / 当前注入字数 / 提取运行·成功·失败·最近原因 / 待分析楼层 / 存储来源；
+  ④ 动作按钮：分析未分析楼层、待分析清单、清空注入、V1 导入（干跑）与 V1 导入（写入），结果显示在动作提示行，
+  异常只提示不抛；钩子由 `index.js` 注入（`mountSettingsPanel({ hooks, status })`），避免 `ui/ → host/` 反向依赖；
+  ⑤ `fallbackPanelHtml` 同步补齐同类控件（模板不可用时仍可配置与操作）；`style.css` 新增区块样式。
+  测试：冒烟 I1–I4（真实 `settings.html` 渲染 + change 事件持久化 + 维度开关 + 四个动作按钮）。
+  门禁：单元 **22 文件 / 292 断言**、冒烟 **39/39**、内核纯净度 0、内核标识符 0、版本一致性 OK、文档规范 0；文档 `docs/P5-设定面板.md`。
+  未完成：数据台（条目浏览/编辑/搜索/多选/关联/注入自查）、提示词模板编辑页、高级域参数页、i18n 词条补全。
 - **P4 首批：提取编排闭环（本版新增）**：
   ① `core/prompt.js`（339 行）移植 V1 `buildSummaryPrompt` 及其闭包 14 项（`armorPresetText` / `buildExistingIndexText` /
   `buildCurrencyLedgerText` / `buildWorldbookFeedText` / `applyFeedRegex` / 正则编译等）—— 系统提示词＝分析前置提示词 +
