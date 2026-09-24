@@ -1525,4 +1525,8 @@ export {
     mergeDelta, scheduleStateDecay, runStateDecay,
     storeMinFor, storeCapFor, enforceDimCaps, repairClampNum, memoryImportance, calcTimeDecay,
     STORE_LIMITS, DIM_CAP_KEYS,
+    // B8-6：修复管线共用助手（同一套文本规范化/相似度，避免重复实现）
+    repairNormText, repairKeyText, repairBigrams, repairSimilarity,
+    scenesUnionMergeAll, statesSubjectUnionMerge,
+    runParallelDecay, scheduleParallelDecay, applyStateBounds,
 };

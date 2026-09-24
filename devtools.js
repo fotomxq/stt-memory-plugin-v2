@@ -130,6 +130,21 @@ export function installDevtools(hooks) {
             memoryForget: (opts) => (hooks && typeof hooks.memoryForget === 'function' ? hooks.memoryForget(opts || {}) : Promise.resolve(null)),
             lowUseSweep: (opts) => (hooks && typeof hooks.lowUseSweep === 'function' ? hooks.lowUseSweep(opts || {}) : null),
             lowUseGate: (every) => (hooks && typeof hooks.lowUseGate === 'function' ? hooks.lowUseGate(every) : null),
+            // B8-6a 修复管线（第 1 段 机械清理）
+            repairMech: (opts) => (hooks && typeof hooks.repairMech === 'function' ? hooks.repairMech(opts || {}) : Promise.resolve(null)),
+            repairReport: (o) => (hooks && typeof hooks.repairReport === 'function' ? hooks.repairReport(o || {}) : ''),
+            repairLog: () => (hooks && typeof hooks.repairLog === 'function' ? hooks.repairLog() : []),
+            repairTotal: () => (hooks && typeof hooks.repairTotal === 'function' ? hooks.repairTotal() : 0),
+            repairGateTake: (reset) => (hooks && typeof hooks.repairGateTake === 'function' ? hooks.repairGateTake(!!reset) : null),
+            repairGateDue: () => (hooks && typeof hooks.repairGateDue === 'function' ? hooks.repairGateDue() : true),
+            repairBumpOp: () => (hooks && typeof hooks.repairBumpOp === 'function' ? hooks.repairBumpOp() : false),
+            repairIsGarbage: (text, min) => (hooks && typeof hooks.repairIsGarbage === 'function' ? hooks.repairIsGarbage(text, min) : null),
+            repairBanned: (text) => (hooks && typeof hooks.repairBanned === 'function' ? hooks.repairBanned(text) : []),
+            repairDedupe: () => (hooks && typeof hooks.repairDedupe === 'function' ? hooks.repairDedupe() : null),
+            repairPrune: () => (hooks && typeof hooks.repairPrune === 'function' ? hooks.repairPrune() : null),
+            repairDecay: () => (hooks && typeof hooks.repairDecay === 'function' ? hooks.repairDecay() : Promise.resolve(null)),
+            latestFloorHash: () => (hooks && typeof hooks.latestFloorHash === 'function' ? hooks.latestFloorHash() : ''),
+            repairLogPush: (rec) => (hooks && typeof hooks.repairLogPush === 'function' ? hooks.repairLogPush(rec || {}) : 0),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

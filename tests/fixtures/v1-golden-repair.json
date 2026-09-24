@@ -1,0 +1,1432 @@
+{
+  "garbage": [
+    [
+      "",
+      true,
+      true
+    ],
+    [
+      "   ",
+      true,
+      true
+    ],
+    [
+      "占位",
+      true,
+      true
+    ],
+    [
+      "待填",
+      true,
+      true
+    ],
+    [
+      "...",
+      true,
+      true
+    ],
+    [
+      "---",
+      true,
+      true
+    ],
+    [
+      "x",
+      true,
+      true
+    ],
+    [
+      "ab",
+      true,
+      true
+    ],
+    [
+      "金币",
+      true,
+      false
+    ],
+    [
+      "纽约",
+      true,
+      false
+    ],
+    [
+      "角色甲在码头遇到小贩乙。",
+      false,
+      false
+    ],
+    [
+      "两人在码头交接货物。",
+      false,
+      false
+    ],
+    [
+      "测试",
+      true,
+      true
+    ]
+  ],
+  "banned": [
+    [
+      "尽量在三天内完成。",
+      [
+        "尽量"
+      ]
+    ],
+    [
+      "酌情处理，或许多少有些差别。",
+      [
+        "酌情",
+        "或许"
+      ]
+    ],
+    [
+      "正常文本，没有模糊措辞。",
+      []
+    ]
+  ],
+  "mergeByNameItems": {
+    "merged": 2,
+    "items": [
+      [
+        "i1",
+        "铜钥匙",
+        "打开木箱的钥匙",
+        1,
+        5,
+        1,
+        4,
+        [
+          "钥"
+        ]
+      ],
+      [
+        "i3",
+        "银元",
+        "货币",
+        7,
+        2,
+        1,
+        2,
+        []
+      ]
+    ]
+  },
+  "mergeByNameBefore": [
+    {
+      "id": "i1",
+      "name": "铜钥匙",
+      "desc": "",
+      "qty": 1,
+      "uses": 2,
+      "floorStart": 1,
+      "floorEnd": 2,
+      "tags": []
+    },
+    {
+      "id": "i2",
+      "name": "铜钥匙",
+      "desc": "打开木箱的钥匙",
+      "qty": 1,
+      "uses": 3,
+      "floorStart": 3,
+      "floorEnd": 4,
+      "tags": [
+        "钥"
+      ]
+    },
+    {
+      "id": "i3",
+      "name": "银元",
+      "desc": "货币",
+      "qty": 5,
+      "uses": 1,
+      "floorStart": 1,
+      "floorEnd": 2,
+      "tags": []
+    },
+    {
+      "id": "i4",
+      "name": "银元",
+      "desc": "",
+      "qty": 7,
+      "uses": 1,
+      "floorStart": 1,
+      "floorEnd": 2,
+      "tags": []
+    }
+  ],
+  "dedupe": {
+    "merged": 8,
+    "notes": [
+      "atoms-同内容 1",
+      "scenes-并集 2"
+    ]
+  },
+  "dedupeState": {
+    "atoms": [
+      [
+        "a2",
+        "两人在码头交接货物。"
+      ],
+      [
+        "a3",
+        "占位"
+      ],
+      [
+        "a4",
+        "正常情节：角色甲前往城市"
+      ]
+    ],
+    "currentStates": [
+      [
+        "s1",
+        "角色甲",
+        "正常"
+      ],
+      [
+        "s2",
+        "甲",
+        "疲惫"
+      ],
+      [
+        "s3",
+        "角色乙",
+        "x"
+      ]
+    ],
+    "items": [
+      [
+        "i1",
+        "铜钥匙"
+      ],
+      [
+        "i3",
+        "银元"
+      ]
+    ],
+    "concepts": [
+      [
+        "c1",
+        "天机阁",
+        "掌管情报的机构。"
+      ]
+    ],
+    "snapshots": [
+      [
+        "k1",
+        "角色甲",
+        "灰色长袍"
+      ]
+    ],
+    "npcs": [
+      [
+        "n1",
+        "小贩乙"
+      ]
+    ],
+    "scenes": [
+      [
+        "sc1",
+        "码头",
+        "甲城·码头"
+      ],
+      [
+        "sc3",
+        "乙城市",
+        "乙城市"
+      ]
+    ]
+  },
+  "prune": {
+    "deleted": 6,
+    "notes": [
+      "atoms-垃圾清理 1",
+      "memories-垃圾清理 1",
+      "concepts-垃圾清理 1",
+      "currentStates-垃圾清理 1",
+      "plans-已关闭残留 1",
+      "suspense-已关闭残留 1"
+    ]
+  },
+  "pruneState": {
+    "atoms": [
+      "a1",
+      "a2",
+      "a4"
+    ],
+    "memories": [
+      "m1"
+    ],
+    "plans": [
+      "p1"
+    ],
+    "suspense": [
+      "u1"
+    ],
+    "deleted": {
+      "atoms": {
+        "a3": 1790272392227
+      },
+      "memories": {
+        "m2": 1790272392227
+      },
+      "concepts": {
+        "c1": 1790272392227
+      },
+      "currentStates": {
+        "s3": 1790272392227
+      },
+      "plans": {
+        "p2": 1790272392227
+      },
+      "suspense": {
+        "u2": 1790272392227
+      }
+    }
+  },
+  "decay": {
+    "deleted": 1,
+    "notes": [
+      "记忆遗忘 1"
+    ]
+  },
+  "decayState": {
+    "currentStates": 40,
+    "memories": [
+      "mm2",
+      "mm3"
+    ]
+  },
+  "batchTags": [
+    "甲",
+    "码头",
+    "乙",
+    "丙"
+  ],
+  "report1": "修复前 100 条 → 修复后 92 条；本轮提交 20 条 / 4 组 / 共 9 组 / 缺陷条目 3；提交标签 #甲 #乙；修复后 合并 2 组(-5 条) · 修订 3 条 · 删除 1 条 · 机械去重 8 条 · 低调用清理 2 条 · 遗忘清扫 4 条；跳过 1 条；本轮剩余待修 6 条；备注",
+  "report2": "修复前 10 条 → 修复后 10 条；修复后 无改动",
+  "report3": "修复前 5 条 → 修复后 4 条；修复后 无改动；仅机械",
+  "mechFlow": {
+    "before": 25,
+    "after": 13,
+    "merged": 8,
+    "sweepSwept": 0,
+    "capCut": 0,
+    "pruned": 5,
+    "decayed": 0,
+    "notes": [
+      "atoms-同内容 1",
+      "scenes-并集 2",
+      "atoms-垃圾清理 1",
+      "memories-垃圾清理 1",
+      "currentStates-垃圾清理 1",
+      "plans-已关闭残留 1",
+      "suspense-已关闭残留 1"
+    ]
+  },
+  "inputs": {
+    "texts": [
+      "",
+      "   ",
+      "占位",
+      "待填",
+      "...",
+      "---",
+      "x",
+      "ab",
+      "金币",
+      "纽约",
+      "角色甲在码头遇到小贩乙。",
+      "两人在码头交接货物。",
+      "测试"
+    ],
+    "banned": [
+      "尽量在三天内完成。",
+      "酌情处理，或许多少有些差别。",
+      "正常文本，没有模糊措辞。"
+    ],
+    "scenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "i1",
+          "name": "铜钥匙",
+          "desc": "",
+          "qty": 1,
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "i2",
+          "name": "铜钥匙",
+          "desc": "打开木箱的钥匙",
+          "qty": 1,
+          "uses": 3,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "tags": [
+            "钥"
+          ]
+        },
+        {
+          "id": "i3",
+          "name": "银元",
+          "desc": "货币",
+          "qty": 5,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "i4",
+          "name": "银元",
+          "desc": "",
+          "qty": 7,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        }
+      ],
+      "plans": [
+        {
+          "id": "p1",
+          "title": "计划一",
+          "content": "送信到甲城。",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "p2",
+          "title": "计划二",
+          "content": "已完成。",
+          "status": "done",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u1",
+          "title": "悬念一",
+          "content": "谁在跟踪？",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "u2",
+          "title": "悬念二",
+          "content": "已揭晓。",
+          "status": "resolved",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "码头",
+          "pathArr": [
+            "甲城",
+            "码头"
+          ],
+          "pathStr": "甲城·码头",
+          "desc": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "sc2",
+          "name": "码头",
+          "pathArr": [
+            "甲城",
+            "码头"
+          ],
+          "pathStr": "甲城·码头",
+          "desc": "船来船往。",
+          "tags": [],
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 3
+        },
+        {
+          "id": "sc3",
+          "name": "乙城市",
+          "pathArr": [
+            "乙城市"
+          ],
+          "pathStr": "乙城市",
+          "desc": "乙城。",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "sc4",
+          "name": "乙城",
+          "pathArr": [
+            "乙城"
+          ],
+          "pathStr": "乙城",
+          "desc": "同城异名。",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "npcs": [
+        {
+          "id": "n1",
+          "name": "小贩乙",
+          "desc": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "n2",
+          "name": "小贩乙",
+          "desc": "码头的鱼贩",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "两人在码头交接货物。",
+          "title": "两人在码头交接货物。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a2",
+          "text": "两人在码头交接货物。",
+          "title": "两人在码头交接货物。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a3",
+          "text": "占位",
+          "title": "占位",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a4",
+          "text": "正常情节：角色甲前往城市乙。",
+          "title": "正常情节：角色甲前往城市乙。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "s1",
+          "subject": "角色甲",
+          "field": "状态",
+          "value": "正常",
+          "date": "2020-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "s2",
+          "subject": "甲",
+          "field": "状态",
+          "value": "疲惫",
+          "date": "2020-01-02",
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 3
+        },
+        {
+          "id": "s3",
+          "subject": "角色乙",
+          "field": "状态",
+          "value": "x",
+          "date": "2020-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "k1",
+          "name": "角色甲",
+          "appearance": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "k2",
+          "name": "角色甲",
+          "appearance": "灰色长袍",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "title": "记忆一",
+          "content": "角色甲在码头遇到小贩乙。",
+          "date": "2020-01-01",
+          "importance": 0.6,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "m2",
+          "title": "占位记忆",
+          "content": "待填",
+          "date": "2020-01-01",
+          "importance": 0.6,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        }
+      ],
+      "concepts": [
+        {
+          "id": "c1",
+          "name": "天机阁",
+          "content": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "c2",
+          "name": "天机阁",
+          "content": "掌管情报的机构。",
+          "tags": [
+            "组织"
+          ],
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 3
+        }
+      ],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0
+    },
+    "decayScenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "i1",
+          "name": "铜钥匙",
+          "desc": "",
+          "qty": 1,
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "i2",
+          "name": "铜钥匙",
+          "desc": "打开木箱的钥匙",
+          "qty": 1,
+          "uses": 3,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "tags": [
+            "钥"
+          ]
+        },
+        {
+          "id": "i3",
+          "name": "银元",
+          "desc": "货币",
+          "qty": 5,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "i4",
+          "name": "银元",
+          "desc": "",
+          "qty": 7,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        }
+      ],
+      "plans": [
+        {
+          "id": "p1",
+          "title": "计划一",
+          "content": "送信到甲城。",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "p2",
+          "title": "计划二",
+          "content": "已完成。",
+          "status": "done",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u1",
+          "title": "悬念一",
+          "content": "谁在跟踪？",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "u2",
+          "title": "悬念二",
+          "content": "已揭晓。",
+          "status": "resolved",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "码头",
+          "pathArr": [
+            "甲城",
+            "码头"
+          ],
+          "pathStr": "甲城·码头",
+          "desc": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "sc2",
+          "name": "码头",
+          "pathArr": [
+            "甲城",
+            "码头"
+          ],
+          "pathStr": "甲城·码头",
+          "desc": "船来船往。",
+          "tags": [],
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 3
+        },
+        {
+          "id": "sc3",
+          "name": "乙城市",
+          "pathArr": [
+            "乙城市"
+          ],
+          "pathStr": "乙城市",
+          "desc": "乙城。",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "sc4",
+          "name": "乙城",
+          "pathArr": [
+            "乙城"
+          ],
+          "pathStr": "乙城",
+          "desc": "同城异名。",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "npcs": [
+        {
+          "id": "n1",
+          "name": "小贩乙",
+          "desc": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "n2",
+          "name": "小贩乙",
+          "desc": "码头的鱼贩",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "两人在码头交接货物。",
+          "title": "两人在码头交接货物。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a2",
+          "text": "两人在码头交接货物。",
+          "title": "两人在码头交接货物。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a3",
+          "text": "占位",
+          "title": "占位",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a4",
+          "text": "正常情节：角色甲前往城市乙。",
+          "title": "正常情节：角色甲前往城市乙。",
+          "date": "2020-01-01",
+          "tags": [
+            "甲"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "cs0",
+          "subject": "角色0",
+          "field": "状态",
+          "value": "v0",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs1",
+          "subject": "角色1",
+          "field": "状态",
+          "value": "v1",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs2",
+          "subject": "角色2",
+          "field": "状态",
+          "value": "v2",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs3",
+          "subject": "角色3",
+          "field": "状态",
+          "value": "v3",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs4",
+          "subject": "角色4",
+          "field": "状态",
+          "value": "v4",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs5",
+          "subject": "角色5",
+          "field": "状态",
+          "value": "v5",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs6",
+          "subject": "角色6",
+          "field": "状态",
+          "value": "v6",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs7",
+          "subject": "角色7",
+          "field": "状态",
+          "value": "v7",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs8",
+          "subject": "角色8",
+          "field": "状态",
+          "value": "v8",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs9",
+          "subject": "角色9",
+          "field": "状态",
+          "value": "v9",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs10",
+          "subject": "角色10",
+          "field": "状态",
+          "value": "v10",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs11",
+          "subject": "角色11",
+          "field": "状态",
+          "value": "v11",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs12",
+          "subject": "角色12",
+          "field": "状态",
+          "value": "v12",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs13",
+          "subject": "角色13",
+          "field": "状态",
+          "value": "v13",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs14",
+          "subject": "角色14",
+          "field": "状态",
+          "value": "v14",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs15",
+          "subject": "角色15",
+          "field": "状态",
+          "value": "v15",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs16",
+          "subject": "角色16",
+          "field": "状态",
+          "value": "v16",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs17",
+          "subject": "角色17",
+          "field": "状态",
+          "value": "v17",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs18",
+          "subject": "角色18",
+          "field": "状态",
+          "value": "v18",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs19",
+          "subject": "角色19",
+          "field": "状态",
+          "value": "v19",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs20",
+          "subject": "角色20",
+          "field": "状态",
+          "value": "v20",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs21",
+          "subject": "角色21",
+          "field": "状态",
+          "value": "v21",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs22",
+          "subject": "角色22",
+          "field": "状态",
+          "value": "v22",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs23",
+          "subject": "角色23",
+          "field": "状态",
+          "value": "v23",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs24",
+          "subject": "角色24",
+          "field": "状态",
+          "value": "v24",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs25",
+          "subject": "角色25",
+          "field": "状态",
+          "value": "v25",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs26",
+          "subject": "角色26",
+          "field": "状态",
+          "value": "v26",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs27",
+          "subject": "角色27",
+          "field": "状态",
+          "value": "v27",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs28",
+          "subject": "角色28",
+          "field": "状态",
+          "value": "v28",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs29",
+          "subject": "角色29",
+          "field": "状态",
+          "value": "v29",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs30",
+          "subject": "角色30",
+          "field": "状态",
+          "value": "v30",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs31",
+          "subject": "角色31",
+          "field": "状态",
+          "value": "v31",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs32",
+          "subject": "角色32",
+          "field": "状态",
+          "value": "v32",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs33",
+          "subject": "角色33",
+          "field": "状态",
+          "value": "v33",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs34",
+          "subject": "角色34",
+          "field": "状态",
+          "value": "v34",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs35",
+          "subject": "角色35",
+          "field": "状态",
+          "value": "v35",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs36",
+          "subject": "角色36",
+          "field": "状态",
+          "value": "v36",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs37",
+          "subject": "角色37",
+          "field": "状态",
+          "value": "v37",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs38",
+          "subject": "角色38",
+          "field": "状态",
+          "value": "v38",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "cs39",
+          "subject": "角色39",
+          "field": "状态",
+          "value": "v39",
+          "date": "2001-01-01",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "k1",
+          "name": "角色甲",
+          "appearance": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "k2",
+          "name": "角色甲",
+          "appearance": "灰色长袍",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "memories": [
+        {
+          "id": "mm1",
+          "title": "旧记忆",
+          "content": "内容一",
+          "date": "2001-01-01",
+          "importance": 0.1,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "mm2",
+          "title": "新记忆",
+          "content": "内容二",
+          "date": "2019-12-31",
+          "importance": 0.9,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        },
+        {
+          "id": "mm3",
+          "title": "新记忆2",
+          "content": "内容三",
+          "date": "2019-12-30",
+          "importance": 0.8,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        }
+      ],
+      "concepts": [
+        {
+          "id": "c1",
+          "name": "天机阁",
+          "content": "",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "c2",
+          "name": "天机阁",
+          "content": "掌管情报的机构。",
+          "tags": [
+            "组织"
+          ],
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 3
+        }
+      ],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0
+    },
+    "batchEntries": [
+      {
+        "tags": [
+          "甲",
+          "码头"
+        ]
+      },
+      {
+        "tags": [
+          "#乙",
+          "甲"
+        ]
+      },
+      {
+        "tags": [
+          "丙"
+        ]
+      },
+      {
+        "tags": []
+      }
+    ]
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（helpers: loadPlugin；楼层号固定 400）"
+}
