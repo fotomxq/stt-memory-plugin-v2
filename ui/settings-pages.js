@@ -679,6 +679,7 @@ import { VERSION } from '../core/constants.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
 import { storagePageHtml } from './sync.js';
+import { nsfwPageHtml } from './nsfw.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -802,7 +803,6 @@ export function basePageHtml(controls) {
 /** 页内「待后续批次」说明（不使用假实现） */
 const PENDING_NOTE = {
     api: 'API 页在 V1 用于配置自定义 API/代理；V2 走宿主（ST 自身）的生成能力，因此本页仅保留相关配置键，模型/连接选择在 ST 的「连接」面板。',
-    safety: '内容弱化的**词条库与固定规则库编辑**依赖尚未移植的内核（B8 批次）；本页先提供开关类配置。',
     debug: '调试页的日志面板与缓存清理（B9 批次）；本页先提供调试相关配置键。',
     prompts: '提示词页的**模板分组编辑/恢复默认/签名迁移**在 B6 批次接入；本页先提供提示词相关开关与破限前置文本开关。',
     storage: '存储页的**探测/测试/同步动作**依赖 B7 批次的内核；本页先提供存储开关。',
@@ -815,6 +815,8 @@ export function settingsPageHtml(pageId) {
     // 存储页：V1 的**分节布局**（记忆文件 / 原生存储 / 缓冲 / 一致性 / 世界书 / 状态与操作 / 同步日志）
     //   控件表仍由 SETTINGS_CONTROLS.storage 提供（同名同序），只是不再平铺渲染。
     if (pid === 'storage') return storagePageHtml(list);
+    // 内容弱化（NSFW）页：V1 的**手写四节**（内容弱化 / 固定规则替换 / 转化库 / 识别词条库）
+    if (pid === 'safety') return nsfwPageHtml();
     // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
     if (pid === 'base') return basePageHtml(list);
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');

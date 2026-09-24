@@ -8,6 +8,7 @@ import { defaultCfg } from './config.js';
 import { DIMENSIONS } from './constants.js';
 import { defaultCurrencyOwner, formatMoney, isTrackedCurrencyOwner, trackedCurrencyRoles } from './model/money.js';
 import { cfg, dbgLog, log, state, warn, worldbookHooks } from './model/runtime.js';
+import { nsfwSoftenRuleText } from './nsfw.js';
 function compileRegexList(list) {
     const out = [];
     for (const item of list || []) {
@@ -304,14 +305,6 @@ async function buildSummaryPrompt(floorsText, dims) {        const pt = cfg.prom
     ];
 }
 
-function nsfwSoftenEnabledOn() { try { return !!(cfg && cfg.nsfwSoftenEnabled === true); } catch (e) { return false; } }
-
-function nsfwSoftenRuleText() {
-    try {
-        if (!nsfwSoftenEnabledOn()) return '';
-        return String((cfg.promptTemplates && cfg.promptTemplates.nsfwSoften) || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.nsfwSoften) || '').trim();
-    } catch (e) { return ''; }
-}
 // 状态摘要（设置页/总览/诊断与测试用：只读扫描，零 AI）
 
 export { buildSummaryPrompt, armorPresetText, applyFeedRegex, buildExistingIndexText, buildCurrencyLedgerText };

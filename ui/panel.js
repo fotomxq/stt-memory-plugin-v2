@@ -19,7 +19,9 @@ import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
+import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
+import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
@@ -143,14 +145,26 @@ function overviewBody() {
             + (pending.length > 40 ? ' …等 ' + pending.length + ' 个' : '') + '</div></div>');
     } else lines.push('<div class="ftt-muted">🎉 最近楼层均已摘要。</div>');
     // 工具行（V1 同名按钮；未实现的动作给出明确提示，避免「按了没反应」）
+    // B8-4：V1 总览的「🌶 弱化NSFW」按钮（紧贴「📤 提取记忆」右侧）+ 内容弱化状态行
+    const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
+    const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="'
+        + (nsfwSt && nsfwSt.enabled ? '分析侧开关已开（新数据不含露骨内容）；本按钮按关键词扫描已有原子数据并交 AI 弱化' : '按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页开启）')
+        + '">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
     lines.push('<div class="ftt-row">'
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
+        + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>'
         + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearFloors" id="ftt-clearfloors-btn" title="清除「已处理楼层」记录（不删除任何记忆条目）">🧹 清除已处理记录</button>'
         + '</div>');
     lines.push('<div class="ftt-hint">「提取记忆」= 分析未摘要楼层（逐楼 AI 摘要 → 落库）；「立即注入」= 立刻把当前记忆按预算注入提示词。</div>');
+    if (nsfwSt && nsfwSt.enabled) {
+        const dimTxt = Object.keys(nsfwSt.byDim || {}).map((k) => (NSFW_DIM_LABEL[k] || k) + ' ' + nsfwSt.byDim[k]).join(' · ');
+        lines.push('<div class="ftt-hint" data-ftt-nsfw-state>🌶 内容弱化：分析侧开关已开启（设定 →「内容弱化」页可调开关、识别词条库与固定规则转化库；提示词模板「内容弱化（NSFW）」随分析记忆投喂 → 新数据不含露骨内容）；'
+            + '固定规则自动转化' + (nsfwSt.ruleAuto ? '已开启' : '已关闭') + '（' + nsfwSt.rules + ' 条）；当前按词条库扫描到 ' + nsfwSt.candidates + ' 处可弱化内容'
+            + (dimTxt ? '（' + dimTxt + '）' : '') + '，可点上方按钮逐批处理。</div>');
+    }
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
     return lines.join('\n');
 }
@@ -738,6 +752,12 @@ export async function panelAction(action, payload) {
             const cr = await clockAction(a, p);
             setNote(cr.note || '');
             result = Object.assign(result, cr);
+        }
+        else if (NSFW_ACTIONS.indexOf(a) >= 0) {
+            // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
+            const nr = await nsfwAction(a, p);
+            setNote(nr.note || '');
+            result = Object.assign(result, nr);
         }
         else if (SYNC_ACTIONS.indexOf(a) >= 0) {
             // 存储页动作（V1 同名：刷新状态 / 立即同步 / 校验并修复 / 刷新日志 / 清空日志）

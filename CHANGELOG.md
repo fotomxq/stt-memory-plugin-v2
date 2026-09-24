@@ -3,6 +3,35 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.13.0（2026-09-26）· B8-4 内容弱化（NSFW）（词条库 + 固定规则转化库 + AI 弱化）
+
+**本版（B8-4）**：
+1. **内核**（新增 `core/nsfw.js`，取自 V1 `09-AI摘要与楼层处理.js` NSFW 族）：
+   ① 识别词条库（63 条内置 + `cfg.nsfwKeywords` 自定义增/改/删/恢复内置，按「生效列表索引」定位）；
+   ② 固定规则转化库（63 条与识别词条一一对应 + `cfg.nsfwRules` 自定义；`cfg.nsfwReplaceAuto` 默认开）；
+   ③ `nsfwApplyRules`（**对原文单遍匹配 + 区间占位**：不链式二次转换、与规则顺序无关；重叠按长词优先；
+   英文 `\b词\w*` + 误伤名单 cumulative/circumstance 一类普通词不改写不计命中）+ `nsfwKeywordHits`（同一判定口径 + 签名缓存预筛）；
+   ④ `nsfwScan` / `nsfwSoftenPack`（12 维字段白名单 + 嵌套/数组展开；已总结隐藏的情节不参与；命中多者优先、单批 12 条）；
+   ⑤ `nsfwFixedReplace`（零 AI 落地 + **镜像字段 text↔content 同步** + 刷新 `updatedAt`）；
+   ⑥ `buildNsfwSoftenPrompt` / `applyNsfwSoftenResult`（**强校验**：结果不得仍含关键词、长度不得膨胀、只写命中字段）/
+   `runNsfwSoften`（先固定规则替换，剩余交 AI 二次弱化；忙位互斥；如实回报含 `fixed` 阶段处理量）；
+   ⑦ 分析侧开关 `nsfwSoftenEnabledOn` / `nsfwSoftenRuleText`（供 `core/prompt.js#buildSummaryPrompt` 追加规则）；
+2. **共用 AI 钩子**（新增 `core/ai-hooks.js`）：`callAi` / `feedText` / `busy` 三钩子统一持有，
+   `clock-ai.js` 的 `setClockAiHooks` 改为委托别名（B8-3 的调用方与测试不受影响）；
+3. **界面**（新增 `ui/nsfw.js`）：设定「内容弱化」页 V1 四节（内容弱化 / 固定规则替换 / 转化库编辑器 / 识别词条库编辑器）
+   + 状态行 + **10 个 V1 同名动作**（`nsfwSoften` `nsfwRuleApply` `nsfwKwAdd|Save|Del|Reset` `nsfwRuleAdd|Save|Del|Reset`，经面板统一分发）；
+   总览工具行新增「🌶 弱化NSFW（N）」按钮与分析侧开关状态行（逐维度命中数）；
+4. **接线**：`FTT.*` 新增 15 个内容弱化调试入口（`nsfwState`/`nsfwSoften`/`nsfwFixed`/`nsfwScan`/`nsfwHits`/`nsfwApply`/库增删改等）；
+5. **黄金样本 14 组（oracle = 真实 V1 插件 v1.206 + `stubFetch` 固定 AI 返回）**：库规模与内容、替换 6 组文本、命中 6 组、
+   单遍不链式 + 长词优先、词条库 6 步与转化库 5 步操作序列、扫描（隐藏情节排除）、打包、提示词逐字符、固定规则落地（含镜像同步与状态）、
+   AI 结果应用（合格/无变化/仍含关键词/过长/未知编号/无法处理）、两条端到端路径（固定规则先跑 / AI 二次弱化，含状态改写）、状态摘要。
+
+**验证**：`tests/unit/nsfw-golden.test.js` **22 项** + 冒烟 **R1–R5**；门禁全绿：单元 **35 文件 / 481 断言**、
+冒烟 **81 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8m-B8-4内容弱化NSFW.md` §2）**：AI 通道走共用注入钩子（ST `generateRaw`）；V1 的任务管线 UI（`pipeStart/…`/`abortTick`）
+未移植，改为长任务在途**直接拒绝**；库条目动作优先取 payload，回退面板 DOM。
+
 ## v2.12.0（2026-09-26）· B8-3 时钟域 AI 管线（AI 捕捉正则 + AI 结合正文修复日期时间）
 
 **本版（B8-3）**：

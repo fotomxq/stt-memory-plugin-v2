@@ -885,6 +885,68 @@ assert('Q4 面板动作可达：clockRegexGen / clockRepair 经动作分发执�
 
 host.ctx.generateRaw = origGenerateRaw;
 
+// ---------- R 内容弱化（B8-4：词条库 + 固定规则转化库 + AI 弱化） ----------
+const origGen2 = host.ctx.generateRaw;
+let aiSoft = '{}';
+host.ctx.generateRaw = async () => aiSoft;
+
+assert('R1 设定「内容弱化」页：V1 四节 + 词条库/转化库编辑器 + 状态行与动作按钮齐备', (async () => {
+    const r = await entry.popupAction('settingsSub', { sub: 'safety' });
+    const html = String(r.html || '');
+    return html.indexOf('内容弱化（NSFW）') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
+        && html.indexOf('转化库（匹配词 → 转化词，可在设定中管理）') >= 0 && html.indexOf('识别词条库（用于匹配需弱化的内容）') >= 0
+        && html.indexOf('data-ftt-action="nsfwSoften"') >= 0 && html.indexOf('data-ftt-action="nsfwRuleApply"') >= 0
+        && html.indexOf('data-ftt-nsfw-kw-new') >= 0 && html.indexOf('data-ftt-nsfw-rule-new-from') >= 0
+        && html.indexOf('data-ftt-nsfw-state') >= 0;
+})(), '');
+
+assert('R2 固定规则替换（零 AI）：nsfwRuleApply 机械转化命中词并落库（同时刷新 updatedAt）', (async () => {
+    const st = rtMod.state;
+    st.atoms = st.atoms || [];
+    st.atoms.push({ id: 'smoke-nsfw-1', text: '两人做爱后相拥，她发出呻吟。', title: '两人做爱后相拥，她发出呻吟。', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    const before = Number(host.ctx.generateRaw.calls || 0);
+    const r = await entry.popupAction('nsfwRuleApply', {});
+    const it = st.atoms.filter((x) => x.id === 'smoke-nsfw-1')[0];
+    return r.ok === true && String(it.text).indexOf('做爱') < 0 && String(it.text).indexOf('亲近') >= 0
+        && String(it.title).indexOf('低声') >= 0 && Number(it.updatedAt) > 0 && String(r.note).indexOf('固定规则替换完成') >= 0;
+})(), '');
+
+assert('R3 AI 弱化：nsfwSoften 交 AI 逐条改写，含关键词的结果被丢弃、合格结果落库（镜像字段同步）', (async () => {
+    const st = rtMod.state;
+    st.atoms.push({ id: 'smoke-nsfw-2', text: '他在调教中失控，淫水顺着大腿流下。', title: '他在调教中失控，淫水顺着大腿流下。', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    rtMod.cfg.nsfwReplaceAuto = false;
+    aiSoft = JSON.stringify({ '弱化': [{ '编号': 1, '文本': '他情绪失控，气息紊乱。', '说明': '留白' }, { '编号': 2, '文本': '仍在描写做爱的细节。' }], '无法处理': [3] });
+    const r = await globalThis.FTT.nsfwSoften({ silent: true });
+    const it = st.atoms.filter((x) => x.id === 'smoke-nsfw-2')[0];
+    rtMod.cfg.nsfwReplaceAuto = true;
+    return r.applied >= 1 && r.skipped >= 1 && String(it.text).indexOf('调教') < 0;
+})(), '');
+
+assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd / nsfwRuleAdd / nsfwState / nsfwApply）', (() => {
+    const F = globalThis.FTT;
+    const kw0 = F.nsfwKeywords().length;
+    const add = F.nsfwKeywordAdd('冒烟测试词');
+    const kw1 = F.nsfwKeywords().length;
+    const del = F.nsfwKeywordDelete(kw1 - 1);
+    F.nsfwKeywordReset();
+    const st = F.nsfwState();
+    const apply = F.nsfwApply('他插入');
+    return add.ok === true && kw1 === kw0 + 1 && del.ok === true && !!st && st.keywords === 63
+        && apply.text === '他进入' && Array.isArray(F.nsfwRules()) && typeof F.nsfwScan === 'function' && typeof F.nsfwHits === 'function';
+})(), '');
+
+assert('R5 分析侧开关：开启后总览显示「🌶 内容弱化」状态行，且 /ftt 与调试导出可读开关态', (async () => {
+    rtMod.cfg.nsfwSoftenEnabled = true;
+    const r = await entry.popupAction('tab', { tab: 'overview' });
+    const html = String(r.html || '');
+    const ok = html.indexOf('data-ftt-action="nsfwSoften"') >= 0 && html.indexOf('data-ftt-nsfw-state') >= 0
+        && html.indexOf('🌶 内容弱化：分析侧开关') >= 0 && globalThis.FTT.nsfwState().enabled === true;
+    rtMod.cfg.nsfwSoftenEnabled = false;
+    return ok;
+})(), '');
+
+host.ctx.generateRaw = origGen2;
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

@@ -19,17 +19,12 @@ import { PROMPT_TEMPLATES_V2, normalizeDeltaKeys } from './config.js';
 import { clockNormTime } from './clock.js';
 import { clockPatrolAnchor, clockPatrolSafeDate, clockPatrolScan, CLOCK_DIM_LABEL } from './clock-patrol.js';
 import { extractClockFromText } from './clock-extract.js';
+import { setAiHooks, aiCallText, aiFeedText, aiBusy } from './ai-hooks.js';
 
 // ---------- 注入钩子（宿主接线：AI 调用 / 投喂文本 / 长任务占用） ----------
-let aiHooks = {
-    /** AI 调用：入参为 V1 口径的 messages 数组，返回 { ok, text } 或字符串 */
-    callAi: async () => ({ ok: false, error: 'AI 调用未接线' }),
-    /** 投喂文本：最近 N 楼（V1 `buildFeedFloorText`） */
-    feedText: () => '',
-    /** 长任务占用判定（摘要/提取/同步在途 → 拒绝本次 AI 管线） */
-    busy: () => false,
-};
-export function setClockAiHooks(next) { aiHooks = Object.assign({}, aiHooks, next || {}); return aiHooks; }
+// 钩子由 `core/ai-hooks.js` 统一持有（与内容弱化 NSFW、后续修复域共用同一接线）；
+// `setClockAiHooks` 保留为兼容别名（B8-3 的调用方与测试使用）。
+export function setClockAiHooks(next) { return setAiHooks(next); }
 
 /** 提示词模板（配置优先 → 内置默认） */
 function promptTpl(key, fallback) {
@@ -46,15 +41,9 @@ function notify(kind, title, text) {
     } catch (e) { /* 忽略 */ }
 }
 /** AI 调用封装（统一成纯文本；失败返回空串） */
-async function callAiText(messages, label) {
-    try {
-        const r = await aiHooks.callAi(messages, { label });
-        if (r && typeof r === 'object') return r.ok === false ? '' : String(r.text == null ? '' : r.text);
-        return String(r == null ? '' : r);
-    } catch (e) { return ''; }
-}
+function callAiText(messages, label) { return aiCallText(messages, label); }
 /** 长任务占用（钩子缺失/异常 → 视为不占用） */
-function busyNow() { try { return !!aiHooks.busy(); } catch (e) { return false; } }
+function busyNow() { return aiBusy(); }
 
 // ==================== ① AI 捕捉正文 → 生成时钟正则（v1.184） ====================
 /** 校验 AI 返回的正则：去包裹 → 可编译 → 不匹配空串 */
@@ -122,7 +111,7 @@ async function genClockRegexes(opts) {
             return { ok: false, blocked: true };
         }
         const floors = Math.max(1, Number(o.floors) || Number(cfg.feedFloors) || 10);
-        const sample = String(o.sample != null ? o.sample : (aiHooks.feedText(floors) || '')).trim();
+        const sample = String(o.sample != null ? o.sample : aiFeedText(floors)).trim();
         if (!sample) {
             notify('error', 'AI 捕捉正则：没有可用正文', '最近楼层没有可分析的正文（或在投喂过滤后为空）。');
             return { ok: false, reason: 'no-text' };
@@ -187,7 +176,7 @@ function buildClockRepairPrompt(pack, floorsText) {
         const REASON = { invalid: '日期格式非法或不存在', jump: '年份远超当前剧情时钟', backward: '年份早于当前剧情时钟过多', 'time-invalid': '时间写法不规范' };
         const lines = p.entries.map(e => `#${e.n} ｜ ${e.label} ｜ 字段：${e.field === 'time' ? '时间' : '日期'} ｜ 现值：${e.value || '（空）'} ｜ 问题：${REASON[e.reason] || e.reason} ｜ 当前登记：日期 ${e.date || '（空）'} · 时间 ${e.time || '（空）'}${e.floors ? ` ｜ ${e.floors}` : ''}\n   内容：${e.text || '（无）'}`);
         const ctxRaw = (floorsText == null)
-            ? String(aiHooks.feedText(Math.max(1, Number(cfg.repairFloors) || Number(cfg.feedFloors) || 10)) || '')
+            ? aiFeedText(Math.max(1, Number(cfg.repairFloors) || Number(cfg.feedFloors) || 10))
             : String(floorsText);
         const ctx = ctxRaw.slice(-8000);
         return [

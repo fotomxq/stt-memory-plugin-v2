@@ -1,0 +1,829 @@
+{
+  "lib": {
+    "keywords": 63,
+    "rules": 63,
+    "kwHead": [
+      "做爱",
+      "性交",
+      "性爱",
+      "交合",
+      "交媾",
+      "上床"
+    ],
+    "kwTail": [
+      "semen",
+      "intercourse",
+      "masturbat",
+      "erotic",
+      "nipple",
+      "genital"
+    ],
+    "ruleHead": [
+      {
+        "from": "做爱",
+        "to": "亲近"
+      },
+      {
+        "from": "性交",
+        "to": "亲密接触"
+      },
+      {
+        "from": "性爱",
+        "to": "亲密"
+      }
+    ],
+    "ruleTail": [
+      {
+        "from": "erotic",
+        "to": "romantic"
+      },
+      {
+        "from": "nipple",
+        "to": "chest"
+      },
+      {
+        "from": "genital",
+        "to": "private area"
+      }
+    ],
+    "exposedKeywords": 63,
+    "exposedRules": 63,
+    "exposedFieldMapKeys": 12,
+    "batch": 12
+  },
+  "apply": [
+    {
+      "text": "两人做爱后相拥，她发出呻吟。",
+      "out": {
+        "text": "两人亲近后相拥，她发出低吟。",
+        "hits": 2,
+        "changed": true
+      }
+    },
+    {
+      "text": "Cum drainage and cumulative growth in a document; masturbation noted.",
+      "out": {
+        "text": "release drainage and cumulative growth in a document; self-soothing noted.",
+        "hits": 2,
+        "changed": true
+      }
+    },
+    {
+      "text": "pornography and orgasms, but the circumstance was cumbersome.",
+      "out": {
+        "text": "intimate and climax, but the circumstance was cumbersome.",
+        "hits": 2,
+        "changed": true
+      }
+    },
+    {
+      "text": "circumstance accumulate document accumulation",
+      "out": {
+        "text": "circumstance accumulate document accumulation",
+        "hits": 0,
+        "changed": false
+      }
+    },
+    {
+      "text": "他在调教中失控，淫水顺着大腿流下。",
+      "out": {
+        "text": "他在驯服中失控，湿意顺着大腿流下。",
+        "hits": 2,
+        "changed": true
+      }
+    },
+    {
+      "text": "没有任何需要转化的普通文本。",
+      "out": {
+        "text": "没有任何需要转化的普通文本。",
+        "hits": 0,
+        "changed": false
+      }
+    }
+  ],
+  "hits": [
+    {
+      "text": "两人做爱后相拥，她发出呻吟。",
+      "hits": [
+        "做爱",
+        "呻吟"
+      ]
+    },
+    {
+      "text": "Cum drainage and cumulative growth in a document; masturbation noted.",
+      "hits": [
+        "cum",
+        "masturbat"
+      ]
+    },
+    {
+      "text": "pornography and orgasms, but the circumstance was cumbersome.",
+      "hits": [
+        "porn",
+        "orgasm"
+      ]
+    },
+    {
+      "text": "circumstance accumulate document accumulation",
+      "hits": []
+    },
+    {
+      "text": "他在调教中失控，淫水顺着大腿流下。",
+      "hits": [
+        "调教",
+        "淫水"
+      ]
+    },
+    {
+      "text": "没有任何需要转化的普通文本。",
+      "hits": []
+    }
+  ],
+  "noChain": {
+    "text": "乙与丙，进入与戳",
+    "hits": 4,
+    "changed": true
+  },
+  "overlap": {
+    "text": "他进入",
+    "hits": 1,
+    "changed": true
+  },
+  "kwOps": [
+    [
+      "add",
+      {
+        "ok": true,
+        "n": 64,
+        "kw": "自定义词甲"
+      }
+    ],
+    [
+      "add-dup",
+      {
+        "ok": false,
+        "reason": "dup",
+        "n": 64
+      }
+    ],
+    [
+      "update",
+      {
+        "ok": true,
+        "n": 64,
+        "kw": "自定义词乙"
+      }
+    ],
+    [
+      "update-dup",
+      {
+        "ok": true,
+        "n": 64,
+        "kw": "自定义词乙"
+      }
+    ],
+    [
+      "delete",
+      {
+        "ok": true,
+        "n": 63,
+        "removed": "自定义词乙"
+      }
+    ],
+    [
+      "reset",
+      {
+        "ok": true,
+        "n": 63
+      }
+    ]
+  ],
+  "ruleOps": [
+    [
+      "add",
+      {
+        "ok": true,
+        "n": 64,
+        "from": "测试词",
+        "to": "替换词"
+      }
+    ],
+    [
+      "add-dup",
+      {
+        "ok": false,
+        "reason": "dup",
+        "n": 64,
+        "from": "测试词"
+      }
+    ],
+    [
+      "update",
+      {
+        "ok": true,
+        "n": 64,
+        "from": "测试词2",
+        "to": "替换词2"
+      }
+    ],
+    [
+      "delete",
+      {
+        "ok": true,
+        "n": 63,
+        "removed": "测试词2"
+      }
+    ],
+    [
+      "reset",
+      {
+        "ok": true,
+        "n": 63
+      }
+    ]
+  ],
+  "scan": {
+    "total": 9,
+    "byDim": {
+      "atoms": 4,
+      "snapshots": 2,
+      "memories": 1,
+      "scenes": 1,
+      "plotSegments": 1
+    },
+    "scannedItems": 6,
+    "scannedFields": 12,
+    "items": [
+      [
+        "atoms",
+        "a1",
+        "title",
+        [
+          "做爱",
+          "呻吟"
+        ]
+      ],
+      [
+        "atoms",
+        "a1",
+        "text",
+        [
+          "做爱",
+          "呻吟"
+        ]
+      ],
+      [
+        "atoms",
+        "a2",
+        "title",
+        [
+          "cum"
+        ]
+      ],
+      [
+        "atoms",
+        "a2",
+        "text",
+        [
+          "cum"
+        ]
+      ],
+      [
+        "memories",
+        "m1",
+        "title",
+        [
+          "调教"
+        ]
+      ],
+      [
+        "plotSegments",
+        "ps1",
+        "lines.0.text",
+        [
+          "性交"
+        ]
+      ],
+      [
+        "scenes",
+        "sc1",
+        "desc",
+        [
+          "呻吟"
+        ]
+      ],
+      [
+        "snapshots",
+        "s1",
+        "appearance",
+        [
+          "赤裸"
+        ]
+      ],
+      [
+        "snapshots",
+        "s1",
+        "personality.traits.1",
+        [
+          "乳尖"
+        ]
+      ]
+    ]
+  },
+  "pack": {
+    "total": 9,
+    "truncated": 0,
+    "byDim": {
+      "atoms": 4,
+      "snapshots": 2,
+      "memories": 1,
+      "scenes": 1,
+      "plotSegments": 1
+    },
+    "scannedItems": 6,
+    "scannedFields": 12,
+    "entries": [
+      {
+        "n": 1,
+        "label": "情节",
+        "dim": "atoms",
+        "id": "a1",
+        "path": "title",
+        "text": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+        "hits": [
+          "做爱",
+          "呻吟"
+        ],
+        "title": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。"
+      },
+      {
+        "n": 2,
+        "label": "情节",
+        "dim": "atoms",
+        "id": "a1",
+        "path": "text",
+        "text": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+        "hits": [
+          "做爱",
+          "呻吟"
+        ],
+        "title": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。"
+      },
+      {
+        "n": 3,
+        "label": "情节",
+        "dim": "atoms",
+        "id": "a2",
+        "path": "title",
+        "text": "Cum drainage was noted; cumulative growth of document.",
+        "hits": [
+          "cum"
+        ],
+        "title": "Cum drainage was noted;…"
+      },
+      {
+        "n": 4,
+        "label": "情节",
+        "dim": "atoms",
+        "id": "a2",
+        "path": "text",
+        "text": "Cum drainage was noted; cumulative growth of document.",
+        "hits": [
+          "cum"
+        ],
+        "title": "Cum drainage was noted;…"
+      },
+      {
+        "n": 5,
+        "label": "长期记忆",
+        "dim": "memories",
+        "id": "m1",
+        "path": "title",
+        "text": "记忆：他在调教中失控。",
+        "hits": [
+          "调教"
+        ],
+        "title": "记忆：他在调教中失控。"
+      },
+      {
+        "n": 6,
+        "label": "情节分段",
+        "dim": "plotSegments",
+        "id": "ps1",
+        "path": "lines.0.text",
+        "text": "激烈的性交描写。",
+        "hits": [
+          "性交"
+        ],
+        "title": ""
+      },
+      {
+        "n": 7,
+        "label": "场景",
+        "dim": "scenes",
+        "id": "sc1",
+        "path": "desc",
+        "text": "夜里的码头，呻吟声回荡。",
+        "hits": [
+          "呻吟"
+        ],
+        "title": "城市甲·码头"
+      },
+      {
+        "n": 8,
+        "label": "角色档案",
+        "dim": "snapshots",
+        "id": "s1",
+        "path": "appearance",
+        "text": "赤裸上身",
+        "hits": [
+          "赤裸"
+        ],
+        "title": "主角甲"
+      },
+      {
+        "n": 9,
+        "label": "角色档案",
+        "dim": "snapshots",
+        "id": "s1",
+        "path": "personality.traits.1",
+        "text": "乳尖敏感",
+        "hits": [
+          "乳尖"
+        ],
+        "title": "主角甲"
+      }
+    ]
+  },
+  "prompt": [
+    {
+      "role": "system",
+      "content": "【内容弱化（NSFW）】本规则用于**成年向题材**下的记录口径：区分「保留剧情」与「露骨描写」——\n剧情、关系、情绪、因果、后果一律照实保留（不得因为题材而省略、含糊或净化事实），**只把性行为与性器官的露骨直述换成柔性、克制、留白的表述**。\n改写口径：\n1. 用「亲近 / 亲热 / 同房 / 共度一夜 / 缠绵 / 肌肤之亲 / 越过了界线」等含蓄说法替代露骨动作与器官直述；\n2. 只保留叙事必需的信息（谁与谁、何时何地、关系与后果、态度与情绪），省略具体动作细节、体位、体液、声响等描写；\n3. 不添加原文没有的情节、评价或道德说教；不放大、不猎奇、不调情式渲染；\n4. 专有名词、数量、时间、地点、称谓照原样保留（它们是后续检索与追溯的锚点）；\n5. 长度**不超过原文**（弱化后应当更短或等长），语气与原文叙事人称保持一致；\n6. 同一字段只描述一次，不重复铺陈同一件事。\n禁止：不输出露骨词汇与露骨比喻；不使用替代性脏话；不写成医学报告或普法口吻；不因该规则删掉剧情结论（例如「两人有了夫妻之实」这类事实必须保留）。\n只输出 JSON，不要解释，不要复述原文。"
+    },
+    {
+      "role": "user",
+      "content": "【待弱化清单（本次唯一工作对象，共 9 条）】\n#1 ｜ 情节 ｜ 字段：title ｜ 条目：两人做爱后相拥，她发出呻吟，他解开她的衣扣。 ｜ 命中：做爱、呻吟\n   原文：两人做爱后相拥，她发出呻吟，他解开她的衣扣。\n#2 ｜ 情节 ｜ 字段：text ｜ 条目：两人做爱后相拥，她发出呻吟，他解开她的衣扣。 ｜ 命中：做爱、呻吟\n   原文：两人做爱后相拥，她发出呻吟，他解开她的衣扣。\n#3 ｜ 情节 ｜ 字段：title ｜ 条目：Cum drainage was noted;… ｜ 命中：cum\n   原文：Cum drainage was noted; cumulative growth of document.\n#4 ｜ 情节 ｜ 字段：text ｜ 条目：Cum drainage was noted;… ｜ 命中：cum\n   原文：Cum drainage was noted; cumulative growth of document.\n#5 ｜ 长期记忆 ｜ 字段：title ｜ 条目：记忆：他在调教中失控。 ｜ 命中：调教\n   原文：记忆：他在调教中失控。\n#6 ｜ 情节分段 ｜ 字段：lines.0.text ｜ 命中：性交\n   原文：激烈的性交描写。\n#7 ｜ 场景 ｜ 字段：desc ｜ 条目：城市甲·码头 ｜ 命中：呻吟\n   原文：夜里的码头，呻吟声回荡。\n#8 ｜ 角色档案 ｜ 字段：appearance ｜ 条目：主角甲 ｜ 命中：赤裸\n   原文：赤裸上身\n#9 ｜ 角色档案 ｜ 字段：personality.traits.1 ｜ 条目：主角甲 ｜ 命中：乳尖\n   原文：乳尖敏感\n\n输出：{\"弱化\":[{\"编号\":1,\"文本\":\"改写后的完整文本\",\"说明\":\"一句话说明改了什么\"}],\"无法处理\":[2]}（按 #编号 引用；文本不得含露骨词汇、长度不超过原文；没有改动的条目放进「无法处理」或省略）。"
+    }
+  ],
+  "fixed": {
+    "ok": true,
+    "fields": 9,
+    "replaced": 11,
+    "items": 6,
+    "skipped": 0,
+    "details": [
+      "情节（title）命中 2 处 → 两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+      "情节（text）命中 2 处 → 两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+      "情节（title）命中 1 处 → release drainage was n…",
+      "情节（text）命中 1 处 → release drainage was n…",
+      "角色档案（appearance）命中 1 处 → 未着衣上身",
+      "角色档案（personality.traits.1）命中 1 处 → 胸前敏感",
+      "长期记忆（title）命中 1 处 → 记忆：他在驯服中失控。",
+      "场景（desc）命中 1 处 → 夜里的码头，低吟声回荡。",
+      "情节分段（lines.0.text）命中 1 处 → 激烈的亲密接触描写。"
+    ]
+  },
+  "fixedState": {
+    "a1text": "两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+    "a1content": "两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+    "a2text": "release drainage was noted; cumulative growth of document.",
+    "a3text": "这段做爱描写已被总结隐藏，不应再被扫描。",
+    "m1": "记忆：他在调教中失控。",
+    "snapTraits": [
+      "坚强",
+      "胸前敏感"
+    ],
+    "snapAppearance": "未着衣上身",
+    "segLine0": "激烈的亲密接触描写。",
+    "segLine1": "平静的日常。",
+    "sceneDesc": "夜里的码头，低吟声回荡。",
+    "a1updated": true
+  },
+  "applyAi": {
+    "applied": 1,
+    "skipped": 3,
+    "unchanged": 1,
+    "unable": 1,
+    "failed": 0,
+    "details": [
+      "情节（title）→ 两人亲近之后相拥，她低声呢喃，他替她理好衣襟…（改写露骨描写）",
+      "情节 #3 → 丢弃（结果仍含「做爱」）",
+      "情节 #4 → 丢弃（结果过长 300 > 76）"
+    ]
+  },
+  "applyAiState": {
+    "entries": [
+      [
+        1,
+        "atoms",
+        "title",
+        "两人做爱后相拥，她发出呻吟，他解开她"
+      ],
+      [
+        2,
+        "atoms",
+        "text",
+        "两人做爱后相拥，她发出呻吟，他解开她"
+      ],
+      [
+        3,
+        "atoms",
+        "title",
+        "Cum drainage was n"
+      ],
+      [
+        4,
+        "atoms",
+        "text",
+        "Cum drainage was n"
+      ],
+      [
+        5,
+        "memories",
+        "title",
+        "记忆：他在调教中失控。"
+      ],
+      [
+        6,
+        "plotSegments",
+        "lines.0.text",
+        "激烈的性交描写。"
+      ],
+      [
+        7,
+        "scenes",
+        "desc",
+        "夜里的码头，呻吟声回荡。"
+      ],
+      [
+        8,
+        "snapshots",
+        "appearance",
+        "赤裸上身"
+      ],
+      [
+        9,
+        "snapshots",
+        "personality.traits.1",
+        "乳尖敏感"
+      ]
+    ],
+    "after": [
+      [
+        1,
+        "两人亲近之后相拥，她低声呢喃，他替她"
+      ],
+      [
+        2,
+        "两人做爱后相拥，她发出呻吟，他解开她"
+      ],
+      [
+        3,
+        "Cum drainage was n"
+      ],
+      [
+        4,
+        "Cum drainage was n"
+      ],
+      [
+        5,
+        "记忆：他在调教中失控。"
+      ],
+      [
+        6,
+        "激烈的性交描写。"
+      ],
+      [
+        7,
+        "夜里的码头，呻吟声回荡。"
+      ],
+      [
+        8,
+        "赤裸上身"
+      ],
+      [
+        9,
+        "乳尖敏感"
+      ]
+    ]
+  },
+  "run": {
+    "made": 0,
+    "skipped": true,
+    "total": 0,
+    "fixed": {
+      "fields": 9,
+      "replaced": 11,
+      "items": 6
+    }
+  },
+  "runState": {
+    "a1text": "两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+    "a1content": "两人亲近后相拥，她发出低吟，他解开她的衣扣。",
+    "a2text": "release drainage was noted; cumulative growth of document.",
+    "m1": "记忆：他在调教中失控。",
+    "snapTraits": [
+      "坚强",
+      "胸前敏感"
+    ]
+  },
+  "state": {
+    "enabled": false,
+    "candidates": 0,
+    "byDim": {},
+    "scannedItems": 6,
+    "scannedFields": 12,
+    "batch": 12,
+    "keywords": 63,
+    "custom": false,
+    "rules": 63,
+    "rulesCustom": false,
+    "ruleAuto": true
+  },
+  "runAiOnly": {
+    "made": 1,
+    "applied": 1,
+    "unchanged": 0,
+    "unable": 1,
+    "skipped": 2,
+    "failed": 0,
+    "total": 9,
+    "submitted": 9,
+    "truncated": 0,
+    "fixed": null,
+    "details": [
+      "情节（title）→ 两人亲近后相拥，她低声呢喃，他替她理好衣襟。",
+      "情节 #2 → 丢弃（结果过长 54 > 31）",
+      "情节 #3 → 丢弃（结果仍含「做爱」）"
+    ]
+  },
+  "runAiOnlyState": {
+    "a1text": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+    "a1content": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+    "a2text": "Cum drainage was noted; cumulative growth of document.",
+    "m1title": "记忆：他在调教中失控。"
+  },
+  "ruleAutoOff": true,
+  "inputs": {
+    "applyCases": [
+      "两人做爱后相拥，她发出呻吟。",
+      "Cum drainage and cumulative growth in a document; masturbation noted.",
+      "pornography and orgasms, but the circumstance was cumbersome.",
+      "circumstance accumulate document accumulation",
+      "他在调教中失控，淫水顺着大腿流下。",
+      "没有任何需要转化的普通文本。"
+    ],
+    "scenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [
+        {
+          "id": "sc1",
+          "text": "城市甲·码头",
+          "title": "城市甲·码头",
+          "date": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "desc": "夜里的码头，呻吟声回荡。"
+        }
+      ],
+      "npcs": [],
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+          "title": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+          "date": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "content": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。"
+        },
+        {
+          "id": "a2",
+          "text": "Cum drainage was noted; cumulative growth of document.",
+          "title": "Cum drainage was noted; cumulative growth of document.",
+          "date": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "a3",
+          "text": "这段做爱描写已被总结隐藏，不应再被扫描。",
+          "title": "这段做爱描写已被总结隐藏，不应再被扫描。",
+          "date": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "summarizedBy": "sum1"
+        }
+      ],
+      "currentStates": [],
+      "snapshots": [
+        {
+          "id": "s1",
+          "name": "主角甲",
+          "personality": {
+            "traits": [
+              "坚强",
+              "乳尖敏感"
+            ]
+          },
+          "appearance": "赤裸上身"
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "text": "记忆：他在调教中失控。",
+          "title": "记忆：他在调教中失控。",
+          "date": "",
+          "tags": [],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [
+        {
+          "id": "ps1",
+          "header": "第一段",
+          "lines": [
+            {
+              "label": "线一",
+              "text": "激烈的性交描写。"
+            },
+            {
+              "label": "线二",
+              "text": "平静的日常。"
+            }
+          ]
+        }
+      ],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0
+    },
+    "aiSoften": "{\"弱化\":[{\"编号\":1,\"文本\":\"两人亲近后相拥，她低声呢喃，他替她理好衣襟。\",\"说明\":\"留白\"},{\"编号\":2,\"文本\":\"There was a release; growth of the document continued.\",\"说明\":\"softened\"},{\"编号\":3,\"文本\":\"仍然出现做爱的细节描写。\"}],\"无法处理\":[4]}",
+    "delta": {
+      "弱化": [
+        {
+          "编号": 1,
+          "文本": "两人亲近之后相拥，她低声呢喃，他替她理好衣襟。",
+          "说明": "改写露骨描写"
+        },
+        {
+          "编号": 2,
+          "文本": "两人做爱后相拥，她发出呻吟，他解开她的衣扣。",
+          "说明": "与原文相同？"
+        },
+        {
+          "编号": 3,
+          "文本": "这一段仍在描写做爱的细节。",
+          "说明": "仍含关键词"
+        },
+        {
+          "编号": 4,
+          "文本": "这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本这是一段非常长的文本"
+        },
+        {
+          "编号": 99,
+          "文本": "不存在的编号"
+        }
+      ],
+      "无法处理": [
+        2
+      ]
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（helpers: loadPlugin + stubFetch 固定 AI 返回）；inputs 为回放输入"
+}
