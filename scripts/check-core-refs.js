@@ -12,7 +12,18 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CORE = join(ROOT, 'core');
+/**
+ * 扫描范围：`core/` + `host/` + `adapters/` + `ui/` + 入口 `index.js`/`devtools.js`。
+ * 背景：本门禁最初只扫 core/，结果 host/extract.js 漏了一个 `getLastMessageId` 导入也没被拦住（B3 实测踩到）——
+ *   「未定义标识符」这类缺陷与所在层无关，只在**允许的全局**上分层（宿主层可用 document/window/fetch/toastr/$ 等）。
+ */
+const LAYERS = ['core', 'host', 'adapters', 'ui'];
+const ENTRY_FILES = ['index.js', 'devtools.js'];
+/** 宿主层/适配层可用的浏览器与 ST 全局（core 不得使用：由 check-core-purity.js 另管） */
+const HOST_GLOBALS = new Set(('document window globalThis navigator location localStorage sessionStorage indexedDB caches fetch XMLHttpRequest ' +
+    'toastr $ jQuery setTimeout clearTimeout setInterval clearInterval queueMicrotask requestAnimationFrame cancelAnimationFrame ' +
+    'console performance Blob File FileReader FormData Headers Request Response WebSocket Worker EventSource Image ' +
+    'MutationObserver ResizeObserver IntersectionObserver CustomEvent Event KeyboardEvent MouseEvent').split(/\s+/).filter(Boolean));
 
 /** JS 内建与语言关键字（允许在 core 中出现） */
 const GLOBALS = new Set(('globalThis undefined null true false NaN Infinity Math JSON Object Array String Number Boolean ' +
@@ -21,7 +32,9 @@ const GLOBALS = new Set(('globalThis undefined null true false NaN Infinity Math
     'Intl structuredClone setTimeout clearTimeout setInterval clearInterval queueMicrotask arguments this super new typeof ' +
     'instanceof in of void delete await async yield class function return if else for while do switch case break continue ' +
     'try catch finally throw const let var import export from as default extends static get set ' +
-    'DecompressionStream TextDecoder TextEncoder Blob Response Request URL URLSearchParams AbortController').split(/\s+/).filter(Boolean));
+    'DecompressionStream TextDecoder TextEncoder Blob Response Request URL URLSearchParams AbortController ' +
+    'btoa atob escape unescape Uint8Array Int8Array Uint16Array Int32Array Float64Array ArrayBuffer DataView ReadableStream WritableStream ' +
+    'File FileReader FormData Headers crypto navigator').split(/\s+/).filter(Boolean));
 
 /** 剔除注释、字符串与模板字面量的「非代码」部分（模板里的 ${…} 保留为代码） */
 function codeOnly(src) {
@@ -87,8 +100,11 @@ function declared(code) {
     for (const m of code.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     // for 循环声明（含数组/对象解构）：for (const [k, v] of …) / for (let i = 0; …)
     for (const m of code.matchAll(/\bfor\s*\(\s*(?:const|let|var)\s+(\[[^\]]*\]|\{[^}]*\}|[A-Za-z_$][\w$]*)/g)) addParams(names, m[1]);
-    // 对象字面量简写方法 / getter / setter：行内 `name(params) {`
+    // 对象字面量简写方法 / getter / setter：行首 `name(params) {`
     for (const m of code.matchAll(/^[ \t]*(?:async\s+)?(?:get\s+|set\s+|\*\s*)?([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/gm)) names.add(m[1]);
+    // 同一行内的方法简写（对象字面量里 `{ add() { … }, remove() { … } }`；类方法亦然）：
+    //   形态 = 前置 `{` 或 `,` + 名字 + 括号参数 + `{`
+    for (const m of code.matchAll(/[\{,]\s*(?:async\s+)?(?:get\s+|set\s+|\*\s*)?([A-Za-z_$][\w$]*)\s*\(([^()]*)\)\s*\{/g)) { names.add(m[1]); addParams(names, m[2]); }
     // 多声明符（const a = 1, b = 2）—— 逐个逗号段取名字
     for (const m of code.matchAll(/\b(?:const|let|var)\s+((?:(?!\b(?:const|let|var)\b)[^;\n])*)/g)) {
         let depth = 0, seg = '';
@@ -125,6 +141,13 @@ function declared(code) {
         });
     }
     for (const m of code.matchAll(/\bimport\s+([A-Za-z_$][\w$]*)\s+from/g)) names.add(m[1]);
+    // `export { A, B as C } from './mod'`（re-export）：A/B 由源模块提供，视为已声明
+    for (const m of code.matchAll(/\bexport\s*\{([^}]*)\}\s*from/g)) {
+        m[1].split(',').forEach((part) => {
+            const src = part.split(/\bas\b/)[0].trim();
+            if (/^[A-Za-z_$][\w$]*$/.test(src)) names.add(src);
+        });
+    }
     for (const m of code.matchAll(/\bimport\s*\*\s*as\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     return names;
 }
@@ -144,6 +167,7 @@ function referenced(code) {
         const after = code.slice(m.index + m[1].length + m[2].length).trimStart();
         if (before.endsWith('.') || before.endsWith('?.')) continue;
         if (after.startsWith(':') && !after.startsWith('::')) continue;      // 对象键 / 标签
+        if (/^as\s/.test(after)) continue;                                  // 别名的源名（`X as Y` / `import { X as Y }`）
         out.add(m[2]);
     }
     return out;
@@ -158,13 +182,18 @@ function walk(dir, acc = []) {
     return acc;
 }
 
-const files = walk(CORE).sort();
+const files = LAYERS.map((d) => join(ROOT, d)).filter((p) => { try { return statSync(p).isDirectory(); } catch (e) { return false; } })
+    .flatMap((d) => walk(d))
+    .concat(ENTRY_FILES.map((f) => join(ROOT, f)).filter((p) => { try { return statSync(p).isFile(); } catch (e) { return false; } }))
+    .sort();
 const violations = [];
 for (const f of files) {
     const code = codeOnly(readFileSync(f, 'utf8'));
     const decl = declared(code);
     for (const name of referenced(code)) {
-        if (decl.has(name) || GLOBALS.has(name)) continue;
+        if (decl.has(name) || GLOBALS.has(name) || HOST_GLOBALS.has(name)) continue;
+        // 宿主层额外放行 ST 注入的 jQuery 插件与全局函数式扩展（如 import.meta）
+        if (name === 'meta') continue;
         violations.push({ file: relative(ROOT, f), name });
     }
 }
@@ -183,10 +212,10 @@ if (explainArg) {
 
 const asJson = process.argv.includes('--json');
 if (asJson) { console.log(JSON.stringify({ files: files.length, violations }, null, 2)); process.exit(violations.length ? 1 : 0); }
-console.log('内核标识符检查：扫描 ' + files.length + ' 个文件（core/）');
+console.log('标识符检查：扫描 ' + files.length + ' 个文件（core/ host/ adapters/ ui/ + 入口）');
 if (violations.length) {
-    console.log('❌ 内核标识符门禁未通过（' + violations.length + ' 处未定义标识符）');
+    console.log('❌ 标识符门禁未通过（' + violations.length + ' 处未定义标识符）');
     violations.slice(0, 40).forEach((v) => console.log('   · ' + v.file + ' → ' + v.name));
     process.exit(1);
 }
-console.log('✅ 内核标识符门禁通过（0 未定义标识符）');
+console.log('✅ 标识符门禁通过（0 未定义标识符）');

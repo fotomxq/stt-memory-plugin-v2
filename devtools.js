@@ -65,6 +65,9 @@ export function installDevtools(hooks) {
             panelInfo: () => (hooks && typeof hooks.v1PanelInfo === 'function' ? hooks.v1PanelInfo() : null),
             panelTabs: () => (hooks && typeof hooks.v1PanelTabs === 'function' ? hooks.v1PanelTabs() : []),
             injectNow: () => (hooks && typeof hooks.injectNow === 'function' ? hooks.injectNow() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            summary: (opts) => (hooks && typeof hooks.summary === 'function' ? hooks.summary(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            abort: () => (hooks && typeof hooks.abort === 'function' ? hooks.abort() : { ok: false, reason: 'no-hook' }),
+            clearFloors: () => (hooks && typeof hooks.clearFloors === 'function' ? hooks.clearFloors() : Promise.resolve({ ok: false, reason: 'no-hook' })),
             popupAction: (a, p) => (hooks && typeof hooks.popupAction === 'function' ? hooks.popupAction(a, p || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });

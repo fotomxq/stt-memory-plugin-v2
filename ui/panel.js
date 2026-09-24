@@ -31,6 +31,7 @@ const TAB_DIM = { atoms: 'atoms', states: 'currentStates', snapshots: 'snapshots
 
 const ps = {
     tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0,
+    busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
     sel: {},            // 多选集合：{ [kind]: Set<id> }
     multi: {},          // 多选模式：{ [kind]: bool }
     showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
@@ -140,6 +141,8 @@ function overviewBody() {
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>'
+        + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearFloors" id="ftt-clearfloors-btn" title="清除「已处理楼层」记录（不删除任何记忆条目）">🧹 清除已处理记录</button>'
         + '</div>');
     lines.push('<div class="ftt-hint">「提取记忆」= 分析未摘要楼层（逐楼 AI 摘要 → 落库）；「立即注入」= 立刻把当前记忆按预算注入提示词。</div>');
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
@@ -367,8 +370,13 @@ export function panelBodyHtml(tab) {
 export function panelHtml() {
     const active = PANEL_TABS.some((x) => x[0] === ps.tab) ? ps.tab : 'overview';
     const nameTxt = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
-    const head = '<div class="ftt-modal-head">'
+    const bp = (ps.busy && typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : null;
+    const busyNote = ps.busy
+        ? ('<span class="ftt-busy">' + (bp && bp.segTotal ? ('🔄 分析中 ' + bp.segDone + '/' + bp.segTotal + ' 段' + (bp.activeSeg ? ('（第 ' + bp.activeSeg.start + '-' + bp.activeSeg.end + ' 楼）') : '')) : '🔄 分析中…') + '</span>')
+        : '';
+    const head = '<div class="ftt-modal-head' + (ps.busy ? ' ftt-head-busy' : '') + '">'
         + '<span class="ftt-title">📖 FTT记忆组件 ' + esc(VERSION) + (nameTxt ? ' · ' + esc(nameTxt) : '') + '</span>'
+        + busyNote
         + '<span class="ftt-stat" title="全部类目记忆条目之和">总记忆数 ' + totalMemory() + '</span>'
         + '<button class="ftt-close" data-ftt-action="close">✕</button></div>';
     const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
@@ -506,19 +514,44 @@ export async function panelAction(action, payload) {
             const r = consoleDelete(dataKindOf(String(p.kind || '')), String(p.id || ''));
             setNote(r.ok ? '已删除 ' + String(p.id || '') + '（已留墓碑）' : '删除失败');
             result = Object.assign(result, r);
-        } else if (a === 'summary' || a === 'extractNow') {
+        } else if (a === 'summary') {
+            // V1「⚡ 立即 AI 摘要」：分段批量（cfg.summaryChunkSize 楼/段）
+            if (typeof hooks.autoSummary !== 'function') { setNote('批量摘要入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            setNote('分析中…（分段批量摘要）');
+            ps.busy = true;
+            renderPanel();
+            const r = await hooks.autoSummary({ silent: false });
+            ps.busy = false;
+            setNote(r && r.ok
+                ? ('摘要完成：' + r.segments + ' 段 · 读取楼层 ' + r.floors + ' · 新增 ' + r.added + ' 条' + (r.aborted ? '（中断：剩余 ' + r.aborted + ' 段未分析）' : ''))
+                : ('未完成：' + String((r && r.reason) || '未知') + (r && r.failed ? '（失败 ' + r.failed + ' 段）' : '')));
+        } else if (a === 'extractNow') {
             if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             setNote('分析中…');
             const r = await hooks.extract({});
             setNote(r && Array.isArray(r.results)
                 ? ('分析完成：成功 ' + r.done + ' / ' + r.results.length + (r.note ? '（' + r.note + '）' : ''))
                 : (r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('未完成：' + String((r && r.reason) || '未知'))));
+        } else if (a === 'abortAnalysis' || a === 'abort') {
+            const r = (typeof hooks.abort === 'function') ? hooks.abort() : { ok: false };
+            setNote(r && r.busy ? '已请求中断：当前段完成后停止' : '当前没有正在运行的分析任务');
+        } else if (a === 'clearFloors') {
+            const r = (typeof hooks.clearFloors === 'function') ? hooks.clearFloors() : { ok: false };
+            setNote(r && r.ok ? ('已清空已处理楼层记录（' + (r.cleared || 0) + ' 个）') : '清空失败');
         } else if (a === 'summaryFloor') {
             const floor = Number(p.floor);
             if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             setNote('分析第 ' + floor + ' 楼…');
             const r = await hooks.extract({ floor });
-            setNote(r && r.ok ? ('第 ' + floor + ' 楼：新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('第 ' + floor + ' 楼未完成：' + String((r && r.reason) || '未知')));
+            // 兼容两种返回形态：单楼结果 {ok, added, total} 与批量结果 {ok, results:[{floor,added,…}]}
+            let added = r && r.added, total = r && r.total, ok = !!(r && r.ok);
+            if (r && Array.isArray(r.results)) {
+                const hit = r.results.filter((x) => Number(x && x.floor) === floor)[0] || r.results[0] || null;
+                ok = !!(hit && hit.ok);
+                added = hit ? hit.added : 0;
+            }
+            setNote(ok ? ('第 ' + floor + ' 楼：新增 ' + (Number(added) || 0) + ' 条' + (total === undefined ? '' : '（共 ' + total + '）'))
+                : ('第 ' + floor + ' 楼未完成：' + String((r && r.reason) || '未知')));
         } else if (a === 'inject') {
             if (typeof hooks.inject !== 'function') { setNote('注入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             const r = await hooks.inject();

@@ -9,16 +9,39 @@
 // 失败姿态：任何一步失败都只回报原因（不抛出、不 abort、不改 chat）。
 // ============================================================
 import { DIMENSIONS } from '../core/constants.js';
-import { cfg, state, dbgLog, log, warn } from '../core/model/runtime.js';
+import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/runtime.js';
 import { buildSummaryPrompt } from '../core/prompt.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { rawGenerate, generationAvailability } from './generation.js';
-import { floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats } from './floors.js';
+import {
+    floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
+    collectFloorLinesInRange, clearProcessedFloors,
+} from './floors.js';
+import { applyFeedRegex } from '../core/prompt.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
+    // B3：分段批量（V1 runAutoSummary）状态
+    segTotal: 0, segDone: 0, segRange: '', activeSeg: null, aborted: 0, lastBatch: null,
 };
+/** 中断请求标志（协作式中断：段与段之间生效；在途 AI 请求由宿主决定是否可取消） */
+let abortRequested = false;
+/** 请求中断当前批量分析（V1 abortAnalysis 的 V2 版） */
+export function abortExtract() {
+    const active = extractState.busy === true;
+    abortRequested = true;
+    if (!active) abortRequested = false;
+    return { ok: true, busy: active };
+}
+/** 中断标志是否处于请求态（诊断/测试） */
+export function abortPending() { return abortRequested === true; }
+/** 当前正在分析的楼层区间（面板动效/进度用） */
+export function activeSegment() { return extractState.activeSeg ? Object.assign({}, extractState.activeSeg) : null; }
+/** 批量进度（面板头部 busy 文案用） */
+export function batchProgress() {
+    return { segTotal: extractState.segTotal, segDone: extractState.segDone, range: extractState.segRange, activeSeg: activeSegment(), aborted: extractState.aborted };
+}
 
 /** 提取统计（/ftt、FTT 调试导出与设置面板共用） */
 export function extractStats() { return Object.assign({}, extractState); }
@@ -114,6 +137,114 @@ export async function analyzeFloors(opts) {
         extractState.busy = false;
     }
 }
+
+/** 分析**一个楼层段**（V1 `runAutoSummary` 的段分析：一段拼成一次 AI 调用，整段记账） */
+export async function analyzeSegment(start, end, opts) {
+    const o = opts || {};
+    const s0 = Math.max(0, Number(start) || 0);
+    const e0 = Math.max(s0, Number(end) || s0);
+    const t0 = Date.now();
+    extractState.activeSeg = { start: s0, end: e0 };
+    try {
+        const text = String(applyFeedRegex(collectFloorLinesInRange(s0, e0).join('\n')) || '').trim();
+        if (!text) { recordProcessedFloors(s0, e0); return { ok: true, empty: true, added: 0, floorStart: s0, floorEnd: e0 }; }
+        const gen = o.ai || rawGenerate;
+        if (!o.ai && !generationAvailability().generateRaw) return { ok: false, reason: 'no-generate', floorStart: s0, floorEnd: e0 };
+        const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
+        const messages = await buildSummaryPrompt(text, dims);
+        const args = promptToGenerateArgs(messages);
+        const resp = await gen(args);
+        if (!resp || resp.ok === false) return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
+        const delta = extractJsonObject(resp.text);
+        if (!delta) return { ok: false, reason: 'no-json', chars: String(resp.text || '').length, floorStart: s0, floorEnd: e0 };
+        const mr = mergeDelta(delta, { start: s0, end: e0 });
+        if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
+        // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
+        recordProcessedFloors(s0, e0);
+        const ms = Date.now() - t0;
+        return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta) };
+    } finally {
+        extractState.activeSeg = null;
+    }
+}
+
+/** 把楼层区间切成段（V1：`cfg.summaryChunkSize`，默认 10 楼/段） */
+export function buildSegments(start, end, chunkSize) {
+    const s0 = Math.max(0, Number(start) || 0);
+    const e0 = Math.max(s0, Number(end) || s0);
+    const n = Math.max(1, Number(chunkSize) || Number(cfg.summaryChunkSize) || 10);
+    const out = [];
+    for (let a = s0; a <= e0; a += n) out.push({ start: a, end: Math.min(e0, a + n - 1) });
+    return out;
+}
+
+/**
+ * 批量分析（V1 `runAutoSummary` 的 V2 版）：分段 → 逐段 AI → 整段落库与记账。
+ *   · `silent=false`（手动「⚡ 立即 AI 摘要」）：分析最近 `cfg.feedFloors`/`cfg.summaryFloors` 楼
+ *   · `silent=true`（自动补全）：覆盖全部**未摘要** AI 楼，并跳过已处理段
+ *   · **协作式中断**：`abortExtract()` 后，段与段之间停止（在途请求完成后不再继续）
+ * @returns {Promise<{ok:boolean, made:number, added:number, failed:number, floors:string, segments:number, aborted:number, reason?:string}>}
+ */
+export async function runAutoSummary(opts) {
+    const o = opts || {};
+    if (extractState.busy) return { ok: false, reason: 'busy', made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
+    extractState.busy = true;
+    abortRequested = false;
+    extractState.segTotal = 0;
+    extractState.segDone = 0;
+    extractState.aborted = 0;
+    const t0 = Date.now();
+    try {
+        const lastId = (() => { try { return Number(getLastMessageId()); } catch (e) { return -1; } })();
+        if (!Number.isFinite(lastId) || lastId < 0) return { ok: false, reason: 'no-message', made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
+        // 跳过最近 2 楼（生成中的半成品楼；V1 `timelySummaryEffLast` 在及时分析下为 0）
+        const skip = (cfg && cfg.timelyAnalysis === true) ? 0 : 2;
+        const effLast = Math.max(0, lastId - skip);
+        const feedN = Math.max(1, Number(cfg.feedFloors) || Number(cfg.summaryFloors) || 10);
+        const silent = o.silent === true;
+        let start = Math.max(0, effLast - feedN + 1);
+        let pendingIds = listUnprocessedFloors({ endFloor: effLast });
+        if (silent) {
+            if (!pendingIds.length) return { ok: true, made: 0, added: 0, failed: 0, floors: '0-0', segments: 0, aborted: 0, skipped: true };
+            start = Math.min.apply(null, pendingIds);
+        }
+        const segments = buildSegments(start, effLast, o.chunkSize || cfg.summaryChunkSize);
+        extractState.segTotal = segments.length;
+        extractState.segRange = start + '-' + effLast;
+        let made = 0, added = 0, failed = 0, aborted = 0;
+        for (const seg of segments) {
+            if (abortRequested) { aborted = segments.length - extractState.segDone; extractState.aborted = aborted; break; }
+            // 静默模式：整段已完成 → 跳过（V1 同口径）
+            if (silent) {
+                const segIds = [];
+                for (let i = seg.start; i <= seg.end; i++) if (pendingIds.indexOf(i) >= 0) segIds.push(i);
+                if (!segIds.length) { extractState.segDone += 1; continue; }
+            }
+            const r = await analyzeSegment(seg.start, seg.end, o);
+            extractState.segDone += 1;
+            if (r.ok && !r.empty) { made += 1; added += Number(r.added) || 0; }
+            else if (!r.ok) failed += 1;
+            extractState.lastAdded = added;
+            if (typeof o.onProgress === 'function') { try { o.onProgress({ seg: Object.assign({}, seg), result: r, done: extractState.segDone, total: extractState.segTotal }); } catch (e) { /* 忽略 */ } }
+        }
+        const out = { ok: made > 0 || (failed === 0 && aborted === 0), made, added, failed, floors: start + '-' + effLast, segments: segments.length, aborted, ms: Date.now() - t0 };
+        extractState.lastBatch = out;
+        if (made) extractState.ok += 1;
+        if (failed) extractState.fail += 1;
+        return out;
+    } catch (e) {
+        extractState.fail += 1;
+        extractState.lastReason = String((e && e.message) || e);
+        return { ok: false, reason: 'error', error: extractState.lastReason, made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
+    } finally {
+        extractState.busy = false;
+        extractState.activeSeg = null;
+        abortRequested = false;
+    }
+}
+
+/** 清除「已处理楼层」台账（面板动作 `clearFloors`） */
+export function clearFloors() { return clearProcessedFloors(); }
 
 /** 自动提取：`GENERATION_ENDED` 后分析最后一楼（受 `cfg.autoExtract` 与忙碌状态保护） */
 export async function autoExtractLatest(opts) {

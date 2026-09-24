@@ -3,6 +3,25 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.4.0（2026-09-24）· B3 提取与楼层管理（分段批量摘要 / 中断 / 清台账）
+
+**本版（B3）**：
+1. **分段批量摘要**（V1 `runAutoSummary`）：`runAutoSummary({silent, chunkSize})` —— 按 `cfg.summaryChunkSize`（默认 10）
+   切段，**一段 = 一次 AI 调用**（段文本 = 该段楼层行经投喂正则过滤），随后 `mergeDelta(delta, 段范围)` 并 `recordProcessedFloors(段起, 段止)`；
+2. **手动/静默两种模式**：手动 = 最近 `cfg.feedFloors` 楼（跳过最近 2 楼半成品，及时分析下不跳过）；静默 = 全部未摘要 AI 楼，整段已处理则跳过（零 AI 调用）；
+3. **中断（协作式）**：`abortExtract()` 在**段与段之间**生效（已完成段与落盘内容保留），返回 `aborted` 段数；`abortPending()`/`batchProgress()` 可读。
+   说明：V1 可中止在途 HTTP，V2 走 ST `generateRaw` 无法取消在途请求 —— 已在按钮 tooltip 与文档写明；
+4. **清除已处理记录** `clearFloors()`：清空台账、`lastKnownFloor=-1`、重签名并落盘，**不删除任何记忆条目**；
+5. **进度与动效**：头部 `ftt-head-busy` + 「🔄 分析中 N/M 段（第 a-b 楼）」；未摘要楼层中当前段加 `.ftt-floor-pulse`（V1 同名类）；
+   总览工具行补齐 `✖ 中断`、`🧹 清除已处理记录`；
+6. **门禁扩容（重要）**：`scripts/check-core-refs.js` 由「只扫 core/」扩展为**扫描 core/ + host/ + adapters/ + ui/ + 入口（51 文件）**，
+   分层放行允许的宿主全局；并修好三类误报（`import { X as Y }` 源名、`export { … } from` 再导出名、行内对象方法简写与参数）。
+   扩容后立即拦到本批一处漏导入（`host/extract.js` 缺 `getLastMessageId`，此前表现为静默 `no-message`）。
+
+**验证**：新增 `tests/unit/extract-batch.test.js` **9 项**（分段构建 / 整段记账 / 失败不记账 / 空段跳过 / 手动批量 / 静默补全跳过 / 协作式中断 / 清台账不删数据 / 面板接线与动效）；
+`panel.test.js` A1 改为分别校验 `⚡` 批量与 `📤` 逐楼钩子。门禁：单元 **25 文件 / 331 断言**、冒烟 **55 项**、五道门禁全绿；
+文档 `docs/P8d-B3提取与楼层.md`，`docs/P8-功能对齐总表.md` B3 打勾。
+
 ## v2.3.0（2026-09-24）· B2 条目操作与编辑器全量（V1 字段表）
 
 **本版（B2）**：

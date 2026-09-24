@@ -187,6 +187,21 @@ export function listUnprocessedFloors(opts) {
     return out;
 }
 
+/**
+ * 清除「已处理楼层」台账（V1 `clearFloors`）：清空数组 + 复位 `lastKnownFloor` + 落盘。
+ * 只清「哪些楼层已分析」的记账，**不删除任何记忆条目**（V1 同口径）。
+ */
+export function clearProcessedFloors() {
+    try {
+        const before = (state.processedFloors || []).length;
+        state.processedFloors = [];
+        state.lastKnownFloor = -1;
+        state.processedVer = processedVerTag();
+        saveState();
+        return { ok: true, cleared: before };
+    } catch (e) { return { ok: false, cleared: 0 }; }
+}
+
 /** 台账统计（诊断用） */
 export function processedStats() {
     try {
