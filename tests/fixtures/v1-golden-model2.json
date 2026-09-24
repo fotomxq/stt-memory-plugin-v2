@@ -196,14 +196,14 @@
       "identity": {
         "gender": "男",
         "birthDate": "1900-05-20",
-        "age": "",
+        "age": "19",
         "species": "",
         "occupation": "",
         "title": "",
         "family": "",
         "deceased": true
       },
-      "appearance": "",
+      "appearance": "身高178cm；体型精瘦；发色发型黑色短发；瞳色褐色；肤色偏黑；特征左眉疤",
       "personality": {
         "traits": [
           "沉稳",
@@ -272,7 +272,7 @@
       "identity": {
         "gender": "女",
         "birthDate": "1890-01",
-        "age": "",
+        "age": "30",
         "species": "",
         "occupation": "",
         "title": "",
@@ -426,7 +426,7 @@
       "identity": {
         "gender": "",
         "birthDate": "1905-12-31",
-        "age": "",
+        "age": "14",
         "species": "",
         "occupation": "",
         "title": "",
@@ -577,8 +577,8 @@
     {
       "id": "seg_cr0mvn",
       "header": "1919-11-29 ~ 1919-11-30",
-      "start": "",
-      "end": "",
+      "start": "1919-11-29",
+      "end": "1919-11-30",
       "lines": [
         {
           "label": "交易线",
@@ -599,14 +599,14 @@
       "raw": "原文",
       "manual": false,
       "uses": 0,
-      "createdAt": 1790254645027,
-      "updatedAt": 1790254645027
+      "createdAt": 1790257815184,
+      "updatedAt": 1790257815184
     },
     {
       "id": "seg_luzfq1",
       "header": "1919-12-01 ~ 1919-12-03",
-      "start": "",
-      "end": "",
+      "start": "1919-12-01",
+      "end": "1919-12-03",
       "lines": [
         {
           "label": "追查线",
@@ -622,14 +622,14 @@
       "raw": "### 1919-12-01 ~ 1919-12-03\n1. 追查线：甲循线索找到破坏者。",
       "manual": true,
       "uses": 0,
-      "createdAt": 1790254645027,
-      "updatedAt": 1790254645027
+      "createdAt": 1790257815184,
+      "updatedAt": 1790257815184
     },
     {
       "id": "seg_h9q4lx",
       "header": "未标注时间范围",
-      "start": "",
-      "end": "",
+      "start": "1919-11-25",
+      "end": "1919-11-26",
       "lines": [],
       "atomIds": [],
       "atomCount": 0,
@@ -638,14 +638,14 @@
       "raw": "### 1919-11-25 ~ 1919-11-26\n1. 铺垫线: 码头风传货栈出事。",
       "manual": false,
       "uses": 0,
-      "createdAt": 1790254645027,
-      "updatedAt": 1790254645027
+      "createdAt": 1790257815184,
+      "updatedAt": 1790257815184
     },
     null
   ],
   "sortedSegments": [
-    "1919-11-29 ~ 1919-11-30",
     "1919-12-01 ~ 1919-12-03",
+    "1919-11-29 ~ 1919-11-30",
     "未标注时间范围"
   ],
   "segmentsText": "### 1919-11-29 ~ 1919-11-30\n1. 交易线：甲与乙敲定粮食转运安排。\n2. 情感线：两人关系转暖。\n\n### 1919-12-01 ~ 1919-12-03\n1. 追查线：甲循线索找到破坏者。\n\n### 未标注时间范围",
@@ -653,8 +653,8 @@
     {
       "id": "seg_cr0mvn",
       "header": "1919-11-29 ~ 1919-11-30",
-      "start": "",
-      "end": "",
+      "start": "1919-11-29",
+      "end": "1919-11-30",
       "lines": [
         {
           "label": "交易线",
@@ -672,31 +672,31 @@
       "raw": "### 1919-11-29 ~ 1919-11-30\n1. 交易线：甲与乙敲定转运。\n2. 情感线：关系转暖。",
       "manual": false,
       "uses": 0,
-      "createdAt": 1790254645028,
-      "updatedAt": 1790254645028
+      "createdAt": 1790257815184,
+      "updatedAt": 1790257815184
     }
   ],
   "ageInfo": [
     {
-      "age": "",
+      "age": "19",
       "birth": "1900-05-20",
       "anchor": "",
-      "basis": "none",
+      "basis": "locked",
       "precision": "day",
       "locked": true
     },
     {
-      "age": "",
+      "age": "30",
       "birth": "1890-01",
-      "anchor": "",
-      "basis": "none",
+      "anchor": "1920-03-15",
+      "basis": "story",
       "precision": "month",
       "locked": false
     },
     {
       "age": "",
       "birth": "",
-      "anchor": "",
+      "anchor": "1920-03-15",
       "basis": "none",
       "precision": "",
       "locked": false
@@ -704,7 +704,7 @@
     {
       "age": "",
       "birth": "-0221-01-0",
-      "anchor": "",
+      "anchor": "1920-03-15",
       "basis": "none",
       "precision": "",
       "locked": false
@@ -718,10 +718,10 @@
       "locked": false
     },
     {
-      "age": "",
+      "age": "14",
       "birth": "1905-12-31",
-      "anchor": "",
-      "basis": "none",
+      "anchor": "1920-03-15",
+      "basis": "story",
       "precision": "day",
       "locked": false
     }
@@ -767,7 +767,7 @@
     }
   ],
   "appearanceText": [
-    "",
+    "身高178cm；体型精瘦；发色发型黑色短发；瞳色褐色；肤色偏黑；特征左眉疤",
     "",
     "",
     "",
@@ -954,9 +954,9 @@
     }
   ],
   "hashes": {
-    "snapshot": "i3gmng_1c1f1si",
+    "snapshot": "1bqqyz6_s4wshh",
     "currency": "",
-    "segment": "10wunog_16cb9r9"
+    "segment": "trmc70_ynu2x"
   },
   "helpers": {
     "trackedRoles": {
@@ -985,7 +985,7 @@
       "start": "",
       "end": ""
     },
-    "timeKey": "0||000000000000000",
+    "timeKey": "1|00998419312000000|001790257831219",
     "segmentLines": [
       {
         "label": "交易线",

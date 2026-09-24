@@ -222,4 +222,48 @@ const CLOCK_DATE_SCAN = [
 //   「1919年11月29日」里的「11月29日」。否则「取最后一次命中」的归一逻辑会把正确年份换成沿用年份
 //   （用户录入/正文里的完整日期会被截成半截）。规则：命中位置紧跟在「年」或数字之后 → 视为尾部，丢弃。
 
-export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, CLOCK_DATE_SCAN };
+export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, CLOCK_DATE_SCAN, dateStrCmp, clockParseDateText };
+
+// ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
+function dateStrCmp(a, b) {
+    try {
+        const x = storyDateMsFromStr(a), y = storyDateMsFromStr(b);
+        const xo = Number.isFinite(x), yo = Number.isFinite(y);
+        if (xo && yo) return x === y ? 0 : (x < y ? -1 : 1);
+        if (xo !== yo) return xo ? -1 : 1;              // 可解析者排在不可解析者之前
+        return String(a == null ? '' : a) < String(b == null ? '' : b) ? -1 : (String(a || '') === String(b || '') ? 0 : 1);
+    } catch (e) { return 0; }
+}
+// 取日期串的「日期部分」（剥离时间后缀）：负年份为 11 字符（-0221-01-02），正年份 10 字符
+
+function clockMatchNotInline(text, m) {
+    try {
+        if (!m) return false;
+        const i = Number(m.index) || 0;
+        if (i <= 0) return true;
+        const prev = String(text).charAt(i - 1);
+        if (prev === '年') return false;
+        if (/\d/.test(prev)) return false;
+        return true;
+    } catch (e) { return true; }
+}
+
+function clockParseDateText(val, prevYear) {
+    try {
+        // v1.193：先把各种「公元前 / BC」写法归一为「前-<数字>」形式，再走统一扫描表
+        const t = clockNormBcText(String(val || ''));
+        if (!t) return null;
+        for (const re of CLOCK_DATE_SCAN) {
+            const rr = new RegExp(re.source, 'g');
+            let m; let best = null;
+            while ((m = rr.exec(t)) !== null) {
+                if (!clockMatchNotInline(t, m)) continue;      // v1.187：跳过长日期尾部命中
+                const cand = clockDateFromParts([m[1], m[2], m[3]], prevYear);
+                if (cand) best = cand;
+            }
+            if (best) return best;
+        }
+        return null;
+    } catch (e) { return null; }
+}
+// 时刻/时段归一：HH:MM / X点(Y分|半|一刻|三刻) / 时段词（保留原文如「傍晚」）

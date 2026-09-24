@@ -42,6 +42,12 @@ export function clamp(v, min, max) {
 }
 
 /** 列表归一：仅接受数组；去空、去重、保序（可选 max 截断，V2 扩展） */
+/** 角色/条目名归一（去空格与间隔号、小写）—— **逐字移植自 V1** `snapNameKey` */
+export function snapNameKey(s) { try { return String(s == null ? '' : s).replace(/[\s·・.．]/g, '').toLowerCase(); } catch (e) { return ''; } }
+
+/** 逗号/顿号/分号分隔的列表文本 → 数组（**逐字移植自 V1** `splitListText`） */
+export function splitListText(s) { return normalizeList(String(s == null ? '' : s).split(/[,，、;；]/)); }
+
 export function normalizeList(v, max) {
     if (!Array.isArray(v)) return [];
     const out = [];

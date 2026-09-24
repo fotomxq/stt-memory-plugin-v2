@@ -289,4 +289,4 @@ const SNAP_GROUP_MAP = {
     city: 'location', area: 'location', building: 'location', interior: 'location',
 };
 
-export { normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats };
+export { normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats };

@@ -1,0 +1,791 @@
+{
+  "note": "V1 真实插件 mergeDelta 在固定 seed + 固定 delta 下的结果（黄金样本 10）",
+  "ret": {
+    "ok": true,
+    "added": 9,
+    "total": 13
+  },
+  "delta": {
+    "atoms": {
+      "add": [
+        {
+          "title": "码头木箱",
+          "text": "甲在码头发现一只木箱，断口整齐，来源不明。",
+          "date": "1919-11-29",
+          "tags": [
+            "码头"
+          ],
+          "importance": 0.7,
+          "entities": [
+            "甲"
+          ],
+          "locations": [
+            "码头"
+          ]
+        },
+        {
+          "title": "仓库清点",
+          "text": "两人在仓库清点货物并记录转运去向。",
+          "tags": [
+            "仓库"
+          ],
+          "importance": 0.6
+        }
+      ],
+      "update": [
+        {
+          "id": "a_upd",
+          "title": "待修正",
+          "text": "新版本正文：甲与乙一同离城。",
+          "tags": [
+            "城",
+            "同行"
+          ],
+          "importance": 0.45
+        }
+      ],
+      "remove": [
+        "a_gone"
+      ]
+    },
+    "states": {
+      "add": [
+        {
+          "who": "甲",
+          "value": "警觉",
+          "date": "1919-11-29"
+        }
+      ]
+    },
+    "memories": {
+      "add": [
+        {
+          "owner": "甲",
+          "content": "甲记得昨夜有人在巷口徘徊。",
+          "date": "1919-11-28"
+        }
+      ],
+      "update": [
+        {
+          "id": "m_keep",
+          "owner": "甲",
+          "content": "既有记忆一条（已修订）。",
+          "date": "1919-11-27"
+        }
+      ]
+    },
+    "items": {
+      "add": [
+        {
+          "name": "铜钥匙",
+          "owner": "甲",
+          "note": "从木箱边捡到。"
+        }
+      ]
+    },
+    "plans": {
+      "add": [
+        {
+          "content": "清点货单：核对单据并上报",
+          "status": "open",
+          "steps": [
+            "核对单据",
+            "上报"
+          ]
+        }
+      ]
+    },
+    "suspense": {
+      "add": [
+        {
+          "content": "木箱断口之谜：来源不明"
+        }
+      ]
+    },
+    "concepts": {
+      "add": [
+        {
+          "name": "断口之谜",
+          "desc": "与木箱断口相关的疑问。"
+        }
+      ]
+    },
+    "parallels": {
+      "add": [
+        {
+          "title": "另一种可能",
+          "text": "若木箱属于第三方势力，则后续可能有人上门。",
+          "importance": 0.5
+        }
+      ]
+    },
+    "currencies": {
+      "add": [
+        {
+          "name": "银元",
+          "owner": "甲",
+          "amount": 12,
+          "note": "随身"
+        }
+      ]
+    },
+    "rumors": {
+      "add": [
+        {
+          "subject": "甲",
+          "content": "甲私藏了码头货物",
+          "objectivity": 0.2,
+          "carriers": [
+            "乙"
+          ]
+        }
+      ]
+    },
+    "snapshots": {
+      "add": [
+        {
+          "name": "乙",
+          "identity": {
+            "gender": "女",
+            "birthDate": "1900-03-04"
+          },
+          "appearance": "短发"
+        }
+      ]
+    },
+    "items2": null,
+    "scenes": {
+      "add": [
+        {
+          "name": "码头",
+          "path": [
+            "城外",
+            "码头"
+          ]
+        }
+      ]
+    },
+    "npcs": {
+      "add": [
+        {
+          "name": "船老大",
+          "note": "常年在码头。"
+        }
+      ]
+    },
+    "vars": {
+      "天气": "阴"
+    }
+  },
+  "seedState": {
+    "version": "v1.206",
+    "scope": "x",
+    "state": {
+      "time": "夜",
+      "date": "1919-11-29",
+      "location": "码头",
+      "sceneFocus": null,
+      "era": "",
+      "season": ""
+    },
+    "protagonist": {},
+    "npcs": [],
+    "atoms": [
+      {
+        "id": "a_keep",
+        "title": "旧情节",
+        "text": "这是一条早就存在的旧情节，正文足够长。",
+        "date": "1919-11-20",
+        "tags": [
+          "旧"
+        ],
+        "importance": 0.5,
+        "uses": 3
+      },
+      {
+        "id": "a_upd",
+        "title": "待修正",
+        "text": "旧版本正文：甲独自离城。",
+        "date": "1919-11-25",
+        "tags": [
+          "城"
+        ],
+        "importance": 0.4,
+        "uses": 2
+      }
+    ],
+    "currentStates": [
+      {
+        "id": "c1",
+        "who": "甲",
+        "value": "平静",
+        "date": "1919-11-28"
+      }
+    ],
+    "snapshots": [],
+    "memories": [
+      {
+        "id": "m_keep",
+        "owner": "甲",
+        "content": "既有记忆一条。",
+        "date": "1919-11-27"
+      }
+    ],
+    "items": [],
+    "plans": [],
+    "suspense": [],
+    "scenes": [],
+    "concepts": [],
+    "parallels": [],
+    "currencies": [],
+    "plotSegments": [],
+    "rumors": [],
+    "vars": {},
+    "deleted": {},
+    "deletedH": {},
+    "stats": {}
+  },
+  "result": {
+    "atoms": [
+      {
+        "id": "a_keep",
+        "title": "旧情节",
+        "text": "这是一条早就存在的旧情节，正文足够长。",
+        "date": "1919-11-20",
+        "tags": [
+          "旧"
+        ],
+        "importance": 0.5,
+        "uses": 3,
+        "h": "1erulpz_1fbmng8"
+      },
+      {
+        "id": "a_upd",
+        "kind": "plot_atom",
+        "text": "新版本正文：甲与乙一同离城。",
+        "title": "待修正",
+        "type": "事件",
+        "date": "",
+        "time": "",
+        "entities": [],
+        "locations": [],
+        "tags": [
+          "城",
+          "同行"
+        ],
+        "keywords": [],
+        "importance": 0.45,
+        "validity": "active",
+        "permanence": "episodic",
+        "floorStart": 4,
+        "floorEnd": 6,
+        "uses": 2,
+        "category": "atoms",
+        "content": "新版本正文：甲与乙一同离城。",
+        "strength": 45,
+        "extra": [],
+        "log": [
+          {
+            "prev": "旧版本正文：甲独自离城。",
+            "date": "1919-11-25",
+            "floorStart": 0,
+            "floorEnd": 0
+          }
+        ],
+        "h": "1hz0a5v_1e6vbqo"
+      },
+      {
+        "id": "atom_dtprwk",
+        "kind": "plot_atom",
+        "text": "甲在码头发现一只木箱，断口整齐，来源不明。",
+        "title": "码头木箱",
+        "type": "事件",
+        "date": "1919-11-29",
+        "time": "",
+        "entities": [
+          "甲"
+        ],
+        "locations": [
+          "码头"
+        ],
+        "tags": [
+          "码头"
+        ],
+        "keywords": [],
+        "importance": 0.7,
+        "validity": "active",
+        "permanence": "episodic",
+        "floorStart": 4,
+        "floorEnd": 6,
+        "uses": 0,
+        "category": "atoms",
+        "content": "甲在码头发现一只木箱，断口整齐，来源不明。",
+        "strength": 70,
+        "extra": [
+          {
+            "name": "entities",
+            "type": "array",
+            "value": [
+              "甲"
+            ]
+          },
+          {
+            "name": "locations",
+            "type": "array",
+            "value": [
+              "码头"
+            ]
+          }
+        ],
+        "h": "iq0ga5_1d61b75"
+      },
+      {
+        "id": "atom_wr7jus",
+        "kind": "plot_atom",
+        "text": "两人在仓库清点货物并记录转运去向。",
+        "title": "仓库清点",
+        "type": "事件",
+        "date": "1919-11-29",
+        "time": "",
+        "entities": [],
+        "locations": [],
+        "tags": [
+          "仓库"
+        ],
+        "keywords": [],
+        "importance": 0.6,
+        "validity": "active",
+        "permanence": "episodic",
+        "floorStart": 4,
+        "floorEnd": 6,
+        "uses": 0,
+        "category": "atoms",
+        "content": "两人在仓库清点货物并记录转运去向。",
+        "strength": 60,
+        "extra": [],
+        "h": "8qjgyx_1jw5om0"
+      }
+    ],
+    "currentStates": [
+      {
+        "id": "c1",
+        "who": "甲",
+        "value": "平静",
+        "date": "1919-11-28",
+        "h": "1tl32qj_1ok1u45"
+      }
+    ],
+    "memories": [
+      {
+        "id": "m_keep",
+        "owner": "甲",
+        "content": "既有记忆一条。",
+        "date": "1919-11-27",
+        "h": "1fypa1t_c9glsr"
+      },
+      {
+        "id": "mem_d8ua89",
+        "owner": "甲",
+        "date": "1919-11-28",
+        "title": "",
+        "content": "甲记得昨夜有人在巷口徘徊。",
+        "tags": [],
+        "keywords": [],
+        "memCategory": "一般",
+        "importance": 0.5,
+        "floorStart": 0,
+        "floorEnd": 0,
+        "uses": 0,
+        "category": "memories",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "owner",
+            "type": "string",
+            "value": "甲"
+          }
+        ],
+        "h": "z6k8po_9wsv8a"
+      }
+    ],
+    "items": [
+      {
+        "id": "item_2j40x1",
+        "name": "铜钥匙",
+        "desc": "",
+        "location": "",
+        "carried": true,
+        "uses": 0,
+        "floorStart": 4,
+        "floorEnd": 6,
+        "seenDate": "1919-11-29",
+        "tags": [],
+        "keywords": [],
+        "category": "items",
+        "title": "铜钥匙",
+        "content": "",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "carried",
+            "type": "boolean",
+            "value": true
+          }
+        ],
+        "h": "1iidbsc_1gzak3o"
+      }
+    ],
+    "plans": [
+      {
+        "id": "plan_1rm9636",
+        "kind": "计划",
+        "content": "清点货单：核对单据并上报",
+        "title": "",
+        "date": "",
+        "time": "",
+        "characters": [],
+        "createdTime": "",
+        "targetTime": "",
+        "status": "open",
+        "tags": [],
+        "importance": 0.5,
+        "uses": 0,
+        "category": "plans",
+        "strength": 50,
+        "planner": "",
+        "participants": [],
+        "steps": [
+          {
+            "text": "核对单据",
+            "done": false
+          },
+          {
+            "text": "上报",
+            "done": false
+          }
+        ],
+        "prereq": "",
+        "blockers": [],
+        "progress": 0,
+        "history": [],
+        "suspenseRefs": [],
+        "memRefs": [],
+        "atomRefs": [],
+        "phase": "",
+        "statusNote": "",
+        "extra": [
+          {
+            "name": "kind",
+            "type": "string",
+            "value": "计划"
+          },
+          {
+            "name": "characters",
+            "type": "array",
+            "value": []
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "value": "open"
+          }
+        ],
+        "h": "73mre2_phktn2"
+      }
+    ],
+    "suspense": [
+      {
+        "id": "sus_1lfu9ah",
+        "kind": "悬念",
+        "content": "木箱断口之谜：来源不明",
+        "title": "",
+        "date": "",
+        "time": "",
+        "characters": [],
+        "createdTime": "",
+        "resolveTime": "",
+        "status": "open",
+        "tags": [],
+        "importance": 0.5,
+        "uses": 0,
+        "category": "suspense",
+        "strength": 50,
+        "clues": [],
+        "resolveCondition": "",
+        "level": "",
+        "history": [],
+        "planRefs": [],
+        "memRefs": [],
+        "atomRefs": [],
+        "phase": "",
+        "statusNote": "",
+        "extra": [
+          {
+            "name": "kind",
+            "type": "string",
+            "value": "悬念"
+          },
+          {
+            "name": "characters",
+            "type": "array",
+            "value": []
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "value": "open"
+          }
+        ],
+        "h": "1rglxc8_1s2tp90"
+      }
+    ],
+    "concepts": [
+      {
+        "id": "con_125k7x8",
+        "name": "断口之谜",
+        "content": "",
+        "source": "",
+        "date": "",
+        "tags": [],
+        "keywords": [],
+        "importance": 0.5,
+        "floorStart": 0,
+        "floorEnd": 0,
+        "uses": 0,
+        "category": "concepts",
+        "title": "断口之谜",
+        "strength": 50,
+        "extra": [],
+        "h": "1ngxala_1iruwyd"
+      }
+    ],
+    "parallels": [
+      {
+        "id": "par_1swwyjj",
+        "title": "另一种可能",
+        "text": "若木箱属于第三方势力，则后续可能有人上门。",
+        "type": "",
+        "date": "",
+        "time": "",
+        "gua": "",
+        "causalLine": "",
+        "characters": [],
+        "location": "",
+        "goalOdds": [],
+        "updatedAt": 1790257462943,
+        "tags": [],
+        "importance": 0.5,
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 0,
+        "sourceRefs": [],
+        "previews": [],
+        "planRef": "",
+        "suspenseRef": "",
+        "promotedTo": "",
+        "promotedAt": "",
+        "constraintNote": "",
+        "h": "qyfu26_2cb5nb"
+      }
+    ],
+    "currencies": [
+      {
+        "id": "cur_106nypq",
+        "owner": "甲",
+        "name": "银元",
+        "unit": "",
+        "amount": 12,
+        "note": "随身",
+        "history": [],
+        "date": "1919-11-29",
+        "uses": 0,
+        "floorStart": 4,
+        "floorEnd": 6,
+        "tags": [],
+        "keywords": [],
+        "category": "currencies",
+        "title": "银元",
+        "content": "随身",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "owner",
+            "type": "string",
+            "value": "甲"
+          },
+          {
+            "name": "history",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      }
+    ],
+    "rumors": [
+      {
+        "id": "rum_3v6f",
+        "subject": "甲",
+        "content": "甲私藏了码头货物",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 20,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "乙",
+            "role": "传播者",
+            "at": ""
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "1919-11-29",
+            "round": 0,
+            "kind": "起源",
+            "from": "",
+            "to": "甲",
+            "note": "首次记录（主观）：甲私藏了码头货物"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_3v6f",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "source": "",
+        "date": "1919-11-29",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 4,
+        "floorEnd": 6,
+        "createdAt": 1790257462942,
+        "updatedAt": 1790257462942,
+        "category": "rumors",
+        "title": "甲",
+        "text": "甲私藏了码头货物",
+        "strength": 0.5,
+        "extra": [],
+        "h": "1x3gpb_1tmr3h0"
+      }
+    ],
+    "scenes": [
+      {
+        "id": "scene_or2x92",
+        "name": "码头",
+        "pathArr": [
+          "城外",
+          "码头"
+        ],
+        "pathStr": "城外>码头",
+        "desc": "",
+        "floorSeen": 0,
+        "uses": 0,
+        "category": "scenes",
+        "title": "码头",
+        "content": "",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "pathStr",
+            "type": "string",
+            "value": "城外>码头"
+          }
+        ],
+        "h": "1v1v8ay_1yggu8q"
+      }
+    ],
+    "npcs": [
+      {
+        "id": "npc_2mv7ve",
+        "name": "船老大",
+        "gender": "",
+        "title": "船老大",
+        "desc": "",
+        "location": "",
+        "follow": false,
+        "uses": 0,
+        "category": "snapshots",
+        "content": "",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "follow",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "snapshots": [
+      {
+        "id": "snapshot_46ws",
+        "name": "乙",
+        "identity": {
+          "gender": "女",
+          "birthDate": "1900-03-04",
+          "age": "19",
+          "species": "",
+          "occupation": "",
+          "title": "",
+          "family": ""
+        },
+        "appearance": "短发",
+        "personality": {
+          "traits": [],
+          "quirks": [],
+          "values": [],
+          "speechStyle": ""
+        },
+        "background": {
+          "origin": "",
+          "history": ""
+        },
+        "relationships": [],
+        "social": {
+          "relationToUser": "",
+          "attitudeToUser": ""
+        },
+        "future": {
+          "todos": [],
+          "commitments": []
+        },
+        "tags": [],
+        "keywords": [],
+        "floorStart": 0,
+        "floorEnd": 0,
+        "uses": 0,
+        "lastUpdateDate": "1919-11-29",
+        "lastUpdateTime": "夜",
+        "lastSeenDate": "",
+        "lastSeenTime": "",
+        "category": "snapshots",
+        "title": "乙",
+        "content": "",
+        "strength": 50,
+        "extra": [
+          {
+            "name": "gender",
+            "type": "string",
+            "value": "女"
+          }
+        ],
+        "h": "ae5m1_16a19wq"
+      }
+    ],
+    "stats": {},
+    "state": {
+      "time": "夜",
+      "date": "1919-11-29",
+      "location": "码头",
+      "sceneFocus": null,
+      "era": "",
+      "season": ""
+    },
+    "vars": {
+      "天气": "阴"
+    }
+  }
+}

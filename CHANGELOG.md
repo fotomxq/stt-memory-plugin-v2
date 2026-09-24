@@ -91,6 +91,27 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P3 次批：提取落库内核（`core/ingest.js#mergeDelta`）+ 内核完整性门禁（本版新增）**：
+  ① 移植 V1 `mergeDelta`（1513 行 / 66 项闭包）——13 类维度的 add/update/remove/close 按 V1 同一顺序落库，
+  含「已总结隐藏情节不接受 AI 改写」「情节就地更新保留 uses 与因果 log（最多 3 条）」「同名物品只更新不新增、qty=0 自动删除」
+  「同一归属+币种只维护一条」「传言按主体维护、分裂建分支」「plans/suspense 的 closed 只留统计」「snapshots remove 联动清状态」
+  「存储上限裁剪保留隐藏情节」等口径；`saveState()` 经注入钩子落盘 → 返回 `{ok, added, total}`。
+  黄金样本 10（`tests/unit/ingest-golden.test.js` **10 项断言**，oracle = 真实 V1 插件）：13 类维度**逐字符一致**、
+  情节更新保留 uses/log、楼层范围透传、内容哈希一致、年龄锚定、传言归一、幂等、删除留痕、脏增量不抛。
+  ② 新增门禁 `scripts/check-core-refs.js`（内核未定义标识符静态检查，已进 `npm run gate`，支持 `--explain=` 诊断）——
+  一次揪出 **7 处**「V1 `catch` 静默吞掉 `ReferenceError`」导致的数据丢失缺陷并全部补全：
+  `splitListText`/`snapNameKey`（归位 `core/util.js`）、`normalizeRelRefList`（补导出）、`dateStrCmp`/`clockParseDateText`
+  与 clock 族 import、`SNAP_*` 常量与 `ensureSnapshotBirthDate`/`storyAnchorDate`/`storyClockReference`（snapshot 补全）、
+  `parallelRelPrefix`（recall 补全）、segment 的 `defaultCfg` import。
+  ③ 宿主耦合改为**注入视图**：`notifyHooks`（toast）、`identityView`（当前角色名）、`timerHooks`（延迟衰退调度，
+  默认 no-op，内核不碰全局定时器）；`index.js#installHostBridges` 接线 toastr 与角色名。
+  ④ **修正保存流水线的索引基线语义**：新增 `adapters/store.js#primeStateIndex()` 并在载入后调用 ——
+  基线只能在启动/载入时建立一次（V1 同款），否则「每次保存重建基线」会让删除永远检测不到、墓碑永不写入。
+  ⑤ 黄金样本真值升级：批次 1–2b 的模型样本由「源码切片」产出，切片缺依赖 → 记录的是降级中间态
+  （`age:''`/`appearance:''`/`clockDateTrim:''`/分段 `start:''`/平行事件 `null`）；本批改为**真实 V1 插件**直算
+  （未导出的规范化器逐条走 `mergeDelta` 落库读回后逐字段核验），`migrateState` 的 oracle 复刻测试的**别名场景**；
+  墙钟字段（`updatedAt`/`createdAt`/分段 `timeKey` 第三段）不入移植口径，测试抹平后比较。
+  门禁：单元 **21 文件 / 277 断言**、冒烟 29/29、内核纯净度 0、内核标识符 0、版本一致性 OK、文档规范 0；文档 `docs/P3b-提取落库与内核完整性.md`。
 - **P3 首批：记忆注入闭环（本版新增）**：
   ① `adapters/config-store.js`（约 90 行）—— 内核配置视图与 ST 配置容器双向同步：
   `loadKernelCfg` = `core/config.js` **217 键默认配置** ⊕ 已存配置（已存优先、对象递归、缺键补默认、未知键保留），

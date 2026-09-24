@@ -33,6 +33,30 @@ export const defaultCfg = {
     plotSegmentTextLimit: 400,
 };
 
+/**
+ * 宿主通知钩子：内核需要「提示用户」时（V1 的 toast/sendToast）的唯一出口 —— 默认 no-op（静默）。
+ * 宿主可注入到 ST 的 toastr；内核因此不依赖任何宿主弹窗 API。
+ */
+export const notifyHooks = { toast: () => undefined };
+/** 注入通知钩子（宿主启动时调用） */
+export function setNotifyHooks(next) { Object.assign(notifyHooks, next || {}); return notifyHooks; }
+
+/**
+ * 角色身份视图（宿主注入、内核只读）：`characterName` 用于「默认货币归属」等需要主角名的判断。
+ * V1 这里调 TH 的 `getCurrentCharacterName()`；V2 由宿主把当前角色名注入进来。
+ */
+export const identityView = { characterName: '' };
+/** 注入身份视图 */
+export function setIdentityView(next) { Object.assign(identityView, next || {}); return identityView; }
+
+/**
+ * 定时器钩子：内核的「延迟调度」（平行事件衰退 / 状态衰退 / 记忆遗忘清扫）不直接用全局 `setTimeout`，
+ * 而由宿主注入 —— 缺失时默认 **no-op**（不调度、不后台跑）。内核因此保持零宿主依赖。
+ */
+export const timerHooks = { set: () => 0, clear: () => undefined };
+/** 注入定时器钩子（宿主启动时调用；传 { set, clear }） */
+export function setTimerHooks(next) { Object.assign(timerHooks, next || {}); return timerHooks; }
+
 /** 持久化钩子（内核不直接落盘；由 host 层注入 real 实现） */
 let persistHooks = { saveCfg: () => true, saveState: () => true, log: null, warn: null };
 /** 注入持久化钩子（host 启动时调用） */

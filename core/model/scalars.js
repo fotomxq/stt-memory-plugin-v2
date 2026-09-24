@@ -4,9 +4,10 @@
 //   仅做两处适配：① 去掉 IIFE/全局依赖，改为 ESM 显式导入；② `cfg.dimCharLimits` 改为可注入的维度上限表。
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
-import { normText, normalizeList, clamp, hashText } from '../util.js';
+import { normText, normalizeList, clamp, hashText, splitListText } from '../util.js';
 import { DIM_CHAR_LIMITS } from '../constants.js';
 import { cfg } from './runtime.js';
+import { clockYearStr, dateStrCmp } from '../clock.js';
 
 // 维度字数硬上限（默认逐字取自 V1 `defaultCfg.dimCharLimits`）
 const defaultCfg = { dimCharLimits: DIM_CHAR_LIMITS };
@@ -216,8 +217,6 @@ const SNAP_GROUP_MAP = {
     todos: 'future', commitments: 'future',
     city: 'location', area: 'location', building: 'location', interior: 'location',
 };
-function splitListText(s) { return normalizeList(String(s ?? '').split(/[,，、;；]/)); }
-
 function normalizeTrackedRoles(v) {
     try {
         // 只接受「数组」或「逗号/顿号分隔的字符串」；其它类型（数字/布尔/对象）一律视为无名单
