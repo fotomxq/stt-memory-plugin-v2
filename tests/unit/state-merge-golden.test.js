@@ -69,18 +69,25 @@ R.assert('H3 releaseMergedSources：删除总结条 → 来源恢复显示（返
 })(), G.release);
 
 // ---------- 删除墓碑 ----------
-R.assert('T1 tombSet / tombSetH 分账与幂等（重复写入不覆盖时间戳）', (() => {
+R.assert('T1 tombSet / tombSetH 分账与「时间戳取最大」（更旧的 ts 不覆盖；无 ts 时单调不减）', (() => {
     const s = st();
     s.deleted = {}; s.deletedH = {};
-    tombSet('atoms', 'a9');
+    // ① 显式 ts：取最大 → 更旧的写入不得回退（V1 语义；此前用 Date.now() 隐式比较会偶发失败）
+    tombSet('atoms', 'a9', 2000);
     const t1 = s.deleted.atoms.a9;
-    tombSet('atoms', 'a9');
+    tombSet('atoms', 'a9', 1000);
     const t2 = s.deleted.atoms.a9;
-    tombSetH('atoms', 'content-hash-1');
+    tombSetH('atoms', 'content-hash-1', 5000);
     const h1 = s.deletedH.atoms['content-hash-1'];
-    tombSetH('atoms', 'content-hash-1');
+    tombSetH('atoms', 'content-hash-1', 100);
     const h2 = s.deletedH.atoms['content-hash-1'];
-    return Number.isFinite(t1) && t1 === t2 && Number.isFinite(h1) && h1 === h2
+    // ② 不传 ts：用当前墙钟，重复写入**单调不减**（同毫秒内相等也合法）
+    tombSet('atoms', 'a10');
+    const now1 = s.deleted.atoms.a10;
+    tombSet('atoms', 'a10');
+    const now2 = s.deleted.atoms.a10;
+    return t1 === 2000 && t2 === 2000 && h1 === 5000 && h2 === 5000
+        && Number.isFinite(now1) && now2 >= now1
         && !!s.deleted.atoms && !!s.deletedH.atoms && !s.deletedH.memories;
 })(), '');
 R.assert('T2 墓碑账本结构与 V1 一致（id 墓碑 + 内容哈希墓碑分账；空 id 被忽略）', (() => {

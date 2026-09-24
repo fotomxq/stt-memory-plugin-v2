@@ -61,3 +61,14 @@
     font-weight: 700; letter-spacing: .5px; box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
 }
 .ftt-float-btn:hover { filter: brightness(1.25); }
+
+/* 弹窗主界面（V1 风格分页） */
+.ftt-pop { min-width: 78vw; max-width: 1100px; }
+.ftt-pop-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ftt-pop-tab-on { font-weight: 700; text-decoration: underline; }
+.ftt-pop-body { max-height: 62vh; overflow: auto; padding-right: 4px; }
+.ftt-pop-sec { margin-bottom: 10px; }
+.ftt-pop-title { font-weight: 700; margin-bottom: 4px; }
+.ftt-pop-note { white-space: pre-wrap; opacity: .92; margin: 4px 0; }
+.ftt-pop-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.ftt-pop-floor { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed rgba(128,128,128,.25); }

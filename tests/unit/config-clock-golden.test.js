@@ -20,8 +20,18 @@ const J = (v) => JSON.stringify(v);
 cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
 
 // ---------- 配置层 ----------
-R.assert('C1 defaultCfg 全量默认配置与 V1 逐字符一致（217 键，含 33 条提示词模板）',
-    J(defaultCfg) === J(G.defaultCfg), { keys: Object.keys(defaultCfg).length, want: Object.keys(G.defaultCfg).length });
+R.assert('C1 defaultCfg：V1 的 217 键逐值一致 + 仅允许 V2 专有键（界面形态）', (() => {
+    // 口径：V1 键必须**逐值**相同（保真）；V2 新增键须在白名单内（防悄悄加键/改键）
+    const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab'];
+    const v1 = G.defaultCfg || {};
+    const diff = Object.keys(v1).filter((k) => J(v1[k]) !== J(defaultCfg[k]));
+    const extra = Object.keys(defaultCfg).filter((k) => !(k in v1));
+    return Object.keys(v1).length === 217 && diff.length === 0
+        && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length;
+})(), (() => {
+    const v1 = G.defaultCfg || {};
+    return { keys: Object.keys(defaultCfg).length, v1Keys: Object.keys(v1).length, extra: Object.keys(defaultCfg).filter((k) => !(k in v1)) };
+})());
 R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP) === J(G.cnKeyMap), Object.keys(CN_KEY_MAP).length);
 R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',
     J(I.DELTAS.map(d => normalizeDeltaKeys(d))) === J(G.deltaCases), I.DELTAS.map(d => normalizeDeltaKeys(d)));

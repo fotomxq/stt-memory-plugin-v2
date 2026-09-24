@@ -711,6 +711,10 @@ const ARMOR_PRESET_V1178_DEFAULT = [
 const defaultCfg = {
     enabled: true,
     autoExtract: true,
+    // 界面形态（用户要求：对齐 V1 的**弹窗**主界面；抽屉卡片默认不再显示，需要时可打开）
+    uiShowDrawer: false,          // 是否同时在扩展设置抽屉里渲染面板卡片（默认否 = 只用弹窗）
+    uiShowFloating: true,         // 扩展菜单入口不可用时，是否在右下角显示悬浮「FTT」按钮
+    uiFirstTab: 'overview',       // 弹窗默认打开的分页（overview | console | extract | settings）
     autoSummary: false,
     // v1.96：及时分析（实时模式）—— 开启后发送前分析未摘要楼层(含最新楼)、强制 自动摘取/AI摘要/注入、
     //   分析与提取总基于最新楼层、最新楼层改动自动回滚重分析
