@@ -47,7 +47,7 @@ import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 import { resetState as kernelResetState } from '../adapters/store.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
-import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
+import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel, relDimLabelOf, relFilterState, setRelFilter, relClearFilter, relPickState, setRelPick, relKnownNames, relPickAppendRow, relPickPanelHtml, relPickingOf, relJump, relGoto, setRelPickQuery } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
 import { atomIsHidden } from '../core/merge.js';
 
@@ -68,7 +68,8 @@ const ps = {
     busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
     settingsSub: 'base', // 设定页当前子页（V1 的 14 组子页）
     relSub: {},         // 各分页的子标签：{ [tab]: 'list' | 'rel' | 'check' }（V1 activeMemSub/activeAtomSub 口径）
-    relWho: '',         // 关系表「按角色」筛选
+    // 注：关系表「按角色筛选」「跳转定位」「选角色态」自 B9-b 起由 `ui/rel-table.js` 持有（V1 同款闭包变量口径），
+    //   面板只经 `relFilterState()/setRelFilter()` 读写；`panelState().relWho` 仍透出该筛选值。
     exportText: '',     // 数据管理页的导出 JSON（供复制/查看）
     sel: {},            // 多选集合：{ [kind]: Set<id> }
     multi: {},          // 多选模式：{ [kind]: bool }
@@ -100,7 +101,7 @@ export function panelState() {
         multi: Object.assign({}, ps.multi),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
         showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub, atomSub: ps.atomSub,
-        relSub: Object.assign({}, ps.relSub), relWho: ps.relWho,
+        relSub: Object.assign({}, ps.relSub), relWho: String(relFilterState().who || ''),
         exportChars: String(ps.exportText || '').length,
     };
 }
@@ -242,16 +243,28 @@ function subViewHtml(tab) {
     if (cur === 'rel') {
         const dim = REL_TABDS[tab];
         const st = relStats();
-        const who = String(ps.relWho || '');
+        // B9-b：筛选/定位态改由 ui/rel-table.js 持有（V1 relFilterWho / relJumpRef 口径）；
+        //   V2 收窄：维度由分页决定 → `dim` 字段不参与过滤，跳转提示只显示「定位 <维度>「标题」」。
+        const fs = relFilterState();
+        const who = String(fs.who || '');
+        const jump = (fs.jump && String(fs.jump.dim) === String(dim)) ? fs.jump : null;
         const byWho = who ? relByWho(who, [dim]) : [];
         const pickHtml = byWho.length
             ? ('<div class="ftt-hint">「' + esc(who) + '」在此维度的关联：' + esc(byWho.map((x) => (x.title + '（' + howLabel(x.how) + '）')).join('、')) + '</div>')
+            : '';
+        // V1 `memoryRelTableHtml` 的「当前筛选：… 清除筛选」提示（V1 用 ` · ` 连接维度/角色/定位三态）
+        const filterBits = [];
+        if (who) filterBits.push('角色含「' + who + '」');
+        if (jump) filterBits.push('定位 ' + relDimLabelOf(jump.dim) + '「' + String(jump.title || '').slice(0, 20) + '」');
+        const filterHtml = filterBits.length
+            ? ('<div class="ftt-hint">当前筛选：' + esc(filterBits.join(' · ')) + ' <a class="ftt-rel-jump" data-ftt-action="relClearFilter">清除筛选</a></div>')
             : '';
         return bars
             + '<div class="ftt-hint">关联行合计 ' + st.total + '（' + REL_DIMS.map((d) => (d === dim ? (d + ' ' + (st.byDim[d] || 0)) : null)).filter(Boolean).join('') + '）'
             + ' · 推定 ' + st.inferred + ' · 孤儿 ' + st.orphan + ' · 公共 ' + st.publics + '</div>'
             + '<div class="ftt-field"><label>按角色筛选</label><input type="text" data-ftt-rel-who="1" value="' + attr(who) + '" placeholder="角色名（回车）"></div>'
             + pickHtml
+            + filterHtml
             + '<div class="ftt-hint">点条目行的 ✏️ 打开编辑器后可编辑该条目的关联；下方为该维度**关联总览**（按条目聚合）。</div>'
             + relOverviewHtml(dim);
     }
@@ -259,7 +272,15 @@ function subViewHtml(tab) {
     return bars;
 }
 
-/** 某维度的关联总览（按条目聚合，V1 关系表总览口径） */
+/**
+ * 某维度的关联总览（按条目聚合，V1 关系表总览口径）。
+ * B9-b 追加（对齐 V1 `memoryRelTableHtml` 的条目卡片）：
+ *   · 行上 `data-ftt-rel-entry="dim|refId"`（V1 `relJump` 的 `scrollIntoView` 定位锚点）；
+ *   · 「↗ 打开条目」（`relGoto`：打开该条目所在页并把该页搜索词设为条目标题）；
+ *   · 「👥 选角色」（`relPick` → 面板 → `relPickAdd` 追加草稿行）+「💾 保存关联」（`relSave`）—— V1 卡片同款闭环；
+ *   · 定位目标（`relJump` 的 jump）**即使暂无关联也列出**（V1 `!rows.length && !jump` 的例外）；
+ *   · 角色筛选在此过滤（V1 `whoQ` 只保留命中该角色的条目）。
+ */
 function relOverviewHtml(dim) {
     const links = (() => { try { return Array.isArray(state.links) ? state.links : []; } catch (e) { return []; } })();
     const byRef = new Map();
@@ -269,15 +290,36 @@ function relOverviewHtml(dim) {
         if (!byRef.has(k)) byRef.set(k, []);
         byRef.get(k).push(x);
     });
-    if (!byRef.size) return '<div class="ftt-empty">（该维度暂无关联行）</div>';
-    const rows = Array.from(byRef.entries()).slice(0, 200).map(([refId, list]) => {
-        const who = list.filter((x) => x && x.who).map((x) => String(x.who) + '（' + howLabel(x.how) + '）').join('、');
+    const fs = relFilterState();
+    const whoQ = String(fs.who || '').trim().toLowerCase();
+    const jump = (fs.jump && String(fs.jump.dim) === String(dim)) ? fs.jump : null;
+    // 定位目标优先（即使库内无关联行），其余保持库内行序；沿用 V2 原有的 200 行上限（V1 无上限，此处保留 V2 护栏）
+    const order = [];
+    if (jump && !byRef.has(String(jump.id))) byRef.set(String(jump.id), []);
+    if (jump) order.push(String(jump.id));
+    for (const k of byRef.keys()) if (order.indexOf(k) < 0) order.push(k);
+    const body = order.slice(0, 200).map((refId) => {
+        const list = byRef.get(refId) || [];
+        const people = list.filter((x) => x && x.who);
+        if (whoQ && !people.some((x) => String(x.who || '').toLowerCase().indexOf(whoQ) >= 0)) return '';
+        const isJump = !!(jump && String(jump.id) === refId);
+        const who = people.map((x) => String(x.who) + '（' + howLabel(x.how) + '）').join('、');
         const pub = list.some((x) => x && x.public);
-        return '<div class="ftt-item ftt-inline"><span class="ftt-grow"><b>' + esc(entrySummary({ id: refId })) + '</b> <span class="ftt-muted">' + esc(entrySummaryById(dim, refId)) + '</span>'
-            + '<div class="ftt-hint">' + (who ? esc(who) : '（仅幕后 / 未指定角色）') + (pub ? ' · 公共' : '') + '</div></span>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="relEdit" data-ftt-kind="' + attr(dim) + '" data-ftt-id="' + attr(refId) + '">🔗 编辑</button></div>';
-    }).join('');
-    return rows;
+        const picking = relPickingOf(dim, refId, false);
+        return '<div class="ftt-item ftt-inline" data-ftt-rel-entry="' + attr(dim + '|' + refId) + '"><span class="ftt-grow"><b>' + esc(entrySummary({ id: refId })) + '</b> <span class="ftt-muted">' + esc(entrySummaryById(dim, refId)) + '</span>'
+            + (isJump ? ' <span class="ftt-badge ftt-badge--fact">🔗 定位</span>' : '')
+            + '<div class="ftt-hint">' + (who ? esc(who) : '（仅幕后 / 未指定角色）') + (pub ? ' · 公共' : '') + (people.length ? '' : ' · 无关联 → 注入按保守口径回退') + '</div></span>'
+            + '<a class="ftt-rel-jump" data-ftt-action="relGoto" data-kind="' + attr(dim) + '" data-id="' + attr(refId) + '" title="打开该条目所在页并把该页搜索词设为条目标题">↗ 打开条目</a>'
+            + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="relPick" data-kind="' + attr(dim) + '" data-id="' + attr(refId) + '" data-editor="" title="从「角色」大类点名，直接追加一行关联角色">👥 选角色</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="relSave" data-kind="' + attr(dim) + '" data-id="' + attr(refId) + '">💾 保存关联</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="relEdit" data-kind="' + attr(dim) + '" data-id="' + attr(refId) + '">🔗 编辑</button>'
+            + (picking ? relPickPanelHtml(dim, refId, false) : '')
+            + '</div>';
+    }).filter(Boolean).join('');
+    if (!body) {
+        return '<div class="ftt-empty">' + (jump ? '未找到定位的条目（可能已被删除）' : '（该维度暂无关联行）') + '</div>';
+    }
+    return body;
 }
 
 /** 条目摘要（按 id 取库内条目） */
@@ -401,11 +443,32 @@ function parallelRelWho(p) {
 }
 
 /**
+ * 条目行「🔗 关联」入口（V1 `relJump` 的条目侧发起口）。
+ * V1 文案/title 逐字对照：记忆 `🔗 关联（N）`（无人关联时不带角标，v1.206 `memoriesHtml()` 的 `relLink`）；
+ *   计划 → 「在「记忆 → 关系表」里编辑这条计划的知情者」；悬念 → 「…编辑这条悬念的知情者」；
+ *   平行事件 → 「在关系表里编辑相关角色」。V1 用 `data-ftt-kind/-id`，V2 用 `data-kind/-id`（面板 DOM 委托口径）。
+ */
+function relJumpBtn(kind, e) {
+    if (!REL_TABDS[kind]) return '';
+    const id = String((e && e.id) || '');
+    if (!id) return '';
+    let n = 0;
+    try { n = relRowsOf(kind, id, { fresh: true }).filter((x) => x && x.who).length; } catch (x) { n = 0; }
+    const title = kind === 'memories' ? '在「记忆 → 关系表」里查看 / 新建这条记忆的知情关联'
+        : kind === 'plans' ? '在「记忆 → 关系表」里编辑这条计划的知情者'
+            : kind === 'suspense' ? '在「记忆 → 关系表」里编辑这条悬念的知情者'
+                : '在关系表里编辑相关角色';
+    const label = (kind === 'memories' && n) ? ('🔗 关联（' + n + '）') : '🔗 关联';
+    return '<span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="' + attr(title) + '">' + esc(label) + '</span>';
+}
+
+/**
  * 平行事件行专属操作（V1 `parallelsHtml()` 逐条渲染的 `advBtn` / `proBtn` / `line8`）：
  *   · `🚀` 推进按钮：**已达衰退阈值（`parallelExpired`）时不显示**（且只在衰退机制开启时判定，V1 原样）；
  *   · `⬆` 转正按钮：**已转正（`promotedTo`）时不显示**；
  *   · 备注行：相关角色 / 「仅幕后（角色不知情）」+「 · 已转正为情节」+ 转正入口（文案与 V1 一致）。
- *   注：V1 备注行还有「🔗 关联」跳转（`relJump` 动作），V2 面板尚未移植该动作 → 本批不渲染空跳转。
+ *   注（B9-b 更新）：V1 备注行里的「🔗 关联」跳转（`relJump`）已在本批移植 —— 由共用的行渲染 `relJumpBtn()`
+ *   渲染在行主体末尾（V1 把它放在备注行内，位置差异仅此一处）。
  */
 function parallelRowBits(e) {
     const id = String((e && e.id) || '');
@@ -473,7 +536,7 @@ function dimBodyList(kind) {
     if (REL_TABDS[kind] && curSub === 'rel') return bars;
     if (REL_TABDS[kind] && curSub === 'check') return bars;
     const ed = ps.editing && ps.editing.kind === kind
-        ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '') : ''))
+        ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '', { editor: true }) : ''))
         : '';
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
     // B8-7-b：平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 topBar；空库时同样显示）
@@ -487,7 +550,8 @@ function dimBodyList(kind) {
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
         const par = (kind === 'parallels') ? parallelRowBits(e) : null;
         return '<div class="ftt-item ftt-inline">' + box
-            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + (par ? par.note : '') + '</span>'
+            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + (par ? par.note : '')
+            + (REL_TABDS[kind] ? (' ' + relJumpBtn(kind, e)) : '') + '</span>'
             + (par ? par.ops : '')
             + peekBtn
             + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>'
@@ -1076,17 +1140,113 @@ export async function panelAction(action, payload) {
             const tab = String(p.tab || ps.tab);
             const id = String(p.sub || 'list');
             ps.relSub[tab] = (id === 'rel' || id === 'check') ? id : 'list';
+            // V1 子标签点击（`e.target.dataset.fttMsub`）会重置跳转定位与选角色态（但**不清角色筛选**）→ 原样保留
+            try { const rf = relFilterState(); setRelFilter(rf.dim, rf.who, null); setRelPick(null); } catch (e) { /* 忽略 */ }
             if (id === 'check' && typeof p.keywords !== 'undefined') { try { setCheckKeywords(p.keywords || []); } catch (e) { /* 忽略 */ } }
         }
-        else if (a === 'relEdit') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: null }; }
-        else if (a === 'relWho') {
-            ps.relWho = String(p.who == null ? '' : p.who);
-            if (ps.relWho) {
+        // ==================== B9-b：关系表定位跳转 +「👥 选角色」（V1 v1.166 / v1.194 同名动作） ====================
+        // 注意：这些动作名都以 `rel` 开头 —— 必须放在下面的 `relAction` 兜底分支**之前**，否则会被误当作关表层动作。
+        else if (a === 'relJump') {
+            // V1 `case 'relJump'`：切到「关系表」并定位该条目（维度=该条目维度 / 清角色筛选 / 置跳转引用 / 关选择器）
+            const jr = relJump(String(p.kind || ''), String(p.id || ''));
+            if (jr.ok) {
+                ps.tab = jr.tab;
+                // V2：分页只承载一个「维度」子标签（计划悬念页含 plans + suspense 两个维度段）→ 按**维度**设子标签
+                ps.relSub[String(p.kind || '')] = 'rel';
+                ps.editing = null;
+                setNote('已定位到关系表：' + relDimLabelOf(String(p.kind || '')) + '「' + String(jr.title || '').slice(0, 20) + '」');
+                // V1 用 requestAnimationFrame 把定位目标滚到视野中央（无 DOM/无 rAF 时静默跳过）
                 try {
-                    const hits = relByWho(ps.relWho);
-                    if (hits.length) ps.editing = { kind: hits[0].dim, id: hits[0].refId, preset: null };
+                    const raf = globalThis.requestAnimationFrame;
+                    if (typeof raf === 'function') raf(() => {
+                        try {
+                            const el = overlayEl && overlayEl.querySelector ? overlayEl.querySelector('[data-ftt-rel-entry="' + String(p.kind || '') + '|' + String(p.id || '').replace(/"/g, '') + '"]') : null;
+                            if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+                        } catch (e) { /* 忽略 */ }
+                    });
                 } catch (e) { /* 忽略 */ }
+            } else {
+                setNote('定位失败：条目引用无效');
             }
+            result = Object.assign(result, jr);
+        }
+        else if (a === 'relGoto') {
+            // V1 `case 'relGoto'`：打开条目所在页并把该页搜索词设为条目标题（清跳转/选择器态）
+            const gr = relGoto(String(p.kind || ''), String(p.id || ''));
+            if (gr.ok) {
+                ps.tab = gr.tab;
+                ps.q[gr.searchTab] = gr.title;      // V1 `pageSearchQuery[tabOf] = title`
+                ps.editing = null;
+                setNote(gr.title ? ('已定位到「' + String(gr.title).slice(0, 16) + '」') : '已打开条目所在页');
+            } else {
+                setNote('打开条目失败：条目引用无效');
+            }
+            result = Object.assign(result, gr);
+        }
+        else if (a === 'relClearFilter') {
+            // V1 `case 'relClearFilter'`：维度筛选 + 角色筛选 + 跳转定位 + 选角色态一起清
+            //   V2 收窄：维度由分页决定（`dim` 字段不参与过滤）→ 实际清「角色筛选 + 定位/选择器态」
+            relClearFilter();
+            setNote('已清除关系表筛选');
+            result = Object.assign(result, { ok: true, filter: relFilterState() });
+        }
+        else if (a === 'relPick') {
+            // V1 `case 'relPick'`：同一条目（同维度 + 同 editor 标记 + 同 id）再点一次 → 收起
+            const kind = String(p.kind || '');
+            const id = String(p.id || '');
+            const isEd = (p.editor === true || String(p.editor == null ? '' : p.editor) === '1');
+            if (!kind) { setNote('选角色失败：缺少维度'); result = { ok: false, reason: 'bad-dim' }; }
+            else {
+                const cur = relPickState();
+                const same = !!(cur && String(cur.dim) === kind && !!cur.editor === isEd && String(cur.id || '') === id);
+                setRelPick(same ? null : { dim: kind, id: id, editor: isEd });
+                setNote(same ? '已收起「👥 选角色」' : ('「👥 选角色」：从角色档案点名（' + relKnownNames().length + ' 名）'));
+                result = Object.assign(result, { ok: true, pick: relPickState() });
+            }
+        }
+        else if (a === 'relPickClose') {
+            setRelPick(null);
+            setNote('已收起「👥 选角色」');
+            result = Object.assign(result, { ok: true, pick: null });
+        }
+        else if (a === 'relPickAdd') {
+            // V1 `case 'relPickAdd'`：追加一行关联角色（**不落库**，仍需点「💾 保存关联」）；三态提示与 V1 逐字一致
+            const kind = String(p.kind || '');
+            const id = String(p.id || '');
+            const name = String(p.name || '');
+            const isEd = (p.editor === true || String(p.editor == null ? '' : p.editor) === '1');
+            if (!kind || !name) { result = { ok: false, reason: 'bad-args' }; }
+            else {
+                const r = relPickAppendRow(kind, id, name, { editor: isEd });
+                if (r === 'dup') setNote('「' + name.slice(0, 12) + '」已在关联表里（如需再加一行可手写）');
+                else if (r) setNote('已加角色「' + name.slice(0, 12) + '」—— 点「💾 保存关联」落库');
+                else setNote('未找到关联表容器（请重新打开该条目）');
+                result = Object.assign(result, { ok: !!r, appended: r === true, dup: r === 'dup', name: name });
+            }
+        }
+        else if (a === 'relPickQuery') {
+            setRelPickQuery(String(p.q == null ? '' : p.q));
+            result = Object.assign(result, { ok: true, q: String(p.q == null ? '' : p.q) });
+        }
+        else if (a === 'relEdit') {
+            // V1 关系表卡片是**卡内行内编辑**；V2 的编辑表单在列表子标签下渲染 → 打开编辑器时必须切回 'list'，
+            //   否则 `dimBodyList` 的 `curSub === 'rel'` 提前返回会让编辑器不可见（V2 适配，登记于 docs/P9a）。
+            const k = String(p.kind || '');
+            ps.relSub[k] = 'list';
+            ps.editing = { kind: k, id: String(p.id || ''), preset: null };
+        }
+        else if (a === 'relWho') {
+            // V1 的「按角色筛（回车）」只写 `relFilterWho` 并重绘 —— 不打开任何条目编辑器
+            //   （V2 早期实现会顺带打开首条命中条目的编辑器；B9-b 按 V1 更正，登记于 docs/P9a）。
+            const rf = relFilterState();
+            const next = setRelFilter(rf.dim, String(p.who == null ? '' : p.who), rf.jump);
+            if (next.who) {
+                try {
+                    const hits = relByWho(next.who);
+                    if (hits.length) setNote('筛选：' + hits.length + ' 条关联含「' + next.who + '」（首条：' + String(hits[0].title).slice(0, 20) + '）');
+                    else setNote('筛选：没有关联含「' + next.who + '」');
+                } catch (e) { /* 忽略 */ }
+            } else setNote('已清除角色筛选');
         }
         else if (a.indexOf('rel') === 0 && a !== 'reload') {
             const rr = relAction(a, p);
@@ -1450,13 +1610,26 @@ export function bindOverlay() {
                 void panelAction(act, { kind: kind || (tg.dataset ? tg.dataset.fttKind : '') || ps.tab, id, searchKind: tg.dataset ? tg.dataset.fttSearchKind : '', subject });
                 return;
             }
-            void panelAction(act, { kind, id, floor, subject, summary: tg.dataset ? tg.dataset.fttSummary : '' });
+            void panelAction(act, {
+                kind, id, floor, subject,
+                summary: tg.dataset ? tg.dataset.fttSummary : '',
+                // B9-b：「👥 选角色」追加行需要角色名与编辑器作用域标记（V1 `data-ftt-name` / `data-ftt-editor`）；
+                //   行内删除按钮用 `data-ftt-rel-idx`（V1 用 `el.closest` 反查，V2 由拖出的索引直接给出）
+                name: tg.dataset ? String(tg.dataset.name || '') : '',
+                editor: tg.dataset ? String(tg.dataset.editor || '') : '',
+                idx: tg.dataset ? tg.dataset.relIdx : '',
+            });
         });
         if (typeof el.addEventListener === 'function') {
             el.addEventListener('change', (e) => {
                 const tg = e && e.target;
                 if (!tg || !tg.dataset) return;
-                if (tg.dataset.fttSearch !== undefined) { void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value }); return; }
+                if (tg.dataset.fttSearch !== undefined) {
+                    // B9-b：「👥 选角色」面板的搜索框与列表页搜索同名属性（V1 `data-ftt-search="relPick"`）→ 分流到选择器搜索词
+                    if (String(tg.dataset.fttSearch) === 'relPick') { void panelAction('relPickQuery', { q: tg.value }); return; }
+                    void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value });
+                    return;
+                }
                 if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);

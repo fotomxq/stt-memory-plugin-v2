@@ -2236,6 +2236,138 @@ await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文�
     return btnOk && cancelOk && emptyOk && confirmOk && resOk;
 })(), '');
 
+// ---------- AF 关系表定位跳转 + 选角色（B9-b） ----------
+await assert('AF1 关系表定位/选角色 FTT 入口齐备：setRelPick 归一与副本、relFilterState/setRelFilter、relClearFilter 四项清空、relKnownNames 只读角色档案、relPickAppendRow 三态（成功 / dup / 容器缺失）', (async () => {
+    const F = globalThis.FTT;
+    const names = ['relPickState', 'setRelPick', 'relFilterState', 'setRelFilter', 'relClearFilter', 'relPickQuery', 'setRelPickQuery',
+        'relKnownNames', 'relPickAppendRow', 'relPickPanelHtml', 'relEntryTitle', 'relFindEntryId', 'relIsRelDim', 'relDimLabelOf',
+        'relJump', 'relGoto'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.snapshots = [{ id: 'smoke-af-s1', name: '甲角色' }, { id: 'smoke-af-s2', name: '乙角色' }, { id: 'smoke-af-s3', name: '甲角色' }];
+    st.memories = [{ id: 'smoke-af-m1', owner: '甲角色', title: '关系定位记忆', content: '正文用于标题拼接。' }];
+    st.links = [];
+    // 已知角色只读角色档案（重名去重）
+    const known = F.relKnownNames();
+    // setRelPick：id 字符串化 / editor 布尔化 / 返回副本
+    const pick = F.setRelPick({ dim: 'memories', id: 5, editor: 0 });
+    const mut = F.relPickState(); mut.id = 'HACKED';
+    const pickOk = pick.dim === 'memories' && pick.id === '5' && pick.editor === false && F.relPickState().id === '5';
+    // setRelFilter：jump 归一（id 7 → '7'，title null → ''）
+    const filter = F.setRelFilter('memories', '甲角色', { dim: 'plans', id: 7, title: null });
+    const filterOk = filter.who === '甲角色' && filter.jump && filter.jump.id === '7' && filter.jump.title === '';
+    // relJump 状态迁移 + relClearFilter 四项清空
+    const jump = F.relJump('memories', 'smoke-af-m1');
+    const jumpOk = jump.ok === true && jump.tab === 'memories' && F.relFilterState().jump
+        && F.relFilterState().jump.title === '关系定位记忆：正文用于标题拼接。';
+    const cleared = F.relClearFilter();
+    const clearedOk = cleared.dim === 'all' && cleared.who === '' && cleared.jump === null && F.relPickState() === null;
+    // relPickAppendRow 三态（V2 适配签名：dim + refId；「容器缺失」= 条目引用为空）
+    const a1 = F.relPickAppendRow('memories', 'smoke-af-m1', '甲角色');
+    const a2 = F.relPickAppendRow('memories', 'smoke-af-m1', '甲角色');
+    const a3 = F.relPickAppendRow('memories', '', '甲角色');
+    const a4 = F.relPickAppendRow('atoms', 'smoke-af-m1', '甲角色');
+    const rowOk = a1 === true && a2 === 'dup' && a3 === false && a4 === false;
+    const noteOk = F.relEntryTitle('memories', st.memories[0]) === '关系定位记忆：正文用于标题拼接。'
+        && F.relFindEntryId('memories', { id: 'smoke-af-m1' }) === 'smoke-af-m1'
+        && F.relIsRelDim('memories') === true && F.relIsRelDim('atoms') === false && F.relDimLabelOf('suspense') === '悬念';
+    // 落库：草稿 → 「💾 保存关联」（同时按 V1 关闭选择器）
+    const sv = await entry.popupAction('relSave', { kind: 'memories', id: 'smoke-af-m1' });
+    const savedOk = sv.ok === true && sv.saved === 1 && (st.links || []).filter((x) => x && x.dim === 'memories' && x.refId === 'smoke-af-m1').length === 1
+        && F.relPickState() === null;
+    return missing.length === 0 && known.length === 2 && known[0] === '甲角色' && known[1] === '乙角色'
+        && pickOk && filterOk && jumpOk && clearedOk && rowOk && noteOk && savedOk;
+})(), '');
+
+await assert('AF2 面板编排：条目行「🔗 关联（N）」；`relJump` 切到条目所在页 + 维度子标签置 rel + 定位提示 + 「清除筛选」；`relWho` 只写角色筛选（不再顺带开编辑器）；`relGoto` 把该页搜索词设为条目标题（悬念→计划悬念页）', (async () => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    st.memories = [{ id: 'smoke-af-m2', owner: '甲角色', title: '码头见闻', content: '甲在码头看到木箱。' }];
+    st.plans = [{ id: 'smoke-af-p1', title: '追查货单', content: '追查货单来源', status: 'open' }];
+    st.suspense = [{ id: 'smoke-af-su1', title: '断口之谜', content: '断口来源不明', status: 'open' }];
+    st.parallels = [{ id: 'smoke-af-pa1', title: '第三方插手', text: '若木箱属第三方。' }];
+    st.links = [{ id: 'smoke-af-l1', dim: 'memories', refId: 'smoke-af-m2', who: '甲角色', how: 'participant', deviation: 'unknown' }];
+    await entry.popupAction('tab', { tab: 'memories' });
+    await entry.popupAction('msub', { tab: 'memories', sub: 'list' });
+    const listHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const btnOk = listHtml.indexOf('data-ftt-action="relJump"') >= 0
+        && listHtml.indexOf('data-kind="memories" data-id="smoke-af-m2"') >= 0
+        && listHtml.indexOf('🔗 关联（1）') >= 0;
+    // relJump：悬念条目 → 计划悬念页 + 悬念段子标签置 rel（V2 页面即维度的落点）
+    const j = await entry.popupAction('relJump', { kind: 'suspense', id: 'smoke-af-su1' });
+    const js = j.state || {}, jh = String(j.html || '');
+    const jumpOk = j.ok === true && js.tab === 'plans' && js.relSub && js.relSub.suspense === 'rel'
+        && String(js.note).indexOf('已定位到关系表：悬念') === 0
+        && jh.indexOf('当前筛选：定位 悬念「断口之谜：断口来源不明') >= 0
+        && jh.indexOf('data-ftt-action="relClearFilter"') >= 0
+        && jh.indexOf('data-ftt-rel-entry="suspense|smoke-af-su1"') >= 0;      // 定位目标即使暂无关联也列出
+    // relWho：只写角色筛选（V1 口径；V2 早期会顺带打开编辑器 → 本批更正）
+    const w = await entry.popupAction('relWho', { who: '甲角色' });
+    const whoOk = (w.state || {}).relWho === '甲角色' && (w.state || {}).editing === null
+        && F.relFilterState().who === '甲角色';
+    // 选择器态 + 定位态 → relClearFilter 一起清
+    await entry.popupAction('relPick', { kind: 'suspense', id: 'smoke-af-su1' });
+    const cl = await entry.popupAction('relClearFilter', {});
+    const clOk = cl.ok === true && String((cl.state || {}).note) === '已清除关系表筛选'
+        && F.relFilterState().who === '' && F.relFilterState().jump === null && F.relPickState() === null;
+    // relGoto：悬念 → 计划悬念页，搜索词写在该页（V1 tabOf 映射）
+    const g = await entry.popupAction('relGoto', { kind: 'suspense', id: 'smoke-af-su1' });
+    const gs = g.state || {};
+    const gotoOk = g.ok === true && gs.tab === 'plans' && gs.search.plans === '断口之谜'
+        && String(gs.note).indexOf('已定位到「断口之谜」') === 0 && F.relFilterState().jump === null;
+    return btnOk && jumpOk && whoOk && clOk && gotoOk;
+})(), '');
+
+await assert('AF3 选角色闭环：面板结构（角色档案点名 / ➕ / 关闭 / 搜索 / 已关联角标）→ `relPickAdd` 三态提示（成功·重复·容器缺失，与 V1 逐字一致）→ 追加进草稿 → 「💾 保存关联」落库并在关系总览出现', (async () => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    st.snapshots = [{ id: 'smoke-af-s1', name: '甲角色' }, { id: 'smoke-af-s2', name: '乙角色' }];
+    st.memories = [{ id: 'smoke-af-m3', owner: '甲角色', title: '仓库清点', content: '乙清点仓库。' }];
+    st.links = [];
+    await entry.popupAction('relJump', { kind: 'memories', id: 'smoke-af-m3' });
+    await entry.popupAction('relPick', { kind: 'memories', id: 'smoke-af-m3' });
+    const h = String((await entry.popupAction('refresh', {})).html || '');
+    const panelOk = h.indexOf('data-ftt-rel-pick="memories|smoke-af-m3"') >= 0
+        && h.indexOf('data-ftt-action="relPickAdd"') >= 0
+        && h.indexOf('data-ftt-action="relPickClose"') >= 0
+        && h.indexOf('data-ftt-search="relPick"') >= 0
+        && h.indexOf('👥 选角色 · 加到「记忆」的关联（角色档案 2 名）') >= 0
+        && h.indexOf('只从<b>角色档案</b>点名') >= 0
+        && h.indexOf('不遍历记忆 / 计划 / 悬念 / 平行条目') >= 0;
+    // 「已在关联」角标：先给该条目一条库内关联
+    st.links = [{ id: 'smoke-af-l2', dim: 'memories', refId: 'smoke-af-m3', who: '甲角色', how: 'participant', deviation: 'unknown' }];
+    const h2 = String((await entry.popupAction('refresh', {})).html || '');
+    const badgeOk = h2.indexOf('已在关联') >= 0;
+    // 搜索框分流：不污染列表页搜索（V1 `pageSearchQuery['relPick']` 独立）
+    await entry.popupAction('relPickQuery', { q: '乙' });
+    const h3 = String((await entry.popupAction('refresh', {})).html || '');
+    const searchOk = h3.indexOf('data-name="乙角色"') >= 0 && h3.indexOf('data-name="甲角色"') < 0
+        && String(F.relFilterState().who) === ''
+        && (await entry.popupAction('search', { kind: 'memories', q: '' })).state.search.memories === '';
+    await entry.popupAction('relPickQuery', { q: '' });
+    // 三态提示（V1 toast 文案逐字一致）
+    const a1 = await entry.popupAction('relPickAdd', { kind: 'memories', id: 'smoke-af-m3', name: '乙角色' });
+    const n1 = String((a1.state || {}).note || '');
+    const a2 = await entry.popupAction('relPickAdd', { kind: 'memories', id: 'smoke-af-m3', name: '乙角色' });
+    const n2 = String((a2.state || {}).note || '');
+    const a3 = await entry.popupAction('relPickAdd', { kind: 'memories', id: '', name: '乙角色' });
+    const n3 = String((a3.state || {}).note || '');
+    const noteOk = n1 === '已加角色「乙角色」—— 点「💾 保存关联」落库'
+        && n2 === '「乙角色」已在关联表里（如需再加一行可手写）'
+        && n3 === '未找到关联表容器（请重新打开该条目）'
+        && a1.appended === true && a2.dup === true && a3.ok === false;
+    const pickOpen = !!F.relPickState();
+    // 保存落库 → 关系总览出现该角色（V1 `relSave` 同时关闭选择器）
+    const sv = await entry.popupAction('relSave', { kind: 'memories', id: 'smoke-af-m3' });
+    const savedRows = (st.links || []).filter((x) => x && x.dim === 'memories' && x.refId === 'smoke-af-m3').map((x) => String(x.who)).sort().join(',');
+    const view = String((await entry.popupAction('refresh', {})).html || '');
+    const saveOk = sv.ok === true && sv.saved === 2 && savedRows === '乙角色,甲角色'
+        && view.indexOf('data-ftt-rel-entry="memories|smoke-af-m3"') >= 0 && view.indexOf('甲角色（亲历）') >= 0
+        && F.relPickState() === null && pickOpen;
+    await entry.popupAction('tab', { tab: 'overview' });     // 复位（不影响后续小节）
+    return panelOk && badgeOk && searchOk && noteOk && saveOk;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

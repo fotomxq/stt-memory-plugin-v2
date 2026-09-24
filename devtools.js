@@ -332,6 +332,25 @@ export function installDevtools(hooks) {
             aboutDirUrl: () => (hooks && typeof hooks.aboutDirUrl === 'function' ? hooks.aboutDirUrl() : ''),
             // B9-a 数据管理：清空当前角色记忆（V1 `resetState`；破坏性 —— 面板侧 `reset` 动作带二次确认）
             resetState: () => (hooks && typeof hooks.resetState === 'function' ? hooks.resetState() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            // B9-b 关系表定位跳转 +「👥 选角色」（V1 `__FTT` 同名能力）
+            //   注：`setRelPick` / `setRelFilter` / `setRelPickQuery` / `relJump` / `relGoto` 是**UI 导航态**写入口
+            //   （不改数据、不落库）；与 V1 一致地暴露（V1 `__FTT` 亦导出 setRelPick/setRelFilter），其余为只读查询。
+            relPickState: () => (hooks && typeof hooks.relPickState === 'function' ? hooks.relPickState() : null),
+            setRelPick: (ref) => (hooks && typeof hooks.setRelPick === 'function' ? hooks.setRelPick(ref) : null),
+            relFilterState: () => (hooks && typeof hooks.relFilterState === 'function' ? hooks.relFilterState() : null),
+            setRelFilter: (dim, who, jump) => (hooks && typeof hooks.setRelFilter === 'function' ? hooks.setRelFilter(dim, who, jump) : null),
+            relClearFilter: () => (hooks && typeof hooks.relClearFilter === 'function' ? hooks.relClearFilter() : null),
+            relPickQuery: () => (hooks && typeof hooks.relPickQuery === 'function' ? hooks.relPickQuery() : ''),
+            setRelPickQuery: (q) => (hooks && typeof hooks.setRelPickQuery === 'function' ? hooks.setRelPickQuery(q) : ''),
+            relKnownNames: () => (hooks && typeof hooks.relKnownNames === 'function' ? hooks.relKnownNames() : []),
+            relPickAppendRow: (dim, refId, name, opts) => (hooks && typeof hooks.relPickAppendRow === 'function' ? hooks.relPickAppendRow(dim, refId, name, opts || {}) : false),
+            relPickPanelHtml: (dim, refId, editor) => (hooks && typeof hooks.relPickPanelHtml === 'function' ? hooks.relPickPanelHtml(dim, refId, editor === true || String(editor) === '1') : ''),
+            relEntryTitle: (dim, it) => (hooks && typeof hooks.relEntryTitle === 'function' ? hooks.relEntryTitle(dim, it) : ''),
+            relFindEntryId: (dim, raw) => (hooks && typeof hooks.relFindEntryId === 'function' ? hooks.relFindEntryId(dim, raw) : ''),
+            relIsRelDim: (kind) => (hooks && typeof hooks.relIsRelDim === 'function' ? hooks.relIsRelDim(kind) : false),
+            relDimLabelOf: (dim) => (hooks && typeof hooks.relDimLabelOf === 'function' ? hooks.relDimLabelOf(dim) : String(dim == null ? '' : dim)),
+            relJump: (dim, id) => (hooks && typeof hooks.relJump === 'function' ? hooks.relJump(dim, id) : { ok: false, reason: 'no-hook' }),
+            relGoto: (dim, id) => (hooks && typeof hooks.relGoto === 'function' ? hooks.relGoto(dim, id) : { ok: false, reason: 'no-hook' }),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

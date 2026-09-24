@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.30.0（2026-09-26）· B9-b 关系表双向定位跳转 + 「👥 选角色」选择器
+
+**本版（B9-b，取自 V1 v1.206 `relJump`/`relGoto`/`relPick`/`relPickClose`/`relPickAdd`/`relClearFilter`）**：
+1. **`ui/rel-table.js`（+257/−6）**：`relDimLabelOf`/`relIsRelDim`/`REL_TAB_OF`/`relEntryTitle`/`relFindEntryId`/`relKnownNames`（重名去重）/`relPickState`/`setRelPick`/
+   `relFilterState`/`setRelFilter`/`relClearFilter`/`relPickQueryOf`/`setRelPickQuery`/`relJump`/`relGoto`/`relPickAppendRow`/`relPickPanelHtml`/`relPickKey`/`relPickingOf`；
+   `relTableHtml(dim, refId, {editor})` 增「👥 选角色」面板；`relSave` 成功后关选择器（同 V1）；
+2. **`ui/panel.js`（+197/−24）**：条目行「🔗」跳转按钮（`relJump`）；关系总览行「↗ 打开条目（`relGoto`）/ 👥 选角色（`relPick`）/ 💾 保存关联 / 🔗 编辑」+ `data-ftt-rel-entry` 锚点；
+   6 个动作分支（`relJump`/`relGoto`/`relPick`/`relPickClose`/`relPickAdd`/`relClearFilter`，置于既有 `rel*` 兜底之前）；DOM 委托补 `data-name`/`data-editor`/`data-ftt-rel-idx`；`relPick` 搜索分流；
+   `relEdit` 切回 list；**`relWho` 按 V1 更正为「只写筛选并重绘」**（V2 早期会顺带打开首条命中条目编辑器）；
+3. **`FTT.*` 新增 16 个入口**（`relPickState`/`setRelPick`/`relFilterState`/`setRelFilter`/`relKnownNames`/`relPickAppendRow`/`relJump`/`relGoto`/`relClearFilter` 等，devtools 侧全部带守卫）。
+
+**验证**：`v1-golden-rel-nav.json`（1120 行 / sha256 `09f9ad60…ce04b`）由**真实 V1 v1.206** oracle 生成 —— 动作类走**真实点击委托**（`openPanel()` 后在 `panel.listeners.click` 派发伪事件驱动 V1 `handleAction`，逐步记录 `relFilterState()`/`relPickState()`/`memSubState()`/各页搜索框 value/提示/条目渲染），并原样保存 V1 源码片段作证据；
+重跑 oracle 与入库 fixture **逐字节一致**（队长独立复核）；单元 `rel-nav-golden.test.js` **19 项**（R1–R12 V1 逐项 + V1–V7 V2 编排/接线，含「跳转→选角色→追加→保存→总览出现」端到端）；冒烟新增 **AF1–AF3**。
+门禁全绿：单元 **55 文件 / 874 断言**、冒烟 **124 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**收窄与偏差（明示）**：① `relClearFilter` **收窄**为「清角色筛选 + 定位 + 选择器态」（V2 关系表按分页隔离维度，V1 的「维度筛选」在 V2 语义下不适用，`dim` 字段保留但不参与过滤）；
+② `relJump` 落点：V1 恒切「记忆」页（靠维度筛选过滤）→ V2 切到**条目所在页**并置 `relSub[dim]='rel'`；③ `relPickAppendRow` 首参由 V1 的 DOM `box` 改为 `dim + refId`（三态返回值 `true`/`dup`/`false` 不变，「容器缺失」映射为条目引用为空/非关联维度/空名/关联层关闭）；
+④ 编辑器容器键 `dim|refId`（选择器面板键仍与 V1 一致 `dim|editor`）；⑤ 属性名改 V2 DOM 委托口径 `data-kind/-id/-name/-editor`；⑥ `relClearFilter` 在 V1 无提示，V2 用面板 note 回报；⑦ 关系总览保留 V2 原有 200 行上限（V1 无上限）。
+
+**V1 原生怪癖（原样保留，fixture `meta.notes` 与单测/冒烟固化）**：① `relGoto` 不重置子标签；② `relGoto(suspense)` 把搜索词写进 `plans`（`pageSearchQuery['suspense']` 永不写入）；③ `relClearFilter` 不清搜索词；④ `relSave` 成功后关选择器。
+
+**未实现/未验证**：V1「维度筛选下拉」（V2 不适用）；`relFillBatch` 界面入口（V1 亦已移除，仅程序化接口）；真浏览器 `scrollIntoView` 滚动定位未验证（桩 DOM 无布局）；`relRowDel` 的 DOM 索引已补透传但无真实点击断言；计划悬念页两处 `relSub` 联动不一致属 V2 既有问题（本批未改）；端到端仅跑宿主机桩（`index.js` 全装配 + st-mock），未接真实 SillyTavern。
+
 ## v2.29.0（2026-09-26）· B9-a 调试页（日志查看器 + 清空）+ 关于页（版本清单/清缓存/重载）+ 数据管理 `reset`
 
 **本版（B9-a，取自 V1 v1.206 `dbgLog/dbgGet/dbgClear` 与 `about*` 族 + `resetState`）**：
