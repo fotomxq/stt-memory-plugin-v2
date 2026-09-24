@@ -56,6 +56,22 @@ export const DEFAULT_UPDATE_BRANCH = 'main';
 /** 自动检查间隔（小时） */
 export const DEFAULT_UPDATE_INTERVAL_HOURS = 24;
 
+/** 各维度单条字数硬上限（**逐字移植自 V1 `defaultCfg.dimCharLimits`**；可用 `setDimCharLimits` 覆盖） */
+export const DIM_CHAR_LIMITS = Object.freeze({
+    atoms: 360,
+    states: 130,
+    snapshots: 600,
+    memories: 260,
+    items: 160,
+    plans: 200,
+    suspense: 200,
+    currencies: 200,
+    rumors: 240,
+    scenes: 260,
+    concepts: 320,
+    parallels: 560,
+});
+
 /** 绑定到宿主的酒馆事件（与 V1 九事件对齐） */
 export const HOST_EVENTS = Object.freeze([
     'USER_MESSAGE_RENDERED',

@@ -66,12 +66,20 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 
 | 层 | 职责 | 关键文件 |
 | --- | --- | --- |
-| `core/` | 纯逻辑：常量、工具、数据模型、算法、提示词（无 DOM / 无宿主） | `constants.js`、`util.js` |
+| `core/` | 纯逻辑：常量、工具、数据模型、算法、提示词（无 DOM / 无宿主） | `constants.js`、`util.js`、`model/`（scalars / atom / dims / hash —— 自 V1 逐字移植，**黄金样本强校验**） |
 | `host/` | 宿主适配：上下文探测、事件、注入、生成前钩子、AI 调用 | `st-api.js`、`events.js`、`inject.js`、`interceptor.js`、`generation.js` |
 | `adapters/` | 存储适配：配置 / 会话元数据 / 文件 / 本机缓冲 | `settings.js` |
 | `ui/` | 界面：设置抽屉、命令与宏、数据台（P4） | `settings-panel.js`、`commands.js` |
 
-### 5.2 硬规则
+### 5.2 内核移植与保真度
+
+`core/model/*` 由 V1 源码**逐段提取**生成（算法、字段名、字段顺序完全一致），并由
+`tests/unit/model-golden.test.js` 用 **V1 源码切片产出的黄金样本**（`tests/fixtures/v1-golden.json`）做**逐字符**比对 ——
+覆盖 10 个维度归一化 + 内容哈希 + 标量助手。口径与后续批次见 `docs/P1-内核平移.md`。
+
+改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
+
+### 5.3 硬规则
 
 - 生成前拦截器（`generate_interceptor`）**永不调用 `abort`**：任何失败都必须放行，保证消息发得出去；
 - 内核纯净：`core/` 只接受显式入参、返回结果，不读写宿主与全局；
@@ -87,6 +95,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── settings.html          # 扩展设置抽屉模板（Handlebars）
 ├── style.css              # 面板样式（继承 ST 主题变量）
 ├── core/                  # 纯内核（零宿主依赖）
+│   └── model/             # 数据模型：V1 逐字移植 + tests/fixtures/v1-golden.json 保真度门禁
 ├── host/                  # 宿主适配层
 ├── adapters/              # 存储适配层
 ├── ui/                    # 界面层
@@ -94,7 +103,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── i18n/                  # zh-cn / en 词条
 ├── tests/                 # 宿主桩 + 单元 + 冒烟
 ├── scripts/               # 门禁脚本（内核纯净度 / 版本一致性 / 文档规范）
-└── docs/                  # P0 探针报告（ST API 源码级结论）
+└── docs/                  # P0 探针报告 + 更新检查机制 + P1 内核平移
 ```
 
 ## 7. 许可

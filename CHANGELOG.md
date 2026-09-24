@@ -36,5 +36,13 @@
   ⑥ 状态持久化于 `extensionSettings.ftt_memory_v2.update`（`firstRunAt` / `startupCheckedAt` / `lastCheckAt` / `lastResult`），
   `/ftt` 与 `FTT.update()` 可查；新增 `core/update.js`（纯逻辑）、`host/update.js`（编排）、`adapters/update-state.js`（持久化）、
   `docs/更新检查机制.md`。
-- **门禁**：单元 **9 文件 109 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**；版本一致性 **通过**；文档规范 **0 违规**。
+- **P1 内核平移（批次 1：模型层，本版新增）**：把 V1 的归一化内核**逐段提取**进 `core/model/` ——
+  `scalars.js`（17 个助手 + 3 张常量表 + 可注入 `cfg` 视图）、`atom.js`（`normalizeAtom`）、
+  `dims.js`（状态 / 记忆 / 概念 / 平行 / 物品 / 计划 / 悬念 / 名册 / 场景 九个 `normalize*`）、`hash.js`（`atomContentHash` 双哈希）；
+  `core/constants.js` 增 `DIM_CHAR_LIMITS`（逐字取自 V1 `defaultCfg`）；`hashText` 对齐 V1（**djb2 → base36**，
+  而非 FNV/十六进制 —— 它决定 id 派生与删除墓碑）、`normText` 恢复 V1 语义（**保留换行**）、`clamp` / `normalizeList` 与 V1 一致；
+  角色作用域改为 `char:hashText(avatar → name2 → 索引)`（与原 TH 角色 id 口径尽量靠近）。
+  **保真度门禁**：V1 源码切片产出黄金样本 `tests/fixtures/v1-golden.json`（10 维度固定夹具 + 6 组哈希 + 7 项助手），
+  `model-golden.test.js` 复放并要求 **JSON 逐字符相等**（15 项断言）。详见 `docs/P1-内核平移.md`。
+- **门禁**：单元 **10 文件 127 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 7 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

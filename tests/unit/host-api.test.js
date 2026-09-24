@@ -34,7 +34,16 @@ R.assert('A6 完整宿主：ownManifest 返回版本', (() => {
 R.assert('A7 safeCall 成功路径返回值', safeCall('getWorldInfoNames').value.length === 1, safeCall('getWorldInfoNames'));
 R.assert('A8 currentCharScope 稳定且带 char: 前缀（同角色两次一致）', (() => {
     const a = currentCharScope(), b = currentCharScope();
-    return a === b && a.indexOf('char:') === 0 && a.length === 13;
+    return a === b && a.indexOf('char:') === 0 && a.length > 5 && /^char:[0-9a-z]+$/.test(a);
+})(), currentCharScope());
+R.assert('A8b 作用域优先用角色稳定标识 avatar（而非索引/名字）', (() => {
+    const byName = currentCharScope();
+    host.ctx.characters[0].avatar = 'avatar甲.png';
+    const withAvatar = currentCharScope();
+    const again = currentCharScope();
+    delete host.ctx.characters[0].avatar;
+    const back = currentCharScope();
+    return withAvatar === again && withAvatar !== byName && back === byName;
 })(), currentCharScope());
 R.assert('A9 角色切换 → 作用域变化', (() => {
     const before = currentCharScope();
@@ -43,6 +52,16 @@ R.assert('A9 角色切换 → 作用域变化', (() => {
     host.ctx.name2 = '角色甲';
     return before !== after;
 })(), '');
+R.assert('A9b 与 V1 哈希口径一致（djb2→base36，可用已知值校验）', (() => {
+    // djb2('测试角色') 的 base36 结果（由 V1 hashText 算法独立算出）
+    let h = 5381; const t = '测试角色';
+    for (let i = 0; i < t.length; i++) h = ((h << 5) + h) ^ t.charCodeAt(i);
+    const expect = 'char:' + (h >>> 0).toString(36);
+    host.ctx.name2 = '测试角色';
+    const got = currentCharScope();
+    host.ctx.name2 = '角色甲';
+    return got === expect;
+})(), currentCharScope());
 
 // 3) 缺能力宿主：缺失清单精确
 const bare = makeHost({ noEventSource: true, noInject: true, noTemplate: true, noSlash: true, noMacros: true });

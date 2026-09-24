@@ -2,16 +2,17 @@
 // 单元测试 · core/util（纯内核，零宿主依赖）
 // ============================================================
 import { makeReporter } from '../harness/st-mock.js';
-import { hashText, escHtml, normText, clamp, normalizeList, cmpDateStr, extractJsonObject, emptyState } from '../../core/util.js';
+import { hashText, escHtml, normText, oneLine, clamp, normalizeList, cmpDateStr, extractJsonObject, emptyState } from '../../core/util.js';
 import { DIMENSIONS, STATE_KEYS, PROMPT_POSITION, PROMPT_ROLE, EXTENSION_FOLDER, HOST_EVENTS } from '../../core/constants.js';
 
 const R = makeReporter('core-util 纯内核工具');
 
-R.assert('U1 hashText 稳定且等值同哈希', hashText('abc') === hashText('abc') && hashText('abc') !== hashText('abd') && /^[0-9a-f]{8}$/.test(hashText('abc')), hashText('abc'));
+R.assert('U1 hashText 稳定且等值同哈希（V1 djb2→base36 口径）', hashText('abc') === hashText('abc') && hashText('abc') !== hashText('abd') && /^[0-9a-z]+$/.test(hashText('abc')) && hashText('') === hashText(null), hashText('abc'));
 R.assert('U2 hashText 对 null/undefined 不抛异常', hashText(null) === hashText('') && hashText(undefined) === hashText(''), null);
 R.assert('U3 escHtml 转义五类字符', escHtml('<a href="x">&\'') === '&lt;a href=&quot;x&quot;&gt;&amp;&#39;', escHtml('<a href="x">&\''));
-R.assert('U4 normText 单行化 + 截断', normText('  a\n\n b  ', 3) === 'a b' && normText('abcdef', 3) === 'abc', normText('abcdef', 3));
-R.assert('U5 clamp 越界与非法输入', clamp(5, 0, 3) === 3 && clamp(-1, 0, 3) === 0 && clamp('x', 2, 9) === 2, [clamp(5, 0, 3), clamp('x', 2, 9)]);
+R.assert('U4 normText 保留换行（与 V1 一致）+ 截断', normText('  a\n\n b  ') === 'a\n\n b' && normText('abcdef', 3) === 'abc' && normText('a\r\nb') === 'a\nb', normText('  a\n\n b  '));
+R.assert('U4b oneLine 单行化（展示用，与 normText 区分）', oneLine('  a\n\n b  ', 3) === 'a b' && oneLine('abcdef', 3) === 'abc', oneLine('abcdef', 3));
+R.assert('U5 clamp 越界（与 V1 一致；非法输入按 NaN 传播，调用方须先 Number）', clamp(5, 0, 3) === 3 && clamp(-1, 0, 3) === 0 && clamp(1, 0, 3) === 1 && Number.isNaN(clamp('x', 2, 9)), [clamp(5, 0, 3), clamp('x', 2, 9)]);
 R.assert('U6 normalizeList 去空/去重/保序/截断', JSON.stringify(normalizeList([' a ', '', 'a', 'b', 'c'], 2)) === JSON.stringify(['a', 'b']), normalizeList([' a ', '', 'a', 'b', 'c'], 2));
 R.assert('U7 cmpDateStr 支持负年份且空值排最后', cmpDateStr('-0221-01-02', '1919-11-29') < 0 && cmpDateStr('', '1919-01-01') > 0 && cmpDateStr('1919-01-01', '1919-01-01') === 0, '');
 R.assert('U8 extractJsonObject 处理围栏/前后噪声/嵌套', (() => {

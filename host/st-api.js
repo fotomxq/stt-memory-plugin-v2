@@ -4,6 +4,8 @@
 // 事实源：docs/P0-探针报告.md（getContext 172 键 / setExtensionPrompt 签名 / 更新端点）
 // ============================================================
 
+import { hashText } from '../core/util.js';
+
 function defaultProvider() {
     try {
         const g = globalThis.SillyTavern;
@@ -109,18 +111,24 @@ export function ownManifest(name) {
     return r.ok ? r.value : null;
 }
 
-/** 取当前角色作用域键（char:<hash> 口径与 V1 一致；无角色时用 'default'） */
+/**
+ * 当前角色作用域键：`char:<hashText(角色稳定标识)>`（**哈希口径与 V1 一致**）。
+ * 稳定标识优先级：`characters[characterId].avatar`（ST 的角色文件名，最接近 TH 的角色 id）
+ * → `name2`（角色名）→ `characterId`（索引，仅兜底）。
+ * 注：ST 的 `characterId` 是数组下标（官方文档明确其非唯一 id），因此不优先使用；
+ *     V1→V2 数据导入时若需对齐历史作用域，用导入器的显式 scope 覆盖（P2）。
+ */
 export function currentCharScope() {
     const ctx = getCtx();
     if (!ctx) return 'default';
-    const name = String(ctx.name2 || '').trim();
-    const chid = (ctx.characterId === undefined || ctx.characterId === null) ? '' : String(ctx.characterId);
-    const raw = name || chid;
-    if (!raw) return 'default';
-    let h = 0x811c9dc5;
-    for (let i = 0; i < raw.length; i++) {
-        h ^= raw.charCodeAt(i);
-        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-    }
-    return 'char:' + h.toString(16).padStart(8, '0');
+    let stable = '';
+    try {
+        const idx = ctx.characterId;
+        const ch = (Array.isArray(ctx.characters) && idx !== undefined && idx !== null) ? ctx.characters[Number(idx)] : null;
+        if (ch && ch.avatar) stable = String(ch.avatar);
+    } catch (e) { /* 忽略 */ }
+    if (!stable) stable = String(ctx.name2 || '').trim();
+    if (!stable && ctx.characterId !== undefined && ctx.characterId !== null) stable = String(ctx.characterId);
+    if (!stable) return 'default';
+    return 'char:' + hashText(stable);
 }
