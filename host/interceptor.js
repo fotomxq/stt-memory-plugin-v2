@@ -2,9 +2,12 @@
 // host/interceptor.js —— 生成前拦截器（manifest.generate_interceptor 指向的全局函数）
 // 事实源：ST 官方文档「Prompt Interceptors」——入参 (chat, contextSize, abort, type)；
 // 约定（硬规则）：**永不调用 abort**，任何失败都必须放行（消息一定发得出去）。
-// P0 只建立骨架与可观测性；提取/注入闭环在 P3 接入 core/recall。
+// P3：生成前推送记忆注入（host/inject.pushMemoryInject，纯本地召回）；提取闭环在 P3 次批接入。
 // ============================================================
 import { VERSION, INJECT_ID } from '../core/constants.js';
+import { pushMemoryInject } from './inject.js';
+import { readInject } from './inject.js';
+import { cfg as kernelCfg } from '../core/model/runtime.js';
 
 const state = {
     calls: 0,
@@ -14,6 +17,7 @@ const state = {
     lastChatSize: 0,
     lastContextSize: 0,
     injectedLength: 0,
+    lastPush: null,
 };
 
 export function interceptorStats() {
@@ -22,7 +26,7 @@ export function interceptorStats() {
 
 export function resetInterceptorStats() {
     state.calls = 0; state.lastType = ''; state.lastAt = 0; state.lastError = '';
-    state.lastChatSize = 0; state.lastContextSize = 0; state.injectedLength = 0;
+    state.lastChatSize = 0; state.lastContextSize = 0; state.injectedLength = 0; state.lastPush = null;
 }
 
 /**
@@ -40,8 +44,17 @@ export async function fttGenerateInterceptor(chat, contextSize, abort, type) {
         state.lastAt = Date.now();
         state.lastChatSize = Array.isArray(chat) ? chat.length : -1;
         state.lastContextSize = Number(contextSize) || 0;
-        // P3：在此处调用 core/recall + host/inject.setInject 完成「发送前提取与注入」。
-        // 此处刻意不调用 abort( )，也不修改 chat。
+        // P3：发送前刷新记忆注入（生成时刻的状态最新 —— 事件路径可能滞后于手动编辑）。
+        // 只读内核 + 写 ST 注入通道；**不修改 chat、永不一调用 abort**。
+        try {
+            const wasOn = !(kernelCfg && kernelCfg.interceptorEnabled === false);
+            if (wasOn && !(kernelCfg && kernelCfg.injectEnabled === false)) {
+                state.lastPush = await pushMemoryInject({ queryText: '' });
+            }
+            state.injectedLength = readInject().length;
+        } catch (e) {
+            state.lastError = String((e && e.message) || e);
+        }
         void abort;
     } catch (e) {
         state.lastError = String((e && e.message) || e);

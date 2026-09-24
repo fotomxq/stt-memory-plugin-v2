@@ -8,6 +8,8 @@ import { getCtx } from '../host/st-api.js';
 /** 默认配置（P0 只放骨架项；P1+ 按 docs/14 §3 逐步补齐 V1 的配置键） */
 export const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
+    // 内核配置（V1 defaultCfg 全量 217 键的落盘容器；由 adapters/config-store.js 同步进内核视图）
+    cfg: {},
     // 注入
     injectEnabled: true,
     injectDepth: 0,

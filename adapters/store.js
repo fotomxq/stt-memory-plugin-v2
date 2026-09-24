@@ -12,6 +12,7 @@ import { MODULE_NAME } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
 import { state, setPersistHooks, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
+import { saveKernelCfg } from './config-store.js';
 import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../core/sweep.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
 import { scopeId } from '../core/state.js';
@@ -167,7 +168,7 @@ export async function removeServerFile() {
 export function wirePersistHooks() {
     setPersistHooks({
         saveState: () => { void saveStateNow({ reason: 'kernel' }); return true; },
-        saveCfg: () => saveSettings(),
+        saveCfg: () => saveKernelCfg(),
         log: (m, e) => { if (e !== undefined) kernelLog(m, e); },
         warn: () => undefined,
     });

@@ -95,6 +95,11 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 **绝不删除 V1 源数据**；命名/作用域派生与 V1 oracle 逐字符对齐（黄金样本 9）。
 尚未完成的快照链 / 跨端同步 / V1 配置迁移见 `docs/P2-宿主与存储.md` §7。
 
+**P3 首批（记忆注入闭环）**：`adapters/config-store.js` 把 `core/config.js` 的 217 键默认配置与 ST 配置容器双向同步
+（已存值优先、未知键保留、`stableStringify` 判定写盘），`host/inject.js` 复刻 V1 的注入包装与推送
+（开关 / 序号并发防护 / **空构建保留上次注入** / clearInject 重置），生成前拦截器在记录统计后刷新注入且**永不 abort、不改 chat**。
+详见 `docs/P3-注入闭环.md`；提取落库（三层提取链）为 P3 次批。
+
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 
 ### 5.3 硬规则

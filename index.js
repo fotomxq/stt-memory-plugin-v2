@@ -7,7 +7,7 @@ import { VERSION, DATA_VERSION, MODULE_NAME } from './core/constants.js';
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
-import { clearInject, injectAvailable } from './host/inject.js';
+import { clearInject, injectAvailable, pushMemoryInject, pushStats } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
@@ -18,6 +18,7 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow } from './adapters/store.js';
 import { importV1Data } from './adapters/import-v1.js';
+import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
@@ -32,6 +33,7 @@ const runtime = {
     settingsVia: 'none',
     update: { ran: false, reason: '', summary: null },
     store: { via: 'none', scope: '', last: null },
+    cfg: null,
     import: { runs: 0, last: null },
     chat: { messages: 0, lastMessageId: -1, scopeKey: '' },
     lastError: '',
@@ -51,6 +53,8 @@ export function extraForStatus() {
         store: runtime.store,
         chat: runtime.chat,
         import: runtime.importSummary || '',
+        cfg: runtime.cfg,
+        inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
     };
 }
@@ -82,6 +86,7 @@ export async function init() {
     if (runtime.ready) return { ok: true, reused: true };
     try { runtime.probe = probeCapabilities(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
+    try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try {
         const mounted = await mountSettingsPanel({ probeMissing: runtime.probe.missing.join('、') });
         runtime.settingsVia = mounted.via;
@@ -91,6 +96,8 @@ export async function init() {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
         const onFloorChanged = () => {
             try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 忽略 */ }
+            // P3：楼层/状态变化后刷新注入（失败静默；构建为空时保留上一次注入）
+            void pushMemoryInject({ queryText: '' }).catch(() => { });
         };
         const onGenEnded = () => {
             onFloorChanged();
