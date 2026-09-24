@@ -1,0 +1,27 @@
+<div class="ftt-v2-settings" id="ftt_v2_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>FTT记忆组件 V2</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_enabled"><span>启用插件</span></label>
+                <input type="checkbox" id="ftt_v2_enabled" {{#if enabled}}checked{{/if}}>
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_inject"><span>注入记忆到提示词</span></label>
+                <input type="checkbox" id="ftt_v2_inject" {{#if injectEnabled}}checked{{/if}}>
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_budget"><span>注入预算（字符）</span></label>
+                <input type="number" id="ftt_v2_budget" min="0" step="100" value="{{charBudget}}">
+            </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_autosum"><span>自动摘要</span></label>
+                <input type="checkbox" id="ftt_v2_autosum" {{#if autoSummary}}checked{{/if}}>
+            </div>
+            <div class="ftt-v2-note">版本 {{version}} · 数据台与完整设定项在 P4 落地（见 docs/P0-探针报告.md）</div>
+        </div>
+    </div>
+</div>
