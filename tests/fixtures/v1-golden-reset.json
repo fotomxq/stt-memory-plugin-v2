@@ -1,0 +1,254 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "fixedNow": 1735689600000,
+    "notes": [
+      "本 fixture 由 /tmp/gen-golden-b9a-reset.cjs 直调真实 V1 插件 v1.206 生成；`version`/`scope` 字段替换为占位符（两端版本号与作用域键定义不同，不可逐字比较）。",
+      "after.deletedDims / deletedHDims 为空 = resetState 期间 tombstoneSweep 被抑制（整库清空保持单端语义，不生成整批墓碑把对端也清掉）。",
+      "entryIndexInit 在 resetState 的 finally 里重跑基线（索引与空容器对齐）。",
+      "空容器键集合 = 29 个：[\"atoms\",\"concepts\",\"currencies\",\"currentStates\",\"deleted\",\"deletedH\",\"items\",\"lastKnownFloor\",\"links\",\"memories\",\"npcs\",\"parallels\",\"plans\",\"plotSegments\",\"processedFloors\",\"protagonist\",\"rumors\",\"scenes\",\"scope\",\"snapStore\",\"snapshots\",\"state\",\"stats\",\"summaries\",\"suspense\",\"updatedAt\",\"varTemplates\",\"vars\",\"version\"]"
+    ]
+  },
+  "confirmText": "确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。",
+  "confirmTextFrom": "src/FTT记忆组件-v1.206.js",
+  "before": {
+    "counts": {
+      "atoms": 1,
+      "currentStates": 1,
+      "snapshots": 1,
+      "memories": 1,
+      "items": 1,
+      "currencies": 1,
+      "plans": 1,
+      "suspense": 1,
+      "scenes": 1,
+      "concepts": 1,
+      "parallels": 1,
+      "plotSegments": 1,
+      "rumors": 1,
+      "links": 1,
+      "summaries": 1,
+      "processedFloors": 2,
+      "repairLog": 1,
+      "snapStore": 1
+    },
+    "tombIds": [
+      "gone1"
+    ],
+    "tombHashes": [
+      "hashgone"
+    ],
+    "deletedDims": [
+      "atoms"
+    ],
+    "deletedHDims": [
+      "atoms"
+    ],
+    "processedFloors": [
+      {
+        "f": 1,
+        "h": "h1"
+      },
+      {
+        "f": 2,
+        "h": "h2"
+      }
+    ],
+    "lastKnownFloor": 2,
+    "stats": {
+      "plansClosed": 2,
+      "suspenseResolved": 1
+    },
+    "state": {
+      "date": "1919-12-01",
+      "time": "夜",
+      "location": "码头",
+      "sceneFocus": "码头",
+      "present": [
+        "角色甲"
+      ]
+    },
+    "protagonistKeys": [
+      "name"
+    ],
+    "varsKeys": [
+      "money"
+    ],
+    "varTemplatesKeys": [
+      "char",
+      "chat",
+      "global"
+    ],
+    "repairCursorKeys": [
+      "memoriesRing"
+    ],
+    "updatedAt": 1735689600000
+  },
+  "returnValue": {
+    "type": "undefined",
+    "value": null
+  },
+  "after": {
+    "counts": {
+      "atoms": 0,
+      "currentStates": 0,
+      "snapshots": 0,
+      "memories": 0,
+      "items": 0,
+      "currencies": 0,
+      "plans": 0,
+      "suspense": 0,
+      "scenes": 0,
+      "concepts": 0,
+      "parallels": 0,
+      "plotSegments": 0,
+      "rumors": 0,
+      "links": 0,
+      "summaries": 0,
+      "processedFloors": 0,
+      "repairLog": -1,
+      "snapStore": 0
+    },
+    "tombIds": [],
+    "tombHashes": [],
+    "deletedDims": [],
+    "deletedHDims": [],
+    "processedFloors": [],
+    "lastKnownFloor": -1,
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 0
+    },
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    },
+    "protagonistKeys": [],
+    "varsKeys": [],
+    "varTemplatesKeys": [
+      "char",
+      "chat",
+      "global"
+    ],
+    "repairCursorKeys": [],
+    "updatedAt": 1735689600000
+  },
+  "afterKeys": [
+    "atoms",
+    "concepts",
+    "currencies",
+    "currentStates",
+    "deleted",
+    "deletedH",
+    "items",
+    "lastKnownFloor",
+    "links",
+    "memories",
+    "npcs",
+    "parallels",
+    "plans",
+    "plotSegments",
+    "processedFloors",
+    "protagonist",
+    "rumors",
+    "scenes",
+    "scope",
+    "snapStore",
+    "snapshots",
+    "state",
+    "stats",
+    "summaries",
+    "suspense",
+    "updatedAt",
+    "varTemplates",
+    "vars",
+    "version"
+  ],
+  "stateNormalized": {
+    "version": "<VERSION>",
+    "scope": "<SCOPE>",
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    },
+    "protagonist": {},
+    "items": [],
+    "plans": [],
+    "suspense": [],
+    "scenes": [],
+    "npcs": [],
+    "atoms": [],
+    "currentStates": [],
+    "snapshots": [],
+    "memories": [],
+    "concepts": [],
+    "parallels": [],
+    "currencies": [],
+    "plotSegments": [],
+    "rumors": [],
+    "links": [],
+    "vars": {},
+    "varTemplates": {
+      "global": {
+        "json": {},
+        "meaning": "",
+        "rule": ""
+      },
+      "char": {
+        "json": {},
+        "meaning": "",
+        "rule": ""
+      },
+      "chat": {
+        "json": {},
+        "meaning": "",
+        "rule": ""
+      }
+    },
+    "summaries": [],
+    "processedFloors": [],
+    "lastKnownFloor": -1,
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 0
+    },
+    "deleted": {},
+    "deletedH": {},
+    "snapStore": []
+  },
+  "lsWrites": [
+    {
+      "key": "SPreset_FTTMemory_char:1157z2a",
+      "len": 779
+    }
+  ],
+  "idempotent": {
+    "counts": {
+      "atoms": 0,
+      "currentStates": 0,
+      "snapshots": 0,
+      "memories": 0,
+      "items": 0,
+      "currencies": 0,
+      "plans": 0,
+      "suspense": 0,
+      "scenes": 0,
+      "concepts": 0,
+      "parallels": 0,
+      "plotSegments": 0,
+      "rumors": 0,
+      "links": 0,
+      "summaries": 0,
+      "processedFloors": 0,
+      "repairLog": -1,
+      "snapStore": 0
+    },
+    "deletedDims": [],
+    "deletedHDims": []
+  },
+  "actionSource": "case 'reset': {"
+}

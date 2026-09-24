@@ -816,8 +816,10 @@ export const SETTINGS_CONTROLS = {
 // ui/settings-pages.js —— V1 设定 **14 组子页**（结构与控件表由 V1 源码自动提取，保证同名同序同键）
 // 来源：V1 `src/modules/13-UI-设置与存储开关.js` 的 `subTabs` 与各页 `f(key,label,type)` / `swT` / `swForce` / `stSwitch` 调用
 //   （提取脚本见 docs/P8e-B4设定子页.md）。共 **105 个配置控件**，键写回内核 `cfg`（`storage.*` 为 `cfg.storage.*`）。
-// 说明：本批交付**框架 + 全部配置控件 + 数据管理动作**；依赖尚未移植内核的页面动作（NSFW 词条/规则库、提示词签名迁移、
-//   存储探测、调试面板）在页内以「待 B6/B7/B8 批次」标注，不使用假实现。
+// 说明：本批交付**框架 + 全部配置控件 + 数据管理动作**；依赖尚未移植内核的页面动作（提示词签名迁移、投喂标签分析、
+//   货币追踪、预设/API 等）在页内明确标注，不使用假实现。
+//   B9-a 起：**调试页**（日志查看器 + `dbgClear`）与**关于页**（版本清单读取 + 清缓存/重载）已接入
+//   （`ui/debug.js` / `ui/about.js`，分别对应 V1 的 `debugHtml()` 与 `aboutHtml()`）；数据管理页新增 `reset`。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
 import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
@@ -829,6 +831,8 @@ import { snapshotSectionHtml } from './snapshots.js';
 import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
+import { debugPageHtml } from './debug.js';
+import { aboutHtml as aboutPageHtml } from './about.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -959,7 +963,6 @@ export function basePageHtml(controls) {
 /** 页内「待后续批次」说明（不使用假实现） */
 const PENDING_NOTE = {
     api: 'API 页在 V1 用于配置自定义 API/代理；V2 走宿主（ST 自身）的生成能力，因此本页仅保留相关配置键，模型/连接选择在 ST 的「连接」面板。',
-    debug: '调试页的日志面板与缓存清理（B9 批次）；本页先提供调试相关配置键。',
     prompts: '提示词页的**模板分组编辑/恢复默认/签名迁移**在 B6 批次接入；本页先提供提示词相关开关与破限前置文本开关。',
     storage: '存储页的**探测/测试/同步动作**依赖 B7 批次的内核；本页先提供存储开关。',
 };
@@ -977,13 +980,17 @@ export function settingsPageHtml(pageId) {
     if (pid === 'forget') return forgetPageHtml(list);
     // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
     if (pid === 'base') return basePageHtml(list);
+    // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
+    if (pid === 'debug') return debugPageHtml(list);
+    // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 它是什么 / 版本更新」三节（`ui/about.js#aboutHtml`）+ V2 附加信息
+    if (pid === 'about') return aboutPageHtml() + pageExtraHtml('about');
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';
     return rows + extra + note + (list.length ? '' : (extra || note ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>'));
 }
 
-/** 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账；其余明确标注） */
+/** 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账/清空当前角色记忆；其余明确标注） */
 function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
@@ -993,6 +1000,10 @@ function pageExtraHtml(pid) {
             '<button class="ftt-btn" data-ftt-action="exportState" title="导出当前角色记忆为 JSON（可保存为文件）">⬇ 导出 JSON</button>',
             '<button class="ftt-btn" data-ftt-action="importStateOpen" title="粘贴 JSON 导入（合并进当前容器）">⬆ 导入 JSON</button>',
             '<button class="ftt-btn ftt-err" data-ftt-action="clearFloors" title="只清「已处理楼层」记录，不删除任何记忆条目">🧹 清除已处理记录</button>',
+            // B9-a：V1 数据管理页第 4 个按钮（`data-ftt-action="reset"`，文案逐字「🗑 清空当前角色记忆」）。
+            //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
+            //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。
+            '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="清空当前角色的全部 FTT 记忆（不可恢复，建议先导出备份）">🗑 清空当前角色记忆</button>',
             '</div>',
             '<div class="ftt-field ftt-field-col"><label>导入 JSON（粘贴后点「导入」）</label><textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
             '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="importStateApply">⬆ 导入</button></div>',
@@ -1000,7 +1011,7 @@ function pageExtraHtml(pid) {
     }
     if (pid === 'about') {
         return [
-            '<h4 class="ftt-h4-inline">关于</h4>',
+            '<h4 class="ftt-h4-inline">V2 附加信息</h4>',
             '<div class="ftt-item">版本：' + esc(VERSION) + ' · 模块：ftt_memory_v2</div>',
             '<div class="ftt-item">内核配置键：' + Object.keys(cfg || {}).length + ' · 默认配置键：' + Object.keys(defaultCfg || {}).length + '</div>',
             '<div class="ftt-hint">与 V1 的功能对齐按批次推进（B1–B9），进度见 docs/P8-功能对齐总表.md。</div>',

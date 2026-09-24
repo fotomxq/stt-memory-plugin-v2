@@ -1,0 +1,266 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "fixedNow": 1735689600000,
+    "debugKey": "SPreset_FTTMemoryDebug",
+    "notes": [
+      "本 fixture 由 /tmp/gen-golden-b9a-debug.cjs 直调真实 V1 插件 v1.206 生成；Date.now 采用「固定基准 + 每次调用 +1ms」的确定性时钟（保证 at 逐字节可复现）。",
+      "V1 dbgGet() 内存为「最新在前」；同毫秒多条时 V1 的 Array#sort 稳定排序保留**插入顺序**（见 case.sameAtQuirk）。",
+      "reload：第二次 loadPlugin 后 dbgGet() 只保留与种子 at 相同的条目（插件启动期自身日志同处内存，属噪声，不纳入比对）。",
+      "同毫秒多条：V1 内存/持久层均为**插入顺序**（s1→s2→s3），与注释宣称的「最新在前」不一致；V2 环形缓冲用 unshift（= 最新在前）→ 该场景下顺序相反（见 docs/P8z 偏差 #3）。"
+    ]
+  },
+  "reload": {
+    "seeded": [
+      {
+        "at": 1735689599970,
+        "kind": "旧",
+        "data": "storedA"
+      },
+      {
+        "at": 1735689599980,
+        "kind": "旧",
+        "data": "storedB"
+      },
+      {
+        "at": 1735689599990,
+        "kind": "新",
+        "data": "storedC"
+      }
+    ],
+    "loaded": [
+      {
+        "at": 1735689599990,
+        "kind": "新",
+        "data": "storedC"
+      },
+      {
+        "at": 1735689599980,
+        "kind": "旧",
+        "data": "storedB"
+      },
+      {
+        "at": 1735689599970,
+        "kind": "旧",
+        "data": "storedA"
+      }
+    ]
+  },
+  "basic": {
+    "list": [
+      {
+        "at": 1735689600005,
+        "kind": "类别E",
+        "data": "[1,2,3]"
+      },
+      {
+        "at": 1735689600004,
+        "kind": "类别D",
+        "data": "123"
+      },
+      {
+        "at": 1735689600003,
+        "kind": "类别C",
+        "data": "null"
+      },
+      {
+        "at": 1735689600002,
+        "kind": "类别B",
+        "data": "{\"a\":1,\"b\":\"x\"}"
+      },
+      {
+        "at": 1735689600001,
+        "kind": "类别A",
+        "data": "纯字符串"
+      }
+    ],
+    "storage": [
+      {
+        "at": 1735689600005,
+        "kind": "类别E",
+        "data": "[1,2,3]"
+      },
+      {
+        "at": 1735689600004,
+        "kind": "类别D",
+        "data": "123"
+      },
+      {
+        "at": 1735689600003,
+        "kind": "类别C",
+        "data": "null"
+      },
+      {
+        "at": 1735689600002,
+        "kind": "类别B",
+        "data": "{\"a\":1,\"b\":\"x\"}"
+      },
+      {
+        "at": 1735689600001,
+        "kind": "类别A",
+        "data": "纯字符串"
+      }
+    ]
+  },
+  "truncate": {
+    "object": {
+      "len": 6000,
+      "head": "{\"big\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tail": "xxxxxxxxxxxxxxxxxxxx"
+    },
+    "string": {
+      "len": 7000,
+      "head": "yyyyyyyyyyyyyyyyyyyy",
+      "tail": "yyyyyyyyyyyyyyyyyyyy"
+    },
+    "storageObjectLen": 7000
+  },
+  "undefinedData": {
+    "before": 0,
+    "after": 0,
+    "recorded": 0,
+    "threwOut": false,
+    "storage": null
+  },
+  "undefinedKind": {
+    "hasKindKey": true,
+    "kindType": "undefined",
+    "json": "{\"at\":1735689600001,\"data\":\"kind 缺失\"}",
+    "storage": "[{\"at\":1735689600001,\"data\":\"kind 缺失\"}]"
+  },
+  "disabled": {
+    "before": 0,
+    "afterDisabled": 0,
+    "afterEnabled": 1,
+    "head": {
+      "at": 1735689600001,
+      "kind": "开启",
+      "data": "应记录"
+    }
+  },
+  "cap": {
+    "n": 300,
+    "storedN": 300,
+    "head": {
+      "at": 1735689600305,
+      "kind": "上限",
+      "data": "第305条"
+    },
+    "tail": {
+      "at": 1735689600006,
+      "kind": "上限",
+      "data": "第6条"
+    },
+    "sortedDesc": true,
+    "atSpan": [
+      1735689600006,
+      1735689600305
+    ]
+  },
+  "persistMerge": {
+    "list": [
+      {
+        "at": 1735689600002,
+        "kind": "later",
+        "data": "mem2"
+      },
+      {
+        "at": 1735689600001,
+        "kind": "dup",
+        "data": "mem1"
+      },
+      {
+        "at": 1735689599980,
+        "kind": "旧",
+        "data": "storedB"
+      },
+      {
+        "at": 1735689599970,
+        "kind": "旧",
+        "data": "storedA"
+      }
+    ],
+    "storage": [
+      {
+        "at": 1735689600002,
+        "kind": "later",
+        "data": "mem2"
+      },
+      {
+        "at": 1735689600001,
+        "kind": "dup",
+        "data": "mem1"
+      },
+      {
+        "at": 1735689599980,
+        "kind": "旧",
+        "data": "storedB"
+      },
+      {
+        "at": 1735689599970,
+        "kind": "旧",
+        "data": "storedA"
+      }
+    ]
+  },
+  "sameAtQuirk": {
+    "at": 1735689600000,
+    "order": [
+      "s1",
+      "s2",
+      "s3"
+    ],
+    "storageOrder": [
+      "s1",
+      "s2",
+      "s3"
+    ]
+  },
+  "clear": {
+    "before": 2,
+    "retType": "undefined",
+    "after": 0,
+    "storageBefore": true,
+    "storageAfter": null,
+    "storageAfterIsNull": true
+  },
+  "quotaFallback": {
+    "limit": 20000,
+    "pushes": 200,
+    "events": [
+      {
+        "i": 136,
+        "before": 135,
+        "after": 120
+      },
+      {
+        "i": 152,
+        "before": 135,
+        "after": 120
+      },
+      {
+        "i": 168,
+        "before": 135,
+        "after": 120
+      },
+      {
+        "i": 184,
+        "before": 135,
+        "after": 120
+      }
+    ],
+    "eventsN": 5,
+    "finalN": 120,
+    "storedN": 120,
+    "fallbackSlicedTo": 120
+  },
+  "tokens": {
+    "cjk": 5,
+    "ascii": 2,
+    "mixed": 3,
+    "stats": {
+      "chars": 6,
+      "tokens": 3
+    }
+  }
+}

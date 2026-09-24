@@ -72,6 +72,8 @@ const remoteVersion = (() => {
 let endpointDown = false;
 let v1FileName = '';
 let v1FileText = '';
+// B9-a：关于页的版本清单（测试内可切换「扩展目录里有 / 没有」两态）
+let aboutJsonText = '';
 const fetchCalls = [];
 // B7-2：服务端用户目录文件的内存实现（记忆文件 / 备份 / 快照 / 清单 / 同步日志）
 const srvFiles = new Map();
@@ -100,6 +102,8 @@ const uninstallFetch = installGlobalFetch((url, opts) => {
     if (url.endsWith('/manifest.json')) return { status: 200, text: JSON.stringify({ version: remoteVersion }) };
     if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v' + remoteVersion + '（2026-10-01）\n\n- 新增：更新检查机制\n' };
     if (v1FileName && url === '/user/files/' + v1FileName) return { status: 200, text: v1FileText };
+    // B9-a 关于页：版本清单按扩展目录（或相对路径）读取；`aboutJsonText` 为空 → 404（如实失败路径）
+    if (url.indexOf('FTT-memory-changelog.json') >= 0) return aboutJsonText ? { status: 200, text: aboutJsonText } : { status: 404, body: {} };
     return { status: 404, body: {} };
 });
 
@@ -2073,6 +2077,163 @@ await assert('AD3 面板「🚀 推进」+「⬆ 转正为情节」端到端：�
         const note3 = String(((r3.state || {}).note) || '');
         return okAdv && okPromote && note3 === '⏳ 当前没有平行事件';
     } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
+// ---------- AE 调试页 + 关于页 + reset（B9-a） ----------
+await assert('AE1 调试页：V1 同款控件与日志查看器（计数/类别标签/逐条 details/清空按钮）+ `dbgClear` 动作清空并如实回报；FTT.* 入口齐备', (async () => {
+    const F = globalThis.FTT;
+    const names = ['dbgLog', 'dbgGet', 'dbgLogGet', 'dbgClear', 'debugLogStats', 'aboutLoad', 'aboutEnsureLoaded',
+        'aboutState', 'aboutData', 'aboutHtml', 'aboutClearCache', 'aboutCandidateUrls', 'aboutSortDesc', 'aboutFallback',
+        'aboutJsonPaths', 'aboutInfo', 'aboutDirUrl', 'resetState'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    // 调试日志持久层桩（本小节内注入并在小节内清理）
+    const lsMap = new Map();
+    const ls = {
+        getItem: (k) => (lsMap.has(String(k)) ? lsMap.get(String(k)) : null),
+        setItem: (k, v) => { lsMap.set(String(k), String(v)); },
+        removeItem: (k) => { lsMap.delete(String(k)); },
+    };
+    const keepLs = globalThis.window && globalThis.window.localStorage;
+    globalThis.window.localStorage = ls;
+    try {
+        F.dbgClear();
+        rtMod.cfg.debugEnabled = true;
+        F.dbgLog('摘要', { action: '单楼分析完成', floor: 3, added: 2, ms: 120 });
+        F.dbgLog('对账', { action: '常规镜像写入', bytes: 825 });
+        const stats = F.debugLogStats();
+        const stored = ls.getItem('SPreset_FTTMemoryDebug');
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        let h = String((await entry.popupAction('refresh', {})).html || '');
+        const pageOk = h.indexOf('data-ftt-settings-page="debug"') >= 0 && h.indexOf('data-ftt-cfg="debugEnabled"') >= 0
+            && h.indexOf('关闭后不再记录新日志；已存日志仍可查看。') >= 0
+            && h.indexOf('data-ftt-action="dbgClear"') >= 0 && h.indexOf('🗑 清空日志') >= 0
+            && h.indexOf('共 2 条') >= 0 && h.indexOf('（最多 300 条，最新在上；点击展开详情）') >= 0
+            && h.indexOf('class="ftt-dbg-item"') >= 0 && h.indexOf('🧠 分析记忆 1') >= 0 && h.indexOf('🔄 存储对账 1') >= 0
+            && h.indexOf('单楼分析完成') >= 0;
+        rtMod.cfg.debugEnabled = false;
+        const offRet = F.dbgLog('摘要', '关闭时不记录');
+        rtMod.cfg.debugEnabled = true;
+        // 面板动作 `dbgClear`：清空内存 + 持久层，note 读 r.state.note
+        const c = await entry.popupAction('dbgClear', {});
+        const note = String(((c.state || {}).note) || '');
+        const after = F.dbgGet();
+        const clearedOk = c.ok === true && note === '已清空调试日志'
+            && c.cleared === 2 && after.length === 0 && JSON.parse(ls.getItem('SPreset_FTTMemoryDebug')).length === 0;
+        h = String((await entry.popupAction('refresh', {})).html || '');
+        const emptyOk = h.indexOf('暂无日志。运行「AI 摘要」或「自动修复」后在此显示。') >= 0;
+        return missing.length === 0 && stats.n === 2 && stats.cap === 300 && typeof stored === 'string'
+            && pageOk && offRet === false && clearedOk && emptyOk;
+    } finally {
+        if (keepLs === undefined) delete globalThis.window.localStorage; else globalThis.window.localStorage = keepLs;
+        try { globalThis.FTT.dbgClear(); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('AE2 关于页：按**扩展目录**读取版本清单（成功态：来源/计数/倒序条目/按钮）+ 清缓存删键复位；清单缺失时如实失败不伪造数据', (async () => {
+    const F = globalThis.FTT;
+    const lsMap = new Map();
+    const ls = {
+        getItem: (k) => (lsMap.has(String(k)) ? lsMap.get(String(k)) : null),
+        setItem: (k, v) => { lsMap.set(String(k), String(v)); },
+        removeItem: (k) => { lsMap.delete(String(k)); },
+    };
+    const keepLs = globalThis.window && globalThis.window.localStorage;
+    globalThis.window.localStorage = ls;
+    try {
+        // 候选地址：扩展目录绝对路径优先 + V1 同款相对路径
+        const cands = F.aboutCandidateUrls();
+        const dir = F.aboutDirUrl();
+        const candOk = dir === '/scripts/extensions/third-party/ftt-memory-v2/'
+            && cands[0] === dir + 'FTT-memory-changelog.json'
+            && JSON.stringify(F.aboutJsonPaths()) === JSON.stringify(['FTT-memory-changelog.json', './FTT-memory-changelog.json']);
+        // ① 清单缺失 → 如实失败（不伪造版本数据）
+        aboutJsonText = '';
+        F.aboutClearCache();
+        const bad = await entry.popupAction('aboutReload', {});
+        const badNote = String(((bad.state || {}).note) || '');
+        const failOk = bad.ok === false && badNote.indexOf('未能读取版本清单') === 0
+            && badNote.indexOf(dir) > 0 && F.aboutState().status === 'fail' && F.aboutData().fallback === true
+            && (F.aboutData().changelog || []).length === 0;
+        // ② 清单存在 → 成功读取（来源 = 扩展目录首个候选）+ 写本地缓存
+        aboutJsonText = JSON.stringify({
+            name: 'FTT记忆组件', title: '示例标题', version: VERSION, updatedAt: '2026-09-26',
+            intro: { what: '示例说明', highlights: ['甲'], entries: ['乙'], notes: '丙' },
+            changelog: [
+                { version: '1.0.0', date: '2024-01-01', title: '首个版本', points: ['建立记忆容器'] },
+                { version: '0.9.0', date: '2023-12-01', title: '预发布', points: [] },
+            ],
+        });
+        const ok = await entry.popupAction('aboutReload', {});
+        const okNote = String(((ok.state || {}).note) || '');
+        const st = F.aboutState();
+        const cacheRaw = ls.getItem('fttAboutJson');
+        const okOk = ok.ok === true && okNote.indexOf('版本清单已更新') === 0 && okNote.indexOf('共 2 个版本') > 0
+            && st.status === 'ok' && st.from === dir + 'FTT-memory-changelog.json' && !!cacheRaw
+            && F.aboutSortDesc(F.aboutData().changelog).map((e) => e.version).join(',') === '1.0.0,0.9.0';
+        // ③ 页面渲染（停在「关于」子页）
+        await entry.popupAction('settingsSub', { sub: 'about' });
+        const h = String((await entry.popupAction('refresh', {})).html || '');
+        const htmlOk = h.indexOf('data-ftt-settings-page="about"') >= 0
+            && h.indexOf('关于 · FTT记忆组件') >= 0 && h.indexOf('它是什么') >= 0 && h.indexOf('版本更新（倒序 · 最新在最前）') >= 0
+            && h.indexOf('data-ftt-action="aboutReload"') >= 0 && h.indexOf('🔄 重新获取') >= 0
+            && h.indexOf('data-ftt-action="aboutClearCache"') >= 0 && h.indexOf('🧹 清除本地缓存') >= 0
+            && h.indexOf('✅ 版本清单已读取 · 2 个版本') >= 0 && h.indexOf('共 2 个版本') >= 0
+            && h.indexOf('首个版本') >= 0 && h.indexOf('建立记忆容器') >= 0
+            && h.indexOf('内核配置键：') >= 0;      // V2 附加信息块
+        // ④ 清缓存：先等「页面停在关于子页」触发的自动读取落定（渲染即自动读取并回写缓存）
+        await new Promise((r) => setTimeout(r, 60));
+        const hadCache = ls.getItem('fttAboutJson') !== null;
+        const removedNow = F.aboutClearCache();
+        const directOk = hadCache === true && removedNow === true && ls.getItem('fttAboutJson') === null
+            && F.aboutData() === null && F.aboutState().status === 'idle' && F.aboutState().ts === 0;
+        // 动作路径（V1 同名 `aboutClearCache`）：如实回报；此后面板重绘会再自动读一次（V1 同行为）
+        aboutJsonText = '';
+        const cleared = await entry.popupAction('aboutClearCache', {});
+        const clearNote = String(((cleared.state || {}).note) || '');
+        const clearOk = directOk && cleared.ok === true && clearNote.indexOf('已清除版本清单本地缓存') === 0;
+        // ⑤ 恢复：切回总览（避免影响后续小节）
+        await entry.popupAction('tab', { tab: 'overview' });
+        return candOk && failOk && okOk && htmlOk && clearOk;
+    } finally {
+        aboutJsonText = '';
+        if (keepLs === undefined) delete globalThis.window.localStorage; else globalThis.window.localStorage = keepLs;
+        try { globalThis.FTT.aboutClearCache(); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文案逐字一致；无对话框时不执行（取消态如实提示）、确认后清空并留「先导出备份」提示', (async () => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    st.atoms = [{ id: 'smoke-ae-a1', title: '甲', text: '角色甲在码头发现木箱，断口整齐（正文足够长）。', date: '1919-11-29', validity: 'active' }];
+    st.memories = [{ id: 'smoke-ae-m1', title: '木箱', content: '甲记得木箱断口整齐。' }];
+    st.deleted = {}; st.deletedH = {};
+    // ① 数据管理页按钮（文案与 V1 逐字一致）
+    await entry.popupAction('settingsSub', { sub: 'data' });
+    const h = String((await entry.popupAction('refresh', {})).html || '');
+    const btnOk = h.indexOf('data-ftt-action="reset"') >= 0 && h.indexOf('>🗑 清空当前角色记忆</button>') >= 0
+        && h.indexOf('data-ftt-action="exportState"') >= 0;
+    // ② 无对话框 → 不执行（V1 口径），如实提示
+    const keepConfirm = globalThis.confirm;
+    delete globalThis.confirm;
+    const r1 = await entry.popupAction('reset', {});
+    const n1 = String(((r1.state || {}).note) || '');
+    const stillThere = (rtMod.state.atoms || []).length === 1;
+    const cancelOk = r1.ok === false && r1.reason === 'cancelled' && n1 === '已取消清空（记忆未改动）' && stillThere;
+    // ③ 有确认 → 清空全部容器 + 不产生整批墓碑 + 如实回报
+    let seen = '';
+    globalThis.confirm = (text) => { seen = String(text); return true; };
+    const r2 = await entry.popupAction('reset', {});
+    const n2 = String(((r2.state || {}).note) || '');
+    // 注意：`resetState()` 会**整体替换**内核 state 对象 → 必须重新读 `rtMod.state`（旧引用仍是清空前的容器）
+    const st2 = rtMod.state;
+    const emptyOk = (st2.atoms || []).length === 0 && (st2.memories || []).length === 0
+        && Object.keys(st2.deleted || {}).length === 0 && Object.keys(st2.deletedH || {}).length === 0;
+    const confirmOk = seen === '确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。';
+    const resOk = r2.ok === true && r2.action === 'reset' && n2.indexOf('已清空当前角色的 FTT 记忆') === 0
+        && n2.indexOf('条已清除') > 0 && typeof F.resetState === 'function';
+    if (keepConfirm === undefined) delete globalThis.confirm; else globalThis.confirm = keepConfirm;
+    await entry.popupAction('tab', { tab: 'overview' });
+    return btnOk && cancelOk && emptyOk && confirmOk && resOk;
 })(), '');
 
 // ---------- D 注入与收尾 ----------

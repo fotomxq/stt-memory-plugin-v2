@@ -309,6 +309,29 @@ export function installDevtools(hooks) {
             prunePromotedParallels: () => (hooks && typeof hooks.prunePromotedParallels === 'function' ? hooks.prunePromotedParallels() : { removed: 0, kept: 0 }),
             setParallelLastKeywords: (list) => (hooks && typeof hooks.setParallelLastKeywords === 'function' ? hooks.setParallelLastKeywords(list) : []),
             parallelLastKeywords: () => (hooks && typeof hooks.parallelLastKeywords === 'function' ? hooks.parallelLastKeywords() : []),
+            // B9-a 调试页：日志记录 / 读取 / 清空 / 统计（V1 `__FTT` 同名 `dbgLog` / `dbgGet` / `dbgClear`）
+            //   注：本文件原约定为「只读快照、不暴露写数据能力」；此处按 V1 同名能力（用户要求 B9 对齐）显式放开
+            //   `dbgLog` / `dbgClear` / `aboutClearCache` / `resetState` 四个**有意为之**的写入口，其余仍为只读。
+            dbgLog: (kind, data) => (hooks && typeof hooks.dbgLog === 'function' ? hooks.dbgLog(kind, data) : false),
+            dbgGet: () => (hooks && typeof hooks.dbgGet === 'function' ? hooks.dbgGet() : []),
+            dbgLogGet: () => (hooks && typeof hooks.dbgLogGet === 'function' ? hooks.dbgLogGet() : []),
+            dbgClear: () => (hooks && typeof hooks.dbgClear === 'function' ? hooks.dbgClear() : 0),
+            debugLogStats: () => (hooks && typeof hooks.debugLogStats === 'function' ? hooks.debugLogStats() : null),
+            // B9-a 关于页：版本清单读取（相对扩展目录）/ 状态 / 渲染 / 清缓存 / 候选地址 / 倒序 / 兜底
+            aboutLoad: (force) => (hooks && typeof hooks.aboutLoad === 'function' ? hooks.aboutLoad(force === true) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            aboutEnsureLoaded: () => (hooks && typeof hooks.aboutEnsureLoaded === 'function' ? hooks.aboutEnsureLoaded() : false),
+            aboutState: () => (hooks && typeof hooks.aboutState === 'function' ? hooks.aboutState() : null),
+            aboutData: () => (hooks && typeof hooks.aboutData === 'function' ? hooks.aboutData() : null),
+            aboutHtml: () => (hooks && typeof hooks.aboutHtml === 'function' ? hooks.aboutHtml() : ''),
+            aboutClearCache: () => (hooks && typeof hooks.aboutClearCache === 'function' ? hooks.aboutClearCache() : false),
+            aboutCandidateUrls: () => (hooks && typeof hooks.aboutCandidateUrls === 'function' ? hooks.aboutCandidateUrls() : []),
+            aboutSortDesc: (list) => (hooks && typeof hooks.aboutSortDesc === 'function' ? hooks.aboutSortDesc(list) : []),
+            aboutFallback: () => (hooks && typeof hooks.aboutFallback === 'function' ? hooks.aboutFallback() : null),
+            aboutJsonPaths: () => (hooks && typeof hooks.aboutJsonPaths === 'function' ? hooks.aboutJsonPaths() : []),
+            aboutInfo: () => (hooks && typeof hooks.aboutInfo === 'function' ? hooks.aboutInfo() : null),
+            aboutDirUrl: () => (hooks && typeof hooks.aboutDirUrl === 'function' ? hooks.aboutDirUrl() : ''),
+            // B9-a 数据管理：清空当前角色记忆（V1 `resetState`；破坏性 —— 面板侧 `reset` 动作带二次确认）
+            resetState: () => (hooks && typeof hooks.resetState === 'function' ? hooks.resetState() : Promise.resolve({ ok: false, reason: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

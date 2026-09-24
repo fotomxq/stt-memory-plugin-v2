@@ -42,6 +42,9 @@ import { tombMany } from '../core/merge.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
+import { debugAction, DEBUG_ACTIONS } from './debug.js';
+import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
+import { resetState as kernelResetState } from '../adapters/store.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
@@ -76,6 +79,15 @@ const ps = {
 let overlayEl = null;
 let hooks = {};
 let escBound = false;
+
+/**
+ * 关于页自动读取成功后的重绘（仅当当前停在「关于」子页）——
+ *   V1 `aboutEnsureLoaded()` 里的 `activeTab === 'about' && renderPanel()` 守卫的 V2 等价物。
+ */
+function aboutRerenderIfVisible() {
+    try { if (ps.settingsSub === 'about') renderPanel(); } catch (e) { /* 重绘失败不影响数据 */ }
+}
+try { setAboutHooks({ rerender: aboutRerenderIfVisible }); } catch (e) { /* 钩子注入失败不影响面板 */ }
 
 /** 注入动作钩子（index.js：提取 / 清单 / 更新 / 清空注入） */
 export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
@@ -1019,6 +1031,23 @@ export async function panelAction(action, payload) {
         } else if (a === 'clearFloors') {
             const r = (typeof hooks.clearFloors === 'function') ? hooks.clearFloors() : { ok: false };
             setNote(r && r.ok ? ('已清空已处理楼层记录（' + (r.cleared || 0) + ' 个）') : '清空失败');
+        } else if (a === 'reset') {
+            // V1 `case 'reset'`（数据管理页「🗑 清空当前角色记忆」）：确认文案**逐字一致**
+            //   （V1 原文：`confirm('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。')` → `resetState()` → `toast('已清空','info')`）。
+            //   V1 用浏览器原生 `confirm`（无标题）；V2 走 `confirmDialog`（宿主 hooks.confirm → 原生 confirm → 无对话框时取消，同 V1 的
+            //   「无对话框不执行」口径）；清空能力由**适配层** `adapters/store.js#resetState` 提供（UI 只调用），并可经 `hooks.resetState` 替换。
+            const go = confirmDialog('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。', 'FTT 清空当前角色记忆');
+            if (!go) {
+                setNote('已取消清空（记忆未改动）');
+                result = Object.assign(result, { ok: false, action: a, reason: 'cancelled' });
+            } else {
+                const fn = (typeof hooks.resetState === 'function') ? hooks.resetState : kernelResetState;
+                const r = await fn();
+                setNote(r && r.ok
+                    ? ('已清空当前角色的 FTT 记忆（' + Number((r.cleared && r.cleared.total) || 0) + ' 条已清除 · 落盘 ' + String(r.via || '未落盘') + '）')
+                    : ('清空失败：' + String((r && r.error) || '未知')));
+                result = Object.assign(result, r || { ok: false }, { action: a });
+            }
         } else if (a === 'summaryFloor') {
             const floor = Number(p.floor);
             if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return { ok: false, reason: 'no-hook' }; }
@@ -1307,6 +1336,18 @@ export async function panelAction(action, payload) {
             const sr = await syncAction(a, p);
             setNote(sr.note || '');
             result = Object.assign(result, sr);
+        }
+        else if (DEBUG_ACTIONS.indexOf(a) >= 0) {
+            // 调试页动作（V1 同名：`dbgClear` —— 清空日志缓冲与 localStorage 持久层）
+            const dr = debugAction(a, p);
+            setNote(dr.note || '');
+            result = Object.assign(result, dr);
+        }
+        else if (ABOUT_ACTIONS.indexOf(a) >= 0) {
+            // 关于页动作（V1 同名：`aboutReload` 重新获取 / `aboutClearCache` 清本地缓存并复位状态）
+            const ar = await aboutAction(a, p);
+            setNote(ar.note || '');
+            result = Object.assign(result, ar);
         }
         else if (a === 'settingsSub') {
             const id = String(p.sub || p.kind || '');

@@ -3,6 +3,31 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.29.0（2026-09-26）· B9-a 调试页（日志查看器 + 清空）+ 关于页（版本清单/清缓存/重载）+ 数据管理 `reset`
+
+**本版（B9-a，取自 V1 v1.206 `dbgLog/dbgGet/dbgClear` 与 `about*` 族 + `resetState`）**：
+1. **调试页**（新增 `ui/debug.js`）：V1 `debugHtml()` **逐字结构**的日志查看器（类别标签/配色/摘要/类别计数/每条大小与总占用/`details.ftt-dbg-item`）+ 「🗑 清空日志」（`dbgClear`，文案与 V1 逐字一致）；
+   V2 内核早已就位（v2.23.0 的 `core/debug-log.js` 环形缓冲 300 条 + `adapters/debug-log.js` 持久化；`host/chat.js` 的 `dbgLog` 已接线），本版补上查看器、动作与启动 `wireDebugLog()`；
+2. **关于页**（新增 `ui/about.js`）：`ABOUT_JSON_PATHS`/`aboutFallback`/`aboutCandidateUrls`/`aboutFetchFns/aboutTryFetch`/`aboutLoadJson(force)`/`aboutEnsureLoaded`/`getAboutData`/`getAboutState`/`aboutSortDesc`/`aboutHtml`/`aboutStatusText`/`aboutClearCache` + 动作 `aboutClearCache`/`aboutReload`；
+   **取文件路径**：V2 为原生扩展（无 iframe base），以扩展目录 HTTP 挂载根 `/scripts/extensions/<folder>/FTT-memory-changelog.json` **优先**（由 `host/paths.js#extensionFolder()` 运行时推导，依据 `docs/P0-探针报告.md`），其后保留 V1 同款两条相对路径兜底（每轮 3 候选）；
+   **V2 仓库当前无 `FTT-memory-changelog.json`** → 未读到时**如实报 fail + 兜底说明**，不伪造版本数据（冒烟 AE2 覆盖缺失态）；
+3. **`reset`（清空当前角色记忆）**：`adapters/store.js#resetState()`（UI 只调用，可经 `hooks.resetState` 替换）+ 数据管理页「🗑 清空当前角色记忆」按钮（确认文案与 V1 **逐字一致**：「确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。」）。
+   实现口径：`setKernelState(emptyState())` → `saveStateNow({reason:'reset'})` → `primeStateIndex()`，并 materialize V1 `saveState` 收尾的 `snapStore = []` 副作用（否则复位后键集少 1 键）；返回 `{ok,cleared,via,bytes}`（V1 无返回值）；
+4. **`FTT.*` 新增 18 个入口**（`dbgLogGet`/`dbgClear`/`debugLogStats`/`aboutLoad`/`aboutState`/`resetState` 等，devtools 侧全部带守卫）。
+
+**验证**：三份 fixture —— `v1-golden-debug-log.json`（13 组）、`v1-golden-about.json`（15 组）、`v1-golden-reset.json`（11 组）—— 均**真实 V1 v1.206** oracle 生成，
+**重跑 oracle 与入库 fixture 逐字节一致**（队长独立复核）；单元 `debug-log-golden.test.js` **16 项**、`about-golden.test.js` **15 项**、`store-chat.test.js` 新增 **S8–S14（7 项 reset 断言）**；冒烟新增 **AE1–AE3**。
+门禁全绿：单元 **54 文件 / 855 断言**、冒烟 **121 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**队长裁决：两处 V1 原生「故障」已修（区别于「怪癖」，此处**刻意不**原样保留）**
+- **#1 关于页渲染→重试风暴**：V1 `aboutHtml()` 先调 `aboutEnsureLoaded()`，cached/fail 恒判 stale → 每次渲染立即置 loading 并再发一轮请求，配合 cached 时 `ok=true` 的 `renderPanel` 形成**无界 fetch 风暴**。V2 渲染真实状态行并加 10 分钟自动重试闸门（黄金样本固化两侧差异：V1 `htmlCached/htmlFail.statusText` 恒「⏳ 正在读取版本清单…」）。
+- **#2 `aboutLoadJson` 在途标志污染**：V1 的 `!fns.length` 分支在任何 `await` 前 return，而 `aboutLoading` 赋值在其后 → 该分支后标志永久停留在旧 Promise，**此后所有读取都返回那次 no-fetch 结果**（黄金样本 `noFetch.poisoned=true`，res1=res2=res3）。V2 用身份比对清空标志。
+理由：二者是**无界网络请求**与**读取器永久失效**，属实现故障而非可复现的产品行为；保留会直接伤害 V2 用户。差异已在单测（A10/A11/A14）与 `docs/P8z-B9调试页与关于页.md` §3 明确固化，**不是静默修正**。
+**原样保留的 V1 怪癖**：同毫秒 `dbgGet` 顺序与注释矛盾、`dbgLog(kind, undefined)` 静默丢日志、配额不足降级最近 120 条（V2 不降级）、`data=undefined` 处理、`kind=undefined` 处理、`dbgClear` 用 `removeItem`（V2 写 `[]` 并返回条数）、reset 按钮 V1 的**重复 class 属性**（V1 实际拿不到红色样式；V2 用 `ftt-err` 等价呈现）。
+
+**未实现（B9 余项）**：关系表 `relJump`/`relGoto`/`relPick*`/`relClearFilter`、投喂标签分析 `rxScanTags`/`rxAddTag`/`rxScanClear`、货币追踪 `curTrack*`、同步源选择 `syncPickLocal`/`syncPickRemote`、条目瘦身与 gzip、`promptPreview`。
+**未验证**：真实酒馆 + 真实部署的 `FTT-memory-changelog.json`（成功态仅经 fetch 桩）、真实浏览器 TZ/locale（状态行含 `toLocaleString()`，仅断前缀）、真实多标签页多实例下的持久层合并、300×6000 字超大日志渲染性能、扩展目录静态资源可直接 GET（依据 P0 探针，未见实测抓包）。
+
 ## v2.28.0（2026-09-26）· B8-7-b 平行世界推演 + 平行事件推进/转正
 
 **本版（B8-7-b，取自 V1 v1.206 约 11114~14000 平行族 + 对应动作）**：
