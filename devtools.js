@@ -52,6 +52,8 @@ export function installDevtools(hooks) {
             analyze: (opts) => (hooks && typeof hooks.extract === 'function' ? hooks.extract(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             pendingFloors: (opts) => (hooks && typeof hooks.pendingFloors === 'function' ? hooks.pendingFloors(opts || {}) : []),
             extractStatus: () => (hooks && typeof hooks.extractStatus === 'function' ? hooks.extractStatus() : null),
+            i18n: () => (hooks && typeof hooks.i18n === 'function' ? hooks.i18n() : null),
+            t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;
     } catch (e) {

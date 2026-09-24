@@ -76,10 +76,16 @@ export function makeHost(opts) {
         },
         generateRaw: async () => '{"ok":true}',
         generateQuietPrompt: async () => 'quiet',
+        locale: 'zh-cn',
+        getCurrentLocale() { return ctx.locale; },
+        addLocaleData(locale, data) {
+            ctx.localeData = ctx.localeData || {};
+            ctx.localeData[String(locale)] = Object.assign({}, ctx.localeData[String(locale)] || {}, data || {});
+            ctx.localeCalls = (ctx.localeCalls || []).concat([[String(locale), Object.keys(data || {}).length]]);
+        },
         macros: { register(name, def) { ctx.macrosRegistered = ctx.macrosRegistered || []; ctx.macrosRegistered.push({ name, def }); } },
         SlashCommandParser: { addCommandObject(cmd) { ctx.commands = ctx.commands || []; ctx.commands.push(cmd); } },
         SlashCommand: { fromProps(p) { return p; } },
-        addLocaleData() { return true; },
         loadWorldInfo: async () => ({}),
         saveWorldInfo: async () => true,
         getWorldInfoNames: () => ['测试世界书'],
