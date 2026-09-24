@@ -25,6 +25,8 @@ import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
 import { runItemRepair } from '../core/item-repair.js';
 import { runCharacterRepair } from '../core/character-repair.js';
+import { runStateRepair } from '../core/state-repair.js';
+import { runPlanSuspRepair } from '../core/plan-repair.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
@@ -281,6 +283,16 @@ function characterRepairButton() {
         + (anomCount ? '（⚠️' + anomCount + ' 优先）' : '') + '</button>';
 }
 
+/**
+ * 计划悬念页「🔧 修复计划/悬念」按钮（V1 `plansHtml()`）：**有进行中计划或未解悬念才显示**
+ *   （V1 `hasOpenPS` 条件），文案与 title 逐字一致。
+ */
+function planSuspRepairButton() {
+    const hasOpenPS = (state.plans || []).some((p) => p && p.status === 'open')
+        || (state.suspense || []).some((s) => s && s.status === 'open');
+    return hasOpenPS ? '<button class="ftt-btn ftt-sm" data-ftt-action="planSuspRepair" title="了结已完成/已揭晓，合并重复并归并关联">🔧 修复计划/悬念</button>' : '';
+}
+
 function dimBody(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -311,8 +323,9 @@ function dimBody(kind) {
         //   v1.172：出生日期倒挂 / 异常的角色数进优先档，按钮文案带「（⚠️N 优先）」角标；
         //   仅在有角色时显示（V1 `snapList.length` 条件），文案与 title 逐字对齐
         + (kind === 'snapshots' && total ? characterRepairButton() : '')
-        // V1 计划悬念页：「🧹 清理计划」「🧹 清理悬念」——各自库非空才显示（文案与 title 逐字对齐；V1 不弹确认）
-        + (kind === 'plans' ? clearPSButtons() : '')
+        // V1 `plansHtml()`：计划悬念页「🔧 修复计划/悬念」（有进行中计划或未解悬念才显示）+
+        //   「🧹 清理计划」「🧹 清理悬念」（各自库非空才显示）——文案与 title 逐字对齐；V1 不弹确认
+        + (kind === 'plans' ? (planSuspRepairButton() + clearPSButtons()) : '')
         // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
         + (kind === 'rumors' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
             + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
@@ -474,6 +487,9 @@ function statesBody() {
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="states" value="' + attr(q) + '" placeholder="搜索（主体 / 字段 / 值）">'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="states">✕ 清除</button>'
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="states">➕ 新增</button>'
+        // V1 `statesHtml()`：「🔧 修复状态」——只在有状态记录时显示（V1 v1.159 修正用 state.currentStates 计数）；
+        //   文案与 title 逐字对齐
+        + (arrOf('currentStates').length ? '<button class="ftt-btn ftt-sm" data-ftt-action="stateRepair" title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理">🔧 修复状态</button>' : '')
         + '<span class="ftt-muted">共 ' + arrOf('currentStates').length + ' 条</span></div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
     if (!groups.size) return head + ed + '<div class="ftt-empty">（暂无状态记录）</div>';
@@ -946,6 +962,51 @@ export async function panelAction(action, payload) {
             }
             setNote('角色修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, characterRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'stateRepair') {
+            // 「🔧 修复状态」（V1 v1.158 状态页专用）：① 已去世固定规则移除 → ① 匹配角色（未匹配整组删除）
+            //   → ② 机械清理与字段规范化 → ③ 最薄弱主体交 AI 整理；无主体可提交时**零 AI**，如实回报。
+            const r = await runStateRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('已按规则整理，无可提交 AI 的主体'
+                + (Number((r.clean && r.clean.junk) || 0) ? '（清理空值/占位 ' + Number(r.clean.junk) + ' 条）' : ''));
+            else {
+                const mt = r.match || {};
+                const cl = r.clean || {};
+                const ai = r.ai || {};
+                parts.push('目标 ' + Number(r.targets || 0) + ' 名 / 共 ' + Number(r.before || 0) + ' 条');
+                if (Number(r.before || 0) !== Number(r.after || 0)) parts.push('条数 ' + Number(r.before || 0) + ' → ' + Number(r.after || 0));
+                if (Number(mt.removed || 0)) parts.push('删除无档案主体 ' + Number(mt.removed) + ' 条');
+                if (Number(cl.junk || 0)) parts.push('清理空值/占位 ' + Number(cl.junk) + ' 条');
+                if (Number(cl.merged || 0)) parts.push('同字段去重 ' + Number(cl.merged) + ' 条');
+                if (Number(ai.changed || 0)) parts.push('AI 更新 ' + Number(ai.changed) + ' 条');
+                if (Number(ai.deleted || 0)) parts.push('AI 删除 ' + Number(ai.deleted) + ' 条');
+                if (Number(r.queueLeft || 0)) parts.push('剩余待修 ' + Number(r.queueLeft) + ' 名');
+            }
+            setNote('状态修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, stateRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'planSuspRepair') {
+            // 「🔧 修复计划/悬念」（V1 v1.140 悬念聚类核对 + v1.113 计划冗余合并）：① 悬念机械去重 →
+            //   ①-b 关联层机械维护 → ②③ 聚类选组 → ④ AI（悬念按编号 / 计划了结 + 冗余合并）
+            const r = await runPlanSuspRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('无可了结/合并条目（核对 ' + Number(r.checked || 0) + ' 条）');
+            else {
+                if (Number(r.closedP || 0)) parts.push('已了结计划 ' + Number(r.closedP) + ' 项');
+                if (Number(r.closedS || 0)) parts.push('已揭晓悬念 ' + Number(r.closedS) + ' 项');
+                if (Number(r.mergedS || 0)) parts.push('合并悬念 ' + Number(r.mergedS) + ' 组（-' + Number(r.removedDup || 0) + ' 条）');
+                if (Number(r.revised || 0)) parts.push('修订悬念 ' + Number(r.revised) + ' 条');
+                if (Number(r.deleted || 0)) parts.push('删除无效悬念 ' + Number(r.deleted) + ' 条');
+                if (Number(r.mergedP || 0)) parts.push('合并计划 ' + Number(r.mergedP) + ' 组');
+                if (Number(r.merged || 0)) parts.push('机械去重 ' + Number(r.merged) + ' 条');
+            }
+            setNote('计划/悬念修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, planSuspRepair: r, made: r.made || 0 });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）

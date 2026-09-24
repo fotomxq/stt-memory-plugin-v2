@@ -70,6 +70,13 @@ import {
     setSnapshotByPath, buildCharacterRepairPrompt, applyCharacterRepairResult, runCharacterRepair,
     characterEvidencePack, ensureSnapshotTags, deriveSnapshotTags, runCharacterMechanicalPass, correctSnapshotBirthDates,
 } from './core/character-repair.js';
+import {
+    STATE_REPAIR_FIELDS, stateCanonField, stateRepairRoster, stateSubjectMatch, stateRepairMatch, stateRepairClean,
+    removeStatesOfDeceased, pickStateRepairTargets, buildStateRepairPrompt, applyStateRepair, runStateRepair,
+} from './core/state-repair.js';
+import {
+    suspenseMergeExact, buildPlanSuspRepairPrompt, applyPlanSuspMerge, applySuspenseMergeGroups, runPlanSuspRepair,
+} from './core/plan-repair.js';
 import { retargetRelRefs } from './core/entries.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
@@ -496,6 +503,24 @@ function bootstrapDiagnostics() {
             deriveSnapshotTags: (s, o) => deriveSnapshotTags(s, o),
             characterMechanicalPass: (o) => runCharacterMechanicalPass(o),
             correctSnapshotBirthDates: (o) => correctSnapshotBirthDates(o),
+            // B8-6c-4 状态记录修复（V1 v1.158 匹配角色 → 机械清理/规范化 → AI 整理；v1.205 已去世固定规则）
+            stateRepairFields: () => STATE_REPAIR_FIELDS,
+            stateCanonField: (f) => stateCanonField(f),
+            stateRepairRoster: () => stateRepairRoster(),
+            stateSubjectMatch: (s, roster, sim) => stateSubjectMatch(s, roster, sim),
+            stateRepairMatch: (o) => stateRepairMatch(o || {}),
+            stateRepairClean: () => stateRepairClean(),
+            removeStatesOfDeceased: (o) => removeStatesOfDeceased(o || {}),
+            stateRepairTargets: (n) => pickStateRepairTargets(n),
+            stateRepairPrompt: (pick) => buildStateRepairPrompt(pick),
+            stateRepairApply: (delta, pick) => applyStateRepair(delta, pick),
+            stateRepair: (opts) => runStateRepair(opts || {}),
+            // B8-6c-4 计划/悬念修复（V1 v1.140 悬念聚类核对 + v1.113 计划冗余合并）
+            suspenseMergeExact: () => suspenseMergeExact(),
+            planSuspRepairPrompt: (pick) => buildPlanSuspRepairPrompt(pick),
+            planSuspMergeApply: (delta) => applyPlanSuspMerge(delta),
+            suspenseRepairApply: (delta, pick) => applySuspenseMergeGroups(delta, pick),
+            planSuspRepair: (opts) => runPlanSuspRepair(opts || {}),
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,

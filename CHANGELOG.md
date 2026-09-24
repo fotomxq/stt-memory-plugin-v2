@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.26.0（2026-09-26）· B8-6c-4 状态记录修复 + 计划悬念修复
+
+**本版（B8-6c-4，取自 V1 状态修复 ~17908~18105 与计划悬念修复 ~19085~19300）**：
+1. **状态记录修复**（新增 `core/state-repair.js`，567 行）：`stateCanonField`（32 例字段真值表）/ `stateRepairRoster`（名册来源 + 弱来源安全阀）/
+   `stateSubjectMatch` / `stateRepairMatch`（主体归并，含幂等与显式相似度）/ `stateRepairClean`（机械清理 + 条数上限）/
+   `pickStateRepairTargets`（按薄弱度排序 + 批量上限 + **已去世跳过**）/ `buildStateRepairPrompt`（**逐字符对齐 V1** + 投喂正文）/
+   `applyStateRepair`（字段归一化全分支 + 非规范字段改写 + 删除段）/ `removeStatesOfDeceased`（已去世固定规则，含幂等）/ `runStateRepair`（全链路 + 无目标早退 + 空库）；
+2. **计划悬念修复**（新增 `core/plan-repair.js`，393 行）：`suspenseMergeExact`（机械去重）/ `groupPick(suspense)`（聚类选组 + 游标）/
+   `buildPlanSuspRepairPrompt`（**逐字符对齐 V1**）/ `applySuspenseMergeGroups`（合并/修订/**了结**/删除 + 关联重挂 + 统计）/
+   `applyPlanSuspMerge` / `runPlanSuspRepair`（全链路 + AI 无改动 + 仅计划 + 空库）；
+3. **界面**：状态页「🔧 修复状态」（`title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理"`）、计划悬念页「🔧 修复计划/悬念」
+   （`title="了结已完成/已揭晓，合并重复并归并关联"`）—— **文案与 title 与 V1 逐字一致**，显隐条件同 V1（状态页按 `currentStates` 非空；计划悬念页按 `hasOpenPS`）+ 动作 `stateRepair`/`planSuspRepair`；
+4. **`FTT.*` 新增 16 个入口**（devtools 侧全部带 `hooks && typeof === 'function'` 守卫）；
+5. **复用而非复制**：`applyStateBounds`（状态条数钳制）V2 已有逐字等价实现（B8-6a 批次），本批**不重复移植**，改由单测与 V1 oracle 逐字段对齐自证。
+
+**验证**：`v1-golden-state-repair.json`（24 组）与 `v1-golden-plan-repair.json`（18 组）均由**真实 V1 v1.206** oracle 生成，**重跑 oracle 逐字节一致**（队长独立复验）；
+单元 `state-repair-golden.test.js` **24 项** + `plan-repair-golden.test.js` **18 项**（各含 V2 编排 P1–P6 与接线 U1–U4）；冒烟新增 **AB1–AB3**（112 项）。
+门禁全绿：单元 **49 文件 / 748 断言**、冒烟 **112 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**与 V1 一致的既有缺陷（如实保留，未"顺手修正"）**：
+① `applyStateRepair` 只认 `ops['删除']`/`ops.delete`，而中文键经 `normalizeDeltaKeys` 映射为 `remove` → **真实 AI 回包下删除段不命中**；
+② `applyPlanSuspMerge` 只读 `delta[cat].merge`，中文键「合并」不在 `CN_KEY_MAP` → 生产路径计划合并不命中；
+③ `runPlanSuspRepair` 的「无高相关组且无进行中计划」早退分支**不可达**（前一个空库判据已先行返回）；
+④ `runStateRepair` 的 `made` **不计**「已去世固定规则」的移除量。
+上述 4 条均在单测中固化为「V1 原生行为」，避免后续被误当回归修掉。
+
+**偏差与未验证**：AI 走 `aiCallText` + `opts.aiText`（V1 自建通道）；任务管线（`pipe*`/`abort*`/`renderPanel`）未移植；
+`stateRepairRoster` 的弱来源由 V1 `getCurrentCharacterId()` 改为 `identityView.characterName`（**strong=false，不参与「未匹配即删除」安全阀**，但真实数据下若角色名恰与某状态主体相似会参与主体匹配，属**行为差异**，已在文档标注）；
+真实宿主 `generateRaw` 的超时/中断路径、真实 `saveState` 的快照/信封副作用、真实楼层的投喂长度差异均未验证。
+
 ## v2.25.0（2026-09-26）· 测试完整性专项：冒烟套件「未 await 的异步断言」修复 + `/ftt-import apply` 实现缺陷修复
 
 **本版是**质量**版本，不新增功能，但显著提升门禁可信度**：

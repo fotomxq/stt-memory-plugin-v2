@@ -1658,6 +1658,149 @@ const aa3 = await (async () => {
 host.ctx.generateRaw = origGenAA;
 assert('AA3 AI 桩端到端落库：物品修复（聚类选组 → AI 合并 + 修订 → 编号精确应用 + 墓碑）与角色档案修复（机械处理 → 待修复名单 → AI 按中文点路径补全 → 只填空不改写 + 年龄重算）各发 1 次 AI', aa3, '');
 
+// ---------- AB 状态修复 + 计划悬念修复（B8-6c-4） ----------
+assert('AB1 FTT 状态修复 + 计划悬念修复入口齐备（状态：stateRepairFields / stateCanonField / stateRepairRoster / stateSubjectMatch / stateRepairMatch / stateRepairClean / removeStatesOfDeceased / stateRepairTargets / stateRepairPrompt / stateRepairApply / stateRepair；计划悬念：suspenseMergeExact / planSuspRepairPrompt / planSuspMergeApply / suspenseRepairApply / planSuspRepair），且机械段真实生效（替代归一 / 无档案主体删除 / 占位清理 / 同内容悬念去重）', (() => {
+    const F = globalThis.FTT;
+    const names = ['stateRepairFields', 'stateCanonField', 'stateRepairRoster', 'stateSubjectMatch', 'stateRepairMatch',
+        'stateRepairClean', 'removeStatesOfDeceased', 'stateRepairTargets', 'stateRepairPrompt', 'stateRepairApply', 'stateRepair',
+        'suspenseMergeExact', 'planSuspRepairPrompt', 'planSuspMergeApply', 'suspenseRepairApply', 'planSuspRepair'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.currentStates = [
+        { id: 'smoke-ab-s1', subject: '角色乙', field: '情绪', value: '愤怒', uses: 2, floorStart: 1, floorEnd: 5, updatedAt: '2020-01-02', status: 'active' },
+        { id: 'smoke-ab-s2', subject: '角色乙', field: '处境', value: '暂无', uses: 1, floorEnd: 1, status: 'active' },
+        { id: 'smoke-ab-s3', subject: '黑衣客', field: '处境', value: '跟踪', uses: 1, floorEnd: 2, status: 'active' },
+    ];
+    st.snapshots = [{ id: 'smoke-ab-n1', name: '角色乙', identity: { gender: '男' }, tags: ['甲', '乙', '丙'], uses: 1 }];
+    st.npcs = []; st.protagonist = {};
+    st.state = Object.assign({}, st.state, { present: [] });
+    st.deleted = {}; st.deletedH = {}; st.repairCursor = {};
+    sweepMod.entryIndexInit();
+    const fields = F.stateRepairFields();
+    const roster = F.stateRepairRoster();
+    const mech = F.stateRepairMatch();                 // 黑衣客 无档案 → 整组删除；情绪 → 情绪与心理状态
+    const clean = F.stateRepairClean();                // 处境=暂无 → 占位清理
+    const targets = F.stateRepairTargets(1);
+    const prompt = F.stateRepairPrompt(targets);
+    const applied = F.stateRepairApply({ states: { update: [{ subject: targets.list[0].name, field: '长期目标', value: '远航' }] } }, targets);
+    const stateOk = Array.isArray(fields) && fields.length === 6 && roster.strong === 1
+        && F.stateCanonField('心情') === '情绪与心理状态' && F.stateSubjectMatch('角色乙', roster, 0.72) === '角色乙'
+        && mech.removed === 1 && clean.junk === 1 && clean.renamedField === 1
+        && targets.list.length === 1 && targets.list[0].name === '角色乙'
+        && Array.isArray(prompt) && prompt.length === 2 && String(prompt[1].content).indexOf('字段只允许取：') >= 0
+        && applied.added === 1 && applied.changed === 1
+        && (st.currentStates || []).some((x) => x.field === '长期目标' && x.value === '远航')
+        && (st.currentStates || []).every((x) => x.subject !== '黑衣客');
+    st.suspense = [
+        { id: 'smoke-ab-u1', title: '', content: '谁在夜里敲门？', tags: ['悬疑', '夜间', '神秘'], uses: 2, importance: 0.4, date: '2020-03-05', status: 'open' },
+        { id: 'smoke-ab-u2', title: '夜半', content: '谁在夜里敲门？', tags: ['悬疑', '夜里', '神秘'], uses: 1, importance: 0.8, date: '2020-02-01', status: 'open' },
+    ];
+    st.plans = [{ id: 'smoke-ab-p1', content: '查明敲门者。', status: 'open', tags: ['计划', '悬疑'], uses: 1 }];
+    st.repairCursor = {};
+    const me = F.suspenseMergeExact();                 // 同正文 → 并一条（标题取非空者、uses 累加、日期最早）
+    const pick = F.groupPick(F.groupSpec('suspense'));
+    const pp = F.planSuspRepairPrompt(pick);
+    const sp = F.suspenseRepairApply({ '悬念库': { '修订': [{ '编号': pick.entries[0].n, '字段': '内容', '值': '修订后的悬念内容。' }] } }, pick);
+    const pm = F.planSuspMergeApply({ plans: { merge: [{ '保留编号': 0, '合并编号': [] }] } });
+    const u1 = (st.suspense || [])[0] || {};
+    const planOk = me.merged === 1 && (st.suspense || []).length === 1 && u1.id === 'smoke-ab-u1'
+        && u1.title === '夜半' && Number(u1.uses) === 3 && u1.date === '2020-02-01'
+        && Array.isArray(pp) && pp.length === 2 && String(pp[1].content).indexOf('#P0 查明敲门者。') >= 0
+        && sp.revised === 1 && String(u1.content).indexOf('修订后的悬念内容') >= 0
+        && pm.mergedPlans === 0 && pm.removed === 0;
+    return missing.length === 0 && stateOk && planOk;
+})(), '');
+
+await assert('AB2 面板按钮按 V1 条件显隐：状态页「🔧 修复状态」（有状态记录则显 / 无则隐）+ 计划悬念页「🔧 修复计划/悬念」（有进行中计划或未解悬念才显，全为已完结/已揭晓则隐；文案与 title 逐字一致）', (async () => {
+    const st = rtMod.state;
+    st.snapshots = []; st.npcs = [];
+    st.currentStates = [{ id: 'smoke-ab-b1', subject: '角色乙', field: '处境', value: '在码头', uses: 1, floorEnd: 1, status: 'active' }];
+    st.plans = []; st.suspense = [];
+    const h1 = String((await entry.popupAction('tab', { tab: 'states' })).html || '');
+    st.currentStates = [];
+    const h0 = String((await entry.popupAction('tab', { tab: 'states' })).html || '');
+    const statesOk = h1.indexOf('data-ftt-action="stateRepair"') >= 0 && h1.indexOf('🔧 修复状态') >= 0
+        && h1.indexOf('title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理"') >= 0
+        && h0.indexOf('data-ftt-action="stateRepair"') < 0 && h0.indexOf('（暂无状态记录）') >= 0;
+    st.plans = [{ id: 'smoke-ab-bp1', content: '查明敲门者。', status: 'open', tags: ['计划'], uses: 1 }];
+    st.suspense = [];
+    const h2 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
+    st.plans = [{ id: 'smoke-ab-bp2', content: '已了结的计划。', status: 'closed', tags: ['计划'], uses: 1 }];
+    const h3 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
+    st.plans = []; st.suspense = [];
+    const plansOk = h2.indexOf('data-ftt-action="planSuspRepair"') >= 0 && h2.indexOf('🔧 修复计划/悬念') >= 0
+        && h2.indexOf('title="了结已完成/已揭晓，合并重复并归并关联"') >= 0
+        && h3.indexOf('data-ftt-action="planSuspRepair"') < 0;
+    return statesOk && plansOk;
+})(), '');
+
+await assert('AB3 AI 桩端到端落库：状态修复（匹配角色 → 机械清理 → AI 按「主体 + 字段」精确应用）与计划/悬念修复（机械去重 → 聚类 → AI 按编号修订 + 计划了结）**各发 1 次 AI**，结果如实写回面板 `state.note`', (async () => {
+    const st = rtMod.state;
+    const origGen = host.ctx.generateRaw;
+    let calls = 0;
+    let payload = '{}';
+    host.ctx.generateRaw = async () => { calls++; return payload; };
+    try {
+        rtMod.cfg.dimCharLimits = Object.assign({}, rtMod.cfg.dimCharLimits || {}, { states: 130 });
+        rtMod.cfg.stateRepairBatch = 3; rtMod.cfg.stateMaxPerSubject = 10;
+        rtMod.cfg.suspenseRepairSim = 0.45; rtMod.cfg.suspenseRepairMaxClusters = 3;
+        rtMod.cfg.suspenseRepairMaxItems = 24; rtMod.cfg.suspenseRepairMaxClusterSize = 8;
+        rtMod.cfg.repairFloors = 10;
+        // ---- 状态修复 ----
+        st.currentStates = [
+            { id: 'smoke-ab-r1', subject: '角色乙', field: '情绪', value: '愤怒', uses: 2, floorStart: 1, floorEnd: 5, updatedAt: '2020-01-02', status: 'active' },
+            { id: 'smoke-ab-r2', subject: '角色乙', field: '处境', value: '暂无', uses: 1, floorEnd: 1, status: 'active' },
+            { id: 'smoke-ab-r3', subject: '黑衣客', field: '处境', value: '跟踪', uses: 1, floorEnd: 2, status: 'active' },
+        ];
+        st.snapshots = [{ id: 'smoke-ab-n1', name: '角色乙', identity: { gender: '男' }, tags: ['甲', '乙', '丙'], uses: 1 }];
+        st.npcs = []; st.protagonist = {}; st.links = [];
+        st.state = Object.assign({}, st.state, { date: '2020-06-01', time: '傍晚', present: [] });
+        st.deleted = {}; st.deletedH = {}; st.repairCursor = {};
+        sweepMod.entryIndexInit();
+        // 按真实扫描结果定位主体（不硬编码）：名册匹配（`stateSubjectMatch`）者才是「机械段后仍存活」的主体
+        const roster = globalThis.FTT.stateRepairRoster();
+        const targets = globalThis.FTT.stateRepairTargets(3);
+        const alive = targets.list.map((t) => t.name).filter((n) => globalThis.FTT.stateSubjectMatch(n, roster, 0.72));
+        payload = JSON.stringify({ '状态记录': { '更新': [{ '主体': alive[0], '字段': '长期目标', '值': '远航' }], '删除': [], '无依据': [] } });
+        const beforeS = calls;
+        const rs = await entry.popupAction('stateRepair', {});
+        const sr = rs.stateRepair || {};
+        const noteS = String(((rs.state || {}).note) || rs.note || '');
+        const added = (st.currentStates || []).some((x) => x.field === '长期目标' && x.value === '远航');
+        const stateOk = calls === beforeS + 1 && rs.ok === true && sr.made === 1
+            && Number(sr.match && sr.match.removed) === 1 && Number(sr.clean && sr.clean.junk) === 1
+            && alive.length === 1 && alive[0] === '角色乙'
+            && Number(sr.ai && sr.ai.changed) === 1 && Number(sr.ai && sr.ai.added) === 1
+            && Number(sr.ai && sr.ai.unknownRole) === 0 && added
+            && (st.currentStates || []).every((x) => x.subject !== '黑衣客')
+            && noteS.indexOf('状态修复：') >= 0 && noteS.indexOf('AI 更新 1 条') >= 0;
+        // ---- 计划/悬念修复 ----
+        st.suspense = [
+            { id: 'smoke-ab-u1', title: '', content: '谁在夜里敲门？', tags: ['悬疑', '夜间', '神秘'], uses: 2, importance: 0.4, date: '2020-03-05', status: 'open' },
+            { id: 'smoke-ab-u2', title: '夜半', content: '谁在夜里敲门？', tags: ['悬疑', '夜里', '神秘'], uses: 1, importance: 0.8, date: '2020-02-01', status: 'open' },
+        ];
+        st.plans = [{ id: 'smoke-ab-p1', content: '查明敲门者。', status: 'open', tags: ['计划', '悬疑'], uses: 1 }];
+        st.deleted = {}; st.deletedH = {}; st.repairCursor = {}; st.stats = { plansClosed: 0, suspenseResolved: 0 };
+        sweepMod.entryIndexInit();
+        const pick = globalThis.FTT.groupPick(globalThis.FTT.groupSpec('suspense'));   // 按真实扫描结果定位悬念编号
+        const n1 = (pick.entries[0] || {}).n;
+        payload = JSON.stringify({
+            '悬念库': { '修订': [{ '编号': n1, '字段': '内容', '值': '谁在夜里敲门？已查明是巡夜人。' }] },
+            '计划库': { '了结': ['查明敲门者。'] },
+        });
+        const beforeP = calls;
+        const rp = await entry.popupAction('planSuspRepair', {});
+        const pr = rp.planSuspRepair || {};
+        const noteP = String(((rp.state || {}).note) || rp.note || '');
+        const planOk = calls === beforeP + 1 && rp.ok === true && pr.made === 1
+            && Number(pr.merged) === 1 && Number(pr.revised) === 1 && Number(pr.closedP) === 1
+            && (st.suspense || []).length === 1 && String((st.suspense || [])[0].content).indexOf('巡夜人') >= 0
+            && (st.plans || []).every((x) => x.id !== 'smoke-ab-p1') && Number(st.stats.plansClosed) === 1
+            && noteP.indexOf('计划/悬念修复：') >= 0 && noteP.indexOf('已了结计划 1 项') >= 0;
+        return stateOk && planOk;
+    } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

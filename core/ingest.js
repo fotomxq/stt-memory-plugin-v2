@@ -1528,5 +1528,7 @@ export {
     // B8-6：修复管线共用助手（同一套文本规范化/相似度，避免重复实现）
     repairNormText, repairKeyText, repairBigrams, repairSimilarity,
     scenesUnionMergeAll, statesSubjectUnionMerge,
+    // B8-6c-4：状态修复复用「同人同字段」判据与历史归并（`core/state-repair.js` 与测试复用，避免重复实现）
+    stateSubjectSamePerson, mergeStateHistory,
     runParallelDecay, scheduleParallelDecay, applyStateBounds,
 };
