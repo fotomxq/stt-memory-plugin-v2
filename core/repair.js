@@ -23,6 +23,7 @@ import {
     runStateDecay, runParallelDecay, applyStateBounds, enforceDimCaps,
 } from './ingest.js';
 import { runMemoryForget, sweepLowUseForget } from './forget.js';
+import { relRepairMaint, relMaintSummary, relMaintCounts, relMaintTouched, logRelMaint, mergeRelMaint } from './rel-maint.js';
 import { extractJsonObject } from './util.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 import { PROMPT_TEMPLATES_V2 } from './config.js';
@@ -340,7 +341,22 @@ async function runRepairMech(opts) {
     try { pruned = repairPruneGarbage(); if (pruned.deleted > 0) { try { saveState(); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
     let decay = { deleted: 0, notes: [] };
     try { decay = await repairDecayPass(); } catch (e) { /* 忽略 */ }
+    // v1.168：关系层机械维护（零 AI）—— 与修复联动：始终清理孤儿关联行（写墓碑）+ 去重 / 角色名归一 / 悬空引用清理 /
+    //   how·偏差归一；孤儿条目按 `cfg.relOrphanAction` 处置（默认 keep 只提示）—— V1 在第 1 段收尾处调用。
     const stage1 = { merged: m1.merged, deleted: pruned.deleted + decay.deleted, notes: m1.notes.concat(pruned.notes, decay.notes) };
+    let relMaint = null;
+    try {
+        relMaint = relRepairMaint();
+        if (relMaint && relMaint.changed) {
+            try { saveState(); } catch (e) { /* 忽略 */ }
+            const txt = relMaintSummary(relMaint);
+            if (txt) stage1.notes.push(txt.replace(/^（关联维护：/, '关联维护：').replace(/）$/, ''));
+        } else if (relMaint && relMaint.orphanItems) {
+            stage1.notes.push(`关联维护：无孤儿关联需清理；${relMaint.orphanItems} 条无关联条目按「${relMaint.action}」处置（可在「记忆 → 关系表」查看）`);
+        }
+        logRelMaint('立即修复', relMaint);
+    } catch (e) { /* 忽略 */ }
+    stage1.relMaint = relMaint;
     const after = repairTotalCount();
     const swept = Number(sweepRes.swept) || 0;
     const cut = Number(capRes.cut) || 0;
@@ -362,7 +378,7 @@ async function runRepairMech(opts) {
         notify('success', '机械清理完成（零 AI）',
             `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条；${report}`);
     }
-    return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, report, fixed, ms: Date.now() - t0 };
+    return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0 };
 }
 
 // ==================== 第 2 段：候选筛选（客观缺陷 + 标签组相关性 + 按比例抽查轮询） ====================
@@ -658,6 +674,20 @@ async function runRepair(opts) {
             ai.error = String((e && e.message) || e).slice(0, 80);
         }
     }
+    // ③-b v1.168：AI 合并 / 删除之后**再跑一次**关系层机械维护（AI 可能产生新的孤儿行与悬空引用）——
+    //   V1 在「记忆修复」AI 之后调用 `relRepairMaint()`，并以 `mergeRelMaint(前, 后)` 合并两次口径。
+    let relMaint = (stage1 && stage1.relMaint) || null;
+    if (ai.revised > 0 || ai.deleted > 0) {
+        let relMaint2 = null;
+        try { relMaint2 = relRepairMaint(); } catch (e) { /* 忽略 */ }
+        if (relMaint2 && relMaint2.changed) relMaint = mergeRelMaint(relMaint, relMaint2);
+        try { logRelMaint('修复（AI 后）', relMaint2); } catch (e) { /* 忽略 */ }
+        try {
+            const txt = relMaintSummary(relMaint);
+            if (txt && relMaintTouched(relMaint)) stage1.notes.push(txt.replace(/^（关联维护：/, '关联维护：').replace(/）$/, ''));
+        } catch (e) { /* 忽略 */ }
+    }
+    const relCounts = relMaintCounts(relMaint);
     const made = stage1.merged + stage1.deleted + ai.revised + ai.deleted;
     const ms = Date.now() - t0;
     try {
@@ -695,7 +725,7 @@ async function runRepair(opts) {
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
             + `；${report}`);
     }
-    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used };
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts };
 }
 /** 提取合并失败后延迟自动修复一次（V1 `scheduleAutoRepairOnMergeFail`；默认 15s，可用 `cfg.repairFailDelaySec` 调） */
 let autoRepairFailTimer = null;

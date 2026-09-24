@@ -119,11 +119,13 @@ await A('P1 runRepairMech：第 1 段五步编排（机械合并 → 遗忘清�
     const r = await runRepairMech({ silent: true, cause: '单元测试' });
     const after = repairTotalCount();
     const log = Array.isArray(state.repairLog) ? state.repairLog : [];
+    const rm = r.relMaint || {};
     const got = {
         before: r.before, after: r.after,
         merged: r.stage1.merged, sweepSwept: Number((r.sweep || {}).swept) || 0, capCut: Number((r.caps || {}).cut) || 0,
         pruned: Number((r.pruned || {}).deleted) || 0, decayed: Number((r.decay || {}).deleted) || 0,
         notes: (r.stage1.notes || []).slice(),
+        relMaint: { swept: Number(rm.swept) || 0, deduped: Number(rm.deduped) || 0, renamed: Number(rm.renamed) || 0, staleRefs: Number(rm.staleRefs) || 0, normalized: Number(rm.normalized) || 0, demoted: Number(rm.demoted) || 0, orphanItems: Number(rm.orphanItems) || 0, publicized: Number(rm.publicized) || 0, action: String(rm.action || '') },
     };
     return before === G.mechFlow.before && after === G.mechFlow.after && J(got) === J(G.mechFlow)
         && r.report.indexOf('修复前 ' + before + ' 条 → 修复后 ' + after + ' 条') >= 0

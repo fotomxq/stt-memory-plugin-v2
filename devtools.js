@@ -155,6 +155,13 @@ export function installDevtools(hooks) {
             repairTags: (entries) => (hooks && typeof hooks.repairTags === 'function' ? hooks.repairTags(entries) : []),
             repairJaccard: (a, b) => (hooks && typeof hooks.repairJaccard === 'function' ? hooks.repairJaccard(a, b) : 0),
             repairFailArmed: () => (hooks && typeof hooks.repairFailArmed === 'function' ? hooks.repairFailArmed() : false),
+            // B8-6b+ 关联层机械维护（零 AI）
+            relMaint: (opts) => (hooks && typeof hooks.relMaint === 'function' ? hooks.relMaint(opts || {}) : null),
+            relMaintCounts: (m) => (hooks && typeof hooks.relMaintCounts === 'function' ? hooks.relMaintCounts(m) : null),
+            relMaintTouched: (m) => (hooks && typeof hooks.relMaintTouched === 'function' ? hooks.relMaintTouched(m) : false),
+            relMaintSummary: (m) => (hooks && typeof hooks.relMaintSummary === 'function' ? hooks.relMaintSummary(m) : ''),
+            mergeRelMaint: (a, b) => (hooks && typeof hooks.mergeRelMaint === 'function' ? hooks.mergeRelMaint(a, b) : null),
+            demoteRelLinkOrphans: () => (hooks && typeof hooks.demoteRelLinkOrphans === 'function' ? hooks.demoteRelLinkOrphans() : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

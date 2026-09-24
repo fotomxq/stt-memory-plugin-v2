@@ -3,6 +3,30 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.17.0（2026-09-26）· B8-6b+ 关联层机械维护（修复第 1 段收尾 + AI 修订后复检）
+
+**本版（B8-6b+，新增 `core/rel-maint.js`，取自 V1 v1.168「修复记忆内的关系层机械维护」）**：
+1. **`relRepairMaint`（零 AI）**：① **始终清扫孤儿关联行**（目标条目已不存在 → 删行 + 写墓碑，跨端不复活；不受 `cfg.relOrphanAction` 约束）；
+   ② 同 `(dim, refId, who)` **去重合并**（按 `REL_LINK_HOW_RANK` 取更可靠者，字段/引用/`uses`/`updatedAt` 并集，丢弃行写墓碑）；
+   ③ 角色名按**档案全名归一**（`who` 与 `from`，命中 `snapFindByName` 才改写并重算稳定 `id`）；
+   ④ **悬空引用清理**（锚行：`conceptRef` 按名称、`atomRef/planRef/suspenseRef` 按 id、`memRefs`/`sourceRefs` 按允许维度裁剪）；
+   ⑤ `how` / 偏差**非法值归一**（`parallels` 恒 `related`；只改语义字段，不动 id 与时间戳）；
+   ⑥ `demoteRelLinkOrphans` 降级统计；⑦ 孤儿条目按 `cfg.relOrphanAction` 处置（`keep` 默认只提示 / `clean` 只清扫 / `public` 补公开锚行，**平行事件恒不参与**）；
+2. **口径化输出**：`relMaintCounts` / `relMaintTouched` / `relMaintSummary`（只列实际动作；无动作但有孤儿条目时给提示文案）/ `logRelMaint`（明细逐条）；
+   `mergeRelMaint` 合并「AI 前 / AI 后」两次维护口径（计数相加 + 明细拼接 + 空值守卫）；
+3. **修复管线接线**（`core/repair.js`）：第 1 段收尾跑一次关联维护（摘要入 notes）；**AI 修订/删除之后**再跑一次并合并两次口径
+   （AI 可能产生新的孤儿行与悬空引用），结果以 `relMaint` / `relCounts` 随 `runRepair` 返回；
+4. **`FTT.*` 新增 6 个入口**（`relMaint` / `relMaintCounts` / `relMaintTouched` / `relMaintSummary` / `mergeRelMaint` / `demoteRelLinkOrphans`）；
+5. **黄金样本 18 组（oracle = 真实 V1 插件 v1.206 的 `relRepairMaint` / `mergeRelMaint`）**：keep 计数·明细·清理后关联表逐行·墓碑·口径、public 锚行、`relLinkEnabled=false`、
+   空库、`clean`、角色名归一（`who`+`from`+id 重算）、仅孤儿条目摘要分支、`mergeRelMaint`。
+
+**验证**：`tests/unit/rel-maint-golden.test.js` **16 项** + 冒烟 **V1–V4**；门禁全绿：单元 **39 文件 / 539 断言**、
+冒烟 **96 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8q-B8-6b+关联维护.md` §2）**：V1 的 `relMaintRun`（非修复路径的关联维护编排）在 v1.206 内**只有定义、无调用点**（且未导出），
+属死代码 → 不移植（其能力已由 `sweepOrphanRelLinks` + `relRepairMaint` 覆盖）；V2 单管道在「AI 有修订或删除」时跑第二次维护（V1 各修复规格各自调用一次，口径相同）；
+关联层改动不计入 `runRepair().made`（与既有行为一致，改动由 `relCounts` 与 notes 如实回报）。
+
 ## v2.16.0（2026-09-26）· B8-6b 修复管线第 2/3 段（候选筛选 + 窄契约 AI 修订）
 
 **本版（B8-6b）**：

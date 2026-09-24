@@ -1112,6 +1112,80 @@ assert('U4 提取合并失败自动修复排程：开关关闭不排程，开启
 
 host.ctx.generateRaw = origGen3;
 
+// ---------- V 关联层机械维护（B8-6b+：修复第 1 段收尾 + AI 修订后复检） ----------
+assert('V1 关联维护（keep）：孤儿关联行清扫 + 同 (维度,条目,角色) 去重合并 + 非法值归一，清理行写墓碑', (() => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    st.snapshots = [{ id: 'smoke-rm-k1', name: '角色甲', appearance: '灰袍', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+    st.memories = [
+        { id: 'smoke-rm-m1', title: '记忆一', content: '角色甲在码头交接。', date: '2020-01-01', importance: 0.6, uses: 1, floorStart: 1, floorEnd: 2, tags: [] },
+        { id: 'smoke-rm-m2', title: '记忆二', content: '角色乙在仓库等待。', date: '2020-01-02', importance: 0.5, uses: 1, floorStart: 2, floorEnd: 3, tags: [] },
+    ];
+    ['atoms', 'plans', 'suspense', 'scenes', 'items', 'concepts', 'npcs', 'parallels', 'currentStates'].forEach((d) => { st[d] = []; });
+    st.deleted = {}; st.deletedH = {};
+    st.links = [
+        { id: 'smoke-rm-gone', dim: 'memories', refId: 'm-none', who: '角色丙', how: 'witness', deviation: 'unknown', uses: 1, updatedAt: 1000 },
+        { id: 'smoke-rm-a', dim: 'memories', refId: 'smoke-rm-m1', who: '角色甲', how: 'told', deviation: 'unknown', uses: 1, updatedAt: 1000 },
+        { id: 'smoke-rm-b', dim: 'memories', refId: 'smoke-rm-m1', who: '角色甲', how: 'participant', deviation: 'exact', note: '合并备注', public: true, uses: 3, updatedAt: 2000 },
+        { id: 'smoke-rm-m2r', dim: 'memories', refId: 'smoke-rm-m2', who: '角色乙', how: '乱写', deviation: '乱写', uses: 1, updatedAt: 1500 },
+    ];
+    rtMod.cfg.relLinkEnabled = true; rtMod.cfg.relOrphanAction = 'keep';
+    const m = F.relMaint();
+    const counts = F.relMaintCounts(m);
+    const rows = (st.links || []).filter((x) => x.dim === 'memories' && x.refId === 'smoke-rm-m1');
+    const r2 = (st.links || []).filter((x) => x.refId === 'smoke-rm-m2')[0] || {};
+    const tombs = Object.keys((st.deleted || {}).links || {});
+    return F.relMaintTouched(m) === true && counts.swept === 1 && counts.deduped === 1 && counts.normalized === 2
+        && String(F.relMaintSummary(m)).indexOf('清理孤儿关联 1 行') >= 0
+        && rows.length === 1 && rows[0].how === 'participant' && rows[0].public === true && rows[0].note === '合并备注'
+        && r2.how !== '乱写' && r2.deviation === 'unknown'
+        && tombs.indexOf('smoke-rm-gone') >= 0 && tombs.indexOf('smoke-rm-a') >= 0
+        && typeof F.mergeRelMaint === 'function' && typeof F.demoteRelLinkOrphans === 'function' && F.relMaintCounts(null) === null;
+})(), '');
+
+assert('V2 孤儿条目转公开（public）：按维度补公开锚行（kind 按维度、note 标注来源），平行事件恒不参与', (() => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    st.suspense = [{ id: 'smoke-rm-u1', title: '悬念一', content: '谁在跟踪？', status: 'open', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+    st.parallels = [{ id: 'smoke-rm-p1', text: '平行线一', title: '平行线一', date: '2020-01-01', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+    st.links = [];
+    rtMod.cfg.relOrphanAction = 'public';
+    const m = F.relMaint();
+    const anchors = (st.links || []).filter((x) => x && x.public && !x.who).map((x) => [x.dim, x.refId, x.kind || '', x.note || '']);
+    const hasU = anchors.filter((x) => x[0] === 'suspense' && x[1] === 'smoke-rm-u1' && x[2] === 'suspense' && x[3] === '孤儿条目转公开（修复）').length === 1;
+    const hasP = anchors.filter((x) => x[0] === 'parallels').length > 0;
+    const p1 = (st.links || []).filter((x) => x.dim === 'parallels' && x.refId === 'smoke-rm-p1');
+    rtMod.cfg.relOrphanAction = 'keep';
+    return m.publicized >= 1 && m.changed === true && hasU && !hasP && p1.length === 0;
+})(), '');
+
+assert('V3 面板「自动修复」联动：孤儿关联行被清扫并写墓碑，报告里回报「关联维护」摘要', (async () => {
+    const st = rtMod.state;
+    st.atoms = [];
+    st.memories = [{ id: 'smoke-rm-e1', title: '记忆一', content: '角色甲在码头交接。', date: '2020-01-01', importance: 0.6, uses: 1, floorStart: 1, floorEnd: 2, tags: [] }];
+    st.links = [{ id: 'smoke-rm-e-gone', dim: 'memories', refId: 'm-none', who: '角色丁', how: 'witness', deviation: 'unknown', uses: 1, updatedAt: 1000 }];
+    st.deleted = {}; st.deletedH = {};
+    rtMod.cfg.relLinkEnabled = true; rtMod.cfg.relOrphanAction = 'keep'; rtMod.cfg.repairAutoAi = true;
+    const r = await entry.popupAction('repair', {});
+    const note = String(r.note || '');
+    const tombs = Object.keys((st.deleted || {}).links || {});
+    return r.ok === true && tombs.indexOf('smoke-rm-e-gone') >= 0
+        && (st.links || []).every((x) => x.refId !== 'm-none')
+        && note.indexOf('关联维护：清理孤儿关联 1 行') >= 0;
+})(), '');
+
+assert('V4 FTT 关联维护入口齐备（relMaint / relMaintCounts / relMaintSummary / relMaintTouched / mergeRelMaint / demoteRelLinkOrphans）', (() => {
+    const F = globalThis.FTT;
+    const a = { action: 'keep', swept: 1, deduped: 0, renamed: 0, staleRefs: 2, normalized: 0, demoted: 1, orphanItems: 3, publicized: 0, changed: true };
+    const b = { action: 'keep', swept: 0, deduped: 1, renamed: 2, staleRefs: 0, normalized: 1, demoted: 0, orphanItems: 1, publicized: 1, changed: true };
+    const mrg = F.mergeRelMaint(a, b);
+    const dm = F.demoteRelLinkOrphans();
+    return F.relMaintCounts(null) === null && F.relMaintTouched(a) === true && F.relMaintTouched({}) === false
+        && Number(mrg.swept) === 1 && Number(mrg.renamed) === 2 && Number(mrg.publicized) === 1
+        && String(F.relMaintSummary(mrg)).indexOf('角色名归一 2 处') >= 0
+        && !!dm && typeof dm.demoted === 'number';
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

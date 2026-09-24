@@ -289,4 +289,9 @@ const SNAP_GROUP_MAP = {
     city: 'location', area: 'location', building: 'location', interior: 'location',
 };
 
-export { normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats };
+// B8-6b+ 关联维护：以下常量/助手供 `core/rel-maint.js`（修复管道零 AI 步骤）复用
+export {
+    normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats,
+    REL_LINK_KINDS, REL_LINK_DIMS, REL_LINK_HOW_RANK,
+    relLinkId, relLinkHow, relLinkDeviation,
+};
