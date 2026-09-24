@@ -33,6 +33,8 @@ try {
 const templateHtml = readFileSync(join(ROOT, 'settings.html'), 'utf8');
 let remoteVersion = '2.1.0';
 let endpointDown = false;
+let v1FileName = '';
+let v1FileText = '';
 const fetchCalls = [];
 const uninstallFetch = installGlobalFetch((url) => {
     fetchCalls.push(url);
@@ -43,6 +45,7 @@ const uninstallFetch = installGlobalFetch((url) => {
     if (url.indexOf('/api/extensions/update') === 0) return { status: 200, body: { isUpToDate: false, shortCommitHash: 'beef999' } };
     if (url.endsWith('/manifest.json')) return { status: 200, text: JSON.stringify({ version: remoteVersion }) };
     if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v2.1.0（2026-10-01）\n\n- 新增：更新检查机制\n' };
+    if (v1FileName && url === '/user/files/' + v1FileName) return { status: 200, text: v1FileText };
     return { status: 404, body: {} };
 });
 
@@ -158,6 +161,82 @@ assert('E8 调试导出含更新状态', (() => {
     const u = F && typeof F.update === 'function' ? F.update() : null;
     return !!u && !!u.config && u.config.repo === 'https://github.com/fotomxq/stt-memory-plugin-v2';
 })(), typeof globalThis.FTT);
+// ---------- F V1 数据导入（P2 次批：发现 → 干跑 → apply 写入） ----------
+const v1mod = await import('../adapters/import-v1.js');
+const coreState = await import('../core/state.js');
+{
+    const scope = coreState.scopeId();
+    const payload = {
+        scope, updatedAt: 1700000000000,
+        data: { version: 'v1.206', scope, state: { time: '', date: '', location: '码头', sceneFocus: null },
+            atoms: [{ id: 'v1a1', title: 'V1 情节甲', text: '正文足够长的一段情节描述。' }],
+            memories: [{ id: 'v1m1', owner: '角色甲', content: 'V1 记忆一条', date: '1919-11-29' }] },
+    };
+    const env = { v: 1, scope, payload, hash: v1EnvelopeHashOf(payload), ts: 1700000000001 };
+    v1FileName = v1mod.v1FileNames(scope, v1mod.v1SlugFromName('角色甲')).state[1];   // 明文 .json（避免冒烟里再造 gzip）
+    v1FileText = JSON.stringify(env);
+}
+function v1EnvelopeHashOf(payload) {
+    const str = JSON.stringify(payload);
+    let h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+        h2 = Math.imul(h2 ^ (c ^ 0x5f), 0x85ebca6b) >>> 0;
+    }
+    return h1.toString(36) + '_' + h2.toString(36);
+}
+const memStore = {};
+const prevLs = globalThis.localStorage;
+globalThis.localStorage = {
+    get length() { return Object.keys(memStore).length; },
+    key(i) { return Object.keys(memStore)[i]; },
+    getItem(k) { return Object.prototype.hasOwnProperty.call(memStore, k) ? memStore[k] : null; },
+    setItem(k, v) { memStore[String(k)] = String(v); },
+    removeItem(k) { delete memStore[k]; },
+};
+
+assert('F1 V1 导入入口已导出（FTT.importV1 / FTT.importStatus）', (() => {
+    const F = globalThis.FTT;
+    return !!F && typeof F.importV1 === 'function' && typeof F.importStatus === 'function';
+})(), typeof globalThis.FTT);
+
+const dry = await globalThis.FTT.importV1({});
+assert('F2 干跑：发现 V1 文件并出差异报告，不写入（merged 为空）', (() => {
+    return dry.dryRun === true && dry.via === 'server-file' && dry.name === v1FileName
+        && dry.report.totals.add === 2 && dry.report.totals.v1Entries === 2
+        && dry.merged === null && Array.isArray(dry.notes) && dry.report.scope.v1 === coreState.scopeId();
+})(), { via: dry.via, name: dry.name, totals: dry.report && dry.report.totals });
+
+const applied = await globalThis.FTT.importV1({ apply: true });
+const savedKey = 'ftt2_state_' + coreState.scopeId();
+const saved = memStore[savedKey] ? JSON.parse(memStore[savedKey]) : null;
+assert('F3 apply：合并写入内核并走保存流水线落盘（信封含导入条目；源文件未被删）', (() => {
+    const data = saved && saved.payload ? saved.payload.data : null;
+    const ids = data ? (data.atoms || []).map((x) => x.id) : [];
+    const mIds = data ? (data.memories || []).map((x) => x.id) : [];
+    return applied.dryRun === false && applied.summary && applied.summary.added.atoms === 1
+        && ids.indexOf('v1a1') >= 0 && mIds.indexOf('v1m1') >= 0
+        && saved.payload.scope === coreState.scopeId()
+        && String(applied.notes.join('|')).indexOf('未被删除') >= 0
+        && fetchCalls.every((u) => u.indexOf('/api/files/delete') !== 0);
+})(), { key: savedKey, ids: saved && saved.payload ? (saved.payload.data.atoms || []).map((x) => x.id) : null });
+
+const impCmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-import')[0];
+assert('F4 /ftt-import 命令：默认干跑并给出「确认写入」提示，apply 时报告已写入', (async () => {
+    if (!impCmd || typeof impCmd.callback !== 'function') return false;
+    const dryText = String(await impCmd.callback({}, ''));
+    const applyText = String(await impCmd.callback({}, 'apply'));
+    return dryText.indexOf('【干跑】') >= 0 && dryText.indexOf('确认写入') >= 0 && applyText.indexOf('【已写入】') >= 0;
+})(), typeof impCmd);
+
+assert('F5 /ftt 状态含 V1 导入行', (() => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0];
+    const out = String(cmd.callback());
+    return out.indexOf('V1 导入：') >= 0;
+})(), '');
+if (prevLs === undefined) delete globalThis.localStorage; else globalThis.localStorage = prevLs;
+
 endpointDown = false;
 uninstallFetch();
 

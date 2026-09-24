@@ -91,6 +91,18 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P2 次批：V1 数据导入器（本版新增）**：新增 `adapters/import-v1.js`（约 380 行）—— 只读发现 V1 三类数据源
+  （服务端 `ftt-state-<slug>-<scope8>.json[.gz]` 与 `-bak`、旧 settings 信封 `SPreset_FTTMemory_char:<hash>`、
+  本机命名缓存 `FileSlug_/FileNames_/ArchiveName_<scope8>`，另含 `SPreset_FTTMemoryConfig`），
+  gzip 支持（`DecompressionStream` + 魔数识别）、信封哈希校验（独立 FNV-1a 实现，篡改即拒）、
+  **干跑差异报告**（逐维度 v1/current/add/exist/conflict + 墓碑计数）、`mergeV1IntoCurrent` **append-only 合并**
+  （同 id 以当前为准、墓碑并集、单值容器仅在当前为空时采用、scope 归位当前、两侧深拷贝保证 **V1 源零改动**）；
+  入口 `/ftt-import`（默认干跑，「apply」才写入）、`FTT.importV1` / `FTT.importStatus`、`index.js#runV1Import`（写入后走完整保存流水线）。
+  **重要事实（黄金样本 9，oracle = 真实 V1 插件）**：V1 作用域来自 TH `getCurrentCharacterId`（测试环境 `char:1157z2a`），
+  V2 用角色稳定键（`char:2mcm47`）——**两边定义不同**，故导入器枚举候选作用域逐一试文件名，绝不假设相等；
+  命名公式 `scopeHash8 = (hashText(scope)+hashText('ftt-scope:'+scope)).slice(0,8)`、`slugFallback='n'+hashText(scope).slice(0,6)`、
+  文件名 `ftt-state-<slug>-<scope8>` 已逐字符对齐 V1。测试：`tests/unit/v1-importer.test.js` **13 项断言** +
+  冒烟 F1–F5（导入入口 / 干跑 / apply 落盘 / 命令 / 状态行）；`tests/harness/st-mock.js` 的 fetch 桩新增 `arrayBuffer()` 以支持 gzip 字节。
 - **P1 内核平移（批次 5：迁移与条目层）**：新增 `core/migrate.js`（353 行：`migrateState` 结构健壮性清洗与多版本迁移链、
   `migratePlanSuspV1165`/`migrateRelLinks`、跨端内容去重 `contentPickBest`/`contentDedupeArray`、`recallDateNum`）与
   `core/entries.js`（347 行：`upsertEntry` 写入合并、`deleteEntry` 级联删除与 id 墓碑、`upsertRelLinks`、`sweepOrphanRelLinks`）；

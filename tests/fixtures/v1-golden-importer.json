@@ -1,0 +1,34 @@
+{
+  "note": "V1 真实插件的文件命名与作用域派生（黄金样本 9）：供 V2 导入器/存储命名对齐",
+  "charId": "not-exported:getCurrentCharacterId",
+  "scope": "char:1157z2a",
+  "scopeHash8": "zxg18scl",
+  "storageSlug": "n2mcm47",
+  "stateKey": "not-exported:stateKey",
+  "stateFileName": "ftt-state-n2mcm47-zxg18scl.json.gz",
+  "stateBakFileName": "ftt-state-n2mcm47-zxg18scl-bak.json.gz",
+  "snapshotFileName": "ftt-snap-n2mcm47-zxg18scl.json.gz",
+  "fileNameBase": {
+    "ascii": "ftt-state-SampleChar-zxg18scl",
+    "chinese": "ftt-state-测试角色-zxg18scl",
+    "bak": "ftt-state-SampleChar-zxg18scl-bak"
+  },
+  "fileNameFor": {
+    "gz": "ftt-state-SampleChar-zxg18scl.json.gz",
+    "json": "ftt-state-SampleChar-zxg18scl.json"
+  },
+  "stateFileCandidates": [
+    "ftt-state-n2mcm47-zxg18scl.json.gz",
+    "ftt-state-n2mcm47-zxg18scl.json",
+    "ftt-state-nzxg18s-zxg18scl.json.gz",
+    "ftt-state-nzxg18s-zxg18scl.json"
+  ],
+  "localStorageSnapshot": {
+    "keys": [
+      "getItem",
+      "setItem",
+      "removeItem",
+      "_keys"
+    ]
+  }
+}

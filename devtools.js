@@ -32,7 +32,7 @@ export function buildSnapshot(extra) {
 }
 
 /** 挂到 window.FTT（返回快照；不覆盖已存在的同名对象则合并） */
-export function installDevtools() {
+export function installDevtools(hooks) {
     const snap = buildSnapshot();
     try {
         const w = globalThis;
@@ -45,6 +45,9 @@ export function installDevtools() {
             interceptor: () => interceptorStats(),
             injectLength: () => readInject().length,
             update: () => buildSnapshot().update,
+            // P2：V1 数据导入（默认干跑；apply:true 才写入）
+            importV1: (opts) => (hooks && typeof hooks.importV1 === 'function' ? hooks.importV1(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            importStatus: () => (hooks && typeof hooks.importStatus === 'function' ? hooks.importStatus() : null),
         });
         return true;
     } catch (e) {
