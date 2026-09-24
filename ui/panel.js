@@ -21,6 +21,7 @@ import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
+import { runMemoryRepair } from '../core/group-repair.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -266,6 +267,9 @@ function dimBody(kind) {
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="' + attr(kind) + '">清空选择</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
         + (kind === 'atoms' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="atomToggleHidden">' + (ps.showHidden ? '🙈 隐藏已总结' : ('👁 显示已总结（' + hiddenN + '）')) + '</button>') : '')
+        // V1 `memoriesHtml()`：记忆页新增「🔧 修复记忆」顶部按钮（融合同归属高相似记忆；与修复同管道）——
+        //   仅在有记忆时显示（V1 `memList.length` 条件），文案与 title 逐字对齐
+        + (kind === 'memories' && total ? '<button class="ftt-btn ftt-sm" data-ftt-action="memoryRepair" title="融合相似记忆并清理孤儿关联">🔧 修复记忆</button>' : '')
         + '</div>'
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
@@ -776,6 +780,25 @@ export async function panelAction(action, payload) {
             }
             setNote('自动修复：' + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
             result = Object.assign(result, { ok: true, action: a, repair: r, made: r.made || 0 });
+        }
+        else if (a === 'memoryRepair') {
+            // 「🔧 修复记忆」（V1 v1.140 记忆页专用）：机械去重 → 关系层维护 → 标签组聚类选组 → 窄契约 AI 梳理
+            //   → 按编号精确应用（合并/修订/删除；跨归属拒收）→ 再跑一次关系层维护；AI 不可用/无高相关组时如实回报。
+            const r = await runMemoryRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('无需 AI 梳理（机械去重 ' + Number(r.merged || 0) + ' 条）');
+            else {
+                parts.push('高相关组 ' + Number(r.groups || 0) + '/' + Number(r.groupsTotal || 0) + ' 组（核对 ' + Number(r.checked || 0) + ' 条）');
+                if (Number(r.fused || 0)) parts.push('合并 ' + Number(r.fused) + ' 组（-' + Number(r.removed || 0) + ' 条）');
+                if (Number(r.revised || 0)) parts.push('修订 ' + Number(r.revised) + ' 条');
+                if (Number(r.deleted || 0)) parts.push('删除 ' + Number(r.deleted) + ' 条');
+                if (Number(r.merged || 0)) parts.push('机械去重 ' + Number(r.merged) + ' 条');
+                if (Number(r.retargeted || 0)) parts.push('关联重挂 ' + Number(r.retargeted) + ' 行');
+            }
+            setNote('记忆修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, memoryRepair: r, made: r.made || 0 });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）

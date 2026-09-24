@@ -162,6 +162,17 @@ export function installDevtools(hooks) {
             relMaintSummary: (m) => (hooks && typeof hooks.relMaintSummary === 'function' ? hooks.relMaintSummary(m) : ''),
             mergeRelMaint: (a, b) => (hooks && typeof hooks.mergeRelMaint === 'function' ? hooks.mergeRelMaint(a, b) : null),
             demoteRelLinkOrphans: () => (hooks && typeof hooks.demoteRelLinkOrphans === 'function' ? hooks.demoteRelLinkOrphans() : null),
+            // B8-6c-1 相关组聚类修复基础设施 + 记忆修复管道（V1 `__FTT` 同名能力）
+            groupSpecs: () => (hooks && typeof hooks.groupSpecs === 'function' ? hooks.groupSpecs() : null),
+            groupSpec: (dimKey) => (hooks && typeof hooks.groupSpec === 'function' ? hooks.groupSpec(dimKey) : null),
+            groupRelatedness: (spec) => (hooks && typeof hooks.groupRelatedness === 'function' ? hooks.groupRelatedness(spec) : null),
+            groupClusters: (spec) => (hooks && typeof hooks.groupClusters === 'function' ? hooks.groupClusters(spec) : []),
+            groupPick: (spec) => (hooks && typeof hooks.groupPick === 'function' ? hooks.groupPick(spec) : null),
+            memoryMergeExact: () => (hooks && typeof hooks.memoryMergeExact === 'function' ? hooks.memoryMergeExact() : null),
+            memoryRepairPrompt: (pick) => (hooks && typeof hooks.memoryRepairPrompt === 'function' ? hooks.memoryRepairPrompt(pick) : null),
+            memoryRepairApply: (delta, pick) => (hooks && typeof hooks.memoryRepairApply === 'function' ? hooks.memoryRepairApply(delta, pick) : null),
+            memoryRepair: (opts) => (hooks && typeof hooks.memoryRepair === 'function' ? hooks.memoryRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            retargetRelRefs: (dim, fromIds, toId) => (hooks && typeof hooks.retargetRelRefs === 'function' ? hooks.retargetRelRefs(dim, fromIds, toId) : 0),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

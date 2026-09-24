@@ -1186,6 +1186,94 @@ assert('V4 FTT 关联维护入口齐备（relMaint / relMaintCounts / relMaintSu
         && !!dm && typeof dm.demoted === 'number';
 })(), '');
 
+// ---------- W 相关组聚类修复 + 记忆修复管道（B8-6c-1：机械去重 → 关系维护 → 聚类选组 → AI → 应用 → 复检） ----------
+assert('W1 FTT 聚类修复入口齐备（groupSpecs / groupSpec / groupRelatedness / groupClusters / groupPick / memoryMergeExact / memoryRepairPrompt / memoryRepairApply / memoryRepair / retargetRelRefs）', (() => {
+    const F = globalThis.FTT;
+    const specs = F.groupSpecs();
+    const spec = F.groupSpec('memories');
+    const st = rtMod.state;
+    st.memories = [
+        { id: 'smoke-gpr-1', owner: '角色甲', title: '码头交接', content: '角色甲在码头交接货物。', date: '2020-01-01', memCategory: '交易', importance: 0.6, tags: ['码头', '交接', '货物'], uses: 1, floorStart: 1, floorEnd: 2 },
+        { id: 'smoke-gpr-2', owner: '角色甲', title: '码头交货', content: '甲把货物在码头交出去。', date: '2020-01-02', memCategory: '交易', importance: 0.8, tags: ['码头', '交接', '货物'], uses: 3, floorStart: 2, floorEnd: 4 },
+    ];
+    st.links = [{ id: 'smoke-gpr-l1', dim: 'memories', refId: 'smoke-gpr-2', who: '角色甲', how: 'witness', deviation: 'unknown', uses: 1, updatedAt: 1000 }];
+    st.repairCursor = {};
+    const pick = F.groupPick(spec);
+    const rel = F.groupRelatedness(spec);
+    const cl = F.groupClusters(spec);
+    const prompt = F.memoryRepairPrompt(pick);
+    const n = F.retargetRelRefs('memories', ['smoke-gpr-2'], 'smoke-gpr-1');
+    const relinked = (st.links || []).filter((x) => x && x.refId === 'smoke-gpr-1').length;
+    return !!specs && !!specs.memories && spec === specs.memories
+        && pick.picked === 1 && pick.total === 1 && pick.entries.length === 2
+        && rel.sims.length === 2 && cl.length === 1 && cl[0].size === 2
+        && Array.isArray(prompt) && prompt.length === 2 && prompt[0].role === 'system'
+        && n === 1 && relinked === 1
+        && typeof F.memoryMergeExact === 'function' && typeof F.memoryRepairApply === 'function'
+        && typeof F.memoryRepair === 'function' && F.groupSpec('nope') === specs.concepts;
+})(), '');
+
+assert('W2 记忆分页渲染 V1 同款「🔧 修复记忆」按钮（有记忆时显示、无记忆时隐藏）', (async () => {
+    const st = rtMod.state;
+    st.memories = [{ id: 'smoke-gpr-b1', owner: '角色甲', title: '码头交接', content: '角色甲在码头交接货物。', date: '2020-01-01', memCategory: '交易', importance: 0.6, tags: ['码头', '交接', '货物'], uses: 1, floorStart: 1, floorEnd: 2 }];
+    const r = await entry.popupAction('tab', { tab: 'memories' });
+    const html = String(r.html || '');
+    const has = html.indexOf('data-ftt-action="memoryRepair"') >= 0 && html.indexOf('🔧 修复记忆') >= 0
+        && html.indexOf('title="融合相似记忆并清理孤儿关联"') >= 0;
+    st.memories = [];
+    const r2 = await entry.popupAction('tab', { tab: 'memories' });
+    const empty = String(r2.html || '');
+    return has && empty.indexOf('data-ftt-action="memoryRepair"') < 0;
+})(), '');
+
+const origGenW = host.ctx.generateRaw;
+let memRepAiCalls = 0;
+host.ctx.generateRaw = async () => {
+    memRepAiCalls++;
+    return JSON.stringify({
+        '合并': [{ '保留': 1, '并入': [2], '标题': '码头交接货物', '正文': '角色甲在码头交接货物并收取银两。', '日期': '2020-01-01', '分类': '交易', '标签': ['码头', '交接', '货物', '银两'] }],
+        '删除': [3],
+    });
+};
+
+assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 → 聚类选组 → AI 合并+删除落库 → 关联重挂 + 墓碑 + 复检口径，提示如实回报', (async () => {
+    const st = rtMod.state;
+    st.memories = [
+        { id: 'smoke-gp-m1', owner: '角色甲', title: '码头交接', content: '角色甲在码头交接货物。', date: '2020-01-01', memCategory: '交易', importance: 0.6, tags: ['码头', '交接', '货物'], uses: 1, floorStart: 1, floorEnd: 2 },
+        { id: 'smoke-gp-m2', owner: '角色甲', title: '码头交货', content: '甲把货物在码头交出去。', date: '2020-01-02', memCategory: '交易', importance: 0.8, tags: ['码头', '交接', '货物'], uses: 3, floorStart: 2, floorEnd: 4 },
+        { id: 'smoke-gp-m3', owner: '角色甲', title: '空占位', content: '待补充', date: '', memCategory: '', importance: 0.1, tags: [], uses: 0, floorStart: 5, floorEnd: 5 },
+    ];
+    st.links = [
+        { id: 'smoke-gp-l1', dim: 'memories', refId: 'smoke-gp-m1', who: '角色甲', how: 'participant', deviation: 'unknown', uses: 2, updatedAt: 1000 },
+        { id: 'smoke-gp-l2', dim: 'memories', refId: 'smoke-gp-m2', who: '角色甲', how: 'witness', deviation: 'unknown', uses: 1, updatedAt: 1000 },
+        { id: 'smoke-gp-l3', dim: 'memories', refId: 'smoke-gp-m2', who: '角色乙', how: 'told', deviation: 'unknown', uses: 1, updatedAt: 1200 },
+        { id: 'smoke-gp-lgone', dim: 'memories', refId: 'm-none', who: '角色丙', how: 'witness', deviation: 'unknown', uses: 1, updatedAt: 1000 },
+    ];
+    st.deleted = {}; st.deletedH = {}; st.repairCursor = {};
+    rtMod.cfg.relLinkEnabled = true; rtMod.cfg.relOrphanAction = 'keep';
+    rtMod.cfg.memoryRepairSim = 0.45; rtMod.cfg.memoryRepairMaxClusters = 3;
+    rtMod.cfg.memoryRepairMaxItems = 24; rtMod.cfg.memoryRepairMaxClusterSize = 8;
+    const before = memRepAiCalls;
+    const r = await entry.popupAction('memoryRepair', {});
+    const mr = r.memoryRepair || {};
+    const m1 = (st.memories || []).filter((x) => x.id === 'smoke-gp-m1')[0] || {};
+    const ids = (st.memories || []).map((x) => x.id);
+    const linkRows = (st.links || []).map((x) => [x.refId, x.who, x.how]);
+    const memTombs = Object.keys((st.deleted || {}).memories || {});
+    const linkTombs = Object.keys((st.deleted || {}).links || {});
+    const note = String(r.note || '');
+    return r.ok === true && r.made === 1 && memRepAiCalls === before + 1
+        && mr.fused === 1 && mr.deleted === 1 && mr.retargeted === 1 && Number(mr.relMaint.swept) === 1
+        && ids.join(',') === 'smoke-gp-m1' && m1.title === '码头交接货物' && String(m1.content).indexOf('银两') >= 0
+        && Number(m1.uses) === 4 && Number(m1.floorStart) === 1 && Number(m1.floorEnd) === 4
+        && linkRows.length === 2 && linkRows.every((x) => x[0] === 'smoke-gp-m1')
+        && memTombs.indexOf('smoke-gp-m2') >= 0 && memTombs.indexOf('smoke-gp-m3') >= 0
+        && linkTombs.indexOf('smoke-gp-lgone') >= 0
+        && note.indexOf('记忆修复：') >= 0 && note.indexOf('关联重挂 1 行') >= 0;
+})(), '');
+
+host.ctx.generateRaw = origGenW;
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

@@ -48,6 +48,11 @@ import {
     relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, mergeRelMaint, demoteRelLinkOrphans,
 } from './core/rel-maint.js';
 import {
+    GROUP_REPAIR_SPECS, groupRepairSpec, groupRelatedness, groupClusters, groupPick,
+    memoryMergeExact, buildMemoryRepairPrompt, applyMemoryMergeGroups, runMemoryRepair,
+} from './core/group-repair.js';
+import { retargetRelRefs } from './core/entries.js';
+import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
@@ -404,6 +409,17 @@ function bootstrapDiagnostics() {
             relMaintSummary: (m) => relMaintSummary(m),
             mergeRelMaint: (a, b) => mergeRelMaint(a, b),
             demoteRelLinkOrphans: () => demoteRelLinkOrphans(),
+            // B8-6c-1 相关组聚类修复基础设施 + 记忆修复管道
+            groupSpecs: () => GROUP_REPAIR_SPECS,
+            groupSpec: (dimKey) => groupRepairSpec(dimKey),
+            groupRelatedness: (spec) => groupRelatedness(spec),
+            groupClusters: (spec) => groupClusters(spec),
+            groupPick: (spec) => groupPick(spec),
+            memoryMergeExact: () => memoryMergeExact(),
+            memoryRepairPrompt: (pick) => buildMemoryRepairPrompt(pick),
+            memoryRepairApply: (delta, pick) => applyMemoryMergeGroups(delta, pick),
+            memoryRepair: (opts) => runMemoryRepair(opts || {}),
+            retargetRelRefs: (dim, fromIds, toId) => retargetRelRefs(dim, fromIds, toId),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));

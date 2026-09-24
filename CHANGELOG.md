@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.18.0（2026-09-26）· B8-6c-1 相关组聚类修复（通用聚类引擎 + 记忆修复管道 + 设定页补齐 22 控件）
+
+**本版（B8-6c-1，新增 `core/group-repair.js`，取自 V1 v1.140 通用聚类引擎 + v1.168 记忆修复）**：
+1. **通用聚类引擎**：`GROUP_REPAIR_SPECS`（concepts / memories / items / suspense 四域 spec）+ `groupRepairSpec`（按域取 spec，未知域回落 concepts）
+   + `groupRelatedness`（每条 = 与同域其它条目的**最大相似度**；标签普遍不足时退回「名称+正文」bigram）+ `groupClusters`（边 = 相关度 ≥ 阈值；
+   标签基准需**共享 ≥2 标签**且同分区；并查集**组规模上限防串联**；只保留 ≥2 条的组，按（条数 → 组内最大相关度）降序）
+   + `groupPick`（游标轮询选组：≤ `cfg.*RepairMaxClusters` 组 / ≤ `cfg.*RepairMaxItems` 条；客观缺陷条目单列送修；
+   悬念 `sampleSingles` 孤例轮询；游标写回 `state.repairCursor`）；
+2. **记忆修复管道 `runMemoryRepair`**：① `memoryMergeExact`（同归属内 同正文哈希 + 同标题 ≥4 字合并；uses 累加、楼层 min/max、重要度取大、日期取最早、标签并集；
+   **与 V1 一致不写墓碑**；合并同步 `retargetRelRefs` 重挂关联）→ ② `relRepairMaint`（B8-6b+，零 AI 关系层维护）→ ③ `groupPick` 选组 →
+   ④ `buildMemoryRepairPrompt`（system 取 `cfg.promptTemplates.memoryRepair`，user 附分组清单，**逐字符与 V1 一致**）→
+   ⑤ `applyMemoryMergeGroups`（合并/修订/删除**按编号精确应用、禁止新增**；跨归属合并一律拒收；标签并集补齐；删除写墓碑）→
+   ⑥ AI 后**再跑一次**关系维护并 `mergeRelMaint` 合并两次口径；AI 未返回有效 JSON / 无高相关组时如实回报且数据不被破坏；
+3. **关联行重挂**：`core/entries.js#retargetRelRefs`（V1 原样：被重挂行之间按 `REL_LINK_HOW_RANK` 择一，**不与目标条目既有行比可靠度**；
+   写回 `state.links`，自指返回 0）；
+4. **界面**：长期记忆分页顶部「🔧 修复记忆」按钮（V1 同款文案与 title「融合相似记忆并清理孤儿关联」，**无记忆时不显示**）+ 面板动作 `memoryRepair`
+   （长任务互斥、AI 不可用时如实回报，不伪造结果）；
+5. **设定页补齐 22 个 V1 控件**（`ui/settings-pages.js`）：V1 设定④「质检维护」页里以**手写 div** 形式给出的控件被 B4 自动提取漏掉（自动提取只覆盖 `f(...)`/`switchField(...)`）——
+   概念/记忆/悬念/物品 四域「相关组聚类修复」各 4 项（相关性阈值 0.45 / 每次核对组数 3 / 每次提交条数 24 / 组规模上限 8）+ 物品「低调用清理」6 项
+   （比例 0.05 / 物品数门槛 100 / 平均调用门槛 5 / 楼层门槛 200 / 清扫间隔 40 楼 / 每轮最多删除 1）；键与标签按 V1 原样、顺序按 V1；控件总数 **147 → 169**；
+6. **`FTT.*` 新增 10 个入口**（`groupSpecs` / `groupSpec` / `groupRelatedness` / `groupClusters` / `groupPick` / `memoryMergeExact` /
+   `memoryRepairPrompt` / `memoryRepairApply` / `memoryRepair` / `retargetRelRefs`）。
+
+**验证**：黄金样本 `tests/fixtures/v1-golden-group-repair.json`（18 组：四域 `groupRelatedness`/`groupClusters`/`groupPick` 逐条 + 游标写回 + `groupRepairSpec` 兜底 +
+记忆提示词逐字符 + 合并/修订/删除应用 + 跨归属拒收 + `memoryMergeExact` + `retargetRelRefs`）与
+`tests/fixtures/v1-golden-group-repair-flow.json`（`runMemoryRepair` 全链路 + 无高相关组早退），oracle = **真实 V1 插件 v1.206**；
+单元 `tests/unit/group-repair-golden.test.js` **26 项** + 冒烟 **W1–W3**；设定页单测新增 **P2c**（22 键的键/标签/默认值/渲染逐一断言）。
+门禁全绿：单元 **40 文件 / 566 断言**、冒烟 **99 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8r-B8-6c-1记忆聚类修复.md` §2）**：AI 通道走酒馆 `generateRaw`（V1 自建 OpenAI 兼容请求）；
+V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`newTaskStart`/`renderPanel` 未移植（V2 无任务管线 UI，改为长任务在途拒绝 + UI 层重绘）；
+`apiTemperature`/`apiMaxTokens`/`apiTopP` **不设控件**（V2 走酒馆预设，V1 自建请求专用）；
+`cfg.dimensionGrouping`（V1「独立分组/各维度单独选预设并行请求」）V2 暂无实现，属后续批次（不设假控件）。
+
 ## v2.17.0（2026-09-26）· B8-6b+ 关联层机械维护（修复第 1 段收尾 + AI 修订后复检）
 
 **本版（B8-6b+，新增 `core/rel-maint.js`，取自 V1 v1.168「修复记忆内的关系层机械维护」）**：

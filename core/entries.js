@@ -13,7 +13,7 @@ import { releaseMergedSources, tombEntries, tombMany, tombSet } from './merge.js
 import { normalizeAtom } from './model/atom.js';
 import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory, normalizeNpc, normalizeParallel, normalizePlan, normalizeScene, normalizeSuspense } from './model/dims.js';
 import { normalizeCurrency } from './model/money.js';
-import { normalizeRelLink } from './model/rel.js';
+import { normalizeRelLink, relLinkId } from './model/rel.js';
 import { normalizeRumor } from './model/rumor.js';
 import { cfg, getLastMessageId, log, saveState, state } from './model/runtime.js';
 import { mergeTags, scenePathArr } from './model/scalars.js';
@@ -155,6 +155,33 @@ function dropRelLinks(dim, ids) {
     return n;
 }
 // 引用重挂：条目合并（记忆 / 计划 / 悬念 / 平行事件）后把关联与引用指回主条
+/** V1 `retargetRelRefs`（v1.168）：被并入条目的关联行改挂保留主条；同角色多行取「更可靠方式」的一行；不留孤儿行、不写墓碑 */
+function retargetRelRefs(dim, fromIds, toId) {
+    let n = 0;
+    try {
+        const d = String(dim || ''), to = String(toId || '');
+        const set = new Set((Array.isArray(fromIds) ? fromIds : [fromIds]).map(x => String(x)).filter(x => x && x !== to));
+        if (!set.size || !to) return 0;
+        const arr = (state && state.links) || [];
+        const keep = [];
+        const byWho = new Map();
+        for (const row of arr) {
+            if (!row) continue;
+            if (String(row.dim) === d && set.has(String(row.refId))) {
+                const moved = Object.assign({}, row, { refId: to, id: relLinkId(d, to, row.who) });
+                const prev = byWho.get(String(moved.who));
+                if (!prev) { byWho.set(String(moved.who), moved); } else if ((REL_LINK_HOW_RANK[moved.how] || 0) > (REL_LINK_HOW_RANK[prev.how] || 0)) { byWho.set(String(moved.who), moved); }
+                n++;
+                continue;
+            }
+            keep.push(row);
+        }
+        // 去掉与主条已有行冲突的 who
+        const merged = keep.filter(x => !(x && String(x.dim) === d && String(x.refId) === to && byWho.has(String(x.who))));
+        state.links = merged.concat(Array.from(byWho.values()));
+    } catch (e) { }
+    return n;
+}
 
 function sweepStatesForRemovedSnapshots(names) {
     try {
@@ -344,4 +371,4 @@ function mergeSnapshotObjects(old, n, opts) {
     };
 }
 
-export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks, dropRelLinks };
+export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks, dropRelLinks, retargetRelRefs };
