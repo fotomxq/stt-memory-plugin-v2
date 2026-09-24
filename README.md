@@ -66,7 +66,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 
 | 层 | 职责 | 关键文件 |
 | --- | --- | --- |
-| `core/` | 纯逻辑：常量、工具、数据模型、算法、提示词（无 DOM / 无宿主） | `constants.js`、`util.js`、`model/`（runtime / scalars / atom / dims / hash / snapshot / money / segment —— 自 V1 逐字移植，**黄金样本强校验**） |
+| `core/` | 纯逻辑：常量、工具、数据模型、算法、提示词（无 DOM / 无宿主） | `constants.js`、`util.js`、`model/`（runtime / scalars / atom / dims / hash / snapshot / money / segment / rel / rumor —— 自 V1 逐字移植，**黄金样本强校验**） |
 | `host/` | 宿主适配：上下文探测、事件、注入、生成前钩子、AI 调用 | `st-api.js`、`events.js`、`inject.js`、`interceptor.js`、`generation.js` |
 | `adapters/` | 存储适配：配置 / 会话元数据 / 文件 / 本机缓冲 | `settings.js` |
 | `ui/` | 界面：设置抽屉、命令与宏、数据台（P4） | `settings-panel.js`、`commands.js` |
@@ -75,8 +75,8 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 
 `core/model/*` 由 V1 源码**逐段提取**生成（算法、字段名、字段顺序完全一致），并由
 `tests/unit/model-golden.test.js` 用 **V1 源码切片产出的黄金样本**（`tests/fixtures/v1-golden.json`）做**逐字符**比对 ——
-覆盖 14 类维度中的 12 类归一化（情节 / 状态 / 档案 / 记忆 / 物品 / 计划 / 悬念 / 场景 / 概念 / 平行 / 货币 / 分段）
-+ 内容哈希 + 年龄与出生日期族 + 标量助手，共 **38 项断言**（批次 1：15、批次 2：23）。
+覆盖**全部 14 类维度**归一化（情节 / 状态 / 档案 / 记忆 / 物品 / 计划 / 悬念 / 场景 / 概念 / 平行 / 货币 / 分段 / 关联层 / 传言）
++ 内容哈希 + 年龄与出生日期族 + 标量助手，共 **54 项断言**（批次 1：15、批次 2：23、批次 2b：16）。
 口径与后续批次见 `docs/P1-内核平移.md`。
 
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
