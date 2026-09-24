@@ -1,0 +1,698 @@
+{
+  "prompt": [
+    {
+      "role": "system",
+      "content": "【场景修复】任务：修正场景树。\n场景树要求：按层级路径组织（如 城市甲>街区乙>地点丁），每一级（含中间层）都是一个独立节点；名称 = 当前层节点名，路径 = 从根到该节点的完整路径（用 > 连接）；名称必须等于路径末级；描述 = 该节点自身特征（≤180 字）。\n检查项：\n1. 结构错乱：路径与层级不一致、中间层缺失或重复、节点挂错层级、多棵残树 —— 输出修正后的完整树。\n2. 用词不当：节点名称或描述的错别字与不贴切措辞 —— 直接给出修正后的名称或描述。\n输出：只输出一个 JSON 对象，键为「场景库」，其值只含一个操作「重建」= 修正后的完整最终节点列表（必须包含所有应保留的层级节点，无描述的中层级也要列出，不要只列叶子）；每个节点字段为 名称、路径、描述（可空）。\n禁止：不输出其它维度，不解释，只输出合法 JSON，不加代码块标记。\n只输出 JSON，不要解释。"
+    },
+    {
+      "role": "user",
+      "content": "当前场景节点清单：\n- 纽约 ｜ 路径：纽约 ｜ 描述：繁华都市。\n- 曼哈顿 ｜ 路径：纽约>曼哈顿 ｜ 描述：纽约的区。\n输出：只包含场景树的修正（重建 完整最终列表），不要改动其它维度。"
+    }
+  ],
+  "promptEmpty": [
+    {
+      "role": "system",
+      "content": "【场景修复】任务：修正场景树。\n场景树要求：按层级路径组织（如 城市甲>街区乙>地点丁），每一级（含中间层）都是一个独立节点；名称 = 当前层节点名，路径 = 从根到该节点的完整路径（用 > 连接）；名称必须等于路径末级；描述 = 该节点自身特征（≤180 字）。\n检查项：\n1. 结构错乱：路径与层级不一致、中间层缺失或重复、节点挂错层级、多棵残树 —— 输出修正后的完整树。\n2. 用词不当：节点名称或描述的错别字与不贴切措辞 —— 直接给出修正后的名称或描述。\n输出：只输出一个 JSON 对象，键为「场景库」，其值只含一个操作「重建」= 修正后的完整最终节点列表（必须包含所有应保留的层级节点，无描述的中层级也要列出，不要只列叶子）；每个节点字段为 名称、路径、描述（可空）。\n禁止：不输出其它维度，不解释，只输出合法 JSON，不加代码块标记。\n只输出 JSON，不要解释。"
+    },
+    {
+      "role": "user",
+      "content": "当前场景节点清单：\n（无场景数据）\n输出：只包含场景树的修正（重建 完整最终列表），不要改动其它维度。"
+    }
+  ],
+  "applyRebuild": {
+    "ok": true,
+    "list": [
+      {
+        "id": "sc1",
+        "name": "纽约",
+        "pathArr": [
+          "纽约"
+        ],
+        "pathStr": "纽约",
+        "desc": "繁华都市。",
+        "uses": 3,
+        "floorSeen": 10
+      },
+      {
+        "id": "sc2",
+        "name": "曼哈顿",
+        "pathArr": [
+          "纽约",
+          "曼哈顿"
+        ],
+        "pathStr": "纽约>曼哈顿",
+        "desc": "纽约的核心区。",
+        "uses": 2,
+        "floorSeen": 12
+      },
+      {
+        "id": "scene_1j6pzvi",
+        "name": "布鲁克林",
+        "pathArr": [
+          "纽约",
+          "布鲁克林"
+        ],
+        "pathStr": "纽约>布鲁克林",
+        "desc": "另一个区。",
+        "uses": 0,
+        "floorSeen": 0
+      },
+      {
+        "id": "scene_1boza3u",
+        "name": "法拉盛",
+        "pathArr": [
+          "纽约",
+          "皇后区",
+          "法拉盛"
+        ],
+        "pathStr": "纽约>皇后区>法拉盛",
+        "desc": "法拉盛的所在区。",
+        "uses": 0,
+        "floorSeen": 0
+      },
+      {
+        "id": "scene_zxqwhf",
+        "name": "皇后区",
+        "pathArr": [
+          "纽约",
+          "皇后区"
+        ],
+        "pathStr": "纽约>皇后区",
+        "desc": "",
+        "uses": 0,
+        "floorSeen": 0
+      }
+    ]
+  },
+  "applyRebuildIds": [
+    "sc1",
+    "sc2",
+    "scene_1j6pzvi",
+    "scene_1boza3u",
+    "scene_zxqwhf"
+  ],
+  "applyRebuildEmpty": {
+    "ok": false,
+    "reason": "empty"
+  },
+  "applyRebuildInvalid": {
+    "ok": false,
+    "reason": "invalid"
+  },
+  "applyRebuildNonArray": {
+    "ok": false,
+    "reason": "empty"
+  },
+  "applyRebuildStringPath": {
+    "ok": true,
+    "list": [
+      {
+        "id": "sc1",
+        "name": "纽约",
+        "pathArr": [
+          "纽约"
+        ],
+        "pathStr": "纽约",
+        "desc": "改为字符串路径。",
+        "uses": 3,
+        "floorSeen": 10
+      }
+    ],
+    "ids": [
+      "sc1"
+    ]
+  },
+  "unionAll": {
+    "n": 1,
+    "scenes": [
+      {
+        "id": "u1",
+        "name": "曼哈顿",
+        "pathArr": [
+          "纽约",
+          "曼哈顿"
+        ],
+        "pathStr": "纽约>曼哈顿",
+        "desc": "同地异名的更全描述。",
+        "uses": 3,
+        "floorSeen": 5,
+        "tags": []
+      },
+      {
+        "id": "u3",
+        "name": "唐人街",
+        "pathArr": [
+          "纽约",
+          "曼哈顿",
+          "唐人街"
+        ],
+        "pathStr": "纽约>曼哈顿>唐人街",
+        "desc": "街。",
+        "uses": 2,
+        "floorSeen": 4,
+        "tags": []
+      }
+    ],
+    "tombs": []
+  },
+  "unionAllRoot": {
+    "n": 1,
+    "scenes": [
+      {
+        "id": "v1",
+        "name": "纽约",
+        "pathArr": [
+          "纽约"
+        ],
+        "pathStr": "纽约",
+        "desc": "同地异名的更全描述。",
+        "uses": 3,
+        "floorSeen": 5,
+        "tags": []
+      },
+      {
+        "id": "v3",
+        "name": "曼哈顿",
+        "pathArr": [
+          "纽约市",
+          "曼哈顿"
+        ],
+        "pathStr": "纽约市>曼哈顿",
+        "desc": "区。",
+        "uses": 2,
+        "floorSeen": 4,
+        "tags": []
+      }
+    ],
+    "tombs": []
+  },
+  "flow": {
+    "made": 1,
+    "before": 2,
+    "after": 5
+  },
+  "flowScenes": [
+    {
+      "id": "sc1",
+      "name": "纽约",
+      "pathArr": [
+        "纽约"
+      ],
+      "pathStr": "纽约",
+      "desc": "繁华都市。",
+      "uses": 3,
+      "floorSeen": 10
+    },
+    {
+      "id": "sc2",
+      "name": "曼哈顿",
+      "pathArr": [
+        "纽约",
+        "曼哈顿"
+      ],
+      "pathStr": "纽约>曼哈顿",
+      "desc": "纽约的核心区。",
+      "uses": 2,
+      "floorSeen": 12
+    },
+    {
+      "id": "scene_1j6pzvi",
+      "name": "布鲁克林",
+      "pathArr": [
+        "纽约",
+        "布鲁克林"
+      ],
+      "pathStr": "纽约>布鲁克林",
+      "desc": "另一个区。",
+      "uses": 0,
+      "floorSeen": 0
+    },
+    {
+      "id": "scene_1boza3u",
+      "name": "法拉盛",
+      "pathArr": [
+        "纽约",
+        "皇后区",
+        "法拉盛"
+      ],
+      "pathStr": "纽约>皇后区>法拉盛",
+      "desc": "法拉盛的所在区。",
+      "uses": 0,
+      "floorSeen": 0
+    },
+    {
+      "id": "scene_zxqwhf",
+      "name": "皇后区",
+      "pathArr": [
+        "纽约",
+        "皇后区"
+      ],
+      "pathStr": "纽约>皇后区",
+      "desc": "",
+      "uses": 0,
+      "floorSeen": 0
+    }
+  ],
+  "flowIds": [
+    "sc1",
+    "sc2",
+    "scene_1j6pzvi",
+    "scene_1boza3u",
+    "scene_zxqwhf"
+  ],
+  "flowTombs": [],
+  "flowToasts": [
+    [
+      "repair",
+      "开始修复场景结构/用词…",
+      "当前 2 个场景节点 · 与「立即修复」同一管道按序执行"
+    ],
+    [
+      "success",
+      "场景修复完成",
+      "节点 2 → 5；名称/路径/描述已按 AI 校正（原 id/使用统计在路径未变时保留）；修复前 2 条 → 修复后 5 条；本轮提交 5 条；修复后 无改动；提交内容＝全库场景重建列表。"
+    ]
+  ],
+  "flowCalls": [
+    "POST http://127.0.0.1:9/v1/chat/completions"
+  ],
+  "flowMessages": [
+    [
+      {
+        "role": "system",
+        "content": "【场景修复】任务：修正场景树。\n场景树要求：按层级路径组织（如 城市甲>街区乙>地点丁），每一级（含中间层）都是一个独立节点；名称 = 当前层节点名，路径 = 从根到该节点的完整路径（用 > 连接）；名称必须等于路径末级；描述 = 该节点自身特征（≤180 字）。\n检查项：\n1. 结构错乱：路径与层级不一致、中间层缺失或重复、节点挂错层级、多棵残树 —— 输出修正后的完整树。\n2. 用词不当：节点名称或描述的错别字与不贴切措辞 —— 直接给出修正后的名称或描述。\n输出：只输出一个 JSON 对象，键为「场景库」，其值只含一个操作「重建」= 修正后的完整最终节点列表（必须包含所有应保留的层级节点，无描述的中层级也要列出，不要只列叶子）；每个节点字段为 名称、路径、描述（可空）。\n禁止：不输出其它维度，不解释，只输出合法 JSON，不加代码块标记。\n只输出 JSON，不要解释。"
+      },
+      {
+        "role": "user",
+        "content": "当前场景节点清单：\n- 纽约 ｜ 路径：纽约 ｜ 描述：繁华都市。\n- 曼哈顿 ｜ 路径：纽约>曼哈顿 ｜ 描述：纽约的区。\n输出：只包含场景树的修正（重建 完整最终列表），不要改动其它维度。"
+      }
+    ]
+  ],
+  "flowUnion": {
+    "made": 1,
+    "before": 2,
+    "after": 2
+  },
+  "flowUnionScenes": [
+    {
+      "id": "sc1",
+      "name": "纽约",
+      "pathArr": [
+        "纽约"
+      ],
+      "pathStr": "纽约",
+      "desc": "同地异名的更全描述。",
+      "uses": 3,
+      "floorSeen": 10
+    }
+  ],
+  "flowUnionTombs": [
+    "sc2"
+  ],
+  "flowUnionToasts": [
+    [
+      "repair",
+      "开始修复场景结构/用词…",
+      "当前 2 个场景节点 · 与「立即修复」同一管道按序执行"
+    ],
+    [
+      "success",
+      "场景修复完成",
+      "节点 2 → 2；名称/路径/描述已按 AI 校正（原 id/使用统计在路径未变时保留）；修复前 2 条 → 修复后 2 条；本轮提交 2 条；修复后 无改动；提交内容＝全库场景重建列表。"
+    ]
+  ],
+  "noRebuild": {
+    "missing": {
+      "r": {
+        "made": 0,
+        "error": "no-rebuild"
+      },
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "纽约",
+          "pathArr": [
+            "纽约"
+          ],
+          "pathStr": "纽约",
+          "desc": "繁华都市。",
+          "uses": 3,
+          "floorSeen": 10,
+          "tags": [
+            "城市"
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "曼哈顿",
+          "pathArr": [
+            "纽约",
+            "曼哈顿"
+          ],
+          "pathStr": "纽约>曼哈顿",
+          "desc": "纽约的区。",
+          "uses": 2,
+          "floorSeen": 12,
+          "tags": []
+        }
+      ],
+      "toasts": [
+        [
+          "warning",
+          "场景修复未取得有效结果",
+          "AI 未返回可用的场景重建列表（场景库/重建），请重试或检查提示词设定。"
+        ]
+      ]
+    },
+    "emptyList": {
+      "r": {
+        "made": 0,
+        "error": "no-rebuild"
+      },
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "纽约",
+          "pathArr": [
+            "纽约"
+          ],
+          "pathStr": "纽约",
+          "desc": "繁华都市。",
+          "uses": 3,
+          "floorSeen": 10,
+          "tags": [
+            "城市"
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "曼哈顿",
+          "pathArr": [
+            "纽约",
+            "曼哈顿"
+          ],
+          "pathStr": "纽约>曼哈顿",
+          "desc": "纽约的区。",
+          "uses": 2,
+          "floorSeen": 12,
+          "tags": []
+        }
+      ],
+      "toasts": [
+        [
+          "warning",
+          "场景修复未取得有效结果",
+          "AI 未返回可用的场景重建列表（场景库/重建），请重试或检查提示词设定。"
+        ]
+      ]
+    },
+    "badJson": {
+      "r": {
+        "made": 0,
+        "error": "no-rebuild"
+      },
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "纽约",
+          "pathArr": [
+            "纽约"
+          ],
+          "pathStr": "纽约",
+          "desc": "繁华都市。",
+          "uses": 3,
+          "floorSeen": 10,
+          "tags": [
+            "城市"
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "曼哈顿",
+          "pathArr": [
+            "纽约",
+            "曼哈顿"
+          ],
+          "pathStr": "纽约>曼哈顿",
+          "desc": "纽约的区。",
+          "uses": 2,
+          "floorSeen": 12,
+          "tags": []
+        }
+      ],
+      "toasts": [
+        [
+          "warning",
+          "场景修复未取得有效结果",
+          "AI 未返回可用的场景重建列表（场景库/重建），请重试或检查提示词设定。"
+        ]
+      ]
+    },
+    "otherDim": {
+      "r": {
+        "made": 0,
+        "error": "no-rebuild"
+      },
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "纽约",
+          "pathArr": [
+            "纽约"
+          ],
+          "pathStr": "纽约",
+          "desc": "繁华都市。",
+          "uses": 3,
+          "floorSeen": 10,
+          "tags": [
+            "城市"
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "曼哈顿",
+          "pathArr": [
+            "纽约",
+            "曼哈顿"
+          ],
+          "pathStr": "纽约>曼哈顿",
+          "desc": "纽约的区。",
+          "uses": 2,
+          "floorSeen": 12,
+          "tags": []
+        }
+      ],
+      "toasts": [
+        [
+          "warning",
+          "场景修复未取得有效结果",
+          "AI 未返回可用的场景重建列表（场景库/重建），请重试或检查提示词设定。"
+        ]
+      ]
+    }
+  },
+  "invalidRebuild": {
+    "made": 0,
+    "error": "invalid:invalid",
+    "scenes": [
+      {
+        "id": "sc1",
+        "name": "纽约",
+        "pathArr": [
+          "纽约"
+        ],
+        "pathStr": "纽约",
+        "desc": "繁华都市。",
+        "uses": 3,
+        "floorSeen": 10,
+        "tags": [
+          "城市"
+        ]
+      },
+      {
+        "id": "sc2",
+        "name": "曼哈顿",
+        "pathArr": [
+          "纽约",
+          "曼哈顿"
+        ],
+        "pathStr": "纽约>曼哈顿",
+        "desc": "纽约的区。",
+        "uses": 2,
+        "floorSeen": 12,
+        "tags": []
+      }
+    ],
+    "toasts": [
+      [
+        "warning",
+        "场景修复结果无效",
+        "重建结果校验失败（invalid），未作改动。"
+      ]
+    ]
+  },
+  "emptyFlow": {
+    "made": 0,
+    "skipped": true
+  },
+  "emptyToasts": [
+    [
+      "info",
+      "场景修复：暂无场景",
+      "请先通过「AI 摘要」生成场景或手动添加后再修复。"
+    ]
+  ],
+  "busyFlow": {
+    "made": 0,
+    "blocked": true
+  },
+  "busyToasts": [
+    [
+      "warning",
+      "修复进行中",
+      "已有修复任务在运行，请稍候（本操作会排队等待）。"
+    ]
+  ],
+  "busyScenes": [
+    {
+      "id": "sc1",
+      "name": "纽约",
+      "pathArr": [
+        "纽约"
+      ],
+      "pathStr": "纽约",
+      "desc": "繁华都市。",
+      "uses": 3,
+      "floorSeen": 10,
+      "tags": [
+        "城市"
+      ]
+    },
+    {
+      "id": "sc2",
+      "name": "曼哈顿",
+      "pathArr": [
+        "纽约",
+        "曼哈顿"
+      ],
+      "pathStr": "纽约>曼哈顿",
+      "desc": "纽约的区。",
+      "uses": 2,
+      "floorSeen": 12,
+      "tags": []
+    }
+  ],
+  "inputs": {
+    "scenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "纽约",
+          "pathArr": [
+            "纽约"
+          ],
+          "pathStr": "纽约",
+          "desc": "繁华都市。",
+          "uses": 3,
+          "floorSeen": 10,
+          "tags": [
+            "城市"
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "曼哈顿",
+          "pathArr": [
+            "纽约",
+            "曼哈顿"
+          ],
+          "pathStr": "纽约>曼哈顿",
+          "desc": "纽约的区。",
+          "uses": 2,
+          "floorSeen": 12,
+          "tags": []
+        }
+      ],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "ai": "{\"场景库\":{\"重建\":[{\"名称\":\"纽约\",\"路径\":[\"纽约\"],\"描述\":\"\"},{\"名称\":\"曼哈顿\",\"路径\":[\"纽约\",\"曼哈顿\"],\"描述\":\"纽约的核心区。\"},{\"名称\":\"曼哈顿\",\"路径\":[\"纽约\",\"曼哈顿\"],\"描述\":\"重复项应被丢弃\"},{\"名称\":\"布鲁克林\",\"路径\":[\"纽约\",\"布鲁克林\"],\"描述\":\"另一个区。\"},{\"名称\":\"法拉盛\",\"路径\":[\"纽约\",\"皇后区\",\"法拉盛\"],\"描述\":\"法拉盛的所在区。\"}]}}",
+    "aiUnion": "{\"场景库\":{\"重建\":[{\"名称\":\"纽约\",\"路径\":[\"纽约\"],\"描述\":\"都市。\"},{\"名称\":\"纽约市\",\"路径\":[\"纽约市\"],\"描述\":\"同地异名的更全描述。\"}]}}",
+    "rebuild": [
+      {
+        "名称": "纽约",
+        "路径": [
+          "纽约"
+        ],
+        "描述": ""
+      },
+      {
+        "名称": "曼哈顿",
+        "路径": [
+          "纽约",
+          "曼哈顿"
+        ],
+        "描述": "纽约的核心区。"
+      },
+      {
+        "名称": "曼哈顿",
+        "路径": [
+          "纽约",
+          "曼哈顿"
+        ],
+        "描述": "重复项应被丢弃"
+      },
+      {
+        "名称": "布鲁克林",
+        "路径": [
+          "纽约",
+          "布鲁克林"
+        ],
+        "描述": "另一个区。"
+      },
+      {
+        "名称": "法拉盛",
+        "路径": [
+          "纽约",
+          "皇后区",
+          "法拉盛"
+        ],
+        "描述": "法拉盛的所在区。"
+      }
+    ]
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（buildSceneRepairPrompt / applySceneRebuild / runSceneRepair + scenesUnionMergeAll）"
+}

@@ -12,6 +12,7 @@ import {
     applySettingsControl, readControl, settingsPagesInfo, settingsControlHtml,
 } from '../../ui/settings-pages.js';
 import { panelAction, panelBodyHtml, panelState, setPanelHooks2, openPanel } from '../../ui/panel.js';
+import { dimCap } from '../../core/model/scalars.js';
 
 const R = makeReporter('settings-pages B4 设定子页（V1 对齐）');
 const J = (v) => JSON.stringify(v);
@@ -29,11 +30,11 @@ R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 169 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9 + B8-5 补齐 V1 `switchField` 开关 20 + B8-6c 补齐 V1 手写 `data-ftt-cfg` 块 22），逐页数量与 V1 提取一致', (() => {
+R.assert('P2 控件表：共 179 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9 + B8-5 补齐 V1 `switchField` 开关 20 + B8-6c 补齐 V1 手写 `data-ftt-cfg` 块 32），逐页数量与 V1 提取一致', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 169 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 24
+    return info.totalControls === 179 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 34
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 1;
 })(), settingsPagesInfo());
 
@@ -86,16 +87,39 @@ R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签�
     return J(tail) === J(want) && badDef.length === 0 && renderOk;
 })(), () => SETTINGS_CONTROLS.feed.slice(-22).map((c) => c.key));
 
-R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、storage.* 在 defaultCfg.storage 内（提取零漏配）', (() => {
+R.assert('P2d 提取页补齐 V1「各大类单条字数上限」10 个控件：键/标签按 V1、写入 `cfg.dimCharLimits.*` 且**真实影响入库硬截断**（dimCap）', (() => {
+    const want = [
+        ['dimCharLimits.atoms', '情节正文上限'], ['dimCharLimits.states', '状态值上限'],
+        ['dimCharLimits.snapshots', '角色档案累计上限'], ['dimCharLimits.memories', '记忆正文上限'],
+        ['dimCharLimits.items', '物品说明上限'], ['dimCharLimits.plans', '计划内容上限'],
+        ['dimCharLimits.suspense', '悬念内容上限'], ['dimCharLimits.scenes', '场景描述上限'],
+        ['dimCharLimits.concepts', '概念内容上限'], ['dimCharLimits.parallels', '平行事件(推演)上限'],
+    ];
+    const ex = SETTINGS_CONTROLS.extract.map((c) => [String(c.key), String(c.label)]);
+    const tail = ex.slice(ex.length - want.length);
+    // 点路径读写 + 内核真的用它做硬截断（long → 截到新上限）
+    const before = readControl('dimCharLimits.atoms');
+    applySettingsControl('dimCharLimits.atoms', 30);
+    const after = readControl('dimCharLimits.atoms');
+    const long = '甲'.repeat(80);
+    const capped = dimCap('atoms', long);
+    applySettingsControl('dimCharLimits.atoms', before);
+    return J(tail) === J(want) && Number(after) === 30 && capped.length === 30
+        && Number(readControl('dimCharLimits.atoms')) === Number(before);
+})(), () => SETTINGS_CONTROLS.extract.slice(-10).map((c) => c.key));
+
+R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、点路径键（storage.* / dimCharLimits.*）逐层在 defaultCfg 内（提取零漏配）', (() => {
     const bad = [];
+    const has = (path) => {
+        let cur = defaultCfg;
+        for (const seg of String(path).split('.')) {
+            if (!cur || !Object.prototype.hasOwnProperty.call(cur, seg)) return false;
+            cur = cur[seg];
+        }
+        return true;
+    };
     Object.keys(SETTINGS_CONTROLS).forEach((pid) => {
-        SETTINGS_CONTROLS[pid].forEach((c) => {
-            const k = String(c.key);
-            if (k.indexOf('storage.') === 0) {
-                const sub = k.slice(8);
-                if (!(defaultCfg.storage && Object.prototype.hasOwnProperty.call(defaultCfg.storage, sub))) bad.push(k);
-            } else if (!Object.prototype.hasOwnProperty.call(defaultCfg, k)) bad.push(k);
-        });
+        SETTINGS_CONTROLS[pid].forEach((c) => { if (!has(String(c.key))) bad.push(String(c.key)); });
     });
     return bad.length === 0;
 })(), (() => {

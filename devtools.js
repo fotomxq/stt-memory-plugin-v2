@@ -173,6 +173,18 @@ export function installDevtools(hooks) {
             memoryRepairApply: (delta, pick) => (hooks && typeof hooks.memoryRepairApply === 'function' ? hooks.memoryRepairApply(delta, pick) : null),
             memoryRepair: (opts) => (hooks && typeof hooks.memoryRepair === 'function' ? hooks.memoryRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
             retargetRelRefs: (dim, fromIds, toId) => (hooks && typeof hooks.retargetRelRefs === 'function' ? hooks.retargetRelRefs(dim, fromIds, toId) : 0),
+            // B8-6c-2 概念修复（V1 v1.139 聚类核对管道）+ 场景修复（V1 v1.89 全量重建管道）
+            conceptMergeExact: () => (hooks && typeof hooks.conceptMergeExact === 'function' ? hooks.conceptMergeExact() : null),
+            conceptRelatedness: () => (hooks && typeof hooks.conceptRelatedness === 'function' ? hooks.conceptRelatedness() : null),
+            conceptClusters: () => (hooks && typeof hooks.conceptClusters === 'function' ? hooks.conceptClusters() : []),
+            conceptPickClusters: () => (hooks && typeof hooks.conceptPickClusters === 'function' ? hooks.conceptPickClusters() : null),
+            conceptRepairPrompt: (pick) => (hooks && typeof hooks.conceptRepairPrompt === 'function' ? hooks.conceptRepairPrompt(pick) : null),
+            conceptRepairApply: (delta, pick) => (hooks && typeof hooks.conceptRepairApply === 'function' ? hooks.conceptRepairApply(delta, pick) : null),
+            conceptRepair: (opts) => (hooks && typeof hooks.conceptRepair === 'function' ? hooks.conceptRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            sceneRepairPrompt: () => (hooks && typeof hooks.sceneRepairPrompt === 'function' ? hooks.sceneRepairPrompt() : null),
+            sceneRepairApply: (entries) => (hooks && typeof hooks.sceneRepairApply === 'function' ? hooks.sceneRepairApply(entries) : null),
+            sceneRepair: (opts) => (hooks && typeof hooks.sceneRepair === 'function' ? hooks.sceneRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            scenesUnionMergeAll: () => (hooks && typeof hooks.scenesUnionMergeAll === 'function' ? hooks.scenesUnionMergeAll() : 0),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;
