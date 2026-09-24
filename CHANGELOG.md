@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.11.1（2026-09-26）· 修复：无 git 宿主上的「后端错误：Git handshake failed」弹窗
+
+**问题**（用户报告）：安装后宿主弹出「后端错误 / Failed to get extension version: Internal error: Git handshake failed:
+An IO error occurred when talking to the server」；其它插件不触发。
+
+**根因（两条，均已修）**：
+1. `manifest.json` 的 `auto_update: true` 会让**酒馆自身**在加载期对第三方扩展做 Git 版本校验
+   （`POST /api/extensions/version` → 服务端 `git fetch`）。在没有 git 能力 / 到 GitHub 不通的宿主（如 TauriTavern 原生移植）上
+   该请求必然失败，宿主把它当「后端错误」弹窗；其它插件未开启该项，故只有本插件触发；
+2. 本插件的「首次启动自动检查」会**主动**请求同一个端点（端点优先）——同样触发后端 git handshake。
+
+**修复**：
+1. `manifest.json` → `auto_update: false`（本插件自带更新检查，不依赖酒馆代做 git 检查）；
+2. 更新检查改为**默认 HTTP 优先**：只用 GitHub raw 的 `manifest.json` + `CHANGELOG.md` 判定版本与更新要点；
+   新增设置项 `useStGitEndpoint`（**默认 false**）—— 只有显式开启时才调用宿主 Git 端点（`/api/extensions/version`）；
+3. 「立即更新（ST）」按钮在开关关闭时**不发起任何请求**，只回填引导文案（提示可开启开关，或按仓库说明手动更新：源码即发布物）；
+4. 抽屉面板与浮层设定都新增「使用宿主 Git 更新端点（默认关）」开关（含原因说明）；浮层里更新相关键改写入**适配层设置**
+   （此前误写内核 cfg，导致「启动时自动检查更新」等开关在浮层里改了不生效）；
+5. 状态摘要新增 `stEndpoint`（on/off）便于诊断「为何没有 git 校验」。
+
+**验证**：门禁全绿：单元 **33 文件 / 442 断言**（新增回归断言：默认路径 **0 次**端点请求、默认「立即更新」**0 次**请求且给引导、
+开启后端点优先与更新端点可用）、冒烟 **72 项**（E2/E3/E6 改写为默认路径断言 + 新增 E6b 开启后调用）；文档 `docs/更新检查机制.md` §2.1 记录根因与修复。
+
 ## v2.11.0（2026-09-26）· B8-2 剧情时钟自动提取（正文头结构 + 多源择优 + 自动降级）
 
 **本版（B8-2）**：

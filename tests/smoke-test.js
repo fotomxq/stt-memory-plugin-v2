@@ -71,7 +71,7 @@ const uninstallFetch = installGlobalFetch((url, opts) => {
 });
 
 const host = makeHost({ templateHtml });
-const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo',
+const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo', 'ftt_v2_usegit',
     'ftt_v2_cfg_injp', 'ftt_v2_cfg_budget', 'ftt_v2_cfg_maxatoms', 'ftt_v2_cfg_maxmems', 'ftt_v2_cfg_autoext',
     'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply',
     'ftt_v2_console', 'ftt_v2_console_refresh']);
@@ -174,22 +174,24 @@ try {
 assert('C2 拦截器统计可读（供 /ftt 与调试导出）', entry.__internals.interceptorStats().calls >= 1, entry.__internals.interceptorStats());
 
 // ---------- E 更新检查机制（首次启动自动检查 + 设定内手动检查） ----------
-assert('E1 设置面板含更新区块（自动检查开关 / 仓库地址 / 检查与立即更新按钮 / 状态行）', (() => {
+assert('E1 设置面板含更新区块（自动检查开关 / 仓库地址 / **宿主 Git 端点开关（默认关）** / 检查与立即更新按钮 / 状态行）', (() => {
     const el = doc.getElementById('extensions_settings2');
     return !!el && el.html.indexOf('ftt_v2_autoupd') >= 0 && el.html.indexOf('ftt_v2_updrepo') >= 0
-        && el.html.indexOf('ftt_v2_checkupd') >= 0 && el.html.indexOf('ftt_v2_doupd') >= 0
+        && el.html.indexOf('ftt_v2_usegit') >= 0 && el.html.indexOf('ftt_v2_checkupd') >= 0 && el.html.indexOf('ftt_v2_doupd') >= 0
         && el.html.indexOf('data-ftt-update-state') >= 0;
-})(), doc.getElementById('extensions_settings2').html.slice(0, 120));
+})(), doc.getElementById('extensions_settings2').html.slice(0, 160));
 
 await new Promise(r => setTimeout(r, 60));
-assert('E2 首次启动自动检查：写 startupCheckedAt/lastCheckAt + 结果来自 ST 端点', (() => {
+assert('E2 首次启动自动检查：写 startupCheckedAt/lastCheckAt，且**默认不触碰宿主 Git 端点**（回归 v2.11.1）', (() => {
     const st = readUpdateState();
+    const gitCalls = fetchCalls.filter(u => u.indexOf('/api/extensions/version') >= 0).length;
     return st.firstRunAt > 0 && st.startupCheckedAt > 0 && st.lastCheckAt > 0
-        && !!st.lastResult && st.lastResult.via === 'st-endpoint' && st.lastResult.isUpToDate === true;
-})(), readUpdateState());
-assert('E3 自动检查结果回填状态行（Git 校验：已是最新）', (() => {
+        && !!st.lastResult && st.lastResult.via.indexOf('remote-manifest:github') >= 0
+        && st.lastResult.stEndpoint === 'off' && gitCalls === 0;
+})(), { st: readUpdateState(), fetchCalls: fetchCalls.slice(0, 8) });
+assert('E3 自动检查结果回填状态行（远端清单判定：发现新版本）', (() => {
     const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
-    return t.indexOf('已是最新（Git 校验）') >= 0;
+    return t.indexOf('发现新版本 ' + remoteVersion) >= 0 && t.indexOf('remote-manifest:github') >= 0;
 })(), doc.getElementById('ftt_v2_updstate').textContent);
 
 // 手动检查：让 ST 端点不可用 → 回退远端清单（有新版本 + 更新要点）
@@ -204,13 +206,26 @@ assert('E4 手动检查（按钮）：端点不可用时回退远端清单并报
 })(), doc.getElementById('fft_v2_updstate') ? String(doc.getElementById('ftt_v2_updstate').textContent) : '');
 assert('E5 更新请求走「配置仓库 → GitHub raw」地址', fetchCalls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/manifest.json'), fetchCalls.slice(0, 6));
 
-// 立即更新（显式，仅用户点击）
+// 立即更新（显式，仅用户点击）—— 默认关闭宿主 Git 端点：**不发起任何请求**，只给引导
 doc.getElementById('ftt_v2_doupd').dispatch('click');
 await new Promise(r => setTimeout(r, 40));
-assert('E6 「立即更新」按钮调用 ST 更新端点并回填 commit', (() => {
+assert('E6 默认关闭宿主 Git 端点：「立即更新」不请求 /api/extensions/update，只回填引导文案', (() => {
+    const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
+    return fetchCalls.indexOf('/api/extensions/update') < 0 && t.indexOf('未执行：') >= 0 && t.indexOf('Git handshake failed') >= 0;
+})(), doc.getElementById('ftt_v2_updstate').textContent);
+
+// 显式开启宿主 Git 端点（设置开关）→ 才允许调用更新端点
+const usegitEl = doc.getElementById('ftt_v2_usegit');
+usegitEl.checked = true;
+usegitEl.dispatch('change');
+doc.getElementById('ftt_v2_doupd').dispatch('click');
+await new Promise(r => setTimeout(r, 40));
+assert('E6b 开启后「立即更新」才调用宿主 Git 更新端点并回填 commit', (() => {
     const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
     return fetchCalls.indexOf('/api/extensions/update') >= 0 && t.indexOf('beef999') >= 0;
 })(), doc.getElementById('ftt_v2_updstate').textContent);
+usegitEl.checked = false;
+usegitEl.dispatch('change');
 assert('E7 /ftt 状态输出含更新行', (() => {
     const cmd = (host.ctx.commands || [])[0];
     const out = String(cmd.callback());

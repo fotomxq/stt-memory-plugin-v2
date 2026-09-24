@@ -18,6 +18,8 @@ export function updateConfig() {
     const s = getSettings();
     return {
         autoUpdateCheck: s.autoUpdateCheck !== false,
+        // 宿主 Git 端点开关（默认关：见 adapters/settings.js 说明 —— 无 git 宿主会以「后端错误」弹窗暴露失败）
+        useStGitEndpoint: s.useStGitEndpoint === true,
         repo: String(s.updateRepo || DEFAULT_UPDATE_REPO),
         branch: String(s.updateBranch || DEFAULT_UPDATE_BRANCH),
         intervalHours: Number(s.updateCheckIntervalHours) > 0 ? Number(s.updateCheckIntervalHours) : DEFAULT_UPDATE_INTERVAL_HOURS,
@@ -160,7 +162,9 @@ export async function runUpdateCheck(opts) {
     const cfg = updateConfig();
     const out = { ok: false, via: '', judge: judgeUpdate(VERSION, ''), points: [], isUpToDate: null, remoteCommit: '', error: '' };
 
-    const ep = await checkViaStEndpoint();
+    // ① 宿主 Git 端点：**仅在用户显式开启时**才调用（默认关 —— 无 git 的宿主会返回后端错误并弹窗）
+    const ep = cfg.useStGitEndpoint ? await checkViaStEndpoint() : { ok: false, disabled: true, error: '' };
+    out.stEndpoint = cfg.useStGitEndpoint ? 'on' : 'off';
     if (ep.ok) {
         out.ok = true;
         out.via = 'st-endpoint';
@@ -182,7 +186,7 @@ export async function runUpdateCheck(opts) {
                 out.judge = { status: 'newer', remoteNewer: true, current: VERSION, remote: rm.remoteVersion || '', commitOnly: true };
             }
         } else if (!ep.ok) {
-            out.error = rm.error || ep.error || '检查失败';
+            out.error = rm.error || ep.error || (cfg.useStGitEndpoint ? '检查失败' : '远端清单不可达（宿主 Git 端点默认关闭）');
         } else {
             out.remotePointsError = rm.error || '';
         }
@@ -190,8 +194,18 @@ export async function runUpdateCheck(opts) {
     return out;
 }
 
-/** 显式执行 ST 更新（只有用户点击才会调用；自动路径永不调用） */
+/** 显式执行 ST 更新（只有用户点击才会调用；自动路径永不调用；默认关 —— 需先开启宿主 Git 端点） */
 export async function runStUpdate() {
+    const cfg = updateConfig();
+    if (!cfg.useStGitEndpoint) {
+        // 不发起任何网络请求：无 git 能力的宿主会在该端点返回 500（Git handshake failed），
+        //   宿主把它当「后端错误」弹窗 —— 因此默认不碰该端点，改为引导用户手动更新。
+        return {
+            ok: false, disabled: true,
+            error: '已禁用宿主 Git 更新端点（无 git 的宿主会在该端点报「Git handshake failed」后端错误）。'
+                + '如需由酒馆代更新，请在设定中开启「使用宿主 Git 更新端点」；否则请按仓库说明手动更新（本插件源码即发布物，覆盖目录文件即可）。',
+        };
+    }
     let r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: false });
     if (!r.ok && isTransportFailure(r.error)) return { ok: false, error: String(r.error || 'Git 传输失败（网络不通）'), transport: true };
     if (!r.ok) r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: true });

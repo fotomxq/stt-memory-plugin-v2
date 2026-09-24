@@ -23,7 +23,11 @@ R.assert('M3 i18n 词条文件存在（zh-cn + en）', (() => {
     const langs = Object.keys(manifest.i18n || {});
     return langs.length >= 2 && langs.every(l => existsSync(join(ROOT, manifest.i18n[l])));
 })(), manifest.i18n);
-R.assert('M4 auto_update=true（第三方扩展随 ST 包版本自动更新；docs/P0 已核对源码）', manifest.auto_update === true, manifest.auto_update);
+// M4 修复（v2.11.1）：auto_update=true 会让**酒馆自身**在加载期对第三方扩展做 git 版本校验
+//   （POST /api/extensions/version → 后端 git handshake）；无 git 能力的宿主（TauriTavern 原生移植）
+//   会因此弹出「后端错误：Failed to get extension version: Git handshake failed」。故置 false，
+//   改由本插件自己的 HTTP 更新检查（GitHub raw 清单）承担；需要宿主代做 git 更新时用设置开关显式开启。
+R.assert('M4 auto_update=false（避免宿主加载期 git 校验弹「后端错误」；更新检查走本插件 HTTP 通道）', manifest.auto_update === false, manifest.auto_update);
 R.assert('M5 generate_interceptor 指向全局函数且模块加载后已挂载', (() => {
     const nm = manifest.generate_interceptor;
     return !!nm && typeof globalThis[nm] === 'function';

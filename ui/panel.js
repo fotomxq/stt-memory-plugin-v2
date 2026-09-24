@@ -21,12 +21,15 @@ import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
+import { getSettings, setSetting } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
 import { atomIsHidden } from '../core/merge.js';
 
 export const PANEL_ID = 'ftt-panel';
+/** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
+const UPDATE_SETTING_KEYS = ['autoUpdateCheck', 'updateRepo', 'updateBranch', 'updateCheckIntervalHours', 'useStGitEndpoint'];
 /** V1 的 13 个分页（id 与标签逐字一致） */
 export const PANEL_TABS = Object.freeze([
     ['overview', '总览'], ['atoms', '情节'], ['states', '状态'], ['snapshots', '角色'],
@@ -441,11 +444,17 @@ function settingsBody() {
 
 /** V2 附加设定块（V1 没有、但 V2 已有的能力：更新检查、V1 导入、维度勾选） */
 function v2ExtrasHtml() {
-    const repo = String(cfg.updateRepo || '');
+    // 更新相关键属于**适配层设置**（extensionSettings），不是内核 cfg —— 读写都走 settings，避免"改了不生效"
+    const s = (() => { try { return getSettings() || {}; } catch (e) { return {}; } })();
+    const repo = String(s.updateRepo || '');
     return [
-        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (cfg.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新</span>',
+        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (s.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新</span>',
         '<input type="text" class="ftt-input" data-ftt-v2="updateRepo" value="' + attr(repo) + '" placeholder="更新检查仓库地址">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="check-update">🔍 检查更新</button></div>',
+        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="useStGitEndpoint"' + (s.useStGitEndpoint === true ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">使用宿主 Git 更新端点（默认关）</span></div>',
+        '<div class="ftt-hint">宿主 Git 端点（<span class="ftt-mono">/api/extensions/version|update</span>）会在酒馆后端对远端仓库做 git handshake；'
+        + '在**没有 git 能力的宿主**（如 TauriTavern 原生移植）上会失败并弹出「后端错误：Git handshake failed」。默认关闭，改用 GitHub raw 清单判定版本（无需 git）；'
+        + '仅在确认宿主 git 可用时再开启，届时「立即更新」按钮才会调用宿主做 git 更新。</div>',
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="importV1Dry">📥 V1 导入（干跑）</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply">📥 V1 导入（写入）</button>'
         + '<span class="ftt-muted">源数据不删除；写入为按 id 合并</span></div>',
@@ -847,7 +856,9 @@ export function bindOverlay() {
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
-                    applySettingsControl(k, raw);
+                    // 更新相关键写入**适配层设置**（updateConfig 读的是 settings；写内核 cfg 不会生效）
+                    if (UPDATE_SETTING_KEYS.indexOf(k) >= 0) setSetting(k, raw);
+                    else applySettingsControl(k, raw);
                     setNote('已更新 ' + k);
                     renderPanel();
                     return;

@@ -134,6 +134,8 @@ export function summarizeCheck(result, now) {
         isUpToDate: r.isUpToDate === undefined ? null : !!r.isUpToDate,
         points: Array.isArray(r.points) ? r.points.slice(0, 5) : [],
         commitOnly: !!(r.judge && r.judge.commitOnly),
+        // 宿主 Git 端点是否启用（默认关；便于诊断「为何没有 git 校验」）
+        stEndpoint: r.stEndpoint || '',
         error: r.error || '',
     };
 }

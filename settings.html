@@ -75,6 +75,10 @@
                 <label for="ftt_v2_updrepo"><span>更新检查仓库</span></label>
                 <input type="text" id="ftt_v2_updrepo" value="{{updateRepo}}">
             </div>
+            <div class="ftt-v2-row">
+                <label for="ftt_v2_usegit" title="宿主 Git 端点会对远端仓库做 git handshake；无 git 能力的宿主（如 TauriTavern）会返回「Git handshake failed」并弹出后端错误。默认关：改用 GitHub raw 清单判定版本。"><span>使用宿主 Git 更新端点（默认关）</span></label>
+                <input type="checkbox" id="ftt_v2_usegit" {{#if useStGitEndpoint}}checked{{/if}}>
+            </div>
             <div class="ftt-v2-row ftt-v2-row-actions">
                 <button class="menu_button" id="ftt_v2_checkupd">🔍 检查更新</button>
                 <button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button>

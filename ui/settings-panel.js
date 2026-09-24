@@ -109,6 +109,7 @@ export function panelData(extra) {
         autoExtract: !!s.autoExtract,
         timelyAnalysis: !!s.timelyAnalysis,
         autoUpdateCheck: s.autoUpdateCheck !== false,
+        useStGitEndpoint: s.useStGitEndpoint === true,
         updateRepo: String(s.updateRepo || ''),
         updateBranch: String(s.updateBranch || ''),
         updateStatus: updateStatusText(),
@@ -150,6 +151,7 @@ export function fallbackPanelHtml(data) {
         '<div class="ftt-v2-sub">数据台</div>',
         '<div class="ftt-console-host" id="ftt_v2_console"></div>',
         '<div class="ftt-v2-row"><label>启动时自动检查更新</label><input type="checkbox" id="ftt_v2_autoupd"' + (d.autoUpdateCheck ? ' checked' : '') + '></div>',
+        '<div class="ftt-v2-row"><label title="宿主 Git 端点会做远端 git handshake；无 git 的宿主（如 TauriTavern）会报「后端错误：Git handshake failed」。默认关：改用 GitHub raw 清单判定版本。">使用宿主 Git 更新端点（默认关）</label><input type="checkbox" id="ftt_v2_usegit"' + (d.useStGitEndpoint ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label>更新检查仓库</label><input type="text" id="ftt_v2_updrepo" value="' + escAttr(d.updateRepo) + '"></div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_checkupd">🔍 检查更新</button><button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button></div>',
         '<div class="ftt-v2-note" id="ftt_v2_updstate" data-ftt-update-state>' + escHtml(d.updateStatus) + '</div>',
@@ -292,6 +294,7 @@ export function bindPanelEvents() {
     bind('ftt_v2_budget', 'charBudget', 'num');
     bind('ftt_v2_autosum', 'autoSummary', 'bool');
     bind('ftt_v2_autoupd', 'autoUpdateCheck', 'bool');
+    bind('ftt_v2_usegit', 'useStGitEndpoint', 'bool');
     bind('ftt_v2_updrepo', 'updateRepo', 'text');
 
     // P5 首批：内核配置控件（改值即写回 ST 配置并刷新状态块）
@@ -363,7 +366,9 @@ export function bindPanelEvents() {
         doBtn.addEventListener('click', () => {
             setUpdateStatusLine('正在调用 ST 更新…');
             runStUpdate()
-                .then(r => setUpdateStatusLine(r.ok ? ('ST 更新已执行' + (r.commit ? '（' + r.commit + '）' : '') + '，请重载页面') : ('ST 更新失败：' + (r.error || '未知'))))
+                .then(r => setUpdateStatusLine(r.ok
+                    ? ('宿主 Git 更新已执行' + (r.commit ? '（' + r.commit + '）' : '') + '，请重载页面')
+                    : (r.disabled ? ('未执行：' + (r.error || '宿主 Git 端点已关闭')) : ('宿主 Git 更新失败：' + (r.error || '未知')))))
                 .catch(e => setUpdateStatusLine('ST 更新失败：' + String((e && e.message) || e)));
         });
     }
