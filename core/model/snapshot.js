@@ -3,9 +3,12 @@
 // 移植口径同 core/model/scalars.js：算法/字段名/字段顺序不变；仅 ESM 化 + 注入视图（cfg/state/getStoryNow）。
 // 一致性由 tests/unit/model-golden*.test.js 的黄金样本强制校验。
 // ============================================================
-import { normText, normalizeList, clamp, hashText } from '../util.js';
+import { clamp, hashText, normText, normalizeList, snapNameKey } from '../util.js';
 import { cfg, state, getStoryNow } from './runtime.js';
 import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText, clockDateTrim } from './scalars.js';
+import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyDateMsFromStr } from '../clock.js';
+import { atomIsHidden } from '../merge.js';
+import { atomLatestDated } from '../recall.js';
 
 function stampNowForState() {
     const d = getStoryNow();
@@ -609,4 +612,192 @@ function normalizeSnapshot(e0) {
 // 显示：`formatMoney(n)` —— 千分位 + 中文数量级（万 1e4 / 亿 1e8 / 兆 1e12 / 京 1e16；≥1e20 用「垓」），
 //   保留 2 位小数并去尾零；负数（净支出/负债）保留符号；非数字 → ''。
 
-export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotFlag, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot };
+export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotFlag, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
+
+// ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
+const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,4}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
+// 剧情时间锚点（剧情日期优先；缺失时退回剧情时间线里**最近记录的日期**（情节 → 记忆）；
+//   两者都无 → 空 = 无法判定）。**绝不退回现实日期** —— 现实时间不是剧情时间（v1.161 口径）。
+
+const SNAP_BIRTH_ANOMALY_LABEL = {
+    future: '出生日期晚于当前剧情日期',
+    'after-record': '出生日期晚于该角色的「最后见面 / 最后更新」日期（倒挂）',
+    overage: '按剧情日期算出的年龄超过 120 岁',
+    'bad-format': '出生日期格式非法（非 年-月-日）',
+};
+
+const SNAP_BIRTH_ANOMALY_SHORT = {
+    future: '晚于剧情日期',
+    'after-record': '早于出生日期就被记录（倒挂）',
+    overage: '按剧情算超过 120 岁',
+    'bad-format': '日期格式非法',
+};
+
+const SNAP_APPEARANCE_LIMIT = 120;   // 外貌聚合文本上限（中文按字）
+// 旧分组字段 → 中文标签（拼聚合文本用；顺序即展示顺序）
+
+const SNAP_APPEARANCE_LABELS = [
+    ['height', '身高'], ['build', '体型'], ['hair', '发色发型'], ['eyes', '瞳色'], ['skin', '肤色'], ['distinguishing', '特征'],
+];
+// 外貌特征聚合为一段文本：① 已是字符串 → 直接用；② 旧分组对象 → 逐项拼「标签+值」；
+//   ③ 兼容历史扁平键（height/hair/… 直接挂在档案顶层）。幂等：聚合结果再聚合不变。
+
+function storyAnchorDate() {
+    try {
+        const direct = String(getStoryNow() || '').trim();
+        if (/^-?\d{1,4}/.test(direct)) return clockDateTrim(direct);
+        const ref = (typeof storyClockReference === 'function') ? storyClockReference() : null;
+        if (ref && /^-?\d{1,4}/.test(String(ref.date || ''))) return clockDateTrim(ref.date);
+        const atoms = (state && state.atoms) || [];
+        const dated = atoms.filter(a => a && !atomIsHidden(a) && /^-?\d{1,4}/.test(String((a && a.date) || ''))).map(a => clockDateTrim(a.date)).sort((x, y) => dateStrCmp(x, y));
+        if (dated.length) return dated[dated.length - 1];
+        const mems = (state && state.memories) || [];
+        const mdated = mems.filter(m => /^-?\d{1,4}/.test(String((m && m.date) || ''))).map(m => clockDateTrim(m.date)).sort((x, y) => dateStrCmp(x, y));
+        if (mdated.length) return mdated[mdated.length - 1];
+    } catch (e) { }
+    return '';
+}
+// 从「年龄备注 / 年龄字段」解析岁数（支持「约 25 岁」「26岁」「二十五」这类只取数字的场景）
+
+function parseAgeYears(text) {
+    try {
+        const s = String(text == null ? '' : text);
+        const m = s.match(/(\d{1,3})\s*(?:岁|周岁|餘歲|余岁)?/);
+        if (!m) return 0;
+        const n = Number(m[1]);
+        return (n > 0 && n < 130) ? n : 0;
+    } catch (e) { return 0; }
+}
+// 无年龄信息时按身份/称呼线索估龄（合理推测，可被 cfg.characterBirthDefaultAge 覆盖默认值）
+
+function guessAgeFromCues(snap) {
+    try {
+        const s = snap || {};
+        const blob = [s.name, s.identity && s.identity.occupation, s.identity && s.identity.title,
+            s.background && s.background.history, snapshotAppearanceText(s),
+            (s.personality && Array.isArray(s.personality.traits)) ? s.personality.traits.join(' ') : ''].join(' ');
+        if (/(婴儿|幼童|孩童|幼儿|小孩)/.test(blob)) return 6;
+        if (/(少年|少女|学生|学徒|儿童)/.test(blob)) return 15;
+        if (/(中年|大叔|大婶|父亲|母亲|家长)/.test(blob)) return 45;
+        if (/(老年|老人|年迈|白发|花甲|古稀|祖母|祖父|奶奶|爷爷)/.test(blob)) return 68;
+        if (/(青年|年轻人)/.test(blob)) return 22;
+        const def = Number(cfg && cfg.characterBirthDefaultAge);
+        return (def > 0 && def < 120) ? Math.round(def) : 25;
+    } catch (e) { return 25; }
+}
+
+function birthDateFromAge(age, anchor) {
+    try {
+        const a = parseAgeYears(age) || Number(age) || 25;
+        const ap = clockDateParts(clockDateTrim(anchor));   // v1.193：负年份锚点
+        if (!ap) return '';
+        const y = ap.y - a;
+        if (!clockYearInRange(y)) return '';
+        const mo = ap.m, day = Math.min(28, ap.d);
+        return clockDateStr(y, mo, day);
+    } catch (e) { return ''; }
+}
+// 单个档案：确保出生日期存在（**正文明确给出时绝不改写**；v1.172 起「异常值」例外，会被视为无效并重推）
+
+function ensureSnapshotBirthDate(snap, opts) {
+    const o = opts || {};
+    const out = { changed: false, date: '', source: '', note: '' };
+    try {
+        if (!snap || typeof snap !== 'object') return out;
+        if (!snap.identity) snap.identity = {};
+        if (cfg && cfg.characterBirthInfer === false) { out.date = String(snap.identity.birthDate || ''); out.source = 'off'; return out; }
+        const cur = String(snap.identity.birthDate || '').trim();
+        // v1.164：已有的「未来出生日期」视为无效记录 —— 不采信，改由下方按剧情日期重新推算
+        //   （未来人 / 穿越者的档案照常采信；无剧情日期时无法判定，不拦）
+        // v1.172：**格式非法**的出生日期（非 年-月-日，如「约1890年」）同样视为无效 → 清空并按线索重推；
+        //   「倒挂（after-record）」与「年龄超 120」交给 AI 优先处置（可能是长生物种，不机械改写）。
+        // v1.176：**只有年 / 年-月 的出生日期是合法数据**（低精度，年龄按估算给出）—— 不再当作格式非法清掉。
+        const curParsed = parseBirthDateParts(cur);
+        const curValid = !!curParsed;
+        const curBadFormat = !!cur && !curValid;
+        const curOk = curValid && !!clockYearInRange(curParsed.y);   // v1.193：负年份（公元前）同样有效
+        const curFuture = curOk && birthDateInFuture(cur) && !snapshotFutureOrigin(snap);
+        if (curBadFormat) { snap.identity.birthDate = ''; out.changed = true; out.badFormatFixed = true; }
+        // v1.171：**占位出生日期**（birthSource='fallback'：当时没有剧情日期，用现实年份占位）不是「正文明确」——
+        //   一旦有了剧情锚点，按当时记录的岁数（birthNote / age 里的数字）重新推算，
+        //   避免把 1919 年的角色生到 2011 年（此后年龄永远对不上）。
+        const curFallback = curOk && String(snap.identity.birthSource || '') === 'fallback';
+        const anchorNow = ageAnchorDate();
+        if (curFallback && !curFuture && /^-?\d{1,4}/.test(anchorNow)) {
+            const keepAge = parseAgeYears(snap.identity.birthNote) || parseAgeYears(snap.identity.age) || 0;
+            const re = keepAge ? birthDateFromAge(keepAge, anchorNow) : '';
+            if (re) {
+                snap.identity.birthDate = re;
+                snap.identity.birthSource = 'age';
+                snap.identity.birthNote = `推测：据年龄 ${keepAge} 岁与剧情日期 ${anchorNow.slice(0, 7)} 推算（原为无剧情日期时的现实年份占位，已按剧情日期校正）`;
+                try { const a = calcAge(re, anchorNow); if (a) snap.identity.age = a; } catch (e) { }
+                out.changed = true; out.date = re; out.source = 'age'; out.note = snap.identity.birthNote;
+                out.fallbackFixed = true;
+                try { stampSnapshotTime(snap, 'update'); } catch (e) { }
+                return out;
+            }
+        }
+        if (curOk && !curFuture) {
+            out.date = cur;
+            // v1.176：**占位值不得被误标为「正文明确」** —— 无剧情日期时写的现实年份占位（birthSource='fallback'）
+            //   保持 fallback 标注，等有剧情锚点后再按剧情日期校正（否则占位值会被当成真实数据永久留下）。
+            const src0 = String(snap.identity.birthSource || '');
+            out.source = src0 === 'fallback' ? 'fallback' : 'text';
+            if (src0 !== 'text' && src0 !== 'fallback') snap.identity.birthSource = 'text';
+            if (!snap.identity.birthNote) snap.identity.birthNote = src0 === 'fallback' ? '无剧情日期时的现实年份占位（待剧情日期确认后校正）' : '正文明确';
+            return out;
+        }
+        // v1.162：年龄线索来源 —— ① 调用方显式给（如迁移时的旧「年龄备注」）；② 防御性兼容旧年龄备注字段；③ 档案里的年龄（仅缺出生日期时才有意义）
+        const explicitAge = parseAgeYears(o.ageHint) || parseAgeYears(snap.identity.ageNote) || parseAgeYears(snap.identity.age);
+        const anchor = String(o.anchor || ageAnchorDate() || '');
+        const anchorOk = /^-?\d{1,4}/.test(anchor);
+        const useAnchor = anchorOk ? anchor : `${new Date().getFullYear()}-01-01`;
+        const age = explicitAge || guessAgeFromCues(snap);
+        const date = birthDateFromAge(age, useAnchor);
+        if (!date) return out;
+        const cueHit = /(婴儿|幼童|孩童|幼儿|小孩|少年|少女|学生|学徒|儿童|中年|大叔|大婶|父亲|母亲|家长|老年|老人|年迈|白发|花甲|古稀|祖母|祖父|奶奶|爷爷|青年|年轻人)/.test(
+            String(snap.name || '') + String((snap.identity || {}).occupation || '') + String((snap.identity || {}).title || ''));
+        const srcBase = explicitAge ? 'age' : (cueHit ? 'era' : 'default');
+        const source = anchorOk ? srcBase : 'fallback';
+        const anchorText = anchorOk ? anchor.slice(0, 7) : '（无剧情日期，用现实年份）';
+        const basis = explicitAge
+            ? `据年龄 ${explicitAge} 岁`
+            : `按${cueHit ? '身份线索' : '默认成人年龄'}估算 ${age} 岁`;
+        snap.identity.birthDate = date;
+        snap.identity.birthSource = source;
+        snap.identity.birthNote = `推测：${basis}与${anchorOk ? '剧情日期' : '现实年份'} ${anchorText} 推算`
+            + (curFuture ? '（原出生日期晚于剧情日期，已按剧情日期校正）' : (curBadFormat ? '（原出生日期格式非法，已重新推算）' : ''));
+        // v1.162：不再写「年龄备注」（该字段已取消）—— 年龄统一由出生日期 + 剧情锚点计算
+        //   v1.171：锚点用 ageAnchorDate()（无锚点时用现实年份占位的那一次不写年龄，避免落盘 1xx 岁）
+        try { const a = calcAge(date, anchorOk ? anchor : ''); if (a) snap.identity.age = a; else if (String(snap.identity.age || '').trim() && !anchorOk) snap.identity.age = ''; } catch (e) { }
+        out.changed = true; out.date = date; out.source = source; out.note = snap.identity.birthNote;
+        out.futureFixed = curFuture;   // v1.164：本次是否修正了「未来出生日期」
+        try { stampSnapshotTime(snap, 'update'); } catch (e) { }   // v1.161：自动补全出生日期亦算一次档案更新
+        return out;
+    } catch (e) { return out; }
+}
+// 批量：确保全部档案都有出生日期（返回统计与逐条明细；供修复流程与诊断使用）
+//   v1.176：只有年 / 年-月 的出生日期视为**已存在**（低精度数据不再被"补全"成推测值覆盖）
+
+function dateStrCmp(a, b) {
+    try {
+        const x = storyDateMsFromStr(a), y = storyDateMsFromStr(b);
+        const xo = Number.isFinite(x), yo = Number.isFinite(y);
+        if (xo && yo) return x === y ? 0 : (x < y ? -1 : 1);
+        if (xo !== yo) return xo ? -1 : 1;              // 可解析者排在不可解析者之前
+        return String(a == null ? '' : a) < String(b == null ? '' : b) ? -1 : (String(a || '') === String(b || '') ? 0 : 1);
+    } catch (e) { return 0; }
+}
+// 取日期串的「日期部分」（剥离时间后缀）：负年份为 11 字符（-0221-01-02），正年份 10 字符
+
+function storyClockReference() {
+    try {
+        const n = atomLatestDated();
+        if (!n) return { date: '', time: '', location: '' };
+        return { date: n.date || '', time: n.time || '', location: n.location || '' };
+    } catch (e) { return { date: '', time: '', location: '' }; }
+}
+// ==================== v1.184：AI 捕捉正文 → 生成时钟正则（设定页按钮） ====================
+// 用户要求：「在设定中，增加 AI 捕捉正文日期、时间、地点，形成正则表达式的按钮功能」。
+// 流程：取最近 N 楼投喂文本 → 交 AI 产出 {日期正则, 时间正则, 地点正则, 说明} → JS **校验**（可编译 / 不匹配空串 /
+//   在样本中确有命中）→ 写入 cfg.clockDateRegex / clockTimeRegex / clockLocationRegex → 立即用样本试算并回报结果。

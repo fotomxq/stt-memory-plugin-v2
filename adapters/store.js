@@ -175,6 +175,14 @@ export function wirePersistHooks() {
     return { debounceMs: SAVE_DEBOUNCE_MS, storage: 'localStorage+indexedDB+file' };
 }
 
+/**
+ * 启动即建立索引基线（V1 `saveState` 之外的 `entryIndexInit()` 调用点：载入数据后立刻对齐）——
+ * 此后任何「消失的条目」才会被留痕；不在每次保存里重建基线（那会让删除永远检测不到）。
+ */
+export function primeStateIndex() {
+    try { entryIndexInit(); indexReady = true; return true; } catch (e) { return false; }
+}
+
 /** 存储接线状态（调试用） */
 export function storeStatus() {
     return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady };

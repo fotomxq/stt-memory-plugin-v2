@@ -16,13 +16,13 @@ import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow } from './adapters/store.js';
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data } from './adapters/import-v1.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView } from './core/model/runtime.js';
 
 const runtime = {
     ready: false,
@@ -75,6 +75,7 @@ export async function loadMemoryState() {
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
     try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { setLastMessageId(runtime.chat.lastMessageId); } catch (e) { /* 忽略 */ }
+    try { primeStateIndex(); } catch (e) { /* 索引基线失败不影响载入 */ }
     try { runtime.store = Object.assign({ via }, storeStatus()); } catch (e) { runtime.store = { via }; }
     return { via, scope: runtime.store.scope || '' };
 }
@@ -87,6 +88,7 @@ export async function init() {
     try { runtime.probe = probeCapabilities(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
+    try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try {
         const mounted = await mountSettingsPanel({ probeMissing: runtime.probe.missing.join('、') });
         runtime.settingsVia = mounted.via;
@@ -175,6 +177,27 @@ export async function runV1Import(opts) {
 
 /** 导入状态（/ftt 与 FTT.importStatus()） */
 export function importStatus() { return runtime.import; }
+
+/**
+ * 宿主桥接（P3 次批）：把内核需要的宿主能力按**注入视图**接上 ——
+ *   ① 身份：当前角色名（V1 里是 TH 的 getCurrentCharacterName，用于货币默认归属等）；
+ *   ② 通知：ST 的 toastr（内核只经 `notifyHooks.toast` 发出，缺失即静默）。
+ */
+function installHostBridges() {
+    const ctx = getCtx();
+    setIdentityView({ characterName: String((ctx && (ctx.name2 || ctx.name1)) || '') });
+    setNotifyHooks({
+        toast: (text, kind) => {
+            try {
+                const t = globalThis.toastr;
+                if (!t) return;
+                const fn = kind === 'error' ? t.error : (kind === 'warning' ? t.warning : t.info);
+                if (typeof fn === 'function') fn.call(t, String(text == null ? '' : text));
+            } catch (e) { /* 静默 */ }
+        },
+    });
+    return { identity: true, notify: true };
+}
 
 /** 静默保存（事件路径用；失败只记录，不影响交互） */
 export function saveStateNowQuiet(reason) {

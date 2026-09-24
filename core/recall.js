@@ -17,7 +17,7 @@ import { relLinksOf } from './model/rel.js';
 import { cfg, dbgLog, getLastMessageId, getStoryNow, latestAiFloorText, saveState, state, warn } from './model/runtime.js';
 import { normPhase } from './model/scalars.js';
 import { snapshotAge, snapshotAppearanceText, snapshotSocialFutureLine } from './model/snapshot.js';
-import { normalizeList } from './util.js';
+import { normalizeList, snapNameKey } from './util.js';
 const DECAY_MS_HOUR = 3600 * 1000;
 
 const DECAY_MS_DAY = 24 * DECAY_MS_HOUR;
@@ -1296,7 +1296,6 @@ function scheduleUseFlush() {
     }, 3000);
 }
 
-function snapNameKey(s) { try { return String(s == null ? '' : s).replace(/[\s·・.．]/g, '').toLowerCase(); } catch (e) { return ''; } }
 // 取字段值（对象路径）
 
 function latestPlotByFloor() {
@@ -1359,4 +1358,13 @@ function relConceptSuffix(anchor) {
 }
 // 记忆行（关联感知；有差异 → 按角色分行）
 
-export { atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix };
+export { atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
+
+// ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
+function parallelRelPrefix(p) {
+    let rows = [];
+    try { rows = relLinksOf('parallels', p.id).filter(x => x.who); } catch (e) { rows = []; }
+    const who = rows.length ? `相关：${rows.slice(0, 6).map(x => relShortName(x.who)).join('、')}` : '仅幕后';
+    return `〔平行·${who}〕（角色不知情）`;
+}
+// —— 固定约束段（机械生成、与关键词召回解耦）——

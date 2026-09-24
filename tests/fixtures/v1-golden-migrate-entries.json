@@ -189,7 +189,8 @@
         {
           "name": "甲",
           "identity": {
-            "birthDate": "1900-05-20"
+            "birthDate": "1900-05-20",
+            "age": "19"
           },
           "uses": 0,
           "appearance": ""
@@ -320,7 +321,7 @@
           ],
           "id": "seg_cr0mvn",
           "uses": 0,
-          "createdAt": 1790256098201
+          "createdAt": 1790257886860
         }
       ],
       "rumors": [
@@ -339,7 +340,7 @@
             "generation": 0
           },
           "uses": 0,
-          "createdAt": 1790256098201
+          "createdAt": 1790257886860
         }
       ],
       "vars": {},

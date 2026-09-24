@@ -4,7 +4,7 @@
 // 一致性由 tests/unit/model-golden*.test.js 的黄金样本强制校验。
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
-import { cfg, defaultCfg, state, saveCfg } from './runtime.js';
+import { cfg, defaultCfg, identityView, saveCfg, state } from './runtime.js';
 import { dimCap, makeExtra, mergeTags, normalizeTrackedRoles, splitListText } from './scalars.js';
 
 const MONEY_TIERS = [
@@ -72,6 +72,9 @@ function normalizeMoneyHistory(raw) {
     } catch (e) { return []; }
 }
 // 货币条目归一化：归属（默认主角）/ 币种 / 额度（数字）/ 单位 / 收支 / 备注
+
+// V1 在「默认货币归属」里调 TH 的 `getCurrentCharacterName()`：V2 读宿主注入的身份视图（缺失即空串）
+function getCurrentCharacterName() { try { return String(identityView.characterName || ''); } catch (e) { return ''; } }
 
 function normalizeCurrency(e) {
     const name = normText(e?.name || e?.['币种'] || e?.currency, 40);

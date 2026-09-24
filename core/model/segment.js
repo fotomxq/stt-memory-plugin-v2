@@ -6,6 +6,8 @@
 import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { cfg } from './runtime.js';
 import { clockDateTrim, dimCap, splitListText } from './scalars.js';
+import { clockDateParts, clockDateStr, clockDateValid, clockParseDateText, storyDateMsFromStr } from '../clock.js';
+import { defaultCfg } from '../config.js';
 
 function plotSegmentId(e) {
     const t = e || {};

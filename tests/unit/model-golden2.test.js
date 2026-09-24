@@ -135,7 +135,8 @@ R.assert('S5 分段 id / 区间 / 时间键 与 V1 一致', (() => {
     const seg = normalizePlotSegment(I.SEGMENTS[0]);
     return plotSegmentId({ start: '1919-11-29', end: '1919-11-30' }, '甲与乙敲定转运') === G.helpers.plotSegmentId
         && J(plotSegmentRange(seg)) === J(G.helpers.plotSegmentRange)
-        && plotSegmentTimeKey(seg) === G.helpers.timeKey
+        && plotSegmentTimeKey(seg).split('|').slice(0, 2).join('|') === G.helpers.timeKey.split('|').slice(0, 2).join('|')
+        && plotSegmentTimeKey(seg).split('|').length === 3   // 第三段是墙钟（Date.now），不参与比较
         && J(normalizePlotSegmentLines(I.SEGMENTS[0].lines)) === J(G.helpers.segmentLines);
 })(), G.helpers);
 

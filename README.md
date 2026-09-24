@@ -98,7 +98,14 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 **P3 首批（记忆注入闭环）**：`adapters/config-store.js` 把 `core/config.js` 的 217 键默认配置与 ST 配置容器双向同步
 （已存值优先、未知键保留、`stableStringify` 判定写盘），`host/inject.js` 复刻 V1 的注入包装与推送
 （开关 / 序号并发防护 / **空构建保留上次注入** / clearInject 重置），生成前拦截器在记录统计后刷新注入且**永不 abort、不改 chat**。
-详见 `docs/P3-注入闭环.md`；提取落库（三层提取链）为 P3 次批。
+详见 `docs/P3-注入闭环.md`。
+
+**P3 次批（提取落库内核 + 内核完整性）**：`core/ingest.js` 移植 V1 的 `mergeDelta`（13 类维度 add/update/remove/close
+按 V1 顺序落库，含「已总结隐藏情节不接受 AI 改写」「情节就地更新保留 uses 与因果 log」「同名物品只更新」等口径），
+黄金样本 10 用真实 V1 插件逐字符比对。新增门禁 `scripts/check-core-refs.js`（内核未定义标识符静态检查）——
+它一次揪出 7 处「被 `catch` 吞掉的 `ReferenceError`」类**静默数据丢失**缺陷（已全部补全），并把宿主耦合改为
+注入视图（`notifyHooks` / `identityView` / `timerHooks`，内核不碰全局定时器与弹窗）。另修正保存流水线的**索引基线**
+语义（`primeStateIndex()` 只在载入后建立一次，否则删除永远不写墓碑）。详见 `docs/P3b-提取落库与内核完整性.md`。
 
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 
@@ -125,8 +132,8 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── devtools.js            # window.FTT 调试导出
 ├── i18n/                  # zh-cn / en 词条
 ├── tests/                 # 宿主桩 + 单元 + 冒烟
-├── scripts/               # 门禁脚本（内核纯净度 / 版本一致性 / 文档规范）
-└── docs/                  # P0 探针报告 + 更新检查机制 + P1 内核平移 + P2 宿主与存储
+├── scripts/               # 门禁脚本（内核纯净度 / 内核标识符 / 版本一致性 / 文档规范）
+└── docs/                  # P0 探针报告 + 更新检查机制 + P1 内核平移 + P2 宿主与存储 + P3 注入闭环 + P3b 提取落库
 ```
 
 ## 7. 许可

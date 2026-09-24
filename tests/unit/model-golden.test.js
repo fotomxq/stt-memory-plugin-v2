@@ -17,6 +17,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden.json'), 'utf8'));
 const R = makeReporter('model-golden V1 移植保真度');
 const J = (v) => JSON.stringify(v);
+/**
+ * 墙钟归一：平行事件等条目会写 `updatedAt = Date.now()`（V1 同款），跨进程无法逐字符相等 ——
+ * 比较前把 1e12 级数字抹平（**墙钟不属于移植口径**）。仅用于含墙钟字段的断言。
+ */
+const wallClockNorm = (v) => {
+    if (Array.isArray(v)) return v.map(wallClockNorm);
+    if (v && typeof v === 'object') {
+        const o = {};
+        for (const k of Object.keys(v)) o[k] = (typeof v[k] === 'number' && v[k] > 1e12) ? 0 : wallClockNorm(v[k]);
+        return o;
+    }
+    return v;
+};
+const JW = (v) => J(wallClockNorm(v));
 
 /** 对比函数：返回 { ok, diffIndex } */
 function cmpDim(name, got, want) {
@@ -43,7 +57,7 @@ const cases = [
     ['G2 状态 normalizeCurrentState（字段中文化 / key 派生）', cmpDim('currentStates', G.inputs.STATES.map(x => normalizeCurrentState(x)), G.currentStates)],
     ['G3 记忆 normalizeMemory', cmpDim('memories', G.inputs.MEMS.map(x => normalizeMemory(x)), G.memories)],
     ['G4 概念 normalizeConcept', cmpDim('concepts', G.inputs.CONCEPTS.map(x => normalizeConcept(x)), G.concepts)],
-    ['G5 平行事件 normalizeParallel', cmpDim('parallels', G.inputs.PARALLELS.map(x => normalizeParallel(x)), G.parallels)],
+    ['G5 平行事件 normalizeParallel', (() => { const got = G.inputs.PARALLELS.map(x => normalizeParallel(x)); return { ok: JW(got) === JW(G.parallels), got: wallClockNorm(got), want: wallClockNorm(G.parallels) }; })()],
     ['G6 物品 normalizeItem', cmpDim('items', G.inputs.ITEMS.map(x => normalizeItem(x)), G.items)],
     ['G7 计划 normalizePlan（步骤/历史/线索/阶段）', cmpDim('plans', G.inputs.PLANS.map(x => normalizePlan(x)), G.plans)],
     ['G8 悬念 normalizeSuspense', cmpDim('suspense', G.inputs.SUSPENSE.map(x => normalizeSuspense(x)), G.suspense)],

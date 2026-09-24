@@ -515,8 +515,63 @@
     null
   ],
   "parallels": [
-    null,
-    null
+    {
+      "id": "par_rwgkw9",
+      "title": "平行支线",
+      "text": "若甲没有出城",
+      "type": "",
+      "date": "1919-11-30",
+      "time": "",
+      "gua": "高风险",
+      "causalLine": "甲留在城内",
+      "characters": [
+        "甲",
+        "乙"
+      ],
+      "location": "码头",
+      "goalOdds": [],
+      "updatedAt": 1790257815176,
+      "tags": [
+        "支线"
+      ],
+      "importance": 0.5,
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "sourceRefs": [],
+      "previews": [],
+      "planRef": "",
+      "suspenseRef": "",
+      "promotedTo": "",
+      "promotedAt": "",
+      "constraintNote": ""
+    },
+    {
+      "id": "par_3hmrp",
+      "title": "",
+      "text": "",
+      "type": "",
+      "date": "",
+      "time": "",
+      "gua": "",
+      "causalLine": "",
+      "characters": [],
+      "location": "",
+      "goalOdds": [],
+      "updatedAt": 1790257815176,
+      "tags": [],
+      "importance": 0.5,
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "sourceRefs": [],
+      "previews": [],
+      "planRef": "",
+      "suspenseRef": "",
+      "promotedTo": "",
+      "promotedAt": "",
+      "constraintNote": ""
+    }
   ],
   "items": [
     {
@@ -780,6 +835,6 @@
       "boolean",
       "array"
     ],
-    "clockDateTrim": ""
+    "clockDateTrim": "1919-11-29"
   }
 }

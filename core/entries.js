@@ -19,7 +19,7 @@ import { cfg, getLastMessageId, log, saveState, state } from './model/runtime.js
 import { mergeTags, scenePathArr } from './model/scalars.js';
 import { normalizePlotSegment } from './model/segment.js';
 import { normalizeSnapshot, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
-import { normalizeList } from './util.js';
+import { normalizeList, snapNameKey } from './util.js';
 function sweepOrphanRelLinks() {
     let n = 0;
     try {
@@ -217,7 +217,6 @@ function removeRelLinksForWho(name) {
 }
 // 孤儿关联（目标条目已不存在）：渲染忽略；**只在显式修复时**清理（载入/保存不动，避免误删「对端刚建、本端未拉到」的关联）
 
-function snapNameKey(s) { try { return String(s == null ? '' : s).replace(/[\s·・.．]/g, '').toLowerCase(); } catch (e) { return ''; } }
 // 取字段值（对象路径）
 
 function upsertEntry(kind, raw, opts) {
