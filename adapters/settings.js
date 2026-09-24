@@ -2,7 +2,7 @@
 // adapters/settings.js —— 配置适配器（extensionSettings）
 // 事实源：ST 官方文档「Persistent settings」：extensionSettings[MODULE_NAME] + saveSettingsDebounced()
 // ============================================================
-import { MODULE_NAME, VERSION } from '../core/constants.js';
+import { MODULE_NAME, VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INTERVAL_HOURS } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
 
 /** 默认配置（P0 只放骨架项；P1+ 按 docs/14 §3 逐步补齐 V1 的配置键） */
@@ -18,8 +18,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     timelyAnalysis: false,
     // 生成前拦截器
     interceptorEnabled: true,
-    // 更新
+    // 更新（用户要求：以 GitHub 项目地址作为更新检查地址；首次启动自动检查 + 设置内手动检查）
     autoUpdateCheck: true,
+    updateRepo: DEFAULT_UPDATE_REPO,
+    updateBranch: DEFAULT_UPDATE_BRANCH,
+    updateCheckIntervalHours: DEFAULT_UPDATE_INTERVAL_HOURS,
     // 迁移
     migratedFrom: '',
 });

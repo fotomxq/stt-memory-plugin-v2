@@ -9,6 +9,7 @@ function makeEl(id) {
     return {
         id,
         html: '',
+        textContent: '',
         checked: false,
         value: '',
         children: [],
@@ -93,7 +94,12 @@ export function makeHost(opts) {
     if (o.noEventSource) delete ctx.eventSource; else ctx.eventSource = eventSource;
     ctx.eventTypes = o.noEventSource ? undefined : eventTypes;
     if (o.noInject) { delete ctx.setExtensionPrompt; delete ctx.extensionPrompts; }
-    if (!o.noTemplate) ctx.renderExtensionTemplateAsync = async (folder, file, data) => '<div class="ftt-v2-settings" id="ftt_v2_settings" data-via="template">' + String(data && data.version) + '</div>';
+    if (!o.noTemplate) {
+        ctx.renderExtensionTemplateAsync = async (folder, file, data) => {
+            if (o.templateHtml) return String(o.templateHtml);
+            return '<div class="ftt-v2-settings" id="ftt_v2_settings" data-via="template">' + String(data && data.version) + '</div>';
+        };
+    }
     if (o.noSlash) { delete ctx.SlashCommandParser; delete ctx.SlashCommand; }
     if (o.noMacros) delete ctx.macros;
 
@@ -112,6 +118,28 @@ export function installGlobalHost(host, doc) {
         if (doc) { if (prevDoc === undefined) delete globalThis.document; else globalThis.document = prevDoc; }
         if (doc) { if (prevWin === undefined) delete globalThis.window; else globalThis.window = prevWin; }
     };
+}
+
+/**
+ * 安装 fetch 桩（返回卸载函数）。
+ * @param {Function|object} handler (url, opts) => {status, json, text} 或 {status, body, text}
+ *   简化写法：返回 {status:200, body:{...}} 时自动同时支持 json()/text()
+ */
+export function installGlobalFetch(handler) {
+    const prev = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+        const r = (typeof handler === 'function') ? await handler(String(url), opts || {}) : handler;
+        const status = Number(r && r.status != null ? r.status : 200);
+        const body = r && r.body !== undefined ? r.body : null;
+        const text = r && r.text !== undefined ? r.text : (body === null ? '' : JSON.stringify(body));
+        return {
+            ok: status >= 200 && status < 300,
+            status,
+            json: async () => (body === null ? JSON.parse(text) : body),
+            text: async () => String(text),
+        };
+    };
+    return () => { if (prev === undefined) delete globalThis.fetch; else globalThis.fetch = prev; };
 }
 
 /** 断言收集器 */

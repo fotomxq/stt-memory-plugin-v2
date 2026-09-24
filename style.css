@@ -25,3 +25,22 @@
     opacity: 0.7;
     color: var(--SmartThemeEmColor, inherit);
 }
+
+.ftt-v2-settings .ftt-v2-sep {
+    margin: 8px 0 6px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.35));
+}
+
+.ftt-v2-settings .ftt-v2-row input[type="text"] {
+    width: 62%;
+    min-width: 180px;
+}
+
+.ftt-v2-settings .ftt-v2-row-actions {
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+.ftt-v2-settings .ftt-v2-note[data-ftt-update-state] {
+    white-space: pre-wrap;
+}

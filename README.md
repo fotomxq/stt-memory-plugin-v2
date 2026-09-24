@@ -31,7 +31,21 @@
 | `{{fttStatus}}` | 状态文本 |
 | 控制台 `FTT` | 调试导出：`FTT.snapshot()` / `FTT.probe()` / `FTT.interceptor()` / `FTT.injectLength()` |
 
-## 4. 开发
+## 4. 更新检查（Git 通道）
+
+| 时机 | 行为 |
+| --- | --- |
+| **首次启动** | 自动检查一次（判定通道：ST 原生 `POST /api/extensions/version`；不可用时回退远端 `manifest.json` + `CHANGELOG.md`） |
+| 后续启动 | 距上次检查 ≥ 24h 才自动检查（可关：设置项「启动时自动检查更新」） |
+| 设置内「🔍 检查更新」 | 手动检查（不受开关/间隔限制），结果落盘并在状态行显示 |
+| 设置内「⬆ 立即更新（ST）」 | 代为调用 ST 更新端点执行 `git pull`（**仅用户点击**） |
+| `/ftt`、`FTT.update()` | 查看更新配置、最近检查结果与状态文案 |
+
+默认检查地址 = **本项目的 GitHub 地址**（设置内可改）：`https://github.com/fotomxq/stt-memory-plugin`（分支 `main`）。
+失败一律静默（不阻塞启动/发送/提取）；扩展**不下载、不写入、不执行远端代码** —— 拉取代码只由 ST 或用户手工完成。
+详见 `docs/更新检查机制.md`。
+
+## 5. 开发
 
 ```bash
 npm run gate     # 全部门禁（内核纯净度 + 版本一致性 + 单元 + 冒烟）
@@ -40,7 +54,7 @@ npm run smoke    # 冒烟测试
 node scripts/check-docs.js   # 文档规范
 ```
 
-### 4.1 分层与依赖方向
+### 5.1 分层与依赖方向
 
 ```text
 ui/ ─► host/ ─► adapters/ ─► core/
@@ -55,14 +69,14 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 | `adapters/` | 存储适配：配置 / 会话元数据 / 文件 / 本机缓冲 | `settings.js` |
 | `ui/` | 界面：设置抽屉、命令与宏、数据台（P4） | `settings-panel.js`、`commands.js` |
 
-### 4.2 硬规则
+### 5.2 硬规则
 
 - 生成前拦截器（`generate_interceptor`）**永不调用 `abort`**：任何失败都必须放行，保证消息发得出去；
 - 内核纯净：`core/` 只接受显式入参、返回结果，不读写宿主与全局；
 - 删除必须留墓碑、聚合/总结类保留原文（沿用 V1 v1.203–v1.206 的数据安全口径）；
 - 版本三处一致（`manifest.json` / `package.json` / `core/constants.js`）由门禁强制。
 
-## 5. 目录
+## 6. 目录
 
 ```text
 .
@@ -81,6 +95,6 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 └── docs/                  # P0 探针报告（ST API 源码级结论）
 ```
 
-## 6. 许可
+## 7. 许可
 
 待项目负责人确认（官方内容库要求开源 libre 许可；V1 仓库当前未附许可文件）。
