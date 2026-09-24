@@ -53,6 +53,7 @@ export function installDevtools(hooks) {
             pendingFloors: (opts) => (hooks && typeof hooks.pendingFloors === 'function' ? hooks.pendingFloors(opts || {}) : []),
             extractStatus: () => (hooks && typeof hooks.extractStatus === 'function' ? hooks.extractStatus() : null),
             i18n: () => (hooks && typeof hooks.i18n === 'function' ? hooks.i18n() : null),
+            folderInfo: () => (hooks && typeof hooks.folderInfo === 'function' ? hooks.folderInfo() : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

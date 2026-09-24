@@ -488,6 +488,7 @@ assert('J6 数据台动作入口与刷新按钮：tab/search/cancel 可用，刷
 
 // ---------- K 词条（i18n，P6） ----------
 const i18nMod = await import('../adapters/i18n.js');
+const pathsMod = await import('../host/paths.js');
 
 assert('K1 词条已注册到宿主：zh-cn 与 en 两份（键集一致、JS 镜像即运行时词条）', (() => {
     const st = i18nMod.i18nStats();
@@ -508,6 +509,16 @@ assert('K2 文案查询与状态行：t() 按当前语言取词（缺失回退�
     const statusLine = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).indexOf('语言：') >= 0;
     return en === 'Save' && zh === '保存' && enMissing === '不存在的键' && withVar === '分析完成：成功 2 / 3' && statusLine;
 })(), String(globalThis.FTT.t('保存')));
+
+// ---------- K3 扩展目录名解析（安装位置无关） ----------
+assert('K3 更新端点与设置面板都用「运行时解析的扩展目录名」（改名/归档安装同样可用）', (() => {
+    const info = (globalThis.FTT && typeof globalThis.FTT.folderInfo === 'function') ? globalThis.FTT.folderInfo() : null;
+    const calledNames = (fetchCalls || []).length;   // 版本端点调用过（E2）
+    const p = pathsMod.folderInfo();
+    return !!info && info.folder === p.folder && info.folder.length > 0
+        && pathsMod.folderFromUrl('http://x/scripts/extensions/third-party/renamed/host/paths.js') === 'third-party/renamed'
+        && calledNames > 0;
+})(), (() => { try { return JSON.stringify(pathsMod.folderInfo()); } catch (e) { return String(e.message); } })());
 
 endpointDown = false;
 uninstallFetch();

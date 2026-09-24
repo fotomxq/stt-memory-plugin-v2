@@ -97,6 +97,19 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **安装位置无关（终检修复，本版新增）**：新增 `host/paths.js` —— 扩展目录名从模块自身 `import.meta.url` 反推
+  （`…/scripts/extensions/<name>/…`，按本扩展顶层目录定位边界；推导不出回退常量 `EXTENSION_FOLDER`），
+  `ui/settings-panel.js`（模板渲染）与 `host/update.js`（`/api/extensions/{version,update}` 的 `extensionName`）统一改用解析值。
+  **背景**：归档级终检（把 tag 导出到与仓库不同名的目录后跑门禁）发现目录名此前写死 —— 改名安装会导致
+  设置面板模板渲染失败与更新端点静默失效；`manifest.test.js` M9 已改为断言解析逻辑与常量约定。
+- **P6：词条（i18n）与发布终检（本版新增）**：`i18n/{zh-cn,en}.json`（**47 条**，键＝界面中文字面量）+
+  生成的 ESM 镜像 `i18n/{zh-cn,en}.js`（运行时直接 import，无需 fetch）+ `adapters/i18n.js`
+  （`registerLocaleData()` 调 `ctx.addLocaleData(locale, dict)`（兼容两参/单参），`t(key, vars)` 支持占位，缺失回退键本身）；
+  `scripts/check-i18n.js` 词条门禁强制「两份 JSON 键集一致 + JS 镜像与 JSON 逐值一致」，已进 `npm run gate`；
+  `/ftt` 增语言行，`FTT.t` / `FTT.i18n` / `FTT.folderInfo` 调试入口。
+  README 重写为 v2.0.0（安装即用 / 使用场景 / 发布终检），新增 `docs/P6-发布与终检.md`
+  （发布物形态、**10 项终检清单**、归档级自足性验证流程、§3.1 终检修复、未完成边界）。**打 tag `v2.0.0`。**
+  门禁：单元 **22 文件 / 292 断言**、冒烟 **48 项**、内核纯净度 0、内核标识符 0、词条通过、版本一致性（`--strict` 亦过）、文档规范 0。
 - **P5 次批：数据台（本版新增）**：新增 `ui/console.js`（约 290 行）—— V1 数据面板的 V2 最小可用集：
   ① **14 维浏览**（维度标签行 + 条数，列表最新在前）；② **搜索**（id / 标题 / 名称 / 正文 / 归属 / 标签 / 关键词，大小写不敏感）；
   ③ **查看与编辑**（标题·正文·日期·标签·重要度；附 `relLinksOf` 关联行与 `atomContentHash` 内容哈希；必要字段缺失不写入并给出原因）；
