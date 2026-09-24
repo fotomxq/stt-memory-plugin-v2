@@ -1,6 +1,6 @@
 // ============================================================
-// core/group-repair.js —— **相关组聚类修复基础设施 + 记忆修复管道**
-//   （B8-6c-1，逐字移植自 V1 `src/modules/09-AI摘要与楼层处理.js` / `07-原子层与数据归一化.js`）
+// core/group-repair.js —— **相关组聚类修复基础设施 + 记忆 / 概念修复管道**
+//   （B8-6c-1 + B8-6c-2，逐字移植自 V1 `src/modules/09-AI摘要与楼层处理.js` / `07-原子层与数据归一化.js`）
 //
 // 定位：V1 v1.139/v1.140 把「概念 / 记忆 / 物品 / 悬念」四个域的数据修复统一到**同一套通用聚类引擎**上：
 //   ① `groupRelatedness`：每条 = 与同域其它条目的最大相似度（标签 Jaccard；标签普遍不足 → 名称+正文 bigram）；
@@ -12,19 +12,23 @@
 //      `applyMemoryMergeGroups`（按编号精确应用，禁止新增、跨归属合并拒收）/ `runMemoryRepair`（六步编排）。
 //
 // 本批（B8-6c-1）交付：通用聚类引擎（含 concepts / memories / items / suspense **四域** spec）+ 记忆修复全链路。
-//   概念 / 物品 / 悬念三域的**应用层**（conceptMergeExact / applyItemMergeGroups / runSuspenseRepair 等）属后续批次；
-//   本批只交付它们的 spec（`groupPick` 的通用输入），`GROUP_REPAIR_SPECS.concepts/items/suspense` 因此完整可用。
+// B8-6c-2（本文件追加段）交付：**概念修复全链路**（`conceptMergeExact` / `conceptRelatedness` / `conceptClusters` /
+//   `conceptPickClusters` / `buildConceptRepairPrompt` / `applyConceptMergeGroups` / `runConceptRepair`）——
+//   与记忆修复同款四步（机械合并 → 标签组聚类选组 → 窄契约 AI → 按编号精确应用），差异只在**应用层字段闭集**
+//   与「无高相关组 → 零 AI」保持不变（概念域无 `defectsAlways`，客观缺陷条目只在存在相关组时才附带送修）。
+//   物品 / 悬念两域的**应用层**（applyItemMergeGroups / runSuspenseRepair 等）属后续批次；本批只交付它们的 spec。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8r-B8-6c-1记忆聚类修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/P8s-B8-6c-2概念与场景修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks）；
 //   ② AI 调用改走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ 提示词模板取 `cfg.promptTemplates.*`，兜底 `defaultCfg.promptTemplates.*`（V1 同源）；
 //   ④ `notify(kind, title, text)` 与 `core/repair.js` 既有写法逐字一致（经 `notifyHooks.toast`）。
-// 一致性由 tests/unit/group-repair-golden.test.js 的真实 V1 黄金样本强制校验。
+// 一致性由 tests/unit/group-repair-golden.test.js、tests/unit/concept-repair-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { state, cfg, saveState, notifyHooks, dbgLog, warn } from './model/runtime.js';
 import { repairNormText, repairKeyText, repairSimilarity, repairClampNum } from './ingest.js';
-import { repairTagSetOf, repairJaccard, repairDefectOf, repairIsGarbage, repairNameKey, repairReport, repairBatchTags } from './repair.js';
+import { repairTagSetOf, repairJaccard, repairDefectOf, repairIsGarbage, repairNameKey, repairReport, repairBatchTags, repairMergeByName } from './repair.js';
+import { contentDedupeArray } from './migrate.js';
 import { dimCap, clockDateTrim } from './model/scalars.js';
 import { dateStrCmp } from './clock.js';
 import { tombMany } from './merge.js';
@@ -645,8 +649,236 @@ async function runMemoryRepair(opts) {
     }
 }
 
+// ==================== 概念修复（V1 v1.139：标签组聚类 → 打包高相关组交 AI 梳理/合并/修正） ====================
+// 旧实现（v1.91~v1.138）：把**整个概念库**（编号 #0 起全量清单）发给 AI 并要求回传「重建 完整最终列表」——
+//   库大时输入输出都大，AI 难免漏项/走样，真正需要处理的往往只是少数高度相关的概念。
+// 新实现四步：
+//   ① JS 机械合并：同名称 / 同内容哈希的概念先并成一条（保留 id 与 uses、标签并集），零 AI；
+//   ② 标签组聚类：按 v1.138 的相关性口径（标签 Jaccard；标签不足时退回「名称+内容」bigram 相似度）建图，
+//      边 = 相关度 ≥ `cfg.conceptRepairSim`（默认 0.45）→ **连通分量即相关组**；只保留 ≥2 条的组；
+//   ③ 选组轮询：组按（条数降序 → 组内最大相关度降序）排序，用 `state.repairCursor.concepts` 轮询选取，
+//      上限 `cfg.conceptRepairMaxClusters` 组（默认 3）、合计 `cfg.conceptRepairMaxItems` 条（默认 24）；
+//   ④ 窄契约 AI：只发这些组的条目（组内编号 + 相关度），要求返回
+//      `{"合并":[{"保留":n,"并入":[m…],"名称":…,"内容":…,"来源":…,"日期":…,"标签":[…]}],
+//        "修订":[{"编号":n,"字段":…,"值":…}],"删除":[n…]}` —— **禁止新增**；JS 按编号精确应用。
+// 无高相关组（没有任何一对达到阈值）→ 不发 AI（无事可合并）。
+
+/** ① 机械合并（零 AI，V1 `conceptMergeExact`）：先同内容哈希（`contentDedupeArray`，取内容更优者并集楼层/uses），
+ *  再同名称（`repairMergeByName`，非空字段补齐、数组取并集、uses 累计）。
+ *  注意：本函数**不写墓碑**（V1 原样）—— 消失条目的删除留痕由宿主 `saveState` 的 `tombstoneSweep` 负责。 */
+function conceptMergeExact() {
+    const st = { merged: 0, notes: [] };
+    try {
+        const arr = state.concepts || [];
+        if (arr.length < 2) return st;
+        let out = contentDedupeArray('concepts', arr);
+        if (out.length < arr.length) { st.merged += arr.length - out.length; st.notes.push(`同内容 ${arr.length - out.length}`); }
+        state.concepts = out;
+        const n = repairMergeByName('concepts', (e) => e.name);
+        if (n > 0) { st.merged += n; st.notes.push(`同名称 ${n}`); }
+    } catch (e) { }
+    return st;
+}
+/** 概念相关度：转调通用引擎（v1.140 起概念/记忆/悬念同一实现） */
+function conceptRelatedness() { return groupRelatedness(GROUP_REPAIR_SPECS.concepts); }
+/** 相关组（连通分量）：转调通用引擎（防串联规则见引擎注释：共享 ≥2 标签 + 组规模上限） */
+function conceptClusters() { return groupClusters(GROUP_REPAIR_SPECS.concepts); }
+/** 选组（轮询 + 上限）：转调通用引擎，返回 { entries, clusters, picked, defects, singles, total, cursor } */
+function conceptPickClusters() { return groupPick(GROUP_REPAIR_SPECS.concepts); }
+
+/** ③ 窄契约提示词（V1 `buildConceptRepairPrompt`）：只发选中的高相关组；不含全库。
+ *  模板取 `cfg.promptTemplates.conceptRepair` → 兜底 `defaultCfg.promptTemplates.conceptRepair` → 兜底内置一句话。 */
+function buildConceptRepairPrompt(pick) {
+    const p = pick || conceptPickClusters();
+    if (!p.entries.length) return null;
+    const tpl = String((cfg.promptTemplates && cfg.promptTemplates.conceptRepair) || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.conceptRepair) || '').trim()
+        || '把同组内确指同一概念的高相关条目合并为一条；输出 合并/修订/删除（禁止新增）。';
+    const lines = [];
+    let lastGroup = 0;
+    for (const e of p.entries) {
+        if (e.group !== lastGroup) { lines.push(e.defect ? `【缺陷条目（与相关性无关，不参与合并，可修订或删除）】` : `【相关组 ${e.group}】`); lastGroup = e.group; }
+        lines.push(`#${e.n} ｜ 名称：${e.name} ｜ 相关度：${Number(e.sim).toFixed(2)} ｜ 标签：${(e.tags || []).join('/') || '（无）'} ｜ 来源：${e.source || '（无）'} ｜ 日期：${e.date || '（无）'}${e.defect ? ` ｜ 问题：${e.defect}` : ''}\n   内容：${String(e.content).slice(0, 300)}`);
+    }
+    return [
+        { role: 'system', content: `${tpl}\n只输出 JSON，不要解释。` },
+        { role: 'user', content: `【待核对概念组（本次唯一工作对象，共 ${p.picked} 组 / ${p.entries.length} 条；同组条目标签组相关性较高，可能指同一概念，也可能只是相关）】\n${lines.join('\n')}\n\n输出：{"合并":[{"保留":1,"并入":[2,3],"名称":"…","内容":"…","来源":"…","日期":"YYYY-MM-DD","标签":["…"]}],"修订":[{"编号":4,"字段":"内容","值":"…"}],"删除":[5]}（只输出需要改动的编号；无改动就输出空数组）。` },
+    ];
+}
+
+/** ④ 按编号精确应用（V1 `applyConceptMergeGroups`）：合并 / 修订 / 删除；**禁止新增**。
+ *  - **不拆「概念库」包装**：V1 概念域直接从 delta 顶层取 `合并`/`修订`/`删除`（与记忆域拆「记忆库」不同）——
+ *    AI 若回成 `{"概念库":{…}}`，则本函数取不到任何操作、零改动（V1 原生行为，黄金样本已固化，不做「顺手修正」）。
+ *  - 合并：保留主条 id 与 uses；名称/内容/来源/日期由 AI 给出则采用（内容走 `dimCharLimits.concepts` 硬截断、
+ *    来源 ≤40 字、名称 ≤60 字、日期走 `clockDateTrim` 且需匹配 `YYYY-MM-DD`）；被并入条目的标签并集（≤8，并清空 `keywords`）、
+ *    uses 累加；来源/日期**仅在主条为空时**兜底取被并入条目 —— **不并集楼层、不取重要度大**（与记忆域不同，V1 原样）。
+ *  - 修订：字段闭集 名称 / 内容 / 来源 / 日期 / 标签（内容过 `repairIsGarbage`；标签需 3-8 个且实际变化才计 `revised`）。
+ *  - 删除：命中编号 → 收进 deadIds 统一写墓碑 + 移除。 */
+function applyConceptMergeGroups(delta, pick) {
+    const out = { fused: 0, revised: 0, deleted: 0, removed: 0, skipped: 0 };
+    try {
+        const entries = (pick && pick.entries) || [];
+        if (!delta || typeof delta !== 'object' || !entries.length) return out;
+        const byN = new Map();
+        entries.forEach(e => byN.set(Number(e.n), e));
+        const fd = (delta['合并'] !== undefined) ? delta['合并'] : delta.merge;
+        const rv = (delta['修订'] !== undefined) ? delta['修订'] : delta.revise;
+        const dl = (delta['删除'] !== undefined) ? delta['删除'] : delta.remove;
+        const findIn = (id) => (state.concepts || []).findIndex(x => x && String(x.id) === String(id));
+        const hardCap = (() => { try { return Number((cfg.dimCharLimits && cfg.dimCharLimits.concepts) || (defaultCfg.dimCharLimits && defaultCfg.dimCharLimits.concepts) || 220) || 220; } catch (e) { return 220; } })();
+        const deadIds = new Set();
+        const applyTags = (e, arr) => {
+            const tags = (Array.isArray(arr) ? arr : String(arr || '').split(/[，,、#\s]+/)).map(x => repairNormText(x).replace(/^#/, '')).filter(Boolean);
+            if (tags.length >= 3 && tags.length <= 8) { e.tags = tags.slice(0, 8); e.keywords = []; }
+        };
+        // ① 合并（保留主条 id 与 uses；被并入条目删除并留墓碑）
+        if (Array.isArray(fd)) {
+            for (const g of fd) {
+                try {
+                    if (!g || typeof g !== 'object') { out.skipped++; continue; }
+                    const keepN = Number(String(g['保留'] !== undefined ? g['保留'] : g.keep).replace(/[^0-9]/g, ''));
+                    const keep = byN.get(keepN);
+                    if (!keep) { out.skipped++; continue; }
+                    const mergeRaw = Array.isArray(g['并入']) ? g['并入'] : (Array.isArray(g.merge) ? g.merge : []);
+                    const members = mergeRaw.map(x => byN.get(Number(String(x).replace(/[^0-9]/g, '')))).filter(Boolean).filter(m => m && m.id !== keep.id);
+                    const ki = findIn(keep.id);
+                    if (ki < 0) { out.skipped++; continue; }
+                    const primary = state.concepts[ki];
+                    // 名称/内容/来源/日期/标签：AI 给出则采用（校验长度），否则保留主条
+                    const nm = repairNormText(g['名称'] !== undefined ? g['名称'] : g.name).slice(0, 60);
+                    let ct = repairNormText(g['内容'] !== undefined ? g['内容'] : g.content);
+                    if (ct.length > hardCap) ct = ct.slice(0, hardCap);
+                    const src = repairNormText(g['来源'] !== undefined ? g['来源'] : g.source).slice(0, 40);
+                    const dt = clockDateTrim(repairNormText(g['日期'] !== undefined ? g['日期'] : g.date));
+                    if (nm) primary.name = nm;
+                    if (ct) primary.content = ct;
+                    if (src) primary.source = src;
+                    if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
+                    applyTags(primary, g['标签'] !== undefined ? g['标签'] : g.tags);
+                    // 标签/uses 与被并入条目并集（只增不减，绝不丢信息）
+                    const tagSet = [];
+                    const pushTags = (t) => { (Array.isArray(t) ? t : []).forEach(x => { const v = repairNormText(x).replace(/^#/, ''); if (v && tagSet.indexOf(v) < 0) tagSet.push(v); }); };
+                    pushTags(primary.tags);
+                    for (const m of members) {
+                        const mi = findIn(m.id);
+                        if (mi < 0) continue;
+                        const me = state.concepts[mi];
+                        pushTags(me.tags);
+                        primary.uses = (Number(primary.uses) || 0) + (Number(me.uses) || 0);
+                        if (!primary.source && me.source) primary.source = me.source;
+                        if (!primary.date && me.date) primary.date = me.date;
+                        deadIds.add(String(m.id));
+                        out.removed++;
+                    }
+                    if (tagSet.length) primary.tags = tagSet.slice(0, 8);
+                    out.fused++;
+                } catch (e) { out.skipped++; }
+            }
+        }
+        // ② 修订（字段闭集：名称/内容/来源/日期/标签）
+        if (Array.isArray(rv)) {
+            for (const r of rv) {
+                try {
+                    if (!r || typeof r !== 'object') { out.skipped++; continue; }
+                    const n = Number(String(r['编号'] !== undefined ? r['编号'] : r.n).replace(/[^0-9]/g, ''));
+                    const en = byN.get(n);
+                    if (!en) { out.skipped++; continue; }
+                    const idx = findIn(en.id);
+                    if (idx < 0) { out.skipped++; continue; }
+                    const e = state.concepts[idx];
+                    const field = repairNormText(r['字段'] !== undefined ? r['字段'] : r.field);
+                    const val = r['值'] !== undefined ? r['值'] : r.value;
+                    if (!field) { out.skipped++; continue; }
+                    if (field === '标签') { const before = JSON.stringify(e.tags || []); applyTags(e, val); if (JSON.stringify(e.tags || []) !== before) out.revised++; else out.skipped++; }
+                    else if (field === '名称') { const v = repairNormText(val).slice(0, 60); if (v) { e.name = v; out.revised++; } else out.skipped++; }
+                    else if (field === '内容') { let v = repairNormText(val); if (v.length > hardCap) v = v.slice(0, hardCap); if (v && !repairIsGarbage(v, 4)) { e.content = v; out.revised++; } else out.skipped++; }
+                    else if (field === '来源') { const v = repairNormText(val).slice(0, 40); if (v) { e.source = v; out.revised++; } else out.skipped++; }
+                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
+                    else out.skipped++;
+                } catch (e) { out.skipped++; }
+            }
+        }
+        // ③ 删除
+        if (Array.isArray(dl)) {
+            for (const raw of dl) {
+                try {
+                    const n = Number(String(raw).replace(/[^0-9]/g, ''));
+                    const en = byN.get(n);
+                    if (!en) { out.skipped++; continue; }
+                    deadIds.add(String(en.id));
+                } catch (e) { out.skipped++; }
+            }
+        }
+        if (deadIds.size) {
+            try { tombMany('concepts', Array.from(deadIds)); } catch (e) { }
+            const before = (state.concepts || []).length;
+            state.concepts = (state.concepts || []).filter(x => !(x && deadIds.has(String(x.id))));
+            out.deleted = before - (state.concepts || []).length;
+        }
+        return out;
+    } catch (e) { return out; }
+}
+
+/**
+ * 概念修复全链路（V1 `runConceptRepair`）：
+ *   ① `conceptMergeExact` 机械合并（零 AI，有改动即落盘）→ ②③ `conceptPickClusters` 聚类选组
+ *   → ④ `buildConceptRepairPrompt` + AI → ⑤ `applyConceptMergeGroups` 精确应用。
+ * V2 适配：互斥走 `aiBusy()`；AI 走 `aiCallText`；`opts.aiText` 为 V2 注入点（显式指定 AI 返回，测试用）；
+ *   V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`newTaskStart`/`renderPanel` 未移植（V2 无任务管线 UI，重绘由 UI 层负责）。
+ * 早退口径（V1 原样）：无高相关组时不发 AI，`made` 直接取**机械合并条数**（不是 0/1 布尔）。
+ * @param {object} [opts] aiText（V2 注入）
+ * @returns {Promise<object>} V1 同形返回结构
+ */
+async function runConceptRepair(opts) {
+    const o = opts || {};
+    try {
+        let list = state.concepts || [];
+        if (!list.length) { notify('info', '概念修复：暂无概念', '请先通过「AI 摘要」生成概念或手动添加后再修复。'); return { made: 0, skipped: true }; }
+        // V1：`busy.repair` 与 `busy.summary || busy.compact || weaveBusy || advanceBusy || syncOcc()` 都返回 blocked；
+        //   V2 由宿主 `aiBusy()` 钩子统一表达（与 `core/repair.js#runRepair` 同一写法）。
+        if (aiBusy()) { notify('warning', '修复进行中', '已有修复任务在运行，请稍候（本操作会排队等待）。'); return { made: 0, blocked: true }; }
+        const t0 = Date.now();
+        const beforeCount = list.length;
+        // ① JS 机械合并（同名称 / 同内容）—— 零 AI
+        const mech = conceptMergeExact();
+        if (mech.merged > 0) { saveState(); list = state.concepts || []; }
+        // ②③ 标签组聚类 + 选组（轮询 + 上限）
+        const pick = conceptPickClusters();
+        if (!pick.entries.length) {
+            const msg = mech.merged
+                ? `已合并同名称/同内容重复 ${mech.merged} 条；未发现达到相关性阈值（${Number(cfg.conceptRepairSim)}）的概念组，无需 AI 梳理。`
+                : `未发现达到相关性阈值（${Number(cfg.conceptRepairSim)}）的概念组（当前 ${beforeCount} 条概念彼此相关度均较低），无需 AI 梳理。`;
+            notify('info', '概念修复完成', msg);
+            try { dbgLog('摘要', { action: '概念修复：无高相关组', concepts: beforeCount, merged: mech.merged, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { }
+            return { made: mech.merged, skipped: true, merged: mech.merged, groups: 0, before: beforeCount, after: (state.concepts || []).length };
+        }
+        // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
+        notify('warning', '开始修复概念数据…', `当前 ${beforeCount} 条概念 · 高相关组 ${pick.clusters.length}/${pick.total} 组（本次核对 ${pick.entries.length} 条${pick.defects ? ` · 其中缺陷条目 ${pick.defects}` : ''}）${mech.merged ? ` · 已机械合并 ${mech.merged} 条` : ''}`);
+        const prompt = buildConceptRepairPrompt(pick);
+        const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '概念修复'));
+        const delta = normalizeDeltaKeys(extractJsonObject(resp) || {});
+        const r = applyConceptMergeGroups(delta, pick);
+        const after = (state.concepts || []).length;
+        if (r.fused > 0 || r.revised > 0 || r.deleted > 0) saveState();
+        const parts = [];
+        if (r.fused) parts.push(`合并 ${r.fused} 组（-${r.removed} 条）`);
+        if (r.revised) parts.push(`修订 ${r.revised} 条`);
+        if (r.deleted) parts.push(`删除 ${r.deleted} 条`);
+        if (mech.merged) parts.push(`机械去重 ${mech.merged} 条`);
+        if (parts.length) notify('success', '概念修复完成', `${parts.join(' · ')}；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, merged: mech.merged, skipped: r.skipped })}。`);
+        else notify('info', '概念修复完成', `AI 认为本次无需合并或修订；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), skipped: r.skipped })}。`);
+        try { dbgLog('摘要', { action: '概念修复完成（v1.139 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { }
+        return { made: (r.fused || r.revised || r.deleted || mech.merged) ? 1 : 0, before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, merged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length };
+    } catch (e) {
+        warn('概念修复失败', e);
+        notify('error', '概念修复失败', String((e && e.message) || e).slice(0, 100));
+        return { made: 0, error: String((e && e.message) || e) };
+    }
+}
+
 export {
     GROUP_REPAIR_SPECS, groupRepairSpec, itemBaseNameKey, itemNameSim,
     groupRelatedness, groupClusters, groupPick,
     memoryOwnerKey, memoryMergeExact, buildMemoryRepairPrompt, applyMemoryMergeGroups, runMemoryRepair,
+    conceptMergeExact, conceptRelatedness, conceptClusters, conceptPickClusters,
+    buildConceptRepairPrompt, applyConceptMergeGroups, runConceptRepair,
 };

@@ -50,7 +50,10 @@ import {
 import {
     GROUP_REPAIR_SPECS, groupRepairSpec, groupRelatedness, groupClusters, groupPick,
     memoryMergeExact, buildMemoryRepairPrompt, applyMemoryMergeGroups, runMemoryRepair,
+    conceptMergeExact, conceptRelatedness, conceptClusters, conceptPickClusters,
+    buildConceptRepairPrompt, applyConceptMergeGroups, runConceptRepair,
 } from './core/group-repair.js';
+import { buildSceneRepairPrompt, applySceneRebuild, runSceneRepair } from './core/scene-repair.js';
 import { retargetRelRefs } from './core/entries.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
@@ -60,7 +63,7 @@ import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } fro
 import {
     forgetState, forgetRunAll, runMemoryForget, sweepLowUseForget, lowUseSweepGate, cancelForgetTimers,
 } from './core/forget.js';
-import { runStateDecay } from './core/ingest.js';
+import { runStateDecay, scenesUnionMergeAll } from './core/ingest.js';
 import {
     runNsfwSoften, nsfwSoftenState, nsfwFixedReplace, nsfwScan, nsfwKeywordHits, nsfwApplyRules,
     nsfwKeywordList, nsfwRuleList, nsfwKeywordAdd, nsfwKeywordDelete, nsfwRuleAdd, nsfwRuleDelete,
@@ -420,6 +423,18 @@ function bootstrapDiagnostics() {
             memoryRepairApply: (delta, pick) => applyMemoryMergeGroups(delta, pick),
             memoryRepair: (opts) => runMemoryRepair(opts || {}),
             retargetRelRefs: (dim, fromIds, toId) => retargetRelRefs(dim, fromIds, toId),
+            // B8-6c-2 概念修复（V1 v1.139 聚类核对管道）+ 场景修复（V1 v1.89 全量重建管道）
+            conceptMergeExact: () => conceptMergeExact(),
+            conceptRelatedness: () => conceptRelatedness(),
+            conceptClusters: () => conceptClusters(),
+            conceptPickClusters: () => conceptPickClusters(),
+            conceptRepairPrompt: (pick) => buildConceptRepairPrompt(pick),
+            conceptRepairApply: (delta, pick) => applyConceptMergeGroups(delta, pick),
+            conceptRepair: (opts) => runConceptRepair(opts || {}),
+            sceneRepairPrompt: () => buildSceneRepairPrompt(),
+            sceneRepairApply: (entries) => applySceneRebuild(entries),
+            sceneRepair: (opts) => runSceneRepair(opts || {}),
+            scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));

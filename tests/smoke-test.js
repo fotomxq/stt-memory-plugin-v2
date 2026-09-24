@@ -1274,6 +1274,115 @@ assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 �
 
 host.ctx.generateRaw = origGenW;
 
+// ---------- X 概念修复 + 场景修复（B8-6c-2） ----------
+assert('X1 FTT 概念/场景修复入口齐备（conceptMergeExact / conceptRelatedness / conceptClusters / conceptPickClusters / conceptRepairPrompt / conceptRepairApply / conceptRepair / sceneRepairPrompt / sceneRepairApply / sceneRepair / scenesUnionMergeAll）', (() => {
+    const F = globalThis.FTT;
+    const names = ['conceptMergeExact', 'conceptRelatedness', 'conceptClusters', 'conceptPickClusters', 'conceptRepairPrompt', 'conceptRepairApply', 'conceptRepair',
+        'sceneRepairPrompt', 'sceneRepairApply', 'sceneRepair', 'scenesUnionMergeAll'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.concepts = [
+        { id: 'smoke-xr-c1', name: '天机阁', content: '情报机构。', source: '正文', date: '2020-01-01', tags: ['情报', '组织', '机构'], uses: 1 },
+        { id: 'smoke-xr-c2', name: '天机阁总部', content: '情报机构总部。', source: '正文', date: '2020-01-02', tags: ['情报', '组织', '机构'], uses: 2 },
+        { id: 'smoke-xr-c3', name: '待补充', content: '待补充', source: '', date: '', tags: [], uses: 0 },
+    ];
+    st.repairCursor = {};
+    const cl = F.conceptClusters();
+    const p = F.conceptPickClusters();
+    const prompt = F.conceptRepairPrompt(p);
+    st.scenes = [{ id: 'smoke-xr-s1', name: '纽约', pathArr: ['纽约'], pathStr: '纽约', desc: '繁华都市。', uses: 2, floorSeen: 5, tags: [] }];
+    const sp = F.sceneRepairPrompt();
+    const applied = F.sceneRepairApply([{ '名称': '曼哈顿', '路径': ['纽约', '曼哈顿'], '描述': '区。' }]);
+    return missing.length === 0 && cl.length === 1 && cl[0].size === 2 && p.picked === 1 && p.entries.length === 3
+        && Array.isArray(prompt) && prompt.length === 2 && prompt[0].role === 'system'
+        && String(prompt[1].content).indexOf('【相关组 1】') >= 0 && String(prompt[1].content).indexOf('【缺陷条目') >= 0
+        && Array.isArray(sp) && sp.length === 2 && String(sp[1].content).indexOf('- 纽约 ｜ 路径：纽约 ｜ 描述：繁华都市。') >= 0
+        && applied.ok === true && applied.list.length === 2
+        && applied.list[0].pathStr === '纽约>曼哈顿' && applied.list[1].pathStr === '纽约'
+        && F.conceptRelatedness().sims.length === 3;
+})(), '');
+
+const x2 = await (async () => {
+    const st = rtMod.state;
+    st.concepts = [{ id: 'smoke-xb-c1', name: '天机阁', content: '情报机构。', source: '正文', date: '2020-01-01', tags: ['情报', '组织', '机构'], uses: 1 }];
+    st.scenes = [{ id: 'smoke-xb-s1', name: '纽约', pathArr: ['纽约'], pathStr: '纽约', desc: '都市。', uses: 1, floorSeen: 1, tags: [] }];
+    const c1 = String((await entry.popupAction('tab', { tab: 'concepts' })).html || '');
+    const s1 = String((await entry.popupAction('tab', { tab: 'scenes' })).html || '');
+    st.concepts = [];
+    st.scenes = [];
+    const c0 = String((await entry.popupAction('tab', { tab: 'concepts' })).html || '');
+    const s0 = String((await entry.popupAction('tab', { tab: 'scenes' })).html || '');
+    return c1.indexOf('data-ftt-action="conceptRepair"') >= 0 && c1.indexOf('🔧 修复概念') >= 0
+        && c1.indexOf('title="修复概念错乱/冗余，并融合相似概念"') >= 0
+        && s1.indexOf('data-ftt-action="sceneRepair"') >= 0 && s1.indexOf('🔧 修复结构/用词') >= 0
+        && s1.indexOf('title="复用「立即修复」管道，修正场景树错乱的结构/用词不当"') >= 0
+        && c0.indexOf('data-ftt-action="conceptRepair"') < 0          // 概念页：无概念 → 隐藏（V1 条件）
+        && s0.indexOf('data-ftt-action="sceneRepair"') >= 0;          // 场景页：V1 无显隐条件（空库也显示）
+})();
+assert('X2 面板按钮与显隐：概念页「🔧 修复概念」（有则显 / 无则隐）+ 场景页「🔧 修复结构/用词」（V1 `scenesHtml` 恒显）', x2, '');
+
+// X3 走真实宿主保存链路：关掉「保存后镜像」（避免镜像把本节的墓碑立即回灌到 state），
+// 并在置入数据后对齐删除留痕基线（等价 V1 oracle 里的 `F.entryIndexInit()`）
+const sweepMod = await import('../core/sweep.js');
+rtMod.cfg.storage.syncOnSave = false;
+const origGenX = host.ctx.generateRaw;
+let xAiCalls = 0;
+let xAiPayload = '';
+host.ctx.generateRaw = async () => { xAiCalls++; return xAiPayload; };
+const x3 = await (async () => {
+    const st = rtMod.state;
+    st.concepts = [
+        { id: 'smoke-xc-1', name: '天机阁', content: '情报机构。', source: '正文', date: '2020-01-01', tags: ['情报', '组织', '机构'], uses: 1 },
+        { id: 'smoke-xc-2', name: '天机阁总部', content: '情报机构总部。', source: '正文', date: '2020-01-02', tags: ['情报', '组织', '机构'], uses: 2 },
+        { id: 'smoke-xc-3', name: '待补充', content: '待补充', source: '', date: '', tags: [], uses: 0 },
+    ];
+    st.scenes = [{ id: 'smoke-xs-1', name: '纽约', pathArr: ['纽约'], pathStr: '纽约', desc: '繁华都市。', uses: 2, floorSeen: 5, tags: [] }];
+    st.repairCursor = {}; st.deleted = {}; st.deletedH = {};
+    sweepMod.entryIndexInit();
+    rtMod.cfg.conceptRepairSim = 0.45; rtMod.cfg.conceptRepairMaxClusters = 3;
+    rtMod.cfg.conceptRepairMaxItems = 24; rtMod.cfg.conceptRepairMaxClusterSize = 8;
+    // 概念：AI 合并 1←[2] + 删除 3（按编号精确应用；编号只在本批清单内有效）
+    xAiPayload = JSON.stringify({
+        '合并': [{ '保留': 1, '并入': [2], '名称': '天机阁', '内容': '情报机构及其总部。', '来源': '正文', '日期': '2020-01-02', '标签': ['情报', '组织', '机构'] }],
+        '删除': [3],
+    });
+    const beforeC = xAiCalls;
+    const rc = await entry.popupAction('conceptRepair', {});
+    const mr = rc.conceptRepair || {};
+    const c1 = (st.concepts || []).filter((x) => x.id === 'smoke-xc-1')[0] || {};
+    const cTombs = Object.keys((st.deleted || {}).concepts || {});
+    const afterC = xAiCalls;
+    const noteC = String((rc.state || {}).note || '');
+    const p1 = afterC === beforeC + 1 && rc.ok === true && rc.made === 1
+        && mr.fused === 1 && mr.removed === 1 && mr.deleted === 2 && mr.skipped === 0 && mr.groups === 1 && mr.checked === 3
+        && (st.concepts || []).length === 1 && c1.uses === 3
+        // V1 怪癖（黄金样本已固化）：管道对 AI 回复先做 `normalizeDeltaKeys`（「内容」→`text`），
+        //   故合并后的**正文不生效**（其余字段：名称/来源/日期/标签均生效）
+        && c1.content === '情报机构。' && c1.date === '2020-01-02'
+        // 标签 = AI 标签 ∪ 被并入条目标签（本场景 AI 标签与原有相同 → 并集仍为 3 条；V1 `pushTags` 只增不减）
+        && (c1.tags || []).length === 3 && (c1.tags || []).join(',') === '情报,组织,机构'
+        && cTombs.length === 2 && cTombs.indexOf('smoke-xc-2') >= 0 && cTombs.indexOf('smoke-xc-3') >= 0
+        && noteC.indexOf('概念修复：') >= 0 && noteC.indexOf('高相关组 1/1 组') >= 0
+        && noteC.indexOf('合并 1 组（-1 条）') >= 0;
+    // 场景：AI「场景库.重建」→ 归一化/去重/补中间层 + 路径未变保留 id/uses → 并集 → 落盘
+    xAiPayload = JSON.stringify({
+        '场景库': { '重建': [{ '名称': '纽约', '路径': ['纽约'], '描述': '繁华都市（修正）。' }, { '名称': '曼哈顿区', '路径': ['纽约', '曼哈顿区'], '描述': '纽约的一个区。' }] },
+    });
+    const beforeS = xAiCalls;
+    const rs = await entry.popupAction('sceneRepair', {});
+    const paths = (st.scenes || []).map((x) => x.pathStr);
+    const ny = (st.scenes || []).filter((x) => x.pathStr === '纽约')[0] || {};
+    const afterS = xAiCalls;
+    const noteS = String((rs.state || {}).note || '');
+    const p2 = afterS === beforeS + 1 && rs.ok === true && rs.made === 1
+        && (st.scenes || []).length === 2 && paths.indexOf('纽约') >= 0 && paths.indexOf('纽约>曼哈顿区') >= 0
+        && ny.id === 'smoke-xs-1' && Number(ny.uses) === 2 && Number(ny.floorSeen) === 5 && ny.desc === '繁华都市（修正）。'
+        && noteS.indexOf('场景修复：节点 1 → 2') >= 0;
+    return p1 && p2;
+})();
+host.ctx.generateRaw = origGenX;
+assert('X3 AI 桩端到端落库：概念修复（机械合并 → 聚类选组 → AI 合并+删除 → 编号精确应用 + 墓碑）与场景修复（整库重建 → 保留 id/uses/floorSeen → 并集落盘）各发 1 次 AI', x3, '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

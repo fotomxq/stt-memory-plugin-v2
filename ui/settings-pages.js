@@ -347,7 +347,20 @@ export const SETTINGS_CONTROLS = {
             "label": "关键词按上下文过滤",
             "type": "checkbox"
         },
-    
+        // —— B8-6c 补齐：V1 设定⑥「提取记忆」页里**手写 div** 形式的「各大类单条字数上限」10 个控件
+        //    （B4 自动提取同样漏掉手写块；V1 用 `dcl_*` 代理键写 `cfg.dimCharLimits.*`，V2 控件引擎原生支持点路径，故直接用真键）
+        //    语义（V1 原样）：单条正文超上限**入库即硬截断**（历史数据不回溯），AI 提示词里的目标字数不变；
+        //    注意 V2 的默认值整体高于 V1 的提示词目标（V2 硬截断留余量，见 `core/config.js` 注释），属既定偏差，不是控件默认值写错。
+        { "key": "dimCharLimits.atoms", "label": "情节正文上限", "type": "text" },
+        { "key": "dimCharLimits.states", "label": "状态值上限", "type": "text" },
+        { "key": "dimCharLimits.snapshots", "label": "角色档案累计上限", "type": "text" },
+        { "key": "dimCharLimits.memories", "label": "记忆正文上限", "type": "text" },
+        { "key": "dimCharLimits.items", "label": "物品说明上限", "type": "text" },
+        { "key": "dimCharLimits.plans", "label": "计划内容上限", "type": "text" },
+        { "key": "dimCharLimits.suspense", "label": "悬念内容上限", "type": "text" },
+        { "key": "dimCharLimits.scenes", "label": "场景描述上限", "type": "text" },
+        { "key": "dimCharLimits.concepts", "label": "概念内容上限", "type": "text" },
+        { "key": "dimCharLimits.parallels", "label": "平行事件(推演)上限", "type": "text" },
     ],
     "forget": [
         {

@@ -13,7 +13,7 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../../core/sweep.js';
 import { snapshotCreateFull, snapshotCreateIncr, snapshotConsolidate, snapshotRestore, snapshotClear, snapshotStats, SNAP_CAP } from '../../core/snapshots.js';
-import { snapshotSectionHtml, snapshotAction } from '../../ui/snapshots.js';
+import { snapshotSectionHtml, snapshotAction, snapshotInspectItems, snapshotInspectState } from '../../ui/snapshots.js';
 import { saveStateNow, maintainSnapshots } from '../../adapters/store.js';
 import { panelAction, panelBodyHtml, setPanelHooks2, openPanel } from '../../ui/panel.js';
 
@@ -128,6 +128,40 @@ R.assert('S6 清空/删除快照：只动快照链与指纹，**不删除记忆�
 })(), (() => { try { return snapshotStats(); } catch (e) { return String(e.message); } })());
 
 function mainOk(s) { try { return Array.isArray(s.atoms) && s.atoms.length >= 2; } catch (e) { return false; } }
+
+
+// ---------- 快照内容查看（V1 `snapshotInspect`）----------
+R.assert('S7 查看快照内容 snapshotInspect：清单口径与 V1 一致（类别 · 摘要 60 字截断）、行内展开/再点收起、快照不存在返回 not-found；**不改动记忆本体**', (() => {
+    // 额外放一条记忆 / 物品 / 概念，确保清单跨类别（V1 的类别中文映射被真实覆盖）
+    boot({
+        memories: [{ id: 'snap-s7-m', title: '记忆一', content: '角色甲记得钥匙。', date: '2020-01-01', importance: 0.5, tags: [], uses: 1, floorStart: 1, floorEnd: 2 }],
+        items: [{ id: 'snap-s7-i', name: '铜钥匙', desc: '开门的钥匙。', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }],
+        concepts: [{ id: 'snap-s7-c', name: '天机阁', content: '情报机构。', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }],
+    });
+    snapshotCreateFull();
+    const snap = state.snapStore[state.snapStore.length - 1];
+    const sid = snap.id;
+    const atoms0 = state.atoms.length;
+    const items = snapshotInspectItems(sid);
+    const wantCat = { atoms: '情节', currentStates: '状态', snapshots: '角色', memories: '记忆', items: '物品', currencies: '货币', plans: '计划', suspense: '悬念', scenes: '场景', concepts: '概念' };
+    const catOk = items.every((x) => x.catLabel === (wantCat[x.cat] || x.cat));
+    const seen = {}; items.forEach((x) => { seen[x.cat] = true; });
+    const multiDim = !!(seen.atoms && seen.memories && seen.items && seen.concepts);
+    const briefOk = items.every((x) => x.brief.length <= 60 && x.brief.length > 0);
+    const open = snapshotAction('snapshotInspect', { id: sid });
+    const htmlOpen = snapshotSectionHtml();
+    const opened = snapshotInspectState() === sid && htmlOpen.indexOf('data-ftt-snap-inspect="' + sid + '"') >= 0
+        && htmlOpen.indexOf('包含 ' + items.length + ' 条原子') >= 0 && htmlOpen.indexOf('🔍') >= 0;
+    const close = snapshotAction('snapshotInspect', { id: sid });
+    const closed = snapshotInspectState() === '' && snapshotSectionHtml().indexOf('data-ftt-snap-inspect=') < 0;
+    const miss = snapshotAction('snapshotInspect', { id: 'no-such-snap' });
+    return Array.isArray(items) && items.length === Object.keys(snap.atoms).length && items.length >= 5
+        && catOk && multiDim && briefOk
+        && open.ok === true && open.items.length === items.length && opened
+        && close.ok === true && close.id === '' && closed
+        && miss.ok === false && miss.reason === 'not-found' && snapshotInspectItems('no-such-snap') === null
+        && state.atoms.length === atoms0 && mainOk(state);
+})(), (() => { try { return { inspect: snapshotInspectState(), snaps: (state.snapStore || []).length }; } catch (e) { return String(e.message); } })());
 
 // ---------- 保存流水线接线 ----------
 /** 异步断言助手（防「Promise 恒真」的假绿） */

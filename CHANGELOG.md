@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.19.0（2026-09-26）· B8-6c-2 概念与场景修复（+ 设定页第二批 10 控件、快照内容查看、覆盖度审计）
+
+**本版（B8-6c-2，取自 V1 v1.139/v1.140 概念修复 + 场景修复）**：
+1. **概念修复**（`core/group-repair.js` 扩展）：`conceptMergeExact`（同内容哈希 + 同名称机械合并，零 AI）→ `conceptRelatedness`/`conceptClusters`/`conceptPickClusters`（转调通用聚类引擎的 concepts spec）→
+   `buildConceptRepairPrompt`（窄契约：只发选中的高相关组，system 取 `cfg.promptTemplates.conceptRepair`，**逐字符与 V1 一致**）→ `applyConceptMergeGroups`（按编号精确应用：合并/修订/删除、**禁止新增**、字段闭集、正文过垃圾校验 + `dimCharLimits.concepts` 硬截断、标签并集、删除写墓碑）→ `runConceptRepair`（六步编排 + AI 后复检）；
+2. **场景修复**（新增 `core/scene-repair.js`）：`buildSceneRepairPrompt`（场景树修正窄契约）、`applySceneRebuild`（按 AI 返回重建场景：路径数组/字符串路径两种形态、非法输入一律拒收）、`runSceneRepair`（复用修复管道 + `scenesUnionMergeAll` 路径并集）；
+3. **界面**：概念页「🔧 修复概念」（`title="修复概念错乱/冗余，并融合相似概念"`）、场景页「🔧 修复场景」（`title="复用「立即修复」管道，修正场景树错乱的结构/用词不当"`）—— 文案与 title 与 V1 **逐字一致**，显隐条件同 V1；面板动作 `conceptRepair`/`sceneRepair`；
+4. **`FTT.*` 新增 6 个入口**（`conceptRepairPrompt`/`conceptRepairApply`/`conceptRepair`/`sceneRepairPrompt`/`sceneRepairApply`/`sceneRepair`）。
+
+**同时并入（队长自办，均为 V1 对齐补齐）**：
+5. **设定页第二批 10 个控件**（`ui/settings-pages.js`）：V1 设定⑥提取页里手写 div 形式的「各大类单条字数上限」（`dcl_*` 代理键 → `cfg.dimCharLimits.*`，V2 用真点路径键），控件总数 **169 → 179**；单测 P2d 证明写入后**真实生效**（`dimCap('atoms', 80 字)` 截到新上限）；
+6. **快照内容查看 `snapshotInspect`**（补齐 V1 缺失动作）：`ui/snapshots.js` 新增 `snapshotInspectItems`（类别中文映射 + 摘要字段优先级 + 60 字截断）+ 每行 `🔍` 按钮 + 行内展开/再点收起（V1 为 `alert` 弹窗，V2 改内联并已如实标注）；面板 note 输出「已展开快照内容（N 条原子）/已收起」；
+7. **覆盖度审计文档化**：`docs/P8-功能对齐总表.md` 新增 §6「剩余动作清单（按批次）」+ §6.1「V2 不适用（设计差异 · 明确不做）」+ §6.2「新发现的两个实质缺口」；
+   - §6.1 判定 `presetSave/presetLoad/presetDelete`、`apiTest/apiModels`、`apiTemperature/apiMaxTokens/apiTopP`、按用途 API 预设选择器、`savecfg` **不适用**（V1 自建 OpenAI 兼容通道专用；V2 走酒馆 `generateRaw`，连接/采样由酒馆预设管理）；
+   - §6.2 记录两处硬证据缺口：**调试日志存储缺失**（`host/chat.js` 的 `dbgLog` 为空实现 → `dbgClear` 无对象可清）与 **`reset`（清空当前角色记忆）缺失**，均排入 B9；
+8. `docs/P8r-B8-6c-1记忆聚类修复.md` §2 偏差由 6 条扩到 **12 条**（补记 `dbgLog` 类别沿用 V1 `'摘要'`、按钮 class/位置非逐像素、`state.repairCursor` 不在 `emptyState()`、`newTaskStart` 未移植、黄金样本数值不可跨场景互引、toastr 视觉未比对等）。
+
+**验证**：黄金样本 `v1-golden-concept-repair.json`、`v1-golden-scene-repair.json`（oracle = **真实 V1 插件 v1.206**；两份均可由 oracle 脚本当场逐字节复现）；
+单元 `concept-repair-golden.test.js` **20 项** + `scene-repair-golden.test.js` **14 项** + 冒烟 **X1–X3**；
+设定页新增 **P2d**、快照新增 **S7**；门禁全绿（单元 **42 文件 / 602 断言**、冒烟 **102 项**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规）。
+
+**偏差（详见 `docs/P8s-B8-6c-2概念与场景修复.md` §2）**：AI 走酒馆 `generateRaw`（V1 自建通道）；V1 任务管线 UI（`pipeStart/pipeUpdate/pipeEnd`/`abortTick`）未移植；`snapshotInspect` 的呈现由 `alert` 弹窗改为面板内联展开（信息内容一致）。
+
 ## v2.18.0（2026-09-26）· B8-6c-1 相关组聚类修复（通用聚类引擎 + 记忆修复管道 + 设定页补齐 22 控件）
 
 **本版（B8-6c-1，新增 `core/group-repair.js`，取自 V1 v1.140 通用聚类引擎 + v1.168 记忆修复）**：

@@ -21,7 +21,8 @@ import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
-import { runMemoryRepair } from '../core/group-repair.js';
+import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
+import { runSceneRepair } from '../core/scene-repair.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -270,6 +271,12 @@ function dimBody(kind) {
         // V1 `memoriesHtml()`：记忆页新增「🔧 修复记忆」顶部按钮（融合同归属高相似记忆；与修复同管道）——
         //   仅在有记忆时显示（V1 `memList.length` 条件），文案与 title 逐字对齐
         + (kind === 'memories' && total ? '<button class="ftt-btn ftt-sm" data-ftt-action="memoryRepair" title="融合相似记忆并清理孤儿关联">🔧 修复记忆</button>' : '')
+        // V1 `conceptsHtml()`：概念页顶部「🔧 修复概念」按钮（修复错乱/冗余并融合相似概念）——
+        //   仅在有概念时显示（V1 `state.concepts.length` 条件），文案与 title 逐字对齐
+        + (kind === 'concepts' && total ? '<button class="ftt-btn ftt-sm" data-ftt-action="conceptRepair" title="修复概念错乱/冗余，并融合相似概念">🔧 修复概念</button>' : '')
+        // V1 `scenesHtml()`：场景页按钮 **无显隐条件**（场景树为空时 V1 也照常渲染 sceneBar）——
+        //   文案与 title 逐字对齐
+        + (kind === 'scenes' ? '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button>' : '')
         + '</div>'
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
@@ -725,7 +732,8 @@ export async function panelAction(action, payload) {
                     : a === 'snapRestore' ? ('已还原到快照（' + (sr.added || 0) + ' 条原子）')
                         : a === 'snapDelete' ? ('已删除快照 ' + String(sr.deleted || '').slice(0, 16))
                             : a === 'snapConsolidate' ? ('已整理：并入根 ' + (sr.folded || 0) + ' 个增量（根 ' + (sr.roots || 0) + '）')
-                                : '已清空全部快照（记忆本体未动）')
+                                : a === 'snapshotInspect' ? (sr.id ? ('已展开快照内容（' + Number((sr.items || []).length) + ' 条原子）') : '已收起快照内容')
+                                    : '已清空全部快照（记忆本体未动）')
                 : ('快照操作失败：' + String(sr.reason || '未知')));
             result = Object.assign(result, sr);
         }
@@ -799,6 +807,36 @@ export async function panelAction(action, payload) {
             }
             setNote('记忆修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, memoryRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'conceptRepair') {
+            // 「🔧 修复概念」（V1 v1.139 概念页专用）：机械合并（同名称/同内容）→ 标签组聚类选组 → 窄契约 AI
+            //   → 按编号精确应用（合并/修订/删除）；无高相关组时**零 AI**，如实回报。
+            const r = await runConceptRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('无需 AI 梳理（机械合并 ' + Number(r.merged || 0) + ' 条）');
+            else {
+                parts.push('高相关组 ' + Number(r.groups || 0) + '/' + Number(r.groupsTotal || 0) + ' 组（核对 ' + Number(r.checked || 0) + ' 条）');
+                if (Number(r.fused || 0)) parts.push('合并 ' + Number(r.fused) + ' 组（-' + Number(r.removed || 0) + ' 条）');
+                if (Number(r.revised || 0)) parts.push('修订 ' + Number(r.revised) + ' 条');
+                if (Number(r.deleted || 0)) parts.push('删除 ' + Number(r.deleted) + ' 条');
+                if (Number(r.merged || 0)) parts.push('机械合并 ' + Number(r.merged) + ' 条');
+            }
+            setNote('概念修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, conceptRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'sceneRepair') {
+            // 「🔧 修复结构/用词」（V1 v1.89 场景页专用）：整库清单 → AI「场景库.重建」最终列表
+            //   → applySceneRebuild（归一化/去重/补中间层，路径未变保留 id/uses）→ 场景并集归并 → 落盘
+            const r = await runSceneRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push(r.error === 'no-rebuild' ? 'AI 未返回可用的场景重建列表' : ('失败：' + String(r.error)));
+            else if (r.skipped) parts.push('暂无场景');
+            else parts.push('节点 ' + Number(r.before || 0) + ' → ' + Number(r.after || 0));
+            setNote('场景修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, sceneRepair: r, made: r.made || 0 });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
