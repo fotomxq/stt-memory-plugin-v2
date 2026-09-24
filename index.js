@@ -23,7 +23,7 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats } from './host/extract.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors } from './host/extract.js';
 import { listUnprocessedFloors } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
@@ -223,7 +223,7 @@ function panelStatusSnapshot() {
  * 这样即使初始化没有触发（宿主事件缺失/加载时机不同），用户依然能用命令自查。
  */
 function bootstrapDiagnostics() {
-    const hooks = { importV1: runV1Import, extract: runExtract, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup };
+    const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup };
     try {
         if (!runtime.slash) runtime.slash = registerSlashCommand(extraForStatus, hooks);
     } catch (e) { runtime.slash = false; }
@@ -231,7 +231,7 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow }));
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -419,6 +419,19 @@ export { menuInfo, installMenuEntry } from './ui/menu.js';
 export { popupInfo, popupAction, popupTabs, popupHtml, openPopup } from './ui/popup.js';
 export { panelInfo, panelTabs, panelHtml, panelAction, closePanel } from './ui/panel.js';
 
+/** 批量分段摘要（V1「⚡ 立即 AI 摘要」）：silent=true 覆盖全部未摘要 AI 楼 */
+export async function runSummaryBatch(opts) {
+    const r = await runAutoSummary(opts || {});
+    runtime.extract = extractStats();
+    return r;
+}
+
+/** 中断当前批量分析（V1「✖ 中断」；协作式：段与段之间生效） */
+export function abortExtraction() { return abortExtract(); }
+
+/** 清除已处理楼层台账（V1「清除已处理记录」；不删除任何记忆条目） */
+export function clearProcessedFloors() { return clearFloors(); }
+
 /** 待分析楼层清单（命令与调试） */
 export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
 
@@ -551,6 +564,7 @@ export const __internals = {
     init, ensureReady, teardown, runtimeState, extraForStatus,
     forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
     popupInfo, popupAction, popupTabs, panelInfo, panelTabs, injectNow,
+    runSummaryBatch, abortExtraction, clearProcessedFloors,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,
