@@ -24,7 +24,7 @@ export function statusText(extra) {
     if (extra && extra.import) lines.push('V1 导入：' + extra.import);
     if (extra && extra.bootstrap && extra.bootstrap.popup) {
         const pu = extra.bootstrap.popup;
-        lines.push('界面：弹窗优先（分页 ' + (pu.tabs || []).join('/') + '）· 弹窗能力 ' + (pu.canPopup ? '可用' : '不可用')
+        lines.push('界面：V1 同构浮层（' + (pu.tabs || []).length + ' 个分页）· 已挂载 ' + ((pu.mounted || pu.open) ? '是' : '否')
             + ' · 抽屉卡片 ' + (pu.showDrawer ? '开' : '关'));
     }
     if (extra && extra.bootstrap) {
@@ -83,8 +83,8 @@ export function registerSlashCommand(getExtra, hooks) {
                     const tab = String(unnamed || '').trim();
                     const r = await hooks.ui(tab || undefined);
                     return r && r.ok
-                        ? ('已打开弹窗：' + (r.tab || '') + '（分页可切换：总览 / 数据台 / 提取 / 设置）')
-                        : ('弹窗打开失败：' + String((r && r.reason) || '未知') + '（可改用 /ftt-panel 诊断或抽屉面板）');
+                        ? ('已打开 V1 同构面板：' + (r.tab || '') + '（分页：总览 / 情节 / 状态 / 角色 / 记忆 / 物品 / 货币 / 传言 / 计划悬念 / 场景 / 概念 / 平行 / 设置）')
+                        : ('面板打开失败：' + String((r && r.reason) || '未知') + '（可改用 /ftt-panel 诊断）');
                 },
                 helpString: '打开 FTT 弹窗主界面：`/ftt-ui` 或 `/ftt-ui console|extract|settings`',
                 returns: '打开结果文本',
