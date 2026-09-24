@@ -44,8 +44,9 @@
 //   ⑥ 定时调度改用注入的 `timerHooks.set(fn, ms)`（V1 直接 `setTimeout`）—— 未接线时内核默认 no-op；
 //   ⑦ 主流程增设可选 `opts.aiText` 注入点（与 `runRepair` / `runPlotSegmentSummary` 同约定，供黄金样本与离线测试）；
 //   ⑧ `lastExtractKeywords`（V1 全局，由提取管线写入）→ 本模块 `setParallelLastKeywords / parallelLastKeywords`
-//      （默认空数组）。V2 尚未移植关键词提取（`jsExtractKeywords`），故手动「推演世界」当前恒传空关键词 ——
-//      与 V1「关键词为空」时的行为一致（上下文退化为列出既有平行事件）。
+//      （默认空数组）。关键词提取 `jsExtractKeywords` 已于本批（P9d）**逐字移植**到本模块（V1 约 11213~11232），
+//      并由 `host/extract.js` 在提取合并成功后接线（`scheduleParallelWeave(floorRange, jsExtractKeywords(text))`）；
+//      手动「推演世界」仍默认传空关键词（与 V1「关键词为空」时的行为一致：上下文退化为列出既有平行事件）。
 //
 // ⚠️ 与 V1 一致的**既有缺陷/怪癖**（如实保留、不擅自修正，黄金样本已固化）：
 //   · `scheduleParallelWeave` 的「已在调度中」判定 `weaveBusy || weaveTimer` 会**静默丢弃后到的请求**
@@ -118,6 +119,36 @@ export function setParallelLastKeywords(list) {
 }
 /** 读最近提取关键词（副本） */
 export function parallelLastKeywords() { return Array.isArray(lastExtractKeywords) ? lastExtractKeywords.slice() : []; }
+
+/**
+ * 第二层：浏览器 JS 抽取关键词（**逐字移植** V1 v1.206 `jsExtractKeywords`，约 11213~11232）。
+ * 从输入文本中提取与记忆库特征词（标签/关键词/角色名/场景名/计划原文/状态主体/平行事件标签）匹配的词，
+ * 零 AI / 零向量 / 零网络：特征词必须**原样出现在正文**且长度 ≥ 2；按固定来源顺序去重；最多 10 个。
+ * 用途（V1 同源）：`scheduleParallelWeave(floorRange, jsExtractKeywords(floorText))` 的被动推演关键词；
+ *   V1 的另一处调用（`jsExtractMemory` 本地召回）在 V2 由 `core/recall.js` 的本地召回承担，不在本函数内。
+ * 数据源顺序（V1 原样）：情节（`activeAtoms()`，已总结隐藏的不进索引）→ 记忆 → 概念 → 角色档案名
+ *   → 场景名 → 计划正文前 8 字（双向包含取「正文含该片段」）→ 状态主体 → 平行事件标签/关键词。
+ * @param {string} text 楼层正文
+ * @returns {string[]} 最多 10 个命中特征词（异常 → 空数组，与 V1 一致：`warn` 后返回 []）
+ */
+export function jsExtractKeywords(text) {
+    try {
+        const t = String(text || '');
+        if (!t) return [];
+        const words = [];
+        const add = (w) => { const s = String(w || '').trim(); if (s && s.length >= 2 && t.includes(s) && !words.includes(s)) words.push(s); };
+        for (const a of activeAtoms()) (a.tags || []).concat(a.keywords || []).forEach(add);   // v1.203：已总结隐藏的不进索引
+        for (const m of (state.memories || [])) (m.tags || []).concat(m.keywords || []).forEach(add);
+        for (const c of (state.concepts || [])) (c.tags || []).concat(c.keywords || []).forEach(add);
+        for (const s of (state.snapshots || [])) add(s.name);
+        for (const sc of (state.scenes || [])) add(sc.name);
+        for (const p of (state.plans || [])) { const frag = String(p.content || '').slice(0, 8); if (frag && t.includes(frag)) add(frag); }
+        for (const s of (state.currentStates || [])) add(s.subject);
+        // 平行事件参与关键词抽取（标签为特征词；标题/描述由正文命中直接匹配）
+        for (const p of (state.parallels || [])) (p.tags || []).concat(p.keywords || []).forEach(add);
+        return words.slice(0, 10);
+    } catch (e) { warn('JS 关键词抽取失败', e); return []; }
+}
 
 // ==================== v1.58/v1.59 交织管线（平行事件 · 独立触发管道） ====================
 // V1 口径（原文）：独立排队/去重 + 前后通知 + 上限(maxParallels) + 关键词关联更新。

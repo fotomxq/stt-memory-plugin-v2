@@ -6,7 +6,11 @@
 //   ③ AI 调用走 host/generation.js（ST `generateRaw`），提示词为 V1 的 `[{role,content}, …]`
 //   ④ 返回值经 core/util.js#extractJsonObject 解析，再交 core/ingest.js#mergeDelta **按 V1 口径落库**
 //   ⑤ 成功即 `recordProcessedFloors` + 落盘（内核 `saveState()` 经适配器写到本地缓冲/服务端文件）
-// 失败姿态：任何一步失败都只回报原因（不抛出、不 abort、不改 chat）。
+//   ⑥ **独立分组**（P9d）：`cfg.dimensionGrouping === 'separate'` 时按维度分组分别构造提示词并**并行**请求
+//      （V1 `runSummarySeparate` 约 14785~14837；V1 仅在**分段**路径判定，见下方 `analyzeSegment`）
+//   ⑦ **被动调度**（P9d）：合并成功后 `scheduleParallelWeave(floorRange, jsExtractKeywords(text))`（V1 15240/15490/14806/14829），
+//      单楼分析与批量分析收尾各做一次 `scheduleAtomCompact()`（V1 15242 / 15537，情节总结 4s 防抖检查点）
+// 失败姿态：任何一步失败都只回报原因（不抛出、不 abort、不改 chat）；并行分组中单组失败不影响其余组。
 // ============================================================
 import { DIMENSIONS } from '../core/constants.js';
 import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/runtime.js';
@@ -14,6 +18,9 @@ import { buildSummaryPrompt } from '../core/prompt.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
+import { scheduleParallelWeave, jsExtractKeywords } from '../core/parallel.js';
+import { scheduleAtomCompact } from '../core/atom-compact.js';
+import { DIM_LABELS } from '../core/config.js';
 import { rawGenerate, generationAvailability } from './generation.js';
 import {
     floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
@@ -65,6 +72,109 @@ export function promptToGenerateArgs(messages) {
     return { systemPrompt: sys, prompt: rest || sys };
 }
 
+// ==================== 独立分组（V1 `runSummarySeparate`，v1.206 14785~14837） ====================
+/**
+ * 摘要维度键（**逐字取自 V1 `DIMENSIONS`**，v1.206 1135）——即 `buildSummaryPrompt` 的维度模板键 + `mergeDelta` 的增量键。
+ * 注：V1 此表**不含** `suspense`（悬念与计划共用「计划库与悬念库」模板，随 `plans` 组一起请求/落库）、
+ *   **不含** `parallels`（平行事件由交织管线产出，不走摘要抽取）。
+ * V2 适配：`core/constants.js#DIMENSIONS` 是 14 个 `{kind,part,label}` 容器（含 `currentStates` / `links` / `plotSegments` 等
+ *   V2 扩展容器），故分组前需做 kind → 本表键的投影（见 `KIND_TO_SUMMARY_DIM`）。`core/constants.js` 本批不改。
+ */
+export const V1_SUMMARY_DIM_KEYS = ['atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'scenes', 'concepts', 'currencies', 'rumors'];
+/** V2 容器键 → 摘要维度键（仅 `currentStates` 是 V1 `states` 的别名；其余同名；`links`/`plotSegments`/`parallels`/`suspense` 不参与分组） */
+const KIND_TO_SUMMARY_DIM = { currentStates: 'states' };
+
+/** 是否启用独立分组（V1 `cfg.dimensionGrouping === 'separate'`；默认 `'unified'`） */
+export function separateGroupingEnabled() { return !!(cfg && cfg.dimensionGrouping === 'separate'); }
+
+/**
+ * 独立分组构造（V1 `runSummarySeparate` 的 14786~14787 口径）：
+ *   · `enabled` —— 生效维度**各自一组**（V1 `DIMENSIONS.filter(d => cfg.dimensionEnabled[d])`）；
+ *   · `rest` —— 其余维度**合成一个「统一」组**（V1 `DIMENSIONS.filter(d => !cfg.dimensionEnabled[d])`；
+ *     ⚠️ V1 原样：这些「未启用」的维度**仍会被请求**，只是并成一次）。
+ * V2 适配（与 V1 的差异，已在 docs/P9d 逐条登记）：
+ *   ① 「生效维度」取 V2 既有口径 `enabledDims()`（**空表 = 全部启用**）；V1 的迁移器会给每个维度补 `false`（V1 2392），
+ *      故 V1 默认配置在独立分组下等价于「单个统一请求」，而 V2 默认空表 = 10 组并行 —— 要复现 V1 默认需显式把维度置 `false`；
+ *   ② `o.dims` 显式给出时按 V2 既有「dims 覆盖」约定只用该子集（V1 无此参数）。
+ * @param {string[]} [dimsOverride] 显式维度子集（V2 扩展；V1 无）
+ * @returns {{enabled:string[], rest:string[]}} 两组均为 V1 `DIMENSIONS` 顺序
+ */
+export function summaryDimGroups(dimsOverride) {
+    const on = (Array.isArray(dimsOverride) && dimsOverride.length) ? dimsOverride.map(String) : enabledDims();
+    const keys = [];
+    for (const k of on) {
+        const v1 = KIND_TO_SUMMARY_DIM[k] || String(k);
+        if (V1_SUMMARY_DIM_KEYS.indexOf(v1) >= 0 && keys.indexOf(v1) < 0) keys.push(v1);
+    }
+    return {
+        enabled: V1_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) >= 0),
+        rest: V1_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) < 0),
+    };
+}
+
+/** 逐组增量切片（V1 原样：`plans` 组一并带 `suspense`；无任何该组键 → 调用方判「无该维度数据」） */
+function groupDeltaSlice(dims, delta) {
+    const sub = {};
+    for (const d of dims) {
+        if (d === 'plans') { sub.plans = delta.plans; sub.suspense = delta.suspense; }
+        else sub[d] = delta[d];
+    }
+    return sub;
+}
+
+/**
+ * 单组执行（V1 `runSummarySeparate` 内层 task）：构造该组提示词 → AI → 解析 → 取该组切片 → `mergeDelta` →
+ * 合并成功即 `scheduleParallelWeave(floorRange, jsExtractKeywords(floorText))`（V1 14806 / 14829）。
+ * 失败语义（V1 原样）：本组失败只回报本组（`{dim, ok:false, error}`），**不抛出、不影响其它组**。
+ * V1 原样保留：成功时返回的 `ok` 是 `mergeDelta` 的**返回对象**（`{ok:true,added,total}`，真值），失败时是 `false`
+ *   —— 调用方按真值判定（`results.filter(r => r.ok)`）。
+ * @returns {Promise<{dim:string, ok:object|boolean, error?:string}>}
+ */
+async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
+    const label = '摘要[' + (groupDim === '统一' ? '统一' : (DIM_LABELS[groupDim] || groupDim)) + ']';
+    try {
+        const messages = await buildSummaryPrompt(floorText, dims);
+        const args = promptToGenerateArgs(messages);
+        // 第二参 label 与 V1 `callChatCompletion(prompt, override, label, 'analysis')` 的标签同源（宿主 `rawGenerate` 忽略它）
+        const resp = await gen(args, label);
+        if (!resp || resp.ok === false) return { dim: groupDim, ok: false, error: String((resp && resp.error) || 'ai-error').slice(0, 80), label };
+        const delta = extractJsonObject(resp.text);
+        if (!delta) return { dim: groupDim, ok: false, error: 'AI 未返回有效 JSON', label };
+        const sub = groupDeltaSlice(dims, delta);
+        if (!Object.keys(sub).some((k) => sub[k] !== undefined)) return { dim: groupDim, ok: false, error: '无该维度数据', label };
+        const ok = mergeDelta(sub, floorRange);
+        if (ok) { try { scheduleParallelWeave(floorRange, jsExtractKeywords(floorText)); } catch (e) { /* 忽略 */ } }
+        return { dim: groupDim, ok, label };
+    } catch (e) {
+        warn('维度[' + (DIM_LABELS[groupDim] || groupDim) + ']摘要失败', e);
+        return { dim: groupDim, ok: false, error: String((e && e.message) || e).slice(0, 80), label };
+    }
+}
+
+/**
+ * 独立分组抽取（V1 `runSummarySeparate(floorText, floorRange, silent)` 的 V2 版）。
+ * 语义（V1 原样）：生效维度各自构造提示词并**并行**请求；未启用维度合成一个「统一」组；
+ *   每组独立解析/切片/`mergeDelta`/计成功失败；合并成功的组各自触发被动推演。
+ * V2 适配（逐条见 docs/P9d）：
+ *   ① AI 通道 = 注入钩子（`o.ai` 注入点 / 宿主 `generateRaw`），**不支持按次指定预设** —— 故 V1 的
+ *      `cfg.dimensionPresets[维度]`（按维度选自建 API 预设）在 V2 **不适用**（不实现、不放假控件）；
+ *   ② V1 的 `abortTick()` / `newTaskStart()` / `pipeUpdate()` 未移植（V2 无任务中断标志与管线状态 UI）；
+ *   ③ 形参 `silent` 在 V1 函数体内**从未被引用**（v1.206 原样），V2 直接不设该参数。
+ * @param {string} floorText 楼层（或段）正文
+ * @param {{start:number,end:number}} floorRange 落库楼层区间
+ * @param {object} [opts] ai（注入生成函数，测试用）
+ * @returns {Promise<Array<{dim:string, ok:object|boolean, error?:string}>>} 永不全量 reject（每组内部已兜住异常）
+ */
+export async function runSummarySeparate(floorText, floorRange, opts) {
+    const o = opts || {};
+    const gen = o.ai || rawGenerate;
+    const { enabled, rest } = summaryDimGroups(o.dims);
+    const tasks = [];
+    for (const dim of enabled) tasks.push(runSeparateGroup(dim, [dim], floorText, floorRange, gen, o));
+    if (rest.length) tasks.push(runSeparateGroup('统一', rest, floorText, floorRange, gen, o));
+    return await Promise.all(tasks);
+}
+
 /**
  * 分析单楼（V1 `runSummaryFloor` 的 V2 版）。
  * @param {number} floorId 楼层号
@@ -99,6 +209,10 @@ export async function analyzeFloor(floorId, opts) {
         }
         const mr = mergeDelta(delta, { start: Number(floorId), end: Number(floorId) });
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
+        // V1 v1.206 15240~15242（单楼分析 `runSummaryFloor`）：合并成功 → 被动调度推演（关键词取该楼正文）；
+        //   紧随其后**无条件**做一次情节总结检查点（V1 该行在 `if (mr && mr.ok)` 之外）
+        if (mr && mr.ok) { try { scheduleParallelWeave({ start: Number(floorId), end: Number(floorId) }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ } }
+        try { scheduleAtomCompact(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) { extractState.fail += 1; extractState.lastReason = 'merge-fail'; return { ok: false, reason: 'merge-fail' }; }
         recordProcessedFloors(Number(floorId), Number(floorId));
         const ms = Date.now() - t0;
@@ -153,6 +267,21 @@ export async function analyzeSegment(start, end, opts) {
         if (!text) { recordProcessedFloors(s0, e0); return { ok: true, empty: true, added: 0, floorStart: s0, floorEnd: e0 }; }
         const gen = o.ai || rawGenerate;
         if (!o.ai && !generationAvailability().generateRaw) return { ok: false, reason: 'no-generate', floorStart: s0, floorEnd: e0 };
+        // V1 v1.206 15477~15485：**独立分组分支**（`cfg.dimensionGrouping === 'separate'` → `runSummarySeparate`）。
+        //   事实核验：V1 仅在**分段路径**（`runAutoSummary` 的 `runSegment`）判定该开关；单楼分析（`runSummaryFloor`）
+        //   与其它路径**没有**该分支（`grep dimensionGrouping` 仅 1432 默认值 / 15477 此处分支 / 两处 UI 代理键）。
+        if (separateGroupingEnabled()) {
+            const results = await runSummarySeparate(text, { start: s0, end: e0 }, Object.assign({}, o, { ai: gen }));
+            const okN = results.filter((r) => r && r.ok).length;
+            // V1 原样：独立分组下**无论成败**都记该段已处理（与统一模式一致）
+            recordProcessedFloors(s0, e0);
+            const ms = Date.now() - t0;
+            // V1 原样怪癖：独立分组分支**不累加** `totalAdded`（V1 通知里的「本次提取 N 条」在独立分组下恒为 0）→ 这里 `added: 0`
+            return {
+                ok: okN > 0, added: 0, separate: true, groups: results.length, groupOk: okN,
+                groupFailed: results.length - okN, groupResults: results, chars: text.length, ms, floorStart: s0, floorEnd: e0,
+            };
+        }
         const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
         const messages = await buildSummaryPrompt(text, dims);
         const args = promptToGenerateArgs(messages);
@@ -166,6 +295,8 @@ export async function analyzeSegment(start, end, opts) {
         const mr = mergeDelta(delta, { start: s0, end: e0 });
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
+        // V1 v1.206 15490（分段分析）：合并成功 → 被动调度推演（关键词取**段文本**）
+        try { scheduleParallelWeave({ start: s0, end: e0 }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ }
         // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
         recordProcessedFloors(s0, e0);
         const ms = Date.now() - t0;
@@ -247,6 +378,8 @@ export async function runAutoSummary(opts) {
         extractState.busy = false;
         extractState.activeSeg = null;
         abortRequested = false;
+        // V1 v1.206 15537（`runAutoSummary` 的 finally）：批量摘要收尾 → 情节总结检查点（4s 防抖，体量未达标内部跳过）
+        try { scheduleAtomCompact(); } catch (e) { /* 忽略 */ }
     }
 }
 

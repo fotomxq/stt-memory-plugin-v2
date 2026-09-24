@@ -402,6 +402,10 @@ await assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort'
 // ---------- H 提取（P4 首批：AI 摘要 → JSON 增量 → mergeDelta → 台账） ----------
 const floorsMod = await import('../host/floors.js');
 const extractMod = await import('../host/extract.js');
+// P9d 隔离：本次接线后「提取合并成功」会自动排程被动推演（1.8s）——若在此后各小节仍开着，
+//   定时器会在无关小节里发起 AI 请求、污染各节的调用计数；故常规链路默认关闭被动推演，
+//   该接线由 AI2/AI3 小节用**注入定时器**显式驱动验证。
+rt.cfg.parallelWeaveEnabled = false;
 host.ctx.chat.push({ is_user: false, mes: '甲用铜钥匙打开木箱，取出账册并记下转运日期。', name: '角色甲' });
 const floorId = host.ctx.chat.length - 1;
 
@@ -2642,6 +2646,140 @@ await assert('AH3 真实自动对账遇分歧 → **暂存待选 + 横幅 + 不�
     await entry.popupAction('tab', { tab: 'overview' });
     return stashOk && bannerOk && keepOk && adoptOk;
 })(), '');
+
+// ---------- AI 独立分组抽取 + 被动调度接线（P9d） ----------
+const setPagesMod = await import('../ui/settings-pages.js');
+/** 只启用「情节 / 状态」两维（其余 12 个容器键**显式置 false** —— V2 `enabledDims()` 是「≠ false 即启用」口径）
+ *  → 独立分组下 = 2 个单维度组 + 1 个「统一」组（其余 8 个 V1 摘要维度） */
+const P9D_DIMS = {
+    atoms: true, currentStates: true, snapshots: false, memories: false, items: false, plans: false, suspense: false,
+    scenes: false, concepts: false, parallels: false, links: false, plotSegments: false, rumors: false, currencies: false,
+};
+/** 注入「记录型」定时器（P9d 的延迟排程全部经 `timerHooks`；由本小节手动驱动，不做真实 1.8s/4s 等待） */
+function p9dTimers() {
+    const saved = { set: rtMod.timerHooks.set, clear: rtMod.timerHooks.clear };
+    const rec = [];
+    rtMod.setTimerHooks({ set: (fn, ms) => { rec.push({ fn, ms }); return rec.length; }, clear: () => undefined });
+    return { rec, restore: () => rtMod.setTimerHooks(saved) };
+}
+const p9dMs = (rec, ms) => rec.filter((x) => x.ms === ms);
+/** 驱动记录到的定时器（先清空清单，避免同一回调被驱动两次） */
+async function p9dDrain(rec) {
+    const list = rec.slice();
+    rec.length = 0;
+    for (const x of list) { try { await x.fn(); } catch (e) { /* 忽略 */ } }
+}
+
+assert('AI1 独立分组接线齐备：FTT.* 4 项入口 + 分组构造（启用各自单组 / 未启用并「统一」组）+ jsExtractKeywords 真实命中 + 分析页「独立分组」开关（V1 代理键写回真键）', (() => {
+    const F = globalThis.FTT;
+    const names = ['jsExtractKeywords', 'runSummarySeparate', 'summaryDimGroups', 'separateGroupingEnabled'];
+    const miss = names.filter((n) => typeof F[n] !== 'function');
+    const before = F.separateGroupingEnabled();
+    rtMod.cfg.dimensionEnabled = Object.assign({}, P9D_DIMS);
+    const groups = F.summaryDimGroups();
+    // 真实扫描定位关键词来源：造一条带标签的情节，标签词必须**原样出现在正文**才命中
+    rtMod.state.atoms = (rtMod.state.atoms || []).concat([{ id: 'smoke-ai-seed', title: 'AI 关键词种子', text: '甲在码头清点铜箱。', date: '1919-11-29', tags: ['码头', '铜箱'], keywords: [], uses: 0, floorStart: 0, floorEnd: 1 }]);
+    const kw = F.jsExtractKeywords('甲在码头清点铜箱，天色已晚。');
+    const html = setPagesMod.settingsPageHtml('analyze');
+    const r = setPagesMod.applySettingsControl('dimensionSeparate', true);
+    const onHtml = setPagesMod.settingsPageHtml('analyze');
+    const on = r.ok === true && rtMod.cfg.dimensionGrouping === 'separate' && F.separateGroupingEnabled() === true;
+    setPagesMod.applySettingsControl('dimensionSeparate', false);
+    return miss.length === 0 && before === false
+        && J(groups) === J({ enabled: ['atoms', 'states'], rest: ['snapshots', 'memories', 'items', 'plans', 'scenes', 'concepts', 'currencies', 'rumors'] })
+        && J(kw) === J(['码头', '铜箱'])
+        && html.indexOf('data-ftt-cfg="dimensionSeparate"') >= 0 && html.indexOf('>独立分组</label>') >= 0
+        && html.indexOf('统一分组（一次请求全部维度）') >= 0 && html.indexOf('data-ftt-dim-preset') < 0
+        && on && onHtml.indexOf('data-ftt-cfg="dimensionSeparate" checked') >= 0
+        && onHtml.indexOf('独立分组（各维度单独构造提示词并行请求）') >= 0 && rtMod.cfg.dimensionGrouping === 'unified';
+})(), String(rtMod.cfg.dimensionGrouping));
+
+const AI2dbg = {};
+await assert('AI2 独立分组端到端（注入定时器驱动）：分段路径 → 3 组并行请求、逐组切片落库（`added` 按 V1 怪癖为 0）+ 每组成功各排程推演（1.8s 去重为 1，且**不**排情节总结 —— V1 只在单楼/批量收尾排）；驱动后真实推演且 `weaveLastFloor` = 段末楼', (async () => {
+    const t = p9dTimers();
+    const savedGen = host.ctx.generateRaw;
+    const prompts = [];
+    rtMod.cfg.dimensionGrouping = 'separate';
+    rtMod.cfg.dimensionEnabled = Object.assign({}, P9D_DIMS);
+    rtMod.cfg.parallelWeaveEnabled = true;
+    rtMod.cfg.parallelWeaveInterval = 0;
+    rtMod.state.weaveLastFloor = -1;
+    // 响应键必须是**英文维度键**：独立分组在 `mergeDelta` 之前按原始键切片（V1 原样 —— 中文键会判「无该维度数据」）
+    const P9D_WEAVE_MARK = '触发关键词（提取记忆所得，用于关联更新）：';
+    host.ctx.generateRaw = async (args) => {
+        prompts.push(String((args && args.systemPrompt) || '') + '\n' + String((args && args.prompt) || ''));
+        return JSON.stringify({
+            atoms: { add: [{ title: '分组情节', text: '甲在码头清点铜箱后记账（正文足够长）。', date: '1919-11-29' }] },
+            states: { add: [{ subject: '甲', field: '位置', value: '码头' }] },
+            memories: { add: [{ owner: '甲', title: '铜箱', content: '甲记得铜箱的锁完好。', date: '1919-11-29' }] },
+        });
+    };
+    let out = null;
+    try {
+        host.ctx.chat.push({ is_user: false, mes: '甲在码头清点铜箱后记账。', name: '角色甲' });
+        const fid = host.ctx.chat.length - 1;
+        const r = await extractMod.analyzeSegment(fid, fid, {});
+        const promptsBefore = prompts.filter((s) => s.indexOf('触发关键词（提取记忆所得，用于关联更新）：') >= 0).length;
+        const timersOk = p9dMs(t.rec, 1800).length === 1 && p9dMs(t.rec, 4000).length === 0;
+        const weaveTimers = p9dMs(t.rec, 1800).slice();
+        await p9dDrain(t.rec);                                   // 驱动推演（分段路径无情节总结检查点）
+        const weavePrompt = prompts.filter((s) => s.indexOf('触发关键词（提取记忆所得，用于关联更新）：') >= 0).pop() || '';
+        Object.assign(AI2dbg, { r, timers: t.rec.map((x) => x.ms), promptsBefore, weaveTimers: weaveTimers.length, wlf: rtMod.state.weaveLastFloor, counts: { atoms: (rtMod.state.atoms || []).length, states: (rtMod.state.currentStates || []).length, memories: (rtMod.state.memories || []).length }, weaveHead: weavePrompt.slice(0, 120) });
+        out = r.separate === true && r.groups === 3 && r.groupOk === 3 && r.groupFailed === 0 && r.added === 0
+            && (rtMod.state.atoms || []).length >= 2 && (rtMod.state.currentStates || []).length === 1
+            && (rtMod.state.memories || []).length >= 1
+            && timersOk && weaveTimers.length === 1 && promptsBefore === 0
+            && weavePrompt.indexOf('触发关键词（提取记忆所得，用于关联更新）：') >= 0
+            && Number(rtMod.state.weaveLastFloor) === fid;
+    } finally { host.ctx.generateRaw = savedGen; t.restore(); }
+    return out;
+})(), AI2dbg);
+
+const AI3dbg = {};
+await assert('AI3 被动调度接线（合并成功后自动排程）：单楼成功 → 推演 1.8s + 情节总结 4s 各 1；再次成功不重复排程（防抖合并）；失败（AI 无 JSON）不排程；驱动推演后关键词来自 jsExtractKeywords', (async () => {
+    const t = p9dTimers();
+    const savedGen = host.ctx.generateRaw;
+    const prompts = [];
+    let failMode = false;
+    rtMod.cfg.dimensionGrouping = 'unified';                     // 单楼路径 V1 无独立分组分支 → 统一请求
+    rtMod.cfg.parallelWeaveEnabled = true;
+    rtMod.cfg.parallelWeaveInterval = 0;
+    rtMod.state.weaveLastFloor = -1;
+    let out = null;
+    try {
+        host.ctx.generateRaw = async (args) => {
+            prompts.push(String((args && args.systemPrompt) || '') + '\n' + String((args && args.prompt) || ''));
+            if (failMode) return '没有 JSON';
+            return JSON.stringify({ atoms: { add: [{ title: '单楼', text: '甲把铜箱锁好（正文足够长）。', date: '1919-11-29' }] } });
+        };
+        host.ctx.chat.push({ is_user: false, mes: '甲把铜箱锁好，随后离开码头。', name: '角色甲' });
+        const f1 = host.ctx.chat.length - 1;
+        host.ctx.chat.push({ is_user: false, mes: '甲在仓库里整理账册，铜箱放在脚边。', name: '角色甲' });
+        const f2 = host.ctx.chat.length - 1;
+        host.ctx.chat.push({ is_user: false, mes: '夜里码头的风很大，甲没有再出门。', name: '角色甲' });
+        const f3 = host.ctx.chat.length - 1;
+        const r1 = await extractMod.analyzeFloor(f1, {});
+        const after1 = { w: p9dMs(t.rec, 1800).length, c: p9dMs(t.rec, 4000).length };
+        const r2 = await extractMod.analyzeFloor(f2, {});
+        const after2 = { w: p9dMs(t.rec, 1800).length, c: p9dMs(t.rec, 4000).length };
+        failMode = true;
+        const r3 = await extractMod.analyzeFloor(f3, {});
+        const after3 = { w: p9dMs(t.rec, 1800).length, c: p9dMs(t.rec, 4000).length };
+        failMode = false;                                        // 驱动推演时恢复可解析响应（只为记录真实提示词）
+        const weaveTimers = p9dMs(t.rec, 1800).slice();
+        await p9dDrain(t.rec);
+        const weavePrompt = prompts.filter((s) => s.indexOf('触发关键词（提取记忆所得，用于关联更新）：') >= 0).pop() || '';
+        Object.assign(AI3dbg, { r1, r2, r3, after1, after2, after3, timers: t.rec.map((x) => x.ms), weaveTimers: weaveTimers.length, wlf: rtMod.state.weaveLastFloor, weaveHead: weavePrompt.slice(0, 120) });
+        out = r1.ok === true && after1.w === 1 && after1.c === 1                // 合并成功 → 各排程一次
+            && r2.ok === true && after2.w === 1 && after2.c === 1               // 二次成功 → 防抖合并（仍是 1）
+            && r3.ok === false && r3.reason === 'no-json'
+            && after3.w === 1 && after3.c === 1                                // 失败 → 不新增排程
+            && weaveTimers.length === 1 && Number(rtMod.state.weaveLastFloor) === f1
+            && weavePrompt.indexOf('触发关键词（提取记忆所得，用于关联更新）：') >= 0
+            && weavePrompt.indexOf('铜箱') >= 0;                                // 关键词真实来自 jsExtractKeywords（种子标签）
+    } finally { host.ctx.generateRaw = savedGen; t.restore(); }
+    return out;
+})(), AI3dbg);
 
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {

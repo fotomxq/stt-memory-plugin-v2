@@ -28,7 +28,7 @@ import {
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
 } from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy } from './host/extract.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled } from './host/extract.js';
 import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
@@ -98,7 +98,7 @@ import {
     setParallelTextHooks, weaveEnabled, weavePassiveDue, weaveInputSig, matchParallelsByKeywords,
     scheduleParallelWeave, runParallelWeave, advanceContextSeed, buildAdvanceContext, buildAdvancePrompt,
     applyAdvanceUpdate, runParallelAdvance, promoteParallelEvent, prunePromotedParallels,
-    setParallelLastKeywords, parallelLastKeywords,
+    setParallelLastKeywords, parallelLastKeywords, jsExtractKeywords,
 } from './core/parallel.js';
 import {
     plotSegmentId, plotSegmentRange, normalizePlotSegment, normalizePlotSegmentLine, normalizePlotSegmentLines,
@@ -673,6 +673,11 @@ function bootstrapDiagnostics() {
             prunePromotedParallels: () => prunePromotedParallels(),
             setParallelLastKeywords: (list) => setParallelLastKeywords(list),
             parallelLastKeywords: () => parallelLastKeywords(),
+            // P9d：被动调度与独立分组（V1 `jsExtractKeywords` / `runSummarySeparate` 同名能力 + V2 分组构造诊断）
+            jsExtractKeywords: (text) => jsExtractKeywords(text),
+            runSummarySeparate: (text, fr, opts) => runSummarySeparate(text, fr, opts || {}),
+            summaryDimGroups: (dims) => summaryDimGroups(dims),
+            separateGroupingEnabled: () => separateGroupingEnabled(),
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,

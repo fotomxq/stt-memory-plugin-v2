@@ -3,6 +3,33 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.33.0（2026-09-26）· 独立分组抽取（按维度并行）+ 被动调度接线（B8/B9 收尾）
+
+**本版补完总表 §7 登记的最后两处**管线**缺口**（V1 有、V2 之前只有函数或仅有配置键）**：
+1. **`dimensionGrouping === 'separate'`「独立分组」**（`host/extract.js` +134）：抽取管线按 **V1 同款分组规则**构造请求 —— 启用维度各自单组、未启用维度并成「统一」组，
+   **并行**调用 AI（注入钩子 `aiCallText`），逐组 `mergeDelta` 并独立计成功/失败（**任一组失败不影响其它组**）；V1 原生「分组构造 + 每组提示词」已用黄金样本**逐字符**固化；
+   设定页（分析记忆页）新增 V1 同款「独立分组」开关（`data-ftt-cfg="dimensionSeparate"` 代理键 → 真键 `cfg.dimensionGrouping`，文案与 V1 逐字）；
+2. **被动调度接线**：把已交付但未接线的 `scheduleParallelWeave`（抽取合并成功后，V1 ~15240/15490）与 `scheduleAtomCompact`（V1 ~15242/15537 对应环节）**逐点接入**；
+   `core/parallel.js` **逐字移植** `jsExtractKeywords`（提取关键词 → 传入推演以更新关联），并修正其文件头说明；
+3. **`dimensionPresets` 判定为「V2 不适用」（不实现、不放假控件）** —— 取证链：V1 `resolveApiFor({preset})` 命中 `cfg.apiPresets[preset]` 换**自建连接的 url/key/model**（黄金样本已固化 `preset-a.example`/`model-A`）；
+   而 V2 的 AI 通道是 `host/generation.js#rawGenerate` → **宿主真值** `ctx.generateRaw({prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, trimNames, prefill, jsonSchema})`（本机 ST `public/script.js` 4109 / 3987）**无任何 preset/连接参数**。
+   故 V2 只实现「按维度独立分组 + 并行请求」，设定页**只加「独立分组」开关、不加预设下拉**（单测与冒烟均断言不存在该控件）。已并入 `docs/P8-功能对齐总表.md` §6.1。
+
+**验证**：`v1-golden-separate-dim.json`（576 行 / 5 组 run）由**入库生成器**直调真实 V1 v1.206 生成，**队长独立复跑生成器 → 0 差异**；
+覆盖：分组构造 + **每组提示词逐字符**（真实请求体 messages）+ 逐组 `mergeDelta` 计数（added 1/1/2/5、total 2/3/5/10）+ 三种失败互不影响 + 间隔未到（4 组各写日志、0 定时器）+ 间隔到（1 个 1.8s 定时器，驱动后关键词「码头、铜箱」命中既有平行事件）+ 中文维度键零落库（V1 怪癖）；
+单元 `separate-dim-golden.test.js` **17 项**（V1 逐项 + V2 编排 + 被动调度 W1–W6 + 设定页 + FTT 入口）；冒烟新增 **AI1–AI3**。
+门禁全绿：单元 **60 文件 / 951 断言**、冒烟 **133 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 45 文件 0 违规；`git archive` 解包复验同样全绿。
+
+**与 V1 偏差（逐条见 `docs/P9d-独立分组抽取与被动调度接线.md` §3）**：① 按维度选预设不适用（见上）；② 失败文案来自注入通道（V1 为自建通道报文），断言只比对「哪几组失败 + 原因非空」；
+③ 「生效维度」用 V2 既有 `enabledDims()`（空表 = 全部启用）→ **V2 默认配置下独立分组 = 10 组并行**，而 V1 默认（迁移器补 `false`）为单个统一请求（差异**已断言固化**）；
+④ 维度键映射（`currentStates→states`；`links`/`plotSegments`/`parallels`/`suspense` 不参与分组，V1 `DIMENSIONS` 亦无）；⑤ 保留 V2 的 `o.dims` 覆盖约定（V1 无）；
+⑥ `newTaskStart`/`abortTick`/`pipe*`/`renderPanel` 未移植（无并行分组级中断）；⑦ 段级汇总按段计成败并返回组明细；⑧ `scheduleAtomCompact` 排程点与 V1 逐点一致（单楼/批量收尾；分段路径不排）；⑨ 两个调度点在 V1 都**不在**存储保存函数内 → 未改 `adapters/store.js`；⑩ `state.weaveLastFloor` 写入顺序同 V1。
+
+**V1 原生缺陷/怪癖（原样保留并固化，7 条）**：① `results[].ok` 实为 `mergeDelta` 返回对象（真值）而非布尔；② 未启用维度仍会被请求（并成「统一」组）；③ 切片先于 `normalizeDeltaKeys` → 中文维度键响应判「无该维度数据」；
+④ 独立分组不累加 `totalAdded`（V2 返回 `added:0`）；⑤ 形参 `silent` 在 V1 函数体内**从未被引用**；⑥ N 个成功组只建 **1 个** 1.8s 定时器（后到静默丢弃）；⑦ 间隔未到时每个成功组各写一条日志。
+
+**未实现/未验证**：并行分组级中断；真实宿主端到端（均为桩 + 注入定时器）；V1 进度通知文案体系（V2 由面板汇总承担）；真实 SillyTavern 全链路与真浏览器并发时序未验；V1 preset 命中仅在桩 fetch 层验证。
+
 ## v2.32.0（2026-09-26）· B9-d 条目瘦身 + gzip 存储 + 跨端同步分歧选择（**B9 收官**）
 
 **本版（B9-d，取自 V1 v1.206 `slim*`/`SLIM_EXT_GZ`/gzip 读写 与 `syncPickLocal`/`syncPickRemote`）**：

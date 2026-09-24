@@ -339,6 +339,12 @@ export function installDevtools(hooks) {
             prunePromotedParallels: () => (hooks && typeof hooks.prunePromotedParallels === 'function' ? hooks.prunePromotedParallels() : { removed: 0, kept: 0 }),
             setParallelLastKeywords: (list) => (hooks && typeof hooks.setParallelLastKeywords === 'function' ? hooks.setParallelLastKeywords(list) : []),
             parallelLastKeywords: () => (hooks && typeof hooks.parallelLastKeywords === 'function' ? hooks.parallelLastKeywords() : []),
+            // P9d：被动调度关键词抽取 + 独立分组抽取 / 分组构造（V1 `jsExtractKeywords` / `runSummarySeparate` 同名能力）
+            //   全部 `typeof` 守卫：未接线时返回空值（不抛异常、不建假动作）
+            jsExtractKeywords: (text) => (hooks && typeof hooks.jsExtractKeywords === 'function' ? hooks.jsExtractKeywords(text) : []),
+            runSummarySeparate: (text, fr, opts) => (hooks && typeof hooks.runSummarySeparate === 'function' ? hooks.runSummarySeparate(text, fr, opts || {}) : Promise.resolve([])),
+            summaryDimGroups: (dims) => (hooks && typeof hooks.summaryDimGroups === 'function' ? hooks.summaryDimGroups(dims) : { enabled: [], rest: [] }),
+            separateGroupingEnabled: () => (hooks && typeof hooks.separateGroupingEnabled === 'function' ? hooks.separateGroupingEnabled() : false),
             // B9-a 调试页：日志记录 / 读取 / 清空 / 统计（V1 `__FTT` 同名 `dbgLog` / `dbgGet` / `dbgClear`）
             //   注：本文件原约定为「只读快照、不暴露写数据能力」；此处按 V1 同名能力（用户要求 B9 对齐）显式放开
             //   `dbgLog` / `dbgClear` / `aboutClearCache` / `resetState` 四个**有意为之**的写入口，其余仍为只读。
