@@ -152,7 +152,7 @@ await (async () => {
         const ok = clickR.ok === true && clickR.via === 'overlay' && info.open === true
             && info.tabs.length === 13
             && String(entry.popupHtml()).indexOf('ftt-modal') >= 0
-            && String(r1.html).indexOf('ftt_v2_cfg_budget') >= 0
+            && String(r1.html).indexOf('data-ftt-settings="base"') >= 0 && String(r1.html).indexOf('data-ftt-cfg="') >= 0
             && String(r2.html).indexOf('data-ftt-search="atoms"') >= 0
             && String(r3.html).indexOf('📚 类目统计') >= 0;
         return ok;

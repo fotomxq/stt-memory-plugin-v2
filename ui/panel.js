@@ -17,6 +17,8 @@ import { clockDateLabel } from '../core/clock.js';
 import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
+import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
+import { dimsCheckboxHtml } from './settings-panel.js';
 import { atomIsHidden } from '../core/merge.js';
 
 export const PANEL_ID = 'ftt-panel';
@@ -32,6 +34,8 @@ const TAB_DIM = { atoms: 'atoms', states: 'currentStates', snapshots: 'snapshots
 const ps = {
     tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0,
     busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
+    settingsSub: 'base', // 设定页当前子页（V1 的 14 组子页）
+    exportText: '',     // 数据管理页的导出 JSON（供复制/查看）
     sel: {},            // 多选集合：{ [kind]: Set<id> }
     multi: {},          // 多选模式：{ [kind]: bool }
     showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
@@ -51,7 +55,8 @@ export function panelState() {
         search: Object.assign({}, ps.q),
         multi: Object.assign({}, ps.multi),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
-        showHidden: ps.showHidden, peek: ps.peek,
+        showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub,
+        exportChars: String(ps.exportText || '').length,
     };
 }
 /**
@@ -346,13 +351,37 @@ function statesBody() {
     return head + ed + blocks;
 }
 
-/** 设置分页（B1 沿用 V2 现有表单；B4 将替换为 V1 的 13 组子页） */
+/** 设置分页：V1 的 **14 组子页**（子标签条 + 当前页控件；写回内核 cfg 并持久化） */
 function settingsBody() {
-    return '<div class="ftt-hint">本页为现有设置表单；V1 的 13 组设定子页（分析记忆 / 提示词 / 存储 / 时钟巡检 / 关联层 / 传言 / 内容弱化 / 情节与分段总结 / 修复与遗忘 …）按 docs/P8-功能对齐总表.md 的批次逐页替换。</div>'
-        + fallbackPanelHtml(panelData());
+    const cur = SETTINGS_TABS.some((t) => t.id === ps.settingsSub) ? ps.settingsSub : SETTINGS_TABS[0].id;
+    const label = (SETTINGS_TABS.filter((t) => t.id === cur)[0] || {}).label || cur;
+    const info = settingsPagesInfo();
+    const curInfo = info.pages.filter((p) => p.id === cur)[0] || { controls: 0 };
+    return [
+        '<div class="ftt-row ftt-settings-subtabs">' + settingsSubTabsHtml(cur) + '</div>',
+        '<div class="ftt-hint">设定 · ' + esc(label) + '（' + curInfo.controls + ' 个配置项 · 共 ' + info.totalControls + ' 项 / ' + info.pages.length + ' 页，结构与 V1 同名同序）</div>',
+        '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">' + settingsPageHtml(cur) + '</div>',
+        '<h4 class="ftt-h4-inline">V2 附加设定 <span class="ftt-muted">（V1 无此项：更新检查 / V1 数据导入 / 维度开关）</span></h4>',
+        v2ExtrasHtml(),
+        (ps.exportText ? ('<div class="ftt-field ftt-field-col"><label>导出结果（可复制保存）</label><textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>') : ''),
+    ].join('\n');
 }
 
-/** 分页内容 */
+/** V2 附加设定块（V1 没有、但 V2 已有的能力：更新检查、V1 导入、维度勾选） */
+function v2ExtrasHtml() {
+    const repo = String(cfg.updateRepo || '');
+    return [
+        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (cfg.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新</span>',
+        '<input type="text" class="ftt-input" data-ftt-v2="updateRepo" value="' + attr(repo) + '" placeholder="更新检查仓库地址">',
+        '<button class="ftt-btn ftt-sm" data-ftt-action="check-update">🔍 检查更新</button></div>',
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="importV1Dry">📥 V1 导入（干跑）</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply">📥 V1 导入（写入）</button>'
+        + '<span class="ftt-muted">源数据不删除；写入为按 id 合并</span></div>',
+        '<div class="ftt-field ftt-field-col"><label>启用维度</label><div class="ftt-v2-dims" id="ftt_v2_dims">' + dimsCheckboxHtml() + '</div></div>',
+    ].join('\n');
+}
+
+/** 分页内容 *//** 分页内容 *//** 分页内容 */
 export function panelBodyHtml(tab) {
     const t = tab || ps.tab;
     try {
@@ -562,7 +591,46 @@ export async function panelAction(action, payload) {
         } else if (a === 'check-update') {
             if (typeof hooks.checkUpdate === 'function') { setNote('检查更新…'); await hooks.checkUpdate(); setNote('检查完成'); }
             else setNote('更新入口未就绪');
-        } else if (a === 'refresh' || a === 'noop') { /* 仅重渲染 */ }
+        } else if (a === 'settingsSub') {
+            const id = String(p.sub || p.kind || '');
+            ps.settingsSub = SETTINGS_TABS.some((t) => t.id === id) ? id : ps.settingsSub;
+        }
+        else if (a === 'exportState') {
+            if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            const text = String((await hooks.exportState()) || '');
+            ps.exportText = text;
+            let copied = false;
+            try {
+                const nav = globalThis.navigator;
+                if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
+            } catch (e) { copied = false; }
+            setNote('已导出 ' + text.length + ' 字符' + (copied ? '（已复制到剪贴板）' : '（见下方文本框，可手动复制）'));
+            result = Object.assign(result, { ok: true, chars: text.length, copied });
+        }
+        else if (a === 'importStateOpen') { setNote('在「导入 JSON」文本框粘贴内容后点「导入」'); }
+        else if (a === 'importV1Dry' || a === 'importV1Apply') {
+            if (typeof hooks.importV1 !== 'function') { setNote('V1 导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            const apply = a === 'importV1Apply';
+            setNote(apply ? '导入并写入…' : '读取 V1 数据…');
+            const r = await hooks.importV1({ apply });
+            const t = (r && r.report && r.report.totals) || {};
+            setNote((apply ? '【已写入】' : '【干跑】') + (r && r.via ? r.via : '无源数据')
+                + '：新增 ' + (t.add || 0) + ' · 已存在 ' + (t.exist || 0) + ' · 冲突 ' + (t.conflict || 0));
+        }
+        else if (a === 'dimToggle') {
+            if (typeof hooks.dimToggle === 'function') hooks.dimToggle(String(p.kind || ''), !!p.on);
+            setNote('维度 ' + String(p.kind || '') + (p.on ? ' 已启用' : ' 已停用'));
+        }
+        else if (a === 'importStateApply') {
+            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            const el = (() => { try { const doc = globalThis.document; return doc && doc.querySelector ? doc.querySelector('[data-ftt-import]') : null; } catch (e) { return null; } })();
+            const text = String(p.text != null ? p.text : (el ? el.value : ''));
+            if (!text.trim()) { setNote('导入失败：文本框为空'); return { ok: false, reason: 'empty' }; }
+            const r = await hooks.importState(text);
+            setNote(r && r.ok ? ('已导入并合并：新增 ' + (r.added || 0) + ' 条') : ('导入失败：' + String((r && r.reason) || '未知')));
+            result = Object.assign(result, r || {});
+        }
+        else if (a === 'refresh' || a === 'noop') { /* 仅重渲染 */ }
         else { result = { ok: false, reason: 'unknown-action' }; }
     } catch (e) {
         result = { ok: false, reason: 'error', error: String((e && e.message) || e) };
@@ -570,6 +638,15 @@ export async function panelAction(action, payload) {
     }
     renderPanel();
     return Object.assign(result, { html: panelHtml(), state: panelState() });
+}
+
+/** 读取某配置键当前值（用于 change 时判断是否按数字写回） */
+function readControlValue(key) {
+    try {
+        const k = String(key || '');
+        if (k.indexOf('storage.') === 0) return (cfg.storage || {})[k.slice(8)];
+        return cfg[k];
+    } catch (e) { return undefined; }
 }
 
 /** 真实 DOM 事件委托（V1 用委托；无 addEventListener 的环境跳过） */
@@ -593,6 +670,10 @@ export function bindOverlay() {
                 void panelAction('save', { kind, id, fields: collectEditorFields(el) });
                 return;
             }
+            if (act === 'settingsSub') {
+                void panelAction('settingsSub', { sub: tg.dataset ? tg.dataset.fttSettings : '' });
+                return;
+            }
             if (act === 'multiToggle' || act === 'selectAll' || act === 'selectNone' || act === 'bulkDelete' || act === 'searchClear' || act === 'add') {
                 void panelAction(act, { kind: kind || (tg.dataset ? tg.dataset.fttKind : '') || ps.tab, id, searchKind: tg.dataset ? tg.dataset.fttSearchKind : '', subject });
                 return;
@@ -604,6 +685,27 @@ export function bindOverlay() {
                 const tg = e && e.target;
                 if (!tg || !tg.dataset) return;
                 if (tg.dataset.fttSearch !== undefined) { void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value }); return; }
+                if (tg.dataset.fttV2 !== undefined) {
+                    const k = String(tg.dataset.fttV2);
+                    const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
+                    applySettingsControl(k, raw);
+                    setNote('已更新 ' + k);
+                    renderPanel();
+                    return;
+                }
+                if (tg.dataset.fttDim !== undefined) {
+                    void panelAction('dimToggle', { kind: String(tg.dataset.fttDim), on: !!tg.checked });
+                    return;
+                }
+                if (tg.dataset.fttCfg !== undefined) {
+                    // 设定控件写回（V1 同款 `data-ftt-cfg`）：bool 用 checked，其余按原值类型写回
+                    const key = String(tg.dataset.fttCfg);
+                    let raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
+                    if (typeof readControlValue(key) === 'number' && /^-?\d+(\.\d+)?$/.test(String(raw))) raw = Number(raw);
+                    applySettingsControl(key, raw);
+                    renderPanel();
+                    return;
+                }
                 if (tg.dataset.fttSelect !== undefined) {
                     const k = String(tg.dataset.fttSelect);
                     const set = selOf(k);
