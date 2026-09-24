@@ -54,6 +54,10 @@ export function installDevtools(hooks) {
             extractStatus: () => (hooks && typeof hooks.extractStatus === 'function' ? hooks.extractStatus() : null),
             i18n: () => (hooks && typeof hooks.i18n === 'function' ? hooks.i18n() : null),
             folderInfo: () => (hooks && typeof hooks.folderInfo === 'function' ? hooks.folderInfo() : null),
+            // 可见性诊断（用户报「装上了但看不到面板」时的第一现场）
+            panelInfo: () => (hooks && typeof hooks.panelInfo === 'function' ? hooks.panelInfo() : null),
+            menuInfo: () => (hooks && typeof hooks.menuInfo === 'function' ? hooks.menuInfo() : null),
+            forceMount: () => (hooks && typeof hooks.forceMountPanel === 'function' ? hooks.forceMountPanel() : Promise.resolve({ ok: false, reason: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

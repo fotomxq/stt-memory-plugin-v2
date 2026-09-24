@@ -22,6 +22,13 @@ export function statusText(extra) {
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
     if (extra && extra.import) lines.push('V1 导入：' + extra.import);
+    if (extra && extra.bootstrap) {
+        const b = extra.bootstrap;
+        const panel = b.panel || {};
+        lines.push('装配：' + (b.ready ? '已初始化' : '未初始化') + ' · 触发 ' + ((b.triggers || []).join('→') || '—')
+            + ' · 面板 ' + (panel.ok ? ('已挂载 #' + (panel.container || '?')) : ('未挂载：' + (panel.reason || '未知'))));
+        if (b.menu) lines.push('菜单入口：' + (b.menu.installed ? '已加入扩展菜单（魔杖）' : ('未加入（' + (b.menu.menuFound ? '插入失败' : '无 #extensionsMenu') + '）')));
+    }
     if (extra && extra.i18n) lines.push('语言：' + extra.i18n.locale + ' · 词条 ' + extra.i18n.keys + ' 条 · 注册 ' + (extra.i18n.registered.ok ? extra.i18n.registered.locales.join('/') : '未注册'));
     if (extra && extra.extract) {
         const e = extra.extract;
@@ -62,6 +69,24 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'V1 数据导入：默认干跑差异报告；`/ftt-import apply` 才真正写入（源数据不删）',
                 returns: '导入报告文本',
+            }));
+        }
+        if (hooks && typeof hooks.panel === 'function') {
+            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+                name: 'ftt-panel',
+                callback: async () => {
+                    const r = await hooks.panel();
+                    const info = (r && r.info) || {};
+                    const lines = [
+                        '面板挂载：' + (r && r.ok ? ('✅ 已挂载 → #' + (r.container || '?') + '（' + (r.via || '') + '）') : ('❌ ' + String((r && r.reason) || '未知原因'))),
+                        '候选容器：' + Object.keys(info.found || {}).map((k) => k + (info.found[k] ? '✓' : '✗')).join(' · '),
+                        '菜单入口：' + ((r && r.menu && r.menu.ok) ? '✅ 已加入扩展菜单（魔杖）' : ('❌ ' + String((r && r.menu && r.menu.reason) || '未加入'))),
+                        '提示：面板在「扩展设置」抽屉（左侧栏扩展按钮 → 扩展设置）里，标题为「FTT记忆组件 V2」，点标题可展开。',
+                    ];
+                    return lines.join('\n');
+                },
+                helpString: 'FTT 面板诊断与强制挂载：报告面板容器/菜单入口状态并立即重新挂载一次',
+                returns: '诊断文本',
             }));
         }
         if (hooks && typeof hooks.extract === 'function') {

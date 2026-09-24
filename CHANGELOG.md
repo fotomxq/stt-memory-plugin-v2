@@ -3,6 +3,30 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.0.1（2026-09-24）· 修复「安装后看不到面板」
+
+**现象**（用户实测）：TauriTavern 里扩展已成功安装（后端日志 `Extension installed: FTT记忆组件 V2 v2.0.0`、
+目录 `…/extensions/stt-memory-plugin-v2`），但界面上找不到任何 FTT 面板/入口。
+
+**根因**：v2.0.0 的初始化**只挂在 `APP_READY` 事件上**——
+① 宿主若不发该事件（或事件时机早于插件脚本加载，且不补发），`init()` 永不执行 → 面板、命令、注入、提取全部静默不生效；
+② 挂载容器只认 `#extensions_settings2`，不同发行版/原生移植的设置区块 id 并不统一 → 即使初始化了也插不进去；
+③ 诊断入口（`/ftt`、`window.FTT`）也在 `init()` 里注册 → 出问题时用户**没有任何自查手段**。
+
+**修复**：
+1. **多触发装配**：`APP_READY` / `APP_INITIALIZED` / `DOMContentLoaded` / `window.load` / **有限轮询**（20 次 × 750ms）/
+   命令调用，任一先到即初始化；`ensureReady()` 去重保证只跑一次。已就绪但面板容器当时不存在时，只重试挂载。
+2. **容器回退**：按 `#extensions_settings2` → `#extensions_settings` → `#rm_extensions_block` 依次尝试，
+   并在面板状态块与命令里报告实际容器或失败原因。
+3. **诊断入口提前注册**（模块加载即注册，不依赖任何事件）：`/ftt`、**新增 `/ftt-panel`**、`/ftt-analyze`、`/ftt-import`
+   与 `window.FTT`（新增 `FTT.panelInfo()` / `FTT.menuInfo()` / `FTT.forceMount()`）。
+4. **可见性兜底**：向扩展魔杖菜单（`#extensionsMenu`）插入「FTT记忆组件」入口，点击即强制挂载并给结果提示。
+5. 面板状态块新增「面板挂载：已挂载 → #容器 / 未挂载（原因）」诊断行；`/ftt` 状态新增「装配：已初始化/触发链/面板/菜单入口」行。
+
+**验证**：新增 `tests/unit/bootstrap.test.js`（8 项）——**全程不发任何事件**仍完成装配与挂载、
+容器回退、无容器时的可诊断与自愈、无事件源宿主的 `ensureReady`、菜单入口、teardown 后恢复；
+冒烟新增 L1–L4（触发来源、`/ftt-panel`、状态块诊断行、菜单入口）。门禁：单元 **23 文件 / 300 断言**、冒烟 **52 项** 全绿。
+
 ## v2.0.0（2026-09-24）· 首个可用版本
 
 > 本版本为 **P0–P6 全阶段交付**：可安装骨架 → 内核平移（13 份黄金样本，oracle = 真实 V1 插件）→

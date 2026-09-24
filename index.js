@@ -9,7 +9,8 @@ import { bindCoreEvents, eventTypeAvailability } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
 import { clearInject, injectAvailable, pushMemoryInject, pushStats } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
-import { mountSettingsPanel, unmountSettingsPanel } from './ui/settings-panel.js';
+import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
+import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
 import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
@@ -41,6 +42,8 @@ const runtime = {
     cfg: null,
     import: { runs: 0, last: null },
     i18n: { ok: false, locales: [] },
+    // 启动探针：触发来源 / 轮询次数 / 可见性（面板与菜单入口）
+    bootstrap: { triggers: [], pollTries: 0, startedAt: 0, lastError: '' },
     extract: { runs: 0, ok: 0 },
     chat: { messages: 0, lastMessageId: -1, scopeKey: '' },
     lastError: '',
@@ -63,6 +66,7 @@ export function extraForStatus() {
         extract: extractStats(),
         extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
         i18n: i18nStats(),
+        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), ready: runtime.ready }),
         cfg: runtime.cfg,
         inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
@@ -103,11 +107,13 @@ export async function init() {
     try {
         const mounted = await mountSettingsPanel({
             probeMissing: runtime.probe.missing.join('、'),
-            hooks: { extract: runExtract, pending: pendingFloors, importV1: runV1Import, clearInject },
+            hooks: panelHooks(),
             status: panelStatusSnapshot(),
         });
         runtime.settingsVia = mounted.via;
-    } catch (e) { runtime.settingsVia = 'error'; }
+        runtime.bootstrap.panelReason = mounted.ok ? '' : String(mounted.reason || '');
+    } catch (e) { runtime.settingsVia = 'error'; runtime.bootstrap.lastError = String((e && e.message) || e); }
+    try { installMenuEntry({ onClick: forceMountPanel }); } catch (e) { /* 菜单入口失败不影响面板 */ }
     try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
@@ -136,9 +142,7 @@ export async function init() {
             CHAT_CHANGED: onChatChanged,
         });
     } catch (e) { runtime.lastError = String((e && e.message) || e); }
-    try { runtime.slash = registerSlashCommand(extraForStatus, { importV1: runV1Import, extract: runExtract, pending: pendingFloors }); } catch (e) { runtime.slash = false; }
-    try { runtime.macros = registerMacros(extraForStatus); } catch (e) { runtime.macros = false; }
-    try { installDevtools({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo }); } catch (e) { /* 忽略 */ }
+    try { bootstrapDiagnostics(); } catch (e) { /* 诊断入口失败不阻塞 */ }
     // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
     try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;
@@ -201,6 +205,108 @@ function panelStatusSnapshot() {
 }
 
 /**
+ * 诊断入口**提前注册**（模块加载即注册，不依赖 APP_READY）：
+ *   ① `/ftt`、`/ftt-panel`、`/ftt-analyze`、`/ftt-import` 命令与 `{{fttVersion}}`/`{{fttStatus}}` 宏；
+ *   ② `window.FTT` 调试导出（含 `panelInfo()` / `forceMount()`）。
+ * 这样即使初始化没有触发（宿主事件缺失/加载时机不同），用户依然能用命令自查。
+ */
+function bootstrapDiagnostics() {
+    const hooks = { importV1: runV1Import, extract: runExtract, pending: pendingFloors, panel: forceMountPanel };
+    try {
+        if (!runtime.slash) runtime.slash = registerSlashCommand(extraForStatus, hooks);
+    } catch (e) { runtime.slash = false; }
+    try {
+        if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
+    } catch (e) { runtime.macros = false; }
+    try {
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo }));
+    } catch (e) { /* 忽略 */ }
+    return { slash: runtime.slash, macros: runtime.macros };
+}
+
+/** 初始化（幂等 + 去重；被事件/轮询/命令三处触发都只跑一次） */
+let initPromise = null;
+export function ensureReady(reason) {
+    noteTrigger(String(reason || 'manual'));
+    if (runtime.ready) return Promise.resolve({ ok: true, reused: true });
+    if (initPromise) return initPromise;
+    initPromise = Promise.resolve()
+        .then(() => init())
+        .catch((e) => { runtime.bootstrap.lastError = String((e && e.message) || e); return { ok: false, error: runtime.bootstrap.lastError }; })
+        .finally(() => { initPromise = null; });
+    return initPromise;
+}
+
+function noteTrigger(why) {
+    try {
+        if (runtime.bootstrap.triggers.indexOf(why) < 0 && runtime.bootstrap.triggers.length < 24) runtime.bootstrap.triggers.push(why);
+    } catch (e) { /* 忽略 */ }
+}
+
+/**
+ * 可见性探针：**不等单一事件**（不同宿主/原生移植的 APP_READY 时机与是否补发并不一致）。
+ *   立即尝试一次，然后最多 `POLL_MAX` 次、每 `POLL_MS` 毫秒重试，直到「已初始化且面板已挂载」。
+ *   已初始化但面板容器当时不存在（例如设置抽屉尚未建好）时，只重试挂载，不重复整套初始化。
+ */
+const POLL_MAX = 20;
+const POLL_MS = 750;
+let pollTimer = null;
+
+async function probeTick(why) {
+    noteTrigger(why);
+    try {
+        if (!hasHost()) return false;
+        if (!runtime.ready) await ensureReady(why);
+        if (runtime.ready && !panelMountInfo().ok) {
+            try { await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { /* 下一轮再试 */ }
+        }
+        if (runtime.ready && panelMountInfo().ok) { stopReadyProbe(); return true; }
+    } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
+    return false;
+}
+
+export function stopReadyProbe() {
+    if (pollTimer) { try { clearTimeout(pollTimer); } catch (e) { /* 忽略 */ } }
+    pollTimer = null;
+    return true;
+}
+
+function startReadyProbe() {
+    runtime.bootstrap.startedAt = Date.now();
+    void probeTick('load');
+    const loop = () => {
+        if (runtime.bootstrap.pollTries >= POLL_MAX) { pollTimer = null; return; }
+        runtime.bootstrap.pollTries += 1;
+        void probeTick('poll' + runtime.bootstrap.pollTries).then((done) => {
+            if (done || runtime.bootstrap.pollTries >= POLL_MAX) { pollTimer = null; return; }
+            pollTimer = setTimeout(loop, POLL_MS);
+        });
+    };
+    if (pollTimer) return true;
+    pollTimer = setTimeout(loop, POLL_MS);
+    return true;
+}
+
+/** 设置面板/数据台需要的动作钩子（集中一处，供 init 与可见性探针复用） */
+function panelHooks() {
+    return { extract: runExtract, pending: pendingFloors, importV1: runV1Import, clearInject, panelInfo: panelMountInfo };
+}
+
+/**
+ * 强制挂载设置面板并确保菜单入口存在（供 `/ftt-panel`、魔杖菜单与可见性探针使用）。
+ * @returns {Promise<object>} { ok, via, container, reason, menu }
+ */
+export async function forceMountPanel() {
+    let mount = { ok: false, via: 'none', reason: '' };
+    try { mount = await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot(), force: true }); }
+    catch (e) { mount = { ok: false, via: 'error', reason: String((e && e.message) || e) }; }
+    let menu = { ok: false, reason: '' };
+    try { menu = installMenuEntry({ onClick: forceMountPanel }); } catch (e) { menu = { ok: false, reason: String((e && e.message) || e) }; }
+    runtime.bootstrap.lastError = mount.ok ? '' : String(mount.reason || '');
+    return Object.assign({}, mount, { menu, info: panelMountInfo() });
+}
+
+/**
  * 自动提取（P4）：`GENERATION_ENDED` 后分析最后一个未分析楼层。
  * 受 `cfg.autoExtract`（设置面板「自动提取」）与忙碌状态保护；任何失败只记录统计。
  */
@@ -219,6 +325,10 @@ export async function runExtract(opts) {
     runtime.extract = extractStats();
     return r;
 }
+
+/** 面板/菜单挂载诊断（对外再导出，便于控制台与测试直接调用） */
+export { panelMountInfo } from './ui/settings-panel.js';
+export { menuInfo, installMenuEntry } from './ui/menu.js';
 
 /** 待分析楼层清单（命令与调试） */
 export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
@@ -260,6 +370,8 @@ export function teardown() {
     try { clearInject(); } catch (e) { /* noop */ }
     try { unmountSettingsPanel(); } catch (e) { /* noop */ }
     try { uninstallGlobalInterceptor(); } catch (e) { /* noop */ }
+    try { stopReadyProbe(); } catch (e) { /* noop */ }
+    try { uninstallMenuEntry(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
@@ -272,14 +384,30 @@ export function onActivate() {
     installGlobalInterceptor();
 }
 
-/** 异步就绪：真正的初始化放在 APP_READY（不阻塞 ST 就绪） */
-function hookAppReady() {
+/**
+ * 异步就绪入口（**多触发**）：APP_READY / APP_INITIALIZED / DOMContentLoaded / window.load / 轮询 / 命令，
+ * 任一先到即开始初始化；`ensureReady` 去重保证只跑一次。
+ */
+function hookAppReady(why) {
     try {
-        if (!hasHost()) return;
+        if (!hasHost()) return false;
         const snap = buildSnapshot();
         void snap;
-        init().catch(() => { });
-    } catch (e) { /* 忽略 */ }
+        void ensureReady(why || 'APP_READY');
+        return true;
+    } catch (e) { return false; }
+}
+
+/** 文档就绪兜底（部分宿主不补发 APP_READY，或插件加载晚于就绪） */
+function bindDocumentReady() {
+    try {
+        const doc = globalThis.document;
+        const win = globalThis.window;
+        if (doc && doc.readyState && doc.readyState !== 'loading') { void probeTick('dom-ready'); return true; }
+        if (doc && typeof doc.addEventListener === 'function') doc.addEventListener('DOMContentLoaded', () => { void probeTick('DOMContentLoaded'); });
+        if (win && typeof win.addEventListener === 'function') win.addEventListener('load', () => { void probeTick('window.load'); });
+        return true;
+    } catch (e) { return false; }
 }
 
 export async function onInstall() { /* P6：初始化数据容器与版本标记 */ }
@@ -294,6 +422,9 @@ export async function onClean() { teardown(); }
 // 1) 生成前拦截器必须是全局函数（manifest.generate_interceptor 按名字查找）
 installGlobalInterceptor();
 
+// 1b) 诊断入口提前注册（不依赖任何事件）—— 装上了但界面没出现时仍可用 `/ftt`、`/ftt-panel`、`FTT.panelInfo()`
+try { bootstrapDiagnostics(); } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
+
 // 2) 挂 APP_READY（ST 文档：该事件在监听器挂载后若已就绪会自动补发）；解绑句柄进 appOffs
 const appOffs = [];
 function bindAppLifecycle() {
@@ -307,8 +438,8 @@ function bindAppLifecycle() {
             es.on(type, fn);
             appOffs.push(() => { try { if (typeof es.removeListener === 'function') es.removeListener(type, fn); else if (typeof es.off === 'function') es.off(type, fn); } catch (e) { /* noop */ } });
         };
-        on(et.APP_READY || 'APP_READY', () => hookAppReady());
-        on(et.APP_INITIALIZED || 'APP_INITIALIZED', () => { /* 预留：UI 注入点 */ });
+        on(et.APP_READY || 'APP_READY', () => hookAppReady('APP_READY'));
+        on(et.APP_INITIALIZED || 'APP_INITIALIZED', () => hookAppReady('APP_INITIALIZED'));
         return true;
     } catch (e) { return false; }
 }
@@ -317,10 +448,16 @@ function unbindAppLifecycle() {
 }
 bindAppLifecycle();
 
+// 3) 可见性探针：多触发 + 有限轮询 —— 宿主事件缺失/时机不符时仍会装配并挂载面板
+bindDocumentReady();
+try { installMenuEntry({ onClick: forceMountPanel }); } catch (e) { /* 忽略 */ }
+startReadyProbe();
+
 // ---------------- 测试与自检用导出 ----------------
 export const __internals = {
     VERSION, DATA_VERSION, MODULE_NAME,
-    init, teardown, runtimeState, extraForStatus,
+    init, ensureReady, teardown, runtimeState, extraForStatus,
+    forceMountPanel, panelMountInfo, menuInfo, startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,
 };

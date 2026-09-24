@@ -50,7 +50,7 @@ const uninstallFetch = installGlobalFetch((url) => {
 });
 
 const host = makeHost({ templateHtml });
-const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo',
+const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo',
     'ftt_v2_cfg_injp', 'ftt_v2_cfg_budget', 'ftt_v2_cfg_maxatoms', 'ftt_v2_cfg_maxmems', 'ftt_v2_cfg_autoext',
     'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply',
     'ftt_v2_console', 'ftt_v2_console_refresh']);
@@ -66,8 +66,10 @@ const st = entry.runtimeState();
 assert('B2 APP_READY 触发初始化：ready/探测/事件绑定/面板/命令/宏', (() => {
     const want = ['USER_MESSAGE_RENDERED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
     const got = (st.bind.bound || []).slice().sort().join(',');
+    // 装配可能由「加载期探针」或「APP_READY」触发（多触发设计）；两者都算通过
+    const viaOk = st.settingsVia === 'template' || st.settingsVia === 'already';
     return st.ready === true && st.probe.ok === true && got === want.slice().sort().join(',') && st.bind.missing.length === 0
-        && st.settingsVia === 'template' && st.slash === true && st.macros === true;
+        && viaOk && st.slash === true && st.macros === true;
 })(), st);
 
 assert('B2b P2 接线：记忆容器已载入内核（本机缓冲/服务端文件/空容器三选一）且聊天视图已注入', (() => {
@@ -519,6 +521,33 @@ assert('K3 更新端点与设置面板都用「运行时解析的扩展目录名
         && pathsMod.folderFromUrl('http://x/scripts/extensions/third-party/renamed/host/paths.js') === 'third-party/renamed'
         && calledNames > 0;
 })(), (() => { try { return JSON.stringify(pathsMod.folderInfo()); } catch (e) { return String(e.message); } })());
+
+// ---------- L 可见性（用户报「装上了但看不到面板」的防护） ----------
+assert('L1 装配触发来源可查：加载期探针已在无事件依赖下完成装配与挂载', (() => {
+    const b = entry.runtimeState().bootstrap;
+    const panel = entry.panelMountInfo();
+    return Array.isArray(b.triggers) && b.triggers.length >= 1
+        && panel.mounted === true && panel.ok === true && String(panel.container) === 'extensions_settings2'
+        && String(doc._els.extensions_settings2.html).indexOf('ftt_v2_settings') >= 0;
+})(), (() => { try { return JSON.stringify({ t: entry.runtimeState().bootstrap.triggers, p: entry.panelMountInfo().container }); } catch (e) { return String(e.message); } })());
+
+assert('L2 /ftt-panel 命令存在且报告面板/候选容器/菜单与「在扩展设置抽屉」提示', (async () => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-panel')[0];
+    if (!cmd) return false;
+    const t = String(await cmd.callback({}, ''));
+    return t.indexOf('面板挂载') >= 0 && t.indexOf('候选容器') >= 0 && t.indexOf('菜单入口') >= 0 && t.indexOf('扩展设置') >= 0;
+})(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-panel')[0]);
+
+assert('L3 面板状态块含挂载诊断行（用户可在面板里看到「面板挂载：已挂载 → #容器」）', (() => {
+    const txt = panelMod.refreshPanelStatus();
+    return String(txt).indexOf('面板挂载：') >= 0 && String(txt).indexOf('已挂载') >= 0;
+})(), String(panelMod.refreshPanelStatus()).split('\n').slice(-1)[0]);
+
+assert('L4 魔杖菜单入口已插入 #extensionsMenu（面板容器异常时的可见兜底）', (() => {
+    const html = String((doc._els.extensionsMenu || {}).html || '');
+    const info = globalThis.FTT && typeof globalThis.FTT.menuInfo === 'function' ? globalThis.FTT.menuInfo() : null;
+    return html.indexOf('ftt_v2_menu_btn') >= 0 && !!info && info.menuFound === true;
+})(), (() => { try { return JSON.stringify(globalThis.FTT.menuInfo()); } catch (e) { return String(e.message); } })());
 
 endpointDown = false;
 uninstallFetch();
