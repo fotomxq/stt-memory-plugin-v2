@@ -21,6 +21,7 @@ import { importV1Data } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats } from './host/extract.js';
 import { listUnprocessedFloors } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
+import { readInject } from './host/inject.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
@@ -95,7 +96,11 @@ export async function init() {
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try {
-        const mounted = await mountSettingsPanel({ probeMissing: runtime.probe.missing.join('、') });
+        const mounted = await mountSettingsPanel({
+            probeMissing: runtime.probe.missing.join('、'),
+            hooks: { extract: runExtract, pending: pendingFloors, importV1: runV1Import, clearInject },
+            status: panelStatusSnapshot(),
+        });
         runtime.settingsVia = mounted.via;
     } catch (e) { runtime.settingsVia = 'error'; }
     try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
@@ -180,6 +185,14 @@ export async function runV1Import(opts) {
     runtime.importSummary = (res.dryRun ? '干跑 ' : '已写入 ') + (res.via ? res.via + '/' + res.name : '无源数据')
         + '：新增 ' + t.add + ' · 已存在 ' + t.exist + ' · 冲突 ' + t.conflict;
     return res;
+}
+
+/** 面板只读状态快照（作用域 / 注入字数 / 提取统计 / 待分析 / 存储来源） */
+function panelStatusSnapshot() {
+    let injectChars = 0, pending = null;
+    try { injectChars = readInject().length; } catch (e) { /* 忽略 */ }
+    try { pending = pendingFloors({}).length; } catch (e) { /* 忽略 */ }
+    return { scope: (runtime.store && runtime.store.scope) || '', injectChars, pending, extract: extractStats(), store: runtime.store };
 }
 
 /**
