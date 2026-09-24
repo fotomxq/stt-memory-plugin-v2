@@ -48,6 +48,10 @@ export function installDevtools(hooks) {
             // P2：V1 数据导入（默认干跑；apply:true 才写入）
             importV1: (opts) => (hooks && typeof hooks.importV1 === 'function' ? hooks.importV1(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             importStatus: () => (hooks && typeof hooks.importStatus === 'function' ? hooks.importStatus() : null),
+            // P4：提取（AI 摘要）入口
+            analyze: (opts) => (hooks && typeof hooks.extract === 'function' ? hooks.extract(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            pendingFloors: (opts) => (hooks && typeof hooks.pendingFloors === 'function' ? hooks.pendingFloors(opts || {}) : []),
+            extractStatus: () => (hooks && typeof hooks.extractStatus === 'function' ? hooks.extractStatus() : null),
         });
         return true;
     } catch (e) {
