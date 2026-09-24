@@ -13,6 +13,7 @@ import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/r
 import { buildSummaryPrompt } from '../core/prompt.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
+import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
 import { rawGenerate, generationAvailability } from './generation.js';
 import {
     floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
@@ -93,9 +94,11 @@ export async function analyzeFloor(floorId, opts) {
         const delta = extractJsonObject(resp.text);
         if (!delta) {
             extractState.fail += 1; extractState.lastReason = 'no-json';
+            try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
             return { ok: false, reason: 'no-json', chars: String(resp.text || '').length };
         }
         const mr = mergeDelta(delta, { start: Number(floorId), end: Number(floorId) });
+        try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) { extractState.fail += 1; extractState.lastReason = 'merge-fail'; return { ok: false, reason: 'merge-fail' }; }
         recordProcessedFloors(Number(floorId), Number(floorId));
         const ms = Date.now() - t0;
@@ -156,8 +159,12 @@ export async function analyzeSegment(start, end, opts) {
         const resp = await gen(args);
         if (!resp || resp.ok === false) return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
         const delta = extractJsonObject(resp.text);
-        if (!delta) return { ok: false, reason: 'no-json', chars: String(resp.text || '').length, floorStart: s0, floorEnd: e0 };
+        if (!delta) {
+            try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
+            return { ok: false, reason: 'no-json', chars: String(resp.text || '').length, floorStart: s0, floorEnd: e0 };
+        }
         const mr = mergeDelta(delta, { start: s0, end: e0 });
+        try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
         // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
         recordProcessedFloors(s0, e0);

@@ -15,14 +15,17 @@
 //   同时保留 V1 的 `repairAutoAi`（关闭 = 只做机械清理）语义：该开关关闭时，V1 的行为正是本批所交付的范围。
 // 一致性由 tests/unit/repair-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
-import { state, cfg, saveState, notifyHooks, dbgLog, getLastMessageId } from './model/runtime.js';
+import { state, cfg, saveState, notifyHooks, dbgLog, getLastMessageId, getStoryNow, timerHooks } from './model/runtime.js';
 import { tombMany } from './merge.js';
 import { contentDedupeArray } from './migrate.js';
 import {
-    repairNormText, repairKeyText, repairClampNum, scenesUnionMergeAll, statesSubjectUnionMerge,
+    repairNormText, repairKeyText, repairClampNum, repairSimilarity, scenesUnionMergeAll, statesSubjectUnionMerge,
     runStateDecay, runParallelDecay, applyStateBounds, enforceDimCaps,
 } from './ingest.js';
 import { runMemoryForget, sweepLowUseForget } from './forget.js';
+import { extractJsonObject } from './util.js';
+import { aiCallText, aiBusy } from './ai-hooks.js';
+import { PROMPT_TEMPLATES_V2 } from './config.js';
 
 // ---------- 注入钩子（宿主接线：楼层正文哈希） ----------
 // 内核不得直接读宿主聊天（`check-core-purity`）：楼层面板哈希经钩子注入，默认返回空串
@@ -362,7 +365,365 @@ async function runRepairMech(opts) {
     return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, report, fixed, ms: Date.now() - t0 };
 }
 
+// ==================== 第 2 段：候选筛选（客观缺陷 + 标签组相关性 + 按比例抽查轮询） ====================
+/** 修订允许写入的字段（按维度；标题类字段各维度通用）—— V1 `REPAIR_FIELD_KEYS` */
+const REPAIR_FIELD_KEYS = { '内容': 'main', '值': 'main', '说明': 'main', '描述': 'main', '标题': 'title', '标签': 'tags' };
+/** 单维度两两比较规模上限与超规模时的随机样本数（V1 常量） */
+const REPAIR_CORR_MAX_N = 400;
+const REPAIR_CORR_SAMPLE = 120;
+/** 修复日志上限（V1 `REPAIR_LOG_MAX`） */
+const REPAIR_LOG_MAX = 5;
+
+function repairRand(n) { try { return Math.floor(Math.random() * Math.max(1, n)); } catch (e) { return 0; } }
+/** 标签集合（去 # 前缀、小写、去重） */
+function repairTagSetOf(e) {
+    const t = Array.isArray(e && e.tags) ? e.tags : [];
+    const out = [];
+    for (const x of t) {
+        const k = repairNormText(x).replace(/^#/, '').toLowerCase();
+        if (k && out.indexOf(k) < 0) out.push(k);
+    }
+    return out;
+}
+/** 标签组 Jaccard 相似度 */
+function repairJaccard(a, b) {
+    if (!a || !b || !a.length || !b.length) return 0;
+    let hit = 0;
+    for (const x of a) if (b.indexOf(x) >= 0) hit++;
+    return hit / (a.length + b.length - hit);
+}
+/** 同维度相关性：每条 = 与同维度其他条目的最大相似度（0~1）+ 判定基数（tags/text） */
+function repairCorrelationMap(dim, arr) {
+    const n = arr.length;
+    const spec = REPAIR_DIM_SPEC[dim] || {};
+    const tagSets = arr.map(e => repairTagSetOf(e));
+    const texts = arr.map(e => repairNormText(spec.get ? spec.get(e) : ''));
+    const tagRich = tagSets.filter(s => s.length >= 2).length >= Math.max(2, Math.floor(n * 0.3));
+    const sims = new Array(n).fill(0);
+    const basis = new Array(n).fill(tagRich ? 'tags' : 'text');
+    const full = n <= REPAIR_CORR_MAX_N;
+    for (let i = 0; i < n; i++) {
+        const useTags = tagRich && tagSets[i].length >= 2;
+        const lim = full ? n : Math.min(n, REPAIR_CORR_SAMPLE);
+        let best = 0;
+        for (let k = 0; k < lim; k++) {
+            const j = full ? k : repairRand(n);
+            if (j === i) continue;
+            const v = useTags ? repairJaccard(tagSets[i], tagSets[j]) : repairSimilarity(texts[i], texts[j]);
+            if (v > best) best = v;
+        }
+        sims[i] = Number(best.toFixed(3));
+        basis[i] = useTags ? 'tags' : 'text';
+    }
+    return { sims, basis, tagRich, approx: !full };
+}
+/** 客观缺陷（与相关性无关，一律列入）：垃圾/超字数/模糊措辞/裸问句/日期与标签格式 */
+function repairDefectOf(dim, e) {
+    const spec = REPAIR_DIM_SPEC[dim] || {};
+    const text = repairNormText(spec.get ? spec.get(e) : '');
+    const tags = Array.isArray(e && e.tags) ? e.tags : [];
+    const date = String((e && e.date) || '').trim();
+    if (repairGarbageOf(dim, e)) return { rank: 0, label: '空占位/无意义文本' };
+    if (text.length > spec.target) return { rank: 2, label: `超出该维度目标字数（≤${spec.target} 字，现 ${text.length} 字）` };
+    const bad = repairBannedOf(text);
+    if (bad.length) return { rank: 3, label: `含模糊措辞（${bad.slice(0, 3).join('/')}）` };
+    if ((dim === 'plans' || dim === 'suspense') && /[？?]\s*$/.test(text)) return { rank: 4, label: '计划/悬念写成裸问句（需含主体 + 事实锚点）' };
+    if (date && !/^-?\d{1,4}-\d{2}-\d{2}$/.test(date)) return { rank: 5, label: `日期格式不合规（应为 YYYY-MM-DD 或公元前 -YYYY-MM-DD，现「${date.slice(0, 16)}」）` };
+    if (spec.taggable && (tags.length < 3 || tags.length > 5)) return { rank: 5, label: `标签数量不合规（需 3-5 个，现 ${tags.length} 个）` };
+    return null;
+}
+/**
+ * 候选筛选（V1 `repairCollectCandidates`）：客观缺陷一律列入 → 高相关优先核对 → 中间带按比例抽查（轮询游标 + 随机步长）
+ *   → 候选不足时用中间带按相关性补足（绝不用低相关孤例凑数）。
+ * @param {number} limit 本轮上限（`cfg.repairMaxItems`）
+ * @param {object} [stat] 统计出参（total/defects/corrHigh/sampled/topped/corrLowSkipped/cursors）
+ */
+function repairCollectCandidates(limit, stat) {
+    const max = Math.max(1, Number(limit) || Number(cfg && cfg.repairMaxItems) || 20);
+    const hi = repairClampNum(cfg && cfg.repairTagSimHigh, 0.05, 0.95, 0.5);
+    const lo = repairClampNum(cfg && cfg.repairTagSimLow, 0, Math.max(0.05, hi - 0.05), 0.15);
+    const ratio = repairClampNum(cfg && cfg.repairSampleRatio, 0.02, 1, 0.2);
+    const minC = Math.max(1, Number((cfg && cfg.repairMinCandidates)) || 5);
+    const st = Object.assign({ total: 0, corrHigh: 0, corrLowSkipped: 0, sampled: 0, defects: 0, topped: 0, cursors: {} }, stat || {});
+    const cands = [];
+    try {
+        const cursors = Object.assign({}, (state.repairCursor && typeof state.repairCursor === 'object') ? state.repairCursor : {});
+        for (const dim of Object.keys(REPAIR_DIM_SPEC)) {
+            const spec = REPAIR_DIM_SPEC[dim];
+            const arr = state[dim];
+            if (!Array.isArray(arr) || !arr.length) continue;
+            st.total += arr.length;
+            const corr = repairCorrelationMap(dim, arr);
+            const rows = [];
+            arr.forEach((e, i) => {
+                if (!e) return;
+                const text = repairNormText(spec.get(e));
+                const defect = repairDefectOf(dim, e);
+                const sim = Number(corr.sims[i]) || 0;
+                rows.push({ dim, dimLabel: spec.label, dimKey: dim, i, id: e.id, field: spec.field, text, title: repairNormText(e.title || e.name || ''), target: spec.target, tags: Array.isArray(e.tags) ? e.tags : [], sim, basis: corr.basis[i], defect });
+            });
+            const defects = rows.filter(r => r.defect);
+            st.defects += defects.length;
+            const highs = rows.filter(r => !r.defect && r.sim >= hi);
+            st.corrHigh += highs.length;
+            const middle = rows.filter(r => !r.defect && r.sim > lo && r.sim < hi);
+            const lowRows = rows.filter(r => !r.defect && r.sim <= lo);
+            st.corrLowSkipped += lowRows.length;
+            let sampledRows = [];
+            if (middle.length) {
+                const sampleN = Math.max(1, Math.round(middle.length * ratio));
+                const cur = Math.abs(Number(cursors[dim]) || 0) % middle.length;
+                const stride = 1 + repairRand(Math.max(1, Math.floor(middle.length / 3)));
+                const chosen = new Set();
+                for (let k = 0; k < sampleN; k++) chosen.add((cur + k * stride) % middle.length);
+                sampledRows = Array.from(chosen).map(idx => middle[idx]).filter(Boolean);
+                cursors[dim] = (cur + sampleN * stride) % middle.length;
+                st.sampled += sampledRows.length;
+            }
+            for (const r of defects) cands.push(Object.assign({}, r, { why: '缺陷', rank: r.defect.rank, label: r.defect.label }));
+            for (const r of highs) cands.push(Object.assign({}, r, {
+                why: '高相关', rank: 1,
+                label: `与同维度条目高度相关（${r.basis === 'tags' ? '标签组' : '正文'}相似度 ${r.sim.toFixed(2)}）→ 重点核对是否重复`,
+            }));
+            for (const r of sampledRows) cands.push(Object.assign({}, r, {
+                why: '抽查', rank: 6,
+                label: `按比例抽查核对（相似度 ${r.sim.toFixed(2)}${r.basis === 'tags' ? '·标签组' : '·正文'}）`,
+            }));
+            const topUpTarget = Math.max(1, Math.min(minC, arr.length));
+            if (arr.length >= Math.max(3, minC) && cands.filter(c => c.dimKey === dim).length < topUpTarget) {
+                const rest = middle.filter(r => sampledRows.indexOf(r) < 0 && highs.indexOf(r) < 0).sort((a, b) => b.sim - a.sim);
+                for (const r of rest) {
+                    if (cands.filter(c => c.dimKey === dim).length >= topUpTarget) break;
+                    cands.push(Object.assign({}, r, { why: '补足', rank: 6, label: `补足候选（相似度 ${r.sim.toFixed(2)}）` }));
+                    st.topped++;
+                }
+            }
+        }
+        cands.sort((a, b) => (a.rank - b.rank) || (b.sim - a.sim) || (String(b.text).length - String(a.text).length));
+        const out = cands.slice(0, max);
+        out.forEach((c, i) => { c.n = i + 1; });
+        st.cursors = cursors;
+        try { state.repairCursor = cursors; } catch (e) { /* 忽略 */ }
+        if (stat && typeof stat === 'object') Object.assign(stat, st);
+        return out;
+    } catch (e) { return []; }
+}
+
+// ==================== 第 3 段：窄契约 AI 修订 ====================
+/** 窄契约提示词（V1 `buildRepairPrompt`）：只含候选清单，不含全库与整段正文 */
+function buildRepairPrompt(candsIn) {
+    const cands = Array.isArray(candsIn) ? candsIn : repairCollectCandidates(cfg && cfg.repairMaxItems);
+    if (!cands.length) return null;
+    const pt = cfg.promptTemplates || {};
+    const guide = String(pt.repair || (PROMPT_TEMPLATES_V2 && PROMPT_TEMPLATES_V2.repair) || '').trim();
+    const lines = cands.map(c => `#${c.n} ｜ ${c.dimLabel} ｜ 字段「${c.field}」${c.title ? ` ｜ 标题「${c.title}」` : ''} ｜ 目标 ≤${c.target} 字 ｜ 相关度 ${(Number(c.sim) || 0).toFixed(2)} ｜ 来源：${c.why || '抽查'} ｜ 问题：${c.label}\n   现有文本：${String(c.text).slice(0, 400)}`);
+    const storyNote = getStoryNow() ? `当前剧情日期：${getStoryNow()}。` : '';
+    return [
+        { role: 'system', content: `${guide}\n只输出 JSON，不要解释文字。` },
+        { role: 'user', content: `【待修订清单（本次唯一工作对象，共 ${cands.length} 条；「相关度」= 与同维度其他条目的标签组/正文相似度，越高越可能重复）】${storyNote}\n${lines.join('\n')}\n\n输出：{"修订":[{"编号":1,"字段":"内容","值":"改写后的完整文本"}],"删除":[2,5]}（只输出需要改动的编号；没有需要改的就输出 {"修订":[],"删除":[]}）。` },
+    ];
+}
+/** 按编号精确应用（V1 `repairApplyAiResult`）：禁止新增；逐条校验维度/字段/字数/闭集 */
+function repairApplyAiResult(delta, cands) {
+    const out = { revised: 0, deleted: 0, skipped: 0 };
+    try {
+        const list = Array.isArray(cands) ? cands : [];
+        if (!delta || typeof delta !== 'object') return out;
+        const byN = new Map();
+        list.forEach(c => byN.set(Number(c.n), c));
+        const hardCap = (dimKey) => {
+            const spec = REPAIR_DIM_SPEC[dimKey];
+            const k = spec && spec.hard;
+            const v = Number((cfg && cfg.dimCharLimits && cfg.dimCharLimits[k]) || 0);
+            return v > 0 ? v : (spec ? spec.target : 300);
+        };
+        const findEntry = (dim, id) => {
+            const arr = state[dim];
+            if (!Array.isArray(arr)) return null;
+            return arr.find(e => e && String(e.id) === String(id)) || null;
+        };
+        const delIds = [];
+        const delRaw = Array.isArray(delta['删除']) ? delta['删除'] : (Array.isArray(delta.remove) ? delta.remove : []);
+        for (const raw of delRaw) {
+            const n = Number(String(raw).replace(/[^0-9]/g, ''));
+            const c = byN.get(n);
+            if (!c) { out.skipped++; continue; }
+            const ent = findEntry(c.dim, c.id);
+            if (!ent) { out.skipped++; continue; }
+            delIds.push({ dim: c.dim, id: c.id });
+        }
+        if (delIds.length) {
+            for (const d of delIds) {
+                try { tombMany(d.dim, [d.id]); } catch (e) { /* 忽略 */ }
+                const arr = state[d.dim] || [];
+                state[d.dim] = arr.filter(e => !(e && String(e.id) === String(d.id)));
+                out.deleted++;
+            }
+        }
+        const revRaw = Array.isArray(delta['修订']) ? delta['修订'] : (Array.isArray(delta.revise) ? delta.revise : []);
+        for (const r of revRaw) {
+            try {
+                if (!r || typeof r !== 'object') { out.skipped++; continue; }
+                const n = Number(String(r['编号'] !== undefined ? r['编号'] : r.n).replace(/[^0-9]/g, ''));
+                const c = byN.get(n);
+                if (!c) { out.skipped++; continue; }
+                const field = String(r['字段'] !== undefined ? r['字段'] : (r.field || c.field)).trim();
+                const kind = REPAIR_FIELD_KEYS[field];
+                if (!kind) { out.skipped++; continue; }
+                const ent = findEntry(c.dim, c.id);
+                if (!ent) { out.skipped++; continue; }
+                const spec = REPAIR_DIM_SPEC[c.dim];
+                if (!spec) { out.skipped++; continue; }
+                if (kind === 'main') {
+                    let v = repairNormText(r['值'] !== undefined ? r['值'] : r.value);
+                    if (!v) { out.skipped++; continue; }
+                    const cap = hardCap(c.dim);
+                    if (v.length > cap) v = v.slice(0, cap);
+                    if (repairIsGarbage(v, 4)) { out.skipped++; continue; }
+                    spec.set(ent, v);
+                    out.revised++;
+                } else if (kind === 'title') {
+                    const v = repairNormText(r['值'] !== undefined ? r['值'] : r.value).slice(0, 40);
+                    if (!v) { out.skipped++; continue; }
+                    ent.title = v;
+                    out.revised++;
+                } else if (kind === 'tags') {
+                    let arr = r['值'] !== undefined ? r['值'] : r.value;
+                    if (typeof arr === 'string') arr = arr.split(/[，,、#\s]+/);
+                    if (!Array.isArray(arr)) { out.skipped++; continue; }
+                    const tags = arr.map(x => repairNormText(x).replace(/^#/, '')).filter(Boolean).slice(0, 5);
+                    if (tags.length < 3) { out.skipped++; continue; }
+                    ent.tags = tags;
+                    ent.keywords = [];
+                    out.revised++;
+                }
+            } catch (e) { out.skipped++; }
+        }
+        return out;
+    } catch (e) { return out; }
+}
+
+/**
+ * 三段式修复（V1 `runAutoRepair` 的精简编排）：① 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订。
+ * @param {object} [opts] silent / cause / aiText（显式 AI 返回，测试用）/ force（跳过频率与上限闸门）
+ */
+async function runRepair(opts) {
+    const o = opts || {};
+    const isAuto = o.silent === true && !!o.cause;
+    if (aiBusy()) {
+        if (o.silent !== true || o.cause) notify('warning', isAuto ? '自动修复被占用，已跳过' : '修复进行中', '已有修复/摘要/同步任务在运行，请稍候。');
+        return { made: 0, blocked: true };
+    }
+    if (isAuto && !o.force && !autoRepairOpDue()) return { made: 0, blocked: true, reason: 'auto-repair-frequency' };
+    if (o.force !== true) {
+        const tk = o.silent === true ? autoRepairTake(false) : autoRepairTake(true);
+        if (!tk.allowed) {
+            if (isAuto) notify('warning', '自动修复已达上限，本次跳过', `同楼层内容未变已自动修复 ${tk.n}/${tk.max} 次；内容变化或手动修复后重置。`);
+            return { made: 0, blocked: true, reason: 'auto-repair-limit(' + tk.n + '/' + tk.max + ')' };
+        }
+    }
+    const t0 = Date.now();
+    // ① 机械清理
+    const mech = await runRepairMech({ silent: true, cause: o.cause });
+    const stage1 = mech.stage1;
+    // ② 候选筛选
+    let cands = [];
+    const pickStat = {};
+    try { cands = repairCollectCandidates(cfg && cfg.repairMaxItems, pickStat); } catch (e) { /* 忽略 */ }
+    try {
+        dbgLog('修复', {
+            action: '修复候选筛选（v1.138 相关性+抽查）',
+            条目总数: pickStat.total || 0, 客观缺陷: pickStat.defects || 0, 高相关: pickStat.corrHigh || 0,
+            抽查: pickStat.sampled || 0, 补足: pickStat.topped || 0, 低相关跳过: pickStat.corrLowSkipped || 0,
+            进入候选: cands.length,
+        });
+    } catch (e) { /* 忽略 */ }
+    // ③ AI 窄契约修订（最多 1 次请求；自动模式可用 repairAutoAi 关闭）
+    const ai = { revised: 0, deleted: 0, skipped: 0, used: false, error: '' };
+    const aiAllowed = cands.length > 0 && (!isAuto || cfg.repairAutoAi !== false);
+    if (aiAllowed) {
+        try {
+            const prompt = buildRepairPrompt(cands);
+            if (prompt) {
+                ai.used = true;
+                const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '修复'));
+                const delta = resp ? extractJsonObject(resp) : null;
+                if (delta) {
+                    const r = repairApplyAiResult(delta, cands);
+                    ai.revised = r.revised; ai.deleted = r.deleted; ai.skipped = r.skipped;
+                    if (ai.revised > 0 || ai.deleted > 0) { try { saveState(); } catch (e) { /* 忽略 */ } }
+                } else { ai.error = 'AI 未返回有效 JSON'; }
+            }
+        } catch (e) {
+            ai.error = String((e && e.message) || e).slice(0, 80);
+        }
+    }
+    const made = stage1.merged + stage1.deleted + ai.revised + ai.deleted;
+    const ms = Date.now() - t0;
+    try {
+        repairLogPush({
+            auto: isAuto, cause: String(o.cause || ''), merged: stage1.merged, deleted: stage1.deleted,
+            revised: ai.revised, aiDeleted: ai.deleted, candidates: cands.length, aiUsed: ai.used, skipped: ai.skipped, ms,
+            total: pickStat.total || 0, defects: pickStat.defects || 0, corrHigh: pickStat.corrHigh || 0,
+            sampled: pickStat.sampled || 0, topped: pickStat.topped || 0, lowSkipped: pickStat.corrLowSkipped || 0,
+            notes: stage1.notes.slice(0, 8),
+        });
+    } catch (e) { /* 忽略 */ }
+    try { saveState(); } catch (e) { /* 忽略 */ }
+    const report = repairReport({
+        before: mech.before, after: mech.after,
+        checked: cands.length, groups: pickStat.defects || 0, groupsTotal: pickStat.total || 0, defects: pickStat.defects || 0,
+        submittedTags: repairBatchTags(cands), merged: stage1.merged, deleted: stage1.deleted,
+        revised: ai.revised, skipped: ai.skipped, swept: Number((mech.sweep || {}).swept) || 0,
+        extra: stage1.notes.slice(0, 6).join(' · '),
+    });
+    try {
+        dbgLog('修复', {
+            action: '数据修复完成（v1.137 三段式 · v1.138 相关性抽查）', auto: isAuto, cause: String(o.cause || '').slice(0, 40),
+            merged: stage1.merged, deleted: stage1.deleted, revised: ai.revised, aiDeleted: ai.deleted,
+            candidates: cands.length, aiUsed: ai.used, aiSkipped: ai.skipped, ms,
+            total: pickStat.total || 0, defects: pickStat.defects || 0, corrHigh: pickStat.corrHigh || 0,
+            sampled: pickStat.sampled || 0, topped: pickStat.topped || 0,
+            notes: stage1.notes.slice(0, 10), aiError: ai.error || undefined,
+            entries: repairTotalCount(),
+        });
+    } catch (e) { /* 忽略 */ }
+    if (o.silent !== true) {
+        notify(ai.revised || ai.deleted ? 'success' : 'info', isAuto ? '自动修复完成' : '修复完成',
+            `机械清理：合并 ${stage1.merged} · 清理 ${stage1.deleted} · 遗忘清扫 ${Number((mech.sweep || {}).swept) || 0} · 条数裁剪 ${Number((mech.caps || {}).cut) || 0}；`
+            + `候选 ${cands.length} 条（缺陷 ${pickStat.defects || 0} · 高相关 ${pickStat.corrHigh || 0} · 抽查 ${pickStat.sampled || 0} · 补足 ${pickStat.topped || 0}）；`
+            + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
+            + `；${report}`);
+    }
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used };
+}
+/** 提取合并失败后延迟自动修复一次（V1 `scheduleAutoRepairOnMergeFail`；默认 15s，可用 `cfg.repairFailDelaySec` 调） */
+let autoRepairFailTimer = null;
+function scheduleAutoRepairOnMergeFail() {
+    try {
+        if (!cfg || cfg.autoRepairOnMergeFail !== true) return false;
+        if (aiBusy()) return false;
+        if (autoRepairFailTimer) return false;
+        const delayMs = Math.max(1, Number(cfg.repairFailDelaySec) || 15) * 1000;
+        autoRepairFailTimer = timerHooks.set(() => {
+            autoRepairFailTimer = null;
+            try { dbgLog('修复', { action: '提取失败自动修复触发', delaySec: Math.round(delayMs / 1000) }); } catch (e) { /* 忽略 */ }
+            try { void runRepair({ silent: true, cause: '提取合并失败后自动触发' }); } catch (e) { /* 忽略 */ }
+        }, delayMs);
+        return true;
+    } catch (e) { return false; }
+}
+/** 清空修复域定时器（卸载/测试隔离） */
+function cancelRepairTimers() {
+    try { if (autoRepairFailTimer) { timerHooks.clear(autoRepairFailTimer); autoRepairFailTimer = null; } } catch (e) { /* 忽略 */ }
+    return true;
+}
+
 export {
+    REPAIR_FIELD_KEYS, REPAIR_CORR_MAX_N, REPAIR_CORR_SAMPLE, REPAIR_LOG_MAX,
+    repairRand, repairTagSetOf, repairJaccard, repairCorrelationMap, repairDefectOf,
+    repairCollectCandidates, buildRepairPrompt, repairApplyAiResult, runRepair,
+    scheduleAutoRepairOnMergeFail, cancelRepairTimers,
     REPAIR_DIM_SPEC, REPAIR_BANNED, REPAIR_PLACEHOLDER, REPAIR_GUARD,
     repairNameKey, repairIsGarbage, repairGarbageOf, repairBannedOf,
     repairMergeDedupe, repairMergeByName, repairDecayPass, repairPruneGarbage,

@@ -38,9 +38,11 @@ import {
     runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
 } from './core/clock-patrol.js';
 import {
-    setRepairHooks, runRepairMech, repairReport, repairLogPush, repairTotalCount,
+    setRepairHooks, runRepairMech, runRepair, repairReport, repairLogPush, repairTotalCount,
     autoRepairTake, autoRepairOpDue, bumpRepairOp, repairIsGarbage, repairBannedOf,
     repairMergeDedupe, repairPruneGarbage, repairDecayPass, latestFloorHash,
+    repairCollectCandidates, buildRepairPrompt, repairApplyAiResult, repairDefectOf,
+    repairCorrelationMap, repairTagSetOf, repairJaccard, scheduleAutoRepairOnMergeFail, cancelRepairTimers,
 } from './core/repair.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
@@ -382,6 +384,16 @@ function bootstrapDiagnostics() {
             repairDecay: () => repairDecayPass(),
             latestFloorHash: () => latestFloorHash(),
             repairLogPush: (rec) => repairLogPush(rec || {}),
+            // B8-6b 修复第 2/3 段（候选筛选 + 窄契约 AI 修订）
+            repair: (opts) => runRepair(opts || {}),
+            repairCandidates: (limit, stat) => repairCollectCandidates(limit, stat || {}),
+            repairPrompt: (cands) => buildRepairPrompt(cands),
+            repairApply: (delta, cands) => repairApplyAiResult(delta, cands),
+            repairDefect: (dim, e) => repairDefectOf(dim, e),
+            repairCorr: (dim, arr) => repairCorrelationMap(dim, arr),
+            repairTags: (entries) => repairTagSetOf(entries),
+            repairJaccard: (a, b) => repairJaccard(a, b),
+            repairFailArmed: () => scheduleAutoRepairOnMergeFail(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
@@ -663,6 +675,7 @@ export function teardown() {
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     try { resetSyncState(); } catch (e) { /* noop */ }
     try { cancelForgetTimers(); } catch (e) { /* noop */ }
+    try { cancelRepairTimers(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
 }

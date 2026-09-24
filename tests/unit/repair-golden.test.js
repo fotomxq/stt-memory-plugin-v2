@@ -190,19 +190,18 @@ await A('U1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴�
     return iSummary >= 0 && iRepair > iSummary && iExtract > iRepair && html.indexOf('🛠 自动修复') >= 0;
 }, '');
 
-await A('U2 面板动作 repair：执行第 1 段并回填「机械清理完成」+ 第 2/3 段未执行的如实说明；手动修复重置上限计数', async () => {
+await A('U2 面板动作 repair：三段式编排（机械清理 → 候选筛选 → AI 修订）；无 AI 可用时如实回报', async () => {
     boot(G.inputs.scenario, { repairAutoAi: true, maxAutoRepairRounds: 2 });
     openPanel('overview');
     setPanelHooks2({});
     setRepairHooks({ floorHash: () => 'hash-X' });
     const r1 = await panelAction('repair', {});
     const st = panelState();
-    const r2 = await panelAction('repair', {});
     const r3 = await panelAction('repair', {});      // 手动路径每次都重置 → 恒放行
-    return r1.ok === true && r1.mech && r1.aiPending === true
-        && String(st.note).indexOf('机械清理完成（零 AI）') >= 0
-        && String(st.note).indexOf('B8-6b') >= 0
-        && r3.gate.allowed === true && J(r1.mech.stage1.merged) === J(G.mechFlow.merged);
+    return r1.ok === true && r1.repair && r1.repair.stage1 && r1.aiPending === undefined
+        && String(st.note).indexOf('自动修复：机械清理') >= 0
+        && String(st.note).indexOf('候选 ') >= 0
+        && r3.repair && J(r1.repair.stage1.merged) === J(G.mechFlow.merged);
 }, '');
 
 un();
