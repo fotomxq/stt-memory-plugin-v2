@@ -15,6 +15,8 @@ import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
 import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../core/sweep.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
+import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
+import { collectAtomHashes } from '../core/merge.js';
 import { scopeId } from '../core/state.js';
 import { stateFileName, uploadStateFile, readStateFile, deleteStateFile } from './user-file.js';
 
@@ -69,6 +71,8 @@ export async function saveStateNow(opts) {
     } catch (e) { kernelWarn('保存：刷新原子哈希失败', e); }
     // ② 删除自动留痕（先于写库：墓碑随本次信封一起持久化）
     try { tombstoneSweep(); } catch (e) { kernelWarn('保存：删除留痕失败', e); }
+    // ②b 快照链维护（V1 `saveState()` 收尾口径）：无原子跳过 / 无快照建根 / 否则调度增量（timerHooks 防抖）
+    try { maintainSnapshots(); } catch (e) { kernelWarn('保存：快照维护失败', e); }
     // ③ 组装信封
     let envelope = null;
     try {
@@ -173,6 +177,22 @@ export function wirePersistHooks() {
         warn: () => undefined,
     });
     return { debounceMs: SAVE_DEBOUNCE_MS, storage: 'localStorage+indexedDB+file' };
+}
+
+/**
+ * 快照链维护（V1 `saveState()` 口径）：
+ *   ① 当前没有任何原子 → 跳过（不建空根）；② 还没有快照 → 建**全量根快照**；③ 已有快照 → 调度**增量快照**（防抖）。
+ * 说明：增量调度经 `timerHooks`（内核默认 no-op → 测试/无宿主环境不会后台跑；宿主可注入真实定时器）。
+ */
+export function maintainSnapshots() {
+    try {
+        const hasAtoms = collectAtomHashes().order.length > 0;
+        if (!hasAtoms) return { skipped: 'no-atoms' };
+        const snaps = (state && Array.isArray(state.snapStore)) ? state.snapStore : [];
+        if (!snaps.length) { const r = snapshotCreateFull(); return { created: r ? 'root' : 'none' }; }
+        scheduleSnapshotIncr();
+        return { scheduled: 'incr' };
+    } catch (e) { return { error: String((e && e.message) || e) }; }
 }
 
 /**

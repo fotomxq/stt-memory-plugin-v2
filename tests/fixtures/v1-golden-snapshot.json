@@ -1,0 +1,70 @@
+{
+  "note": "V1 真实插件快照链（黄金样本 12）：建根 → 增量（新增）→ 增量（删除）→ 结构指纹与还原结果",
+  "atomsInput": [
+    {
+      "id": "a1",
+      "title": "甲",
+      "text": "甲在码头发现木箱，断口整齐（正文足够长）。",
+      "date": "1919-11-29"
+    },
+    {
+      "id": "a2",
+      "title": "乙",
+      "text": "两人在仓库清点货物并记录去向（正文足够长）。",
+      "date": "1919-11-30"
+    }
+  ],
+  "added": {
+    "id": "a3"
+  },
+  "removedId": "a2",
+  "snapStore": [
+    {
+      "kind": "root",
+      "hasBase": false,
+      "atomIds": [
+        "a1",
+        "a2"
+      ],
+      "hashLen": true,
+      "hasHashes": [
+        "a1",
+        "a2"
+      ],
+      "deleted": []
+    },
+    {
+      "kind": "incr",
+      "hasBase": true,
+      "atomIds": [
+        "a3"
+      ],
+      "hashLen": true,
+      "hasHashes": [
+        "a3"
+      ],
+      "deleted": []
+    },
+    {
+      "kind": "incr",
+      "hasBase": true,
+      "atomIds": [],
+      "hashLen": true,
+      "hasHashes": [],
+      "deleted": [
+        "a2"
+      ]
+    }
+  ],
+  "stats": {
+    "total": 3,
+    "root": 1,
+    "incr": 2,
+    "covered": 3,
+    "deleted": 1
+  },
+  "restoredIds": [
+    "a1",
+    "a2"
+  ]
+}

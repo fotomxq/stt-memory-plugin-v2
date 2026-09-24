@@ -3,6 +3,24 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.8.0（2026-09-25）· B7-1 快照链（内核移植 + 界面 + 真实 V1 黄金样本）
+
+**本版（B7-1）**：
+1. **内核逐字移植**（新增 `core/snapshots.js`，259 行取自 V1 `05-记忆状态与存储抽象.js`）：
+   `atomSerialize` / `snapFpFromCurrent` / `snapshotMergeSnap` / `snapshotConsolidate`（多根合并 + 超上限把最早 15 个增量并入根）/
+   `snapshotCreateFull`（无原子不建空根）/ `snapshotCreateIncr`（只记变更 + `deleted` 删除账本）/
+   `snapshotRestore`（时间线并集重建 + **删除账本按序生效**，回滚不误记删除）/ `snapshotClear` / `snapshotStats` / `scheduleSnapshotIncr`（400ms 防抖）；
+   三处适配并在文件头写明：落盘走 `saveState()` 注入钩子、提示走 `notifyHooks`、延迟调度走 `timerHooks`；哈希助手复用 `core/merge.js`；
+2. **保存流水线接线**（V1 `saveState()` 收尾口径）：`store.saveStateNow()` 之后 `maintainSnapshots()` —— 无原子跳过 / 无快照建根 / 否则调度增量；
+3. **界面**（数据管理页「🧬 快照链」）：统计条 + 快照列表（类型·id·时间·条目数·删除账本·基线）+ 立即建根 / 整理 / 清空 / 逐条还原 / 删除；
+   动作名与 V1 一致（`snapCreate`/`snapRestore`/`snapDelete`/`snapConsolidate`/`snapshotClear`）；
+4. **黄金样本 12（oracle = 真实 V1 插件）**：固定序列（建根 → 新增 → 删除）下
+   **快照结构指纹逐项一致**、**还原到根的集合一致**（`["a1","a2"]`）、**统计一致**（`{total:3,root:1,incr:2,covered:3,deleted:1}`）。
+
+**验证**：新增 `tests/unit/snapshot-golden.test.js` **8 项**（指纹一致 / 统计一致 / 还原到根 / 还原到增量不复活已删 / 整理（自带+强制超限）/
+清空与删除不动记忆本体 / 保存流水线接线 / 数据管理页接线）。门禁：单元 **29 文件 / 361 断言**、冒烟 **55 项**、五道门禁全绿；
+文档 `docs/P8h-B7快照链.md`，`docs/P8-功能对齐总表.md` B7 拆为 B7-1 ✅ / B7-2 待做。
+
 ## v2.7.0（2026-09-24）· B6 提示词模板编辑（V1 迁移链 + 分组编辑器）
 
 **本版（B6）**：

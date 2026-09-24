@@ -19,6 +19,7 @@ import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindP
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
 import { promptAction } from './prompts.js';
+import { snapshotAction } from './snapshots.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
@@ -697,6 +698,17 @@ export async function panelAction(action, payload) {
             setNote(a === 'checkMode' ? ('自查口径：' + (cr.useKeywords ? '按最近关键词' : '按本地召回')) : '已按当前数据刷新注入自查预览');
             result = Object.assign(result, cr);
         }
+        else if (a.indexOf('snap') === 0) {
+            const sr = snapshotAction(a, { id: p.id || (p.snapId || ''), snapId: p.snapId });
+            setNote(sr.ok
+                ? (a === 'snapCreate' ? ('已建根快照 ' + String(sr.id || '').slice(0, 16))
+                    : a === 'snapRestore' ? ('已还原到快照（' + (sr.added || 0) + ' 条原子）')
+                        : a === 'snapDelete' ? ('已删除快照 ' + String(sr.deleted || '').slice(0, 16))
+                            : a === 'snapConsolidate' ? ('已整理：并入根 ' + (sr.folded || 0) + ' 个增量（根 ' + (sr.roots || 0) + '）')
+                                : '已清空全部快照（记忆本体未动）')
+                : ('快照操作失败：' + String(sr.reason || '未知')));
+            result = Object.assign(result, sr);
+        }
         else if (a.indexOf('prompt') === 0 || a === 'armorPresetImport') {
             // 提示词模板动作：保存/恢复单条/整组/全部 + 破甲预设导入（textarea 取值）
             const key = String(p.promptKey || p.key || '');
@@ -802,6 +814,10 @@ export function bindOverlay() {
             }
             const msub = tg.dataset ? String(tg.dataset.fttMsub || '') : '';
             if (msub) { void panelAction('msub', { tab: ps.tab, sub: msub }); return; }
+            if (String(act).indexOf('snap') === 0) {
+                void panelAction(act, { snapId: tg.dataset ? tg.dataset.fttSnapId : '' });
+                return;
+            }
             if (String(act).indexOf('prompt') === 0 || act === 'armorPresetImport') {
                 void panelAction(act, {
                     promptKey: tg.dataset ? tg.dataset.fttPromptKey : '',
