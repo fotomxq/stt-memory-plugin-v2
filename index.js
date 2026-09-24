@@ -15,6 +15,11 @@ import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js
 import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
+import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave } from './adapters/store.js';
+import { migrateState } from './core/migrate.js';
+import { emptyState } from './core/state.js';
+import { setLastMessageId } from './core/model/runtime.js';
 
 const runtime = {
     ready: false,
@@ -24,6 +29,8 @@ const runtime = {
     macros: false,
     settingsVia: 'none',
     update: { ran: false, reason: '', summary: null },
+    store: { via: 'none', scope: '', last: null },
+    chat: { messages: 0, lastMessageId: -1, scopeKey: '' },
     lastError: '',
 };
 
@@ -38,8 +45,30 @@ export function extraForStatus() {
         probe: runtime.probe,
         bind: runtime.bind,
         interceptor: interceptorStats(),
+        store: runtime.store,
+        chat: runtime.chat,
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
     };
+}
+
+/**
+ * 载入记忆容器（P2）：聊天注入视图接线 → 持久化钩子接线 → 本机缓冲 → 服务端文件 → 迁移 → 注入内核。
+ * 顺序与 V1 一致；任一步失败都降级（最差回落到空容器），绝不抛出。
+ * @returns {Promise<{via:string, scope:string}>} via = local | file | new
+ */
+export async function loadMemoryState() {
+    let via = 'new';
+    let st = null;
+    try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 聊天视图缺失不阻塞 */ }
+    try { wirePersistHooks(); } catch (e) { /* 忽略 */ }
+    try { st = loadFromLocalStorage(); if (st) via = 'local'; } catch (e) { st = null; }
+    if (!st) { try { st = await loadFromServerFile(); if (st) via = 'file'; } catch (e) { st = null; } }
+    if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
+    if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
+    try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    try { setLastMessageId(runtime.chat.lastMessageId); } catch (e) { /* 忽略 */ }
+    try { runtime.store = Object.assign({ via }, storeStatus()); } catch (e) { runtime.store = { via }; }
+    return { via, scope: runtime.store.scope || '' };
 }
 
 /** 初始化（幂等；任何一步失败都不影响其余步骤与宿主） */
@@ -53,14 +82,28 @@ export async function init() {
         const mounted = await mountSettingsPanel({ probeMissing: runtime.probe.missing.join('、') });
         runtime.settingsVia = mounted.via;
     } catch (e) { runtime.settingsVia = 'error'; }
+    try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try {
-        // P0：事件处理器只做可观测记录；P3 接入提取/注入闭环
-        const onGenEnded = () => { /* P3：runExtract() */ };
-        const onUserRendered = () => { /* P3：按需及时分析 */ };
+        // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
+        const onFloorChanged = () => {
+            try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 忽略 */ }
+        };
+        const onGenEnded = () => {
+            onFloorChanged();
+            try { void saveStateNowQuiet('generation'); } catch (e) { /* P3：提取后保存 */ }
+        };
+        const onUserRendered = () => { onFloorChanged(); };
+        const onChatChanged = () => {
+            clearInject();
+            onFloorChanged();
+            // 切换角色/聊天 → 作用域变化 → 重新载入该作用域容器
+            void loadMemoryState().catch(() => { });
+        };
         runtime.bind = bindCoreEvents({
             GENERATION_ENDED: onGenEnded,
             USER_MESSAGE_RENDERED: onUserRendered,
-            CHAT_CHANGED: () => { clearInject(); },
+            CHARACTER_MESSAGE_RENDERED: onFloorChanged,
+            CHAT_CHANGED: onChatChanged,
         });
     } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { runtime.slash = registerSlashCommand(extraForStatus); } catch (e) { runtime.slash = false; }
@@ -69,7 +112,7 @@ export async function init() {
     // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
     try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;
-    return { ok: true, probe: runtime.probe, bind: runtime.bind, settingsVia: runtime.settingsVia, slash: runtime.slash, macros: runtime.macros };
+    return { ok: true, probe: runtime.probe, bind: runtime.bind, settingsVia: runtime.settingsVia, slash: runtime.slash, macros: runtime.macros, store: runtime.store };
 }
 
 /**
@@ -92,6 +135,11 @@ export async function startupUpdateCheck(opts) {
 /** 手动检查更新（设置面板按钮 / 斜杠命令调用同一入口） */
 export async function checkUpdateNow() {
     return startupUpdateCheck({ manual: true });
+}
+
+/** 静默保存（事件路径用；失败只记录，不影响交互） */
+export function saveStateNowQuiet(reason) {
+    try { return scheduleSave(reason || 'event'); } catch (e) { return false; }
 }
 
 /** 收尾（disable / delete / 重载前） */

@@ -78,6 +78,19 @@
   含**注入体在两个预算下逐字符一致**与约束段逐字符一致。
   **生成器精化**（本轮踩到并修好，写入 docs/P1-内核平移.md §2.12）：① 取标识符前剔除注释与字符串；② 处理函数体内局部名遮蔽；
   ③ 排除对象键与属性访问；④ 移植体**常量先行**避免 `const` TDZ。并借 `warn` 注入钩子发现并补入 `relConceptSuffix`、`clockDateLabel`。
+- **P1 内核平移（批次 7：墓碑清扫与存储信封）+ P2 宿主接线首批（本版新增）**：新增 `core/sweep.js`（160 行：`entryIndexInit` /
+  `entryIndexBuild` / `tombstoneSweep` / 索引与墓碑计量）与 `core/envelope.js`（30 行：`storageEnvelope` / `storageHash` / `storageVerify`），
+  补齐 V1 `saveState()` 流水线中「消失条目写 id + 内容哈希双墓碑」「刷新全部原子 `h`」两段内核逻辑；
+  黄金样本 8（oracle = 真实 V1 插件）：`sweep-envelope-golden.test.js` **8 项断言**（索引基线、墓碑判定与幂等、信封形状与哈希校验、篡改拒绝）。
+  宿主接线：`host/chat.js`（`wireKernelChatHooks`：消息数组 / 最新 AI 正文 / 最后楼层号 / 角色稳定键 → 内核注入视图）、
+  `adapters/store.js`（`saveStateNow` 复刻 V1 六步流水线并写 localStorage / IndexedDB / 服务端文件三级后端，
+  `loadFromLocalStorage` 带哈希校验、`scheduleSave` 防抖、`wirePersistHooks` 接线、`storeStatus` 诊断）、
+  `adapters/user-file.js`（ST 原生 `/api/files/{upload,delete}` + `/user/files/<name>`，命名 `ftt2-state-<slug>.json`，
+  与 V1 的 `ftt-state-*` 并存以便导入器读取）；`tests/unit/store-chat.test.js` **13 项断言**（全部为 await 后真实条件，
+  显式排除恒真假绿写法）。**入口接线**：`index.js` 的 `init()` 在挂面板后执行 `loadMemoryState()`
+  （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
+  `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
+  文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
 - **P1 内核平移（批次 5：迁移与条目层）**：新增 `core/migrate.js`（353 行：`migrateState` 结构健壮性清洗与多版本迁移链、
   `migratePlanSuspV1165`/`migrateRelLinks`、跨端内容去重 `contentPickBest`/`contentDedupeArray`、`recallDateNum`）与
   `core/entries.js`（347 行：`upsertEntry` 写入合并、`deleteEntry` 级联删除与 id 墓碑、`upsertRelLinks`、`sweepOrphanRelLinks`）；

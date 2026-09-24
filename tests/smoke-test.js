@@ -58,8 +58,17 @@ host.emit('APP_READY');
 await new Promise(r => setTimeout(r, 30));
 const st = entry.runtimeState();
 assert('B2 APP_READY 触发初始化：ready/探测/事件绑定/面板/命令/宏', (() => {
-    return st.ready === true && st.probe.ok === true && st.bind.bound.length === 3 && st.bind.missing.length === 0
+    const want = ['USER_MESSAGE_RENDERED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
+    const got = (st.bind.bound || []).slice().sort().join(',');
+    return st.ready === true && st.probe.ok === true && got === want.slice().sort().join(',') && st.bind.missing.length === 0
         && st.settingsVia === 'template' && st.slash === true && st.macros === true;
+})(), st);
+
+assert('B2b P2 接线：记忆容器已载入内核（本机缓冲/服务端文件/空容器三选一）且聊天视图已注入', (() => {
+    return ['local', 'file', 'new'].indexOf(st.store && st.store.via) >= 0
+        && typeof st.store.scope === 'string' && st.store.scope.length > 0
+        && st.chat && st.chat.messages >= 1 && typeof st.chat.lastMessageId === 'number'
+        && st.chat.scopeKey === '角色甲';
 })(), st);
 
 assert('B3 设置面板已挂载到 #extensions_settings2（渲染真实 settings.html 模板）', (() => {

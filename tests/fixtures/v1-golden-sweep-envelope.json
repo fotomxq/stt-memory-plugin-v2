@@ -1,0 +1,198 @@
+{
+  "note": "V1 真实插件在固定输入下的输出（黄金样本 8）：删除自动留痕 / 墓碑应用 / 存储信封",
+  "charId": "not-exported",
+  "inputs": {
+    "ATOMS": [
+      {
+        "id": "a1",
+        "title": "甲",
+        "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+        "date": "1919-11-29",
+        "tags": [
+          "码头"
+        ]
+      },
+      {
+        "id": "a2",
+        "title": "乙",
+        "text": "两人在仓库清点货物并记录转运去向（正文足够长）。",
+        "date": "1919-11-30",
+        "tags": [
+          "仓库"
+        ]
+      },
+      {
+        "id": "a3",
+        "title": "丙",
+        "text": "角色甲独自出城确认下一批抵港时间（正文足够长）。",
+        "date": "1919-12-01",
+        "tags": [
+          "城外"
+        ]
+      }
+    ],
+    "MEMS": [
+      {
+        "id": "m1",
+        "owner": "甲",
+        "content": "一条记忆正文内容。",
+        "date": "1919-11-29"
+      },
+      {
+        "id": "m2",
+        "owner": "乙",
+        "content": "另一条记忆正文内容。",
+        "date": "1919-11-30"
+      }
+    ]
+  },
+  "afterSweep": {
+    "deleted": {
+      "atoms": {
+        "a2": 1790256657204
+      },
+      "memories": {
+        "m2": 1790256657204
+      }
+    },
+    "deletedH": {
+      "atoms": {
+        "ltpgtz_qnj4hk": 1790256657204
+      },
+      "memories": {
+        "1wdzyml_mwbkkw": 1790256657204
+      }
+    }
+  },
+  "applied": {
+    "ret": true,
+    "atoms": [
+      "a1",
+      "a3"
+    ],
+    "memories": [
+      "m1"
+    ]
+  },
+  "envelope": {
+    "v": 1,
+    "scope": "char:1157z2a",
+    "payload": {
+      "scope": "char:1157z2a",
+      "updatedAt": "TS",
+      "data": {
+        "version": "v1.206",
+        "scope": "char:1157z2a",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "title": "甲",
+            "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+            "date": "1919-11-29",
+            "tags": [
+              "码头"
+            ]
+          },
+          {
+            "id": "a2",
+            "title": "乙",
+            "text": "两人在仓库清点货物并记录转运去向（正文足够长）。",
+            "date": "1919-11-30",
+            "tags": [
+              "仓库"
+            ]
+          },
+          {
+            "id": "a3",
+            "title": "丙",
+            "text": "角色甲独自出城确认下一批抵港时间（正文足够长）。",
+            "date": "1919-12-01",
+            "tags": [
+              "城外"
+            ]
+          }
+        ],
+        "currentStates": [],
+        "snapshots": [],
+        "memories": [
+          {
+            "id": "m1",
+            "owner": "甲",
+            "content": "一条记忆正文内容。",
+            "date": "1919-11-29",
+            "h": "1cink9a_hi3g8q"
+          }
+        ],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {
+          "global": {
+            "json": {},
+            "meaning": "",
+            "rule": ""
+          },
+          "char": {
+            "json": {},
+            "meaning": "",
+            "rule": ""
+          },
+          "chat": {
+            "json": {},
+            "meaning": "",
+            "rule": ""
+          }
+        },
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": 3,
+        "stats": {},
+        "deleted": {
+          "atoms": {
+            "a2": 1790256657204
+          },
+          "memories": {
+            "m2": 1790256657204
+          }
+        },
+        "deletedH": {
+          "atoms": {
+            "ltpgtz_qnj4hk": 1790256657204
+          },
+          "memories": {
+            "1wdzyml_mwbkkw": 1790256657204
+          }
+        },
+        "updatedAt": 1790256657147,
+        "snapStore": [],
+        "processedVer": "v1.174:11n8nlu"
+      }
+    },
+    "hash": "1uapn3f_z57de2",
+    "ts": "TS"
+  },
+  "envelopeKeys": [
+    "hash",
+    "payload",
+    "scope",
+    "ts",
+    "v"
+  ],
+  "hashSample": "1lsh0pu_cocrv1"
+}
