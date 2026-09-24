@@ -1513,4 +1513,5 @@ function applyStateBounds() {
 //   ⑤ 按编号应用 `applyItemMergeGroups`：合并保主条 id、uses 累加、标签并集（并补齐到 3-8 个）、说明取 AI 或更长者。
 // 物品规范名：去掉末尾括号说明（（…）(…)【…】）与空白后的名称 —— 「怀表」「银色怀表（旧）」归为同一件
 
-export { mergeDelta };
+// v1.92：剧情日期推进后顺带调度「状态记录衰退」（B8-2 时钟自动提取会调用）—— 供 clock-extract 复用
+export { mergeDelta, scheduleStateDecay, runStateDecay };

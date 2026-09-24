@@ -222,7 +222,7 @@ const CLOCK_DATE_SCAN = [
 //   「1919年11月29日」里的「11月29日」。否则「取最后一次命中」的归一逻辑会把正确年份换成沿用年份
 //   （用户录入/正文里的完整日期会被截成半截）。规则：命中位置紧跟在「年」或数字之后 → 视为尾部，丢弃。
 
-export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, clockDateAnomaly, clockReplaceYear, clockNormTime, CLOCK_DAY_PARTS, CLOCK_DATE_SCAN, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, dateStrCmp, clockParseDateText };
+export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, clockDateAnomaly, clockReplaceYear, clockNormTime, clockAddDays, clockMatchNotInline, CLOCK_DAY_PARTS, CLOCK_DATE_SCAN, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, dateStrCmp, clockParseDateText };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function dateStrCmp(a, b) {
@@ -266,7 +266,19 @@ function clockParseDateText(val, prevYear) {
         return null;
     } catch (e) { return null; }
 }
-// 时刻/时段归一：HH:MM / X点(Y分|半|一刻|三刻) / 时段词（保留原文如「傍晚」）
+// 日期加减天数（v1.184/v1.193：先建基准日再一次性 setUTCFullYear —— 避开「年份 <100 被映射到 19xx」，
+//   跨月/跨年进位正确；负年份适用，且历史上无 0 年：-0001-12-31 + 1 → 0001-01-01）
+function clockAddDays(dateStr, n) {
+    try {
+        const p = clockDateParts(String(dateStr == null ? '' : dateStr).slice(0, 11));
+        if (!p) return dateStr;
+        const d = new Date(Date.UTC(2000, 0, 1));
+        d.setUTCFullYear(p.y, p.m - 1, p.d + Number(n || 0));
+        let ry = d.getUTCFullYear();
+        if (ry === 0) ry = Number(n || 0) < 0 ? -1 : 1;
+        return clockDateStr(ry, d.getUTCMonth() + 1, d.getUTCDate());
+    } catch (e) { return dateStr; }
+}
 // ==================== v1.184~v1.193：时段/日期异常/换年份（B8-1 时钟域移植，逐字取自 V1 `09`） ====================
 const CLOCK_DAY_PARTS = ['凌晨', '清晨', '早晨', '早上', '上午', '中午', '午间', '午后', '下午', '傍晚', '黄昏', '晚上', '夜晚', '深夜', '夜里', '半夜', '午夜'];
 
