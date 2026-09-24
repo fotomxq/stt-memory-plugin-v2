@@ -869,6 +869,13 @@ export function applySettingsControl(key, raw) {
     const k = String(key || '');
     if (!k) return { ok: false, key: k };
     try {
+        // P9d：V1 `settingsApplyAll`（v1.206 26693）的**代理键**原样保留 —— `data-ftt-cfg="dimensionSeparate"`（勾选态）
+        //   写回真键 `cfg.dimensionGrouping`（`'separate'` / `'unified'`）。V2 沿用同一代理键，保持 V1 的控件 id 与勾选语义。
+        if (k === 'dimensionSeparate') {
+            cfg.dimensionGrouping = raw ? 'separate' : 'unified';
+            try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+            return { ok: true, key: k, value: cfg.dimensionGrouping };
+        }
         if (k.indexOf('storage.') === 0) {
             cfg.storage = Object.assign({}, cfg.storage || {});
             cfg.storage[k.slice(8)] = raw;
@@ -963,6 +970,33 @@ export function basePageHtml(controls) {
     ].join('\n');
 }
 
+/**
+ * 分析记忆页正文（V1「维度分组（总开关）」节 + 本页控件表同名同序）。
+ * V1 事实源：v1.206 25546~25552（手写 HTML，非控件表项）+ 26693（代理键 `dimensionSeparate` 的保存分支）。
+ * V2 适配（见 docs/P9d）：
+ *   ① 控件键用 V1 **代理键** `dimensionSeparate`（勾选态）→ `applySettingsControl` 写回真键 `cfg.dimensionGrouping`；
+ *   ② V1 该节还引导「逐维度开子开关并选 API 分组」——V2 的维度子开关在「V2 附加设定」的「启用维度」里（`cfg.dimensionEnabled`）；
+ *      「各维度单独选预设」**不适用**（宿主生成通道 `generateRaw` 不支持按次指定预设，见 `host/generation.js`），
+ *      故**不做预设下拉**，并在文案里如实标注（避免假控件）。
+ */
+export function analyzePageHtml(controls) {
+    const list = Array.isArray(controls) ? controls : [];
+    const separate = (() => { try { return cfg.dimensionGrouping === 'separate'; } catch (e) { return false; } })();
+    // 开关标签「独立分组」与关闭态说明「统一分组（一次请求全部维度）」**与 V1 逐字**；
+    //   开启态 V1 原文为「独立分组（各维度可单独选预设并行请求）」——其中「可单独选预设」在 V2 不适用，故按实情改写并另起一行说明。
+    const stateText = separate ? '独立分组（各维度单独构造提示词并行请求）' : '统一分组（一次请求全部维度）';
+    return [
+        '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
+        '<label class="ftt-field"><label style="width:170px">独立分组</label>'
+        + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="dimensionSeparate"' + (separate ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
+        + '<span class="ftt-muted">' + esc(stateText) + '</span></label>',
+        '<div class="ftt-muted">开启后各维度**分别**构造提示词并**并行**请求，逐维度过账；未开启的维度合并成一个「统一」请求。</div>',
+        '<div class="ftt-muted">V2 适配：维度子开关在「V2 附加设定 → 启用维度」；宿主生成通道不支持按次指定预设，故**没有**「各维度单独选 API 预设」控件（`cfg.dimensionPresets` 在 V2 不适用）。</div>',
+        '</div>',
+        list.map((c) => settingsControlHtml(c)).join('\n'),
+    ].join('\n');
+}
+
 /** 页内「待后续批次」说明（不使用假实现） */
 const PENDING_NOTE = {
     api: 'API 页在 V1 用于配置自定义 API/代理；V2 走宿主（ST 自身）的生成能力，因此本页仅保留相关配置键，模型/连接选择在 ST 的「连接」面板。',
@@ -983,6 +1017,8 @@ export function settingsPageHtml(pageId) {
     if (pid === 'forget') return forgetPageHtml(list);
     // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
     if (pid === 'base') return basePageHtml(list);
+    // 分析记忆页（P9d）：V1 的「维度分组（总开关）」节 + 控件表同名同序
+    if (pid === 'analyze') return analyzePageHtml(list);
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 它是什么 / 版本更新」三节（`ui/about.js#aboutHtml`）+ V2 附加信息
