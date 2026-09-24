@@ -13,6 +13,7 @@ import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/s
 import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
 import { openPopup, setPopupHooks, popupInfo, popupAction, popupTabs } from './ui/popup.js';
+import { openPanel, closePanel, panelInfo, panelTabs, setPanelHooks2, unmountPanel } from './ui/panel.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPanelEvents } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
@@ -119,8 +120,8 @@ export async function init() {
             runtime.bootstrap.panelReason = mounted.ok ? '' : String(mounted.reason || '');
         } catch (e) { runtime.settingsVia = 'error'; runtime.bootstrap.lastError = String((e && e.message) || e); }
     } else {
-        runtime.settingsVia = 'popup';
-        runtime.bootstrap.panelReason = '弹窗优先（cfg.uiShowDrawer = false）';
+        runtime.settingsVia = 'overlay';
+        runtime.bootstrap.panelReason = 'V1 同构浮层优先（cfg.uiShowDrawer = false 时不挂抽屉卡片）';
     }
     // 扩展菜单入口（主入口）→ 打开弹窗；不可用时由探针启用悬浮兜底
     try { installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 菜单入口失败不影响功能 */ }
@@ -230,7 +231,7 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction }));
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -330,15 +331,19 @@ function panelHooks() {
  * @returns {Promise<{ok:boolean, via:string, reason?:string}>}
  */
 export async function openPanelPopup(tab) {
-    // V1 风格主界面：**弹窗 + 分页**（总览 / 数据台 / 提取 / 设置）
+    // V1 同构主界面：**浮层 #ftt-panel**（13 分页 + V1 原样式）
     try {
         setPopupHooks(popupHooks());
-        const r = await openPopup(tab);
+        setPanelHooks2(Object.assign({}, popupHooks(), { inject: injectNow }));
+        const r = openPanel(tab);
         if (r.ok) return r;
     } catch (e) { /* 落到抽屉/挂载 */ }
     const m = await forceMountPanel();
     return { ok: !!m.ok, via: 'mount', reason: m.reason };
 }
+
+/** 「📤 立即注入」：按当前配置立刻注入一次（返回字数） */
+export async function injectNow() { return pushMemoryInject({ queryText: '' }); }
 
 /** 弹窗动作钩子（提取 / 更新 / 清空注入 / 清单 / 状态） */
 function popupHooks() {
@@ -412,6 +417,7 @@ export async function runExtract(opts) {
 export { panelMountInfo } from './ui/settings-panel.js';
 export { menuInfo, installMenuEntry } from './ui/menu.js';
 export { popupInfo, popupAction, popupTabs, popupHtml, openPopup } from './ui/popup.js';
+export { panelInfo, panelTabs, panelHtml, panelAction, closePanel } from './ui/panel.js';
 
 /** 待分析楼层清单（命令与调试） */
 export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
@@ -452,10 +458,12 @@ export function teardown() {
     runtime.bind = { bound: [], missing: [] };
     try { clearInject(); } catch (e) { /* noop */ }
     try { unmountSettingsPanel(); } catch (e) { /* noop */ }
+    try { unmountPanel(); } catch (e) { /* noop */ }
     try { uninstallGlobalInterceptor(); } catch (e) { /* noop */ }
     try { stopReadyProbe(); } catch (e) { /* noop */ }
     try { uninstallMenuEntry(); } catch (e) { /* noop */ }
     try { uninstallFloatingEntry(); } catch (e) { /* noop */ }
+    try { closePanel(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
@@ -542,7 +550,7 @@ export const __internals = {
     VERSION, DATA_VERSION, MODULE_NAME,
     init, ensureReady, teardown, runtimeState, extraForStatus,
     forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
-    popupInfo, popupAction, popupTabs,
+    popupInfo, popupAction, popupTabs, panelInfo, panelTabs, injectNow,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,

@@ -29,15 +29,15 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const entry = await import('../../index.js');
 await wait(120);
 
-R.assert('B1 零事件也能装配：不发 APP_READY 也完成初始化（**弹窗优先**；触发来源含 load）', (() => {
+R.assert('B1 零事件也能装配：不发 APP_READY 也完成初始化（**V1 同构浮层优先**；触发来源含 load）', (() => {
     const st = entry.runtimeState();
     const panel = entry.extraForStatus().bootstrap;      // extraForStatus 含面板/菜单/弹窗诊断
     // 用户要求：主界面为弹窗（抽屉卡片默认关），故 settingsVia 为 'popup'；可见入口=扩展菜单
-    return st.ready === true && st.settingsVia === 'popup'
+    return st.ready === true && st.settingsVia === 'overlay'
         && panel.triggers.indexOf('load') >= 0
         && panel.menu && panel.menu.menuFound === true
-        && panel.popup && panel.popup.canPopup === true && panel.popup.showDrawer === false;
-})(), (() => { const s = entry.runtimeState(); const b = entry.extraForStatus().bootstrap; return J({ ready: s.ready, via: s.settingsVia, triggers: s.bootstrap.triggers, popup: b.popup && b.popup.canPopup, menu: b.menu && b.menu.menuFound }); })());
+        && panel.popup && panel.popup.id === 'ftt-panel' && panel.popup.tabs && panel.popup.tabs.length === 13;
+})(), (() => { const s = entry.runtimeState(); const b = entry.extraForStatus().bootstrap; return J({ ready: s.ready, via: s.settingsVia, triggers: s.bootstrap.triggers, tabs: b.popup && b.popup.tabs && b.popup.tabs.length, menu: b.menu && b.menu.menuFound }); })());
 
 R.assert('B2 诊断入口加载期即注册：/ftt、/ftt-panel、/ftt-analyze、/ftt-import 与 window.FTT 都在', (() => {
     const names = (host.ctx.commands || []).map((c) => c.name);
@@ -133,25 +133,23 @@ await (async () => {
             && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0 && info.bodyFound === true;
     })(), (() => { try { return J({ noBody, info }); } catch (e) { return String(e.message); } })());
 
-    // 点击悬浮入口 → 以弹窗打开面板（callGenericPopup 收到含面板标记的 HTML）
+    // 点击悬浮入口 → 打开 **V1 同构浮层**（不再依赖 callGenericPopup）
     const captured = [];
-    const savedPopup = host.ctx.callGenericPopup;
-    host.ctx.callGenericPopup = async (html) => { captured.push(String(html)); return 1; };
     const clickR = await entry.openPanelPopup();
-    host.ctx.callGenericPopup = savedPopup;
-    R.assert('B10 悬浮入口点击 → 打开弹窗主界面（含分页条 + 总览），切到「设置」分页可见内核配置控件', (async () => {
+    const overlay = doc._els['ftt-panel'];
+    R.assert('B10 悬浮入口/入口点击 → 打开 V1 同构浮层（#ftt-panel + 13 分页；分页切换渲染对应内容）', (async () => {
         const r1 = await entry.popupAction('tab', { tab: 'settings' });
-        const r2 = await entry.popupAction('tab', { tab: 'extract' });
-        const r3 = await entry.popupAction('tab', { tab: 'console' });
-        const ok = clickR.ok === true && clickR.via === 'popup' && captured.length === 1
-            && captured[0].indexOf('ftt_v2_popup') >= 0 && captured[0].indexOf('data-ftt-tab="console"') >= 0
-            && captured[0].indexOf('ftt-pop-tab') >= 0
+        const r2 = await entry.popupAction('tab', { tab: 'atoms' });
+        const r3 = await entry.popupAction('tab', { tab: 'overview' });
+        const info = entry.panelInfo();
+        const ok = clickR.ok === true && clickR.via === 'overlay' && info.open === true
+            && info.tabs.length === 13
+            && String(overlay && overlay.html || '').indexOf('ftt-modal') >= 0
             && String(r1.html).indexOf('ftt_v2_cfg_budget') >= 0
-            && String(r2.html).indexOf('未分析楼层') >= 0
-            && String(r3.html).indexOf('ftt_v2_console') >= 0;
-        await entry.popupAction('tab', { tab: 'overview' });
+            && String(r2.html).indexOf('data-ftt-search="atoms"') >= 0
+            && String(r3.html).indexOf('📚 类目统计') >= 0;
         return ok;
-    })(), { via: clickR.via, calls: captured.length, len: (captured[0] || '').length });
+    })(), { via: clickR.via, calls: captured.length });
 
     // ensureVisibleEntry：挂不上 → 装悬浮；挂得上 → 拆悬浮
     const panelMod2 = await import('../../ui/settings-panel.js');

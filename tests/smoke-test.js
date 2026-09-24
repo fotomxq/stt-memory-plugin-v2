@@ -62,11 +62,11 @@ const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
 const before = entry.runtimeState();
-assert('B1 加载期探针即完成装配（无需 APP_READY；弹窗优先、抽屉卡片默认关）', (() => {
+assert('B1 加载期探针即完成装配（无需 APP_READY；V1 同构浮层优先、抽屉卡片默认关）', (() => {
     const b = entry.extraForStatus().bootstrap;
-    return before.ready === true && before.settingsVia === 'popup'
+    return before.ready === true && before.settingsVia === 'overlay'
         && before.bootstrap.triggers.indexOf('load') >= 0
-        && b.popup && b.popup.canPopup === true && b.popup.showDrawer === false
+        && b.popup && b.popup.id === 'ftt-panel' && b.popup.tabs.length === 13
         && b.menu && b.menu.menuFound === true;
 })(), { ready: before.ready, via: before.settingsVia, triggers: before.bootstrap.triggers });
 
@@ -77,7 +77,7 @@ assert('B2 APP_READY 再入装配（幂等）：ready/探测/事件绑定/命令
     const want = ['USER_MESSAGE_RENDERED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
     const got = (st.bind.bound || []).slice().sort().join(',');
     // 装配可能由「加载期探针」或「APP_READY」触发（多触发设计）；两者都算通过
-    const viaOk = st.settingsVia === 'popup' || st.settingsVia === 'template' || st.settingsVia === 'already';
+    const viaOk = st.settingsVia === 'overlay' || st.settingsVia === 'template' || st.settingsVia === 'already';
     return st.ready === true && st.probe.ok === true && got === want.slice().sort().join(',') && st.bind.missing.length === 0
         && viaOk && st.slash === true && st.macros === true;
 })(), st);
@@ -90,29 +90,25 @@ assert('B2b P2 接线：记忆容器已载入内核（本机缓冲/服务端文�
 })(), st);
 
 // ---------- M 弹窗主界面（用户要求：对齐 V1 的弹窗形态） ----------
-assert('M1 弹窗主界面可用：/ftt-ui 入口 + 四个分页 + 切换分页渲染对应内容', (async () => {
+assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1 分页、切页渲染对应内容', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0];
-    const cap = [];
-    const saved = host.ctx.callGenericPopup;
-    host.ctx.callGenericPopup = async (h) => { cap.push(String(h)); return 1; };
-    try {
-        const open = await globalThis.FTT.ui('console');
-        const tabs = (globalThis.FTT.popupInfo() || {}).tabs || [];
-        const r1 = await entry.popupAction('tab', { tab: 'extract' });
-        const r2 = await entry.popupAction('tab', { tab: 'settings' });
-        const cmdText = cmd ? String(await cmd.callback({}, 'console')) : '';
-        return open.ok === true && open.via === 'popup' && cap.length >= 1
-            && cap[0].indexOf('ftt_v2_popup') >= 0 && cap[0].indexOf('data-ftt-tab="overview"') >= 0
-            && tabs.join(',') === 'overview,console,extract,settings'
-            && String(r1.html).indexOf('未分析楼层') >= 0
-            && String(r2.html).indexOf('ftt_v2_cfg_budget') >= 0
-            && cmdText.indexOf('已打开弹窗') >= 0;
-    } finally { host.ctx.callGenericPopup = saved; }
+    const open = await globalThis.FTT.ui('overview');
+    const info = entry.panelInfo();
+    const r1 = await entry.popupAction('tab', { tab: 'atoms' });
+    const r2 = await entry.popupAction('tab', { tab: 'settings' });
+    const r3 = await entry.popupAction('tab', { tab: 'overview' });
+    const cmdText = cmd ? String(await cmd.callback({}, 'memories')) : '';
+    return open.ok === true && open.via === 'overlay'
+        && info.tabs.join(',') === 'overview,atoms,states,snapshots,memories,items,currencies,rumors,plans,scenes,concepts,parallels,settings'
+        && String(r1.html).indexOf('data-ftt-search="atoms"') >= 0
+        && String(r2.html).indexOf('ftt_v2_cfg_budget') >= 0
+        && String(r3.html).indexOf('📚 类目统计') >= 0
+        && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
 
-assert('M2 /ftt 状态含「界面：弹窗优先」与装配/面板/菜单诊断', (() => {
+assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/菜单诊断', (() => {
     const out = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback());
-    return out.indexOf('界面：弹窗优先') >= 0 && out.indexOf('抽屉卡片 关') >= 0
+    return out.indexOf('界面：V1 同构浮层') >= 0 && out.indexOf('抽屉卡片 关') >= 0
         && out.indexOf('装配：已初始化') >= 0 && out.indexOf('菜单入口：') >= 0;
 })(), String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).slice(0, 200));
 
@@ -600,19 +596,16 @@ assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以�
     const saved = { a: doc._els.extensions_settings2, b: doc._els.extensions_settings, c: doc._els.rm_extensions_block };
     delete doc._els.extensions_settings2; delete doc._els.extensions_settings; delete doc._els.rm_extensions_block;
     doc.body = { html: '', insertAdjacentHTML(pos, h) { this.html += String(h); } };
-    const savedPopup = host.ctx.callGenericPopup;
     const popupHtml = [];
-    host.ctx.callGenericPopup = async (html) => { popupHtml.push(String(html)); return 1; };
     panelMod.unmountSettingsPanel();
     const vis = await entry.ensureVisibleEntry();
     const clickR = await globalThis.FTT.openPanel();
-    host.ctx.callGenericPopup = savedPopup;
     doc._els.extensions_settings2 = saved.a; doc._els.extensions_settings = saved.b; doc._els.rm_extensions_block = saved.c;
     const back = await entry.ensureVisibleEntry();
     return vis.panel.ok === false && vis.floating.ok === true
         && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0
-        && clickR.ok === true && clickR.via === 'popup' && popupHtml.length === 1
-        && popupHtml[0].indexOf('ftt_v2_settings') >= 0
+        && clickR.ok === true && clickR.via === 'overlay' && popupHtml.length === 0
+        && String((doc._els['ftt-panel'] || {}).html || '').indexOf('ftt-modal') >= 0
         && back.panel.ok === true && back.floating.ok === false
         && floatMod.floatingInfo().installed === false;
 })(), (() => { try { return JSON.stringify({ body: String(doc.body && doc.body.html || '').length, back: 'ok' }); } catch (e) { return String(e.message); } })());

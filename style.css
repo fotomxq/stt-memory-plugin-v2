@@ -72,3 +72,537 @@
 .ftt-pop-note { white-space: pre-wrap; opacity: .92; margin: 4px 0; }
 .ftt-pop-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .ftt-pop-floor { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed rgba(128,128,128,.25); }
+
+/* ============================================================
+   ↓↓↓ 以下样式**逐字移植自 V1**（src/modules/11-UI-样式与按钮.js 的 `ensureStyle()`，
+       生成时提取自 src/FTT记忆组件-v1.206.js）。全部规则以 `#ftt-panel` 作用域，
+       V2 渲染同名的浮层 DOM（ui/panel.js），因此 V1 的视觉可原样生效 —— 用户要求「样式尽可能对齐」。
+       提取脚本：/tmp 生成时使用（见 docs/P8b-V1面板外壳.md）；改样式请改此段并同步 V1 对照。
+   ============================================================ */
+#ftt-topbar-button { order: 0; }
+/* 默认变暗（与周边按钮色系一致）、hover 变亮、悬停手型光标（link 触发样式） */
+#ftt-topbar-button .drawer-toggle { cursor: pointer; }
+#ftt-topbar-button .drawer-toggle .drawer-icon { pointer-events: none; cursor: pointer; opacity: .5; filter: brightness(.82); transition: opacity .15s ease, filter .15s ease; }
+#ftt-topbar-button .drawer-toggle:hover .drawer-icon,
+#ftt-topbar-button .drawer-toggle:focus-visible .drawer-icon { opacity: 1; filter: brightness(1.5); }
+#ftt-qr-button.ftt-qr-btn { margin-left: 0.25rem; }
+#ftt-float-button { position: fixed; right: 18px; bottom: 120px; z-index: 99990; width: 46px; height: 46px; border-radius: 50%; background: #8a6534; border: 1px solid #b08850; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+#ftt-float-button:hover { background: #a0783e; }
+#ftt-menu-button { }
+#ftt-panel { position: fixed; inset: 0; z-index: 99999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); }
+#ftt-panel.ftt-open { display: flex; }
+/* 弹窗安全居中 —— margin:auto 在弹窗高度超视口时自动退化为顶部对齐（margin 归零），
+   杜绝 flex 居中把顶部推出屏幕（平板/横屏/键盘弹出场景「半个插件、顶部不可达」）；
+   max-height 用 vh→dvh 双声明：支持 dvh 的浏览器动态跟随视口，老浏览器回退 vh。 */
+#ftt-panel .ftt-modal { margin: auto; width: min(940px, 94vw); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: #1a1d24; color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+/* 移动端适配 —— dvh 动态视口避免地址栏/键盘导致高度溢出；窄屏全屏布局确保可操作 */
+@media (max-width: 700px) {
+  #ftt-panel { align-items: stretch; justify-content: center; }
+  #ftt-panel .ftt-modal { width: 100vw; width: 100dvw; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; box-shadow: none; }
+  #ftt-panel .ftt-modal-head { padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: 8px; gap: 6px; flex-wrap: wrap; }
+  #ftt-panel .ftt-modal-head .ftt-stat { font-size: 11px; padding: 2px 6px; }
+  #ftt-panel .ftt-modal-head .ftt-title { font-size: 13px; }
+  #ftt-panel .ftt-body { padding: 10px 10px max(10px, env(safe-area-inset-bottom)); }
+  /* 修复：手机端组件宽度从右侧溢出 —— 字段/条目换行、输入控件占满整行、横向溢出保护、表格滚动 */
+  #ftt-panel .ftt-modal, #ftt-panel .ftt-body { overflow-x: hidden; }
+  #ftt-panel .ftt-field { flex-wrap: wrap; }
+  #ftt-panel .ftt-field > label { width: auto; flex-basis: 100%; }
+  #ftt-panel .ftt-field > input[type=text], #ftt-panel .ftt-field > input[type=password], #ftt-panel .ftt-field > input[type=number],
+  #ftt-panel .ftt-field > select, #ftt-panel .ftt-field > textarea, #ftt-panel .ftt-field > .ftt-switch { flex-basis: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  #ftt-panel .ftt-item { flex-wrap: wrap; }
+  #ftt-panel .ftt-item-ops { flex-wrap: wrap; }
+  #ftt-panel .ftt-item-main { min-width: 0; word-break: break-word; }
+  #ftt-panel table { display: block; max-width: 100%; overflow-x: auto; }
+  #ftt-panel .ftt-modal-head .ftt-title { min-width: 0; word-break: break-word; }
+  #ftt-panel .ftt-dbg-data, #ftt-panel .ftt-wb-entries, #ftt-panel .ftt-editor { max-width: 100%; box-sizing: border-box; }
+  #ftt-panel .ftt-row { max-width: 100%; }
+  #ftt-panel button { max-width: 100%; }
+}
+/* 平板区间适配（701-1024px）—— 此前落入桌面样式，高度受限时顶部溢出不可操作；
+   此区间提高面板利用率并沿用安全居中与视口兜底，横竖屏均可用 */
+@media (min-width: 701px) and (max-width: 1024px) {
+  #ftt-panel .ftt-modal { width: 96vw; height: min(92vh, 960px); height: min(92dvh, 960px); }
+  #ftt-panel .ftt-modal-head { padding-top: max(10px, env(safe-area-inset-top)); }
+  #ftt-panel .ftt-body { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+}
+#ftt-panel .ftt-modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #3a4048; background: #22262f; }
+#ftt-panel .ftt-modal-head .ftt-title { font-weight: 600; font-size: 14px; flex: 1; color: #f0ece6; }
+#ftt-panel .ftt-close { cursor: pointer; border: none; background: transparent; color: #b8b3ac; font-size: 18px; }
+#ftt-panel .ftt-close:hover { color: #fff; }
+#ftt-panel .ftt-tabs { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid #3a4048; background: #1e222a; overflow-x: auto; }
+#ftt-panel .ftt-tab { padding: 6px 12px; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 13px; color: #b8b3ac; white-space: nowrap; }
+/* 标签页改用 a 标签（点击不产生默认跳转/焦点滚动），并以 inline-flex 呈现 */
+#ftt-panel .ftt-tab, #ftt-panel .ftt-subtab { display: inline-flex; align-items: center; text-decoration: none; }
+#ftt-panel .ftt-tab:hover { color: #fff; }
+#ftt-panel .ftt-tab.ftt-on { background: #2c313c; color: #ffffff; font-weight: 600; }
+#ftt-panel .ftt-body { padding: 12px 14px; overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.6; color: #e8e4df; }
+#ftt-panel .ftt-body h4 { margin: 8px 0 4px; color: #e0b06a; font-size: 13px; }
+#ftt-panel .ftt-item { padding: 6px 0; border-bottom: 1px dashed #3a4048; display: flex; gap: 8px; align-items: flex-start; }
+/* 角色段落展示 —— 超 3 行省略号 */
+#ftt-panel .ftt-snap-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+#ftt-panel .ftt-item-main { flex: 1; min-width: 0; }
+#ftt-panel .ftt-item-ops { display: flex; gap: 4px; flex-shrink: 0; }
+#ftt-panel .ftt-op { background: #3a4048; color: #d8d4cf; border: 1px solid #555c68; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; }
+#ftt-panel .ftt-op:hover { background: #4a515c; color: #fff; }
+#ftt-panel .ftt-op.ftt-del:hover { background: #5a2f2f; color: #ffb0b0; }
+#ftt-panel .ftt-addbar { margin-bottom: 8px; }
+#ftt-panel .ftt-empty { color: #8a857d; font-style: italic; padding: 8px 0; }
+#ftt-panel .ftt-field { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+#ftt-panel .ftt-field label { width: 170px; color: #c8c3bc; flex-shrink: 0; font-size: 12px; font-weight: 500; }
+#ftt-panel .ftt-field input[type=text], #ftt-panel .ftt-field input[type=password], #ftt-panel .ftt-field select, #ftt-panel .ftt-field textarea, #ftt-panel .ftt-field input[type=number] { flex: 1; background: #101318; color: #f0ece6; border: 1px solid #4a4f5c; border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+#ftt-panel .ftt-field input:focus, #ftt-panel .ftt-field select:focus, #ftt-panel .ftt-field textarea:focus { border-color: #e0b06a; outline: none; }
+#ftt-panel .ftt-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: 0 0 auto; }
+#ftt-panel .ftt-switch input { opacity: 0; width: 0; height: 0; }
+#ftt-panel .ftt-switch .ftt-slider { position: absolute; cursor: pointer; inset: 0; background: #2a2e36; border: 1px solid #5a6070; border-radius: 24px; transition: .25s; }
+#ftt-panel .ftt-switch .ftt-slider:before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #9aa2b0; border-radius: 50%; transition: .25s; }
+#ftt-panel .ftt-switch input:checked + .ftt-slider { background: #c9a24a; border-color: #e0c070; }
+#ftt-panel .ftt-switch input:checked + .ftt-slider:before { transform: translateX(20px); background: #fff; }
+#ftt-panel .ftt-btn { background: #3a4048; color: #f0ece6; border: 1px solid #555c68; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 500; }
+#ftt-panel .ftt-btn:hover { background: #4a515c; color: #fff; }
+#ftt-panel .ftt-btn.ftt-primary { background: #8a6534; border-color: #b08850; color: #fff; font-weight: 600; }
+#ftt-panel .ftt-btn.ftt-primary:hover { background: #a0783e; }
+#ftt-panel .ftt-btn.ftt-ok { background: #3a7a4a; border-color: #55a05f; color: #fff; }
+#ftt-panel .ftt-btn.ftt-err { background: #8a3a3a; border-color: #b05555; color: #fff; }
+#ftt-panel .ftt-btn.ftt-sm { padding: 3px 10px; font-size: 11px; }
+#ftt-panel .ftt-btn:disabled { opacity: .55; cursor: not-allowed; }
+/* ===== UI 设计统一（设计令牌 + 组件类 + 特效开关）=====
+   梳理：同一语义此前混用 ftt-item / ftt-section / ftt-cat-stat / 裸 div+inline style，
+   间距与颜色硬编码散落、按钮 hover/焦点不一致、特效无开关。统一为：令牌（颜色/间距/圆角）+
+   组件类（卡片/标题/工具行/胶囊/按钮/列表项/空态）；**不改类名与 DOM 结构**（仅叠加新类，兼容既有断言）。 */
+#ftt-panel {
+  --ftt-bg-1: #1a1d24; --ftt-bg-2: #1e222a; --ftt-bg-3: #23272f;
+  --ftt-line: #3a4048; --ftt-line-2: #4a4f5c;
+  --ftt-text-1: #e8e4df; --ftt-text-2: #b8b3ac; --ftt-text-3: #8a857d;
+  --ftt-accent: #e0b06a; --ftt-accent-2: #8a6534; --ftt-danger: #b05555; --ftt-ok: #55a05f;
+  --ftt-radius: 8px; --ftt-radius-sm: 6px; --ftt-toolbar-gap: 8px;
+}
+/* 卡片：设置分区 / 内容卡片 统一背景、边框、圆角、内边距 */
+#ftt-panel .ftt-section, #ftt-panel .ftt-card {
+  background: var(--ftt-bg-2); border: 1px solid var(--ftt-line);
+  border-radius: var(--ftt-radius); padding: 10px 12px; margin: 10px 0;
+}
+#ftt-panel .ftt-section > .ftt-sec-title, #ftt-panel .ftt-card-title {
+  color: var(--ftt-accent); font-weight: 600; font-size: 13px; margin-bottom: 6px; letter-spacing: .2px;
+}
+/* 胶囊：统计/计数统一为圆角胶囊 */
+#ftt-panel .ftt-cat-stat, #ftt-panel .ftt-chip {
+  display: inline-block; background: var(--ftt-bg-3); border: 1px solid var(--ftt-line);
+  color: var(--ftt-text-2); border-radius: 999px; padding: 2px 10px; font-size: 12px;
+}
+/* 工具行：筛选位与操作行统一布局（一致间距/换行/居中） */
+#ftt-panel .ftt-toolbar, #ftt-panel .ftt-addbar, #ftt-panel .ftt-filterbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--ftt-toolbar-gap); margin: 4px 0 8px;
+}
+#ftt-panel .ftt-toolbar > input[type=text] { flex: 1; min-width: 120px; }
+/* 按钮：统一过渡/焦点环/按压反馈（含图标按钮 ftt-op） */
+#ftt-panel .ftt-btn, #ftt-panel .ftt-op { transition: background-color .15s ease, border-color .15s ease, transform .05s ease; }
+#ftt-panel .ftt-btn:focus-visible, #ftt-panel .ftt-op:focus-visible, #ftt-panel input:focus-visible, #ftt-panel select:focus-visible {
+  outline: 2px solid var(--ftt-accent); outline-offset: 1px;
+}
+#ftt-panel .ftt-btn:active { transform: translateY(1px); }
+/* 空态与次要文字统一 */
+#ftt-panel .ftt-empty { color: var(--ftt-text-3); font-style: normal; padding: 10px 2px; }
+#ftt-panel .ftt-muted { color: var(--ftt-text-3); }
+/* ===== 特效开关（设定→基础「界面特效」；关闭 = 无动画/过渡；prefers-reduced-motion 自动关闭）===== */
+body.ftt-no-effects #ftt-panel *, body.ftt-no-effects #ftt-panel *::before, body.ftt-no-effects #ftt-panel *::after,
+body.ftt-no-effects #ftt-panel, body.ftt-no-effects #toast-container *,
+body.ftt-no-effects #toast-container *::before {
+  transition: none !important; animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #ftt-panel, #ftt-panel *, #ftt-panel *::before, #ftt-panel *::after, #toast-container * { transition: none !important; animation: none !important; }
+}
+#ftt-panel .ftt-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; align-items: center; }
+#ftt-panel .ftt-stat { display: inline-block; background: #2c313c; border: 1px solid #4a4f5c; border-radius: 6px; padding: 3px 8px; margin: 2px; font-size: 12px; color: #d8d4cf; }
+#ftt-panel .ftt-cat-stat { display: inline-block; background: #23272f; border: 1px solid #3a4048; border-radius: 6px; padding: 2px 10px; margin: 2px 0 8px; font-size: 12px; color: #b8b3ac; }
+#ftt-panel .ftt-section { border: 1px solid #3a4048; border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: #1e222a; }
+#ftt-panel .ftt-section > .ftt-sec-title { font-weight: 600; color: #e0b06a; margin-bottom: 6px; font-size: 13px; }
+#ftt-panel .ftt-subtabs { display: flex; gap: 2px; margin-bottom: 8px; border-bottom: 1px solid #3a4048; flex-wrap: wrap; }
+/* 设置页子标签栏粘性驻顶 —— 内容向下滚动时始终可见，便于随时切换设定类目 */
+#ftt-panel .ftt-subtabs { position: sticky; top: 0; z-index: 6; background: #1a1d24; padding: 4px 2px 0; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.35); border-radius: 0 0 8px 8px; }
+#ftt-panel .ftt-subtab { padding: 5px 12px; cursor: pointer; font-size: 12px; color: #b8b3ac; border-radius: 5px 5px 0 0; }
+#ftt-panel .ftt-subtab:hover { color: #fff; }
+#ftt-panel .ftt-subtab.ftt-on { background: #2c313c; color: #fff; font-weight: 600; }
+#ftt-panel .ftt-muted { color: #8a857d; font-size: 12px; }
+/* 未摘要楼层处理动效（正在处理的楼层闪烁高亮） */
+#ftt-panel .ftt-floor { display: inline-block; padding: 0 2px; border-radius: 3px; transition: background-color .3s, color .3s; }
+/* 未摘要楼层独立分析按钮 */
+#ftt-panel .ftt-floor-btn { padding: 1px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; }
+/* 分析中叠加转动效果（非普通按钮） */
+#ftt-panel .ftt-floor-btn.ftt-loading { pointer-events: none; opacity: .75; color: #f0c060; display: inline-flex; align-items: center; gap: 5px; }
+#ftt-panel .ftt-floor-btn.ftt-loading::before { content: ''; width: 10px; height: 10px; border: 2px solid #e0b06a; border-top-color: transparent; border-radius: 50%; animation: fttSpin .7s linear infinite; box-sizing: border-box; }
+@keyframes fttSpin { to { transform: rotate(360deg); } }
+#ftt-panel .ftt-floor.ftt-floor-pulse { background: rgba(224,176,106,.25); color: #f0c060; animation: fttPulse 0.8s ease-in-out infinite; }
+@keyframes fttPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+#ftt-panel .ftt-editor { background: #14171d; border: 1px solid #4a4f5c; border-radius: 8px; padding: 12px; }
+#ftt-panel .ftt-editor-title { color: #e0b06a; font-weight: 600; margin-bottom: 8px; font-size: 13px; }
+/* v1.166 关系表：旧的一套自配色已由「视觉体系 v4」统一（见文件下部 .ftt-rel-* / table.ftt-rel 令牌化规则） */
+#ftt-panel .ftt-busy { color: #f0c060; font-weight: 600; }
+#ftt-panel .ftt-wb-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #333842; }
+#ftt-panel .ftt-wb-item label { flex: 1; color: #e8e4df; cursor: pointer; font-size: 12px; }
+#ftt-panel .ftt-wb-item input[type=checkbox] { accent-color: #e0b06a; width: 15px; height: 15px; }
+#ftt-panel .ftt-wb-tag { font-size: 11px; color: #b8b3ac; background: #2c313c; border: 1px solid #4a4f5c; border-radius: 4px; padding: 1px 6px; }
+#ftt-panel .ftt-wb-entries { margin: 2px 0 6px 24px; padding: 4px 8px; background: #171a20; border-radius: 5px; border: 1px solid #333842; max-height: 150px; overflow-y: auto; }
+#ftt-panel .ftt-wb-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: #c8c3bc; }
+#ftt-panel .ftt-wb-entry input[type=checkbox] { accent-color: #e0b06a; width: 14px; height: 14px; }
+#ftt-panel .ftt-wb-entries-toggle { cursor: pointer; color: #8aa7c8; font-size: 11px; margin-left: 24px; user-select: none; }
+#ftt-panel .ftt-dbg-item { padding: 4px 8px; border-bottom: 1px dashed #333842; font-size: 12px; }
+#ftt-panel .ftt-dbg-item .ftt-dbg-head { display: flex; gap: 8px; align-items: center; cursor: pointer; list-style: none; user-select: none; }
+#ftt-panel .ftt-dbg-item .ftt-dbg-head::-webkit-details-marker { display: none; }
+#ftt-panel .ftt-dbg-item .ftt-dbg-head:before { content: '▸'; color: #6d6a64; font-size: 10px; transition: transform .12s; }
+#ftt-panel .ftt-dbg-item[open] .ftt-dbg-head:before { transform: rotate(90deg); }
+#ftt-panel .ftt-dbg-sum { color: #8a857d; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+#ftt-panel .ftt-dbg-size { color: #6d8ab0; font-size: 11px; flex-shrink: 0; }
+#ftt-panel .ftt-dbg-kind { font-weight: 700; color: #e0b06a; flex-shrink: 0; }
+#ftt-panel .ftt-dbg-time { color: #6d6a64; font-size: 11px; flex-shrink: 0; }
+#ftt-panel .ftt-dbg-data { color: #b8b3ac; white-space: pre-wrap; word-break: break-all; margin-top: 3px; max-height: 200px; overflow-y: auto; }
+#ftt-panel .ftt-api-block { border: 1px solid #333842; border-radius: 6px; padding: 8px 10px; margin: 6px 0; background: #171a20; }
+#ftt-panel .ftt-api-block .ftt-api-title { color: #8aa7c8; font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+#ftt-panel .ftt-api-test-result { font-size: 11px; margin-top: 4px; }
+#ftt-panel .ftt-dim-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #333842; }
+#ftt-panel .ftt-dim-row .ftt-dim-name { flex: 0 0 70px; color: #e8e4df; font-size: 12px; }
+#ftt-panel .ftt-dim-row .ftt-dim-preset { flex: 1; }
+#ftt-panel .ftt-dim-row select { width: 100%; background: #101318; color: #f0ece6; border: 1px solid #4a4f5c; border-radius: 5px; padding: 4px 8px; font-size: 12px; }
+#ftt-panel .ftt-loc-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #333842; }
+#ftt-panel .ftt-loc-row .ftt-loc-name { flex: 1; color: #e8e4df; font-size: 12px; }
+/* ===== /统一消息弹窗（notify → ST toastr）—— 行为配色（左侧色条） =====
+   弹窗一律走酒馆自带 toastr（避免自建 DOM 弹层导致卡死），此处仅叠加行为配色类。 */
+#toast-container .ftt-toastr { border-left-width: 4px !important; border-left-style: solid !important; }
+#toast-container .ftt-toastr--info { border-left-color: #7f9bb3 !important; }
+#toast-container .ftt-toastr--analysis { border-left-color: #4da3ff !important; }
+#toast-container .ftt-toastr--success { border-left-color: #3ecf6e !important; }
+#toast-container .ftt-toastr--warning { border-left-color: #ffb02e !important; }
+#toast-container .ftt-toastr--error { border-left-color: #ff5d5d !important; }
+#toast-container .ftt-toastr--sync { border-left-color: #a06bff !important; }
+#toast-container .ftt-toastr--weave { border-left-color: #ff8fab !important; }
+#toast-container .ftt-toastr--repair { border-left-color: #22c7c2 !important; }
+/* ===== 视觉体系 v2（色调 / 组件规范 / 美学提升）=====
+   统一调色板（冷灰蓝底 + 琥珀强调）、层级与阴影、组件细节（标签/卡片/按钮/输入/开关/表格/滚动条/
+   空态/消息弹窗），并保持「界面特效」开关与 prefers-reduced-motion 对全部动效的约束。 */
+#ftt-panel {
+  --ftt-bg-0: #14171c; --ftt-bg-1: #191d23; --ftt-bg-2: #1f242c; --ftt-bg-3: #262c36; --ftt-bg-4: #2e3540;
+  --ftt-line: #333a45; --ftt-line-2: #414a57;
+  --ftt-text-1: #eceff3; --ftt-text-2: #b9c1cc; --ftt-text-3: #8791a0;
+  --ftt-accent: #e6b566; --ftt-accent-2: #c9963f; --ftt-accent-soft: rgba(230,181,102,.14);
+  --ftt-ok: #57b97a; --ftt-warn: #e0a44a; --ftt-danger: #d1636b; --ftt-info: #6aa6e0; --ftt-purple: #a98be0;
+  --ftt-radius-sm: 6px; --ftt-radius: 10px; --ftt-radius-lg: 14px;
+  --ftt-shadow-sm: 0 1px 2px rgba(0,0,0,.25); --ftt-shadow-md: 0 8px 24px rgba(0,0,0,.42); --ftt-shadow-lg: 0 18px 48px rgba(0,0,0,.55);
+  --ftt-space-1: 4px; --ftt-space-2: 8px; --ftt-space-3: 12px; --ftt-space-4: 16px; --ftt-toolbar-gap: 8px;
+  /* ===== v1.167：补齐语义令牌（此前新增模块用硬编码色，与令牌体系脱节）=====
+     规则：界面代码只允许用 var(--ftt-*)，不得再写字面量颜色/字号/间距。 */
+  --ftt-text-4: #6d6a64;                         /* 最弱一级：元信息行 */
+  --ftt-accent-3: #f0c060;                       /* 强调亮（忙位 / 高亮） */
+  --ftt-teal: #7fc9c0; --ftt-teal-soft: rgba(127,201,192,.14);   /* 知情 / 关联摘要（青） */
+  --ftt-ok-soft: rgba(87,185,122,.14);
+  --ftt-warn-soft: rgba(224,164,74,.14);
+  --ftt-danger-soft: rgba(209,99,107,.14);
+  --ftt-info-soft: rgba(106,166,224,.14);
+  --ftt-purple-soft: rgba(169,139,224,.14);
+  --ftt-font-xs: 11px; --ftt-font-sm: 12px; --ftt-font-md: 13px; --ftt-font-lg: 14px;
+  --ftt-space-5: 20px;
+  --ftt-line-soft: #2b313b;                      /* 更弱的分隔线（表格内） */
+}
+#ftt-panel .ftt-modal { background: linear-gradient(180deg, var(--ftt-bg-1), var(--ftt-bg-0)); color: var(--ftt-text-1); border: 1px solid var(--ftt-line-2); border-radius: var(--ftt-radius-lg); box-shadow: var(--ftt-shadow-lg); }
+#ftt-panel .ftt-modal-head { background: linear-gradient(180deg, rgba(255,255,255,.04), transparent), var(--ftt-bg-2); border-bottom: 1px solid var(--ftt-line); padding: 12px 16px; }
+#ftt-panel .ftt-modal-head .ftt-title { color: var(--ftt-text-1); letter-spacing: .3px; }
+#ftt-panel .ftt-modal-head .ftt-title:before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--ftt-accent); box-shadow: 0 0 0 3px var(--ftt-accent-soft); vertical-align: middle; }
+#ftt-panel .ftt-stat { background: var(--ftt-bg-3); border: 1px solid var(--ftt-line); color: var(--ftt-text-2); border-radius: 999px; padding: 3px 10px; font-size: 11.5px; }
+#ftt-panel .ftt-body { padding: 14px 16px 18px; }
+#ftt-panel .ftt-tabs { display: flex; gap: 6px; padding: 8px 12px 0; border-bottom: 1px solid var(--ftt-line); background: linear-gradient(180deg, var(--ftt-bg-2), transparent); overflow-x: auto; }
+#ftt-panel .ftt-tab { padding: 7px 14px; border-radius: var(--ftt-radius-sm) var(--ftt-radius-sm) 0 0; color: var(--ftt-text-2); border: 1px solid transparent; border-bottom: none; }
+#ftt-panel .ftt-tab:hover { color: var(--ftt-text-1); background: rgba(255,255,255,.04); }
+#ftt-panel .ftt-tab.ftt-on { color: var(--ftt-text-1); background: var(--ftt-bg-3); border-color: var(--ftt-line); box-shadow: inset 0 2px 0 var(--ftt-accent); font-weight: 600; }
+#ftt-panel .ftt-subtabs { background: rgba(20,23,28,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--ftt-line); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+#ftt-panel .ftt-subtab { color: var(--ftt-text-3); }
+#ftt-panel .ftt-subtab:hover { color: var(--ftt-text-1); }
+#ftt-panel .ftt-subtab.ftt-on { background: var(--ftt-accent-soft); color: var(--ftt-accent); font-weight: 600; }
+#ftt-panel .ftt-section, #ftt-panel .ftt-card { background: linear-gradient(180deg, rgba(255,255,255,.02), transparent), var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius); padding: 12px 14px; margin: 12px 0; box-shadow: var(--ftt-shadow-sm); }
+#ftt-panel .ftt-section > .ftt-sec-title, #ftt-panel .ftt-card-title { position: relative; color: var(--ftt-text-1); font-weight: 600; font-size: 13px; padding-left: 12px; margin-bottom: 8px; }
+#ftt-panel .ftt-section > .ftt-sec-title:before, #ftt-panel .ftt-card-title:before { content: ''; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 2px; background: linear-gradient(180deg, var(--ftt-accent), var(--ftt-accent-2)); }
+#ftt-panel .ftt-cat-stat, #ftt-panel .ftt-chip { background: var(--ftt-bg-3); border: 1px solid var(--ftt-line); color: var(--ftt-text-2); border-radius: 999px; padding: 3px 12px; margin: 2px 0 10px; font-size: 12px; }
+#ftt-panel .ftt-muted { color: var(--ftt-text-3); }
+#ftt-panel .ftt-toolbar, #ftt-panel .ftt-addbar, #ftt-panel .ftt-filterbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ftt-toolbar-gap); margin: 6px 0 10px; }
+#ftt-panel .ftt-filterbar { padding: 8px 10px; background: var(--ftt-bg-3); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius); }
+#ftt-panel .ftt-filterbar > input[type=text] { flex: 1; min-width: 140px; }
+#ftt-panel .ftt-btn { min-height: 30px; padding: 6px 13px; border-radius: var(--ftt-radius-sm); background: var(--ftt-bg-4); border: 1px solid var(--ftt-line-2); color: var(--ftt-text-1); font-size: 12px; font-weight: 500; box-shadow: var(--ftt-shadow-sm); transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .06s ease; }
+#ftt-panel .ftt-btn:hover { background: #39424f; border-color: #4d5867; }
+#ftt-panel .ftt-btn.ftt-primary { background: linear-gradient(180deg, var(--ftt-accent), var(--ftt-accent-2)); border-color: #b8863a; color: #20180c; font-weight: 700; }
+#ftt-panel .ftt-btn.ftt-primary:hover { filter: brightness(1.06); }
+#ftt-panel .ftt-btn.ftt-ok { background: linear-gradient(180deg, #5cc281, #3f9a60); border-color: #3f9a60; color: #0d1f13; font-weight: 600; }
+#ftt-panel .ftt-btn.ftt-err { background: linear-gradient(180deg, #d9727a, #b04a53); border-color: #b04a53; color: #fff; font-weight: 600; }
+#ftt-panel .ftt-btn.ftt-sm { min-height: 24px; padding: 3px 10px; font-size: 11px; }
+#ftt-panel .ftt-btn:disabled { opacity: .45; box-shadow: none; }
+#ftt-panel .ftt-btn:focus-visible, #ftt-panel .ftt-op:focus-visible, #ftt-panel input:focus-visible, #ftt-panel select:focus-visible, #ftt-panel textarea:focus-visible { outline: none; border-color: var(--ftt-accent); box-shadow: 0 0 0 3px var(--ftt-accent-soft); }
+#ftt-panel .ftt-item { background: var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); padding: 9px 11px; margin: 6px 0; }
+#ftt-panel .ftt-item:hover { border-color: var(--ftt-line-2); background: #232933; }
+#ftt-panel .ftt-item-main { color: var(--ftt-text-1); line-height: 1.5; }
+#ftt-panel .ftt-item-ops { gap: 6px; }
+#ftt-panel .ftt-op { min-width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: var(--ftt-radius-sm); background: var(--ftt-bg-4); border: 1px solid var(--ftt-line-2); color: var(--ftt-text-2); font-size: 12px; }
+#ftt-panel .ftt-op:hover { background: #39424f; color: var(--ftt-text-1); }
+#ftt-panel .ftt-op.ftt-del:hover { background: rgba(209,99,107,.22); border-color: var(--ftt-danger); color: #ffc9cd; }
+#ftt-panel .ftt-op.ftt-ok:hover { background: rgba(87,185,122,.2); border-color: var(--ftt-ok); color: #c9f3d6; }
+#ftt-panel input[type=text], #ftt-panel input[type=password], #ftt-panel input[type=number], #ftt-panel select, #ftt-panel textarea { background: var(--ftt-bg-0); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); color: var(--ftt-text-1); padding: 6px 9px; font-size: 12.5px; }
+#ftt-panel input::placeholder, #ftt-panel textarea::placeholder { color: var(--ftt-text-3); }
+#ftt-panel .ftt-field > label { color: var(--ftt-text-2); font-size: 12.5px; }
+#ftt-panel .ftt-switch .ftt-slider { background: var(--ftt-bg-4); border-color: var(--ftt-line-2); }
+#ftt-panel .ftt-switch input:checked + .ftt-slider { background: linear-gradient(180deg, var(--ftt-accent), var(--ftt-accent-2)); border-color: #b8863a; }
+#ftt-panel .ftt-switch input:checked + .ftt-slider:before { background: #20180c; }
+#ftt-panel table { border-collapse: separate; border-spacing: 0; }
+#ftt-panel table th { color: var(--ftt-accent); background: var(--ftt-accent-soft); }
+#ftt-panel table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+#ftt-panel .ftt-dbg-item, #ftt-panel .ftt-snap-desc { color: var(--ftt-text-2); }
+#ftt-panel .ftt-empty { color: var(--ftt-text-3); padding: 14px 10px; text-align: center; border: 1px dashed var(--ftt-line); border-radius: var(--ftt-radius-sm); background: rgba(255,255,255,.015); }
+#ftt-panel *::-webkit-scrollbar { width: 10px; height: 10px; }
+#ftt-panel *::-webkit-scrollbar-track { background: transparent; }
+#ftt-panel *::-webkit-scrollbar-thumb { background: var(--ftt-line-2); border: 2px solid transparent; background-clip: content-box; border-radius: 8px; }
+#ftt-panel *::-webkit-scrollbar-thumb:hover { background: #586273; background-clip: content-box; }
+#ftt-panel .ftt-floor.ftt-floor-pulse { background: var(--ftt-accent-soft); color: var(--ftt-accent); }
+#ftt-panel .ftt-floor-btn.ftt-loading::before { border-color: var(--ftt-accent); border-top-color: transparent; }
+#toast-container .ftt-toastr { border-radius: var(--ftt-radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.42); }
+#toast-container .ftt-toastr--info { border-left-color: #6aa6e0 !important; }
+#toast-container .ftt-toastr--analysis { border-left-color: #5aa9ff !important; }
+#toast-container .ftt-toastr--success { border-left-color: #57b97a !important; }
+#toast-container .ftt-toastr--warning { border-left-color: #e0a44a !important; }
+#toast-container .ftt-toastr--error { border-left-color: #d1636b !important; }
+#toast-container .ftt-toastr--sync { border-left-color: #a98be0 !important; }
+#toast-container .ftt-toastr--weave { border-left-color: #ef8fb0 !important; }
+#toast-container .ftt-toastr--repair { border-left-color: #37c9c4 !important; }
+@media (max-width: 700px) {
+  #ftt-panel .ftt-modal { border-radius: 0; }
+  #ftt-panel .ftt-modal-head { padding: 10px 12px; }
+  #ftt-panel .ftt-body { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+  #ftt-panel .ftt-filterbar { padding: 8px; }
+  #ftt-panel .ftt-item { padding: 8px 9px; }
+}
+/* ===== 视觉体系 v3（v1.154 动效与精致度提升）=====
+   原则：动效只提示「状态变化」，一律短促（.12–.26s）、只动 opacity/transform/shadow，
+   不改变布局与类名；全部受「界面特效」开关（body.ftt-no-effects）与 prefers-reduced-motion 约束。 */
+@keyframes fttModalIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes fttRiseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fttDotPulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 3px var(--ftt-accent-soft); } 50% { opacity: .5; box-shadow: 0 0 0 7px rgba(230,181,102,.05); } }
+@keyframes fttBarRun { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+@keyframes fttSheen { from { transform: translateX(-130%); } to { transform: translateX(240%); } }
+/* 面板开关：display 离散过渡（现代浏览器淡入淡出；旧浏览器直接显示/隐藏，不影响功能） */
+#ftt-panel { transition: opacity .18s ease, display .18s allow-discrete; }
+#ftt-panel.ftt-open { opacity: 1; }
+@starting-style { #ftt-panel.ftt-open { opacity: 0; } }
+#ftt-panel .ftt-modal { animation: fttModalIn .22s cubic-bezier(.22,.9,.3,1.04) both; }
+/* 标题栏：忙位流动条 + 琥珀圆点呼吸 + 统计胶囊微浮 */
+#ftt-panel .ftt-modal-head { position: relative; }
+#ftt-panel .ftt-modal-head:after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; opacity: 0; pointer-events: none; background: linear-gradient(90deg, transparent, var(--ftt-accent), transparent) no-repeat; background-size: 55% 100%; transition: opacity .2s ease; }
+#ftt-panel .ftt-modal-head.ftt-head-busy:after { opacity: 1; animation: fttBarRun 1.5s linear infinite; }
+#ftt-panel .ftt-modal-head .ftt-title:before { animation: fttDotPulse 2.8s ease-in-out infinite; }
+#ftt-panel .ftt-modal-head.ftt-head-busy .ftt-title:before { animation-duration: .95s; }
+#ftt-panel .ftt-modal-head .ftt-stat { transition: transform .14s ease, border-color .14s ease, color .14s ease; }
+#ftt-panel .ftt-modal-head .ftt-stat:hover { transform: translateY(-1px); border-color: var(--ftt-line-2); color: var(--ftt-text-1); }
+/* 忙位提示胶囊（与顶部流动条呼应） */
+#ftt-panel .ftt-busy { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--ftt-accent-soft); border: 1px solid rgba(230,181,102,.34); color: var(--ftt-accent); font-weight: 600; }
+#ftt-panel .ftt-busy:before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ftt-accent); animation: fttDotPulse .95s ease-in-out infinite; }
+/* 标签页切换：内容区整体上浮淡入（仅切页时由 JS 打标，避免每次重渲染都动） */
+#ftt-panel .ftt-body.ftt-body-in > * { animation: fttRiseIn .2s ease both; }
+#ftt-panel .ftt-body.ftt-body-in > *:nth-child(2) { animation-delay: .03s; }
+#ftt-panel .ftt-body.ftt-body-in > *:nth-child(3) { animation-delay: .06s; }
+#ftt-panel .ftt-body.ftt-body-in > *:nth-child(4) { animation-delay: .09s; }
+#ftt-panel .ftt-body.ftt-body-in > *:nth-child(n+5) { animation-delay: .12s; }
+#ftt-panel .ftt-tab { transition: color .16s ease, background-color .16s ease, transform .12s ease; }
+#ftt-panel .ftt-tab:hover { transform: translateY(-1px); }
+#ftt-panel .ftt-subtab { transition: color .16s ease, background-color .16s ease, transform .12s ease; }
+#ftt-panel .ftt-subtab:hover { transform: translateY(-1px); }
+/* 卡片 / 列表项：1px 轻悬浮 + 分层阴影（不引起布局跳动） */
+#ftt-panel .ftt-section, #ftt-panel .ftt-card { transition: border-color .18s ease, box-shadow .18s ease; }
+#ftt-panel .ftt-section:hover, #ftt-panel .ftt-card:hover { border-color: var(--ftt-line-2); box-shadow: var(--ftt-shadow-md); }
+#ftt-panel .ftt-item { transition: transform .14s ease, border-color .14s ease, background-color .14s ease, box-shadow .14s ease; }
+#ftt-panel .ftt-item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.32); }
+#ftt-panel .ftt-empty { transition: border-color .18s ease, color .18s ease; }
+#ftt-panel .ftt-empty:hover { border-color: var(--ftt-line-2); color: var(--ftt-text-2); }
+/* 按钮 / 图标按钮：悬浮上提、按压回弹；主按钮扫光 */
+#ftt-panel .ftt-btn:hover, #ftt-panel .ftt-op:hover { transform: translateY(-1px); }
+#ftt-panel .ftt-btn:active, #ftt-panel .ftt-op:active { transform: translateY(0) scale(.985); }
+#ftt-panel .ftt-btn.ftt-primary { position: relative; overflow: hidden; }
+#ftt-panel .ftt-btn.ftt-primary:hover { box-shadow: 0 6px 18px rgba(230,181,102,.28); }
+#ftt-panel .ftt-btn.ftt-primary:after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; background: linear-gradient(100deg, transparent, rgba(255,255,255,.5), transparent); transform: translateX(-130%); }
+#ftt-panel .ftt-btn.ftt-primary:hover:after { animation: fttSheen .75s ease; }
+#ftt-panel .ftt-op:hover { box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+/* 输入 / 开关：更顺滑的状态反馈 */
+#ftt-panel input[type=text], #ftt-panel input[type=password], #ftt-panel input[type=number], #ftt-panel select, #ftt-panel textarea { transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease; }
+#ftt-panel input:hover:not(:focus), #ftt-panel select:hover:not(:focus), #ftt-panel textarea:hover:not(:focus) { border-color: var(--ftt-line-2); }
+#ftt-panel .ftt-switch .ftt-slider { transition: background-color .26s cubic-bezier(.3,1.1,.4,1), border-color .26s ease, box-shadow .26s ease; }
+#ftt-panel .ftt-switch .ftt-slider:before { transition: transform .26s cubic-bezier(.32,1.5,.5,1), background-color .26s ease; }
+#ftt-panel .ftt-switch:hover .ftt-slider { border-color: var(--ftt-accent); }
+#ftt-panel .ftt-switch input:checked + .ftt-slider { box-shadow: 0 0 0 3px var(--ftt-accent-soft); }
+#ftt-panel .ftt-switch input:focus-visible + .ftt-slider { box-shadow: 0 0 0 3px var(--ftt-accent-soft); }
+/* 胶囊 / 统计 / 表格行：一致的小反馈 */
+#ftt-panel .ftt-cat-stat, #ftt-panel .ftt-chip, #ftt-panel .ftt-stat { transition: border-color .16s ease, color .16s ease, background-color .16s ease, transform .14s ease; }
+#ftt-panel .ftt-cat-stat:hover, #ftt-panel .ftt-chip:hover { border-color: var(--ftt-accent); color: var(--ftt-accent); transform: translateY(-1px); }
+#ftt-panel table tbody tr { transition: background-color .14s ease; }
+#ftt-panel table tbody tr:hover td { background: rgba(230,181,102,.07); }
+/* 流动进度条（长任务区域可复用 .ftt-progress） */
+#ftt-panel .ftt-progress { position: relative; height: 3px; border-radius: 3px; overflow: hidden; background: var(--ftt-bg-3); }
+#ftt-panel .ftt-progress:after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--ftt-accent), transparent) no-repeat; background-size: 45% 100%; animation: fttBarRun 1.3s linear infinite; }
+/* 消息弹窗（酒馆 toastr）入场 */
+#toast-container .ftt-toastr { animation: fttRiseIn .2s ease both; }
+/* ===== 视觉体系 v4（v1.167：统一令牌与组件规范）=====
+   背景：v1.165/v1.166 的新模块（关系表、阶段、知情摘要、档案收敛）直接写内联硬编码色（#6d6a64 / #8a857d /
+   #e0b06a / #8ad0c8 / #d8a05a 五种近似灰 + 11px 硬编码），与 v2/v3 令牌体系脱节。
+   本层补齐「元信息行 / 语义提示 / 徽标 / 紧凑表格 / 工具条」组件类，界面代码一律改用类名 + 令牌；
+   观感上与既有卡片/胶囊/按钮同一套（同色阶、同字号阶、同圆角与阴影）。 */
+#ftt-panel .ftt-meta { display: block; color: var(--ftt-text-4); font-size: var(--ftt-font-xs); line-height: 1.55; margin-top: 2px; }
+#ftt-panel .ftt-sub { color: var(--ftt-text-3); font-size: var(--ftt-font-sm); }
+#ftt-panel .ftt-hint { color: var(--ftt-text-3); font-size: var(--ftt-font-xs); line-height: 1.5; }
+#ftt-panel .ftt-desc { color: var(--ftt-text-2); }
+#ftt-panel .ftt-tags { color: var(--ftt-accent); font-size: var(--ftt-font-xs); }
+/* 语义提示行（关联摘要 / 差异 / 阶段 / 告警）—— 统一 11px + 左侧色条，不再各写一套颜色 */
+#ftt-panel .ftt-note { display: block; font-size: var(--ftt-font-xs); line-height: 1.55; margin-top: 2px; padding-left: 8px; border-left: 2px solid var(--ftt-line-2); color: var(--ftt-text-3); }
+#ftt-panel .ftt-note.ftt-note-info { border-left-color: var(--ftt-teal); color: var(--ftt-teal); }
+#ftt-panel .ftt-note.ftt-note-warn { border-left-color: var(--ftt-warn); color: var(--ftt-warn); }
+#ftt-panel .ftt-note.ftt-note-ok { border-left-color: var(--ftt-ok); color: var(--ftt-ok); }
+#ftt-panel .ftt-note.ftt-note-err { border-left-color: var(--ftt-danger); color: var(--ftt-danger); }
+#ftt-panel .ftt-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#ftt-panel .ftt-inline.ftt-inline-tight { gap: 4px; }
+/* 徽标（维度 / 记忆类型 / 阶段 / 状态）：与胶囊同族，尺寸更小、语义色更明确 */
+#ftt-panel .ftt-badge { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 999px; font-size: var(--ftt-font-xs); line-height: 17px; border: 1px solid var(--ftt-line-2); background: var(--ftt-bg-3); color: var(--ftt-text-2); white-space: nowrap; }
+#ftt-panel .ftt-badge--dim { border-color: var(--ftt-line-2); color: var(--ftt-text-2); }
+#ftt-panel .ftt-badge--private { border-color: var(--ftt-line-2); color: var(--ftt-text-3); }
+#ftt-panel .ftt-badge--shared { border-color: rgba(127,201,192,.45); background: var(--ftt-teal-soft); color: var(--ftt-teal); }
+#ftt-panel .ftt-badge--fact { border-color: rgba(230,181,102,.45); background: var(--ftt-accent-soft); color: var(--ftt-accent); }
+#ftt-panel .ftt-badge--public { border-color: rgba(87,185,122,.45); background: var(--ftt-ok-soft); color: var(--ftt-ok); }
+#ftt-panel .ftt-badge--plan { border-color: rgba(230,181,102,.4); background: var(--ftt-accent-soft); color: var(--ftt-accent); }
+#ftt-panel .ftt-badge--suspense { border-color: rgba(169,139,224,.4); background: var(--ftt-purple-soft); color: var(--ftt-purple); }
+#ftt-panel .ftt-badge--parallel { border-color: rgba(106,166,224,.4); background: var(--ftt-info-soft); color: var(--ftt-info); }
+#ftt-panel .ftt-badge--blocked { border-color: rgba(224,164,74,.45); background: var(--ftt-warn-soft); color: var(--ftt-warn); }
+#ftt-panel .ftt-badge--abandoned { border-color: rgba(209,99,107,.45); background: var(--ftt-danger-soft); color: var(--ftt-danger); }
+#ftt-panel .ftt-badge--entry { border-color: var(--ftt-line-2); color: var(--ftt-text-3); }
+/* 关系表：与全局表格同色阶（此前用的是自己的一套 #333842/#1d2129） */
+#ftt-panel .ftt-rel-wrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); background: var(--ftt-bg-1); }
+#ftt-panel table.ftt-rel { width: 100%; border-collapse: collapse; font-size: var(--ftt-font-sm); }
+#ftt-panel table.ftt-rel th { background: var(--ftt-bg-3); color: var(--ftt-text-3); font-size: var(--ftt-font-xs); font-weight: 600; letter-spacing: .2px; padding: 5px 7px; border-bottom: 1px solid var(--ftt-line); white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+#ftt-panel table.ftt-rel td { padding: 4px 6px; border-bottom: 1px solid var(--ftt-line-soft); vertical-align: middle; }
+#ftt-panel table.ftt-rel tr:last-child td { border-bottom: none; }
+#ftt-panel table.ftt-rel input, #ftt-panel table.ftt-rel select { min-height: 24px; padding: 2px 6px; font-size: var(--ftt-font-xs); background: var(--ftt-bg-0); max-width: 120px; }
+#ftt-panel table.ftt-rel input:focus, #ftt-panel table.ftt-rel select:focus { border-color: var(--ftt-accent); }
+#ftt-panel .ftt-rel-warn { color: var(--ftt-warn); font-size: var(--ftt-font-xs); }
+#ftt-panel table.ftt-rel td.ftt-rel-role { min-width: 96px; }
+#ftt-panel table.ftt-rel input.ftt-rel-who { color: var(--ftt-text-1); font-weight: 500; }
+#ftt-panel table.ftt-rel td.ftt-rel-dev select { max-width: 76px; }
+#ftt-panel table.ftt-rel input.ftt-rel-w-sm { max-width: 96px; }
+#ftt-panel table.ftt-rel input.ftt-rel-w-date { max-width: 100px; }
+#ftt-panel table.ftt-rel input.ftt-rel-w-who { max-width: 110px; }
+#ftt-panel table.ftt-rel select.ftt-rel-w-dev { max-width: 76px; }
+#ftt-panel .ftt-rel-entry { gap: var(--ftt-space-2); margin: 0 0 4px; }
+#ftt-panel .ftt-rel-entry .ftt-rel-title { color: var(--ftt-text-1); font-weight: 600; }
+#ftt-panel .ftt-rel-tools { gap: var(--ftt-space-2); padding: 8px 10px; background: var(--ftt-bg-3); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); }
+#ftt-panel .ftt-rel-tools > select, #ftt-panel .ftt-rel-tools > input { min-height: 28px; }
+#ftt-panel .ftt-rel-tools > input.ftt-rel-w-filter { max-width: 160px; }
+#ftt-panel .ftt-rel-legend { margin: 2px 0 8px; }
+#ftt-panel .ftt-rel-orphan { color: var(--ftt-danger); font-size: var(--ftt-font-xs); }
+#ftt-panel .ftt-rel-warn { color: var(--ftt-warn); font-size: var(--ftt-font-xs); }
+#ftt-panel .ftt-rel-badge { font-size: var(--ftt-font-xs); color: var(--ftt-teal); border: 1px solid rgba(127,201,192,.4); background: var(--ftt-teal-soft); border-radius: 999px; padding: 0 7px; }
+#ftt-panel .ftt-rel-jump { cursor: pointer; color: var(--ftt-info); font-size: var(--ftt-font-xs); border-bottom: 1px dashed rgba(106,166,224,.5); }
+#ftt-panel .ftt-rel-jump:hover { color: var(--ftt-text-1); border-bottom-color: var(--ftt-text-1); }
+/* 列表行：「标题行 + 元信息 + 提示」的固定节奏（新增模块不再各写 margin/字号） */
+#ftt-panel .ftt-item-main > .ftt-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#ftt-panel .ftt-item-main > .ftt-title-row > b { font-weight: 600; }
+#ftt-panel .ftt-ops-col { flex-direction: column; align-items: center; justify-content: center; flex: 0 0 auto; }
+#ftt-panel .ftt-field.ftt-field-block { align-items: flex-start; flex-direction: column; }
+#ftt-panel .ftt-field.ftt-field-block > label { width: auto; }
+#ftt-panel .ftt-table-scroll { overflow-x: auto; max-width: 100%; }
+#ftt-panel.ftt-narrow .ftt-rel-tools > input, #ftt-panel.ftt-narrow .ftt-rel-tools > select { flex: 1 1 46%; min-width: 0; }
+#ftt-panel.ftt-narrow .ftt-note { padding-left: 6px; }
+/* —— 语义提示（行内）与正文强调 —— */
+#ftt-panel .ftt-hint-info { color: var(--ftt-teal); }
+#ftt-panel .ftt-hint-warn { color: var(--ftt-warn); }
+#ftt-panel .ftt-hint-err { color: var(--ftt-danger); }
+#ftt-panel .ftt-text { color: var(--ftt-text-1); }
+#ftt-panel .ftt-dot-ok { color: var(--ftt-ok); }
+#ftt-panel .ftt-tags-inline { color: var(--ftt-accent); font-size: var(--ftt-font-xs); }
+/* —— v1.182：情节分段总结（段内逐条剧情线）—— */
+#ftt-panel .ftt-seg-line { color: var(--ftt-text-1); font-size: var(--ftt-font-sm); line-height: 1.7; padding-left: 2px; }
+#ftt-panel .ftt-seg-no { color: var(--ftt-text-4); font-variant-numeric: tabular-nums; margin-right: 2px; }
+/* —— 状态卡（概览：管线状态 / 未摘要楼层）—— */
+#ftt-panel .ftt-item--info { border-color: rgba(106,166,224,.42); background: linear-gradient(180deg, var(--ftt-info-soft), transparent), var(--ftt-bg-2); }
+#ftt-panel .ftt-item--warn { border-color: rgba(224,164,74,.42); background: linear-gradient(180deg, var(--ftt-warn-soft), transparent), var(--ftt-bg-2); }
+#ftt-panel .ftt-item--err { border-color: rgba(209,99,107,.5); background: linear-gradient(180deg, var(--ftt-danger-soft), transparent), var(--ftt-bg-2); color: #ffb9bf; }
+#ftt-panel .ftt-item--col { flex-direction: column; align-items: flex-start; }
+#ftt-panel .ftt-pipe-title { color: var(--ftt-info); flex: 0 0 auto; }
+#ftt-panel .ftt-pend-title { color: var(--ftt-accent-3); }
+#ftt-panel .ftt-pend-list { display: flex; flex-wrap: wrap; gap: var(--ftt-space-1); color: var(--ftt-warn); }
+/* —— 结构工具类（替代各处内联 flex/margin/宽度）—— */
+#ftt-panel .ftt-inline-flex { display: inline-flex; align-items: center; gap: var(--ftt-space-1); }
+#ftt-panel .ftt-grow { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#ftt-panel .ftt-w-full { width: 100%; }
+#ftt-panel .ftt-mt-2 { margin-top: var(--ftt-space-2); }
+#ftt-panel .ftt-mt-4 { margin-top: var(--ftt-space-4); }
+#ftt-panel .ftt-mt-6 { margin-top: 24px; }
+#ftt-panel .ftt-my-2 { margin-top: var(--ftt-space-2); margin-bottom: var(--ftt-space-2); }
+#ftt-panel .ftt-ml-2 { margin-left: var(--ftt-space-2); }
+#ftt-panel .ftt-h4-inline { display: flex; align-items: center; gap: var(--ftt-space-2); margin: 8px 0 4px; color: var(--ftt-accent); font-size: var(--ftt-font-md); }
+#ftt-panel .ftt-filter-tight { margin: 4px 0 6px; gap: 6px; align-items: center; }
+#ftt-panel .ftt-field-col { align-items: flex-start; }
+#ftt-panel .ftt-select-sm { max-width: 132px; }
+#ftt-panel .ftt-pre { color: var(--ftt-text-2); white-space: pre-wrap; max-height: 40vh; overflow-y: auto; }
+#ftt-panel .ftt-pre-inline { color: var(--ftt-text-2); white-space: pre-wrap; overflow-y: auto; }
+#ftt-panel .ftt-scroll-40 { max-height: 40px; overflow-y: auto; }
+#ftt-panel .ftt-panel-error { padding: 14px; color: var(--ftt-text-2); }
+#ftt-panel .ftt-pipe-line { padding: 1px 0; font-size: var(--ftt-font-xs); }
+#ftt-panel .ftt-scene-caret { cursor: pointer; display: inline-block; width: 16px; text-align: center; color: var(--ftt-warn); user-select: none; }
+#ftt-panel .ftt-scene-caret:hover { color: var(--ftt-accent); }
+#ftt-panel .ftt-scene-caret-gap { display: inline-block; width: 16px; }
+#ftt-panel .ftt-scene-hit { color: var(--ftt-warn); }
+#ftt-panel .ftt-hint-purple { color: var(--ftt-purple); }
+#ftt-panel .ftt-textarea { width: 100%; min-height: 60px; background: var(--ftt-bg-0); color: var(--ftt-text-1); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); padding: 5px 8px; font-size: var(--ftt-font-sm); }
+#ftt-panel .ftt-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#ftt-panel .ftt-mono-sm { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--ftt-font-xs); }
+#ftt-panel .ftt-dbg-pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; color: var(--ftt-info); }
+#ftt-panel .ftt-dashed-b { border-bottom: 1px dashed var(--ftt-line); }
+#ftt-panel .ftt-dashed-t { border-top: 1px dashed var(--ftt-line); }
+#ftt-panel .ftt-pad-y { padding: 4px 2px; }
+#ftt-panel .ftt-baseline-row { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+#ftt-panel .ftt-flex-1 { flex: 1; min-width: 0; }
+#ftt-panel .ftt-mb-1 { margin-bottom: var(--ftt-space-1); }
+#ftt-panel .ftt-mb-2 { margin-bottom: var(--ftt-space-2); }
+#ftt-panel .ftt-mt-1 { margin-top: var(--ftt-space-1); }
+#ftt-panel .ftt-my-1 { margin-top: var(--ftt-space-1); margin-bottom: var(--ftt-space-1); }
+#ftt-panel .ftt-warn-box { margin-top: var(--ftt-space-2); border: 1px solid rgba(224,164,74,.55); border-radius: var(--ftt-radius-sm); padding: var(--ftt-space-2); background: var(--ftt-warn-soft); }
+#ftt-panel .ftt-pre-box { max-height: 180px; overflow-y: auto; border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); padding: 6px 8px; background: var(--ftt-bg-0); }
+#ftt-panel .ftt-empty-sm { color: var(--ftt-text-3); font-size: var(--ftt-font-xs); }
+/* —— 简易表格（存储治理视图等）—— */
+#ftt-panel table.ftt-table { width: 100%; font-size: var(--ftt-font-sm); border-collapse: collapse; }
+#ftt-panel table.ftt-table th.ftt-td, #ftt-panel table.ftt-table td.ftt-td { padding: 3px 6px; }
+#ftt-panel table.ftt-table tr.ftt-tr-head th { color: var(--ftt-accent); background: var(--ftt-accent-soft); text-align: left; }
+#ftt-panel table.ftt-table tr.ftt-tr-alt { border-top: 1px solid var(--ftt-line-soft); }
+/* —— 标签扫描胶囊与收/纳按钮 —— */
+#ftt-panel .ftt-scan-chip { display: inline-flex; align-items: center; gap: var(--ftt-space-1); margin: 3px 6px 3px 0; padding: 2px 8px; border: 1px solid var(--ftt-line); border-radius: 999px; background: var(--ftt-bg-1); font-size: var(--ftt-font-sm); }
+#ftt-panel .ftt-scan-chip:hover { border-color: var(--ftt-line-2); }
+#ftt-panel .ftt-btn.ftt-chip-btn { min-height: 20px; padding: 1px 7px; font-size: var(--ftt-font-xs); }
+#ftt-panel .ftt-btn.ftt-chip-btn--on-w { background: linear-gradient(180deg, #3f8f68, #2f6f4f); border-color: #3f8f68; color: #eafff2; }
+#ftt-panel .ftt-btn.ftt-chip-btn--on-b { background: linear-gradient(180deg, #9a4b4b, #7a3b3b); border-color: #9a4b4b; color: #ffecec; }
+#ftt-panel .ftt-ul { margin: 6px 0 0 16px; padding: 0; }
+#ftt-panel .ftt-ul > li { margin: 2px 0; color: var(--ftt-text-2); }
+/* —— 场景树层级（v1.167：此前只有类名没有样式，层级看不出来）—— */
+#ftt-panel .ftt-scene-tree { display: flex; flex-direction: column; gap: 2px; }
+#ftt-panel .ftt-scene-children { margin-left: 14px; padding-left: 8px; border-left: 1px dashed var(--ftt-line); }
+#ftt-panel.ftt-narrow .ftt-scene-children { margin-left: 8px; padding-left: 6px; }
+#ftt-panel.ftt-narrow .ftt-select-sm { max-width: 46%; }
+
+
+/* ===== 窄屏 / 手机端紧凑模式（v1.157）=====
+   触发：手机端 UA **或** 宿主视口宽度 ≤ 760px（JS 打标 #ftt-panel.ftt-narrow）∪ @media (max-width: 760px)；
+   目的：屏幕受限时顶部标题不再被挤压 —— 忙位提示只留图标（⏳ + 呼吸点）、标题单行省略、标题栏收紧。
+   说明：图标节点始终可见（桌面端与紧凑模式一致），紧凑模式只隐藏 .ftt-busy-text 文字。 */
+#ftt-panel .ftt-modal-head { min-width: 0; }
+#ftt-panel .ftt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ftt-panel .ftt-busy { white-space: nowrap; }
+#ftt-panel .ftt-busy-ico { display: inline; }
+#ftt-panel.ftt-narrow .ftt-busy-text { display: none; }
+#ftt-panel.ftt-narrow .ftt-busy { padding: 2px 7px; gap: 4px; }
+#ftt-panel.ftt-narrow .ftt-modal-head { gap: 6px; padding: 8px 10px; }
+#ftt-panel.ftt-narrow .ftt-title { font-size: 12px; }
+#ftt-panel.ftt-narrow .ftt-modal-head .ftt-stat { font-size: 11px; padding: 2px 7px; }
+#ftt-panel.ftt-narrow .ftt-close { font-size: 16px; padding: 0 2px; }
+@media (max-width: 760px) {
+  #ftt-panel .ftt-busy-text { display: none; }
+  #ftt-panel .ftt-busy { padding: 2px 7px; gap: 4px; }
+  #ftt-panel .ftt-modal-head { gap: 6px; padding: 8px 10px; }
+  #ftt-panel .ftt-title { font-size: 12px; }
+  #ftt-panel .ftt-modal-head .ftt-stat { font-size: 11px; padding: 2px 7px; }
+}
