@@ -22,6 +22,11 @@ export function statusText(extra) {
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
     if (extra && extra.import) lines.push('V1 导入：' + extra.import);
+    if (extra && extra.extract) {
+        const e = extra.extract;
+        const p = (extra.extractPending === undefined || extra.extractPending === null) ? '' : ' · 待分析 ' + extra.extractPending;
+        lines.push('提取：运行 ' + e.runs + ' · 成功 ' + e.ok + ' · 失败 ' + e.fail + (e.lastReason ? '（最近 ' + e.lastReason + '）' : '') + p);
+    }
     return lines.join('\n');
 }
 
@@ -56,6 +61,27 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'V1 数据导入：默认干跑差异报告；`/ftt-import apply` 才真正写入（源数据不删）',
                 returns: '导入报告文本',
+            }));
+        }
+        if (hooks && typeof hooks.extract === 'function') {
+            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+                name: 'ftt-analyze',
+                callback: async (named, unnamed) => {
+                    const raw = String(unnamed || '').trim();
+                    const opts = {};
+                    if (/^\d+$/.test(raw)) opts.floor = Number(raw);
+                    else if (raw && typeof hooks.pending === 'function') return '待分析楼层：' + (hooks.pending({}).join('、') || '（无）');
+                    const r = await hooks.extract(opts);
+                    if (r && Array.isArray(r.results)) {
+                        const head = '分析完成：成功 ' + r.done + ' / 共 ' + r.results.length + (r.note ? '（' + r.note + '）' : '');
+                        const rows = r.results.map((x) => '· 第 ' + x.floor + ' 楼 ' + (x.ok ? '✅ 新增 ' + x.added + ' 条' : '❌ ' + (x.reason || '失败')));
+                        return [head].concat(rows).join('\n');
+                    }
+                    if (r && r.ok) return '第 ' + r.floor + ' 楼分析完成：新增 ' + r.added + ' 条（共 ' + r.total + ' 条）· ' + r.ms + 'ms';
+                    return '分析未完成：' + String((r && r.reason) || '未知原因');
+                },
+                helpString: 'FTT 记忆提取：`/ftt-analyze` 分析未分析楼层；`/ftt-analyze 12` 指定楼层；`/ftt-analyze list` 列出待分析',
+                returns: '提取结果文本',
             }));
         }
         return true;

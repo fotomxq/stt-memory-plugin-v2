@@ -91,6 +91,25 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P4 首批：提取编排闭环（本版新增）**：
+  ① `core/prompt.js`（339 行）移植 V1 `buildSummaryPrompt` 及其闭包 14 项（`armorPresetText` / `buildExistingIndexText` /
+  `buildCurrencyLedgerText` / `buildWorldbookFeedText` / `applyFeedRegex` / 正则编译等）—— 系统提示词＝分析前置提示词 +
+  通用规范 + 各维度说明 + 变量规范，用户消息＝世界书参考（可选）+ **已有条目索引** + **当前货币账本** + 本轮对话；
+  黄金样本 11（oracle = 真实 V1 插件）**两条消息逐字符一致**；世界书能力改经注入视图 `worldbookHooks`。
+  ② `host/floors.js`：楼层取文与判据逐字对齐 V1 —— `floorStableText`（内容哈希用原始首刷）/`assistantTextOf`（分析用当前刷）/
+  `collectFloorLinesInRange`（`[第N楼 角色]` 行、跳过隐藏楼）/`floorAnalyzableText`（投喂正则 + 排除占位楼）/`hashFloorText`；
+  以及「已分析楼层」台账 `state.processedFloors`（`{f,h}`，上限 5000）+ `state.processedVer = v1.174:11n8nlu`
+  （签名 = `hashText('【FTT 已处理楼层哈希自检样本 v1.174】')`，与 V1 同值 → **V1 存档可直接沿用**）、
+  `recordProcessedFloors` / `isFloorProcessed`（内容改写即视为未分析）/ `listUnprocessedFloors`。
+  ③ `host/extract.js`：串起**取文 → 提示词 → AI(generateRaw) → `extractJsonObject` → `mergeDelta` → 台账 → 落盘**；
+  `analyzeFloor` / `analyzeFloors`（忙碌互斥）/ `autoExtractLatest`（取最后一个未分析楼层，受 `cfg.autoExtract` 保护）/
+  `extractStats` / `extractSummary`；六类失败姿态（`empty-floor`/`no-generate`/`ai-error`/`no-json`/`merge-fail`/`error`）
+  只回报原因并计数，**不抛出、不 abort、不改 chat、不写台账**。
+  ④ 入口：`GENERATION_ENDED` 自动提取、`/ftt-analyze [楼号|list]` 命令、`FTT.analyze`/`FTT.pendingFloors`/`FTT.extractStatus`、
+  `/ftt` 状态行新增「提取：运行/成功/失败/待分析」。
+  ⑤ 测试：`tests/unit/extract-prompt-flow.test.js` **15 项断言** + 冒烟 H1–H6（真实宿主桩）。门禁：单元 **22 文件 / 292 断言**、
+  冒烟 **35/35**、内核纯净度 0、内核标识符 0、版本一致性 OK、文档规范 0；文档 `docs/P4-提取编排.md`。
+  未完成：分维度并行提取（V1 `runSummarySeparate`）、关键词流程与及时分析、楼层对账/哈希漂移批量刷新、JSON 失败自动修复链。
 - **P3 次批：提取落库内核（`core/ingest.js#mergeDelta`）+ 内核完整性门禁（本版新增）**：
   ① 移植 V1 `mergeDelta`（1513 行 / 66 项闭包）——13 类维度的 add/update/remove/close 按 V1 同一顺序落库，
   含「已总结隐藏情节不接受 AI 改写」「情节就地更新保留 uses 与因果 log（最多 3 条）」「同名物品只更新不新增、qty=0 自动删除」

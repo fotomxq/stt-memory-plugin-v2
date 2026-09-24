@@ -18,6 +18,8 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data } from './adapters/import-v1.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats } from './host/extract.js';
+import { listUnprocessedFloors } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
@@ -35,6 +37,7 @@ const runtime = {
     store: { via: 'none', scope: '', last: null },
     cfg: null,
     import: { runs: 0, last: null },
+    extract: { runs: 0, ok: 0 },
     chat: { messages: 0, lastMessageId: -1, scopeKey: '' },
     lastError: '',
 };
@@ -53,6 +56,8 @@ export function extraForStatus() {
         store: runtime.store,
         chat: runtime.chat,
         import: runtime.importSummary || '',
+        extract: extractStats(),
+        extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
         cfg: runtime.cfg,
         inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
@@ -103,7 +108,9 @@ export async function init() {
         };
         const onGenEnded = () => {
             onFloorChanged();
-            try { void saveStateNowQuiet('generation'); } catch (e) { /* P3：提取后保存 */ }
+            try { void saveStateNowQuiet('generation'); } catch (e) { /* 忽略 */ }
+            // P4：生成结束 → 自动分析最后一楼（总开关 cfg.autoExtract；失败静默，绝不影响聊天）
+            void runAutoExtract().catch(() => { });
         };
         const onUserRendered = () => { onFloorChanged(); };
         const onChatChanged = () => {
@@ -119,9 +126,9 @@ export async function init() {
             CHAT_CHANGED: onChatChanged,
         });
     } catch (e) { runtime.lastError = String((e && e.message) || e); }
-    try { runtime.slash = registerSlashCommand(extraForStatus, { importV1: runV1Import }); } catch (e) { runtime.slash = false; }
+    try { runtime.slash = registerSlashCommand(extraForStatus, { importV1: runV1Import, extract: runExtract, pending: pendingFloors }); } catch (e) { runtime.slash = false; }
     try { runtime.macros = registerMacros(extraForStatus); } catch (e) { runtime.macros = false; }
-    try { installDevtools({ importV1: runV1Import, importStatus }); } catch (e) { /* 忽略 */ }
+    try { installDevtools({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary }); } catch (e) { /* 忽略 */ }
     // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
     try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;
@@ -174,6 +181,29 @@ export async function runV1Import(opts) {
         + '：新增 ' + t.add + ' · 已存在 ' + t.exist + ' · 冲突 ' + t.conflict;
     return res;
 }
+
+/**
+ * 自动提取（P4）：`GENERATION_ENDED` 后分析最后一个未分析楼层。
+ * 受 `cfg.autoExtract`（设置面板「自动提取」）与忙碌状态保护；任何失败只记录统计。
+ */
+export async function runAutoExtract(opts) {
+    const r = await autoExtractLatest(opts || {});
+    runtime.extract = extractStats();
+    return r;
+}
+
+/** 手动提取（命令 / 调试入口）：`{ floor }` 指定楼层，缺省分析未分析清单（可带 limit） */
+export async function runExtract(opts) {
+    const o = opts || {};
+    const r = (Number.isFinite(Number(o.floor)) && Number(o.floor) >= 0)
+        ? Object.assign({ floor: Number(o.floor) }, await analyzeFloor(Number(o.floor), o))
+        : await analyzeFloors(o);
+    runtime.extract = extractStats();
+    return r;
+}
+
+/** 待分析楼层清单（命令与调试） */
+export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
 
 /** 导入状态（/ftt 与 FTT.importStatus()） */
 export function importStatus() { return runtime.import; }

@@ -42,6 +42,17 @@ export const notifyHooks = { toast: () => undefined };
 export function setNotifyHooks(next) { Object.assign(notifyHooks, next || {}); return notifyHooks; }
 
 /**
+ * 世界书能力视图（宿主注入、内核只读）：V1 直接调 TH 的 `getCurrentCharPrimaryLorebook` /
+ *   `getCharWorldbookNames` / `getWorldbook`；V2 一律经此视图，缺失时返回空集（内核不触宿主 API）。
+ */
+export const worldbookHooks = {
+    getActive: async () => ({ primary: null, additional: [], global: [] }),
+    getEntries: async () => [],
+};
+/** 注入世界书钩子 */
+export function setWorldbookHooks(next) { Object.assign(worldbookHooks, next || {}); return worldbookHooks; }
+
+/**
  * 角色身份视图（宿主注入、内核只读）：`characterName` 用于「默认货币归属」等需要主角名的判断。
  * V1 这里调 TH 的 `getCurrentCharacterName()`；V2 由宿主把当前角色名注入进来。
  */

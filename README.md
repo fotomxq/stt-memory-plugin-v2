@@ -107,6 +107,14 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 注入视图（`notifyHooks` / `identityView` / `timerHooks`，内核不碰全局定时器与弹窗）。另修正保存流水线的**索引基线**
 语义（`primeStateIndex()` 只在载入后建立一次，否则删除永远不写墓碑）。详见 `docs/P3b-提取落库与内核完整性.md`。
 
+**P4 首批（提取编排，闭环打通）**：`core/prompt.js` 移植 V1 `buildSummaryPrompt`（含维度说明 / 已有条目索引 /
+货币账本 / 世界书参考 / 投喂正则），黄金样本 11 与真实 V1 插件**逐字符一致**；`host/floors.js` 复刻楼层取文与判据
+（稳定首刷哈希、当前刷正文、占位/隐藏楼排除、投喂正则）与「已分析楼层」台账（`state.processedFloors` +
+版本签名 `v1.174:11n8nlu`，与 V1 存档兼容）；`host/extract.js` 串起
+**取文 → 提示词 → AI → JSON → `mergeDelta` → 台账 → 落盘**，并提供 `/ftt-analyze`、`FTT.analyze`、
+`GENERATION_ENDED` 自动提取（受 `cfg.autoExtract` 保护）与忙碌互斥；六类失败姿态一律不抛出、不写台账、不影响聊天。
+详见 `docs/P4-提取编排.md`。
+
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 
 ### 5.3 硬规则
@@ -133,7 +141,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── i18n/                  # zh-cn / en 词条
 ├── tests/                 # 宿主桩 + 单元 + 冒烟
 ├── scripts/               # 门禁脚本（内核纯净度 / 内核标识符 / 版本一致性 / 文档规范）
-└── docs/                  # P0 探针报告 + 更新检查机制 + P1 内核平移 + P2 宿主与存储 + P3 注入闭环 + P3b 提取落库
+└── docs/                  # P0 探针报告 / 更新检查 / P1 内核平移 / P2 宿主与存储 / P3 注入闭环 / P3b 提取落库 / P4 提取编排
 ```
 
 ## 7. 许可

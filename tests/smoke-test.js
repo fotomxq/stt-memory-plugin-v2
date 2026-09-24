@@ -279,6 +279,81 @@ assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort', (asy
         && st.lastPush && st.lastPush.injected === true;
 })(), typeof globalThis.fttGenerateInterceptor);
 
+// ---------- H 提取（P4 首批：AI 摘要 → JSON 增量 → mergeDelta → 台账） ----------
+const floorsMod = await import('../host/floors.js');
+const extractMod = await import('../host/extract.js');
+host.ctx.chat.push({ is_user: false, mes: '甲用铜钥匙打开木箱，取出账册并记下转运日期。', name: '角色甲' });
+const floorId = host.ctx.chat.length - 1;
+
+assert('H1 提取入口已导出（FTT.analyze / pendingFloors / extractStatus）', (() => {
+    const F = globalThis.FTT;
+    return !!F && typeof F.analyze === 'function' && typeof F.pendingFloors === 'function' && typeof F.extractStatus === 'function';
+})(), typeof globalThis.FTT);
+
+assert('H2 楼层判据与台账：可分析正文 + 哈希台账（版本签名与 V1 同值）', (() => {
+    const txt = floorsMod.floorAnalyzableText(floorId);
+    return txt.indexOf('[第' + floorId + '楼 AI]') === 0 && txt.indexOf('铜钥匙') > 0
+        && floorsMod.PROCESSED_SIG === '11n8nlu' && floorsMod.PROCESSED_VER === 'v1.174'
+        && globalThis.FTT.pendingFloors({}).indexOf(floorId) >= 0;
+})(), floorsMod.PROCESSED_SIG);
+
+const aiDelta = JSON.stringify({ atoms: { add: [{ title: '账册', text: '甲打开木箱取出账册并记下转运日期。', date: '1919-11-29' }] } });
+
+assert('H3 FTT.analyze：AI 返回 JSON → 落库 + 台账记录 + 状态可读', (async () => {
+    const saved = host.ctx.generateRaw;
+    host.ctx.generateRaw = async () => aiDelta;
+    try {
+        const r = await globalThis.FTT.analyze({ floor: floorId });
+        const st = globalThis.FTT.extractStatus();
+        const imported = entry.__internals;
+        return r.ok === true && r.added === 1 && r.floor === floorId
+            && floorsMod.isFloorProcessed(floorId) === true
+            && st.runs >= 1 && st.ok >= 1 && st.processed.tag === floorsMod.PROCESSED_VER + ':' + floorsMod.PROCESSED_SIG
+            && !!imported;
+    } finally { host.ctx.generateRaw = saved; }
+})(), '');
+
+assert('H4 /ftt-analyze 命令：指定楼层与清单两种用法；/ftt 状态含提取行', (async () => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-analyze')[0];
+    const st = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0];
+    if (!cmd) return false;
+    const list = String(await cmd.callback({}, 'list'));
+    const saved = host.ctx.generateRaw;
+    host.ctx.generateRaw = async () => aiDelta;
+    try {
+        const one = String(await cmd.callback({}, String(floorId)));
+        return list.indexOf('待分析楼层') >= 0 && one.indexOf('分析完成') >= 0 && String(st.callback()).indexOf('提取：') >= 0;
+    } finally { host.ctx.generateRaw = saved; }
+})(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-analyze')[0]);
+
+assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即自动分析并记账', (async () => {
+    host.ctx.chat.push({ is_user: false, mes: '甲把账册放回木箱，锁上铜锁，转身离开仓库。', name: '角色甲' });
+    const newFloor = host.ctx.chat.length - 1;
+    const saved = host.ctx.generateRaw;
+    host.ctx.generateRaw = async () => aiDelta;
+    try {
+        host.emit('GENERATION_ENDED');
+        await new Promise((r) => setTimeout(r, 30));
+        return floorsMod.isFloorProcessed(newFloor) === true
+            && String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).indexOf('提取：') >= 0;
+    } finally { host.ctx.generateRaw = saved; }
+})(), '');
+
+assert('H6 提取失败姿态：AI 不可用时只回报原因，不影响聊天与注入', (async () => {
+    host.ctx.chat.push({ is_user: false, mes: '甲在仓库门口停下，回头看了一眼。', name: '角色甲' });
+    const f = host.ctx.chat.length - 1;
+    const saved = host.ctx.generateRaw;
+    delete host.ctx.generateRaw;
+    try {
+        const r = await globalThis.FTT.analyze({ floor: f });
+        const injectVal = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
+        return r.ok === false && r.reason === 'no-generate'
+            && floorsMod.isFloorProcessed(f) === false
+            && host.ctx.chat[f].mes.indexOf('回头看了一眼') > 0
+            && (injectVal === '' || injectVal.indexOf('【FTT记忆注入】') === 0);
+    } finally { host.ctx.generateRaw = saved; }
+})(), '');
+
 endpointDown = false;
 uninstallFetch();
 
