@@ -351,6 +351,32 @@ export function installDevtools(hooks) {
             relDimLabelOf: (dim) => (hooks && typeof hooks.relDimLabelOf === 'function' ? hooks.relDimLabelOf(dim) : String(dim == null ? '' : dim)),
             relJump: (dim, id) => (hooks && typeof hooks.relJump === 'function' ? hooks.relJump(dim, id) : { ok: false, reason: 'no-hook' }),
             relGoto: (dim, id) => (hooks && typeof hooks.relGoto === 'function' ? hooks.relGoto(dim, id) : { ok: false, reason: 'no-hook' }),
+            // B9-c 投喂标签自动分析（V1 `__FTT` 同名：latestAiFloorInfo / rxAnalyzeLatestText / rxNormTag /
+            //   rxDedupeTagList / rxPushFeedTag / rxTagScanHtml）
+            //   注：`rxPushFeedTag` / `setRxTagScan` 是**有意为之**的写入口（V1 `__FTT` 亦导出 `rxPushFeedTag`：
+            //   收录进投喂白/黑名单并落盘；`setRxTagScan` 仅供诊断注入扫描结果），其余为只读查询。
+            latestAiFloorInfo: () => (hooks && typeof hooks.latestAiFloorInfo === 'function' ? hooks.latestAiFloorInfo() : { text: '', floor: -1 }),
+            rxAnalyzeLatestText: () => (hooks && typeof hooks.rxAnalyzeLatestText === 'function' ? hooks.rxAnalyzeLatestText() : null),
+            rxNormTag: (raw) => (hooks && typeof hooks.rxNormTag === 'function' ? hooks.rxNormTag(raw) : ''),
+            rxDedupeTagList: (list) => (hooks && typeof hooks.rxDedupeTagList === 'function' ? hooks.rxDedupeTagList(list) : []),
+            rxPushFeedTag: (kind, raw) => (hooks && typeof hooks.rxPushFeedTag === 'function' ? hooks.rxPushFeedTag(kind, raw) : { added: false, reason: 'no-hook', tag: '', n: 0, other: false }),
+            rxTagScanHtml: () => (hooks && typeof hooks.rxTagScanHtml === 'function' ? hooks.rxTagScanHtml() : ''),
+            rxTagScan: () => (hooks && typeof hooks.rxTagScan === 'function' ? hooks.rxTagScan() : null),
+            setRxTagScan: (v) => (hooks && typeof hooks.setRxTagScan === 'function' ? hooks.setRxTagScan(v) : null),
+            rxFeedTagLists: () => (hooks && typeof hooks.rxFeedTagLists === 'function' ? hooks.rxFeedTagLists() : { white: [], black: [] }),
+            feedScanAction: (a, p) => (hooks && typeof hooks.feedScanAction === 'function' ? hooks.feedScanAction(a, p || {}) : { ok: false, action: String(a || ''), title: '', text: '', note: 'no-hook' }),
+            // B9-c 货币追踪（V1 `__FTT` 同名：normalizeTrackedRoles / trackedCurrencyRoles / isTrackedCurrencyOwner /
+            //   knownCharacterNames / trackPickState / setTrackPick；V1 亦导出 add/remove/clear 三个写入口，此处同）
+            normalizeTrackedRoles: (v) => (hooks && typeof hooks.normalizeTrackedRoles === 'function' ? hooks.normalizeTrackedRoles(v) : []),
+            trackedCurrencyRoles: () => (hooks && typeof hooks.trackedCurrencyRoles === 'function' ? hooks.trackedCurrencyRoles() : []),
+            isTrackedCurrencyOwner: (owner) => (hooks && typeof hooks.isTrackedCurrencyOwner === 'function' ? hooks.isTrackedCurrencyOwner(owner) : false),
+            knownCharacterNames: () => (hooks && typeof hooks.knownCharacterNames === 'function' ? hooks.knownCharacterNames() : []),
+            addTrackedCurrencyRole: (name) => (hooks && typeof hooks.addTrackedCurrencyRole === 'function' ? hooks.addTrackedCurrencyRole(name) : []),
+            removeTrackedCurrencyRole: (name) => (hooks && typeof hooks.removeTrackedCurrencyRole === 'function' ? hooks.removeTrackedCurrencyRole(name) : []),
+            clearTrackedCurrencyRoles: () => (hooks && typeof hooks.clearTrackedCurrencyRoles === 'function' ? hooks.clearTrackedCurrencyRoles() : 0),
+            trackPickState: () => (hooks && typeof hooks.trackPickState === 'function' ? hooks.trackPickState() : false),
+            setTrackPick: (v) => (hooks && typeof hooks.setTrackPick === 'function' ? hooks.setTrackPick(v) : false),
+            defaultCurrencyOwner: () => (hooks && typeof hooks.defaultCurrencyOwner === 'function' ? hooks.defaultCurrencyOwner() : '主角'),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

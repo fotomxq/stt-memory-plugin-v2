@@ -44,6 +44,13 @@ import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
 import { debugAction, DEBUG_ACTIONS } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
+// B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
+import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
+// B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
+import {
+    trackedCurrencyRoles, isTrackedCurrencyOwner, addTrackedCurrencyRole, removeTrackedCurrencyRole,
+    clearTrackedCurrencyRoles, trackPickState, setTrackPick, defaultCurrencyOwner, knownCharacterNames,
+} from '../core/model/money.js';
 import { resetState as kernelResetState } from '../adapters/store.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
@@ -483,6 +490,86 @@ function parallelRowBits(e) {
     return { note: note, ops: adv + pro };
 }
 
+// ============================================================
+// B9-c：货币页「👥 指定角色」标定（V1 v1.183 `currenciesHtml()` 的 head/trackChips/picker 三段）
+//   V1 出处：`currenciesHtml()`（约 24156）、`trackPickState()`/`setTrackPick()`（约 23745）、
+//   动作 `curTrackPick`/`curTrackClose`/`curTrackToggle`/`curTrackClear`（约 27480~27500）。
+//   V1 的 `catStat('currencies')`（约 9745）与 `currenciesHtml` 顶部胶囊由此处等价实现：
+//     `共 N 条货币 · M 个归属（前 3 个归属计数）` + 已标定时追加 ` · 已标定 K 名`。
+//   选择器角色名单 = `knownCharacterNames()`（角色档案去重排序，V1 同源）；
+//   行内「已标定」判定与 V1 选择器口径一致（去空白 + 小写比较），开关动作则用 V1 `isTrackedCurrencyOwner`。
+// ============================================================
+
+/** 货币页顶部统计胶囊（V1 `catStat('currencies')` + `tracked.length` 角标，逐字文案） */
+function currencyStatText() {
+    const list = arrOf('currencies');
+    const owners = {};
+    for (const x of list) { const k = String((x && x.owner) || ''); if (k) owners[k] = (owners[k] || 0) + 1; }
+    const names = Object.keys(owners);
+    const tracked = trackedCurrencyRoles();
+    const base = '共 ' + list.length + ' 条货币' + (names.length
+        ? (' · ' + names.length + ' 个归属（' + names.slice(0, 3).map((n) => n + ' ' + owners[n]).join(' / ') + (names.length > 3 ? ' …' : '') + '）')
+        : '');
+    return base + (tracked.length ? (' · 已标定 ' + tracked.length + ' 名') : '');
+}
+
+/** 货币页顶部（统计胶囊 + 说明 + 已标定胶囊；V1 `currenciesHtml` 的 `head` + `trackChips` 逐字） */
+function currencyTopHtml() {
+    const me = String(defaultCurrencyOwner() || '主角');
+    const tracked = trackedCurrencyRoles();
+    const head = '<div class="ftt-cat-stat ftt-chip">' + esc(currencyStatText()) + '</div>'
+        + '<div class="ftt-note ftt-note-info">💰 默认只记<b>主角</b>（当前判定：' + esc(me) + '）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。</div>';
+    const trackChips = tracked.length
+        ? '<div class="ftt-note ftt-note-info" data-ftt-track-chips>⭐ 已标定跟踪：' + tracked.map((n) => '<span class="ftt-badge ftt-badge--fact">' + esc(n) + '<span class="ftt-rel-jump" data-ftt-action="curTrackToggle" data-name="' + attr(n) + '" title="取消标定该角色"> ✖</span></span>').join(' ') + ' <span class="ftt-muted">被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。</span></div>'
+        : '';
+    return head + trackChips;
+}
+
+/** 货币页工具行里的两个标定按钮（V1 `addBtn` 的 `curTrackPick` / `curTrackClear` 两支，文案与 title 逐字） */
+function currencyTrackButtons() {
+    const tracked = trackedCurrencyRoles();
+    return '<button class="ftt-btn' + (trackPickState() ? ' ftt-primary' : '') + '" data-ftt-action="curTrackPick" title="从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）">👥 指定角色' + (tracked.length ? '（' + tracked.length + '）' : '') + '</button>'
+        + (tracked.length ? '<button class="ftt-btn ftt-err" data-ftt-action="curTrackClear" title="取消全部标定角色">✖ 清空标定</button>' : '');
+}
+
+/**
+ * 「👥 指定跟踪角色」选择器（V1 `currenciesHtml` 的 `picker` 段逐字；角色来源 = 角色档案）。
+ * 适配差异（登记）：V1 的搜索框是通用筛选条（`searchBoxHtml`：字段/排序/额外条件/模式 4 个下拉）；
+ *   V2 沿用「选角色」面板的既有约定（单输入框，`data-ftt-search="currencyTrackPick"`），
+ *   搜索词仍走 V1 同源的**页面搜索词槽**（V2 = `ps.q['currencyTrackPick']`）。
+ */
+function currencyPickPanelHtml() {
+    if (!trackPickState()) return '';
+    const names = knownCharacterNames();
+    const tracked = trackedCurrencyRoles();
+    const key = (nm) => String(nm).replace(/\s+/g, '').toLowerCase();
+    const isOn = (nm) => tracked.some((t) => key(t) === key(nm));
+    const q = String(ps.q.currencyTrackPick || '').trim().toLowerCase();
+    const shown = q ? names.filter((nm) => String(nm).toLowerCase().indexOf(q) >= 0) : names;
+    let body;
+    if (!names.length) body = '<div class="ftt-empty">「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。</div>';
+    else if (!shown.length) body = '<div class="ftt-empty">无匹配角色（搜索：' + esc(ps.q.currencyTrackPick || '') + '）</div>';
+    else {
+        body = shown.map((nm) => {
+            const on = isOn(nm);
+            return '<div class="ftt-item" data-ftt-curpick-name="' + attr(nm) + '"><div class="ftt-item-main"><b>' + esc(nm) + '</b>'
+                + (on ? ' <span class="ftt-badge ftt-badge--fact">已标定</span>' : '') + '</div>'
+                + '<div class="ftt-item-ops"><button class="ftt-op' + (on ? ' ftt-ok' : '') + '" data-ftt-action="curTrackToggle" data-name="' + attr(nm) + '" title="' + (on ? '取消标定' : '标定为跟踪对象') + '">' + (on ? '✅' : '➕') + '</button></div></div>';
+        }).join('\n');
+    }
+    return '<div class="ftt-editor"><div class="ftt-editor-title">👥 指定跟踪角色 · 从「角色」大类选择（已标定 ' + tracked.length + ' 名）</div>'
+        + '<div class="ftt-muted ftt-w-full">被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。</div>'
+        + '<input class="ftt-input" type="text" data-ftt-search="currencyTrackPick" value="' + attr(ps.q.currencyTrackPick || '') + '" placeholder="搜索角色名…">'
+        + '<div class="ftt-hint">角色档案 ' + names.length + ' 名 · 显示 ' + shown.length + ' 名</div>'
+        + '<div data-ftt-cur-list="currencyTrackPick">' + body + '</div>'
+        + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="curTrackClose">关闭</button></div></div>';
+}
+
+/** 货币页专属顶部（统计/说明/标定胶囊）—— 选择器另经 `currencyPickPanelHtml()` 渲染在工具行之后 */
+function currenciesTopHtml() {
+    try { return currencyTopHtml(); } catch (e) { return ''; }
+}
+
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -524,6 +611,9 @@ function dimBodyList(kind) {
         // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
         + (kind === 'rumors' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
             + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
+        // V1 `currenciesHtml()`：货币页「👥 指定角色（N）」（恒显，开启选择器时加 ftt-primary）与
+        //   「✖ 清空标定」（仅在有标定角色时显示）—— 文案与 title 逐字对齐（B9-c）
+        + (kind === 'currencies' ? currencyTrackButtons() : '')
         + '</div>'
         + (kind === 'rumors' ? ('<div class="ftt-hint">📢 传言随剧情时间<b>机械演化</b>（零 AI 调用）：每 <b>' + rumorEveryRounds() + '</b> 楼轮次演化一次（当前已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次；平行世界发生变化后重新计数）；每次变化都会写入该条的<b>传导链路</b>，变化过程需 <b>' + rumorNeedRounds() + '</b> 轮才生效。传言<b>未经证实</b>，注入时只作为「听说 / 都在传」的参考。</div>') : '')
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
@@ -541,7 +631,11 @@ function dimBodyList(kind) {
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
     // B8-7-b：平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 topBar；空库时同样显示）
     const ptb = (kind === 'parallels') ? parallelTopBar() : '';
-    if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    // B9-c：货币页顶部（统计胶囊 + 说明 + 已标定胶囊）与「👥 指定跟踪角色」选择器
+    //   位置：胶囊在工具行之前（V1 `currenciesHtml` 的 head/trackChips），选择器在工具行之后（V1 的 addBtn 之后）
+    const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
+    const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
+    if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + curTop + toolbar + curPick + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     const rows = list.map((e) => {
         const id = String(e.id || '');
         const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || ''].filter(Boolean).join(' · ');
@@ -558,7 +652,7 @@ function dimBodyList(kind) {
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
             + '</div>';
     }).join('\n');
-    return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + ptb + head + ed + peek + rows;
+    return (REL_TABDS[kind] ? subViewHtml(kind) : '') + curTop + toolbar + curPick + ptb + head + ed + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -1485,6 +1579,39 @@ export async function panelAction(action, payload) {
             setNote('计划/悬念修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, planSuspRepair: r, made: r.made || 0 });
         }
+        // ==================== B9-c：投喂标签自动分析（V1 同名动作） ====================
+        else if (FEED_SCAN_ACTIONS.indexOf(a) >= 0) {
+            // V1 `case 'rxScanTags'` / `'rxAddTag'` / `'rxScanClear'`（约 27087~27103）：
+            //   `rxScanTags` 分析最新 AI 正文结构（无正文时 warning）→ `renderPanel()` → 提示；
+            //   `rxAddTag` 按 `data-ftt-kind`（非 black 一律 white）+ `data-ftt-tag` 收录并自动排重；
+            //   `rxScanClear` 清空结果（**V1 无提示**，V2 同样不写 note）。
+            const fr = feedScanAction(a, p);
+            setNote(fr.note || '');
+            result = Object.assign(result, fr);
+        }
+        // ==================== B9-c：货币「指定角色」标定（V1 v1.183 四个动作） ====================
+        else if (a === 'curTrackPick') {
+            // V1 `case 'curTrackPick'`：打开/关闭选择器（纯开关，不重置搜索词）
+            setTrackPick(!trackPickState());
+        }
+        else if (a === 'curTrackClose') { setTrackPick(false); }
+        else if (a === 'curTrackToggle') {
+            // V1 `case 'curTrackToggle'`：已标定 → 取消（toast 纯文本）；未标定 → 标定（notify 标题 + 文本）
+            const nm = String(p.name || '').trim();
+            if (nm) {
+                const on = isTrackedCurrencyOwner(nm);
+                if (on) { removeTrackedCurrencyRole(nm); setNote('已取消标定「' + nm + '」'); }
+                else {
+                    addTrackedCurrencyRole(nm);
+                    setNote('已标定「' + nm + '」：后续分析记忆会同时考虑该角色的货币情况；注入时与主角一样恒定列出。');
+                }
+            }
+        }
+        else if (a === 'curTrackClear') {
+            // V1 `case 'curTrackClear'`：清空全部标定（toast 纯文本，含条数）
+            const n = clearTrackedCurrencyRoles();
+            setNote(n ? ('已清空 ' + n + ' 个标定角色') : '当前没有标定角色');
+        }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
             const nr = await nsfwAction(a, p);
@@ -1627,6 +1754,8 @@ export function bindOverlay() {
                 if (tg.dataset.fttSearch !== undefined) {
                     // B9-b：「👥 选角色」面板的搜索框与列表页搜索同名属性（V1 `data-ftt-search="relPick"`）→ 分流到选择器搜索词
                     if (String(tg.dataset.fttSearch) === 'relPick') { void panelAction('relPickQuery', { q: tg.value }); return; }
+                    // B9-c：货币「👥 指定角色」选择器的搜索框（V1 `data-ftt-search="currencyTrackPick"`）沿用**页面搜索词槽**
+                    //   （V2 = `ps.q['currencyTrackPick']`，与 V1 `pageSearchQuery['currencyTrackPick']` 同口径）
                     void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value });
                     return;
                 }
@@ -1649,7 +1778,9 @@ export function bindOverlay() {
                     // 设定控件写回（V1 同款 `data-ftt-cfg`）：bool 用 checked，其余按原值类型写回
                     const key = String(tg.dataset.fttCfg);
                     let raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
-                    if (typeof readControlValue(key) === 'number' && /^-?\d+(\.\d+)?$/.test(String(raw))) raw = Number(raw);
+                    // B9-c：投喂白/黑名单文本域在保存时**整表排重**（V1 `settingsApplyAll`：`rxDedupeTagList(wlTa.value.split('\n'))`）
+                    if (isFeedTagKey(key)) raw = rxDedupeTagList(String(raw).split('\n'));
+                    else if (typeof readControlValue(key) === 'number' && /^-?\d+(\.\d+)?$/.test(String(raw))) raw = Number(raw);
                     applySettingsControl(key, raw);
                     renderPanel();
                     return;

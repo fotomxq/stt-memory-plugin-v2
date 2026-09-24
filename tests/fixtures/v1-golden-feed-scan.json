@@ -1,0 +1,879 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "notes": [
+      "本 fixture 由 tests/fixtures/gen-v1-golden-feed-scan.cjs **直调真实 V1 插件 v1.206** 生成（`node tests/fixtures/gen-v1-golden-feed-scan.cjs tests/fixtures/v1-golden-feed-scan.json`，连跑两次逐字节一致；`ts` 为 Date.now()，已在投影中删除）。其中 rxScanTags / rxAddTag / rxScanClear / 切页 / 切设定子页 走**真实点击委托**（openPanel() 后在 panel.listeners.click 上派发伪事件 → V1 handleAction 真实执行）；latestAiFloorInfo / rxAnalyzeLatestText / rxNormTag / rxDedupeTagList / rxPushFeedTag / rxTagScanHtml 直接调 __FTT 导出函数；设定页静态片段取自 V1 导出函数 F.settingsHtml()（setSettingsSub('feed') 后构建）。",
+      "V1 原生怪癖（oracle 实测，原样保留）：① `latestAiFloorInfo` 只回溯 **60 楼**（`i >= last - 60`），AI 正文更早时视为「无正文」（fixture 的 far 场景：last=70、正文在 5 楼 → floor=-1）。② 空白正文楼、隐藏楼、`role` 非 assistant 的楼都会被跳过（normal 场景落到第 1 楼）。③ `rxPushFeedTag` 对**未知 kind** 一律按 `white` 处理（`isBlack = kind === 'black'`）。④ `rxPushFeedTag` 的 `saveCfg()` 被 try/catch 包住，落盘失败也不影响内存写入与返回值。⑤ `rxTagScanHtml` 对已收录标签只做**高亮**（`ftt-chip-btn--on-w/-b`），不阻止重复点击（重复点击由 `rxPushFeedTag` 的 dup 分支回报）。⑥ 结果缓存在模块级 `rxTagScan`（跨 `renderPanel` 保留），只有 `rxScanClear` 或再次分析才改变；`ts` 为 `Date.now()`（黄金样本中归一为删除）。⑦ 设定页的「投喂白/黑名单」文本域用的 `data-ftt-cfg` 是别名 `rx_whitelist` / `rx_blacklist`，由 `settingsApplyAll` 映射到 `cfg.feedRegexWhitelist` / `cfg.feedRegexBlacklist` 并在保存时 `rxDedupeTagList(value.split('\\n'))` 整表排重。",
+      "设定页静态片段取自 V1 导出函数 `F.settingsHtml()`（`setSettingsSub('feed')` 后构建），非手写。"
+    ],
+    "sourceFile": "src/FTT记忆组件-v1.206.js",
+    "v1SourceSnips": {
+      "latestAiFloorInfo": "function latestAiFloorInfo() {\n        try {\n            const last = getLastMessageId();\n            if (last < 0) return { text: '', floor: -1 };\n            for (let i = last; i >= 0 && i >= last - 60; i--) {\n                const msgs = getChatMessages(i, { hide_state: 'all', include_swipes: true });\n                const m = msgs && msgs[0];\n                if (!m || m.is_hidden) continue;\n                if (m.is_user) continue;\n                if (m.role && m.role !== 'assistant') continue;\n                const text = getAssistantText(m) || (typeof m.mes === 'string' ? m.mes : '');\n                if (text && String(text).trim()) return { text: String(text).trim(), floor: i };\n            }\n            return { text: '', floor: -1 };\n        } catch (e) { return { text: '', floor: -1 }; }\n    }",
+      "rxNormTag": "function rxNormTag(raw) {\n        let s = String(raw == null ? '' : raw).trim();\n        s = s.replace(/^<\\s*\\/?\\s*/, '').replace(/\\s*\\/?\\s*>$/, '');\n        s = s.replace(/^[【\\[（(\"'「『]+/, '').replace(/[】\\]）)\"'」』]+$/, '');\n        return s.trim().slice(0, 40);\n    }",
+      "rxAnalyzeLatestText": "function rxAnalyzeLatestText() {\n        const info = latestAiFloorInfo();\n        if (!info.text) { rxTagScan = { ok: false, reason: 'no-text', ts: Date.now(), floor: -1, chars: 0, tags: [], markers: [] }; return rxTagScan; }\n        const text = info.text;\n        const tagMap = new Map();\n        const closedSet = new Set();\n        try {\n            let m;\n            const reOpen = /<\\s*([a-zA-Z][a-zA-Z0-9_:.-]*)(?:\\s[^<>]*)?\\/?>/g;\n            while ((m = reOpen.exec(text))) { const n = m[1].toLowerCase(); tagMap.set(n, (tagMap.get(n) || 0) + 1); }\n            const reClose = /<\\s*\\/\\s*([a-zA-Z][a-zA-Z0-9_:.-]*)\\s*>/g;\n            while ((m = reClose.exec(text))) closedSet.add(m[1].toLowerCase());\n        } catch (e) { }\n        const tags = Array.from(tagMap.entries())\n            .map(([name, count]) => ({ name, count, paired: closedSet.has(name) }))\n            .sort((a, b) => (b.paired - a.paired) || (b.count - a.count) || a.name.localeCompare(b.name))\n            .slice(0, 30);\n        const markerMap = new Map();\n        try {\n            let m;\n            const reMark = /[【\\[]([^】\\]\\n]{1,24})[】\\]]/g;\n            while ((m = reMark.exec(text))) {\n                const n = String(m[1] || '').trim();\n                if (!n || !/[0-9A-Za-z\\u4e00-\\u9fff]/.test(n)) continue;   // 至少含一个实义字符\n                markerMap.set(n, (markerMap.get(n) || 0) + 1);\n            }\n        } catch (e) { }\n        const markers = Array.from(markerMap.entries())\n            .map(([name, count]) => ({ name, count }))\n            .sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name))\n            .slice(0, 30);\n        rxTagScan = { ok: true, ts: Date.now(), floor: info.floor, chars: text.length, tags, markers };\n        return rxTagScan;\n    }",
+      "rxDedupeTagList": "function rxDedupeTagList(list) {\n        const out = [];\n        for (const raw of (Array.isArray(list) ? list : [])) {\n            const tag = rxNormTag(raw);\n            if (!tag) continue;\n            if (out.some(x => x.toLowerCase() === tag.toLowerCase())) continue;\n            out.push(tag);\n        }\n        return out;\n    }",
+      "rxPushFeedTag": "function rxPushFeedTag(kind, raw) {\n        const out = { added: false, reason: '', tag: '', n: 0, other: false };\n        try {\n            const tag = rxNormTag(raw);\n            out.tag = tag;\n            if (!tag) { out.reason = 'empty'; return out; }\n            const isBlack = kind === 'black';\n            const key = isBlack ? 'feedRegexBlacklist' : 'feedRegexWhitelist';\n            const otherKey = isBlack ? 'feedRegexWhitelist' : 'feedRegexBlacklist';\n            const list = rxDedupeTagList(cfg[key]);\n            out.n = list.length;\n            if (list.some(x => x.toLowerCase() === tag.toLowerCase())) { out.reason = 'dup'; return out; }\n            list.push(tag);\n            cfg[key] = list;\n            out.n = list.length;\n            out.added = true;\n            try { out.other = rxDedupeTagList(cfg[otherKey]).some(x => x.toLowerCase() === tag.toLowerCase()); } catch (e) { }\n            try { saveCfg(); } catch (e) { }\n        } catch (e) { out.reason = 'error'; }\n        return out;\n    }",
+      "rxTagScanHtml": "function rxTagScanHtml() {\n        const s = typeof rxTagScan === 'undefined' ? null : rxTagScan;\n        if (!s) return '<div class=\"ftt-muted\">尚未分析。点「🔍 分析最新正文结构」列出正文中的 HTML 标签与行内标记，点标签即可收录。</div>';\n        if (!s.ok) return '<div class=\"ftt-muted\">⚠️ 未取到最近一条 AI 正文，无法分析。</div>';\n        const wl = (Array.isArray(cfg.feedRegexWhitelist) ? cfg.feedRegexWhitelist : []).map(x => String(x || '').toLowerCase());\n        const bl = (Array.isArray(cfg.feedRegexBlacklist) ? cfg.feedRegexBlacklist : []).map(x => String(x || '').toLowerCase());\n        const chip = (name, count, paired) => {\n            const k = String(name).toLowerCase();\n            const inW = wl.indexOf(k) >= 0, inB = bl.indexOf(k) >= 0;\n            const attr = escHtml(String(name));\n            return `<span class=\"ftt-scan-chip\">`\n                + `<b class=\"ftt-text\">${attr}</b><span class=\"ftt-sub\">×${count}${paired ? '·成对' : ''}</span>`\n                + `<button class=\"ftt-btn ftt-sm ftt-chip-btn${inW ? ' ftt-chip-btn--on-w' : ''}\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"${attr}\" title=\"加入白名单\">＋白</button>`\n                + `<button class=\"ftt-btn ftt-sm ftt-chip-btn${inB ? ' ftt-chip-btn--on-b' : ''}\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"${attr}\" title=\"加入黑名单\">＋黑</button>`\n                + `</span>`;\n        };\n        const tagsHtml = s.tags.length ? s.tags.map(t => chip(t.name, t.count, t.paired)).join('') : '<span class=\"ftt-muted\">（未发现 HTML 标签）</span>';\n        const marksHtml = s.markers.length ? s.markers.map(m => chip(m.name, m.count, false)).join('') : '<span class=\"ftt-muted\">（未发现行内标记）</span>';\n        return `<div class=\"ftt-hint ftt-my-2\">📄 第 ${s.floor} 楼 AI 正文 · ${s.chars} 字 · 标签 ${s.tags.length} 种 / 标记 ${s.markers.length} 种（已收录高亮）</div>`\n            + `<div class=\"ftt-my-2\"><span class=\"ftt-hint\">HTML 标签：</span>${tagsHtml}</div>`\n            + `<div class=\"ftt-my-2\"><span class=\"ftt-hint\">行内标记：</span>${marksHtml}</div>`;\n    }",
+      "rxScanTags": "case 'rxScanTags': {\n                    const sc = rxAnalyzeLatestText();\n                    renderPanel();\n                    if (!sc || !sc.ok) notify('warning', { title: '未取到最新正文', text: '当前会话没有可分析的 AI 回复（或正文为空）。' });\n                    else notify('info', { title: '已分析最新正文结构', text: `第 ${sc.floor} 楼 · ${sc.chars} 字 · HTML 标签 ${sc.tags.length} 种 / 行内标记 ${sc.markers.length} 种；点标签右侧「＋白」/「＋黑」即可收录。` });\n                    break;\n                }",
+      "rxAddTag": "case 'rxAddTag': {\n                    const kind = String(ds && ds.fttKind === 'black' ? 'black' : 'white');\n                    const res = rxPushFeedTag(kind, ds && ds.fttTag);\n                    const label = kind === 'black' ? '黑名单' : '白名单';\n                    if (!res.added) notify('info', { title: res.reason === 'dup' ? `已在${label}中（自动排重）` : '未收录', text: res.reason === 'dup' ? `${res.tag} · 当前共 ${res.n} 项` : '标签为空，未收录。' });\n                    else notify('success', { title: `已加入${label}`, text: `${res.tag} · 当前共 ${res.n} 项${res.other ? '（注意：该标签也存在于另一侧名单）' : ''}` });\n                    renderPanel();\n                    break;\n                }",
+      "rxScanClear": "case 'rxScanClear': { rxTagScan = null; renderPanel(); break; }",
+      "feedSection": "<div class=\"ftt-section\"><div class=\"ftt-sec-title\">投喂标签自动分析</div>\n<div class=\"ftt-row\"><button class=\"ftt-btn ftt-sm\" data-ftt-action=\"rxScanTags\">🔍 分析最新正文结构</button><button class=\"ftt-btn ftt-sm\" data-ftt-action=\"rxScanClear\">清空结果</button></div>\n<div class=\"ftt-muted ftt-my-1\">扫描<b>最近一条 AI 正文</b>：列出 HTML 标签（白名单走「标签内部内容」）与行内标记（走「行内包含」）；点「＋白 / ＋黑」收录，<b>自动排重</b>（大小写不敏感）。</div>\n${rxTagScanHtml()}\n</div>\n<div class=\"ftt-section\"><div class=\"ftt-sec-title\">投喂白名单标签（只保留含这些标签的行，每行一个标签名）</div>\n<textarea data-ftt-cfg=\"rx_whitelist\" class=\"ftt-textarea\">${escHtml(wl)}</textarea>\n<div class=\"ftt-muted\">填标签名即可（如 content 或【战斗】），无需正则；留空=不过滤。白名单全部未命中会自动回退为不过滤。</div>\n</div>\n<div class=\"ftt-section\"><div class=\"ftt-sec-title\">投喂黑名单标签（屏蔽含这些标签的行，每行一个标签名）</div>\n<textarea data-ftt-cfg=\"rx_blacklist\" class=\"ftt-textarea\">${escHtml(bl)}</textarea>\n<div class=\"ftt-muted\">填标签名即可（如【系统消息】），无需写正则。留空=不过滤。</div>\n</div>",
+      "feedPageHead": "} else if (activeSettingsSub === 'feed') {\n            const wl = (cfg.feedRegexWhitelist || []).join('\\n');\n            const bl = (cfg.feedRegexBlacklist || []).join('\\n');\n            let previewText = '';\n            try {\n                const raw = collectFloorLines(cfg.feedFloors || 10).join('\\n');\n                const st = feedFilterStats(raw);\n                const parts = [`最近楼层非空行 ${st.total} 行`];\n                if (st.hasWhite) parts.push(`白名单保留 ${st.kept} 行`);\n                if (st.hasBlack) parts.push(`黑名单屏蔽 ${st.blocked} 行`);\n                if (!st.hasWhite && !st.hasBlack) parts.push('未设标签，全部投喂');\n                else if (st.hasWhite && st.kept === 0) parts.push('⚠️ 白名单无命中');\n                previewText = `<div class=\"ftt-muted\" style=\"margin:4px 0 2px\">📊 预览：${parts.join(' · ')}</div>${st.hasWhite && st.kept === 0 ? '<div class=\"ftt-note ftt-note-err\">⚠️ 白名单在最近楼层无命中：标签可能拼写有误，此时自动回退为不过滤。</div>' : ''}`;\n            } catch (e) { }",
+      "settingsApplyFeedTags": "const wlTa = panelEl?.querySelector('[data-ftt-cfg=\"rx_whitelist\"]');\n                    if (wlTa) cfg.feedRegexWhitelist = rxDedupeTagList(wlTa.value.split('\\n'));   // 保存时自动排重\n                    const blTa = panelEl?.querySelector('[data-ftt-cfg=\"rx_blacklist\"]');\n                    if (blTa) cfg.feedRegexBlacklist = rxDedupeTagList(blTa.value.split('\\n'));\n                    // 白名单存在但最近楼层无命中 → 保存时警告（标签可能拼写有误）\n                    let wlWarn = false;\n                    try {\n                        const rawCheck = collectFloorLines(cfg.feedFloors || 10).join('\\n');\n                        const stCheck = feedFilterStats(rawCheck);\n                        wlWarn = stCheck.hasWhite && stCheck.kept === 0 && stCheck.total > 0;\n                    } catch (e) { }",
+      "exports": "latestAiFloorInfo, rxAnalyzeLatestText, rxNormTag, rxDedupeTagList, rxPushFeedTag, rxTagScanHtml,"
+    }
+  },
+  "latestAiFloor": {
+    "cases": [
+      {
+        "name": "normal",
+        "info": {
+          "floor": 1,
+          "chars": 125,
+          "textHead": "<content>\n第1楼：角色甲在地点丁发现了"
+        }
+      },
+      {
+        "name": "userOnly",
+        "info": {
+          "floor": -1,
+          "chars": 0,
+          "textHead": ""
+        }
+      },
+      {
+        "name": "none",
+        "info": {
+          "floor": -1,
+          "chars": 0,
+          "textHead": ""
+        }
+      },
+      {
+        "name": "far",
+        "info": {
+          "floor": -1,
+          "chars": 0,
+          "textHead": ""
+        }
+      }
+    ]
+  },
+  "analyze": {
+    "cases": [
+      {
+        "name": "TAGGED（成对 + 非成对 + 行内标记）",
+        "scan": {
+          "ok": true,
+          "floor": 1,
+          "chars": 125,
+          "tags": [
+            {
+              "name": "a",
+              "count": 1,
+              "paired": true
+            },
+            {
+              "name": "content",
+              "count": 1,
+              "paired": true
+            },
+            {
+              "name": "thinking",
+              "count": 1,
+              "paired": true
+            },
+            {
+              "name": "br",
+              "count": 1,
+              "paired": false
+            }
+          ],
+          "markers": [
+            {
+              "name": "战斗",
+              "count": 1
+            },
+            {
+              "name": "状态",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "MANY_TAGS（32 个标签 → 截前 30）",
+        "scan": {
+          "ok": true,
+          "floor": 0,
+          "chars": 242,
+          "tags": [
+            {
+              "name": "x01",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x02",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x03",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x04",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x05",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x06",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x07",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x08",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x09",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x10",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x11",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x12",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x13",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x14",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x15",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x16",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x17",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x18",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x19",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x20",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x21",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x22",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x23",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x24",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x25",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x26",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x27",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x28",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x29",
+              "count": 1,
+              "paired": false
+            },
+            {
+              "name": "x30",
+              "count": 1,
+              "paired": false
+            }
+          ],
+          "markers": [
+            {
+              "name": "提示",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "DUP_MIX（大小写 + 重复标记计数）",
+        "scan": {
+          "ok": true,
+          "floor": 0,
+          "chars": 100,
+          "tags": [
+            {
+              "name": "content",
+              "count": 3,
+              "paired": true
+            }
+          ],
+          "markers": [
+            {
+              "name": "战斗",
+              "count": 2
+            },
+            {
+              "name": "状态",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "空正文 → no-text",
+        "scan": {
+          "ok": false,
+          "reason": "no-text",
+          "floor": -1,
+          "chars": 0,
+          "tags": [],
+          "markers": []
+        }
+      },
+      {
+        "name": "纯符号标记 → 被实义字符判定过滤",
+        "scan": {
+          "ok": true,
+          "floor": 0,
+          "chars": 16,
+          "tags": [],
+          "markers": [
+            {
+              "name": "战斗",
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "超长行内标记（>24 字不入候选）",
+        "scan": {
+          "ok": true,
+          "floor": 0,
+          "chars": 32,
+          "tags": [],
+          "markers": []
+        }
+      }
+    ]
+  },
+  "normTag": {
+    "cases": [
+      {
+        "in": "<content>",
+        "out": "content"
+      },
+      {
+        "in": "</content>",
+        "out": "content"
+      },
+      {
+        "in": "< content >",
+        "out": "content"
+      },
+      {
+        "in": "<br/>",
+        "out": "br"
+      },
+      {
+        "in": "<a b=\"c\">",
+        "out": "a b=\"c"
+      },
+      {
+        "in": "<thinking>",
+        "out": "thinking"
+      },
+      {
+        "in": "【战斗】",
+        "out": "战斗"
+      },
+      {
+        "in": "  [状态] ",
+        "out": "状态"
+      },
+      {
+        "in": "「引号」",
+        "out": "引号"
+      },
+      {
+        "in": "『角引号』",
+        "out": "角引号"
+      },
+      {
+        "in": "（括号）",
+        "out": "括号"
+      },
+      {
+        "in": "\"双引号\"",
+        "out": "双引号"
+      },
+      {
+        "in": "'单引号'",
+        "out": "单引号"
+      },
+      {
+        "in": "[[双层]]",
+        "out": "双层"
+      },
+      {
+        "in": "《书名》",
+        "out": "《书名》"
+      },
+      {
+        "in": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲",
+        "out": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲"
+      },
+      {
+        "in": "",
+        "out": ""
+      },
+      {
+        "in": "   ",
+        "out": ""
+      },
+      {
+        "in": null,
+        "out": ""
+      },
+      {
+        "in": "__undefined__",
+        "out": ""
+      },
+      {
+        "in": 123,
+        "out": "123"
+      }
+    ]
+  },
+  "dedupe": {
+    "cases": [
+      {
+        "name": "空白/大小写/空项",
+        "in": [
+          " a ",
+          "A",
+          "",
+          "b",
+          "b",
+          "  "
+        ],
+        "call": "rxDedupeTagList([\" a \",\"A\",\"\",\"b\",\"b\",\"  \"])",
+        "out": [
+          "a",
+          "b"
+        ]
+      },
+      {
+        "name": "包裹与重复（content/战斗）",
+        "in": [
+          "<content>",
+          "CONTENT",
+          "【战斗】",
+          "战斗"
+        ],
+        "call": "rxDedupeTagList([\"<content>\",\"CONTENT\",\"【战斗】\",\"战斗\"])",
+        "out": [
+          "content",
+          "战斗"
+        ]
+      },
+      {
+        "name": "null",
+        "in": null,
+        "call": "rxDedupeTagList(null)",
+        "out": []
+      },
+      {
+        "name": "字符串（非数组）→ 空",
+        "in": "content",
+        "call": "rxDedupeTagList(\"content\")",
+        "out": []
+      },
+      {
+        "name": "空数组",
+        "in": [],
+        "call": "rxDedupeTagList([])",
+        "out": []
+      },
+      {
+        "name": "保留首次出现顺序",
+        "in": [
+          "乙",
+          "甲",
+          "乙",
+          "甲"
+        ],
+        "call": "rxDedupeTagList([\"乙\",\"甲\",\"乙\",\"甲\"])",
+        "out": [
+          "乙",
+          "甲"
+        ]
+      }
+    ]
+  },
+  "pushFeed": {
+    "steps": [
+      {
+        "name": "白·首次收录",
+        "kind": "white",
+        "raw": "<content>",
+        "out": {
+          "added": true,
+          "reason": "",
+          "tag": "content",
+          "n": 1,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": []
+      },
+      {
+        "name": "白·同名重复 → dup",
+        "kind": "white",
+        "raw": "content",
+        "out": {
+          "added": false,
+          "reason": "dup",
+          "tag": "content",
+          "n": 1,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": []
+      },
+      {
+        "name": "白·大小写不同 → dup",
+        "kind": "white",
+        "raw": "CONTENT",
+        "out": {
+          "added": false,
+          "reason": "dup",
+          "tag": "CONTENT",
+          "n": 1,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": []
+      },
+      {
+        "name": "白·空白 → empty",
+        "kind": "white",
+        "raw": "   ",
+        "out": {
+          "added": false,
+          "reason": "empty",
+          "tag": "",
+          "n": 0,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": []
+      },
+      {
+        "name": "白·null → empty",
+        "kind": "white",
+        "raw": null,
+        "out": {
+          "added": false,
+          "reason": "empty",
+          "tag": "",
+          "n": 0,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": []
+      },
+      {
+        "name": "黑·首次收录（带括号 → 归一）",
+        "kind": "black",
+        "raw": "【系统消息】",
+        "out": {
+          "added": true,
+          "reason": "",
+          "tag": "系统消息",
+          "n": 1,
+          "other": false
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": [
+          "系统消息"
+        ]
+      },
+      {
+        "name": "黑·收录已在白名单的标签 → other=true",
+        "kind": "black",
+        "raw": "content",
+        "out": {
+          "added": true,
+          "reason": "",
+          "tag": "content",
+          "n": 2,
+          "other": true
+        },
+        "wlAfter": [
+          "content"
+        ],
+        "blAfter": [
+          "系统消息",
+          "content"
+        ]
+      },
+      {
+        "name": "白·收录已在黑名单的标签 → other=true",
+        "kind": "white",
+        "raw": "系统消息",
+        "out": {
+          "added": true,
+          "reason": "",
+          "tag": "系统消息",
+          "n": 2,
+          "other": true
+        },
+        "wlAfter": [
+          "content",
+          "系统消息"
+        ],
+        "blAfter": [
+          "系统消息",
+          "content"
+        ]
+      },
+      {
+        "name": "未知 kind（非 black 一律按 white）",
+        "kind": "weird",
+        "raw": "中立标签",
+        "out": {
+          "added": true,
+          "reason": "",
+          "tag": "中立标签",
+          "n": 3,
+          "other": false
+        },
+        "wlAfter": [
+          "content",
+          "系统消息",
+          "中立标签"
+        ],
+        "blAfter": [
+          "系统消息",
+          "content"
+        ]
+      }
+    ],
+    "final": {
+      "wl": [
+        "content",
+        "系统消息",
+        "中立标签"
+      ],
+      "bl": [
+        "系统消息",
+        "content"
+      ]
+    }
+  },
+  "tagScanHtml": {
+    "states": [
+      {
+        "name": "state0 未分析",
+        "html": "<div class=\"ftt-muted\">尚未分析。点「🔍 分析最新正文结构」列出正文中的 HTML 标签与行内标记，点标签即可收录。</div>"
+      },
+      {
+        "name": "state2 有结果",
+        "html": "<div class=\"ftt-hint ftt-my-2\">📄 第 1 楼 AI 正文 · 125 字 · 标签 4 种 / 标记 2 种（已收录高亮）</div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">HTML 标签：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">a</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"a\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"a\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">content</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"content\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"content\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">thinking</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"thinking\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"thinking\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">br</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"br\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"br\" title=\"加入黑名单\">＋黑</button></span></div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">行内标记：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">战斗</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"战斗\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"战斗\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">状态</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"状态\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"状态\" title=\"加入黑名单\">＋黑</button></span></div>"
+      },
+      {
+        "name": "state3 已收录高亮（白）",
+        "html": "<div class=\"ftt-hint ftt-my-2\">📄 第 1 楼 AI 正文 · 125 字 · 标签 4 种 / 标记 2 种（已收录高亮）</div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">HTML 标签：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">a</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"a\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"a\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">content</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn ftt-chip-btn--on-w\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"content\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"content\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">thinking</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"thinking\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"thinking\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">br</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"br\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"br\" title=\"加入黑名单\">＋黑</button></span></div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">行内标记：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">战斗</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"战斗\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"战斗\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">状态</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"状态\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"状态\" title=\"加入黑名单\">＋黑</button></span></div>"
+      },
+      {
+        "name": "state4 已收录高亮（白+黑）",
+        "html": "<div class=\"ftt-hint ftt-my-2\">📄 第 1 楼 AI 正文 · 125 字 · 标签 4 种 / 标记 2 种（已收录高亮）</div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">HTML 标签：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">a</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"a\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"a\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">content</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn ftt-chip-btn--on-w\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"content\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"content\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">thinking</b><span class=\"ftt-sub\">×1·成对</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"thinking\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn ftt-chip-btn--on-b\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"thinking\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">br</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"br\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"br\" title=\"加入黑名单\">＋黑</button></span></div><div class=\"ftt-my-2\"><span class=\"ftt-hint\">行内标记：</span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">战斗</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"战斗\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"战斗\" title=\"加入黑名单\">＋黑</button></span><span class=\"ftt-scan-chip\"><b class=\"ftt-text\">状态</b><span class=\"ftt-sub\">×1</span><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"white\" data-ftt-tag=\"状态\" title=\"加入白名单\">＋白</button><button class=\"ftt-btn ftt-sm ftt-chip-btn\" data-ftt-action=\"rxAddTag\" data-ftt-kind=\"black\" data-ftt-tag=\"状态\" title=\"加入黑名单\">＋黑</button></span></div>"
+      },
+      {
+        "name": "state1 无正文（ok=false）",
+        "html": "<div class=\"ftt-muted\">⚠️ 未取到最近一条 AI 正文，无法分析。</div>"
+      }
+    ]
+  },
+  "feedPage": {
+    "settingsSub": "feed",
+    "scanSectionTitle": "投喂标签自动分析",
+    "scanButtons": [
+      "<button class=\"ftt-btn ftt-sm\" data-ftt-action=\"rxScanTags\">🔍 分析最新正文结构</button>",
+      "<button class=\"ftt-btn ftt-sm\" data-ftt-action=\"rxScanClear\">清空结果</button>"
+    ],
+    "scanNoteInner": "扫描<b>最近一条 AI 正文</b>：列出 HTML 标签（白名单走「标签内部内容」）与行内标记（走「行内包含」）；点「＋白 / ＋黑」收录，<b>自动排重</b>（大小写不敏感）。",
+    "scanHtml": "<div class=\"ftt-muted\">尚未分析。点「🔍 分析最新正文结构」列出正文中的 HTML 标签与行内标记，点标签即可收录。</div>",
+    "wlTitle": "投喂白名单标签（只保留含这些标签的行，每行一个标签名）",
+    "wlTextarea": "<textarea data-ftt-cfg=\"rx_whitelist\" class=\"ftt-textarea\">content\n战斗</textarea>",
+    "wlNote": "填标签名即可（如 content 或【战斗】），无需正则；留空=不过滤。白名单全部未命中会自动回退为不过滤。",
+    "blTitle": "投喂黑名单标签（屏蔽含这些标签的行，每行一个标签名）",
+    "blTextarea": "<textarea data-ftt-cfg=\"rx_blacklist\" class=\"ftt-textarea\">系统消息</textarea>",
+    "blNote": "填标签名即可（如【系统消息】），无需写正则。留空=不过滤。"
+  },
+  "actionFlow": {
+    "steps": [
+      {
+        "name": "切到设定页",
+        "ds": {
+          "fttTab": "settings"
+        },
+        "toasts": [],
+        "wl": [],
+        "bl": [],
+        "tab": "settings"
+      },
+      {
+        "name": "切到「投喂范围」子页",
+        "ds": {
+          "fttSubtab": "feed"
+        },
+        "toasts": [],
+        "wl": [],
+        "bl": [],
+        "sub": "feed",
+        "scanIdle": true
+      },
+      {
+        "name": "rxScanTags（有正文）",
+        "ds": {
+          "fttAction": "rxScanTags"
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "已分析最新正文结构",
+            "text": "第 1 楼 · 125 字 · HTML 标签 4 种 / 行内标记 2 种；点标签右侧「＋白」/「＋黑」即可收录。"
+          }
+        ],
+        "wl": [],
+        "bl": [],
+        "scanFloor": true,
+        "hasAddBtns": true,
+        "onWhite": false
+      },
+      {
+        "name": "rxAddTag 白 content",
+        "ds": {
+          "fttAction": "rxAddTag",
+          "fttKind": "white",
+          "fttTag": "content"
+        },
+        "toasts": [
+          {
+            "kind": "success",
+            "title": "已加入白名单",
+            "text": "content · 当前共 1 项"
+          }
+        ],
+        "wl": [
+          "content"
+        ],
+        "bl": [],
+        "onWhite": true
+      },
+      {
+        "name": "rxAddTag 白 content（重复）",
+        "ds": {
+          "fttAction": "rxAddTag",
+          "fttKind": "white",
+          "fttTag": "content"
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "已在白名单中（自动排重）",
+            "text": "content · 当前共 1 项"
+          }
+        ],
+        "wl": [
+          "content"
+        ],
+        "bl": [],
+        "onWhite": true
+      },
+      {
+        "name": "rxAddTag 黑 战斗",
+        "ds": {
+          "fttAction": "rxAddTag",
+          "fttKind": "black",
+          "fttTag": "【战斗】"
+        },
+        "toasts": [
+          {
+            "kind": "success",
+            "title": "已加入黑名单",
+            "text": "战斗 · 当前共 1 项"
+          }
+        ],
+        "wl": [
+          "content"
+        ],
+        "bl": [
+          "战斗"
+        ],
+        "onBlack": true
+      },
+      {
+        "name": "rxAddTag 无 kind（默认 white）",
+        "ds": {
+          "fttAction": "rxAddTag",
+          "fttTag": "状态"
+        },
+        "toasts": [
+          {
+            "kind": "success",
+            "title": "已加入白名单",
+            "text": "状态 · 当前共 2 项"
+          }
+        ],
+        "wl": [
+          "content",
+          "状态"
+        ],
+        "bl": [
+          "战斗"
+        ]
+      },
+      {
+        "name": "rxAddTag 空标签",
+        "ds": {
+          "fttAction": "rxAddTag",
+          "fttKind": "white",
+          "fttTag": "  "
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "未收录",
+            "text": "标签为空，未收录。"
+          }
+        ],
+        "wl": [
+          "content",
+          "状态"
+        ],
+        "bl": [
+          "战斗"
+        ]
+      },
+      {
+        "name": "rxScanClear",
+        "ds": {
+          "fttAction": "rxScanClear"
+        },
+        "toasts": [],
+        "wl": [
+          "content",
+          "状态"
+        ],
+        "bl": [
+          "战斗"
+        ],
+        "scanIdle": true,
+        "hasAddBtns": false
+      }
+    ],
+    "scanToastSample": {
+      "kind": "info",
+      "title": "未收录",
+      "text": "标签为空，未收录。"
+    }
+  },
+  "noTextAction": {
+    "toasts": [
+      {
+        "kind": "warning",
+        "title": "未取到最新正文",
+        "text": "当前会话没有可分析的 AI 回复（或正文为空）。"
+      }
+    ],
+    "scanHtmlHasWarn": false
+  }
+}

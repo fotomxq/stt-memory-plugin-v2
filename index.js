@@ -111,6 +111,18 @@ import {
     relKnownNames, relPickAppendRow, relPickPanelHtml, relPickQueryOf, setRelPickQuery,
     relEntryTitle, relFindEntryId, relIsRelDim, relDimLabelOf, relJump, relGoto,
 } from './ui/rel-table.js';
+// B9-c：投喂标签自动分析（V1 v1.141 同名能力；状态由 ui/feed-scan.js 持有）
+import {
+    latestAiFloorInfo, rxAnalyzeLatestText, rxNormTag, rxDedupeTagList, rxPushFeedTag, rxTagScanHtml,
+    rxTagScanState, setRxTagScan, rxFeedTagLists, feedScanAction,
+} from './ui/feed-scan.js';
+// B9-c：货币追踪（V1 v1.183 同名能力；名单与选择器开关由 core/model/money.js 持有）
+import {
+    trackedCurrencyRoles, isTrackedCurrencyOwner, knownCharacterNames,
+    addTrackedCurrencyRole, removeTrackedCurrencyRole, clearTrackedCurrencyRoles, trackPickState, setTrackPick,
+    defaultCurrencyOwner,
+} from './core/model/money.js';
+import { normalizeTrackedRoles } from './core/model/scalars.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
@@ -661,6 +673,30 @@ function bootstrapDiagnostics() {
             relDimLabelOf: (dim) => relDimLabelOf(dim),
             relJump: (dim, id) => relJump(dim, id),
             relGoto: (dim, id) => relGoto(dim, id),
+            // B9-c 投喂标签自动分析（V1 `__FTT` 同名：latestAiFloorInfo / rxAnalyzeLatestText / rxNormTag /
+            //   rxDedupeTagList / rxPushFeedTag / rxTagScanHtml；`rxPushFeedTag` 为 V1 同款的收录写入口）
+            latestAiFloorInfo: () => latestAiFloorInfo(),
+            rxAnalyzeLatestText: () => rxAnalyzeLatestText(),
+            rxNormTag: (raw) => rxNormTag(raw),
+            rxDedupeTagList: (list) => rxDedupeTagList(list),
+            rxPushFeedTag: (kind, raw) => rxPushFeedTag(kind, raw),
+            rxTagScanHtml: () => rxTagScanHtml(),
+            rxTagScan: () => rxTagScanState(),
+            setRxTagScan: (v) => setRxTagScan(v),
+            rxFeedTagLists: () => rxFeedTagLists(),
+            feedScanAction: (a, p) => feedScanAction(a, p || {}),
+            // B9-c 货币追踪（V1 `__FTT` 同名：normalizeTrackedRoles / trackedCurrencyRoles / isTrackedCurrencyOwner /
+            //   knownCharacterNames / trackPickState / setTrackPick；V1 亦导出 add/remove/clear 三个写入口）
+            normalizeTrackedRoles: (v) => normalizeTrackedRoles(v),
+            trackedCurrencyRoles: () => trackedCurrencyRoles(),
+            isTrackedCurrencyOwner: (owner) => isTrackedCurrencyOwner(owner),
+            knownCharacterNames: () => knownCharacterNames(),
+            addTrackedCurrencyRole: (name) => addTrackedCurrencyRole(name),
+            removeTrackedCurrencyRole: (name) => removeTrackedCurrencyRole(name),
+            clearTrackedCurrencyRoles: () => clearTrackedCurrencyRoles(),
+            trackPickState: () => trackPickState(),
+            setTrackPick: (v) => setTrackPick(v),
+            defaultCurrencyOwner: () => defaultCurrencyOwner(),
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };

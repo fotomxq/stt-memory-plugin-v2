@@ -1,0 +1,891 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "notes": [
+      "本 fixture 由 tests/fixtures/gen-v1-golden-cur-track.cjs **直调真实 V1 插件 v1.206** 生成（`node tests/fixtures/gen-v1-golden-cur-track.cjs tests/fixtures/v1-golden-cur-track.json`，连跑两次逐字节一致）。其中 curTrackPick / curTrackClose / curTrackToggle / curTrackClear / 切页 走**真实点击委托**（openPanel() 后在 panel.listeners.click 上派发伪事件 → V1 handleAction 真实执行；货币页 HTML 取自 panel.innerHTML，V1 currenciesHtml() 未导出、仅经 panelHtml() 可达）；knownCharacterNames / trackedCurrencyRoles / add·remove·clear / isTrackedCurrencyOwner / trackPickState / setTrackPick /buildCurrencyTrackedSection / buildCurrencyLedgerText 直接调 __FTT 导出函数。",
+      "V1 原生怪癖（oracle 实测，原样保留）：① `curTrackPick` 是**纯开关**（`currencyTrackPicking = !currencyTrackPicking`），不重置搜索词 / 不重置页内其它状态。② `curTrackClose` 与 `curTrackPick` 再点一次效果相同（都置 false），但 `curTrackClose` **无任何提示**。③ `curTrackToggle` 对空名（trim 后为空）**直接 break**（不提示、不重绘）。④ `curTrackClear`/`curTrackToggle` 走 `toast(...)`（kind=info），`curTrackToggle` 的**新增**分支走 `notify('success', …)`（标题不同）。⑤ 「✖ 清空标定」按钮只在 `tracked.length` 非空时渲染；「👥 指定角色」按钮恒渲染，标定数进文案角标（`（N）`）且开启选择器时加 `ftt-primary`。⑥ 选择器角色名单来自**角色档案**（`knownCharacterNames()`：`state.snapshots[].name` 去重后 `localeCompare` 排序），重名档案只出现一次。⑦ 已标定判定在选择器内是**去空白 + 小写**比较（`isOn`）；而 `isTrackedCurrencyOwner` 额外支持**简称包含**匹配（两者口径不同，V1 原样）。",
+      "货币页 HTML 取自点击「货币」标签后的 `panel.innerHTML`（V1 `currenciesHtml()` 未导出，仅经 `panelHtml()` 可达）；动作 toast 取自 `F.toastLogGet()`。"
+    ],
+    "sourceFile": "src/FTT记忆组件-v1.206.js",
+    "v1SourceSnips": {
+      "curTrackPick": "case 'curTrackPick': {\n                    // 打开/关闭角色选择器（角色大类 = 角色档案里的已知角色）\n                    currencyTrackPicking = !currencyTrackPicking;\n                    renderPanel();\n                    break;\n                }\n                case 'curTrackClose': { currencyTrackPicking = false; renderPanel(); break; }\n                case 'curTrackToggle': {\n                    const nm = String(ds?.fttName || '').trim();\n                    if (!nm) break;\n                    const on = (typeof isTrackedCurrencyOwner === 'function') && isTrackedCurrencyOwner(nm);\n                    if (on) { removeTrackedCurrencyRole(nm); toast(`已取消标定「${nm}」`, 'info'); }\n                    else { addTrackedCurrencyRole(nm); notify('success', { title: `已标定「${nm}」`, text: '后续分析记忆会同时考虑该角色的货币情况；注入时与主角一样恒定列出。' }); }\n                    renderPanel();\n                    break;\n                }",
+      "curTrackClear": "case 'curTrackClear': {\n                    const n = clearTrackedCurrencyRoles();\n                    renderPanel();\n                    toast(n ? `已清空 ${n} 个标定角色` : '当前没有标定角色', 'info');\n                    break;\n                }",
+      "currenciesHead": "function currenciesHtml() {\n        const me = String((typeof defaultCurrencyOwner === 'function' ? defaultCurrencyOwner() : '') || '主角');\n        const list = sortRecent(state.currencies);\n        const tracked = (typeof trackedCurrencyRoles === 'function') ? trackedCurrencyRoles() : [];\n        const totalByOwner = {};\n        for (const c of list) {\n            const k = String(c.owner || me);\n            totalByOwner[k] = (totalByOwner[k] || 0) + 1;\n        }\n        const head = `<div class=\"ftt-cat-stat ftt-chip\">${catStat('currencies')}${tracked.length ? ` · 已标定 ${tracked.length} 名` : ''}</div>`\n            + `<div class=\"ftt-note ftt-note-info\">💰 默认只记<b>主角</b>（当前判定：${escHtml(me)}）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。</div>`;\n        // v1.183：标定胶囊（已指定跟踪的角色；点 ✖ 取消标定）\n        const trackChips = tracked.length\n            ? `<div class=\"ftt-note ftt-note-info\" data-ftt-track-chips>⭐ 已标定跟踪：${tracked.map(n => `<span class=\"ftt-badge ftt-badge--fact\">${escHtml(n)}<span class=\"ftt-rel-jump\" data-ftt-action=\"curTrackToggle\" data-ftt-name=\"${escHtml(n)}\" title=\"取消标定该角色\"> ✖</span></span>`).join(' ')} <span class=\"ftt-muted\">被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。</span></div>`\n            : '';\n        const addBtn = `<button class=\"ftt-btn\" data-ftt-action=\"addEntry\" data-ftt-kind=\"currencies\">➕ 新增货币</button>`\n            + `<button class=\"ftt-btn${currencyTrackPicking ? ' ftt-primary' : ''}\" data-ftt-action=\"curTrackPick\" title=\"从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）\">👥 指定角色${tracked.length ? `（${tracked.length}）` : ''}</button>`\n            + (tracked.length ? `<button class=\"ftt-btn ftt-err\" data-ftt-action=\"curTrackClear\" title=\"取消全部标定角色\">✖ 清空标定</button>` : '');\n        // 角色选择器（角色大类 = 角色档案；带搜索，走通用筛选管线，输入法安全）",
+      "currencyPicker": "const picker = (() => {\n            if (!currencyTrackPicking) return '';\n            const names = (typeof knownCharacterNames === 'function') ? knownCharacterNames() : [];\n            const isOn = (nm) => tracked.some(t => String(t).replace(/\\s+/g, '').toLowerCase() === String(nm).replace(/\\s+/g, '').toLowerCase());\n            const rowOf = (nm) => {\n                const on = isOn(nm);\n                return `<div class=\"ftt-item\" ${rowAttrs('currencyTrackPick', { name: nm })}><div class=\"ftt-item-main\"><b>${escHtml(nm)}</b>${on ? ' <span class=\"ftt-badge ftt-badge--fact\">已标定</span>' : ''}</div><div class=\"ftt-item-ops\"><button class=\"ftt-op${on ? ' ftt-ok' : ''}\" data-ftt-action=\"curTrackToggle\" data-ftt-name=\"${escHtml(nm)}\" title=\"${on ? '取消标定' : '标定为跟踪对象'}\">${on ? '✅' : '➕'}</button></div></div>`;\n            };\n            pageListRenderers['currencyTrackPick'] = () => {\n                const shown = pageSearchItems('currencyTrackPick', names.map(nm => ({ name: nm })));\n                pageListCounts['currencyTrackPick'] = { shown: shown.length, total: names.length };\n                if (!names.length) return '<div class=\"ftt-empty\">「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。</div>';\n                if (!shown.length) return `<div class=\"ftt-empty\">无匹配角色（搜索：${escHtml(pageSearchQuery['currencyTrackPick'] || '')}）</div>`;\n                return shown.map(x => rowOf(x.name)).join('\\n');\n            };\n            const body = pageListRenderers['currencyTrackPick']();\n            return `<div class=\"ftt-editor\"><div class=\"ftt-editor-title\">👥 指定跟踪角色 · 从「角色」大类选择（已标定 ${tracked.length} 名）</div>`\n                + `<div class=\"ftt-muted ftt-w-full\">被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。</div>`\n                + searchBoxHtml('currencyTrackPick', '搜索角色名…', names.length, names.length)\n                + `<div data-ftt-list=\"currencyTrackPick\">${body}</div>`\n                + `<div class=\"ftt-row\"><button class=\"ftt-btn\" data-ftt-action=\"curTrackClose\">关闭</button></div></div>`;\n        })();",
+      "trackPickState": "function trackPickState() { return !!currencyTrackPicking; }\n    function setTrackPick(v) { currencyTrackPicking = !!v; return currencyTrackPicking; }",
+      "knownCharacterNames": "function knownCharacterNames() {\n        try {\n            const out = [];\n            for (const s of (state.snapshots || [])) {\n                const nm = String((s && s.name) || '').trim();\n                if (!nm || out.indexOf(nm) >= 0) continue;\n                out.push(nm);\n            }\n            return out.sort((a, b) => a.localeCompare(b));\n        } catch (e) { return []; }\n    }",
+      "addTracked": "function addTrackedCurrencyRole(name) {\n        try {\n            const nm = String(name == null ? '' : name).trim();\n            if (!nm) return trackedCurrencyRoles();\n            cfg.currencyTrackedRoles = normalizeTrackedRoles(trackedCurrencyRoles().concat([nm]));\n            saveCfg();\n            return trackedCurrencyRoles();\n        } catch (e) { return trackedCurrencyRoles(); }\n    }\n    function removeTrackedCurrencyRole(name) {\n        try {\n            const nm = String(name == null ? '' : name).replace(/\\s+/g, '').toLowerCase();\n            cfg.currencyTrackedRoles = trackedCurrencyRoles().filter(n => String(n).replace(/\\s+/g, '').toLowerCase() !== nm);\n            saveCfg();\n            return trackedCurrencyRoles();\n        } catch (e) { return trackedCurrencyRoles(); }\n    }",
+      "buildCurrencyTrackedSection": "function buildCurrencyTrackedSection() {\n        try {\n            if (!cfg || cfg.currencyEnabled === false || cfg.currencyDynamicEnabled === false) return '';\n            const names = (typeof trackedCurrencyRoles === 'function') ? trackedCurrencyRoles() : [];\n            if (!names.length) return '';\n            const pt = cfg.promptTemplates || defaultCfg.promptTemplates;\n            const tpl = String(pt.currenciesTracked || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.currenciesTracked) || '').trim();\n            if (!tpl) return '';\n            return tpl.split('{{标定角色}}').join(names.join('、')).split('{{角色}}').join(names.join('、'));\n        } catch (e) { return ''; }\n    }",
+      "buildCurrencyLedgerText": "function buildCurrencyLedgerText() {\n        try {\n            if (!cfg || cfg.currencyEnabled === false) return '';\n            const me = String((typeof defaultCurrencyOwner === 'function' ? defaultCurrencyOwner() : '') || '');\n            const list = (state.currencies || []).filter((cu) => {\n                if (!cu || !cu.name) return false;\n                const owner = String(cu.owner || '');\n                if (!owner || owner === me || owner === '主角' || owner === '我') return true;\n                return (typeof isTrackedCurrencyOwner === 'function') && isTrackedCurrencyOwner(owner);\n            });\n            if (!list.length) return '';\n            const cap = Math.max(1, Number((cfg && cfg.maxCurrencies) || 8));\n            const rows = list.slice(-cap).map((cu) => {\n                const owner = String(cu.owner || me || '主角');\n                const unit = cu.unit ? ` ${cu.unit}` : '';\n                const last = Array.isArray(cu.history) && cu.history.length ? cu.history[cu.history.length - 1] : null;\n                const lastTxt = last ? `（最近：${last.date ? last.date + ' ' : ''}${last.delta >= 0 ? '收入' : '支出'}${formatMoney(Math.abs(last.delta))}${last.note ? '·' + String(last.note).slice(0, 20) : ''}）` : '';\n                return `- ${owner}·${cu.name} ${formatMoney(cu.amount)}${unit}${cu.date ? `（${cu.date}）` : ''}${lastTxt}`;\n            });\n            return `【当前货币账本（主角 + 已标定跟踪角色；**更新参照**，请勿重复新增）】\\n${rows.join('\\n')}\\n（同名归属 + 同币种只保留一条：有变化用「更新」给出新额度与本次收支；无变化不要输出。）`;\n        } catch (e) { return ''; }\n    }",
+      "exports": "normalizeTrackedRoles, trackedCurrencyRoles, isTrackedCurrencyOwner, knownCharacterNames,"
+    }
+  },
+  "knownNames": {
+    "out": [
+      "角色丙",
+      "角色乙",
+      "角色甲"
+    ]
+  },
+  "trackedRoles": {
+    "transitions": [
+      {
+        "call": "trackedCurrencyRoles()（初始空）",
+        "out": []
+      },
+      {
+        "call": "addTrackedCurrencyRole('角色乙')",
+        "out": [
+          "角色乙"
+        ]
+      },
+      {
+        "call": "addTrackedCurrencyRole('角色丙')",
+        "out": [
+          "角色乙",
+          "角色丙"
+        ]
+      },
+      {
+        "call": "addTrackedCurrencyRole('角色乙')（重复）",
+        "out": [
+          "角色乙",
+          "角色丙"
+        ]
+      },
+      {
+        "call": "addTrackedCurrencyRole('   ')（空名）",
+        "out": [
+          "角色乙",
+          "角色丙"
+        ]
+      },
+      {
+        "call": "isTrackedCurrencyOwner('角色乙')",
+        "out": true
+      },
+      {
+        "call": "isTrackedCurrencyOwner(' 角色乙 ')",
+        "out": true
+      },
+      {
+        "call": "isTrackedCurrencyOwner('角色甲')",
+        "out": false
+      },
+      {
+        "call": "isTrackedCurrencyOwner('')",
+        "out": false
+      },
+      {
+        "call": "removeTrackedCurrencyRole('角色乙')",
+        "out": [
+          "角色丙"
+        ]
+      },
+      {
+        "call": "removeTrackedCurrencyRole('角色乙')（已不在）",
+        "out": [
+          "角色丙"
+        ]
+      },
+      {
+        "call": "clearTrackedCurrencyRoles()（返回清空条数）",
+        "out": 1
+      },
+      {
+        "call": "clearTrackedCurrencyRoles()（已空）",
+        "out": 0
+      },
+      {
+        "call": "trackedCurrencyRoles()（清空后）",
+        "out": []
+      },
+      {
+        "call": "cfg=['角色'] → isTrackedCurrencyOwner('角色乙')（简称包含 → true）",
+        "out": true
+      },
+      {
+        "call": "cfg=['角色'] → isTrackedCurrencyOwner('角色')",
+        "out": true
+      },
+      {
+        "call": "cfg=['角色'] → isTrackedCurrencyOwner('旁人')",
+        "out": false
+      },
+      {
+        "call": "cfg=['角色'] + removeTrackedCurrencyRole('角色乙')（命中判定通过但精确匹配不到 → 名单不变）",
+        "out": [
+          "角色"
+        ]
+      },
+      {
+        "call": "承接上一步 + removeTrackedCurrencyRole('角色')（精确命中 → 清空）",
+        "out": []
+      }
+    ]
+  },
+  "trackPick": {
+    "transitions": [
+      {
+        "call": "trackPickState()（初始）",
+        "out": false
+      },
+      {
+        "call": "setTrackPick(true)",
+        "out": true
+      },
+      {
+        "call": "trackPickState()",
+        "out": true
+      },
+      {
+        "call": "setTrackPick('x')（真值化）",
+        "out": true
+      },
+      {
+        "call": "setTrackPick(0)",
+        "out": false
+      },
+      {
+        "call": "setTrackPick(undefined)",
+        "out": false
+      }
+    ],
+    "finalOut": false
+  },
+  "trackedSection": {
+    "off": "",
+    "on": "【货币 · 标定跟踪】已被用户**指定跟踪**的角色：角色乙。\n1. 这些角色是用户明确指定要跟踪货币的对象：**即使本轮正文没有写到他们**，也要结合下方的【当前货币账本】与本轮正文，判断他们的货币是否发生变化（收进 / 支出 / 转交 / 赠予 / 被夺 / 兑换 / 存放处变化）。\n2. 有变化就用「更新」（给出新的额度与本次收支）；没有变化就**不要输出**任何条目（不要为了凑数而重复登记）。\n3. 只有本轮正文有明确依据时才更新额度；依据不足时**不得臆造**，也不得改动其他归属的条目。\n4. 同一角色的不同币种各记一条，归属写该角色名；不同归属的货币**不得互相合并或挪用**。\n输出：与【货币】一致（{\"货币\": {\"更新\": [...]}}），只输出有明确依据的条目。",
+    "offHasSection": false,
+    "onHasSection": true,
+    "ledgerHasMe": true,
+    "ledgerOffHasOther": false,
+    "ledgerOnHasOther": true,
+    "ledgerStillLacksUntracked": false
+  },
+  "actionFlow": {
+    "steps": [
+      {
+        "name": "切到货币页",
+        "ds": {
+          "fttTab": "currencies"
+        },
+        "toasts": [],
+        "tracked": [],
+        "picking": false,
+        "cfgRoles": [],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": false,
+          "chipNames": [],
+          "chipNote": null,
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色"
+          },
+          "clearBtn": null,
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackPick（打开选择器）",
+        "ds": {
+          "fttAction": "curTrackPick"
+        },
+        "toasts": [],
+        "tracked": [],
+        "picking": true,
+        "cfgRoles": [],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": false,
+          "chipNames": [],
+          "chipNote": null,
+          "pickBtn": {
+            "cls": "ftt-btn ftt-primary",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色"
+          },
+          "clearBtn": null,
+          "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 0 名）",
+          "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+          "pickerSearch": true,
+          "pickerSearchHint": "搜索角色名…",
+          "pickerClose": true,
+          "pickerCloseText": "关闭",
+          "toggleBtns": [
+            {
+              "cls": "ftt-op",
+              "name": "角色丙",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色乙",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色甲",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            }
+          ],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackPick（再点关闭）",
+        "ds": {
+          "fttAction": "curTrackPick"
+        },
+        "toasts": [],
+        "tracked": [],
+        "picking": false,
+        "cfgRoles": [],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": false,
+          "chipNames": [],
+          "chipNote": null,
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色"
+          },
+          "clearBtn": null,
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackPick（重新打开）",
+        "ds": {
+          "fttAction": "curTrackPick"
+        },
+        "toasts": [],
+        "tracked": [],
+        "picking": true,
+        "cfgRoles": []
+      },
+      {
+        "name": "curTrackToggle 角色乙",
+        "ds": {
+          "fttAction": "curTrackToggle",
+          "fttName": "角色乙"
+        },
+        "toasts": [
+          {
+            "kind": "success",
+            "title": "已标定「角色乙」",
+            "text": "后续分析记忆会同时考虑该角色的货币情况；注入时与主角一样恒定列出。"
+          }
+        ],
+        "tracked": [
+          "角色乙"
+        ],
+        "picking": true,
+        "cfgRoles": [
+          "角色乙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色乙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn ftt-primary",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（1）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+          "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+          "pickerSearch": true,
+          "pickerSearchHint": "搜索角色名…",
+          "pickerClose": true,
+          "pickerCloseText": "关闭",
+          "toggleBtns": [
+            {
+              "cls": "ftt-op",
+              "name": "角色丙",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            },
+            {
+              "cls": "ftt-op ftt-ok",
+              "name": "角色乙",
+              "title": "取消标定",
+              "text": "✅",
+              "on": true
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色甲",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            }
+          ],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackToggle 角色丙",
+        "ds": {
+          "fttAction": "curTrackToggle",
+          "fttName": "角色丙"
+        },
+        "toasts": [
+          {
+            "kind": "success",
+            "title": "已标定「角色丙」",
+            "text": "后续分析记忆会同时考虑该角色的货币情况；注入时与主角一样恒定列出。"
+          }
+        ],
+        "tracked": [
+          "角色乙",
+          "角色丙"
+        ],
+        "picking": true,
+        "cfgRoles": [
+          "角色乙",
+          "角色丙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 2 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色乙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            },
+            {
+              "name": "角色丙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn ftt-primary",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（2）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 2 名）",
+          "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+          "pickerSearch": true,
+          "pickerSearchHint": "搜索角色名…",
+          "pickerClose": true,
+          "pickerCloseText": "关闭",
+          "toggleBtns": [
+            {
+              "cls": "ftt-op ftt-ok",
+              "name": "角色丙",
+              "title": "取消标定",
+              "text": "✅",
+              "on": true
+            },
+            {
+              "cls": "ftt-op ftt-ok",
+              "name": "角色乙",
+              "title": "取消标定",
+              "text": "✅",
+              "on": true
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色甲",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            }
+          ],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackToggle 角色乙（取消标定）",
+        "ds": {
+          "fttAction": "curTrackToggle",
+          "fttName": "角色乙"
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "",
+            "text": "已取消标定「角色乙」"
+          }
+        ],
+        "tracked": [
+          "角色丙"
+        ],
+        "picking": true,
+        "cfgRoles": [
+          "角色丙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色丙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn ftt-primary",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（1）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+          "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+          "pickerSearch": true,
+          "pickerSearchHint": "搜索角色名…",
+          "pickerClose": true,
+          "pickerCloseText": "关闭",
+          "toggleBtns": [
+            {
+              "cls": "ftt-op ftt-ok",
+              "name": "角色丙",
+              "title": "取消标定",
+              "text": "✅",
+              "on": true
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色乙",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色甲",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            }
+          ],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackToggle 空名（不改动）",
+        "ds": {
+          "fttAction": "curTrackToggle",
+          "fttName": "   "
+        },
+        "toasts": [],
+        "tracked": [
+          "角色丙"
+        ],
+        "picking": true,
+        "cfgRoles": [
+          "角色丙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色丙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn ftt-primary",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（1）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+          "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+          "pickerSearch": true,
+          "pickerSearchHint": "搜索角色名…",
+          "pickerClose": true,
+          "pickerCloseText": "关闭",
+          "toggleBtns": [
+            {
+              "cls": "ftt-op ftt-ok",
+              "name": "角色丙",
+              "title": "取消标定",
+              "text": "✅",
+              "on": true
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色乙",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            },
+            {
+              "cls": "ftt-op",
+              "name": "角色甲",
+              "title": "标定为跟踪对象",
+              "text": "➕",
+              "on": false
+            }
+          ],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackClose（关闭选择器）",
+        "ds": {
+          "fttAction": "curTrackClose"
+        },
+        "toasts": [],
+        "tracked": [
+          "角色丙"
+        ],
+        "picking": false,
+        "cfgRoles": [
+          "角色丙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色丙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（1）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackClear（清空标定）",
+        "ds": {
+          "fttAction": "curTrackClear"
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "",
+            "text": "已清空 1 个标定角色"
+          }
+        ],
+        "tracked": [],
+        "picking": false,
+        "cfgRoles": [],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": false,
+          "chipNames": [],
+          "chipNote": null,
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色"
+          },
+          "clearBtn": null,
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "curTrackClear（已空）",
+        "ds": {
+          "fttAction": "curTrackClear"
+        },
+        "toasts": [
+          {
+            "kind": "info",
+            "title": "",
+            "text": "当前没有标定角色"
+          }
+        ],
+        "tracked": [],
+        "picking": false,
+        "cfgRoles": [],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": false,
+          "chipNames": [],
+          "chipNote": null,
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色"
+          },
+          "clearBtn": null,
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      },
+      {
+        "name": "标定后切页返回货币页（胶囊 + 按钮角标）",
+        "ds": {
+          "fttAction": "pageSwitch"
+        },
+        "toasts": [],
+        "tracked": [
+          "角色乙"
+        ],
+        "picking": false,
+        "cfgRoles": [
+          "角色乙"
+        ],
+        "page": {
+          "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+          "noteMain": true,
+          "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+          "hasTrackChips": true,
+          "chipNames": [
+            {
+              "name": "角色乙",
+              "action": "curTrackToggle",
+              "title": "取消标定该角色"
+            }
+          ],
+          "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+          "pickBtn": {
+            "cls": "ftt-btn",
+            "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+            "text": "👥 指定角色（1）"
+          },
+          "clearBtn": {
+            "cls": "ftt-btn ftt-err",
+            "title": "取消全部标定角色",
+            "text": "✖ 清空标定"
+          },
+          "pickerTitle": null,
+          "pickerNote": null,
+          "pickerSearch": false,
+          "pickerSearchHint": null,
+          "pickerClose": false,
+          "pickerCloseText": null,
+          "toggleBtns": [],
+          "emptyArchive": null,
+          "emptyNoMatch": null
+        }
+      }
+    ]
+  },
+  "emptyArchive": {
+    "page": {
+      "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+      "noteMain": true,
+      "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+      "hasTrackChips": true,
+      "chipNames": [
+        {
+          "name": "角色乙",
+          "action": "curTrackToggle",
+          "title": "取消标定该角色"
+        }
+      ],
+      "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+      "pickBtn": {
+        "cls": "ftt-btn ftt-primary",
+        "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+        "text": "👥 指定角色（1）"
+      },
+      "clearBtn": {
+        "cls": "ftt-btn ftt-err",
+        "title": "取消全部标定角色",
+        "text": "✖ 清空标定"
+      },
+      "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+      "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+      "pickerSearch": true,
+      "pickerSearchHint": "搜索角色名…",
+      "pickerClose": true,
+      "pickerCloseText": "关闭",
+      "toggleBtns": [],
+      "emptyArchive": "「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。",
+      "emptyNoMatch": null
+    }
+  },
+  "noMatch": {
+    "page": {
+      "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+      "noteMain": true,
+      "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+      "hasTrackChips": true,
+      "chipNames": [
+        {
+          "name": "角色乙",
+          "action": "curTrackToggle",
+          "title": "取消标定该角色"
+        }
+      ],
+      "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+      "pickBtn": {
+        "cls": "ftt-btn ftt-primary",
+        "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+        "text": "👥 指定角色（1）"
+      },
+      "clearBtn": {
+        "cls": "ftt-btn ftt-err",
+        "title": "取消全部标定角色",
+        "text": "✖ 清空标定"
+      },
+      "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+      "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+      "pickerSearch": true,
+      "pickerSearchHint": "搜索角色名…",
+      "pickerClose": true,
+      "pickerCloseText": "关闭",
+      "toggleBtns": [],
+      "emptyArchive": "无匹配角色（搜索：不存在）",
+      "emptyNoMatch": "不存在"
+    }
+  },
+  "searchHit": {
+    "page": {
+      "statChip": "共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名",
+      "noteMain": true,
+      "noteText": "💰 默认只记<b>主角</b>（当前判定：角色甲）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。",
+      "hasTrackChips": true,
+      "chipNames": [
+        {
+          "name": "角色乙",
+          "action": "curTrackToggle",
+          "title": "取消标定该角色"
+        }
+      ],
+      "chipNote": "被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。",
+      "pickBtn": {
+        "cls": "ftt-btn ftt-primary",
+        "title": "从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）",
+        "text": "👥 指定角色（1）"
+      },
+      "clearBtn": {
+        "cls": "ftt-btn ftt-err",
+        "title": "取消全部标定角色",
+        "text": "✖ 清空标定"
+      },
+      "pickerTitle": "👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）",
+      "pickerNote": "被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。",
+      "pickerSearch": true,
+      "pickerSearchHint": "搜索角色名…",
+      "pickerClose": true,
+      "pickerCloseText": "关闭",
+      "toggleBtns": [
+        {
+          "cls": "ftt-op ftt-ok",
+          "name": "角色乙",
+          "title": "取消标定",
+          "text": "✅",
+          "on": true
+        }
+      ],
+      "emptyArchive": null,
+      "emptyNoMatch": null
+    }
+  }
+}

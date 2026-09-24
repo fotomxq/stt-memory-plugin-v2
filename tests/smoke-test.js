@@ -61,6 +61,9 @@ try {
     assert('A1 无宿主（Node）导入入口不抛异常并可用', false, String(e.stdout || e.message));
 }
 
+/** 数组/对象比较助手（B9-c 起的小节用；与单测同写法） */
+const J = (v) => JSON.stringify(v);
+
 // ---------- B 有宿主：完整装配 ----------
 // 更新检查桩：ST 版本端点（git 真值）+ 远端清单/更新日志
 const templateHtml = readFileSync(join(ROOT, 'settings.html'), 'utf8');
@@ -2366,6 +2369,161 @@ await assert('AF3 选角色闭环：面板结构（角色档案点名 / ➕ / �
         && F.relPickState() === null && pickOpen;
     await entry.popupAction('tab', { tab: 'overview' });     // 复位（不影响后续小节）
     return panelOk && badgeOk && searchOk && noteOk && saveOk;
+})(), '');
+
+// ---------- AG 投喂标签分析 + 货币追踪（B9-c） ----------
+await assert('AG1 投喂标签「分析/收录/清空」+ 货币标定 FTT 入口齐备：归一/整表排重、`rxPushFeedTag` 四态（收录·重复·空·另一侧）、最新 AI 楼层扫描（成对标签 + 行内标记）、标定名单增删与选择器开关', (async () => {
+    const F = globalThis.FTT;
+    const names = ['latestAiFloorInfo', 'rxAnalyzeLatestText', 'rxNormTag', 'rxDedupeTagList', 'rxPushFeedTag',
+        'rxTagScanHtml', 'rxTagScan', 'setRxTagScan', 'rxFeedTagLists', 'feedScanAction',
+        'normalizeTrackedRoles', 'trackedCurrencyRoles', 'isTrackedCurrencyOwner', 'knownCharacterNames',
+        'addTrackedCurrencyRole', 'removeTrackedCurrencyRole', 'clearTrackedCurrencyRoles', 'trackPickState', 'setTrackPick'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    // 夹具：一条带结构标签的 AI 楼层（楼层号按真实压入结果定位，不硬编码）
+    const tagged = ['<content>', '【战斗】甲拔出武器。', '<thinking>他在想：是谁动的手？</thinking>', '<br>', '[状态] 体力 70', '</content>'].join('\n');
+    host.ctx.chat.push({ is_user: false, role: 'assistant', mes: tagged, swipes: null });
+    const floor = host.ctx.chat.length - 1;
+    rtMod.setLastMessageId(floor);
+    const info = F.latestAiFloorInfo();
+    const scan = F.rxAnalyzeLatestText();
+    const scanOk = info.floor === floor && info.text === tagged
+        && scan.ok === true && scan.floor === floor && scan.chars === tagged.length
+        && J(scan.tags.map((x) => x.name + ':' + x.paired)) === J(['content:true', 'thinking:true', 'br:false']);
+    const markerOk = scan.markers.length === 2 && scan.markers.map((x) => x.name).indexOf('战斗') >= 0;
+    const tagOk = F.rxNormTag('<content>') === 'content' && F.rxNormTag('【战斗】') === '战斗'
+        && F.rxNormTag('  [状态] ') === '状态' && F.rxNormTag('甲'.repeat(50)).length === 40
+        && J(F.rxDedupeTagList([' a ', 'A', '', 'b', 'b', '  '])) === J(['a', 'b'])
+        && J(F.rxDedupeTagList(['<content>', 'CONTENT', '【战斗】', '战斗'])) === J(['content', '战斗']);
+    // 收录四态（白/黑/重复/空；两条都验证「另一侧名单」提示）
+    const keepWl = (rtMod.cfg.feedRegexWhitelist || []).slice();
+    const keepBl = (rtMod.cfg.feedRegexBlacklist || []).slice();
+    rtMod.cfg.feedRegexWhitelist = []; rtMod.cfg.feedRegexBlacklist = [];
+    const p1 = F.rxPushFeedTag('white', '<content>');
+    const wlAfterP1 = rtMod.cfg.feedRegexWhitelist.slice();
+    const p2 = F.rxPushFeedTag('white', 'CONTENT');
+    const p3 = F.rxPushFeedTag('black', '【战斗】');
+    const blAfterP3 = rtMod.cfg.feedRegexBlacklist.slice();
+    const p4 = F.rxPushFeedTag('black', 'content');
+    const p5 = F.rxPushFeedTag('white', '   ');
+    const pushOk = p1.added === true && p1.n === 1 && p1.other === false && J(wlAfterP1) === J(['content'])
+        && p2.added === false && p2.reason === 'dup'
+        && p3.added === true && J(blAfterP3) === J(['战斗'])
+        && p4.added === true && p4.n === 2 && p4.other === true
+        && p5.added === false && p5.reason === 'empty' && p5.n === 0;      // V1 原生：空标签分支 n 不计算
+    const htmlOk = F.rxTagScanHtml().indexOf('📄 第 ' + floor + ' 楼 AI 正文') >= 0
+        && F.rxTagScanHtml().indexOf('ftt-chip-btn--on-w') >= 0;
+    rtMod.cfg.feedRegexWhitelist = keepWl; rtMod.cfg.feedRegexBlacklist = keepBl;
+    // 货币标定：名单增删清空 + 选择器开关（V1 同名能力）
+    const keepRoles = (rtMod.cfg.currencyTrackedRoles || []).slice();
+    rtMod.cfg.currencyTrackedRoles = [];
+    const st = rtMod.state;
+    st.snapshots = [{ id: 'smoke-ag-s1', name: '甲角色', tags: ['主角'] }, { id: 'smoke-ag-s2', name: '乙角色', tags: [] }, { id: 'smoke-ag-s3', name: '甲角色', tags: [] }];
+    const known = F.knownCharacterNames();
+    F.addTrackedCurrencyRole('乙角色'); F.addTrackedCurrencyRole('乙角色');
+    const added = J(F.trackedCurrencyRoles()) === J(['乙角色']);
+    const hit = F.isTrackedCurrencyOwner(' 乙角色 ') === true && F.isTrackedCurrencyOwner('甲角色') === false;
+    const removed = J(F.removeTrackedCurrencyRole('乙角色')) === J([]);
+    F.addTrackedCurrencyRole('甲角色');
+    const cleared = F.clearTrackedCurrencyRoles() === 1;
+    const pick = F.trackPickState() === false && F.setTrackPick(true) === true && F.trackPickState() === true;
+    F.setTrackPick(false);
+    rtMod.cfg.currencyTrackedRoles = keepRoles;
+    return missing.length === 0 && scanOk && markerOk && tagOk && pushOk && htmlOk
+        && known.length === 2 && known.indexOf('甲角色') >= 0 && known.indexOf('乙角色') >= 0
+        && added && hit && removed && cleared && pick;
+})(), '');
+
+await assert('AG2 面板编排：投喂页（扫描节 + 白/黑名单文本域 + `rxScanTags`/`rxAddTag` 落库与高亮）+ 货币页（「👥 指定角色」→ 选择器 → `curTrackToggle` → 胶囊与角标），提示读 `r.state.note`', (async () => {
+    const F = globalThis.FTT;
+    const keepWl = (rtMod.cfg.feedRegexWhitelist || []).slice();
+    const keepBl = (rtMod.cfg.feedRegexBlacklist || []).slice();
+    const keepRoles = (rtMod.cfg.currencyTrackedRoles || []).slice();
+    rtMod.cfg.feedRegexWhitelist = []; rtMod.cfg.feedRegexBlacklist = []; rtMod.cfg.currencyTrackedRoles = [];
+    F.setRxTagScan(null);
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'feed' });
+    const feedHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const feedPageOk = feedHtml.indexOf('投喂标签自动分析') >= 0
+        && feedHtml.indexOf('data-ftt-action="rxScanTags"') >= 0 && feedHtml.indexOf('data-ftt-action="rxScanClear"') >= 0
+        && feedHtml.indexOf('🔍 分析最新正文结构') >= 0 && feedHtml.indexOf('清空结果') >= 0
+        && feedHtml.indexOf('data-ftt-cfg="feedRegexWhitelist" class="ftt-textarea">') >= 0
+        && feedHtml.indexOf('data-ftt-cfg="feedRegexBlacklist" class="ftt-textarea">') >= 0
+        && feedHtml.indexOf('尚未分析') >= 0;                       // 未分析占位
+    // 扫描 → 收录（白 + 黑）→ 文本域即时回显
+    const sc = await entry.popupAction('rxScanTags', {});
+    const noteScan = String((sc.state || {}).note || '');
+    const hitFloor = String((sc.scan || {}).floor);
+    const a1 = await entry.popupAction('rxAddTag', { kind: 'white', tag: '<content>' });
+    const a2 = await entry.popupAction('rxAddTag', { kind: 'black', tag: '【战斗】' });
+    const a3 = await entry.popupAction('rxAddTag', { kind: 'white', tag: 'CONTENT' });      // 大小写重复 → 排重
+    const taggedHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const tagPageOk = sc.ok === true && noteScan.indexOf('已分析最新正文结构：第 ' + hitFloor + ' 楼 · ') === 0
+        && String(a1.state.note) === '已加入白名单：content · 当前共 1 项'
+        && String(a2.state.note) === '已加入黑名单：战斗 · 当前共 1 项'
+        && String(a3.state.note) === '已在白名单中（自动排重）：CONTENT · 当前共 1 项'
+        && J(rtMod.cfg.feedRegexWhitelist) === J(['content']) && J(rtMod.cfg.feedRegexBlacklist) === J(['战斗'])
+        && taggedHtml.indexOf('data-ftt-cfg="feedRegexWhitelist" class="ftt-textarea">content</textarea>') >= 0
+        && taggedHtml.indexOf('ftt-chip-btn--on-w') >= 0 && taggedHtml.indexOf('ftt-chip-btn--on-b') >= 0;
+    // 货币页：标定按钮 → 选择器 → 标定 → 胶囊/角标/清空按钮
+    await entry.popupAction('tab', { tab: 'currencies' });
+    const curOff = String((await entry.popupAction('refresh', {})).html || '');
+    const curOffOk = curOff.indexOf('data-ftt-action="curTrackPick"') >= 0
+        && curOff.indexOf('👥 指定角色') >= 0 && curOff.indexOf('共 0 条货币') >= 0
+        && curOff.indexOf('data-ftt-track-chips') < 0 && curOff.indexOf('✖ 清空标定') < 0;
+    await entry.popupAction('curTrackPick', {});
+    const openHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const pickerOk = openHtml.indexOf('👥 指定跟踪角色 · 从「角色」大类选择（已标定 0 名）') >= 0
+        && openHtml.indexOf('data-ftt-search="currencyTrackPick"') >= 0
+        && openHtml.indexOf('data-ftt-action="curTrackClose"') >= 0
+        && openHtml.indexOf('data-name="乙角色"') >= 0 && F.trackPickState() === true;
+    const t1 = await entry.popupAction('curTrackToggle', { name: '乙角色' });
+    const trackHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const trackOk = String((t1.state || {}).note) === '已标定「乙角色」：后续分析记忆会同时考虑该角色的货币情况；注入时与主角一样恒定列出。'
+        && J(F.trackedCurrencyRoles()) === J(['乙角色'])
+        && trackHtml.indexOf('⭐ 已标定跟踪：') >= 0 && trackHtml.indexOf('👥 指定角色（1）') >= 0
+        && trackHtml.indexOf('✖ 清空标定') >= 0 && trackHtml.indexOf('已标定 1 名') >= 0
+        && trackHtml.indexOf('title="取消标定该角色"') >= 0;
+    rtMod.cfg.feedRegexWhitelist = keepWl; rtMod.cfg.feedRegexBlacklist = keepBl;
+    return feedPageOk && tagPageOk && curOffOk && pickerOk && trackOk;
+})(), '');
+
+await assert('AG3 收尾语义：`rxScanClear` 清空结果（无提示）+ 无正文时 `rxScanTags` 如实警示；`curTrackClose` 关闭选择器、空名不标定、`curTrackClear` 清空并回报条数', (async () => {
+    const F = globalThis.FTT;
+    const keepRoles = (rtMod.cfg.currencyTrackedRoles || []).slice();
+    // 清空结果：面板回「尚未分析」占位、结果缓存为 null、无提示
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'feed' });
+    F.setRxTagScan(null);
+    await entry.popupAction('rxScanTags', {});
+    const had = F.rxTagScan();
+    const cl = await entry.popupAction('rxScanClear', {});
+    const clHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const clearOk = String((cl.state || {}).note) === '' && F.rxTagScan() === null
+        && clHtml.indexOf('尚未分析') >= 0 && clHtml.indexOf('data-ftt-action="rxAddTag"') < 0;
+    // 无正文：last = -1 → warning 分支（V1 文案逐字）
+    const keepLast = rtMod.getLastMessageId();
+    rtMod.setLastMessageId(-1);
+    const nf = await entry.popupAction('rxScanTags', {});
+    const nfOk = nf.ok === false && String((nf.state || {}).note) === '未取到最新正文：当前会话没有可分析的 AI 回复（或正文为空）。'
+        && F.rxTagScan() && F.rxTagScan().ok === false && F.rxTagScan().reason === 'no-text'
+        && String((await entry.popupAction('refresh', {})).html || '').indexOf('⚠️ 未取到最近一条 AI 正文，无法分析。') >= 0;
+    rtMod.setLastMessageId(keepLast);
+    rtMod.cfg.currencyTrackedRoles = [];
+    await entry.popupAction('tab', { tab: 'currencies' });
+    F.setTrackPick(false);                                   // AG2 结束时选择器是开着的 → 先归零
+    await entry.popupAction('curTrackPick', {});
+    const noop = await entry.popupAction('curTrackToggle', { name: '   ' });
+    const noopOk = J(F.trackedCurrencyRoles()) === J([]) && F.trackPickState() === true;
+    await entry.popupAction('curTrackToggle', { name: '甲角色' });
+    const close = await entry.popupAction('curTrackClose', {});
+    const closed = F.trackPickState() === false && String((close.state || {}).note).indexOf('已标定「甲角色」') === 0;
+    const clr = await entry.popupAction('curTrackClear', {});
+    const clr2 = await entry.popupAction('curTrackClear', {});
+    const clearTrackOk = String((clr.state || {}).note) === '已清空 1 个标定角色' && J(F.trackedCurrencyRoles()) === J([])
+        && String((clr2.state || {}).note) === '当前没有标定角色';
+    rtMod.cfg.currencyTrackedRoles = keepRoles;
+    await entry.popupAction('tab', { tab: 'overview' });      // 复位（不影响后续小节）
+    return clearOk && nfOk && noopOk && closed && clearTrackOk;
 })(), '');
 
 // ---------- D 注入与收尾 ----------

@@ -3,6 +3,30 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.31.0（2026-09-26）· B9-c 投喂标签自动分析 + 货币追踪「👥 指定角色」标定
+
+**本版（B9-c，取自 V1 v1.206 `latestAiFloorInfo`/`rx*` 族 与 `curTrack*` 族）**：
+1. **投喂标签自动分析**（新增 `ui/feed-scan.js`，282 行）：`latestAiFloorInfo`（最新 AI 楼四态，含 **60 楼回溯窗口**）、`rxNormTag`（归一）、`rxAnalyzeLatestText`（成对优先 / 截 30 / 大小写计数）、`rxDedupeTagList`、`rxPushFeedTag`（收录进投喂白/黑名单，自动排重）、`rxTagScanHtml`/`feedScanSectionHtml`/`feedTagListSectionsHtml`/`feedScanAction`/`FEED_SCAN_ACTIONS`；
+   动作 **`rxScanTags` / `rxAddTag` / `rxScanClear`**（文案与 `title` 与 v1.206 **逐字一致**）；
+2. **货币追踪**（`core/model/money.js` +7 的 `trackPickState`/`setTrackPick` + `ui/panel.js` 货币页三段）：`currencyStatText`/`currencyTopHtml`/`currencyTrackButtons`/`currencyPickPanelHtml` + 动作 **`curTrackPick` / `curTrackClose` / `curTrackToggle` / `curTrackClear`**（「🎯 指定跟踪角色」选择器：从角色档案点名标定，标定集合注入 `currenciesTracked` 抽取模板）；
+3. **`FTT.*` 新增 20 个入口**（devtools 侧全部带守卫）；
+4. **oracle 生成器随仓库入库**（`tests/fixtures/gen-v1-golden-feed-scan.cjs` / `gen-v1-golden-cur-track.cjs`）—— 可直接复跑复现两份 fixture（此前各批生成器只在 /tmp，本批起作为**可追溯证据**随库保存）。
+
+**验证**：`v1-golden-feed-scan.json`（879 行）与 `v1-golden-cur-track.json`（891 行）由**真实 V1 v1.206** 直调生成，`rxTagScanHtml` 5 态与设定节静态片段、标定段与货币账本段文本均**逐字节一致**；
+**队长独立复跑两份入库生成器 → 与 fixture 0 差异**；单元 `feed-scan-golden.test.js` **17 项**、`cur-track-golden.test.js` **13 项**（均为「V1 逐项比对 + V2 编排/接线」两段）；冒烟新增 **AG1–AG3**。
+门禁全绿：单元 **57 文件 / 904 断言**、冒烟 **127 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**偏差（逐条见 `docs/P9b-B9投喂标签与货币追踪.md` §2）**：① 楼层读取走宿主层（`getLastMessageId` + `host/floors.js#floorMessage`，等价 V1 `getChatMessages`）；
+② 投喂白/黑名单文本域用 V2 规范键 `feedRegexWhitelist`/`feedRegexBlacklist`（V1 用别名 `rx_whitelist`/`rx_blacklist` + `settingsApplyAll` 映射），排重改在面板 change 委托内；
+③ V1 `notify(title,text)` → V2 单行 `note`（返回体另含逐字 `title`/`text` 供比对）；④ 选择器搜索框用单输入框（V1 为 4 下拉筛选条），搜索词仍走页面搜索词槽 `ps.q['currencyTrackPick']`；
+⑤ 行内按钮 `data-ftt-name` → `data-name`；⑥ 货币页 DOM 次序调整（V1 的「➕ 新增货币」由 V2 通用「➕ 新增」承担，不重复出按钮）；⑦ 选择器开关放 `core/model/money.js`（纯布尔，过内核纯净度门禁）；⑧ V2 额外暴露 `rxTagScan`/`setRxTagScan`/`rxFeedTagLists`/`feedScanAction` 诊断入口。
+
+**V1 原生怪癖（原样保留，fixture 与文档固化）**：60 楼回溯窗口；`rxPushFeedTag` 空标签分支 `n` 恒 0；未知 kind 一律按白；`rxTagScanHtml` 不阻止重复点击；`rxScanClear` 无提示；`rxTagScan` 跨重渲染保留；
+选择器 `isOn`（精确）与 `curTrackToggle`（`isTrackedCurrencyOwner` 简称包含）**口径不同** → 标定 `['角色']` 时点「角色乙」会提示「已取消标定」但**名单实际不变**（oracle 已固化）；`curTrackPick` 纯开关；`curTrackToggle` 空名 `break`。
+
+**未实现/未验证**：V1 设定页「投喂世界书」节（`renderWorldbookSettings`/`data-ftt-wb-list`，属世界书投喂能力，与本批无耦合，**不放假控件**）；选择器筛选条下拉组不复刻；样式未做视觉回归；
+真实浏览器端到端未跑（桩 DOM；文本域 change 委托以显式 `bindOverlay()` 驱动）；`localeCompare` 中文排序依赖同一 Node/ICU（取值已固化）；真实浏览器 `data-name` 点击链未经自动化点击验证。
+
 ## v2.30.0（2026-09-26）· B9-b 关系表双向定位跳转 + 「👥 选角色」选择器
 
 **本版（B9-b，取自 V1 v1.206 `relJump`/`relGoto`/`relPick`/`relPickClose`/`relPickAdd`/`relClearFilter`）**：
