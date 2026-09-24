@@ -18,9 +18,10 @@ import { storageEnvelope, storageHash } from '../core/envelope.js';
 import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
 import { collectAtomHashes } from '../core/merge.js';
 import { scopeId, emptyState } from '../core/state.js';
-import { stateFileName, uploadStateFile, readStateFile, deleteStateFile } from './user-file.js';
-import { scheduleStorageSync } from './sync.js';
+import { stateFileName, uploadStateFile, readStateFileAuto, deleteStateFile } from './user-file.js';
+import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
 import { scheduleWorldbookSync } from './worldbook.js';
+import { hydrateStorageData } from '../core/slim.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -105,7 +106,8 @@ export async function saveStateNow(opts) {
     // ⑥ 服务端文件（大体积权威数据）
     if (o.skipFile !== true) {
         try {
-            const r = await uploadStateFile(stateFileName(scopeId()), text);
+            // B9-d：与 `adapters/sync.js#stateFileWrite` 同源的内容写入（瘦身/gzip 开关关闭时行为与 B7-2 一致）
+            const r = await writeStateFileContent(envelope, text);
             if (r.ok) via.push('file');
             else if (r.error) kernelLog('保存：服务端文件不可用（' + r.error + '）');
         } catch (e) { /* 忽略 */ }
@@ -160,13 +162,18 @@ export function loadFromLocalStorage() {
 
 /** 服务端文件载入（返回 state 或 null） */
 export async function loadFromServerFile() {
-    const r = await readStateFile(stateFileName(scopeId()));
-    if (!r.ok) return null;
+    // B9-d：`stateFileGzip` 关闭（默认）时**仅读规范明文名** —— 与 B7-2 的请求序列/时序逐字节一致（零额外请求）；
+    //   开启时先试 `.json.gz` 再回退明文（V1 的候选顺序）。读取按**内容魔数**解压（`readStateFileAuto`）。
+    let r = await readStateFileAuto(stateFileName(scopeId()));
+    if ((!r || !r.ok) && stateFileGzipOn()) r = await readStateFileAuto(stateFileGzName());
+    if (!r || !r.ok) return null;
     try {
         const env = JSON.parse(r.text);
         if (env && env.payload) {
             const h = storageHash(env.payload);
             if (env.hash && env.hash !== h) return null;
+            // B9-d：瘦身还原（写盘前剥掉的同义字段/空值由核心兜底；此处补回显示层字段）
+            try { hydrateStorageData(env.payload.data); } catch (e) { /* 忽略 */ }
             return env.payload.data || null;
         }
         return env || null;

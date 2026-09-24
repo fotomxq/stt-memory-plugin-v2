@@ -1,0 +1,649 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "notes": [
+      "本 fixture 由 tests/fixtures/gen-v1-golden-slim-gzip.cjs **直调真实 V1 插件 v1.206** 生成（`node tests/fixtures/gen-v1-golden-slim-gzip.cjs tests/fixtures/v1-golden-slim-gzip.json`，连跑两次逐字节一致）。瘦身/还原/gzip 原语走 `__FTT` 导出直调；写入路径经桩 fetch（捕获 base64 → 解字节 → 魔数/内容比对），读取路径经 `stateFileReadAny`（按内容魔数识别）验证。",
+      "V1 原生行为（oracle 实测，原样保留）：① `slimEntryForStorage` 对**非对象**原样返回；`extra` 槽位与顶层同值即丢弃，只保留「顶层没有或值不同」的槽位。② 同义字段组只在「组内出现 ≥2 个键」且「值与保留键 JSON 全等」时才删除；`scenes.pathArr/pathStr` 有专用比较。③ `slimDataForStorage` 非 `keepSnap` 时写入 `snapIndex` 并删 `snapStore`/`snapFp`，且**删除 `scope`**；`keepSnap:true`（备份文件口径）保留完整链。④ `snapshotIndexFrom` 过滤掉无 `id` 的项。⑤ 写入路径 `filesUploadContent` **恒先试 gzip**（`.json.gz`），失败才回退明文 `.json`；`storageEnvelope` 的哈希对**瘦身后的 payload** 重算（`slimFileEnvelope`），故读取侧 `envValid` 仍通过。⑥ 备份文件默认保留完整链（`slimFileEnvelope(env, true)`），`bakSlim:true` 时才与主文件同。⑦ 读取侧 `decodeFileBytes` 的 gzip 判定是**内容魔数**（`1f 8b`），与扩展名无关 → 明文旧文件照读。"
+    ],
+    "sourceFile": "src/FTT记忆组件-v1.206.js",
+    "v1SourceSnips": {
+      "slimHead": "const SLIM_EXT_GZ = '.json.gz';\n    // 各维度参与内容哈希的字段（瘦身时**绝不删除**，同义字段保留的是这些）\n    const SLIM_HASHED_FIELDS = {\n        atoms: ['text', 'title', 'date', 'time', 'type', 'entities', 'locations', 'tags'],\n        currentStates: ['subject', 'field', 'value', 'status'],\n        snapshots: ['name', 'identity', 'appearance', 'personality', 'background', 'relationships', 'social', 'future'],\n        memories: ['owner', 'date', 'title', 'content', 'memCategory', 'tags'],\n        items: ['name', 'qty', 'desc', 'location', 'carried', 'tags'],\n        plans: ['content', 'tags', 'status', 'planner', 'participants', 'steps', 'prereq', 'blockers', 'progress', 'history', 'phase', 'statusNote'],\n        suspense: ['content', 'tags', 'status', 'clues', 'resolveCondition', 'level', 'history', 'phase', 'statusNote'],\n        scenes: ['name', 'pathArr', 'desc'],\n        concepts: ['name', 'content', 'source', 'date', 'tags'],\n        parallels: ['title', 'text', 'date', 'gua', 'causalLine', 'characters', 'location', 'goalOdds', 'tags', 'promotedTo'],\n        // v1.165：通用知情关联层（引用类字段不进哈希，但必须参与瘦身白名单/保留判断）\n        links: ['dim', 'refId', 'who', 'how', 'from', 'at', 'view', 'deviation', 'note', 'kind', 'public'],\n        // v1.191：情节分段总结（时间范围 + 逐条剧情线参与哈希；raw/atomIds/manual 不进）\n        plotSegments: ['header', 'start', 'end', 'lines'],\n        // v1.192：传言（主体 / 说法 / 客观性 / 阶段与发酵度 / 传播者 / 载体 / 传导链路 / 谱系 / 联动引用参与哈希）\n        rumors: ['subject', 'content', 'objectivity', 'stage', 'ferment', 'carriers', 'media', 'chain', 'source', 'tags', 'parallelRefs', 'pending', 'lineage'],\n    };\n    // 同义字段组（组内只保留「哈希字段」那一份；仅当值完全一致时丢弃其它）\n    const SLIM_SYNONYM_GROUPS = {\n        atoms: [['text', 'content']],\n        currentStates: [['value', 'content']],\n        snapshots: [['name', 'title']],\n        memories: [],\n        items: [['desc', 'content']],\n        plans: [],\n        suspense: [],\n        scenes: [['desc', 'content'], ['name', 'title'], ['pathArr', 'pathStr']],\n        concepts: [['name', 'title']],\n        parallels: [['text', 'content']],\n        links: [],\n        plotSegments: [['lines', 'items'], ['header', '时间范围'], ['header', 'title']],\n        // v1.192：传言（主体 ↔ 标题同值时只留哈希字段）\n        rumors: [['subject', 'title'], ['content', 'text']],\n    };",
+      "slimEntry": "function slimEntryForStorage(cat, it) {\n        try {\n            if (!it || typeof it !== 'object') return it;\n            const hashed = SLIM_HASHED_FIELDS[cat] || [];\n            const out = {};\n            for (const f of Object.keys(it)) {\n                if (f === 'extra') continue;                 // 单独处理\n                if (isSlimDefault(it[f])) continue;          // 空值/默认值不写盘（读入由 migrate/哈希归一化兜底）\n                out[f] = it[f];\n            }\n            // 同义字段：只留哈希字段那一份（值一致才丢）\n            for (const grp of (SLIM_SYNONYM_GROUPS[cat] || [])) {\n                const present = grp.filter(f => out[f] !== undefined);\n                if (present.length < 2) continue;\n                const keeper = present.find(f => hashed.includes(f)) || present[0];\n                const kv = out[keeper];\n                for (const f of present) {\n                    if (f === keeper) continue;\n                    const same = (f === 'pathStr' && Array.isArray(kv))\n                        ? (String(out[f]) === kv.join('>'))\n                        : (JSON.stringify(out[f]) === JSON.stringify(kv));\n                    if (same) delete out[f];\n                }\n            }\n            if (/\\.json$/.test(String(out.name || ''))) delete out.name;   // 历史脏数据（把文件名写进了 name）\n            // extra：只保留「顶层没有或值不同」的槽位（实测 94% 槽位是顶层字段的重复回显）\n            if (Array.isArray(it.extra)) {\n                const keep = it.extra.filter((s) => {\n                    if (!s || typeof s !== 'object') return false;\n                    const top = it[s.name];\n                    return !(top !== undefined && JSON.stringify(top) === JSON.stringify(s.value));\n                });\n                if (keep.length) out.extra = keep;\n            }\n            return out;\n        } catch (e) { return it; }\n    }",
+      "hydrateSlimEntry": "function hydrateSlimEntry(cat, it) {\n        try {\n            if (!it || typeof it !== 'object') return it;\n            const hashed = SLIM_HASHED_FIELDS[cat] || [];\n            for (const grp of (SLIM_SYNONYM_GROUPS[cat] || [])) {\n                const present = grp.filter(f => it[f] !== undefined && it[f] !== null);\n                if (!present.length) continue;\n                const keeper = present.find(f => hashed.includes(f)) || present[0];\n                for (const f of grp) {\n                    if (f === keeper || it[f] !== undefined) continue;\n                    if (f === 'pathStr' && Array.isArray(it[keeper])) it.pathStr = it[keeper].join('>');\n                    else if (f === 'pathArr' && typeof it[keeper] === 'string') it.pathArr = String(it[keeper]).split('>');\n                    else it[f] = it[keeper];\n                }\n            }\n            // 显示层常同时读 name/title（即使不在同义组里）→ 缺一补一\n            if (cat === 'scenes' || cat === 'snapshots' || cat === 'concepts' || cat === 'atoms' || cat === 'items' || cat === 'memories' || cat === 'plans' || cat === 'suspense' || cat === 'parallels' || cat === 'rumors') {\n                if (it.name === undefined && it.title !== undefined) it.name = it.title;\n                if (it.title === undefined && it.name !== undefined) it.title = it.name;\n            }\n            return it;\n        } catch (e) { return it; }\n    }",
+      "slimData": "function slimDataForStorage(data, opts) {\n        try {\n            const o = Object.assign({}, data);\n            if (!(opts && opts.keepSnap)) {\n                o.snapIndex = snapshotIndexFrom(data.snapStore);\n                delete o.snapStore;\n                delete o.snapFp;\n            }\n            for (const cat of ATOM_DIM_KEYS) {\n                if (Array.isArray(o[cat])) o[cat] = o[cat].map(it => slimEntryForStorage(cat, it));\n            }\n            delete o.scope;                 // 与信封 scope 重复\n            return o;\n        } catch (e) { return data; }\n    }",
+      "snapshotIndex": "function snapshotIndexFrom(snaps) {\n        try {\n            return (Array.isArray(snaps) ? snaps : []).map(s => ({\n                id: s && s.id, kind: s && s.kind, ts: s && s.ts, baseId: s && s.baseId, hash: s && s.hash,\n                covered: s && s.atomsHashes ? Object.keys(s.atomsHashes).length : 0,\n            })).filter(x => x.id);\n        } catch (e) { return []; }\n    }",
+      "slimSnapshot": "function slimSnapshotStoreForStorage(snaps) {\n        try {\n            return (Array.isArray(snaps) ? snaps : []).map(s => {\n                const o = { id: s.id, kind: s.kind, ts: s.ts, baseId: s.baseId, hash: s.hash };\n                if (s.atomsHashes) o.atomsHashes = s.atomsHashes;\n                if (s.atoms) {\n                    const a = {};\n                    for (const id of Object.keys(s.atoms)) {\n                        const atom = s.atoms[id];\n                        const cat = (atom && atom.__cat) || 'atoms';\n                        a[id] = slimEntryForStorage(cat, atom);\n                    }\n                    o.atoms = a;\n                }\n                if (s.deleted) o.deleted = s.deleted;\n                return o;\n            });\n        } catch (e) { return snaps; }\n    }",
+      "gzip": "function bytesToBase64(u8) {\n        try {\n            let bin = '';\n            const CH = 0x8000;\n            for (let i = 0; i < u8.length; i += CH) bin += String.fromCharCode.apply(null, u8.subarray(i, i + CH));\n            return btoa(bin);\n        } catch (e) { return ''; }\n    }\n    function base64ToBytes(b64) {\n        try {\n            const bin = atob(String(b64 || '').replace(/\\s+/g, ''));\n            const u8 = new Uint8Array(bin.length);\n            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);\n            return u8;\n        } catch (e) { return null; }\n    }\n    async function gzipToBase64(text) {\n        try {\n            if (typeof CompressionStream === 'function' && typeof Blob === 'function' && typeof Response === 'function') {\n                const cs = new CompressionStream('gzip');\n                const stream = new Blob([new TextEncoder().encode(String(text))]).stream().pipeThrough(cs);\n                const buf = await new Response(stream).arrayBuffer();\n                const b64 = bytesToBase64(new Uint8Array(buf));\n                if (b64) return { ok: true, b64: b64 };\n            }\n        } catch (e) { }\n        return { ok: false, b64: '' };\n    }\n    async function gunzipFromBytes(u8) {\n        try {\n            if (typeof DecompressionStream === 'function' && typeof Response === 'function') {\n                const ds = new DecompressionStream('gzip');\n                const stream = new Blob([u8]).stream().pipeThrough(ds);\n                return await new Response(stream).text();\n            }\n        } catch (e) { }\n        return null;\n    }",
+      "uploadContent": "async function filesUploadContent(baseName, text, timeoutMs) {\n        fileCacheInvalidateBase(baseName);          // 写入后失效缓存（后续读取必须看到新内容）\n        const gz = await gzipToBase64(text);\n        if (gz.ok) {\n            const r = await filesUploadBase64(baseName + SLIM_EXT_GZ, gz.b64, timeoutMs);\n            if (r && r.ok) {\n                // 写后即最新（缓存原文，后续读取不再重复下载；避免读到旧缓存导致重复上传）\n                try { fileReadCache[baseName + SLIM_EXT_GZ] = { at: Date.now(), value: { text, gz: true } }; } catch (e) { }\n                cleanupSupersededPlain(baseName);\n                return Object.assign({}, r, { name: baseName + SLIM_EXT_GZ, gz: true });\n            }\n        }\n        const r2 = await filesUploadText(baseName + '.json', text, timeoutMs);\n        return Object.assign({}, r2 || { ok: false, reason: 'fail' }, { name: baseName + '.json', gz: false });\n    }",
+      "decodeBytes": "async function decodeFileBytes(name, u8, backend) {\n        try {\n            if (u8.length > 2 && u8[0] === 0x1f && u8[1] === 0x8b) {\n                const t = await gunzipFromBytes(u8);\n                if (t) readFilesThisSession[name] = Date.now();\n                return t ? { text: t, gz: true, backend: backend, tt: backend === 'tt-native' } : null;\n            }\n            let t0 = '';\n            try { t0 = new TextDecoder('utf-8').decode(u8); } catch (e) { t0 = ''; }\n            if (!t0 || /^\\s*[<]/.test(t0)) { fileReadOutcome[name] = 'invalid'; return null; }\n            readFilesThisSession[name] = Date.now();\n            return { text: t0, gz: false, backend: backend, tt: backend === 'tt-native' };\n        } catch (e) { return null; }\n    }",
+      "slimFileEnvelope": "function slimFileEnvelope(env, keepSnap) {\n        try {\n            if (!env || !env.payload || !env.payload.data) return env;\n            const data = slimDataForStorage(env.payload.data, { keepSnap: !!keepSnap });\n            const payload = { scope: env.payload.scope, updatedAt: env.payload.updatedAt, data };\n            return { v: env.v, scope: env.scope, payload, hash: storageHash(payload), ts: env.ts };\n        } catch (e) { return env; }\n    }",
+      "fileNamesExts": "function fileNames(kind) {\n        const out = [];\n        const pushBase = (slug) => {\n            if (!slug) return;\n            // 先试 gz 再试明文（读取按魔数识别，两个扩展名都能读）\n            // 日志文件只可能是明文（写入路径固定 filesUploadText）→ 不再探测 .json.gz\n            const exts = (kind === 'log') ? ['.json'] : [SLIM_EXT_GZ, '.json'];\n            exts.forEach(ext => { const n = fileNameFor(slug, kind, ext === '.json' ? 'json' : 'gz'); if (out.indexOf(n) < 0) out.push(n); });\n        };\n        pushBase(storageSlug());\n        pushBase(slugFromName());\n        pushBase(slugFallback());\n        // 历史名（按 kind 过滤：state 的历史名里也含 bak/snap/log，用后缀/前缀区分）\n        try {\n            fileNameHistory().forEach((n) => { if (fileNameKindOf(n) === kind && out.indexOf(n) < 0) out.push(n); });\n        } catch (e) { }\n        return out;\n    }",
+      "exports": "slimEntryForStorage, hydrateSlimEntry, slimDataForStorage, hydrateStorageData,"
+    }
+  },
+  "scenario": {
+    "atom": {
+      "id": "a1",
+      "text": "艾芙琳在红唇酒吧见到线人",
+      "title": "酒馆会面",
+      "date": "1936-12-06",
+      "time": "下午",
+      "type": "event",
+      "entities": [],
+      "locations": [
+        "红唇酒吧"
+      ],
+      "tags": [
+        "会面"
+      ],
+      "keywords": [],
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 3,
+      "location": "",
+      "validity": "active",
+      "content": "艾芙琳在红唇酒吧见到线人",
+      "extra": [
+        {
+          "name": "title",
+          "type": "string",
+          "value": "酒馆会面"
+        },
+        {
+          "name": "unknownField",
+          "type": "string",
+          "value": "独有信息"
+        }
+      ]
+    },
+    "scene": {
+      "id": "sc1",
+      "name": "红唇酒吧",
+      "title": "红唇酒吧",
+      "desc": "码头边的酒吧",
+      "content": "码头边的酒吧",
+      "pathArr": [
+        "港区",
+        "酒吧"
+      ],
+      "pathStr": "港区>酒吧",
+      "tags": [],
+      "actions": [],
+      "history": [],
+      "uses": 0
+    },
+    "stateRow": {
+      "id": "st1",
+      "subject": "艾芙琳",
+      "field": "体力",
+      "value": "70",
+      "content": "70",
+      "status": "正常",
+      "note": "",
+      "history": [],
+      "updatedAt": 0
+    },
+    "rumor": {
+      "id": "ru1",
+      "subject": "维蒂帮",
+      "title": "维蒂帮",
+      "content": "维蒂帮在走私",
+      "text": "维蒂帮在走私",
+      "stage": "传播",
+      "ferment": 1,
+      "tags": [
+        "维蒂帮"
+      ],
+      "carriers": [],
+      "media": [],
+      "chain": [],
+      "pending": false,
+      "lineage": [],
+      "uses": 0
+    }
+  },
+  "slimEntries": {
+    "atom": {
+      "cat": "atoms",
+      "keys": [
+        "date",
+        "extra",
+        "floorEnd",
+        "id",
+        "locations",
+        "tags",
+        "text",
+        "time",
+        "title",
+        "type",
+        "validity"
+      ],
+      "out": {
+        "id": "a1",
+        "text": "艾芙琳在红唇酒吧见到线人",
+        "title": "酒馆会面",
+        "date": "1936-12-06",
+        "time": "下午",
+        "type": "event",
+        "locations": [
+          "红唇酒吧"
+        ],
+        "tags": [
+          "会面"
+        ],
+        "floorEnd": 3,
+        "validity": "active",
+        "extra": [
+          {
+            "name": "unknownField",
+            "type": "string",
+            "value": "独有信息"
+          }
+        ]
+      }
+    },
+    "scene": {
+      "cat": "scenes",
+      "keys": [
+        "desc",
+        "id",
+        "name",
+        "pathArr"
+      ],
+      "out": {
+        "id": "sc1",
+        "name": "红唇酒吧",
+        "desc": "码头边的酒吧",
+        "pathArr": [
+          "港区",
+          "酒吧"
+        ]
+      }
+    },
+    "stateRow": {
+      "cat": "currentStates",
+      "keys": [
+        "field",
+        "id",
+        "status",
+        "subject",
+        "value"
+      ],
+      "out": {
+        "id": "st1",
+        "subject": "艾芙琳",
+        "field": "体力",
+        "value": "70",
+        "status": "正常"
+      }
+    },
+    "rumor": {
+      "cat": "rumors",
+      "keys": [
+        "content",
+        "ferment",
+        "id",
+        "stage",
+        "subject",
+        "tags"
+      ],
+      "out": {
+        "id": "ru1",
+        "subject": "维蒂帮",
+        "content": "维蒂帮在走私",
+        "stage": "传播",
+        "ferment": 1,
+        "tags": [
+          "维蒂帮"
+        ]
+      }
+    }
+  },
+  "hydratedEntries": {
+    "atom": {
+      "keys": [
+        "content",
+        "date",
+        "extra",
+        "floorEnd",
+        "id",
+        "locations",
+        "name",
+        "tags",
+        "text",
+        "time",
+        "title",
+        "type",
+        "validity"
+      ],
+      "out": {
+        "id": "a1",
+        "text": "艾芙琳在红唇酒吧见到线人",
+        "title": "酒馆会面",
+        "date": "1936-12-06",
+        "time": "下午",
+        "type": "event",
+        "locations": [
+          "红唇酒吧"
+        ],
+        "tags": [
+          "会面"
+        ],
+        "floorEnd": 3,
+        "validity": "active",
+        "extra": [
+          {
+            "name": "unknownField",
+            "type": "string",
+            "value": "独有信息"
+          }
+        ],
+        "content": "艾芙琳在红唇酒吧见到线人",
+        "name": "酒馆会面"
+      }
+    },
+    "scene": {
+      "keys": [
+        "content",
+        "desc",
+        "id",
+        "name",
+        "pathArr",
+        "pathStr",
+        "title"
+      ],
+      "out": {
+        "id": "sc1",
+        "name": "红唇酒吧",
+        "desc": "码头边的酒吧",
+        "pathArr": [
+          "港区",
+          "酒吧"
+        ],
+        "content": "码头边的酒吧",
+        "title": "红唇酒吧",
+        "pathStr": "港区>酒吧"
+      }
+    },
+    "stateRow": {
+      "keys": [
+        "content",
+        "field",
+        "id",
+        "status",
+        "subject",
+        "value"
+      ],
+      "out": {
+        "id": "st1",
+        "subject": "艾芙琳",
+        "field": "体力",
+        "value": "70",
+        "status": "正常",
+        "content": "70"
+      }
+    },
+    "rumor": {
+      "keys": [
+        "content",
+        "ferment",
+        "id",
+        "name",
+        "stage",
+        "subject",
+        "tags",
+        "text",
+        "title"
+      ],
+      "out": {
+        "id": "ru1",
+        "subject": "维蒂帮",
+        "content": "维蒂帮在走私",
+        "stage": "传播",
+        "ferment": 1,
+        "tags": [
+          "维蒂帮"
+        ],
+        "title": "维蒂帮",
+        "text": "维蒂帮在走私",
+        "name": "维蒂帮"
+      }
+    }
+  },
+  "hashKeep": {
+    "before": "beodt6_18oy9f",
+    "after": "beodt6_18oy9f",
+    "same": true,
+    "hashAfterSlimPayload": "beodt6_18oy9f"
+  },
+  "slimData": {
+    "keys": [
+      "atoms",
+      "concepts",
+      "currentStates",
+      "items",
+      "links",
+      "memories",
+      "parallels",
+      "plans",
+      "plotSegments",
+      "rumors",
+      "scenes",
+      "snapIndex",
+      "suspense",
+      "updatedAt"
+    ],
+    "snapIndex": [
+      {
+        "id": "root_1",
+        "kind": "root",
+        "ts": "2024-01-01T00:00:00.000Z",
+        "baseId": null,
+        "hash": "h1",
+        "covered": 1
+      }
+    ],
+    "hasSnapStore": false,
+    "hasSnapFp": false,
+    "hasScope": false,
+    "atomKeys": [
+      "date",
+      "extra",
+      "floorEnd",
+      "id",
+      "locations",
+      "tags",
+      "text",
+      "time",
+      "title",
+      "type",
+      "validity"
+    ],
+    "keepSnapHasSnapStore": true,
+    "hydratedKeys": [
+      "atoms",
+      "concepts",
+      "currentStates",
+      "items",
+      "links",
+      "memories",
+      "parallels",
+      "plans",
+      "plotSegments",
+      "rumors",
+      "scenes",
+      "snapIndex",
+      "suspense",
+      "updatedAt"
+    ]
+  },
+  "snapIndex": [
+    {
+      "id": "root_1",
+      "kind": "root",
+      "ts": 1,
+      "baseId": null,
+      "hash": "h1",
+      "covered": 2
+    }
+  ],
+  "slimSnapshot": {
+    "keys": [
+      "atoms",
+      "atomsHashes",
+      "baseId",
+      "deleted",
+      "hash",
+      "id",
+      "kind",
+      "ts"
+    ],
+    "atomKeys": [
+      "__cat",
+      "id",
+      "tags",
+      "text",
+      "title"
+    ],
+    "out": [
+      {
+        "id": "root_1",
+        "kind": "root",
+        "ts": "2024-01-01T00:00:00.000Z",
+        "baseId": null,
+        "hash": "h1",
+        "atomsHashes": {
+          "a1": "h1"
+        },
+        "atoms": {
+          "a1": {
+            "id": "a1",
+            "__cat": "atoms",
+            "text": "艾芙琳在红唇酒吧见到线人",
+            "title": "酒馆会面",
+            "tags": [
+              "会面"
+            ]
+          }
+        },
+        "deleted": {
+          "atoms": [
+            "gone"
+          ]
+        }
+      }
+    ],
+    "hydratedAtomKeys": [
+      "__cat",
+      "content",
+      "id",
+      "name",
+      "tags",
+      "text",
+      "title"
+    ],
+    "hydratedAtom": {
+      "id": "a1",
+      "__cat": "atoms",
+      "text": "艾芙琳在红唇酒吧见到线人",
+      "title": "酒馆会面",
+      "tags": [
+        "会面"
+      ],
+      "content": "艾芙琳在红唇酒吧见到线人",
+      "name": "酒馆会面"
+    }
+  },
+  "gzipRoundTrip": {
+    "ok": true,
+    "magic": [
+      31,
+      139
+    ],
+    "bytes": 387,
+    "rawBytes": 7671,
+    "shrinkRatio": 0.05,
+    "equals": true,
+    "b64RoundTrip": true,
+    "b64Digest": {
+      "len": 387,
+      "magic": [
+        31,
+        139
+      ],
+      "sha1": "09707661e8e5f120"
+    }
+  },
+  "writePath": {
+    "ret": {
+      "ok": true,
+      "gz": true,
+      "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+      "uploaded": [
+        "ftt-state-n2mcm47-zxg18scl.json.gz",
+        "ftt-state-n2mcm47-zxg18scl-bak.json.gz"
+      ],
+      "bak": true,
+      "bakName": "ftt-state-n2mcm47-zxg18scl-bak.json.gz"
+    },
+    "main": {
+      "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+      "gz": true,
+      "bytes": {
+        "len": 659,
+        "magic": [
+          31,
+          139
+        ],
+        "sha1": "8cd775c701f3697a"
+      },
+      "envKeys": [
+        "hash",
+        "payload",
+        "scope",
+        "ts",
+        "v"
+      ],
+      "payloadKeys": [
+        "data",
+        "scope",
+        "updatedAt"
+      ],
+      "dataKeys": [
+        "atoms",
+        "concepts",
+        "currencies",
+        "currentStates",
+        "deleted",
+        "deletedH",
+        "items",
+        "lastKnownFloor",
+        "links",
+        "memories",
+        "npcs",
+        "parallels",
+        "plans",
+        "plotSegments",
+        "processedFloors",
+        "processedVer",
+        "protagonist",
+        "rumors",
+        "scenes",
+        "snapIndex",
+        "snapshots",
+        "state",
+        "stats",
+        "summaries",
+        "suspense",
+        "updatedAt",
+        "varTemplates",
+        "vars",
+        "version"
+      ],
+      "hasSnapIndex": true,
+      "snapIndexLen": 1,
+      "hasSnapStore": false,
+      "hasSnapFp": false,
+      "atomKeys": [
+        "date",
+        "extra",
+        "floorEnd",
+        "id",
+        "locations",
+        "tags",
+        "text",
+        "time",
+        "title",
+        "type",
+        "validity"
+      ],
+      "hash": "47spja_1nw2sjo"
+    },
+    "bak": {
+      "name": "ftt-state-n2mcm47-zxg18scl-bak.json.gz",
+      "gz": true,
+      "hasSnapStore": true
+    },
+    "snap": {
+      "name": "ftt-snap-n2mcm47-zxg18scl.json.gz",
+      "gz": true,
+      "magic": [
+        31,
+        139
+      ],
+      "count": 1,
+      "hasSnapFp": true,
+      "atomKeys": [
+        "__cat",
+        "id",
+        "tags",
+        "text",
+        "title"
+      ]
+    },
+    "uploads": [
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      },
+      {
+        "name": "ftt-snap-n2mcm47-zxg18scl.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      },
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl-bak.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      }
+    ]
+  },
+  "readPath": {
+    "from": "state",
+    "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+    "atoms": 1,
+    "atomKeys": [
+      "content",
+      "date",
+      "extra",
+      "floorEnd",
+      "id",
+      "locations",
+      "name",
+      "tags",
+      "text",
+      "time",
+      "title",
+      "type",
+      "validity"
+    ],
+    "textBack": "艾芙琳在红唇酒吧见到线人",
+    "contentBack": "艾芙琳在红唇酒吧见到线人"
+  },
+  "legacyPlainRead": {
+    "from": "state",
+    "atoms": 1,
+    "text": "艾芙琳在红唇酒吧见到线人"
+  },
+  "gzUnavailableFallback": {
+    "ret": {
+      "ok": true,
+      "gz": false,
+      "name": "ftt-state-n2mcm47-zxg18scl.json"
+    },
+    "uploadName": "ftt-state-n2mcm47-zxg18scl.json",
+    "magic": [
+      123,
+      34
+    ],
+    "isPlainJson": true,
+    "bodyEndsJson": true
+  }
+}

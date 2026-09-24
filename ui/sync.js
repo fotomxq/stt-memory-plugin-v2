@@ -2,18 +2,23 @@
 // ui/sync.js —— **存储页同步区块与动作**（B7-2；结构与文案对齐 V1 `13-UI-设置与存储开关.js`）
 // 覆盖：记忆文件状态行 / 快照与清单状态 / 一致性开关 / 状态与操作（刷新状态·立即同步·校验并修复）/
 //   同步日志（最近 30 条：本地 → 对端 → 同步后 的条数与大小 + 处置 + 本端源头）。
+// B9-d 追加：**跨端分歧待选横幅**（V1 `renderStorageStatus` 尾部 `ftt-warn-box`(~26490)）+ 两个 V1 同名动作
+//   `syncPickLocal`(~26862「保留本端（覆盖对端）」)/ `syncPickRemote`(~26882「采用对端（整体替换）」)。
 // 说明：V1 的「存储治理（统一抽象·只读）」「宿主原生存储（TauriTavern）」两节依赖 V1 的多后端抽象，
 //   V2 为「本机缓冲 + 服务端记忆文件」两型 → 以只读说明行呈现（不使用假实现），详见 docs/P8i。
 // ============================================================
-import { cfg } from '../core/model/runtime.js';
+import { cfg, state } from '../core/model/runtime.js';
 import { VERSION } from '../core/constants.js';
 import { escHtml } from '../core/util.js';
-import { syncLogShortHash } from '../core/sync-log.js';
+import { syncLogShortHash, syncLogStat } from '../core/sync-log.js';
 import {
     storageStatusInfo, stateFileStatus, syncLogServerStatus, syncLogList, syncLogClear,
     syncLogServerMerge, storageVerify, crossSyncManual, refreshFromServer, syncLocalSource,
-    noteSyncReport, syncToast, syncInfo,
+    noteSyncReport, syncToast, syncInfo, crossPendingView, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
+    storageWriteAll, slimGzipInfo, syncLogPush,
 } from '../adapters/sync.js';
+import { storageEnvelope } from '../core/envelope.js';
+import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 
@@ -85,8 +90,42 @@ export function syncLogHtml() {
     } catch (e) { return '<div class="ftt-empty">同步日志读取失败</div>'; }
 }
 
-/** 同步区块内的一次性小工具行（本端源头 / 流量门控状态） */
-function syncMiniInfoHtml() {
+/**
+ * 跨端分歧待选横幅（V1 `renderStorageStatus` 尾部 `ftt-warn-box` 逐字口径，~26490）：
+ *   标题「⚠️ 跨端同步分歧 · 请选择保留哪个版本」+ 统计行（本地/对端条数与更新时间、时间差、仅本端/仅对端/冲突）
+ *   + 两个动作按钮。**按钮文案与 V1 逐字一致**（`保留本地（N 条）` / `采用对端（N 条）`）；V1 未给这两个按钮
+ *   `title` 属性 —— 此处同样**不加 title**（逐字对齐，不臆造）。
+ * 与 V1 的唯一差异：时间用 V2 既有 `fmtTime`（避免 `toLocaleString` 的环境相关输出，便于单测逐字断言）。
+ */
+export function divergenceBannerHtml() {
+    try {
+        const p = crossPendingView();
+        if (!p || !p.hasEnv) return '';
+        const s = '<div class="ftt-warn-box"><b class="ftt-pend-title">⚠️ 跨端同步分歧 · 请选择保留哪个版本</b>'
+            + '<div class="ftt-desc ftt-my-1">本地 ' + p.localN + ' 条（更新 ' + fmtTime(p.localTs) + '）／ 对端 ' + p.remoteN + ' 条（更新 ' + fmtTime(p.remoteTs) + '）'
+            + '· 时间差 ' + (Number(p.tsDiff) / 1000).toFixed(1) + 's'
+            + ' · 仅本端 ' + p.onlyLocal + ' / 仅对端 ' + p.onlyRemote + ' / 冲突 ' + p.conflict + '</div>'
+            + '<div class="ftt-row ftt-mt-2">'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="syncPickLocal">保留本地（' + p.localN + ' 条）</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="syncPickRemote">采用对端（' + p.remoteN + ' 条）</button>'
+            + '</div></div>';
+        return s;
+    } catch (e) { return ''; }
+}
+
+/** 条目瘦身 / gzip 写入的只读说明行（如实呈现当前开关与写入名，不做假控件） */
+export function slimGzipInfoHtml() {
+    try {
+        const i = slimGzipInfo();
+        return '<div class="ftt-muted ftt-hint" data-ftt-slim-gzip>存储编码：条目瘦身 ' + (i.slim ? '<b>已开启</b>' : '关闭（默认）')
+            + ' · gzip 写入 ' + (i.gzip ? '<b>已开启</b>' : '关闭（默认）')
+            + ' · 通道' + (i.gzipAvailable ? '支持压缩' : '不支持压缩（自动回退明文）')
+            + ' · 当前写入名 ' + mono(i.writeName)
+            + (i.gzip ? '（读取按内容魔数自动识别，明文旧文件仍可读）' : '') + '</div>';
+    } catch (e) { return ''; }
+}
+
+/** 同步区块内的一次性小工具行（本端源头 / 流量门控状态） */function syncMiniInfoHtml() {
     try {
         const info = syncInfo();
         const g = storageStatusInfo().gates;
@@ -144,12 +183,14 @@ export function storagePageHtml(controls) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">状态与操作</div>',
         '<div class="ftt-muted" data-ftt-storage-status>' + stateFileStatusHtml() + '</div>',
+        divergenceBannerHtml(),
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageStatusRefresh" title="读取服务端真值并与本端合并">🔄 刷新状态（取服务端最新并合并）</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageSync" title="双向同步并写入服务端（含备份与快照）">🔄 立即同步（含备份）</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageVerify">✅ 校验并修复</button>',
         '<span class="ftt-muted">📤 导出 / 📥 导入已移至「设定 → 数据管理」。</span></div>',
-        '<div class="ftt-muted">「刷新状态」＝取服务端最新并合并；「立即同步」＝双向同步 + 备份 + 快照。</div></div>',
+        '<div class="ftt-muted">「刷新状态」＝取服务端最新并合并；「立即同步」＝双向同步 + 备份 + 快照。</div>',
+        slimGzipInfoHtml() + '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">🔄 同步日志（最近 30 条 · 本角色）</div>',
         '<div class="ftt-muted ftt-mb-1">每次对账/镜像记一条：<b>本地 → 对端 → 同步后</b>（条数/大小）+ 处置；新→旧，用于追溯不同步。</div>',
@@ -187,6 +228,35 @@ export async function syncAction(action, payload) {
             else note = String(r.error || '跨端同步完成');
             if (r.mode !== 'blocked' && r.mode !== 'busy') syncToast(r.mode === 'none' ? 'info' : 'success', note, '');
             return { ok: r.mode !== 'error' && r.mode !== 'blocked' && r.mode !== 'busy', action: a, note, detail: r };
+        }
+        if (a === 'syncPickLocal' || a === 'syncPickRemote') {
+            // 分歧选择（V1 `syncPickLocal`(~26862) / `syncPickRemote`(~26882)）：
+            //   · 先取出并**立即清空**待选（V1 原样：无论成功与否都不再重复处置同一份待选）；
+            //   · 保留本端 = 本端推送覆盖对端（`storageWriteAll`）；采用对端 = `applyRemoteReplaceState` 整体替换后再写回；
+            //   · 两者都写同步日志留痕（action='分歧选择'，V1 文案逐字）。
+            const pend = crossPendingView();
+            const pendEnv = (() => { try { const raw = crossPendingGet(); return raw && raw.env ? raw.env : null; } catch (e) { return null; } })();
+            crossPendingClear();
+            const t0 = Date.now();
+            if (a === 'syncPickLocal') {
+                await storageWriteAll(storageEnvelope(state));
+                try {
+                    const st = syncLogStat(state);
+                    const rp = pend ? pend.remoteN : 0;
+                    syncLogPush({ action: '分歧选择', mode: '保留本端(覆盖对端)', changed: true, ms: Date.now() - t0, localN: st.n, localBytes: st.bytes, remoteN: rp, remoteBytes: 0, afterN: st.n, afterBytes: st.bytes, localHash: dataAggHash(state), remoteHash: '', afterHash: dataAggHash(state), note: '用户选择保留本地版本，本端推送覆盖对端' });
+                } catch (e2) { /* 忽略 */ }
+                syncToast('success', '已保留本地版本', '本端将覆盖对端');
+                return { ok: true, action: a, note: '已保留本地版本 —— 本端将覆盖对端', detail: { pending: pend } };
+            }
+            const ok = pendEnv ? applyRemoteReplaceState(pendEnv) : false;
+            await storageWriteAll(storageEnvelope(state));
+            try {
+                const st = syncLogStat(state);
+                syncLogPush({ action: '分歧选择', mode: ok ? '采用对端(整体替换)' : '未找到待选对端', changed: !!ok, ms: Date.now() - t0, localN: st.n, localBytes: st.bytes, remoteN: st.n, remoteBytes: st.bytes, afterN: st.n, afterBytes: st.bytes, localHash: dataAggHash(state), remoteHash: ok ? dataAggHash(state) : '', afterHash: dataAggHash(state), note: ok ? '用户选择采用对端版本，本端已替换为对端数据' : '待选对端缺失，未改动' });
+            } catch (e2) { /* 忽略 */ }
+            const noteR = ok ? '已采用对端版本 —— 本端已替换为对端数据' : '未找到待选对端（未改动本端）';
+            syncToast(ok ? 'success' : 'warning', ok ? '已采用对端版本' : '未找到待选对端', ok ? '本端已替换为对端数据' : '');
+            return { ok: !!ok, action: a, note: noteR, detail: { replaced: ok, pending: pend } };
         }
         if (a === 'storageStatusRefresh') {
             syncToast('sync', '正在获取服务端最新数据…', '记忆文件（主/备份）+ 快照文件 → 自动合并');
@@ -242,7 +312,7 @@ export async function syncAction(action, payload) {
 }
 
 /** 存储/同步动作名判定（供面板分发；保持 V1 动作名逐字一致） */
-export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh']);
+export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }
