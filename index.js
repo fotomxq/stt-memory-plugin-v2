@@ -79,6 +79,22 @@ import {
 } from './core/plan-repair.js';
 import { retargetRelRefs } from './core/entries.js';
 import {
+    atomBodyChars, atomDateGrainKey, grainStartDateStr, atomCompactPlan, atomGroupPlan,
+    buildAtomCompactPrompt, compactGrainLabel, applyCompactGroup, scheduleAtomCompact, runAtomCompact,
+    atomMergeRange, buildAtomMergePrompt, parseAtomMergeResult, atomMergeSummary, runAtomMergeSummary,
+} from './core/atom-compact.js';
+import {
+    plotSegmentBatchSize, plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
+    plotSegmentPlan, plotSegmentPlanForIds, buildPlotSegmentPrompt, plotSegmentSameRange,
+    applyPlotSegmentResult, runPlotSegmentSummary, runPlotSegmentSummarySelected,
+    clearPlotSegments, deletePlotSegment, flattenPlotSegment,
+} from './core/plot-segment.js';
+import {
+    plotSegmentId, plotSegmentRange, normalizePlotSegment, normalizePlotSegmentLine, normalizePlotSegmentLines,
+    parsePlotSegmentText, plotSegmentsToText, plotSegmentTimeKey, plotSegmentTimeDesc, plotSegmentTimeAsc, sortPlotSegments,
+} from './core/model/segment.js';
+import { atomSubState, setAtomSub } from './ui/panel.js';
+import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
@@ -521,6 +537,50 @@ function bootstrapDiagnostics() {
             planSuspMergeApply: (delta) => applyPlanSuspMerge(delta),
             suspenseRepairApply: (delta, pick) => applySuspenseMergeGroups(delta, pick),
             planSuspRepair: (opts) => runPlanSuspRepair(opts || {}),
+            // B8-7-a 情节总结（V1 v1.206 半自动早期情节聚合 + v1.203 手动多选合并）
+            atomBodyChars: () => atomBodyChars(),
+            atomDateGrainKey: (d, g) => atomDateGrainKey(d, g),
+            grainStartDateStr: (k) => grainStartDateStr(k),
+            atomCompactPlan: () => atomCompactPlan(),
+            atomGroupPlan: (grain) => atomGroupPlan(grain),
+            buildAtomCompactPrompt: (chunk) => buildAtomCompactPrompt(chunk),
+            compactGrainLabel: (grain, key) => compactGrainLabel(grain, key),
+            applyCompactGroup: (g, out, grain) => applyCompactGroup(g, out, grain),
+            scheduleAtomCompact: () => scheduleAtomCompact(),
+            runAtomCompact: (opts) => runAtomCompact(opts || {}),
+            atomMergeRange: (items) => atomMergeRange(items),
+            buildAtomMergePrompt: (items) => buildAtomMergePrompt(items),
+            parseAtomMergeResult: (resp) => parseAtomMergeResult(resp),
+            atomMergeSummary: (ids, ai) => atomMergeSummary(ids, ai),
+            runAtomMergeSummary: (ids, opts) => runAtomMergeSummary(ids, opts || {}),
+            // B8-7-a 情节分段总结（V1 v1.182 打包 → 分段 → `### 时间范围` 归档；只增不减、不注入）
+            plotSegmentId: (e) => plotSegmentId(e),
+            plotSegmentRange: (text) => plotSegmentRange(text),
+            normalizePlotSegment: (e) => normalizePlotSegment(e),
+            normalizePlotSegmentLine: (raw) => normalizePlotSegmentLine(raw),
+            normalizePlotSegmentLines: (raw, limit) => normalizePlotSegmentLines(raw, limit),
+            parsePlotSegmentText: (text) => parsePlotSegmentText(text),
+            plotSegmentsToText: (list) => plotSegmentsToText(list),
+            plotSegmentTimeKey: (s) => plotSegmentTimeKey(s),
+            plotSegmentTimeDesc: (a, b) => plotSegmentTimeDesc(a, b),
+            plotSegmentTimeAsc: (a, b) => plotSegmentTimeAsc(a, b),
+            sortPlotSegments: (list, mode) => sortPlotSegments(list, mode),
+            plotSegmentBatchSize: () => plotSegmentBatchSize(),
+            plotSegmentAtomList: () => plotSegmentAtomList(),
+            plotSegmentCoveredIds: () => Array.from(plotSegmentCoveredIds()),
+            plotSegmentBatchesFrom: (list, size) => plotSegmentBatchesFrom(list, size),
+            plotSegmentPlan: () => plotSegmentPlan(),
+            plotSegmentPlanForIds: (ids) => plotSegmentPlanForIds(ids),
+            buildPlotSegmentPrompt: (batch) => buildPlotSegmentPrompt(batch),
+            plotSegmentSameRange: (a, b) => plotSegmentSameRange(a, b),
+            applyPlotSegmentResult: (batch, segments) => applyPlotSegmentResult(batch, segments),
+            runPlotSegmentSummary: (opts) => runPlotSegmentSummary(opts || {}),
+            runPlotSegmentSummarySelected: (ids, opts) => runPlotSegmentSummarySelected(ids, opts || {}),
+            clearPlotSegments: () => clearPlotSegments(),
+            deletePlotSegment: (id) => deletePlotSegment(id),
+            flattenPlotSegment: (item) => flattenPlotSegment(item),
+            atomSubState: () => atomSubState(),
+            setAtomSub: (v) => setAtomSub(v),
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
