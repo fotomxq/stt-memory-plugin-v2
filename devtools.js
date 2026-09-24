@@ -71,6 +71,20 @@ export function installDevtools(hooks) {
             exportState: () => (hooks && typeof hooks.exportState === 'function' ? hooks.exportState() : ''),
             importState: (text) => (hooks && typeof hooks.importState === 'function' ? hooks.importState(text) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             popupAction: (a, p) => (hooks && typeof hooks.popupAction === 'function' ? hooks.popupAction(a, p || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            // B7-2 跨端同步（与 V1 `FTT.*` 同名能力）
+            syncStatus: () => (hooks && typeof hooks.syncStatus === 'function' ? hooks.syncStatus() : null),
+            syncInfo: () => (hooks && typeof hooks.syncInfo === 'function' ? hooks.syncInfo() : null),
+            syncNow: () => (hooks && typeof hooks.syncNow === 'function' ? hooks.syncNow() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            syncRefresh: () => (hooks && typeof hooks.syncRefresh === 'function' ? hooks.syncRefresh() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            syncVerify: () => (hooks && typeof hooks.syncVerify === 'function' ? hooks.syncVerify() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            syncLog: () => (hooks && typeof hooks.syncLog === 'function' ? hooks.syncLog() : []),
+            syncLogClear: () => (hooks && typeof hooks.syncLogClear === 'function' ? hooks.syncLogClear() : 0),
+            syncLogMerge: () => (hooks && typeof hooks.syncLogMerge === 'function' ? hooks.syncLogMerge() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            syncLogServerStatus: () => (hooks && typeof hooks.syncLogServerStatus === 'function' ? hooks.syncLogServerStatus() : null),
+            syncLogPush: (rec) => (hooks && typeof hooks.syncLogPush === 'function' ? hooks.syncLogPush(rec || {}) : 0),
+            syncSource: () => (hooks && typeof hooks.syncSource === 'function' ? hooks.syncSource() : ''),
+            syncDropCache: () => (hooks && typeof hooks.syncDropCache === 'function' ? hooks.syncDropCache() : false),
+            storageBootstrap: () => (hooks && typeof hooks.storageBootstrap === 'function' ? hooks.storageBootstrap() : Promise.resolve({ ok: false, reason: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

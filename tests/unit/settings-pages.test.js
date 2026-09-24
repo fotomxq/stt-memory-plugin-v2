@@ -29,13 +29,23 @@ R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 105 项，逐页数量与 V1 提取一致（base12/feed12/analyze3/extract18/forget25/rumors12/parallels5/prompts5/storage13）', (() => {
+R.assert('P2 控件表：共 118 项（B4 的 105 项 + B7-2 补齐存储页 13 项），逐页数量与 V1 提取一致（storage26）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 105 && m.base === 12 && m.feed === 12 && m.analyze === 3 && m.extract === 18
-        && m.forget === 25 && m.rumors === 12 && m.parallels === 5 && m.prompts === 5 && m.storage === 13;
+    return info.totalControls === 118 && m.base === 12 && m.feed === 12 && m.analyze === 3 && m.extract === 18
+        && m.forget === 25 && m.rumors === 12 && m.parallels === 5 && m.prompts === 5 && m.storage === 26;
 })(), settingsPagesInfo());
+
+R.assert('P2b 存储页控件与 V1 手写页逐一对应：墓碑天数 / 原生通道 / 世界书 8 项 / 流量门控（顶层键 syncTrafficGuard）', (() => {
+    const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
+    const want = ['storage.deletedKeepDays', 'storage.tauriNative', 'storage.worldbookName', 'storage.worldbookMode',
+        'storage.worldbookScanDepth', 'storage.worldbookPosition', 'storage.worldbookDepth', 'storage.worldbookProbability',
+        'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes', 'syncTrafficGuard'];
+    return want.every((k) => keys.indexOf(k) >= 0)
+        && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('<select') >= 0
+        && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('自动（检测到 TauriTavern 即切换）') >= 0;
+})(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));
 
 R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、storage.* 在 defaultCfg.storage 内（提取零漏配）', (() => {
     const bad = [];
