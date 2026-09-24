@@ -344,4 +344,4 @@ function mergeSnapshotObjects(old, n, opts) {
     };
 }
 
-export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks };
+export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks, dropRelLinks };

@@ -19,6 +19,8 @@ import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindP
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
+import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
+import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
 import { atomIsHidden } from '../core/merge.js';
 
 export const PANEL_ID = 'ftt-panel';
@@ -35,6 +37,8 @@ const ps = {
     tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0,
     busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
     settingsSub: 'base', // 设定页当前子页（V1 的 14 组子页）
+    relSub: {},         // 各分页的子标签：{ [tab]: 'list' | 'rel' | 'check' }（V1 activeMemSub/activeAtomSub 口径）
+    relWho: '',         // 关系表「按角色」筛选
     exportText: '',     // 数据管理页的导出 JSON（供复制/查看）
     sel: {},            // 多选集合：{ [kind]: Set<id> }
     multi: {},          // 多选模式：{ [kind]: bool }
@@ -56,6 +60,7 @@ export function panelState() {
         multi: Object.assign({}, ps.multi),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
         showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub,
+        relSub: Object.assign({}, ps.relSub), relWho: ps.relWho,
         exportChars: String(ps.exportText || '').length,
     };
 }
@@ -168,6 +173,73 @@ function rangesText(nums) {
 }
 
 /** 维度列表（V1 同款：工具栏 + 搜索 + 多选 + 行内操作 + 速览 + 编辑器） */
+/** 支持关系表子标签的分页（V1：记忆 / 计划 / 悬念 / 平行） */
+const REL_TABDS = { memories: 'memories', plans: 'plans', suspense: 'suspense', parallels: 'parallels' };
+
+/** 子标签条（V1 `.ftt-subtab`：列表 / 关系表 / 约束自查） */
+function subTabsHtml(tab, cur) {
+    const items = [['list', '📚 列表']];
+    if (REL_TABDS[tab]) items.push(['rel', '🔗 关系表']);
+    if (tab === 'memories') items.push(['check', '🧷 约束自查']);
+    return '<div class="ftt-row ftt-subtabs">' + items.map(([id, label]) =>
+        '<a href="javascript:void(0)" class="ftt-subtab' + (id === cur ? ' ftt-on' : '') + '" data-ftt-msub="' + id + '">' + esc(label) + '</a>').join(' ')
+        + '<span class="ftt-hint ftt-ml-2">关系表 = 「谁知道 / 谁相关」的总览与编辑；约束自查 = 「本轮注入了什么、为什么别的没进去」</span></div>';
+}
+
+/** 某分页的子标签视图（list / rel / check） */
+function subViewHtml(tab) {
+    const cur = ps.relSub[tab] || 'list';
+    if (!REL_TABDS[tab]) return '';
+    const bars = subTabsHtml(tab, cur);
+    if (cur === 'rel') {
+        const dim = REL_TABDS[tab];
+        const st = relStats();
+        const who = String(ps.relWho || '');
+        const byWho = who ? relByWho(who, [dim]) : [];
+        const pickHtml = byWho.length
+            ? ('<div class="ftt-hint">「' + esc(who) + '」在此维度的关联：' + esc(byWho.map((x) => (x.title + '（' + howLabel(x.how) + '）')).join('、')) + '</div>')
+            : '';
+        return bars
+            + '<div class="ftt-hint">关联行合计 ' + st.total + '（' + REL_DIMS.map((d) => (d === dim ? (d + ' ' + (st.byDim[d] || 0)) : null)).filter(Boolean).join('') + '）'
+            + ' · 推定 ' + st.inferred + ' · 孤儿 ' + st.orphan + ' · 公共 ' + st.publics + '</div>'
+            + '<div class="ftt-field"><label>按角色筛选</label><input type="text" data-ftt-rel-who="1" value="' + attr(who) + '" placeholder="角色名（回车）"></div>'
+            + pickHtml
+            + '<div class="ftt-hint">点条目行的 ✏️ 打开编辑器后可编辑该条目的关联；下方为该维度**关联总览**（按条目聚合）。</div>'
+            + relOverviewHtml(dim);
+    }
+    if (cur === 'check') return bars + injectCheckPanelHtml();
+    return bars;
+}
+
+/** 某维度的关联总览（按条目聚合，V1 关系表总览口径） */
+function relOverviewHtml(dim) {
+    const links = (() => { try { return Array.isArray(state.links) ? state.links : []; } catch (e) { return []; } })();
+    const byRef = new Map();
+    links.forEach((x) => {
+        if (!x || String(x.dim) !== dim) return;
+        const k = String(x.refId);
+        if (!byRef.has(k)) byRef.set(k, []);
+        byRef.get(k).push(x);
+    });
+    if (!byRef.size) return '<div class="ftt-empty">（该维度暂无关联行）</div>';
+    const rows = Array.from(byRef.entries()).slice(0, 200).map(([refId, list]) => {
+        const who = list.filter((x) => x && x.who).map((x) => String(x.who) + '（' + howLabel(x.how) + '）').join('、');
+        const pub = list.some((x) => x && x.public);
+        return '<div class="ftt-item ftt-inline"><span class="ftt-grow"><b>' + esc(entrySummary({ id: refId })) + '</b> <span class="ftt-muted">' + esc(entrySummaryById(dim, refId)) + '</span>'
+            + '<div class="ftt-hint">' + (who ? esc(who) : '（仅幕后 / 未指定角色）') + (pub ? ' · 公共' : '') + '</div></span>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="relEdit" data-ftt-kind="' + attr(dim) + '" data-ftt-id="' + attr(refId) + '">🔗 编辑</button></div>';
+    }).join('');
+    return rows;
+}
+
+/** 条目摘要（按 id 取库内条目） */
+function entrySummaryById(dim, id) {
+    try {
+        const e = ((state[dataKindOf(dim)] || [])).filter((x) => x && String(x.id) === String(id))[0];
+        return e ? entrySummary(e) : '（条目已不在库中）';
+    } catch (e) { return ''; }
+}
+
 function dimBody(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -187,9 +259,16 @@ function dimBody(kind) {
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
         + '<span class="ftt-muted">' + (q ? '匹配 ' + list.length + ' / ' : '共 ') + total + ' 条</span></div>';
-    const ed = ps.editing && ps.editing.kind === kind ? editorHtml(kind, ps.editing.id, ps.editing.preset) : '';
+    const bars = subViewHtml(kind);
+    const curSub = ps.relSub[kind] || 'list';
+    const relEditing = ps.relEditing && ps.relEditing.kind === kind ? ps.relEditing.id : '';
+    if (REL_TABDS[kind] && curSub === 'rel') return bars;
+    if (REL_TABDS[kind] && curSub === 'check') return bars;
+    const ed = ps.editing && ps.editing.kind === kind
+        ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '') : ''))
+        : '';
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
-    if (!list.length) return toolbar + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     const rows = list.map((e) => {
         const id = String(e.id || '');
         const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || ''].filter(Boolean).join(' · ');
@@ -203,7 +282,7 @@ function dimBody(kind) {
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
             + '</div>';
     }).join('\n');
-    return toolbar + head + ed + peek + rows;
+    return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + head + ed + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -591,7 +670,33 @@ export async function panelAction(action, payload) {
         } else if (a === 'check-update') {
             if (typeof hooks.checkUpdate === 'function') { setNote('检查更新…'); await hooks.checkUpdate(); setNote('检查完成'); }
             else setNote('更新入口未就绪');
-        } else if (a === 'settingsSub') {
+        } else if (a === 'msub') {
+            const tab = String(p.tab || ps.tab);
+            const id = String(p.sub || 'list');
+            ps.relSub[tab] = (id === 'rel' || id === 'check') ? id : 'list';
+            if (id === 'check' && typeof p.keywords !== 'undefined') { try { setCheckKeywords(p.keywords || []); } catch (e) { /* 忽略 */ } }
+        }
+        else if (a === 'relEdit') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: null }; }
+        else if (a === 'relWho') {
+            ps.relWho = String(p.who == null ? '' : p.who);
+            if (ps.relWho) {
+                try {
+                    const hits = relByWho(ps.relWho);
+                    if (hits.length) ps.editing = { kind: hits[0].dim, id: hits[0].refId, preset: null };
+                } catch (e) { /* 忽略 */ }
+            }
+        }
+        else if (a.indexOf('rel') === 0 && a !== 'reload') {
+            const rr = relAction(a, p);
+            setNote(rr.ok ? ('关系：' + (rr.saved !== undefined ? ('已保存 ' + rr.saved + ' 行 / 新增 ' + (rr.added || 0) + ' · 更新 ' + (rr.updated || 0) + (rr.skipped ? (' · 跳过空行 ' + rr.skipped) : '')) : (rr.cleared !== undefined ? ('已清空 ' + rr.cleared + ' 行') : (rr.swept !== undefined ? ('已清扫孤儿 ' + rr.swept + ' 行') : (rr.dropped !== undefined ? ('已清除推定 ' + rr.dropped + ' 行') : ('行数 ' + (rr.rows || 0))))))) : ('关系操作失败：' + String(rr.reason || '未知')));
+            result = Object.assign(result, rr);
+        }
+        else if (a === 'checkRefresh' || a === 'checkMode') {
+            const cr = injectCheckAction(a, { mode: p.mode });
+            setNote(a === 'checkMode' ? ('自查口径：' + (cr.useKeywords ? '按最近关键词' : '按本地召回')) : '已按当前数据刷新注入自查预览');
+            result = Object.assign(result, cr);
+        }
+        else if (a === 'settingsSub') {
             const id = String(p.sub || p.kind || '');
             ps.settingsSub = SETTINGS_TABS.some((t) => t.id === id) ? id : ps.settingsSub;
         }
@@ -670,6 +775,8 @@ export function bindOverlay() {
                 void panelAction('save', { kind, id, fields: collectEditorFields(el) });
                 return;
             }
+            const msub = tg.dataset ? String(tg.dataset.fttMsub || '') : '';
+            if (msub) { void panelAction('msub', { tab: ps.tab, sub: msub }); return; }
             if (act === 'settingsSub') {
                 void panelAction('settingsSub', { sub: tg.dataset ? tg.dataset.fttSettings : '' });
                 return;
@@ -685,6 +792,7 @@ export function bindOverlay() {
                 const tg = e && e.target;
                 if (!tg || !tg.dataset) return;
                 if (tg.dataset.fttSearch !== undefined) { void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value }); return; }
+                if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
@@ -714,6 +822,24 @@ export function bindOverlay() {
             });
         }
     }
+    try {
+        const box = el.querySelector ? el.querySelector('[data-ftt-rel-body]') : null;
+        if (box && typeof box.querySelectorAll === 'function') {
+            for (const node of box.querySelectorAll('[data-ftt-relf]')) {
+                node.addEventListener('change', () => {
+                    try {
+                        const body = String(box.getAttribute('data-ftt-rel-body') || '');
+                        const [dim, refId] = body.split('|');
+                        const rowEl = node.closest ? node.closest('[data-ftt-rel-idx]') : null;
+                        const idx = Number((rowEl && rowEl.getAttribute('data-ftt-rel-idx')) || 0);
+                        const field = String(node.getAttribute('data-ftt-relf'));
+                        const val = (node.type === 'checkbox') ? !!node.checked : String(node.value == null ? '' : node.value);
+                        relAction('relSetRow', { kind: dim, id: refId, idx, row: { [field]: val } });
+                    } catch (e) { /* 忽略 */ }
+                });
+            }
+        }
+    } catch (e) { /* 关系表绑定失败不影响面板 */ }
     try { bindPanelEvents(); } catch (e) { /* 设置分页表单绑定 */ }
     return true;
 }
