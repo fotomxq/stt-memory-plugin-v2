@@ -6,7 +6,7 @@
 // ============================================================
 import { state, notifyHooks } from '../core/model/runtime.js';
 import { clockDateLabel } from '../core/clock.js';
-import { atomLatestDated } from '../core/recall.js';
+import { storyClockReference } from '../core/clock-extract.js';
 import {
     clockManualState, setClockManual, clearClockManual, runClockPatrolRepair, clockPatrolState,
 } from '../core/clock-patrol.js';
@@ -22,15 +22,6 @@ export function setClockEditing(on) { clockEditing = !!on; return clockEditing; 
 /** 手工徽标（锁定中） */
 function manBadge(cMan, field) {
     return (cMan && cMan[field]) ? ' <span class="ftt-badge ftt-badge--public" title="手工强制改写（锁定中，自动提取不会覆盖）">🔒 手工</span>' : '';
-}
-
-/** 缺值时的兜底参考（原子数据最近信息，仅供展示不写入） */
-function storyClockReference() {
-    try {
-        const n = atomLatestDated();
-        if (!n) return { date: '', time: '', location: '' };
-        return { date: n.date || '', time: n.time || '', location: n.location || '' };
-    } catch (e) { return { date: '', time: '', location: '' }; }
 }
 
 /** 时钟来源可解释行（V1 `state.state.clockSrc`） */

@@ -1,0 +1,1559 @@
+{
+  "header": [
+    {
+      "text": "▷0051年1月2日（东汉建武二十七年）·冬(死寂的长街，高耸的阴影)\n▷凉州卫-中央大街-钟鼓楼下\n▶第17602天 08:52->09:05(慵懒的漫步与崩溃的余波)",
+      "out": {
+        "date": "0051-01-02",
+        "era": "东汉建武二十七年",
+        "season": "冬",
+        "sceneDesc": "死寂的长街，高耸的阴影",
+        "location": "凉州卫-中央大街-钟鼓楼下",
+        "storyDay": 17602,
+        "time": "08:52",
+        "timeEnd": "09:05",
+        "status": "慵懒的漫步与崩溃的余波"
+      }
+    },
+    {
+      "text": "▷-0221年1月2日（秦）·秋(阿房宫)  ▶第3天 12:00->13:30(宴)",
+      "out": {
+        "date": "0221-01-02",
+        "era": "秦",
+        "season": "秋",
+        "sceneDesc": "阿房宫",
+        "location": "",
+        "storyDay": 3,
+        "time": "12:00",
+        "timeEnd": "13:30",
+        "status": "宴"
+      }
+    },
+    {
+      "text": "没有结构头的普通正文。",
+      "out": {
+        "date": "",
+        "era": "",
+        "season": "",
+        "sceneDesc": "",
+        "location": "",
+        "storyDay": 0,
+        "time": "",
+        "timeEnd": "",
+        "status": ""
+      }
+    }
+  ],
+  "extract": [
+    {
+      "tag": "regex-plain",
+      "text": "1919年11月29日，傍晚。主角甲走进城市甲的码头，墙上贴着【地点：码头仓库】。第二天清晨，他出发前往城市乙。",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-11-29",
+        "time": "清晨",
+        "location": "码头仓库",
+        "source": {
+          "date": "regex",
+          "time": "daypart",
+          "location": "marker"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "regex-with-prev-year",
+      "text": "11月30日，主角甲出发。",
+      "prev": {
+        "date": "1919-11-29",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-11-30",
+        "time": null,
+        "location": null,
+        "source": {
+          "date": "regex"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "marker",
+      "text": "【日期：1919-12-05】主角甲来到城市丙。\n时间：08:30\n地点：城市丙·旅馆",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-12-05",
+        "time": "08:30",
+        "location": "城市丙·旅馆",
+        "source": {
+          "date": "regex",
+          "time": "regex",
+          "location": "marker"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "header",
+      "text": "▷0051年1月2日（东汉建武二十七年）·冬(死寂的长街，高耸的阴影)\n▷凉州卫-中央大街-钟鼓楼下\n▶第17602天 08:52->09:05(慵懒的漫步与崩溃的余波)",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": "0051-01-02",
+        "time": "08:52",
+        "location": "凉州卫-中央大街-钟鼓楼下",
+        "source": {
+          "date": "header",
+          "time": "header",
+          "location": "header"
+        },
+        "timeEnd": "09:05",
+        "season": "冬",
+        "era": "东汉建武二十七年",
+        "storyDay": 17602,
+        "sceneDesc": "死寂的长街，高耸的阴影",
+        "statusText": "慵懒的漫步与崩溃的余波",
+        "header": true
+      }
+    },
+    {
+      "tag": "relative",
+      "text": "次日清晨，主角甲继续赶路，三天后抵达城市丁。",
+      "prev": {
+        "date": "1919-12-01",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {
+        "clockRelative": true
+      },
+      "out": {
+        "date": "1919-12-04",
+        "time": "清晨",
+        "location": null,
+        "source": {
+          "date": "relative",
+          "time": "daypart"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "relative-off",
+      "text": "次日清晨，主角甲继续赶路，三天后抵达城市丁。",
+      "prev": {
+        "date": "1919-12-01",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {
+        "clockRelative": false
+      },
+      "out": {
+        "date": null,
+        "time": "清晨",
+        "location": null,
+        "source": {
+          "time": "daypart"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "custom-regex",
+      "text": "DATE=1920-03-04 TIME=晚上8点半 LOC=城市戊",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {
+        "clockRegexPreset": "none",
+        "clockDateRegex": "DATE=(\\d{4}-\\d{2}-\\d{2})",
+        "clockTimeRegex": "TIME=([^\\s]+)",
+        "clockLocationRegex": "LOC=([^\\s]+)"
+      },
+      "out": {
+        "date": "1920-03-04",
+        "time": "20:30",
+        "location": "城市戊",
+        "source": {
+          "date": "custom",
+          "time": "custom",
+          "location": "custom"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "daypart-only",
+      "text": "傍晚，主角甲看着天空。",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": null,
+        "time": "傍晚",
+        "location": null,
+        "source": {
+          "time": "daypart"
+        },
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    },
+    {
+      "tag": "empty",
+      "text": "",
+      "prev": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "cfg": {},
+      "out": {
+        "date": null,
+        "time": null,
+        "location": null,
+        "source": {},
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false
+      }
+    }
+  ],
+  "resolve": [
+    {
+      "tag": "header-wins",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "▷0051年1月2日（东汉建武二十七年）·冬(死寂的长街，高耸的阴影)\n▷凉州卫-中央大街-钟鼓楼下\n▶第17602天 08:52->09:05(慵懒的漫步与崩溃的余波)"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-11-20",
+        "time": "09:00",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "plot",
+          "time": "header",
+          "location": "scene",
+          "present": "plot-atom"
+        },
+        "degraded": true,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "09:05",
+        "season": "冬",
+        "era": "东汉建武二十七年",
+        "storyDay": 17602,
+        "sceneDesc": "死寂的长街，高耸的阴影",
+        "statusText": "慵懒的漫步与崩溃的余波",
+        "header": true,
+        "degradeReason": "anomaly:backward"
+      }
+    },
+    {
+      "tag": "regex-newer-than-plot",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "1919-12-01，主角甲抵达城市乙。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-12-01",
+        "time": "",
+        "location": "",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "regex",
+          "time": "",
+          "location": "",
+          "present": "latest-ai"
+        },
+        "degraded": false,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": ""
+      }
+    },
+    {
+      "tag": "plot-newer-than-regex",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-12-31",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "20:00",
+            "location": "城市己",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "1919-12-01，主角甲在城市乙。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-12-31",
+        "time": "20:00",
+        "location": "",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "plot",
+          "time": "plot",
+          "location": "",
+          "present": "latest-ai"
+        },
+        "degraded": false,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": ""
+      }
+    },
+    {
+      "tag": "anomaly-jump-degrade",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "2011年5月6日，主角甲在城市庚。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-11-20",
+        "time": "09:00",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "plot",
+          "time": "plot",
+          "location": "scene",
+          "present": "latest-ai"
+        },
+        "degraded": true,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": "anomaly:jump"
+      }
+    },
+    {
+      "tag": "force-degrade",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "1919-12-01，主角甲在城市乙。"
+      },
+      "cfg": {
+        "clockForceDegrade": true
+      },
+      "out": {
+        "date": "1919-11-20",
+        "time": "09:00",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "plot",
+          "time": "plot",
+          "location": "scene",
+          "present": "latest-ai"
+        },
+        "degraded": true,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": "force"
+      }
+    },
+    {
+      "tag": "no-date-fallback-scene",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "主角甲默默赶路。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-11-20",
+        "time": "09:00",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "plot",
+          "time": "plot",
+          "location": "scene",
+          "present": "latest-ai"
+        },
+        "degraded": false,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": ""
+      }
+    },
+    {
+      "tag": "prev-kept",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "1919-10-10",
+          "location": "城市辛",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "主角甲默默赶路。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-10-10",
+        "time": "",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "prev",
+          "time": "",
+          "location": "scene",
+          "present": "latest-ai"
+        },
+        "degraded": true,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": "no-date"
+      }
+    },
+    {
+      "tag": "storyday-epoch",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "▶第3天 08:00(出发)"
+      },
+      "cfg": {
+        "clockStoryDayEpoch": "0001-01-01"
+      },
+      "out": {
+        "date": "0001-01-03",
+        "time": "08:00",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "storyday",
+          "time": "header",
+          "location": "scene",
+          "present": "plot-atom"
+        },
+        "degraded": false,
+        "textMode": "given",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 3,
+        "sceneDesc": "",
+        "statusText": "出发",
+        "header": true,
+        "degradeReason": "no-date"
+      }
+    },
+    {
+      "tag": "manual-lock",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null,
+          "clockManual": {
+            "date": "1919-12-31",
+            "time": "08:30",
+            "location": "城市甲·码头",
+            "at": 1
+          }
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "1919-12-01，主角甲在城市乙。"
+      },
+      "cfg": {},
+      "out": {
+        "date": "1919-12-31",
+        "time": "08:30",
+        "location": "城市甲·码头",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "manual",
+          "time": "manual",
+          "location": "manual",
+          "present": "latest-ai"
+        },
+        "degraded": false,
+        "textMode": "none",
+        "jumpYears": 0,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "manual": true
+      }
+    },
+    {
+      "tag": "manual-unlocked",
+      "state": {
+        "version": "v1.206",
+        "state": {
+          "time": "",
+          "date": "",
+          "location": "",
+          "sceneFocus": null,
+          "clockManual": {
+            "date": "1919-12-31",
+            "time": "08:30",
+            "location": "城市甲·码头",
+            "at": 1
+          }
+        },
+        "protagonist": {},
+        "items": [],
+        "plans": [],
+        "suspense": [],
+        "scenes": [
+          {
+            "id": "sc1",
+            "text": "场景",
+            "title": "场景",
+            "date": "",
+            "tags": [],
+            "uses": 5,
+            "floorStart": 1,
+            "floorEnd": 3,
+            "name": "城市甲·码头",
+            "pathStr": "城市甲·码头"
+          }
+        ],
+        "npcs": [],
+        "atoms": [
+          {
+            "id": "a1",
+            "text": "旧情节",
+            "title": "旧情节",
+            "date": "1919-11-20",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "time": "09:00",
+            "location": "城市甲·旧街",
+            "entities": [
+              "主角甲"
+            ]
+          }
+        ],
+        "currentStates": [
+          {
+            "id": "cs1",
+            "text": "状态",
+            "title": "状态",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "subject": "主角甲"
+          }
+        ],
+        "snapshots": [
+          {
+            "id": "snap1",
+            "text": "角色档案",
+            "title": "角色档案",
+            "date": "",
+            "tags": [],
+            "uses": 0,
+            "floorStart": 1,
+            "floorEnd": 2,
+            "name": "主角甲"
+          }
+        ],
+        "memories": [],
+        "concepts": [],
+        "parallels": [],
+        "currencies": [],
+        "plotSegments": [],
+        "rumors": [],
+        "links": [],
+        "vars": {},
+        "varTemplates": {},
+        "summaries": [],
+        "processedFloors": [],
+        "lastKnownFloor": -1,
+        "stats": {
+          "plansClosed": 0,
+          "suspenseResolved": 0
+        },
+        "deleted": {},
+        "deletedH": {},
+        "updatedAt": 0
+      },
+      "opts": {
+        "text": "1920-01-05，主角甲在城市乙。"
+      },
+      "cfg": {
+        "clockManualLock": false
+      },
+      "out": {
+        "date": "1920-01-05",
+        "time": "",
+        "location": "",
+        "present": [
+          "主角甲"
+        ],
+        "source": {
+          "date": "regex",
+          "time": "",
+          "location": "",
+          "present": "latest-ai"
+        },
+        "degraded": false,
+        "textMode": "given",
+        "jumpYears": 1,
+        "timeEnd": "",
+        "season": "",
+        "era": "",
+        "storyDay": 0,
+        "sceneDesc": "",
+        "statusText": "",
+        "header": false,
+        "degradeReason": ""
+      }
+    }
+  ],
+  "latestScene": "城市甲·码头",
+  "latestSceneSamePath": "城市甲·码头",
+  "present": [
+    [
+      "text-hit",
+      {
+        "list": [
+          "主角甲"
+        ],
+        "source": "latest-ai"
+      }
+    ],
+    [
+      "plot-hit",
+      {
+        "list": [
+          "主角甲"
+        ],
+        "source": "plot-atom"
+      }
+    ],
+    [
+      "none",
+      {
+        "list": null,
+        "source": "keep-prev"
+      }
+    ]
+  ],
+  "note": "oracle = 真实 V1 插件 v1.206（tests/unit/helpers.js loadPlugin + makeTavernEnv）；extract/resolve 每例含 cfg 补丁与输入 state（可逐例回放）"
+}

@@ -96,6 +96,14 @@ export function installDevtools(hooks) {
             clockManual: () => (hooks && typeof hooks.clockManual === 'function' ? hooks.clockManual() : null),
             clockManualSet: (input) => (hooks && typeof hooks.clockManualSet === 'function' ? hooks.clockManualSet(input || {}) : { ok: false, notes: ['no-hook'] }),
             clockManualClear: () => (hooks && typeof hooks.clockManualClear === 'function' ? hooks.clockManualClear() : false),
+            // B8-2 剧情时钟自动提取
+            clockResolve: (opts) => (hooks && typeof hooks.clockResolve === 'function' ? hooks.clockResolve(opts || {}) : null),
+            clockExtractOnce: (opts) => (hooks && typeof hooks.clockExtractOnce === 'function' ? hooks.clockExtractOnce(opts || {}) : Promise.resolve(false)),
+            clockExtractState: () => (hooks && typeof hooks.clockExtractState === 'function' ? hooks.clockExtractState() : null),
+            clockExtractSchedule: () => (hooks && typeof hooks.clockExtractSchedule === 'function' ? hooks.clockExtractSchedule() : false),
+            clockHeader: (text) => (hooks && typeof hooks.clockHeader === 'function' ? hooks.clockHeader(text) : null),
+            clockExtractText: (text, prev) => (hooks && typeof hooks.clockExtractText === 'function' ? hooks.clockExtractText(text, prev || {}) : null),
+            clockScene: () => (hooks && typeof hooks.clockScene === 'function' ? hooks.clockScene() : ''),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

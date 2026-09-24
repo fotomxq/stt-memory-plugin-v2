@@ -757,6 +757,64 @@ assert('O5 FTT 时钟调试入口齐备（clockUi / clockAnchor / clockMajority 
         && !!pst && typeof pst.scanned === 'number' && typeof F.clockManualSet === 'function' && typeof F.clockPatrolAuto === 'function';
 })(), '');
 
+// ---------- P 剧情时钟自动提取（B8-2：正文头 / 正则 / 多源择优 / 降级 / 楼层窗口回退） ----------
+const HEADER_FLOOR = '▷0051年1月2日（东汉建武二十七年）·冬(死寂的长街，高耸的阴影)\n▷凉州卫-中央大街-钟鼓楼下\n▶第17602天 08:52->09:05(慵懒的漫步与崩溃的余波)';
+
+assert('P1 FTT.clockHeader / clockResolve：正文头结构解析（日期/纪年/季节/地点路径/第 N 天/时间区间/状态）与多源择优', (() => {
+    const hdr = globalThis.FTT.clockHeader(HEADER_FLOOR);
+    const mark = globalThis.FTT.clockExtractText('【日期：1919-11-29】\n时间：18:30\n地点：城市甲·码头', {});
+    const plain = globalThis.FTT.clockExtractText('1919年11月29日，傍晚。角色甲走进码头。', {});
+    const rel = globalThis.FTT.clockExtractText('次日清晨出发。', { date: '1919-11-29' });
+    const res = globalThis.FTT.clockResolve({ text: '1919年11月29日，傍晚。角色甲走进码头。' });
+    return hdr.date === '0051-01-02' && hdr.era === '东汉建武二十七年' && hdr.season === '冬'
+        && hdr.location === '凉州卫-中央大街-钟鼓楼下' && hdr.storyDay === 17602 && hdr.time === '08:52' && hdr.timeEnd === '09:05'
+        && mark.date === '1919-11-29' && mark.time === '18:30' && mark.location === '城市甲·码头'
+        && mark.source.location === 'marker'
+        && plain.date === '1919-11-29' && plain.time === '傍晚' && plain.source.time === 'daypart' && plain.location === null
+        && rel.date === '1919-11-30' && rel.source.date === 'relative'
+        && !!res && String(res.source.date).length > 0 && String(res.source.present).length > 0;
+})(), '');
+
+assert('P2 FTT.clockExtractOnce：解析结果落盘（日期/时间/地点 + 正文头附加字段 + clockSrc 来源 + 在场）', (() => {
+    const ok = globalThis.FTT.clockExtractOnce({ text: HEADER_FLOOR, force: true });
+    const st = rtMod.state.state;
+    const res = globalThis.FTT.clockExtractState();
+    return ok === true && !!res && !!st.clockSrc && st.storyDay === 17602 && st.timeEnd === '09:05'
+        && st.era === '东汉建武二十七年' && st.season === '冬'
+        && String(st.location || '').length > 0 && String(st.date || '').length >= 10
+        && res.header === true && res.textMode === 'given';
+})(), '');
+
+assert('P3 楼层窗口回退：无显式正文时用「最近 N 楼」文本提取（内核经宿主注入取文，不直读聊天）', (() => {
+    host.ctx.chat.push({ is_user: false, mes: '▷1919年12月9日·冬(码头)\n▷城市壬-港口\n▶第7天 07:00->07:30(出发)', name: '角色甲' });
+    rtMod.setLastMessageId(host.ctx.chat.length - 1);
+    const res = globalThis.FTT.clockResolve();
+    return res.date === '1919-12-09' && res.location === '城市壬-港口' && res.time === '07:00' && res.timeEnd === '07:30';
+})(), '');
+
+assert('P4 自动提取调度：消息事件到达 → 1.8s 防抖后自动落盘（cfg.clockExtractEnabled 控制；关掉不排程）', (async () => {
+    rtMod.cfg.clockExtractEnabled = true;
+    rtMod.state.state.date = ''; rtMod.state.state.time = ''; rtMod.state.state.location = '';
+    delete rtMod.state.state.clockSrc;
+    host.ctx.chat.push({ is_user: false, mes: '▷1919年12月11日·冬(港口)\n▷城市癸-广场\n▶第9天 06:00->06:30(出发)', name: '角色甲' });
+    rtMod.setLastMessageId(host.ctx.chat.length - 1);
+    host.emit('CHARACTER_MESSAGE_RENDERED', host.ctx.chat.length - 1);
+    await new Promise((r) => setTimeout(r, 2100));
+    const got = { date: rtMod.state.state.date, time: rtMod.state.state.time, location: rtMod.state.state.location };
+    const mode = (globalThis.FTT.clockExtractState() || {}).textMode;
+    rtMod.cfg.clockExtractEnabled = false;
+    const off = globalThis.FTT.clockExtractSchedule();
+    rtMod.cfg.clockExtractEnabled = true;
+    return got.date === '1919-12-11' && got.time === '06:00' && got.location === '城市癸-广场' && mode === 'latest-ai' && off === false;
+})(), '');
+
+assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜底入口（FTT.clockScene 可用）', (async () => {
+    const r = await entry.popupAction('tab', { tab: 'overview' });
+    const html = String(r.html || '');
+    return html.indexOf('data-ftt-clock-src') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
+        && html.indexOf('📆 剧情第 17602 天') >= 0 && typeof globalThis.FTT.clockScene === 'function';
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

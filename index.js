@@ -24,7 +24,7 @@ import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './h
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors } from './host/extract.js';
-import { listUnprocessedFloors } from './host/floors.js';
+import { listUnprocessedFloors, collectFloorLinesInRange } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
@@ -37,6 +37,10 @@ import {
     clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
     runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
 } from './core/clock-patrol.js';
+import {
+    setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
+    extractClockFromHeader, extractClockFromText, latestSceneLocation,
+} from './core/clock-extract.js';
 import { clockUiInfo } from './ui/clock.js';
 import {
     storageBootstrap, scheduleStorageSync, crossSyncManual, refreshFromServer, storageVerify,
@@ -150,6 +154,8 @@ export async function init() {
             try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 忽略 */ }
             // P3：楼层/状态变化后刷新注入（失败静默；构建为空时保留上一次注入）
             void pushMemoryInject({ queryText: '' }).catch(() => { });
+            // B8-2：消息后自动提取剧情时钟（1.8s 防抖；`cfg.clockExtractEnabled`）
+            try { scheduleClockExtract(); } catch (e) { /* 忽略 */ }
         };
         const onGenEnded = () => {
             onFloorChanged();
@@ -311,6 +317,14 @@ function bootstrapDiagnostics() {
             clockManual: () => clockManualState(),
             clockManualSet: (input) => setClockManual(input || {}),
             clockManualClear: () => clearClockManual(),
+            // B8-2 剧情时钟自动提取（多源择优 + 降级）
+            clockResolve: (opts) => resolveStoryClock(opts || {}),
+            clockExtractOnce: (opts) => clockAutoExtractOnce(opts || {}),
+            clockExtractState: () => clockExtractState(),
+            clockExtractSchedule: () => scheduleClockExtract(),
+            clockHeader: (text) => extractClockFromHeader(text),
+            clockExtractText: (text, prev) => extractClockFromText(text, prev || {}),
+            clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
@@ -527,6 +541,18 @@ export function importStatus() { return runtime.import; }
 function installHostBridges() {
     const ctx = getCtx();
     setIdentityView({ characterName: String((ctx && (ctx.name2 || ctx.name1)) || '') });
+    // B8-2：剧情时钟取文钩子（内核不读宿主聊天）—— 最新 AI 正文 + 最近楼层窗口回退文本
+    setClockTextHooks({
+        latestAiText: () => { try { return latestAiMessageText(); } catch (e) { return ''; } },
+        floorWindowText: () => {
+            try {
+                const last = Number((getCtx() && typeof getCtx().getLastMessageId === 'function') ? getCtx().getLastMessageId() : -1);
+                if (!Number.isFinite(last) || last < 0) return '';
+                const n = Math.max(1, Number(cfgRef.feedFloors) || 2);
+                return collectFloorLinesInRange(Math.max(0, last - n + 1), last).join('\n');
+            } catch (e) { return ''; }
+        },
+    });
     // 内核延迟调度钩子 → 宿主定时器（快照增量 400ms 防抖依赖它；未接线时内核默认 no-op = 永不建增量快照）
     setTimerHooks({
         set: (fn, ms) => setTimeout(fn, Math.max(0, Number(ms) || 0)),

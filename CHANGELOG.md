@@ -3,6 +3,33 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.11.0（2026-09-26）· B8-2 剧情时钟自动提取（正文头结构 + 多源择优 + 自动降级）
+
+**本版（B8-2）**：
+1. **内核**（新增 `core/clock-extract.js`，取自 V1 `09-AI摘要与楼层处理.js` 时钟提取族）：
+   ① `extractClockFromHeader`（v1.188 正文头结构）：`▷日期（纪年）·季节(场景描述)` / `▷地点-路径` / `▶第 N 天 起止时间(状态)`
+   → 日期 / 纪年 / 季节 / 场景描述 / 地点 / 剧情第 N 天 / 时间区间 / 状态说明；
+   ② `extractClockFromText`：多源择优（**正文头 > 日期直取/时刻/中文点数/时段词 > 自定义正则 > 标记式带值 > 相对日期推进**），
+   日期候选统一走 `CLOCK_DATE_SCAN`（「公元…」/中文数字/月日无年/公元前），各字段取最后一次命中；
+   ③ `resolveStoryClock`（v1.173~v1.193 统一解析）：手工锁定优先 → 取文（显式正文 → 最新 AI 正文 → 最近 N 楼窗口）→
+   日期候选（正则 / 最新情节 / 原子降级 / 沿用旧值）取最大 → **日期异常自动降级**（invalid/jump/backward 或强制降级开关）→
+   时间/地点跟随胜出侧、降级补「最新场景」→ 正文头附加字段与「第 N 天」纪元换算 → 在场只认最新正文/最新情节（不跨楼层扩散）；
+   ④ `latestSceneLocation` / `resolvePresentNames` / `storyClockReference`；
+   ⑤ `clockAutoExtractOnce` / `scheduleClockExtract`：落盘 `state.state.*` + `clockSrc` 可解释来源 + 在场 + 快照 seen 标记，
+   日期推进顺带调度状态记录衰退（`core/ingest.js` 导出 `scheduleStateDecay`）；
+2. **`core/clock.js` 补全**：`clockAddDays`（先建基准日再 `setUTCFullYear`，避开「年份 <100 被映射到 19xx」，负年份安全）、
+   导出 `clockMatchNotInline`（长日期尾部命中判据）；
+3. **接线**：`index.js` 注入取文钩子（最新 AI 正文 + 最近楼层窗口，内核不直读聊天），消息/楼层事件触发 1.8s 防抖自动提取；
+   `FTT.*` 新增 7 个调试入口（`clockResolve` / `clockExtractText` / `clockHeader` / `clockExtractOnce` / `clockExtractState` /
+   `clockExtractSchedule` / `clockScene`）；总览「🕒 时钟来源」与正文头附加字段（时间区间/季节/纪年/剧情天数/场景描述）随之显示；
+4. **黄金样本 27 例（oracle = 真实 V1 插件 v1.206）**：正文头 3 例、文本提取 9 例、统一解析 10 例、场景 2 例、在场 3 例，逐例一致。
+
+**验证**：`tests/unit/clock-extract-golden.test.js` **12 项** + 冒烟 **P1–P5**；门禁全绿：单元 **33 文件 / 439 断言**、
+冒烟 **71 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8k-B8-2剧情时钟自动提取.md` §2）**：取文改经注入钩子（保留内核零宿主依赖）；提示/调度/重绘走注入钩子与 UI 层；
+`clockRegexGen` / `clockRepair` 两条 AI 管线属 B8-3（基础页明示标注，不放假按钮）。
+
 ## v2.10.0（2026-09-26）· B8-1 剧情时钟域（手工锚点 + 零 AI 时间巡检 + 基础页对齐）
 
 **本版（B8-1）**：
