@@ -1,0 +1,4886 @@
+{
+  "note": "v1-golden-worldbook —— oracle = 真实 V1 插件（src/FTT记忆组件-v1.205.js，真实 v1.206）。由 /tmp/wb-oracle.cjs 生成（stdout 即本 JSON，连跑两次逐字节一致）。",
+  "v1": {
+    "file": "src/FTT记忆组件-v1.205.js",
+    "version": "v1.206"
+  },
+  "inputs": {
+    "charId": "char_abc",
+    "charName": "角色甲",
+    "fixedTs": 1735689500000,
+    "fixedNow": 1735689600000,
+    "scope": "char:1157z2a",
+    "legacyName": "FTT记忆快照·角色甲",
+    "scenario": {
+      "atoms": [
+        {
+          "id": "a1",
+          "title": "码头交接货物",
+          "text": "角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+          "tags": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "uses": 3
+        },
+        {
+          "id": "a2",
+          "text": "角色丙独自离开酒馆。",
+          "tags": [
+            "丙",
+            "酒馆",
+            "这是一个超过十二个字的标签名称"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "a3",
+          "title": "长文情节",
+          "text": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+          "tags": [
+            "长文"
+          ],
+          "uses": 0
+        },
+        {
+          "id": "a4",
+          "text": "已总结隐藏的情节。",
+          "tags": [
+            "隐藏"
+          ],
+          "uses": 0,
+          "summarizedBy": "sum_1"
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "title": "秘密交易",
+          "content": "角色甲与角色乙私下交易，收下银两。",
+          "date": "2020-01-01",
+          "memCategory": "交易",
+          "tags": [
+            "交易",
+            "秘密",
+            "银两"
+          ],
+          "keywords": [
+            "旧关键词"
+          ]
+        },
+        {
+          "id": "m2",
+          "title": "公开公告",
+          "content": "城主府发布公告。",
+          "date": "2020-01-02",
+          "memCategory": "公告",
+          "tags": [
+            "公告"
+          ]
+        },
+        {
+          "id": "m3",
+          "title": "",
+          "content": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+          "date": "2020-01-03",
+          "memCategory": "",
+          "tags": [
+            "长句"
+          ]
+        },
+        {
+          "id": "m4",
+          "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯",
+          "content": "简短正文。",
+          "date": "2020-01-04",
+          "memCategory": "",
+          "tags": [
+            "标题"
+          ]
+        },
+        {
+          "id": "m5",
+          "title": "只有标题",
+          "content": "只有标题",
+          "date": "2020-01-05",
+          "memCategory": "",
+          "tags": [
+            "标题"
+          ]
+        }
+      ],
+      "concepts": [
+        {
+          "id": "c1",
+          "name": "星轨教义",
+          "content": "星轨教义主张以星象推演命运。",
+          "tags": [
+            "星轨",
+            "教义"
+          ],
+          "source": "书籍",
+          "date": "2020-02-01"
+        },
+        {
+          "id": "c2",
+          "name": "空概念",
+          "content": "",
+          "tags": []
+        }
+      ],
+      "items": [
+        {
+          "id": "i1",
+          "name": "铜钥匙",
+          "desc": "一把锈迹斑斑的铜钥匙。",
+          "qty": 1,
+          "tags": []
+        }
+      ],
+      "plans": [
+        {
+          "id": "p1",
+          "content": "找到通往地下的密道。",
+          "status": "open",
+          "tags": [
+            "密道",
+            "地下"
+          ],
+          "planner": "角色甲"
+        },
+        {
+          "id": "p2",
+          "content": "已完结的计划（应被过滤）。",
+          "status": "closed",
+          "tags": [
+            "完结"
+          ]
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u1",
+          "content": "谁是内鬼？",
+          "status": "open",
+          "tags": [
+            "内鬼"
+          ]
+        },
+        {
+          "id": "u2",
+          "content": "已揭晓的悬念（应被过滤）。",
+          "status": "closed",
+          "tags": [
+            "揭晓"
+          ]
+        }
+      ],
+      "parallels": [
+        {
+          "id": "x1",
+          "content": "幕后的平行事件。",
+          "tags": [
+            "幕后"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "l1",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲",
+          "how": "told"
+        },
+        {
+          "id": "l2",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色丙",
+          "how": "witness"
+        },
+        {
+          "id": "l3",
+          "dim": "memories",
+          "refId": "m2",
+          "who": "",
+          "public": true
+        },
+        {
+          "id": "l4",
+          "dim": "plans",
+          "refId": "p1",
+          "who": "角色甲",
+          "how": "author"
+        },
+        {
+          "id": "l5",
+          "dim": "suspense",
+          "refId": "u1",
+          "who": "角色乙",
+          "how": "investigating"
+        },
+        {
+          "id": "l6",
+          "dim": "parallels",
+          "refId": "x1",
+          "who": "角色丙"
+        },
+        {
+          "id": "l7",
+          "dim": "parallels",
+          "refId": "x1",
+          "who": "角色丁"
+        }
+      ]
+    },
+    "keysState": {
+      "atoms": [
+        {
+          "id": "a1",
+          "title": "码头交接货物",
+          "text": "角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+          "tags": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "uses": 3
+        },
+        {
+          "id": "a2",
+          "text": "角色丙独自离开酒馆。",
+          "tags": [
+            "丙",
+            "酒馆",
+            "这是一个超过十二个字的标签名称"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "a3",
+          "title": "长文情节",
+          "text": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+          "tags": [
+            "长文"
+          ],
+          "uses": 0
+        },
+        {
+          "id": "a4",
+          "text": "已总结隐藏的情节。",
+          "tags": [
+            "隐藏"
+          ],
+          "uses": 0,
+          "summarizedBy": "sum_1"
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "title": "秘密交易",
+          "content": "角色甲与角色乙私下交易，收下银两。",
+          "date": "2020-01-01",
+          "memCategory": "交易",
+          "tags": [
+            "交易",
+            "秘密",
+            "银两"
+          ],
+          "keywords": [
+            "旧关键词"
+          ]
+        },
+        {
+          "id": "m2",
+          "title": "公开公告",
+          "content": "城主府发布公告。",
+          "date": "2020-01-02",
+          "memCategory": "公告",
+          "tags": [
+            "公告"
+          ]
+        },
+        {
+          "id": "m3",
+          "title": "",
+          "content": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+          "date": "2020-01-03",
+          "memCategory": "",
+          "tags": [
+            "长句"
+          ]
+        },
+        {
+          "id": "m4",
+          "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯",
+          "content": "简短正文。",
+          "date": "2020-01-04",
+          "memCategory": "",
+          "tags": [
+            "标题"
+          ]
+        },
+        {
+          "id": "m5",
+          "title": "只有标题",
+          "content": "只有标题",
+          "date": "2020-01-05",
+          "memCategory": "",
+          "tags": [
+            "标题"
+          ]
+        }
+      ],
+      "concepts": [
+        {
+          "id": "c1",
+          "name": "星轨教义",
+          "content": "星轨教义主张以星象推演命运。",
+          "tags": [
+            "星轨",
+            "教义"
+          ],
+          "source": "书籍",
+          "date": "2020-02-01"
+        },
+        {
+          "id": "c2",
+          "name": "空概念",
+          "content": "",
+          "tags": []
+        }
+      ]
+    },
+    "config": {
+      "mode": "selective",
+      "scanDepth": 6,
+      "position": "at_depth",
+      "role": "system",
+      "depth": 9999,
+      "preventRecursion": true,
+      "probability": 100,
+      "sticky": null,
+      "cooldown": null,
+      "delay": null,
+      "maxBytes": 262144
+    }
+  },
+  "entrySets": {
+    "selective": [
+      {
+        "name": "情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 情节\n\n- 码头交接货物\n- 角色丙独自离开酒馆。\n- 长文情节\n- 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "码头交接货物",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 码头交接货物\n\n角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "码头交接货物"
+          }
+        }
+      },
+      {
+        "name": "角色丙独自离开酒馆。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "酒馆"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 角色丙独自离开酒馆。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "角色丙独自离开酒馆。"
+          }
+        }
+      },
+      {
+        "name": "长文情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "长文"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 长文情节\n\n长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "长文情节"
+          }
+        }
+      },
+      {
+        "name": "已总结隐藏的情节。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "隐藏"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "已总结隐藏的情节。"
+          }
+        }
+      },
+      {
+        "name": "记忆",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 记忆\n\n- 秘密交易\n- 公开公告\n- 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n- 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…\n- 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "秘密交易",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "交易",
+            "秘密",
+            "银两",
+            "旧关键词"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 秘密交易\n\n角色甲与角色乙私下交易，收下银两。\n\n关联：目击：角色丙 · 被告知：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "秘密交易"
+          }
+        }
+      },
+      {
+        "name": "公开公告",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "公告"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 公开公告\n\n城主府发布公告。\n\n关联：公开事实（人尽皆知）",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "公开公告"
+          }
+        }
+      },
+      {
+        "name": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "长句"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n\n这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": ""
+          }
+        }
+      },
+      {
+        "name": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯\n\n简短正文。",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯"
+          }
+        }
+      },
+      {
+        "name": "只有标题",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "只有标题"
+          }
+        }
+      },
+      {
+        "name": "概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 概念\n\n- 星轨教义\n- 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "星轨教义",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "星轨",
+            "教义"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 星轨教义\n\n星轨教义主张以星象推演命运。",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "星轨教义"
+          }
+        }
+      },
+      {
+        "name": "空概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "空概念"
+          }
+        }
+      },
+      {
+        "name": "物品",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 物品\n\n- 铜钥匙",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "铜钥匙",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "铜钥匙"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 铜钥匙\n\n一把锈迹斑斑的铜钥匙。",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "铜钥匙"
+          }
+        }
+      },
+      {
+        "name": "计划",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 计划\n\n- 找到通往地下的密道。",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "找到通往地下的密道。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "密道",
+            "地下"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 找到通往地下的密道。\n\n关联：策划：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "找到通往地下的密道。"
+          }
+        }
+      },
+      {
+        "name": "悬念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 悬念\n\n- 谁是内鬼？",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "谁是内鬼？",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "内鬼"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 谁是内鬼？\n\n关联：在查：角色乙",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "谁是内鬼？"
+          }
+        }
+      }
+    ],
+    "constant": [
+      {
+        "name": "情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 情节\n\n- 码头交接货物\n- 角色丙独自离开酒馆。\n- 长文情节\n- 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "码头交接货物",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 码头交接货物\n\n角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "码头交接货物"
+          }
+        }
+      },
+      {
+        "name": "角色丙独自离开酒馆。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "酒馆"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 角色丙独自离开酒馆。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "角色丙独自离开酒馆。"
+          }
+        }
+      },
+      {
+        "name": "长文情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "长文"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 长文情节\n\n长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "长文情节"
+          }
+        }
+      },
+      {
+        "name": "已总结隐藏的情节。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "隐藏"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "已总结隐藏的情节。"
+          }
+        }
+      },
+      {
+        "name": "记忆",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 记忆\n\n- 秘密交易\n- 公开公告\n- 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n- 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…\n- 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "秘密交易",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "交易",
+            "秘密",
+            "银两",
+            "旧关键词"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 秘密交易\n\n角色甲与角色乙私下交易，收下银两。\n\n关联：目击：角色丙 · 被告知：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "秘密交易"
+          }
+        }
+      },
+      {
+        "name": "公开公告",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "公告"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 公开公告\n\n城主府发布公告。\n\n关联：公开事实（人尽皆知）",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "公开公告"
+          }
+        }
+      },
+      {
+        "name": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "长句"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n\n这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": ""
+          }
+        }
+      },
+      {
+        "name": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯\n\n简短正文。",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯"
+          }
+        }
+      },
+      {
+        "name": "只有标题",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "只有标题"
+          }
+        }
+      },
+      {
+        "name": "概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 概念\n\n- 星轨教义\n- 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "星轨教义",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "星轨",
+            "教义"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 星轨教义\n\n星轨教义主张以星象推演命运。",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "星轨教义"
+          }
+        }
+      },
+      {
+        "name": "空概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "空概念"
+          }
+        }
+      },
+      {
+        "name": "物品",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 物品\n\n- 铜钥匙",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "铜钥匙",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "铜钥匙"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 铜钥匙\n\n一把锈迹斑斑的铜钥匙。",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "铜钥匙"
+          }
+        }
+      },
+      {
+        "name": "计划",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 计划\n\n- 找到通往地下的密道。",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "找到通往地下的密道。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "密道",
+            "地下"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 找到通往地下的密道。\n\n关联：策划：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "找到通往地下的密道。"
+          }
+        }
+      },
+      {
+        "name": "悬念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 悬念\n\n- 谁是内鬼？",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "谁是内鬼？",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "内鬼"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 谁是内鬼？\n\n关联：在查：角色乙",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "谁是内鬼？"
+          }
+        }
+      }
+    ],
+    "vectorized": [
+      {
+        "name": "情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 情节\n\n- 码头交接货物\n- 角色丙独自离开酒馆。\n- 长文情节\n- 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "码头交接货物",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 码头交接货物\n\n角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "码头交接货物"
+          }
+        }
+      },
+      {
+        "name": "角色丙独自离开酒馆。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "酒馆"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 角色丙独自离开酒馆。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "角色丙独自离开酒馆。"
+          }
+        }
+      },
+      {
+        "name": "长文情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "长文"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 长文情节\n\n长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "长文情节"
+          }
+        }
+      },
+      {
+        "name": "已总结隐藏的情节。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "隐藏"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "已总结隐藏的情节。"
+          }
+        }
+      },
+      {
+        "name": "记忆",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 记忆\n\n- 秘密交易\n- 公开公告\n- 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n- 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…\n- 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "秘密交易",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "交易",
+            "秘密",
+            "银两",
+            "旧关键词"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 秘密交易\n\n角色甲与角色乙私下交易，收下银两。\n\n关联：目击：角色丙 · 被告知：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "秘密交易"
+          }
+        }
+      },
+      {
+        "name": "公开公告",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "公告"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 公开公告\n\n城主府发布公告。\n\n关联：公开事实（人尽皆知）",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "公开公告"
+          }
+        }
+      },
+      {
+        "name": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "长句"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n\n这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": ""
+          }
+        }
+      },
+      {
+        "name": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯\n\n简短正文。",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯"
+          }
+        }
+      },
+      {
+        "name": "只有标题",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "只有标题"
+          }
+        }
+      },
+      {
+        "name": "概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 概念\n\n- 星轨教义\n- 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "星轨教义",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "星轨",
+            "教义"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 星轨教义\n\n星轨教义主张以星象推演命运。",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "星轨教义"
+          }
+        }
+      },
+      {
+        "name": "空概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "空概念"
+          }
+        }
+      },
+      {
+        "name": "物品",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 物品\n\n- 铜钥匙",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "铜钥匙",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "铜钥匙"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 铜钥匙\n\n一把锈迹斑斑的铜钥匙。",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "铜钥匙"
+          }
+        }
+      },
+      {
+        "name": "计划",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 计划\n\n- 找到通往地下的密道。",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "找到通往地下的密道。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "密道",
+            "地下"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 找到通往地下的密道。\n\n关联：策划：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "找到通往地下的密道。"
+          }
+        }
+      },
+      {
+        "name": "悬念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "# 悬念\n\n- 谁是内鬼？",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "谁是内鬼？",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": null,
+          "cooldown": null,
+          "delay": null
+        },
+        "strategy": {
+          "type": "vectorized",
+          "keys": [
+            "内鬼"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 6
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 9999,
+          "order": 100
+        },
+        "content": "## 谁是内鬼？\n\n关联：在查：角色乙",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "谁是内鬼？"
+          }
+        }
+      }
+    ],
+    "custom": [
+      {
+        "name": "情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 情节\n\n- 码头交接货物\n- 角色丙独自离开酒馆。\n- 长文情节\n- 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "码头交接货物",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 码头交接货物\n\n角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "码头交接货物"
+          }
+        }
+      },
+      {
+        "name": "角色丙独自离开酒馆。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "酒馆"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 角色丙独自离开酒馆。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "角色丙独自离开酒馆。"
+          }
+        }
+      },
+      {
+        "name": "长文情节",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "长文"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 长文情节\n\n长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "长文情节"
+          }
+        }
+      },
+      {
+        "name": "已总结隐藏的情节。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "隐藏"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "已总结隐藏的情节。"
+          }
+        }
+      },
+      {
+        "name": "记忆",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 记忆\n\n- 秘密交易\n- 公开公告\n- 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n- 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…\n- 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "秘密交易",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "交易",
+            "秘密",
+            "银两",
+            "旧关键词"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 秘密交易\n\n角色甲与角色乙私下交易，收下银两。\n\n关联：目击：角色丙 · 被告知：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "秘密交易"
+          }
+        }
+      },
+      {
+        "name": "公开公告",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "公告"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 公开公告\n\n城主府发布公告。\n\n关联：公开事实（人尽皆知）",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "公开公告"
+          }
+        }
+      },
+      {
+        "name": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "长句"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n\n这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": ""
+          }
+        }
+      },
+      {
+        "name": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯\n\n简短正文。",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯"
+          }
+        }
+      },
+      {
+        "name": "只有标题",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "只有标题"
+          }
+        }
+      },
+      {
+        "name": "概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 概念\n\n- 星轨教义\n- 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "星轨教义",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "星轨",
+            "教义"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 星轨教义\n\n星轨教义主张以星象推演命运。",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "星轨教义"
+          }
+        }
+      },
+      {
+        "name": "空概念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "空概念"
+          }
+        }
+      },
+      {
+        "name": "物品",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 物品\n\n- 铜钥匙",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "铜钥匙",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "铜钥匙"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 铜钥匙\n\n一把锈迹斑斑的铜钥匙。",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "铜钥匙"
+          }
+        }
+      },
+      {
+        "name": "计划",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 计划\n\n- 找到通往地下的密道。",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "找到通往地下的密道。",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "密道",
+            "地下"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 找到通往地下的密道。\n\n关联：策划：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "找到通往地下的密道。"
+          }
+        }
+      },
+      {
+        "name": "悬念",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "# 悬念\n\n- 谁是内鬼？",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "谁是内鬼？",
+        "enabled": true,
+        "probability": 100,
+        "recursion": {
+          "prevent_incoming": false,
+          "prevent_outgoing": false,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 3,
+          "cooldown": 2,
+          "delay": 1
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [
+            "内鬼"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 1
+        },
+        "position": {
+          "type": "after_character_definition",
+          "role": "assistant",
+          "depth": 4,
+          "order": 100
+        },
+        "content": "## 谁是内鬼？\n\n关联：在查：角色乙",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "谁是内鬼？"
+          }
+        }
+      }
+    ],
+    "quirks": [
+      {
+        "name": "情节",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 情节\n\n- 码头交接货物\n- 角色丙独自离开酒馆。\n- 长文情节\n- 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "码头交接货物",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 码头交接货物\n\n角色甲在码头与角色乙交接货物，交付三箱丝绸。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "码头交接货物"
+          }
+        }
+      },
+      {
+        "name": "角色丙独自离开酒馆。",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "酒馆"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 角色丙独自离开酒馆。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "角色丙独自离开酒馆。"
+          }
+        }
+      },
+      {
+        "name": "长文情节",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "长文"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 长文情节\n\n长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "长文情节"
+          }
+        }
+      },
+      {
+        "name": "已总结隐藏的情节。",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "隐藏"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 已总结隐藏的情节。",
+        "extra": {
+          "ftt": {
+            "kind": "情节",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "已总结隐藏的情节。"
+          }
+        }
+      },
+      {
+        "name": "记忆",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 记忆\n\n- 秘密交易\n- 公开公告\n- 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n- 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…\n- 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "秘密交易",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "交易",
+            "秘密",
+            "银两",
+            "旧关键词"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 秘密交易\n\n角色甲与角色乙私下交易，收下银两。\n\n关联：目击：角色丙 · 被告知：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "秘密交易"
+          }
+        }
+      },
+      {
+        "name": "公开公告",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "公告"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 公开公告\n\n城主府发布公告。\n\n关联：公开事实（人尽皆知）",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "公开公告"
+          }
+        }
+      },
+      {
+        "name": "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "长句"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…\n\n这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": ""
+          }
+        }
+      },
+      {
+        "name": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯\n\n简短正文。",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子丑寅卯"
+          }
+        }
+      },
+      {
+        "name": "只有标题",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "标题"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 只有标题",
+        "extra": {
+          "ftt": {
+            "kind": "记忆",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "只有标题"
+          }
+        }
+      },
+      {
+        "name": "概念",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 概念\n\n- 星轨教义\n- 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "星轨教义",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "星轨",
+            "教义"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 星轨教义\n\n星轨教义主张以星象推演命运。",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "星轨教义"
+          }
+        }
+      },
+      {
+        "name": "空概念",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 空概念",
+        "extra": {
+          "ftt": {
+            "kind": "概念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "空概念"
+          }
+        }
+      },
+      {
+        "name": "物品",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 物品\n\n- 铜钥匙",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "铜钥匙",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "铜钥匙"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 铜钥匙\n\n一把锈迹斑斑的铜钥匙。",
+        "extra": {
+          "ftt": {
+            "kind": "物品",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "铜钥匙"
+          }
+        }
+      },
+      {
+        "name": "计划",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 计划\n\n- 找到通往地下的密道。",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "找到通往地下的密道。",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "密道",
+            "地下"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 找到通往地下的密道。\n\n关联：策划：角色甲",
+        "extra": {
+          "ftt": {
+            "kind": "计划",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "找到通往地下的密道。"
+          }
+        }
+      },
+      {
+        "name": "悬念",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "constant",
+          "keys": [],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "# 悬念\n\n- 谁是内鬼？",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "cat": true
+          }
+        }
+      },
+      {
+        "name": "谁是内鬼？",
+        "enabled": true,
+        "probability": 0,
+        "recursion": {
+          "prevent_incoming": true,
+          "prevent_outgoing": true,
+          "delay_until": null
+        },
+        "effect": {
+          "sticky": 0,
+          "cooldown": 0,
+          "delay": 0
+        },
+        "strategy": {
+          "type": "selective",
+          "keys": [
+            "内鬼"
+          ],
+          "keys_secondary": {
+            "logic": "and_any",
+            "keys": []
+          },
+          "scan_depth": 8
+        },
+        "position": {
+          "type": "at_depth",
+          "role": "system",
+          "depth": 0,
+          "order": 100
+        },
+        "content": "## 谁是内鬼？\n\n关联：在查：角色乙",
+        "extra": {
+          "ftt": {
+            "kind": "悬念",
+            "scope": "char:1157z2a",
+            "ts": 1735689500000,
+            "title": "谁是内鬼？"
+          }
+        }
+      }
+    ],
+    "empty": [],
+    "noPayload": [],
+    "nullEnv": []
+  },
+  "isFtt": [
+    [
+      {
+        "name": "FTT·旧原子"
+      },
+      true
+    ],
+    [
+      {
+        "name": "普通词条"
+      },
+      false
+    ],
+    [
+      {
+        "name": "",
+        "extra": {
+          "ftt": {
+            "kind": "情节"
+          }
+        }
+      },
+      true
+    ],
+    [
+      {
+        "name": "无 extra"
+      },
+      false
+    ],
+    [
+      null,
+      false
+    ],
+    [
+      {
+        "name": "FTT·"
+      },
+      true
+    ],
+    [
+      {
+        "name": "FTT-38·无中点"
+      },
+      false
+    ],
+    [
+      {
+        "name": "普通词条",
+        "extra": {}
+      },
+      false
+    ]
+  ],
+  "legacyName": "FTT记忆快照·角色甲",
+  "isOurs": [
+    [
+      {
+        "name": "FTT·旧原子"
+      },
+      true
+    ],
+    [
+      {
+        "name": "FTT记忆快照·角色甲"
+      },
+      true
+    ],
+    [
+      {
+        "name": "别的名字",
+        "comment": "FTT记忆快照·角色甲"
+      },
+      true
+    ],
+    [
+      {
+        "name": "无前缀标记词条",
+        "extra": {
+          "ftt": {}
+        }
+      },
+      true
+    ],
+    [
+      {
+        "name": "普通词条"
+      },
+      false
+    ],
+    [
+      null,
+      false
+    ],
+    [
+      {
+        "name": "别的名字",
+        "comment": "其它注释"
+      },
+      false
+    ]
+  ],
+  "keys": {
+    "max8": [
+      "标题",
+      "码头",
+      "交接",
+      "货物",
+      "酒馆",
+      "长文",
+      "交易",
+      "秘密"
+    ],
+    "max3": [
+      "标题",
+      "码头",
+      "交接"
+    ],
+    "max20": [
+      "标题",
+      "码头",
+      "交接",
+      "货物",
+      "酒馆",
+      "长文",
+      "交易",
+      "秘密",
+      "银两",
+      "公告",
+      "长句",
+      "星轨",
+      "教义"
+    ],
+    "undef": [
+      "标题",
+      "码头",
+      "交接",
+      "货物",
+      "酒馆",
+      "长文",
+      "交易",
+      "秘密"
+    ]
+  },
+  "read": {
+    "legacy": {
+      "v": 1,
+      "scope": "legacy",
+      "payload": {
+        "scope": "legacy",
+        "updatedAt": 1,
+        "data": {
+          "atoms": [
+            {
+              "id": "old"
+            }
+          ]
+        }
+      },
+      "hash": "legacy-hash",
+      "ts": 1
+    },
+    "badJson": null,
+    "miss": null,
+    "noName": null
+  },
+  "test": {
+    "ok": true,
+    "noApi": false,
+    "nonArray": false
+  },
+  "write": {
+    "ok": true,
+    "calls": [
+      {
+        "api": "updateWorldbookWith",
+        "name": "测试书",
+        "before": [
+          "普通词条",
+          "FTT·旧原子",
+          "FTT记忆快照·角色甲",
+          "无前缀标记词条"
+        ],
+        "after": [
+          "普通词条",
+          "情节",
+          "码头交接货物",
+          "角色丙独自离开酒馆。",
+          "长文情节",
+          "已总结隐藏的情节。",
+          "记忆",
+          "秘密交易",
+          "公开公告",
+          "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+          "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+          "只有标题",
+          "概念",
+          "星轨教义",
+          "空概念",
+          "物品",
+          "铜钥匙",
+          "计划",
+          "找到通往地下的密道。",
+          "悬念",
+          "谁是内鬼？"
+        ]
+      }
+    ],
+    "store": [
+      "普通词条",
+      "情节",
+      "码头交接货物",
+      "角色丙独自离开酒馆。",
+      "长文情节",
+      "已总结隐藏的情节。",
+      "记忆",
+      "秘密交易",
+      "公开公告",
+      "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+      "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+      "只有标题",
+      "概念",
+      "星轨教义",
+      "空概念",
+      "物品",
+      "铜钥匙",
+      "计划",
+      "找到通往地下的密道。",
+      "悬念",
+      "谁是内鬼？"
+    ],
+    "warns": [],
+    "overLimit": {
+      "ok": false,
+      "calls": 0,
+      "warns": [
+        "存储[世界书]词条总量 2.8 KB 超过上限，已跳过（请改用浏览器/文件夹存储）"
+      ]
+    },
+    "noName": {
+      "ok": false,
+      "warns": [
+        "存储[世界书]未选择世界书"
+      ]
+    },
+    "noApi": {
+      "ok": false,
+      "warns": [
+        "存储[世界书]当前酒馆助手版本不支持词条写入接口"
+      ]
+    },
+    "createOnly": {
+      "ok": true,
+      "calls": [
+        {
+          "api": "createWorldbookEntries",
+          "name": "测试书",
+          "created": [
+            "情节",
+            "码头交接货物",
+            "角色丙独自离开酒馆。",
+            "长文情节",
+            "已总结隐藏的情节。",
+            "记忆",
+            "秘密交易",
+            "公开公告",
+            "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+            "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+            "只有标题",
+            "概念",
+            "星轨教义",
+            "空概念",
+            "物品",
+            "铜钥匙",
+            "计划",
+            "找到通往地下的密道。",
+            "悬念",
+            "谁是内鬼？"
+          ]
+        }
+      ]
+    },
+    "delCreate": {
+      "ok": true,
+      "calls": [
+        {
+          "api": "deleteWorldbookEntries",
+          "name": "测试书",
+          "before": [
+            "普通词条",
+            "FTT·旧原子",
+            "FTT记忆快照·角色甲",
+            "无前缀标记词条"
+          ],
+          "after": [
+            "普通词条"
+          ]
+        },
+        {
+          "api": "createWorldbookEntries",
+          "name": "测试书",
+          "created": [
+            "情节",
+            "码头交接货物",
+            "角色丙独自离开酒馆。",
+            "长文情节",
+            "已总结隐藏的情节。",
+            "记忆",
+            "秘密交易",
+            "公开公告",
+            "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+            "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+            "只有标题",
+            "概念",
+            "星轨教义",
+            "空概念",
+            "物品",
+            "铜钥匙",
+            "计划",
+            "找到通往地下的密道。",
+            "悬念",
+            "谁是内鬼？"
+          ]
+        }
+      ],
+      "store": [
+        "普通词条",
+        "情节",
+        "码头交接货物",
+        "角色丙独自离开酒馆。",
+        "长文情节",
+        "已总结隐藏的情节。",
+        "记忆",
+        "秘密交易",
+        "公开公告",
+        "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这…",
+        "这是一个长度超过四十个字符以验证短标题截断行为的情节标题甲乙丙丁戊己庚辛壬癸子…",
+        "只有标题",
+        "概念",
+        "星轨教义",
+        "空概念",
+        "物品",
+        "铜钥匙",
+        "计划",
+        "找到通往地下的密道。",
+        "悬念",
+        "谁是内鬼？"
+      ]
+    }
+  },
+  "remove": {
+    "ok": true,
+    "calls": [
+      {
+        "api": "updateWorldbookWith",
+        "name": "测试书",
+        "before": [
+          "普通词条",
+          "FTT·旧原子",
+          "FTT记忆快照·角色甲",
+          "无前缀标记词条"
+        ],
+        "after": [
+          "普通词条"
+        ]
+      }
+    ],
+    "store": [
+      "普通词条"
+    ],
+    "delPath": {
+      "ok": true,
+      "calls": [
+        {
+          "api": "deleteWorldbookEntries",
+          "name": "测试书",
+          "before": [
+            "普通词条",
+            "FTT·旧原子",
+            "FTT记忆快照·角色甲",
+            "无前缀标记词条"
+          ],
+          "after": [
+            "普通词条"
+          ]
+        }
+      ]
+    },
+    "noApi": false,
+    "noName": false
+  },
+  "schedule": {
+    "gateOffTimers": 0,
+    "gateOnDelays": [
+      8000
+    ],
+    "afterDebounce": 1,
+    "failWarns": [
+      "存储[世界书]同步失败（将在下次数据变更时重试）"
+    ],
+    "writes": [
+      {
+        "scope": "char:1157z2a",
+        "ts": 1735689600000,
+        "updatedAt": 1735689600000
+      },
+      {
+        "scope": "char:1157z2a",
+        "ts": 1735689600000,
+        "updatedAt": 1735689600000
+      }
+    ],
+    "afterOk": 2,
+    "afterDedupe": 2
+  },
+  "storageMetaWorldbook": {
+    "group": "cross",
+    "crossDevice": true,
+    "label": "世界书存储",
+    "short": "世界书",
+    "desc": "单向写入所选世界书词条（类目词条+原子词条，Markdown 分层），供酒馆自行激活触发；可选（独立开关）"
+  },
+  "storageIsWriteMirrorWorldbook": false,
+  "refreshNames": [
+    [
+      "测试书",
+      "空书",
+      "坏快照书"
+    ],
+    [
+      "测试书",
+      "空书",
+      "坏快照书"
+    ]
+  ]
+}

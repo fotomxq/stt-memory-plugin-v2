@@ -3,6 +3,33 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.20.0（2026-09-26）· B8-7 传言演化引擎 + 世界书单向镜像（内核）
+
+**本版（B8-7 内核部分；取自 V1 传言引擎 13261~13820 与 `storageProviders.worldbook` 4604 起）**：
+1. **传言演化引擎**（新增 `core/rumor-evolve.js`，615 行 / 35 个导出，**零 AI**）：`rumorEnabledOn`/`rumorEveryRounds`/`rumorNeedRounds`/`rumorTickState`（5 种脏值归一）/
+   `rumorRoll`（`hashText` 派生的**确定性掷骰**，跨端一致）/`rumorStoryDate`/`rumorDayDiff`（剧情日期数学，不可解析则不老化）/`rumorChainPush`/
+   `rumorMediaWeight`/`rumorAgeMedia`/`rumorFermentDelta`（多载体寿命与发酵）/`rumorParallelLinkScore`/`rumorParallelLink`（发酵·消退·推动三分支联动）/
+   `rumorVariantFor`（含 NaN 越界怪癖）/`rumorStartPending`/`rumorAdvancePending`/`rumorCommitPending`（变化过程推进）/`rumorMaybeStartChange`（裂变·变异·重复跳过）/
+   `runRumorEvolve`/`runRumorEvolveNow`（老化+发酵+联动+酝酿+提交+阶段+日期）/`rumorTickAdvance`/`rumorMarkParallelChange`（轮次与平行联动）/
+   `rumorDecayScore`/`rumorExpired`/`runRumorDecay`（衰退打分 + 阈值 + 双墓碑 + 比例触发）/`rumorApplyAiDelta`（AI 窄契约七段 + 边界）/`clearRumors`/`rumorInjLine`/`flattenRumor`；
+   模型层补 `mergeRumorListBy`（V1 13316）与 `RUMOR_VARIANTS`（V1 9802），`normalizeRumorChainStep` 补导出（V1 9947）。
+2. **世界书单向镜像通道**（新增 `core/worldbook.js` 276 / `host/worldbook.js` 156 / `adapters/worldbook.js` 108）：
+   `buildWorldbookEntries`（类目常驻 H1 索引词条 + 原子 H2 词条；`keys` 只取真实标签；短标题 ≤40 字；Markdown 分层；`worldbookMaxBytes` 体积上限；`worldbookMode` 多模式）、
+   `isFttEntry`（`FTT·` 前缀 / `-38` 前缀 / `extra.ftt` 三态识别）、`legacyEntryName`、`read`/`test`/`write`/`remove`、`scheduleWorldbookSync`（**8000ms 防抖** + 水位去重 + 失败告警）、
+   `buildWorldbookKeys`、`refreshWorldbookNames`、`storageMeta`；`host/st-api.js` +43 行补酒馆世界书 API 包装（`thApi→getFn` 链：读 `thApi||getFn`、写只用 `thApi`）；
+   `adapters/store.js` +4 行把 `scheduleWorldbookSync()` 挂进保存流水线第 ⑧ 步（**未开启世界书存储时零行为**）。
+3. **测试**：`rumor-evolve-golden.test.js` **39 项**（Z1–Z32 逐值比对 + Y1–Y7 语义/调度/导出契约）、`worldbook-golden.test.js` **24 项**；
+   两份 fixture（`v1-golden-rumor-evolve.json` 42 个小节、`v1-golden-worldbook.json`）均由 **真实 V1 v1.206** oracle 脚本当场生成且连跑两次逐字节一致（传言 fixture md5 `ffceeb4b88b89092591a4cfcbcea6afd`）。
+4. **清理**：移除 B8-6c-2 冒烟 X3 的调试残留（保留其「AI 多给「暗线」标签 → 标签并集 4」的自洽场景）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **44 文件 / 665 断言**、冒烟 **102 项**、内核纯净度 0（40 个 core 文件）、内核标识符 0（79 个文件）、词条 54 键、版本一致、文档 0 违规；`git archive` 解包目录内复跑同样全绿。
+
+**偏差与待接线（详见 `docs/P8t-B8-7传言演化引擎.md` §2 / `docs/P8y-B8-7世界书单向镜像.md` §2）**：
+① 传言引擎零 AI、无 `callChatCompletion`/`stubFetch`；`setTimeout` 改 `timerHooks`；`rumorInjLine` 复用 `core/recall.js`；`rumorActiveMedia`（V1 定义后无调用）未移植；
+② 世界书：`legacyEntryName` 走 `identityView.characterName`；关联摘要行按 V1 `relWbLine` 逐字重写（V2 `relSummaryLine` 文案/行序不同，唯一「复制非复用」点）；调度改 `timerHooks`；保存挂钩**有意不随 `syncOnSave` 关闭**（世界书为独立通道）；
+③ **待接线（下一批）**：`FTT.*` 入口与面板动作（`rumorEvolve`/`rumorAdvance`/`clearRumors`、`worldbookRefresh` 与设定页「📚 刷新世界书列表」）、启动对账后的第二次 `scheduleWorldbookSync`、`core/ingest.js` 内联的 8 个 rumor 私有副本改为 import 本模块；
+④ 未验证假设：V1 `__FTT` 未导出 `rumorActiveMediaCount`/`rumorAiHas`/`rumorMergeAiInto`（只做等价断言）；纯 ST 无 TavernHelper 时世界书 `test()=false`、写入按 V1 静默失败。
+
 ## v2.19.0（2026-09-26）· B8-6c-2 概念与场景修复（+ 设定页第二批 10 控件、快照内容查看、覆盖度审计）
 
 **本版（B8-6c-2，取自 V1 v1.139/v1.140 概念修复 + 场景修复）**：

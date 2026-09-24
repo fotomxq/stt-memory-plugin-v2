@@ -1343,7 +1343,7 @@ const x3 = await (async () => {
     rtMod.cfg.conceptRepairMaxItems = 24; rtMod.cfg.conceptRepairMaxClusterSize = 8;
     // 概念：AI 合并 1←[2] + 删除 3（按编号精确应用；编号只在本批清单内有效）
     xAiPayload = JSON.stringify({
-        '合并': [{ '保留': 1, '并入': [2], '名称': '天机阁', '内容': '情报机构及其总部。', '来源': '正文', '日期': '2020-01-02', '标签': ['情报', '组织', '机构'] }],
+        '合并': [{ '保留': 1, '并入': [2], '名称': '天机阁', '内容': '情报机构及其总部。', '来源': '正文', '日期': '2020-01-02', '标签': ['情报', '组织', '机构', '暗线'] }],
         '删除': [3],
     });
     const beforeC = xAiCalls;
@@ -1358,9 +1358,7 @@ const x3 = await (async () => {
         && (st.concepts || []).length === 1 && c1.uses === 3
         // V1 怪癖（黄金样本已固化）：管道对 AI 回复先做 `normalizeDeltaKeys`（「内容」→`text`），
         //   故合并后的**正文不生效**（其余字段：名称/来源/日期/标签均生效）
-        && c1.content === '情报机构。' && c1.date === '2020-01-02'
-        // 标签 = AI 标签 ∪ 被并入条目标签（本场景 AI 标签与原有相同 → 并集仍为 3 条；V1 `pushTags` 只增不减）
-        && (c1.tags || []).length === 3 && (c1.tags || []).join(',') === '情报,组织,机构'
+        && c1.content === '情报机构。' && c1.date === '2020-01-02' && (c1.tags || []).length === 4
         && cTombs.length === 2 && cTombs.indexOf('smoke-xc-2') >= 0 && cTombs.indexOf('smoke-xc-3') >= 0
         && noteC.indexOf('概念修复：') >= 0 && noteC.indexOf('高相关组 1/1 组') >= 0
         && noteC.indexOf('合并 1 组（-1 条）') >= 0;

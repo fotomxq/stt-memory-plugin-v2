@@ -219,6 +219,22 @@ function mergeRumorObjects(a, b, ctx) {
     } catch (e) { return null; }
 }
 
+// 按「列表 + 内容签名」并集（保留先出现的，条目级去重）
+//   V1 行 13316（定义在段 09 的传言引擎里，但 V1 导出清单把它列为**模型助手**；
+//   B8-7 起上移到 model 层，供 `rumorMergeAiInto` 与后续批次共用，避免两处实现漂移）。
+function mergeRumorListBy(a, b, keyOf) {
+    const seen = new Set(), out = [];
+    for (const x of [].concat(Array.isArray(a) ? a : [], Array.isArray(b) ? b : [])) {
+        if (!x) continue;
+        let k = '';
+        try { k = String(keyOf(x)); } catch (e) { k = JSON.stringify(x); }
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(x);
+    }
+    return out;
+}
+
 // ==================== 词条 CRUD ====================
 
 function normRumorObjectivity(v) {
@@ -310,6 +326,9 @@ const RUMOR_ROLES = ['源头', '传播者', '听闻者'];
 
 const RUMOR_MEDIA_TYPES = ['口耳相传', '报刊', '大字报', '书', '刻字', '书信', '告示'];
 
+// 裂变 / 变异时的「说法变体」名（V1 `RUMOR_VARIANTS`，行 9802）—— `rumorVariantFor` 按下标取用
+const RUMOR_VARIANTS = ['夸大版', '反转为辟谣', '受害者视角', '官方口径', '添油加醋'];
+
 const RUMOR_MEDIA_ALIAS = {
     传媒: '报刊', 报纸: '报刊', 刊物: '报刊', 杂志: '报刊', 新闻: '报刊', 官报: '报刊',
     布告: '告示', 揭帖: '告示', 榜文: '告示',
@@ -321,4 +340,4 @@ const RUMOR_MEDIA_ALIAS = {
 
 const RUMOR_CHAIN_KINDS = ['起源', '传播', '发酵', '消退', '异变', '裂变', '联动', '载体停用'];
 
-export { normalizeRumor, rumorId, rumorChildId, rumorSubjectKey, normalizeRumorCarriers, normalizeRumorMediaList, normalizeRumorChain, normalizeRumorLineage, normalizeRumorPending, parseRumorCarriersText, parseRumorMediaText, rumorStageByFerment, mergeRumorObjects };
+export { normalizeRumor, rumorId, rumorChildId, rumorSubjectKey, normalizeRumorCarriers, normalizeRumorMediaList, normalizeRumorChain, normalizeRumorChainStep, normalizeRumorLineage, normalizeRumorPending, parseRumorCarriersText, parseRumorMediaText, rumorStageByFerment, mergeRumorObjects, mergeRumorListBy, RUMOR_VARIANTS };
