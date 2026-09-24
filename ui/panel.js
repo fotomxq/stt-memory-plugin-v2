@@ -27,6 +27,11 @@ import { runItemRepair } from '../core/item-repair.js';
 import { runCharacterRepair } from '../core/character-repair.js';
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
+import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
+import {
+    runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
+} from '../core/plot-segment.js';
+import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
@@ -62,6 +67,7 @@ const ps = {
     multi: {},          // 多选模式：{ [kind]: bool }
     showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
     peek: '',           // 情节速览：正在穿透查看的 id（V1 atomPeek）
+    atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
 };
 let overlayEl = null;
 let hooks = {};
@@ -77,7 +83,7 @@ export function panelState() {
         search: Object.assign({}, ps.q),
         multi: Object.assign({}, ps.multi),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
-        showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub,
+        showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub, atomSub: ps.atomSub,
         relSub: Object.assign({}, ps.relSub), relWho: ps.relWho,
         exportChars: String(ps.exportText || '').length,
     };
@@ -293,7 +299,70 @@ function planSuspRepairButton() {
     return hasOpenPS ? '<button class="ftt-btn ftt-sm" data-ftt-action="planSuspRepair" title="了结已完成/已揭晓，合并重复并归并关联">🔧 修复计划/悬念</button>' : '';
 }
 
+/**
+ * 情节页子标签状态（V1 `atomSubState` / `setAtomSub`）：'list' = 📜 情节列表 / 'segments' = 🧩 分段总结。
+ * 非 'segments' 一律回落 'list'（与 V1 同口径）。
+ */
+export function atomSubState() { return String(ps.atomSub || 'list'); }
+export function setAtomSub(v) {
+    const k = String(v || '');
+    ps.atomSub = (k === 'segments') ? 'segments' : 'list';
+    return ps.atomSub;
+}
+
+/** 维度分页正文（分发器）：情节页 = 双子标签（📜 情节列表 / 🧩 分段总结，V1 v1.182/v1.206） */
 function dimBody(kind) {
+    if (kind === 'atoms') return atomsBody();
+    return dimBodyList(kind);
+}
+
+/**
+ * 情节页双子标签（V1 `atomsHtml` 结构）：📜 情节列表 + 🧩 分段总结。
+ * 分段总结 = 把情节打包给 AI 拆成多段（`### 时间范围` + 段内剧情线），**只归档、不注入**；
+ * 唯一消失途径 = 手动删除（「🧹 清理分段」或逐段 🗑）。
+ */
+function atomsBody() {
+    const cur = atomSubState();
+    const segs = (() => { try { return Array.isArray(state.plotSegments) ? state.plotSegments : []; } catch (e) { return []; } })();
+    const tabs = '<div class="ftt-row ftt-subtabs" data-ftt-asubtabs>'
+        + '<a href="javascript:void(0)" class="ftt-subtab' + (cur === 'list' ? ' ftt-on' : '') + '" data-ftt-asub="list">📜 情节列表（' + arrOf('atoms').length + '）</a>'
+        + '<a href="javascript:void(0)" class="ftt-subtab' + (cur === 'segments' ? ' ftt-on' : '') + '" data-ftt-asub="segments" title="把情节打包给 AI 拆成多段总结并归档">🧩 分段总结（' + segs.length + '）</a>'
+        + '<span class="ftt-hint ftt-ml-2">分段总结只归档、不注入 —— 唯一消失途径是手动删除</span></div>';
+    return tabs
+        + '<div data-ftt-asub-body="list" style="' + (cur === 'list' ? '' : 'display:none') + '">' + dimBodyList('atoms') + '</div>'
+        + '<div data-ftt-asub-body="segments" style="' + (cur === 'segments' ? '' : 'display:none') + '">' + plotSegmentsBodyHtml() + '</div>';
+}
+
+/** 🧩 分段总结子页正文（V1 `atomsHtml` 的第二子页）：说明 + 工具栏 + 段落列表 */
+function plotSegmentsBodyHtml() {
+    const segs = (() => { try { return Array.isArray(state.plotSegments) ? state.plotSegments : []; } catch (e) { return []; } })();
+    const view = sortPlotSegments(segs, 'desc');        // v1.190：默认按时间范围倒序（最新在最上、早期靠后）
+    const out = [];
+    out.push('<div class="ftt-cat-stat ftt-chip">共 ' + segs.length + ' 段分段总结</div>');
+    out.push('<div class="ftt-muted ftt-w-full">分段总结 = 把情节**打包给 AI 拆成多段**（每段以 <code>### 时间范围</code> 为头，段内按剧情线逐条列出：<code>1. 感情线: …</code>）。该内容**不会注入给 AI**（不进召回 / 遗忘 / 质检），只是归档供人工查阅；**只有手动删除才会消失**（AI 生成不会删段、也不会覆盖已存在的时间范围）。列表**默认按时间范围倒序**（最新的一段在最上、早期的靠后）。<br><b>两个入口</b>：① 「🧩 生成分段总结」= 把**全部有效情节**按剧情时间自动切批；② 「📜 情节列表」切多选模式勾选后点「🧩 分段总结（N）」= **只总结勾选的那些情节**（同一个归档区）。</div>');
+    out.push('<div class="ftt-addbar ftt-toolbar"><button class="ftt-btn" data-ftt-action="summary" data-ftt-summary="plotSegments" title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）">🧩 生成分段总结</button><button class="ftt-btn" data-ftt-action="addEntry" data-kind="plotSegments">➕ 手动补一段</button>'
+        + (segs.length ? '<button class="ftt-btn ftt-err" data-ftt-action="clearPlotSegments" title="清空全部分段总结（不弹确认）">🧹 清理分段</button>' : '') + '</div>');
+    if (!segs.length) out.push('<div class="ftt-empty">暂无分段总结。点「🧩 生成分段总结」把情节交 AI 分段整理。</div>');
+    else out.push(view.map((s) => {
+        const lines = Array.isArray(s.lines) ? s.lines : [];
+        const body = lines.map((ln, i) => '<div class="ftt-seg-line"><span class="ftt-seg-no">' + (i + 1) + '.</span> <b>' + esc(ln && ln.label) + '</b>：' + esc(ln && ln.text) + '</div>').join('');
+        const rangeTxt = (s.start || s.end) ? (esc(s.start || '?') + (s.end && s.end !== s.start ? ' ~ ' + esc(s.end) : '')) : '';
+        const meta = [
+            s.atomCount ? '覆盖情节 ' + Number(s.atomCount) + ' 条' : '',
+            (s.floorStart && s.floorEnd) ? '第 ' + s.floorStart + '-' + s.floorEnd + ' 楼' : '',
+            s.manual ? '手动编辑' : 'AI 生成',
+        ].filter(Boolean).join(' · ');
+        return '<div class="ftt-item ftt-item--col"><div class="ftt-title-row"><b>### ' + esc(s.header || '未标注时间范围') + '</b></div>'
+            + (rangeTxt ? '<div class="ftt-meta">🗓 ' + rangeTxt + '</div>' : '') + body
+            + '<div class="ftt-meta">' + esc(meta) + '</div>'
+            + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="编辑该段（时间范围与剧情线）">✏️ 编辑</button>'
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="删除该段（唯一的手动删除入口）">🗑 删除</button></div></div>';
+    }).join('\n'));
+    out.push('<div class="ftt-muted ftt-w-full">共 ' + segs.length + ' 段 · 该内容不注入、不参与遗忘，可随时编辑或删除。</div>');
+    return out.join('\n');
+}
+
+function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
     const total = arrOf(kind).length;
@@ -303,6 +372,11 @@ function dimBody(kind) {
     const toolbar = '<div class="ftt-addbar ftt-toolbar">'
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="' + attr(kind) + '">➕ 新增</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="' + attr(kind) + '" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
+        // V1 `bulkHtml()`（v1.206 术语）：情节页多选模式追加「🧷 情节总结（N）」（合并成一条 A~B 总结、
+        //   原文保留并隐藏）与「🧩 分段总结（N）」（归档到分段总结子页，只归档不注入）——
+        //   文案 / title / disabled 条件与 V1 逐字一致（V1 用 `data-ftt-kind`，V2 统一用 `data-kind`）
+        + ((multi && kind === 'atoms') ? ('<button class="ftt-btn" data-ftt-action="atomMergeSummary" data-kind="atoms"' + (sel.size ? '' : ' disabled') + ' title="【情节总结】把勾选的情节交 AI 聚合成一条情节（标题标记「【A~B 总结】」）；原文保留并隐藏，不参与注入与淘汰，除非人工删除（可在总结上点 🧩 穿透查看）">🧷 情节总结（' + sel.size + '）</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="plotSegmentSummarySel" data-kind="atoms"' + (sel.size ? '' : ' disabled') + ' title="【分段总结】把勾选的情节按剧情时间打包交 AI 分成多段，归档到「🧩 分段总结」子页供人工管理（只归档、不注入、不参与任何自动动作）">🧩 分段总结（' + sel.size + '）</button>') : '')
         + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="' + attr(kind) + '">全选</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="' + attr(kind) + '">清空选择</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
@@ -519,6 +593,7 @@ function settingsBody() {
         '<div class="ftt-row ftt-settings-subtabs">' + settingsSubTabsHtml(cur) + '</div>',
         '<div class="ftt-hint">设定 · ' + esc(label) + '（' + curInfo.controls + ' 个配置项 · 共 ' + info.totalControls + ' 项 / ' + info.pages.length + ' 页，结构与 V1 同名同序）</div>',
         '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">' + settingsPageHtml(cur) + '</div>',
+        (cur === 'prompts' ? atomCompactSectionHtml() : ''),
         '<h4 class="ftt-h4-inline">V2 附加设定 <span class="ftt-muted">（V1 无此项：更新检查 / V1 数据导入 / 维度开关）</span></h4>',
         v2ExtrasHtml(),
         (ps.exportText ? ('<div class="ftt-field ftt-field-col"><label>导出结果（可复制保存）</label><textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>') : ''),
@@ -542,6 +617,20 @@ function v2ExtrasHtml() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply">📥 V1 导入（写入）</button>'
         + '<span class="ftt-muted">源数据不删除；写入为按 id 合并</span></div>',
         '<div class="ftt-field ftt-field-col"><label>启用维度</label><div class="ftt-v2-dims" id="ftt_v2_dims">' + dimsCheckboxHtml() + '</div></div>',
+    ].join('\n');
+}
+
+/**
+ * 设定 → 提示词 页的「早期情节压缩」节（V1 同节：标题 + 摘要按钮；6 个配置控件仍由 `SETTINGS_CONTROLS.prompts`
+ * 平铺渲染，V2 不重复出控件 —— 见 docs/P8w 适配差异）。
+ * 按钮文案与 title 与 V1 逐字一致；`[data-ftt-compact-result]` 保留 V1 的落点（V2 结果同时写面板 note）。
+ */
+function atomCompactSectionHtml() {
+    return [
+        '<div class="ftt-section"><div class="ftt-sec-title">早期情节压缩</div>',
+        '<div class="ftt-muted">达阈值自动压缩早期情节（保护最近 N 条）：同日 ≥2 条归组压成 1 条；不足则按月、再按年降级。上方 switch 与参数即本节的配置项（V1 同键）。</div>',
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="atomCompactNow" title="立即对早期情节执行一次半自动情节总结（聚合为情节总结，原文保留并隐藏）">🧷 立即聚合早期情节</button><span class="ftt-muted" data-ftt-compact-result></span></div>',
+        '</div>',
     ].join('\n');
 }
 
@@ -707,7 +796,73 @@ export async function panelAction(action, payload) {
             const r = consoleDelete(dataKindOf(String(p.kind || '')), String(p.id || ''));
             setNote(r.ok ? '已删除 ' + String(p.id || '') + '（已留墓碑）' : '删除失败');
             result = Object.assign(result, r);
-        } else if (a === 'summary') {
+        } else if (a === 'atomSub') { setAtomSub(p.sub); }
+        else if (a === 'atomCompactNow') {
+            // V1「🧷 立即聚合早期情节」（设定 → 提示词 页）：force 忽略体量阈值立即执行一次半自动情节总结；
+            //   V1 把结果写进 `[data-ftt-compact-result]` 元素，V2 统一写面板 note（读 `r.state.note`）。
+            const cr = await runAtomCompact({ force: true });
+            const msg = cr && cr.ok
+                ? (cr.skipped ? ('（' + cr.skipped + (cr.totalChars != null ? '，体量 ' + cr.totalChars + ' < 阈值 ' + cr.threshold : '') + '）')
+                    : (' 聚合 ' + Number(cr.summarized || 0) + ' 条总结 · 覆盖 ' + Number(cr.hidden || 0) + ' 条原情节（参与运作 ' + Number(cr.before || 0) + ' → ' + Number(cr.after || 0) + '，目标 ≤ ' + Number(cr.target || 0) + '；原文保留并隐藏）'))
+                : ('失败：' + String((cr && cr.error) || '未知'));
+            setNote(msg);
+            result = Object.assign(result, { ok: !!(cr && cr.ok), action: a, atomCompact: cr, made: Number((cr && cr.summarized) || 0) });
+        }
+        else if (a === 'atomMergeSummary') {
+            // V1「🧷 情节总结（N）」（情节页多选）：把勾选情节交 AI 合并成**一条**情节（标题标记「【A~B 总结】」），
+            //   原情节**保留并隐藏**（不参与注入 / 淘汰等任何自动动作，除非人工删除）
+            const ids = Array.from(selOf('atoms'));
+            if (!ids.length) {
+                setNote('情节总结：未选中情节（请先在「📜 情节列表」切到多选模式并勾选要合并的情节）');
+                result = Object.assign(result, { ok: false, reason: 'no-selection' });
+            } else {
+                const r = await runAtomMergeSummary(ids);
+                setNote(r.made
+                    ? ('情节总结：新增 1 条情节总结「' + String(r.label || '') + '」· 覆盖 ' + Number(r.merged || 0) + ' 条原情节（原文保留并隐藏，不参与注入与淘汰）')
+                    : (r.blocked ? '情节总结：已跳过（任务占用中）' : (r.error ? ('情节总结失败：' + String(r.error)) : ('情节总结：未落库（' + String(r.reason || '无可用情节') + '）'))));
+                selOf('atoms').clear();
+                result = Object.assign(result, { ok: Number(r.made || 0) > 0, action: a, atomMerge: r, made: Number(r.made || 0) });
+            }
+        }
+        else if (a === 'plotSegmentSummarySel') {
+            // V1「🧩 分段总结（N）」（情节页多选）：只把勾选情节按剧情时间打包交 AI 分段，归档到「🧩 分段总结」子页
+            const ids = Array.from(selOf('atoms'));
+            if (!ids.length) {
+                setNote('分段总结：未选中情节（请先在「📜 情节列表」切到多选模式并勾选要总结的情节）');
+                result = Object.assign(result, { ok: false, reason: 'no-selection' });
+            } else {
+                const r = await runPlotSegmentSummarySelected(ids);
+                const parts = ['新增 ' + Number(r.added || 0) + ' 段'];
+                if (r.dup) parts.push('跳过同时间范围已存在 ' + Number(r.dup) + ' 段');
+                if (r.empty) parts.push('忽略空段 ' + Number(r.empty));
+                parts.push('当前共 ' + Number((state.plotSegments || []).length) + ' 段');
+                setNote(r.blocked ? '分段总结（所选）：已跳过（任务占用中）' : (r.error ? ('分段总结（所选）失败：' + String(r.error)) : ('分段总结（所选）：' + parts.join(' · '))));
+                selOf('atoms').clear();
+                setAtomSub('segments');
+                result = Object.assign(result, { ok: Number(r.made || 0) > 0, action: a, plotSegment: r, made: Number(r.made || 0) });
+            }
+        }
+        else if (a === 'clearPlotSegments') {
+            // V1「🧹 清理分段」（分段总结子页）：清空全部分段总结（不弹确认；留 id + 内容哈希墓碑）
+            const n = clearPlotSegments();
+            setNote(n ? ('已清理 ' + n + ' 段分段总结') : '当前没有分段总结');
+            result = Object.assign(result, { ok: true, action: a, cleared: n });
+        }
+        else if (a === 'summary') {
+            // V1 `case 'summary'` 的 `data-ftt-summary="plotSegments"` 分流：分段总结（与「⚡ 立即 AI 摘要」共用动作名）
+            if (String(p.summary || '') === 'plotSegments') {
+                const r = await runPlotSegmentSummary({});
+                const parts = ['新增 ' + Number(r.added || 0) + ' 段'];
+                if (r.dup) parts.push('跳过已存在 ' + Number(r.dup) + ' 段');
+                if (r.empty) parts.push('忽略空段 ' + Number(r.empty));
+                parts.push('当前共 ' + Number((state.plotSegments || []).length) + ' 段');
+                setNote(r.skipped ? ('分段总结：' + String(r.total ? '已是最新（' + r.total + ' 条情节已被现有段落覆盖）' : '暂无可整理情节'))
+                    : (r.blocked ? '分段总结：已跳过（任务占用中）' : (r.error ? ('分段总结失败：' + String(r.error)) : ('分段总结：' + parts.join(' · ')))));
+                setAtomSub('segments');
+                result = Object.assign(result, { ok: !!(r && !r.error), action: a, plotSegment: r, made: Number(r.made || 0) });
+                renderPanel();
+                return Object.assign(result, { html: panelHtml(), state: panelState() });
+            }
             // V1「⚡ 立即 AI 摘要」：分段批量（cfg.summaryChunkSize 楼/段）
             if (typeof hooks.autoSummary !== 'function') { setNote('批量摘要入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             setNote('分析中…（分段批量摘要）');
@@ -1101,6 +1256,7 @@ export function bindOverlay() {
             }
             const msub = tg.dataset ? String(tg.dataset.fttMsub || '') : '';
             if (msub) { void panelAction('msub', { tab: ps.tab, sub: msub }); return; }
+            if (tg.dataset && tg.dataset.fttAsub !== undefined) { void panelAction('atomSub', { sub: tg.dataset.fttAsub }); return; }
             if (String(act).indexOf('snap') === 0) {
                 void panelAction(act, { snapId: tg.dataset ? tg.dataset.fttSnapId : '' });
                 return;
@@ -1120,7 +1276,7 @@ export function bindOverlay() {
                 void panelAction(act, { kind: kind || (tg.dataset ? tg.dataset.fttKind : '') || ps.tab, id, searchKind: tg.dataset ? tg.dataset.fttSearchKind : '', subject });
                 return;
             }
-            void panelAction(act, { kind, id, floor, subject });
+            void panelAction(act, { kind, id, floor, subject, summary: tg.dataset ? tg.dataset.fttSummary : '' });
         });
         if (typeof el.addEventListener === 'function') {
             el.addEventListener('change', (e) => {

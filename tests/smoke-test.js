@@ -1801,6 +1801,172 @@ await assert('AB3 AI 桩端到端落库：状态修复（匹配角色 → 机械
     } finally { host.ctx.generateRaw = origGen; }
 })(), '');
 
+// ---------- AC 情节总结 + 分段总结（B8-7-a） ----------
+await assert('AC1 情节总结 + 分段总结接线齐备：FTT.* 入口（25 项）+ V1 同款按钮文案/title/显隐（🧷 立即聚合早期情节 / 🧷 情节总结（N） / 🧩 分段总结（N） / 🧹 清理分段）', (async () => {
+    const F = globalThis.FTT;
+    const names = ['atomBodyChars', 'atomDateGrainKey', 'grainStartDateStr', 'atomCompactPlan', 'atomGroupPlan',
+        'buildAtomCompactPrompt', 'compactGrainLabel', 'applyCompactGroup', 'scheduleAtomCompact', 'runAtomCompact',
+        'atomMergeRange', 'buildAtomMergePrompt', 'parseAtomMergeResult', 'atomMergeSummary', 'runAtomMergeSummary',
+        'plotSegmentBatchSize', 'plotSegmentAtomList', 'plotSegmentCoveredIds', 'plotSegmentBatchesFrom', 'plotSegmentPlan',
+        'plotSegmentPlanForIds', 'buildPlotSegmentPrompt', 'plotSegmentSameRange', 'applyPlotSegmentResult',
+        'runPlotSegmentSummary', 'runPlotSegmentSummarySelected', 'clearPlotSegments', 'deletePlotSegment',
+        'flattenPlotSegment', 'atomSubState', 'setAtomSub'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.atoms = [
+        { id: 'smoke-ac-a1', title: 'A1', text: '甲在码头搬运货物。', date: '1919-11-29', validity: 'active', tags: ['甲'], floorStart: 1, floorEnd: 1 },
+        { id: 'smoke-ac-a2', title: 'A2', text: '乙在仓库清点。', date: '1919-11-30', validity: 'active', tags: ['乙'], floorStart: 2, floorEnd: 2 },
+        { id: 'smoke-ac-a3', title: 'A3', text: '丙在城外等待。', date: '1919-11-29', validity: 'active', tags: ['丙'], floorStart: 3, floorEnd: 3 },
+    ];
+    st.plotSegments = [];
+    await entry.popupAction('settingsSub', { sub: 'prompts' });
+    let h = String((await entry.popupAction('refresh', {})).html || '');
+    const setOk = h.indexOf('data-ftt-action="atomCompactNow"') >= 0
+        && h.indexOf('title="立即对早期情节执行一次半自动情节总结（聚合为情节总结，原文保留并隐藏）"') >= 0
+        && h.indexOf('🧷 立即聚合早期情节') >= 0 && h.indexOf('data-ftt-compact-result') >= 0
+        && h.indexOf('早期情节压缩') >= 0;
+    await entry.popupAction('tab', { tab: 'atoms' });
+    await entry.popupAction('multiToggle', { kind: 'atoms' });
+    await entry.popupAction('selectNone', { kind: 'atoms' });
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const multiOff = h.indexOf('🧷 情节总结（0）') >= 0 && h.indexOf('🧩 分段总结（0）') >= 0
+        && /data-ftt-action="atomMergeSummary"[^>]*disabled/.test(h)
+        && /data-ftt-action="plotSegmentSummarySel"[^>]*disabled/.test(h)
+        && h.indexOf('title="【情节总结】把勾选的情节交 AI 聚合成一条情节（标题标记「【A~B 总结】」）；原文保留并隐藏，不参与注入与淘汰，除非人工删除（可在总结上点 🧩 穿透查看）"') >= 0
+        && h.indexOf('title="【分段总结】把勾选的情节按剧情时间打包交 AI 分成多段，归档到「🧩 分段总结」子页供人工管理（只归档、不注入、不参与任何自动动作）"') >= 0;
+    await entry.popupAction('selectAll', { kind: 'atoms' });
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const multiOn = h.indexOf('🧷 情节总结（3）') >= 0 && h.indexOf('🧩 分段总结（3）') >= 0
+        && !/data-ftt-action="atomMergeSummary"[^>]*disabled/.test(h);
+    await entry.popupAction('selectNone', { kind: 'atoms' });
+    await entry.popupAction('atomSub', { sub: 'segments' });
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const segTabOk = F.atomSubState() === 'segments' && h.indexOf('data-ftt-asub="segments"') >= 0
+        && h.indexOf('data-ftt-action="summary" data-ftt-summary="plotSegments"') >= 0
+        && h.indexOf('title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）"') >= 0
+        && h.indexOf('🧩 生成分段总结') >= 0
+        && h.indexOf('data-ftt-action="clearPlotSegments"') < 0;
+    st.plotSegments = [{ id: 'smoke-ac-seg', header: '1899-03-01 ~ 1899-04-10', start: '1899-03-01', end: '1899-04-10', lines: [{ label: '感情线', text: '一段测试概述' }], raw: '### 1899-03-01 ~ 1899-04-10\n1. 感情线：一段测试概述', atomIds: [], atomCount: 0, floorStart: 0, floorEnd: 0, manual: false, uses: 0, createdAt: 1, updatedAt: 1 }];
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const segClearOk = h.indexOf('data-ftt-action="clearPlotSegments"') >= 0
+        && h.indexOf('title="清空全部分段总结（不弹确认）"') >= 0 && h.indexOf('🧹 清理分段') >= 0
+        && h.indexOf('### 1899-03-01 ~ 1899-04-10') >= 0;
+    // 机械段（零 AI）：计划 / 分组 / 分段切批 / 合并区间 / 解析
+    const plan = F.atomCompactPlan();
+    const segPlan = F.plotSegmentPlan();
+    const okMech = F.atomBodyChars() > 0 && plan.before === 3
+        && F.plotSegmentBatchSize() === Number(rtMod.cfg.plotSegmentBatchAtoms || 30)
+        && F.atomMergeRange([{ id: 'x', date: '1919-11-29' }, { id: 'y', date: '1919-12-01' }]).label === '1919-11-29 ~ 1919-12-01'
+        && segPlan.total === 3 && segPlan.batches.length === 1
+        && F.parseAtomMergeResult('{"标题":"T","内容":"正文内容"}').title === 'T';
+    F.setAtomSub('list');
+    st.plotSegments = [];
+    return missing.length === 0 && setOk && multiOff && multiOn && segTabOk && segClearOk && okMech && F.atomSubState() === 'list';
+})(), '');
+
+await assert('AC2 情节总结端到端：面板「🧷 立即聚合早期情节」force 聚合同日情节（原文保留并隐藏、无墓碑）+ 多选「🧷 情节总结」AI 合并为 1 条 A~B 总结，结果如实写回 r.state.note', (async () => {
+    const st = rtMod.state;
+    const origGen = host.ctx.generateRaw;
+    let calls = 0, payload = '';
+    host.ctx.generateRaw = async () => { calls++; return payload; };
+    try {
+        rtMod.cfg.storeMinAtoms = 0;
+        rtMod.cfg.atomCompactRecent = 20;
+        const old = [], recent = [];
+        for (let i = 1; i <= 40; i++) old.push({ id: 'smoke-ac-old' + i, title: 'old' + i, text: '旧事件甲在码头发现物品' + i, date: '1919-11-29', tags: ['旧', '码头'], floorStart: i - 1, floorEnd: i, uses: 0, type: '事件' });
+        for (let j = 1; j <= 20; j++) recent.push({ id: 'smoke-ac-new' + j, title: 'new' + j, text: '新剧情事件内容' + j, date: '1926-05-01', tags: ['新'], floorStart: 500 + j, floorEnd: 501 + j, uses: 0, type: '事件' });
+        st.atoms = old.concat(recent);
+        st.deleted = {}; st.deletedH = {}; st.plotSegments = [];
+        sweepMod.entryIndexInit();
+        payload = JSON.stringify({ groups: [{ key: '1919-11-29', 标题: '十一月码头事件总结', 内容: '压缩后的顺序化过程：先在码头发现物品，后循线索追查，因果衔接保留XYZ', 标签: ['旧', '码头'], 重要度: 0.8 }] });
+        const b1 = calls;
+        const r1 = await entry.popupAction('atomCompactNow', {});
+        const note1 = String(((r1.state || {}).note) || '');
+        const ac = r1.atomCompact || {};
+        // 参与运作清单按真实结果统计（不硬编码）
+        const active1 = st.atoms.filter((a) => !(a.hidden === true || a.summarizedBy));
+        const summaries1 = st.atoms.filter((a) => /^atom_c_/.test(String(a.id || '')));
+        const okCompact = calls === b1 + 1 && ac.summarized === 1 && ac.hidden === 40
+            && st.atoms.length === 61 && active1.length === 21 && summaries1.length === 1
+            && summaries1[0].mergedSummary && summaries1[0].mergedSummary.by === 'auto' && summaries1[0].mergedSummary.sourceCount === 40
+            && (st.atoms || []).filter((a) => /^smoke-ac-old/.test(String(a.id))).every((a) => a.hidden === true && String(a.summarizedBy) === String(summaries1[0].id))
+            && Object.keys((st.deleted || {}).atoms || {}).length === 0
+            && note1.indexOf('聚合 1 条总结') >= 0 && note1.indexOf('原文保留并隐藏') >= 0;
+        // 多选 → 合并：按真实可见清单全选（21 条：20 条新剧情 + 1 条自动总结条）
+        await entry.popupAction('tab', { tab: 'atoms' });
+        await entry.popupAction('multiToggle', { kind: 'atoms' });
+        await entry.popupAction('selectAll', { kind: 'atoms' });
+        payload = JSON.stringify({ 标题: '粮运交接', 内容: '甲乙在码头敲定粮食转运并清点货物，随后甲出城确认了抵港时间。', 标签: ['交易', '情感'], 重要度: 0.85 });
+        const b2 = calls;
+        const r2 = await entry.popupAction('atomMergeSummary', {});
+        const note2 = String(((r2.state || {}).note) || '');
+        const merged = (r2.atomMerge || {}).merged;
+        const active2 = st.atoms.filter((a) => !(a.hidden === true || a.summarizedBy));
+        const manual = st.atoms.filter((a) => a.mergedSummary && a.mergedSummary.by === 'manual');
+        const okMerge = calls === b2 + 1 && Number(merged) === 21 && active2.length === 1 && manual.length === 1
+            && manual[0].mergedSummary.sourceCount === 21 && String(manual[0].title).indexOf('总结】') >= 0
+            && Object.keys((st.deleted || {}).atoms || {}).length === 0
+            && note2.indexOf('新增 1 条情节总结') >= 0 && note2.indexOf('原文保留并隐藏') >= 0;
+        await entry.popupAction('multiToggle', { kind: 'atoms' });
+        await entry.popupAction('selectNone', { kind: 'atoms' });
+        return okCompact && okMerge;
+    } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
+await assert('AC3 分段总结端到端：面板「🧩 生成分段总结」（按批归档）→ 多选「🧩 分段总结」（只增不减、同区间跳过）→「🧹 清理分段」清空并留墓碑；产物不参与注入', (async () => {
+    const recallMod = await import('../core/recall.js');
+    const st = rtMod.state;
+    const origGen = host.ctx.generateRaw;
+    let calls = 0, payload = '';
+    host.ctx.generateRaw = async () => { calls++; return payload; };
+    try {
+        const SAMPLE = ['### 1899-03-01 ~ 1899-04-10', '1. 感情线: 角色甲与角色乙在码头定下婚约。', '2. 商业线: 角色甲卖掉旧船板得 50 银元。', '', '### 1899-04-11 ~ 1899-05-12', '1. 学术线: 角色丙抄录 3 卷古籍。'].join('\n');
+        const NEXT = ['### 1899-06-01 ~ 1899-06-30', '1. 感情线: 六月里两人再次聚首。'].join('\n');
+        st.atoms = [
+            { id: 'smoke-ac-p1', title: 'P1', text: '甲在码头搬运货物。', date: '1919-11-29', validity: 'active', tags: ['甲'], floorStart: 1, floorEnd: 1 },
+            { id: 'smoke-ac-p2', title: '', text: '乙在仓库清点。', date: '1919-11-30', validity: 'active', tags: ['乙'], floorStart: 2, floorEnd: 2 },
+            { id: 'smoke-ac-p3', title: 'P3', text: '丙在城外等待。', date: '1919-12-01', validity: 'active', tags: [], floorStart: 3, floorEnd: 3 },
+            { id: 'smoke-ac-p4', title: 'P4', text: '丁在城里打听。', date: '', validity: 'active', tags: [], floorStart: 4, floorEnd: 4 },
+            { id: 'smoke-ac-p5', title: 'P5', text: '戊已失效。', date: '1919-12-02', validity: 'inactive', tags: [], floorStart: 5, floorEnd: 5 },
+        ];
+        st.plotSegments = []; st.deleted = {}; st.deletedH = {};
+        sweepMod.entryIndexInit();
+        rtMod.cfg.plotSegmentBatchAtoms = 2;
+        rtMod.cfg.plotSegmentIncremental = false;
+        payload = SAMPLE;
+        const b1 = calls;
+        const r1 = await entry.popupAction('summary', { summary: 'plotSegments' });
+        const note1 = String(((r1.state || {}).note) || '');
+        const segs1 = (st.plotSegments || []).slice();
+        const body1 = String(recallMod.buildMemoryBodyForInject() || '');
+        const okAll = calls >= b1 + 1 && segs1.length === 2 && note1.indexOf('新增 2 段') >= 0
+            && segs1.every((x) => x && x.header && (x.lines || []).length)
+            && body1.indexOf('### 1899-03-01') < 0 && body1.indexOf('感情线') < 0;
+        // 多选「🧩 分段总结」：与已有区间不重叠的新段 → 只增（同区间批次跳过）
+        await entry.popupAction('tab', { tab: 'atoms' });
+        await entry.popupAction('multiToggle', { kind: 'atoms' });
+        await entry.popupAction('selectAll', { kind: 'atoms' });
+        payload = NEXT;
+        const b2 = calls;
+        const r2 = await entry.popupAction('plotSegmentSummarySel', {});
+        const note2 = String(((r2.state || {}).note) || '');
+        const afterSel = (st.plotSegments || []).length;
+        const okSel = calls >= b2 + 1 && afterSel === 3 && note2.indexOf('新增 1 段') >= 0
+            && note2.indexOf('分段总结') >= 0 && (st.plotSegments || []).every((x) => x.id !== 'smoke-ac-p1');
+        await entry.popupAction('multiToggle', { kind: 'atoms' });
+        await entry.popupAction('selectNone', { kind: 'atoms' });
+        // 清理：清空 + 留墓碑
+        const tombsBefore = Object.keys((st.deleted || {}).plotSegments || {}).length;
+        const r3 = await entry.popupAction('clearPlotSegments', {});
+        const note3 = String(((r3.state || {}).note) || '');
+        const tombsAfter = Object.keys((st.deleted || {}).plotSegments || {}).length;
+        const okClear = (st.plotSegments || []).length === 0 && tombsBefore === 0 && tombsAfter === 3
+            && note3.indexOf('已清理 3 段分段总结') >= 0;
+        const body2 = String(recallMod.buildMemoryBodyForInject() || '');
+        return okAll && okSel && okClear && body2.indexOf('### 1899-06-01') < 0;
+    } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

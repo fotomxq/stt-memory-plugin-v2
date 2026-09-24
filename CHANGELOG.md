@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.27.0（2026-09-26）· B8-7-a 情节总结（原子压缩/合并摘要）+ 分段总结
+
+**本版（B8-7-a，取自 V1 v1.206）**：
+1. **情节总结**（新增 `core/atom-compact.js`，495 行）：`atomCompactPlan`（三粒度分组 + 体量/组数上限 + **已总结情节排除**）、`runAtomCompact`
+   （半自动聚合：机械分组 → AI 归并 → 原文保留并**隐藏**；`force`/幂等/5 类跳过/月·年降级）、`atomGroupPlan`/`atomBodyChars`/`scheduleAtomCompact`（4s 防抖）、
+   `atomMergeRange`/`buildAtomMergePrompt`/`parseAtomMergeResult`/`atomMergeSummary`（手动多选合并为一条，标题标记「【A~B 总结】」）；
+2. **分段总结**（新增 `core/plot-segment.js`，365 行）：`plotSegmentBatchSize`/`plotSegmentPlan`/`plotSegmentPlanForIds`/`plotSegmentBatchesFrom`（按剧情时间打包）、
+   `buildPlotSegmentPrompt`/`parsePlotSegmentText`/`normalizePlotSegmentLines`（AI 拆段 → `### 时间范围` 归档）、`plotSegmentsToText`、`plotSegmentSameRange`、
+   `runPlotSegmentSummary`/`runPlotSegmentSummarySelected`（全量/增量/所选）、`flattenPlotSegment`/`deletePlotSegment`/`clearPlotSegments`；
+   **产物只归档、不注入、不参与任何自动动作**（V1 原样，面板已有同款提示）；
+3. **界面**：情节页四个 V1 同款按钮 —— 「半自动情节总结」（`atomCompactNow`）、「情节总结所选」（`atomMergeSummary`）、
+   「分段总结所选」（`plotSegmentSummarySel`）、「清空分段总结」（`clearPlotSegments`），**文案与 `title` 与 v1.206 逐字一致**、显隐/禁用条件同 V1；分段子页落 V2 既有「🧩 分段总结」子标签；
+4. **`FTT.*` 新增 33 个入口**（devtools 侧全部带 `hooks && typeof === 'function'` 守卫）。
+
+**验证**：`v1-golden-atom-compact.json`（1505 行）与 `v1-golden-plot-segment.json`（680 行）均由**真实 V1 v1.206** oracle 生成；
+oracle 连跑两次输出**逐字节一致**，且与入库 fixture **逐字节相同**（队长独立复跑复核）；
+单元 `atom-compact-golden.test.js` **19 项** + `plot-segment-golden.test.js` **17 项**（各含 3 项 V2 编排/接线）；冒烟新增 **AC1–AC3**。
+门禁全绿：单元 **51 文件 / 784 断言**、冒烟 **115 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**V1 原生缺陷/怪癖（原样保留，未"顺手修正"）**：① `grainStartDateStr('-0221-01-02')` → `''`；② `atomMergeSummary` 的 exists 分支真实路径不可达（走 empty）；
+③ `parseAtomMergeResult` 只有标题时把整段 JSON 当正文；④ `buildPlotSegmentPrompt` 直传批次时出现「第 undefined 批」；⑤ `plotSegmentBatchSize(-5)` → 30；
+⑥ 关闭保护时只覆盖 `lines`/`raw`/`updatedAt`；⑦ `force` 绕不过存储保底与 nothing-early；⑧ 默认只处理前 12 批。
+
+**参照物口径澄清（队长裁决）**：V1 仓库同时存在 v1.204/v1.205/v1.206 三个源码文件，V1 自带测试基建**取版本最大者**，
+故**所有批次的 oracle 与 fixture 均为 `-v1.206.js`**（fixture 内 `meta.v1Version='v1.206'` 自证）；此前队长给出的行号多取自 `-v1.205.js`（内容近乎一致，
+个别术语不同 —— 如情节总结产物在 v1.205 为「移除+替换」、v1.206 为「**隐藏**」）。已写入 `docs/P8-功能对齐总表.md` §7.1，**后续批次以 v1.206 为对照文件**。
+
+**未实现**：分段子页搜索/排序控件；`deletePlotSegment` 未单独接同名面板动作（走通用 `delete` + 墓碑，内核与 `FTT.*` 已有）；V1 行内嵌套展开（V2 已有 🔍 速览等价能力）。
+**未验证**：真人点击路径、中断与长任务占用下 4s 重试时序（仅验证排程/忽略/禁用三态）、增量覆盖集的跨端并集、负年份情节聚合的 date 表现、真实 AI 措辞漂移下产生第二条总结的生产表现。
+
 ## v2.26.0（2026-09-26）· B8-6c-4 状态记录修复 + 计划悬念修复
 
 **本版（B8-6c-4，取自 V1 状态修复 ~17908~18105 与计划悬念修复 ~19085~19300）**：

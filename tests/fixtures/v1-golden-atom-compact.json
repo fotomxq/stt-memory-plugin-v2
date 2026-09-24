@@ -1,0 +1,1505 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "fixedNow": 1735689600000
+  },
+  "atomCompact": {
+    "plan": {
+      "totalChars": 964,
+      "threshold": 30000,
+      "before": 60,
+      "recentN": 20,
+      "target": 20,
+      "floor": 0,
+      "poolLen": 40,
+      "poolIds": [
+        "old1",
+        "old2",
+        "old3",
+        "old4",
+        "old5",
+        "old6",
+        "old7",
+        "old8",
+        "old9",
+        "old10",
+        "old11",
+        "old12",
+        "old13",
+        "old14",
+        "old15",
+        "old16",
+        "old17",
+        "old18",
+        "old19",
+        "old20",
+        "old21",
+        "old22",
+        "old23",
+        "old24",
+        "old25",
+        "old26",
+        "old27",
+        "old28",
+        "old29",
+        "old30",
+        "old31",
+        "old32",
+        "old33",
+        "old34",
+        "old35",
+        "old36",
+        "old37",
+        "old38",
+        "old39",
+        "old40"
+      ]
+    },
+    "groups": {
+      "day": {
+        "keys": [
+          "1919-11-29"
+        ],
+        "sizes": [
+          40
+        ],
+        "eligible": 40,
+        "poolN": 40,
+        "ratio": 1
+      },
+      "month": {
+        "keys": [
+          "1919-11"
+        ],
+        "sizes": [
+          40
+        ],
+        "eligible": 40,
+        "poolN": 40,
+        "ratio": 1
+      },
+      "year": {
+        "keys": [
+          "1919"
+        ],
+        "sizes": [
+          40
+        ],
+        "eligible": 40,
+        "poolN": 40,
+        "ratio": 1
+      }
+    },
+    "planHidden": {
+      "before": 59,
+      "poolLen": 39
+    },
+    "body": 62,
+    "run": {
+      "calls": 1,
+      "result": {
+        "ok": true,
+        "summarized": 1,
+        "hidden": 40,
+        "before": 60,
+        "after": 21,
+        "target": 20,
+        "grains": [
+          "day"
+        ]
+      },
+      "promptUser": "[组 1919-11-29]\n- [1919-11-29]old1：旧事件甲在码头发现物品1（标签:旧/码头）\n- [1919-11-29]old2：旧事件甲在码头发现物品2（标签:旧/码头）\n- [1919-11-29]old3：旧事件甲在码头发现物品3（标签:旧/码头）\n- [1919-11-29]old4：旧事件甲在码头发现物品4（标签:旧/码头）\n- [1919-11-29]old5：旧事件甲在码头发现物品5（标签:旧/码头）\n- [1919-11-29]old6：旧事件甲在码头发现物品6（标签:旧/码头）\n- [1919-11-29]old7：旧事件甲在码头发现物品7（标签:旧/码头）\n- [1919-11-29]old8：旧事件甲在码头发现物品8（标签:旧/码头）\n- [1919-11-29]old9：旧事件甲在码头发现物品9（标签:旧/码头）\n- [1919-11-29]old10：旧事件甲在码头发现物品10（标签:旧/码头）\n- [1919-11-29]old11：旧事件甲在码头发现物品11（标签:旧/码头）\n- [1919-11-29]old12：旧事件甲在码头发现物品12（标签:旧/码头）\n- [1919-11-29]old13：旧事件甲在码头发现物品13（标签:旧/码头）\n- [1919-11-29]old14：旧事件甲在码头发现物品14（标签:旧/码头）\n- [1919-11-29]old15：旧事件甲在码头发现物品15（标签:旧/码头）\n- [1919-11-29]old16：旧事件甲在码头发现物品16（标签:旧/码头）\n- [1919-11-29]old17：旧事件甲在码头发现物品17（标签:旧/码头）\n- [1919-11-29]old18：旧事件甲在码头发现物品18（标签:旧/码头）\n- [1919-11-29]old19：旧事件甲在码头发现物品19（标签:旧/码头）\n- [1919-11-29]old20：旧事件甲在码头发现物品20（标签:旧/码头）\n- [1919-11-29]old21：旧事件甲在码头发现物品21（标签:旧/码头）\n- [1919-11-29]old22：旧事件甲在码头发现物品22（标签:旧/码头）\n- [1919-11-29]old23：旧事件甲在码头发现物品23（标签:旧/码头）\n- [1919-11-29]old24：旧事件甲在码头发现物品24（标签:旧/码头）\n- [1919-11-29]old25：旧事件甲在码头发现物品25（标签:旧/码头）\n- [1919-11-29]old26：旧事件甲在码头发现物品26（标签:旧/码头）\n- [1919-11-29]old27：旧事件甲在码头发现物品27（标签:旧/码头）\n- [1919-11-29]old28：旧事件甲在码头发现物品28（标签:旧/码头）\n- [1919-11-29]old29：旧事件甲在码头发现物品29（标签:旧/码头）\n- [1919-11-29]old30：旧事件甲在码头发现物品30（标签:旧/码头）\n- [1919-11-29]old31：旧事件甲在码头发现物品31（标签:旧/码头）\n- [1919-11-29]old32：旧事件甲在码头发现物品32（标签:旧/码头）\n- [1919-11-29]old33：旧事件甲在码头发现物品33（标签:旧/码头）\n- [1919-11-29]old34：旧事件甲在码头发现物品34（标签:旧/码头）\n- [1919-11-29]old35：旧事件甲在码头发现物品35（标签:旧/码头）\n- [1919-11-29]old36：旧事件甲在码头发现物品36（标签:旧/码头）\n- [1919-11-29]old37：旧事件甲在码头发现物品37（标签:旧/码头）\n- [1919-11-29]old38：旧事件甲在码头发现物品38（标签:旧/码头）\n- [1919-11-29]old39：旧事件甲在码头发现物品39（标签:旧/码头）\n- [1919-11-29]old40：旧事件甲在码头发现物品40（标签:旧/码头）"
+    },
+    "afterRun": {
+      "sig": [
+        "HS(atom_c_2zp3at):old1",
+        "HS(atom_c_2zp3at):old2",
+        "HS(atom_c_2zp3at):old3",
+        "HS(atom_c_2zp3at):old4",
+        "HS(atom_c_2zp3at):old5",
+        "HS(atom_c_2zp3at):old6",
+        "HS(atom_c_2zp3at):old7",
+        "HS(atom_c_2zp3at):old8",
+        "HS(atom_c_2zp3at):old9",
+        "HS(atom_c_2zp3at):old10",
+        "HS(atom_c_2zp3at):old11",
+        "HS(atom_c_2zp3at):old12",
+        "HS(atom_c_2zp3at):old13",
+        "HS(atom_c_2zp3at):old14",
+        "HS(atom_c_2zp3at):old15",
+        "HS(atom_c_2zp3at):old16",
+        "HS(atom_c_2zp3at):old17",
+        "HS(atom_c_2zp3at):old18",
+        "HS(atom_c_2zp3at):old19",
+        "HS(atom_c_2zp3at):old20",
+        "HS(atom_c_2zp3at):old21",
+        "HS(atom_c_2zp3at):old22",
+        "HS(atom_c_2zp3at):old23",
+        "HS(atom_c_2zp3at):old24",
+        "HS(atom_c_2zp3at):old25",
+        "HS(atom_c_2zp3at):old26",
+        "HS(atom_c_2zp3at):old27",
+        "HS(atom_c_2zp3at):old28",
+        "HS(atom_c_2zp3at):old29",
+        "HS(atom_c_2zp3at):old30",
+        "HS(atom_c_2zp3at):old31",
+        "HS(atom_c_2zp3at):old32",
+        "HS(atom_c_2zp3at):old33",
+        "HS(atom_c_2zp3at):old34",
+        "HS(atom_c_2zp3at):old35",
+        "HS(atom_c_2zp3at):old36",
+        "HS(atom_c_2zp3at):old37",
+        "HS(atom_c_2zp3at):old38",
+        "HS(atom_c_2zp3at):old39",
+        "HS(atom_c_2zp3at):old40",
+        "--:new1",
+        "--:new2",
+        "--:new3",
+        "--:new4",
+        "--:new5",
+        "--:new6",
+        "--:new7",
+        "--:new8",
+        "--:new9",
+        "--:new10",
+        "--:new11",
+        "--:new12",
+        "--:new13",
+        "--:new14",
+        "--:new15",
+        "--:new16",
+        "--:new17",
+        "--:new18",
+        "--:new19",
+        "--:new20",
+        "--:atom_c_2zp3at"
+      ],
+      "summaries": [
+        {
+          "id": "atom_c_2zp3at",
+          "title": "【1919-11-29 总结】 十一月码头事件总结",
+          "text": "压缩后的顺序化过程：先在码头发现物品，后循线索追查，因果衔接保留XYZ",
+          "type": "总结",
+          "date": "1919-11-29",
+          "tags": [
+            "旧",
+            "码头"
+          ],
+          "importance": 0.8,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 40,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919-11-29",
+            "start": "1919-11-29",
+            "end": "",
+            "sourceCount": 40,
+            "by": "auto",
+            "grain": "day",
+            "sourceIds": [
+              "old1",
+              "old2",
+              "old3",
+              "old4",
+              "old5",
+              "old6",
+              "old7",
+              "old8",
+              "old9",
+              "old10",
+              "old11",
+              "old12",
+              "old13",
+              "old14",
+              "old15",
+              "old16",
+              "old17",
+              "old18",
+              "old19",
+              "old20",
+              "old21",
+              "old22",
+              "old23",
+              "old24",
+              "old25",
+              "old26",
+              "old27",
+              "old28",
+              "old29",
+              "old30",
+              "old31",
+              "old32",
+              "old33",
+              "old34",
+              "old35",
+              "old36",
+              "old37",
+              "old38",
+              "old39",
+              "old40"
+            ]
+          }
+        }
+      ],
+      "active": 21,
+      "hidden": 40,
+      "stored": 61,
+      "tombsBefore": [],
+      "tombsAfter": [],
+      "toasts": [
+        [
+          "success",
+          "🧷 情节总结（半自动）完成：聚合 1 条总结 · 覆盖 40 条原情节（参与运作 60 → 21，目标 ≤ 20 · day 粒度；原文保留并隐藏，可点 🧩 穿透查看）"
+        ]
+      ]
+    },
+    "runSecond": {
+      "calls": 0,
+      "result": {
+        "ok": true,
+        "skipped": "nothing-early",
+        "before": 21,
+        "target": 20
+      },
+      "active": 21,
+      "hidden": 40,
+      "stored": 61,
+      "summaryCount": 1
+    },
+    "runBelowThreshold": {
+      "below": {
+        "ok": true,
+        "skipped": "below-threshold",
+        "totalChars": 964,
+        "threshold": 999999
+      },
+      "force": {
+        "ok": true,
+        "summarized": 1,
+        "hidden": 40,
+        "before": 60,
+        "after": 21,
+        "target": 20,
+        "grains": [
+          "day"
+        ]
+      }
+    },
+    "runSkips": {
+      "disabled": {
+        "ok": true,
+        "skipped": "disabled"
+      },
+      "floor": {
+        "ok": true,
+        "skipped": "floor",
+        "before": 60,
+        "floor": 500
+      },
+      "busy": {
+        "ok": true,
+        "skipped": "busy"
+      }
+    },
+    "runNothingEarly": {
+      "ok": true,
+      "skipped": "nothing-early",
+      "before": 1,
+      "target": 20
+    },
+    "runMonth": {
+      "result": {
+        "ok": true,
+        "summarized": 2,
+        "hidden": 4,
+        "before": 4,
+        "after": 2,
+        "target": 2,
+        "grains": [
+          "month"
+        ]
+      },
+      "atoms": [
+        {
+          "id": "m1",
+          "title": "m1",
+          "text": "旧事件甲在码头发现物品一",
+          "type": "事件",
+          "date": "1919-11-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "hidden": true,
+          "summarizedBy": "atom_c_rosihf",
+          "mergedSummary": null
+        },
+        {
+          "id": "m2",
+          "title": "m2",
+          "text": "旧事件甲在码头发现物品二",
+          "type": "事件",
+          "date": "1919-11-02",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "hidden": true,
+          "summarizedBy": "atom_c_rosihf",
+          "mergedSummary": null
+        },
+        {
+          "id": "m3",
+          "title": "m3",
+          "text": "旧事件甲在码头发现物品三",
+          "type": "事件",
+          "date": "1920-01-03",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 2,
+          "floorEnd": 3,
+          "hidden": true,
+          "summarizedBy": "atom_c_kr5ux2",
+          "mergedSummary": null
+        },
+        {
+          "id": "m4",
+          "title": "m4",
+          "text": "旧事件甲在码头发现物品四",
+          "type": "事件",
+          "date": "1920-01-04",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "hidden": true,
+          "summarizedBy": "atom_c_kr5ux2",
+          "mergedSummary": null
+        },
+        {
+          "id": "atom_c_rosihf",
+          "title": "【1919 年 11 月 总结】 十一月总结",
+          "text": "整月事件过程总括ABC",
+          "type": "总结",
+          "date": "1919-11-01",
+          "tags": [
+            "旧"
+          ],
+          "importance": 0.7,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919 年 11 月",
+            "start": "1919-11-01",
+            "end": "",
+            "sourceCount": 2,
+            "by": "auto",
+            "grain": "month",
+            "sourceIds": [
+              "m1",
+              "m2"
+            ]
+          }
+        },
+        {
+          "id": "atom_c_kr5ux2",
+          "title": "【1920 年 01 月 总结】 一月总结",
+          "text": "一月事件总括DEF",
+          "type": "总结",
+          "date": "1920-01-01",
+          "tags": [
+            "旧"
+          ],
+          "importance": 0.6,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 2,
+          "floorEnd": 4,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1920 年 01 月",
+            "start": "1920-01-01",
+            "end": "",
+            "sourceCount": 2,
+            "by": "auto",
+            "grain": "month",
+            "sourceIds": [
+              "m3",
+              "m4"
+            ]
+          }
+        }
+      ]
+    },
+    "runYear": {
+      "result": {
+        "ok": true,
+        "summarized": 1,
+        "hidden": 3,
+        "before": 4,
+        "after": 2,
+        "target": 2,
+        "grains": [
+          "year"
+        ]
+      },
+      "atoms": [
+        {
+          "id": "y1",
+          "title": "y1",
+          "text": "旧事件甲在码头发现物品一",
+          "type": "事件",
+          "date": "1919-01-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "hidden": true,
+          "summarizedBy": "atom_c_1y4r92d",
+          "mergedSummary": null
+        },
+        {
+          "id": "y2",
+          "title": "y2",
+          "text": "旧事件甲在码头发现物品二",
+          "type": "事件",
+          "date": "1919-01-03",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "hidden": true,
+          "summarizedBy": "atom_c_1y4r92d",
+          "mergedSummary": null
+        },
+        {
+          "id": "y3",
+          "title": "y3",
+          "text": "旧事件甲在码头发现物品三",
+          "type": "事件",
+          "date": "1919-06-02",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 2,
+          "floorEnd": 3,
+          "hidden": true,
+          "summarizedBy": "atom_c_1y4r92d",
+          "mergedSummary": null
+        },
+        {
+          "id": "y4",
+          "title": "y4",
+          "text": "旧事件甲在码头发现物品四",
+          "type": "事件",
+          "date": "1920-03-03",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": null
+        },
+        {
+          "id": "atom_c_1y4r92d",
+          "title": "【1919 年 总结】 一九一九年总结",
+          "text": "全年事件过程总括GHI",
+          "type": "总结",
+          "date": "1919-01-01",
+          "tags": [
+            "旧"
+          ],
+          "importance": 0.9,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 3,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919 年",
+            "start": "1919-01-01",
+            "end": "",
+            "sourceCount": 3,
+            "by": "auto",
+            "grain": "year",
+            "sourceIds": [
+              "y1",
+              "y2",
+              "y3"
+            ]
+          }
+        }
+      ]
+    },
+    "runBatchCap": {
+      "result": {
+        "ok": true,
+        "summarized": 1,
+        "hidden": 2,
+        "before": 6,
+        "after": 5,
+        "target": 5,
+        "grains": [
+          "day"
+        ]
+      },
+      "atoms": [
+        {
+          "id": "c1",
+          "title": "c1",
+          "text": "旧事件甲在码头发现物品一",
+          "type": "事件",
+          "date": "1919-11-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "hidden": true,
+          "summarizedBy": "atom_c_uanym6",
+          "mergedSummary": null
+        },
+        {
+          "id": "c2",
+          "title": "c2",
+          "text": "旧事件甲在码头发现物品二",
+          "type": "事件",
+          "date": "1919-11-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "hidden": true,
+          "summarizedBy": "atom_c_uanym6",
+          "mergedSummary": null
+        },
+        {
+          "id": "c3",
+          "title": "c3",
+          "text": "旧事件甲在码头发现物品三",
+          "type": "事件",
+          "date": "1919-12-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 2,
+          "floorEnd": 3,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": null
+        },
+        {
+          "id": "c4",
+          "title": "c4",
+          "text": "旧事件甲在码头发现物品四",
+          "type": "事件",
+          "date": "1919-12-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 3,
+          "floorEnd": 4,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": null
+        },
+        {
+          "id": "c5",
+          "title": "c5",
+          "text": "旧事件甲在码头发现物品五",
+          "type": "事件",
+          "date": "1920-01-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 4,
+          "floorEnd": 5,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": null
+        },
+        {
+          "id": "c6",
+          "title": "c6",
+          "text": "旧事件甲在码头发现物品六",
+          "type": "事件",
+          "date": "1920-01-01",
+          "tags": [
+            "旧"
+          ],
+          "uses": 0,
+          "floorStart": 5,
+          "floorEnd": 6,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": null
+        },
+        {
+          "id": "atom_c_uanym6",
+          "title": "【1919-11-01 总结】 十一月一日总结",
+          "text": "当日过程总括PQR",
+          "type": "总结",
+          "date": "1919-11-01",
+          "tags": [
+            "旧"
+          ],
+          "importance": 0.7,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919-11-01",
+            "start": "1919-11-01",
+            "end": "",
+            "sourceCount": 2,
+            "by": "auto",
+            "grain": "day",
+            "sourceIds": [
+              "c1",
+              "c2"
+            ]
+          }
+        }
+      ]
+    },
+    "scheduled": {
+      "ret": null,
+      "sig": [
+        "HS(atom_c_1hydvzr):s1",
+        "HS(atom_c_1hydvzr):s2",
+        "HS(atom_c_1hydvzr):s3",
+        "--:atom_c_1hydvzr"
+      ],
+      "summaries": [
+        {
+          "id": "atom_c_1hydvzr",
+          "title": "【1919-11-29 总结】 调度聚合总结",
+          "text": "调度触发的聚合过程总括VWX",
+          "type": "总结",
+          "date": "1919-11-29",
+          "tags": [
+            "旧"
+          ],
+          "importance": 0.8,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 1,
+          "floorEnd": 3,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919-11-29",
+            "start": "1919-11-29",
+            "end": "",
+            "sourceCount": 3,
+            "by": "auto",
+            "grain": "day",
+            "sourceIds": [
+              "s1",
+              "s2",
+              "s3"
+            ]
+          }
+        }
+      ],
+      "active": 1,
+      "hidden": 3
+    }
+  },
+  "atomMerge": {
+    "rangeCases": {
+      "three": {
+        "start": "1919-11-29",
+        "end": "1919-12-01",
+        "label": "1919-11-29 ~ 1919-12-01",
+        "floorStart": 10,
+        "floorEnd": 16
+      },
+      "one": {
+        "start": "1919-11-29",
+        "end": "1919-11-29",
+        "label": "1919-11-29",
+        "floorStart": 10,
+        "floorEnd": 12
+      },
+      "undated": {
+        "start": "",
+        "end": "",
+        "label": "第 3-9 楼",
+        "floorStart": 3,
+        "floorEnd": 9
+      },
+      "empty": {
+        "start": "",
+        "end": "",
+        "label": "0 条情节"
+      },
+      "badDates": {
+        "start": "1920-02-03",
+        "end": "1920-02-03",
+        "label": "1920-02-03"
+      },
+      "sameDate": {
+        "start": "1920-02-03",
+        "end": "1920-02-03",
+        "label": "1920-02-03",
+        "floorStart": 1,
+        "floorEnd": 6
+      }
+    },
+    "promptCases": {
+      "three": [
+        {
+          "role": "system",
+          "content": "你是记忆档案员。把同一批情节**合并成一条**紧凑的情节总结。规则：\n1. 只输出 1 条情节；按时间先后与因果关系串成连贯叙述（谁 / 何时 / 做了什么 / 导致什么 / 结果如何）。\n2. 人名 / 地名 / 物品 / 组织 / 数字等关键要素不可省略；不得编造清单里没有的信息。\n3. 合并重复与冗长描写，但**不得丢失任何一条原情节的关键事实**（允许合并同类）。\n4. 标题 = 一句话（≤20 字）概括本段剧情；重要度 = 0-1 小数（取整批最高）；标签 = 高频标签取前 6。\n只输出一个合法 JSON 对象：{\"标题\":\"…\",\"内容\":\"…\",\"标签\":[\"…\"],\"重要度\":0.8}"
+        },
+        {
+          "role": "user",
+          "content": "【待合并情节（共 3 条；时间跨度 1919-11-29 ~ 1919-12-01）】\n[1919-11-29] 甲 ｜ 角色甲在码头与乙商议粮食转运的具体安排与交接时间。 ｜ 角色：角色甲、角色乙 ｜ 地点：码头（第 10-12 楼）\n[1919-11-30] 乙 ｜ 两人在仓库里清点货物并记录了随后的转运去向。 ｜ 角色：角色甲 ｜ 地点：仓库（第 13-14 楼）\n[1919-12-01] 丙 ｜ 角色甲独自前往城外确认了下一批货物的抵港时间。 ｜ 角色：角色甲 ｜ 地点：城外（第 15-16 楼）\n\n【输出】只输出上面约定的 JSON 对象，不要解释、不要代码块标记。"
+        }
+      ],
+      "one": null,
+      "empty": null,
+      "hiddenFiltered": null,
+      "null2": null
+    },
+    "parseCases": {
+      "zh": {
+        "title": "粮运交接",
+        "text": "甲乙在码头敲定粮食转运并清点。",
+        "tags": [
+          "交易",
+          "情感",
+          "贸易",
+          "码头",
+          "仓库",
+          "粮食"
+        ],
+        "importance": 0.85
+      },
+      "en": {
+        "title": "T",
+        "text": "C",
+        "tags": [
+          "x",
+          "y"
+        ],
+        "importance": 1
+      },
+      "plain": {
+        "title": "",
+        "text": "这是一段没有 JSON 的整段文本。",
+        "tags": [],
+        "importance": null
+      },
+      "fenced": {
+        "title": "围栏",
+        "text": "围栏正文",
+        "tags": [],
+        "importance": null
+      },
+      "empty": null,
+      "blank": null,
+      "nullIn": null,
+      "titleOnly": {
+        "title": "只有标题",
+        "text": "{\"标题\":\"只有标题\"}",
+        "tags": [],
+        "importance": null
+      },
+      "badImportance": {
+        "title": "T",
+        "text": "C",
+        "tags": [],
+        "importance": null
+      }
+    },
+    "applyCases": {
+      "ok": {
+        "ok": true,
+        "reason": "",
+        "summaryId": "atom_m_17w8hzo",
+        "merged": 3,
+        "hidden": 3,
+        "skipped": 0,
+        "label": "1919-11-29 ~ 1919-12-01"
+      },
+      "okState": [
+        {
+          "id": "a1",
+          "title": "甲",
+          "text": "角色甲在码头与乙商议粮食转运的具体安排与交接时间。",
+          "date": "1919-11-29",
+          "tags": [
+            "情感",
+            "交易"
+          ],
+          "importance": 0.5,
+          "uses": 1,
+          "floorStart": 10,
+          "floorEnd": 12,
+          "hidden": true,
+          "summarizedBy": "atom_m_17w8hzo",
+          "mergedSummary": null
+        },
+        {
+          "id": "a2",
+          "title": "乙",
+          "text": "两人在仓库里清点货物并记录了随后的转运去向。",
+          "date": "1919-11-30",
+          "tags": [
+            "交易"
+          ],
+          "importance": 0.9,
+          "uses": 2,
+          "floorStart": 13,
+          "floorEnd": 14,
+          "hidden": true,
+          "summarizedBy": "atom_m_17w8hzo",
+          "mergedSummary": null
+        },
+        {
+          "id": "a3",
+          "title": "丙",
+          "text": "角色甲独自前往城外确认了下一批货物的抵港时间。",
+          "date": "1919-12-01",
+          "tags": [
+            "行程"
+          ],
+          "importance": 0.4,
+          "uses": 0,
+          "floorStart": 15,
+          "floorEnd": 16,
+          "hidden": true,
+          "summarizedBy": "atom_m_17w8hzo",
+          "mergedSummary": null
+        },
+        {
+          "id": "atom_m_17w8hzo",
+          "title": "【1919-11-29 ~ 1919-12-01 总结】 粮运交接",
+          "text": "甲乙在码头敲定粮食转运并清点货物。",
+          "type": "总结",
+          "date": "1919-11-29",
+          "tags": [
+            "交易"
+          ],
+          "importance": 0.85,
+          "validity": "active",
+          "permanence": "permanent",
+          "uses": 0,
+          "floorStart": 10,
+          "floorEnd": 16,
+          "hidden": false,
+          "summarizedBy": "",
+          "mergedSummary": {
+            "label": "1919-11-29 ~ 1919-12-01",
+            "start": "1919-11-29",
+            "end": "1919-12-01",
+            "sourceCount": 3,
+            "by": "manual",
+            "grain": "",
+            "sourceIds": [
+              "a1",
+              "a2",
+              "a3"
+            ]
+          }
+        }
+      ],
+      "okTombs": [],
+      "exists": {
+        "first": {
+          "ok": true,
+          "reason": "",
+          "summaryId": "atom_m_17w8hzo",
+          "merged": 3,
+          "hidden": 3,
+          "skipped": 0,
+          "label": "1919-11-29 ~ 1919-12-01"
+        },
+        "again": {
+          "ok": false,
+          "reason": "exists",
+          "summaryId": "atom_m_17w8hzo",
+          "merged": 0,
+          "hidden": 0,
+          "skipped": 0,
+          "label": "1919-11-29 ~ 1919-12-01"
+        },
+        "stored": 4
+      },
+      "need2": {
+        "ok": false,
+        "reason": "need2",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 0,
+        "label": ""
+      },
+      "empty": {
+        "ok": false,
+        "reason": "empty",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 0,
+        "label": ""
+      },
+      "unknownIds": {
+        "ok": false,
+        "reason": "empty",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 0,
+        "label": ""
+      },
+      "tooShort": {
+        "ok": false,
+        "reason": "tooShort",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 0,
+        "label": "1919-11-29 ~ 1919-11-30"
+      },
+      "hiddenSource": {
+        "ok": false,
+        "reason": "need2",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 1,
+        "label": ""
+      },
+      "blankTextNoAi": {
+        "ok": false,
+        "reason": "tooShort",
+        "summaryId": "",
+        "merged": 0,
+        "hidden": 0,
+        "skipped": 0,
+        "label": "1919-11-29 ~ 1919-11-30"
+      },
+      "noTitleNoTags": {
+        "r": {
+          "ok": true,
+          "reason": "",
+          "summaryId": "atom_m_2uv36i",
+          "merged": 2,
+          "hidden": 2,
+          "skipped": 0,
+          "label": "1919-11-29 ~ 1919-11-30"
+        },
+        "atoms": [
+          {
+            "id": "a1",
+            "title": "甲",
+            "text": "角色甲在码头与乙商议粮食转运的具体安排与交接时间。",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.5,
+            "uses": 1,
+            "floorStart": 10,
+            "floorEnd": 12,
+            "hidden": true,
+            "summarizedBy": "atom_m_2uv36i",
+            "mergedSummary": null
+          },
+          {
+            "id": "a2",
+            "title": "乙",
+            "text": "两人在仓库里清点货物并记录了随后的转运去向。",
+            "date": "1919-11-30",
+            "tags": [
+              "交易"
+            ],
+            "importance": 0.9,
+            "uses": 2,
+            "floorStart": 13,
+            "floorEnd": 14,
+            "hidden": true,
+            "summarizedBy": "atom_m_2uv36i",
+            "mergedSummary": null
+          },
+          {
+            "id": "a3",
+            "title": "丙",
+            "text": "角色甲独自前往城外确认了下一批货物的抵港时间。",
+            "date": "1919-12-01",
+            "tags": [
+              "行程"
+            ],
+            "importance": 0.4,
+            "uses": 0,
+            "floorStart": 15,
+            "floorEnd": 16,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": null
+          },
+          {
+            "id": "atom_m_2uv36i",
+            "title": "【1919-11-29 ~ 1919-11-30 总结】",
+            "text": "没有标题的合并正文段落。",
+            "type": "总结",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.9,
+            "validity": "active",
+            "permanence": "permanent",
+            "uses": 0,
+            "floorStart": 10,
+            "floorEnd": 14,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": {
+              "label": "1919-11-29 ~ 1919-11-30",
+              "start": "1919-11-29",
+              "end": "1919-11-30",
+              "sourceCount": 2,
+              "by": "manual",
+              "grain": "",
+              "sourceIds": [
+                "a1",
+                "a2"
+              ]
+            }
+          }
+        ]
+      },
+      "dupIds": {
+        "r": {
+          "ok": true,
+          "reason": "",
+          "summaryId": "atom_m_17w8hzo",
+          "merged": 3,
+          "hidden": 3,
+          "skipped": 0,
+          "label": "1919-11-29 ~ 1919-12-01"
+        },
+        "atoms": [
+          {
+            "id": "a1",
+            "title": "甲",
+            "text": "角色甲在码头与乙商议粮食转运的具体安排与交接时间。",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.5,
+            "uses": 1,
+            "floorStart": 10,
+            "floorEnd": 12,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "a2",
+            "title": "乙",
+            "text": "两人在仓库里清点货物并记录了随后的转运去向。",
+            "date": "1919-11-30",
+            "tags": [
+              "交易"
+            ],
+            "importance": 0.9,
+            "uses": 2,
+            "floorStart": 13,
+            "floorEnd": 14,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "a3",
+            "title": "丙",
+            "text": "角色甲独自前往城外确认了下一批货物的抵港时间。",
+            "date": "1919-12-01",
+            "tags": [
+              "行程"
+            ],
+            "importance": 0.4,
+            "uses": 0,
+            "floorStart": 15,
+            "floorEnd": 16,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "atom_m_17w8hzo",
+            "title": "【1919-11-29 ~ 1919-12-01 总结】 T",
+            "text": "重复 id 的合并正文段落。",
+            "type": "总结",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易",
+              "行程"
+            ],
+            "importance": 0.3,
+            "validity": "active",
+            "permanence": "permanent",
+            "uses": 0,
+            "floorStart": 10,
+            "floorEnd": 16,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": {
+              "label": "1919-11-29 ~ 1919-12-01",
+              "start": "1919-11-29",
+              "end": "1919-12-01",
+              "sourceCount": 3,
+              "by": "manual",
+              "grain": "",
+              "sourceIds": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "runCases": {
+      "ok": {
+        "calls0": 0,
+        "res": {
+          "made": 1,
+          "added": 1,
+          "merged": 3,
+          "hidden": 3,
+          "skipped": 0,
+          "summaryId": "atom_m_17w8hzo",
+          "label": "1919-11-29 ~ 1919-12-01",
+          "total": 3
+        },
+        "atoms": [
+          {
+            "id": "a1",
+            "title": "甲",
+            "text": "角色甲在码头与乙商议粮食转运的具体安排与交接时间。",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.5,
+            "uses": 1,
+            "floorStart": 10,
+            "floorEnd": 12,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "a2",
+            "title": "乙",
+            "text": "两人在仓库里清点货物并记录了随后的转运去向。",
+            "date": "1919-11-30",
+            "tags": [
+              "交易"
+            ],
+            "importance": 0.9,
+            "uses": 2,
+            "floorStart": 13,
+            "floorEnd": 14,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "a3",
+            "title": "丙",
+            "text": "角色甲独自前往城外确认了下一批货物的抵港时间。",
+            "date": "1919-12-01",
+            "tags": [
+              "行程"
+            ],
+            "importance": 0.4,
+            "uses": 0,
+            "floorStart": 15,
+            "floorEnd": 16,
+            "hidden": true,
+            "summarizedBy": "atom_m_17w8hzo",
+            "mergedSummary": null
+          },
+          {
+            "id": "atom_m_17w8hzo",
+            "title": "【1919-11-29 ~ 1919-12-01 总结】 粮运交接",
+            "text": "甲乙在码头敲定粮食转运并清点货物，随后甲出城确认了抵港时间。",
+            "type": "总结",
+            "date": "1919-11-29",
+            "tags": [
+              "交易",
+              "情感"
+            ],
+            "importance": 0.85,
+            "validity": "active",
+            "permanence": "permanent",
+            "uses": 0,
+            "floorStart": 10,
+            "floorEnd": 16,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": {
+              "label": "1919-11-29 ~ 1919-12-01",
+              "start": "1919-11-29",
+              "end": "1919-12-01",
+              "sourceCount": 3,
+              "by": "manual",
+              "grain": "",
+              "sourceIds": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        ],
+        "toasts": [
+          [
+            "warning",
+            "开始合并所选情节… 已勾选 3 条 · 可合并 3 条（已总结隐藏跳过 0 条） · 跨度 1919-11-29 ~ 1919-12-01"
+          ],
+          [
+            "success",
+            "情节总结完成（手动） 新增 1 条情节总结「1919-11-29 ~ 1919-12-01」· 覆盖 3 条原情节（原文保留并隐藏，不参与注入与淘汰；可在总结上点 🧩 穿透查看）"
+          ]
+        ],
+        "calls": 1
+      },
+      "plainText": {
+        "res": {
+          "made": 1,
+          "added": 1,
+          "merged": 2,
+          "hidden": 2,
+          "skipped": 0,
+          "summaryId": "atom_m_2uv36i",
+          "label": "1919-11-29 ~ 1919-11-30",
+          "total": 2
+        },
+        "atoms": [
+          {
+            "id": "a1",
+            "title": "甲",
+            "text": "角色甲在码头与乙商议粮食转运的具体安排与交接时间。",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.5,
+            "uses": 1,
+            "floorStart": 10,
+            "floorEnd": 12,
+            "hidden": true,
+            "summarizedBy": "atom_m_2uv36i",
+            "mergedSummary": null
+          },
+          {
+            "id": "a2",
+            "title": "乙",
+            "text": "两人在仓库里清点货物并记录了随后的转运去向。",
+            "date": "1919-11-30",
+            "tags": [
+              "交易"
+            ],
+            "importance": 0.9,
+            "uses": 2,
+            "floorStart": 13,
+            "floorEnd": 14,
+            "hidden": true,
+            "summarizedBy": "atom_m_2uv36i",
+            "mergedSummary": null
+          },
+          {
+            "id": "a3",
+            "title": "丙",
+            "text": "角色甲独自前往城外确认了下一批货物的抵港时间。",
+            "date": "1919-12-01",
+            "tags": [
+              "行程"
+            ],
+            "importance": 0.4,
+            "uses": 0,
+            "floorStart": 15,
+            "floorEnd": 16,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": null
+          },
+          {
+            "id": "atom_m_2uv36i",
+            "title": "【1919-11-29 ~ 1919-11-30 总结】",
+            "text": "这不是 JSON 的整段总结文本，应退化为正文并落库。",
+            "type": "总结",
+            "date": "1919-11-29",
+            "tags": [
+              "情感",
+              "交易"
+            ],
+            "importance": 0.9,
+            "validity": "active",
+            "permanence": "permanent",
+            "uses": 0,
+            "floorStart": 10,
+            "floorEnd": 14,
+            "hidden": false,
+            "summarizedBy": "",
+            "mergedSummary": {
+              "label": "1919-11-29 ~ 1919-11-30",
+              "start": "1919-11-29",
+              "end": "1919-11-30",
+              "sourceCount": 2,
+              "by": "manual",
+              "grain": "",
+              "sourceIds": [
+                "a1",
+                "a2"
+              ]
+            }
+          }
+        ],
+        "calls": 1,
+        "toasts": [
+          [
+            "warning",
+            "开始合并所选情节… 已勾选 2 条 · 可合并 2 条（已总结隐藏跳过 0 条） · 跨度 1919-11-29 ~ 1919-11-30"
+          ],
+          [
+            "success",
+            "情节总结完成（手动） 新增 1 条情节总结「1919-11-29 ~ 1919-11-30」· 覆盖 2 条原情节（原文保留并隐藏，不参与注入与淘汰；可在总结上点 🧩 穿透查看）"
+          ]
+        ]
+      },
+      "emptyAi": {
+        "res": {
+          "made": 0,
+          "error": "emptyResult",
+          "total": 2
+        },
+        "calls": 1,
+        "toasts": [
+          [
+            "warning",
+            "开始合并所选情节… 已勾选 2 条 · 可合并 2 条（已总结隐藏跳过 0 条） · 跨度 1919-11-29 ~ 1919-11-30"
+          ],
+          [
+            "warning",
+            "合并总结：AI 未返回可用内容 结果为空或过短，未做任何改动（原情节保持原样）。"
+          ]
+        ]
+      },
+      "noIds": {
+        "res": {
+          "made": 0,
+          "skipped": true,
+          "total": 0,
+          "picked": 0
+        },
+        "calls": 0,
+        "toasts": [
+          [
+            "warning",
+            "情节总结：未选中可用情节 请在「📜 情节列表」切到多选模式勾选情节（已总结隐藏的情节不参与再次合并）。"
+          ]
+        ]
+      },
+      "oneId": {
+        "res": {
+          "made": 0,
+          "skipped": true,
+          "total": 1,
+          "picked": 1
+        },
+        "calls": 0,
+        "toasts": [
+          [
+            "info",
+            "情节总结：至少选择 2 条情节 本次仅选中 1 条可用情节（已总结隐藏的不计入）。"
+          ]
+        ]
+      },
+      "busy": {
+        "res": {
+          "made": 0,
+          "blocked": true
+        },
+        "calls": 0,
+        "toasts": [
+          [
+            "warning",
+            "当前任务占用中 摘要/情节总结/推演/推进结束后再合并。"
+          ]
+        ]
+      },
+      "hiddenOnly": {
+        "res": {
+          "made": 0,
+          "skipped": true,
+          "total": 1,
+          "picked": 1
+        },
+        "calls": 0,
+        "toasts": [
+          [
+            "info",
+            "情节总结：至少选择 2 条情节 本次仅选中 1 条可用情节（已总结隐藏的不计入）。"
+          ]
+        ]
+      }
+    }
+  }
+}
