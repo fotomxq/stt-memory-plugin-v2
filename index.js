@@ -24,7 +24,7 @@ import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './h
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy } from './host/extract.js';
-import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText } from './host/floors.js';
+import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
@@ -37,6 +37,11 @@ import {
     clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
     runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
 } from './core/clock-patrol.js';
+import {
+    setRepairHooks, runRepairMech, repairReport, repairLogPush, repairTotalCount,
+    autoRepairTake, autoRepairOpDue, bumpRepairOp, repairIsGarbage, repairBannedOf,
+    repairMergeDedupe, repairPruneGarbage, repairDecayPass, latestFloorHash,
+} from './core/repair.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
@@ -362,6 +367,21 @@ function bootstrapDiagnostics() {
             memoryForget: (opts) => runMemoryForget(opts || {}),
             lowUseSweep: (opts) => sweepLowUseForget(opts || {}),
             lowUseGate: (every) => lowUseSweepGate('general', every),
+            // B8-6a 修复管线（第 1 段 机械清理；第 2/3 段属 B8-6b）
+            repairMech: (opts) => runRepairMech(opts || {}),
+            repairReport: (o) => repairReport(o || {}),
+            repairLog: () => (Array.isArray(kernelState && kernelState.repairLog) ? kernelState.repairLog.slice() : []),
+            repairTotal: () => repairTotalCount(),
+            repairGateTake: (reset) => autoRepairTake(!!reset),
+            repairGateDue: () => autoRepairOpDue(),
+            repairBumpOp: () => { bumpRepairOp(); return true; },
+            repairIsGarbage: (text, min) => repairIsGarbage(text, min),
+            repairBanned: (text) => repairBannedOf(text),
+            repairDedupe: () => repairMergeDedupe(),
+            repairPrune: () => repairPruneGarbage(),
+            repairDecay: () => repairDecayPass(),
+            latestFloorHash: () => latestFloorHash(),
+            repairLogPush: (rec) => repairLogPush(rec || {}),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
@@ -591,6 +611,8 @@ function installHostBridges() {
             } catch (e) { return ''; }
         },
     });
+    // B8-6：修复域钩子（楼层面板哈希走 host/floors；内核不直读宿主聊天）
+    setRepairHooks({ floorHash: (i) => { try { return hashFloorText(i); } catch (e) { return ''; } } });
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages) => {

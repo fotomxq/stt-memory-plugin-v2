@@ -20,6 +20,7 @@ import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPa
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
+import { runRepairMech, autoRepairTake } from '../core/repair.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -152,6 +153,7 @@ function overviewBody() {
         + '">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
     lines.push('<div class="ftt-row">'
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
+        + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理（零 AI）→ ② 候选筛选 → ③ 窄契约 AI 修订；本批已交付第 1 段">🛠 自动修复</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
         + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
@@ -752,6 +754,18 @@ export async function panelAction(action, payload) {
             const cr = await clockAction(a, p);
             setNote(cr.note || '');
             result = Object.assign(result, cr);
+        }
+        else if (a === 'repair') {
+            // 「🛠 自动修复」：V1 三段式（① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订）
+            //   本批（B8-6a）已交付第 1 段；第 2/3 段（B8-6b）接入前**如实说明**，不伪造 AI 结果。
+            const gate = autoRepairTake(true);                 // 手动修复：重置同楼层计数上限（V1 口径）
+            const mech = await runRepairMech({ silent: true, cause: '手动' });
+            const aiPending = cfg.repairAutoAi !== false;
+            setNote('机械清理完成（零 AI）：合并 ' + Number(mech.stage1.merged || 0) + ' 条 · 清理 ' + Number(mech.stage1.deleted || 0)
+                + ' 条 · 遗忘清扫 ' + Number((mech.sweep || {}).swept || 0) + ' 条 · 条数裁剪 ' + Number((mech.caps || {}).cut || 0)
+                + ' 条；' + String(mech.report || '')
+                + (aiPending ? '；⚠️ 第 2 段候选筛选与第 3 段 AI 修订属后续批次（B8-6b），本次未执行' : ''));
+            result = Object.assign(result, { ok: true, action: a, mech, gate, aiPending });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）

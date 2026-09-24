@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.15.0（2026-09-26）· B8-6a 修复管线第 1 段（JS 机械清理 · 零 AI）
+
+**本版（B8-6a）**：
+1. **内核**（新增 `core/repair.js`，取自 V1 `09-AI摘要与楼层处理.js` 修复族「第 1 段」）：
+   ① `repairMergeDedupe`：内容哈希并集（`contentDedupeArray`，10 维）+ 同名称并集（物品/概念/角色档案/名册）
+   + 场景两级并集（同路径 + 相似地名）+ 状态主体「全名/名」归并；
+   ② `repairMergeByName`：字段**只增不减**补齐、数组并集、货币类数量合计（其余取较大）、`uses` 累计、楼层区间并集；
+   ③ `repairPruneGarbage`：空/占位/过短垃圾条目（正文类下限 4 / 名称类 2）+ 已了结·已揭晓的计划与悬念残留清理，**写墓碑**；
+   ④ `repairDecayPass`：状态衰退 + 记忆遗忘 + 平行事件衰退 + 每角色状态条数钳制；
+   ⑤ 判定与规格表：`REPAIR_DIM_SPEC` / `REPAIR_BANNED` / `REPAIR_PLACEHOLDER` / `repairIsGarbage` / `repairBannedOf` / `repairNameKey`；
+   ⑥ 闸门：`latestFloorHash`（经注入钩子取宿主楼层哈希）/ `autoRepairOpDue` + `bumpRepairOp` / `autoRepairTake`（同楼层至多 N 次，哈希变化或手动修复重置）；
+   ⑦ 报告：`repairReport` / `repairBatchTags` / `repairLogPush`（`state.repairLog` 最近 5 条）；
+   ⑧ `runRepairMech`：**逐行等价**于 V1 `runAutoRepair` 的第 1 段（机械合并 → 遗忘清扫 → 条数上限 → 垃圾清理 → 衰退清扫），
+   返回前/后计数、逐步统计与报告文案；
+2. **`core/ingest.js`**：导出修复域共用助手（`repairNormText`/`repairKeyText`/`repairBigrams`/`repairSimilarity`/`scenesUnionMergeAll`/
+   `statesSubjectUnionMerge`/`runParallelDecay`/`scheduleParallelDecay`/`applyStateBounds`），避免重复实现；
+3. **界面**：总览工具行新增 V1 同款「🛠 自动修复」（紧贴「⚡ 立即 AI 摘要」右侧）；点击执行第 1 段并回填
+   「机械清理完成（零 AI）：合并 N · 清理 N · 遗忘清扫 N · 条数裁剪 N；修复前 X → 修复后 Y …」，
+   并在 `cfg.repairAutoAi` 开启时**如实说明**第 2/3 段（B8-6b）未执行；
+4. **接线**：`index.js` 注入楼层面板哈希钩子（内核不直读宿主聊天）；`FTT.*` 新增 14 个修复入口；
+5. **黄金样本 7 组（oracle = 真实 V1 插件 v1.206）**：垃圾判定（13 组 × 两档）与模糊措辞、同名称并集（逐条字段/数量/uses/楼层）、
+   机械合并（逐维结果 + notes）、垃圾清理（逐维残留 + 墓碑键）、衰退清扫、报告口径（三组文案逐字符）、**第 1 段整体编排**（前 25 → 后 13 条）。
+
+**验证**：`tests/unit/repair-golden.test.js` **13 项** + 冒烟 **T1–T3**；门禁全绿：单元 **37 文件 / 511 断言**、
+冒烟 **88 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**范围说明（详见 `docs/P8o-B8-6a修复管线第1段.md` §2）**：本批交付 V1 三段式修复的**第 1 段**；第 2 段（候选筛选）与
+第 3 段（窄契约 AI 修订）属 B8-6b，界面在 `repairAutoAi` 开启时会明确提示「未执行 AI 段」——`repairAutoAi` 关闭时
+V1 的行为正是本批范围，此时两者完全一致。
+
 ## v2.14.0（2026-09-26）· B8-5 遗忘域（记忆遗忘 + 通用遗忘清扫 + 设定页控件补齐）
 
 **本版（B8-5）**：

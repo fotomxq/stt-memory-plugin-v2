@@ -1011,6 +1011,45 @@ assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetState / fo
         && !!all.decay && !!all.forget && !!all.sweep && !!all.caps;
 })(), '');
 
+// ---------- T 修复管线第 1 段（B8-6a：JS 机械清理，零 AI） ----------
+assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧）', (async () => {
+    const r = await entry.popupAction('tab', { tab: 'overview' });
+    const html = String(r.html || '');
+    const a = html.indexOf('data-ftt-action="summary"');
+    const b = html.indexOf('data-ftt-action="repair"');
+    const c = html.indexOf('data-ftt-action="extractNow"');
+    return a >= 0 && b > a && c > b && html.indexOf('🛠 自动修复') >= 0;
+})(), '');
+
+assert('T2 点击「自动修复」：机械清理生效（同内容合并 + 垃圾清理 + 墓碑），提示如实说明第 2/3 段（B8-6b）未执行', (async () => {
+    const st = rtMod.state;
+    st.atoms = st.atoms || [];
+    st.atoms.push({ id: 'smoke-rp-1', text: '两人在码头交接货物。', title: '两人在码头交接货物。', date: '2020-01-01', tags: ['甲'], uses: 1, floorStart: 1, floorEnd: 2 });
+    st.atoms.push({ id: 'smoke-rp-2', text: '两人在码头交接货物。', title: '两人在码头交接货物。', date: '2020-01-01', tags: ['甲'], uses: 1, floorStart: 1, floorEnd: 2 });
+    st.atoms.push({ id: 'smoke-rp-3', text: '占位', title: '占位', date: '2020-01-01', tags: [], uses: 1, floorStart: 1, floorEnd: 2 });
+    const n0 = st.atoms.length;
+    rtMod.cfg.repairAutoAi = true;
+    const r = await entry.popupAction('repair', {});
+    const n1 = (st.atoms || []).length;
+    const tombs = Object.keys((st.deleted || {}).atoms || {});
+    return r.ok === true && !!r.mech && r.aiPending === true && n1 < n0
+        && tombs.indexOf('smoke-rp-3') >= 0
+        && String(r.mech.report).indexOf('修复前') >= 0;
+})(), '');
+
+assert('T3 FTT 修复入口齐备（repairMech / repairDedupe / repairPrune / repairDecay / repairGateTake / latestFloorHash / repairLog）', (() => {
+    const F = globalThis.FTT;
+    const total = F.repairTotal();
+    const gate = F.repairGateTake(true);
+    const hash = F.latestFloorHash();
+    const log = F.repairLog();
+    return typeof total === 'number' && gate && gate.allowed === true && typeof hash === 'string'
+        && Array.isArray(log) && typeof F.repairIsGarbage === 'function' && F.repairIsGarbage('占位', 4) === true
+        && typeof F.repairBanned === 'function' && F.repairBanned('尽量完成').length === 1
+        && typeof F.repairMech === 'function' && typeof F.repairDedupe === 'function'
+        && typeof F.repairPrune === 'function' && typeof F.repairDecay === 'function';
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
