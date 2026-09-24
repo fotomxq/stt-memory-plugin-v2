@@ -53,6 +53,49 @@ export function safeCall(name, ...args) {
 }
 
 /**
+ * V1 `thApi(name)` 等价：**只认酒馆助手（TavernHelper）** 暴露的函数。
+ * V1 的世界书写接口（`updateWorldbookWith` / `deleteWorldbookEntries` / `createWorldbookEntries`）
+ * 正是此口径 —— 无 TavernHelper 时返回 null（V1 原样如此，写入静默失败）。
+ */
+export function tavernApi(name) {
+    try {
+        const g = globalThis.TavernHelper;
+        if (g && typeof g[name] === 'function') return g[name].bind(g);
+    } catch (e) { /* 忽略 */ }
+    return null;
+}
+
+/** V1 `getFn(name)` 等价：TavernHelper → 宿主 ctx（SillyTavern.getContext()）→ 全局 */
+export function hostFn(name) {
+    const a = tavernApi(name);
+    if (a) return a;
+    const ctx = getCtx();
+    if (ctx && typeof ctx[name] === 'function') return ctx[name].bind(ctx);
+    try { if (typeof globalThis[name] === 'function') return globalThis[name].bind(globalThis); } catch (e) { /* 忽略 */ }
+    return null;
+}
+
+/**
+ * 世界书 API 包装（V1 `thApi(name) || getFn(name)` 取值口径，逐项对应）：
+ *   `names`（getWorldbookNames）/ `get`（getWorldbook）—— 读取与 `test()` 用；
+ *   `update`（updateWorldbookWith）/ `del`（deleteWorldbookEntries）/ `create`（createWorldbookEntries）
+ *   —— **V1 写路径只用 `thApi`**，故这里也只用 `tavernApi`（逐字对齐；放宽会改变「无 TavernHelper 时的失败语义」）。
+ *
+ * ⚠️ 待接线：ST 原生世界书接口（P0 已确证 `loadWorldInfo` / `saveWorldInfo` / `getWorldInfoNames`）到
+ *   TH 词条格式（`name` / `strategy` / `position` / `extra`）的**转换层未实现** —— V1 无此路径，
+ *   TH→ST 词条字段映射需单独立项。因此纯 ST 环境（无酒馆助手）下世界书通道 `test()` 返回 false。
+ */
+export function worldbookApi() {
+    return {
+        names: tavernApi('getWorldbookNames') || hostFn('getWorldbookNames'),
+        get: tavernApi('getWorldbook') || hostFn('getWorldbook'),
+        update: tavernApi('updateWorldbookWith'),
+        del: tavernApi('deleteWorldbookEntries'),
+        create: tavernApi('createWorldbookEntries'),
+    };
+}
+
+/**
  * 能力探测：P0 探针的可执行版本 —— 启动时跑一次，结果进 window.FTT 与调试日志。
  * 只做「有无 / 类型」判定，不产生副作用（不调用会改数据的接口）。
  */

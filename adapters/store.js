@@ -20,6 +20,7 @@ import { collectAtomHashes } from '../core/merge.js';
 import { scopeId } from '../core/state.js';
 import { stateFileName, uploadStateFile, readStateFile, deleteStateFile } from './user-file.js';
 import { scheduleStorageSync } from './sync.js';
+import { scheduleWorldbookSync } from './worldbook.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -114,6 +115,9 @@ export async function saveStateNow(opts) {
     // ⑦ 保存后镜像（V1 `saveState` 末尾的 scheduleStorageSync）：防抖 3s + 楼层/签名双门控
     //   （`cfg.storage.syncOnSave === false` 时不调度；手动「立即同步」不受此开关影响）
     try { if (!mirrorOnSaveDisabled()) scheduleStorageSync(false); } catch (e) { /* 忽略 */ }
+    // ⑧ 世界书单向镜像（V1 `storageWriteAll` 末尾同款）：原子数据落主存储后**延迟 8s 防抖**推送词条。
+    //   未开启 `cfg.storage.worldbook` 时零行为（不排定时器、不触宿主 API）；失败静默（下次数据变更再试）。
+    try { scheduleWorldbookSync(); } catch (e) { /* 忽略 */ }
     return { ok: lastSave.ok, via: lastSave.via, bytes, error: '' };
 }
 
