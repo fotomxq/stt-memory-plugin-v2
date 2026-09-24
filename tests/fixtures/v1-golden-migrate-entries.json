@@ -1,0 +1,1040 @@
+{
+  "note": "V1 真实插件（测试桩加载）在固定输入下的输出（黄金样本 6）：迁移 / 去重 / 条目增删 / 关联写入",
+  "inputs": {
+    "DIRTY": {
+      "atoms": null,
+      "currentStates": [
+        {
+          "subject": "甲",
+          "field": "心情",
+          "value": "戒备"
+        },
+        null,
+        {},
+        "x"
+      ],
+      "snapshots": [
+        {
+          "name": "甲",
+          "identity": {
+            "birthDate": "1900-05-20"
+          }
+        }
+      ],
+      "memories": [],
+      "plans": [
+        {
+          "content": "找到船主",
+          "status": "active"
+        }
+      ],
+      "suspense": [
+        {
+          "content": "谁破坏了木箱",
+          "status": "open"
+        }
+      ],
+      "scenes": [
+        {
+          "name": "码头",
+          "pathStr": "港口>码头"
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "npcs": [
+        {
+          "name": "船主"
+        }
+      ],
+      "links": [
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "who": "甲",
+          "how": "witness"
+        }
+      ],
+      "currencies": [],
+      "plotSegments": [
+        {
+          "header": "1919-11-29 ~ 1919-11-30",
+          "lines": [
+            {
+              "label": "交易线",
+              "text": "x"
+            }
+          ]
+        }
+      ],
+      "rumors": [
+        {
+          "subject": "失窃",
+          "content": "货栈被搬空"
+        }
+      ],
+      "vars": null,
+      "stats": "bad",
+      "repairCursor": [],
+      "lowUseForget": 3,
+      "state": {
+        "date": "1919-11-29",
+        "present": [
+          "甲",
+          "",
+          42
+        ]
+      },
+      "deleted": null,
+      "deletedH": {
+        "atoms": {
+          "h1": 1
+        }
+      }
+    },
+    "CLEAN": {
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "正文足够长的一条情节。",
+          "title": "t"
+        }
+      ],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "concepts": [],
+      "parallels": [],
+      "npcs": [],
+      "links": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "vars": {},
+      "stats": {},
+      "state": {
+        "date": "1919-11-29",
+        "present": [
+          "甲"
+        ]
+      },
+      "deleted": {},
+      "deletedH": {}
+    },
+    "DUP": [
+      {
+        "id": "x1",
+        "text": "同一剧情内容的情节正文。",
+        "title": "A",
+        "date": "1919-11-29",
+        "floorStart": 1,
+        "floorEnd": 2,
+        "uses": 1
+      },
+      {
+        "id": "x2",
+        "text": "同一剧情内容的情节正文。",
+        "title": "A",
+        "date": "1919-11-29",
+        "floorStart": 5,
+        "floorEnd": 6,
+        "uses": 2,
+        "updatedAt": 2
+      },
+      {
+        "id": "x3",
+        "text": "另一条完全不同的情节正文。",
+        "title": "B",
+        "date": "1919-11-30"
+      }
+    ],
+    "REL_ROWS": [
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "who": "甲",
+        "how": "witness",
+        "at": "1919-11-29"
+      },
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "who": "乙",
+        "how": "told",
+        "by": "甲"
+      },
+      {
+        "dim": "memories",
+        "refId": "m2",
+        "who": "丙",
+        "how": "inferred"
+      }
+    ]
+  },
+  "migrate": {
+    "dirty": {
+      "atoms": [],
+      "currentStates": [
+        {
+          "subject": "甲",
+          "field": "心情",
+          "value": "戒备"
+        }
+      ],
+      "snapshots": [
+        {
+          "name": "甲",
+          "identity": {
+            "birthDate": "1900-05-20"
+          },
+          "uses": 0,
+          "appearance": ""
+        },
+        {
+          "id": "snapshot_2v3fr",
+          "name": "船主",
+          "identity": {
+            "gender": "",
+            "birthDate": "",
+            "age": "",
+            "species": "",
+            "occupation": "",
+            "title": "",
+            "family": ""
+          },
+          "appearance": "",
+          "personality": {
+            "traits": [],
+            "quirks": [],
+            "values": [],
+            "speechStyle": ""
+          },
+          "background": {
+            "origin": "",
+            "history": ""
+          },
+          "relationships": [],
+          "social": {
+            "relationToUser": "",
+            "attitudeToUser": ""
+          },
+          "future": {
+            "todos": [],
+            "commitments": []
+          },
+          "tags": [],
+          "keywords": [],
+          "floorStart": 0,
+          "floorEnd": 0,
+          "uses": 0,
+          "lastUpdateDate": "",
+          "lastUpdateTime": "",
+          "lastSeenDate": "",
+          "lastSeenTime": "",
+          "category": "snapshots",
+          "title": "船主",
+          "content": "",
+          "strength": 50,
+          "extra": []
+        }
+      ],
+      "memories": [],
+      "plans": [
+        {
+          "content": "找到船主",
+          "status": "active",
+          "uses": 0,
+          "steps": [],
+          "blockers": [],
+          "history": [],
+          "suspenseRefs": [],
+          "memRefs": [],
+          "participants": [],
+          "planner": "",
+          "prereq": "",
+          "phase": "",
+          "statusNote": "",
+          "progress": 0
+        }
+      ],
+      "suspense": [
+        {
+          "content": "谁破坏了木箱",
+          "status": "open",
+          "uses": 0,
+          "clues": [],
+          "history": [],
+          "planRefs": [],
+          "memRefs": [],
+          "resolveCondition": "",
+          "level": "",
+          "phase": "",
+          "statusNote": ""
+        }
+      ],
+      "scenes": [
+        {
+          "name": "码头",
+          "pathStr": "港口>码头",
+          "uses": 0,
+          "pathArr": [
+            "港口",
+            "码头"
+          ]
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "npcs": [],
+      "links": [
+        {
+          "id": "lnk_bjen1o",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "甲",
+          "how": "witness",
+          "from": "",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "updatedAt": 0
+        }
+      ],
+      "currencies": [],
+      "plotSegments": [
+        {
+          "header": "1919-11-29 ~ 1919-11-30",
+          "lines": [
+            {
+              "label": "交易线",
+              "text": "x"
+            }
+          ],
+          "id": "seg_cr0mvn",
+          "uses": 0,
+          "createdAt": 1790256098201
+        }
+      ],
+      "rumors": [
+        {
+          "subject": "失窃",
+          "content": "货栈被搬空",
+          "id": "rum_3qvmf",
+          "carriers": [],
+          "media": [],
+          "chain": [],
+          "tags": [],
+          "lineage": {
+            "rootId": "rum_3qvmf",
+            "parentId": "",
+            "children": [],
+            "generation": 0
+          },
+          "uses": 0,
+          "createdAt": 1790256098201
+        }
+      ],
+      "vars": {},
+      "stats": {},
+      "repairCursor": {},
+      "lowUseForget": {},
+      "state": {
+        "date": "1919-11-29",
+        "present": [
+          "甲"
+        ]
+      },
+      "deleted": {},
+      "deletedH": {
+        "atoms": {
+          "h1": 1
+        }
+      },
+      "items": [],
+      "snapStore": [],
+      "lastKnownFloor": -1,
+      "version": "v1.206"
+    },
+    "clean": {
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "正文足够长的一条情节。",
+          "title": "t",
+          "date": "",
+          "time": "",
+          "uses": 0,
+          "tags": []
+        }
+      ],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "concepts": [],
+      "parallels": [],
+      "npcs": [],
+      "links": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "vars": {},
+      "stats": {},
+      "state": {
+        "date": "1919-11-29",
+        "present": [
+          "甲"
+        ]
+      },
+      "deleted": {},
+      "deletedH": {},
+      "snapStore": [],
+      "lastKnownFloor": -1,
+      "version": "v1.206"
+    }
+  },
+  "dedupe": {
+    "pickFirst": {
+      "id": "x2",
+      "text": "同一剧情内容的情节正文。",
+      "title": "A",
+      "date": "1919-11-29",
+      "floorStart": 5,
+      "floorEnd": 6,
+      "uses": 2,
+      "updatedAt": 2
+    },
+    "dedupeAtoms": [
+      {
+        "id": "x2",
+        "text": "同一剧情内容的情节正文。",
+        "title": "A",
+        "date": "1919-11-29",
+        "floorStart": 1,
+        "floorEnd": 6,
+        "uses": 3,
+        "updatedAt": 2
+      },
+      {
+        "id": "x3",
+        "text": "另一条完全不同的情节正文。",
+        "title": "B",
+        "date": "1919-11-30"
+      }
+    ],
+    "dedupeMemories": [
+      {
+        "id": "m2",
+        "owner": "甲",
+        "content": "同一记忆",
+        "date": "1919-11-29",
+        "uses": 3,
+        "floorStart": 0,
+        "floorEnd": 0
+      }
+    ]
+  },
+  "recallDateNum": [
+    "19191129",
+    "-2209898",
+    "NaN",
+    "NaN",
+    "NaN",
+    "NaN"
+  ],
+  "entries": {
+    "upsert": {
+      "atomsNew": true,
+      "memoriesNew": true,
+      "currenciesNew": true,
+      "duplicateAgain": true
+    },
+    "counts": {
+      "afterUpsert": {
+        "atoms": 1,
+        "memories": 1,
+        "currencies": 1,
+        "links": 0
+      },
+      "afterDelete": {
+        "atoms": 0,
+        "memories": 0,
+        "deletedIds": [
+          "atom_bktq9s"
+        ],
+        "deletedHIds": [
+          "1azuz85_jc7ooh"
+        ]
+      },
+      "afterSweep": {
+        "links": 0
+      },
+      "afterUpsertAgain": {
+        "links": 3,
+        "added": 3,
+        "updated": 0
+      }
+    },
+    "stateAfterUpsert": {
+      "version": "v1.206",
+      "scope": "char:1157z2a",
+      "state": {
+        "time": "",
+        "date": "",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [
+        {
+          "id": "atom_bktq9s",
+          "kind": "plot_atom",
+          "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+          "title": "甲",
+          "type": "事件",
+          "date": "1919-11-29",
+          "time": "",
+          "entities": [],
+          "locations": [],
+          "tags": [],
+          "keywords": [],
+          "importance": 0.5,
+          "validity": "active",
+          "permanence": "episodic",
+          "floorStart": 3,
+          "floorEnd": 3,
+          "uses": 0,
+          "category": "atoms",
+          "content": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+          "strength": 50,
+          "extra": [],
+          "h": "1azuz85_jc7ooh"
+        }
+      ],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [
+        {
+          "id": "mem_ek14og",
+          "owner": "甲",
+          "date": "1919-11-29",
+          "title": "码头记忆",
+          "content": "甲记得木箱断口整齐。",
+          "tags": [],
+          "keywords": [],
+          "memCategory": "一般",
+          "importance": 0.5,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "uses": 0,
+          "category": "memories",
+          "strength": 50,
+          "extra": [
+            {
+              "name": "owner",
+              "type": "string",
+              "value": "甲"
+            }
+          ],
+          "h": "pffjuq_1gojh2t"
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [
+        {
+          "id": "cur_1xcp5ni",
+          "owner": "角色甲",
+          "name": "银元",
+          "unit": "",
+          "amount": 123456789,
+          "note": "",
+          "history": [],
+          "date": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "tags": [],
+          "keywords": [],
+          "category": "currencies",
+          "title": "银元",
+          "content": "",
+          "strength": 50,
+          "extra": [
+            {
+              "name": "owner",
+              "type": "string",
+              "value": "角色甲"
+            },
+            {
+              "name": "history",
+              "type": "integer",
+              "value": 0
+            }
+          ]
+        }
+      ],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {
+        "global": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "char": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "chat": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        }
+      },
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 1790256098207,
+      "snapStore": [
+        {
+          "id": "root_mufk9a59_2yx5",
+          "kind": "root",
+          "ts": "2026-09-24T13:21:38.205Z",
+          "baseId": null,
+          "hash": "1j9pl0w_tx2dqi",
+          "atomsHashes": {
+            "atom_bktq9s": "1azuz85_jc7ooh"
+          },
+          "atoms": {
+            "atom_bktq9s": {
+              "id": "atom_bktq9s",
+              "kind": "plot_atom",
+              "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "title": "甲",
+              "type": "事件",
+              "date": "1919-11-29",
+              "time": "",
+              "entities": [],
+              "locations": [],
+              "tags": [],
+              "keywords": [],
+              "importance": 0.5,
+              "validity": "active",
+              "permanence": "episodic",
+              "category": "atoms",
+              "content": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "strength": 50,
+              "extra": [],
+              "__cat": "atoms"
+            }
+          }
+        }
+      ],
+      "snapFp": {
+        "atom_bktq9s": {
+          "h": "1azuz85_jc7ooh",
+          "cat": "atoms"
+        }
+      }
+    },
+    "delete": {
+      "atom": true,
+      "memory": true
+    },
+    "stateAfterDelete": {
+      "version": "v1.206",
+      "scope": "char:1157z2a",
+      "state": {
+        "time": "",
+        "date": "",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [
+        {
+          "id": "cur_1xcp5ni",
+          "owner": "角色甲",
+          "name": "银元",
+          "unit": "",
+          "amount": 123456789,
+          "note": "",
+          "history": [],
+          "date": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "tags": [],
+          "keywords": [],
+          "category": "currencies",
+          "title": "银元",
+          "content": "",
+          "strength": 50,
+          "extra": [
+            {
+              "name": "owner",
+              "type": "string",
+              "value": "角色甲"
+            },
+            {
+              "name": "history",
+              "type": "integer",
+              "value": 0
+            }
+          ]
+        }
+      ],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {
+        "global": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "char": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "chat": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        }
+      },
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {
+        "atoms": {
+          "atom_bktq9s": 1790256098207
+        },
+        "memories": {
+          "mem_ek14og": 1790256098209
+        }
+      },
+      "deletedH": {
+        "atoms": {
+          "1azuz85_jc7ooh": 1790256098207
+        },
+        "memories": {
+          "pffjuq_1gojh2t": 1790256098209
+        }
+      },
+      "updatedAt": 1790256098209,
+      "snapStore": [
+        {
+          "id": "root_mufk9a59_2yx5",
+          "kind": "root",
+          "ts": "2026-09-24T13:21:38.205Z",
+          "baseId": null,
+          "hash": "1j9pl0w_tx2dqi",
+          "atomsHashes": {
+            "atom_bktq9s": "1azuz85_jc7ooh"
+          },
+          "atoms": {
+            "atom_bktq9s": {
+              "id": "atom_bktq9s",
+              "kind": "plot_atom",
+              "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "title": "甲",
+              "type": "事件",
+              "date": "1919-11-29",
+              "time": "",
+              "entities": [],
+              "locations": [],
+              "tags": [],
+              "keywords": [],
+              "importance": 0.5,
+              "validity": "active",
+              "permanence": "episodic",
+              "category": "atoms",
+              "content": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "strength": 50,
+              "extra": [],
+              "__cat": "atoms"
+            }
+          }
+        }
+      ],
+      "snapFp": {
+        "atom_bktq9s": {
+          "h": "1azuz85_jc7ooh",
+          "cat": "atoms"
+        }
+      }
+    },
+    "rels": {
+      "upsert": {
+        "added": 3,
+        "updated": 0,
+        "removed": 0
+      },
+      "links": [
+        {
+          "id": "lnk_bjen1o",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "甲",
+          "how": "witness",
+          "from": "",
+          "at": "1919-11-29",
+          "view": "",
+          "deviation": "unknown",
+          "note": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "updatedAt": 1790256098209
+        },
+        {
+          "id": "lnk_bjehqf",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "乙",
+          "how": "told",
+          "from": "甲",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "updatedAt": 1790256098209
+        },
+        {
+          "id": "lnk_bjen7o",
+          "dim": "memories",
+          "refId": "m2",
+          "who": "丙",
+          "how": "inferred",
+          "from": "",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "updatedAt": 1790256098209
+        }
+      ],
+      "upsertAgain": {
+        "added": 3,
+        "updated": 0,
+        "removed": 0
+      }
+    },
+    "sweep": 3,
+    "stateAfterSweep": {
+      "version": "v1.206",
+      "scope": "char:1157z2a",
+      "state": {
+        "time": "",
+        "date": "",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [
+        {
+          "id": "cur_1xcp5ni",
+          "owner": "角色甲",
+          "name": "银元",
+          "unit": "",
+          "amount": 123456789,
+          "note": "",
+          "history": [],
+          "date": "",
+          "uses": 0,
+          "floorStart": 0,
+          "floorEnd": 0,
+          "tags": [],
+          "keywords": [],
+          "category": "currencies",
+          "title": "银元",
+          "content": "",
+          "strength": 50,
+          "extra": [
+            {
+              "name": "owner",
+              "type": "string",
+              "value": "角色甲"
+            },
+            {
+              "name": "history",
+              "type": "integer",
+              "value": 0
+            }
+          ]
+        }
+      ],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {
+        "global": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "char": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        },
+        "chat": {
+          "json": {},
+          "meaning": "",
+          "rule": ""
+        }
+      },
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {
+        "atoms": {
+          "atom_bktq9s": 1790256098207
+        },
+        "memories": {
+          "mem_ek14og": 1790256098209
+        },
+        "links": {
+          "lnk_bjen1o": 1790256098209,
+          "lnk_bjehqf": 1790256098209,
+          "lnk_bjen7o": 1790256098209
+        }
+      },
+      "deletedH": {
+        "atoms": {
+          "1azuz85_jc7ooh": 1790256098207
+        },
+        "memories": {
+          "pffjuq_1gojh2t": 1790256098209
+        },
+        "links": {
+          "1wkp3uu_1asjm1x": 1790256098209,
+          "1lzouv8_1e89zvb": 1790256098209,
+          "bwvp0n_8u4x9t": 1790256098209
+        }
+      },
+      "updatedAt": 1790256098209,
+      "snapStore": [
+        {
+          "id": "root_mufk9a59_2yx5",
+          "kind": "root",
+          "ts": "2026-09-24T13:21:38.205Z",
+          "baseId": null,
+          "hash": "1j9pl0w_tx2dqi",
+          "atomsHashes": {
+            "atom_bktq9s": "1azuz85_jc7ooh"
+          },
+          "atoms": {
+            "atom_bktq9s": {
+              "id": "atom_bktq9s",
+              "kind": "plot_atom",
+              "text": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "title": "甲",
+              "type": "事件",
+              "date": "1919-11-29",
+              "time": "",
+              "entities": [],
+              "locations": [],
+              "tags": [],
+              "keywords": [],
+              "importance": 0.5,
+              "validity": "active",
+              "permanence": "episodic",
+              "category": "atoms",
+              "content": "角色甲在码头发现木箱，断口整齐（正文足够长）。",
+              "strength": 50,
+              "extra": [],
+              "__cat": "atoms"
+            }
+          }
+        }
+      ],
+      "snapFp": {
+        "atom_bktq9s": {
+          "h": "1azuz85_jc7ooh",
+          "cat": "atoms"
+        }
+      }
+    },
+    "lastMessageId": null,
+    "deletedHAfterSave": {
+      "atoms": {
+        "1azuz85_jc7ooh": 1790256098207
+      },
+      "memories": {
+        "pffjuq_1gojh2t": 1790256098209
+      },
+      "links": {
+        "1wkp3uu_1asjm1x": 1790256098209,
+        "1lzouv8_1e89zvb": 1790256098209,
+        "bwvp0n_8u4x9t": 1790256098209
+      }
+    }
+  }
+}
