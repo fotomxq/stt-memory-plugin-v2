@@ -15,6 +15,7 @@ import {
     noteSyncReport, syncToast, syncInfo,
 } from '../adapters/sync.js';
 import { settingsControlHtml } from './settings-pages.js';
+import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 const pad2 = (x) => String(x).padStart(2, '0');
@@ -137,7 +138,9 @@ export function storagePageHtml(controls) {
         box(['storage.worldbook', 'storage.worldbookName', 'storage.worldbookMode', 'storage.worldbookScanDepth', 'storage.worldbookPosition',
             'storage.worldbookDepth', 'storage.worldbookPreventRecursion', 'storage.worldbookProbability', 'storage.worldbookSticky',
             'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes']),
-        '<div class="ftt-muted">词条镜像（类目常驻 + 原子分层重建、变更后延迟自动同步）依赖世界书写入能力，属后续批次（B8）；本页先保留同名配置键。</div></div>',
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="worldbookRefresh">📚 刷新世界书列表</button>'
+        + '<span class="ftt-muted">词条镜像为<b>单向写入</b>（只出不进）：类目常驻词条 + 每原子一条词条，Markdown 分层；数据变更后延迟 8s 自动重建（8s 防抖合并）。</span></div>',
+        '<div class="ftt-muted">需酒馆提供世界书写入接口（TavernHelper）；纯酒馆且无该接口时写入按 V1 静默失败并告警，不影响主存储。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">状态与操作</div>',
         '<div class="ftt-muted" data-ftt-storage-status>' + stateFileStatusHtml() + '</div>',
@@ -223,6 +226,13 @@ export async function syncAction(action, payload) {
             syncToast('success', '同步日志已清空', '新记录将自动续写（最近 30 条）');
             return { ok: true, action: a, note: '同步日志已清空（剩余 ' + n + ' 条）', detail: { n } };
         }
+        if (a === 'worldbookRefresh') {
+            // V1 设定⑥「📚 刷新世界书列表」：重新拉取酒馆世界书名列表（供 storage.worldbookName 下拉使用）
+            const names = await refreshWorldbookNames();
+            const note = names.length ? ('世界书列表已刷新（' + names.length + ' 本）') : '未读取到世界书（需酒馆提供世界书接口）';
+            syncToast(names.length ? 'success' : 'warning', note, '');
+            return { ok: true, action: a, note, names, detail: { n: names.length } };
+        }
         return { ok: false, action: a, note: '未知存储动作：' + a };
     } catch (e) {
         const note = String((e && e.message) || e).slice(0, 160);
@@ -232,7 +242,7 @@ export async function syncAction(action, payload) {
 }
 
 /** 存储/同步动作名判定（供面板分发；保持 V1 动作名逐字一致） */
-export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear']);
+export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }

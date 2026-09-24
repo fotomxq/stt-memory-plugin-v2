@@ -1381,6 +1381,47 @@ const x3 = await (async () => {
 host.ctx.generateRaw = origGenX;
 assert('X3 AI 桩端到端落库：概念修复（机械合并 → 聚类选组 → AI 合并+删除 → 编号精确应用 + 墓碑）与场景修复（整库重建 → 保留 id/uses/floorSeen → 并集落盘）各发 1 次 AI', x3, '');
 
+// ---------- Y 传言演化 + 世界书单向镜像（B8-7 接线） ----------
+assert('Y1 FTT 传言/世界书入口齐备（rumorEvolve / rumorEvolveAuto / rumorDecay / clearRumors / rumorTick / rumorRoll / rumorInjLine / flattenRumor / worldbookEntries / worldbookKeys / worldbookIsFttEntry / worldbookSync / worldbookSyncState / worldbookNames / refreshWorldbookNames）', (() => {
+    const F = globalThis.FTT;
+    const names = ['rumorEvolve', 'rumorEvolveAuto', 'rumorDecay', 'clearRumors', 'rumorTick', 'rumorEnabled', 'rumorEveryRounds', 'rumorNeedRounds',
+        'rumorRoll', 'rumorDecayScore', 'rumorExpired', 'rumorInjLine', 'flattenRumor',
+        'worldbookEntries', 'worldbookKeys', 'worldbookIsFttEntry', 'worldbookLegacyEntryName', 'worldbookTotalBytes', 'worldbookMemoryTotal',
+        'worldbookSync', 'worldbookSyncNow', 'worldbookSyncState', 'worldbookNames', 'refreshWorldbookNames'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const roll = Number(F.rumorRoll('smoke-seed'));
+    return missing.length === 0 && roll >= 0 && roll < 1 && F.rumorRoll('smoke-seed') === roll     // 确定性掷骰
+        && Number(F.rumorEveryRounds()) >= 1 && Number(F.rumorNeedRounds()) >= 1
+        && !!F.rumorTick() && Array.isArray(F.worldbookNames()) && typeof F.worldbookMemoryTotal() === 'number';
+})(), '');
+
+assert('Y2 面板「🧪 立即演化」/「🧹 清理传言」可达：传言页工具条按 V1 显隐（无传言不显示清理）+ 动作写回面板 note', (async () => {
+    const st = rtMod.state;
+    st.rumors = [{ id: 'smoke-yr-1', subject: '角色甲', claim: '角色甲偷了钥匙。', stage: '传播', ferment: 50, tags: ['传言', '钥匙'], uses: 1, date: '2020-01-01', updatedAt: 1000, carriers: [{ who: '角色乙', role: '传播者' }], media: [{ type: '口耳相传', name: '酒馆', date: '2020-01-01', durability: 1 }], chain: [], lineage: [] }];
+    const html1 = String((await entry.popupAction('tab', { tab: 'rumors' })).html || '');
+    const ev = await entry.popupAction('rumorEvolve', {});
+    const noteEv = String(ev.note || '');
+    const cl = await entry.popupAction('clearRumors', {});
+    const emptyNow = (st.rumors || []).length === 0;
+    const html0 = String((await entry.popupAction('tab', { tab: 'rumors' })).html || '');
+    return html1.indexOf('data-ftt-action="rumorEvolve"') >= 0 && html1.indexOf('🧪 立即演化') >= 0
+        && html1.indexOf('title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）"') >= 0
+        && html1.indexOf('data-ftt-action="clearRumors"') >= 0 && html1.indexOf('🧹 清理传言') >= 0
+        && ev.ok === true && noteEv.indexOf('传言演化：载体停用') >= 0
+        && cl.ok === true && cl.cleared === 1 && String(cl.note).indexOf('已清空 1 条传言') >= 0 && emptyNow
+        && html0.indexOf('data-ftt-action="clearRumors"') < 0;      // 无传言 → 清理按钮隐藏（V1 条件）
+})(), '');
+
+assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书列表」按钮 + worldbookRefresh 动作可达（无酒馆世界书接口时如实告警，不伪造列表）', (async () => {
+    const page = await entry.popupAction('settingsSub', { sub: 'storage' });
+    const sHtml = String((page && page.html) || '');
+    const hasBtn = sHtml.indexOf('data-ftt-action="worldbookRefresh"') >= 0 && sHtml.indexOf('📚 刷新世界书列表') >= 0;
+    const r = await entry.popupAction('worldbookRefresh', {});
+    const note = String(r.note || '');
+    const honest = note.indexOf('世界书列表已刷新') >= 0 || note.indexOf('未读取到世界书') >= 0;
+    return hasBtn && r.ok === true && Array.isArray(r.names) && honest;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

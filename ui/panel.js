@@ -23,6 +23,7 @@ import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
+import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -277,7 +278,11 @@ function dimBody(kind) {
         // V1 `scenesHtml()`：场景页按钮 **无显隐条件**（场景树为空时 V1 也照常渲染 sceneBar）——
         //   文案与 title 逐字对齐
         + (kind === 'scenes' ? '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button>' : '')
+        // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
+        + (kind === 'rumors' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
+            + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
         + '</div>'
+        + (kind === 'rumors' ? ('<div class="ftt-hint">📢 传言随剧情时间<b>机械演化</b>（零 AI 调用）：每 <b>' + rumorEveryRounds() + '</b> 楼轮次演化一次（当前已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次；平行世界发生变化后重新计数）；每次变化都会写入该条的<b>传导链路</b>，变化过程需 <b>' + rumorNeedRounds() + '</b> 轮才生效。传言<b>未经证实</b>，注入时只作为「听说 / 都在传」的参考。</div>') : '')
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
@@ -788,6 +793,21 @@ export async function panelAction(action, payload) {
             }
             setNote('自动修复：' + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
             result = Object.assign(result, { ok: true, action: a, repair: r, made: r.made || 0 });
+        }
+        else if (a === 'rumorEvolve') {
+            // V1 `rumorsHtml()`：「🧪 立即演化」——手动触发一次**零 AI** 机械演化（载体老化/发酵消退/平行联动/裂变）
+            const rs = await runRumorEvolveNow({ silent: false });
+            setNote(rs && rs.ok
+                ? ('传言演化：载体停用 ' + Number(rs.aged || 0) + ' · 联动 ' + Number(rs.links || 0) + ' · 酝酿变化 ' + Number(rs.changes || 0)
+                    + ' · 完成变化 ' + Number(rs.committed || 0) + '（裂变 ' + Number(rs.fissions || 0) + '）')
+                : ('传言演化失败：' + String((rs && rs.error) || '未知')));
+            result = Object.assign(result, { ok: !!(rs && rs.ok), action: a, rumor: rs });
+        }
+        else if (a === 'clearRumors') {
+            // V1 同名动作：清空全部传言并留删除墓碑
+            const n = clearRumors();
+            setNote(n ? ('已清空 ' + n + ' 条传言（留删除墓碑）') : '当前没有传言');
+            result = Object.assign(result, { ok: true, action: a, cleared: n });
         }
         else if (a === 'memoryRepair') {
             // 「🔧 修复记忆」（V1 v1.140 记忆页专用）：机械去重 → 关系层维护 → 标签组聚类选组 → 窄契约 AI 梳理

@@ -48,6 +48,13 @@ import {
     relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, mergeRelMaint, demoteRelLinkOrphans,
 } from './core/rel-maint.js';
 import {
+    runRumorEvolve, runRumorEvolveNow, runRumorDecay, clearRumors, rumorTickState, rumorEnabledOn,
+    rumorEveryRounds, rumorNeedRounds, rumorRoll, rumorDecayScore, rumorExpired, rumorInjLine, flattenRumor,
+} from './core/rumor-evolve.js';
+import { buildWorldbookEntries, buildWorldbookKeys, worldbookIsFttEntry, worldbookLegacyEntryName, worldbookTotalBytes, worldbookMemoryTotal } from './core/worldbook.js';
+import { scheduleWorldbookSync, worldbookSyncNow, worldbookSyncState } from './adapters/worldbook.js';
+import { refreshWorldbookNames, worldbookNames } from './host/worldbook.js';
+import {
     GROUP_REPAIR_SPECS, groupRepairSpec, groupRelatedness, groupClusters, groupPick,
     memoryMergeExact, buildMemoryRepairPrompt, applyMemoryMergeGroups, runMemoryRepair,
     conceptMergeExact, conceptRelatedness, conceptClusters, conceptPickClusters,
@@ -405,6 +412,31 @@ function bootstrapDiagnostics() {
             repairTags: (entries) => repairTagSetOf(entries),
             repairJaccard: (a, b) => repairJaccard(a, b),
             repairFailArmed: () => scheduleAutoRepairOnMergeFail(),
+            // B8-7 传言演化（零 AI）与世界书单向镜像
+            rumorEvolve: (opts) => runRumorEvolveNow(opts || {}),
+            rumorEvolveAuto: (opts) => runRumorEvolve(opts || {}),
+            rumorDecay: (opts) => runRumorDecay(opts || {}),
+            clearRumors: () => clearRumors(),
+            rumorTick: () => rumorTickState(),
+            rumorEnabled: () => rumorEnabledOn(),
+            rumorEveryRounds: () => rumorEveryRounds(),
+            rumorNeedRounds: () => rumorNeedRounds(),
+            rumorRoll: (seed) => rumorRoll(seed),
+            rumorDecayScore: (r) => rumorDecayScore(r),
+            rumorExpired: (r) => rumorExpired(r),
+            rumorInjLine: (r) => rumorInjLine(r),
+            flattenRumor: (r) => flattenRumor(r),
+            worldbookEntries: (env) => buildWorldbookEntries(env),
+            worldbookKeys: (n) => buildWorldbookKeys(n),
+            worldbookIsFttEntry: (e) => worldbookIsFttEntry(e),
+            worldbookLegacyEntryName: () => worldbookLegacyEntryName(),
+            worldbookTotalBytes: (e) => worldbookTotalBytes(e),
+            worldbookMemoryTotal: () => worldbookMemoryTotal(),
+            worldbookSync: () => scheduleWorldbookSync(),
+            worldbookSyncNow: () => worldbookSyncNow(),
+            worldbookSyncState: () => worldbookSyncState(),
+            worldbookNames: () => worldbookNames(),
+            refreshWorldbookNames: () => refreshWorldbookNames(),
             // B8-6b+ 关联层机械维护（零 AI；修复第 1 段收尾 + AI 修订后复检）
             relMaint: (opts) => relRepairMaint(opts || {}),
             relMaintCounts: (m) => relMaintCounts(m),

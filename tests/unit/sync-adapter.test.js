@@ -439,7 +439,7 @@ R.assert('I1 存储页：V1 分节（记忆文件/原生存储/本机缓冲/一�
         && html.indexOf('data-ftt-sync-log-status') >= 0 && html.indexOf('data-ftt-sync-log') >= 0;
 })(), '');
 
-await A('I2 面板动作接线：syncLogClear / syncLogRefresh / storageVerify / storageSync 均经 panelAction 可达并回填提示', async () => {
+await A('I2 面板动作接线：syncLogClear / syncLogRefresh / storageVerify / storageSync / storageStatusRefresh / worldbookRefresh 均经 panelAction 可达并回填提示', async () => {
     boot();
     openPanel('settings');
     setPanelHooks2({});
@@ -451,13 +451,15 @@ await A('I2 面板动作接线：syncLogClear / syncLogRefresh / storageVerify /
     const r3 = await panelAction('storageVerify', {});
     const r4 = await panelAction('storageSync', {});
     const r5 = await panelAction('storageStatusRefresh', {});
+    const r6 = await panelAction('worldbookRefresh', {});
     return page.indexOf('data-ftt-settings-page="storage"') >= 0 && page.indexOf('data-ftt-action="storageSync"') >= 0
         && r1.ok === true && r1.note.indexOf('清空') >= 0
         && r2.ok === true && !!r2.note
         && r3.ok === true && !!r3.note
         && r4.ok === true && !!r4.note
         && r5.ok === true && !!r5.note
-        && SYNC_ACTIONS.length === 5;
+        && r6.ok === true && Array.isArray(r6.names) && String(r6.note).indexOf('世界书') >= 0   // B8-7：世界书列表刷新（无宿主接口时如实告警）
+        && SYNC_ACTIONS.length === 6;
 }, (() => ({ acts: SYNC_ACTIONS })));
 
 await A('I3 UI 动作直调：syncAction 未知动作不崩、日志 HTML 含「本地 → 对端 → 同步后」三段', async () => {

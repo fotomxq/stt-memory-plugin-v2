@@ -734,6 +734,7 @@ export const SETTINGS_CONTROLS = {
             "key": "storage.worldbookName",
             "label": "选择世界书",
             "type": "select",
+            "optionsFrom": "worldbookNames",
             "options": [ { "v": "", "label": "（选择世界书）" } ]
         },
         {
@@ -821,6 +822,7 @@ export const SETTINGS_CONTROLS = {
 import { cfg } from '../core/model/runtime.js';
 import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
+import { worldbookNames } from '../host/worldbook.js';
 import { VERSION } from '../core/constants.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
@@ -890,7 +892,14 @@ export function settingsControlHtml(c) {
             + '<span class="ftt-muted">' + (on ? '已开启' : '已关闭') + (forced ? '（由「及时分析」强制开启）' : '') + '</span></div>';
     }
     if (type === 'select') {
-        const list = Array.isArray(c.options) ? c.options : [];
+        // 动态选项（B8-7 世界书）：`optionsFrom: 'worldbookNames'` 时由宿主世界书列表填充（V1 `worldbookNamesHtml` 同源）
+        let list = Array.isArray(c.options) ? c.options : [];
+        if (String(c.optionsFrom || '') === 'worldbookNames') {
+            try {
+                const names = worldbookNames();
+                list = list.concat(names.map((n) => ({ v: n, label: n })));
+            } catch (e) { /* 宿主无世界书接口 → 仅保留占位项 */ }
+        }
         const norm = (o) => (o && typeof o === 'object') ? { v: String(o.v == null ? '' : o.v), label: String(o.label == null ? o.v : o.label) } : { v: String(o == null ? '' : o), label: String(o == null ? '' : o) };
         const cur = String(v == null ? '' : v);
         const items = (list.length ? list : [cur]).map(norm);

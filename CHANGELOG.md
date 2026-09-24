@@ -3,6 +3,22 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.21.0（2026-09-26）· B8-7 传言演化与世界书镜像**接线**（界面/动作/FTT 入口）
+
+**本版把 v2.20.0 的两套内核接到界面与调试入口上（此前为「内核已就位、待接线」）**：
+1. **传言演化接线**：传言页工具条新增 V1 同款按钮 —— 「🧪 立即演化」（`title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）"`，**恒显**）与「🧹 清理传言」（`title="清空全部传言（留删除墓碑）"`，**仅在有传言时显示**，同 V1 `list.length` 条件）；
+   面板动作 `rumorEvolve`（`runRumorEvolveNow` → 提示「传言演化：载体停用 N · 联动 N · 酝酿变化 N · 完成变化 N（裂变 N）」，与 V1 文案一致）与 `clearRumors`（提示「已清空 N 条传言（留删除墓碑）」）；
+   传言页补 V1 同款说明行（每 N 楼轮次演化一次 / 当前已演化次数 / 变化过程需 N 轮才生效 / 传言未经证实）。
+2. **世界书单向镜像接线**：设定「存储 → 世界书」新增 V1 同款「📚 刷新世界书列表」按钮 + `worldbookRefresh` 动作（`SYNC_ACTIONS` 增补，经面板同步分发）；
+   `storage.worldbookName` 下拉改为**动态填充**宿主世界书名列表（`optionsFrom: 'worldbookNames'`，无宿主接口时仅保留占位项并**如实告警**，不伪造列表）；该节说明改为与实现一致（单向写入、类目常驻 + 原子分层、变更后 8s 防抖重建、无 TavernHelper 时按 V1 静默失败）。
+3. **`FTT.*` 新增 24 个入口**：传言域 `rumorEvolve`/`rumorEvolveAuto`/`rumorDecay`/`clearRumors`/`rumorTick`/`rumorEnabled`/`rumorEveryRounds`/`rumorNeedRounds`/`rumorRoll`/`rumorDecayScore`/`rumorExpired`/`rumorInjLine`/`flattenRumor`；
+   世界书域 `worldbookEntries`/`worldbookKeys`/`worldbookIsFttEntry`/`worldbookLegacyEntryName`/`worldbookTotalBytes`/`worldbookMemoryTotal`/`worldbookSync`/`worldbookSyncNow`/`worldbookSyncState`/`worldbookNames`/`refreshWorldbookNames`（`devtools.js` 侧全部带 `hooks && typeof === 'function'` 守卫）。
+4. **文档**：`docs/P8t` 与 `docs/P8y` 各增「§2.1 接线（v2.21.0）」；`docs/P8-功能对齐总表.md` §6 把 `rumorEvolve`/`clearRumors`/`worldbookRefresh` 标为 **✅ 已交付并接线**，并订正 V1 并无 `rumorAdvance` 动作（该名是内部函数 `rumorTickAdvance`，已从清单移除）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **44 文件 / 665 断言**、冒烟 **105 项**（新增 **Y1–Y3**：FTT 24 入口齐备 + `rumorRoll` 确定性 / 传言按钮显隐与两个动作回填 / 世界书刷新动作「真实调用 + 无接口时如实告警」）、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**偏差**：`ui/sync.js` 新增的 `worldbookRefresh` 使 `SYNC_ACTIONS` 由 5 项变 6 项（同步适配单测 I2 已同步扩到 6 项并加断言）；世界书在纯酒馆（无 TavernHelper）下仍按 V1 静默失败 —— 属 V1 原生行为，未改为伪造成功。
+
 ## v2.20.0（2026-09-26）· B8-7 传言演化引擎 + 世界书单向镜像（内核）
 
 **本版（B8-7 内核部分；取自 V1 传言引擎 13261~13820 与 `storageProviders.worldbook` 4604 起）**：
