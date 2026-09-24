@@ -12,6 +12,13 @@ import { installMenuEntry as installMenuEntryFn } from '../../ui/menu.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const R = makeReporter('bootstrap 启动鲁棒性（无事件/容器回退/诊断入口）');
+
+/** 异步断言助手：**求值后再断言**（防「Promise 恒真」的假绿；见 tests/harness/st-mock.js 的防呆） */
+async function A(name, fn, detail) {
+    let cond = false, extra = detail;
+    try { cond = await fn(); } catch (e) { cond = false; extra = String((e && e.message) || e); }
+    R.assert(name, cond === true, extra);
+}
 const J = (v) => JSON.stringify(v);
 const TEMPLATE = readFileSync(join(ROOT, 'settings.html'), 'utf8');
 const IDS = ['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu',
@@ -107,12 +114,12 @@ await (async () => {
     })(), (() => { const s = entry.runtimeState(); return J({ ok: r && r.ok, ready: s.ready, triggers: s.bootstrap.triggers }); })());
 
     entry.teardown();
-    R.assert('B8 teardown 后可恢复：stopReadyProbe + forceMount 仍成功，候选容器 3 个', (async () => {
+    await A('B8 teardown 后可恢复：stopReadyProbe + forceMount 仍成功，候选容器 3 个', async () => {
         entry.stopReadyProbe();
         const after = await entry.forceMountPanel();
         const info = entry.panelMountInfo();
         return after.ok === true && info.mounted === true && typeof info.candidates.length === 'number' && info.candidates.length === 3;
-    })(), J(entry.panelMountInfo()));
+    }, J(entry.panelMountInfo()));
 })();
 
 // ---------- 悬浮兜底（面板挂不进抽屉时的最后可见性方案） ----------
@@ -137,19 +144,19 @@ await (async () => {
     const captured = [];
     const clickR = await entry.openPanelPopup();
     const overlay = doc._els['ftt-panel'];
-    R.assert('B10 悬浮入口/入口点击 → 打开 V1 同构浮层（#ftt-panel + 13 分页；分页切换渲染对应内容）', (async () => {
+    await A('B10 悬浮入口/入口点击 → 打开 V1 同构浮层（#ftt-panel + 13 分页；分页切换渲染对应内容）', async () => {
         const r1 = await entry.popupAction('tab', { tab: 'settings' });
         const r2 = await entry.popupAction('tab', { tab: 'atoms' });
         const r3 = await entry.popupAction('tab', { tab: 'overview' });
         const info = entry.panelInfo();
         const ok = clickR.ok === true && clickR.via === 'overlay' && info.open === true
             && info.tabs.length === 13
-            && String(overlay && overlay.html || '').indexOf('ftt-modal') >= 0
+            && String(entry.popupHtml()).indexOf('ftt-modal') >= 0
             && String(r1.html).indexOf('ftt_v2_cfg_budget') >= 0
             && String(r2.html).indexOf('data-ftt-search="atoms"') >= 0
             && String(r3.html).indexOf('📚 类目统计') >= 0;
         return ok;
-    })(), { via: clickR.via, calls: captured.length });
+    }, { via: clickR.via, calls: captured.length });
 
     // ensureVisibleEntry：挂不上 → 装悬浮；挂得上 → 拆悬浮
     const panelMod2 = await import('../../ui/settings-panel.js');

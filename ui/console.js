@@ -33,10 +33,14 @@ function dimLabel(kind) {
 }
 
 /** 维度容器数组（关联层 `links` 不在 14 维内，单独处理） */
+/** UI kind → 数据容器键（V1 界面用 'states'，容器是 currentStates；两套 UI 读同一容器） */
+function dataKeyOf(kind) { return kind === 'states' ? 'currentStates' : String(kind || ''); }
+
 function arrOf(kind) {
     try {
         if (kind === 'links') return Array.isArray(state.links) ? state.links : [];
-        return Array.isArray(state[kind]) ? state[kind] : [];
+        const k = dataKeyOf(kind);
+        return Array.isArray(state[k]) ? state[k] : [];
     } catch (e) { return []; }
 }
 
@@ -52,8 +56,12 @@ export function entryMatches(e, q) {
     const needle = String(q || '').trim().toLowerCase();
     if (!needle) return true;
     try {
+        // 搜索字段覆盖各维度的主要文本（V1 各维度搜索项的超集：状态看 field/value、物品看 desc/location、
+        //   角色看 origin/history、货币看 note 等 —— 见 docs/P8c-B2条目操作.md「搜索口径」）
         const hay = [e.id, e.title, e.name, e.content, e.text, e.subject, e.owner, e.who,
-            (Array.isArray(e.tags) ? e.tags.join(' ') : ''), (Array.isArray(e.keywords) ? e.keywords.join(' ') : '')]
+            e.field, e.value, e.desc, e.note, e.location, e.origin, e.history, e.speechStyle,
+            (Array.isArray(e.tags) ? e.tags.join(' ') : ''), (Array.isArray(e.keywords) ? e.keywords.join(' ') : ''),
+            (Array.isArray(e.characters) ? e.characters.join(' ') : ''), (Array.isArray(e.entities) ? e.entities.join(' ') : '')]
             .filter(Boolean).join(' ').toLowerCase();
         return hay.indexOf(needle) >= 0;
     } catch (x) { return false; }
