@@ -820,6 +820,8 @@ export const SETTINGS_CONTROLS = {
 //   货币追踪、预设/API 等）在页内明确标注，不使用假实现。
 //   B9-a 起：**调试页**（日志查看器 + `dbgClear`）与**关于页**（版本清单读取 + 清缓存/重载）已接入
 //   （`ui/debug.js` / `ui/about.js`，分别对应 V1 的 `debugHtml()` 与 `aboutHtml()`）；数据管理页新增 `reset`。
+//   B9-c 起：**投喂页**追加 V1 的「投喂标签自动分析」节与投喂白/黑名单两节
+//   （`ui/feed-scan.js`，对应 V1 `rxTagScanHtml()` 与 `rxScanTags`/`rxAddTag`/`rxScanClear` 三个动作）。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
 import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
@@ -833,6 +835,7 @@ import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
 import { aboutHtml as aboutPageHtml } from './about.js';
+import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -984,6 +987,9 @@ export function settingsPageHtml(pageId) {
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 它是什么 / 版本更新」三节（`ui/about.js#aboutHtml`）+ V2 附加信息
     if (pid === 'about') return aboutPageHtml() + pageExtraHtml('about');
+    // 投喂页（B9-c）：V1 的控件行 + 「投喂标签自动分析」节 + 投喂白/黑名单两节（`ui/feed-scan.js`）
+    //   控件表同名同序；扫描 / 一键收录入口为 B9-c 新增（V1 约 25513~25527 同段落）
+    if (pid === 'feed') return list.map((c) => settingsControlHtml(c)).join('\n') + feedScanSectionHtml() + feedTagListSectionsHtml();
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';

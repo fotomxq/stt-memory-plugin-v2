@@ -151,6 +151,12 @@ function removeTrackedCurrencyRole(name) {
 function clearTrackedCurrencyRoles() {
     try { const n = trackedCurrencyRoles().length; cfg.currencyTrackedRoles = []; saveCfg(); return n; } catch (e) { return 0; }
 }
+// v1.183：货币页「👥 指定角色」选择器开关（V1 模块级 `let currencyTrackPicking = false`，
+//   `trackPickState()` / `setTrackPick(v)` 为 UI 事件与测试共用；V2 同名放在模型层，面板只读写这两个函数）
+let currencyTrackPicking = false;
+
+function trackPickState() { return !!currencyTrackPicking; }
+function setTrackPick(v) { currencyTrackPicking = !!v; return currencyTrackPicking; }
 // 可标定的「角色大类已知角色」（角色档案姓名；按名称去重排序）
 
 function mergeMoneyHistory(oldArr, newArr) {
@@ -210,4 +216,4 @@ function knownCharacterNames() {
 }
 // 收支合并：同条目更新时把新流水追加到旧流水尾部（去重：同日期同额同说明视为同一笔），保留最近 12 笔
 
-export { formatMoney, roundMoney, moneyNet, normalizeMoneyFlow, normalizeMoneyHistory, normalizeCurrency, trackedCurrencyRoles, isTrackedCurrencyOwner, addTrackedCurrencyRole, removeTrackedCurrencyRole, clearTrackedCurrencyRoles, mergeMoneyHistory, defaultCurrencyOwner, knownCharacterNames };
+export { formatMoney, roundMoney, moneyNet, normalizeMoneyFlow, normalizeMoneyHistory, normalizeCurrency, trackedCurrencyRoles, isTrackedCurrencyOwner, addTrackedCurrencyRole, removeTrackedCurrencyRole, clearTrackedCurrencyRoles, trackPickState, setTrackPick, mergeMoneyHistory, defaultCurrencyOwner, knownCharacterNames };
