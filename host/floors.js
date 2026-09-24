@@ -83,6 +83,20 @@ export function collectFloorLines(maxFloors) {
     } catch (e) { return []; }
 }
 
+/** 投喂文本（V1 `buildFeedFloorText`）：最近 N 楼原始行 → 投喂正则过滤（时钟/修复类管线共用） */
+export function buildFeedFloorText(maxFloors) {
+    try { return applyFeedRegex(collectFloorLines(maxFloors).join('\n')); } catch (e) { warn('楼层投喂构建失败', e); return ''; }
+}
+/** 指定结束楼层的投喂文本（V1 `buildFeedFloorTextRange`：摘要用于排除生成中的最近楼） */
+export function buildFeedFloorTextRange(maxFloors, endFloor, opts) {
+    try {
+        const end = Number(endFloor);
+        const validEnd = Number.isInteger(end) && end >= 0 ? end : Math.max(0, (getCtx() && Array.isArray(getCtx().chat) ? getCtx().chat.length : 1) - 1);
+        const n = Math.max(1, Number(maxFloors) || 10);
+        return applyFeedRegex(collectFloorLinesInRange(Math.max(0, validEnd - n + 1), validEnd, opts).join('\n'));
+    } catch (e) { warn('楼层投喂构建失败', e); return ''; }
+}
+
 /** 可分析正文（V1 `floorAnalyzableText`）：投喂正则过滤 + 去占位楼 */
 export function floorAnalyzableText(i) {
     try {

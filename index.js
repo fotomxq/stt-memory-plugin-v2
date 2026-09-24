@@ -23,8 +23,8 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors } from './host/extract.js';
-import { listUnprocessedFloors, collectFloorLinesInRange } from './host/floors.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy } from './host/extract.js';
+import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
@@ -41,6 +41,9 @@ import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
+import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } from './core/clock-ai.js';
+import { promptToGenerateArgs } from './host/extract.js';
+import { rawGenerate } from './host/generation.js';
 import { clockUiInfo } from './ui/clock.js';
 import {
     storageBootstrap, scheduleStorageSync, crossSyncManual, refreshFromServer, storageVerify,
@@ -324,6 +327,10 @@ function bootstrapDiagnostics() {
             clockExtractSchedule: () => scheduleClockExtract(),
             clockHeader: (text) => extractClockFromHeader(text),
             clockExtractText: (text, prev) => extractClockFromText(text, prev || {}),
+            // B8-3 时钟域 AI 管线
+            clockRegexGen: (opts) => genClockRegexes(opts || {}),
+            clockRepair: (opts) => runClockRepair(opts || {}),
+            clockRepairPack: () => clockRepairPack(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
@@ -552,6 +559,17 @@ function installHostBridges() {
                 return collectFloorLinesInRange(Math.max(0, last - n + 1), last).join('\n');
             } catch (e) { return ''; }
         },
+    });
+    // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
+    setClockAiHooks({
+        callAi: async (messages) => {
+            try {
+                const r = await rawGenerate(promptToGenerateArgs(messages));
+                return r && r.ok ? { ok: true, text: String(r.text || '') } : { ok: false, error: String((r && r.error) || 'no-generate') };
+            } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+        },
+        feedText: (maxFloors) => { try { return buildFeedFloorText(maxFloors); } catch (e) { return ''; } },
+        busy: () => { try { return !!extractBusy(); } catch (e) { return false; } },
     });
     // 内核延迟调度钩子 → 宿主定时器（快照增量 400ms 防抖依赖它；未接线时内核默认 no-op = 永不建增量快照）
     setTimerHooks({

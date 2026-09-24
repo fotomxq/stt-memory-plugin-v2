@@ -779,14 +779,16 @@ export function basePageHtml(controls) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">剧情时钟自动提取（总览 日期/时间/地点）</div>',
         rows(['clockExtractEnabled', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative']),
-        '<div class="ftt-hint">🤖「AI 捕捉正文 → 生成正则」属后续批次（B8-2），本页先提供预设与自定义正则。</div>',
+        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRegexGen" title="把最近楼层正文交给 AI，总结日期/时间/地点的书写规律并生成三条正则（会校验：可编译、不匹配空串、样本中有命中）">🤖 AI 捕捉正文 → 生成正则</button></div>',
+        '<div class="ftt-hint">AI 只依据正文样本总结写法（兼容「公元1919年11月29日」「公元9年」「一九一九年三月一日」等），生成后自动写入上方三个输入框并给出试算结果；不合适可手动改写或清空。该操作只影响总览的 日期/时间/地点 自动提取。</div>',
         '<div class="ftt-muted">取用顺序：正则直取 → 标记式带值 → 时段词/时刻 → 相对日期推进 → AI 摘要的当前状态 → 无结果时展示最近记忆参考（不写入）。仅影响总览 日期/时间/地点 的自动提取。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">时钟降级与时间巡检（总览）</div>',
         rows(['clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch', 'clockAutoPatrol', 'clockPatrolAutoFix', 'clockRepairBatch']),
         '<div class="ftt-muted">判定项：① 日期格式非法；② 年份比当前时钟/最新情节晚超过 N 年（如 1919 剧情里出现 2011）；③ 早超过 N 年（剧情时间大幅倒退）。命中即降级，并在总览「🕒 时钟来源」里注明原因。</div>',
         '<div class="ftt-muted">巡检 情节 / 记忆 / 计划 / 悬念 / 平行事件 的 日期 与 时间：格式非法 → 按内容重解析（解析不出则清空）；年份漂移 → 按内容重解析或保留月日改年份。安全口径：① 锚点不可信 → 只统计不修改；② 任何写回都要求「格式合法 + 不触发年份异常」；③ 格式合法但年份漂移、又无法可靠修正 → 保留原值；④ 写回前自动留一份全量快照。总览「🩺 时间巡检修复」为手动修复（按当前锚点校正年份，请先确认锚点正确）。</div>',
-        '<div class="ftt-hint">🩺「AI 结合正文修复日期时间」属后续批次（B8-2）；本页可先用零 AI 的时间巡检。</div></div>',
+        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRepair" title="把异常日期/时间连同最近正文交 AI 判定并修复（只改日期与时间字段；独立修复，不影响自动巡检）">🩺 AI 结合正文修复日期时间</button></div>',
+        '<div class="ftt-hint">独立修复：只在点这个按钮时执行 —— 依据【近期正文】+【时间锚点】逐条判定正确值，插件只接受格式合法且年份未超阈值的修正（不合格丢弃、无法判定如实回报）。上面的「时间巡检」是零 AI 的机械修复，两者互不干扰。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
         '<div class="ftt-muted">V2 的入口形态在「V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
