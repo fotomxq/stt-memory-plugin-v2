@@ -14,6 +14,8 @@
 
 ## 2. 安装
 
+> 仓库地址（唯一）：`https://github.com/fotomxq/stt-memory-plugin-v2.git`；`origin` 已指向该仓库，默认分支 `main`。
+
 1. SillyTavern → **Extensions（扩展）** → **Install extension（安装扩展）**；
 2. 填入本仓库 Git 地址（默认分支 `main`）；
 3. 安装完成后在扩展列表启用（`FTT记忆组件 V2`）；
@@ -41,7 +43,7 @@
 | 设置内「⬆ 立即更新（ST）」 | 代为调用 ST 更新端点执行 `git pull`（**仅用户点击**） |
 | `/ftt`、`FTT.update()` | 查看更新配置、最近检查结果与状态文案 |
 
-默认检查地址 = **本项目的 GitHub 地址**（设置内可改）：`https://github.com/fotomxq/stt-memory-plugin`（分支 `main`）。
+默认检查地址 = **本项目的 GitHub 仓库**（设置内可改）：`https://github.com/fotomxq/stt-memory-plugin-v2`（分支 `main`）。
 失败一律静默（不阻塞启动/发送/提取）；扩展**不下载、不写入、不执行远端代码** —— 拉取代码只由 ST 或用户手工完成。
 详见 `docs/更新检查机制.md`。
 

@@ -50,7 +50,7 @@ export const DIMENSIONS = Object.freeze([
 ]);
 
 /** 更新检查默认仓库地址（用户要求：以 GitHub 项目地址作为更新检查地址；可在设置里改） */
-export const DEFAULT_UPDATE_REPO = 'https://github.com/fotomxq/stt-memory-plugin';
+export const DEFAULT_UPDATE_REPO = 'https://github.com/fotomxq/stt-memory-plugin-v2';
 /** 更新检查默认分支 */
 export const DEFAULT_UPDATE_BRANCH = 'main';
 /** 自动检查间隔（小时） */
