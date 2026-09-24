@@ -1967,6 +1967,114 @@ await assert('AC3 分段总结端到端：面板「🧩 生成分段总结」（
     } finally { host.ctx.generateRaw = origGen; }
 })(), '');
 
+// ---------- AD 平行推演 + 推进 + 转正（B8-7-b） ----------
+await assert('AD1 平行事件接线齐备：FTT.* 入口（15 项）+ 总览「🧭 推演世界」紧贴「📤 提取记忆」右侧 / 平行页「🚀 全部推进」「🚀」「⬆ 转正为情节」文案与 title 与 V1 逐字一致（已转正不显示 ⬆、未开启开关给提示）', (async () => {
+    const F = globalThis.FTT;
+    const names = ['weaveEnabled', 'weavePassiveDue', 'weaveInputSig', 'matchParallelsByKeywords', 'scheduleParallelWeave',
+        'runParallelWeave', 'advanceContextSeed', 'buildAdvanceContext', 'buildAdvancePrompt', 'applyAdvanceUpdate',
+        'runParallelAdvance', 'promoteParallelEvent', 'prunePromotedParallels', 'setParallelLastKeywords', 'parallelLastKeywords'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.parallels = [
+        { id: 'smoke-par-1', title: '黑市风声', text: '码头有人私下交易军械。', type: '阴谋', date: '1919-11-29', tags: ['黑市'], characters: ['角色甲'] },
+        { id: 'smoke-par-2', title: '远方的战争', text: '北方边境的冲突可能波及本地。', type: '背景', tags: ['战争'] },
+    ];
+    await entry.popupAction('tab', { tab: 'overview' });
+    let h = String((await entry.popupAction('refresh', {})).html || '');
+    const a = h.indexOf('data-ftt-action="extractNow"');
+    const b = h.indexOf('data-ftt-action="parallelWeaveNow"');
+    const overviewOk = a >= 0 && b > a && h.indexOf('id="ftt-weave-btn"') >= 0
+        && h.indexOf('>🧭 推演世界</button>') >= 0 && h.indexOf('title="手动触发平行事件推演（独立交织管线）"') >= 0;
+    await entry.popupAction('tab', { tab: 'parallels' });
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const parOk = h.indexOf('data-ftt-action="parallelAdvanceAll"') >= 0
+        && h.indexOf('title="全部平行事件交 AI 逐一推进"') >= 0 && h.indexOf('🚀 全部推进') >= 0
+        && h.indexOf('data-ftt-action="parallelAdvance" data-id="smoke-par-1"') >= 0
+        && h.indexOf('title="推进该事件（附带记忆数据作种子）"') >= 0
+        && h.indexOf('data-ftt-action="promoteParallel" data-id="smoke-par-1"') >= 0
+        && h.indexOf('title="转正为情节（需确认）"') >= 0 && h.indexOf('⬆ 转正为情节') >= 0
+        && h.indexOf('仅幕后（角色不知情）') >= 0;
+    // 已转正 → 该条不显示 ⬆ 按钮 + 备注「 · 已转正为情节」（按真实 id 定位）
+    st.parallels[0].promotedTo = 'atom_from_v1';
+    h = String((await entry.popupAction('refresh', {})).html || '');
+    const promotedOk = h.indexOf('data-ftt-action="promoteParallel" data-id="smoke-par-1"') < 0
+        && h.indexOf(' · 已转正为情节') >= 0
+        && h.indexOf('data-ftt-action="promoteParallel" data-id="smoke-par-2"') >= 0;
+    st.parallels[0].promotedTo = '';
+    // 开关未开启 → V1 逐字提示（提示读 r.state.note）
+    rtMod.cfg.parallelWeaveEnabled = false;
+    const off = await entry.popupAction('parallelWeaveNow', {});
+    const offNote = String(((off.state || {}).note) || '');
+    rtMod.cfg.parallelWeaveEnabled = true;
+    return missing.length === 0 && overviewOk && parOk && promotedOk && offNote === '🧭 推演世界未开启（设置→提取记忆→推演世界）';
+})(), '');
+
+await assert('AD2 面板「🧭 推演世界」端到端：AI 桩返回「平行事件」增量 → 新增 1 / 更新 1 落库（提示读 r.state.note），触发提示词含平行事件模板与最近关键词', (async () => {
+    const st = rtMod.state;
+    const origGen = host.ctx.generateRaw;
+    let calls = 0, prompt = '';
+    const payload = JSON.stringify({
+        平行事件: {
+            新增: [{ 标题: '码头军械暗流', 正文: '码头黑市或已流入一批军械，牵动本地势力。', 卦象: '坎', 因果线: '木箱断口 → 黑市军械', 类型: '阴谋', 日期: '1919-11-30', 标签: ['黑市', '军械'], 涉及角色: ['角色甲'] }],
+            更新: [{ 标题: '黑市风声', 正文: '交易升级：军械已进入码头仓库，买家开始催货。', 因果线: '木箱断口 → 黑市 → 仓库中转' }],
+        },
+    });
+    host.ctx.generateRaw = async (args) => { calls++; try { prompt = JSON.stringify(args || {}); } catch (e) { prompt = ''; } return payload; };
+    try {
+        st.atoms = [{ id: 'smoke-pw-a1', title: '发现木箱', text: '甲在码头发现一只木箱，断口整齐，来源不明。', validity: 'active', tags: ['码头'], date: '1919-11-29' }];
+        st.parallels = [{ id: 'smoke-par-w1', title: '黑市风声', text: '码头有人私下交易。', tags: ['黑市'], gua: '坎', causalLine: '木箱 → 黑市' }];
+        rtMod.cfg.parallelWeaveEnabled = true;
+        globalThis.FTT.setParallelLastKeywords(['码头']);
+        const base = calls;
+        const r = await entry.popupAction('parallelWeaveNow', {});
+        const note = String(((r.state || {}).note) || '');
+        const added = (st.parallels || []).find((p) => String(p.title) === '码头军械暗流');
+        const updated = (st.parallels || []).find((p) => String(p.id) === 'smoke-par-w1');
+        const ok = calls === base + 1 && note.indexOf('推演世界完成：新增 1 / 更新 1') >= 0
+            && !!added && String(added.gua) === '坎' && !!updated && String(updated.text).indexOf('军械已进入码头仓库') >= 0
+            && prompt.indexOf('平行事件') >= 0 && prompt.indexOf('码头') >= 0 && prompt.indexOf('最近正文') >= 0;
+        globalThis.FTT.setParallelLastKeywords([]);
+        return ok;
+    } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
+await assert('AD3 面板「🚀 推进」+「⬆ 转正为情节」端到端：推进按 id 精确改写正文；转正生成情节、自动移除平行记录并留墓碑（提示读 r.state.note）', (async () => {
+    const st = rtMod.state;
+    const origGen = host.ctx.generateRaw;
+    let payload = '';
+    host.ctx.generateRaw = async () => payload;
+    try {
+        st.atoms = []; st.deleted = {}; st.deletedH = {};
+        st.parallels = [
+            { id: 'smoke-par-a1', title: '黑市风声', text: '码头有人私下交易军械。', type: '阴谋', tags: ['黑市'], characters: ['角色甲'], location: '码头' },
+            { id: 'smoke-par-a2', title: '远方的战争', text: '北方边境的冲突可能波及本地。', type: '背景', tags: ['战争'], characters: ['角色乙'] },
+        ];
+        // ① 单条推进：AI 按真实 id 返回新阶段正文
+        payload = JSON.stringify({ 推进: [{ id: 'smoke-par-a1', 正文: '黑市交易升级，军械已进入码头仓库，官府开始留意。', 因果线: '木箱 → 黑市 → 仓库' }] });
+        const r1 = await entry.popupAction('parallelAdvance', { id: 'smoke-par-a1' });
+        const note1 = String(((r1.state || {}).note) || '');
+        const hit = (st.parallels || []).find((p) => p.id === 'smoke-par-a1');
+        const okAdv = note1.indexOf('🚀 平行事件推进完成：更新 1/1 条') >= 0
+            && !!hit && String(hit.text).indexOf('军械已进入码头仓库') >= 0;
+        // ② 转正（关闭确认开关：无对话框环境下 V1 口径为「取消」）
+        rtMod.cfg.parallelPromoteConfirm = false;
+        const atomsBefore = (st.atoms || []).length;
+        const r2 = await entry.popupAction('promoteParallel', { id: 'smoke-par-a1' });
+        const note2 = String(((r2.state || {}).note) || '');
+        const tombs = Object.keys(((st.deleted || {}).parallels) || {});
+        const okPromote = (st.atoms || []).length === atomsBefore + 1
+            && !(st.parallels || []).some((p) => String(p.id) === 'smoke-par-a1')
+            && tombs.indexOf('smoke-par-a1') >= 0
+            && note2.indexOf('已转正为情节') >= 0 && note2.indexOf('自动移除') >= 0;
+        // ③ 恢复确认开关；全部推进在空库时如实提示
+        rtMod.cfg.parallelPromoteConfirm = true;
+        st.parallels = [];
+        const r3 = await entry.popupAction('parallelAdvanceAll', {});
+        const note3 = String(((r3.state || {}).note) || '');
+        return okAdv && okPromote && note3 === '⏳ 当前没有平行事件';
+    } finally { host.ctx.generateRaw = origGen; }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

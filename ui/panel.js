@@ -31,6 +31,10 @@ import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
 import {
     runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
 } from '../core/plot-segment.js';
+import {
+    runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
+} from '../core/parallel.js';
+import { parallelExpired } from '../core/recall.js';
 import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
@@ -161,7 +165,9 @@ function overviewBody() {
             + (pending.length > 40 ? ' …等 ' + pending.length + ' 个' : '') + '</div></div>');
     } else lines.push('<div class="ftt-muted">🎉 最近楼层均已摘要。</div>');
     // 工具行（V1 同名按钮；未实现的动作给出明确提示，避免「按了没反应」）
-    // B8-4：V1 总览的「🌶 弱化NSFW」按钮（紧贴「📤 提取记忆」右侧）+ 内容弱化状态行
+    // B8-4：V1 总览的「🌶 弱化NSFW」按钮（V2 既有布局把它放在「📤 提取记忆」右侧；
+    //   V1 v1.206 的顺序实为「弱化NSFW → 提取记忆 → 推演世界」，本批按 V1 注释语义把「🧭 推演世界」
+    //   紧贴提取记忆右侧，弱化NSFW 顺延到推演世界之后 —— 文案/title 与 V1 逐字一致）
     const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
     const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="'
         + (nsfwSt && nsfwSt.enabled ? '分析侧开关已开（新数据不含露骨内容）；本按钮按关键词扫描已有原子数据并交 AI 弱化' : '按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页开启）')
@@ -170,6 +176,9 @@ function overviewBody() {
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
         + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理（零 AI）→ ② 候选筛选 → ③ 窄契约 AI 修订；本批已交付第 1 段">🛠 自动修复</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
+        // B8-7-b：V1 总览「🧭 推演世界」（紧贴「📤 提取记忆」右侧；V1 注释「提取记忆右侧 = 平行事件触发分析（推演世界）」）
+        //   文案 / title / 位置与 V1 逐字一致（V1 `panelHtml()` 总览工具行）
+        + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
         + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>'
@@ -362,6 +371,43 @@ function plotSegmentsBodyHtml() {
     return out.join('\n');
 }
 
+/**
+ * 平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 `topBar` 逐字：
+ *   文案 / title / 旁注与 V1 一致；V2 用 `data-ftt-action` + `data-id` 约定）。
+ */
+function parallelTopBar() {
+    return '<div class="ftt-row" style="margin:4px 0"><button class="ftt-btn ftt-sm" data-ftt-action="parallelAdvanceAll" title="全部平行事件交 AI 逐一推进">🚀 全部推进</button><span class="ftt-muted">记忆数据随推进一并交给 AI 作背景与种子；事件可能只是世界背景/间接相关，不会强行牵引到主角。</span></div>';
+}
+
+/** 平行事件行的「相关角色（角色不知情）」摘要（V1 `relSummaryLine('parallels', id, 6)` 的 V2 等价） */
+function parallelRelWho(p) {
+    try {
+        const rows = relRowsOf('parallels', String((p && p.id) || ''));
+        const people = rows.filter((x) => x && x.who);
+        return people.length ? ('相关：' + people.slice(0, 6).map((x) => x.who).join('、') + '（角色不知情）') : '';
+    } catch (e) { return ''; }
+}
+
+/**
+ * 平行事件行专属操作（V1 `parallelsHtml()` 逐条渲染的 `advBtn` / `proBtn` / `line8`）：
+ *   · `🚀` 推进按钮：**已达衰退阈值（`parallelExpired`）时不显示**（且只在衰退机制开启时判定，V1 原样）；
+ *   · `⬆` 转正按钮：**已转正（`promotedTo`）时不显示**；
+ *   · 备注行：相关角色 / 「仅幕后（角色不知情）」+「 · 已转正为情节」+ 转正入口（文案与 V1 一致）。
+ *   注：V1 备注行还有「🔗 关联」跳转（`relJump` 动作），V2 面板尚未移植该动作 → 本批不渲染空跳转。
+ */
+function parallelRowBits(e) {
+    const id = String((e && e.id) || '');
+    let expired = false;
+    try { if (cfg.parallelDecayEnabled !== false) expired = parallelExpired(e); } catch (x) { /* 忽略 */ }
+    const promoted = !!String((e && e.promotedTo) || '').trim();
+    const who = parallelRelWho(e);
+    const note = '<div class="ftt-note ftt-note-info">' + esc(who || '仅幕后（角色不知情）') + (promoted ? ' · 已转正为情节' : '')
+        + (promoted ? '' : ' <span class="ftt-rel-jump" data-ftt-action="promoteParallel" data-id="' + attr(id) + '" title="转正为情节（需确认，原条不再注入）">⬆ 转正为情节</span>') + '</div>';
+    const adv = expired ? '' : '<button class="ftt-op ftt-ok" data-ftt-action="parallelAdvance" data-id="' + attr(id) + '" title="推进该事件（附带记忆数据作种子）">🚀</button>';
+    const pro = promoted ? '' : '<button class="ftt-op" data-ftt-action="promoteParallel" data-id="' + attr(id) + '" title="转正为情节（需确认）">⬆</button>';
+    return { note: note, ops: adv + pro };
+}
+
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -418,21 +464,25 @@ function dimBodyList(kind) {
         ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '') : ''))
         : '';
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
-    if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    // B8-7-b：平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 topBar；空库时同样显示）
+    const ptb = (kind === 'parallels') ? parallelTopBar() : '';
+    if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     const rows = list.map((e) => {
         const id = String(e.id || '');
         const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || ''].filter(Boolean).join(' · ');
         const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
         const box = multi ? ('<input type="checkbox" data-ftt-select="' + attr(kind) + '" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
+        const par = (kind === 'parallels') ? parallelRowBits(e) : null;
         return '<div class="ftt-item ftt-inline">' + box
-            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + '</span>'
+            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + (par ? par.note : '') + '</span>'
+            + (par ? par.ops : '')
             + peekBtn
             + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
             + '</div>';
     }).join('\n');
-    return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + head + ed + peek + rows;
+    return (REL_TABDS[kind] ? subViewHtml(kind) : '') + toolbar + ptb + head + ed + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -737,6 +787,21 @@ export function panelOpen() { return ps.open; }
 function setNote(text) { ps.note = String(text == null ? '' : text); return ps.note; }
 
 /**
+ * 确认框（V1 `D.confirm(...)` 的 V2 等价）：
+ *   ① 优先用宿主注入的 `hooks.confirm(text, title)`（测试/宿主可替换）；
+ *   ② 否则用浏览器原生 `globalThis.confirm`；
+ *   ③ **都没有 → 返回 false（取消）** —— 与 V1「`D.confirm` 不是函数时 `ok=false` 直接 break」同口径，
+ *      保证「转正需确认」在无对话框环境下不会被绕过。
+ */
+function confirmDialog(text, title) {
+    try {
+        if (typeof hooks.confirm === 'function') return !!hooks.confirm(String(text || ''), String(title || ''));
+        const w = (typeof globalThis !== 'undefined') ? globalThis : null;
+        return (w && typeof w.confirm === 'function') ? !!w.confirm(String(text || '')) : false;
+    } catch (e) { return false; }
+}
+
+/**
  * 面板动作（唯一入口；真实 DOM 与测试共用）。
  * action: tab | close | search | edit | edit-cancel | save | delete | refresh | summary | extractNow | inject
  *         | summaryFloor | clear-inject | check-update
@@ -847,6 +912,74 @@ export async function panelAction(action, payload) {
             const n = clearPlotSegments();
             setNote(n ? ('已清理 ' + n + ' 段分段总结') : '当前没有分段总结');
             result = Object.assign(result, { ok: true, action: a, cleared: n });
+        }
+        // ==================== B8-7-b：平行事件（推演 / 推进 / 转正，V1 同名动作） ====================
+        else if (a === 'parallelAdvance') {
+            // V1 `case 'parallelAdvance'`（单条推进）：`runParallelAdvance({ids:[id]})` → 按分支如实提示
+            const id = String(p.id || '');
+            const r = await runParallelAdvance({ ids: id ? [id] : [] });
+            let msg;
+            if (r && r.error) msg = '❌ 推进失败:' + String(r.error).slice(0, 80);
+            else if (r && r.skipped === 'busy') msg = '⏳ 摘要/情节总结/推演/修复进行中，请稍候再推进';
+            else if (r && r.skipped === 'none-active') msg = '⏳ 该事件已达衰退阈值待清理，无法推进';
+            else if (r && r.skipped === 'no-targets') msg = '⏳ 没有可推进的平行事件';
+            else msg = '🚀 平行事件推进完成：更新 ' + Number(r.updated || 0) + '/' + Number(r.target || 0) + ' 条 · AI 调用 ' + Number(r.aiCalls || 0) + ' 次 · 发送 ' + Number(r.sentChars || 0) + ' 字 · 用时 ' + Number(r.ms || 0) + 'ms';
+            setNote(msg);
+            result = Object.assign(result, { ok: !(r && r.error), action: a, parallelAdvance: r });
+        }
+        else if (a === 'parallelAdvanceAll') {
+            // V1 `case 'parallelAdvanceAll'`（全部推进）：`runParallelAdvance({all:true})`
+            const r = await runParallelAdvance({ all: true });
+            let msg;
+            if (r && r.error) msg = '❌ 全部推进失败:' + String(r.error).slice(0, 80);
+            else if (r && r.skipped === 'busy') msg = '⏳ 摘要/情节总结/推演/修复进行中，请稍候再推进';
+            else if (r && r.skipped === 'none-active') msg = '⏳ 当前无活动平行事件可推进';
+            else if (r && r.skipped === 'no-targets') msg = '⏳ 当前没有平行事件';
+            else msg = '🚀 平行事件推进完成：更新 ' + Number(r.updated || 0) + '/' + Number(r.target || 0) + ' 条 · AI 调用 ' + Number(r.aiCalls || 0) + ' 次 · 发送 ' + Number(r.sentChars || 0) + ' 字 · 用时 ' + Number(r.ms || 0) + 'ms';
+            setNote(msg);
+            result = Object.assign(result, { ok: !(r && r.error), action: a, parallelAdvance: r });
+        }
+        else if (a === 'parallelWeaveNow') {
+            // V1 `case 'parallelWeaveNow'`：**先判 `cfg.parallelWeaveEnabled`**（V1 原样：缺失即视为未开启）
+            if (!cfg.parallelWeaveEnabled) {
+                setNote('🧭 推演世界未开启（设置→提取记忆→推演世界）');
+                result = Object.assign(result, { ok: false, action: a, reason: 'disabled' });
+            } else {
+                const lastId = getLastMessageId();
+                const feedN = Math.max(1, Number(cfg.feedFloors) || Number(cfg.summaryFloors) || 10);
+                const fr = { start: Math.max(0, lastId - feedN + 1), end: lastId };
+                const kws = parallelLastKeywords().slice(0, 10);
+                const r = await runParallelWeave(fr, { keywords: kws, force: true });
+                if (r && r.error === 'busy') setNote('⏳ 摘要/情节总结/推演/推进/修复进行中，请稍候');
+                else if (r && r.error) setNote('❌ 推演世界失败:' + String(r.error).slice(0, 60));
+                else if (r && r.skipped === 'dedup') setNote('推演世界：已跳过重复分析（楼层正文与原子未变化）');
+                else if (r && r.skipped === 'empty') setNote('推演世界完成：无新增/更新点（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
+                else setNote('推演世界完成：新增 ' + Number(r.added || 0) + ' / 更新 ' + Number(r.updated || 0) + '（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
+                result = Object.assign(result, { ok: !(r && r.error), action: a, weave: r });
+            }
+        }
+        else if (a === 'promoteParallel') {
+            // V1 `case 'promoteParallel'`：转正需确认（`cfg.parallelPromoteConfirm !== false`）→ 再调核心
+            const id = String(p.id || '');
+            const ev = ((state.parallels) || []).find((x) => x && String(x.id) === String(id));
+            let pr = null, msg;
+            if (!ev) { msg = '未找到该平行事件'; }
+            else if (ev.promotedTo) { msg = '该平行事件已转正'; }
+            else {
+                let go = true;
+                if (cfg.parallelPromoteConfirm !== false) {
+                    go = confirmDialog(`把「${String(ev.title || ev.text || '').slice(0, 30)}」转正为情节？\n\n转正 = 确认为**已发生事实**：会生成/更新一条情节（走正常注入与知情约束），并在情节落库后**自动移除该平行世界记录**（留删除墓碑，跨端不会复活）。`, 'FTT 平行事件转正');
+                }
+                if (!go) { msg = '已取消转正（未生成情节）'; }
+                else {
+                    pr = promoteParallelEvent(id);
+                    msg = (pr && pr.ok)
+                        ? ('已转正为情节 已生成' + (pr.updated ? '/更新' : '') + '情节（id ' + String(pr.atomId || '').slice(0, 18) + '）；已' + (pr.removed ? '自动移除' : '标记') + '该平行世界记录（留删除墓碑，跨端不会复活），情节可在「情节」页查看。')
+                        : ('转正失败 ' + String((pr && pr.reason) || '未知原因'));
+                }
+            }
+            setNote(msg);
+            result = Object.assign(result, { ok: !!(pr && pr.ok), action: a, promote: pr });
         }
         else if (a === 'summary') {
             // V1 `case 'summary'` 的 `data-ftt-summary="plotSegments"` 分流：分段总结（与「⚡ 立即 AI 摘要」共用动作名）

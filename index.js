@@ -90,6 +90,12 @@ import {
     clearPlotSegments, deletePlotSegment, flattenPlotSegment,
 } from './core/plot-segment.js';
 import {
+    setParallelTextHooks, weaveEnabled, weavePassiveDue, weaveInputSig, matchParallelsByKeywords,
+    scheduleParallelWeave, runParallelWeave, advanceContextSeed, buildAdvanceContext, buildAdvancePrompt,
+    applyAdvanceUpdate, runParallelAdvance, promoteParallelEvent, prunePromotedParallels,
+    setParallelLastKeywords, parallelLastKeywords,
+} from './core/parallel.js';
+import {
     plotSegmentId, plotSegmentRange, normalizePlotSegment, normalizePlotSegmentLine, normalizePlotSegmentLines,
     parsePlotSegmentText, plotSegmentsToText, plotSegmentTimeKey, plotSegmentTimeDesc, plotSegmentTimeAsc, sortPlotSegments,
 } from './core/model/segment.js';
@@ -175,6 +181,9 @@ export async function loadMemoryState() {
     if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
     try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    // B8-7-b：历史存档清理（V1 启动同款）——旧版「转正」只写 `promotedTo` 软标记，按 v1.196 规则移除该死条目
+    //   （仅当被转正的情节仍存在；情节已删则保留原平行记录）。
+    try { prunePromotedParallels(); } catch (e) { /* 软标记清理失败不影响载入 */ }
     try { setLastMessageId(runtime.chat.lastMessageId); } catch (e) { /* 忽略 */ }
     try { primeStateIndex(); } catch (e) { /* 索引基线失败不影响载入 */ }
     try { runtime.store = Object.assign({ via }, storeStatus()); } catch (e) { runtime.store = { via }; }
@@ -581,6 +590,22 @@ function bootstrapDiagnostics() {
             flattenPlotSegment: (item) => flattenPlotSegment(item),
             atomSubState: () => atomSubState(),
             setAtomSub: (v) => setAtomSub(v),
+            // B8-7-b 平行世界推演 / 推进 / 转正 / 清理（V1 同名能力）
+            weaveEnabled: () => weaveEnabled(),
+            weavePassiveDue: (endF) => weavePassiveDue(endF),
+            weaveInputSig: (start, end, floorsText) => weaveInputSig(start, end, floorsText),
+            matchParallelsByKeywords: (keywords) => matchParallelsByKeywords(keywords),
+            scheduleParallelWeave: (fr, keywords) => scheduleParallelWeave(fr, keywords),
+            runParallelWeave: (fr, opts) => runParallelWeave(fr, opts || {}),
+            advanceContextSeed: (p) => advanceContextSeed(p),
+            buildAdvanceContext: (targets) => buildAdvanceContext(targets),
+            buildAdvancePrompt: (targets, memText) => buildAdvancePrompt(targets, memText),
+            applyAdvanceUpdate: (p, u) => applyAdvanceUpdate(p, u),
+            runParallelAdvance: (opts) => runParallelAdvance(opts || {}),
+            promoteParallelEvent: (id, opts) => promoteParallelEvent(id, opts || {}),
+            prunePromotedParallels: () => prunePromotedParallels(),
+            setParallelLastKeywords: (list) => setParallelLastKeywords(list),
+            parallelLastKeywords: () => parallelLastKeywords(),
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
@@ -813,6 +838,10 @@ function installHostBridges() {
     });
     // B8-6：修复域钩子（楼层面板哈希走 host/floors；内核不直读宿主聊天）
     setRepairHooks({ floorHash: (i) => { try { return hashFloorText(i); } catch (e) { return ''; } } });
+    // B8-7-b：平行事件取文钩子（V1 `collectFloorLinesInRange(start, end, {})`；内核不直读宿主聊天）
+    setParallelTextHooks({
+        floorLinesInRange: (start, end) => { try { return collectFloorLinesInRange(Number(start) || 0, Number(end) || 0); } catch (e) { return []; } },
+    });
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages) => {

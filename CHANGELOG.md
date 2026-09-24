@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.28.0（2026-09-26）· B8-7-b 平行世界推演 + 平行事件推进/转正
+
+**本版（B8-7-b，取自 V1 v1.206 约 11114~14000 平行族 + 对应动作）**：
+1. **推演（weave）**：`weaveEnabled`/`weavePassiveDue`（被动到期判定）/`weaveInputSig`（输入签名去重）/`matchParallelsByKeywords`/
+   `scheduleParallelWeave`（防抖排程）/`runParallelWeave`（默认区间、新增+更新+删除三分支、关键词命中、签名去重、`force`、忙位）；
+2. **推进（advance）**：`advanceContextSeed`/`buildAdvanceContext`（按目标打包记忆与线索）/`buildAdvancePrompt`（窄契约，**逐字符对齐 V1**）/
+   `applyAdvanceUpdate`（按 id 应用：可能性/状态/新进展等）/`runParallelAdvance`（按 id / `all` / 无目标 / 未知 id / 全过期 / 忙位 / 分批）；
+3. **转正与清理**：`promoteParallelEvent`（平行事件 → 正式情节条目：标题补足、过短拒收、幂等、墓碑）/`prunePromotedParallels`（启动时清理已转正）；
+4. **界面**：总览「🧭 推演世界」（`cfg.parallelWeaveEnabled` 未开启时提示）；平行页顶栏「🚀 全部推进」+ 行内「🚀 推进」/「⬆ 转正为情节」+ 备注行
+   （过期不显示推进、已转正不显示转正）—— **四个按钮文案与 `title` 与 v1.206 逐字一致**（队长已逐条比对）；动作 `parallelWeaveNow`/`parallelAdvance`/`parallelAdvanceAll`/`promoteParallel` 含 V1 同款确认闸门（`hooks.confirm` → `globalThis.confirm` → 取消）；
+5. **`FTT.*` 新增 15 个入口**（devtools 侧全部带守卫）；`index.js` 接线取文钩子（`setParallelTextHooks` → `host/floors.js`）并在载入时执行 `prunePromotedParallels`。
+
+**验证**：`v1-golden-parallel.json`（1342 行 / 5 组 30 例）由**真实 V1 v1.206** oracle 生成，oracle 连跑两次**逐字节一致**且与入库 fixture **逐字节相同**（队长独立复跑复核）；
+单元 `parallel-golden.test.js` **33 项**（含 6 项 V2 编排/接线）；冒烟新增 **AD1–AD3**（接线与按钮逐字 / 推演端到端 / 推进+转正端到端）。
+门禁全绿：单元 **52 文件 / 817 断言**、冒烟 **118 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**V1 原生缺陷/怪癖（原样保留，单测与文档固化）**：① `scheduleParallelWeave` 的「已在调度中」**静默丢弃**后到请求；② 去重跳过时 `state.weaveLastFloor` **已先计数**；
+③ `runParallelAdvance` 忙位返回 `{ok:true, skipped:'busy'}`（与推演 `{ok:false,error:'busy'}` 口径不一致）；④ `promoteParallelEvent` 注释称「双墓碑」，实际只写 **id 墓碑**（`tombEntry` 兜底分支不可达）；
+⑤ `promotedAt` 表达式 `(getStoryNow()||{}).date` 恒 `undefined` → 总回落 `state.state.date`；⑥ 演化目标可能性只认中文键「目标」、缺省 0、夹取 [0,100]。
+
+**未实现**：被动推演自动接线（需 `host/extract.js`）、`jsExtractKeywords` 真实关键词来源、`relJump` 关联跳转（B9）、`parallelApiPreset`（V2 不适用）。
+**未验证**：真实浏览器 `globalThis.confirm`（仅验证取消/确认两条路径）、真实提取 → `scheduleParallelWeave` 的 1.8s/2.5s 定时链路（单测用注入定时器）、promote 后内容哈希墓碑在真实宿主 `tombstoneSweep` 的落地。
+
 ## v2.27.0（2026-09-26）· B8-7-a 情节总结（原子压缩/合并摘要）+ 分段总结
 
 **本版（B8-7-a，取自 V1 v1.206）**：
