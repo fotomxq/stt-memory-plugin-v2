@@ -6,6 +6,7 @@
 // ============================================================
 import { getCtx } from './st-api.js';
 import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages } from '../core/model/runtime.js';
+import { debugLogPush } from '../adapters/debug-log.js';
 
 /** ST 聊天消息是 `{ is_user, mes, name, ... }`；内核沿用 V1 的 `{ is_user, message }` 口径 */
 function toKernelMessage(m) {
@@ -70,7 +71,7 @@ export function wireKernelChatHooks() {
         getChatMessages: kernelChatMessages,
         getAssistantText: latestAiMessageText,
         latestAiFloorText: latestAiMessageText,
-        dbgLog: () => undefined,
+        dbgLog: (kind, data) => debugLogPush(kind, data),      // B9：调试日志接入环形缓冲（V1 `dbgLog` 口径；此前为空实现）
     });
     setLastMessageId(currentLastMessageId());
     setScopeKey(currentStableCharKey());

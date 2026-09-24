@@ -3,6 +3,24 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.23.0（2026-09-26）· B9 前置：调试日志环形缓冲（`dbgLog` 从空实现改为真实记录）
+
+**背景（本项目此前的一个实质缺口）**：`host/chat.js` 把内核 `dbgLog` 接成**空实现**（`() => undefined`）—— 全仓没有任何调试日志存储，
+因此 V1 的「设定 → 调试」日志查看与 `dbgClear` 在 V2 中**无对象可清**。本版先把日志存储落地。
+
+1. **新增 `core/debug-log.js`**（纯内核；逐字对齐 V1 v1.49 口径）：内存**最新在前环形缓冲**（`{at, kind, data}`，上限 `DEBUG_CAP=300`）、
+   `data` 归一（字符串原样 / 其余 `JSON.stringify` 截断 `6000`）、开关 `cfg.debugEnabled === false` 时不记录、
+   `debugLogMerge` 保留 V1 v1.49 的修复口径（以内存为基准仅补入存储中 `at|kind` 未出现者，再按时间降序截断 —— **旧存储不倒灌**）、
+   `debugLogList/Stats/Clear/Sync`，持久化经 `setDebugLogHooks({load, save})` 注入（内核不碰 `localStorage`，保持纯净度）。
+2. **新增 `adapters/debug-log.js`**：把环形缓冲接到 `localStorage`（**V1 同键 `SPreset_FTTMemoryDebug`**、数组 JSON、损坏数据容忍为空、失败静默）；
+   `wireDebugLog()` 幂等接线并返回是否具备持久层；无 `window.localStorage`（Node/受限宿主）时**自动退化为纯内存**。
+3. **`host/chat.js`**：`dbgLog` 由空实现改为 `debugLogPush(kind, data)` —— 内核各域的调试日志（修复/摘要/对账/传言/世界书…）自此**真实入缓冲并落盘**。
+4. **测试**：新增 `tests/unit/debug-log.test.js` **5 项**（环形缓冲与 300 上限/最新在前/副本语义、`data` 归一与开关、合并去重口径、localStorage 接线与损坏容忍、无 localStorage 退化）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **45 文件 / 670 断言**、冒烟 **106 项**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**待接线（下一批）**：`FTT.dbgLog()`/`dbgClear()` 入口、设定「调试」页日志查看器（分页/按类别过滤）、`aboutClearCache`/`aboutReload` 等 B9 项。
+
 ## v2.22.0（2026-09-26）· 计划/悬念库清理动作补齐（`clearPlans` / `clearSuspense`）
 
 **本版补齐 V1 数据面板「计划悬念」页的两个一键清理动作（此前 V2 只有逐条删除与多选删除）**：
