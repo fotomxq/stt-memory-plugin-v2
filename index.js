@@ -3,7 +3,7 @@
 // 分层：ui/ ─► host/ ─► adapters/ ─► core/（core 严禁反向依赖，见 scripts/check-core-purity.js）
 // P0 范围：可安装骨架 + 能力探测 + 设置面板 + 事件绑定 + 生成前钩子（空实现） + 调试导出
 // ============================================================
-import { VERSION, DATA_VERSION, MODULE_NAME } from './core/constants.js';
+import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants.js';
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
@@ -22,7 +22,7 @@ import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
-import { importV1Data } from './adapters/import-v1.js';
+import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors } from './host/extract.js';
 import { listUnprocessedFloors } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
@@ -208,6 +208,43 @@ export async function runV1Import(opts) {
     return res;
 }
 
+/**
+ * 导出当前记忆为 JSON 文本（V1「⬇ 导出」的 V2 版）：内容 = 当前内核容器 + 版本与作用域元信息。
+ * 只读操作，不修改任何数据。
+ */
+export function exportStateJson() {
+    try {
+        const st = kernelState || {};
+        return JSON.stringify({
+            format: 'ftt-memory-v2-export',
+            version: VERSION,
+            scope: (runtime.store && runtime.store.scope) || '',
+            at: Date.now(),
+            state: JSON.parse(JSON.stringify(st)),
+        }, null, 2);
+    } catch (e) { return ''; }
+}
+
+/**
+ * 导入 JSON（V1「⬆ 导入」的 V2 版）：接受本插件导出的信封或裸 state；
+ *   **按 id 合并（append-only）**，同 id 以当前为准，绝不删除现有数据（与 V1 导入器同一口径）。
+ * @returns {Promise<{ok:boolean, added?:number, reason?:string}>}
+ */
+export async function importStateJson(text) {
+    try {
+        let obj = null;
+        try { obj = JSON.parse(String(text || '')); } catch (e) { return { ok: false, reason: 'JSON 解析失败' }; }
+        const incoming = (obj && obj.state) ? obj.state : obj;
+        if (!incoming || typeof incoming !== 'object') return { ok: false, reason: '不是有效的记忆数据' };
+        const before = DIMENSIONS.reduce((n, d) => n + ((kernelState && Array.isArray(kernelState[d.kind])) ? kernelState[d.kind].length : 0), 0);
+        const { merged } = mergeV1IntoCurrent(kernelState, incoming);
+        attachKernelState(merged);
+        await saveStateNow({ reason: 'import-json' });
+        const after = DIMENSIONS.reduce((n, d) => n + ((merged && Array.isArray(merged[d.kind])) ? merged[d.kind].length : 0), 0);
+        return { ok: true, added: Math.max(0, after - before) };
+    } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+
 /** 面板只读状态快照（作用域 / 注入字数 / 提取统计 / 待分析 / 存储来源） */
 function panelStatusSnapshot() {
     let injectChars = 0, pending = null;
@@ -223,7 +260,7 @@ function panelStatusSnapshot() {
  * 这样即使初始化没有触发（宿主事件缺失/加载时机不同），用户依然能用命令自查。
  */
 function bootstrapDiagnostics() {
-    const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup };
+    const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup, exportState: exportStateJson, importState: importStateJson };
     try {
         if (!runtime.slash) runtime.slash = registerSlashCommand(extraForStatus, hooks);
     } catch (e) { runtime.slash = false; }
@@ -231,7 +268,7 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors }));
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -564,7 +601,7 @@ export const __internals = {
     init, ensureReady, teardown, runtimeState, extraForStatus,
     forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
     popupInfo, popupAction, popupTabs, panelInfo, panelTabs, injectNow,
-    runSummaryBatch, abortExtraction, clearProcessedFloors,
+    runSummaryBatch, abortExtraction, clearProcessedFloors, exportStateJson, importStateJson,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,

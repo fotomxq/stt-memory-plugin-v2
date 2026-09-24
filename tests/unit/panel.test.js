@@ -166,10 +166,12 @@ await A('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；c
         && open2 === true && panelInfo().open === false;
 }, panelState());
 
-R.assert('A3 设置分页：内嵌现有设置表单（内核配置控件）并在后续批次替换为 V1 的 13 组子页', (() => {
+R.assert('A3 设置分页：渲染 V1 的 14 组子页（子标签 + 当前页控件 + V2 附加设定块）', (() => {
     const h = panelBodyHtml('settings');
-    return h.indexOf('ftt_v2_cfg_budget') >= 0 && h.indexOf('ftt_v2_cfg_autoext') >= 0
-        && h.indexOf('13 组设定子页') >= 0 && h.indexOf('ftt_v2_settings') >= 0;
+    return h.indexOf('ftt-settings-subtabs') >= 0 && h.indexOf('data-ftt-settings="base"') >= 0
+        && h.indexOf('data-ftt-settings-page="base"') >= 0 && h.indexOf('data-ftt-cfg="') >= 0
+        && h.indexOf('V2 附加设定') >= 0 && h.indexOf('data-ftt-v2="autoUpdateCheck"') >= 0
+        && h.indexOf('data-ftt-action="importV1Dry"') >= 0 && h.indexOf('ftt_v2_dims') >= 0;
 })(), '');
 
 await A('A4 未知动作与卸载：未知动作返回失败不抛；unmount 关闭并清空浮层引用', async () => {
