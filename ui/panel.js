@@ -20,7 +20,7 @@ import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPa
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
-import { runRepairMech, autoRepairTake } from '../core/repair.js';
+import { runRepair } from '../core/repair.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -757,15 +757,25 @@ export async function panelAction(action, payload) {
         }
         else if (a === 'repair') {
             // 「🛠 自动修复」：V1 三段式（① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订）
-            //   本批（B8-6a）已交付第 1 段；第 2/3 段（B8-6b）接入前**如实说明**，不伪造 AI 结果。
-            const gate = autoRepairTake(true);                 // 手动修复：重置同楼层计数上限（V1 口径）
-            const mech = await runRepairMech({ silent: true, cause: '手动' });
-            const aiPending = cfg.repairAutoAi !== false;
-            setNote('机械清理完成（零 AI）：合并 ' + Number(mech.stage1.merged || 0) + ' 条 · 清理 ' + Number(mech.stage1.deleted || 0)
-                + ' 条 · 遗忘清扫 ' + Number((mech.sweep || {}).swept || 0) + ' 条 · 条数裁剪 ' + Number((mech.caps || {}).cut || 0)
-                + ' 条；' + String(mech.report || '')
-                + (aiPending ? '；⚠️ 第 2 段候选筛选与第 3 段 AI 修订属后续批次（B8-6b），本次未执行' : ''));
-            result = Object.assign(result, { ok: true, action: a, mech, gate, aiPending });
+            //   手动路径重置同楼层上限计数（V1 口径）；AI 段不可用/未配置时如实回报（不伪造结果）。
+            const r = await runRepair({ cause: '手动' });
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用/已达上限') + '）');
+            else {
+                const st1 = (r.stage1 || {});
+                const pick = (r.pickStat || {});
+                parts.push('机械清理：合并 ' + Number(st1.merged || 0) + ' · 清理 ' + Number(st1.deleted || 0)
+                    + ' · 遗忘清扫 ' + Number((r.mech && r.mech.sweep ? r.mech.sweep.swept : 0) || 0)
+                    + ' · 条数裁剪 ' + Number((r.mech && r.mech.caps ? r.mech.caps.cut : 0) || 0));
+                parts.push('候选 ' + Number((r.cands || []).length) + ' 条（缺陷 ' + Number(pick.defects || 0) + ' · 高相关 ' + Number(pick.corrHigh || 0)
+                    + ' · 抽查 ' + Number(pick.sampled || 0) + ' · 补足 ' + Number(pick.topped || 0) + '）');
+                const ai = r.ai || {};
+                parts.push(ai.used
+                    ? ('AI 修订 ' + Number(ai.revised || 0) + ' 条 · 删除 ' + Number(ai.deleted || 0) + ' 条 · 丢弃 ' + Number(ai.skipped || 0) + ' 条' + (ai.error ? '（' + ai.error + '）' : ''))
+                    : '未调用 AI' + (cfg.repairAutoAi === false ? '（「AI 修订措辞」已关闭 → 只做机械清理）' : '（无候选或 AI 不可用）'));
+            }
+            setNote('自动修复：' + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
+            result = Object.assign(result, { ok: true, action: a, repair: r, made: r.made || 0 });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）

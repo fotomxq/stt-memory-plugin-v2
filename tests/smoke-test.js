@@ -1050,6 +1050,68 @@ assert('T3 FTT 修复入口齐备（repairMech / repairDedupe / repairPrune / re
         && typeof F.repairPrune === 'function' && typeof F.repairDecay === 'function';
 })(), '');
 
+// ---------- U 修复管线第 2/3 段（B8-6b：候选筛选 + 窄契约 AI 修订） ----------
+const origGen3 = host.ctx.generateRaw;
+let repAi = '{}';
+let repAiCalls = 0;
+host.ctx.generateRaw = async () => { repAiCalls++; return repAi; };
+
+assert('U1 三段式「自动修复」：机械清理 → 候选筛选 → AI 修订（修订/删除落库），并在提示里回报候选构成', (async () => {
+    const st = rtMod.state;
+    const a = (id, text, tags, date) => ({ id, text, title: text, date: date || '2020-01-01', tags, uses: 1, floorStart: 1, floorEnd: 2 });
+    st.atoms = [
+        a('smoke-rp-a1', '角色甲在码头交接货物，收下银两。', ['甲', '码头', '货物']),
+        a('smoke-rp-a2', '甲在码头把货物交给乙，收取银两。', ['甲', '码头', '货物']),
+        a('smoke-rp-a3', '角色丙前往城市丁采购。', ['丙', '城市丁', '采购'], '2020/01/03'),
+    ];
+    st.memories = [];
+    rtMod.cfg.repairAutoAi = true; rtMod.cfg.repairMaxItems = 20; rtMod.cfg.autoRepairEveryOps = 0; rtMod.cfg.maxAutoRepairRounds = 3;
+    rtMod.cfg.repairTagSimHigh = 0.5; rtMod.cfg.repairTagSimLow = 0.15; rtMod.cfg.repairMinCandidates = 5;
+    repAi = JSON.stringify({ '修订': [{ '编号': 1, '字段': '内容', '值': '角色甲在码头交接货物并收下银两与契约。' }], '删除': [3] });
+    const before = repAiCalls;
+    const r = await entry.popupAction('repair', {});
+    const a1 = st.atoms.filter((x) => x.id === 'smoke-rp-a1')[0];
+    const gone = st.atoms.filter((x) => x.id === 'smoke-rp-a3').length === 0;
+    const tombs = Object.keys((st.deleted || {}).atoms || {});
+    return r.ok === true && !!r.repair && r.repair.aiUsed === true && repAiCalls > before
+        && String(a1.text).indexOf('契约') >= 0 && gone && tombs.indexOf('smoke-rp-a3') >= 0
+        && Number(r.repair.cands.length) >= 1 && String(r.note).indexOf('候选 ') >= 0;
+})(), '');
+
+assert('U2 repairAutoAi 关闭：自动路径零 AI 调用（只做机械清理，V1 语义）；手动路径仍可调用 AI', (async () => {
+    rtMod.cfg.repairAutoAi = false; rtMod.cfg.autoRepairEveryOps = 0;
+    const before = repAiCalls;
+    const auto = await globalThis.FTT.repair({ silent: true, cause: '冒烟自动' });
+    const afterAuto = repAiCalls;
+    const manual = await globalThis.FTT.repair({ cause: '冒烟手动' });
+    rtMod.cfg.repairAutoAi = true;
+    return auto.aiUsed === false && afterAuto === before && manual.aiUsed === true && repAiCalls === before + 1;
+})(), '');
+
+assert('U3 FTT 修复第 2/3 段入口齐备（repair / repairCandidates / repairPrompt / repairApply / repairDefect / repairCorr / repairFailArmed）', (() => {
+    const F = globalThis.FTT;
+    const cands = F.repairCandidates(10, {});
+    const d = F.repairDefect('atoms', { id: 'x', text: '尽量完成', date: '2020-01-01', tags: ['a', 'b', 'c'] });
+    const corr = F.repairCorr('atoms', [{ id: 'x', text: '甲乙', tags: ['a', 'b'] }, { id: 'y', text: '甲乙', tags: ['a', 'b'] }]);
+    const tags = F.repairTags({ tags: ['#甲', '乙'] });     // V1 `repairTagSetOf` 按「单条」取标签集合
+    const jc = F.repairJaccard(['甲'], ['甲', '乙']);
+    return Array.isArray(cands) && !!d && d.rank === 3 && !!corr && Array.isArray(corr.sims)
+        && tags.join(',') === '甲,乙' && jc > 0 && typeof F.repair === 'function' && typeof F.repairPrompt === 'function'
+        && typeof F.repairApply === 'function' && typeof F.repairFailArmed === 'function';
+})(), '');
+
+assert('U4 提取合并失败自动修复排程：开关关闭不排程，开启后按延迟排程一次（防重复）', (() => {
+    rtMod.cfg.autoRepairOnMergeFail = false;
+    const off = globalThis.FTT.repairFailArmed();
+    rtMod.cfg.autoRepairOnMergeFail = true; rtMod.cfg.repairFailDelaySec = 15;
+    const on = globalThis.FTT.repairFailArmed();
+    const again = globalThis.FTT.repairFailArmed();
+    rtMod.cfg.autoRepairOnMergeFail = false;
+    return off === false && on === true && again === false;
+})(), '');
+
+host.ctx.generateRaw = origGen3;
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

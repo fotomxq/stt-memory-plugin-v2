@@ -145,6 +145,16 @@ export function installDevtools(hooks) {
             repairDecay: () => (hooks && typeof hooks.repairDecay === 'function' ? hooks.repairDecay() : Promise.resolve(null)),
             latestFloorHash: () => (hooks && typeof hooks.latestFloorHash === 'function' ? hooks.latestFloorHash() : ''),
             repairLogPush: (rec) => (hooks && typeof hooks.repairLogPush === 'function' ? hooks.repairLogPush(rec || {}) : 0),
+            // B8-6b 修复第 2/3 段
+            repair: (opts) => (hooks && typeof hooks.repair === 'function' ? hooks.repair(opts || {}) : Promise.resolve(null)),
+            repairCandidates: (limit, stat) => (hooks && typeof hooks.repairCandidates === 'function' ? hooks.repairCandidates(limit, stat || {}) : []),
+            repairPrompt: (cands) => (hooks && typeof hooks.repairPrompt === 'function' ? hooks.repairPrompt(cands) : null),
+            repairApply: (delta, cands) => (hooks && typeof hooks.repairApply === 'function' ? hooks.repairApply(delta, cands) : null),
+            repairDefect: (dim, e) => (hooks && typeof hooks.repairDefect === 'function' ? hooks.repairDefect(dim, e) : null),
+            repairCorr: (dim, arr) => (hooks && typeof hooks.repairCorr === 'function' ? hooks.repairCorr(dim, arr) : null),
+            repairTags: (entries) => (hooks && typeof hooks.repairTags === 'function' ? hooks.repairTags(entries) : []),
+            repairJaccard: (a, b) => (hooks && typeof hooks.repairJaccard === 'function' ? hooks.repairJaccard(a, b) : 0),
+            repairFailArmed: () => (hooks && typeof hooks.repairFailArmed === 'function' ? hooks.repairFailArmed() : false),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

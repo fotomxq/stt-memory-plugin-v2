@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.16.0（2026-09-26）· B8-6b 修复管线第 2/3 段（候选筛选 + 窄契约 AI 修订）
+
+**本版（B8-6b）**：
+1. **第 2 段 候选筛选**（`core/repair.js` 扩展，取自 V1 `09-AI摘要与楼层处理.js`）：
+   ① `repairTagSetOf` + `repairJaccard` + `repairCorrelationMap`（每条 = 与同维度其他条目的**最大相似度**；
+   标签普遍不足时退回正文 bigram；>400 条改与随机子集比较并标 `approx`）；
+   ② `repairDefectOf` 五类客观缺陷（垃圾 0 / 超目标字数 2 / 模糊措辞 3 / 计划悬念裸问句 4 / 日期格式与标签数量 5）；
+   ③ `repairCollectCandidates`：缺陷一律列入 → 高相关（≥ `repairTagSimHigh`）优先核对 → 中间带按 `repairSampleRatio`
+   **抽查轮询**（游标写回 `state.repairCursor`，长期覆盖全部）→ 候选不足用中间带按相关性**补足**（绝不用低相关孤例凑数）；
+2. **第 3 段 窄契约 AI 修订**：`buildRepairPrompt`（只含候选清单：编号/维度/字段/目标字数/相关度/来源/问题/现有文本 400 字截断 + 剧情日期 + 输出契约）+
+   `repairApplyAiResult`（**按编号精确应用、禁止新增**；字段闭集；主字段过 `repairIsGarbage` 校验并按 `cfg.dimCharLimits` 硬截断；
+   标签 3-5 个且清空 `keywords`；删除写墓碑；非法项计入 `skipped`）；
+3. **三段式编排 `runRepair`**：闸门（长任务占用拒绝 / 自动频率闸门 `autoRepairEveryOps` / 同楼层上限 `autoRepairTake`，手动修复重置计数）
+   → ① 机械清理（B8-6a）→ ② 候选筛选 → ③ AI 修订（`aiCallText` 走宿主 `generateRaw`）；`cfg.repairAutoAi === false` 时自动路径**不调用 AI**
+   （V1 语义：只做机械清理），手动路径不受该开关限制；结果写入 `state.repairLog`（含候选构成统计）并返回结构化报告；
+4. **提取失败自动修复**：`scheduleAutoRepairOnMergeFail`（`cfg.autoRepairOnMergeFail` 默认关；延迟 `cfg.repairFailDelaySec` 默认 15s，防重复）
+   在 `host/extract.js` 的两处「AI 未返回有效 JSON」失败点接线；单楼/分段成功落库后 `bumpRepairOp()`（V1 提取计数口径）；
+5. **界面**：总览「🛠 自动修复」按钮改为完整三段式，提示回报「机械清理：合并/清理/遗忘清扫/条数裁剪；候选 N 条（缺陷/高相关/抽查/补足）；AI 修订 N 条 · 删除 N 条 · 丢弃 N 条」；
+6. **`FTT.*` 新增 8 个入口**（`repair` / `repairCandidates` / `repairPrompt` / `repairApply` / `repairDefect` / `repairCorr` / `repairTags` / `repairJaccard` / `repairFailArmed`）；
+7. **黄金样本 6 组（oracle = 真实 V1 插件 v1.206）**：标签集合与 Jaccard、相关性映射（两维）、客观缺陷（两维逐条）、
+   候选筛选（候选逐条 + 统计 + 游标）、窄契约提示词（**逐字符**）、按编号应用（修订/删除/丢弃 + 墓碑 + 状态）。
+
+**验证**：`tests/unit/repair-ai-golden.test.js` **12 项** + 冒烟 **U1–U4**；门禁全绿：单元 **38 文件 / 523 断言**、
+冒烟 **92 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8p-B8-6b修复第2-3段.md` §2）**：`buildRepairPrompt` 由 V1 的 `async`（内部无 await）改为同步纯函数；
+AI 走宿主 `generateRaw`；V1 的任务管线 UI（`pipeStart/pipeUpdate`/`abortTick`）未移植（改为长任务在途拒绝）；
+`bumpRepairOp` 接线点在 `host/extract.js` 单楼/分段成功落库后（V1 亦在摘要管线与事件层调用，口径一致）。
+候选筛选的随机步长与 V1 完全一致 → 黄金样本场景刻意保证「中间带为空」以使整条链路确定可比。
+
 ## v2.15.0（2026-09-26）· B8-6a 修复管线第 1 段（JS 机械清理 · 零 AI）
 
 **本版（B8-6a）**：
