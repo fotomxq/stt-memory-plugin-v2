@@ -1,0 +1,1223 @@
+{
+  "mergeExact": {
+    "merged": 1,
+    "suspense": [
+      {
+        "id": "u1",
+        "title": "夜半敲门",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘",
+          "夜里"
+        ],
+        "status": "open",
+        "importance": 0.8,
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "u3",
+        "title": "失踪的货船",
+        "content": "那艘货船究竟去了哪里？",
+        "date": "2020-01-01",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      },
+      {
+        "id": "u4",
+        "title": "货船去向",
+        "content": "货船的下落仍然不明。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.6,
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 2
+      },
+      {
+        "id": "u5",
+        "title": "神秘信件",
+        "content": "信封上没有署名。",
+        "date": "2020-02-02",
+        "tags": [
+          "悬疑"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 3,
+        "floorEnd": 3
+      },
+      {
+        "id": "u6",
+        "title": "旧日恩怨",
+        "content": "那段恩怨从未了结。",
+        "date": "2019-12-01",
+        "tags": [
+          "恩怨",
+          "过往",
+          "人物"
+        ],
+        "status": "open",
+        "importance": 0.3,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ],
+    "tombs": []
+  },
+  "mergeExactNone": {
+    "merged": 0,
+    "suspense": [
+      {
+        "id": "w1",
+        "title": "已揭晓的事",
+        "content": "早已揭晓。",
+        "date": "2020-01-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "status": "closed",
+        "uses": 1
+      }
+    ]
+  },
+  "pick": {
+    "entries": [
+      {
+        "n": 1,
+        "group": 1,
+        "idx": 2,
+        "id": "u3",
+        "title": "失踪的货船",
+        "content": "那艘货船究竟去了哪里？",
+        "date": "2020-01-01",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "sim": 1
+      },
+      {
+        "n": 2,
+        "group": 1,
+        "idx": 3,
+        "id": "u4",
+        "title": "货船去向",
+        "content": "货船的下落仍然不明。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "sim": 1
+      },
+      {
+        "n": 3,
+        "group": 2,
+        "idx": 0,
+        "id": "u1",
+        "title": "",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-03-05",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘"
+        ],
+        "sim": 0.5
+      },
+      {
+        "n": 4,
+        "group": 2,
+        "idx": 1,
+        "id": "u2",
+        "title": "夜半敲门",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "夜里",
+          "神秘"
+        ],
+        "sim": 0.5
+      },
+      {
+        "n": 5,
+        "group": 3,
+        "idx": 4,
+        "id": "u5",
+        "title": "神秘信件",
+        "content": "信封上没有署名。",
+        "date": "2020-02-02",
+        "tags": [
+          "悬疑"
+        ],
+        "sim": 0,
+        "defect": "标签数量不合规（需 3-5 个，现 1 个）"
+      },
+      {
+        "n": 6,
+        "group": 4,
+        "idx": 5,
+        "id": "u6",
+        "title": "旧日恩怨",
+        "content": "那段恩怨从未了结。",
+        "date": "2019-12-01",
+        "tags": [
+          "恩怨",
+          "过往",
+          "人物"
+        ],
+        "sim": 0,
+        "single": true
+      }
+    ],
+    "clusters": [
+      {
+        "idxs": [
+          2,
+          3
+        ],
+        "size": 2,
+        "maxSim": 1,
+        "basis": "tags"
+      },
+      {
+        "idxs": [
+          0,
+          1
+        ],
+        "size": 2,
+        "maxSim": 0.5,
+        "basis": "tags"
+      }
+    ],
+    "picked": 2,
+    "defects": 1,
+    "singles": 1,
+    "total": 2,
+    "cursor": 0
+  },
+  "cursorAfter": {
+    "suspenseRing": 0,
+    "suspense": 0
+  },
+  "prompt": [
+    {
+      "role": "system",
+      "content": "（测试用计划悬念修复模板）\n只输出 JSON，不要解释。"
+    },
+    {
+      "role": "user",
+      "content": "【近期正文（了结判定依据）】\n[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。\n\n【未解悬念·待核对清单（本次唯一工作对象，共 2 组 / 6 条；同组条目标签组相关性较高，可能指同一悬念，也可能只是相关；尾部「逐一核对」为无高相关同组者的轮询抽查，只做了结/删改）】\n【相关组 1】\n#S1 ｜ 标题：失踪的货船 ｜ 相关度：1.00 ｜ 标签：悬疑/货船/失踪 ｜ 日期：2020-01-01\n   内容：那艘货船究竟去了哪里？\n#S2 ｜ 标题：货船去向 ｜ 相关度：1.00 ｜ 标签：悬疑/货船/失踪 ｜ 日期：2020-01-10\n   内容：货船的下落仍然不明。\n【相关组 2】\n#S3 ｜ 标题：（无） ｜ 相关度：0.50 ｜ 标签：悬疑/夜间/神秘 ｜ 日期：2020-03-05\n   内容：谁在夜里敲响了门？\n#S4 ｜ 标题：夜半敲门 ｜ 相关度：0.50 ｜ 标签：悬疑/夜里/神秘 ｜ 日期：2020-02-01\n   内容：谁在夜里敲响了门？\n【缺陷条目（与相关性无关，不参与合并，可修订/了结/删除）】\n#S5 ｜ 标题：神秘信件 ｜ 相关度：0.00 ｜ 标签：悬疑 ｜ 日期：2020-02-02 ｜ 问题：标签数量不合规（需 3-5 个，现 1 个）\n   内容：信封上没有署名。\n【逐一核对（与相关性无关：无高相关同组条目，按轮询抽查进本批，仅做了结判定/删改）】\n#S6 ｜ 标题：旧日恩怨 ｜ 相关度：0.00 ｜ 标签：恩怨/过往/人物 ｜ 日期：2019-12-01\n   内容：那段恩怨从未了结。\n\n【进行中的计划（仅作「了结」判定：不合并、不修订、不新增）】\n#P0 找到失踪的货船。\n#P1 查清夜半敲门的人。\n\n输出：{\"悬念库\":{\"合并\":[{\"保留\":1,\"并入\":[2],\"标题\":\"…\",\"正文\":\"…\",\"日期\":\"YYYY-MM-DD\",\"标签\":[\"…\"]}],\"修订\":[{\"编号\":3,\"字段\":\"内容\",\"值\":\"…\"}],\"了结\":[4],\"删除\":[5]},\"计划库\":{\"了结\":[\"计划原文或标题\"],\"合并\":[{\"保留编号\":0,\"合并编号\":[2],\"合并后正文\":\"…\"}]}}（悬念按 #S 编号引用；计划了结按原文或标题、计划合并按 #P 编号；无改动就给空数组）。"
+    }
+  ],
+  "promptEmpty": [
+    {
+      "role": "system",
+      "content": "（测试用计划悬念修复模板）\n只输出 JSON，不要解释。"
+    },
+    {
+      "role": "user",
+      "content": "【近期正文（了结判定依据）】\n[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。\n\n【未解悬念·待核对清单（本次唯一工作对象，共 undefined 组 / 0 条；同组条目标签组相关性较高，可能指同一悬念，也可能只是相关；尾部「逐一核对」为无高相关同组者的轮询抽查，只做了结/删改）】\n（本次无高相关悬念组）\n\n【进行中的计划（仅作「了结」判定：不合并、不修订、不新增）】\n#P0 找到失踪的货船。\n#P1 查清夜半敲门的人。\n\n输出：{\"悬念库\":{\"合并\":[{\"保留\":1,\"并入\":[2],\"标题\":\"…\",\"正文\":\"…\",\"日期\":\"YYYY-MM-DD\",\"标签\":[\"…\"]}],\"修订\":[{\"编号\":3,\"字段\":\"内容\",\"值\":\"…\"}],\"了结\":[4],\"删除\":[5]},\"计划库\":{\"了结\":[\"计划原文或标题\"],\"合并\":[{\"保留编号\":0,\"合并编号\":[2],\"合并后正文\":\"…\"}]}}（悬念按 #S 编号引用；计划了结按原文或标题、计划合并按 #P 编号；无改动就给空数组）。"
+    }
+  ],
+  "feedText": "[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。",
+  "applySusp": {
+    "counts": {
+      "fused": 1,
+      "revised": 2,
+      "closed": 1,
+      "deleted": 2,
+      "removed": 1,
+      "skipped": 0,
+      "retargeted": 1
+    },
+    "suspense": [
+      {
+        "id": "u1",
+        "title": "",
+        "content": "货船失踪已三月。",
+        "date": "2020-03-05",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘"
+        ],
+        "status": "open",
+        "importance": 0.4,
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "u2",
+        "title": "夜半敲门",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪",
+          "海难"
+        ],
+        "keywords": [],
+        "status": "open",
+        "importance": 0.8,
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 3
+      },
+      {
+        "id": "u3",
+        "title": "夜半敲门的人",
+        "content": "谁在夜里敲响了门？至今无人应答。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘",
+          "货船",
+          "失踪"
+        ],
+        "keywords": [],
+        "status": "open",
+        "importance": 0.6,
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ],
+    "links": [
+      {
+        "id": "lk-u2-w",
+        "dim": "suspense",
+        "refId": "u2",
+        "who": "角色戊",
+        "how": "witness",
+        "deviation": "unknown",
+        "at": 3
+      },
+      {
+        "id": "lk-p1-w",
+        "dim": "plans",
+        "refId": "p1",
+        "who": "角色戊",
+        "how": "witness",
+        "deviation": "unknown",
+        "at": 3
+      }
+    ],
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 1
+    },
+    "tombs": [
+      "u4",
+      "u5",
+      "u6"
+    ],
+    "hashes": []
+  },
+  "applySuspEdge": {
+    "empty": {
+      "fused": 0,
+      "revised": 0,
+      "closed": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0,
+      "retargeted": 0
+    },
+    "noEntries": {
+      "fused": 0,
+      "revised": 0,
+      "closed": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0,
+      "retargeted": 0
+    },
+    "nullPick": {
+      "fused": 0,
+      "revised": 0,
+      "closed": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 0,
+      "retargeted": 0
+    },
+    "unknownN": {
+      "fused": 0,
+      "revised": 0,
+      "closed": 0,
+      "deleted": 0,
+      "removed": 0,
+      "skipped": 2,
+      "retargeted": 0
+    }
+  },
+  "applyPlanMerge": {
+    "r": {
+      "mergedPlans": 1,
+      "mergedSusps": 0,
+      "removed": 1
+    },
+    "plans": [
+      {
+        "id": "p1",
+        "content": "找到失踪的货船并查明敲门者。",
+        "status": "open",
+        "tags": [
+          "计划",
+          "货船"
+        ],
+        "uses": 1
+      },
+      {
+        "id": "p3",
+        "content": "拜访旧友。",
+        "status": "closed",
+        "tags": [
+          "计划"
+        ],
+        "uses": 1
+      }
+    ],
+    "susp": [
+      {
+        "id": "u1",
+        "title": "",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-03-05",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘"
+        ],
+        "status": "open",
+        "importance": 0.4,
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "u2",
+        "title": "夜半敲门",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "夜里",
+          "神秘"
+        ],
+        "status": "open",
+        "importance": 0.8,
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 3
+      },
+      {
+        "id": "u3",
+        "title": "失踪的货船",
+        "content": "那艘货船究竟去了哪里？",
+        "date": "2020-01-01",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      },
+      {
+        "id": "u4",
+        "title": "货船去向",
+        "content": "货船的下落仍然不明。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.6,
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 2
+      },
+      {
+        "id": "u5",
+        "title": "神秘信件",
+        "content": "信封上没有署名。",
+        "date": "2020-02-02",
+        "tags": [
+          "悬疑"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 3,
+        "floorEnd": 3
+      },
+      {
+        "id": "u6",
+        "title": "旧日恩怨",
+        "content": "那段恩怨从未了结。",
+        "date": "2019-12-01",
+        "tags": [
+          "恩怨",
+          "过往",
+          "人物"
+        ],
+        "status": "open",
+        "importance": 0.3,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ]
+  },
+  "applyPlanMergeEdge": {
+    "noMerge": {
+      "mergedPlans": 0,
+      "mergedSusps": 0,
+      "removed": 0
+    },
+    "badKeep": {
+      "mergedPlans": 0,
+      "mergedSusps": 0,
+      "removed": 0
+    },
+    "suspenseIgnored": {
+      "mergedPlans": 0,
+      "mergedSusps": 1,
+      "removed": 1
+    }
+  },
+  "run": {
+    "res": {
+      "made": 1,
+      "closedP": 1,
+      "closedS": 1,
+      "mergedP": 0,
+      "mergedS": 1,
+      "removedDup": 1,
+      "revised": 1,
+      "deleted": 1,
+      "merged": 1,
+      "groups": 1,
+      "checked": 5,
+      "keys": [
+        "checked",
+        "closedP",
+        "closedS",
+        "deleted",
+        "groups",
+        "made",
+        "merged",
+        "mergedP",
+        "mergedS",
+        "removedDup",
+        "revised"
+      ]
+    },
+    "suspense": [
+      {
+        "id": "u1",
+        "title": "夜半敲门",
+        "content": "货船失踪已三月。",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘",
+          "夜里"
+        ],
+        "status": "open",
+        "importance": 0.8,
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "u3",
+        "title": "夜半敲门的人",
+        "content": "谁在夜里敲响了门？至今无人应答。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘",
+          "货船",
+          "失踪"
+        ],
+        "keywords": [],
+        "status": "open",
+        "importance": 0.6,
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 1
+      },
+      {
+        "id": "u5",
+        "title": "神秘信件",
+        "content": "信封上没有署名。",
+        "date": "2020-02-02",
+        "tags": [
+          "悬疑"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 3,
+        "floorEnd": 3
+      }
+    ],
+    "plans": [
+      {
+        "id": "p1",
+        "content": "找到失踪的货船。",
+        "status": "open",
+        "tags": [
+          "计划",
+          "货船"
+        ],
+        "uses": 1
+      },
+      {
+        "id": "p3",
+        "content": "拜访旧友。",
+        "status": "closed",
+        "tags": [
+          "计划"
+        ],
+        "uses": 1
+      }
+    ],
+    "links": [
+      {
+        "id": "lk-p1-w",
+        "dim": "plans",
+        "refId": "p1",
+        "who": "角色戊",
+        "how": "unspecified",
+        "deviation": "unknown",
+        "at": 3
+      }
+    ],
+    "stats": {
+      "plansClosed": 1,
+      "suspenseResolved": 1
+    },
+    "tombsS": [
+      "u2",
+      "u4",
+      "u6"
+    ],
+    "tombsP": [
+      "p2"
+    ],
+    "toasts": [
+      [
+        "repair",
+        "开始修复计划/悬念…",
+        "进行中计划 2 · 未解悬念 6 · 高相关悬念组 1/1 组（本次核对 5 条 · 其中缺陷条目 2） · 已机械去重 1 条"
+      ],
+      [
+        "success",
+        "计划/悬念修复完成",
+        "已了结计划 1 项 · 已揭晓悬念 1 项 · 合并悬念 1 组（-1 条） · 修订悬念 1 条 · 删除无效悬念 1 条 · 机械去重 1 条 · 关联维护：清理孤儿关联 1 行 · 非法值归一 1 行；进行中计划 1 · 未解悬念 3；修复前 6 条 → 修复后 3 条；本轮提交 5 条 / 1 组 / 共 1 组 / 缺陷条目 2；提交标签 #悬疑 #货船 #失踪 #夜间 #神秘 #夜里 #恩怨 #过往 #人物；修复后 合并 1 组(-1 条) · 修订 1 条 · 删除 1 条 · 机械去重 1 条；跳过 1 条；已了结计划 1 项 / 已揭晓悬念 1 项。"
+      ]
+    ],
+    "aiCalls": 1
+  },
+  "runNoChange": {
+    "res": {
+      "made": 0,
+      "skipped": true,
+      "groups": 1,
+      "checked": 5,
+      "merged": 1,
+      "keys": [
+        "checked",
+        "groups",
+        "made",
+        "merged",
+        "skipped"
+      ]
+    },
+    "suspense": [
+      {
+        "id": "u1",
+        "title": "夜半敲门",
+        "content": "谁在夜里敲响了门？",
+        "date": "2020-02-01",
+        "tags": [
+          "悬疑",
+          "夜间",
+          "神秘",
+          "夜里"
+        ],
+        "status": "open",
+        "importance": 0.8,
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "u3",
+        "title": "失踪的货船",
+        "content": "那艘货船究竟去了哪里？",
+        "date": "2020-01-01",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      },
+      {
+        "id": "u4",
+        "title": "货船去向",
+        "content": "货船的下落仍然不明。",
+        "date": "2020-01-10",
+        "tags": [
+          "悬疑",
+          "货船",
+          "失踪"
+        ],
+        "status": "open",
+        "importance": 0.6,
+        "uses": 1,
+        "floorStart": 2,
+        "floorEnd": 2
+      },
+      {
+        "id": "u5",
+        "title": "神秘信件",
+        "content": "信封上没有署名。",
+        "date": "2020-02-02",
+        "tags": [
+          "悬疑"
+        ],
+        "status": "open",
+        "importance": 0.5,
+        "uses": 1,
+        "floorStart": 3,
+        "floorEnd": 3
+      },
+      {
+        "id": "u6",
+        "title": "旧日恩怨",
+        "content": "那段恩怨从未了结。",
+        "date": "2019-12-01",
+        "tags": [
+          "恩怨",
+          "过往",
+          "人物"
+        ],
+        "status": "open",
+        "importance": 0.3,
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 1
+      }
+    ],
+    "plans": [
+      {
+        "id": "p1",
+        "content": "找到失踪的货船。",
+        "status": "open",
+        "tags": [
+          "计划",
+          "货船"
+        ],
+        "uses": 1
+      },
+      {
+        "id": "p2",
+        "content": "查清夜半敲门的人。",
+        "status": "open",
+        "tags": [
+          "计划",
+          "悬疑"
+        ],
+        "uses": 1
+      },
+      {
+        "id": "p3",
+        "content": "拜访旧友。",
+        "status": "closed",
+        "tags": [
+          "计划"
+        ],
+        "uses": 1
+      }
+    ],
+    "toasts": [
+      [
+        "repair",
+        "开始修复计划/悬念…",
+        "进行中计划 2 · 未解悬念 6 · 高相关悬念组 1/1 组（本次核对 5 条 · 其中缺陷条目 2） · 已机械去重 1 条"
+      ],
+      [
+        "warning",
+        "计划/悬念修复：无可了结/合并条目",
+        "AI 判定本次核对的 5 条悬念与 2 项计划均仍有效、无冗余重复（或未返回结果），未作改动。"
+      ]
+    ],
+    "aiCalls": 1
+  },
+  "runPlanOnly": {
+    "res": {
+      "made": 0,
+      "skipped": true,
+      "merged": 0,
+      "groups": 0,
+      "keys": [
+        "checked",
+        "groups",
+        "made",
+        "merged",
+        "skipped"
+      ]
+    },
+    "suspense": [
+      {
+        "id": "w1",
+        "title": "已揭晓的事",
+        "content": "早已揭晓。",
+        "date": "2020-01-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "status": "closed",
+        "uses": 1
+      }
+    ],
+    "toasts": [
+      [
+        "repair",
+        "开始修复计划/悬念…",
+        "进行中计划 1 · 未解悬念 0 · 本次无高相关悬念组"
+      ],
+      [
+        "warning",
+        "计划/悬念修复：无可了结/合并条目",
+        "AI 判定本次核对的 0 条悬念与 1 项计划均仍有效、无冗余重复（或未返回结果），未作改动。"
+      ]
+    ],
+    "aiCalls": 1
+  },
+  "runEmpty": {
+    "res": {
+      "made": 0,
+      "skipped": true
+    },
+    "toasts": [
+      [
+        "info",
+        "计划/悬念修复：无可修复条目",
+        "当前没有进行中的计划或未解悬念。"
+      ]
+    ]
+  },
+  "inputs": {
+    "scenarioSusp": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [
+        {
+          "id": "p1",
+          "content": "找到失踪的货船。",
+          "status": "open",
+          "tags": [
+            "计划",
+            "货船"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 3
+        },
+        {
+          "id": "p2",
+          "content": "查清夜半敲门的人。",
+          "status": "open",
+          "tags": [
+            "计划",
+            "悬疑"
+          ],
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 3
+        },
+        {
+          "id": "p3",
+          "content": "拜访旧友。",
+          "status": "closed",
+          "tags": [
+            "计划"
+          ],
+          "uses": 1
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u1",
+          "title": "",
+          "content": "谁在夜里敲响了门？",
+          "tags": [
+            "悬疑",
+            "夜间",
+            "神秘"
+          ],
+          "uses": 2,
+          "importance": 0.4,
+          "date": "2020-03-05",
+          "status": "open",
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "u2",
+          "title": "夜半敲门",
+          "content": "谁在夜里敲响了门？",
+          "tags": [
+            "悬疑",
+            "夜里",
+            "神秘"
+          ],
+          "uses": 1,
+          "importance": 0.8,
+          "date": "2020-02-01",
+          "status": "open",
+          "floorStart": 2,
+          "floorEnd": 3
+        },
+        {
+          "id": "u3",
+          "title": "失踪的货船",
+          "content": "那艘货船究竟去了哪里？",
+          "tags": [
+            "悬疑",
+            "货船",
+            "失踪"
+          ],
+          "uses": 1,
+          "importance": 0.5,
+          "date": "2020-01-01",
+          "status": "open",
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u4",
+          "title": "货船去向",
+          "content": "货船的下落仍然不明。",
+          "tags": [
+            "悬疑",
+            "货船",
+            "失踪"
+          ],
+          "uses": 1,
+          "importance": 0.6,
+          "date": "2020-01-10",
+          "status": "open",
+          "floorStart": 2,
+          "floorEnd": 2
+        },
+        {
+          "id": "u5",
+          "title": "神秘信件",
+          "content": "信封上没有署名。",
+          "tags": [
+            "悬疑"
+          ],
+          "uses": 1,
+          "importance": 0.5,
+          "date": "2020-02-02",
+          "status": "open",
+          "floorStart": 3,
+          "floorEnd": 3
+        },
+        {
+          "id": "u6",
+          "title": "旧日恩怨",
+          "content": "那段恩怨从未了结。",
+          "tags": [
+            "恩怨",
+            "过往",
+            "人物"
+          ],
+          "uses": 1,
+          "importance": 0.3,
+          "date": "2019-12-01",
+          "status": "open",
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [
+        {
+          "id": "lk-u2-w",
+          "dim": "suspense",
+          "refId": "u2",
+          "who": "角色戊",
+          "how": "witness",
+          "deviation": "unknown",
+          "at": 3,
+          "uses": 1
+        },
+        {
+          "id": "lk-p1-w",
+          "dim": "plans",
+          "refId": "p1",
+          "who": "角色戊",
+          "how": "witness",
+          "deviation": "unknown",
+          "at": 3,
+          "uses": 1
+        }
+      ],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioPlanOnly": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [
+        {
+          "id": "q1",
+          "content": "继续追查货船。",
+          "status": "open",
+          "tags": [
+            "计划",
+            "货船"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "suspense": [
+        {
+          "id": "w1",
+          "title": "已揭晓的事",
+          "content": "早已揭晓。",
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1,
+          "date": "2020-01-01",
+          "status": "closed"
+        }
+      ],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "sDelta": {
+      "悬念库": {
+        "合并": [
+          {
+            "保留": 1,
+            "并入": [
+              2
+            ],
+            "标题": "夜半敲门的人",
+            "正文": "谁在夜里敲响了门？至今无人应答。",
+            "日期": "2020-02-01",
+            "标签": [
+              "悬疑",
+              "夜间",
+              "神秘"
+            ]
+          }
+        ],
+        "修订": [
+          {
+            "编号": 3,
+            "字段": "内容",
+            "值": "货船失踪已三月。"
+          },
+          {
+            "编号": 4,
+            "字段": "标签",
+            "值": "悬疑,货船,失踪,海难"
+          }
+        ],
+        "了结": [
+          5
+        ],
+        "删除": [
+          6
+        ]
+      }
+    },
+    "pDelta": {
+      "plans": {
+        "merge": [
+          {
+            "保留编号": 0,
+            "合并编号": [
+              1
+            ],
+            "合并后正文": "找到失踪的货船并查明敲门者。"
+          }
+        ]
+      }
+    },
+    "ai": {
+      "悬念库": {
+        "合并": [
+          {
+            "保留": 1,
+            "并入": [
+              2
+            ],
+            "标题": "夜半敲门的人",
+            "正文": "谁在夜里敲响了门？至今无人应答。",
+            "日期": "2020-02-01",
+            "标签": [
+              "悬疑",
+              "夜间",
+              "神秘"
+            ]
+          }
+        ],
+        "修订": [
+          {
+            "编号": 3,
+            "字段": "内容",
+            "值": "货船失踪已三月。"
+          }
+        ],
+        "了结": [
+          5
+        ],
+        "删除": [
+          6
+        ]
+      },
+      "计划库": {
+        "了结": [
+          "查清夜半敲门的人。"
+        ],
+        "合并": [
+          {
+            "保留编号": 0,
+            "合并编号": [
+              1
+            ],
+            "合并后正文": "找到失踪的货船并查明敲门者。"
+          }
+        ]
+      }
+    },
+    "cfg": {
+      "suspenseRepairSim": 0.45,
+      "suspenseRepairMaxClusters": 3,
+      "suspenseRepairMaxItems": 24,
+      "suspenseRepairMaxClusterSize": 8,
+      "repairFloors": 10,
+      "relOrphanAction": "keep"
+    },
+    "promptTemplates": {
+      "planSuspRepair": "（测试用计划悬念修复模板）"
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（计划/悬念修复 runPlanSuspRepair / suspenseMergeExact / buildPlanSuspRepairPrompt / applyPlanSuspMerge / applySuspenseMergeGroups）"
+}

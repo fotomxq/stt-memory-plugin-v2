@@ -1,0 +1,2186 @@
+{
+  "canonField": [
+    [
+      "身体状况与伤势",
+      "身体状况与伤势"
+    ],
+    [
+      "身体状况",
+      "身体状况与伤势"
+    ],
+    [
+      "身体",
+      "身体状况与伤势"
+    ],
+    [
+      "伤势",
+      "身体状况与伤势"
+    ],
+    [
+      "健康",
+      "身体状况与伤势"
+    ],
+    [
+      "伤病",
+      "身体状况与伤势"
+    ],
+    [
+      "情绪",
+      "情绪与心理状态"
+    ],
+    [
+      "心理状态",
+      "情绪与心理状态"
+    ],
+    [
+      "心情",
+      "情绪与心理状态"
+    ],
+    [
+      "心理",
+      "情绪与心理状态"
+    ],
+    [
+      "精神状态",
+      "情绪与心理状态"
+    ],
+    [
+      "目标",
+      "短期目标"
+    ],
+    [
+      "当前目标",
+      "短期目标"
+    ],
+    [
+      "近期目标",
+      "短期目标"
+    ],
+    [
+      "当下目标",
+      "短期目标"
+    ],
+    [
+      "长远目标",
+      "长期目标"
+    ],
+    [
+      "长期计划",
+      "长期目标"
+    ],
+    [
+      "远期目标",
+      "长期目标"
+    ],
+    [
+      "位置",
+      "处境"
+    ],
+    [
+      "当前处境",
+      "处境"
+    ],
+    [
+      "所在",
+      "处境"
+    ],
+    [
+      "状态",
+      "处境"
+    ],
+    [
+      "情况",
+      "处境"
+    ],
+    [
+      "担忧",
+      "当前担忧"
+    ],
+    [
+      "忧虑",
+      "当前担忧"
+    ],
+    [
+      "顾虑",
+      "当前担忧"
+    ],
+    [
+      "担心",
+      "当前担忧"
+    ],
+    [
+      "身体状况与伤势（左臂）",
+      "身体状况与伤势"
+    ],
+    [
+      "情绪与心理状态（愤怒）",
+      "情绪与心理状态"
+    ],
+    [
+      "心情不好",
+      "情绪与心理状态"
+    ],
+    [
+      "无关字段",
+      ""
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "  ",
+      ""
+    ]
+  ],
+  "roster": {
+    "names": [
+      "角色乙",
+      "角色丁",
+      "甲",
+      "主角",
+      "乙",
+      "角色甲"
+    ],
+    "source": {
+      "角色乙": "档案",
+      "角色丁": "档案",
+      "甲": "名册",
+      "主角": "主角",
+      "乙": "在场",
+      "角色甲": "当前角色"
+    },
+    "strong": 5
+  },
+  "subjectMatch": [
+    [
+      "角色乙",
+      "角色乙"
+    ],
+    [
+      "角色乙·船长",
+      "角色乙"
+    ],
+    [
+      "乙",
+      "角色乙"
+    ],
+    [
+      "角色丁",
+      "角色丁"
+    ],
+    [
+      "角色甲",
+      "甲"
+    ],
+    [
+      "路人甲",
+      "甲"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "角色",
+      "角色乙"
+    ]
+  ],
+  "match": {
+    "r": {
+      "groups": 4,
+      "merged": 1,
+      "renamed": 1,
+      "removed": 1,
+      "removedSubjects": [
+        "黑衣人"
+      ],
+      "kept": 3,
+      "noRoster": false
+    },
+    "states": [
+      {
+        "id": "m3",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "不悦",
+        "status": "active",
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 7,
+        "updatedAt": "2020-01-03",
+        "history": []
+      },
+      {
+        "id": "m2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "m5",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "找船",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      },
+      {
+        "id": "m6",
+        "subject": "角色乙",
+        "field": "长期目标",
+        "value": "远航",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "history": null
+      }
+    ],
+    "tombs": [
+      "m1",
+      "m4"
+    ],
+    "hashes": [
+      "16ae46z_ak32ay",
+      "aad53f_1df0wod"
+    ]
+  },
+  "matchAgain": {
+    "groups": 4,
+    "merged": 1,
+    "renamed": 1,
+    "removed": 1,
+    "removedSubjects": [
+      "黑衣人"
+    ],
+    "kept": 3,
+    "noRoster": false
+  },
+  "matchNoRoster": {
+    "r": {
+      "groups": 2,
+      "merged": 0,
+      "renamed": 0,
+      "removed": 0,
+      "removedSubjects": [],
+      "kept": 2,
+      "noRoster": true
+    },
+    "states": [
+      {
+        "id": "r1",
+        "subject": "路人甲",
+        "field": "处境",
+        "value": "路过",
+        "status": "active",
+        "uses": 1,
+        "floorEnd": 3,
+        "history": null
+      },
+      {
+        "id": "r2",
+        "subject": "路人乙",
+        "field": "处境",
+        "value": "路过",
+        "status": "active",
+        "uses": 1,
+        "floorEnd": 3,
+        "history": null
+      }
+    ],
+    "tombs": []
+  },
+  "matchSimLow": {
+    "groups": 4,
+    "merged": 1,
+    "renamed": 1,
+    "removed": 1,
+    "removedSubjects": [
+      "黑衣人"
+    ],
+    "kept": 3,
+    "noRoster": false
+  },
+  "clean": {
+    "r": {
+      "junk": 3,
+      "merged": 1,
+      "renamedField": 2,
+      "trimmed": 1,
+      "capped": 0,
+      "before": 12,
+      "after": 8
+    },
+    "states": [
+      {
+        "id": "c2",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "愤怒",
+        "status": "active",
+        "uses": 3,
+        "floorStart": 2,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-05",
+        "history": []
+      },
+      {
+        "id": "c5",
+        "subject": "角色乙",
+        "field": "短期目标",
+        "value": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "status": "active",
+        "uses": 1,
+        "floorEnd": 2,
+        "history": null
+      },
+      {
+        "id": "c7",
+        "subject": "角色乙",
+        "field": "杂项",
+        "value": "非规范字段值",
+        "status": "active",
+        "uses": 1,
+        "floorEnd": 2,
+        "history": null
+      },
+      {
+        "id": "c8",
+        "subject": "角色丁",
+        "field": "身体状况与伤势",
+        "value": "良好",
+        "status": "active",
+        "uses": 3,
+        "floorEnd": 9,
+        "updatedAt": "2020-02-01",
+        "history": null
+      },
+      {
+        "id": "c9",
+        "subject": "角色丁",
+        "field": "长期目标",
+        "value": "远航",
+        "status": "active",
+        "uses": 1,
+        "floorEnd": 4,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "c10",
+        "subject": "角色丁",
+        "field": "当前担忧",
+        "value": "风暴",
+        "status": "active",
+        "uses": 9,
+        "floorEnd": 2,
+        "updatedAt": "2019-12-01",
+        "history": null
+      },
+      {
+        "id": "c11",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "修船",
+        "status": "active",
+        "uses": 2,
+        "floorEnd": 8,
+        "updatedAt": "2020-01-20",
+        "history": null
+      },
+      {
+        "id": "c12",
+        "subject": "角色丁",
+        "field": "处境",
+        "value": "在船上",
+        "status": "inactive",
+        "uses": 5,
+        "floorEnd": 3,
+        "updatedAt": "2019-11-01",
+        "history": null
+      }
+    ],
+    "tombs": [
+      "c1",
+      "c3",
+      "c4",
+      "c6"
+    ],
+    "hashes": [
+      "1lk6sa9_1m99vf2",
+      "9z7vca_llgqkd",
+      "aad53f_1df0wod",
+      "jdhfjl_65ypar",
+      "xsmscx_1u3oehq"
+    ]
+  },
+  "cleanAgain": {
+    "junk": 3,
+    "merged": 1,
+    "renamedField": 2,
+    "trimmed": 1,
+    "capped": 0,
+    "before": 12,
+    "after": 8
+  },
+  "cleanCap": {
+    "r": {
+      "junk": 0,
+      "merged": 0,
+      "renamedField": 0,
+      "trimmed": 0,
+      "capped": 2,
+      "before": 5,
+      "after": 3
+    },
+    "states": [
+      {
+        "id": "k2",
+        "subject": "角色乙",
+        "field": "短期目标",
+        "value": "B",
+        "status": "active",
+        "uses": 9,
+        "floorEnd": 2,
+        "history": null
+      },
+      {
+        "id": "k3",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "C",
+        "status": "active",
+        "uses": 2,
+        "floorEnd": 8,
+        "history": null
+      },
+      {
+        "id": "k5",
+        "subject": "角色丁",
+        "field": "处境",
+        "value": "E",
+        "status": "inactive",
+        "uses": 4,
+        "floorEnd": 4,
+        "history": null
+      }
+    ],
+    "tombs": [
+      "k1",
+      "k4"
+    ]
+  },
+  "cleanEmpty": {
+    "junk": 0,
+    "merged": 0,
+    "renamedField": 0,
+    "trimmed": 0,
+    "capped": 0,
+    "before": 0,
+    "after": 0
+  },
+  "pick": {
+    "batch": 3,
+    "total": 2,
+    "list": [
+      {
+        "name": "角色丁",
+        "filled": 1,
+        "missing": [
+          "身体状况与伤势",
+          "情绪与心理状态",
+          "长期目标",
+          "处境",
+          "当前担忧"
+        ],
+        "uses": 2,
+        "last": 4,
+        "lastAt": "",
+        "arrLen": 2,
+        "fieldMap": {
+          "短期目标": "找船",
+          "杂项": "旧字段值"
+        }
+      },
+      {
+        "name": "角色乙",
+        "filled": 2,
+        "missing": [
+          "身体状况与伤势",
+          "短期目标",
+          "长期目标",
+          "当前担忧"
+        ],
+        "uses": 3,
+        "last": 6,
+        "lastAt": "2020-01-02",
+        "arrLen": 2,
+        "fieldMap": {
+          "情绪与心理状态": "愤怒",
+          "处境": "在码头"
+        }
+      }
+    ]
+  },
+  "pickLimit": {
+    "batch": 10,
+    "total": 2,
+    "names": [
+      "角色丁",
+      "角色乙"
+    ]
+  },
+  "pickOne": {
+    "batch": 1,
+    "total": 2,
+    "names": [
+      "角色丁"
+    ]
+  },
+  "prompt": [
+    {
+      "role": "system",
+      "content": "（测试用状态修复模板）\n只输出 JSON，不要解释文字。"
+    },
+    {
+      "role": "user",
+      "content": "【待修复状态（本轮共 2 名主体，按规范字段填充由少到多排序）】\n#1 主体「角色丁」（现有 2 条 · 已填规范字段 1/6 · 最近更新 — · 楼层 4）\n  现有字段（未列出的规范字段 = 当前为空）：\n    短期目标 = 找船\n    杂项（非规范字段：可改写为规范字段或删除） = 旧字段值\n  缺失的规范字段：身体状况与伤势、情绪与心理状态、长期目标、处境、当前担忧\n#2 主体「角色乙」（现有 2 条 · 已填规范字段 2/6 · 最近更新 2020-01-02 · 楼层 6）\n  现有字段（未列出的规范字段 = 当前为空）：\n    情绪与心理状态 = 愤怒\n    处境 = 在码头\n  缺失的规范字段：身体状况与伤势、短期目标、长期目标、当前担忧\n\n【近期正文（补齐与改写的唯一依据）】\n[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。\n\n字段只允许取：身体状况与伤势 / 情绪与心理状态 / 短期目标 / 长期目标 / 处境 / 当前担忧（或该主体已存在的非规范字段 —— 用「更新」把它改成规范字段名）。输出：{\"状态记录\":{\"更新\":[{\"主体\":\"…\",\"字段\":\"…\",\"值\":\"…\"}],\"删除\":[{\"主体\":\"…\",\"字段\":\"…\"}],\"无依据\":[\"…\"]}}。要求：① 同一主体同一字段只保留一条；② 值 ≤90 字、只写「当下仍然成立」的事实，不写来龙去脉；③ **没有正文依据就不要输出该条**（宁缺勿造）；④ 只处理上面列出的主体，不要新增主体。"
+    }
+  ],
+  "feedText": "[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。",
+  "promptEmpty": [
+    {
+      "role": "system",
+      "content": "（测试用状态修复模板）\n只输出 JSON，不要解释文字。"
+    },
+    {
+      "role": "user",
+      "content": "【待修复状态（本轮共 0 名主体，按规范字段填充由少到多排序）】\n\n\n【近期正文（补齐与改写的唯一依据）】\n[第0楼 AI] 第0楼：角色甲在地点丁发现被破坏的物品戊。\n[第1楼 AI] 第1楼：角色甲在地点丁发现被破坏的物品戊。\n[第2楼 AI] 第2楼：角色甲在地点丁发现被破坏的物品戊。\n[第3楼 AI] 第3楼：角色甲在地点丁发现被破坏的物品戊。\n\n字段只允许取：身体状况与伤势 / 情绪与心理状态 / 短期目标 / 长期目标 / 处境 / 当前担忧（或该主体已存在的非规范字段 —— 用「更新」把它改成规范字段名）。输出：{\"状态记录\":{\"更新\":[{\"主体\":\"…\",\"字段\":\"…\",\"值\":\"…\"}],\"删除\":[{\"主体\":\"…\",\"字段\":\"…\"}],\"无依据\":[\"…\"]}}。要求：① 同一主体同一字段只保留一条；② 值 ≤90 字、只写「当下仍然成立」的事实，不写来龙去脉；③ **没有正文依据就不要输出该条**（宁缺勿造）；④ 只处理上面列出的主体，不要新增主体。"
+    }
+  ],
+  "apply": {
+    "r": {
+      "changed": 5,
+      "added": 3,
+      "deleted": 0,
+      "unchanged": 1,
+      "invalid": 3,
+      "unknownRole": 1,
+      "noBasis": 2,
+      "renamedField": 0
+    },
+    "states": [
+      {
+        "id": "t1",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "愤怒",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "t2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头边",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "t3",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "找船",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      },
+      {
+        "id": "t4",
+        "subject": "角色丁",
+        "field": "杂项",
+        "value": "改后的值",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "updatedAt": "2020-06-01",
+        "history": null
+      },
+      {
+        "id": "t5",
+        "subject": "角色丙",
+        "field": "处境",
+        "value": "已殁",
+        "status": "active",
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 9,
+        "history": null
+      },
+      {
+        "id": "state_1gq376",
+        "subject": "角色乙",
+        "field": "身体状况与伤势",
+        "value": "左臂擦伤",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 6,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      },
+      {
+        "id": "state_e07dd6",
+        "subject": "角色丁",
+        "field": "身体状况与伤势",
+        "value": "强健",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 4,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      },
+      {
+        "id": "state_1fv5yr9",
+        "subject": "角色乙",
+        "field": "长期目标",
+        "value": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 6,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      }
+    ],
+    "tombs": [],
+    "hashes": []
+  },
+  "applyRawDelete": {
+    "r": {
+      "changed": 3,
+      "added": 0,
+      "deleted": 2,
+      "unchanged": 0,
+      "invalid": 0,
+      "unknownRole": 1,
+      "noBasis": 0,
+      "renamedField": 0
+    },
+    "states": [
+      {
+        "id": "t1",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "狂怒",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "t2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "t5",
+        "subject": "角色丙",
+        "field": "处境",
+        "value": "已殁",
+        "status": "active",
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 9,
+        "history": null
+      }
+    ],
+    "tombs": [
+      "t3",
+      "t4"
+    ],
+    "hashes": [
+      "1onymlg_1x6w5i3",
+      "kc6u4g_4t0ai3"
+    ]
+  },
+  "applyRename": {
+    "r": {
+      "changed": 1,
+      "added": 0,
+      "deleted": 0,
+      "unchanged": 0,
+      "invalid": 0,
+      "unknownRole": 0,
+      "noBasis": 0,
+      "renamedField": 1
+    },
+    "states": [
+      {
+        "id": "v1",
+        "subject": "角色丁",
+        "field": "身体状况与伤势",
+        "value": "强健",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "updatedAt": "2020-06-01",
+        "history": null
+      },
+      {
+        "id": "v2",
+        "subject": "角色乙",
+        "field": "顾虑",
+        "value": "怕黑",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "history": null
+      }
+    ]
+  },
+  "applyNoPick": {
+    "changed": 0,
+    "added": 0,
+    "deleted": 0,
+    "unchanged": 0,
+    "invalid": 0,
+    "unknownRole": 1,
+    "noBasis": 0,
+    "renamedField": 0
+  },
+  "applyBadDelta": {
+    "changed": 0,
+    "added": 0,
+    "deleted": 0,
+    "unchanged": 0,
+    "invalid": 0,
+    "unknownRole": 0,
+    "noBasis": 0,
+    "renamedField": 0
+  },
+  "deceased": {
+    "r": {
+      "removed": 1,
+      "subjects": [
+        "角色丙"
+      ],
+      "deceased": 1,
+      "scanned": 5
+    },
+    "states": [
+      {
+        "id": "t1",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "愤怒",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "t2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "t3",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "找船",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      },
+      {
+        "id": "t4",
+        "subject": "角色丁",
+        "field": "杂项",
+        "value": "旧字段值",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      }
+    ],
+    "tombs": [
+      "t5"
+    ],
+    "hashes": [
+      "1ipqx9a_1kzku77"
+    ]
+  },
+  "deceasedAgain": {
+    "r": {
+      "removed": 0,
+      "subjects": [],
+      "deceased": 1,
+      "scanned": 4
+    },
+    "states": [
+      {
+        "id": "t1",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "愤怒",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "t2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "t3",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "找船",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      },
+      {
+        "id": "t4",
+        "subject": "角色丁",
+        "field": "杂项",
+        "value": "旧字段值",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      }
+    ]
+  },
+  "stateBounds": {
+    "r": {
+      "cut": 2
+    },
+    "states": [
+      {
+        "id": "k3",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "C",
+        "status": "active",
+        "uses": 2,
+        "floorEnd": 8,
+        "history": null
+      },
+      {
+        "id": "k4",
+        "subject": "角色乙",
+        "field": "长期目标",
+        "value": "D",
+        "status": "active",
+        "uses": 2,
+        "floorEnd": 3,
+        "history": null
+      },
+      {
+        "id": "k5",
+        "subject": "角色丁",
+        "field": "处境",
+        "value": "E",
+        "status": "inactive",
+        "uses": 4,
+        "floorEnd": 4,
+        "history": null
+      }
+    ]
+  },
+  "run": {
+    "res": {
+      "made": 1,
+      "before": 5,
+      "after": 7,
+      "targets": 2,
+      "queueLeft": 0,
+      "match": {
+        "groups": 2,
+        "merged": 0,
+        "renamed": 0,
+        "removed": 0,
+        "removedSubjects": [],
+        "kept": 2,
+        "noRoster": false
+      },
+      "clean": {
+        "junk": 0,
+        "merged": 0,
+        "renamedField": 0,
+        "trimmed": 0,
+        "capped": 0,
+        "before": 4,
+        "after": 4
+      },
+      "ai": {
+        "changed": 5,
+        "added": 3,
+        "deleted": 0,
+        "unchanged": 1,
+        "invalid": 3,
+        "unknownRole": 1,
+        "noBasis": 2,
+        "renamedField": 0
+      },
+      "keys": [
+        "after",
+        "ai",
+        "before",
+        "clean",
+        "made",
+        "match",
+        "queueLeft",
+        "targets"
+      ]
+    },
+    "states": [
+      {
+        "id": "t1",
+        "subject": "角色乙",
+        "field": "情绪与心理状态",
+        "value": "愤怒",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 5,
+        "updatedAt": "2020-01-01",
+        "history": null
+      },
+      {
+        "id": "t2",
+        "subject": "角色乙",
+        "field": "处境",
+        "value": "在码头边",
+        "status": "active",
+        "uses": 2,
+        "floorStart": 2,
+        "floorEnd": 6,
+        "updatedAt": "2020-01-02",
+        "history": null
+      },
+      {
+        "id": "t3",
+        "subject": "角色丁",
+        "field": "短期目标",
+        "value": "找船",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "history": null
+      },
+      {
+        "id": "t4",
+        "subject": "角色丁",
+        "field": "杂项",
+        "value": "改后的值",
+        "status": "active",
+        "uses": 1,
+        "floorStart": 1,
+        "floorEnd": 4,
+        "updatedAt": "2020-06-01",
+        "history": null
+      },
+      {
+        "id": "state_1gq376",
+        "subject": "角色乙",
+        "field": "身体状况与伤势",
+        "value": "左臂擦伤",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 6,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      },
+      {
+        "id": "state_e07dd6",
+        "subject": "角色丁",
+        "field": "身体状况与伤势",
+        "value": "强健",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 4,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      },
+      {
+        "id": "state_1fv5yr9",
+        "subject": "角色乙",
+        "field": "长期目标",
+        "value": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "status": "active",
+        "uses": 0,
+        "floorStart": 0,
+        "floorEnd": 6,
+        "updatedAt": "2020-06-01",
+        "updatedAtTime": "",
+        "history": []
+      }
+    ],
+    "tombs": [
+      "t5"
+    ],
+    "toasts": [
+      [
+        "repair",
+        "开始修复状态记录…",
+        "当前 5 条状态 · 主体 2 名 → 本轮只提交最薄弱的 2 名：角色丁、角色乙 · 已先按规则整理：移除已去世角色的状态 1 条（角色丙）"
+      ],
+      [
+        "success",
+        "状态修复完成",
+        "修复前 5 条 → 修复后 7 条；本轮提交 2 条 / 2 组 / 共 2 组；提交对象 角色丁、角色乙；修复后 修订 5 条；移除已去世角色的状态 1 条（角色丙） · AI 更新 5 条（补齐 3 条） · 值未变 1 条 · 无效字段 3 条 · 主体不在本轮目标 1 条 · AI 标注无依据 2 条。"
+      ]
+    ],
+    "aiCalls": 1
+  },
+  "runNoTargets": {
+    "res": {
+      "made": 1,
+      "skipped": true,
+      "match": {
+        "groups": 1,
+        "merged": 0,
+        "renamed": 0,
+        "removed": 0,
+        "removedSubjects": [],
+        "kept": 1,
+        "noRoster": false
+      },
+      "clean": {
+        "junk": 2,
+        "merged": 0,
+        "renamedField": 0,
+        "trimmed": 0,
+        "capped": 0,
+        "before": 2,
+        "after": 0
+      }
+    },
+    "states": [],
+    "toasts": [
+      [
+        "info",
+        "状态修复完成",
+        "已按规则整理，无可提交 AI 的主体：清理空值/占位 2 条。"
+      ]
+    ],
+    "aiCalls": 0
+  },
+  "runEmpty": {
+    "res": {
+      "made": 0,
+      "skipped": true
+    },
+    "toasts": [
+      [
+        "info",
+        "状态修复：暂无状态记录",
+        "请先通过「AI 摘要」生成状态或手动添加后再修复。"
+      ]
+    ]
+  },
+  "inputs": {
+    "scenarioRoster": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioMatch": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "m1",
+          "subject": "角色乙",
+          "field": "情绪与心理状态",
+          "value": "愤怒",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 5,
+          "updatedAt": "2020-01-01",
+          "status": "active"
+        },
+        {
+          "id": "m2",
+          "subject": "角色乙",
+          "field": "处境",
+          "value": "在码头",
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 6,
+          "updatedAt": "2020-01-02",
+          "status": "active"
+        },
+        {
+          "id": "m3",
+          "subject": "角色乙·船长",
+          "field": "情绪与心理状态",
+          "value": "不悦",
+          "uses": 3,
+          "floorStart": 3,
+          "floorEnd": 7,
+          "updatedAt": "2020-01-03",
+          "status": "active"
+        },
+        {
+          "id": "m4",
+          "subject": "黑衣人",
+          "field": "处境",
+          "value": "跟踪",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 3,
+          "status": "active"
+        },
+        {
+          "id": "m5",
+          "subject": "角色丁",
+          "field": "短期目标",
+          "value": "找船",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 4,
+          "status": "active"
+        },
+        {
+          "id": "m6",
+          "subject": "乙",
+          "field": "长期目标",
+          "value": "远航",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "status": "active"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioMatchNoRoster": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "r1",
+          "subject": "路人甲",
+          "field": "处境",
+          "value": "路过",
+          "uses": 1,
+          "floorEnd": 3,
+          "status": "active"
+        },
+        {
+          "id": "r2",
+          "subject": "路人乙",
+          "field": "处境",
+          "value": "路过",
+          "uses": 1,
+          "floorEnd": 3,
+          "status": "active"
+        }
+      ],
+      "snapshots": [],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioRename": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "v1",
+          "subject": "角色丁",
+          "field": "身体",
+          "value": "旧值",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 4,
+          "status": "active"
+        },
+        {
+          "id": "v2",
+          "subject": "角色乙",
+          "field": "顾虑",
+          "value": "怕黑",
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 5,
+          "status": "active"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioClean": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "c1",
+          "subject": " 角色乙 ",
+          "field": "情绪",
+          "value": "愤怒",
+          "uses": 2,
+          "floorStart": 1,
+          "floorEnd": 3,
+          "updatedAt": "2020-01-01",
+          "status": "active"
+        },
+        {
+          "id": "c2",
+          "subject": "角色乙",
+          "field": "情绪与心理状态",
+          "value": "愤怒",
+          "uses": 1,
+          "floorStart": 2,
+          "floorEnd": 5,
+          "updatedAt": "2020-01-05",
+          "status": "active"
+        },
+        {
+          "id": "c3",
+          "subject": "角色乙",
+          "field": "处境",
+          "value": "   ",
+          "uses": 1,
+          "floorEnd": 1,
+          "status": "active"
+        },
+        {
+          "id": "c4",
+          "subject": "角色乙",
+          "field": "当前担忧",
+          "value": "暂无",
+          "uses": 1,
+          "floorEnd": 1,
+          "status": "active"
+        },
+        {
+          "id": "c5",
+          "subject": "角色乙",
+          "field": "短期目标",
+          "value": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+          "uses": 1,
+          "floorEnd": 2,
+          "status": "active"
+        },
+        {
+          "id": "c6",
+          "subject": "角色乙",
+          "field": "",
+          "value": "有值",
+          "uses": 1,
+          "floorEnd": 2,
+          "status": "active"
+        },
+        {
+          "id": "c7",
+          "subject": "角色乙",
+          "field": "杂项",
+          "value": "非规范字段值",
+          "uses": 1,
+          "floorEnd": 2,
+          "status": "active"
+        },
+        {
+          "id": "c8",
+          "subject": "角色丁",
+          "field": "身体状况",
+          "value": "良好",
+          "uses": 3,
+          "floorEnd": 9,
+          "updatedAt": "2020-02-01",
+          "status": "active"
+        },
+        {
+          "id": "c9",
+          "subject": "角色丁",
+          "field": "长期目标",
+          "value": "远航",
+          "uses": 1,
+          "floorEnd": 4,
+          "updatedAt": "2020-01-01",
+          "status": "active"
+        },
+        {
+          "id": "c10",
+          "subject": "角色丁",
+          "field": "当前担忧",
+          "value": "风暴",
+          "uses": 9,
+          "floorEnd": 2,
+          "updatedAt": "2019-12-01",
+          "status": "active"
+        },
+        {
+          "id": "c11",
+          "subject": "角色丁",
+          "field": "短期目标",
+          "value": "修船",
+          "uses": 2,
+          "floorEnd": 8,
+          "updatedAt": "2020-01-20",
+          "status": "active"
+        },
+        {
+          "id": "c12",
+          "subject": "角色丁",
+          "field": "处境",
+          "value": " 在船上 ",
+          "uses": 5,
+          "floorEnd": 3,
+          "updatedAt": "2019-11-01",
+          "status": "inactive"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioCap": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "k1",
+          "subject": "角色乙",
+          "field": "情绪与心理状态",
+          "value": "A",
+          "uses": 1,
+          "floorEnd": 1,
+          "status": "active"
+        },
+        {
+          "id": "k2",
+          "subject": "角色乙",
+          "field": "短期目标",
+          "value": "B",
+          "uses": 9,
+          "floorEnd": 2,
+          "status": "active"
+        },
+        {
+          "id": "k3",
+          "subject": "角色乙",
+          "field": "处境",
+          "value": "C",
+          "uses": 2,
+          "floorEnd": 8,
+          "status": "active"
+        },
+        {
+          "id": "k4",
+          "subject": "角色乙",
+          "field": "长期目标",
+          "value": "D",
+          "uses": 2,
+          "floorEnd": 3,
+          "status": "active"
+        },
+        {
+          "id": "k5",
+          "subject": "角色丁",
+          "field": "处境",
+          "value": "E",
+          "uses": 4,
+          "floorEnd": 4,
+          "status": "inactive"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioTargets": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "t1",
+          "subject": "角色乙",
+          "field": "情绪与心理状态",
+          "value": "愤怒",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 5,
+          "updatedAt": "2020-01-01",
+          "status": "active"
+        },
+        {
+          "id": "t2",
+          "subject": "角色乙",
+          "field": "处境",
+          "value": "在码头",
+          "uses": 2,
+          "floorStart": 2,
+          "floorEnd": 6,
+          "updatedAt": "2020-01-02",
+          "status": "active"
+        },
+        {
+          "id": "t3",
+          "subject": "角色丁",
+          "field": "短期目标",
+          "value": "找船",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 4,
+          "status": "active"
+        },
+        {
+          "id": "t4",
+          "subject": "角色丁",
+          "field": "杂项",
+          "value": "旧字段值",
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 4,
+          "status": "active"
+        },
+        {
+          "id": "t5",
+          "subject": "角色丙",
+          "field": "处境",
+          "value": "已殁",
+          "uses": 3,
+          "floorStart": 1,
+          "floorEnd": 9,
+          "status": "active"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n3",
+          "name": "角色丙",
+          "identity": {
+            "deceased": true
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "scenarioAllJunk": {
+      "version": "v1.206",
+      "state": {
+        "time": "傍晚",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null,
+        "present": [
+          "乙"
+        ]
+      },
+      "protagonist": {
+        "name": "主角"
+      },
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [
+        {
+          "id": "p1",
+          "name": "甲",
+          "tags": []
+        }
+      ],
+      "atoms": [],
+      "currentStates": [
+        {
+          "id": "z1",
+          "subject": "角色乙",
+          "field": "处境",
+          "value": "暂无",
+          "uses": 1,
+          "floorEnd": 1,
+          "status": "active"
+        },
+        {
+          "id": "z2",
+          "subject": "角色乙",
+          "field": "短期目标",
+          "value": "   ",
+          "uses": 1,
+          "floorEnd": 1,
+          "status": "active"
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "n1",
+          "name": "角色乙",
+          "identity": {
+            "gender": "男"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        },
+        {
+          "id": "n2",
+          "name": "角色丁",
+          "identity": {
+            "gender": "女"
+          },
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "uses": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "aiA": {
+      "状态记录": {
+        "更新": [
+          {
+            "主体": "角色乙",
+            "字段": "身体状况与伤势",
+            "值": "左臂擦伤"
+          },
+          {
+            "主体": "角色乙",
+            "字段": "情绪与心理状态",
+            "值": "愤怒"
+          },
+          {
+            "主体": "角色乙",
+            "字段": "处境",
+            "值": "在码头边"
+          },
+          {
+            "主体": "角色丁",
+            "字段": "身体",
+            "值": "强健"
+          },
+          {
+            "主体": "角色丁",
+            "字段": "杂项",
+            "值": "改后的值"
+          },
+          {
+            "主体": "角色甲",
+            "字段": "处境",
+            "值": "x"
+          },
+          {
+            "主体": "角色丁",
+            "字段": "不存在字段",
+            "值": "x"
+          },
+          {
+            "主体": "角色丁",
+            "字段": "短期目标",
+            "值": "暂无"
+          },
+          {
+            "主体": "角色乙",
+            "字段": "长期目标",
+            "值": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
+          },
+          "not-an-object"
+        ],
+        "删除": [
+          {
+            "主体": "角色乙",
+            "字段": "杂项"
+          },
+          "角色丁·杂项",
+          "路人甲"
+        ],
+        "无依据": [
+          "角色乙：长期目标",
+          "角色丁：当前担忧"
+        ]
+      }
+    },
+    "aiB": {
+      "states": {
+        "update": [
+          {
+            "subject": "角色丁",
+            "field": "身体",
+            "value": "强健"
+          }
+        ],
+        "删除": [],
+        "无依据": []
+      }
+    },
+    "applyRaw": {
+      "states": {
+        "update": [
+          {
+            "subject": "角色乙",
+            "field": "情绪与心理状态",
+            "value": "狂怒"
+          }
+        ],
+        "删除": [
+          {
+            "主体": "角色丁",
+            "字段": "杂项"
+          },
+          "角色丁·短期目标",
+          "不存在的人"
+        ],
+        "无依据": []
+      }
+    },
+    "cfg": {
+      "dimCharLimitsStates": 130,
+      "repairFloors": 10,
+      "stateRepairBatch": 3,
+      "stateMaxPerSubject": 10,
+      "stateMinPerSubject": 0,
+      "stateRepairMatchSim": 0.72
+    },
+    "promptTemplates": {
+      "statesRepair": "（测试用状态修复模板）"
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（状态修复 runStateRepair / stateRepairMatch / stateRepairClean / pickStateRepairTargets / removeStatesOfDeceased / buildStateRepairPrompt / applyStateRepair / stateCanonField / stateRepairRoster / stateSubjectMatch / applyStateBounds）"
+}

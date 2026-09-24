@@ -231,6 +231,24 @@ export function installDevtools(hooks) {
             deriveSnapshotTags: (s, o) => (hooks && typeof hooks.deriveSnapshotTags === 'function' ? hooks.deriveSnapshotTags(s, o) : []),
             characterMechanicalPass: (o) => (hooks && typeof hooks.characterMechanicalPass === 'function' ? hooks.characterMechanicalPass(o) : null),
             correctSnapshotBirthDates: (o) => (hooks && typeof hooks.correctSnapshotBirthDates === 'function' ? hooks.correctSnapshotBirthDates(o) : null),
+            // B8-6c-4 状态记录修复（V1 v1.158 匹配 → 机械清理 → AI 整理；v1.205 已去世固定规则）
+            stateRepairFields: () => (hooks && typeof hooks.stateRepairFields === 'function' ? hooks.stateRepairFields() : null),
+            stateCanonField: (f) => (hooks && typeof hooks.stateCanonField === 'function' ? hooks.stateCanonField(f) : ''),
+            stateRepairRoster: () => (hooks && typeof hooks.stateRepairRoster === 'function' ? hooks.stateRepairRoster() : null),
+            stateSubjectMatch: (s, roster, sim) => (hooks && typeof hooks.stateSubjectMatch === 'function' ? hooks.stateSubjectMatch(s, roster, sim) : ''),
+            stateRepairMatch: (o) => (hooks && typeof hooks.stateRepairMatch === 'function' ? hooks.stateRepairMatch(o || {}) : null),
+            stateRepairClean: () => (hooks && typeof hooks.stateRepairClean === 'function' ? hooks.stateRepairClean() : null),
+            removeStatesOfDeceased: (o) => (hooks && typeof hooks.removeStatesOfDeceased === 'function' ? hooks.removeStatesOfDeceased(o || {}) : null),
+            stateRepairTargets: (n) => (hooks && typeof hooks.stateRepairTargets === 'function' ? hooks.stateRepairTargets(n) : null),
+            stateRepairPrompt: (pick) => (hooks && typeof hooks.stateRepairPrompt === 'function' ? hooks.stateRepairPrompt(pick) : null),
+            stateRepairApply: (delta, pick) => (hooks && typeof hooks.stateRepairApply === 'function' ? hooks.stateRepairApply(delta, pick) : null),
+            stateRepair: (opts) => (hooks && typeof hooks.stateRepair === 'function' ? hooks.stateRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            // B8-6c-4 计划/悬念修复（V1 v1.140 悬念聚类核对 + v1.113 计划冗余合并）
+            suspenseMergeExact: () => (hooks && typeof hooks.suspenseMergeExact === 'function' ? hooks.suspenseMergeExact() : null),
+            planSuspRepairPrompt: (pick) => (hooks && typeof hooks.planSuspRepairPrompt === 'function' ? hooks.planSuspRepairPrompt(pick) : null),
+            planSuspMergeApply: (delta) => (hooks && typeof hooks.planSuspMergeApply === 'function' ? hooks.planSuspMergeApply(delta) : null),
+            suspenseRepairApply: (delta, pick) => (hooks && typeof hooks.suspenseRepairApply === 'function' ? hooks.suspenseRepairApply(delta, pick) : null),
+            planSuspRepair: (opts) => (hooks && typeof hooks.planSuspRepair === 'function' ? hooks.planSuspRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;
