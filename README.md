@@ -121,6 +121,11 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 经 `saveKernelCfg` 持久化到 ST 配置，读取侧一律取 `cfg.*`（不存在两套配置分叉）；模板不可用时回退 HTML 同样包含这些控件。
 详见 `docs/P5-设定面板.md`。
 
+**P5 次批（数据台）**：`ui/console.js` 提供 14 维浏览、搜索（id/标题/正文/归属/标签/关键词）、条目查看与编辑
+（标题·正文·日期·标签·重要度，附关联行与内容哈希）、删除（**留 id + 内容哈希双墓碑**）与**注入自查**
+（逐条判定是否进入当前注入，给出命中/未命中合计）；渲染与动作分离（`consoleHtml` / `consoleAction` / `bindConsole`），
+无 `querySelectorAll` 的环境可直接调动作入口，故逻辑可完整测。详见 `docs/P5b-数据台.md`。
+
 改动内核算法时：先更新黄金样本，再让 V2 对齐（避免 V1/V2 算法悄悄分叉）。
 
 ### 5.3 硬规则
@@ -147,7 +152,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── i18n/                  # zh-cn / en 词条
 ├── tests/                 # 宿主桩 + 单元 + 冒烟
 ├── scripts/               # 门禁脚本（内核纯净度 / 内核标识符 / 版本一致性 / 文档规范）
-└── docs/                  # P0 探针报告 / 更新检查 / P1 内核平移 / P2 宿主与存储 / P3 注入闭环 / P3b 提取落库 / P4 提取编排 / P5 设定面板
+└── docs/                  # P0 探针报告 / 更新检查 / P1 内核平移 / P2 宿主与存储 / P3 注入闭环 / P3b 提取落库 / P4 提取编排 / P5 设定面板 / P5b 数据台
 ```
 
 ## 7. 许可
