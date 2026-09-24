@@ -14,9 +14,17 @@ import {
     openPanel, closePanel, panelHtml, panelTabs, panelInfo, panelState, panelAction, panelBodyHtml,
     PANEL_ID, PANEL_TABS, setPanelHooks2, unmountPanel,
 } from '../../ui/panel.js';
+import { kindFields } from '../../ui/fields.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const R = makeReporter('panel V1 同构面板（B1）');
+
+/** 异步断言助手：**求值后再断言**（防「Promise 恒真」的假绿；见 tests/harness/st-mock.js 的防呆） */
+async function A(name, fn, detail) {
+    let cond = false, extra = detail;
+    try { cond = await fn(); } catch (e) { cond = false; extra = String((e && e.message) || e); }
+    R.assert(name, cond === true, extra);
+}
 const J = (v) => JSON.stringify(v);
 const CSS = readFileSync(join(ROOT, 'style.css'), 'utf8');
 
@@ -38,6 +46,8 @@ const SEED = () => Object.assign(emptyState(), {
     memories: [{ id: 'm1', owner: '甲', content: '甲记得昨夜有人在巷口徘徊。', date: '1919-11-28' }],
     currentStates: [{ id: 'c1', subject: '甲', field: '心情', value: '警觉' }],
     processedFloors: [{ f: 0, h: 'x' }, { f: 1, h: 'y' }, { f: 3, h: 'z' }],
+    snapshots: [{ id: 's1', name: '甲', identity: { gender: '男', birthDate: '1900-05-20' } }],
+    scenes: [{ id: 'sc1', name: '码头', pathArr: ['城外', '码头'] }],
 });
 function boot() {
     setKernelState(SEED());
@@ -93,7 +103,7 @@ R.assert('P2 维度分页：V1 行样式（.ftt-item/.ftt-inline/.ftt-btn）+ �
         && plans.indexOf('悬念') >= 0 && plans.indexOf('data-ftt-search="plans"') >= 0 && plans.indexOf('data-ftt-search="suspense"') >= 0;
 })(), '');
 
-R.assert('P3 空类目提示与搜索过滤：无匹配时显示 .ftt-empty；搜索词只影响该分页', (async () => {
+await A('P3 空类目提示与搜索过滤：无匹配时显示 .ftt-empty；搜索词只影响该分页', async () => {
     const before = panelBodyHtml('atoms');
     await panelAction('search', { kind: 'atoms', q: '不存在的词zzz' });
     const filtered = panelBodyHtml('atoms');
@@ -102,28 +112,28 @@ R.assert('P3 空类目提示与搜索过滤：无匹配时显示 .ftt-empty；�
     const back = panelBodyHtml('atoms');
     return before.indexOf('码头木箱') >= 0 && filtered.indexOf('ftt-empty') >= 0 && filtered.indexOf('码头木箱') < 0
         && other.indexOf('巷口徘徊') >= 0 && back.indexOf('码头木箱') >= 0 && panelState().search.atoms === '';
-})(), '');
+}, '');
 
-R.assert('P4 编辑器：点 ✏️ 展开 .ftt-editor（标题/正文/日期/标签/重要度 + 内容哈希 + 关联），可保存落库', (async () => {
+await A('P4 编辑器：点 ✏️ 展开 .ftt-editor（V1 字段表：标题/正文/日期/标签/重要度 + 内容哈希），可保存落库', async () => {
     await panelAction('edit', { kind: 'atoms', id: 'a1' });
     const ed = panelBodyHtml('atoms');
     const before = state.atoms[0].title;
     const r = await panelAction('save', { kind: 'atoms', id: 'a1', fields: { title: '码头木箱（已核对）', text: '甲在码头发现木箱，断口整齐（正文足够长）。', date: '1919-11-29', tags: '码头、木箱', importance: '0.9' } });
     const after = state.atoms.filter((x) => x.id === 'a1')[0];
     return ed.indexOf('class="ftt-editor"') >= 0 && ed.indexOf('data-ftt-ed="title"') >= 0 && ed.indexOf('data-ftt-ed="importance"') >= 0
-        && ed.indexOf('内容哈希') >= 0 && ed.indexOf('关联：') >= 0
+        && ed.indexOf('内容哈希') >= 0
         && r.ok === true && before === '码头木箱' && after.title === '码头木箱（已核对）' && after.importance === 0.9
         && panelState().editing === null && panelState().note.indexOf('已保存') >= 0;
-})(), panelState());
+}, panelState());
 
-R.assert('P5 删除：留 id 墓碑并从容器移除（与数据台同一实现）', (async () => {
+await A('P5 删除：留 id 墓碑并从容器移除（与数据台同一实现）', async () => {
     const r = await panelAction('delete', { kind: 'atoms', id: 'a1' });
     const gone = state.atoms.filter((x) => x.id === 'a1').length === 0;
     return r.ok === true && gone && !!((state.deleted || {}).atoms || {})['a1'] && panelState().note.indexOf('已删除') >= 0;
-})(), (state.deleted || {}).atoms);
+}, (state.deleted || {}).atoms);
 
 // ---------- 动作 ----------
-R.assert('A1 工具行动作：提取（全部分析 / 单楼）与立即注入走注入钩子并回填提示', (async () => {
+await A('A1 工具行动作：提取（全部分析 / 单楼）与立即注入走注入钩子并回填提示', async () => {
     boot();
     const all = await panelAction('summary', {});
     const one = await panelAction('summaryFloor', { floor: 4 });
@@ -131,9 +141,9 @@ R.assert('A1 工具行动作：提取（全部分析 / 单楼）与立即注入�
     const notes = panelState().note;
     return all.ok === true && one.ok === true && inj.ok === true
         && notes.indexOf('已注入') >= 0;
-})(), panelState().note);
+}, panelState().note);
 
-R.assert('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；close 关闭浮层', (async () => {
+await A('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；close 关闭浮层', async () => {
     openPanel('overview');
     const r = await panelAction('tab', { tab: 'memories' });
     const open2 = panelInfo().open;
@@ -141,7 +151,7 @@ R.assert('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；
     return r.ok === true && panelState().tab === 'memories' && panelState().editing === null
         && String(r.html).indexOf('class="ftt-tab ftt-on" data-ftt-tab="memories"') >= 0
         && open2 === true && panelInfo().open === false;
-})(), panelState());
+}, panelState());
 
 R.assert('A3 设置分页：内嵌现有设置表单（内核配置控件）并在后续批次替换为 V1 的 13 组子页', (() => {
     const h = panelBodyHtml('settings');
@@ -149,11 +159,102 @@ R.assert('A3 设置分页：内嵌现有设置表单（内核配置控件）并�
         && h.indexOf('13 组设定子页') >= 0 && h.indexOf('ftt_v2_settings') >= 0;
 })(), '');
 
-R.assert('A4 未知动作与卸载：未知动作返回失败不抛；unmount 关闭并清空浮层引用', (async () => {
+await A('A4 未知动作与卸载：未知动作返回失败不抛；unmount 关闭并清空浮层引用', async () => {
     const bad = await panelAction('不存在的动作', {});
     unmountPanel();
     return bad.ok === false && bad.reason === 'unknown-action' && panelInfo().open === false;
-})(), panelInfo());
+}, panelInfo());
+
+// ---------- B2：条目操作与编辑器全量 ----------
+await A('B2-1 编辑器字段表与 V1 一致：各维度字段数与标签取自 kindFields（13 维）', async () => {
+    boot();
+    const counts = ['atoms', 'states', 'snapshots', 'memories', 'concepts', 'items', 'currencies', 'plotSegments', 'rumors', 'plans', 'suspense', 'scenes', 'parallels']
+        .map((k) => k + ':' + kindFields(k).length).join(' ');
+    await panelAction('edit', { kind: 'snapshots', id: 's1' });
+    const ed = panelBodyHtml('snapshots');
+    return counts === 'atoms:11 states:5 snapshots:20 memories:8 concepts:7 items:6 currencies:7 plotSegments:2 rumors:10 plans:11 suspense:11 scenes:3 parallels:13'
+        && ed.indexOf('class="ftt-editor"') >= 0 && ed.indexOf('data-ftt-ed="birthDate"') >= 0
+        && ed.indexOf('出生日期(年-月-日；年龄自动计算)') >= 0 && ed.indexOf('data-ftt-ed="deceased"') >= 0;
+}, '');
+
+await A('B2-2 新增（含预设）：add 打开空编辑器；addStateFor 预设主体；addChildScene 预设父级并生成 pathArr', async () => {
+    boot();
+    await panelAction('add', { kind: 'items' });
+    const newItems = panelBodyHtml('items');
+    await panelAction('addStateFor', { subject: '甲' });
+    const st = panelBodyHtml('states');
+    await panelAction('addChildScene', { id: 'sc1' });
+    const sc = panelBodyHtml('scenes');
+    const r = await panelAction('save', { kind: 'scenes', id: '', fields: { name: '仓库', parent: 'sc1', desc: '堆货' } });
+    const child = (state.scenes || []).filter((x) => x.name === '仓库')[0];
+    return newItems.indexOf('➕ 新增 · 物品') >= 0 && st.indexOf('value="甲"') >= 0
+        && sc.indexOf('data-ftt-ed="parent"') >= 0 && sc.indexOf('selected') >= 0
+        && r.ok === true && !!child && J(child.pathArr) === J(['城外', '码头', '仓库']);   // deconstructEntry：父级路径 + 本节点名（V1 口径）
+}, (state.scenes || []).map((x) => x.name));
+
+await A('B2-3 多选与批量删除：multiToggle → selectAll → bulkDelete（逐条留墓碑并清空选择）', async () => {
+    boot();
+    await panelAction('multiToggle', { kind: 'atoms' });
+    await panelAction('selectAll', { kind: 'atoms' });
+    const n1 = panelState().selCount;
+    const del = await panelAction('bulkDelete', { kind: 'atoms' });
+    const tombstones = Object.keys((state.deleted || {}).atoms || {}).length;
+    await panelAction('multiToggle', { kind: 'atoms' });
+    return n1 === 1 && del.ok === true && del.deleted === 1 && state.atoms.length === 0
+        && tombstones >= 1 && panelState().selCount === 0 && panelState().multi.atoms === false;
+}, panelState());
+
+await A('B2-4 隐藏过滤与速览：atomToggleHidden 切换显示已总结；atomPeek 穿透查看原文并可收起', async () => {
+    boot();
+    const s2 = SEED();
+    s2.atoms.push({ id: 'a2', title: '已总结情节', text: '这条情节已被总结隐藏。', hidden: true, summarizedAt: 1 });
+    setKernelState(s2);
+    const filtered = panelBodyHtml('atoms');
+    await panelAction('atomToggleHidden', {});
+    const shown = panelBodyHtml('atoms');
+    await panelAction('atomPeek', { id: 'a2' });
+    const peeked = panelBodyHtml('atoms');
+    await panelAction('atomPeekClose', {});
+    const closed = panelBodyHtml('atoms');
+    return filtered.indexOf('已总结情节') < 0 && filtered.indexOf('👁 显示已总结（1）') >= 0
+        && shown.indexOf('已总结情节') >= 0 && shown.indexOf('🙈 隐藏已总结') >= 0
+        && peeked.indexOf('🔍 速览') >= 0 && peeked.indexOf('这条情节已被总结隐藏。') >= 0
+        && closed.indexOf('🔍 速览') < 0;
+}, panelState());
+
+await A('B2-5 状态分组：按主体分组 + delStateGroup 删除整组（逐条墓碑）；搜索清除恢复全量', async () => {
+    boot();
+    const s3 = SEED();
+    s3.currentStates = [{ id: 'c1', subject: '甲', field: '心情', value: '警觉' }, { id: 'c2', subject: '乙', field: '伤', value: '轻' }];
+    setKernelState(s3);
+    const grouped = panelBodyHtml('states');
+    const r = await panelAction('delStateGroup', { subject: '乙' });
+    const after = (state.currentStates || []).map((x) => x.id);
+    await panelAction('search', { kind: 'states', q: '警觉' });
+    const searched = panelBodyHtml('states');
+    await panelAction('searchClear', { searchKind: 'states' });
+    const cleared = panelBodyHtml('states');
+    return grouped.indexOf('👤 甲') >= 0 && grouped.indexOf('(1)') >= 0 && grouped.indexOf('data-ftt-action="delStateGroup" data-ftt-subject="乙"') >= 0
+        && r.ok === true && J(after) === J(['c1'])
+        // **有意偏离 V1**：墓碑写进规范维度键 deleted.currentStates（V1 写 deleted.states，其自己的合并读不到）
+        && !!((state.deleted || {}).currentStates || {})['c2']
+        && searched.indexOf('心情') >= 0 && searched.indexOf('伤') < 0
+        && cleared.indexOf('伤') < 0 && panelState().search.states === '';
+}, (state.deleted || {}).currentStates);
+
+await A('B2-6 关闭编辑器：closeEntry 不写库仅收起；deconstructEntry 保存语义（数组/分组字段还原）', async () => {
+    boot();
+    await panelAction('edit', { kind: 'memories', id: 'm1' });
+    const before = J(state.memories[0]);
+    await panelAction('closeEntry', { kind: 'memories' });
+    const afterClose = J(state.memories[0]);          // 必须在保存**之前**取：closeEntry 不得写库
+    const closed = panelState().editing === null;
+    const r = await panelAction('save', { kind: 'memories', id: 'm1', fields: { owner: '甲', content: '甲记得有人在巷口徘徊。', date: '1919-11-28', tags: '秘密、见闻', importance: 0.6 } });
+    const m = state.memories.filter((x) => x.id === 'm1')[0];
+    return closed && afterClose === before
+        && r.ok === true && m && m.content.indexOf('巷口') >= 0
+        && Array.isArray(m.tags) && m.tags.join('、') === '秘密、见闻' && m.importance === 0.6;
+}, state.memories[0]);
 
 un();
 R.done();

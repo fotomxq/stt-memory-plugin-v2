@@ -157,6 +157,14 @@ export function makeReporter(title) {
     const failures = [];
     return {
         assert(name, cond, extra) {
+            // 防呆：断言条件必须是**已求值的布尔值** —— Promise/thenable 恒为真，会造成「假绿」（曾真实发生）
+            const thenable = cond && (typeof cond === 'object' || typeof cond === 'function') && typeof cond.then === 'function';
+            if (thenable) {
+                fail++;
+                failures.push(name);
+                console.log('  ❌', name, '断言条件是一个 Promise（未 await）：请改为 await 后传布尔值', extra === undefined ? '' : JSON.stringify(extra));
+                return;
+            }
             if (cond) { pass++; }
             else { fail++; failures.push(name); console.log('  ❌', name, extra === undefined ? '' : JSON.stringify(extra)); }
         },

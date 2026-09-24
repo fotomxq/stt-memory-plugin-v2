@@ -16,6 +16,8 @@ import { state, cfg, getScopeKey, getLastMessageId } from '../core/model/runtime
 import { clockDateLabel } from '../core/clock.js';
 import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
+import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
+import { atomIsHidden } from '../core/merge.js';
 
 export const PANEL_ID = 'ftt-panel';
 /** V1 的 13 个分页（id 与标签逐字一致） */
@@ -27,7 +29,13 @@ export const PANEL_TABS = Object.freeze([
 /** 分页 id → 维度容器键（状态存 currentStates；计划悬念页含 plans+suspense） */
 const TAB_DIM = { atoms: 'atoms', states: 'currentStates', snapshots: 'snapshots', memories: 'memories', items: 'items', currencies: 'currencies', rumors: 'rumors', plans: 'plans', scenes: 'scenes', concepts: 'concepts', parallels: 'parallels' };
 
-const ps = { tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0 };
+const ps = {
+    tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0,
+    sel: {},            // 多选集合：{ [kind]: Set<id> }
+    multi: {},          // 多选模式：{ [kind]: bool }
+    showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
+    peek: '',           // 情节速览：正在穿透查看的 id（V1 atomPeek）
+};
 let overlayEl = null;
 let hooks = {};
 let escBound = false;
@@ -40,8 +48,31 @@ export function panelState() {
         id: PANEL_ID, tab: ps.tab, open: ps.open, opened: ps.opened, note: ps.note,
         tabs: PANEL_TABS.map((t) => t[0]), editing: ps.editing ? Object.assign({}, ps.editing) : null,
         search: Object.assign({}, ps.q),
+        multi: Object.assign({}, ps.multi),
+        selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
+        showHidden: ps.showHidden, peek: ps.peek,
     };
 }
+/**
+ * UI 分页 id → **数据容器键**：V1 的界面用 'states'，而数据容器/墓碑维度是 'currentStates'
+ *   （V1 的 `ATOM_DIM_KEYS` 只含 currentStates）。若直接把 'states' 传给 entries/墓碑层，
+ *   墓碑会写到 `deleted.states` —— 跨端合并读不到，属真实缺陷（B2 修）。
+ */
+function dataKindOf(kind) { return kind === 'states' ? 'currentStates' : String(kind || ''); }
+// 注（**与 V1 的一处有意偏离**）：V1 的状态页把墓碑写进 `deleted.states`，而它的维度表 `ATOM_DIM_KEYS` 只认
+//   `currentStates` —— 即 V1 的状态删除墓碑**不会被自己的跨端合并/清扫读到**（删了可能在别端复活）。
+//   V2 统一用规范维度键（states → currentStates）写入与读取，使删除墓碑真正生效；UI 标签/分页 id 仍与 V1 一致。
+//   登记于 docs/P8c-B2条目操作.md「有意偏离」。
+
+/** 某维度的多选集合（缺省即建） */
+function selOf(kind) { if (!ps.sel[kind]) ps.sel[kind] = new Set(); return ps.sel[kind]; }
+/** 当前列表（含隐藏过滤） */
+function listOf(kind, q, limit) {
+    const base = consoleList(dataKindOf(kind), q === undefined ? (ps.q[kind] || '') : q, limit);
+    if (kind !== 'atoms' || ps.showHidden) return base;
+    try { return base.filter((x) => !atomIsHidden(x)); } catch (e) { return base; }
+}
+function hiddenCount() { try { return arrOf('atoms').filter((x) => atomIsHidden(x)).length; } catch (e) { return 0; } }
 export function panelInfo() {
     const doc = docEl();
     let mounted = false;
@@ -55,7 +86,17 @@ const attr = (v) => esc(v);
 function docEl() { try { return globalThis.document || null; } catch (e) { return null; } }
 const J = (v) => { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return null; } };
 
-function arrOf(kind) { try { return Array.isArray(state[kind]) ? state[kind] : []; } catch (e) { return []; } }
+/**
+ * 读取维度容器数组：**UI kind → 数据容器键**（V1 的界面用 'states'，容器是 `currentStates`）。
+ * 注意与「墓碑维度」区分：写入/墓碑层仍传 UI kind（V1 `deleteEntry('states')` 把墓碑写进 `deleted.states`），
+ * 但**读取容器**必须映射，否则状态页会显示为空（B2 实测踩到）。
+ */
+function arrOf(kind) {
+    try {
+        const k = dataKindOf(kind);
+        return Array.isArray(state[k]) ? state[k] : [];
+    } catch (e) { return []; }
+}
 function totalMemory() {
     try { return DIMENSIONS.reduce((n, d) => n + arrOf(d.kind).length, 0); } catch (e) { return 0; }
 }
@@ -118,47 +159,188 @@ function rangesText(nums) {
     return out.slice(-8).join('、') + (out.length > 8 ? ' …共 ' + out.length + ' 段' : '');
 }
 
-/** 维度列表（V1 同款行样式 + 搜索 + 编辑/删除） */
+/** 维度列表（V1 同款：工具栏 + 搜索 + 多选 + 行内操作 + 速览 + 编辑器） */
 function dimBody(kind) {
     const q = ps.q[kind] || '';
-    const list = consoleList(kind, q, 200);
+    const list = listOf(kind, q, 300);
     const total = arrOf(kind).length;
+    const sel = selOf(kind);
+    const multi = ps.multi[kind] === true;
+    const hiddenN = kind === 'atoms' ? hiddenCount() : 0;
+    const toolbar = '<div class="ftt-addbar ftt-toolbar">'
+        + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="' + attr(kind) + '">➕ 新增</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="' + attr(kind) + '" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
+        + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="' + attr(kind) + '">全选</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="' + attr(kind) + '">清空选择</button>'
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
+        + (kind === 'atoms' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="atomToggleHidden">' + (ps.showHidden ? '🙈 隐藏已总结' : ('👁 显示已总结（' + hiddenN + '）')) + '</button>') : '')
+        + '</div>'
+        + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
         + '<span class="ftt-muted">' + (q ? '匹配 ' + list.length + ' / ' : '共 ') + total + ' 条</span></div>';
-    const ed = ps.editing && ps.editing.kind === kind ? editorHtml(kind, ps.editing.id) : '';
-    if (!list.length) return head + ed + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
-    return head + ed + list.map((e) => {
+    const ed = ps.editing && ps.editing.kind === kind ? editorHtml(kind, ps.editing.id, ps.editing.preset) : '';
+    const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
+    if (!list.length) return toolbar + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    const rows = list.map((e) => {
         const id = String(e.id || '');
-        const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || ''].filter(Boolean).join(' · ');
-        return '<div class="ftt-item ftt-inline">'
-            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + '</span>'
+        const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || ''].filter(Boolean).join(' · ');
+        const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
+        const box = multi ? ('<input type="checkbox" data-ftt-select="' + attr(kind) + '" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
+        const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
+        return '<div class="ftt-item ftt-inline">' + box
+            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + '</span>'
+            + peekBtn
             + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
             + '</div>';
     }).join('\n');
+    return toolbar + head + ed + peek + rows;
 }
 
-/** 编辑器（V1 的 `ftt-editor` 结构；字段与 V2 数据模型对应） */
-function editorHtml(kind, id) {
-    const d = consoleEntry(kind, id);
-    if (!d) return '<div class="ftt-empty">（条目已不存在）</div>';
-    const it = d.item || {};
-    const f = (label, key, val, type) => '<div class="ftt-field"><label>' + esc(label) + '</label>'
-        + (type === 'textarea'
-            ? '<textarea data-ftt-ed="' + attr(key) + '" rows="4">' + esc(val) + '</textarea>'
-            : '<input type="' + (type || 'text') + '" data-ftt-ed="' + attr(key) + '" value="' + attr(val) + '">')
-        + '</div>';
+/** 情节速览（V1 atomPeek 的只读穿透视图） */
+function peekHtml(id) {
+    const d = consoleEntry('atoms', id);
+    if (!d) return '';
+    return '<div class="ftt-item ftt-item--info ftt-item--col"><b>🔍 速览 · ' + esc(String(d.item.title || id)) + '</b>'
+        + '<div class="ftt-hint" style="white-space:pre-wrap">' + esc(String(d.item.text || '')) + '</div>'
+        + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="atomPeekClose">收起</button></div></div>';
+}
+
+/** 表单值：数组/结构化字段 → 文本（V1 编辑器的展示口径） */
+function flatFor(kind, item) {
+    const it = item || {};
+    if (kind === 'snapshots') return flattenSnapshot(it);
+    const out = Object.assign({}, it);
+    ['tags', 'keywords', 'entities', 'locations', 'characters', 'traits', 'quirks', 'values', 'todos', 'commitments'].forEach((k) => {
+        if (Array.isArray(out[k])) out[k] = out[k].join('，');
+    });
+    if (kind === 'rumors') {
+        out.carriersText = (Array.isArray(it.carriers) ? it.carriers : []).map((c) => String(c && c.who || '') + (c && c.role && c.role !== '传播者' ? ':' + c.role : '')).filter(Boolean).join('\n');
+        out.mediaText = (Array.isArray(it.media) ? it.media : []).map((m) => [m && m.type, m && m.name, m && m.date, m && m.durability].filter((x) => x !== undefined && x !== null && x !== '').join('|')).join('\n');
+    }
+    if (kind === 'plotSegments') {
+        out.linesText = (Array.isArray(it.lines) ? it.lines : []).map((l) => String(l && l.label || '') + ': ' + String(l && l.text || '')).join('\n');
+    }
+    if (kind === 'parallels' && Array.isArray(it.goalOdds)) out.goalOdds = JSON.stringify(it.goalOdds);
+    return out;
+}
+
+/** 编辑器（V1 `ftt-editor` 结构；字段表来自 `kindFields(kind)`，保存经 `deconstructEntry` 还原为入库 raw） */
+function editorHtml(kind, id, preset) {
+    const isNew = !id;
+    const d = isNew ? null : consoleEntry(dataKindOf(kind), id);
+    if (!isNew && !d) return '<div class="ftt-empty">（条目已不存在）</div>';
+    const base = new Map();
+    try { prefillEditor(kind, base, isNew ? null : d.item, preset); } catch (e) { /* 忽略 */ }
+    const rows = kindFields(kind).map((f) => {
+        const val = base.has(f.key) ? base.get(f.key) : '';
+        if (f.type === 'relTable') {
+            const rels = (!isNew && d && d.rels) ? d.rels : [];
+            return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label><div class="ftt-hint">'
+                + (rels.length ? esc(rels.map((r) => (r.who || '公共') + (r.how ? '(' + r.how + ')' : '')).join('、')) : '（无关联 · 关系表编辑见批次 B5）') + '</div></div>';
+        }
+        if (f.type === 'checkbox') {
+            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><input type="checkbox" data-ftt-ed="' + attr(f.key) + '"' + (val === true ? ' checked' : '') + '></div>';
+        }
+        if (f.type === 'select') {
+            const opts = (f.options || []).map((o) => {
+                const ov = (o && typeof o === 'object') ? o.value : o;
+                const ol = (o && typeof o === 'object') ? o.label : o;
+                return '<option value="' + attr(ov) + '"' + (String(val) === String(ov) ? ' selected' : '') + '>' + esc(ol) + '</option>';
+            }).join('');
+            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
+        }
+        if (f.type === 'sceneParent') {
+            const opts = ['<option value="">（顶层）</option>'].concat(arrOf('scenes').map((sc) =>
+                '<option value="' + attr(sc.id) + '"' + (String(val) === String(sc.id) ? ' selected' : '') + '>' + esc(sc.name) + '</option>')).join('');
+            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
+        }
+        if (f.type === 'textarea') {
+            return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label><textarea data-ftt-ed="' + attr(f.key) + '" rows="4">' + esc(val) + '</textarea></div>';
+        }
+        return '<div class="ftt-field"><label>' + esc(f.label) + '</label><div class="ftt-grow"><input type="' + attr(f.type || 'text') + '" data-ftt-ed="' + attr(f.key) + '" value="' + attr(val) + '"></div></div>';
+    }).join('\n');
     return '<div class="ftt-editor">'
-        + '<div class="ftt-editor-title">✏️ 编辑 · ' + esc(id) + ' · 内容哈希 ' + esc(d.hash || '') + '</div>'
-        + f('标题 / 名称', 'title', it.title || it.name || '')
-        + f('正文 / 内容', 'text', it.text || it.content || '', 'textarea')
-        + f('日期', 'date', it.date || '')
-        + f('标签', 'tags', (Array.isArray(it.tags) ? it.tags : []).join('、'))
-        + f('重要度', 'importance', it.importance === undefined ? '' : it.importance, 'number')
-        + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="save" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '">💾 保存</button>'
-        + '<button class="ftt-btn" data-ftt-action="editCancel">取消</button></div>'
-        + '<div class="ftt-hint">关联：' + (d.rels && d.rels.length ? esc(d.rels.map((r) => (r.who || '公共') + (r.how ? '(' + r.how + ')' : '')).join('、')) : '（无）') + '</div>'
+        + '<div class="ftt-editor-title">' + (isNew ? '➕ 新增' : '✏️ 编辑') + ' · ' + esc(kindLabelOf(kind)) + (id ? (' · ' + esc(id) + ' · 内容哈希 ' + esc((d && d.hash) || '')) : '') + '</div>'
+        + rows
+        + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="save" data-kind="' + attr(kind) + '" data-id="' + attr(id || '') + '">💾 保存</button>'
+        + '<button class="ftt-btn" data-ftt-action="closeEntry" data-kind="' + attr(kind) + '">取消</button></div>'
         + '</div>';
+}
+
+function kindLabelOf(kind) {
+    const d = DIMENSIONS.filter((x) => x.kind === kind)[0];
+    if (d) return d.label;
+    if (kind === 'suspense') return '悬念';
+    return String(kind);
+}
+
+/** 编辑器初值（字段 key → 值）；preset 用于「新增」路径（状态主体 / 父级场景） */
+function prefillEditor(kind, out, item, preset) {
+    const p = preset || {};
+    if (!item) {
+        if (kind === 'states' && p.subject) out.set('subject', String(p.subject));
+        if (kind === 'scenes' && p.parentSceneId) out.set('parent', String(p.parentSceneId));
+        if (kind === 'scenes' && p.name) out.set('name', String(p.name));
+        if (kind === 'plans' || kind === 'suspense') { out.set('status', kind === 'plans' ? 'open' : 'open'); out.set('phase', ''); }
+        if (kind === 'items') out.set('carried', false);
+        if (kind === 'snapshots') out.set('deceased', false);
+        return out;
+    }
+    const flat = flatFor(kind, item);
+    for (const f of kindFields(kind)) {
+        const v = flat[f.key];
+        if (v === undefined || v === null) { out.set(f.key, f.type === 'checkbox' ? false : ''); continue; }
+        out.set(f.key, f.type === 'checkbox' ? (v === true) : v);
+    }
+    return out;
+}
+
+/** 从 DOM 读取编辑器表单（真实 DOM 路径；桩 DOM 由调用方直接传 fields） */
+function collectEditorFields(el) {
+    const fields = {};
+    try {
+        if (!el || typeof el.querySelectorAll !== 'function') return fields;
+        for (const node of el.querySelectorAll('[data-ftt-ed]')) {
+            const key = node.getAttribute('data-ftt-ed');
+            if (!key) continue;
+            fields[key] = (node.type === 'checkbox') ? !!node.checked : String(node.value == null ? '' : node.value);
+        }
+    } catch (e) { /* 忽略 */ }
+    return fields;
+}
+
+/** 状态页：按主体分组（V1 同款：每组标题带「➕ 添加」「🗑 删除分组」） */
+function statesBody() {
+    const q = ps.q.states || '';
+    const list = listOf('states', q, 300);
+    const groups = new Map();
+    for (const e of list) {
+        const k = String((e && e.subject) || '（未标主体）');
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(e);
+    }
+    const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="states" value="' + attr(q) + '" placeholder="搜索（主体 / 字段 / 值）">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="states">✕ 清除</button>'
+        + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="states">➕ 新增</button>'
+        + '<span class="ftt-muted">共 ' + arrOf('currentStates').length + ' 条</span></div>';
+    const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
+    if (!groups.size) return head + ed + '<div class="ftt-empty">（暂无状态记录）</div>';
+    const blocks = Array.from(groups.entries()).map(([subj, items]) => {
+        const rows = items.map((e) => {
+            const id = String(e.id || '');
+            return '<div class="ftt-item ftt-inline"><span class="ftt-grow"><b>' + esc(String(e.field || '')) + '</b>：' + esc(String(e.value || ''))
+                + (e.date ? ' <span class="ftt-muted">' + esc(e.date) + '</span>' : '') + '</span>'
+                + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '">✏️</button>'
+                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '">🗑</button></div>';
+        }).join('\n');
+        return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + items.length + ')</span>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="addStateFor" data-ftt-subject="' + attr(subj) + '">➕ 添加</button>'
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delStateGroup" data-ftt-subject="' + attr(subj) + '" title="删除该角色全部状态">🗑 删除分组</button></h4>'
+            + rows;
+    }).join('\n');
+    return head + ed + blocks;
 }
 
 /** 设置分页（B1 沿用 V2 现有表单；B4 将替换为 V1 的 13 组子页） */
@@ -174,6 +356,7 @@ export function panelBodyHtml(tab) {
         if (t === 'overview') return overviewBody();
         if (t === 'settings') return settingsBody();
         if (t === 'plans') return dimBody('plans') + '<h4 class="ftt-h4-inline">悬念</h4>' + dimBody('suspense');
+        if (t === 'states') return statesBody();
         const kind = TAB_DIM[t];
         if (kind) return dimBody(kind);
         return '<div class="ftt-empty">（该分页尚未实现）</div>';
@@ -208,7 +391,19 @@ function ensureOverlay() {
             el = typeof doc.getElementById === 'function' ? doc.getElementById(PANEL_ID) : null;
         }
     } catch (e) { el = null; }
-    if (!el) return null;
+    if (!el) {
+        // 兜底：宿主不解析 HTML（无 DOM 树 / 无 getElementById 回查）时，用内存元素承接渲染，
+        //   保证「打开面板」在任何宿主都成立；真实浏览器里 insertAdjacentHTML 后必能回查到节点，不会走这里。
+        try {
+            overlayEl = {
+                id: PANEL_ID, html: '', synthetic: true,
+                insertAdjacentHTML(pos, html) { this.html += String(html); },
+                addEventListener() { /* 无 DOM 事件 */ },
+                classList: { add() { }, remove() { } },
+            };
+            return overlayEl;
+        } catch (e) { return null; }
+    }
     overlayEl = el;
     bindOverlay();
     return el;
@@ -261,18 +456,54 @@ export async function panelAction(action, payload) {
     const a = String(action || '');
     let result = { ok: true, action: a };
     try {
-        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; }
+        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; }
         else if (a === 'close') { closePanel(); }
         else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }
-        else if (a === 'edit') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || '') }; }
-        else if (a === 'edit-cancel' || a === 'editCancel') { ps.editing = null; }
+        else if (a === 'edit' || a === 'editEntry') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: p.preset || null }; }
+        else if (a === 'edit-cancel' || a === 'editCancel' || a === 'closeEntry' || a === 'cancelEntry') { ps.editing = null; }
+        else if (a === 'add' || a === 'addEntry') { ps.editing = { kind: String(p.kind || ps.tab), id: '', preset: p.preset || null }; }
+        else if (a === 'addStateFor') { ps.editing = { kind: 'states', id: '', preset: { subject: String(p.subject || '') } }; }
+        else if (a === 'addChildScene') {
+            const parent = String(p.id || '');
+            ps.editing = { kind: 'scenes', id: '', preset: { parentSceneId: parent } };
+        }
+        else if (a === 'multiToggle') { const k = String(p.kind || ps.tab); ps.multi[k] = !(ps.multi[k] === true); }
+        else if (a === 'selectAll') { const k = String(p.kind || ps.tab); const set = selOf(k); listOf(k, ps.q[k], 300).forEach((x) => set.add(String(x.id || ''))); }
+        else if (a === 'selectNone') { selOf(String(p.kind || ps.tab)).clear(); }
+        else if (a === 'bulkDelete') {
+            const k = String(p.kind || ps.tab);
+            const set = selOf(k);
+            const ids = Array.from(set);
+            let n = 0;
+            for (const id of ids) { try { if (consoleDelete(dataKindOf(k), id).ok) n++; } catch (e2) { /* 单条失败不影响其余 */ } }
+            set.clear();
+            setNote('已删除 ' + n + ' 条（多选批量删除 · 含跨端墓碑）');
+            result = Object.assign(result, { ok: true, deleted: n });
+        }
+        else if (a === 'searchClear') { const k = String(p.searchKind || p.kind || ps.tab); ps.q[k] = ''; selOf(k).clear(); }
+        else if (a === 'atomToggleHidden') { ps.showHidden = !ps.showHidden; }
+        else if (a === 'atomPeek') { const id = String(p.id || ''); ps.peek = (ps.peek === id) ? '' : id; }
+        else if (a === 'atomPeekClose') { ps.peek = ''; }
+        else if (a === 'delStateGroup') {
+            const subj = String(p.subject || '');
+            const before = (state.currentStates || []).length;
+            const gone = (state.currentStates || []).filter((x) => String(x && x.subject || '') === subj);
+            for (const g of gone) { try { consoleDelete('currentStates', String(g.id || '')); } catch (e2) { /* 忽略 */ } }
+            setNote('已删除「' + subj + '」的 ' + (before - (state.currentStates || []).length) + ' 条状态');
+        }
         else if (a === 'save') {
-            const r = consoleSave(String(p.kind || ''), String(p.id || ''), p.fields || {});
-            setNote(r.ok ? '已保存 ' + String(p.id || '') : ('保存失败：' + String(r.reason || '')));
+            const kind = String(p.kind || '');
+            const id = String(p.id || '');
+            const fields = p.fields || {};
+            // V1 口径：表单 → deconstructEntry → 入库 raw（数组/分组/父级路径/文本行解析都在此处）
+            let raw = fields;
+            try { raw = deconstructEntry(kind, Object.assign({}, fields, id ? { id } : {})); } catch (e) { raw = fields; }
+            const r = consoleSave(dataKindOf(kind), id, raw);
+            setNote(r.ok ? ('已保存 ' + (id || '（新增）')) : ('保存失败：' + String(r.reason || '')));
             result = Object.assign(result, r);
             ps.editing = null;
         } else if (a === 'delete') {
-            const r = consoleDelete(String(p.kind || ''), String(p.id || ''));
+            const r = consoleDelete(dataKindOf(String(p.kind || '')), String(p.id || ''));
             setNote(r.ok ? '已删除 ' + String(p.id || '') + '（已留墓碑）' : '删除失败');
             result = Object.assign(result, r);
         } else if (a === 'summary' || a === 'extractNow') {
@@ -324,17 +555,27 @@ export function bindOverlay() {
             const kind = tg.dataset ? tg.dataset.kind : '';
             const id = tg.dataset ? tg.dataset.id : '';
             const floor = tg.dataset ? tg.dataset.fttFloor : '';
+            const subject = tg.dataset ? tg.dataset.fttSubject : '';
             if (act === 'save') {
-                const g = (k) => { const n = doc && typeof doc.getElementById === 'function' ? null : null; const q = el.querySelector ? el.querySelector('[data-ftt-ed="' + k + '"]') : null; return q ? q.value : (n ? '' : ''); };
-                void panelAction('save', { kind, id, fields: { title: g('title'), text: g('text'), date: g('date'), tags: g('tags'), importance: g('importance') } });
+                void panelAction('save', { kind, id, fields: collectEditorFields(el) });
                 return;
             }
-            void panelAction(act, { kind, id, floor });
+            if (act === 'multiToggle' || act === 'selectAll' || act === 'selectNone' || act === 'bulkDelete' || act === 'searchClear' || act === 'add') {
+                void panelAction(act, { kind: kind || (tg.dataset ? tg.dataset.fttKind : '') || ps.tab, id, searchKind: tg.dataset ? tg.dataset.fttSearchKind : '', subject });
+                return;
+            }
+            void panelAction(act, { kind, id, floor, subject });
         });
         if (typeof el.addEventListener === 'function') {
             el.addEventListener('change', (e) => {
                 const tg = e && e.target;
-                if (tg && tg.dataset && tg.dataset.fttSearch !== undefined) void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value });
+                if (!tg || !tg.dataset) return;
+                if (tg.dataset.fttSearch !== undefined) { void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value }); return; }
+                if (tg.dataset.fttSelect !== undefined) {
+                    const k = String(tg.dataset.fttSelect);
+                    const set = selOf(k);
+                    if (tg.checked) set.add(String(tg.dataset.fttId || '')); else set.delete(String(tg.dataset.fttId || ''));
+                }
             });
         }
     }

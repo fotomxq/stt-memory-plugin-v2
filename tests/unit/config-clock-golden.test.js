@@ -44,15 +44,23 @@ R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致'
     && J(ARMOR_PRESET_V1178_DEFAULT) === J(G.armorPresetDefault), Object.keys(PROMPT_LEGACY_SIGS).length);
 R.assert('C6 模板并入默认配置（defaultCfg.promptTemplates 与 PROMPT_TEMPLATES_V2 同值）',
     J(defaultCfg.promptTemplates) === J(PROMPT_TEMPLATES_V2), Object.keys(defaultCfg.promptTemplates).length);
-R.assert('C7 KIND_MAP 维度键与 V1 一致（14 键）+ get/set 读写注入 state', (() => {
-    const st = { atoms: [{ id: 'a1' }] };   // 与黄金样本一致：未定义 currentStates → states.get() 为 undefined
-    setKernelState(st);
-    const g = KIND_MAP.atoms.get().map(x => x.id);
+R.assert('C7 KIND_MAP 维度键：V1 的 14 键齐全且 get/set 读写注入 state + V2 别名 currentStates（白名单）', (() => {
+    // 口径：V1 的 14 个维度键必须存在且可读写注入 state；
+    //   V2 追加 `currentStates` 别名（与 'states' 同容器，用于以规范维度键写墓碑）→ 白名单内允许。
+    const V1_KEYS = ['atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'npcs', 'scenes', 'concepts', 'parallels', 'currencies', 'plotSegments', 'rumors'];
+    const V2_ALIAS = ['currentStates'];
+    const keys = Object.keys(KIND_MAP);
+    const missing = V1_KEYS.filter((x) => keys.indexOf(x) < 0);
+    const extra = keys.filter((x) => V1_KEYS.indexOf(x) < 0);
+    setKernelState({ atoms: [{ id: 'a1' }], currentStates: [{ id: 'c1' }] });
+    const g = KIND_MAP.atoms.get().map((x) => x.id);
     KIND_MAP.atoms.set([{ id: 'a2' }]);
-    const after = st.atoms.map(x => x.id);
+    const after = (KIND_MAP.atoms.get() || []).map((x) => x.id);
     const statesIsArray = Array.isArray(KIND_MAP.states.get());
+    const aliasSame = KIND_MAP.currentStates.get() === KIND_MAP.states.get();
     setKernelState(null);
-    return J(Object.keys(KIND_MAP)) === J(G.kindMapKeys) && J({ g, after, statesIsArray }) === J(G.kindRoundTrip);
+    return missing.length === 0 && extra.length === V2_ALIAS.length && extra.every((x) => V2_ALIAS.indexOf(x) >= 0)
+        && J(g) === J(['a1']) && J(after) === J(['a2']) && statesIsArray === true && aliasSame === true;
 })(), Object.keys(KIND_MAP));
 
 // ---------- 时钟族 ----------

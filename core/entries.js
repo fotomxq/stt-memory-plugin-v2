@@ -264,7 +264,8 @@ function upsertEntry(kind, raw, opts) {
 function kindNormalize(kind, raw, floor) {
     switch (kind) {
         case 'atoms': return normalizeAtom(raw, floor);
-        case 'states': return normalizeCurrentState(raw);
+        case 'states':
+        case 'currentStates': return normalizeCurrentState(raw);   // 规范键别名（见 core/config.js KIND_MAP 注释）
         case 'snapshots': return normalizeSnapshot(raw);
         case 'memories': return normalizeMemory(raw);
         case 'items': return normalizeItem(raw);

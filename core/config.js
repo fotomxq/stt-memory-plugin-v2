@@ -1100,6 +1100,9 @@ const defaultCfg = {
 const KIND_MAP = {
     atoms: { get: () => state.atoms, set: (v) => { state.atoms = v; } },
     states: { get: () => state.currentStates, set: (v) => { state.currentStates = v; } },
+    // 别名（V2 新增）：规范维度键 `currentStates` 与 V1 界面键 `states` 指向同一容器 ——
+    //   让「删除/墓碑」既能被 V1 口径调用，也能以规范键写入（V1 的清理/合并只认规范键）。
+    currentStates: { get: () => state.currentStates, set: (v) => { state.currentStates = v; } },
     snapshots: { get: () => state.snapshots, set: (v) => { state.snapshots = v; } },
     memories: { get: () => state.memories, set: (v) => { state.memories = v; } },
     items: { get: () => state.items, set: (v) => { state.items = v; } },

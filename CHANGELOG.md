@@ -3,6 +3,28 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.3.0（2026-09-24）· B2 条目操作与编辑器全量（V1 字段表）
+
+**本版（B2）**：
+1. **移植 V1 字段表**：新增 `ui/fields.js` —— `kindFields(kind)`（13 维字段定义）、`flattenSnapshot`（档案分组展开）、
+   `deconstructEntry`（表单 → 入库 raw）；字段数与 V1 **逐维一致**（情节 11 / 状态 5 / 角色 20 / 记忆 8 / 概念 7 / 物品 6 /
+   货币 7 / 分段 2 / 传言 10 / 计划 11 / 悬念 11 / 场景 3 / 平行 13）；
+2. **编辑器全字段**：text/number/textarea/select/checkbox/`sceneParent`/`relTable`(只读，编辑在 B5)；
+   角色页按 V1 分组语义保存；`add` / `addStateFor`（预设主体）/ `addChildScene`（预设父级 → `pathArr`）三条新增路径；
+3. **条目操作**：单选/多选切换、全选、清空选择、`bulkDelete`（逐条留墓碑并回报条数）、`closeEntry`/`cancelEntry`（不写库仅收起）；
+4. **情节页**：`atomToggleHidden`（显示/隐藏「已总结」情节 + V1 说明文案）、`atomPeek`/`atomPeekClose`（穿透查看被总结原文）；
+5. **状态页**：按主体分组渲染，组头「➕ 添加」「🗑 删除分组」（`addStateFor` / `delStateGroup`）；
+6. **搜索**：每页搜索 + `searchClear`；搜索字段取各维度字段**超集**；`core/config.js#KIND_MAP` 增 `currentStates` 别名
+   （`kindNormalize` 同步），使状态维度既可用 V1 界面键、也能以规范键规范化与写墓碑；
+7. **有意偏离 V1（已登记）**：状态删除墓碑写入规范维度键 `currentStates`（V1 写 `deleted.states`，而它自己的合并只认
+   `currentStates` → 删除可能被别端复活）；`ui/panel.js` 对「无法回查 DOM 的极简宿主」增加内存元素兜底。
+
+**测试基建修复（重要）**：`tests/harness/st-mock.js#makeReporter.assert` 增**防呆** —— 断言条件是 Promise/thenable 直接判失败。
+本批借此查出并修正 **15 处「假绿」断言**（`R.assert(name, (async () => …)())` 恒为真），并因此暴露、修掉了 3 个真实缺陷
+（状态容器读取映射、状态墓碑维度键、搜索字段缺失）。新增 `tests/unit/panel.test.js` B2-1～B2-6。
+
+门禁：单元 **24 文件 / 322 断言**、冒烟 **55 项**、五道门禁全绿；文档 `docs/P8c-B2条目操作.md`、`docs/P8-功能对齐总表.md` 打勾更新。
+
 ## v2.2.0（2026-09-24）· V1 面板外壳与样式对齐（B1）
 
 **用户要求**：「请完全对齐 V1 的各种功能，完整实现出来。注意页面尽可能的样式也对齐。」

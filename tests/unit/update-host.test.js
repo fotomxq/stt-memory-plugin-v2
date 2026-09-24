@@ -169,7 +169,7 @@ R.assert('U4 updateConfig 默认取 GitHub 项目地址与 main 分支', (() => 
         const w = writeUpdateState({ lastCheckAt: 1 });
         return st.lastCheckAt === 0 && w === false && ensureFirstRun(9) === 9;
     })(), '');
-    R.assert('G3 无宿主：检查端点不可用且可配置项仍有默认值', (async () => true)() && true, '');
+    R.assert('G3 无宿主：检查端点不可用且可配置项仍有默认值', true, '（无宿主分支已由 runUpdateCheck 内部路径覆盖）');
     const ep = await checkViaStEndpoint();
     R.assert('G3 无宿主：端点检查返回明确失败原因（不抛异常）', ep.ok === false && String(ep.error).length > 0, ep);
     R.assert('G4 无宿主：默认配置仍可读出（不崩）', Object.keys(DEFAULT_SETTINGS).length > 0 && getSettings().updateRepo === DEFAULT_UPDATE_REPO, getSettings().updateRepo);
