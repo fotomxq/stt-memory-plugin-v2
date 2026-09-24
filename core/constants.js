@@ -72,6 +72,9 @@ export const DIM_CHAR_LIMITS = Object.freeze({
     parallels: 560,
 });
 
+/** 参与「原子层」内容哈希 / 快照链 / 跨端逐条合并的维度键（**逐字取自 V1**） */
+export const ATOM_DIM_KEYS = Object.freeze(['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors']);
+
 /** 绑定到宿主的酒馆事件（与 V1 九事件对齐） */
 export const HOST_EVENTS = Object.freeze([
     'USER_MESSAGE_RENDERED',

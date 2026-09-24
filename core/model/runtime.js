@@ -3,7 +3,7 @@
 // 目的：让逐字移植的 V1 归一化代码（按 `cfg.*` / `state.*` / `getStoryNow()` 读取）在 V2 里原样运行，
 //   同时保持 `core/` 零宿主依赖 —— 由 host 层在启动与数据变更时注入，内核不主动读宿主。
 // ============================================================
-import { DIM_CHAR_LIMITS } from '../constants.js';
+import { DIM_CHAR_LIMITS, VERSION } from '../constants.js';
 
 /** 生效配置视图（与 V1 全局 `cfg` 等价；原地修改） */
 export const cfg = {
@@ -47,6 +47,21 @@ export function saveCfg() {
 /** 同上：`saveState()` */
 export function saveState() {
     try { return persistHooks.saveState(); } catch (e) { return false; }
+}
+
+/** 代码版本（透出给内核使用；与 manifest.json 一致） */
+export { VERSION };
+
+/** 角色作用域稳定标识（宿主注入：优先角色文件名/名，见 host/st-api.js `currentCharScope`） */
+let scopeKey = '';
+/** 注入角色稳定标识（切换角色时调用） */
+export function setScopeKey(next) {
+    scopeKey = String(next == null ? '' : next);
+    return scopeKey;
+}
+/** 当前角色稳定标识（未注入时空串） */
+export function getScopeKey() {
+    return scopeKey;
 }
 
 /** 生效状态视图（与 V1 全局 `state` 等价；由宿主注入当前角色的 state 对象） */

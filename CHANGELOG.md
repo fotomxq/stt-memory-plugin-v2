@@ -63,5 +63,12 @@
   **黄金样本 3**（`tests/fixtures/v1-golden-model3.json`）：`model-golden3.test.js` **16 项断言**（含 9 条关联夹具、中文键传言、
   阶段映射边界、三类合并）。同时引入「**重抛探针**」：把切片里的 `catch { return ... }` 临时改为 `throw`，暴露并补齐
   被静默吞掉的 10 项常量依赖（`REL_LINK_HOW_CN`、`RUMOR_STAGES` 等）。
-- **门禁**：单元 **12 文件 166 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 10 文件）；版本一致性 **通过**；文档规范 **0 违规**。
+- **P1 内核平移（批次 3：状态与合并层 · 无时钟依赖部分）**：新增 `core/state.js`（51 行：`scopeId` —— 角色标识改为注入视图、
+  `stateKey`、`emptyState` 28 键容器）与 `core/merge.js`（144 行：删除墓碑 `tombSet`/`tombSetH`/`tombEntry`/`tombMany`/`tombEntries`、
+  隐藏条目保护 `atomIsHidden`/`activeAtoms`/`capAtomsKeepingHidden`/`releaseMergedSources`、内容哈希补全 `eachAtom`/`ensureAtomHashes`/`collectAtomHashes`）；
+  `constants.js` 补 `ATOM_DIM_KEYS`。黄金样本 4（`tests/fixtures/v1-golden-state-merge.json`）**12 项断言**：
+  作用域与空状态、隐藏保护与来源恢复、墓碑分账与幂等、哈希补全与遍历。
+  **明确延后**（依赖配置/时钟/全表）：`migrateState`、`contentDedupeArray`、`upsertEntry`/`deleteEntry`、`upsertRelLinks`/`relMaintRun`。
+  过程经验（已写入文档）：**宽依赖函数不可用闭包移植** —— 首次尝试闭包膨胀到 148/1067 项，改为显式清单 + 严格静态检查 + 黄金样本兜底。
+- **门禁**：单元 **13 文件 178 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

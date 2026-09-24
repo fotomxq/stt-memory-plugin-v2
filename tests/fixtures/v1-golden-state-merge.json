@@ -1,0 +1,243 @@
+{
+  "note": "V1 源码切片（批次 1+2+3：state/merge）在固定输入下的输出（黄金样本 4）",
+  "inputs": {
+    "ATOMS": [
+      {
+        "id": "a1",
+        "text": "角色甲在码头发现被破坏的木箱，断口整齐。",
+        "title": "码头发现",
+        "date": "1919-11-29",
+        "tags": [
+          "码头"
+        ]
+      },
+      {
+        "id": "a2",
+        "text": "被总结隐藏的情节正文（第一条来源）。",
+        "title": "来源一",
+        "date": "1919-11-28",
+        "hidden": true,
+        "summarizedBy": "s1",
+        "summarizedAt": 1700000000000
+      },
+      {
+        "id": "a3",
+        "text": "被总结隐藏的情节正文（第二条来源）。",
+        "title": "来源二",
+        "date": "1919-11-27",
+        "hidden": true,
+        "summarizedBy": "s1"
+      },
+      {
+        "id": "s1",
+        "text": "总结条：覆盖 a2/a3。",
+        "title": "【1919-11-27 ~ 1919-11-28 总结】",
+        "type": "总结",
+        "mergedSummary": {
+          "label": "1919-11-27 ~ 1919-11-28",
+          "sourceIds": [
+            "a2",
+            "a3"
+          ],
+          "sourceCount": 2,
+          "by": "manual"
+        }
+      },
+      null,
+      {
+        "id": "empty"
+      }
+    ],
+    "LOCK": [
+      {
+        "dim": "atoms",
+        "ids": [
+          "a1",
+          "x1"
+        ]
+      }
+    ]
+  },
+  "empty": {
+    "keys": [
+      "version",
+      "scope",
+      "state",
+      "protagonist",
+      "items",
+      "plans",
+      "suspense",
+      "scenes",
+      "npcs",
+      "atoms",
+      "currentStates",
+      "snapshots",
+      "memories",
+      "concepts",
+      "parallels",
+      "currencies",
+      "plotSegments",
+      "rumors",
+      "links",
+      "vars",
+      "varTemplates",
+      "summaries",
+      "processedFloors",
+      "lastKnownFloor",
+      "stats",
+      "deleted",
+      "deletedH",
+      "updatedAt"
+    ],
+    "scope": "char:1tqag2u",
+    "version": "v2.0.0-黄金样本",
+    "dims": [
+      "atoms",
+      "currentStates",
+      "snapshots",
+      "memories",
+      "items",
+      "plans",
+      "suspense",
+      "scenes",
+      "concepts",
+      "parallels",
+      "npcs",
+      "links",
+      "currencies",
+      "plotSegments",
+      "rumors"
+    ],
+    "hasDeleted": true,
+    "hasDeletedH": true,
+    "vars": {},
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    }
+  },
+  "scope": {
+    "id": "char:1tqag2u",
+    "key": "SPreset_FTTMemory_char:1tqag2u"
+  },
+  "hidden": {
+    "isHidden": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ],
+    "count": 2,
+    "activeIds": [
+      "a1",
+      "s1",
+      "empty"
+    ],
+    "cap1": [
+      "a2",
+      "a3",
+      "empty"
+    ],
+    "cap2": [
+      "a2",
+      "a3",
+      null,
+      "empty"
+    ]
+  },
+  "release": {
+    "returned": 2,
+    "atoms": [
+      {
+        "id": "a1",
+        "hidden": false,
+        "hasBy": false
+      },
+      {
+        "id": "a2",
+        "hidden": false,
+        "hasBy": false
+      },
+      {
+        "id": "a3",
+        "hidden": false,
+        "hasBy": false
+      },
+      {
+        "id": "s1",
+        "hidden": false,
+        "hasBy": false
+      },
+      null,
+      {
+        "id": "empty",
+        "hidden": false,
+        "hasBy": false
+      }
+    ]
+  },
+  "tombstones": {
+    "map": {
+      "atoms": {
+        "a9": 1790255289882
+      },
+      "memories": {
+        "m1": 1790255289882,
+        "m2": 1790255289882
+      }
+    },
+    "hmap": {
+      "atoms": {
+        "content-hash-1": 1790255289882
+      },
+      "memories": {
+        "jpi5yk_1gkbk1w": 1790255289882,
+        "kry70p_11698my": 1790255289882
+      }
+    },
+    "deleted": {
+      "atoms": {
+        "a9": 1790255289882
+      },
+      "memories": {
+        "m1": 1790255289882,
+        "m2": 1790255289882
+      }
+    },
+    "deletedH": {
+      "atoms": {
+        "content-hash-1": 1790255289882
+      },
+      "memories": {
+        "jpi5yk_1gkbk1w": 1790255289882,
+        "kry70p_11698my": 1790255289882
+      }
+    }
+  },
+  "hashes": {
+    "before": [
+      "(none)",
+      "preset-hash"
+    ],
+    "added": true,
+    "after": [
+      "fw95pl_vqjo8o",
+      "1w2tixq_jb5gri"
+    ],
+    "collectedKeys": [
+      "agg",
+      "map",
+      "order"
+    ],
+    "collectedSample": null
+  },
+  "eachAtom": [
+    "atoms:e1",
+    "memories:e2",
+    "plotSegments:e3"
+  ]
+}
