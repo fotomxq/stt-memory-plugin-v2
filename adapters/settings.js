@@ -22,6 +22,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     interceptorEnabled: true,
     // 更新（用户要求：以 GitHub 项目地址作为更新检查地址；首次启动自动检查 + 设置内手动检查）
     autoUpdateCheck: true,
+    // 宿主 Git 更新端点（POST /api/extensions/version|update）—— **默认关**：
+    //   无 git 能力的宿主（如 TauriTavern 原生移植）上，该端点会做远端 git handshake，失败即返回
+    //   「Failed to get extension version: Git handshake failed…」，宿主以「后端错误」弹窗暴露给用户。
+    //   本插件默认只用 GitHub raw 清单（HTTP）判定版本；需要由酒馆代做 git 更新时再显式开启。
+    useStGitEndpoint: false,
     updateRepo: DEFAULT_UPDATE_REPO,
     updateBranch: DEFAULT_UPDATE_BRANCH,
     updateCheckIntervalHours: DEFAULT_UPDATE_INTERVAL_HOURS,
