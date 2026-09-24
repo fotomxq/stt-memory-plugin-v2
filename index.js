@@ -105,6 +105,12 @@ import {
     parsePlotSegmentText, plotSegmentsToText, plotSegmentTimeKey, plotSegmentTimeDesc, plotSegmentTimeAsc, sortPlotSegments,
 } from './core/model/segment.js';
 import { atomSubState, setAtomSub } from './ui/panel.js';
+// B9-b：关系表定位跳转 +「👥 选角色」（V1 v1.166 / v1.194 同名能力；状态由 ui/rel-table.js 持有）
+import {
+    relPickState, setRelPick, relFilterState, setRelFilter, relClearFilter,
+    relKnownNames, relPickAppendRow, relPickPanelHtml, relPickQueryOf, setRelPickQuery,
+    relEntryTitle, relFindEntryId, relIsRelDim, relDimLabelOf, relJump, relGoto,
+} from './ui/rel-table.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
@@ -637,6 +643,24 @@ function bootstrapDiagnostics() {
             aboutDirUrl: () => aboutDirUrl(),
             // B9-a 数据管理：清空当前角色记忆（V1 `resetState`；破坏性动作，面板侧带二次确认）
             resetState: () => resetState(),
+            // B9-b 关系表定位跳转 +「👥 选角色」（V1 `__FTT` 同名能力；`relJump` / `relGoto` 在 V1 只存在于
+            //   handleAction 的 case 内，V2 把状态迁移抽成可导出函数以便诊断与黄金样本比对）
+            relPickState: () => relPickState(),
+            setRelPick: (ref) => setRelPick(ref),
+            relFilterState: () => relFilterState(),
+            setRelFilter: (dim, who, jump) => setRelFilter(dim, who, jump),
+            relClearFilter: () => relClearFilter(),
+            relPickQuery: () => relPickQueryOf(),
+            setRelPickQuery: (q) => setRelPickQuery(q),
+            relKnownNames: () => relKnownNames(),
+            relPickAppendRow: (dim, refId, name, opts) => relPickAppendRow(dim, refId, name, opts || {}),
+            relPickPanelHtml: (dim, refId, editor) => relPickPanelHtml(dim, refId, editor === true || String(editor) === '1'),
+            relEntryTitle: (dim, it) => relEntryTitle(dim, it),
+            relFindEntryId: (dim, raw) => relFindEntryId(dim, raw),
+            relIsRelDim: (kind) => relIsRelDim(kind),
+            relDimLabelOf: (dim) => relDimLabelOf(dim),
+            relJump: (dim, id) => relJump(dim, id),
+            relGoto: (dim, id) => relGoto(dim, id),
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };

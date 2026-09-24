@@ -1,0 +1,1120 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "notes": [
+      "本 fixture 由 /tmp/gen-golden-b9b-rel-nav.cjs 直调真实 V1 插件 v1.206 生成：relJump / relGoto / relClearFilter / relPick / relPickClose / relPickAdd / 子标签切换 走**真实点击委托**（openPanel() 后在 panel.listeners.click 上派发伪事件 → V1 handleAction 真实执行）；relPickAppendRow / relKnownNames / relFindEntryId / relEntryTitle / relPickState / relFilterState / relPickPanelHtml 直接调 __FTT 导出函数。",
+      "relJump / relGoto / relClearFilter / relPick / relPickClose / relPickAdd 在 V1 中**不是导出函数**（只存在于 handleAction 的 case 内），故 oracle 用点击委托驱动；同时把 V1 源码片段原样存入 meta.v1SourceSnips，供 V2 逐行动作序比对。",
+      "V1 原生怪癖（oracle 实测，原样保留）：① `relGoto` 只切 `activeTab` / `activePlanSub` 与页面搜索词，**不重置 `activeMemSub`** → 记忆维度下停在关系表子标签，搜索词只在手动切回列表后可见（actionFlow 中 relGoto(memories,m1) 后 memSub 仍为 rel）。② `relGoto(suspense,…)` 按 `tabOf` 映射把搜索词写到 **plans** 页（suspense 与 plans 共用计划悬念页），故 `pageSearchQuery.suspense` 永不被 relGoto 写入。③ `relClearFilter` 不清 `pageSearchQuery`（选角色搜索词跨次保留）。④ `relSave` 成功后把 `relPickRef` 置空（关掉选择器）。",
+      "relSave 关选择器证据（源码片段内含 `relPickRef = null;`）：true"
+    ],
+    "sourceFile": "src/FTT记忆组件-v1.206.js",
+    "v1SourceSnips": {
+      "relJump": "case 'relJump': {\n                    // 条目行「🔗」→ 切到「记忆 → 关系表」并定位该条目\n                    const kind = ds?.fttKind, id = ds?.fttId;\n                    if (!kind || !id) break;\n                    let title = '';\n                    try { const it = ((state[kind]) || []).find(x => x && String(x.id) === String(id)); if (it) title = relEntryTitle(kind, it); } catch (e) { }\n                    activeTab = 'memories';\n                    activeMemSub = 'rel';\n                    relFilterDim = kind;\n                    relFilterWho = '';\n                    relJumpRef = { dim: kind, id: String(id), title: title };\n                    relPickRef = null;\n                    editor = null;\n                    try { uiFlashTab = activeTab; } catch (e) { }\n                    renderPanel();\n                    try {\n                        requestAnimationFrame(() => {\n                            const el = panelEl ? panelEl.querySelector(`[data-ftt-rel-entry=\"${kind}|${String(id).replace(/\"/g, '')}\"]`) : null;\n                            if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });\n                        });\n                    } catch (e) { }\n                    break;\n                }",
+      "relClearFilter": "case 'relClearFilter': {\n                    relFilterDim = 'all'; relFilterWho = ''; relJumpRef = null; relPickRef = null;\n                    renderPanel();\n                    break;\n                }",
+      "relSave": "case 'relSave': {\n                    const kind = ds?.fttKind, id = ds?.fttId;\n                    if (!kind || !id) break;\n                    const box = panelEl ? panelEl.querySelector(`[data-ftt-rel-body=\"${kind}|${String(id).replace(/\"/g, '')}\"]`) : null;\n                    const r = relSaveBox(box, kind, id);\n                    if (r && r.disabled) { notify('warning', { title: '关联未保存', text: '通用知情关联层已关闭（设置 → 分析记忆 → 关联层总开关）。' }); break; }\n                    relPickRef = null;\n                    renderPanel();\n                    toast(r && r.ok ? `已保存关联（${r.rows} 行）` : '保存关联失败', r && r.ok ? 'success' : 'warning');\n                    break;\n                }",
+      "relAddRow": "case 'relAddRow': {\n                    const kind = ds?.fttKind, id = ds?.fttId;\n                    if (!kind || !id) break;\n                    const box = panelEl ? panelEl.querySelector(`[data-ftt-rel-body=\"${kind}|${String(id).replace(/\"/g, '')}\"]`) : null;\n                    if (box) box.insertAdjacentHTML('beforeend', relRowHtml(kind, { who: '', how: kind === 'parallels' ? 'related' : 'unspecified' }));\n                    break;\n                }",
+      "relPick": "case 'relPick': {\n                    const kind = ds?.fttKind, id = ds?.fttId;\n                    const isEd = String(ds?.fttEditor || '') === '1';\n                    if (!kind) break;\n                    const same = !!(relPickRef && String(relPickRef.dim) === String(kind) && !!relPickRef.editor === isEd\n                        && String(relPickRef.id || '') === String(id || ''));\n                    relPickRef = same ? null : { dim: String(kind), id: String(id || ''), editor: isEd };\n                    renderPanel();\n                    break;\n                }",
+      "relPickClose": "case 'relPickClose': {\n                    relPickRef = null;\n                    renderPanel();\n                    break;\n                }",
+      "relPickAdd": "case 'relPickAdd': {\n                    const kind = ds?.fttKind, id = ds?.fttId, name = ds?.fttName;\n                    const isEd = String(ds?.fttEditor || '') === '1';\n                    if (!kind || !name) break;\n                    const key = `${String(kind)}|${isEd ? 'editor' : String(id || '').replace(/\"/g, '')}`;\n                    const box = panelEl ? panelEl.querySelector(`[data-ftt-rel-body=\"${key}\"]`) : null;\n                    const r = relPickAppendRow(box, String(kind), String(name));\n                    if (r === 'dup') toast(`「${String(name).slice(0, 12)}」已在关联表里（如需再加一行可手写）`, 'info');\n                    else if (r) toast(`已加角色「${String(name).slice(0, 12)}」—— 点「💾 保存关联」落库`, 'success');\n                    else toast('未找到关联表容器（请重新打开该条目）', 'warning');\n                    break;\n                }",
+      "relGoto": "case 'relGoto': {\n                    // 关系表 → 打开条目所在页并定位（设置该页搜索词为条目标题）\n                    const kind = ds?.fttKind, id = ds?.fttId;\n                    if (!kind || !id) break;\n                    let title = '';\n                    try { const it = ((state[kind]) || []).find(x => x && String(x.id) === String(id)); if (it) title = String(it.title || '').trim() || String(it.content || it.text || '').slice(0, 12); } catch (e) { }\n                    const tabOf = { memories: 'memories', currencies: 'currencies', plans: 'plans', suspense: 'plans', parallels: 'parallels' }[kind] || 'memories';\n                    activeTab = tabOf;\n                    if (kind === 'plans') activePlanSub = 'plans';\n                    if (kind === 'suspense') activePlanSub = 'suspense';\n                    pageSearchQuery[tabOf] = title;\n                    relJumpRef = null;\n                    relPickRef = null;\n                    editor = null;\n                    try { uiFlashTab = activeTab; } catch (e) { }\n                    renderPanel();\n                    toast(title ? `已定位到「${title.slice(0, 16)}」` : '已打开条目所在页', 'info');\n                    break;\n                }",
+      "relwhoChange": "if (sel && sel.dataset && sel.dataset.fttRelwho !== undefined) {\n                    relFilterWho = String(sel.value || '');\n                    renderPanel();\n                    return;\n                }\n            });\n            // 设定修改自动生效 —— 「💾 保存设置」按钮保留；任何改动自动应用并保存：\n            //   · 输入类（text/number/textarea/select 等）→ 防抖 800ms 延迟生效保存；\n            //   · 开关/选择类 → 立即生效保存（复用 settingsApplyAll：保存按钮=整表，自动=仅应用当前表单状态；\n            //     世界书启用确认仍只在点「保存设置」时出现）\n            let settingsAutoTimer = null;\n            const settingsAutoApply = (el) => {\n                try {\n                    if",
+      "relfilterChange": "if (sel && sel.dataset && sel.dataset.fttRelfilter === 'dim') {\n                    relFilterDim = String(sel.value || 'all');\n                    relJumpRef = null;\n                    relPickRef = null;\n                    renderPanel();\n                    return;\n                }",
+      "msubReset": "if (e.target?.dataset?.fttMsub) {\n                    // v1.166：记忆页子标签页（📚 记忆列表 / 🔗 关系表）；v1.169 追加 🧷 约束自查 —— 同理只切换显隐\n                    e.preventDefault();\n                    const want = String(e.target.dataset.fttMsub);\n                    activeMemSub = (want === 'rel' || want === 'check') ? want : 'list';\n                    relJumpRef = null;\n                    relPickRef = null;\n                    try {\n                        const bar = (panelEl && panelEl.querySelector) ? panelEl.querySelector('[data-ftt-msubtabs]') : null;\n                        if (bar && bar.querySelectorAll) {\n                            for (const a of bar.querySelectorAll('[data-ftt-msub]')) {\n                                if (!a.classList) continue;\n                                a.classList.toggle('ftt-on', a.dataset && a.dataset.fttMsub === activeMemSub);\n                            }\n                        }\n                        const bodies = (panelEl && panelEl.querySelectorAll) ? panelEl.querySelectorAll('[data-ftt-msub-body]') : [];\n                        for (const b of bodies) {\n                            if (!b || !b.dataset || !b.style) continue;\n                            b.style.display = (b.dataset.fttMsubBody === activeMemSub) ? '' : 'none';\n                        }\n                    } catch (err) { }\n                    // 「🧷 约束自查」的内容按需构建（首次进入该子页时补建，避免开面板即算一遍本地召回）\n                    if (activeMemSub === 'check') {\n                        try {\n                            const box = panelEl ? panelEl.querySelector('[data-ftt-msub-body=\"check\"]') : null;\n                            if (box && !String(box.innerHTML || '').trim() && typeof injectCheckPanelHtml === 'function') {\n                                box.innerHTML = injectCheckPanelHtml();\n                            }\n                        } catch (err) { }\n                    }\n                    return;\n                }",
+      "relEntryTitle": "function relEntryTitle(dim, it) {\n        if (!it) return '';\n        const t = String(it.title || '').trim();\n        const c = String(it.content || it.text || '').trim();\n        const s = (t && c && t !== c) ? `${t}：${c}` : (t || c);\n        return s.length > 60 ? s.slice(0, 59) + '…' : s;\n    }",
+      "relFindEntryId": "function relFindEntryId(dim, raw) {\n        try {\n            const list = (state && state[dim]) || [];\n            const id0 = String((raw && raw.id) || '');\n            if (id0 && list.some(x => x && String(x.id) === id0)) return id0;\n            const content = String((raw && (raw.content || raw.text)) || '').trim();\n            const title = String((raw && (raw.title || raw.name)) || '').trim();\n            if (!content && !title) return '';\n            const hit = list.slice().reverse().find(x => x\n                && (!content || String(x.content || '').trim() === content)\n                && (!title || String(x.title || '').trim() === title));\n            return hit ? String(hit.id) : '';\n        } catch (e) { return ''; }\n    }",
+      "relKnownNames": "function relKnownNames() {\n        const out = [];\n        const push = (nm) => {\n            const t = String(nm == null ? '' : nm).trim();\n            if (t && out.indexOf(t) < 0) out.push(t);\n        };\n        try { for (const s of ((state && state.snapshots) || [])) push(s && s.name); } catch (e) { }\n        try { if (typeof knownCharacterNames === 'function') for (const nm of knownCharacterNames()) push(nm); } catch (e) { }\n        return out;\n    }",
+      "relPickAppendRow": "function relPickAppendRow(box, dim, name) {\n        try {\n            if (!box || !box.insertAdjacentHTML) return false;\n            const who = String(name == null ? '' : name).trim();\n            if (!who || !relIsRelDim(dim)) return false;\n            let dup = false;\n            try {\n                const trs = box.querySelectorAll ? box.querySelectorAll('[data-ftt-rel-row]') : [];\n                for (const tr of trs) {\n                    if (!tr || !tr.getAttribute) continue;\n                    if (String(tr.getAttribute('data-ftt-rel-anchor') || '') === '1') continue;\n                    const el = tr.querySelector ? tr.querySelector('[data-ftt-relf=\"who\"]') : null;\n                    if (el && typeof snapNameKey === 'function' && snapNameKey(String(el.value || '')) === snapNameKey(who)) { dup = true; break; }\n                    if (el && String(el.value || '').trim() === who) { dup = true; break; }\n                }\n            } catch (e) { }\n            if (dup) return 'dup';\n            box.insertAdjacentHTML('beforeend', relRowHtml(dim, { who, how: String(dim) === 'parallels' ? 'related' : 'unspecified' }));\n            return true;\n        } catch (e) { return false; }\n    }",
+      "relPickState": "function relPickState() { return relPickRef ? Object.assign({}, relPickRef) : null; }\n    function setRelPick(ref) { relPickRef = ref ? { dim: String(ref.dim || ''), id: String(ref.id == null ? '' : ref.id), editor: !!ref.editor } : null; return relPickState(); }",
+      "relFilterState": "function relFilterState() {\n        return { dim: String(relFilterDim || 'all'), who: String(relFilterWho || ''), jump: relJumpRef ? Object.assign({}, relJumpRef) : null };\n    }\n    function setRelFilter(dim, who, jump) {\n        relFilterDim = String(dim == null ? 'all' : dim);\n        relFilterWho = String(who == null ? '' : who);\n        relJumpRef = jump ? { dim: String(jump.dim || ''), id: String(jump.id == null ? '' : jump.id), title: String(jump.title || '') } : null;\n        return relFilterState();\n    }",
+      "relPickPanelHtml": "function relPickPanelHtml(dim, refId, editor) {\n        const names = relKnownNames();\n        let linked = [];\n        try { linked = (relIsRelDim(dim) && refId && !editor) ? relLinksOf(dim, refId).filter(x => x.who).map(x => String(x.who)) : []; } catch (e) { linked = []; }\n        const isOn = (nm) => linked.some(w => (typeof snapNameKey === 'function' ? snapNameKey(w) === snapNameKey(nm) : w === nm));\n        pageListRenderers['relPick'] = () => {\n            const shown = pageSearchItems('relPick', names.map(nm => ({ name: nm })));\n            pageListCounts['relPick'] = { shown: shown.length, total: names.length };\n            if (!names.length) return '<div class=\"ftt-empty\">「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。</div>';\n            if (!shown.length) return `<div class=\"ftt-empty\">无匹配角色（搜索：${escHtml(pageSearchQuery['relPick'] || '')}）</div>`;\n            return shown.map(x => {\n                const on = isOn(x.name);\n                return `<div class=\"ftt-item\" ${rowAttrs('relPick', { name: x.name })}><div class=\"ftt-item-main\"><b>${escHtml(x.name)}</b>${on ? ' <span class=\"ftt-badge ftt-badge--fact\">已在关联</span>' : ''}</div>`\n                    + `<div class=\"ftt-item-ops\"><button class=\"ftt-op${on ? ' ftt-ok' : ''}\" data-ftt-action=\"relPickAdd\" data-ftt-kind=\"${escHtml(dim)}\" data-ftt-id=\"${escHtml(String(refId == null ? '' : refId))}\" data-ftt-editor=\"${editor ? '1' : ''}\" data-ftt-name=\"${escHtml(x.name)}\" title=\"添加为该条目的关联角色（点「保存关联」落库）\">➕</button></div></div>`;\n            }).join('\\n');\n        };\n        const body = pageListRenderers['relPick']();\n        const label = editor ? `${relDimLabelOf(dim)}（编辑器）` : relDimLabelOf(dim);\n        return `<div class=\"ftt-editor\" data-ftt-rel-pick=\"${escHtml(relPickKey(dim, refId, editor))}\">`\n            + `<div class=\"ftt-editor-title\">👥 选角色 · 加到「${escHtml(label)}」的关联（角色档案 ${names.length} 名）</div>`\n            + `<div class=\"ftt-muted ftt-w-full\">只从<b>角色档案</b>点名，不遍历记忆 / 计划 / 悬念 / 平行条目；点 ➕ 追加一行角色，仍要点「💾 保存关联」才落库。</div>`\n            + searchBoxHtml('relPick', '搜索角色名…', names.length, names.length)\n            + `<div data-ftt-list=\"relPick\">${body}</div>`\n            + `<div class=\"ftt-row\"><button class=\"ftt-btn\" data-ftt-action=\"relPickClose\">关闭</button></div></div>`;\n    }",
+      "memoryRowRelLink": "const relLink = `<span class=\"ftt-rel-jump\" data-ftt-action=\"relJump\" data-ftt-kind=\"memories\" data-ftt-id=\"${escHtml(m.id)}\" title=\"在「记忆 → 关系表」里查看 / 新建这条记忆的知情关联\">🔗 关联${people.length ? `（${people.length}）` : ''}</span>`;"
+    }
+  },
+  "scenario": {
+    "snapshots": [
+      {
+        "id": "sn1",
+        "name": "角色甲"
+      },
+      {
+        "id": "sn2",
+        "name": "角色乙"
+      },
+      {
+        "id": "sn3",
+        "name": "角色丙"
+      },
+      {
+        "id": "sn4",
+        "name": "角色甲"
+      }
+    ],
+    "memories": [
+      {
+        "id": "m1",
+        "owner": "角色甲",
+        "title": "码头见闻",
+        "content": "甲在码头看到木箱，断口整齐。"
+      },
+      {
+        "id": "m2",
+        "owner": "角色乙",
+        "title": "仓库清点",
+        "content": "乙清点仓库，少了三箱。"
+      }
+    ],
+    "plans": [
+      {
+        "id": "p1",
+        "title": "追查货单",
+        "content": "追查货单来源",
+        "status": "open"
+      }
+    ],
+    "suspense": [
+      {
+        "id": "s1",
+        "title": "断口之谜",
+        "content": "断口来源不明",
+        "status": "open"
+      }
+    ],
+    "parallels": [
+      {
+        "id": "pa1",
+        "title": "第三方插手",
+        "text": "若木箱属第三方，则可能有人上门。"
+      }
+    ],
+    "links": [
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "who": "角色甲",
+        "how": "participant"
+      }
+    ]
+  },
+  "knownNames": {
+    "out": [
+      "角色甲",
+      "角色乙",
+      "角色丙"
+    ]
+  },
+  "entryTitle": {
+    "cases": [
+      {
+        "name": "记忆（标题+正文）",
+        "dim": "memories",
+        "item": {
+          "id": "m1",
+          "owner": "角色甲",
+          "title": "码头见闻",
+          "content": "甲在码头看到木箱，断口整齐。"
+        },
+        "out": "码头见闻：甲在码头看到木箱，断口整齐。"
+      },
+      {
+        "name": "计划（标题+正文）",
+        "dim": "plans",
+        "item": {
+          "id": "p1",
+          "title": "追查货单",
+          "content": "追查货单来源",
+          "status": "open"
+        },
+        "out": "追查货单：追查货单来源"
+      },
+      {
+        "name": "悬念（标题+正文）",
+        "dim": "suspense",
+        "item": {
+          "id": "s1",
+          "title": "断口之谜",
+          "content": "断口来源不明",
+          "status": "open"
+        },
+        "out": "断口之谜：断口来源不明"
+      },
+      {
+        "name": "平行（title+text）",
+        "dim": "parallels",
+        "item": {
+          "id": "pa1",
+          "title": "第三方插手",
+          "text": "若木箱属第三方，则可能有人上门。"
+        },
+        "out": "第三方插手：若木箱属第三方，则可能有人上门。"
+      },
+      {
+        "name": "仅标题",
+        "dim": "memories",
+        "item": {
+          "id": "x1",
+          "title": "只有标题"
+        },
+        "out": "只有标题"
+      },
+      {
+        "name": "仅正文（content）",
+        "dim": "memories",
+        "item": {
+          "id": "x2",
+          "content": "只有正文内容"
+        },
+        "out": "只有正文内容"
+      },
+      {
+        "name": "仅正文（text）",
+        "dim": "plans",
+        "item": {
+          "id": "x3",
+          "text": "计划只有 text 字段"
+        },
+        "out": "计划只有 text 字段"
+      },
+      {
+        "name": "标题=正文（不重复拼接）",
+        "dim": "memories",
+        "item": {
+          "id": "x4",
+          "title": "同文",
+          "content": "同文"
+        },
+        "out": "同文"
+      },
+      {
+        "name": "超长截断（60 字上限）",
+        "dim": "memories",
+        "item": {
+          "id": "x5",
+          "title": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲",
+          "content": ""
+        },
+        "out": "甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲…"
+      },
+      {
+        "name": "空条目",
+        "dim": "memories",
+        "item": {
+          "id": "x6"
+        },
+        "out": ""
+      },
+      {
+        "name": "null 条目",
+        "dim": "memories",
+        "item": null,
+        "out": ""
+      }
+    ]
+  },
+  "findEntryId": {
+    "cases": [
+      {
+        "name": "按 id 命中",
+        "dim": "memories",
+        "raw": {
+          "id": "m1"
+        },
+        "out": "m1"
+      },
+      {
+        "name": "按 id 命中（计划）",
+        "dim": "plans",
+        "raw": {
+          "id": "p1"
+        },
+        "out": "p1"
+      },
+      {
+        "name": "id 不存在 → 回落标题+正文精确匹配",
+        "dim": "memories",
+        "raw": {
+          "id": "nope",
+          "title": "仓库清点",
+          "content": "乙清点仓库，少了三箱。"
+        },
+        "out": "m2"
+      },
+      {
+        "name": "仅标题匹配",
+        "dim": "memories",
+        "raw": {
+          "title": "仓库清点"
+        },
+        "out": "m2"
+      },
+      {
+        "name": "仅正文匹配",
+        "dim": "memories",
+        "raw": {
+          "content": "甲在码头看到木箱，断口整齐。"
+        },
+        "out": "m1"
+      },
+      {
+        "name": "标题对但正文不对 → 不命中",
+        "dim": "memories",
+        "raw": {
+          "title": "仓库清点",
+          "content": "内容不符"
+        },
+        "out": ""
+      },
+      {
+        "name": "空 raw → 空串",
+        "dim": "memories",
+        "raw": null,
+        "out": ""
+      },
+      {
+        "name": "全空字段 → 空串",
+        "dim": "memories",
+        "raw": {
+          "title": "",
+          "content": ""
+        },
+        "out": ""
+      },
+      {
+        "name": "名字字段（name）不参与匹配",
+        "dim": "snapshots",
+        "raw": {
+          "name": "角色甲"
+        },
+        "out": ""
+      }
+    ]
+  },
+  "pickAppendRow": {
+    "steps": [
+      {
+        "name": "首次追加成功",
+        "dim": "memories",
+        "who": "角色甲",
+        "out": true,
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "同角色重复追加 → dup",
+        "dim": "memories",
+        "who": "角色甲",
+        "out": "dup",
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "不同角色 → 成功",
+        "dim": "memories",
+        "who": "角色乙",
+        "out": true,
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          },
+          {
+            "who": "角色乙",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "前后空格（trim 后同名）→ dup",
+        "dim": "memories",
+        "who": " 角色甲 ",
+        "out": "dup",
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          },
+          {
+            "who": "角色乙",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "姓名键归一（「角色·甲」= 「角色甲」）→ dup",
+        "dim": "memories",
+        "who": "角色·甲",
+        "out": "dup",
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          },
+          {
+            "who": "角色乙",
+            "how": "unspecified",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "平行事件首次追加 → 成功（方式 related）",
+        "dim": "parallels",
+        "who": "角色甲",
+        "out": true,
+        "rowsAfter": [
+          {
+            "who": "角色甲",
+            "how": "related",
+            "from": "",
+            "at": "",
+            "view": "",
+            "deviation": "unknown",
+            "note": ""
+          }
+        ]
+      },
+      {
+        "name": "空名 → false",
+        "dim": "memories",
+        "who": "   ",
+        "out": false,
+        "rowsAfter": []
+      },
+      {
+        "name": "非关联维度（atoms）→ false",
+        "dim": "atoms",
+        "who": "角色甲",
+        "out": false,
+        "rowsAfter": []
+      },
+      {
+        "name": "非关联维度（concepts）→ false",
+        "dim": "concepts",
+        "who": "角色甲",
+        "out": false,
+        "rowsAfter": []
+      },
+      {
+        "name": "容器为 null → false",
+        "dim": "memories",
+        "who": "角色甲",
+        "out": false
+      },
+      {
+        "name": "容器无 insertAdjacentHTML → false",
+        "dim": "memories",
+        "who": "角色甲",
+        "out": false
+      }
+    ]
+  },
+  "pickState": {
+    "transitions": [
+      {
+        "call": "setRelPick(null)",
+        "out": null
+      },
+      {
+        "call": "setRelPick({dim:'memories',id:5,editor:0})",
+        "out": {
+          "dim": "memories",
+          "id": "5",
+          "editor": false
+        }
+      },
+      {
+        "call": "返回值为副本（改返回值不影响内部态）",
+        "out": {
+          "dim": "memories",
+          "id": "5",
+          "editor": false
+        }
+      },
+      {
+        "call": "setRelPick({dim:'',id:null,editor:'x'})",
+        "out": {
+          "dim": "",
+          "id": "",
+          "editor": true
+        }
+      },
+      {
+        "call": "setRelPick(undefined)",
+        "out": null
+      },
+      {
+        "call": "setRelPick({dim:'plans'})",
+        "out": {
+          "dim": "plans",
+          "id": "",
+          "editor": false
+        }
+      }
+    ],
+    "finalOut": null
+  },
+  "filterState": {
+    "transitions": [
+      {
+        "call": "setRelFilter('memories','角色甲',{dim:'plans',id:7,title:null})",
+        "out": {
+          "dim": "memories",
+          "who": "角色甲",
+          "jump": {
+            "dim": "plans",
+            "id": "7",
+            "title": ""
+          }
+        }
+      },
+      {
+        "call": "relFilterState() 副本语义（改 jump 不影响内部态）",
+        "out": {
+          "dim": "memories",
+          "who": "角色甲",
+          "jump": {
+            "dim": "plans",
+            "id": "7",
+            "title": ""
+          }
+        }
+      },
+      {
+        "call": "setRelFilter(null,null,null)",
+        "out": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        }
+      },
+      {
+        "call": "setRelFilter('memories',undefined,undefined)",
+        "out": {
+          "dim": "memories",
+          "who": "",
+          "jump": null
+        }
+      },
+      {
+        "call": "setRelFilter('all','',{})",
+        "out": {
+          "dim": "all",
+          "who": "",
+          "jump": {
+            "dim": "",
+            "id": "",
+            "title": ""
+          }
+        }
+      },
+      {
+        "call": "setRelFilter('all','',null)",
+        "out": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        }
+      }
+    ],
+    "finalOut": {
+      "dim": "all",
+      "who": "",
+      "jump": null
+    }
+  },
+  "pickPanel": {
+    "entry": {
+      "dim": "memories",
+      "refId": "m1",
+      "editor": false,
+      "key": "memories|m1",
+      "title": "👥 选角色 · 加到「记忆」的关联（角色档案 3 名）",
+      "hasPickAdd": true,
+      "hasClose": true,
+      "hasSearch": true,
+      "addCount": 3,
+      "nameButtons": [
+        "角色甲",
+        "角色乙",
+        "角色丙"
+      ],
+      "linkedBadges": 1,
+      "editorFlag": false,
+      "onlyFromArchive": true,
+      "noEntryScan": true,
+      "emptyText": null
+    },
+    "entryNoLink": {
+      "dim": "memories",
+      "refId": "m2",
+      "editor": false,
+      "key": "memories|m2",
+      "title": "👥 选角色 · 加到「记忆」的关联（角色档案 3 名）",
+      "hasPickAdd": true,
+      "hasClose": true,
+      "hasSearch": true,
+      "addCount": 3,
+      "nameButtons": [
+        "角色甲",
+        "角色乙",
+        "角色丙"
+      ],
+      "linkedBadges": 0,
+      "editorFlag": false,
+      "onlyFromArchive": true,
+      "noEntryScan": true,
+      "emptyText": null
+    },
+    "editor": {
+      "dim": "memories",
+      "refId": "m1",
+      "editor": true,
+      "key": "memories|editor",
+      "title": "👥 选角色 · 加到「记忆（编辑器）」的关联（角色档案 3 名）",
+      "hasPickAdd": true,
+      "hasClose": true,
+      "hasSearch": true,
+      "addCount": 3,
+      "nameButtons": [
+        "角色甲",
+        "角色乙",
+        "角色丙"
+      ],
+      "linkedBadges": 0,
+      "editorFlag": true,
+      "onlyFromArchive": true,
+      "noEntryScan": true,
+      "emptyText": null
+    },
+    "parallels": {
+      "dim": "parallels",
+      "refId": "pa1",
+      "editor": false,
+      "key": "parallels|pa1",
+      "title": "👥 选角色 · 加到「平行事件」的关联（角色档案 3 名）",
+      "hasPickAdd": true,
+      "hasClose": true,
+      "hasSearch": true,
+      "addCount": 3,
+      "nameButtons": [
+        "角色甲",
+        "角色乙",
+        "角色丙"
+      ],
+      "linkedBadges": 0,
+      "editorFlag": false,
+      "onlyFromArchive": true,
+      "noEntryScan": true,
+      "emptyText": null
+    },
+    "emptyArchive": "「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。"
+  },
+  "pickAdd": {
+    "addOk": {
+      "toasts": [
+        {
+          "kind": "success",
+          "title": "",
+          "text": "已加角色「角色乙」—— 点「💾 保存关联」落库",
+          "msg": "已加角色「角色乙」—— 点「💾 保存关联」落库"
+        }
+      ],
+      "rowsAfterFirst": [
+        {
+          "who": "角色乙",
+          "how": "unspecified",
+          "from": "",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": ""
+        }
+      ]
+    },
+    "addDupSkip": {
+      "toasts": [
+        {
+          "kind": "info",
+          "title": "",
+          "text": "「角色乙」已在关联表里（如需再加一行可手写）",
+          "msg": "「角色乙」已在关联表里（如需再加一行可手写）"
+        }
+      ],
+      "rowsAfterDup": [
+        {
+          "who": "角色乙",
+          "how": "unspecified",
+          "from": "",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": ""
+        },
+        {
+          "who": "角色丙",
+          "how": "unspecified",
+          "from": "",
+          "at": "",
+          "view": "",
+          "deviation": "unknown",
+          "note": ""
+        }
+      ]
+    },
+    "addThird": {
+      "toasts": [
+        {
+          "kind": "success",
+          "title": "",
+          "text": "已加角色「角色丙」—— 点「💾 保存关联」落库",
+          "msg": "已加角色「角色丙」—— 点「💾 保存关联」落库"
+        }
+      ]
+    },
+    "containerMissing": {
+      "toasts": [
+        {
+          "kind": "warning",
+          "title": "",
+          "text": "未找到关联表容器（请重新打开该条目）",
+          "msg": "未找到关联表容器（请重新打开该条目）"
+        }
+      ]
+    },
+    "finalRows": [
+      {
+        "who": "角色乙",
+        "how": "unspecified",
+        "from": "",
+        "at": "",
+        "view": "",
+        "deviation": "unknown",
+        "note": ""
+      },
+      {
+        "who": "角色丙",
+        "how": "unspecified",
+        "from": "",
+        "at": "",
+        "view": "",
+        "deviation": "unknown",
+        "note": ""
+      }
+    ]
+  },
+  "actionFlow": {
+    "steps": [
+      {
+        "name": "relJump(memories,m1)",
+        "ds": {
+          "fttAction": "relJump",
+          "fttKind": "memories",
+          "fttId": "m1"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": {
+            "dim": "memories",
+            "id": "m1",
+            "title": "码头见闻：甲在码头看到木箱，断口整齐。"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [],
+        "relEntryM1": true,
+        "locateHint": true,
+        "clearLink": true
+      },
+      {
+        "name": "子标签点击（fttMsub=list）重置定位与选择器",
+        "ds": {
+          "fttMsub": "list"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "list",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        }
+      },
+      {
+        "name": "relJump(plans,p1)",
+        "ds": {
+          "fttAction": "relJump",
+          "fttKind": "plans",
+          "fttId": "p1"
+        },
+        "filter": {
+          "dim": "plans",
+          "who": "",
+          "jump": {
+            "dim": "plans",
+            "id": "p1",
+            "title": "追查货单：追查货单来源"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [],
+        "relEntryP1": true,
+        "locateHint": true
+      },
+      {
+        "name": "relJump(suspense,s1)",
+        "ds": {
+          "fttAction": "relJump",
+          "fttKind": "suspense",
+          "fttId": "s1"
+        },
+        "filter": {
+          "dim": "suspense",
+          "who": "",
+          "jump": {
+            "dim": "suspense",
+            "id": "s1",
+            "title": "断口之谜：断口来源不明"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [],
+        "relEntryS1": true,
+        "locateHint": true
+      },
+      {
+        "name": "relJump(parallels,pa1)",
+        "ds": {
+          "fttAction": "relJump",
+          "fttKind": "parallels",
+          "fttId": "pa1"
+        },
+        "filter": {
+          "dim": "parallels",
+          "who": "",
+          "jump": {
+            "dim": "parallels",
+            "id": "pa1",
+            "title": "第三方插手：若木箱属第三方，则可能有人上门。"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [],
+        "relEntryPa1": true,
+        "locateHint": true
+      },
+      {
+        "name": "relJump 后清除筛选",
+        "ds": {
+          "fttAction": "relClearFilter"
+        },
+        "filter": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": []
+      },
+      {
+        "name": "relGoto(memories,m1)",
+        "ds": {
+          "fttAction": "relGoto",
+          "fttKind": "memories",
+          "fttId": "m1"
+        },
+        "filter": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "码头见闻",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [
+          "已定位到「码头见闻」"
+        ]
+      },
+      {
+        "name": "relGoto(plans,p1)",
+        "ds": {
+          "fttAction": "relGoto",
+          "fttKind": "plans",
+          "fttId": "p1"
+        },
+        "filter": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": null,
+          "plans": "追查货单",
+          "suspense": "",
+          "parallels": null
+        },
+        "toasts": [
+          "已定位到「追查货单」"
+        ],
+        "plansPage": true,
+        "titleShown": true
+      },
+      {
+        "name": "relGoto(suspense,s1)（映射到计划悬念页 → 搜索词写到 plans）",
+        "ds": {
+          "fttAction": "relGoto",
+          "fttKind": "suspense",
+          "fttId": "s1"
+        },
+        "filter": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": null,
+          "plans": "断口之谜",
+          "suspense": "",
+          "parallels": null
+        },
+        "toasts": [
+          "已定位到「断口之谜」"
+        ]
+      },
+      {
+        "name": "relGoto(parallels,pa1)",
+        "ds": {
+          "fttAction": "relGoto",
+          "fttKind": "parallels",
+          "fttId": "pa1"
+        },
+        "filter": {
+          "dim": "all",
+          "who": "",
+          "jump": null
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": null,
+          "plans": null,
+          "suspense": null,
+          "parallels": "第三方插手"
+        },
+        "toasts": [
+          "已定位到「第三方插手」"
+        ]
+      },
+      {
+        "name": "relPick(memories,m1) 打开",
+        "ds": {
+          "fttAction": "relPick",
+          "fttKind": "memories",
+          "fttId": "m1"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": {
+            "dim": "memories",
+            "id": "m1",
+            "title": "码头见闻：甲在码头看到木箱，断口整齐。"
+          }
+        },
+        "pick": {
+          "dim": "memories",
+          "id": "m1",
+          "editor": false
+        },
+        "memSub": "rel",
+        "searches": {
+          "memories": "码头见闻",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": [],
+        "pickPanelKey": "memories|m1"
+      },
+      {
+        "name": "relPick(memories,m1) 同条目再点一次 → 收起",
+        "ds": {
+          "fttAction": "relPick",
+          "fttKind": "memories",
+          "fttId": "m1"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": {
+            "dim": "memories",
+            "id": "m1",
+            "title": "码头见闻：甲在码头看到木箱，断口整齐。"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "码头见闻",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": []
+      },
+      {
+        "name": "relPick(memories,m1) 再打开",
+        "ds": {
+          "fttAction": "relPick",
+          "fttKind": "memories",
+          "fttId": "m1"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": {
+            "dim": "memories",
+            "id": "m1",
+            "title": "码头见闻：甲在码头看到木箱，断口整齐。"
+          }
+        },
+        "pick": {
+          "dim": "memories",
+          "id": "m1",
+          "editor": false
+        },
+        "memSub": "rel",
+        "searches": {
+          "memories": "码头见闻",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": []
+      },
+      {
+        "name": "relPickClose",
+        "ds": {
+          "fttAction": "relPickClose"
+        },
+        "filter": {
+          "dim": "memories",
+          "who": "",
+          "jump": {
+            "dim": "memories",
+            "id": "m1",
+            "title": "码头见闻：甲在码头看到木箱，断口整齐。"
+          }
+        },
+        "pick": null,
+        "memSub": "rel",
+        "searches": {
+          "memories": "码头见闻",
+          "plans": null,
+          "suspense": null,
+          "parallels": null
+        },
+        "toasts": []
+      }
+    ]
+  },
+  "entryRowEntry": {
+    "hasRelJump": true,
+    "label": "🔗 关联（1）"
+  }
+}
