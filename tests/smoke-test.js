@@ -15,9 +15,42 @@ import { readUpdateState } from '../adapters/update-state.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
 const failures = [];
-function assert(name, cond, extra) {
+function commit(name, cond, extra) {
     if (cond) { pass++; console.log('  ✅', name); }
     else { fail++; failures.push(name); console.log('  ❌', name, extra === undefined ? '' : JSON.stringify(extra)); }
+}
+// 断言器（B9 专项 · 测试完整性）：
+//   1) 同步条件：立即计数 —— 既有同步调用点行为与时序完全不变；
+//   2) thenable 条件（异步小节）：内部 `await` 后再计数，**调用点必须写 `await assert(...)`**。
+// 历史缺陷：调用点把 async IIFE 的 Promise 直接当条件传入且未 await → Promise 恒真 → 小节永远 ✅（假绿），
+// 且副作用与后续小节并发交错（实测 W3 期间 generateRaw 被并发调用 6 次）。详见 docs/B9-测试完整性待修.md。
+// 永久防呆（写法对齐 tests/harness/st-mock.js#makeReporter）：thenable 条件的调用点若没有 await
+// （返回值未被 `.then` 消费），直接判失败并提示「请 await」——防止缺陷回归。
+function assert(name, cond, extra) {
+    const thenable = cond && (typeof cond === 'object' || typeof cond === 'function') && typeof cond.then === 'function';
+    if (!thenable) { commit(name, cond, extra); return; }   // 同步条件：零影响
+    const slot = { ok: false, extra, done: false, awaited: false, guardFailed: false };
+    const running = (async () => {
+        try { slot.ok = !!(await cond); } catch (e) { slot.ok = false; slot.extra = { error: String((e && e.message) || e) }; }
+        slot.done = true;
+        if (!slot.guardFailed) commit(name, slot.ok, slot.extra);   // 已由防呆判失败则不重复计数
+    })();
+    // 可被 await 的守卫对象：await 会在同一 tick 内通过 PromiseResolve 触发 .then()
+    const guard = {
+        then(onFulfilled, onRejected) { slot.awaited = true; return running.then(onFulfilled, onRejected); },
+        catch(onRejected) { slot.awaited = true; return running.catch(onRejected); },
+        finally(onFinally) { slot.awaited = true; return running.finally(onFinally); },
+    };
+    // 两个微任务之后仍未被 .then()（即 await）消费 → 调用点漏了 await：直接判失败并提示「请 await」
+    queueMicrotask(() => queueMicrotask(() => {
+        if (slot.awaited) return;
+        slot.guardFailed = true;
+        if (slot.done && slot.ok) pass--;                            // 撤销后台已计入的「假绿」
+        if (!(slot.done && !slot.ok)) { fail++; }                    // 已按失败计过则不重复
+        if (failures.indexOf(name) < 0) failures.push(name);
+        console.log('  ❌', name, '断言条件是一个 Promise 而调用点没有 `await`：请改为 `await assert(...)`');
+    }));
+    return guard;
 }
 
 // ---------- A 无宿主导入（子进程；验证 Node 环境下不崩） ----------
@@ -71,7 +104,7 @@ const uninstallFetch = installGlobalFetch((url, opts) => {
 });
 
 const host = makeHost({ templateHtml });
-const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo', 'ftt_v2_usegit',
+const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_extensions_block', 'extensionsMenu', 'ftt-panel', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo', 'ftt_v2_usegit',
     'ftt_v2_cfg_injp', 'ftt_v2_cfg_budget', 'ftt_v2_cfg_maxatoms', 'ftt_v2_cfg_maxmems', 'ftt_v2_cfg_autoext',
     'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply',
     'ftt_v2_console', 'ftt_v2_console_refresh']);
@@ -107,7 +140,7 @@ assert('B2b P2 接线：记忆容器已载入内核（本机缓冲/服务端文�
 })(), st);
 
 // ---------- M 弹窗主界面（用户要求：对齐 V1 的弹窗形态） ----------
-assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1 分页、切页渲染对应内容', (async () => {
+await assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1 分页、切页渲染对应内容', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0];
     const open = await globalThis.FTT.ui('overview');
     const info = entry.panelInfo();
@@ -118,7 +151,8 @@ assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1 分�
     return open.ok === true && open.via === 'overlay'
         && info.tabs.join(',') === 'overview,atoms,states,snapshots,memories,items,currencies,rumors,plans,scenes,concepts,parallels,settings'
         && String(r1.html).indexOf('data-ftt-search="atoms"') >= 0
-        && String(r2.html).indexOf('ftt_v2_cfg_budget') >= 0
+        && String(r2.html).indexOf('data-ftt-settings-page="base"') >= 0        // V1 同构浮层的设定页标记（原断言 ftt_v2_cfg_budget 属抽屉模板 settings.html，浮层里恒不存在）
+        && String(r2.html).indexOf('data-ftt-cfg="autoExtract"') >= 0           // base 子页的控件（settings-pages.js basePageHtml 首节）
         && String(r3.html).indexOf('📚 类目统计') >= 0
         && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
@@ -298,7 +332,7 @@ assert('F3 apply：合并写入内核并走保存流水线落盘（信封含导�
 })(), { key: savedKey, ids: saved && saved.payload ? (saved.payload.data.atoms || []).map((x) => x.id) : null });
 
 const impCmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-import')[0];
-assert('F4 /ftt-import 命令：默认干跑并给出「确认写入」提示，apply 时报告已写入', (async () => {
+await assert('F4 /ftt-import 命令：默认干跑并给出「确认写入」提示，apply 时报告已写入', (async () => {
     if (!impCmd || typeof impCmd.callback !== 'function') return false;
     const dryText = String(await impCmd.callback({}, ''));
     const applyText = String(await impCmd.callback({}, 'apply'));
@@ -348,7 +382,7 @@ assert('G2 楼层事件刷新注入：写入 ST 注入通道（结构头 + 正�
 let smokeAborted = 0;
 const smokeChat = [{ is_user: true, mes: '你好' }, { is_user: false, mes: '晚上好' }];
 const smokeChatCopy = JSON.stringify(smokeChat);
-assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort', (async () => {
+await assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort', (async () => {
     globalThis.fttGenerateInterceptor(smokeChat, 8000, () => { smokeAborted++; }, 'normal');
     await new Promise((r) => setTimeout(r, 20));
     const val = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
@@ -378,7 +412,7 @@ assert('H2 楼层判据与台账：可分析正文 + 哈希台账（版本签名
 
 const aiDelta = JSON.stringify({ atoms: { add: [{ title: '账册', text: '甲打开木箱取出账册并记下转运日期。', date: '1919-11-29' }] } });
 
-assert('H3 FTT.analyze：AI 返回 JSON → 落库 + 台账记录 + 状态可读', (async () => {
+await assert('H3 FTT.analyze：AI 返回 JSON → 落库 + 台账记录 + 状态可读', (async () => {
     const saved = host.ctx.generateRaw;
     host.ctx.generateRaw = async () => aiDelta;
     try {
@@ -392,7 +426,7 @@ assert('H3 FTT.analyze：AI 返回 JSON → 落库 + 台账记录 + 状态可读
     } finally { host.ctx.generateRaw = saved; }
 })(), '');
 
-assert('H4 /ftt-analyze 命令：指定楼层与清单两种用法；/ftt 状态含提取行', (async () => {
+await assert('H4 /ftt-analyze 命令：指定楼层与清单两种用法；/ftt 状态含提取行', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-analyze')[0];
     const st = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0];
     if (!cmd) return false;
@@ -405,7 +439,7 @@ assert('H4 /ftt-analyze 命令：指定楼层与清单两种用法；/ftt 状态
     } finally { host.ctx.generateRaw = saved; }
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-analyze')[0]);
 
-assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即自动分析并记账', (async () => {
+await assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即自动分析并记账', (async () => {
     host.ctx.chat.push({ is_user: false, mes: '甲把账册放回木箱，锁上铜锁，转身离开仓库。', name: '角色甲' });
     const newFloor = host.ctx.chat.length - 1;
     const saved = host.ctx.generateRaw;
@@ -418,7 +452,7 @@ assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即自动
     } finally { host.ctx.generateRaw = saved; }
 })(), '');
 
-assert('H6 提取失败姿态：AI 不可用时只回报原因，不影响聊天与注入', (async () => {
+await assert('H6 提取失败姿态：AI 不可用时只回报原因，不影响聊天与注入', (async () => {
     host.ctx.chat.push({ is_user: false, mes: '甲在仓库门口停下，回头看了一眼。', name: '角色甲' });
     const f = host.ctx.chat.length - 1;
     const saved = host.ctx.generateRaw;
@@ -469,7 +503,7 @@ assert('I3 维度开关与状态块刷新：applyPanelDim 写 cfg.dimensionEnabl
         && String(txt).indexOf('内核配置') >= 0;
 })(), '');
 
-assert('I4 面板动作按钮：待分析清单 / 分析未分析楼层 / 清空注入 均调用注入钩子并回填提示', (async () => {
+await assert('I4 面板动作按钮：待分析清单 / 分析未分析楼层 / 清空注入 均调用注入钩子并回填提示', (async () => {
     // 复原自动提取开关，避免影响后续动作
     rt.cfg.autoExtract = true;
     doc._els.ftt_v2_list.dispatch('click');
@@ -537,19 +571,18 @@ assert('J4 删除：移除条目 + 写 id 墓碑（跨端不复活），列表�
         && con.consoleState().note.indexOf('已删除') >= 0;
 })(), (() => { try { return JSON.stringify((rt.state.deleted || {}).atoms || {}); } catch (e) { return String(e.message); } })());
 
-assert('J5 注入自查：逐条判定是否进入当前注入，并给出命中/未命中合计', (() => {
+await assert('J5 注入自查：逐条判定是否进入当前注入，并给出命中/未命中合计', (async () => {
     host.ctx.chat.push({ is_user: false, mes: '甲重新清点货物并把记录写在账册上。', name: '角色甲' });
-    return (async () => {
-        const saved = host.ctx.generateRaw;
-        host.ctx.generateRaw = async () => aiDelta;
-        try { await globalThis.FTT.analyze({ floor: host.ctx.chat.length - 1 }); } finally { host.ctx.generateRaw = saved; }
-        rt.setKernelState(rt.state);                     // 触发一次注入刷新所依赖的视图（幂等）
-        const au = con.injectAudit({});
-        return au.chars > 0 && au.injected + au.missing > 0 && Array.isArray(au.rows) && au.rows.length === au.injected + au.missing;
-    })();
+    const saved = host.ctx.generateRaw;
+    host.ctx.generateRaw = async () => aiDelta;
+    try { await globalThis.FTT.analyze({ floor: host.ctx.chat.length - 1 }); } finally { host.ctx.generateRaw = saved; }
+    rt.setKernelState(rt.state);                         // 刷新内核视图（幂等）
+    await entry.injectNow();                             // I4「清空注入」后注入为空；注入自查需先按当前状态推送一次（生产触发路径见 index.js onFloorChanged）
+    const au = con.injectAudit({});
+    return au.chars > 0 && au.injected + au.missing > 0 && Array.isArray(au.rows) && au.rows.length === au.injected + au.missing;
 })(), (() => { try { const a = con.injectAudit({ rows: false }); return JSON.stringify(a); } catch (e) { return String(e.message); } })());
 
-assert('J6 数据台动作入口与刷新按钮：tab/search/cancel 可用，刷新按钮回填提示', (async () => {
+await assert('J6 数据台动作入口与刷新按钮：tab/search/cancel 可用，刷新按钮回填提示', (async () => {
     const t = con.consoleAction('tab', { kind: 'memories' });
     const q = con.consoleAction('search', { q: '记忆' });
     const c = con.consoleAction('cancel', {});
@@ -604,7 +637,7 @@ assert('L1 装配触发来源可查：加载期探针已在无事件依赖下完
         && String(doc._els.extensions_settings2.html).indexOf('ftt_v2_settings') >= 0;
 })(), (() => { try { return JSON.stringify({ t: entry.runtimeState().bootstrap.triggers, p: entry.panelMountInfo().container }); } catch (e) { return String(e.message); } })());
 
-assert('L2 /ftt-panel 命令存在且报告面板/候选容器/菜单与「在扩展设置抽屉」提示', (async () => {
+await assert('L2 /ftt-panel 命令存在且报告面板/候选容器/菜单与「在扩展设置抽屉」提示', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-panel')[0];
     if (!cmd) return false;
     const t = String(await cmd.callback({}, ''));
@@ -623,7 +656,7 @@ assert('L4 魔杖菜单入口已插入 #extensionsMenu（面板容器异常时�
 })(), (() => { try { return JSON.stringify(globalThis.FTT.menuInfo()); } catch (e) { return String(e.message); } })());
 
 // ---------- L5 悬浮兜底（抽屉容器异常时的最后可见性方案） ----------
-assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以弹窗打开面板 → 抽屉恢复后自动移除', (async () => {
+await assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以弹窗打开面板 → 抽屉恢复后自动移除', (async () => {
     const floatMod = await import('../ui/floating.js');
     const saved = { a: doc._els.extensions_settings2, b: doc._els.extensions_settings, c: doc._els.rm_extensions_block };
     delete doc._els.extensions_settings2; delete doc._els.extensions_settings; delete doc._els.rm_extensions_block;
@@ -643,11 +676,14 @@ assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点击以�
 })(), (() => { try { return JSON.stringify({ body: String(doc.body && doc.body.html || '').length, back: 'ok' }); } catch (e) { return String(e.message); } })());
 
 endpointDown = false;
-uninstallFetch();
+// 注意：这里的 fetch 桩**不能在此卸载** —— 它同时承载「服务端用户目录文件」通道
+//   （/api/files/upload + /user/files/<name>）：N 段的「立即同步 / 刷新状态」要真正读写主文件、备份与清单。
+//   此前在此处 uninstallFetch() → globalThis.fetch 被删除 → 文件通道全部静默失败（N3/N4 因此永远不可能成立）。
+//   改为收尾（D2 之后）再卸载。
 
 // ---------- N 跨端同步（B7-2：文件通道 / 清单预判 / 快照文件 / 同步日志 / 刷新与立即同步） ----------
 const syncMod = await import('../adapters/sync.js');
-assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与操作/同步日志 + V1 同名动作按钮齐备', (async () => {
+await assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与操作/同步日志 + V1 同名动作按钮齐备', (async () => {
     await entry.popupAction('tab', { tab: 'settings' });
     const r = await entry.popupAction('settingsSub', { sub: 'storage' });
     const html = String(r.html || '');
@@ -659,7 +695,7 @@ assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与
         && html.indexOf('data-ftt-action="syncLogClear"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0;
 })(), '');
 
-assert('N2 同步日志：记录入队（本端源头 + ts）→ 面板渲染「本地 → 对端 → 同步后」→ 清空即空', (async () => {
+await assert('N2 同步日志：记录入队（本端源头 + ts）→ 面板渲染「本地 → 对端 → 同步后」→ 清空即空', (async () => {
     globalThis.FTT.syncLogClear();
     globalThis.FTT.syncLogPush({ action: '冒烟记录', mode: '推送', changed: true, localN: 1, remoteN: 2, afterN: 2, localHash: 'abcdef0123456789', remoteHash: 'ffeeddccbbaa9988', afterHash: 'abcdef0123456789', note: '冒烟' });
     const list = globalThis.FTT.syncLog();
@@ -671,7 +707,9 @@ assert('N2 同步日志：记录入队（本端源头 + ts）→ 面板渲染「
     return ok && globalThis.FTT.syncLog().length === 0;
 })(), '');
 
-assert('N3 立即同步（无对端）→ mode=none：写入服务端主文件 + 备份文件，并记一条同步日志', (async () => {
+await assert('N3 立即同步（无对端）→ mode=none：写入服务端主文件 + 备份文件，并记一条同步日志', (async () => {
+    // 场景前置：清空服务端用户目录文件 —— 否则前面各节的保存流水线已写出主文件，跨端对账会判定为「两端一致」而非「无对端」
+    srvFiles.clear();
     const r = await globalThis.FTT.syncNow();
     const names = Array.from(srvFiles.keys());
     const log = globalThis.FTT.syncLog();
@@ -679,15 +717,18 @@ assert('N3 立即同步（无对端）→ mode=none：写入服务端主文件 +
         && log.length >= 1 && log[0].action === '手动立即同步';
 })(), '');
 
-assert('N4 刷新状态：取服务端最新并合并 → 报告条数/快照数/是否回推；清单与快照文件随写入生成', (async () => {
+await assert('N4 刷新状态：取服务端最新并合并 → 报告条数/快照数/是否回推；清单与快照文件随写入生成', (async () => {
     const rep = await globalThis.FTT.syncRefresh();
+    // 清单是「主文件写成功后**延迟排程**上传」的（adapters/sync.js `scheduleMetaFilePush`，META_PUSH_DELAY=1200ms），
+    //   故读文件列表前先等排程窗口过去
+    await new Promise((r) => setTimeout(r, 1500));
     const names = Array.from(srvFiles.keys());
     return rep.err === '' && !!rep.merged && rep.merged.entries >= 0
         && names.indexOf(syncMod.metaFileName()) >= 0
         && globalThis.FTT.syncStatus().file.name === syncMod.stateFileName();
 })(), '');
 
-assert('N5 FTT 同步调试入口齐备（syncStatus / syncInfo / syncSource / syncLogServerStatus / syncVerify）', (async () => {
+await assert('N5 FTT 同步调试入口齐备（syncStatus / syncInfo / syncSource / syncLogServerStatus / syncVerify）', (async () => {
     const st = globalThis.FTT.syncStatus();
     const info = globalThis.FTT.syncInfo();
     const src = globalThis.FTT.syncSource();
@@ -699,7 +740,7 @@ assert('N5 FTT 同步调试入口齐备（syncStatus / syncInfo / syncSource / s
         && Array.isArray(ver.details) && ver.details.length >= 4;
 })(), '');
 
-assert('N6 存储动作经面板分发可达（校验并修复 / 清空日志 / 刷新日志）且回填提示', (async () => {
+await assert('N6 存储动作经面板分发可达（校验并修复 / 清空日志 / 刷新日志）且回填提示', (async () => {
     const r1 = await entry.popupAction('storageVerify', {});
     const r2 = await entry.popupAction('syncLogRefresh', {});
     const r3 = await entry.popupAction('syncLogClear', {});
@@ -709,7 +750,7 @@ assert('N6 存储动作经面板分发可达（校验并修复 / 清空日志 / 
 })(), '');
 
 // ---------- O 剧情时钟域（B8-1：手工锚点 + 零 AI 时间巡检 + 总览/设定界面） ----------
-assert('O1 总览时钟区（V1 同构）：日期/时间/地点行 + 手工改写工具行 + 时间巡检状态行与按钮', (async () => {
+await assert('O1 总览时钟区（V1 同构）：日期/时间/地点行 + 手工改写工具行 + 时间巡检状态行与按钮', (async () => {
     await entry.popupAction('tab', { tab: 'overview' });
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
@@ -718,7 +759,7 @@ assert('O1 总览时钟区（V1 同构）：日期/时间/地点行 + 手工改�
         && html.indexOf('data-ftt-clock-patrol') >= 0 && html.indexOf('data-ftt-action="clockPatrol"') >= 0;
 })(), '');
 
-assert('O2 手工强制改写锚点：clockEdit 展开面板 → clockManualSave 写入并锁定 → clockManualClear 解锁恢复自动', (async () => {
+await assert('O2 手工强制改写锚点：clockEdit 展开面板 → clockManualSave 写入并锁定 → clockManualClear 解锁恢复自动', (async () => {
     const open = await entry.popupAction('clockEdit', {});
     const openHtml = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
     const save = await entry.popupAction('clockManualSave', { date: '1919-12-31', time: '下午三点', location: '城市甲·码头' });
@@ -731,7 +772,7 @@ assert('O2 手工强制改写锚点：clockEdit 展开面板 → clockManualSave
         && clr.ok === true && globalThis.FTT.clockManual() === null;
 })(), '');
 
-assert('O3 零 AI 时间巡检 clockPatrol：修复格式非法/年份漂移的日期与时间，并在写回前留全量快照', (async () => {
+await assert('O3 零 AI 时间巡检 clockPatrol：修复格式非法/年份漂移的日期与时间，并在写回前留全量快照', (async () => {
     const st = rtMod.state;
     st.atoms = (st.atoms || []);
     st.atoms.push({ id: 'smoke-clock-1', text: '情节（脏日期）', title: '情节（脏日期）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
@@ -746,7 +787,7 @@ assert('O3 零 AI 时间巡检 clockPatrol：修复格式非法/年份漂移的�
         && String(fixed.date).indexOf('1919-') === 0;
 })(), '');
 
-assert('O4 设定「基础」页：V1 五分节 + 21 个控件 + 强制开关（及时分析开启 → 三项禁用）+ 时间巡检两个开关', (async () => {
+await assert('O4 设定「基础」页：V1 五分节 + 21 个控件 + 强制开关（及时分析开启 → 三项禁用）+ 时间巡检两个开关', (async () => {
     rtMod.cfg.timelyAnalysis = false;
     const r1 = await entry.popupAction('settingsSub', { sub: 'base' });
     const html = String(r1.html || '');
@@ -807,7 +848,7 @@ assert('P3 楼层窗口回退：无显式正文时用「最近 N 楼」文本提
     return res.date === '1919-12-09' && res.location === '城市壬-港口' && res.time === '07:00' && res.timeEnd === '07:30';
 })(), '');
 
-assert('P4 自动提取调度：消息事件到达 → 1.8s 防抖后自动落盘（cfg.clockExtractEnabled 控制；关掉不排程）', (async () => {
+await assert('P4 自动提取调度：消息事件到达 → 1.8s 防抖后自动落盘（cfg.clockExtractEnabled 控制；关掉不排程）', (async () => {
     rtMod.cfg.clockExtractEnabled = true;
     rtMod.state.state.date = ''; rtMod.state.state.time = ''; rtMod.state.state.location = '';
     delete rtMod.state.state.clockSrc;
@@ -823,11 +864,13 @@ assert('P4 自动提取调度：消息事件到达 → 1.8s 防抖后自动落�
     return got.date === '1919-12-11' && got.time === '06:00' && got.location === '城市癸-广场' && mode === 'latest-ai' && off === false;
 })(), '');
 
-assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜底入口（FTT.clockScene 可用）', (async () => {
+await assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜底入口（FTT.clockScene 可用）', (async () => {
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
+    // 剧情天数取内核当前值（P4 的「▶第9天」解析结果）；原先硬编码 17602 是「未 await → 与 P4 并发」时读到的 P1/P2 旧值
+    const sd = Number((rtMod.state.state || {}).storyDay) || 0;
     return html.indexOf('data-ftt-clock-src') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
-        && html.indexOf('📆 剧情第 17602 天') >= 0 && typeof globalThis.FTT.clockScene === 'function';
+        && sd > 0 && html.indexOf('📆 剧情第 ' + sd + ' 天') >= 0 && typeof globalThis.FTT.clockScene === 'function';
 })(), '');
 
 // ---------- Q 时钟域 AI 管线（B8-3：AI 捕捉正则 + AI 结合正文修复） ----------
@@ -836,7 +879,7 @@ let aiReturn = '{}';
 let aiCallN = 0;
 host.ctx.generateRaw = async () => { aiCallN++; return aiReturn; };
 
-assert('Q1 基础页两条 AI 按钮与 FTT 入口齐备（V1 同名动作名 clockRegexGen / clockRepair）', (async () => {
+await assert('Q1 基础页两条 AI 按钮与 FTT 入口齐备（V1 同名动作名 clockRegexGen / clockRepair）', (async () => {
     const r = await entry.popupAction('settingsSub', { sub: 'base' });
     const html = String(r.html || '');
     return html.indexOf('data-ftt-action="clockRegexGen"') >= 0 && html.indexOf('data-ftt-action="clockRepair"') >= 0
@@ -844,7 +887,7 @@ assert('Q1 基础页两条 AI 按钮与 FTT 入口齐备（V1 同名动作名 cl
         && typeof globalThis.FTT.clockRepairPack === 'function';
 })(), '');
 
-assert('Q2 AI 捕捉正文 → 生成正则：三条正则经三重校验后写入 cfg 并给出试算结果', (async () => {
+await assert('Q2 AI 捕捉正文 → 生成正则：三条正则经三重校验后写入 cfg 并给出试算结果', (async () => {
     host.ctx.chat.push({ is_user: false, mes: '1919年12月1日 傍晚。角色甲在【地点：城市甲·码头】。', name: '角色甲' });
     rtMod.setLastMessageId(host.ctx.chat.length - 1);
     aiReturn = JSON.stringify({ '日期正则': '(\\d{4}年\\d{1,2}月\\d{1,2}日)', '时间正则': '(傍晚|清晨|深夜)', '地点正则': '【地点：([^】]+)】', '说明': '冒烟' });
@@ -855,7 +898,7 @@ assert('Q2 AI 捕捉正文 → 生成正则：三条正则经三重校验后写�
         && !!r.probe;
 })(), '');
 
-assert('Q3 AI 结合正文修复日期时间：只改日期/时间字段，其余字段不动；无可信锚点时拒绝且不调用 AI', (async () => {
+await assert('Q3 AI 结合正文修复日期时间：只改日期/时间字段，其余字段不动；无可信锚点时拒绝且不调用 AI', (async () => {
     const st = rtMod.state;
     st.atoms = st.atoms || [];
     st.atoms.push({ id: 'smoke-ai-1', text: '情节（年份漂移）', title: '情节（年份漂移）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
@@ -873,7 +916,9 @@ assert('Q3 AI 结合正文修复日期时间：只改日期/时间字段，其�
         && r2.noAnchor === true && aiCallN === before;
 })(), '');
 
-assert('Q4 面板动作可达：clockRegexGen / clockRepair 经动作分发执行并回填提示', (async () => {
+await assert('Q4 面板动作可达：clockRegexGen / clockRepair 经动作分发执行并回填提示', (async () => {
+    // 场景前置：clockRegexGen 需要 AI 返回「日期/时间/地点正则」契约（原场景沿用 Q3 的修复 payload → 采用 0 条 → ok:false）
+    aiReturn = JSON.stringify({ '日期正则': '(\\d{4}年\\d{1,2}月\\d{1,2}日)', '时间正则': '(傍晚|清晨|深夜)', '地点正则': '【地点：([^】]+)】', '说明': '冒烟' });
     const r1 = await entry.popupAction('clockRegexGen', {});
     const st = rtMod.state;
     st.atoms = st.atoms || [];
@@ -890,7 +935,7 @@ const origGen2 = host.ctx.generateRaw;
 let aiSoft = '{}';
 host.ctx.generateRaw = async () => aiSoft;
 
-assert('R1 设定「内容弱化」页：V1 四节 + 词条库/转化库编辑器 + 状态行与动作按钮齐备', (async () => {
+await assert('R1 设定「内容弱化」页：V1 四节 + 词条库/转化库编辑器 + 状态行与动作按钮齐备', (async () => {
     const r = await entry.popupAction('settingsSub', { sub: 'safety' });
     const html = String(r.html || '');
     return html.indexOf('内容弱化（NSFW）') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
@@ -900,7 +945,7 @@ assert('R1 设定「内容弱化」页：V1 四节 + 词条库/转化库编辑�
         && html.indexOf('data-ftt-nsfw-state') >= 0;
 })(), '');
 
-assert('R2 固定规则替换（零 AI）：nsfwRuleApply 机械转化命中词并落库（同时刷新 updatedAt）', (async () => {
+await assert('R2 固定规则替换（零 AI）：nsfwRuleApply 机械转化命中词并落库（同时刷新 updatedAt）', (async () => {
     const st = rtMod.state;
     st.atoms = st.atoms || [];
     st.atoms.push({ id: 'smoke-nsfw-1', text: '两人做爱后相拥，她发出呻吟。', title: '两人做爱后相拥，她发出呻吟。', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
@@ -908,18 +953,30 @@ assert('R2 固定规则替换（零 AI）：nsfwRuleApply 机械转化命中词�
     const r = await entry.popupAction('nsfwRuleApply', {});
     const it = st.atoms.filter((x) => x.id === 'smoke-nsfw-1')[0];
     return r.ok === true && String(it.text).indexOf('做爱') < 0 && String(it.text).indexOf('亲近') >= 0
-        && String(it.title).indexOf('低声') >= 0 && Number(it.updatedAt) > 0 && String(r.note).indexOf('固定规则替换完成') >= 0;
+        // 内置转化库：'呻吟' → '低吟'（core/nsfw.js NSFW_REPLACE_PAIRS）；原断言写「低声」是实现里不存在的转化词
+        && String(it.title).indexOf('低吟') >= 0 && Number(it.updatedAt) > 0 && String(r.note).indexOf('固定规则替换完成') >= 0;
 })(), '');
 
-assert('R3 AI 弱化：nsfwSoften 交 AI 逐条改写，含关键词的结果被丢弃、合格结果落库（镜像字段同步）', (async () => {
+await assert('R3 AI 弱化：nsfwSoften 交 AI 逐条改写，含关键词的结果被丢弃、合格结果落库（镜像字段同步）', (async () => {
     const st = rtMod.state;
-    st.atoms.push({ id: 'smoke-nsfw-2', text: '他在调教中失控，淫水顺着大腿流下。', title: '他在调教中失控，淫水顺着大腿流下。', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    const raw = '他在调教中失控，淫水顺着大腿流下。';
+    // 原子情节的镜像字段是 text ↔ content（core/nsfw.js nsfwMirrorKey），置同值以验证镜像同步
+    st.atoms.push({ id: 'smoke-nsfw-2', text: raw, content: raw, title: raw, tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
     rtMod.cfg.nsfwReplaceAuto = false;
-    aiSoft = JSON.stringify({ '弱化': [{ '编号': 1, '文本': '他情绪失控，气息紊乱。', '说明': '留白' }, { '编号': 2, '文本': '仍在描写做爱的细节。' }], '无法处理': [3] });
+    // 提交清单按「命中数降序」（同命中保持字段序 title → text；text 与 content 同值只收一次）。
+    //   必须按真实扫描结果定位 text 字段的编号：原场景硬编码「编号1」实际落在 title 上 → text 从未被弱化。
+    const scan = globalThis.FTT.nsfwScan({}).items;
+    const nText = scan.findIndex((x) => x.dim === 'atoms' && x.id === 'smoke-nsfw-2' && x.path === 'text') + 1;
+    const nOther = scan.findIndex((x) => !(x.dim === 'atoms' && x.id === 'smoke-nsfw-2' && x.path === 'text')) + 1;
+    aiSoft = JSON.stringify({ '弱化': [
+        { '编号': nText, '文本': '他情绪失控，气息紊乱。', '说明': '留白' },      // 合格结果 → 落库（并镜像 content）
+        { '编号': nOther, '文本': '仍在描写做爱的细节。' },                        // 仍含关键词 → 必被丢弃
+    ], '无法处理': [] });
     const r = await globalThis.FTT.nsfwSoften({ silent: true });
     const it = st.atoms.filter((x) => x.id === 'smoke-nsfw-2')[0];
     rtMod.cfg.nsfwReplaceAuto = true;
-    return r.applied >= 1 && r.skipped >= 1 && String(it.text).indexOf('调教') < 0;
+    return nText >= 1 && r.applied >= 1 && r.skipped >= 1
+        && String(it.text).indexOf('调教') < 0 && String(it.content).indexOf('调教') < 0;
 })(), '');
 
 assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd / nsfwRuleAdd / nsfwState / nsfwApply）', (() => {
@@ -935,7 +992,7 @@ assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd 
         && apply.text === '他进入' && Array.isArray(F.nsfwRules()) && typeof F.nsfwScan === 'function' && typeof F.nsfwHits === 'function';
 })(), '');
 
-assert('R5 分析侧开关：开启后总览显示「🌶 内容弱化」状态行，且 /ftt 与调试导出可读开关态', (async () => {
+await assert('R5 分析侧开关：开启后总览显示「🌶 内容弱化」状态行，且 /ftt 与调试导出可读开关态', (async () => {
     rtMod.cfg.nsfwSoftenEnabled = true;
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
@@ -949,7 +1006,7 @@ host.ctx.generateRaw = origGen2;
 
 let S3_DBG = null;
 // ---------- S 遗忘域（B8-5：状态衰退 / 记忆遗忘 / 通用遗忘清扫） ----------
-assert('S1 遗忘设定页：V1 五分节 + 3 个开关 + 只读诊断行（条数/上限/保底/冷却）', (async () => {
+await assert('S1 遗忘设定页：V1 五分节 + 3 个开关 + 只读诊断行（条数/上限/保底/冷却）', (async () => {
     const r = await entry.popupAction('settingsSub', { sub: 'forget' });
     const html = String(r.html || '');
     return html.indexOf('状态记录衰退（只按剧情日期）') >= 0 && html.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
@@ -958,10 +1015,11 @@ assert('S1 遗忘设定页：V1 五分节 + 3 个开关 + 只读诊断行（条�
         && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0;
 })(), '');
 
-assert('S2 记忆遗忘：低重要度旧记忆被移除并留下 id 墓碑（跨端不复活）；无剧情时钟时不清理', (async () => {
+await assert('S2 记忆遗忘：低重要度旧记忆被移除并留下 id 墓碑（跨端不复活）；无剧情时钟时不清理', (async () => {
     const st = rtMod.state;
     const mem = (id, date, imp) => ({ id, title: '记忆' + id, content: '内容' + id, date, importance: imp, uses: 1, floorStart: 1, floorEnd: 2, tags: [] });
     st.memories = [mem('sm-a', '2001-01-01', 0.1), mem('sm-b', '2002-01-01', 0.2), mem('sm-c', '2019-12-31', 0.9), mem('sm-d', '2019-12-30', 0.8)];
+    st.deleted = {}; st.deletedH = {};                 // 场景卫生：墓碑容器只保留本节产物（否则前面导入遗留的墓碑会污染「恰为 sm-a,sm-b」）
     st.state.date = '2020-01-01';
     rtMod.cfg.memoryForgetEnabled = true; rtMod.cfg.memoryForgetCutoff = 0.9; rtMod.cfg.memoryForgetRatio = 0.5; rtMod.cfg.storeMinMemories = 2;
     rtMod.setLastMessageId(10);
@@ -997,7 +1055,7 @@ assert('S3 通用遗忘清扫：达门槛的低使用极旧条目被清扫（每
         && sw2.skipped.indexOf('cooldown') >= 0 && sw3.skipped.indexOf('concepts:at-floor') >= 0;
 })(), (() => S3_DBG)());
 
-assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetState / forforeachRunAll 齐备且可运行', (async () => {
+await assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetState / forforeachRunAll 齐备且可运行', (async () => {
     const st = rtMod.state;
     st.state.date = '2020-01-01';
     st.currentStates = [];
@@ -1012,7 +1070,7 @@ assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetState / fo
 })(), '');
 
 // ---------- T 修复管线第 1 段（B8-6a：JS 机械清理，零 AI） ----------
-assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧）', (async () => {
+await assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧）', (async () => {
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
     const a = html.indexOf('data-ftt-action="summary"');
@@ -1021,7 +1079,7 @@ assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「
     return a >= 0 && b > a && c > b && html.indexOf('🛠 自动修复') >= 0;
 })(), '');
 
-assert('T2 点击「自动修复」：机械清理生效（同内容合并 + 垃圾清理 + 墓碑），提示如实说明第 2/3 段（B8-6b）未执行', (async () => {
+await assert('T2 点击「自动修复」：机械清理生效（同内容合并 + 垃圾清理 + 墓碑），提示如实回报机械段与 AI 段（B8-6b 已实现 AI 段）', (async () => {
     const st = rtMod.state;
     st.atoms = st.atoms || [];
     st.atoms.push({ id: 'smoke-rp-1', text: '两人在码头交接货物。', title: '两人在码头交接货物。', date: '2020-01-01', tags: ['甲'], uses: 1, floorStart: 1, floorEnd: 2 });
@@ -1032,9 +1090,15 @@ assert('T2 点击「自动修复」：机械清理生效（同内容合并 + 垃
     const r = await entry.popupAction('repair', {});
     const n1 = (st.atoms || []).length;
     const tombs = Object.keys((st.deleted || {}).atoms || {});
-    return r.ok === true && !!r.mech && r.aiPending === true && n1 < n0
-        && tombs.indexOf('smoke-rp-3') >= 0
-        && String(r.mech.report).indexOf('修复前') >= 0;
+    // 面板动作返回结构为 { ok, action, repair: runRepair 结果, made, html, state }（ui/panel.js 'repair' 分支）：
+    //   机械段在 repair.mech / repair.stage1，报告在 repair.report；顶层没有 mech / aiPending 字段（旧断言写法已过期）
+    const note = String((r.state || {}).note || '');
+    return r.ok === true && !!r.repair && !!r.repair.mech && typeof r.repair.aiUsed === 'boolean'
+        && Number(r.repair.stage1 && r.repair.stage1.merged) >= 1        // 同内容合并
+        && n1 < n0 && tombs.indexOf('smoke-rp-3') >= 0
+        && String(r.repair.report).indexOf('修复前') >= 0
+        && note.indexOf('自动修复：机械清理：') >= 0
+        && (note.indexOf('AI 修订') >= 0 || note.indexOf('未调用 AI') >= 0);   // 第 2/3 段如实回报（用了 / 未用）
 })(), '');
 
 assert('T3 FTT 修复入口齐备（repairMech / repairDedupe / repairPrune / repairDecay / repairGateTake / latestFloorHash / repairLog）', (() => {
@@ -1056,7 +1120,7 @@ let repAi = '{}';
 let repAiCalls = 0;
 host.ctx.generateRaw = async () => { repAiCalls++; return repAi; };
 
-assert('U1 三段式「自动修复」：机械清理 → 候选筛选 → AI 修订（修订/删除落库），并在提示里回报候选构成', (async () => {
+await assert('U1 三段式「自动修复」：机械清理 → 候选筛选 → AI 修订（修订/删除落库），并在提示里回报候选构成', (async () => {
     const st = rtMod.state;
     const a = (id, text, tags, date) => ({ id, text, title: text, date: date || '2020-01-01', tags, uses: 1, floorStart: 1, floorEnd: 2 });
     st.atoms = [
@@ -1075,10 +1139,10 @@ assert('U1 三段式「自动修复」：机械清理 → 候选筛选 → AI �
     const tombs = Object.keys((st.deleted || {}).atoms || {});
     return r.ok === true && !!r.repair && r.repair.aiUsed === true && repAiCalls > before
         && String(a1.text).indexOf('契约') >= 0 && gone && tombs.indexOf('smoke-rp-a3') >= 0
-        && Number(r.repair.cands.length) >= 1 && String(r.note).indexOf('候选 ') >= 0;
+        && Number(r.repair.cands.length) >= 1 && String((r.state || {}).note).indexOf('候选 ') >= 0;   // 面板提示在 state.note
 })(), '');
 
-assert('U2 repairAutoAi 关闭：自动路径零 AI 调用（只做机械清理，V1 语义）；手动路径仍可调用 AI', (async () => {
+await assert('U2 repairAutoAi 关闭：自动路径零 AI 调用（只做机械清理，V1 语义）；手动路径仍可调用 AI', (async () => {
     rtMod.cfg.repairAutoAi = false; rtMod.cfg.autoRepairEveryOps = 0;
     const before = repAiCalls;
     const auto = await globalThis.FTT.repair({ silent: true, cause: '冒烟自动' });
@@ -1159,7 +1223,7 @@ assert('V2 孤儿条目转公开（public）：按维度补公开锚行（kind �
     return m.publicized >= 1 && m.changed === true && hasU && !hasP && p1.length === 0;
 })(), '');
 
-assert('V3 面板「自动修复」联动：孤儿关联行被清扫并写墓碑，报告里回报「关联维护」摘要', (async () => {
+await assert('V3 面板「自动修复」联动：孤儿关联行被清扫并写墓碑，报告里回报「关联维护」摘要', (async () => {
     const st = rtMod.state;
     st.atoms = [];
     st.memories = [{ id: 'smoke-rm-e1', title: '记忆一', content: '角色甲在码头交接。', date: '2020-01-01', importance: 0.6, uses: 1, floorStart: 1, floorEnd: 2, tags: [] }];
@@ -1167,7 +1231,7 @@ assert('V3 面板「自动修复」联动：孤儿关联行被清扫并写墓碑
     st.deleted = {}; st.deletedH = {};
     rtMod.cfg.relLinkEnabled = true; rtMod.cfg.relOrphanAction = 'keep'; rtMod.cfg.repairAutoAi = true;
     const r = await entry.popupAction('repair', {});
-    const note = String(r.note || '');
+    const note = String((r.state || {}).note || '');      // 面板提示在 state.note（r.note 恒 undefined）
     const tombs = Object.keys((st.deleted || {}).links || {});
     return r.ok === true && tombs.indexOf('smoke-rm-e-gone') >= 0
         && (st.links || []).every((x) => x.refId !== 'm-none')
@@ -1213,7 +1277,7 @@ assert('W1 FTT 聚类修复入口齐备（groupSpecs / groupSpec / groupRelatedn
         && typeof F.memoryRepair === 'function' && F.groupSpec('nope') === specs.concepts;
 })(), '');
 
-assert('W2 记忆分页渲染 V1 同款「🔧 修复记忆」按钮（有记忆时显示、无记忆时隐藏）', (async () => {
+await assert('W2 记忆分页渲染 V1 同款「🔧 修复记忆」按钮（有记忆时显示、无记忆时隐藏）', (async () => {
     const st = rtMod.state;
     st.memories = [{ id: 'smoke-gpr-b1', owner: '角色甲', title: '码头交接', content: '角色甲在码头交接货物。', date: '2020-01-01', memCategory: '交易', importance: 0.6, tags: ['码头', '交接', '货物'], uses: 1, floorStart: 1, floorEnd: 2 }];
     const r = await entry.popupAction('tab', { tab: 'memories' });
@@ -1236,9 +1300,10 @@ host.ctx.generateRaw = async () => {
     });
 };
 
-// ⚠️ 已知测试完整性问题（待专项批次修）：本节（以及套件内另外 42 处）把 async IIFE 的 **Promise** 直接传给 `assert`，
-//   而未 `await` —— Promise 恒真 → 断言实际**空转**（假绿）。专项批次将把断言器改为可 await 并逐一修好由此暴露的真实失败。
-assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 → 聚类选组 → AI 合并+删除落库 → 关联重挂 + 墓碑 + 复检口径，提示如实回报', (async () => {
+// 历史：本节（及套件内其余 44 处）曾把 async IIFE 的 **Promise** 直接传给 `assert` 且未 `await` —— Promise 恒真 → 断言空转（假绿）。
+//   B9 测试完整性专项已把断言器改为可 await，并加入「thenable 条件未被 await 则直接判失败」的永久防呆；全部调用点已补 `await assert(...)`。
+//   本节由此暴露的失败已按实现真实语义修好（提示读 state.note；deleted=移除总数 2，与 V1 黄金样本一致）。详见 docs/B9-测试完整性待修.md。
+await assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 → 聚类选组 → AI 合并+删除落库 → 关联重挂 + 墓碑 + 复检口径，提示如实回报', (async () => {
     const st = rtMod.state;
     st.memories = [
         { id: 'smoke-gp-m1', owner: '角色甲', title: '码头交接', content: '角色甲在码头交接货物。', date: '2020-01-01', memCategory: '交易', importance: 0.6, tags: ['码头', '交接', '货物'], uses: 1, floorStart: 1, floorEnd: 2 },
@@ -1265,7 +1330,9 @@ assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 �
     const linkTombs = Object.keys((st.deleted || {}).links || {});
     const note = String((r.state || {}).note || '');      // 面板提示在 `state.note`（`r.note` 恒 undefined，曾致 W3 空转）
     return r.ok === true && r.made === 1 && memRepAiCalls === before + 1
-        && mr.fused === 1 && mr.deleted === 1 && mr.retargeted === 1 && Number(mr.relMaint.swept) === 1
+        // V1 黄金样本（tests/fixtures/v1-golden-group-repair-flow.json）：fused 1 / removed 1 / deleted 2 ——
+        //   deleted = 被移除条目总数（被并入 1 条 + AI 删除 1 条）；removed 只记「被并入」
+        && mr.fused === 1 && mr.removed === 1 && mr.deleted === 2 && mr.retargeted === 1 && Number(mr.relMaint.swept) === 1
         && ids.join(',') === 'smoke-gp-m1' && m1.title === '码头交接货物' && String(m1.content).indexOf('银两') >= 0
         && Number(m1.uses) === 4 && Number(m1.floorStart) === 1 && Number(m1.floorEnd) === 4
         && linkRows.length === 2 && linkRows.every((x) => x[0] === 'smoke-gp-m1')
@@ -1397,12 +1464,12 @@ assert('Y1 FTT 传言/世界书入口齐备（rumorEvolve / rumorEvolveAuto / ru
         && !!F.rumorTick() && Array.isArray(F.worldbookNames()) && typeof F.worldbookMemoryTotal() === 'number';
 })(), '');
 
-assert('Y2 面板「🧪 立即演化」/「🧹 清理传言」可达：传言页工具条按 V1 显隐（无传言不显示清理）+ 动作写回面板 note', (async () => {
+await assert('Y2 面板「🧪 立即演化」/「🧹 清理传言」可达：传言页工具条按 V1 显隐（无传言不显示清理）+ 动作写回面板 note', (async () => {
     const st = rtMod.state;
     st.rumors = [{ id: 'smoke-yr-1', subject: '角色甲', claim: '角色甲偷了钥匙。', stage: '传播', ferment: 50, tags: ['传言', '钥匙'], uses: 1, date: '2020-01-01', updatedAt: 1000, carriers: [{ who: '角色乙', role: '传播者' }], media: [{ type: '口耳相传', name: '酒馆', date: '2020-01-01', durability: 1 }], chain: [], lineage: [] }];
     const html1 = String((await entry.popupAction('tab', { tab: 'rumors' })).html || '');
     const ev = await entry.popupAction('rumorEvolve', {});
-    const noteEv = String(ev.note || '');
+    const noteEv = String((ev.state || {}).note || '');      // 面板提示在 state.note（r.note 恒 undefined）
     const cl = await entry.popupAction('clearRumors', {});
     const emptyNow = (st.rumors || []).length === 0;
     const html0 = String((await entry.popupAction('tab', { tab: 'rumors' })).html || '');
@@ -1410,11 +1477,11 @@ assert('Y2 面板「🧪 立即演化」/「🧹 清理传言」可达：传言�
         && html1.indexOf('title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）"') >= 0
         && html1.indexOf('data-ftt-action="clearRumors"') >= 0 && html1.indexOf('🧹 清理传言') >= 0
         && ev.ok === true && noteEv.indexOf('传言演化：载体停用') >= 0
-        && cl.ok === true && cl.cleared === 1 && String(cl.note).indexOf('已清空 1 条传言') >= 0 && emptyNow
+        && cl.ok === true && cl.cleared === 1 && String((cl.state || {}).note).indexOf('已清空 1 条传言') >= 0 && emptyNow
         && html0.indexOf('data-ftt-action="clearRumors"') < 0;      // 无传言 → 清理按钮隐藏（V1 条件）
 })(), '');
 
-assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书列表」按钮 + worldbookRefresh 动作可达（无酒馆世界书接口时如实告警，不伪造列表）', (async () => {
+await assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书列表」按钮 + worldbookRefresh 动作可达（无酒馆世界书接口时如实告警，不伪造列表）', (async () => {
     const page = await entry.popupAction('settingsSub', { sub: 'storage' });
     const sHtml = String((page && page.html) || '');
     const hasBtn = sHtml.indexOf('data-ftt-action="worldbookRefresh"') >= 0 && sHtml.indexOf('📚 刷新世界书列表') >= 0;
@@ -1425,7 +1492,7 @@ assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书�
 })(), '');
 
 // ---------- Z 计划 / 悬念库清理（B9 补齐：V1 同名动作 clearPlans / clearSuspense） ----------
-assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空才显示；动作写删除墓碑、清空库、回填提示；清空后按钮隐藏', (async () => {
+await assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空才显示；动作写删除墓碑、清空库、回填提示；清空后按钮隐藏', (async () => {
     const st = rtMod.state;
     st.plans = [{ id: 'smoke-zc-p1', title: '计划一', content: '送信。', status: 'open', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
     st.suspense = [{ id: 'smoke-zc-u1', title: '悬念一', content: '谁在跟踪？', status: 'open', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
@@ -1437,8 +1504,8 @@ assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空才显�
     const html0 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
     return html1.indexOf('data-ftt-action="clearPlans"') >= 0 && html1.indexOf('🧹 清理计划') >= 0 && html1.indexOf('title="清空全部计划（不弹确认）"') >= 0
         && html1.indexOf('data-ftt-action="clearSuspense"') >= 0 && html1.indexOf('🧹 清理悬念') >= 0 && html1.indexOf('title="清空全部悬念（不弹确认）"') >= 0
-        && r1.ok === true && r1.cleared === 1 && String(r1.note).indexOf('已清理 1 条计划') >= 0 && (st.plans || []).length === 0
-        && r2.ok === true && r2.cleared === 1 && String(r2.note).indexOf('已清理 1 条悬念') >= 0 && (st.suspense || []).length === 0
+        && r1.ok === true && r1.cleared === 1 && String((r1.state || {}).note).indexOf('已清理 1 条计划') >= 0 && (st.plans || []).length === 0
+        && r2.ok === true && r2.cleared === 1 && String((r2.state || {}).note).indexOf('已清理 1 条悬念') >= 0 && (st.suspense || []).length === 0
         && tombs.indexOf('smoke-zc-p1') >= 0 && tombs.indexOf('smoke-zc-u1') >= 0
         && html0.indexOf('data-ftt-action="clearPlans"') < 0 && html0.indexOf('data-ftt-action="clearSuspense"') < 0;
 })(), '');
@@ -1605,6 +1672,7 @@ assert('D2 teardown：解绑事件 + 清空注入 + 移除面板 + 清理调试�
 })(), { listeners: Object.keys(host.listeners).length, inject: host.ctx.extensionPrompts[INJECT_ID], ftt: typeof globalThis.FTT });
 
 uninstall();
+uninstallFetch();      // 收尾：卸掉「服务端文件通道 / 更新检查」共用的 fetch 桩
 console.log('\n========== V2 冒烟：' + pass + ' 通过, ' + fail + ' 失败 ==========');
 if (fail) { console.log('  失败项：' + failures.join(' | ')); process.exit(1); }
 process.exit(0);

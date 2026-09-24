@@ -65,7 +65,8 @@ export function registerSlashCommand(getExtra, hooks) {
                 callback: async (named, unnamed) => {
                     const raw = String(unnamed || '').toLowerCase();
                     const apply = raw.indexOf('apply') >= 0 || raw.indexOf('写入') >= 0 || raw.indexOf('确认') >= 0;
-                    const res = await hooks.importV1({ dryRun: !apply });
+                    // 修正（B9 专项）：`runV1Import` 只认 `apply === true`（`o.apply`），此前传 `{ dryRun: !apply }` 会被吞掉 → 永远干跑
+                    const res = await hooks.importV1({ apply });
                     const t = res && res.report ? res.report.totals : { v1Entries: 0, add: 0, exist: 0, conflict: 0 };
                     const head = (res && res.dryRun ? '【干跑】' : '【已写入】') + 'V1 导入：' + (res && res.via ? res.via + ' / ' + res.name : '未发现数据');
                     const body = 'V1 条目 ' + t.v1Entries + ' → 新增 ' + t.add + ' · 已存在 ' + t.exist + ' · 冲突 ' + t.conflict;

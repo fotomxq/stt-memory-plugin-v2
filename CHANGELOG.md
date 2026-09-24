@@ -3,6 +3,25 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.25.0（2026-09-26）· 测试完整性专项：冒烟套件「未 await 的异步断言」修复 + `/ftt-import apply` 实现缺陷修复
+
+**本版是**质量**版本，不新增功能，但显著提升门禁可信度**：
+
+1. **修好冒烟套件 45 处「假绿」断言**（`tests/smoke-test.js`）：
+   - 断言器改造为「同步条件立即计数（零影响）；thenable 条件内部 `await`」，并加**永久防呆**——thenable 条件若未被调用点 `await`，直接判失败并提示「请改为 `await assert(...)`」（写法对齐 `tests/harness/st-mock.js#makeReporter` 的既有防呆）；
+   - 44 处 `assert('<名>', (async () => {` → `await assert(...)`，另有 1 处嵌套写法（J5：同步包装内 `return Promise`）一并转正，**合计 45 处**；
+   - 历史缺陷：这些小节把 async IIFE 的 **Promise** 直接当条件传入且未 `await` → Promise 恒真 → **断言从未求值**，副作用还会与后续小节**并发交错**（实测 W3 期间 `generateRaw` 被并发调用 6 次、其数据被在途小节删除）。详见 `docs/B9-测试完整性待修.md`（v3.0：已全部修复）。
+2. **由此暴露 17 处真实失败并逐一修好**（断言总数仍 109，**未增删断言、未放宽任何条件**）：
+   - **断言写错/过期 10 处**：M1（settings 分页找的是抽屉模板 id）、P5（硬编码 `剧情第 17602 天` 是并发旧值 → 改为按内核真实值断言）、R2（转化词是「低吟」而非实现中不存在的「低声」）、R3（AI 编号会漂移 → 按真实扫描结果定位 text 字段编号，原硬编码编号落在 title 上）、T2（面板契约 `r.mech/r.aiPending` → `r.repair`，B8-6b 已实现 AI 段）、U1/V3/Y2/Z1/W3（面板提示在 `r.state.note`；W3 的 `fused 1/removed 1/deleted 2` 与 V1 黄金样本一致）；
+   - **场景/测试桩错 6 处**：M1+L5（mock 未注册 `#ftt-panel`）、J5（清空注入后需 `injectNow` 再自查）、N3（`fetch` 桩被提前卸载且未清对端文件）、N4（未等清单 1200ms 延迟排程）、Q4（漏装正则 payload）、S2（未清墓碑容器）；
+   - **并发交错 0 处遗留**：串行后 W3/U1 各恰好 1 次 AI 调用、数据完整。
+3. **修掉 1 处实现缺陷（真实 bug）**：`/ftt-import apply` **永远干跑** —— `ui/commands.js` 传 `{ dryRun: !apply }`，而 `index.js#runV1Import` 只认 `o.apply === true` → `apply` 标志被吞（与命令 `helpString` 与 `docs/P2-宿主与存储.md` 的承诺不符；`FTT.importV1({apply:true})` 本可用）。已改为 `hooks.importV1({ apply })`（一行 + 注释）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **47 文件 / 706 断言**、冒烟 **109 项**（**109 项全部真实求值**）、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**历史口径纠偏（重要披露）**：v2.9.0~v2.24.0 各版本 CHANGELOG 中的「冒烟 N 项全绿」，其中最多 **45 项**属于上述未求值的假绿小节；
+自本版起冒烟断言器带永久防呆、45 处调用点全部 `await`，**冒烟数字自此为真实值**。
+
 ## v2.24.0（2026-09-26）· B8-6c-3 物品修复 + 角色档案修复
 
 **本版（B8-6c-3，取自 V1 物品修复 17335~17700 与角色档案修复 18106~18780）**：
