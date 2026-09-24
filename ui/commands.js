@@ -22,6 +22,7 @@ export function statusText(extra) {
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
     if (extra && extra.import) lines.push('V1 导入：' + extra.import);
+    if (extra && extra.i18n) lines.push('语言：' + extra.i18n.locale + ' · 词条 ' + extra.i18n.keys + ' 条 · 注册 ' + (extra.i18n.registered.ok ? extra.i18n.registered.locales.join('/') : '未注册'));
     if (extra && extra.extract) {
         const e = extra.extract;
         const p = (extra.extractPending === undefined || extra.extractPending === null) ? '' : ' · 待分析 ' + extra.extractPending;

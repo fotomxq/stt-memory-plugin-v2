@@ -486,6 +486,29 @@ assert('J6 数据台动作入口与刷新按钮：tab/search/cancel 可用，刷
         && String(doc._els.ftt_v2_action.textContent || '').indexOf('数据台已刷新') >= 0;
 })(), (() => { try { return JSON.stringify(con.consoleState()); } catch (e) { return String(e.message); } })());
 
+// ---------- K 词条（i18n，P6） ----------
+const i18nMod = await import('../adapters/i18n.js');
+
+assert('K1 词条已注册到宿主：zh-cn 与 en 两份（键集一致、JS 镜像即运行时词条）', (() => {
+    const st = i18nMod.i18nStats();
+    const calls = host.ctx.localeCalls || [];
+    return st.locales.join(',') === 'zh-cn,en' && st.keys >= 40
+        && st.registered.ok === true && st.registered.locales.indexOf('zh-cn') >= 0 && st.registered.locales.indexOf('en') >= 0
+        && calls.length >= 2 && !!host.ctx.localeData['en']['保存'] && host.ctx.localeData['en']['保存'] === 'Save'
+        && Object.keys(host.ctx.localeData['zh-cn']).length === st.keys;
+})(), (() => { try { return JSON.stringify({ st: i18nMod.i18nStats(), calls: host.ctx.localeCalls, enKeys: Object.keys((host.ctx.localeData || {}).en || {}).length, zhKeys: Object.keys((host.ctx.localeData || {})['zh-cn'] || {}).length, sample: ((host.ctx.localeData || {}).en || {})['保存'] }); } catch (e) { return String(e.message); } })());
+
+assert('K2 文案查询与状态行：t() 按当前语言取词（缺失回退键本身，支持占位变量），/ftt 含语言行', (() => {
+    host.ctx.locale = 'en';
+    const en = globalThis.FTT.t('保存');
+    const enMissing = globalThis.FTT.t('不存在的键');
+    host.ctx.locale = 'zh-cn';
+    const zh = globalThis.FTT.t('保存');
+    const withVar = i18nMod.t('分析完成：成功 {n} / {m}', { n: 2, m: 3 });
+    const statusLine = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).indexOf('语言：') >= 0;
+    return en === 'Save' && zh === '保存' && enMissing === '不存在的键' && withVar === '分析完成：成功 2 / 3' && statusLine;
+})(), String(globalThis.FTT.t('保存')));
+
 endpointDown = false;
 uninstallFetch();
 
