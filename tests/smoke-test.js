@@ -1422,6 +1422,25 @@ assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书�
     return hasBtn && r.ok === true && Array.isArray(r.names) && honest;
 })(), '');
 
+// ---------- Z 计划 / 悬念库清理（B9 补齐：V1 同名动作 clearPlans / clearSuspense） ----------
+assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空才显示；动作写删除墓碑、清空库、回填提示；清空后按钮隐藏', (async () => {
+    const st = rtMod.state;
+    st.plans = [{ id: 'smoke-zc-p1', title: '计划一', content: '送信。', status: 'open', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+    st.suspense = [{ id: 'smoke-zc-u1', title: '悬念一', content: '谁在跟踪？', status: 'open', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+    st.deleted = {}; st.deletedH = {};
+    const html1 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
+    const r1 = await entry.popupAction('clearPlans', {});
+    const r2 = await entry.popupAction('clearSuspense', {});
+    const tombs = Object.keys((st.deleted || {}).plans || {}).concat(Object.keys((st.deleted || {}).suspense || {}));
+    const html0 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
+    return html1.indexOf('data-ftt-action="clearPlans"') >= 0 && html1.indexOf('🧹 清理计划') >= 0 && html1.indexOf('title="清空全部计划（不弹确认）"') >= 0
+        && html1.indexOf('data-ftt-action="clearSuspense"') >= 0 && html1.indexOf('🧹 清理悬念') >= 0 && html1.indexOf('title="清空全部悬念（不弹确认）"') >= 0
+        && r1.ok === true && r1.cleared === 1 && String(r1.note).indexOf('已清理 1 条计划') >= 0 && (st.plans || []).length === 0
+        && r2.ok === true && r2.cleared === 1 && String(r2.note).indexOf('已清理 1 条悬念') >= 0 && (st.suspense || []).length === 0
+        && tombs.indexOf('smoke-zc-p1') >= 0 && tombs.indexOf('smoke-zc-u1') >= 0
+        && html0.indexOf('data-ftt-action="clearPlans"') < 0 && html0.indexOf('data-ftt-action="clearSuspense"') < 0;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

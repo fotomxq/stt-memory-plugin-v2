@@ -12,7 +12,7 @@
 //   后续批次逐页补齐 V1 的编辑器、关系表、注入自查、提示词页、快照/同步、高级域等（见 docs/P8-功能对齐总表.md）。
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
-import { state, cfg, getScopeKey, getLastMessageId } from '../core/model/runtime.js';
+import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/model/runtime.js';
 import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
@@ -24,6 +24,7 @@ import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
+import { tombMany } from '../core/merge.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -255,6 +256,17 @@ function entrySummaryById(dim, id) {
     } catch (e) { return ''; }
 }
 
+/**
+ * 计划悬念页的「🧹 清理计划 / 🧹 清理悬念」按钮（V1 `plansHtml()`：各自库非空才显示；**不弹确认**）
+ * 文案与 title 与 V1 逐字一致。
+ */
+function clearPSButtons() {
+    const hasPlans = Array.isArray(state.plans) && state.plans.length > 0;
+    const hasSusp = Array.isArray(state.suspense) && state.suspense.length > 0;
+    return (hasPlans ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearPlans" title="清空全部计划（不弹确认）">🧹 清理计划</button>' : '')
+        + (hasSusp ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearSuspense" title="清空全部悬念（不弹确认）">🧹 清理悬念</button>' : '');
+}
+
 function dimBody(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -278,6 +290,8 @@ function dimBody(kind) {
         // V1 `scenesHtml()`：场景页按钮 **无显隐条件**（场景树为空时 V1 也照常渲染 sceneBar）——
         //   文案与 title 逐字对齐
         + (kind === 'scenes' ? '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button>' : '')
+        // V1 计划悬念页：「🧹 清理计划」「🧹 清理悬念」——各自库非空才显示（文案与 title 逐字对齐；V1 不弹确认）
+        + (kind === 'plans' ? clearPSButtons() : '')
         // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
         + (kind === 'rumors' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
             + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
@@ -793,6 +807,16 @@ export async function panelAction(action, payload) {
             }
             setNote('自动修复：' + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
             result = Object.assign(result, { ok: true, action: a, repair: r, made: r.made || 0 });
+        }
+        else if (a === 'clearPlans' || a === 'clearSuspense') {
+            // V1 同名动作：一键清空计划库 / 悬念库（**写删除墓碑**，不弹确认 —— V1 原样）
+            const dim = (a === 'clearPlans') ? 'plans' : 'suspense';
+            const list = Array.isArray(state[dim]) ? state[dim].slice() : [];
+            for (const e of list) { try { if (e && e.id) tombMany(dim, [e.id]); } catch (err) { /* 忽略 */ } }
+            state[dim] = [];
+            try { saveState(); } catch (err) { /* 忽略 */ }
+            setNote(list.length ? ('已清理 ' + list.length + ' 条' + (dim === 'plans' ? '计划' : '悬念')) : ((dim === 'plans' ? '计划库' : '悬念库') + '已为空'));
+            result = Object.assign(result, { ok: true, action: a, cleared: list.length });
         }
         else if (a === 'rumorEvolve') {
             // V1 `rumorsHtml()`：「🧪 立即演化」——手动触发一次**零 AI** 机械演化（载体老化/发酵消退/平行联动/裂变）
