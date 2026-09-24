@@ -70,6 +70,15 @@
   作用域与空状态、隐藏保护与来源恢复、墓碑分账与幂等、哈希补全与遍历。
   **明确延后**（依赖配置/时钟/全表）：`migrateState`、`contentDedupeArray`、`upsertEntry`/`deleteEntry`、`upsertRelLinks`/`relMaintRun`。
   过程经验（已写入文档）：**宽依赖函数不可用闭包移植** —— 首次尝试闭包膨胀到 148/1067 项，改为显式清单 + 严格静态检查 + 黄金样本兜底。
+- **P1 内核平移（批次 5：迁移与条目层）**：新增 `core/migrate.js`（353 行：`migrateState` 结构健壮性清洗与多版本迁移链、
+  `migratePlanSuspV1165`/`migrateRelLinks`、跨端内容去重 `contentPickBest`/`contentDedupeArray`、`recallDateNum`）与
+  `core/entries.js`（347 行：`upsertEntry` 写入合并、`deleteEntry` 级联删除与 id 墓碑、`upsertRelLinks`、`sweepOrphanRelLinks`）；
+  `runtime.js` 增 `getLastMessageId()` 注入钩子。**批次 3 的延后项全部回填**。
+  黄金样本 6 改用**更忠实的 oracle：真实 V1 插件**（V1 测试桩加载 v1.206 直调导出函数）—— `migrate-entries-golden.test.js` **15 项断言**：
+  脏数据迁移逐字符一致、迁移幂等、去重选优、条目增删与墓碑、关联写入与孤儿清扫。
+  **行为发现（逐字保留，不顺手改）**：① `upsertEntry` 返回布尔；② V1 的内容哈希墓碑与原子 `h` 刷新在 **`saveState()` 流水线**里
+  （**P2 宿主保存流程必须照此接线**，已在黄金样本与测试标注）；③ `upsertRelLinks` 非完全幂等（V1 亦为 `added=1/updated=2`）；
+  ④ V1 桩环境楼层号 = 3（V2 用注入钩子对齐）。延后：`relMaintRun`（含 UI 统计，留维护层接线）。
 - **P1 内核平移（批次 4：配置与时钟层）**：新增 `core/config.js`（1130 行：`defaultCfg` **217 键全量默认配置**、
   `PROMPT_TEMPLATES_V2` **33 条提示词模板**与 `PROMPT_DEFAULT_VERSION`、`PROMPT_GROUPS`/`PROMPT_LEGACY_SIGS`/破甲预设默认值、
   `CN_KEY_MAP`（174 项）与 `normalizeDeltaKeys`、`DIMENSIONS`/`DIM_LABELS`、`KIND_MAP` 14 维 get/set）与
@@ -80,5 +89,5 @@
   排除对象键与属性访问，并用「临时植入真实宿主调用」反向自测确认仍能拦下。
 - **许可确立（AGPL-3.0）**：新增仓库根 `LICENSE`（GNU 官方 AGPL-3.0 全文，逐字未改，**LF 换行、662 行 / 34,523 B，md5 `eb1e647870add0502f8f010b19de32af`**，与 gnu.org 官方 txt 一致）；
   `package.json` 增 `license: AGPL-3.0` 与 `author`；README §7 由「待确认」改为正式许可说明（含 §13 网络交互条款提示）。
-- **门禁**：单元 **14 文件 194 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
+- **门禁**：单元 **15 文件 209 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

@@ -44,6 +44,22 @@ export function setPersistHooks(next) {
 export function saveCfg() {
     try { return persistHooks.saveCfg(); } catch (e) { return false; }
 }
+/**
+ * 最后一条消息的楼层号（V1 由宿主 API `getLastMessageId()` 提供；内核默认 -1 = 未知）。
+ * 宿主在启动与每次消息渲染后注入（host/st-api.js）。
+ */
+let lastMessageId = -1;
+/** 注入最后楼层号 */
+export function setLastMessageId(v) {
+    const n = Number(v);
+    lastMessageId = Number.isFinite(n) ? Math.floor(n) : -1;
+    return lastMessageId;
+}
+/** 读最后楼层号（内核默认 -1） */
+export function getLastMessageId() {
+    return lastMessageId;
+}
+
 /** 日志钩子（内核默认 no-op；宿主可注入真实日志） */
 export function log(...args) {
     try { if (typeof persistHooks.log === 'function') return persistHooks.log(...args); } catch (e) { /* noop */ }
