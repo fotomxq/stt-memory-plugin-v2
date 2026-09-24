@@ -36,18 +36,21 @@ R.assert('M6 hooks 全部对应入口具名导出函数', (() => {
 R.assert('M7 版本四处一致（manifest / package / constants / 入口导出）',
     manifest.version === pkg.version && manifest.version === VERSION && entry.__internals.VERSION === VERSION, [manifest.version, pkg.version, VERSION]);
 R.assert('M8 数据版本为独立整数（与代码版本解耦）', Number.isInteger(DATA_VERSION) && DATA_VERSION >= 1, DATA_VERSION);
-R.assert('M9 扩展目录名解析（安装位置无关）：常量约定 third-party/* + 从模块 URL 推导 + 面板/更新实际使用解析值', (() => {
+R.assert('M9 扩展目录名解析（安装位置无关）：常量约定 third-party/* + URL 推导 + 面板与更新共用解析值', (() => {
     const info = folderInfo();
-    const a = folderFromUrl('http://127.0.0.1:8000/scripts/extensions/third-party/ftt-memory-v2/host/paths.js');
-    const b = folderFromUrl('https://x/scripts/extensions/foo/index.js');
-    const c = folderFromUrl('/not/an/extension/path.js');
     const panel = panelFolderInfo();
-    // 目录名与仓库目录一致是「仓库约定」；**运行时以安装目录为准**（归档/改名安装同样可用）
-    const conventionOk = EXTENSION_FOLDER.indexOf('third-party/') === 0
-        && String(EXTENSION_FOLDER).split('/').pop() === basename(ROOT)
-        || info.source === 'runtime';                     // 直接安装在别处时以运行时推导为准
-    return conventionOk && a === 'third-party/ftt-memory-v2' && b === 'foo' && c === ''
-        && info.folder && info.source === 'constant' && panel.folder === info.folder;
+    const dirName = basename(ROOT);
+    // ① 常量是仓库约定（发行目录命名口径），不以「当前检出目录名」为条件
+    const conventionOk = EXTENSION_FOLDER.indexOf('third-party/') === 0 && String(EXTENSION_FOLDER).split('/').pop().length > 3;
+    // ② 推导函数对 ST 真实加载形态成立：无论扩展目录叫什么，都能反推出正确目录名
+    const a = folderFromUrl('http://127.0.0.1:8000/scripts/extensions/third-party/' + dirName + '/host/paths.js');
+    const b = folderFromUrl('https://x/scripts/extensions/renamed-ext/ui/console.js');
+    const c = folderFromUrl('https://x/scripts/extensions/single/index.js');
+    const d = folderFromUrl('/not/an/extension/path.js');
+    // ③ 面板与更新使用同一个解析值（改名安装时两者同步生效）
+    return conventionOk && a === 'third-party/' + dirName && b === 'renamed-ext'
+        && c === 'single' && d === '' && !!info.folder && panel.folder === info.folder
+        && (info.source === 'runtime' || info.folder === EXTENSION_FOLDER);
 })(), (() => { const i = folderInfo(); return [i.constant, i.derived, i.folder, i.source, basename(ROOT)]; })());
 R.assert('M10 模块名唯一且为 extensionSettings 键', MODULE_NAME === 'ftt_memory_v2', MODULE_NAME);
 R.assert('M11 入口导出装配面（init/teardown/runtimeState/状态摘要）', ['init', 'teardown', 'runtimeState', 'extraForStatus'].every(k => typeof entry[k] === 'function'), '');
