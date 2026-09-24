@@ -693,6 +693,70 @@ assert('N6 存储动作经面板分发可达（校验并修复 / 清空日志 / 
         && r3.ok === true && String(r3.note || '').indexOf('清空') >= 0;
 })(), '');
 
+// ---------- O 剧情时钟域（B8-1：手工锚点 + 零 AI 时间巡检 + 总览/设定界面） ----------
+assert('O1 总览时钟区（V1 同构）：日期/时间/地点行 + 手工改写工具行 + 时间巡检状态行与按钮', (async () => {
+    await entry.popupAction('tab', { tab: 'overview' });
+    const r = await entry.popupAction('tab', { tab: 'overview' });
+    const html = String(r.html || '');
+    return html.indexOf('📅 日期：') >= 0 && html.indexOf('⏱ 时间：') >= 0 && html.indexOf('📍 地点：') >= 0
+        && html.indexOf('data-ftt-action="clockEdit"') >= 0 && html.indexOf('✏️ 手工改写日期/时间/地点') >= 0
+        && html.indexOf('data-ftt-clock-patrol') >= 0 && html.indexOf('data-ftt-action="clockPatrol"') >= 0;
+})(), '');
+
+assert('O2 手工强制改写锚点：clockEdit 展开面板 → clockManualSave 写入并锁定 → clockManualClear 解锁恢复自动', (async () => {
+    const open = await entry.popupAction('clockEdit', {});
+    const openHtml = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
+    const save = await entry.popupAction('clockManualSave', { date: '1919-12-31', time: '下午三点', location: '城市甲·码头' });
+    const locked = globalThis.FTT.clockManual();
+    const html2 = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
+    const clr = await entry.popupAction('clockManualClear', {});
+    return open.ok === true && openHtml.indexOf('data-ftt-clock-manual="date"') >= 0
+        && save.ok === true && rtMod.state.state.date === '1919-12-31' && rtMod.state.state.time === '15:00'
+        && !!locked && locked.lock === true && html2.indexOf('🔒 已手工锁定') >= 0
+        && clr.ok === true && globalThis.FTT.clockManual() === null;
+})(), '');
+
+assert('O3 零 AI 时间巡检 clockPatrol：修复格式非法/年份漂移的日期与时间，并在写回前留全量快照', (async () => {
+    const st = rtMod.state;
+    st.atoms = (st.atoms || []);
+    st.atoms.push({ id: 'smoke-clock-1', text: '情节（脏日期）', title: '情节（脏日期）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    st.atoms.push({ id: 'smoke-clock-2', text: '情节（坏时间）', title: '情节（坏时间）', date: '1919-12-05', time: '25:99', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+    st.state = st.state || {};
+    st.state.date = ''; st.state.clockManual = null; delete st.state.clockManual;
+    const anchor = globalThis.FTT.clockAnchor();
+    const rep = await globalThis.FTT.clockPatrol({ silent: true, force: true });
+    const fixed = st.atoms.filter((x) => x.id === 'smoke-clock-1')[0];
+    return anchor.usable === true && anchor.source === 'atoms-majority'
+        && rep.found >= 2 && rep.fixed >= 2 && !!rep.snap
+        && String(fixed.date).indexOf('1919-') === 0;
+})(), '');
+
+assert('O4 设定「基础」页：V1 五分节 + 21 个控件 + 强制开关（及时分析开启 → 三项禁用）+ 时间巡检两个开关', (async () => {
+    rtMod.cfg.timelyAnalysis = false;
+    const r1 = await entry.popupAction('settingsSub', { sub: 'base' });
+    const html = String(r1.html || '');
+    rtMod.cfg.timelyAnalysis = true;
+    const r2 = await entry.popupAction('settingsSub', { sub: 'base' });
+    const htmlForced = String(r2.html || '');
+    rtMod.cfg.timelyAnalysis = false;
+    return html.indexOf('组件开关') >= 0 && html.indexOf('重要性计算（调用次数驱动）') >= 0
+        && html.indexOf('剧情时钟自动提取（总览 日期/时间/地点）') >= 0 && html.indexOf('时钟降级与时间巡检（总览）') >= 0
+        && html.indexOf('界面特效') >= 0 && html.indexOf('data-ftt-cfg="clockAutoPatrol"') >= 0
+        && html.indexOf('data-ftt-cfg="clockPatrolAutoFix"') >= 0 && html.indexOf('data-ftt-cfg="clockRegexPreset"') >= 0
+        && html.indexOf('data-ftt-cfg="enabled"') >= 0 && html.indexOf('data-ftt-cfg="uiEffects"') >= 0
+        && (htmlForced.match(/disabled/g) || []).length === 3;
+})(), '');
+
+assert('O5 FTT 时钟调试入口齐备（clockUi / clockAnchor / clockMajority / clockScan / clockPatrolState / clockManualSet）', (() => {
+    const F = globalThis.FTT;
+    const ui = F.clockUi();
+    const scan = F.clockScan();
+    const maj = F.clockMajority();
+    const pst = F.clockPatrolState();
+    return !!ui && !!ui.patrol && !!scan && Array.isArray(scan.findings) && !!maj
+        && !!pst && typeof pst.scanned === 'number' && typeof F.clockManualSet === 'function' && typeof F.clockPatrolAuto === 'function';
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

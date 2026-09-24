@@ -222,7 +222,7 @@ const CLOCK_DATE_SCAN = [
 //   「1919年11月29日」里的「11月29日」。否则「取最后一次命中」的归一逻辑会把正确年份换成沿用年份
 //   （用户录入/正文里的完整日期会被截成半截）。规则：命中位置紧跟在「年」或数字之后 → 视为尾部，丢弃。
 
-export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, CLOCK_DATE_SCAN, dateStrCmp, clockParseDateText };
+export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, clockDateAnomaly, clockReplaceYear, clockNormTime, CLOCK_DAY_PARTS, CLOCK_DATE_SCAN, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, dateStrCmp, clockParseDateText };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function dateStrCmp(a, b) {
@@ -267,3 +267,54 @@ function clockParseDateText(val, prevYear) {
     } catch (e) { return null; }
 }
 // 时刻/时段归一：HH:MM / X点(Y分|半|一刻|三刻) / 时段词（保留原文如「傍晚」）
+// ==================== v1.184~v1.193：时段/日期异常/换年份（B8-1 时钟域移植，逐字取自 V1 `09`） ====================
+const CLOCK_DAY_PARTS = ['凌晨', '清晨', '早晨', '早上', '上午', '中午', '午间', '午后', '下午', '傍晚', '黄昏', '晚上', '夜晚', '深夜', '夜里', '半夜', '午夜'];
+
+function clockNormTime(raw) {
+    try {
+        const t = String(raw || '').trim();
+        if (!t) return '';
+        let m = t.match(/^(\d{1,2})[:：](\d{1,2})(?::\d{2})?$/);
+        if (m) { const h = Number(m[1]), mi = Number(m[2]); if (h <= 23 && mi <= 59) return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`; return ''; }
+        m = t.match(/^(凌晨|清晨|早晨|早上|上午|中午|午间|午后|下午|傍晚|黄昏|晚上|夜晚|深夜|夜里|半夜|午夜)?\s*(\d{1,2}|[一二三四五六七八九十]{1,3})\s*[点时]\s*(半|一刻|三刻)?\s*(?:分)?\s*$/);
+        if (m) {
+            let h = clockValNum(m[2]);                 // v1.184：支持中文数字点数（「下午三点」→ 15:00）
+            if (!Number.isInteger(h)) return '';
+            const p = m[1] || '';
+            if (h < 24 && /^(下午|晚上|傍晚|黄昏|夜晚|夜里|半夜|午夜)/.test(p) && h < 12) h += 12;
+            if (p && /^(凌晨|清晨)/.test(p) && h === 12) h = 0;
+            let mi = 0;
+            if (m[3] === '半') mi = 30; else if (m[3] === '一刻') mi = 15; else if (m[3] === '三刻') mi = 45;
+            if (h <= 23) return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+            return '';
+        }
+        for (const p of CLOCK_DAY_PARTS) if (t === p) return p;
+        if (/^\d{1,2}[:：]\d{1,2}/.test(t)) return clockNormTime(t.slice(0, 5));
+        return '';
+    } catch (e) { return ''; }
+}
+
+/** 日期异常判定：格式非法 / 比锚点晚超过阈值年 / 早超过阈值年（v1.187 口径） */
+function clockDateAnomaly(dateStr, anchorDate) {
+    try {
+        const d = String(dateStr == null ? '' : dateStr).trim();
+        if (!clockDateValid(d)) return { bad: true, reason: 'invalid', years: 0 };
+        const win = clockAnomalyJumpYears();
+        if (!win) return { bad: false, reason: '', years: 0 };
+        const anchor = clockDateValid(anchorDate) ? String(anchorDate).slice(0, 10) : '';
+        if (!anchor) return { bad: false, reason: '', years: 0 };
+        const dy = clockYearOf(d) - clockYearOf(anchor);   // v1.193：负年份
+        if (dy > win) return { bad: true, reason: 'jump', years: dy };
+        if (-dy > win) return { bad: true, reason: 'backward', years: -dy };
+        return { bad: false, reason: '', years: dy };
+    } catch (e) { return { bad: false, reason: '', years: 0 }; }
+}
+
+/** 保留月日、只把年份换成 y（负年份安全；非法/越界返回 ''） */
+function clockReplaceYear(dateStr, y) {
+    try {
+        const p = clockDateParts(dateStr);
+        if (!p || !clockYearInRange(Number(y))) return '';
+        return clockDateStr(Number(y), p.m, p.d);
+    } catch (e) { return ''; }
+}

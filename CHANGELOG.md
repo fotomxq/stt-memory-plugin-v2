@@ -3,6 +3,34 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.10.0（2026-09-26）· B8-1 剧情时钟域（手工锚点 + 零 AI 时间巡检 + 基础页对齐）
+
+**本版（B8-1）**：
+1. **内核**（新增 `core/clock-patrol.js`，取自 V1 `09-AI摘要与楼层处理.js` 时钟族）：
+   ① 手工强制改写锚点（v1.186）：`clockManualRaw/State`、`parseClockManualInput`（日期宽松解析；**年份未知时只用库内可用年份，绝不用现实年份兜底**）、
+   `setClockManual`（写 `state.state.clockManual` + 覆盖日期/时间/地点 + `clockSrc` manual 标记）、`clearClockManual`；
+   ② 可信锚点（v1.187）：`clockPatrolMajority`（年份多数派）+ `clockPatrolAnchorInfo`（**手工 > 当前时钟 > 多数派 > 一致年份**，不确定即 `usable=false`）；
+   ③ 零 AI 巡检（v1.184~v1.193）：`clockPatrolSafeDate`（唯一写回闸门）、`clockPatrolScan`、`clockPatrolRepairItem`
+   （按内容重解析 → 保留月日换年份 → **仅「格式非法」才清空**）、`runClockPatrolRepair`（**写回前先建全量快照**；自动路径默认只统计；
+   自动路径遇「锚点与库内多数年份冲突」只统计，手动 `force` 才按锚点校正）、`clockPatrolState` / `clockPatrolAutoOnce`；
+2. **`core/clock.js` 补全**：`clockNormTime`（时刻/时段归一）、`CLOCK_DAY_PARTS`、`clockDateAnomaly`（invalid/jump/backward）、`clockReplaceYear`；
+3. **界面**（新增 `ui/clock.js` + 基础页重做）：总览时钟区按 V1 同序（日期「纪年·季节」+ 🔒手工徽标 / 时间区间 / 地点 / 剧情第 N 天 /
+   缺值「参考最近记忆」行 / 手工改写工具行与三项输入面板 / 在场角色 / 🕒 时钟来源可解释行 / 🩺 时间巡检状态行 + 手动巡检按钮）；
+   动作名与 V1 逐字一致（`clockEdit` `clockEditCancel` `clockManualSave` `clockManualClear` `clockPatrol`）；
+   基础页改为 V1 **五分节**布局并补齐 9 项控件（`enabled` / `autoRepair` / `clockExtractEnabled` / `clockRegexPreset` / `clockRelative` /
+   `clockForceDegrade` / `clockAutoPatrol` / `clockPatrolAutoFix` / `uiEffects`），实现 V1 `swForce` 强制开关语义
+   （「及时分析」开启 → 自动摘取/自动摘要/注入当前提示词 强制开启且禁用）；设定页控件 **118 → 127**（base 12 → 21）；
+4. **接线**：`index.js` 载入后 2.6s 自动巡检一次（`cfg.clockAutoPatrol`，默认只统计）；`FTT.*` 新增 10 个时钟调试入口；
+5. **黄金样本 19（oracle = 真实 V1 插件 v1.206）**：`clockNormTime`（14 组）/ `clockDateAnomaly`（5 组）/ `clockReplaceYear`（4 组）/
+   `clockPatrolMajority` / `clockPatrolAnchorInfo`（五种来源）/ `parseClockManualInput`（5 组 + 无年份拒绝）/
+   `setClockManual` 与 `clearClockManual` 状态效应 / `clockPatrolScan` 逐条 findings / `runClockPatrolRepair`（只统计 · 手动修复 · 自动冲突）逐项一致。
+
+**验证**：`tests/unit/clock-patrol-golden.test.js` **23 项** + 冒烟 **O1–O5**；门禁全绿：单元 **32 文件 / 427 断言**、
+冒烟 **66 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**偏差（详见 `docs/P8j-B8-1时钟巡检与手工锚点.md` §3）**：AI 两条管线（`clockRegexGen` / `clockRepair`）属 B8-2，
+基础页以「属后续批次」明示标注、不放假按钮；V1 基础页的「显示界面开关（buttonLocation*）」由 V2 附加设定的入口开关承担，不重复渲染。
+
 ## v2.9.0（2026-09-26）· B7-2 跨端同步与镜像（文件通道 + 清单预判 + 快照文件 + 同步日志 + 流量门控）
 
 **本版（B7-2）**：

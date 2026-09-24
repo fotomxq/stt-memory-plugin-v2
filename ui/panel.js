@@ -13,7 +13,6 @@
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
 import { state, cfg, getScopeKey, getLastMessageId } from '../core/model/runtime.js';
-import { clockDateLabel } from '../core/clock.js';
 import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
@@ -21,6 +20,7 @@ import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPa
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
+import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
@@ -118,18 +118,8 @@ function totalMemory() {
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];
-    try {
-        const st = state && state.state ? state.state : {};
-        if (st.date) lines.push('<div class="ftt-item">📅 日期：' + esc(clockDateLabel(st.date)) + (st.era ? '（' + esc(st.era) + '）' : '') + (st.season ? '·' + esc(st.season) : '') + '</div>');
-        else lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（未记录 · 可在「设置 → 时钟」手工改写/巡检，见后续批次）</span></div>');
-        if (st.time) lines.push('<div class="ftt-item">⏱ 时间：' + esc(st.timeEnd ? st.time + ' → ' + st.timeEnd : st.time) + '</div>');
-        else lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（未记录）</span></div>');
-        if (st.location) lines.push('<div class="ftt-item">📍 地点：' + esc(st.location) + '</div>');
-        else lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（未记录）</span></div>');
-        const present = Array.isArray(st.present) ? st.present : null;
-        if (present && present.length) lines.push('<div class="ftt-item">👥 在场角色：' + esc(present.slice(0, 12).join('、')) + '</div>');
-        else lines.push('<div class="ftt-item">👥 在场角色：<span class="ftt-muted">（未识别 · 不限制注入）</span></div>');
-    } catch (e) { /* 忽略 */ }
+    // B8-1：时钟区（V1 同构：日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源 + 时间巡检行）
+    try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
     const audit = injectAudit({ rows: false });
     lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧷 注入</b> <span class="ftt-muted" style="flex:1 1 auto;min-width:0">当前注入 ' + audit.chars + ' 字 · 命中 ' + audit.injected + ' / 未命中 ' + audit.missing + ' · 预算 ' + (Number(cfg.charBudget) || 0) + ' 字符</span></div>');
     // 维度计数（V1 总览有逐类目统计）
@@ -733,6 +723,12 @@ export async function panelAction(action, payload) {
                                 : ('已采用破甲预设（' + (pr.imported || 0) + ' 字）'))
                 : ('提示词操作失败：' + String(pr.reason || '未知')));
             result = Object.assign(result, pr);
+        }
+        else if (CLOCK_ACTIONS.indexOf(a) >= 0) {
+            // 时钟动作（V1 同名：手工改写 / 解锁 / 时间巡检修复）
+            const cr = await clockAction(a, p);
+            setNote(cr.note || '');
+            result = Object.assign(result, cr);
         }
         else if (SYNC_ACTIONS.indexOf(a) >= 0) {
             // 存储页动作（V1 同名：刷新状态 / 立即同步 / 校验并修复 / 刷新日志 / 清空日志）

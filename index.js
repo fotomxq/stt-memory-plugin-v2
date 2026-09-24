@@ -34,6 +34,11 @@ import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
 import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, cfg as cfgRef } from './core/model/runtime.js';
 import {
+    clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
+    runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
+} from './core/clock-patrol.js';
+import { clockUiInfo } from './ui/clock.js';
+import {
     storageBootstrap, scheduleStorageSync, crossSyncManual, refreshFromServer, storageVerify,
     syncLogList, syncLogClear, syncLogServerMerge, syncLogServerStatus, syncLogPush, syncLocalSource,
     storageStatusInfo, resetSyncState, syncInfo, fileCacheDropAll,
@@ -135,6 +140,10 @@ export async function init() {
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
     //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
     try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
+    // B8-1：载入后自动时间巡检一次（V1 `clockPatrolAutoOnce`：默认只统计，`cfg.clockPatrolAutoFix` 才自动修复）
+    try {
+        setTimeout(() => { try { clockPatrolAutoOnce(); } catch (e) { /* 忽略 */ } }, 2600);
+    } catch (e) { /* 忽略 */ }
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
         const onFloorChanged = () => {
@@ -291,6 +300,17 @@ function bootstrapDiagnostics() {
             syncLogPush: (rec) => syncLogPush(rec || {}),
             syncSource: () => syncLocalSource(),
             syncDropCache: () => fileCacheDropAll(),
+            // B8-1 剧情时钟（与 V1 `FTT.*` 同名能力：巡检 / 锚点 / 手工改写）
+            clockUi: () => clockUiInfo(),
+            clockPatrol: (opts) => runClockPatrolRepair(opts || {}),
+            clockPatrolState: () => clockPatrolState(),
+            clockPatrolAuto: () => clockPatrolAutoOnce(),
+            clockAnchor: () => clockPatrolAnchorInfo(),
+            clockMajority: () => clockPatrolMajority(),
+            clockScan: () => clockPatrolScan(),
+            clockManual: () => clockManualState(),
+            clockManualSet: (input) => setClockManual(input || {}),
+            clockManualClear: () => clearClockManual(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
