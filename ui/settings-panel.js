@@ -9,6 +9,7 @@ import { getSettings, DEFAULT_SETTINGS, setSetting } from '../adapters/settings.
 import { cfg } from '../core/model/runtime.js';
 import { DIMENSIONS } from '../core/constants.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
+import { consoleAction, writeConsole, bindConsole, consoleConfig } from './console.js';
 import { maybeAutoCheckOnStartup, runStUpdate, updateStatusText, updateConfig } from '../host/update.js';
 
 const MOUNT_ID = 'extensions_settings2';
@@ -135,6 +136,8 @@ export function fallbackPanelHtml(data) {
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_analyze">🧠 分析未分析楼层</button><button class="menu_button" id="ftt_v2_list">📋 待分析清单</button><button class="menu_button" id="ftt_v2_clearinj">🧹 清空注入</button></div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_imp_dry">📥 V1 导入（干跑）</button><button class="menu_button" id="ftt_v2_imp_apply">📥 V1 导入（写入）</button></div>',
         '<div class="ftt-v2-note" id="ftt_v2_action"></div>',
+        '<div class="ftt-v2-sub">数据台</div>',
+        '<div class="ftt-console-host" id="ftt_v2_console"></div>',
         '<div class="ftt-v2-row"><label>启动时自动检查更新</label><input type="checkbox" id="ftt_v2_autoupd"' + (d.autoUpdateCheck ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label>更新检查仓库</label><input type="text" id="ftt_v2_updrepo" value="' + escAttr(d.updateRepo) + '"></div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_checkupd">🔍 检查更新</button><button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button></div>',
@@ -205,6 +208,8 @@ export async function mountSettingsPanel(extra) {
     try {
         host.insertAdjacentHTML('beforeend', html);
         bindPanelEvents();
+        // P5 次批：数据台随面板挂载渲染一次（后续由动作或「刷新数据台」按钮重渲染）
+        try { writeConsole(); bindConsole(); } catch (e) { /* 数据台失败不影响面板 */ }
         return { ok: true, via };
     } catch (e) {
         return { ok: false, via, reason: String((e && e.message) || e) };
@@ -276,6 +281,12 @@ export function bindPanelEvents() {
         const r = await panelHooks.importV1({ apply: true });
         const t = (r && r.report && r.report.totals) || {};
         return setActionNote('【已写入】新增 ' + (t.add || 0) + ' 条（源数据未删除）');
+    });
+
+    bindPanelAction(doc, 'ftt_v2_console_refresh', async () => {
+        const r = consoleAction('refresh', {});
+        try { bindConsole(); } catch (e) { /* 忽略 */ }
+        return setActionNote('数据台已刷新（共 ' + (consoleConfig().dims) + ' 个维度）');
     });
 
     const checkBtn = doc.getElementById('ftt_v2_checkupd');

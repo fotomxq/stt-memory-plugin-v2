@@ -52,7 +52,8 @@ const uninstallFetch = installGlobalFetch((url) => {
 const host = makeHost({ templateHtml });
 const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo',
     'ftt_v2_cfg_injp', 'ftt_v2_cfg_budget', 'ftt_v2_cfg_maxatoms', 'ftt_v2_cfg_maxmems', 'ftt_v2_cfg_autoext',
-    'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply']);
+    'ftt_v2_dims', 'ftt_v2_status', 'ftt_v2_action', 'ftt_v2_analyze', 'ftt_v2_list', 'ftt_v2_clearinj', 'ftt_v2_imp_dry', 'ftt_v2_imp_apply',
+    'ftt_v2_console', 'ftt_v2_console_refresh']);
 const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
@@ -237,7 +238,8 @@ assert('F5 /ftt 状态含 V1 导入行', (() => {
     const out = String(cmd.callback());
     return out.indexOf('V1 导入：') >= 0;
 })(), '');
-if (prevLs === undefined) delete globalThis.localStorage; else globalThis.localStorage = prevLs;
+// 注意：localStorage 桩保留到测试结束 —— 真实酒馆始终有 localStorage，
+// 后续（数据台/H 段）的「保存是否真的落盘」断言依赖它（F 段引入，不在此卸载）。
 
 // ---------- G 记忆注入（P3 首批：内核配置 → 注入推送 → 拦截器） ----------
 const rt = await import('../core/model/runtime.js');
@@ -414,6 +416,75 @@ assert('I4 面板动作按钮：待分析清单 / 分析未分析楼层 / 清空
         && clearNote.indexOf('已清空注入') >= 0 && injectAfter === ''
         && (analyzeNote.indexOf('分析完成') >= 0 || analyzeNote.indexOf('新增') >= 0);
 })(), String(doc._els.ftt_v2_action.textContent || ''));
+
+// ---------- J 数据台（P5 次批：浏览 / 搜索 / 编辑 / 删除 / 注入自查） ----------
+const con = await import('../ui/console.js');
+
+assert('J1 数据台已随面板渲染：维度标签 + 搜索框 + 条目行 + 注入自查合计', (() => {
+    const html = String(doc._els.ftt_v2_console.html || '');
+    const sum = con.consoleSummary();
+    return html.indexOf('数据台 · 共') >= 0 && html.indexOf('data-ftt-console="tab"') >= 0
+        && html.indexOf('ftt_con_search') >= 0 && html.indexOf('注入 ') >= 0
+        && sum.dims.length === 14 && sum.total >= 1 && typeof sum.injectChars === 'number';
+})(), (() => { try { return con.consoleSummary(); } catch (e) { return String(e.message); } })());
+
+assert('J2 搜索与列表：按正文/标签命中过滤，未命中返回空；标签行取维度容器', (() => {
+    con.consoleAction('tab', { kind: 'atoms' });
+    const all = con.consoleList('atoms', '');
+    const hitText = con.consoleList('atoms', '木箱');
+    const hitTag = con.consoleList('atoms', '码头');
+    const none = con.consoleList('atoms', '不存在的关键词zzz');
+    return all.length >= 1 && hitText.length >= 1 && hitTag.length >= 1 && none.length === 0
+        && con.entryMatches(all[0], '') === true;
+})(), (() => { try { return con.consoleList('atoms', '木箱').length; } catch (e) { return String(e.message); } })());
+
+assert('J3 编辑保存：走 upsertEntry 写回内核容器并落盘（信封含新值）', (() => {
+    const list = con.consoleList('atoms', '木箱');
+    const id = String((list[0] || {}).id || '');
+    con.consoleAction('open', { kind: 'atoms', id });
+    const detail = con.consoleEntry('atoms', id);
+    const r = con.consoleAction('save', { kind: 'atoms', id, fields: { title: '木箱（已核对）', text: '甲在码头发现木箱，断口整齐（正文足够长）。', date: '1919-11-29', tags: '码头、木箱', importance: '0.9' } });
+    const after = con.consoleEntry('atoms', id);
+    const env = memStore['ftt2_state_' + coreState.scopeId()] ? JSON.parse(memStore['ftt2_state_' + coreState.scopeId()]) : null;
+    const persisted = env && env.payload && env.payload.data ? (env.payload.data.atoms || []).filter((x) => String(x.id) === id)[0] : null;
+    return !!detail && !!detail.hash && r.ok === true && after.item.title === '木箱（已核对）'
+        && after.item.importance === 0.9 && after.item.tags.join('、') === '码头、木箱'
+        && !!persisted && persisted.title === '木箱（已核对）';
+})(), (() => { try { return con.consoleState().note; } catch (e) { return String(e.message); } })());
+
+assert('J4 删除：移除条目 + 写 id 墓碑（跨端不复活），列表随之减少', (() => {
+    const list = con.consoleList('atoms', '');
+    const id = String((list[0] || {}).id || '');
+    const r = con.consoleAction('delete', { kind: 'atoms', id });
+    const after = con.consoleList('atoms', '');
+    return r.ok === true && after.filter((x) => String(x.id) === id).length === 0
+        && ((rt.state.deleted || {}).atoms || {})[id] !== undefined
+        && con.consoleState().note.indexOf('已删除') >= 0;
+})(), (() => { try { return JSON.stringify((rt.state.deleted || {}).atoms || {}); } catch (e) { return String(e.message); } })());
+
+assert('J5 注入自查：逐条判定是否进入当前注入，并给出命中/未命中合计', (() => {
+    host.ctx.chat.push({ is_user: false, mes: '甲重新清点货物并把记录写在账册上。', name: '角色甲' });
+    return (async () => {
+        const saved = host.ctx.generateRaw;
+        host.ctx.generateRaw = async () => aiDelta;
+        try { await globalThis.FTT.analyze({ floor: host.ctx.chat.length - 1 }); } finally { host.ctx.generateRaw = saved; }
+        rt.setKernelState(rt.state);                     // 触发一次注入刷新所依赖的视图（幂等）
+        const au = con.injectAudit({});
+        return au.chars > 0 && au.injected + au.missing > 0 && Array.isArray(au.rows) && au.rows.length === au.injected + au.missing;
+    })();
+})(), (() => { try { const a = con.injectAudit({ rows: false }); return JSON.stringify(a); } catch (e) { return String(e.message); } })());
+
+assert('J6 数据台动作入口与刷新按钮：tab/search/cancel 可用，刷新按钮回填提示', (async () => {
+    const t = con.consoleAction('tab', { kind: 'memories' });
+    const q = con.consoleAction('search', { q: '记忆' });
+    const c = con.consoleAction('cancel', {});
+    const bad = con.consoleAction('不存在', {});
+    doc._els.ftt_v2_console_refresh.dispatch('click');
+    await new Promise((r) => setTimeout(r, 10));
+    return t.ok === true && q.ok === true && c.ok === true && bad.ok === false
+        && con.consoleState().tab === 'memories' && con.consoleState().q === '记忆' && con.consoleState().open === null
+        && String(doc._els.ftt_v2_action.textContent || '').indexOf('数据台已刷新') >= 0;
+})(), (() => { try { return JSON.stringify(con.consoleState()); } catch (e) { return String(e.message); } })());
 
 endpointDown = false;
 uninstallFetch();

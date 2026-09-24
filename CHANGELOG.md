@@ -91,6 +91,16 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P5 次批：数据台（本版新增）**：新增 `ui/console.js`（约 290 行）—— V1 数据面板的 V2 最小可用集：
+  ① **14 维浏览**（维度标签行 + 条数，列表最新在前）；② **搜索**（id / 标题 / 名称 / 正文 / 归属 / 标签 / 关键词，大小写不敏感）；
+  ③ **查看与编辑**（标题·正文·日期·标签·重要度；附 `relLinksOf` 关联行与 `atomContentHash` 内容哈希；必要字段缺失不写入并给出原因）；
+  ④ **删除**走 `deleteEntry` → **id + 内容哈希双墓碑**（跨端与快照不会复活）；⑤ **注入自查** `injectAudit`
+  （逐条判定是否进入当前注入，给 `chars/injected/missing/rows`）；⑥ 渲染与动作分离：`consoleHtml()` / `consoleAction()`
+  （tab/search/open/save/delete/cancel/refresh/audit）/ `writeConsole()`（真实 DOM 整块替换）/ `bindConsole()`（按 `data-ftt-console` 接线），
+  无 `querySelectorAll` 的环境由调用方直接调动作入口，逻辑可完整测；⑦ 面板接线：「🗂 刷新数据台」按钮 + `#ftt_v2_console` 容器，
+  挂载后立即渲染，回退 HTML 同样带容器。测试：冒烟 J1–J6（含**保存后读回 localStorage 信封**校验与删除墓碑断言）。
+  门禁：单元 **22 文件 / 292 断言**、冒烟 **45/45**、内核纯净度 0、内核标识符 0、版本一致性 OK、文档规范 0；文档 `docs/P5b-数据台.md`。
+  未完成：多选批删/批标、关联编辑（关系表 UI）、分页与虚拟滚动、快照回滚页。
 - **P5 首批：设定面板（本版新增）**：
   ① `settings.html` 扩展为「基础开关 / 记忆与注入（内核配置）/ 状态与动作 / 更新」四段，新增
   **注入当前提示词、注入预算、注入情节与记忆条数上限、生成结束后自动提取、14 维启用勾选**；
