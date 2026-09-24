@@ -34,7 +34,7 @@ export const defaultCfg = {
 };
 
 /** 持久化钩子（内核不直接落盘；由 host 层注入 real 实现） */
-let persistHooks = { saveCfg: () => true, saveState: () => true, log: null };
+let persistHooks = { saveCfg: () => true, saveState: () => true, log: null, warn: null };
 /** 注入持久化钩子（host 启动时调用） */
 export function setPersistHooks(next) {
     persistHooks = Object.assign({}, persistHooks, next || {});
@@ -60,9 +60,39 @@ export function getLastMessageId() {
     return lastMessageId;
 }
 
+/**
+ * 宿主聊天读取钩子（V1 直接调 TH API；V2 由 host/chat.js 注入）。
+ * 内核只消费结果字符串，保持零宿主依赖。
+ */
+let chatHooks = {
+    getChatMessages: () => [],
+    getAssistantText: () => '',
+    latestAiFloorText: () => '',
+    dbgLog: () => undefined,
+};
+/** 注入聊天/日志读取钩子（host 启动时调用） */
+export function setChatHooks(next) {
+    chatHooks = Object.assign({}, chatHooks, next || {});
+    return chatHooks;
+}
+/** 取聊天消息数组（默认空） */
+export function getChatMessages() { try { return chatHooks.getChatMessages() || []; } catch (e) { return []; } }
+/** 取最新 AI 楼层正文（默认空串） */
+export function getAssistantText() { try { return String(chatHooks.getAssistantText() || ''); } catch (e) { return ''; } }
+/** 取用于在场/时钟解析的最新 AI 回复正文（默认空串） */
+export function latestAiFloorText() { try { return String(chatHooks.latestAiFloorText() || ''); } catch (e) { return ''; } }
+/** 调试日志（内核默认 no-op） */
+export function dbgLog(...args) { try { return chatHooks.dbgLog(...args); } catch (e) { return undefined; } }
+
 /** 日志钩子（内核默认 no-op；宿主可注入真实日志） */
 export function log(...args) {
     try { if (typeof persistHooks.log === 'function') return persistHooks.log(...args); } catch (e) { /* noop */ }
+    return undefined;
+}
+
+/** 告警钩子（内核默认 no-op；宿主可注入真实告警/调试日志） */
+export function warn(...args) {
+    try { if (typeof persistHooks.warn === 'function') return persistHooks.warn(...args); } catch (e) { /* noop */ }
     return undefined;
 }
 

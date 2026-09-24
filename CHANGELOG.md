@@ -70,6 +70,14 @@
   作用域与空状态、隐藏保护与来源恢复、墓碑分账与幂等、哈希补全与遍历。
   **明确延后**（依赖配置/时钟/全表）：`migrateState`、`contentDedupeArray`、`upsertEntry`/`deleteEntry`、`upsertRelLinks`/`relMaintRun`。
   过程经验（已写入文档）：**宽依赖函数不可用闭包移植** —— 首次尝试闭包膨胀到 148/1067 项，改为显式清单 + 严格静态检查 + 黄金样本兜底。
+- **P1 内核平移（批次 6：召回与注入层 · 内核收尾）**：新增 `core/recall.js`（1362 行：时间排序、评分与命中、匹配器、
+  在场判定、各类注入行、**注入体装配** `buildMemoryBodyForInject`、**固定约束段** `buildInjectConstraints`、使用计数）；
+  `runtime.js` 增 `getChatMessages`/`getAssistantText`/`latestAiFloorText`/`dbgLog`/`warn` 注入钩子。
+  **内核移植至此全部完成**（`core/` 19 个文件：模型 10 + 状态合并 4 + 配置时钟 2 + 召回注入 1 + 常量/工具）。
+  黄金样本 7（oracle = 真实 V1 插件，14 类维度注入态 + 固定预算）：`recall-golden.test.js` **12 项断言**，
+  含**注入体在两个预算下逐字符一致**与约束段逐字符一致。
+  **生成器精化**（本轮踩到并修好，写入 docs/P1-内核平移.md §2.12）：① 取标识符前剔除注释与字符串；② 处理函数体内局部名遮蔽；
+  ③ 排除对象键与属性访问；④ 移植体**常量先行**避免 `const` TDZ。并借 `warn` 注入钩子发现并补入 `relConceptSuffix`、`clockDateLabel`。
 - **P1 内核平移（批次 5：迁移与条目层）**：新增 `core/migrate.js`（353 行：`migrateState` 结构健壮性清洗与多版本迁移链、
   `migratePlanSuspV1165`/`migrateRelLinks`、跨端内容去重 `contentPickBest`/`contentDedupeArray`、`recallDateNum`）与
   `core/entries.js`（347 行：`upsertEntry` 写入合并、`deleteEntry` 级联删除与 id 墓碑、`upsertRelLinks`、`sweepOrphanRelLinks`）；
@@ -89,5 +97,5 @@
   排除对象键与属性访问，并用「临时植入真实宿主调用」反向自测确认仍能拦下。
 - **许可确立（AGPL-3.0）**：新增仓库根 `LICENSE`（GNU 官方 AGPL-3.0 全文，逐字未改，**LF 换行、662 行 / 34,523 B，md5 `eb1e647870add0502f8f010b19de32af`**，与 gnu.org 官方 txt 一致）；
   `package.json` 增 `license: AGPL-3.0` 与 `author`；README §7 由「待确认」改为正式许可说明（含 §13 网络交互条款提示）。
-- **门禁**：单元 **15 文件 209 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
+- **门禁**：单元 **16 文件 221 断言全过**（`manifest.test.js` 新增许可一致性断言）；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 12 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。
