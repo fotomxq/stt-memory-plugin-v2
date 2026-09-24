@@ -168,4 +168,23 @@ R.assert('U4 updateConfig 默认取 GitHub 项目地址与 main 分支', (() => 
 }
 
 resetContextProvider();
+
+await (async () => {
+    // 传输层失败（宿主 git handshake 不通）→ 只打一次端点、短路并进入会话退避
+    const calls = [];
+    const un2 = installGlobalFetch((url) => {
+        calls.push(url);
+        return { status: 500, body: { error: 'Git handshake failed: An IO error occurred when talking to the server' } };
+    });
+    const st = await import('../../host/update.js');
+    st.resetTransportBackoff();
+    const r = await st.checkViaStEndpoint();
+    un2();
+    R.assert('U10 传输层失败短路：只请求一次（不再打 global 端点）且标记 transport（避免后端日志翻倍）', (() => {
+        return r.ok === false && r.transport === true && calls.length === 1 && st.transportBackoffActive() === true
+            && st.isTransportFailure('Git handshake failed: An IO error occurred when talking to the server') === true
+            && st.isTransportFailure('extension not found') === false;
+    })(), { calls: calls.length, r });
+})();
+
 R.done();

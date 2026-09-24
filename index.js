@@ -11,6 +11,8 @@ import { clearInject, injectAvailable, pushMemoryInject, pushStats } from './hos
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
+import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
+import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPanelEvents } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
 import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
@@ -66,7 +68,7 @@ export function extraForStatus() {
         extract: extractStats(),
         extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
         i18n: i18nStats(),
-        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), ready: runtime.ready }),
+        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), ready: runtime.ready }),
         cfg: runtime.cfg,
         inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
@@ -219,7 +221,7 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo }));
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -250,6 +252,8 @@ function noteTrigger(why) {
  */
 const POLL_MAX = 20;
 const POLL_MS = 750;
+/** 连续多少次挂载失败后启用悬浮兜底入口（约 3 秒） */
+const FLOAT_AFTER_TRIES = 4;
 let pollTimer = null;
 
 async function probeTick(why) {
@@ -260,7 +264,13 @@ async function probeTick(why) {
         if (runtime.ready && !panelMountInfo().ok) {
             try { await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { /* 下一轮再试 */ }
         }
-        if (runtime.ready && panelMountInfo().ok) { stopReadyProbe(); return true; }
+        if (runtime.ready && panelMountInfo().ok) { uninstallFloatingEntry(); stopReadyProbe(); return true; }
+        // 连续若干次都挂不上抽屉 → 启用悬浮兜底并停止轮询（不无限重试）
+        if (runtime.ready && runtime.bootstrap.pollTries >= FLOAT_AFTER_TRIES && !panelMountInfo().ok) {
+            const f = installFloatingEntry({ onClick: openPanelPopup });
+            runtime.bootstrap.floating = f;
+            stopReadyProbe();
+        }
     } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
     return false;
 }
@@ -293,6 +303,43 @@ function panelHooks() {
 }
 
 /**
+ * 以**弹窗**打开面板（当扩展设置抽屉容器缺失时的兜底展示）。
+ * 优先 `callGenericPopup(html, POPUP_TYPE.TEXT)`；不可用时退回「再试挂载 + 提示」。
+ * @returns {Promise<{ok:boolean, via:string, reason?:string}>}
+ */
+export async function openPanelPopup() {
+    const ctx = getCtx();
+    try {
+        if (ctx && typeof ctx.callGenericPopup === 'function') {
+            const html = fallbackPanelHtml(panelData({ hooks: panelHooks(), status: panelStatusSnapshot() }));
+            const type = (ctx.POPUP_TYPE && (ctx.POPUP_TYPE.TEXT || ctx.POPUP_TYPE.DISPLAY)) || 1;
+            await ctx.callGenericPopup(html, type, undefined, undefined, undefined);
+            try { bindPanelEvents(); } catch (e) { /* 绑不上也不影响展示 */ }
+            return { ok: true, via: 'popup' };
+        }
+    } catch (e) { /* 落到挂载尝试 */ }
+    const m = await forceMountPanel();
+    return { ok: !!m.ok, via: 'mount', reason: m.reason };
+}
+
+/**
+ * 确保有一个可见入口：面板挂上 → 移除悬浮按钮；挂不上 → 安装悬浮按钮（点击弹窗打开面板）。
+ * @returns {Promise<{panel:object, floating:object}>}
+ */
+export async function ensureVisibleEntry() {
+    let panel = { ok: false, reason: '' };
+    try { panel = await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { panel = { ok: false, reason: String((e && e.message) || e) }; }
+    let floating = { ok: false, reason: '' };
+    if (panel.ok) {
+        try { uninstallFloatingEntry(); } catch (e) { /* 忽略 */ }
+        floating = { ok: false, reason: '面板已挂载（无需悬浮入口）' };
+    } else {
+        try { floating = installFloatingEntry({ onClick: openPanelPopup }); } catch (e) { floating = { ok: false, reason: String((e && e.message) || e) }; }
+    }
+    return { panel, floating };
+}
+
+/**
  * 强制挂载设置面板并确保菜单入口存在（供 `/ftt-panel`、魔杖菜单与可见性探针使用）。
  * @returns {Promise<object>} { ok, via, container, reason, menu }
  */
@@ -302,8 +349,14 @@ export async function forceMountPanel() {
     catch (e) { mount = { ok: false, via: 'error', reason: String((e && e.message) || e) }; }
     let menu = { ok: false, reason: '' };
     try { menu = installMenuEntry({ onClick: forceMountPanel }); } catch (e) { menu = { ok: false, reason: String((e && e.message) || e) }; }
+    // 挂不上抽屉 → 至少给一个悬浮入口（点击以弹窗展示面板）
+    let floating = { ok: false, reason: '' };
+    try {
+        if (mount.ok) floating = { ok: false, reason: '面板已挂载' };
+        else floating = installFloatingEntry({ onClick: openPanelPopup });
+    } catch (e) { floating = { ok: false, reason: String((e && e.message) || e) }; }
     runtime.bootstrap.lastError = mount.ok ? '' : String(mount.reason || '');
-    return Object.assign({}, mount, { menu, info: panelMountInfo() });
+    return Object.assign({}, mount, { menu, floating, info: panelMountInfo(), menuInfo: menuInfo(), floatingInfo: floatingInfo() });
 }
 
 /**
@@ -372,6 +425,7 @@ export function teardown() {
     try { uninstallGlobalInterceptor(); } catch (e) { /* noop */ }
     try { stopReadyProbe(); } catch (e) { /* noop */ }
     try { uninstallMenuEntry(); } catch (e) { /* noop */ }
+    try { uninstallFloatingEntry(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
@@ -457,7 +511,8 @@ startReadyProbe();
 export const __internals = {
     VERSION, DATA_VERSION, MODULE_NAME,
     init, ensureReady, teardown, runtimeState, extraForStatus,
-    forceMountPanel, panelMountInfo, menuInfo, startReadyProbe, stopReadyProbe,
+    forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
+    startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,
 };
