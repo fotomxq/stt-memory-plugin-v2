@@ -18,6 +18,7 @@ import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, in
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
+import { promptAction } from './prompts.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
@@ -696,6 +697,30 @@ export async function panelAction(action, payload) {
             setNote(a === 'checkMode' ? ('自查口径：' + (cr.useKeywords ? '按最近关键词' : '按本地召回')) : '已按当前数据刷新注入自查预览');
             result = Object.assign(result, cr);
         }
+        else if (a.indexOf('prompt') === 0 || a === 'armorPresetImport') {
+            // 提示词模板动作：保存/恢复单条/整组/全部 + 破甲预设导入（textarea 取值）
+            const key = String(p.promptKey || p.key || '');
+            let text = p.text;
+            if (text === undefined) {
+                try {
+                    const doc = globalThis.document;
+                    if (doc && doc.querySelector) {
+                        const sel = (a === 'armorPresetImport') ? '[data-ftt-armor-import]' : ('[data-ftt-prompt="' + key + '"]');
+                        const node = doc.querySelector(sel);
+                        if (node) text = String(node.value == null ? '' : node.value);
+                    }
+                } catch (e) { /* 忽略 */ }
+            }
+            const pr = promptAction(a, { key, text, group: p.group });
+            setNote(pr.ok
+                ? (a === 'promptSave' ? ('已保存提示词 ' + key + '（' + (pr.chars || 0) + ' 字' + (pr.customized ? ' · 已自定义' : ' · 与默认一致') + '）')
+                    : a === 'promptResetOne' ? ('已恢复默认：' + key)
+                        : a === 'promptResetAll' ? ('已全部恢复默认（' + (pr.reset || 0) + ' 条）')
+                            : a === 'promptGroupReset' ? ('已恢复本组默认（' + (pr.reset || 0) + ' 条）')
+                                : ('已采用破甲预设（' + (pr.imported || 0) + ' 字）'))
+                : ('提示词操作失败：' + String(pr.reason || '未知')));
+            result = Object.assign(result, pr);
+        }
         else if (a === 'settingsSub') {
             const id = String(p.sub || p.kind || '');
             ps.settingsSub = SETTINGS_TABS.some((t) => t.id === id) ? id : ps.settingsSub;
@@ -777,6 +802,13 @@ export function bindOverlay() {
             }
             const msub = tg.dataset ? String(tg.dataset.fttMsub || '') : '';
             if (msub) { void panelAction('msub', { tab: ps.tab, sub: msub }); return; }
+            if (String(act).indexOf('prompt') === 0 || act === 'armorPresetImport') {
+                void panelAction(act, {
+                    promptKey: tg.dataset ? tg.dataset.fttPromptKey : '',
+                    group: tg.dataset ? tg.dataset.fttPromptGroup : '',
+                });
+                return;
+            }
             if (act === 'settingsSub') {
                 void panelAction('settingsSub', { sub: tg.dataset ? tg.dataset.fttSettings : '' });
                 return;

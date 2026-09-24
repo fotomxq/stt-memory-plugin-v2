@@ -3,6 +3,23 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.7.0（2026-09-24）· B6 提示词模板编辑（V1 迁移链 + 分组编辑器）
+
+**本版（B6）**：
+1. **迁移链逐字移植**（新增 `core/prompt-migrate.js`，纯逻辑零宿主依赖）：`promptSig`（FNV-1a→hex+长度）、
+   `migratePromptTemplates`（只刷新「缺失/空 / 签名命中 `PROMPT_LEGACY_SIGS` / 等于新默认」，**用户自定义一律保留**）、
+   `migrateArmorPreset`（v1.179 旧键迁移，用户文本优先、旧键一律删除、幂等）；
+2. **接入载入层**：`adapters/config-store.js#loadKernelCfg()` 载入时先跑破甲迁移再跑模板升级（与 V1 `loadCfg` 同序），
+   变更随合并结果落盘；`lastLoadInfo().prompt` 暴露迁移摘要；
+3. **分组编辑器**（新增 `ui/prompts.js`）：按 `PROMPT_GROUPS` 渲染 **33 条 / 5 组**；每条含键名·组别·字数·**签名**·「已自定义/内置默认」
+   与「保存 / 恢复默认」；顶部统计条（含**未分组键告警**）与上次迁移摘要；每组「本组恢复默认」；「全部恢复默认」；
+   保留 ⓪ 组的 `armorPresetEnabled` 开关（走通用 `data-ftt-cfg` 写回）；**破甲预设导入**（粘贴 → 采用为 `armorPreset`）；
+4. 设定 → 提示词页由占位说明替换为上述编辑器；写回唯一入口 `applyPrompt()` → `saveKernelCfg()`（ST 配置持久化）。
+
+**验证**：新增 `tests/unit/prompts.test.js` **8 项**（`promptSig` 逐字含空串/中文、模板与分组统计、迁移保留自定义、破甲迁移幂等、
+载入接线与 `lastLoadInfo`、写回与三种恢复、页面渲染、面板接线）。门禁：单元 **28 文件 / 353 断言**、冒烟 **55 项**、五道门禁全绿；
+文档 `docs/P8g-B6提示词编辑.md`，`docs/P8-功能对齐总表.md` B6 打勾。
+
 ## v2.6.0（2026-09-24）· B5 关系表与注入自查
 
 **本版（B5）**：

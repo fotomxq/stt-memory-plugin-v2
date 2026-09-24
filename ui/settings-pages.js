@@ -620,6 +620,7 @@ import { cfg } from '../core/model/runtime.js';
 import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { VERSION } from '../core/constants.js';
+import { promptsPageHtml, promptAction } from './prompts.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -708,7 +709,7 @@ export function settingsPageHtml(pageId) {
     const pid = String(pageId || SETTINGS_TABS[0].id);
     const list = Array.isArray(SETTINGS_CONTROLS[pid]) ? SETTINGS_CONTROLS[pid] : [];
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
-    const extra = pageExtraHtml(pid);
+    const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';
     return rows + extra + note + (list.length ? '' : (extra || note ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>'));
 }
