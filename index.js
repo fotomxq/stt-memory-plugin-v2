@@ -21,7 +21,12 @@ import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex } from './adapters/store.js';
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
+import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
+import {
+    aboutLoadJson, aboutEnsureLoaded, getAboutData, getAboutState, aboutSortDesc, aboutHtml,
+    aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
+} from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy } from './host/extract.js';
 import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
@@ -197,6 +202,8 @@ export async function init() {
     if (runtime.ready) return { ok: true, reused: true };
     try { runtime.probe = probeCapabilities(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
+    // B9-a：调试日志接线（内核环形缓冲 ⇄ localStorage；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
+    try { runtime.debug = wireDebugLog(); } catch (e) { runtime.debug = { persistent: false, synced: 0 }; }
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try { runtime.i18n = registerLocaleData(); } catch (e) { runtime.i18n = { ok: false, reason: 'error' }; }
@@ -609,6 +616,27 @@ function bootstrapDiagnostics() {
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
+            // B9-a 调试页：日志读写/清空/统计（V1 同名 `dbgLog` / `dbgGet` / `dbgClear`；V2 另给 `debugLogStats`）
+            dbgLog: (kind, data) => debugLogPush(kind, data),
+            dbgGet: () => debugLogList(),
+            dbgLogGet: () => debugLogList(),
+            dbgClear: () => debugLogClear(),
+            debugLogStats: () => debugLogStats(),
+            // B9-a 关于页：版本清单读取 / 状态 / 渲染 / 清缓存 / 候选地址 / 排序 / 兜底（V1 同名能力）
+            aboutLoad: (force) => aboutLoadJson(force === true),
+            aboutEnsureLoaded: () => aboutEnsureLoaded(),
+            aboutState: () => getAboutState(),
+            aboutData: () => getAboutData(),
+            aboutHtml: () => aboutHtml(),
+            aboutClearCache: () => aboutClearCache(),
+            aboutCandidateUrls: () => aboutCandidateUrls(),
+            aboutSortDesc: (list) => aboutSortDesc(list),
+            aboutFallback: () => aboutFallback(),
+            aboutJsonPaths: () => ABOUT_JSON_PATHS.slice(),
+            aboutInfo: () => aboutInfo(),
+            aboutDirUrl: () => aboutDirUrl(),
+            // B9-a 数据管理：清空当前角色记忆（V1 `resetState`；破坏性动作，面板侧带二次确认）
+            resetState: () => resetState(),
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };

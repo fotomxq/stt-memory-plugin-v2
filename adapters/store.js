@@ -10,14 +10,14 @@
 // ============================================================
 import { MODULE_NAME } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
-import { state, cfg as cfgRef, setPersistHooks, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
+import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
-import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../core/sweep.js';
+import { entryIndexBuild, entryIndexInit, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume } from '../core/sweep.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
 import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
 import { collectAtomHashes } from '../core/merge.js';
-import { scopeId } from '../core/state.js';
+import { scopeId, emptyState } from '../core/state.js';
 import { stateFileName, uploadStateFile, readStateFile, deleteStateFile } from './user-file.js';
 import { scheduleStorageSync } from './sync.js';
 import { scheduleWorldbookSync } from './worldbook.js';
@@ -206,6 +206,53 @@ export function maintainSnapshots() {
         scheduleSnapshotIncr();
         return { scheduled: 'incr' };
     } catch (e) { return { error: String((e && e.message) || e) }; }
+}
+
+/**
+ * **清空当前角色的 FTT 记忆**（V1 `resetState()` ~3440 的 V2 等价实现；B9-a）。
+ *
+ * V1 原文（逐条对齐）：
+ * ```js
+ * function resetState() {
+ *     // 整库清空保持「单端语义」—— 抑制自动留痕（不生成整批墓碑把对端也清掉）
+ *     tombstoneSweepPause();
+ *     try { state = emptyState(); saveState(); }
+ *     finally { tombstoneSweepResume(); entryIndexInit(); }
+ * }
+ * ```
+ * 适配差异：
+ *   ① `state = emptyState()` → 内核注入视图 `setKernelState(emptyState())`（V2 的 `state` 由宿主注入，不可直接赋值）；
+ *   ② `saveState()` → 本模块 `saveStateNow({ reason:'reset' })`（同一保存流水线：索引 → 墓碑留痕（此处被抑制）→ 写库）；
+ *   ③ `entryIndexInit()` → `primeStateIndex()`（对齐空容器基线，使复位后的首次真实删除仍能被留痕）；
+ *   ④ V1 无返回值；V2 额外返回 `{ ok, cleared, via, bytes }` 供面板如实回报（**不改 V1 语义**）。
+ *
+ * @returns {Promise<{ok:boolean, action:string, cleared:object, via:string, bytes:number, error?:string}>}
+ */
+export async function resetState() {
+    // 清空前的计数快照（面板回报用；只读，不影响 V1 语义）
+    const cleared = (() => {
+        try {
+            const keys = ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'currencies', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'plotSegments', 'rumors', 'links', 'summaries', 'processedFloors'];
+            const per = {};
+            let total = 0;
+            for (const k of keys) { const n = Array.isArray(state && state[k]) ? state[k].length : 0; per[k] = n; total += n; }
+            return { total: total, per: per, tombs: Object.keys((state && state.deleted) || {}).length };
+        } catch (e) { return { total: 0, per: {}, tombs: 0 }; }
+    })();
+    tombstoneSweepPause();                       // V1：抑制自动留痕（不生成整批墓碑把对端也清掉）
+    let saved = null;
+    try {
+        setKernelState(emptyState());            // V1：state = emptyState()
+        saved = await saveStateNow({ reason: 'reset' });
+        // V1 `saveState()` 收尾会 materialize `state.snapStore = state.snapStore || []`（无原子也执行，紧接 `saveStateRaw` 之后）；
+        //   此处同款，使**复位后的内存态键集**与 V1 一致（黄金样本 tests/fixtures/v1-golden-reset.json#afterKeys 为 29 键）。
+        if (state && !Array.isArray(state.snapStore)) state.snapStore = [];
+    } finally {
+        tombstoneSweepResume();
+        primeStateIndex();                       // V1：entryIndexInit()
+    }
+    const ok = !!(saved && saved.ok);
+    return { ok: ok, action: 'resetState', cleared: cleared, via: String((saved && saved.via) || ''), bytes: Number((saved && saved.bytes) || 0), error: ok ? '' : String((saved && saved.error) || '保存失败') };
 }
 
 /**

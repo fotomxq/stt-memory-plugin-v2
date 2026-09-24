@@ -1,0 +1,614 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "fixedNow": 1735689600000,
+    "cacheKey": "fttAboutJson",
+    "sample": {
+      "name": "FTT记忆组件",
+      "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+      "version": "9.9.9",
+      "updatedAt": "2025-01-01",
+      "generatedAt": "2025-01-01T00:00:00Z",
+      "intro": {
+        "what": "把长篇剧情压成可长期使用的结构化记忆。",
+        "highlights": [
+          "情节原子",
+          "角色档案"
+        ],
+        "entries": [
+          "面板 → 设定 → 关于"
+        ],
+        "notes": "示例清单（oracle 样本）"
+      },
+      "changelog": [
+        {
+          "version": "1.0.0",
+          "date": "2024-01-01",
+          "title": "首个版本",
+          "points": [
+            "建立记忆容器",
+            "基础注入"
+          ]
+        },
+        {
+          "version": "0.9.0",
+          "date": "2023-12-01",
+          "title": "预发布",
+          "points": [
+            "内部试用"
+          ]
+        },
+        {
+          "version": "0.10.0",
+          "date": "2023-12-15",
+          "title": "乱序样本",
+          "points": []
+        }
+      ]
+    },
+    "notes": [
+      "本 fixture 由 /tmp/gen-golden-b9a-about.cjs 直调真实 V1 插件 v1.206 生成；fetch 走 stub（parentWin.fetch），Date.now 固定。",
+      "样本清单 version=9.9.9（与 V1 v1.206 / V2 版本均不同）→ 两端的「版本不一致」警告都会渲染。changelog 有意乱序（1.0.0 / 0.9.0 / 0.10.0）以验证 aboutSortDesc 倒序。",
+      "noFetch（V1 原生缺陷 #2）：`!fns.length` 分支**在任何 await 之前 return**，而 `aboutLoading = (async()=>{…})()` 的赋值发生在 finally 之后 → 该分支走完后 aboutLoading 永久停留在已 resolve 的旧 Promise；此后所有 aboutLoadJson(true) 都返回那次 no-fetch 结果（即使 fetch 已恢复）。oracle 实测 res1=res2=res3 逐字节相同。",
+      "V2 已修：`aboutLoadJson` 用 `let p; p = (async…)().finally(()=>{ if (aboutLoading === p) aboutLoading = null; })` 的写法避免自我清空失败。"
+    ]
+  },
+  "aboutJsonPaths": [
+    "FTT-memory-changelog.json",
+    "./FTT-memory-changelog.json"
+  ],
+  "candidateUrls": [
+    "FTT-memory-changelog.json",
+    "./FTT-memory-changelog.json"
+  ],
+  "fallback": {
+    "name": "FTT记忆组件",
+    "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+    "version": "v1.206",
+    "updatedAt": "",
+    "generatedAt": "",
+    "fallback": true,
+    "intro": {
+      "what": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+      "highlights": [],
+      "entries": [],
+      "notes": "版本清单文件应与本插件 JS 放在同一目录（如 FTT-memory-changelog.json）；可用下方「🔄 重新获取」重试。"
+    },
+    "changelog": []
+  },
+  "initial": {
+    "data": null,
+    "state": {
+      "status": "idle",
+      "ts": 0,
+      "from": "",
+      "error": ""
+    }
+  },
+  "sortDesc": {
+    "cases": [
+      {
+        "name": "乱序样本",
+        "input": [
+          "1.0.0",
+          "0.9.0",
+          "0.10.0"
+        ],
+        "out": [
+          "1.0.0",
+          "0.10.0",
+          "0.9.0"
+        ]
+      },
+      {
+        "name": "带 v 前缀与短号",
+        "input": [
+          "v2.0",
+          "v2.0.1",
+          "1.10.0",
+          "1.9.9",
+          "x",
+          null,
+          ""
+        ],
+        "out": [
+          "v2.0.1",
+          "v2.0",
+          "1.10.0",
+          "1.9.9",
+          "x",
+          "",
+          ""
+        ]
+      },
+      {
+        "name": "非数组",
+        "out": []
+      },
+      {
+        "name": "空数组",
+        "out": []
+      }
+    ],
+    "stableInput": [
+      "1.0.0",
+      "0.9.0",
+      "0.10.0"
+    ],
+    "stableOut": [
+      "1.0.0",
+      "0.10.0",
+      "0.9.0"
+    ]
+  },
+  "success": {
+    "res": {
+      "ok": true,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "9.9.9",
+        "updatedAt": "2025-01-01",
+        "generatedAt": "2025-01-01T00:00:00Z",
+        "intro": {
+          "what": "把长篇剧情压成可长期使用的结构化记忆。",
+          "highlights": [
+            "情节原子",
+            "角色档案"
+          ],
+          "entries": [
+            "面板 → 设定 → 关于"
+          ],
+          "notes": "示例清单（oracle 样本）"
+        },
+        "changelog": [
+          {
+            "version": "1.0.0",
+            "date": "2024-01-01",
+            "title": "首个版本",
+            "points": [
+              "建立记忆容器",
+              "基础注入"
+            ]
+          },
+          {
+            "version": "0.9.0",
+            "date": "2023-12-01",
+            "title": "预发布",
+            "points": [
+              "内部试用"
+            ]
+          },
+          {
+            "version": "0.10.0",
+            "date": "2023-12-15",
+            "title": "乱序样本",
+            "points": []
+          }
+        ]
+      },
+      "status": "ok",
+      "from": "FTT-memory-changelog.json"
+    },
+    "state": {
+      "status": "ok",
+      "ts": 1735689600000,
+      "from": "FTT-memory-changelog.json",
+      "error": ""
+    },
+    "data": {
+      "name": "FTT记忆组件",
+      "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+      "version": "9.9.9",
+      "updatedAt": "2025-01-01",
+      "generatedAt": "2025-01-01T00:00:00Z",
+      "intro": {
+        "what": "把长篇剧情压成可长期使用的结构化记忆。",
+        "highlights": [
+          "情节原子",
+          "角色档案"
+        ],
+        "entries": [
+          "面板 → 设定 → 关于"
+        ],
+        "notes": "示例清单（oracle 样本）"
+      },
+      "changelog": [
+        {
+          "version": "1.0.0",
+          "date": "2024-01-01",
+          "title": "首个版本",
+          "points": [
+            "建立记忆容器",
+            "基础注入"
+          ]
+        },
+        {
+          "version": "0.9.0",
+          "date": "2023-12-01",
+          "title": "预发布",
+          "points": [
+            "内部试用"
+          ]
+        },
+        {
+          "version": "0.10.0",
+          "date": "2023-12-15",
+          "title": "乱序样本",
+          "points": []
+        }
+      ]
+    },
+    "cache": {
+      "ts": 1735689600000,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "9.9.9",
+        "updatedAt": "2025-01-01",
+        "generatedAt": "2025-01-01T00:00:00Z",
+        "intro": {
+          "what": "把长篇剧情压成可长期使用的结构化记忆。",
+          "highlights": [
+            "情节原子",
+            "角色档案"
+          ],
+          "entries": [
+            "面板 → 设定 → 关于"
+          ],
+          "notes": "示例清单（oracle 样本）"
+        },
+        "changelog": [
+          {
+            "version": "1.0.0",
+            "date": "2024-01-01",
+            "title": "首个版本",
+            "points": [
+              "建立记忆容器",
+              "基础注入"
+            ]
+          },
+          {
+            "version": "0.9.0",
+            "date": "2023-12-01",
+            "title": "预发布",
+            "points": [
+              "内部试用"
+            ]
+          },
+          {
+            "version": "0.10.0",
+            "date": "2023-12-15",
+            "title": "乱序样本",
+            "points": []
+          }
+        ]
+      }
+    },
+    "calls": [
+      "FTT-memory-changelog.json"
+    ]
+  },
+  "noForce": {
+    "res": {
+      "ok": true,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "9.9.9",
+        "updatedAt": "2025-01-01",
+        "generatedAt": "2025-01-01T00:00:00Z",
+        "intro": {
+          "what": "把长篇剧情压成可长期使用的结构化记忆。",
+          "highlights": [
+            "情节原子",
+            "角色档案"
+          ],
+          "entries": [
+            "面板 → 设定 → 关于"
+          ],
+          "notes": "示例清单（oracle 样本）"
+        },
+        "changelog": [
+          {
+            "version": "1.0.0",
+            "date": "2024-01-01",
+            "title": "首个版本",
+            "points": [
+              "建立记忆容器",
+              "基础注入"
+            ]
+          },
+          {
+            "version": "0.9.0",
+            "date": "2023-12-01",
+            "title": "预发布",
+            "points": [
+              "内部试用"
+            ]
+          },
+          {
+            "version": "0.10.0",
+            "date": "2023-12-15",
+            "title": "乱序样本",
+            "points": []
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    "calls": []
+  },
+  "ensureFresh": {
+    "ret": false,
+    "calls": []
+  },
+  "htmlOk": {
+    "len": 1923,
+    "sections": [
+      "关于 · FTT记忆组件",
+      "它是什么",
+      "版本更新（倒序 · 最新在最前）"
+    ],
+    "hasReloadBtn": true,
+    "hasClearBtn": true,
+    "reloadLabel": true,
+    "clearLabel": true,
+    "btnCount": 2,
+    "nameLine": "FTT记忆组件",
+    "titleLine": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+    "versionLine": "v1.206",
+    "countLine": "3",
+    "entries": [
+      "1.0.0",
+      "0.10.0",
+      "0.9.0"
+    ],
+    "emptyText": false,
+    "statusText": "✅ 版本清单已读取 · 3 个版本 · 1/1/2025, 8:00:00 AM",
+    "warnText": "⚠️ 清单版本（9.9.9）与插件版本（v1.206）不一致 —— 该 JSON 可能尚未随最新版一起部署。",
+    "introWhat": "把长篇剧情压成可长期使用的结构化记忆。",
+    "introHighlights": "||情节原子||角色档案||",
+    "ensureCalls": [],
+    "stateAfter": {
+      "status": "ok",
+      "ts": 1735689600000,
+      "from": "FTT-memory-changelog.json",
+      "error": ""
+    }
+  },
+  "cached": {
+    "res": {
+      "ok": true,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "9.9.9",
+        "updatedAt": "2025-01-01",
+        "generatedAt": "2025-01-01T00:00:00Z",
+        "intro": {
+          "what": "把长篇剧情压成可长期使用的结构化记忆。",
+          "highlights": [
+            "情节原子",
+            "角色档案"
+          ],
+          "entries": [
+            "面板 → 设定 → 关于"
+          ],
+          "notes": "示例清单（oracle 样本）"
+        },
+        "changelog": [
+          {
+            "version": "1.0.0",
+            "date": "2024-01-01",
+            "title": "首个版本",
+            "points": [
+              "建立记忆容器",
+              "基础注入"
+            ]
+          },
+          {
+            "version": "0.9.0",
+            "date": "2023-12-01",
+            "title": "预发布",
+            "points": [
+              "内部试用"
+            ]
+          },
+          {
+            "version": "0.10.0",
+            "date": "2023-12-15",
+            "title": "乱序样本",
+            "points": []
+          }
+        ]
+      },
+      "status": "cached",
+      "error": "oracle-global-no-network"
+    },
+    "state": {
+      "status": "cached",
+      "ts": 1735689600000,
+      "from": "",
+      "error": "oracle-global-no-network"
+    },
+    "fromFallback": false,
+    "dataVersion": "9.9.9",
+    "callsN": 4,
+    "calls": [
+      "FTT-memory-changelog.json",
+      "./FTT-memory-changelog.json",
+      "FTT-memory-changelog.json?ftt=1735689600000",
+      "./FTT-memory-changelog.json?ftt=1735689600000"
+    ]
+  },
+  "htmlCached": {
+    "len": 1894,
+    "sections": [
+      "关于 · FTT记忆组件",
+      "它是什么",
+      "版本更新（倒序 · 最新在最前）"
+    ],
+    "hasReloadBtn": true,
+    "hasClearBtn": true,
+    "reloadLabel": true,
+    "clearLabel": true,
+    "btnCount": 2,
+    "nameLine": "FTT记忆组件",
+    "titleLine": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+    "versionLine": "v1.206",
+    "countLine": "3",
+    "entries": [
+      "1.0.0",
+      "0.10.0",
+      "0.9.0"
+    ],
+    "emptyText": false,
+    "statusText": "⏳ 正在读取版本清单…",
+    "warnText": "⚠️ 清单版本（9.9.9）与插件版本（v1.206）不一致 —— 该 JSON 可能尚未随最新版一起部署。",
+    "introWhat": "把长篇剧情压成可长期使用的结构化记忆。",
+    "introHighlights": "||情节原子||角色档案||",
+    "ensureCalls": [
+      "FTT-memory-changelog.json"
+    ],
+    "stateAfter": {
+      "status": "cached",
+      "ts": 1735689600000,
+      "from": "",
+      "error": "oracle-global-no-network"
+    }
+  },
+  "fail": {
+    "res": {
+      "ok": false,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "v1.206",
+        "updatedAt": "",
+        "generatedAt": "",
+        "fallback": true,
+        "intro": {
+          "what": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+          "highlights": [],
+          "entries": [],
+          "notes": "版本清单文件应与本插件 JS 放在同一目录（如 FTT-memory-changelog.json）；可用下方「🔄 重新获取」重试。"
+        },
+        "changelog": []
+      },
+      "status": "fail",
+      "error": "oracle-global-no-network"
+    },
+    "state": {
+      "status": "fail",
+      "ts": 1735689600000,
+      "from": "",
+      "error": "oracle-global-no-network"
+    },
+    "dataFallback": true,
+    "dataChangelogN": 0,
+    "callsN": 4
+  },
+  "htmlFail": {
+    "len": 895,
+    "sections": [
+      "关于 · FTT记忆组件",
+      "它是什么",
+      "版本更新（倒序 · 最新在最前）"
+    ],
+    "hasReloadBtn": true,
+    "hasClearBtn": true,
+    "reloadLabel": true,
+    "clearLabel": true,
+    "btnCount": 2,
+    "nameLine": "FTT记忆组件",
+    "titleLine": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+    "versionLine": "v1.206",
+    "countLine": null,
+    "entries": [],
+    "emptyText": true,
+    "statusText": "⏳ 正在读取版本清单…",
+    "warnText": null,
+    "introWhat": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+    "introHighlights": "",
+    "ensureCalls": [
+      "FTT-memory-changelog.json"
+    ],
+    "stateAfter": {
+      "status": "fail",
+      "ts": 1735689600000,
+      "from": "",
+      "error": "oracle-global-no-network"
+    }
+  },
+  "noFetch": {
+    "res1": {
+      "ok": false,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "v1.206",
+        "updatedAt": "",
+        "generatedAt": "",
+        "fallback": true,
+        "intro": {
+          "what": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+          "highlights": [],
+          "entries": [],
+          "notes": "版本清单文件应与本插件 JS 放在同一目录（如 FTT-memory-changelog.json）；可用下方「🔄 重新获取」重试。"
+        },
+        "changelog": []
+      },
+      "status": "fail",
+      "error": "no-fetch"
+    },
+    "res2": {
+      "ok": false,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "v1.206",
+        "updatedAt": "",
+        "generatedAt": "",
+        "fallback": true,
+        "intro": {
+          "what": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+          "highlights": [],
+          "entries": [],
+          "notes": "版本清单文件应与本插件 JS 放在同一目录（如 FTT-memory-changelog.json）；可用下方「🔄 重新获取」重试。"
+        },
+        "changelog": []
+      },
+      "status": "fail",
+      "error": "no-fetch"
+    },
+    "res3AfterRestore": {
+      "ok": false,
+      "data": {
+        "name": "FTT记忆组件",
+        "title": "SillyTavern 长期记忆插件（酒馆助手 / TavernHelper 经典脚本）",
+        "version": "v1.206",
+        "updatedAt": "",
+        "generatedAt": "",
+        "fallback": true,
+        "intro": {
+          "what": "未能读取版本清单 JSON（可能未随 JS 一起部署，或当前离线）。插件本体功能不受影响。",
+          "highlights": [],
+          "entries": [],
+          "notes": "版本清单文件应与本插件 JS 放在同一目录（如 FTT-memory-changelog.json）；可用下方「🔄 重新获取」重试。"
+        },
+        "changelog": []
+      },
+      "status": "fail",
+      "error": "no-fetch"
+    },
+    "stateAfter": {
+      "status": "fail",
+      "ts": 1735689600000,
+      "from": "",
+      "error": "no-fetch"
+    },
+    "dataFallback": true,
+    "poisoned": true
+  }
+}
