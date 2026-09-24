@@ -1,9 +1,14 @@
 // ============================================================
-// host/update.js —— 更新检查与更新执行（Git 通道）
-// 事实源：docs/P0-探针报告.md §1/§3 ——
-//   ① 首选 ST 原生端点（git 真值）：POST /api/extensions/version（isUpToDate / commit）
-//                                       POST /api/extensions/update（显式更新，仅用户触发）
-//   ② 回退远端 manifest/CHANGELOG（仅用于显示版本号与更新要点；不写任何文件、不执行远端代码）
+// host/update.js —— 更新检查与更新执行（**默认 HTTP 优先**，Git 端点需显式开启）
+// 事实源：docs/P0-探针报告.md §1/§3、docs/更新检查机制.md §2.1 ——
+//   ① 默认通道 = 远端 manifest/CHANGELOG（纯 HTTP，无需 git；仅用于显示版本号与更新要点，
+//      不写任何文件、不执行远端代码）；
+//   ② 宿主 Git 端点（`useStGitEndpoint === true` 时才使用）：
+//      POST /api/extensions/version（git 真值 isUpToDate / commit）
+//      POST /api/extensions/update（显式更新，仅用户点击「立即更新」）
+//      为什么要开关：无 git 能力的宿主（如 TauriTavern 原生移植）会在该端点返回
+//      「Failed to get extension version: Git handshake failed…」，宿主以「后端错误」弹窗暴露 ——
+//      v2.11.1 起默认不触碰该端点（manifest 亦置 `auto_update: false` 阻止酒馆自身加载期 git 校验）。
 // 约定：检查失败一律静默（只记录），绝不阻塞启动/发送/提取；自动路径永不调用 update 端点。
 // ============================================================
 import { VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INTERVAL_HOURS } from '../core/constants.js';

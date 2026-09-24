@@ -3,6 +3,12 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.11.2（2026-09-26）· 注释与文档澄清（行为与 v2.11.1 完全一致）
+
+**本版仅**更新 `host/update.js` 文件头注释与 `docs/更新检查机制.md` 中的通道顺序描述（v2.11.1 已改为 HTTP 优先、
+宿主 Git 端点默认关），使代码注释与文档不再出现「首选 ST 原生端点」的旧表述。**无任何行为变化**，
+已装 v2.11.1 的用户无需重新安装（两者行为相同）。
+
 ## v2.11.1（2026-09-26）· 修复：无 git 宿主上的「后端错误：Git handshake failed」弹窗
 
 **问题**（用户报告）：安装后宿主弹出「后端错误 / Failed to get extension version: Internal error: Git handshake failed:
