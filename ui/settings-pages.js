@@ -621,6 +621,7 @@ import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { VERSION } from '../core/constants.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
+import { snapshotSectionHtml } from './snapshots.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -719,6 +720,7 @@ function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
             '<h4 class="ftt-h4-inline">数据管理</h4>',
+            snapshotSectionHtml(),
             '<div class="ftt-row">',
             '<button class="ftt-btn" data-ftt-action="exportState" title="导出当前角色记忆为 JSON（可保存为文件）">⬇ 导出 JSON</button>',
             '<button class="ftt-btn" data-ftt-action="importStateOpen" title="粘贴 JSON 导入（合并进当前容器）">⬆ 导入 JSON</button>',
