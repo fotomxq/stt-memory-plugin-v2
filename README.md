@@ -1,0 +1,86 @@
+# FTT记忆组件 V2（SillyTavern 原生扩展）
+
+> 文档版本：v2.0.0 ｜ 日期：2026-09-24 ｜ 状态：开发中（P0 骨架）
+> 定位：V1（酒馆助手 iframe 脚本）的原生重写版 —— 标准 SillyTavern 扩展，无酒馆助手运行时依赖、无构建产物。
+> 设计与迁移依据：V1 仓库 `docs/13-V2原生插件总体设计.md`、`docs/14-V2模块与功能迁移对照.md`。
+
+## 1. 它是什么
+
+把 V1 的长期记忆能力（14 类记忆维度、三层提取、预算注入、修复与遗忘、剧情时钟、关联层、传言、情节总结/分段总结）
+搬到 **SillyTavern 原生扩展**形态：安装即用、随 ST 更新、源码即发布物。
+
+当前 **P0**：可安装骨架 + 宿主能力探测 + 设置抽屉 + 事件绑定 + 生成前钩子（空实现）+ 调试导出。
+真正的记忆功能在 P1–P5 逐阶段接入（见 `CHANGELOG.md` 与 `docs/P0-探针报告.md`）。
+
+## 2. 安装
+
+1. SillyTavern → **Extensions（扩展）** → **Install extension（安装扩展）**；
+2. 填入本仓库 Git 地址（默认分支 `main`）；
+3. 安装完成后在扩展列表启用（`FTT记忆组件 V2`）；
+4. 设置项位于 **扩展设置抽屉**（`#extensions_settings2`）；面板/数据台在 P4 提供。
+
+> 与 V1 不可同时启用：两者都会向提示词注入记忆，同时开启会重复注入。
+> 更新：ST 原生更新（`Manage extensions → Update`，服务端对本扩展目录执行 `git pull`）；本扩展亦会读取更新信息并提示。
+
+## 3. 命令与宏
+
+| 入口 | 说明 |
+| --- | --- |
+| `/ftt` | 输出状态：版本 / 宿主连接 / 能力探测 / 事件绑定 / 拦截器统计 |
+| `{{fttVersion}}` | 版本号 |
+| `{{fttStatus}}` | 状态文本 |
+| 控制台 `FTT` | 调试导出：`FTT.snapshot()` / `FTT.probe()` / `FTT.interceptor()` / `FTT.injectLength()` |
+
+## 4. 开发
+
+```bash
+npm run gate     # 全部门禁（内核纯净度 + 版本一致性 + 单元 + 冒烟）
+npm test         # 单元测试
+npm run smoke    # 冒烟测试
+node scripts/check-docs.js   # 文档规范
+```
+
+### 4.1 分层与依赖方向
+
+```text
+ui/ ─► host/ ─► adapters/ ─► core/
+ui/ ──────────────────────► core/          （只读内核）
+core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-purity.js 强制）
+```
+
+| 层 | 职责 | 关键文件 |
+| --- | --- | --- |
+| `core/` | 纯逻辑：常量、工具、数据模型、算法、提示词（无 DOM / 无宿主） | `constants.js`、`util.js` |
+| `host/` | 宿主适配：上下文探测、事件、注入、生成前钩子、AI 调用 | `st-api.js`、`events.js`、`inject.js`、`interceptor.js`、`generation.js` |
+| `adapters/` | 存储适配：配置 / 会话元数据 / 文件 / 本机缓冲 | `settings.js` |
+| `ui/` | 界面：设置抽屉、命令与宏、数据台（P4） | `settings-panel.js`、`commands.js` |
+
+### 4.2 硬规则
+
+- 生成前拦截器（`generate_interceptor`）**永不调用 `abort`**：任何失败都必须放行，保证消息发得出去；
+- 内核纯净：`core/` 只接受显式入参、返回结果，不读写宿主与全局；
+- 删除必须留墓碑、聚合/总结类保留原文（沿用 V1 v1.203–v1.206 的数据安全口径）；
+- 版本三处一致（`manifest.json` / `package.json` / `core/constants.js`）由门禁强制。
+
+## 5. 目录
+
+```text
+.
+├── manifest.json          # ST 扩展清单（generate_interceptor / hooks / i18n / auto_update）
+├── index.js               # 入口：装配 + 生命周期钩子导出
+├── settings.html          # 扩展设置抽屉模板（Handlebars）
+├── style.css              # 面板样式（继承 ST 主题变量）
+├── core/                  # 纯内核（零宿主依赖）
+├── host/                  # 宿主适配层
+├── adapters/              # 存储适配层
+├── ui/                    # 界面层
+├── devtools.js            # window.FTT 调试导出
+├── i18n/                  # zh-cn / en 词条
+├── tests/                 # 宿主桩 + 单元 + 冒烟
+├── scripts/               # 门禁脚本（内核纯净度 / 版本一致性 / 文档规范）
+└── docs/                  # P0 探针报告（ST API 源码级结论）
+```
+
+## 6. 许可
+
+待项目负责人确认（官方内容库要求开源 libre 许可；V1 仓库当前未附许可文件）。

@@ -1,0 +1,25 @@
+{
+    "display_name": "FTT记忆组件 V2",
+    "loading_order": 120,
+    "js": "index.js",
+    "css": "style.css",
+    "author": "fotomxq",
+    "version": "2.0.0",
+    "homePage": "https://github.com/fotomxq/stt-memory-plugin-v2",
+    "auto_update": true,
+    "minimum_client_version": "1.12.0",
+    "generate_interceptor": "fttGenerateInterceptor",
+    "i18n": {
+        "zh-cn": "i18n/zh-cn.json",
+        "en": "i18n/en.json"
+    },
+    "hooks": {
+        "activate": "onActivate",
+        "install": "onInstall",
+        "update": "onUpdate",
+        "delete": "onDelete",
+        "enable": "onEnable",
+        "disable": "onDisable",
+        "clean": "onClean"
+    }
+}
