@@ -85,6 +85,17 @@ export function installDevtools(hooks) {
             syncSource: () => (hooks && typeof hooks.syncSource === 'function' ? hooks.syncSource() : ''),
             syncDropCache: () => (hooks && typeof hooks.syncDropCache === 'function' ? hooks.syncDropCache() : false),
             storageBootstrap: () => (hooks && typeof hooks.storageBootstrap === 'function' ? hooks.storageBootstrap() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
+            clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),
+            clockPatrol: (opts) => (hooks && typeof hooks.clockPatrol === 'function' ? hooks.clockPatrol(opts || {}) : null),
+            clockPatrolState: () => (hooks && typeof hooks.clockPatrolState === 'function' ? hooks.clockPatrolState() : null),
+            clockPatrolAuto: () => (hooks && typeof hooks.clockPatrolAuto === 'function' ? hooks.clockPatrolAuto() : null),
+            clockAnchor: () => (hooks && typeof hooks.clockAnchor === 'function' ? hooks.clockAnchor() : null),
+            clockMajority: () => (hooks && typeof hooks.clockMajority === 'function' ? hooks.clockMajority() : null),
+            clockScan: () => (hooks && typeof hooks.clockScan === 'function' ? hooks.clockScan() : null),
+            clockManual: () => (hooks && typeof hooks.clockManual === 'function' ? hooks.clockManual() : null),
+            clockManualSet: (input) => (hooks && typeof hooks.clockManualSet === 'function' ? hooks.clockManualSet(input || {}) : { ok: false, notes: ['no-hook'] }),
+            clockManualClear: () => (hooks && typeof hooks.clockManualClear === 'function' ? hooks.clockManualClear() : false),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

@@ -29,11 +29,11 @@ R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 118 项（B4 的 105 项 + B7-2 补齐存储页 13 项），逐页数量与 V1 提取一致（storage26）', (() => {
+R.assert('P2 控件表：共 127 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9），逐页数量与 V1 提取一致（base21/storage26）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 118 && m.base === 12 && m.feed === 12 && m.analyze === 3 && m.extract === 18
+    return info.totalControls === 127 && m.base === 21 && m.feed === 12 && m.analyze === 3 && m.extract === 18
         && m.forget === 25 && m.rumors === 12 && m.parallels === 5 && m.prompts === 5 && m.storage === 26;
 })(), settingsPagesInfo());
 

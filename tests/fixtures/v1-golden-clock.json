@@ -1,0 +1,667 @@
+{
+  "normTime": [
+    [
+      "15:20",
+      "15:20"
+    ],
+    [
+      "15：20",
+      "15:20"
+    ],
+    [
+      "9:5",
+      "09:05"
+    ],
+    [
+      "25:00",
+      ""
+    ],
+    [
+      "12:30:45",
+      "12:30"
+    ],
+    [
+      "下午三点",
+      "15:00"
+    ],
+    [
+      "下午3点",
+      "15:00"
+    ],
+    [
+      "凌晨三点",
+      "03:00"
+    ],
+    [
+      "傍晚",
+      "傍晚"
+    ],
+    [
+      "傍晚时分",
+      ""
+    ],
+    [
+      "晚上8点半",
+      "20:30"
+    ],
+    [
+      "清晨12点",
+      "00:00"
+    ],
+    [
+      "",
+      ""
+    ],
+    [
+      "abc",
+      ""
+    ]
+  ],
+  "anomaly": [
+    {
+      "d": "2011-01-01",
+      "a": "1919-11-29",
+      "out": {
+        "bad": true,
+        "reason": "jump",
+        "years": 92
+      }
+    },
+    {
+      "d": "1919-12-01",
+      "a": "1919-11-29",
+      "out": {
+        "bad": false,
+        "reason": "",
+        "years": 0
+      }
+    },
+    {
+      "d": "1800-01-01",
+      "a": "1919-11-29",
+      "out": {
+        "bad": true,
+        "reason": "backward",
+        "years": 119
+      }
+    },
+    {
+      "d": "不是日期",
+      "a": "1919-11-29",
+      "out": {
+        "bad": true,
+        "reason": "invalid",
+        "years": 0
+      }
+    },
+    {
+      "d": "1990-01-01",
+      "a": "",
+      "out": {
+        "bad": false,
+        "reason": "",
+        "years": 0
+      }
+    }
+  ],
+  "replaceYear": [
+    {
+      "d": "2011-05-06",
+      "y": 1919,
+      "out": "1919-05-06"
+    },
+    {
+      "d": "2011-05-06",
+      "y": 0,
+      "out": ""
+    },
+    {
+      "d": "2011-05-06",
+      "y": 20000,
+      "out": ""
+    },
+    {
+      "d": "坏值",
+      "y": 1919,
+      "out": ""
+    }
+  ],
+  "majorityA": {
+    "year": "1919",
+    "count": 5,
+    "share": 0.8333333333333334,
+    "total": 6,
+    "latest": "1919-12-05",
+    "consensus": false,
+    "years": [
+      "1919",
+      "2011"
+    ]
+  },
+  "anchorA": {
+    "date": "1919-12-05",
+    "source": "atoms-majority",
+    "usable": true,
+    "conflict": null,
+    "ambiguous": false
+  },
+  "anchorB": {
+    "date": "",
+    "source": "",
+    "usable": false,
+    "conflict": null,
+    "ambiguous": false
+  },
+  "anchorC": {
+    "date": "",
+    "source": "",
+    "usable": false,
+    "conflict": null,
+    "ambiguous": true
+  },
+  "manualSetA": {
+    "date": "1919-12-31",
+    "time": "08:30",
+    "location": "城市甲·码头",
+    "at": 1790269147411,
+    "lock": true
+  },
+  "anchorManual": {
+    "date": "1919-12-31",
+    "source": "manual",
+    "usable": true,
+    "conflict": null,
+    "ambiguous": false
+  },
+  "stateAfterManual": {
+    "date": "1919-12-31",
+    "time": "08:30",
+    "location": "城市甲·码头",
+    "clockSrc": {
+      "date": "manual",
+      "time": "manual",
+      "location": "manual",
+      "present": "",
+      "degraded": false,
+      "degradeReason": "",
+      "manual": true,
+      "manualLock": true,
+      "at": 3
+    }
+  },
+  "manualCleared": true,
+  "manualAfterClear": null,
+  "stateAfterClear": {
+    "date": "1919-12-31",
+    "time": "08:30",
+    "location": "城市甲·码头"
+  },
+  "anchorClock": {
+    "date": "1919-01-01",
+    "source": "clock",
+    "usable": true,
+    "conflict": null,
+    "ambiguous": false
+  },
+  "parseManual": [
+    {
+      "tag": "p1",
+      "inp": {
+        "date": "公元1919年11月29日",
+        "time": "下午三点",
+        "location": "甲地"
+      },
+      "out": {
+        "ok": true,
+        "date": "1919-11-29",
+        "time": "15:00",
+        "location": "甲地",
+        "notes": [
+          "日期「公元1919年11月29日」解析为 1919-11-29（沿用年份 1919）",
+          "时间「下午三点」规范化为 15:00"
+        ]
+      }
+    },
+    {
+      "tag": "p2",
+      "inp": {
+        "date": "11月29日",
+        "time": "傍晚",
+        "location": ""
+      },
+      "out": {
+        "ok": true,
+        "date": "1919-11-29",
+        "time": "傍晚",
+        "location": "",
+        "notes": [
+          "日期「11月29日」解析为 1919-11-29（沿用年份 1919）"
+        ]
+      }
+    },
+    {
+      "tag": "p3",
+      "inp": {
+        "date": "11月29日"
+      },
+      "out": {
+        "ok": true,
+        "date": "1919-11-29",
+        "time": "",
+        "location": "",
+        "notes": [
+          "日期「11月29日」解析为 1919-11-29（沿用年份 1919）"
+        ]
+      }
+    },
+    {
+      "tag": "p4",
+      "inp": {
+        "date": "",
+        "time": "25:99",
+        "location": ""
+      },
+      "out": {
+        "ok": false,
+        "date": "",
+        "time": "",
+        "location": "",
+        "notes": [
+          "时间「25:99」无法识别（需 HH:MM 或时段词）→ 已忽略"
+        ]
+      }
+    },
+    {
+      "tag": "p5",
+      "inp": {
+        "date": "",
+        "time": "",
+        "location": ""
+      },
+      "out": {
+        "ok": false,
+        "date": "",
+        "time": "",
+        "location": "",
+        "notes": []
+      }
+    }
+  ],
+  "parseManualNoYear": {
+    "ok": false,
+    "date": "",
+    "time": "",
+    "location": "",
+    "notes": [
+      "日期「11月29日」缺少年份，且当前剧情日期不可用 → 已忽略（请写完整年份，如 1919-11-29 或 公元1919年11月29日）"
+    ]
+  },
+  "scanA": {
+    "anchor": "1919-12-05",
+    "anchorSource": "atoms-majority",
+    "anchorUsable": true,
+    "anchorConflict": null,
+    "scanned": 7,
+    "findings": [
+      {
+        "dim": "atoms",
+        "id": "a3",
+        "field": "time",
+        "value": "25:99",
+        "reason": "time-invalid",
+        "fixable": true
+      },
+      {
+        "dim": "atoms",
+        "id": "a4",
+        "field": "date",
+        "value": "不是日期",
+        "reason": "invalid",
+        "fixable": true
+      },
+      {
+        "dim": "plans",
+        "id": "p1",
+        "field": "date",
+        "value": "2011-05-06",
+        "reason": "jump",
+        "years": 92,
+        "fixable": true
+      }
+    ]
+  },
+  "patrolScanOnly": {
+    "scanned": 7,
+    "found": 3,
+    "fixed": 0,
+    "skipped": 0,
+    "remain": 3,
+    "reasons": {
+      "time-invalid": 1,
+      "invalid": 1,
+      "jump": 1
+    },
+    "details": [],
+    "anchor": "1919-12-05",
+    "anchorSource": "atoms-majority",
+    "anchorUsable": true,
+    "anchorConflict": null,
+    "scanOnly": true,
+    "blocked": "scan-only",
+    "snap": ""
+  },
+  "patrolForce": {
+    "scanned": 7,
+    "found": 3,
+    "fixed": 3,
+    "skipped": 0,
+    "remain": 0,
+    "blocked": "",
+    "reasons": {
+      "time-invalid": 1,
+      "invalid": 1,
+      "jump": 1
+    },
+    "anchor": "1919-12-05",
+    "anchorSource": "atoms-majority",
+    "hasSnap": true,
+    "detailCount": 3
+  },
+  "afterForce": {
+    "atoms": [
+      [
+        "a1",
+        "1919-11-29",
+        ""
+      ],
+      [
+        "a2",
+        "1919-12-01",
+        ""
+      ],
+      [
+        "a3",
+        "1919-12-05",
+        ""
+      ],
+      [
+        "a4",
+        "",
+        ""
+      ]
+    ],
+    "plans": [
+      [
+        "p1",
+        "1919-05-06",
+        ""
+      ]
+    ],
+    "memories": [
+      [
+        "m1",
+        "1919-12-02",
+        ""
+      ]
+    ],
+    "suspense": [
+      [
+        "s1",
+        "1919-12-03",
+        "傍晚"
+      ]
+    ]
+  },
+  "patrolAutoConflict": {
+    "blocked": "anchor-conflict",
+    "fixed": 0,
+    "remain": 3,
+    "anchor": "1950-01-01",
+    "anchorConflict": {
+      "year": "1919",
+      "count": 5,
+      "total": 6
+    }
+  },
+  "scenarioA": {
+    "version": "v1.206",
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    },
+    "protagonist": {},
+    "items": [],
+    "plans": [
+      {
+        "id": "p1",
+        "text": "计划一",
+        "title": "计划一",
+        "date": "2011-05-06",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "suspense": [
+      {
+        "id": "s1",
+        "text": "悬念一",
+        "title": "悬念一",
+        "date": "1919-12-03",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "time": "傍晚"
+      }
+    ],
+    "scenes": [],
+    "npcs": [],
+    "atoms": [
+      {
+        "id": "a1",
+        "text": "情节一",
+        "title": "情节一",
+        "date": "1919-11-29",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "a2",
+        "text": "情节二",
+        "title": "情节二",
+        "date": "1919-12-01",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "a3",
+        "text": "情节三",
+        "title": "情节三",
+        "date": "1919-12-05",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2,
+        "time": "25:99"
+      },
+      {
+        "id": "a4",
+        "text": "情节四",
+        "title": "情节四",
+        "date": "不是日期",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "currentStates": [],
+    "snapshots": [],
+    "memories": [
+      {
+        "id": "m1",
+        "text": "记忆一",
+        "title": "记忆一",
+        "date": "1919-12-02",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "concepts": [],
+    "parallels": [],
+    "currencies": [],
+    "plotSegments": [],
+    "rumors": [],
+    "links": [],
+    "vars": {},
+    "varTemplates": {},
+    "summaries": [],
+    "processedFloors": [],
+    "lastKnownFloor": -1,
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 0
+    },
+    "deleted": {},
+    "deletedH": {},
+    "updatedAt": 0
+  },
+  "scenarioB": {
+    "version": "v1.206",
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    },
+    "protagonist": {},
+    "items": [],
+    "plans": [],
+    "suspense": [],
+    "scenes": [],
+    "npcs": [],
+    "atoms": [
+      {
+        "id": "a1",
+        "text": "情节一",
+        "title": "情节一",
+        "date": "不是日期",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "currentStates": [],
+    "snapshots": [],
+    "memories": [],
+    "concepts": [],
+    "parallels": [],
+    "currencies": [],
+    "plotSegments": [],
+    "rumors": [],
+    "links": [],
+    "vars": {},
+    "varTemplates": {},
+    "summaries": [],
+    "processedFloors": [],
+    "lastKnownFloor": -1,
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 0
+    },
+    "deleted": {},
+    "deletedH": {},
+    "updatedAt": 0
+  },
+  "scenarioC": {
+    "version": "v1.206",
+    "state": {
+      "time": "",
+      "date": "",
+      "location": "",
+      "sceneFocus": null
+    },
+    "protagonist": {},
+    "items": [],
+    "plans": [],
+    "suspense": [],
+    "scenes": [],
+    "npcs": [],
+    "atoms": [
+      {
+        "id": "a1",
+        "text": "甲",
+        "title": "甲",
+        "date": "1919-01-01",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "a2",
+        "text": "乙",
+        "title": "乙",
+        "date": "1919-02-01",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "currentStates": [],
+    "snapshots": [],
+    "memories": [
+      {
+        "id": "m1",
+        "text": "丙",
+        "title": "丙",
+        "date": "1950-01-01",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "id": "m2",
+        "text": "丁",
+        "title": "丁",
+        "date": "1950-02-01",
+        "tags": [],
+        "uses": 0,
+        "floorStart": 1,
+        "floorEnd": 2
+      }
+    ],
+    "concepts": [],
+    "parallels": [],
+    "currencies": [],
+    "plotSegments": [],
+    "rumors": [],
+    "links": [],
+    "vars": {},
+    "varTemplates": {},
+    "summaries": [],
+    "processedFloors": [],
+    "lastKnownFloor": -1,
+    "stats": {
+      "plansClosed": 0,
+      "suspenseResolved": 0
+    },
+    "deleted": {},
+    "deletedH": {},
+    "updatedAt": 0
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（tests/unit/helpers.js loadPlugin + makeTavernEnv）；scenario* 为回放输入"
+}

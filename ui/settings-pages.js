@@ -60,66 +60,38 @@ export const SETTINGS_TABS = [
 
 export const SETTINGS_CONTROLS = {
     "base": [
+        { "key": "enabled", "label": "启用组件", "type": "checkbox" },
+        { "key": "timelyAnalysis", "label": "⚡ 及时分析（实时模式）", "type": "checkbox" },
+        { "key": "autoExtract", "label": "消息后自动摘取", "type": "checkbox", "forceWhen": "timelyAnalysis" },
+        { "key": "autoSummary", "label": "生成后自动 AI 摘要", "type": "checkbox", "forceWhen": "timelyAnalysis" },
+        { "key": "autoRepair", "label": "生成后自动修复", "type": "checkbox" },
+        { "key": "injectCurrentPrompt", "label": "注入当前提示词", "type": "checkbox", "forceWhen": "timelyAnalysis" },
+        { "key": "importanceBase", "label": "初始重要性(0次调用)", "type": "text" },
+        { "key": "importancePerUse", "label": "每次调用增量", "type": "text" },
+        { "key": "clockExtractEnabled", "label": "消息后自动提取（不再只靠 AI）", "type": "checkbox" },
         {
-            "key": "importanceBase",
-            "label": "初始重要性(0次调用)",
-            "type": "text"
+            "key": "clockRegexPreset",
+            "label": "参考表达式预设",
+            "type": "select",
+            "options": [
+                { "v": "cn", "label": "中文常用（阿拉伯/中文数字年月日 + 时刻词 + 24 小时制）" },
+                { "v": "marker", "label": "标记式（【时间：】/ 时间：/ 地点：… 带值）" },
+                { "v": "cn+marker", "label": "中文常用 + 标记式（推荐，最全）" },
+                { "v": "story", "label": "正文头结构（▷ 日期（纪年）·季节 / ▷ 地点路径 / ▶第 N 天 起止时间）" },
+                { "v": "none", "label": "仅用下方自定义正则" }
+            ]
         },
-        {
-            "key": "importancePerUse",
-            "label": "每次调用增量",
-            "type": "text"
-        },
-        {
-            "key": "clockDateRegex",
-            "label": "自定义 · 日期正则",
-            "type": "text"
-        },
-        {
-            "key": "clockTimeRegex",
-            "label": "自定义 · 时间正则",
-            "type": "text"
-        },
-        {
-            "key": "clockLocationRegex",
-            "label": "自定义 · 地点正则",
-            "type": "text"
-        },
-        {
-            "key": "clockAnomalyJumpYears",
-            "label": "日期异常判定：与当前时钟相差超过 N 年（默认 50，0 = 关闭）",
-            "type": "text"
-        },
-        {
-            "key": "clockStoryDayEpoch",
-            "label": "正文头「第 N 天」纪元首日（如 0001-01-01；留空 = 只记录天数不换算）",
-            "type": "text"
-        },
-        {
-            "key": "clockRepairBatch",
-            "label": "AI 结合正文修复：单次提交条数（默认 20）",
-            "type": "text"
-        },
-        {
-            "key": "timelyAnalysis",
-            "label": "⚡ 及时分析（实时模式）",
-            "type": "checkbox"
-        },
-        {
-            "key": "autoExtract",
-            "label": "消息后自动摘取",
-            "type": "checkbox"
-        },
-        {
-            "key": "autoSummary",
-            "label": "生成后自动 AI 摘要",
-            "type": "checkbox"
-        },
-        {
-            "key": "injectCurrentPrompt",
-            "label": "注入当前提示词",
-            "type": "checkbox"
-        }
+        { "key": "clockDateRegex", "label": "自定义 · 日期正则", "type": "text" },
+        { "key": "clockTimeRegex", "label": "自定义 · 时间正则", "type": "text" },
+        { "key": "clockLocationRegex", "label": "自定义 · 地点正则", "type": "text" },
+        { "key": "clockRelative", "label": "相对日期推进（次日/第二天/隔天/明日 等）", "type": "checkbox" },
+        { "key": "clockForceDegrade", "label": "强制使用降级方案（最新情节的日期时间 + 最新的场景）", "type": "checkbox" },
+        { "key": "clockAnomalyJumpYears", "label": "日期异常判定：与当前时钟相差超过 N 年（默认 50，0 = 关闭）", "type": "text" },
+        { "key": "clockStoryDayEpoch", "label": "正文头「第 N 天」纪元首日（如 0001-01-01；留空 = 只记录天数不换算）", "type": "text" },
+        { "key": "clockAutoPatrol", "label": "时间巡检：载入后自动巡检原子数据日期时间（默认开，默认只统计）", "type": "checkbox" },
+        { "key": "clockPatrolAutoFix", "label": "时间巡检：自动修复（默认关 —— 只统计不修改）", "type": "checkbox" },
+        { "key": "clockRepairBatch", "label": "AI 结合正文修复：单次提交条数（默认 20）", "type": "text" },
+        { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" }
     ],
     "feed": [
         {
@@ -762,10 +734,12 @@ export function settingsControlHtml(c) {
     const v = readControl(key);
     const type = c.type || 'text';
     if (type === 'checkbox') {
-        const on = v !== false && v !== undefined && v !== null && v !== '' && v !== 0;
+        // V1 `swForce`：被强制项（如「及时分析」开启时的 autoExtract/autoSummary/injectCurrentPrompt）显示为强制开启且禁用
+        const forced = !!(c.forceWhen && (() => { try { return readControl(String(c.forceWhen)) === true; } catch (e) { return false; } })());
+        const on = forced || (v !== false && v !== undefined && v !== null && v !== '' && v !== 0);
         return '<div class="ftt-field"><label>' + esc(label) + '</label>'
-            + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="' + esc(key) + '"' + (on ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
-            + '<span class="ftt-muted">' + (on ? '已开启' : '已关闭') + '</span></div>';
+            + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="' + esc(key) + '"' + (on ? ' checked' : '') + (forced ? ' disabled' : '') + '><span class="ftt-slider"></span></label>'
+            + '<span class="ftt-muted">' + (on ? '已开启' : '已关闭') + (forced ? '（由「及时分析」强制开启）' : '') + '</span></div>';
     }
     if (type === 'select') {
         const list = Array.isArray(c.options) ? c.options : [];
@@ -781,6 +755,46 @@ export function settingsControlHtml(c) {
     const missing = (v === undefined);
     return '<div class="ftt-field"><label>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + '</label>'
         + '<input type="' + (type === 'number' ? 'number' : 'text') + '" data-ftt-cfg="' + esc(key) + '" value="' + esc(v == null ? '' : v) + '"></div>';
+}
+
+/**
+ * 基础页正文（V1 的分节布局：组件开关 / 重要性计算 / 剧情时钟自动提取 / 时钟降级与时间巡检 / 界面特效）。
+ * 说明：V1 的「显示界面开关（buttonLocation*）」在 V2 由「V2 附加设定」的悬浮/菜单开关承担，此处不重复；
+ *   「AI 捕捉正文 → 生成正则」与「AI 结合正文修复日期时间」两条 AI 管线属 B8-2（本页先如实标注，不放假实现）。
+ */
+export function basePageHtml(controls) {
+    const list = Array.isArray(controls) ? controls : [];
+    const find = (k) => list.filter((c) => String(c.key) === k)[0];
+    const row = (k) => { const c = find(k); return c ? settingsControlHtml(c) : ''; };
+    const rows = (keys) => keys.map((k) => row(k)).filter(Boolean).join('\n');
+    return [
+        '<div class="ftt-section"><div class="ftt-sec-title">组件开关</div>',
+        rows(['enabled', 'timelyAnalysis', 'autoExtract', 'autoSummary', 'autoRepair', 'injectCurrentPrompt']),
+        '<div class="ftt-muted">内置自动触发：消息后提取记忆；「注入当前提示词」开启则一并注入，关闭则仅提取记忆（不越权注入）。</div>',
+        '<div class="ftt-muted">「记录调试日志」在「调试」页；「召回参数」在「提取记忆」页。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">重要性计算（调用次数驱动）</div>',
+        rows(['importanceBase', 'importancePerUse']),
+        '<div class="ftt-muted">重要性 = 初始值 + 调用次数 × 增量，自动计算。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">剧情时钟自动提取（总览 日期/时间/地点）</div>',
+        rows(['clockExtractEnabled', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative']),
+        '<div class="ftt-hint">🤖「AI 捕捉正文 → 生成正则」属后续批次（B8-2），本页先提供预设与自定义正则。</div>',
+        '<div class="ftt-muted">取用顺序：正则直取 → 标记式带值 → 时段词/时刻 → 相对日期推进 → AI 摘要的当前状态 → 无结果时展示最近记忆参考（不写入）。仅影响总览 日期/时间/地点 的自动提取。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">时钟降级与时间巡检（总览）</div>',
+        rows(['clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch', 'clockAutoPatrol', 'clockPatrolAutoFix', 'clockRepairBatch']),
+        '<div class="ftt-muted">判定项：① 日期格式非法；② 年份比当前时钟/最新情节晚超过 N 年（如 1919 剧情里出现 2011）；③ 早超过 N 年（剧情时间大幅倒退）。命中即降级，并在总览「🕒 时钟来源」里注明原因。</div>',
+        '<div class="ftt-muted">巡检 情节 / 记忆 / 计划 / 悬念 / 平行事件 的 日期 与 时间：格式非法 → 按内容重解析（解析不出则清空）；年份漂移 → 按内容重解析或保留月日改年份。安全口径：① 锚点不可信 → 只统计不修改；② 任何写回都要求「格式合法 + 不触发年份异常」；③ 格式合法但年份漂移、又无法可靠修正 → 保留原值；④ 写回前自动留一份全量快照。总览「🩺 时间巡检修复」为手动修复（按当前锚点校正年份，请先确认锚点正确）。</div>',
+        '<div class="ftt-hint">🩺「AI 结合正文修复日期时间」属后续批次（B8-2）；本页可先用零 AI 的时间巡检。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
+        '<div class="ftt-muted">V2 的入口形态在「V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">界面特效</div>',
+        rows(['uiEffects']),
+        '<div class="ftt-muted">关闭后面板与消息弹窗不再播放动画/过渡（适合低配设备）；系统「减少动态效果」自动按关闭处理。</div></div>',
+    ].join('\n');
 }
 
 /** 页内「待后续批次」说明（不使用假实现） */
@@ -799,6 +813,8 @@ export function settingsPageHtml(pageId) {
     // 存储页：V1 的**分节布局**（记忆文件 / 原生存储 / 缓冲 / 一致性 / 世界书 / 状态与操作 / 同步日志）
     //   控件表仍由 SETTINGS_CONTROLS.storage 提供（同名同序），只是不再平铺渲染。
     if (pid === 'storage') return storagePageHtml(list);
+    // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
+    if (pid === 'base') return basePageHtml(list);
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';
