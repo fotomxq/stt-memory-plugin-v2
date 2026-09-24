@@ -29,11 +29,11 @@ R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 147 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9 + B8-5 补齐 V1 `switchField` 开关 20），逐页数量与 V1 提取一致', (() => {
+R.assert('P2 控件表：共 169 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9 + B8-5 补齐 V1 `switchField` 开关 20 + B8-6c 补齐 V1 手写 `data-ftt-cfg` 块 22），逐页数量与 V1 提取一致', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 147 && m.base === 21 && m.feed === 15 && m.analyze === 5 && m.extract === 24
+    return info.totalControls === 169 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 24
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 1;
 })(), settingsPagesInfo());
 
@@ -46,6 +46,45 @@ R.assert('P2b 存储页控件与 V1 手写页逐一对应：墓碑天数 / 原�
         && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('<select') >= 0
         && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('自动（检测到 TauriTavern 即切换）') >= 0;
 })(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));
+
+R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签按 V1 原样、顺序与 V1 源码一致', (() => {
+    const want = [
+        ['conceptRepairSim', '概念修复相关性阈值（0.1-0.95，默认 0.45）'],
+        ['conceptRepairMaxClusters', '概念修复每次核对组数（1-20，默认 3）'],
+        ['conceptRepairMaxItems', '概念修复每次提交条数上限（2-120，默认 24）'],
+        ['conceptRepairMaxClusterSize', '概念相关组规模上限（2-40，默认 8）'],
+        ['memoryRepairSim', '记忆修复相关性阈值（0.1-0.95，默认 0.45）'],
+        ['memoryRepairMaxClusters', '记忆修复每次核对组数（1-20，默认 3）'],
+        ['memoryRepairMaxItems', '记忆修复每次提交条数上限（2-120，默认 24）'],
+        ['memoryRepairMaxClusterSize', '记忆相关组规模上限（2-40，默认 8）'],
+        ['suspenseRepairSim', '悬念修复相关性阈值（0.1-0.95，默认 0.45）'],
+        ['suspenseRepairMaxClusters', '悬念修复每次核对组数（1-20，默认 3）'],
+        ['suspenseRepairMaxItems', '悬念修复每次提交条数上限（2-120，默认 24）'],
+        ['suspenseRepairMaxClusterSize', '悬念相关组规模上限（2-40，默认 8）'],
+        ['itemRepairSim', '物品修复相关性阈值（0.1-0.95，默认 0.45）'],
+        ['itemRepairMaxClusters', '物品修复每次核对组数（1-20，默认 3）'],
+        ['itemRepairMaxItems', '物品修复每次提交条数上限（2-120，默认 24）'],
+        ['itemRepairMaxClusterSize', '物品相关组规模上限（2-40，默认 8）'],
+        ['itemLowUsesRatio', '低调用清理·比例（默认 0.05）'],
+        ['itemLowUsesMinItems', '低调用清理·物品数门槛（默认 100）'],
+        ['itemLowUsesMinAvg', '低调用清理·平均调用门槛（默认 5）'],
+        ['itemLowUsesMinFloors', '低调用清理·楼层门槛（默认 200；0=不生效）'],
+        ['itemLowUsesEveryFloors', '低调用清理·清扫间隔（默认 40 楼；0=不限制）'],
+        ['itemLowUsesMaxDelete', '低调用清理·每轮最多删除（默认 1）'],
+    ];
+    const feed = SETTINGS_CONTROLS.feed.map((c) => [String(c.key), String(c.label)]);
+    const tail = feed.slice(feed.length - want.length);
+    // 每个键在配置里的默认值与 V1 默认一致（阈值 0.45 / 组数 3 / 条数 24 / 组规模 8 / 比例 0.05 / 门槛 100 / 均值 5 / 楼层 200 / 间隔 40 / 删除 1）
+    const defs = { conceptRepairSim: 0.45, memoryRepairSim: 0.45, suspenseRepairSim: 0.45, itemRepairSim: 0.45,
+        conceptRepairMaxClusters: 3, memoryRepairMaxClusters: 3, suspenseRepairMaxClusters: 3, itemRepairMaxClusters: 3,
+        conceptRepairMaxItems: 24, memoryRepairMaxItems: 24, suspenseRepairMaxItems: 24, itemRepairMaxItems: 24,
+        conceptRepairMaxClusterSize: 8, memoryRepairMaxClusterSize: 8, suspenseRepairMaxClusterSize: 8, itemRepairMaxClusterSize: 8,
+        itemLowUsesRatio: 0.05, itemLowUsesMinItems: 100, itemLowUsesMinAvg: 5, itemLowUsesMinFloors: 200,
+        itemLowUsesEveryFloors: 40, itemLowUsesMaxDelete: 1 };
+    const badDef = want.filter((w) => Number(defaultCfg[w[0]]) !== defs[w[0]]).map((w) => w[0]);
+    const renderOk = settingsControlHtml(SETTINGS_CONTROLS.feed.find((c) => c.key === 'memoryRepairSim')).indexOf('data-ftt-cfg="memoryRepairSim"') >= 0;
+    return J(tail) === J(want) && badDef.length === 0 && renderOk;
+})(), () => SETTINGS_CONTROLS.feed.slice(-22).map((c) => c.key));
 
 R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、storage.* 在 defaultCfg.storage 内（提取零漏配）', (() => {
     const bad = [];

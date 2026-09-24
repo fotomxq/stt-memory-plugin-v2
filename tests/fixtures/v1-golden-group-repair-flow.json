@@ -1,0 +1,655 @@
+{
+  "flow": {
+    "made": 1,
+    "before": 6,
+    "after": 3,
+    "fused": 1,
+    "removed": 1,
+    "revised": 0,
+    "deleted": 2,
+    "skipped": 0,
+    "merged": 1,
+    "retargeted": 1,
+    "groups": 1,
+    "groupsTotal": 1,
+    "checked": 4,
+    "relMaint": {
+      "swept": 2,
+      "deduped": 0,
+      "renamed": 0,
+      "staleRefs": 0,
+      "normalized": 0,
+      "demoted": 2,
+      "orphanItems": 4,
+      "publicized": 0,
+      "action": "keep"
+    }
+  },
+  "memories": [
+    {
+      "id": "m1",
+      "owner": "角色甲",
+      "title": "码头交接货物",
+      "content": "角色甲在码头交接货物并收取银两。",
+      "date": "2020-01-01",
+      "memCategory": "交易",
+      "importance": 0.8,
+      "tags": [
+        "码头",
+        "交接",
+        "货物",
+        "银两"
+      ],
+      "keywords": [],
+      "uses": 4,
+      "floorStart": 1,
+      "floorEnd": 4
+    },
+    {
+      "id": "m3",
+      "owner": "角色乙",
+      "title": "仓库取物",
+      "content": "角色乙在仓库取走木箱。",
+      "date": "2020-01-03",
+      "memCategory": "行动",
+      "importance": 0.4,
+      "tags": [
+        "仓库",
+        "木箱"
+      ],
+      "uses": 3,
+      "floorStart": 3,
+      "floorEnd": 5
+    },
+    {
+      "id": "m9",
+      "owner": "角色甲",
+      "title": "孤儿记忆",
+      "content": "一条无人记得的旧事，字段齐整无缺陷，也没有任何关联行。",
+      "date": "2020-01-05",
+      "memCategory": "杂项",
+      "importance": 0.5,
+      "tags": [
+        "旧事",
+        "杂项",
+        "孤例"
+      ],
+      "uses": 1,
+      "floorStart": 6,
+      "floorEnd": 6
+    }
+  ],
+  "links": [
+    {
+      "id": "lnk_1sssq8c",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "角色甲",
+      "how": "witness"
+    },
+    {
+      "id": "lnk_1sssxif",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "角色乙",
+      "how": "told"
+    }
+  ],
+  "tombs": [
+    "m2",
+    "m4"
+  ],
+  "toasts": [
+    [
+      "repair",
+      "开始修复记忆数据…",
+      "当前 6 条记忆 · 高相关组 1/1 组（本次核对 4 条 · 其中缺陷条目 2） · 已机械去重 1 条（关联维护：清理孤儿关联 1 行）"
+    ],
+    [
+      "success",
+      "记忆修复完成",
+      "合并 1 组（-1 条） · 删除 2 条 · 机械去重 1 条 · 关联维护：清理孤儿关联 2 行；标签/调用次数/楼层已按并集归并；修复前 6 条 → 修复后 3 条；本轮提交 4 条 / 1 组 / 共 1 组 / 缺陷条目 2；提交标签 #码头 #交接 #货物 #仓库 #木箱；修复后 合并 1 组(-1 条) · 删除 2 条 · 机械去重 1 条。"
+    ]
+  ],
+  "earlyExit": {
+    "made": 0,
+    "skipped": true,
+    "merged": 0,
+    "groups": 0,
+    "before": 2,
+    "after": 2,
+    "relMaint": {
+      "swept": 0,
+      "deduped": 0,
+      "renamed": 0,
+      "staleRefs": 0,
+      "normalized": 0,
+      "demoted": 0,
+      "orphanItems": 2,
+      "publicized": 0,
+      "action": "keep"
+    }
+  },
+  "mergeByTitle": {
+    "merged": 1,
+    "notes": [
+      "同归属重复"
+    ],
+    "retargeted": 1,
+    "memories": [
+      {
+        "id": "t1",
+        "owner": "甲",
+        "title": "码头交接货物",
+        "content": "长一些的正文描述。",
+        "date": "2020-01-01",
+        "memCategory": "",
+        "importance": 0.7,
+        "tags": [
+          "银两"
+        ],
+        "uses": 4,
+        "floorStart": 1,
+        "floorEnd": 5
+      }
+    ],
+    "tombs": []
+  },
+  "mergeShortTitle": {
+    "merged": 0,
+    "count": 2
+  },
+  "mergeCrossOwner": {
+    "merged": 0,
+    "count": 2
+  },
+  "ownerKey": {
+    "empty": "通用",
+    "missing": "通用",
+    "spaced": "角色甲"
+  },
+  "mergeExactMulti": {
+    "merged": 2,
+    "notes": [
+      "同归属重复"
+    ],
+    "retargeted": 2,
+    "memories": [
+      {
+        "id": "m1",
+        "owner": "角色甲",
+        "title": "标题甲",
+        "content": "角色甲在码头交付货物。",
+        "date": "2020-01-01",
+        "memCategory": "交易",
+        "importance": 0.9,
+        "tags": [
+          "码头",
+          "货物",
+          "交接"
+        ],
+        "uses": 3,
+        "floorStart": 1,
+        "floorEnd": 4
+      },
+      {
+        "id": "m3",
+        "owner": "角色甲",
+        "title": "天机阁密谈",
+        "content": "天机阁在密室密谈并留下字条。",
+        "date": "2020-02-03",
+        "memCategory": "情报",
+        "importance": 0.7,
+        "tags": [
+          "天机阁",
+          "字条"
+        ],
+        "uses": 4,
+        "floorStart": 6,
+        "floorEnd": 9
+      },
+      {
+        "id": "m5",
+        "owner": "角色乙",
+        "title": "标题甲",
+        "content": "角色甲在码头交付货物。",
+        "date": "2020-01-05",
+        "memCategory": "行动",
+        "importance": 0.3,
+        "tags": [
+          "旁观"
+        ],
+        "uses": 1,
+        "floorStart": 7,
+        "floorEnd": 8
+      },
+      {
+        "id": "m6",
+        "owner": "角色甲",
+        "title": "事件",
+        "content": "某事发生。",
+        "date": "2020-02-05",
+        "memCategory": "行动",
+        "importance": 0.2,
+        "tags": [
+          "事件",
+          "记录",
+          "其他"
+        ],
+        "uses": 1,
+        "floorStart": 9,
+        "floorEnd": 9
+      },
+      {
+        "id": "m7",
+        "owner": "角色甲",
+        "title": "事件",
+        "content": "另一件事发生。",
+        "date": "2020-02-06",
+        "memCategory": "行动",
+        "importance": 0.4,
+        "tags": [
+          "事件",
+          "记录",
+          "其它"
+        ],
+        "uses": 1,
+        "floorStart": 10,
+        "floorEnd": 10
+      }
+    ],
+    "tombs": []
+  },
+  "mergeExactMultiInputs": [
+    {
+      "id": "m1",
+      "owner": "角色甲",
+      "title": "标题甲",
+      "content": "角色甲在码头交付货物。",
+      "date": "2020-01-02",
+      "memCategory": "交易",
+      "importance": 0.6,
+      "tags": [
+        "码头",
+        "货物"
+      ],
+      "uses": 1,
+      "floorStart": 2,
+      "floorEnd": 4
+    },
+    {
+      "id": "m2",
+      "owner": "角色甲",
+      "title": "标题乙",
+      "content": "角色甲在码头交付货物。",
+      "date": "2020-01-01",
+      "memCategory": "交易",
+      "importance": 0.9,
+      "tags": [
+        "码头",
+        "交接"
+      ],
+      "uses": 2,
+      "floorStart": 1,
+      "floorEnd": 3
+    },
+    {
+      "id": "m3",
+      "owner": "角色甲",
+      "title": "天机阁密谈",
+      "content": "短。",
+      "date": "2020-02-01",
+      "memCategory": "情报",
+      "importance": 0.5,
+      "tags": [
+        "天机阁",
+        "密谈",
+        "情报"
+      ],
+      "uses": 1,
+      "floorStart": 5,
+      "floorEnd": 6
+    },
+    {
+      "id": "m4",
+      "owner": "角色甲",
+      "title": "天机阁密谈",
+      "content": "天机阁在密室密谈并留下字条。",
+      "date": "2020-02-03",
+      "memCategory": "情报",
+      "importance": 0.7,
+      "tags": [
+        "天机阁",
+        "字条"
+      ],
+      "uses": 4,
+      "floorStart": 6,
+      "floorEnd": 9
+    },
+    {
+      "id": "m5",
+      "owner": "角色乙",
+      "title": "标题甲",
+      "content": "角色甲在码头交付货物。",
+      "date": "2020-01-05",
+      "memCategory": "行动",
+      "importance": 0.3,
+      "tags": [
+        "旁观"
+      ],
+      "uses": 1,
+      "floorStart": 7,
+      "floorEnd": 8
+    },
+    {
+      "id": "m6",
+      "owner": "角色甲",
+      "title": "事件",
+      "content": "某事发生。",
+      "date": "2020-02-05",
+      "memCategory": "行动",
+      "importance": 0.2,
+      "tags": [
+        "事件",
+        "记录",
+        "其他"
+      ],
+      "uses": 1,
+      "floorStart": 9,
+      "floorEnd": 9
+    },
+    {
+      "id": "m7",
+      "owner": "角色甲",
+      "title": "事件",
+      "content": "另一件事发生。",
+      "date": "2020-02-06",
+      "memCategory": "行动",
+      "importance": 0.4,
+      "tags": [
+        "事件",
+        "记录",
+        "其它"
+      ],
+      "uses": 1,
+      "floorStart": 10,
+      "floorEnd": 10
+    }
+  ],
+  "h9": {
+    "A": {
+      "rel": {
+        "sims": [
+          0.2,
+          0.2
+        ],
+        "basis": [
+          "tags",
+          "tags"
+        ],
+        "tagRich": true
+      },
+      "clusters": [],
+      "pick": {
+        "picked": 0,
+        "entries": 0,
+        "total": 0
+      }
+    },
+    "B": {
+      "rel": {
+        "sims": [
+          0.778,
+          0.778
+        ],
+        "basis": [
+          "text",
+          "text"
+        ],
+        "tagRich": false
+      },
+      "clusters": [
+        {
+          "idxs": [
+            0,
+            1
+          ],
+          "size": 2,
+          "maxSim": 0.778,
+          "basis": "text"
+        }
+      ],
+      "pick": {
+        "picked": 1,
+        "entries": 2,
+        "total": 1,
+        "defects": 0
+      }
+    },
+    "C": {
+      "rel": {
+        "sims": [
+          0.125,
+          0.125
+        ],
+        "basis": [
+          "text",
+          "text"
+        ],
+        "tagRich": false
+      },
+      "clusters": [],
+      "pick": {
+        "picked": 0,
+        "entries": 1,
+        "total": 0,
+        "defects": 1,
+        "groups": [
+          [
+            1,
+            1,
+            "标签数量不合规（需 3-5 个，现 1 个）"
+          ]
+        ]
+      }
+    }
+  },
+  "inputs": {
+    "scenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [
+        {
+          "id": "k1",
+          "name": "角色甲",
+          "appearance": "灰袍",
+          "tags": [],
+          "uses": 1
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "owner": "角色甲",
+          "title": "码头交接",
+          "content": "角色甲在码头交接货物。",
+          "date": "2020-01-01",
+          "memCategory": "交易",
+          "importance": 0.6,
+          "tags": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "m2",
+          "owner": "角色甲",
+          "title": "码头交货",
+          "content": "甲把货物在码头交出去。",
+          "date": "2020-01-02",
+          "memCategory": "交易",
+          "importance": 0.8,
+          "tags": [
+            "码头",
+            "交接",
+            "货物"
+          ],
+          "uses": 3,
+          "floorStart": 2,
+          "floorEnd": 4
+        },
+        {
+          "id": "m3",
+          "owner": "角色乙",
+          "title": "仓库取物",
+          "content": "角色乙在仓库取走木箱。",
+          "date": "2020-01-03",
+          "memCategory": "行动",
+          "importance": 0.4,
+          "tags": [
+            "仓库",
+            "木箱"
+          ],
+          "uses": 1,
+          "floorStart": 3,
+          "floorEnd": 5
+        },
+        {
+          "id": "m4",
+          "owner": "角色甲",
+          "title": "空占位",
+          "content": "待补充",
+          "date": "",
+          "memCategory": "",
+          "importance": 0.1,
+          "tags": [],
+          "uses": 0,
+          "floorStart": 5,
+          "floorEnd": 5
+        },
+        {
+          "id": "m9",
+          "owner": "角色甲",
+          "title": "孤儿记忆",
+          "content": "一条无人记得的旧事，字段齐整无缺陷，也没有任何关联行。",
+          "date": "2020-01-05",
+          "memCategory": "杂项",
+          "importance": 0.5,
+          "tags": [
+            "旧事",
+            "杂项",
+            "孤例"
+          ],
+          "uses": 1,
+          "floorStart": 6,
+          "floorEnd": 6
+        },
+        {
+          "id": "m6",
+          "owner": "角色乙",
+          "title": "仓库取物（重复）",
+          "content": "角色乙在仓库取走木箱。",
+          "date": "2020-01-03",
+          "memCategory": "行动",
+          "importance": 0.3,
+          "tags": [
+            "仓库",
+            "木箱"
+          ],
+          "uses": 2,
+          "floorStart": 4,
+          "floorEnd": 5
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [
+        {
+          "id": "lnk_m1_a",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲",
+          "how": "participant",
+          "deviation": "unknown",
+          "uses": 2,
+          "updatedAt": 1000
+        },
+        {
+          "id": "lnk_m2_a",
+          "dim": "memories",
+          "refId": "m2",
+          "who": "角色甲",
+          "how": "witness",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1000
+        },
+        {
+          "id": "lnk_m2_b",
+          "dim": "memories",
+          "refId": "m2",
+          "who": "角色乙",
+          "how": "told",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1200
+        },
+        {
+          "id": "lnk_m4_x",
+          "dim": "memories",
+          "refId": "m4",
+          "who": "角色甲",
+          "how": "participant",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1000
+        },
+        {
+          "id": "lnk_gone",
+          "dim": "memories",
+          "refId": "m-none",
+          "who": "角色丙",
+          "how": "witness",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1000
+        }
+      ],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "repairCursor": {}
+    },
+    "ai": "{\"合并\":[{\"保留\":1,\"并入\":[2],\"标题\":\"码头交接货物\",\"正文\":\"角色甲在码头交接货物并收取银两。\",\"日期\":\"2020-01-01\",\"分类\":\"交易\",\"标签\":[\"码头\",\"交接\",\"货物\",\"银两\"]}],\"修订\":[],\"删除\":[4]}"
+  },
+  "note": "oracle = 真实 V1 插件 v1.206 runMemoryRepair 全链路（fetch 桩喂 AI）"
+}

@@ -169,7 +169,32 @@ export const SETTINGS_CONTROLS = {
             "label": "角色修复强制补全出生日期（正文没写则合理推测，绝不留空）",
             "type": "checkbox"
         },
-    
+        // —— B8-6c 补齐：V1 设定④「质检维护」页里以**手写 div** 形式给出的 22 个控件
+        //    （B4 的自动提取只覆盖 `f(...)` / `switchField(...)`，手写 `data-ftt-cfg` 块被漏掉；键与标签按 V1 原样、顺序按 V1）
+        //    概念 / 记忆 / 悬念 / 物品 四域「相关组聚类修复」各 4 项（相关性阈值 · 每次核对组数 · 每次提交条数 · 组规模上限）
+        { "key": "conceptRepairSim", "label": "概念修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
+        { "key": "conceptRepairMaxClusters", "label": "概念修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "conceptRepairMaxItems", "label": "概念修复每次提交条数上限（2-120，默认 24）", "type": "text" },
+        { "key": "conceptRepairMaxClusterSize", "label": "概念相关组规模上限（2-40，默认 8）", "type": "text" },
+        { "key": "memoryRepairSim", "label": "记忆修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
+        { "key": "memoryRepairMaxClusters", "label": "记忆修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "memoryRepairMaxItems", "label": "记忆修复每次提交条数上限（2-120，默认 24）", "type": "text" },
+        { "key": "memoryRepairMaxClusterSize", "label": "记忆相关组规模上限（2-40，默认 8）", "type": "text" },
+        { "key": "suspenseRepairSim", "label": "悬念修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
+        { "key": "suspenseRepairMaxClusters", "label": "悬念修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "suspenseRepairMaxItems", "label": "悬念修复每次提交条数上限（2-120，默认 24）", "type": "text" },
+        { "key": "suspenseRepairMaxClusterSize", "label": "悬念相关组规模上限（2-40，默认 8）", "type": "text" },
+        { "key": "itemRepairSim", "label": "物品修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
+        { "key": "itemRepairMaxClusters", "label": "物品修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "itemRepairMaxItems", "label": "物品修复每次提交条数上限（2-120，默认 24）", "type": "text" },
+        { "key": "itemRepairMaxClusterSize", "label": "物品相关组规模上限（2-40，默认 8）", "type": "text" },
+        //    物品「低调用清理」（零 AI）6 项：比例 / 物品数门槛 / 平均调用门槛 / 楼层门槛 / 清扫间隔 / 每轮最多删除
+        { "key": "itemLowUsesRatio", "label": "低调用清理·比例（默认 0.05）", "type": "text" },
+        { "key": "itemLowUsesMinItems", "label": "低调用清理·物品数门槛（默认 100）", "type": "text" },
+        { "key": "itemLowUsesMinAvg", "label": "低调用清理·平均调用门槛（默认 5）", "type": "text" },
+        { "key": "itemLowUsesMinFloors", "label": "低调用清理·楼层门槛（默认 200；0=不生效）", "type": "text" },
+        { "key": "itemLowUsesEveryFloors", "label": "低调用清理·清扫间隔（默认 40 楼；0=不限制）", "type": "text" },
+        { "key": "itemLowUsesMaxDelete", "label": "低调用清理·每轮最多删除（默认 1）", "type": "text" },
     ],
     "api": [],
     "analyze": [
