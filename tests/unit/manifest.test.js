@@ -5,6 +5,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
+import { folderFromUrl, folderInfo } from '../../host/paths.js';
+import { panelFolderInfo } from '../../ui/settings-panel.js';
 import * as entry from '../../index.js';
 import { VERSION, DATA_VERSION, EXTENSION_FOLDER, MODULE_NAME } from '../../core/constants.js';
 
@@ -34,10 +36,19 @@ R.assert('M6 hooks 全部对应入口具名导出函数', (() => {
 R.assert('M7 版本四处一致（manifest / package / constants / 入口导出）',
     manifest.version === pkg.version && manifest.version === VERSION && entry.__internals.VERSION === VERSION, [manifest.version, pkg.version, VERSION]);
 R.assert('M8 数据版本为独立整数（与代码版本解耦）', Number.isInteger(DATA_VERSION) && DATA_VERSION >= 1, DATA_VERSION);
-R.assert('M9 扩展目录名与仓库目录一致（renderExtensionTemplateAsync 依赖）', (() => {
-    const folder = String(EXTENSION_FOLDER).split('/').pop();
-    return folder === basename(ROOT) && EXTENSION_FOLDER.indexOf('third-party/') === 0;
-})(), [EXTENSION_FOLDER, basename(ROOT)]);
+R.assert('M9 扩展目录名解析（安装位置无关）：常量约定 third-party/* + 从模块 URL 推导 + 面板/更新实际使用解析值', (() => {
+    const info = folderInfo();
+    const a = folderFromUrl('http://127.0.0.1:8000/scripts/extensions/third-party/ftt-memory-v2/host/paths.js');
+    const b = folderFromUrl('https://x/scripts/extensions/foo/index.js');
+    const c = folderFromUrl('/not/an/extension/path.js');
+    const panel = panelFolderInfo();
+    // 目录名与仓库目录一致是「仓库约定」；**运行时以安装目录为准**（归档/改名安装同样可用）
+    const conventionOk = EXTENSION_FOLDER.indexOf('third-party/') === 0
+        && String(EXTENSION_FOLDER).split('/').pop() === basename(ROOT)
+        || info.source === 'runtime';                     // 直接安装在别处时以运行时推导为准
+    return conventionOk && a === 'third-party/ftt-memory-v2' && b === 'foo' && c === ''
+        && info.folder && info.source === 'constant' && panel.folder === info.folder;
+})(), (() => { const i = folderInfo(); return [i.constant, i.derived, i.folder, i.source, basename(ROOT)]; })());
 R.assert('M10 模块名唯一且为 extensionSettings 键', MODULE_NAME === 'ftt_memory_v2', MODULE_NAME);
 R.assert('M11 入口导出装配面（init/teardown/runtimeState/状态摘要）', ['init', 'teardown', 'runtimeState', 'extraForStatus'].every(k => typeof entry[k] === 'function'), '');
 R.assert('M12 许可一致：LICENSE 为 AGPL-3.0 官方文本且 package.json 声明一致', (() => {

@@ -6,11 +6,12 @@
 //   ② 回退远端 manifest/CHANGELOG（仅用于显示版本号与更新要点；不写任何文件、不执行远端代码）
 // 约定：检查失败一律静默（只记录），绝不阻塞启动/发送/提取；自动路径永不调用 update 端点。
 // ============================================================
-import { VERSION, EXTENSION_FOLDER, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INTERVAL_HOURS } from '../core/constants.js';
+import { VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INTERVAL_HOURS } from '../core/constants.js';
 import { judgeUpdate, repoRawUrls, shouldAutoCheck, updateReport, summarizeCheck, extractChangelogHead } from '../core/update.js';
 import { getCtx, hasHost } from './st-api.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
 import { readUpdateState, writeUpdateState, ensureFirstRun } from '../adapters/update-state.js';
+import { extensionFolder } from './paths.js';
 
 /** 当前更新配置（设置项优先，缺省用常量） */
 export function updateConfig() {
@@ -79,9 +80,9 @@ async function getText(url) {
 
 /** ST 原生版本查询（git 真值）：用户态优先，失败再试全局态 */
 export async function checkViaStEndpoint() {
-    const body = { extensionName: EXTENSION_FOLDER, global: false };
+    const body = { extensionName: extensionFolder(), global: false };
     let r = await postJson('/api/extensions/version', body);
-    if (!r.ok) r = await postJson('/api/extensions/version', { extensionName: EXTENSION_FOLDER, global: true });
+    if (!r.ok) r = await postJson('/api/extensions/version', { extensionName: extensionFolder(), global: true });
     if (!r.ok) return { ok: false, error: r.error || 'ST 版本端点不可用' };
     const d = r.data || {};
     return {
@@ -163,8 +164,8 @@ export async function runUpdateCheck(opts) {
 
 /** 显式执行 ST 更新（只有用户点击才会调用；自动路径永不调用） */
 export async function runStUpdate() {
-    let r = await postJson('/api/extensions/update', { extensionName: EXTENSION_FOLDER, global: false });
-    if (!r.ok) r = await postJson('/api/extensions/update', { extensionName: EXTENSION_FOLDER, global: true });
+    let r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: false });
+    if (!r.ok) r = await postJson('/api/extensions/update', { extensionName: extensionFolder(), global: true });
     if (!r.ok) return { ok: false, error: r.error || 'ST 更新端点不可用' };
     const d = r.data || {};
     return { ok: true, isUpToDate: d.isUpToDate === undefined ? null : !!d.isUpToDate, commit: String(d.shortCommitHash || ''), remoteUrl: String(d.remoteUrl || '') };

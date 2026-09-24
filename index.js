@@ -23,6 +23,7 @@ import { listUnprocessedFloors } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
+import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
@@ -137,7 +138,7 @@ export async function init() {
     } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { runtime.slash = registerSlashCommand(extraForStatus, { importV1: runV1Import, extract: runExtract, pending: pendingFloors }); } catch (e) { runtime.slash = false; }
     try { runtime.macros = registerMacros(extraForStatus); } catch (e) { runtime.macros = false; }
-    try { installDevtools({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t }); } catch (e) { /* 忽略 */ }
+    try { installDevtools({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo }); } catch (e) { /* 忽略 */ }
     // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
     try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;

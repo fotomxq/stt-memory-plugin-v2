@@ -3,7 +3,8 @@
 // 事实源：ST 官方文档「HTML templates」：renderExtensionTemplateAsync(folder, file, data) → #extensions_settings2
 // 约定：模板不可用时回退到内置最小 HTML（保证面板一定存在，方便排障）。
 // ============================================================
-import { EXTENSION_FOLDER, VERSION } from '../core/constants.js';
+import { VERSION } from '../core/constants.js';
+import { extensionFolder, folderInfo } from '../host/paths.js';
 import { getCtx } from '../host/st-api.js';
 import { getSettings, DEFAULT_SETTINGS, setSetting } from '../adapters/settings.js';
 import { cfg } from '../core/model/runtime.js';
@@ -198,7 +199,8 @@ export async function mountSettingsPanel(extra) {
     let html = '';
     try {
         if (ctx && typeof ctx.renderExtensionTemplateAsync === 'function') {
-            html = String(await ctx.renderExtensionTemplateAsync(EXTENSION_FOLDER, 'settings', data) || '');
+            // 目录名运行时解析（安装到任意目录名都能渲染模板）；失败回退常量见 host/paths.js
+            html = String(await ctx.renderExtensionTemplateAsync(extensionFolder(), 'settings', data) || '');
         }
     } catch (e) {
         html = '';
@@ -345,3 +347,6 @@ export function unmountSettingsPanel() {
 }
 
 export const PANEL_IDS = Object.freeze({ mount: MOUNT_ID, root: ROOT_ID, defaults: Object.keys(DEFAULT_SETTINGS) });
+
+/** 面板目录信息（诊断：实际用于 renderExtensionTemplateAsync 的扩展目录名） */
+export function panelFolderInfo() { return folderInfo(); }
