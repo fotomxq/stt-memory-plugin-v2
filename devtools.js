@@ -293,6 +293,22 @@ export function installDevtools(hooks) {
             flattenPlotSegment: (item) => (hooks && typeof hooks.flattenPlotSegment === 'function' ? hooks.flattenPlotSegment(item) : null),
             atomSubState: () => (hooks && typeof hooks.atomSubState === 'function' ? hooks.atomSubState() : 'list'),
             setAtomSub: (v) => (hooks && typeof hooks.setAtomSub === 'function' ? hooks.setAtomSub(v) : 'list'),
+            // B8-7-b 平行世界推演（weave）/ 平行事件推进（advance）/ 转正（promote）/ 清理（prune）
+            weaveEnabled: () => (hooks && typeof hooks.weaveEnabled === 'function' ? hooks.weaveEnabled() : false),
+            weavePassiveDue: (endF) => (hooks && typeof hooks.weavePassiveDue === 'function' ? hooks.weavePassiveDue(endF) : true),
+            weaveInputSig: (start, end, floorsText) => (hooks && typeof hooks.weaveInputSig === 'function' ? hooks.weaveInputSig(start, end, floorsText) : ''),
+            matchParallelsByKeywords: (keywords) => (hooks && typeof hooks.matchParallelsByKeywords === 'function' ? hooks.matchParallelsByKeywords(keywords) : []),
+            scheduleParallelWeave: (fr, keywords) => (hooks && typeof hooks.scheduleParallelWeave === 'function' ? hooks.scheduleParallelWeave(fr, keywords) : null),
+            runParallelWeave: (fr, opts) => (hooks && typeof hooks.runParallelWeave === 'function' ? hooks.runParallelWeave(fr, opts || {}) : Promise.resolve({ ok: false, error: 'no-hook' })),
+            advanceContextSeed: (p) => (hooks && typeof hooks.advanceContextSeed === 'function' ? hooks.advanceContextSeed(p) : []),
+            buildAdvanceContext: (targets) => (hooks && typeof hooks.buildAdvanceContext === 'function' ? hooks.buildAdvanceContext(targets) : ''),
+            buildAdvancePrompt: (targets, memText) => (hooks && typeof hooks.buildAdvancePrompt === 'function' ? hooks.buildAdvancePrompt(targets, memText) : null),
+            applyAdvanceUpdate: (p, u) => (hooks && typeof hooks.applyAdvanceUpdate === 'function' ? hooks.applyAdvanceUpdate(p, u) : false),
+            runParallelAdvance: (opts) => (hooks && typeof hooks.runParallelAdvance === 'function' ? hooks.runParallelAdvance(opts || {}) : Promise.resolve({ ok: false, error: 'no-hook' })),
+            promoteParallelEvent: (id, opts) => (hooks && typeof hooks.promoteParallelEvent === 'function' ? hooks.promoteParallelEvent(id, opts || {}) : { ok: false, reason: 'no-hook' }),
+            prunePromotedParallels: () => (hooks && typeof hooks.prunePromotedParallels === 'function' ? hooks.prunePromotedParallels() : { removed: 0, kept: 0 }),
+            setParallelLastKeywords: (list) => (hooks && typeof hooks.setParallelLastKeywords === 'function' ? hooks.setParallelLastKeywords(list) : []),
+            parallelLastKeywords: () => (hooks && typeof hooks.parallelLastKeywords === 'function' ? hooks.parallelLastKeywords() : []),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;
