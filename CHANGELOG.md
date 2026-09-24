@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.14.0（2026-09-26）· B8-5 遗忘域（记忆遗忘 + 通用遗忘清扫 + 设定页控件补齐）
+
+**本版（B8-5）**：
+1. **内核**（新增 `core/forget.js`，取自 V1 `09-AI摘要与楼层处理.js` 遗忘族）：
+   ① 记忆遗忘机制（v1.63）：`memoryForgetAvg` / `memoryForgetScore`（**只按剧情日期**老化 × 低重要度加速缺口封顶 ×1.5，
+   `imp ≥ 均值` 免疫）/ `memoryForgetExpired` / `scheduleMemoryForget`（3s 防抖，已接入 `mergeDelta` 记忆写入分支）/
+   `runMemoryForget`（触发比例 + **不跌破保底** + 移除记 id 墓碑）；
+   ② 通用遗忘清扫（v1.153）：`LOWUSE_FORGET_DIMS` 六维 + `lowUseSceneIsLeaf` + `lowUseSweepGate`/`lowUseSweepMark`（40 楼冷却闸门）+
+   `sweepLowUseForget`（条目数/平均调用门槛 + 长期未现门槛 + 重要度保护 + 名册·档案只删零调用 + 每维度每轮 1 条 + 不跌破保底 + 墓碑）；
+   ③ 诊断入口：`forgetState` / `forgetRunAll`（一次跑齐状态衰退 / 记忆遗忘 / 通用清扫 / 库存裁剪）/ `cancelForgetTimers`；
+2. **`core/ingest.js`**：导出遗忘域共用助手（`storeMinFor`/`storeCapFor`/`enforceDimCaps`/`repairClampNum`/`memoryImportance`/`calcTimeDecay`/`STORE_LIMITS`/`DIM_CAP_KEYS`）；
+   **修正 `calcTimeDecay`**：V1 的 `item <= 0` 会把 **1970 年前的剧情日期**（负毫秒）当成「无时间信息」→ 状态衰退 / 记忆遗忘 /
+   平行事件衰退对 19~20 世纪剧情**整体失效**；V2 按 V1 注释语义（「无时间信息视为新」）只判 `!Number.isFinite(item)`（**有意偏差**，见 `docs/P8n` §2）；
+3. **设定页控件补齐**：依 V1 源码顺序补入 B4 自动提取遗漏的 **20 个 `switchField` 开关**
+   （feed 3 / analyze 2 / extract 6 / forget 3 / prompts 1 / parallels 2 / rumors 2 / debug 1），并把受影响的 8 个页面控件顺序对齐 V1；
+   设定页控件 **127 → 147**；
+4. **界面**（新增 `ui/forget.js`）：遗忘页改为 V1 **五分节布局**（状态记录衰退 / 记忆遗忘机制 / 存储保底·上限 / 通用遗忘清扫 /
+   「平行事件衰退已移至平行页」提示）+ 一行 V2 只读诊断（当前条数 / 上限 / 保底 / 清扫冷却）；
+5. **接线**：`FTT.*` 新增 6 个遗忘域入口（`forgetState`/`forgetRunAll`/`stateDecay`/`memoryForget`/`lowUseSweep`/`lowUseGate`）；
+   `teardown` 清理遗忘定时器；
+6. **黄金样本 8 组（oracle = 真实 V1 插件 v1.206）**：记忆遗忘打分、`runMemoryForget`（移除 + 墓碑 + 保底）、关闭/无时钟短路、
+   场景叶子判定、清扫闸门三态、`sweepLowUseForget` 全流程、三类保护、`enforceDimCaps`。
+
+**验证**：`tests/unit/forget-golden.test.js` **17 项** + 冒烟 **S1–S4**；门禁全绿：单元 **36 文件 / 498 断言**、
+冒烟 **85 项**、内核纯净度 0、内核标识符 0、词条 54 键、版本一致、文档 0 违规。
+
+**有意偏差（详见 `docs/P8n-B8-5遗忘域.md` §2）**：`calcTimeDecay` 对 1970 前剧情日期不再视为「无时间信息」
+（V1 下该批数据完全不遗忘，黄金样本已记录 V1 的原值以便追溯）；页面新增只读诊断行；遗忘仍为**自动行为**
+（V1 该页无手动按钮），另给 `FTT.forgetRunAll()` 诊断入口。
+
 ## v2.13.0（2026-09-26）· B8-4 内容弱化（NSFW）（词条库 + 固定规则转化库 + AI 弱化）
 
 **本版（B8-4）**：

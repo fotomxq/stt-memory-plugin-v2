@@ -123,6 +123,13 @@ export function installDevtools(hooks) {
             nsfwRuleDelete: (i) => (hooks && typeof hooks.nsfwRuleDelete === 'function' ? hooks.nsfwRuleDelete(i) : null),
             nsfwKeywordReset: () => (hooks && typeof hooks.nsfwKeywordReset === 'function' ? hooks.nsfwKeywordReset() : null),
             nsfwRuleReset: () => (hooks && typeof hooks.nsfwRuleReset === 'function' ? hooks.nsfwRuleReset() : null),
+            // B8-5 遗忘域
+            forgetState: () => (hooks && typeof hooks.forgetState === 'function' ? hooks.forgetState() : null),
+            forgetRunAll: (opts) => (hooks && typeof hooks.forgetRunAll === 'function' ? hooks.forgetRunAll(opts || {}) : Promise.resolve(null)),
+            stateDecay: (opts) => (hooks && typeof hooks.stateDecay === 'function' ? hooks.stateDecay(opts || {}) : Promise.resolve(null)),
+            memoryForget: (opts) => (hooks && typeof hooks.memoryForget === 'function' ? hooks.memoryForget(opts || {}) : Promise.resolve(null)),
+            lowUseSweep: (opts) => (hooks && typeof hooks.lowUseSweep === 'function' ? hooks.lowUseSweep(opts || {}) : null),
+            lowUseGate: (every) => (hooks && typeof hooks.lowUseGate === 'function' ? hooks.lowUseGate(every) : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

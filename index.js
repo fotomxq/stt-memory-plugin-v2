@@ -43,6 +43,10 @@ import {
 } from './core/clock-extract.js';
 import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } from './core/clock-ai.js';
 import {
+    forgetState, forgetRunAll, runMemoryForget, sweepLowUseForget, lowUseSweepGate, cancelForgetTimers,
+} from './core/forget.js';
+import { runStateDecay } from './core/ingest.js';
+import {
     runNsfwSoften, nsfwSoftenState, nsfwFixedReplace, nsfwScan, nsfwKeywordHits, nsfwApplyRules,
     nsfwKeywordList, nsfwRuleList, nsfwKeywordAdd, nsfwKeywordDelete, nsfwRuleAdd, nsfwRuleDelete,
     nsfwKeywordReset, nsfwRuleReset,
@@ -351,6 +355,13 @@ function bootstrapDiagnostics() {
             nsfwRuleDelete: (i) => nsfwRuleDelete(i),
             nsfwKeywordReset: () => nsfwKeywordReset(),
             nsfwRuleReset: () => nsfwRuleReset(),
+            // B8-5 遗忘域（状态衰退 / 记忆遗忘 / 通用清扫；V1 中为自动行为，这里另给诊断入口）
+            forgetState: () => forgetState(),
+            forgetRunAll: (opts) => forgetRunAll(opts || {}),
+            stateDecay: (opts) => runStateDecay(opts || {}),
+            memoryForget: (opts) => runMemoryForget(opts || {}),
+            lowUseSweep: (opts) => sweepLowUseForget(opts || {}),
+            lowUseGate: (every) => lowUseSweepGate('general', every),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
@@ -629,6 +640,7 @@ export function teardown() {
     try { closePanel(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     try { resetSyncState(); } catch (e) { /* noop */ }
+    try { cancelForgetTimers(); } catch (e) { /* noop */ }
     runtime.ready = false;
     return true;
 }

@@ -100,6 +100,16 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "autoRepairOnMergeFail",
+            "label": "提取合并失败后自动修复",
+            "type": "checkbox"
+        },
+        {
+            "key": "repairAutoAi",
+            "label": "AI 修订措辞（关闭＝只做机械清理）",
+            "type": "checkbox"
+        },
+        {
             "key": "repairFailDelaySec",
             "label": "失败后延迟自动修复(秒)",
             "type": "text"
@@ -153,7 +163,13 @@ export const SETTINGS_CONTROLS = {
             "key": "characterBirthDefaultAge",
             "label": "无年龄线索时的默认成年年龄（默认 25）",
             "type": "text"
-        }
+        },
+        {
+            "key": "characterBirthInfer",
+            "label": "角色修复强制补全出生日期（正文没写则合理推测，绝不留空）",
+            "type": "checkbox"
+        },
+    
     ],
     "api": [],
     "analyze": [
@@ -168,13 +184,29 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "plotSegmentProtectManual",
+            "label": "保护已存在的时间范围（不覆盖）",
+            "type": "checkbox"
+        },
+        {
+            "key": "plotSegmentIncremental",
+            "label": "只整理未覆盖的情节（增量）",
+            "type": "checkbox"
+        },
+        {
             "key": "plotSegmentTextLimit",
             "label": "单条剧情线概述字数上限（默认 400）",
             "type": "text"
-        }
+        },
+    
     ],
     "safety": [],
     "extract": [
+        {
+            "key": "useVector",
+            "label": "启用向量检索",
+            "type": "checkbox"
+        },
         {
             "key": "vectorTopN",
             "label": "向量 TopN",
@@ -189,6 +221,16 @@ export const SETTINGS_CONTROLS = {
             "key": "vectorTimeoutMs",
             "label": "超时(ms)",
             "type": "text"
+        },
+        {
+            "key": "jsExtractEnabled",
+            "label": "启用浏览器 JS 抽取",
+            "type": "checkbox"
+        },
+        {
+            "key": "useKeywordFlow",
+            "label": "发送前提取关键词流程",
+            "type": "checkbox"
         },
         {
             "key": "charBudget",
@@ -246,6 +288,16 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "currencyEnabled",
+            "label": "货币（记录 + 注入）",
+            "type": "checkbox"
+        },
+        {
+            "key": "currencyDynamicEnabled",
+            "label": "货币 · 动态识别其他角色",
+            "type": "checkbox"
+        },
+        {
             "key": "maxCurrencies",
             "label": "货币注入上限（默认 8）",
             "type": "text"
@@ -264,9 +316,20 @@ export const SETTINGS_CONTROLS = {
             "key": "maxParallelsInj",
             "label": "平行事件(注入)上限（默认 8）",
             "type": "text"
-        }
+        },
+        {
+            "key": "keywordFilterByContext",
+            "label": "关键词按上下文过滤",
+            "type": "checkbox"
+        },
+    
     ],
     "forget": [
+        {
+            "key": "stateDecayEnabled",
+            "label": "启用状态记录衰退",
+            "type": "checkbox"
+        },
         {
             "key": "stateDecayRatio",
             "label": "触发比例（默认 0.5＝超出上限 50% 触发）",
@@ -296,6 +359,11 @@ export const SETTINGS_CONTROLS = {
             "key": "stateRepairMatchSim",
             "label": "主体匹配相似度（默认 0.72，低于视为无档案）",
             "type": "text"
+        },
+        {
+            "key": "memoryForgetEnabled",
+            "label": "启用记忆遗忘机制",
+            "type": "checkbox"
         },
         {
             "key": "memoryForgetRatio",
@@ -358,6 +426,11 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "lowUseForgetEnabled",
+            "label": "通用遗忘清扫（修复内执行、零 AI、缓慢）",
+            "type": "checkbox"
+        },
+        {
             "key": "lowUseForgetRatio",
             "label": "低使用比例（默认 0.05）",
             "type": "text"
@@ -391,9 +464,15 @@ export const SETTINGS_CONTROLS = {
             "key": "lowUseForgetEveryFloors",
             "label": "清扫间隔（默认 40 楼；0=不限制）",
             "type": "text"
-        }
+        },
+    
     ],
     "rumors": [
+        {
+            "key": "rumorEnabled",
+            "label": "传言（记录 + 演化 + 注入）",
+            "type": "checkbox"
+        },
         {
             "key": "maxRumors",
             "label": "传言注入上限（默认 6）",
@@ -435,6 +514,11 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "rumorDecayEnabled",
+            "label": "启用传言衰退",
+            "type": "checkbox"
+        },
+        {
             "key": "rumorDecayRatio",
             "label": "触发比例（默认 0.5＝超出存储上限 50% 触发）",
             "type": "text"
@@ -453,9 +537,15 @@ export const SETTINGS_CONTROLS = {
             "key": "storeMaxRumors",
             "label": "存储上限（默认 200）",
             "type": "text"
-        }
+        },
+    
     ],
     "parallels": [
+        {
+            "key": "parallelWeaveEnabled",
+            "label": "提取后自动推演平行事件",
+            "type": "checkbox"
+        },
         {
             "key": "parallelWeaveInterval",
             "label": "被动触发楼层间隔（默认 10 楼）",
@@ -472,6 +562,11 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "parallelDecayEnabled",
+            "label": "启用平行事件衰退",
+            "type": "checkbox"
+        },
+        {
             "key": "parallelDecayRatio",
             "label": "触发比例（默认 0.5＝超出上限 50% 触发）",
             "type": "text"
@@ -480,9 +575,15 @@ export const SETTINGS_CONTROLS = {
             "key": "parallelDecayCutoff",
             "label": "移除阈值（默认 0.95）",
             "type": "text"
-        }
+        },
+    
     ],
     "prompts": [
+        {
+            "key": "atomCompactEnabled",
+            "label": "启用半自动情节总结（体量达标自动聚合早期情节）",
+            "type": "checkbox"
+        },
         {
             "key": "atomCompactChars",
             "label": "触发体量（全库正文字符，默认 30000）",
@@ -507,7 +608,8 @@ export const SETTINGS_CONTROLS = {
             "key": "atomCompactBatch",
             "label": "单轮批次数上限（默认 40）",
             "type": "text"
-        }
+        },
+    
     ],
     "storage": [
         {
@@ -660,7 +762,13 @@ export const SETTINGS_CONTROLS = {
             "type": "checkbox"
         }
     ],
-    "debug": [],
+    "debug": [
+        {
+            "key": "debugEnabled",
+            "label": "记录调试日志",
+            "type": "checkbox"
+        },
+    ],
     "data": [],
     "about": []
 };
@@ -680,6 +788,7 @@ import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
 import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
+import { forgetPageHtml } from './forget.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -817,6 +926,8 @@ export function settingsPageHtml(pageId) {
     if (pid === 'storage') return storagePageHtml(list);
     // 内容弱化（NSFW）页：V1 的**手写四节**（内容弱化 / 固定规则替换 / 转化库 / 识别词条库）
     if (pid === 'safety') return nsfwPageHtml();
+    // 遗忘页：V1 的**五分节布局**（状态衰退 / 记忆遗忘 / 存储保底上限 / 通用清扫）+ V2 只读诊断行
+    if (pid === 'forget') return forgetPageHtml(list);
     // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
     if (pid === 'base') return basePageHtml(list);
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');

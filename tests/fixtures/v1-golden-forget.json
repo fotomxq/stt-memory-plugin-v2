@@ -1,0 +1,1763 @@
+{
+  "memAvg": 0.5,
+  "memScores": [
+    [
+      "m1",
+      1,
+      true
+    ],
+    [
+      "m2",
+      1,
+      true
+    ],
+    [
+      "m3",
+      0,
+      false
+    ],
+    [
+      "m4",
+      0,
+      false
+    ]
+  ],
+  "forget1": {
+    "removed": 2,
+    "triggered": true,
+    "overRatio": false,
+    "n": 4,
+    "cap": 600,
+    "remain": 2
+  },
+  "forget1State": {
+    "ids": [
+      "m3",
+      "m4"
+    ],
+    "tombstones": [
+      "m1",
+      "m2"
+    ]
+  },
+  "forgetDisabled": {
+    "removed": 0,
+    "reason": "disabled"
+  },
+  "forgetNoClock": {
+    "removed": 0,
+    "reason": "no-story-clock"
+  },
+  "leaf": {
+    "root": false,
+    "leaf": true,
+    "noPath": true
+  },
+  "gateBefore": {
+    "ok": true,
+    "every": 40,
+    "last": 0,
+    "lastFloor": 400,
+    "wait": 0
+  },
+  "gateCooling": {
+    "ok": false,
+    "every": 40,
+    "last": 400,
+    "lastFloor": 410,
+    "wait": 30
+  },
+  "gateReady": {
+    "ok": true,
+    "every": 40,
+    "last": 400,
+    "lastFloor": 450,
+    "wait": 0
+  },
+  "sweep": {
+    "swept": 5,
+    "dims": {
+      "concepts": {
+        "label": "概念",
+        "removed": 1,
+        "names": [
+          "条目c0(0次·399楼)"
+        ]
+      },
+      "npcs": {
+        "label": "名册",
+        "removed": 1,
+        "names": [
+          "条目n0(0次·399楼)"
+        ]
+      },
+      "plans": {
+        "label": "计划",
+        "removed": 1,
+        "names": [
+          "条目p0(0次·399楼)"
+        ]
+      },
+      "suspense": {
+        "label": "悬念",
+        "removed": 1,
+        "names": [
+          "条目u0(0次·399楼)"
+        ]
+      },
+      "snapshots": {
+        "label": "角色档案",
+        "removed": 1,
+        "names": [
+          "条目k0(0次·399楼)"
+        ]
+      }
+    },
+    "skipped": [
+      "scenes:avg-low"
+    ],
+    "avg": {
+      "concepts": 5.28,
+      "scenes": 4.8,
+      "npcs": 5.28,
+      "plans": 5.28,
+      "suspense": 5.28,
+      "snapshots": 5.28
+    },
+    "candidates": 15,
+    "floor": 400,
+    "every": 40,
+    "cooldown": null
+  },
+  "sweepState": {
+    "concepts": 24,
+    "scenes": 25,
+    "npcs": 24,
+    "plans": 24,
+    "suspense": 24,
+    "snapshots": 24,
+    "marked": {
+      "generalFloor": 400
+    },
+    "deletedConcepts": 1,
+    "deletedScenes": 0
+  },
+  "sweepCooldown": {
+    "swept": 0,
+    "skipped": [
+      "cooldown"
+    ],
+    "cooldown": {
+      "last": 400,
+      "need": 40,
+      "wait": 20,
+      "floor": 420
+    }
+  },
+  "sweepDisabledLongAbsent": {
+    "swept": 0,
+    "skipped": [
+      "long-absent-disabled"
+    ]
+  },
+  "sweepFloorGuard": {
+    "swept": 0,
+    "skipped": [
+      "concepts:at-floor"
+    ],
+    "concepts": 25
+  },
+  "caps": {
+    "cut": 28,
+    "dims": {
+      "concepts": {
+        "label": "概念",
+        "removed": 13
+      },
+      "scenes": {
+        "label": "场景",
+        "removed": 15
+      }
+    }
+  },
+  "capsState": {
+    "concepts": 12,
+    "scenes": 10,
+    "deletedConcepts": 13
+  },
+  "v1Pre1970": {
+    "scores": [
+      [
+        "q1",
+        0
+      ],
+      [
+        "q2",
+        0
+      ]
+    ],
+    "expired": [
+      false,
+      false
+    ]
+  },
+  "v1Pre1970Forget": {
+    "removed": 0,
+    "triggered": false
+  },
+  "v1DecayGuard": {
+    "ms2001": true,
+    "ms1900": true
+  },
+  "inputs": {
+    "memScenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-01-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [],
+      "suspense": [],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [],
+      "memories": [
+        {
+          "id": "m1",
+          "title": "记忆m1",
+          "content": "内容m1",
+          "date": "2001-01-01",
+          "importance": 0.1,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "m2",
+          "title": "记忆m2",
+          "content": "内容m2",
+          "date": "2002-01-01",
+          "importance": 0.2,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "m3",
+          "title": "记忆m3",
+          "content": "内容m3",
+          "date": "2019-12-31",
+          "importance": 0.9,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        },
+        {
+          "id": "m4",
+          "title": "记忆m4",
+          "content": "内容m4",
+          "date": "2019-12-30",
+          "importance": 0.8,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "concepts": [],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0
+    },
+    "sweepScenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-01-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [],
+      "plans": [
+        {
+          "id": "p0",
+          "name": "条目p0",
+          "title": "条目p0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p1",
+          "name": "条目p1",
+          "title": "条目p1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p2",
+          "name": "条目p2",
+          "title": "条目p2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p3",
+          "name": "条目p3",
+          "title": "条目p3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p4",
+          "name": "条目p4",
+          "title": "条目p4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p5",
+          "name": "条目p5",
+          "title": "条目p5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p6",
+          "name": "条目p6",
+          "title": "条目p6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p7",
+          "name": "条目p7",
+          "title": "条目p7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p8",
+          "name": "条目p8",
+          "title": "条目p8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p9",
+          "name": "条目p9",
+          "title": "条目p9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p10",
+          "name": "条目p10",
+          "title": "条目p10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p11",
+          "name": "条目p11",
+          "title": "条目p11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p12",
+          "name": "条目p12",
+          "title": "条目p12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p13",
+          "name": "条目p13",
+          "title": "条目p13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p14",
+          "name": "条目p14",
+          "title": "条目p14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p15",
+          "name": "条目p15",
+          "title": "条目p15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p16",
+          "name": "条目p16",
+          "title": "条目p16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p17",
+          "name": "条目p17",
+          "title": "条目p17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p18",
+          "name": "条目p18",
+          "title": "条目p18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p19",
+          "name": "条目p19",
+          "title": "条目p19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p20",
+          "name": "条目p20",
+          "title": "条目p20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p21",
+          "name": "条目p21",
+          "title": "条目p21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p22",
+          "name": "条目p22",
+          "title": "条目p22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p23",
+          "name": "条目p23",
+          "title": "条目p23",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "p24",
+          "name": "条目p24",
+          "title": "条目p24",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u0",
+          "name": "条目u0",
+          "title": "条目u0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u1",
+          "name": "条目u1",
+          "title": "条目u1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u2",
+          "name": "条目u2",
+          "title": "条目u2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u3",
+          "name": "条目u3",
+          "title": "条目u3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u4",
+          "name": "条目u4",
+          "title": "条目u4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u5",
+          "name": "条目u5",
+          "title": "条目u5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u6",
+          "name": "条目u6",
+          "title": "条目u6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u7",
+          "name": "条目u7",
+          "title": "条目u7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u8",
+          "name": "条目u8",
+          "title": "条目u8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u9",
+          "name": "条目u9",
+          "title": "条目u9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u10",
+          "name": "条目u10",
+          "title": "条目u10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u11",
+          "name": "条目u11",
+          "title": "条目u11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u12",
+          "name": "条目u12",
+          "title": "条目u12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u13",
+          "name": "条目u13",
+          "title": "条目u13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u14",
+          "name": "条目u14",
+          "title": "条目u14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u15",
+          "name": "条目u15",
+          "title": "条目u15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u16",
+          "name": "条目u16",
+          "title": "条目u16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u17",
+          "name": "条目u17",
+          "title": "条目u17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u18",
+          "name": "条目u18",
+          "title": "条目u18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u19",
+          "name": "条目u19",
+          "title": "条目u19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u20",
+          "name": "条目u20",
+          "title": "条目u20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u21",
+          "name": "条目u21",
+          "title": "条目u21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u22",
+          "name": "条目u22",
+          "title": "条目u22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u23",
+          "name": "条目u23",
+          "title": "条目u23",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "u24",
+          "name": "条目u24",
+          "title": "条目u24",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "scenes": [
+        {
+          "id": "s-root",
+          "name": "条目s-root",
+          "title": "条目s-root",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "甲城"
+          ]
+        },
+        {
+          "id": "s-leaf",
+          "name": "条目s-leaf",
+          "title": "条目s-leaf",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "甲城",
+            "码头"
+          ]
+        },
+        {
+          "id": "s0",
+          "name": "条目s0",
+          "title": "条目s0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s1",
+          "name": "条目s1",
+          "title": "条目s1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "条目s2",
+          "title": "条目s2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "条目s3",
+          "title": "条目s3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s4",
+          "name": "条目s4",
+          "title": "条目s4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s5",
+          "name": "条目s5",
+          "title": "条目s5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s6",
+          "name": "条目s6",
+          "title": "条目s6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s7",
+          "name": "条目s7",
+          "title": "条目s7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s8",
+          "name": "条目s8",
+          "title": "条目s8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s9",
+          "name": "条目s9",
+          "title": "条目s9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s10",
+          "name": "条目s10",
+          "title": "条目s10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s11",
+          "name": "条目s11",
+          "title": "条目s11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s12",
+          "name": "条目s12",
+          "title": "条目s12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s13",
+          "name": "条目s13",
+          "title": "条目s13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s14",
+          "name": "条目s14",
+          "title": "条目s14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s15",
+          "name": "条目s15",
+          "title": "条目s15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s16",
+          "name": "条目s16",
+          "title": "条目s16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s17",
+          "name": "条目s17",
+          "title": "条目s17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s18",
+          "name": "条目s18",
+          "title": "条目s18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s19",
+          "name": "条目s19",
+          "title": "条目s19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s20",
+          "name": "条目s20",
+          "title": "条目s20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s21",
+          "name": "条目s21",
+          "title": "条目s21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        },
+        {
+          "id": "s22",
+          "name": "条目s22",
+          "title": "条目s22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1,
+          "pathArr": [
+            "乙城"
+          ]
+        }
+      ],
+      "npcs": [
+        {
+          "id": "n0",
+          "name": "条目n0",
+          "title": "条目n0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n1",
+          "name": "条目n1",
+          "title": "条目n1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n2",
+          "name": "条目n2",
+          "title": "条目n2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n3",
+          "name": "条目n3",
+          "title": "条目n3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n4",
+          "name": "条目n4",
+          "title": "条目n4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n5",
+          "name": "条目n5",
+          "title": "条目n5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n6",
+          "name": "条目n6",
+          "title": "条目n6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n7",
+          "name": "条目n7",
+          "title": "条目n7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n8",
+          "name": "条目n8",
+          "title": "条目n8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n9",
+          "name": "条目n9",
+          "title": "条目n9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n10",
+          "name": "条目n10",
+          "title": "条目n10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n11",
+          "name": "条目n11",
+          "title": "条目n11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n12",
+          "name": "条目n12",
+          "title": "条目n12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n13",
+          "name": "条目n13",
+          "title": "条目n13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n14",
+          "name": "条目n14",
+          "title": "条目n14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n15",
+          "name": "条目n15",
+          "title": "条目n15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n16",
+          "name": "条目n16",
+          "title": "条目n16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n17",
+          "name": "条目n17",
+          "title": "条目n17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n18",
+          "name": "条目n18",
+          "title": "条目n18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n19",
+          "name": "条目n19",
+          "title": "条目n19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n20",
+          "name": "条目n20",
+          "title": "条目n20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n21",
+          "name": "条目n21",
+          "title": "条目n21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n22",
+          "name": "条目n22",
+          "title": "条目n22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n23",
+          "name": "条目n23",
+          "title": "条目n23",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "n24",
+          "name": "条目n24",
+          "title": "条目n24",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "atoms": [],
+      "currentStates": [],
+      "snapshots": [
+        {
+          "id": "k0",
+          "name": "条目k0",
+          "title": "条目k0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k1",
+          "name": "条目k1",
+          "title": "条目k1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k2",
+          "name": "条目k2",
+          "title": "条目k2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k3",
+          "name": "条目k3",
+          "title": "条目k3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k4",
+          "name": "条目k4",
+          "title": "条目k4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k5",
+          "name": "条目k5",
+          "title": "条目k5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k6",
+          "name": "条目k6",
+          "title": "条目k6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k7",
+          "name": "条目k7",
+          "title": "条目k7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k8",
+          "name": "条目k8",
+          "title": "条目k8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k9",
+          "name": "条目k9",
+          "title": "条目k9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k10",
+          "name": "条目k10",
+          "title": "条目k10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k11",
+          "name": "条目k11",
+          "title": "条目k11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k12",
+          "name": "条目k12",
+          "title": "条目k12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k13",
+          "name": "条目k13",
+          "title": "条目k13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k14",
+          "name": "条目k14",
+          "title": "条目k14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k15",
+          "name": "条目k15",
+          "title": "条目k15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k16",
+          "name": "条目k16",
+          "title": "条目k16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k17",
+          "name": "条目k17",
+          "title": "条目k17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k18",
+          "name": "条目k18",
+          "title": "条目k18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k19",
+          "name": "条目k19",
+          "title": "条目k19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k20",
+          "name": "条目k20",
+          "title": "条目k20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k21",
+          "name": "条目k21",
+          "title": "条目k21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k22",
+          "name": "条目k22",
+          "title": "条目k22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k23",
+          "name": "条目k23",
+          "title": "条目k23",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "k24",
+          "name": "条目k24",
+          "title": "条目k24",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "memories": [],
+      "concepts": [
+        {
+          "id": "c0",
+          "name": "条目c0",
+          "title": "条目c0",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c1",
+          "name": "条目c1",
+          "title": "条目c1",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c2",
+          "name": "条目c2",
+          "title": "条目c2",
+          "uses": 0,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c3",
+          "name": "条目c3",
+          "title": "条目c3",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c4",
+          "name": "条目c4",
+          "title": "条目c4",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c5",
+          "name": "条目c5",
+          "title": "条目c5",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c6",
+          "name": "条目c6",
+          "title": "条目c6",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c7",
+          "name": "条目c7",
+          "title": "条目c7",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c8",
+          "name": "条目c8",
+          "title": "条目c8",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c9",
+          "name": "条目c9",
+          "title": "条目c9",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c10",
+          "name": "条目c10",
+          "title": "条目c10",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c11",
+          "name": "条目c11",
+          "title": "条目c11",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c12",
+          "name": "条目c12",
+          "title": "条目c12",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c13",
+          "name": "条目c13",
+          "title": "条目c13",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c14",
+          "name": "条目c14",
+          "title": "条目c14",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c15",
+          "name": "条目c15",
+          "title": "条目c15",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c16",
+          "name": "条目c16",
+          "title": "条目c16",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c17",
+          "name": "条目c17",
+          "title": "条目c17",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c18",
+          "name": "条目c18",
+          "title": "条目c18",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c19",
+          "name": "条目c19",
+          "title": "条目c19",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c20",
+          "name": "条目c20",
+          "title": "条目c20",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c21",
+          "name": "条目c21",
+          "title": "条目c21",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c22",
+          "name": "条目c22",
+          "title": "条目c22",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c23",
+          "name": "条目c23",
+          "title": "条目c23",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        },
+        {
+          "id": "c24",
+          "name": "条目c24",
+          "title": "条目c24",
+          "uses": 6,
+          "importance": 0.1,
+          "floorStart": 1,
+          "floorEnd": 1
+        }
+      ],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0,
+      "lowUseForget": {}
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（helpers: loadPlugin；楼层号用 ctx.getLastMessageId 固定）"
+}

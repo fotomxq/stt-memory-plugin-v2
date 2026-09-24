@@ -947,6 +947,70 @@ assert('R5 分析侧开关：开启后总览显示「🌶 内容弱化」状态�
 
 host.ctx.generateRaw = origGen2;
 
+let S3_DBG = null;
+// ---------- S 遗忘域（B8-5：状态衰退 / 记忆遗忘 / 通用遗忘清扫） ----------
+assert('S1 遗忘设定页：V1 五分节 + 3 个开关 + 只读诊断行（条数/上限/保底/冷却）', (async () => {
+    const r = await entry.popupAction('settingsSub', { sub: 'forget' });
+    const html = String(r.html || '');
+    return html.indexOf('状态记录衰退（只按剧情日期）') >= 0 && html.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
+        && html.indexOf('存储保底 / 上限') >= 0 && html.indexOf('通用遗忘清扫（概念 / 场景 / 名册 / 计划 / 悬念 / 角色档案）') >= 0
+        && html.indexOf('data-ftt-cfg="stateDecayEnabled"') >= 0 && html.indexOf('data-ftt-cfg="memoryForgetEnabled"') >= 0
+        && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0;
+})(), '');
+
+assert('S2 记忆遗忘：低重要度旧记忆被移除并留下 id 墓碑（跨端不复活）；无剧情时钟时不清理', (async () => {
+    const st = rtMod.state;
+    const mem = (id, date, imp) => ({ id, title: '记忆' + id, content: '内容' + id, date, importance: imp, uses: 1, floorStart: 1, floorEnd: 2, tags: [] });
+    st.memories = [mem('sm-a', '2001-01-01', 0.1), mem('sm-b', '2002-01-01', 0.2), mem('sm-c', '2019-12-31', 0.9), mem('sm-d', '2019-12-30', 0.8)];
+    st.state.date = '2020-01-01';
+    rtMod.cfg.memoryForgetEnabled = true; rtMod.cfg.memoryForgetCutoff = 0.9; rtMod.cfg.memoryForgetRatio = 0.5; rtMod.cfg.storeMinMemories = 2;
+    rtMod.setLastMessageId(10);
+    const r = await globalThis.FTT.memoryForget({});
+    const ids = (st.memories || []).map((x) => x.id).join(',');
+    const tombs = Object.keys((st.deleted || {}).memories || {}).sort().join(',');
+    st.state.date = '';
+    const r2 = await globalThis.FTT.memoryForget({});
+    st.state.date = '2020-01-01';
+    return r.removed === 2 && ids === 'sm-c,sm-d' && tombs === 'sm-a,sm-b' && r2.reason === 'no-story-clock';
+})(), '');
+
+assert('S3 通用遗忘清扫：达门槛的低使用极旧条目被清扫（每维度 1 条 + 冷却闸门 + 墓碑），并受保底保护', (() => {
+    const st = rtMod.state;
+    const ent = (id, extra) => Object.assign({ id, name: id, title: id, uses: 6, importance: 0.1, floorStart: 1, floorEnd: 1 }, extra || {});
+    st.concepts = [];
+    for (let i = 0; i < 25; i++) st.concepts.push(ent('sc' + i, { uses: i < 3 ? 0 : 6 }));
+    st.lowUseForget = {};
+    rtMod.cfg.lowUseForgetEnabled = true; rtMod.cfg.lowUseForgetEveryFloors = 40; rtMod.cfg.lowUseForgetMinItems = 20;
+    rtMod.cfg.lowUseForgetMinAvg = 5; rtMod.cfg.lowUseForgetMinFloors = 300; rtMod.cfg.lowUseForgetMaxDelete = 1;
+    rtMod.cfg.lowUseForgetProtectImportance = 0.7; rtMod.cfg.storeMinConcepts = 0;
+    rtMod.setLastMessageId(400);
+    const sw = globalThis.FTT.lowUseSweep({ dims: ['concepts'] });
+    const after = (st.concepts || []).length;
+    const tombs = Object.keys((st.deleted || {}).concepts || {}).length;
+    const sw2 = globalThis.FTT.lowUseSweep({ dims: ['concepts'] });
+    rtMod.cfg.storeMinConcepts = after;
+    st.lowUseForget = {};                       // 清掉冷却标记，单独验证「保底不跌破」
+    const sw3 = globalThis.FTT.lowUseSweep({ dims: ['concepts'] });
+    rtMod.cfg.storeMinConcepts = 0;
+    S3_DBG = { swept: sw.swept, after: after, tombs: tombs, dims: sw.dims, skipped: sw.skipped, skipped2: sw2.skipped, skipped3: sw3.skipped, avg: sw.avg, candidates: sw.candidates };
+    return sw.swept === 1 && after === 24 && tombs >= 1 && (sw.dims.concepts || {}).removed === 1
+        && sw2.skipped.indexOf('cooldown') >= 0 && sw3.skipped.indexOf('concepts:at-floor') >= 0;
+})(), (() => S3_DBG)());
+
+assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetState / forforeachRunAll 齐备且可运行', (async () => {
+    const st = rtMod.state;
+    st.state.date = '2020-01-01';
+    st.currentStates = [];
+    for (let i = 0; i < 40; i++) st.currentStates.push({ id: 'sst' + i, subject: '角色' + i, field: '状态', value: 'v' + i, date: '2001-01-01', uses: 1, updatedAt: 0 });
+    rtMod.setLastMessageId(20);
+    const decay = await globalThis.FTT.stateDecay({ force: true });
+    const state = globalThis.FTT.forgetState();
+    const all = await globalThis.FTT.forgetRunAll({});
+    return typeof decay.removed === 'number' && !!state && !!state.memoryForget && !!state.lowUse
+        && Array.isArray(state.lowUse.dims) && state.lowUse.dims.length === 6
+        && !!all.decay && !!all.forget && !!all.sweep && !!all.caps;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
