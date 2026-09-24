@@ -1,0 +1,785 @@
+{
+  "note": "V1 源码切片在固定输入下的输出（黄金样本；由 V1 源码切片在 V1 仓库生成）",
+  "inputs": {
+    "ATOMS": [
+      {
+        "id": "a1",
+        "text": "角色甲在码头发现被破坏的木箱，断口整齐。",
+        "title": "码头发现",
+        "date": "1919-11-29",
+        "time": "黄昏",
+        "tags": [
+          "码头",
+          "旧"
+        ],
+        "keywords": [
+          "木箱"
+        ],
+        "entities": [
+          "角色甲"
+        ],
+        "locations": [
+          "码头"
+        ],
+        "importance": 0.8,
+        "validity": "active",
+        "permanence": "permanent",
+        "floorStart": 3,
+        "floorEnd": 5,
+        "uses": 2
+      },
+      {
+        "text": "太短"
+      },
+      {
+        "text": "这是一条没有标题、有换行的情节正文第一行。\n第二行内容保留换行。",
+        "floorStart": -1,
+        "floorEnd": -1,
+        "tags": [
+          "a",
+          "a",
+          "b"
+        ],
+        "time": "正午"
+      },
+      {
+        "text": "情节带 fallback 楼层：正文足够长以通过最短长度校验。",
+        "floorStart": "x",
+        "floorEnd": null
+      }
+    ],
+    "STATES": [
+      {
+        "subject": "角色甲",
+        "field": "mood",
+        "value": "稍有戒备",
+        "status": "active",
+        "floorStart": 1,
+        "floorEnd": 2
+      },
+      {
+        "subject": "",
+        "field": "x",
+        "value": "y"
+      },
+      {
+        "subject": "角色乙",
+        "field": "短期目标",
+        "value": "  找出船主  ",
+        "status": "bogus",
+        "uses": 3
+      }
+    ],
+    "MEMS": [
+      {
+        "owner": "角色甲",
+        "date": "1919-11-29",
+        "title": "码头记忆",
+        "content": "甲记得木箱断口整齐",
+        "memCategory": "trade",
+        "tags": [
+          "码头",
+          "旧"
+        ]
+      },
+      {
+        "owner": "",
+        "content": "无主的记忆内容仍需保留吗？"
+      }
+    ],
+    "CONCEPTS": [
+      {
+        "name": "粮运",
+        "content": "粮食转运的流程与规矩",
+        "source": "正文",
+        "date": "1919-11-29",
+        "tags": [
+          "贸易"
+        ]
+      },
+      {
+        "name": ""
+      }
+    ],
+    "PARALLELS": [
+      {
+        "title": "平行支线",
+        "text": "若甲没有出城",
+        "date": "1919-11-30",
+        "gua": "高风险",
+        "causalLine": "甲留在城内",
+        "characters": [
+          "甲",
+          "乙"
+        ],
+        "location": "码头",
+        "goalOdds": 0.3,
+        "tags": [
+          "支线"
+        ]
+      },
+      {
+        "text": ""
+      }
+    ],
+    "ITEMS": [
+      {
+        "name": "铜制钥匙",
+        "qty": 2,
+        "desc": "黄铜材质，刻有花纹",
+        "location": "角色甲",
+        "carried": true,
+        "tags": [
+          "钥匙"
+        ]
+      },
+      {
+        "name": ""
+      }
+    ],
+    "PLANS": [
+      {
+        "content": "找到船主并问明货物去向",
+        "title": "寻找船主",
+        "status": "active",
+        "targetTime": "1919-12-01",
+        "planner": "角色甲",
+        "participants": [
+          "角色甲",
+          "角色乙"
+        ],
+        "progress": 30,
+        "steps": [
+          {
+            "text": "去码头",
+            "done": true
+          },
+          {
+            "text": "问船主",
+            "done": false
+          }
+        ],
+        "prereq": "先到码头",
+        "blockers": [
+          "船未靠岸"
+        ],
+        "history": [
+          {
+            "at": "1919-11-29",
+            "text": "启程",
+            "result": "ok"
+          }
+        ],
+        "clues": [
+          {
+            "at": "1919-11-29",
+            "text": "脚印",
+            "by": "甲"
+          }
+        ],
+        "resolveCondition": "问明去向",
+        "level": "高",
+        "phase": "推进",
+        "statusNote": "顺利"
+      },
+      {
+        "content": ""
+      }
+    ],
+    "SUSPENSE": [
+      {
+        "content": "木箱是谁破坏的？",
+        "title": "断口之谜",
+        "status": "open",
+        "targetTime": "1919-12-05",
+        "progress": 10,
+        "clues": [
+          {
+            "at": "1919-11-29",
+            "text": "断口整齐",
+            "by": "角色甲"
+          }
+        ],
+        "phase": "萌芽"
+      }
+    ],
+    "NPCS": [
+      {
+        "name": "船主",
+        "role": "船主",
+        "desc": "常年在码头",
+        "tags": [
+          "码头"
+        ]
+      },
+      {
+        "name": ""
+      }
+    ],
+    "SCENES": [
+      {
+        "name": "码头",
+        "pathStr": "港口>码头",
+        "desc": "堆满木箱",
+        "tags": [
+          "港口"
+        ]
+      },
+      {
+        "name": ""
+      }
+    ]
+  },
+  "dimCharLimits": {
+    "atoms": 360,
+    "states": 130,
+    "snapshots": 600,
+    "memories": 260,
+    "items": 160,
+    "plans": 200,
+    "suspense": 200,
+    "currencies": 200,
+    "rumors": 240,
+    "scenes": 260,
+    "concepts": 320,
+    "parallels": 560
+  },
+  "atoms": [
+    {
+      "id": "a1",
+      "kind": "plot_atom",
+      "text": "角色甲在码头发现被破坏的木箱，断口整齐。",
+      "title": "码头发现",
+      "type": "事件",
+      "date": "1919-11-29",
+      "time": "黄昏",
+      "entities": [
+        "角色甲"
+      ],
+      "locations": [
+        "码头"
+      ],
+      "tags": [
+        "码头",
+        "旧",
+        "木箱"
+      ],
+      "keywords": [],
+      "importance": 0.8,
+      "validity": "active",
+      "permanence": "permanent",
+      "floorStart": 3,
+      "floorEnd": 5,
+      "uses": 2,
+      "category": "atoms",
+      "content": "角色甲在码头发现被破坏的木箱，断口整齐。",
+      "strength": 80,
+      "extra": [
+        {
+          "name": "time",
+          "type": "string",
+          "value": "黄昏"
+        },
+        {
+          "name": "entities",
+          "type": "array",
+          "value": [
+            "角色甲"
+          ]
+        },
+        {
+          "name": "locations",
+          "type": "array",
+          "value": [
+            "码头"
+          ]
+        },
+        {
+          "name": "keywords",
+          "type": "array",
+          "value": [
+            "木箱"
+          ]
+        },
+        {
+          "name": "validity",
+          "type": "string",
+          "value": "active"
+        },
+        {
+          "name": "permanence",
+          "type": "string",
+          "value": "permanent"
+        }
+      ]
+    },
+    null,
+    {
+      "id": "atom_39cg3e",
+      "kind": "plot_atom",
+      "text": "这是一条没有标题、有换行的情节正文第一行。\n第二行内容保留换行。",
+      "title": "这是一条没有标题、有换行的情节正文第一行",
+      "type": "事件",
+      "date": "",
+      "time": "正午",
+      "entities": [],
+      "locations": [],
+      "tags": [
+        "a",
+        "b"
+      ],
+      "keywords": [],
+      "importance": 0.5,
+      "validity": "active",
+      "permanence": "episodic",
+      "floorStart": 7,
+      "floorEnd": 9,
+      "uses": 0,
+      "category": "atoms",
+      "content": "这是一条没有标题、有换行的情节正文第一行。\n第二行内容保留换行。",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "time",
+          "type": "string",
+          "value": "正午"
+        }
+      ]
+    },
+    {
+      "id": "atom_16vb4db",
+      "kind": "plot_atom",
+      "text": "情节带 fallback 楼层：正文足够长以通过最短长度校验。",
+      "title": "情节带 fallback 楼层：正文足够长以通过最短长度校验",
+      "type": "事件",
+      "date": "",
+      "time": "",
+      "entities": [],
+      "locations": [],
+      "tags": [],
+      "keywords": [],
+      "importance": 0.5,
+      "validity": "active",
+      "permanence": "episodic",
+      "floorStart": 7,
+      "floorEnd": 0,
+      "uses": 0,
+      "category": "atoms",
+      "content": "情节带 fallback 楼层：正文足够长以通过最短长度校验。",
+      "strength": 50,
+      "extra": []
+    }
+  ],
+  "currentStates": [
+    {
+      "id": "state_f1mtqp",
+      "key": "角色甲::心情",
+      "subject": "角色甲",
+      "field": "心情",
+      "value": "稍有戒备",
+      "status": "active",
+      "importance": 0.6,
+      "floorStart": 1,
+      "floorEnd": 2,
+      "updatedAt": "",
+      "updatedAtTime": "",
+      "history": [],
+      "uses": 0,
+      "category": "states",
+      "title": "角色甲·心情",
+      "content": "稍有戒备",
+      "strength": 60,
+      "extra": [
+        {
+          "name": "field",
+          "type": "string",
+          "value": "心情"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "value": "active"
+        }
+      ]
+    },
+    null,
+    {
+      "id": "state_1kty353",
+      "key": "角色乙::短期目标",
+      "subject": "角色乙",
+      "field": "短期目标",
+      "value": "找出船主",
+      "status": "active",
+      "importance": 0.6,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "updatedAt": "",
+      "updatedAtTime": "",
+      "history": [],
+      "uses": 3,
+      "category": "states",
+      "title": "角色乙·短期目标",
+      "content": "找出船主",
+      "strength": 60,
+      "extra": [
+        {
+          "name": "field",
+          "type": "string",
+          "value": "短期目标"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "value": "bogus"
+        }
+      ]
+    }
+  ],
+  "memories": [
+    {
+      "id": "mem_gv7oeq",
+      "owner": "角色甲",
+      "date": "1919-11-29",
+      "title": "码头记忆",
+      "content": "甲记得木箱断口整齐",
+      "tags": [
+        "码头",
+        "旧"
+      ],
+      "keywords": [],
+      "memCategory": "一般",
+      "importance": 0.5,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "category": "memories",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "owner",
+          "type": "string",
+          "value": "角色甲"
+        }
+      ]
+    },
+    {
+      "id": "mem_1s7e9nn",
+      "owner": "通用",
+      "date": "",
+      "title": "",
+      "content": "无主的记忆内容仍需保留吗？",
+      "tags": [],
+      "keywords": [],
+      "memCategory": "一般",
+      "importance": 0.5,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "category": "memories",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "owner",
+          "type": "string",
+          "value": "通用"
+        }
+      ]
+    }
+  ],
+  "concepts": [
+    {
+      "id": "con_1e5cfaz",
+      "name": "粮运",
+      "content": "粮食转运的流程与规矩",
+      "source": "正文",
+      "date": "1919-11-29",
+      "tags": [
+        "贸易"
+      ],
+      "keywords": [],
+      "importance": 0.5,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "category": "concepts",
+      "title": "粮运",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "source",
+          "type": "string",
+          "value": "正文"
+        }
+      ]
+    },
+    null
+  ],
+  "parallels": [
+    null,
+    null
+  ],
+  "items": [
+    {
+      "id": "item_bma0dv",
+      "name": "铜制钥匙",
+      "qty": 2,
+      "desc": "黄铜材质，刻有花纹",
+      "location": "角色甲",
+      "carried": true,
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "seenDate": "",
+      "tags": [
+        "钥匙"
+      ],
+      "keywords": [],
+      "category": "items",
+      "title": "铜制钥匙",
+      "content": "黄铜材质，刻有花纹",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "qty",
+          "type": "integer",
+          "value": 2
+        },
+        {
+          "name": "location",
+          "type": "string",
+          "value": "角色甲"
+        },
+        {
+          "name": "carried",
+          "type": "boolean",
+          "value": true
+        }
+      ]
+    },
+    null
+  ],
+  "plans": [
+    {
+      "id": "plan_8qt6bf",
+      "kind": "计划",
+      "content": "找到船主并问明货物去向",
+      "title": "寻找船主",
+      "date": "",
+      "time": "",
+      "characters": [],
+      "createdTime": "",
+      "targetTime": "1919-12-01",
+      "status": "open",
+      "tags": [],
+      "importance": 0.5,
+      "uses": 0,
+      "category": "plans",
+      "strength": 50,
+      "planner": "角色甲",
+      "participants": [
+        "角色甲",
+        "角色乙"
+      ],
+      "steps": [
+        {
+          "text": "去码头",
+          "done": true
+        },
+        {
+          "text": "问船主",
+          "done": false
+        }
+      ],
+      "prereq": "先到码头",
+      "blockers": [
+        "船未靠岸"
+      ],
+      "progress": 30,
+      "history": [
+        {
+          "text": "启程",
+          "at": "1919-11-29",
+          "result": "ok",
+          "atomRef": ""
+        }
+      ],
+      "suspenseRefs": [],
+      "memRefs": [],
+      "atomRefs": [],
+      "phase": "",
+      "statusNote": "顺利",
+      "extra": [
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "计划"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "value": "寻找船主"
+        },
+        {
+          "name": "characters",
+          "type": "array",
+          "value": []
+        },
+        {
+          "name": "targetTime",
+          "type": "date",
+          "value": "1919-12-01"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "value": "open"
+        }
+      ]
+    },
+    null
+  ],
+  "suspense": [
+    {
+      "id": "sus_1cmtsmq",
+      "kind": "悬念",
+      "content": "木箱是谁破坏的？",
+      "title": "断口之谜",
+      "date": "",
+      "time": "",
+      "characters": [],
+      "createdTime": "",
+      "resolveTime": "",
+      "status": "open",
+      "tags": [],
+      "importance": 0.5,
+      "uses": 0,
+      "category": "suspense",
+      "strength": 50,
+      "clues": [
+        {
+          "text": "断口整齐",
+          "by": "角色甲",
+          "at": "1919-11-29",
+          "atomRef": ""
+        }
+      ],
+      "resolveCondition": "",
+      "level": "",
+      "history": [],
+      "planRefs": [],
+      "memRefs": [],
+      "atomRefs": [],
+      "phase": "",
+      "statusNote": "",
+      "extra": [
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "悬念"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "value": "断口之谜"
+        },
+        {
+          "name": "characters",
+          "type": "array",
+          "value": []
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "value": "open"
+        }
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc_2v3fr",
+      "name": "船主",
+      "gender": "",
+      "title": "船主",
+      "desc": "常年在码头",
+      "location": "",
+      "follow": false,
+      "uses": 0,
+      "category": "snapshots",
+      "content": "常年在码头",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "follow",
+          "type": "boolean",
+          "value": false
+        }
+      ]
+    },
+    null
+  ],
+  "scenes": [
+    {
+      "id": "scene_17hqfqa",
+      "name": "码头",
+      "pathArr": [
+        "港口",
+        "码头"
+      ],
+      "pathStr": "港口>码头",
+      "desc": "堆满木箱",
+      "floorSeen": 0,
+      "uses": 0,
+      "category": "scenes",
+      "title": "码头",
+      "content": "堆满木箱",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "pathStr",
+          "type": "string",
+          "value": "港口>码头"
+        }
+      ]
+    },
+    null
+  ],
+  "hashes": {
+    "atom": "ed31y6_ddosh6",
+    "atomSlim": "1tbnepr_qlu0zj",
+    "state": "1o641x2_zsoeyd",
+    "plan": "59c642_1kg9nel",
+    "item": "1f61269_h01guv",
+    "bad": ""
+  },
+  "helpers": {
+    "dimCapAtoms": 360,
+    "atomTitleFromText": "第一行标题",
+    "toChineseFieldMood": "心情",
+    "toChineseCategoryTrade": "trade",
+    "mergeTags": [
+      "a",
+      "b",
+      "c"
+    ],
+    "makeExtra": [
+      {
+        "name": "type",
+        "type": "string",
+        "value": "事件"
+      },
+      {
+        "name": "time",
+        "type": "string",
+        "value": "黄昏"
+      }
+    ],
+    "detectValueType": [
+      "string",
+      "integer",
+      "boolean",
+      "array"
+    ],
+    "clockDateTrim": ""
+  }
+}

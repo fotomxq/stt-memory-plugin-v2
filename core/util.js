@@ -2,15 +2,16 @@
 // core/util.js —— 纯工具函数（零宿主依赖，Node 可直接单测）
 // ============================================================
 
-/** 稳定短哈希（FNV-1a 32 位十六进制；用于内容指纹、id 派生） */
-export function hashText(input) {
-    const s = String(input == null ? '' : input);
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) {
-        h ^= s.charCodeAt(i);
-        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-    }
-    return h.toString(16).padStart(8, '0');
+/**
+ * 稳定短哈希（**与 V1 完全一致**：djb2 → base36）。
+ * 说明：id 派生、内容指纹、删除墓碑都依赖它；换实现会导致「同一内容两端不同哈希」，
+ * 跨端去重与墓碑失效，因此**不要改动**此算法。
+ */
+export function hashText(s) {
+    let h = 5381;
+    const t = String(s == null ? '' : s);
+    for (let i = 0; i < t.length; i++) { h = ((h << 5) + h) ^ t.charCodeAt(i); }
+    return (h >>> 0).toString(36);
 }
 
 /** HTML 转义（UI 层渲染用；内核只提供纯函数实现） */
@@ -20,26 +21,33 @@ export function escHtml(v) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/** 单行化 + 截断（提示词与列表展示通用） */
-export function normText(v, max) {
-    const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
-    return (max && s.length > max) ? s.slice(0, max) : s;
+/**
+ * 文本归一（与 V1 完全一致：**保留换行**，仅统一 CRLF 与首尾空白，再按 max 截断）。
+ * 说明：内核归一化依赖此语义（atom 正文保留段落），不要改成单行化。
+ */
+export function normText(s, max) {
+    const t = String(s == null ? '' : s).replace(/\r\n?/g, '\n').trim();
+    return (max && t.length > max) ? t.slice(0, max) : t;
 }
 
-/** 数值夹取 */
-export function clamp(n, min, max) {
-    const v = Number(n);
-    if (!Number.isFinite(v)) return min;
-    return Math.min(max, Math.max(min, v));
+/** 单行化（提示词/状态行展示用；与 normText 分开，避免误用） */
+export function oneLine(s, max) {
+    const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    return (max && t.length > max) ? t.slice(0, max) : t;
 }
 
-/** 列表归一：去空、去重、保序、截断 */
-export function normalizeList(arr, max) {
+/** 数值夹取（与 V1 一致：`Math.max(min, Math.min(max, v))`，不做 NaN 兜底） */
+export function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+}
+
+/** 列表归一：仅接受数组；去空、去重、保序（可选 max 截断，V2 扩展） */
+export function normalizeList(v, max) {
+    if (!Array.isArray(v)) return [];
     const out = [];
-    for (const v of (Array.isArray(arr) ? arr : [])) {
-        const s = String(v == null ? '' : v).trim();
-        if (!s || out.includes(s)) continue;
-        out.push(s);
+    for (const x of v) {
+        const s = String(x == null ? '' : x).trim();
+        if (s && !out.includes(s)) out.push(s);
         if (max && out.length >= max) break;
     }
     return out;
