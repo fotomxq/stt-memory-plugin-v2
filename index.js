@@ -127,6 +127,7 @@ import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
+import { storageEnvelope, storageHash } from './core/envelope.js';
 import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } from './core/clock-ai.js';
 import {
     forgetState, forgetRunAll, runMemoryForget, sweepLowUseForget, lowUseSweepGate, cancelForgetTimers,
@@ -144,7 +145,16 @@ import {
     storageBootstrap, scheduleStorageSync, crossSyncManual, refreshFromServer, storageVerify,
     syncLogList, syncLogClear, syncLogServerMerge, syncLogServerStatus, syncLogPush, syncLocalSource,
     storageStatusInfo, resetSyncState, syncInfo, fileCacheDropAll,
+    // B9-d：条目瘦身 / gzip / 跨端分歧处置（V1 `__FTT` 同名能力）
+    slimFileEnvelope, slimGzipInfo, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
+    adoptRemoteEnvelope, crossComputeInfo, crossPendingView,
+    runStorageSync, storageEnvValid,
 } from './adapters/sync.js';
+import {
+    slimEntryForStorage, hydrateSlimEntry, slimDataForStorage, hydrateStorageData,
+    snapshotIndexFrom, slimSnapshotStoreForStorage, hydrateSnapshotStore,
+} from './core/slim.js';
+import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes } from './adapters/gzip.js';
 
 const runtime = {
     ready: false,
@@ -409,6 +419,38 @@ function bootstrapDiagnostics() {
             syncLogPush: (rec) => syncLogPush(rec || {}),
             syncSource: () => syncLocalSource(),
             syncDropCache: () => fileCacheDropAll(),
+            // B9-d 条目瘦身 + gzip 传输（V1 `__FTT` 同名能力：slimEntryForStorage / hydrateSlimEntry /
+            //   slimDataForStorage / hydrateStorageData / snapshotIndexFrom / slimSnapshotStoreForStorage /
+            //   hydrateSnapshotStore / gzipToBase64 / gunzipFromBytes / bytesToBase64 / base64ToBytes）
+            slimEntryForStorage: (cat, it) => slimEntryForStorage(cat, it),
+            hydrateSlimEntry: (cat, it) => hydrateSlimEntry(cat, it),
+            slimDataForStorage: (data, opts) => slimDataForStorage(data, opts || {}),
+            hydrateStorageData: (data) => hydrateStorageData(data),
+            snapshotIndexFrom: (snaps) => snapshotIndexFrom(snaps),
+            slimSnapshotStoreForStorage: (snaps) => slimSnapshotStoreForStorage(snaps),
+            hydrateSnapshotStore: (snaps) => hydrateSnapshotStore(snaps),
+            slimFileEnvelope: (env, keepSnap) => slimFileEnvelope(env, keepSnap === true),
+            gzipToBase64: (text) => gzipToBase64(text),
+            gunzipFromBytes: (u8) => gunzipFromBytes(u8),
+            bytesToBase64: (u8) => bytesToBase64(u8),
+            base64ToBytes: (b64) => base64ToBytes(b64),
+            isGzipBytes: (u8) => isGzipBytes(u8),
+            slimInfo: () => slimGzipInfo(),
+            // B9-d 跨端分歧处置（V1 `__FTT` 同名能力：crossComputeInfo / crossPendingGet / crossPendingClear /
+            //   applyRemoteReplaceState / adoptRemoteEnvelope）
+            crossComputeInfo: (localData, remoteData, remoteTs) => crossComputeInfo(localData, remoteData, remoteTs),
+            crossPendingGet: () => crossPendingGet(),
+            crossPendingView: () => crossPendingView(),
+            crossPendingClear: () => crossPendingClear(),
+            applyRemoteReplaceState: (env) => applyRemoteReplaceState(env),
+            adoptRemoteEnvelope: (env) => adoptRemoteEnvelope(env),
+            // V1 `__FTT` 同名：`crossPullPolicy(label, opts)`（自动对账入口；V2 的等价物是 `runStorageSync`，
+            //   `label` 仅作签名兼容——V2 无多后端触发源标签）
+            crossPullPolicy: (label, opts) => runStorageSync(!!(opts && opts.force)),
+            // V1 `__FTT` 同名：`storageEnvelope` / `storageHash` / `storageEnvValid`（信封构造与校验；供诊断/测试造数据）
+            storageEnvelope: (data) => storageEnvelope(data),
+            storageHash: (payload) => storageHash(payload),
+            storageEnvValid: (env) => storageEnvValid(env),
             // B8-1 剧情时钟（与 V1 `FTT.*` 同名能力：巡检 / 锚点 / 手工改写）
             clockUi: () => clockUiInfo(),
             clockPatrol: (opts) => runClockPatrolRepair(opts || {}),

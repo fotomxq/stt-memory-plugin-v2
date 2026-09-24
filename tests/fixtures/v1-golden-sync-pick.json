@@ -1,0 +1,296 @@
+{
+  "meta": {
+    "v1Version": "v1.206",
+    "notes": [
+      "本 fixture 由 tests/fixtures/gen-v1-golden-sync-pick.cjs **直调真实 V1 插件 v1.206** 生成（`node tests/fixtures/gen-v1-golden-sync-pick.cjs tests/fixtures/v1-golden-sync-pick.json`，连跑两次逐字节一致）。`crossComputeInfo`/`crossPendingGet`/`crossPendingClear`/`applyRemoteReplaceState`/`adoptRemoteEnvelope`/`crossPullPolicy` 走 `__FTT` 导出直调；`syncPickLocal`/`syncPickRemote` 走**真实点击委托**（openPanel() 后在 `panel.listeners.click` 派发伪事件 → V1 `handleAction` 真实执行）；分歧横幅由 V1 `renderStorageStatus()` 真实写入（mock document 的 `querySelector` 只对 `[data-ftt-storage-status]` 返回代理盒）。",
+      "V1 原生行为（oracle 实测，原样保留）：① **只有自动对账路径**（`crossPullPolicy`）会产生「待选分歧」；`跨端立即同步`（`crossSyncManual`）遇分歧仍按「原子融合」处置（不产生待选）。② 暂存只保留**更新**的那一份对端信封：已有 pending 且其 `updatedAt >= 新对端` 时，只记一条「分歧(已暂存较新待选)」日志、不覆盖、**不重复提示**。③ `syncPickLocal`/`syncPickRemote` 都**先清空待选再执行**（异步 IIFE 内），失败也只提示「同步失败」，不会恢复 pending。④ `syncPickLocal` 只做 `storageWriteAll(storageEnvelope(state))`（本端覆盖对端），**不重新读取对端**。⑤ `syncPickRemote` 在**发送/提取在途**（`userWriteInFlight`）时把「整体替换」**降级为并集合并**（`applyRemoteReplaceState` 返回 `\"merge\"`），并集合并也失败则放弃替换（返回 `null`）；toast 的 `ok` 判定按「真值」处理 → `\"merge\"` 也走「已采用对端版本」分支。⑥ 两条处置都写同步日志 `action='分歧选择'`，`mode` 分别为 `保留本端(覆盖对端)` / `采用对端(整体替换)`（无待选时后者写 `未找到待选对端` 且 `changed=false`）。⑦ 分歧横幅两个按钮**没有 `title` 属性**（V1 原文如此），文案为 `保留本地（N 条）` / `采用对端（N 条）`。",
+      "投影说明：同步日志与提示中的 `ts`/`ms`/`src` 属时间/环境派生值，已剔除（仅保留 action/mode/changed/localN/remoteN/afterN/note 与 toast 的 kind/title/text）。"
+    ],
+    "sourceFile": "src/FTT记忆组件-v1.206.js",
+    "v1SourceSnips": {
+      "pending": "let crossPending = null;              // { env, info, at }\n    function crossPendingGet() { return crossPending; }\n    function crossPendingClear() { crossPending = null; }",
+      "applyRemoteReplaceState": "function applyRemoteReplaceState(env) {\n        try {\n            if (typeof userWriteInFlight === 'function' && userWriteInFlight()) {\n                try { dbgLog('对账', { action: '发送/提取在途 → 整体替换降级为并集合并（避免覆盖刚提取的记忆）' }); } catch (e) { }\n                const r = applyRemoteMergeToState(env);\n                if (r) return 'merge';\n                try { dbgLog('对账', { action: '并集合并失败 → 放弃本次整体替换（保留本端）' }); } catch (e) { }\n                try { warn('发送/提取进行中：本次「整体采用对端」已放弃（避免覆盖刚提取的记忆）', ''); } catch (e) { }\n                return null;\n            }\n        } catch (e) { }\n        return adoptRemoteEnvelope(env);\n    }",
+      "divergenceBranch": "// 分歧：暂存并提示（仅保留最新一次对端信封）\n            if (crossPending && Number(crossPending.env.payload.updatedAt) >= Number(env.payload.updatedAt)) {\n                logRec = { action: act, mode: '分歧(已暂存较新待选)', changed: false, ms: Date.now() - t0,\n                    localN: localStat.n, localBytes: localStat.bytes, remoteN: remoteStat.n, remoteBytes: remoteStat.bytes,\n                    afterN: localStat.n, afterBytes: localStat.bytes, localHash: hashLocal, remoteHash: hashRemote, afterHash: hashLocal, note: '已有更新的分歧待选，未重复暂存' };\n                crossPullLastMeta = { skipped: false, mode: 'divergence', changed: false, localHash: hashLocal, remoteHash: hashRemote, at: Date.now() };",
+      "pickLocal": "case 'syncPickLocal': {\n                    const pendL = crossPendingGet();\n                    crossPendingClear();\n                    (async () => {\n                        try {\n                            await storageWriteAll(storageEnvelope(state));\n                            // 分歧处置留痕\n                            try {\n                                const st = syncLogStat(state);\n                                const rp = (pendL && pendL.info) ? pendL.info.remoteN : 0;\n                                if (typeof crossSyncLogPush === 'function') crossSyncLogPush({ action: '分歧选择', mode: '保留本端(覆盖对端)', changed: true, localN: st.n, localBytes: st.bytes, remoteN: rp, remoteBytes: 0, afterN: st.n, afterBytes: st.bytes, localHash: dataAggHash(state), remoteHash: '', afterHash: dataAggHash(state), note: '用户选择保留本地版本，本端推送覆盖对端' });\n                            } catch (e2) { }\n                            notify('success', { title: '已保留本地版本', text: '本端将覆盖对端' });\n                            try { renderPanel(); } catch (e) { }\n                            renderStorageStatus();\n                        } catch (e) { notify('error', { title: '同步失败', text: String(e.message || e).slice(0, 60) }); }\n                    })();\n                    break;\n                }\n                // 分歧选择 —— 采用对端版本（整体替换）",
+      "pickRemote": "case 'syncPickRemote': {\n                    const pend = crossPendingGet();\n                    crossPendingClear();\n                    (async () => {\n                        try {\n                            const ok = pend ? applyRemoteReplaceState(pend.env) : false;\n                            await storageWriteAll(storageEnvelope(state));\n                            // 分歧处置留痕\n                            try {\n                                const st = syncLogStat(state);\n                                if (typeof crossSyncLogPush === 'function') crossSyncLogPush({ action: '分歧选择', mode: ok ? '采用对端(整体替换)' : '未找到待选对端', changed: !!ok, localN: st.n, localBytes: st.bytes, remoteN: st.n, remoteBytes: st.bytes, afterN: st.n, afterBytes: st.bytes, localHash: dataAggHash(state), remoteHash: ok ? dataAggHash(state) : '', afterHash: dataAggHash(state), note: ok ? '用户选择采用对端版本，本端已替换为对端数据' : '待选对端缺失，未改动' });\n                            } catch (e2) { }\n                            notify(ok ? 'success' : 'warning', { title: ok ? '已采用对端版本' : '未找到待选对端', text: ok ? '本端已替换为对端数据' : '' });\n                            try { renderPanel(); } catch (e) { }\n                            renderStorageStatus();\n                        } catch (e) { notify('error', { title: '同步失败', text: String(e.message || e).slice(0, 60) }); }\n                    })();\n                    break;\n                }",
+      "banner": "// 分歧横幅 —— 自动同步发现分歧时提示用户选择保留哪个版本（含统计）\n            try {\n                if (typeof crossPendingGet === 'function' && crossPendingGet()) {\n                    const pd = crossPendingGet();\n                    const i = pd && pd.info;\n                    if (i) {\n                        const d = i.diff || {};\n                        box.innerHTML += `<div class=\"ftt-warn-box\"><b class=\"ftt-pend-title\">⚠️ 跨端同步分歧 · 请选择保留哪个版本</b><div class=\"ftt-desc ftt-my-1\">本地 ${i.localN} 条（更新 ${new Date(i.localTs).toLocaleString()}）／ 对端 ${i.remoteN} 条（更新 ${new Date(i.remoteTs).toLocaleString()}）· 时间差 ${(i.tsDiff / 1000).toFixed(1)}s · 仅本端 ${d.onlyLocal || 0} / 仅对端 ${d.onlyRemote || 0} / 冲突 ${d.conflict || 0}</div><div class=\"ftt-row ftt-mt-2\"><button class=\"ftt-btn ftt-sm\" data-ftt-action=\"syncPickLocal\">保留本地（${i.localN} 条）</button><button class=\"ftt-btn ftt-sm\" data-ftt-action=\"syncPickRemote\">采用对端（${i.remoteN} 条）</button></div></div>`;\n                    }\n                }\n            } catch (e) { }",
+      "exports": "crossSyncManual, crossComputeInfo, crossPendingGet, crossPendingClear, applyRemoteReplaceState, adoptRemoteEnvelope, storageReadPrimary, storageExportData, storageImportData,"
+    }
+  },
+  "scenario": {
+    "local": {
+      "atoms": [
+        {
+          "id": "L1",
+          "text": "本端独有：艾芙琳在码头交接货物。",
+          "title": "本端交接",
+          "date": "1936-12-06",
+          "tags": [
+            "码头"
+          ],
+          "uses": 1,
+          "floorStart": 0,
+          "floorEnd": 2
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "x1",
+          "subject": "艾芙琳",
+          "field": "体力",
+          "value": "70",
+          "status": "正常",
+          "updatedAt": 200,
+          "uses": 1
+        }
+      ],
+      "updatedAt": 1700000002000
+    },
+    "remote": {
+      "atoms": [
+        {
+          "id": "R1",
+          "text": "对端独有：线人在酒馆留下了字条。",
+          "title": "对端字条",
+          "date": "1936-12-07",
+          "tags": [
+            "字条"
+          ],
+          "uses": 1,
+          "floorStart": 0,
+          "floorEnd": 2
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "x1",
+          "subject": "艾芙琳",
+          "field": "体力",
+          "value": "40",
+          "status": "疲惫",
+          "updatedAt": 300,
+          "uses": 1
+        }
+      ],
+      "updatedAt": 1700000003000
+    }
+  },
+  "computeInfo": {
+    "mode": "divergence",
+    "aggSame": false,
+    "localN": 2,
+    "remoteN": 2,
+    "tsDiff": 1000,
+    "newer": "remote",
+    "diff": {
+      "same": 0,
+      "onlyLocal": 1,
+      "onlyRemote": 1,
+      "conflict": 1,
+      "conflictWinLocal": 0,
+      "conflictWinRemote": 1
+    }
+  },
+  "computeControls": {
+    "localSuperset": "replace-local",
+    "same": "same"
+  },
+  "divergence": {
+    "pulled": false,
+    "pendingAfterPull": {
+      "hasEnv": true,
+      "mode": "divergence",
+      "localN": 2,
+      "remoteN": 2,
+      "tsDiff": 1000,
+      "onlyLocal": 1,
+      "onlyRemote": 1,
+      "conflict": 1
+    },
+    "logs": [
+      {
+        "action": "自动对账(测试)",
+        "mode": "分歧待选择",
+        "changed": false,
+        "localN": 2,
+        "remoteN": 2,
+        "afterN": 2,
+        "note": "本地/对端各有独有或冲突 → 请在 设定→存储 选择保留版本"
+      }
+    ],
+    "toasts": [
+      {
+        "kind": "warning",
+        "title": "",
+        "text": "跨端记忆存在分歧：请到 设定 → 存储 选择保留哪个版本（已附更新时间/条目差异统计）"
+      }
+    ],
+    "banner": {
+      "title": "⚠️ 跨端同步分歧 · 请选择保留哪个版本",
+      "desc": "本地 2 条（更新 11/15/2023, 6:13:22 AM）／ 对端 2 条（更新 11/15/2023, 6:13:23 AM）· 时间差 1.0s · 仅本端 1 / 仅对端 1 / 冲突 1",
+      "descNorm": "本地 2 条（更新 <t>）／ 对端 2 条（更新 <t>）· 时间差 1.0s · 仅本端 1 / 仅对端 1 / 冲突 1",
+      "localBtn": {
+        "cls": "ftt-btn ftt-sm",
+        "hasTitleAttr": false,
+        "title": null,
+        "text": "保留本地（2 条）"
+      },
+      "remoteBtn": {
+        "cls": "ftt-btn ftt-sm",
+        "hasTitleAttr": false,
+        "title": null,
+        "text": "采用对端（2 条）"
+      },
+      "rowCls": "ftt-row ftt-mt-2"
+    },
+    "stateBeforePick": {
+      "atomIds": [
+        "L1"
+      ],
+      "stateValues": [
+        "x1=70"
+      ],
+      "updatedAt": 1700000002000
+    },
+    "uploadsBeforePick": 0
+  },
+  "pickLocal": {
+    "pendingAfter": null,
+    "logs": [
+      {
+        "action": "分歧选择",
+        "mode": "保留本端(覆盖对端)",
+        "changed": true,
+        "localN": 2,
+        "remoteN": 2,
+        "afterN": 2,
+        "note": "用户选择保留本地版本，本端推送覆盖对端"
+      }
+    ],
+    "toasts": [
+      {
+        "kind": "success",
+        "title": "已保留本地版本",
+        "text": "本端将覆盖对端"
+      }
+    ],
+    "stateAfter": {
+      "atomIds": [
+        "L1"
+      ],
+      "stateValues": [
+        "x1=70"
+      ],
+      "updatedAt": 1700000002000
+    },
+    "uploads": [
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      },
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl-bak.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      }
+    ],
+    "bannerAfter": null
+  },
+  "pickRemote": {
+    "pendingBefore": {
+      "hasEnv": true,
+      "mode": "divergence",
+      "localN": 2,
+      "remoteN": 2,
+      "tsDiff": 1000,
+      "onlyLocal": 1,
+      "onlyRemote": 1,
+      "conflict": 1
+    },
+    "pendingAfter": null,
+    "logs": [
+      {
+        "action": "分歧选择",
+        "mode": "采用对端(整体替换)",
+        "changed": true,
+        "localN": 2,
+        "remoteN": 2,
+        "afterN": 2,
+        "note": "用户选择采用对端版本，本端已替换为对端数据"
+      }
+    ],
+    "toasts": [
+      {
+        "kind": "success",
+        "title": "已采用对端版本",
+        "text": "本端已替换为对端数据"
+      }
+    ],
+    "stateAfter": {
+      "atomIds": [
+        "R1"
+      ],
+      "stateValues": [
+        "x1=40"
+      ],
+      "updatedAt": 1700000003000
+    },
+    "uploads": [
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      },
+      {
+        "name": "ftt-state-n2mcm47-zxg18scl-bak.json.gz",
+        "magic": [
+          31,
+          139
+        ]
+      }
+    ]
+  },
+  "pickRemoteNoPending": {
+    "logs": [
+      {
+        "action": "分歧选择",
+        "mode": "未找到待选对端",
+        "changed": false,
+        "localN": 2,
+        "remoteN": 2,
+        "afterN": 2,
+        "note": "待选对端缺失，未改动"
+      }
+    ],
+    "toasts": [
+      {
+        "kind": "warning",
+        "title": "未找到待选对端",
+        "text": ""
+      }
+    ],
+    "stateUnchanged": true
+  },
+  "applyReplace": {
+    "ret": true,
+    "atomIds": [
+      "R1"
+    ],
+    "stateValues": [
+      "x1=40"
+    ]
+  },
+  "adoptEnvelope": {
+    "ret": true,
+    "atomIds": [
+      "R1"
+    ]
+  }
+}

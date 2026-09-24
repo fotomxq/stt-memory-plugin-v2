@@ -2526,6 +2526,123 @@ await assert('AG3 收尾语义：`rxScanClear` 清空结果（无提示）+ 无�
     return clearOk && nfOk && noopOk && closed && clearTrackOk;
 })(), '');
 
+// ---------- AH 条目瘦身/gzip + 同步分歧选择（B9-d） ----------
+await assert('AH1 条目瘦身 + gzip 的 `FTT.*` 入口齐备，且瘦身/索引/gzip 原语真实生效（同义字段丢弃、快照索引过滤无 id、gzip 往返文本全等、魔数判定）', (async () => {
+    const F = globalThis.FTT;
+    const names = ['slimEntryForStorage', 'hydrateSlimEntry', 'slimDataForStorage', 'hydrateStorageData', 'snapshotIndexFrom',
+        'slimSnapshotStoreForStorage', 'hydrateSnapshotStore', 'slimFileEnvelope', 'gzipToBase64', 'gunzipFromBytes',
+        'bytesToBase64', 'base64ToBytes', 'isGzipBytes', 'slimInfo',
+        // B9-d 分歧处置（V1 `__FTT` 同名能力）
+        'crossComputeInfo', 'crossPendingGet', 'crossPendingView', 'crossPendingClear', 'applyRemoteReplaceState',
+        'adoptRemoteEnvelope', 'crossPullPolicy', 'storageEnvelope', 'storageHash', 'storageEnvValid'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    // 瘦身：content 与 text 全等 → 丢弃；空值/默认值不写盘；extra 只留顶层没有的槽位
+    const slim = F.slimEntryForStorage('atoms', {
+        id: 'ah1', text: 'AH 瘦身情节', title: 'AH 瘦身', date: '1936-12-06', tags: ['AH'], uses: 3,
+        content: 'AH 瘦身情节', location: '', keywords: [], extra: [{ name: 'title', value: 'AH 瘦身' }, { name: 'onlyHere', value: 'x' }],
+    });
+    const slimOk = slim.content === undefined && slim.location === undefined && slim.keywords === undefined
+        && slim.uses === 3 && Array.isArray(slim.extra) && slim.extra.length === 1 && slim.extra[0].name === 'onlyHere'
+        && F.hydrateSlimEntry('atoms', JSON.parse(JSON.stringify(slim))).content === 'AH 瘦身情节';
+    // 快照索引：无 id 过滤 + covered 计数
+    const idx = F.snapshotIndexFrom([{ id: 'r1', kind: 'root', ts: 1, atomsHashes: { a: 'h', b: 'h' } }, { id: '', kind: 'root', ts: 2 }]);
+    const idxOk = idx.length === 1 && idx[0].covered === 2 && idx[0].id === 'r1';
+    // gzip 往返（真实 CompressionStream → 魔数 → DecompressionStream）
+    const text = JSON.stringify({ atoms: Array.from({ length: 20 }, (_, i) => ({ id: 'g' + i, text: '压缩样本内容压缩样本内容'.repeat(2) })) });
+    const gz = await F.gzipToBase64(text);
+    const u8 = F.base64ToBytes(gz.b64);
+    const back = await F.gunzipFromBytes(u8);
+    const gzOk = gz.ok === true && u8[0] === 0x1f && u8[1] === 0x8b && F.isGzipBytes(u8) === true && back === text
+        && F.bytesToBase64(u8) === gz.b64 && gz.b64.length < text.length;
+    const info = F.slimInfo();
+    // 默认安全：两个开关默认关闭，写入名 = 明文名
+    return missing.length === 0 && slimOk && idxOk && gzOk
+        && info && info.slim === false && info.gzip === false && info.gzipAvailable === true
+        && /\.json$/.test(info.writeName) && /\.json\.gz$/.test(info.gzName)
+        && F.storageEnvValid(F.storageEnvelope({ atoms: [] })) === true;
+})(), '');
+
+await assert('AH2 存储页如实呈现瘦身/gzip 开关与写入名；两个分歧动作进入 `SYNC_ACTIONS` 并经面板分发（无待选时如实警示且不改动本端，提示读 `r.state.note`）', (async () => {
+    const F = globalThis.FTT;
+    const keepSlim = rtMod.cfg.storage.stateFileSlim, keepGzip = rtMod.cfg.storage.stateFileGzip;
+    F.crossPendingClear();
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'storage' });
+    const off = String((await entry.popupAction('refresh', {})).html || '');
+    const offOk = off.indexOf('data-ftt-slim-gzip') >= 0 && off.indexOf('条目瘦身 关闭（默认）') >= 0
+        && off.indexOf('gzip 写入 关闭（默认）') >= 0 && off.indexOf('读取按内容魔数自动识别') < 0
+        && off.indexOf('data-ftt-action="syncPickLocal"') < 0;          // 无待选 → 不渲染横幅按钮
+    rtMod.cfg.storage.stateFileSlim = true; rtMod.cfg.storage.stateFileGzip = true;
+    const on = String((await entry.popupAction('refresh', {})).html || '');
+    const onOk = on.indexOf('条目瘦身 <b>已开启</b>') >= 0 && on.indexOf('gzip 写入 <b>已开启</b>') >= 0
+        && on.indexOf('读取按内容魔数自动识别，明文旧文件仍可读') >= 0;
+    rtMod.cfg.storage.stateFileSlim = keepSlim; rtMod.cfg.storage.stateFileGzip = keepGzip;
+    // 无待选时点「采用对端」：如实警示 + 不改动本端
+    const before = J((rtMod.state.atoms || []).map((x) => x.id).sort());
+    const r = await entry.popupAction('syncPickRemote', {});
+    const after = J((rtMod.state.atoms || []).map((x) => x.id).sort());
+    return offOk && onOk
+        && String(r.state.note) === '未找到待选对端（未改动本端）'
+        && r.action === 'syncPickRemote' && r.ok === false
+        && before === after && F.crossPendingGet() === null;
+})(), '');
+
+await assert('AH3 真实自动对账遇分歧 → **暂存待选 + 横幅 + 不静默合并**；「保留本端」与「采用对端」两个动作分别覆盖对端 / 整体替换本端并写同步日志留痕', (async () => {
+    const F = globalThis.FTT;
+    const st = rtMod.state;
+    const info = F.syncStatus().file;
+    const keepMeta = rtMod.cfg.storage.syncMetaProbe;
+    rtMod.cfg.storage.syncMetaProbe = false;      // 关掉清单预判：本小节要强制读对端文件（否则可能因清单命中而跳过）
+    // ① 本端：一条「与对端同 id 但内容不同」的条目（冲突）+ 一条本端独有条目
+    const A = { id: 'smoke-ah-A', text: 'AH 共同条目原文', title: 'AH 共同条目', date: '1936-12-06', tags: ['AH'], uses: 1, floorStart: 0, floorEnd: 1 };
+    st.atoms = (st.atoms || []).concat([A, { id: 'smoke-ah-L', text: 'AH 本端独有情节', title: 'AH 本端独有', date: '1936-12-06', tags: ['AH'], uses: 1, floorStart: 0, floorEnd: 1 }]);
+    const localAtom = A;
+    /** 造一份「对端」信封（同 id 冲突 + 对端独有 + 本端独有 → 无端是超集） */
+    const makeRemote = () => {
+        const d = JSON.parse(JSON.stringify(st));
+        d.atoms = [Object.assign({}, localAtom, { text: String(localAtom.text || '') + '（对端改写）' }), { id: 'smoke-ah-R', text: 'AH 对端独有情节', title: 'AH 对端独有', date: '1936-12-07', tags: ['AH'], uses: 1, floorStart: 0, floorEnd: 1 }];
+        d.updatedAt = 9000000000000;
+        const env = F.storageEnvelope(d);
+        env.ts = 9000000000000; env.payload.updatedAt = 9000000000000; env.hash = F.storageHash(env.payload);
+        return JSON.stringify(env);
+    };
+    const put = () => { srvFiles.set(info.name, makeRemote()); srvFiles.set(info.bak, makeRemote()); F.syncDropCache(); };
+    put();
+    const r1 = await F.crossPullPolicy('冒烟', { force: true });
+    const pend = F.crossPendingView();
+    const stashOk = r1.divergence === 'divergence' && !!pend && pend.conflict >= 1
+        && pend.onlyLocal >= 1 && pend.onlyRemote >= 1
+        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-L')      // 未静默合并
+        && (rtMod.state.atoms || []).every((x) => x.id !== 'smoke-ah-R');
+    // ② 横幅（V1 同款文案 + 两个按钮，且无 title）
+    const pageHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const bannerOk = pageHtml.indexOf('⚠️ 跨端同步分歧 · 请选择保留哪个版本') >= 0
+        && pageHtml.indexOf('data-ftt-action="syncPickLocal"') >= 0 && pageHtml.indexOf('data-ftt-action="syncPickRemote"') >= 0
+        && pageHtml.indexOf('保留本地（') >= 0 && pageHtml.indexOf('采用对端（') >= 0
+        && F.crossPendingGet() !== null;
+    // ③ 保留本端（本端推送覆盖对端）
+    const p1 = await entry.popupAction('syncPickLocal', {});
+    const log1 = F.syncLog().filter((x) => String(x.action) === '分歧选择')[0];
+    const keepOk = String(p1.state.note).indexOf('已保留本地版本') >= 0 && F.crossPendingGet() === null
+        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-L')
+        && !!log1 && log1.mode === '保留本端(覆盖对端)' && String(log1.note).indexOf('本端推送覆盖对端') >= 0;
+    // ④ 再来一次分歧 → 采用对端（整体替换）
+    put();
+    await F.crossPullPolicy('冒烟', { force: true });
+    const p2 = await entry.popupAction('syncPickRemote', {});
+    const log2 = F.syncLog().filter((x) => String(x.action) === '分歧选择')[0];
+    const adoptOk = String(p2.state.note).indexOf('已采用对端版本') >= 0 && F.crossPendingGet() === null
+        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-R')
+        && (rtMod.state.atoms || []).every((x) => x.id !== 'smoke-ah-L')
+        && Number(rtMod.state.updatedAt) === 9000000000000
+        && !!log2 && log2.mode === '采用对端(整体替换)' && String(log2.note).indexOf('本端已替换为对端数据') >= 0;
+    // 复位：移除造出来的对端条目 + 恢复清单开关，避免影响后续小节
+    rtMod.state.atoms = (rtMod.state.atoms || []).filter((x) => String(x.id).indexOf('smoke-ah-') !== 0);
+    rtMod.cfg.storage.syncMetaProbe = keepMeta;
+    await entry.popupAction('tab', { tab: 'overview' });
+    return stashOk && bannerOk && keepOk && adoptOk;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

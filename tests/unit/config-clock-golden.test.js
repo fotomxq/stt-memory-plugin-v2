@@ -22,15 +22,27 @@ cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
 // ---------- 配置层 ----------
 R.assert('C1 defaultCfg：V1 的 217 键逐值一致 + 仅允许 V2 专有键（界面形态）', (() => {
     // 口径：V1 键必须**逐值**相同（保真）；V2 新增键须在白名单内（防悄悄加键/改键）
+    // B9-d 例外（显式白名单）：`storage.stateFileSlim` / `storage.stateFileGzip` 为 V2 专有开关
+    //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
     const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab'];
+    const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip'];
     const v1 = G.defaultCfg || {};
-    const diff = Object.keys(v1).filter((k) => J(v1[k]) !== J(defaultCfg[k]));
+    const diff = Object.keys(v1).filter((k) => k !== 'storage' && J(v1[k]) !== J(defaultCfg[k]));
+    const v1s = v1.storage || {}, cur = defaultCfg.storage || {};
+    const storageDiff = Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k]));
+    const storageExtra = Object.keys(cur).filter((k) => !(k in v1s));
     const extra = Object.keys(defaultCfg).filter((k) => !(k in v1));
     return Object.keys(v1).length === 217 && diff.length === 0
-        && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length;
+        && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length
+        && storageDiff.length === 0 && J(storageExtra.slice().sort()) === J(V2_STORAGE_ONLY.slice().sort())
+        && cur.stateFileSlim === false && cur.stateFileGzip === false;
 })(), (() => {
     const v1 = G.defaultCfg || {};
-    return { keys: Object.keys(defaultCfg).length, v1Keys: Object.keys(v1).length, extra: Object.keys(defaultCfg).filter((k) => !(k in v1)) };
+    const v1s = v1.storage || {}, cur = defaultCfg.storage || {};
+    return {
+        keys: Object.keys(defaultCfg).length, v1Keys: Object.keys(v1).length, extra: Object.keys(defaultCfg).filter((k) => !(k in v1)),
+        storageDiff: Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k])), storageExtra: Object.keys(cur).filter((k) => !(k in v1s)),
+    };
 })());
 R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP) === J(G.cnKeyMap), Object.keys(CN_KEY_MAP).length);
 R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',

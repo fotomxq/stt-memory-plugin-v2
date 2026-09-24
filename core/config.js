@@ -1046,6 +1046,15 @@ const defaultCfg = {
         snapshotFile: true,     // 快照链独立文件（`ftt-snap-…`），与状态文件解耦、双端并集合并
         settingsMirror: false,  // 是否仍把整包写回 settings 存档变量（默认否=剥离；文件通道不可用时自动兜底写入）
         deletedKeepDays: 365,   // 删除墓碑（含内容哈希墓碑）保留天数 —— 过期才回收，防止「删了又被对端唤醒」
+        // ==================== B9-d：条目瘦身 + gzip 存储（V2 专属开关 · **默认关闭 = 默认安全**） ====================
+        // V1 恒「瘦身 + 先 gzip 再 base64」写 `.json.gz`；V2 存储设计此前有意选明文，故改为**显式开关**：
+        //   · 关闭（默认）：写入名/内容/请求序列与 B7-2 完全一致（既有文件与既有测试口径不受影响）；
+        //   · 开启：写入前先瘦身（`core/slim.js`），再按需 gzip（`adapters/gzip.js`）写 `.json.gz`；
+        //     读取侧**一律按内容魔数**（1f 8b）识别 gzip 与明文（`adapters/user-file.js#readStateFileAuto`），
+        //     明文旧文件始终可读，开关可随时来回切换；
+        //     通道不支持压缩或压缩失败 → 自动回退明文 `.json`（绝不写坏文件）。
+        stateFileSlim: false,   // 条目瘦身（剥运行期/可重算字段 + 快照内容剥离为 snapIndex）
+        stateFileGzip: false,   // 主/备份/快照文件 gzip 写入（`.json.gz`；写入失败回退明文）
         // ==================== v1.150：宿主平台 TauriTavern（原生存储 · 自动兼容切换） ====================
         // TauriTavern（SillyTavern 的 Tauri/Rust 原生移植）提供 `window.__TAURITAVERN__.api.extension.store`
         //   作为扩展专用持久化（KV + Blob，落 `_tauritavern/extension-store/`）。检测到该宿主特征/API 时，

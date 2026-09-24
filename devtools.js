@@ -85,6 +85,36 @@ export function installDevtools(hooks) {
             syncSource: () => (hooks && typeof hooks.syncSource === 'function' ? hooks.syncSource() : ''),
             syncDropCache: () => (hooks && typeof hooks.syncDropCache === 'function' ? hooks.syncDropCache() : false),
             storageBootstrap: () => (hooks && typeof hooks.storageBootstrap === 'function' ? hooks.storageBootstrap() : Promise.resolve({ ok: false, reason: 'no-hook' })),
+            // B9-d 条目瘦身 + gzip 传输（V1 `__FTT` 同名能力；纯函数/异步压缩，均为只读或幂等）
+            slimEntryForStorage: (cat, it) => (hooks && typeof hooks.slimEntryForStorage === 'function' ? hooks.slimEntryForStorage(cat, it) : null),
+            hydrateSlimEntry: (cat, it) => (hooks && typeof hooks.hydrateSlimEntry === 'function' ? hooks.hydrateSlimEntry(cat, it) : null),
+            slimDataForStorage: (data, opts) => (hooks && typeof hooks.slimDataForStorage === 'function' ? hooks.slimDataForStorage(data, opts || {}) : null),
+            hydrateStorageData: (data) => (hooks && typeof hooks.hydrateStorageData === 'function' ? hooks.hydrateStorageData(data) : null),
+            snapshotIndexFrom: (snaps) => (hooks && typeof hooks.snapshotIndexFrom === 'function' ? hooks.snapshotIndexFrom(snaps) : []),
+            slimSnapshotStoreForStorage: (snaps) => (hooks && typeof hooks.slimSnapshotStoreForStorage === 'function' ? hooks.slimSnapshotStoreForStorage(snaps) : []),
+            hydrateSnapshotStore: (snaps) => (hooks && typeof hooks.hydrateSnapshotStore === 'function' ? hooks.hydrateSnapshotStore(snaps) : []),
+            slimFileEnvelope: (env, keepSnap) => (hooks && typeof hooks.slimFileEnvelope === 'function' ? hooks.slimFileEnvelope(env, keepSnap === true) : null),
+            gzipToBase64: (text) => (hooks && typeof hooks.gzipToBase64 === 'function' ? hooks.gzipToBase64(text) : Promise.resolve({ ok: false, b64: '' })),
+            gunzipFromBytes: (u8) => (hooks && typeof hooks.gunzipFromBytes === 'function' ? hooks.gunzipFromBytes(u8) : Promise.resolve(null)),
+            bytesToBase64: (u8) => (hooks && typeof hooks.bytesToBase64 === 'function' ? hooks.bytesToBase64(u8) : ''),
+            base64ToBytes: (b64) => (hooks && typeof hooks.base64ToBytes === 'function' ? hooks.base64ToBytes(b64) : null),
+            isGzipBytes: (u8) => (hooks && typeof hooks.isGzipBytes === 'function' ? hooks.isGzipBytes(u8) : false),
+            slimInfo: () => (hooks && typeof hooks.slimInfo === 'function' ? hooks.slimInfo() : null),
+            // B9-d 跨端分歧处置（V1 `__FTT` 同名能力：crossComputeInfo / crossPendingGet / crossPendingClear /
+            //   applyRemoteReplaceState / adoptRemoteEnvelope）
+            //   注：`crossPendingClear` / `applyRemoteReplaceState` / `adoptRemoteEnvelope` 是 V1 `__FTT`
+            //   同样导出的**有意为之**的写入口（改写本端 state），其余为只读查询。
+            crossComputeInfo: (localData, remoteData, remoteTs) => (hooks && typeof hooks.crossComputeInfo === 'function' ? hooks.crossComputeInfo(localData, remoteData, remoteTs) : null),
+            crossPendingGet: () => (hooks && typeof hooks.crossPendingGet === 'function' ? hooks.crossPendingGet() : null),
+            crossPendingView: () => (hooks && typeof hooks.crossPendingView === 'function' ? hooks.crossPendingView() : null),
+            crossPendingClear: () => (hooks && typeof hooks.crossPendingClear === 'function' ? hooks.crossPendingClear() : false),
+            applyRemoteReplaceState: (env) => (hooks && typeof hooks.applyRemoteReplaceState === 'function' ? hooks.applyRemoteReplaceState(env) : false),
+            adoptRemoteEnvelope: (env) => (hooks && typeof hooks.adoptRemoteEnvelope === 'function' ? hooks.adoptRemoteEnvelope(env) : false),
+            // V1 `__FTT` 同名：自动对账入口 / 信封构造与校验
+            crossPullPolicy: (label, opts) => (hooks && typeof hooks.crossPullPolicy === 'function' ? hooks.crossPullPolicy(label, opts || {}) : Promise.resolve({ skipped: 'no-hook' })),
+            storageEnvelope: (data) => (hooks && typeof hooks.storageEnvelope === 'function' ? hooks.storageEnvelope(data) : null),
+            storageHash: (payload) => (hooks && typeof hooks.storageHash === 'function' ? hooks.storageHash(payload) : ''),
+            storageEnvValid: (env) => (hooks && typeof hooks.storageEnvValid === 'function' ? hooks.storageEnvValid(env) : false),
             // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
             clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),
             clockPatrol: (opts) => (hooks && typeof hooks.clockPatrol === 'function' ? hooks.clockPatrol(opts || {}) : null),

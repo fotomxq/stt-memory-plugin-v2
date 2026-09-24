@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.32.0（2026-09-26）· B9-d 条目瘦身 + gzip 存储 + 跨端同步分歧选择（**B9 收官**）
+
+**本版（B9-d，取自 V1 v1.206 `slim*`/`SLIM_EXT_GZ`/gzip 读写 与 `syncPickLocal`/`syncPickRemote`）**：
+1. **条目瘦身**（新增 `core/slim.js`，202 行，逐字移植）：`SLIM_HASHED_FIELDS`/`SLIM_SYNONYM_GROUPS`/`isSlimDefault`/`slimEntryForStorage`/`hydrateSlimEntry`/
+   `slimDataForStorage`/`hydrateStorageData`/`snapshotIndexFrom`/`slimSnapshotStoreForStorage`/`hydrateSnapshotStore`（写盘剥运行期/可重算字段与快照内容，读取自动还原）；
+2. **gzip 存储**（新增 `adapters/gzip.js`，136 行）：`bytesToBase64`/`base64ToBytes`/`isGzipBytes`（魔数 `1f 8b`）/`gzipToBase64`/`gunzipFromBytes`/`decodeBytesAuto`/`gzipAvailable`；
+   写入侧**先 gzip 再 base64**（命名 `.json.gz`），**写入失败回退明文**；读取侧按**内容魔数**自动识别压缩/明文 → **明文旧文件仍可读**（向后兼容，5 项专测覆盖）；
+   压缩流经 `globalThis.CompressionStream/DecompressionStream` 访问（浏览器与 Node 均可，过标识符门禁）；
+3. **跨端同步分歧选择**：`ui/sync.js` 分歧横幅 + 两个 V1 同款按钮 —— **`syncPickLocal`**（保留本端，推送覆盖对端）与 **`syncPickRemote`**（采用对端，整体替换本端），
+   并在同步日志写入 `action='分歧选择'` 留痕（mode/note/条数逐字对齐 V1）；无待选时如实警示且不改动数据；分歧待选由「保存后镜像」对账暂存（V1 的多触发源在 V2 无对应被动触发器，已如实记录）；
+4. **`SYNC_ACTIONS` 6→8**（新增两个动作；对应单测列表断言同步更新）；`FTT.*` 新增 24 个入口（devtools 侧全部带守卫）；
+5. **`promptPreview` 核实结论：V1 无此动作** —— `grep -c "promptPreview"` 在 v1.204/v1.205/v1.206 及 `modules/` 全分片均为 **0**，亦无含 `preview` 的 `data-ftt-action` 或函数名。
+   已按此在 `docs/P8-功能对齐总表.md` §6.1 新增行：**V2 的提示词/注入预览能力由 B5「注入自查」（`injectCheckPanelHtml`/`injectCheckAction`/`injectCheckStats`，含约束段原样预览）覆盖**。
+
+**验证**：两份 fixture（`v1-golden-slim-gzip.json` 13 组 / `v1-golden-sync-pick.json` 10 组）由**入库生成器**直调真实 V1 v1.206 生成，
+**队长独立复跑生成器 → 0 差异**；覆盖四域瘦身/还原逐字、`slimDataForStorage` 键集与 `snapIndex`、快照链瘦身/还原、gzip 往返（魔数/文本全等/体积）、
+**写入路径**（桩 fetch 捕获 base64 → 解字节 → 文件名/魔数/结构）、**读回**（魔数解压 + hydrate）、明文旧文件可读、去掉 `CompressionStream` 后回退明文、
+分歧三态与横幅（含 V1「两按钮无 `title`」怪癖）、`syncPickLocal`/`syncPickRemote`、无待选警示；
+单元 `slim-gzip-golden.test.js` **17 项** + `sync-pick-golden.test.js` **13 项**；冒烟新增 **AH1–AH3**。
+门禁全绿：单元 **59 文件 / 934 断言**、冒烟 **130 项（全部真实求值）**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**最大偏差（明示，需用户知悉）**：V1 **恒开**瘦身与 gzip；V2 新增两个内核开关 `cfg.storage.stateFileSlim` / `cfg.storage.stateFileGzip`，**默认均为 `false`** ——
+关闭时写入内容/文件名/请求序列与 v2.31.0 **逐字节一致**（既有 57 个单测文件与冒烟零改动），**开启后与 V1 同口径**（`.json.gz` + 瘦身）。
+取舍理由：避免升级即静默改变磁盘格式、并保证明文旧文件可读；**若要严格 V1 默认口径，只需把这两个开关置 `true`**（可经设定项/内核 cfg 设置）。
+其余偏差：瘦身关闭时备份不瘦身；**不删除**被 gz 取代的明文旧文件（V1 会删，避免切回开关后无文件可读，代价是双份占用）；未移植写入名历史缓存；
+分歧日志 `action` 固定「保存后镜像」；无 `syncBusy*` 占用 UI；横幅时间用 V2 `fmtTime`；不做 `dbgLog` 留痕。
+
+**未实现（如实登记）**：`cleanupSupersededPlain`（明文旧文件清理）、`fileNameRemember`/`fileNameKnownNames`（写入名历史）、`syncBusy` 同步占用管线 UI、TauriTavern 原生存储通道下的 gzip、同步相关 `dbgLog` 留痕；本批**未新增设定页控件**（两个开关为内核 cfg 键，`core/config.js` 已注明默认值）。
+**无法验证**：真实酒馆对 `.json.gz` 命名/「先 gzip 再 base64」的接受度（V1 生产已验证，本批用字节精确桩覆盖）；浏览器与 Node 的 gzip 字节不保证相同（故只断言魔数/可解压/文本全等/体积）；gzip 开启后再关回 `false` 时读取不探测 `.json.gz`（开关语义必然结果）。
+
 ## v2.31.0（2026-09-26）· B9-c 投喂标签自动分析 + 货币追踪「👥 指定角色」标定
 
 **本版（B9-c，取自 V1 v1.206 `latestAiFloorInfo`/`rx*` 族 与 `curTrack*` 族）**：
