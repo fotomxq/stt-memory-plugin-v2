@@ -266,22 +266,22 @@
     ],
     "deleted": {
       "atoms": {
-        "a3": 1790272392227
+        "a3": 1790273253080
       },
       "memories": {
-        "m2": 1790272392227
+        "m2": 1790273253080
       },
       "concepts": {
-        "c1": 1790272392227
+        "c1": 1790273253080
       },
       "currentStates": {
-        "s3": 1790272392227
+        "s3": 1790273253080
       },
       "plans": {
-        "p2": 1790272392227
+        "p2": 1790273253080
       },
       "suspense": {
-        "u2": 1790272392227
+        "u2": 1790273253080
       }
     }
   },
@@ -322,8 +322,20 @@
       "memories-垃圾清理 1",
       "currentStates-垃圾清理 1",
       "plans-已关闭残留 1",
-      "suspense-已关闭残留 1"
-    ]
+      "suspense-已关闭残留 1",
+      "关联维护：无孤儿关联需清理；3 条无关联条目按「keep」处置（可在「记忆 → 关系表」查看）"
+    ],
+    "relMaint": {
+      "swept": 0,
+      "deduped": 0,
+      "renamed": 0,
+      "staleRefs": 0,
+      "normalized": 0,
+      "demoted": 0,
+      "orphanItems": 3,
+      "publicized": 0,
+      "action": "keep"
+    }
   },
   "inputs": {
     "texts": [

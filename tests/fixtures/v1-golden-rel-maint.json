@@ -1,0 +1,529 @@
+{
+  "keep": {
+    "action": "keep",
+    "swept": 1,
+    "deduped": 1,
+    "renamed": 0,
+    "staleRefs": 4,
+    "normalized": 2,
+    "demoted": 1,
+    "orphanItems": 1,
+    "publicized": 0,
+    "changed": true,
+    "details": {
+      "sweptRows": [
+        {
+          "dim": "memories",
+          "refId": "m-none",
+          "who": "角色乙"
+        }
+      ],
+      "dedupedRows": [
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲"
+        }
+      ],
+      "renamedRows": [],
+      "staleRows": [
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "conceptRef",
+          "value": "不存在的概念"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "atomRef",
+          "value": "a-none"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "memRefs",
+          "value": "1 条"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "sourceRefs",
+          "value": "1 条"
+        }
+      ]
+    }
+  },
+  "keepCounts": {
+    "swept": 1,
+    "deduped": 1,
+    "renamed": 0,
+    "staleRefs": 4,
+    "normalized": 2,
+    "demoted": 1,
+    "orphanItems": 1,
+    "publicized": 0,
+    "action": "keep"
+  },
+  "keepTouched": true,
+  "keepSummary": "（关联维护：清理孤儿关联 1 行 · 关联去重 1 行 · 悬空引用清理 4 处 · 非法值归一 2 行）",
+  "keepLinks": [
+    {
+      "id": "lnk_1sssq8c",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "角色甲",
+      "how": "participant",
+      "deviation": "unknown",
+      "conceptRef": "",
+      "atomRef": "",
+      "planRef": "",
+      "suspenseRef": "",
+      "memRefs": [],
+      "sourceRefs": [],
+      "public": true,
+      "note": "合并备注",
+      "from": "正文",
+      "uses": 3
+    },
+    {
+      "id": "lnk_m1_c",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "甲",
+      "how": "witness",
+      "deviation": "unknown",
+      "conceptRef": "",
+      "atomRef": "",
+      "planRef": "",
+      "suspenseRef": "",
+      "memRefs": [],
+      "sourceRefs": [],
+      "public": false,
+      "note": "",
+      "from": "",
+      "uses": 1
+    },
+    {
+      "id": "lnk_m1_anchor",
+      "dim": "memories",
+      "refId": "m1",
+      "who": "",
+      "how": "",
+      "deviation": "unknown",
+      "conceptRef": "",
+      "atomRef": "",
+      "planRef": "p1",
+      "suspenseRef": "u1",
+      "memRefs": [
+        {
+          "dim": "memories",
+          "refId": "m1"
+        }
+      ],
+      "sourceRefs": [
+        {
+          "dim": "atoms",
+          "refId": "a1"
+        }
+      ],
+      "public": true,
+      "note": "",
+      "from": "",
+      "uses": 1
+    },
+    {
+      "id": "lnk_p1_bad",
+      "dim": "plans",
+      "refId": "p1",
+      "who": "角色甲",
+      "how": "unspecified",
+      "deviation": "unknown",
+      "conceptRef": "",
+      "atomRef": "",
+      "planRef": "",
+      "suspenseRef": "",
+      "memRefs": [],
+      "sourceRefs": [],
+      "public": false,
+      "note": "",
+      "from": "",
+      "uses": 1
+    }
+  ],
+  "keepTombs": [
+    "lnk_gone",
+    "lnk_m1_a"
+  ],
+  "public": {
+    "action": "public",
+    "publicized": 1,
+    "changed": true,
+    "orphanItems": 1
+  },
+  "publicLinks": [
+    [
+      "memories",
+      "m1",
+      "fact",
+      ""
+    ],
+    [
+      "suspense",
+      "u1",
+      "suspense",
+      "孤儿条目转公开（修复）"
+    ]
+  ],
+  "disabled": {
+    "changed": false,
+    "swept": 0,
+    "deduped": 0
+  },
+  "none": {
+    "changed": false,
+    "orphanItems": 0,
+    "summary": "",
+    "touched": false
+  },
+  "clean": {
+    "action": "clean",
+    "swept": 1,
+    "publicized": 0,
+    "orphanItems": 1,
+    "changed": true
+  },
+  "cleanSummary": "（关联维护：清理孤儿关联 1 行 · 关联去重 1 行 · 悬空引用清理 4 处 · 非法值归一 2 行）",
+  "rename": {
+    "renamed": 2,
+    "changed": true,
+    "details": [
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "field": "who",
+        "from": "角色",
+        "to": "角色甲"
+      },
+      {
+        "dim": "memories",
+        "refId": "m1",
+        "field": "from",
+        "from": "角色",
+        "to": "角色甲"
+      }
+    ],
+    "counts": {
+      "swept": 0,
+      "deduped": 0,
+      "renamed": 2,
+      "staleRefs": 0,
+      "normalized": 0,
+      "demoted": 1,
+      "orphanItems": 2,
+      "publicized": 0,
+      "action": "keep"
+    }
+  },
+  "renameLinks": [
+    {
+      "id": "lnk_1sssq8c",
+      "who": "角色甲",
+      "from": "角色甲"
+    }
+  ],
+  "renameSummary": "（关联维护：角色名归一 2 处）",
+  "orphanOnly": {
+    "changed": false,
+    "swept": 0,
+    "orphanItems": 1,
+    "summary": "（关联维护：无孤儿关联需清理；仍有 1 条无关联条目，可在「记忆 → 关系表」查看）",
+    "touched": false
+  },
+  "merged": {
+    "counts": {
+      "swept": 2,
+      "deduped": 1,
+      "renamed": 0,
+      "staleRefs": 5,
+      "normalized": 2,
+      "demoted": 2,
+      "orphanItems": 1,
+      "publicized": 0,
+      "action": "keep"
+    },
+    "summary": "（关联维护：清理孤儿关联 2 行 · 关联去重 1 行 · 悬空引用清理 5 处 · 非法值归一 2 行）",
+    "details": {
+      "sweptRows": [
+        {
+          "dim": "memories",
+          "refId": "m-none",
+          "who": "角色乙"
+        },
+        {
+          "dim": "memories",
+          "refId": "m-gone",
+          "who": "角色丙"
+        }
+      ],
+      "dedupedRows": [
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲"
+        }
+      ],
+      "renamedRows": [],
+      "staleRows": [
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "conceptRef",
+          "value": "不存在的概念"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "atomRef",
+          "value": "a-none"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "memRefs",
+          "value": "1 条"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "sourceRefs",
+          "value": "1 条"
+        },
+        {
+          "dim": "memories",
+          "refId": "m1",
+          "field": "suspenseRef",
+          "value": "u1"
+        }
+      ]
+    },
+    "changed": true
+  },
+  "mergedCountsB": {
+    "swept": 1,
+    "deduped": 0,
+    "renamed": 0,
+    "staleRefs": 1,
+    "normalized": 0,
+    "demoted": 1,
+    "orphanItems": 0,
+    "publicized": 0,
+    "action": "keep"
+  },
+  "inputs": {
+    "scenario": {
+      "version": "v1.206",
+      "state": {
+        "time": "",
+        "date": "2020-06-01",
+        "location": "",
+        "sceneFocus": null
+      },
+      "protagonist": {},
+      "items": [
+        {
+          "id": "i1",
+          "name": "铜钥匙",
+          "desc": "钥匙",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "plans": [
+        {
+          "id": "p1",
+          "title": "计划一",
+          "content": "送信。",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "suspense": [
+        {
+          "id": "u1",
+          "title": "悬念一",
+          "content": "谁在跟踪？",
+          "status": "open",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "scenes": [],
+      "npcs": [],
+      "atoms": [
+        {
+          "id": "a1",
+          "text": "角色甲在码头。",
+          "title": "码头",
+          "date": "2020-01-01",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "currentStates": [],
+      "snapshots": [
+        {
+          "id": "k1",
+          "name": "角色甲",
+          "appearance": "灰袍",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "memories": [
+        {
+          "id": "m1",
+          "title": "记忆一",
+          "content": "角色甲在码头交接。",
+          "date": "2020-01-01",
+          "importance": 0.6,
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2,
+          "tags": []
+        }
+      ],
+      "concepts": [
+        {
+          "id": "c1",
+          "name": "天机阁",
+          "content": "情报机构。",
+          "tags": [],
+          "uses": 1,
+          "floorStart": 1,
+          "floorEnd": 2
+        }
+      ],
+      "parallels": [],
+      "currencies": [],
+      "plotSegments": [],
+      "rumors": [],
+      "links": [
+        {
+          "id": "lnk_gone",
+          "dim": "memories",
+          "refId": "m-none",
+          "who": "角色乙",
+          "how": "witness",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1000
+        },
+        {
+          "id": "lnk_m1_a",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲",
+          "how": "told",
+          "deviation": "unknown",
+          "at": "2020-01-01",
+          "uses": 1,
+          "updatedAt": 1000
+        },
+        {
+          "id": "lnk_m1_b",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "角色甲",
+          "how": "participant",
+          "deviation": "exact",
+          "from": "正文",
+          "note": "合并备注",
+          "public": true,
+          "uses": 3,
+          "updatedAt": 2000
+        },
+        {
+          "id": "lnk_m1_c",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "甲",
+          "how": "witness",
+          "deviation": "unknown",
+          "uses": 1,
+          "updatedAt": 1500
+        },
+        {
+          "id": "lnk_m1_anchor",
+          "dim": "memories",
+          "refId": "m1",
+          "who": "",
+          "public": true,
+          "kind": "fact",
+          "how": "",
+          "deviation": "unknown",
+          "conceptRef": "不存在的概念",
+          "atomRef": "a-none",
+          "planRef": "p1",
+          "suspenseRef": "u1",
+          "memRefs": [
+            {
+              "dim": "memories",
+              "refId": "m1"
+            },
+            {
+              "dim": "memories",
+              "refId": "m-none"
+            }
+          ],
+          "sourceRefs": [
+            {
+              "dim": "atoms",
+              "refId": "a1"
+            },
+            {
+              "dim": "atoms",
+              "refId": "a-none"
+            }
+          ],
+          "uses": 1,
+          "updatedAt": 1200
+        },
+        {
+          "id": "lnk_p1_bad",
+          "dim": "plans",
+          "refId": "p1",
+          "who": "角色甲",
+          "how": "乱写",
+          "deviation": "乱写",
+          "uses": 1,
+          "updatedAt": 1300
+        }
+      ],
+      "vars": {},
+      "varTemplates": {},
+      "summaries": [],
+      "processedFloors": [],
+      "lastKnownFloor": -1,
+      "stats": {
+        "plansClosed": 0,
+        "suspenseResolved": 0
+      },
+      "deleted": {},
+      "deletedH": {},
+      "updatedAt": 0
+    }
+  },
+  "note": "oracle = 真实 V1 插件 v1.206（helpers: loadPlugin）"
+}

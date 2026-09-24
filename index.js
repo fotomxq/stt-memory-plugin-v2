@@ -45,6 +45,9 @@ import {
     repairCorrelationMap, repairTagSetOf, repairJaccard, scheduleAutoRepairOnMergeFail, cancelRepairTimers,
 } from './core/repair.js';
 import {
+    relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, mergeRelMaint, demoteRelLinkOrphans,
+} from './core/rel-maint.js';
+import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
@@ -394,6 +397,13 @@ function bootstrapDiagnostics() {
             repairTags: (entries) => repairTagSetOf(entries),
             repairJaccard: (a, b) => repairJaccard(a, b),
             repairFailArmed: () => scheduleAutoRepairOnMergeFail(),
+            // B8-6b+ 关联层机械维护（零 AI；修复第 1 段收尾 + AI 修订后复检）
+            relMaint: (opts) => relRepairMaint(opts || {}),
+            relMaintCounts: (m) => relMaintCounts(m),
+            relMaintTouched: (m) => relMaintTouched(m),
+            relMaintSummary: (m) => relMaintSummary(m),
+            mergeRelMaint: (a, b) => mergeRelMaint(a, b),
+            demoteRelLinkOrphans: () => demoteRelLinkOrphans(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
