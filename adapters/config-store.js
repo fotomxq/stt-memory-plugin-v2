@@ -7,7 +7,13 @@
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
 import { defaultCfg } from '../core/config.js';
+import { migratePromptTemplates, migrateArmorPreset } from '../core/prompt-migrate.js';
 import { getSettings, saveSettings } from './settings.js';
+
+let lastLoad = null;
+/** 最近一次载入/迁移摘要（诊断） */
+export function lastLoadInfo() { return lastLoad ? Object.assign({}, lastLoad) : null; }
+function promptMigrateStatsSafe() { return null; }   // 具体信息由 core/prompt-migrate.js 的 promptMigrateStats() 提供
 
 /** 深拷贝（配置为纯数据；函数/undefined 不支持，配置里也不该有） */
 export function deepClone(v) {
@@ -63,11 +69,22 @@ export function loadKernelCfg(opts) {
     const defaults = deepClone(defaultCfg) || {};
     const saved = isPlain(store.cfg) ? store.cfg : {};
     const merged = mergeCfg(defaults, saved);
+    // V1 `loadCfg` 口径：先做破甲预设旧键迁移，再做提示词模板升级（**只刷新未自定义/旧默认的模板**）
+    let promptMigrate = null;
+    let mergeArmor = null;
+    try {
+        mergeArmor = migrateArmorPreset(merged);
+        const before = stableStringify(merged.promptTemplates);
+        merged.promptTemplates = migratePromptTemplates(merged.promptTemplates);
+        promptMigrate = { changed: before !== stableStringify(merged.promptTemplates), armor: mergeArmor, info: promptMigrateStatsSafe() };
+    } catch (e) { /* 迁移失败不阻塞载入 */ }
     const changed = stableStringify(saved) !== stableStringify(merged);
     store.cfg = merged;
     applyKernelCfg(merged);
     if (changed && o.persist !== false) { try { saveSettings(); } catch (e) { /* 忽略 */ } }
-    return { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length };
+    const out = { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length, prompt: promptMigrate };
+    lastLoad = out;
+    return out;
 }
 
 /** 内核 → ST 配置（内核调用 saveCfg() 时走这里） */
