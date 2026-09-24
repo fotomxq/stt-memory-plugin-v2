@@ -5,10 +5,12 @@
 //       无宿主导入不崩（子进程验证）；版本与清单一致。
 // ============================================================
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeHost, makeDocument, installGlobalHost } from './harness/st-mock.js';
+import { makeHost, makeDocument, installGlobalHost, installGlobalFetch } from './harness/st-mock.js';
 import { VERSION, MODULE_NAME, INJECT_ID } from '../core/constants.js';
+import { readUpdateState } from '../adapters/update-state.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
@@ -27,8 +29,25 @@ try {
 }
 
 // ---------- B 有宿主：完整装配 ----------
-const host = makeHost();
-const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings']);
+// 更新检查桩：ST 版本端点（git 真值）+ 远端清单/更新日志
+const templateHtml = readFileSync(join(ROOT, 'settings.html'), 'utf8');
+let remoteVersion = '2.1.0';
+let endpointDown = false;
+const fetchCalls = [];
+const uninstallFetch = installGlobalFetch((url) => {
+    fetchCalls.push(url);
+    if (url === '/api/extensions/version') {
+        if (endpointDown) return { status: 404, body: {} };
+        return { status: 200, body: { isUpToDate: true, currentCommitHash: 'abc1234def', currentBranchName: 'main' } };
+    }
+    if (url.indexOf('/api/extensions/update') === 0) return { status: 200, body: { isUpToDate: false, shortCommitHash: 'beef999' } };
+    if (url.endsWith('/manifest.json')) return { status: 200, text: JSON.stringify({ version: remoteVersion }) };
+    if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v2.1.0（2026-10-01）\n\n- 新增：更新检查机制\n' };
+    return { status: 404, body: {} };
+});
+
+const host = makeHost({ templateHtml });
+const doc = makeDocument(['extensions_settings2', 'ftt_v2_settings', 'ftt_v2_updstate', 'ftt_v2_checkupd', 'ftt_v2_doupd', 'ftt_v2_autoupd', 'ftt_v2_updrepo']);
 const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
@@ -43,10 +62,10 @@ assert('B2 APP_READY 触发初始化：ready/探测/事件绑定/面板/命令/�
         && st.settingsVia === 'template' && st.slash === true && st.macros === true;
 })(), st);
 
-assert('B3 设置面板已挂载到 #extensions_settings2（走模板渲染）', (() => {
+assert('B3 设置面板已挂载到 #extensions_settings2（渲染真实 settings.html 模板）', (() => {
     const el = doc.getElementById('extensions_settings2');
-    return !!el && el.html.indexOf('ftt_v2_settings') >= 0 && el.html.indexOf('data-via="template"') >= 0;
-})(), doc.getElementById('extensions_settings2') && doc.getElementById('extensions_settings2').html);
+    return !!el && el.html.indexOf('ftt_v2_settings') >= 0 && el.html.indexOf('ftt_v2_budget') >= 0 && el.html.indexOf('ftt_v2_autoupd') >= 0;
+})(), doc.getElementById('extensions_settings2') && doc.getElementById('extensions_settings2').html.slice(0, 100));
 
 assert('B4 配置已初始化进 extensionSettings（含版本戳）', (() => {
     const s = host.ctx.extensionSettings[MODULE_NAME];
@@ -81,6 +100,57 @@ try {
     assert('C1 全局拦截器可被 ST 调用且不 abort、不改 chat', false, String(e.message));
 }
 assert('C2 拦截器统计可读（供 /ftt 与调试导出）', entry.__internals.interceptorStats().calls >= 1, entry.__internals.interceptorStats());
+
+// ---------- E 更新检查机制（首次启动自动检查 + 设定内手动检查） ----------
+assert('E1 设置面板含更新区块（自动检查开关 / 仓库地址 / 检查与立即更新按钮 / 状态行）', (() => {
+    const el = doc.getElementById('extensions_settings2');
+    return !!el && el.html.indexOf('ftt_v2_autoupd') >= 0 && el.html.indexOf('ftt_v2_updrepo') >= 0
+        && el.html.indexOf('ftt_v2_checkupd') >= 0 && el.html.indexOf('ftt_v2_doupd') >= 0
+        && el.html.indexOf('data-ftt-update-state') >= 0;
+})(), doc.getElementById('extensions_settings2').html.slice(0, 120));
+
+await new Promise(r => setTimeout(r, 60));
+assert('E2 首次启动自动检查：写 startupCheckedAt/lastCheckAt + 结果来自 ST 端点', (() => {
+    const st = readUpdateState();
+    return st.firstRunAt > 0 && st.startupCheckedAt > 0 && st.lastCheckAt > 0
+        && !!st.lastResult && st.lastResult.via === 'st-endpoint' && st.lastResult.isUpToDate === true;
+})(), readUpdateState());
+assert('E3 自动检查结果回填状态行（Git 校验：已是最新）', (() => {
+    const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
+    return t.indexOf('已是最新（Git 校验）') >= 0;
+})(), doc.getElementById('ftt_v2_updstate').textContent);
+
+// 手动检查：让 ST 端点不可用 → 回退远端清单（有新版本 + 更新要点）
+endpointDown = true;
+doc.getElementById('ftt_v2_checkupd').dispatch('click');
+await new Promise(r => setTimeout(r, 60));
+assert('E4 手动检查（按钮）：端点不可用时回退远端清单并报出新版本', (() => {
+    const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
+    const st = readUpdateState();
+    return t.indexOf('发现新版本 ' + remoteVersion) >= 0 && st.lastResult.status === 'newer'
+        && Array.isArray(st.lastResult.points) && st.lastResult.points.join(' ').indexOf('更新检查机制') >= 0;
+})(), doc.getElementById('fft_v2_updstate') ? String(doc.getElementById('ftt_v2_updstate').textContent) : '');
+assert('E5 更新请求走「配置仓库 → GitHub raw」地址', fetchCalls.some(u => u === 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin/main/manifest.json'), fetchCalls.slice(0, 6));
+
+// 立即更新（显式，仅用户点击）
+doc.getElementById('ftt_v2_doupd').dispatch('click');
+await new Promise(r => setTimeout(r, 40));
+assert('E6 「立即更新」按钮调用 ST 更新端点并回填 commit', (() => {
+    const t = String(doc.getElementById('ftt_v2_updstate').textContent || '');
+    return fetchCalls.indexOf('/api/extensions/update') >= 0 && t.indexOf('beef999') >= 0;
+})(), doc.getElementById('ftt_v2_updstate').textContent);
+assert('E7 /ftt 状态输出含更新行', (() => {
+    const cmd = (host.ctx.commands || [])[0];
+    const out = String(cmd.callback());
+    return out.indexOf('更新：') >= 0;
+})(), String(((host.ctx.commands || [])[0] || {}).callback));
+assert('E8 调试导出含更新状态', (() => {
+    const F = globalThis.FTT;
+    const u = F && typeof F.update === 'function' ? F.update() : null;
+    return !!u && !!u.config && u.config.repo === 'https://github.com/fotomxq/stt-memory-plugin';
+})(), typeof globalThis.FTT);
+endpointDown = false;
+uninstallFetch();
 
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {

@@ -4,5 +4,10 @@
     "Inject memory into prompt": "注入记忆到提示词",
     "Injection budget (characters)": "注入预算（字符）",
     "Auto summary": "自动摘要",
-    "FTT Memory V2 status": "FTT记忆组件 V2 状态"
+    "FTT Memory V2 status": "FTT记忆组件 V2 状态",
+    "Check for updates on startup": "启动时自动检查更新",
+    "Update repository": "更新检查仓库",
+    "Check for updates": "检查更新",
+    "Update now (SillyTavern)": "立即更新（ST）",
+    "Not checked yet": "尚未检查"
 }

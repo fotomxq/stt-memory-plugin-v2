@@ -8,6 +8,8 @@ import { interceptorStats } from './host/interceptor.js';
 import { readInject, injectAvailable } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { statusText } from './ui/commands.js';
+import { readUpdateState } from './adapters/update-state.js';
+import { updateStatusText, hasUpdate, updateConfig } from './host/update.js';
 
 export function buildSnapshot(extra) {
     const probe = hasHost() ? probeCapabilities() : { need: {}, missing: ['host'], ok: false };
@@ -22,6 +24,7 @@ export function buildSnapshot(extra) {
         interceptor: interceptorStats(),
         inject: { available: injectAvailable(), key: MODULE_NAME, length: readInject().length },
         settings: getSettings(),
+        update: { config: updateConfig(), state: readUpdateState(), status: updateStatusText(), hasUpdate: hasUpdate() },
         dimensions: DIMENSIONS.map(d => d.kind),
         hostEvents: HOST_EVENTS.slice(),
         status: statusText(Object.assign({ host: hasHost(), probe, interceptor: interceptorStats() }, extra || {})),
@@ -41,6 +44,7 @@ export function installDevtools() {
             probe: () => probeCapabilities(),
             interceptor: () => interceptorStats(),
             injectLength: () => readInject().length,
+            update: () => buildSnapshot().update,
         });
         return true;
     } catch (e) {

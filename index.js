@@ -12,6 +12,9 @@ import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
+import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
+import { setUpdateStatusLine } from './ui/settings-panel.js';
+import { readUpdateState } from './adapters/update-state.js';
 
 const runtime = {
     ready: false,
@@ -20,6 +23,7 @@ const runtime = {
     slash: false,
     macros: false,
     settingsVia: 'none',
+    update: { ran: false, reason: '', summary: null },
     lastError: '',
 };
 
@@ -34,6 +38,7 @@ export function extraForStatus() {
         probe: runtime.probe,
         bind: runtime.bind,
         interceptor: interceptorStats(),
+        update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
     };
 }
 
@@ -61,8 +66,32 @@ export async function init() {
     try { runtime.slash = registerSlashCommand(extraForStatus); } catch (e) { runtime.slash = false; }
     try { runtime.macros = registerMacros(extraForStatus); } catch (e) { runtime.macros = false; }
     try { installDevtools(); } catch (e) { /* 忽略 */ }
+    // 首次启动自动检查更新（不 await：绝不阻塞初始化与发送；失败静默）
+    try { void startupUpdateCheck(); } catch (e) { /* 忽略 */ }
     runtime.ready = true;
     return { ok: true, probe: runtime.probe, bind: runtime.bind, settingsVia: runtime.settingsVia, slash: runtime.slash, macros: runtime.macros };
+}
+
+/**
+ * 启动时更新检查（首次启动必查，之后按间隔；失败静默不阻塞）。
+ * 用户要求：「构建首次启动插件自动检查、设定手动检查更新的机制」。
+ * @param {object} [opts] manual / now
+ */
+export async function startupUpdateCheck(opts) {
+    try {
+        const r = await maybeAutoCheckOnStartup(opts || {});
+        runtime.update = { ran: !!r.ran, reason: r.reason, summary: r.summary || null };
+        if (r.ran && r.summary) { try { setUpdateStatusLine(updateStatusText(r.summary)); } catch (e) { /* 面板可能未挂载 */ } }
+        return r;
+    } catch (e) {
+        runtime.update = { ran: false, reason: 'error', summary: null };
+        return { ran: false, reason: 'error' };
+    }
+}
+
+/** 手动检查更新（设置面板按钮 / 斜杠命令调用同一入口） */
+export async function checkUpdateNow() {
+    return startupUpdateCheck({ manual: true });
 }
 
 /** 收尾（disable / delete / 重载前） */
@@ -135,4 +164,5 @@ export const __internals = {
     VERSION, DATA_VERSION, MODULE_NAME,
     init, teardown, runtimeState, extraForStatus,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
+    startupUpdateCheck, checkUpdateNow,
 };

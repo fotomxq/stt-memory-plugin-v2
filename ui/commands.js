@@ -4,6 +4,7 @@
 // ============================================================
 import { VERSION } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
+import { updateStatusText } from '../host/update.js';
 
 /** 状态文本（/ftt 与调试导出共用） */
 export function statusText(extra) {
@@ -17,6 +18,7 @@ export function statusText(extra) {
     }
     if (extra && extra.bind) lines.push('事件绑定：' + (extra.bind.bound || []).length + ' 个（缺 ' + ((extra.bind.missing || []).length) + '）');
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
+    if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
     return lines.join('\n');
 }
 
