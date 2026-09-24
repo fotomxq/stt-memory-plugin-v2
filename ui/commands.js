@@ -16,6 +16,8 @@ export function statusText(extra) {
         const miss = extra.probe.missing || [];
         lines.push('能力探测：' + (miss.length ? '缺 ' + miss.join('、') : '全部可用'));
     }
+    if (extra && extra.cfg) lines.push('内核配置：' + Number(extra.cfg.keys || 0) + ' 键' + (extra.cfg.changed ? '（本次补入默认值）' : ''));
+    if (extra && extra.inject) lines.push('注入：构建 ' + extra.inject.builds + ' · 推送 ' + extra.inject.pushes + ' · 当前 ' + extra.inject.lastChars + ' 字' + (extra.inject.keptLast ? '（保留上次 ' + extra.inject.keptLast + ' 次）' : ''));
     if (extra && extra.bind) lines.push('事件绑定：' + (extra.bind.bound || []).length + ' 个（缺 ' + ((extra.bind.missing || []).length) + '）');
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));

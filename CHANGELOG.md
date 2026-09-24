@@ -91,6 +91,18 @@
   （本机缓冲 → 服务端文件 → 空容器 → `migrateState` → 注入内核 + 楼层号），并新增 `CHARACTER_MESSAGE_RENDERED` 视图刷新、
   `GENERATION_ENDED` 防抖落盘、`CHAT_CHANGED` 换作用域重载；冒烟新增 B2b（接线来源与聊天视图）共 **21 项**，
   文档 `docs/P2-宿主与存储.md` v1.1 记录全过程。本阶段未完成项（V1 数据导入器、快照链、跨端收敛与镜像同步、配置载入迁移校验）已列于 `docs/P2-宿主与存储.md` §5。
+- **P3 首批：记忆注入闭环（本版新增）**：
+  ① `adapters/config-store.js`（约 90 行）—— 内核配置视图与 ST 配置容器双向同步：
+  `loadKernelCfg` = `core/config.js` **217 键默认配置** ⊕ 已存配置（已存优先、对象递归、缺键补默认、未知键保留），
+  `saveKernelCfg` 在内核调用 `saveCfg()` 时写回 ST 配置，`stableStringify`（递归排序键）判定是否需要补写以避免键序造成无意义写盘；
+  ② `host/inject.js` 新增 `wrapInjectText` / `pushMemoryInject` / `pushStats` / `injectGateOpen`，**逐字复刻 V1 `buildInjectText()` 包装**
+  （【FTT记忆注入】标题 + 区块标记说明 + 剧情日期口径（`clockDateLabel`）+ 可配置使用说明 + `记忆结束。`）与 `pushInject()` 口径
+  （开关＝及时分析或 `cfg.injectCurrentPrompt`；序号并发防护；**空构建保留上一次非空注入**（V1 v1.149）；`clearInject` 重置上次注入；
+  位置 `POSITION.IN_PROMPT` / depth 0；异常只记 `lastError`）；有意偏离一处并登记：V1 传 `role=null`，V2 用 ST 默认 `role=SYSTEM`；
+  ③ `host/interceptor.js`：生成前 `await pushMemoryInject()` 刷新注入并记 `injectedLength`，**永不 abort、不改 chat**；
+  ④ `index.js`：启动 `loadKernelCfg()`、楼层事件（用户/角色消息）刷新注入、`saveCfg` 钩子接 `saveKernelCfg`、`/ftt` 增「内核配置 / 注入」两行；
+  ⑤ 测试：`tests/unit/inject-push.test.js` **12 项断言** + 冒烟 G1–G3（配置同步 / 楼层事件注入 / 拦截器端到端）；文档 `docs/P3-注入闭环.md`。
+  未完成（P3 次批）：三层提取链（关键词 → JS 抽取 → AI 分析）与提取落库、使用计数、注入自查面板、V1 提示词模板迁移。
 - **P2 次批：V1 数据导入器（本版新增）**：新增 `adapters/import-v1.js`（约 380 行）—— 只读发现 V1 三类数据源
   （服务端 `ftt-state-<slug>-<scope8>.json[.gz]` 与 `-bak`、旧 settings 信封 `SPreset_FTTMemory_char:<hash>`、
   本机命名缓存 `FileSlug_/FileNames_/ArchiveName_<scope8>`，另含 `SPreset_FTTMemoryConfig`），

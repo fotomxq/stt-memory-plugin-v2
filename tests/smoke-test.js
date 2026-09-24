@@ -237,6 +237,48 @@ assert('F5 /ftt 状态含 V1 导入行', (() => {
 })(), '');
 if (prevLs === undefined) delete globalThis.localStorage; else globalThis.localStorage = prevLs;
 
+// ---------- G 记忆注入（P3 首批：内核配置 → 注入推送 → 拦截器） ----------
+const rt = await import('../core/model/runtime.js');
+const inj = await import('../host/inject.js');
+const coreCfg = await import('../core/config.js');
+{
+    const s = coreState.emptyState();
+    s.state = { time: '', date: '1919-11-29', location: '码头', sceneFocus: null };
+    s.atoms = [{ id: 'smoke-a1', title: '烟测情节', text: '角色甲在码头发现一只木箱，断口整齐（正文足够长）。', date: '1919-11-29', tags: ['码头'], floor: 1 }];
+    rt.setKernelState(s);
+}
+rt.cfg.injectCurrentPrompt = true;
+rt.cfg.charBudget = 8000;
+
+assert('G1 内核配置已同步：默认 217 键进入内核视图并落盘 ST 配置容器', (() => {
+    const store = host.ctx.extensionSettings.ftt_memory_v2;
+    return Object.keys(rt.cfg).length === 217 && rt.cfg.charBudget === 8000
+        && !!store && !!store.cfg && store.cfg.maxAtoms === coreCfg.defaultCfg.maxAtoms
+        && String(rt.cfg.promptTemplates.injectGuide).length > 100;
+})(), { keys: Object.keys(rt.cfg).length });
+
+host.emit('CHARACTER_MESSAGE_RENDERED');
+await new Promise((r) => setTimeout(r, 20));
+assert('G2 楼层事件刷新注入：写入 ST 注入通道（结构头 + 正文 + 结束标记）', (() => {
+    const p = host.ctx.extensionPrompts[INJECT_ID];
+    const val = p ? String(p.value) : '';
+    return val.indexOf('【FTT记忆注入】') === 0 && val.indexOf('记忆结束。') > 0
+        && val.indexOf('发现一只木箱') > 0 && p.position === 0 && p.depth === 0;
+})(), String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '').slice(0, 60));
+
+let smokeAborted = 0;
+const smokeChat = [{ is_user: true, mes: '你好' }, { is_user: false, mes: '晚上好' }];
+const smokeChatCopy = JSON.stringify(smokeChat);
+assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort', (async () => {
+    globalThis.fttGenerateInterceptor(smokeChat, 8000, () => { smokeAborted++; }, 'normal');
+    await new Promise((r) => setTimeout(r, 20));
+    const val = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
+    const st = entry.runtimeState().interceptor;
+    return smokeAborted === 0 && JSON.stringify(smokeChat) === smokeChatCopy
+        && val.indexOf('【FTT记忆注入】') === 0 && st.calls >= 1 && st.injectedLength === val.length
+        && st.lastPush && st.lastPush.injected === true;
+})(), typeof globalThis.fttGenerateInterceptor);
+
 endpointDown = false;
 uninstallFetch();
 
