@@ -42,6 +42,11 @@ import {
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
 import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } from './core/clock-ai.js';
+import {
+    runNsfwSoften, nsfwSoftenState, nsfwFixedReplace, nsfwScan, nsfwKeywordHits, nsfwApplyRules,
+    nsfwKeywordList, nsfwRuleList, nsfwKeywordAdd, nsfwKeywordDelete, nsfwRuleAdd, nsfwRuleDelete,
+    nsfwKeywordReset, nsfwRuleReset,
+} from './core/nsfw.js';
 import { promptToGenerateArgs } from './host/extract.js';
 import { rawGenerate } from './host/generation.js';
 import { clockUiInfo } from './ui/clock.js';
@@ -331,6 +336,21 @@ function bootstrapDiagnostics() {
             clockRegexGen: (opts) => genClockRegexes(opts || {}),
             clockRepair: (opts) => runClockRepair(opts || {}),
             clockRepairPack: () => clockRepairPack(),
+            // B8-4 内容弱化（NSFW）
+            nsfwState: () => nsfwSoftenState(),
+            nsfwSoften: (opts) => runNsfwSoften(opts || {}),
+            nsfwFixed: (opts) => nsfwFixedReplace(opts || {}),
+            nsfwScan: (opts) => nsfwScan(opts || {}),
+            nsfwHits: (text) => nsfwKeywordHits(text),
+            nsfwApply: (text) => nsfwApplyRules(text),
+            nsfwKeywords: () => nsfwKeywordList(),
+            nsfwRules: () => nsfwRuleList(),
+            nsfwKeywordAdd: (kw) => nsfwKeywordAdd(kw),
+            nsfwKeywordDelete: (i) => nsfwKeywordDelete(i),
+            nsfwRuleAdd: (f, t) => nsfwRuleAdd(f, t),
+            nsfwRuleDelete: (i) => nsfwRuleDelete(i),
+            nsfwKeywordReset: () => nsfwKeywordReset(),
+            nsfwRuleReset: () => nsfwRuleReset(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));

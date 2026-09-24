@@ -108,6 +108,21 @@ export function installDevtools(hooks) {
             clockRegexGen: (opts) => (hooks && typeof hooks.clockRegexGen === 'function' ? hooks.clockRegexGen(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             clockRepair: (opts) => (hooks && typeof hooks.clockRepair === 'function' ? hooks.clockRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
             clockRepairPack: () => (hooks && typeof hooks.clockRepairPack === 'function' ? hooks.clockRepairPack() : null),
+            // B8-4 内容弱化（NSFW）
+            nsfwState: () => (hooks && typeof hooks.nsfwState === 'function' ? hooks.nsfwState() : null),
+            nsfwSoften: (opts) => (hooks && typeof hooks.nsfwSoften === 'function' ? hooks.nsfwSoften(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            nsfwFixed: (opts) => (hooks && typeof hooks.nsfwFixed === 'function' ? hooks.nsfwFixed(opts || {}) : null),
+            nsfwScan: (opts) => (hooks && typeof hooks.nsfwScan === 'function' ? hooks.nsfwScan(opts || {}) : null),
+            nsfwHits: (text) => (hooks && typeof hooks.nsfwHits === 'function' ? hooks.nsfwHits(text) : []),
+            nsfwApply: (text) => (hooks && typeof hooks.nsfwApply === 'function' ? hooks.nsfwApply(text) : null),
+            nsfwKeywords: () => (hooks && typeof hooks.nsfwKeywords === 'function' ? hooks.nsfwKeywords() : []),
+            nsfwRules: () => (hooks && typeof hooks.nsfwRules === 'function' ? hooks.nsfwRules() : []),
+            nsfwKeywordAdd: (kw) => (hooks && typeof hooks.nsfwKeywordAdd === 'function' ? hooks.nsfwKeywordAdd(kw) : null),
+            nsfwKeywordDelete: (i) => (hooks && typeof hooks.nsfwKeywordDelete === 'function' ? hooks.nsfwKeywordDelete(i) : null),
+            nsfwRuleAdd: (f, t) => (hooks && typeof hooks.nsfwRuleAdd === 'function' ? hooks.nsfwRuleAdd(f, t) : null),
+            nsfwRuleDelete: (i) => (hooks && typeof hooks.nsfwRuleDelete === 'function' ? hooks.nsfwRuleDelete(i) : null),
+            nsfwKeywordReset: () => (hooks && typeof hooks.nsfwKeywordReset === 'function' ? hooks.nsfwKeywordReset() : null),
+            nsfwRuleReset: () => (hooks && typeof hooks.nsfwRuleReset === 'function' ? hooks.nsfwRuleReset() : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;
