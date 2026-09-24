@@ -44,5 +44,16 @@
   角色作用域改为 `char:hashText(avatar → name2 → 索引)`（与原 TH 角色 id 口径尽量靠近）。
   **保真度门禁**：V1 源码切片产出黄金样本 `tests/fixtures/v1-golden.json`（10 维度固定夹具 + 6 组哈希 + 7 项助手），
   `model-golden.test.js` 复放并要求 **JSON 逐字符相等**（15 项断言）。详见 `docs/P1-内核平移.md`。
-- **门禁**：单元 **10 文件 127 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 7 文件）；版本一致性 **通过**；文档规范 **0 违规**。
+- **P1 内核平移（批次 2：档案 / 年龄 / 货币 / 分段）**：新增
+  `core/model/runtime.js`（**注入视图**：`cfg` / `state` / `getStoryNow` / `defaultCfg` + `saveCfg`·`saveState` 持久化钩子，
+  由宿主注入 —— 内核保持零宿主依赖，V1 代码逐字不改）、
+  `core/model/snapshot.js`（612 行：`normalizeSnapshot` + 年龄族 `snapshotAge*`/`calcAge`/`syncSnapshotAge`/`refreshAllSnapshotAges`
+  + 出生日期族 `parseBirthDateParts`/`birthDatePrecision`/`birthDateInFuture`/`snapshotBirthAnomaly*` + 时间采样 + `migrateSnapshotV1162`）、
+  `core/model/money.js`（210 行：`normalizeCurrency`/`formatMoney`（万·亿·兆·京·垓）/`moneyNet`/流水 + 标定角色 `trackedCurrencyRoles` 增删清 + `defaultCurrencyOwner`）、
+  `core/model/segment.js`（188 行：情节分段总结 `normalizePlotSegment`/`plotSegmentId`/`plotSegmentRange`/`plotSegmentTimeKey`/排序/文本互转）；
+  `scalars.js` 追加 `SNAP_GROUP_MAP`/`splitListText`/`normalizeTrackedRoles`。
+  **黄金样本 2**（`tests/fixtures/v1-golden-model2.json`）：`model-golden2.test.js` **23 项断言**逐字符比对
+  （档案 / 年龄与锁定 / 出生异常 / `calcAge` 跨生日与公元前 / 货币含 1.23 亿显示 / 分段含时间倒序与文本互转）；
+  时间戳（`createdAt`/`updatedAt`，墙钟）比较前抹平，其余字段严格相等。
+- **门禁**：单元 **11 文件 150 断言全过**；冒烟 **20/20**（含更新机制 E1–E8）；内核纯净度 **0 违规**（core/ 8 文件）；版本一致性 **通过**；文档规范 **0 违规**。
 - **不与 V1 共存**：V1 与 V2 同装会重复注入，README 已提示；V1 数据不被本版读写（导入器在 P6）。

@@ -5,7 +5,8 @@
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
-import { cfg, dimCap, mergeTags, makeExtra, normStrList, normSteps, normHistory, normIdList, normPhase, normClues, scenePathArr, toChineseField, toChineseCategory } from './scalars.js';
+import { dimCap, mergeTags, makeExtra, normStrList, normSteps, normHistory, normIdList, normPhase, normClues, scenePathArr, toChineseField, toChineseCategory } from './scalars.js';
+import { cfg } from './runtime.js';
 
 function normalizeCurrentState(e) {
     const subject = normText(e?.subject, 40);

@@ -1,0 +1,1021 @@
+{
+  "note": "V1 源码切片（批次 1+2）在固定输入下的输出（黄金样本）",
+  "inputs": {
+    "SNAPSHOTS": [
+      {
+        "name": "角色甲",
+        "gender": "男",
+        "birthDate": "1900-05-20",
+        "deceased": true,
+        "height": "178cm",
+        "build": "精瘦",
+        "hair": "黑色短发",
+        "eyes": "褐色",
+        "skin": "偏黑",
+        "distinguishing": "左眉疤",
+        "traits": "沉稳,寡言",
+        "quirks": "转笔",
+        "values": "守信",
+        "speechStyle": "简短",
+        "origin": "港口",
+        "history": "在码头长大并接手货栈",
+        "relationships": [
+          {
+            "name": "乙",
+            "relation": "同伴",
+            "attitude": "信任"
+          },
+          {
+            "name": "",
+            "relation": "x"
+          }
+        ],
+        "relationToUser": "搭档",
+        "attitudeToUser": "克制",
+        "todos": "查出破坏者;追回货款",
+        "commitments": "照看乙",
+        "tags": "码头,旧",
+        "keywords": [
+          "木箱"
+        ],
+        "floorStart": 3,
+        "floorEnd": 9,
+        "uses": 4,
+        "importance": 0.9,
+        "lastUpdateDate": "1919-11-29",
+        "lastUpdateTime": "黄昏",
+        "lastSeenDate": "1919-11-30",
+        "lastSeenTime": "正午"
+      },
+      {
+        "name": "角色乙",
+        "gender": "女",
+        "traits": "勇敢,谨慎",
+        "todos": "找船主;还钱",
+        "city": "码头",
+        "ageNote": "看起来 30 岁",
+        "birthDate": "1890-01"
+      },
+      {
+        "name": "角色丙"
+      },
+      {
+        "name": "角色丁",
+        "birthDate": "-0221-01-02"
+      },
+      {
+        "identity": {
+          "gender": "男",
+          "birthDate": "1905-12-31"
+        }
+      },
+      {
+        "name": "角色戊",
+        "profile": {
+          "birthDate": "1905-12-31",
+          "deceased": false
+        },
+        "personality": {
+          "traits": [
+            "急躁"
+          ]
+        }
+      }
+    ],
+    "CURRENCIES": [
+      {
+        "owner": "角色甲",
+        "currency": "银元",
+        "amount": 123456789,
+        "flows": [
+          {
+            "at": "1919-11-29",
+            "delta": 1000,
+            "note": "卖货"
+          },
+          {
+            "at": "1919-12-01",
+            "delta": -250,
+            "note": "雇车"
+          }
+        ],
+        "history": [
+          {
+            "at": "1919-11-29",
+            "amount": 1000
+          }
+        ]
+      },
+      {
+        "owner": "",
+        "currency": "贝壳",
+        "amount": 42
+      },
+      {
+        "owner": "角色乙",
+        "currency": "美元",
+        "amount": -12.5,
+        "flows": "散货收入 300;船费 -100"
+      },
+      {
+        "owner": "角色甲",
+        "currency": "",
+        "amount": 0
+      }
+    ],
+    "SEGMENTS": [
+      {
+        "header": "### 1919-11-29 ~ 1919-11-30",
+        "start": "1919-11-29",
+        "end": "1919-11-30",
+        "lines": [
+          {
+            "label": "交易线",
+            "text": "甲与乙敲定粮食转运安排。"
+          },
+          {
+            "label": "情感线",
+            "text": "两人关系转暖。"
+          }
+        ],
+        "raw": "原文",
+        "atomIds": [
+          "a1",
+          "a2"
+        ],
+        "manual": false
+      },
+      {
+        "header": "### 1919-12-01 ~ 1919-12-03",
+        "lines": "1. 追查线: 甲循线索找到破坏者。",
+        "atomIds": [
+          "a3"
+        ],
+        "manual": true
+      },
+      {
+        "raw": "### 1919-11-25 ~ 1919-11-26\n1. 铺垫线: 码头风传货栈出事。"
+      },
+      {
+        "header": ""
+      }
+    ],
+    "MONEY_HELPERS": [
+      123456789,
+      0,
+      -12.5,
+      100000000,
+      1000000000000,
+      10000000000000000,
+      100000000000000000000,
+      999,
+      1000,
+      "x",
+      null,
+      3.14159
+    ]
+  },
+  "dimCharLimits": {
+    "atoms": 360,
+    "states": 130,
+    "snapshots": 600,
+    "memories": 260,
+    "items": 160,
+    "plans": 200,
+    "suspense": 200,
+    "currencies": 200,
+    "rumors": 240,
+    "scenes": 260,
+    "concepts": 320,
+    "parallels": 560
+  },
+  "snapshots": [
+    {
+      "id": "snapshot_2mcm47",
+      "name": "角色甲",
+      "identity": {
+        "gender": "男",
+        "birthDate": "1900-05-20",
+        "age": "",
+        "species": "",
+        "occupation": "",
+        "title": "",
+        "family": "",
+        "deceased": true
+      },
+      "appearance": "",
+      "personality": {
+        "traits": [
+          "沉稳",
+          "寡言"
+        ],
+        "quirks": [
+          "转笔"
+        ],
+        "values": [
+          "守信"
+        ],
+        "speechStyle": "简短"
+      },
+      "background": {
+        "origin": "港口",
+        "history": "在码头长大并接手货栈"
+      },
+      "relationships": [
+        {
+          "name": "乙",
+          "relation": "同伴",
+          "attitude": "信任"
+        }
+      ],
+      "social": {
+        "relationToUser": "搭档",
+        "attitudeToUser": "克制"
+      },
+      "future": {
+        "todos": [
+          "查出破坏者",
+          "追回货款"
+        ],
+        "commitments": [
+          "照看乙"
+        ]
+      },
+      "tags": [
+        "码头",
+        "旧",
+        "木箱"
+      ],
+      "keywords": [],
+      "floorStart": 3,
+      "floorEnd": 9,
+      "uses": 4,
+      "lastUpdateDate": "1919-11-29",
+      "lastUpdateTime": "黄昏",
+      "lastSeenDate": "1919-11-30",
+      "lastSeenTime": "正午",
+      "category": "snapshots",
+      "title": "角色甲",
+      "content": "在码头长大并接手货栈",
+      "strength": 90,
+      "extra": [
+        {
+          "name": "gender",
+          "type": "string",
+          "value": "男"
+        }
+      ]
+    },
+    {
+      "id": "snapshot_2mco7w",
+      "name": "角色乙",
+      "identity": {
+        "gender": "女",
+        "birthDate": "1890-01",
+        "age": "",
+        "species": "",
+        "occupation": "",
+        "title": "",
+        "family": ""
+      },
+      "appearance": "",
+      "personality": {
+        "traits": [
+          "勇敢",
+          "谨慎"
+        ],
+        "quirks": [],
+        "values": [],
+        "speechStyle": ""
+      },
+      "background": {
+        "origin": "",
+        "history": ""
+      },
+      "relationships": [],
+      "social": {
+        "relationToUser": "",
+        "attitudeToUser": ""
+      },
+      "future": {
+        "todos": [
+          "找船主",
+          "还钱"
+        ],
+        "commitments": []
+      },
+      "tags": [],
+      "keywords": [],
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "lastUpdateDate": "",
+      "lastUpdateTime": "",
+      "lastSeenDate": "",
+      "lastSeenTime": "",
+      "category": "snapshots",
+      "title": "角色乙",
+      "content": "",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "gender",
+          "type": "string",
+          "value": "女"
+        }
+      ]
+    },
+    {
+      "id": "snapshot_2mco9o",
+      "name": "角色丙",
+      "identity": {
+        "gender": "",
+        "birthDate": "",
+        "age": "",
+        "species": "",
+        "occupation": "",
+        "title": "",
+        "family": ""
+      },
+      "appearance": "",
+      "personality": {
+        "traits": [],
+        "quirks": [],
+        "values": [],
+        "speechStyle": ""
+      },
+      "background": {
+        "origin": "",
+        "history": ""
+      },
+      "relationships": [],
+      "social": {
+        "relationToUser": "",
+        "attitudeToUser": ""
+      },
+      "future": {
+        "todos": [],
+        "commitments": []
+      },
+      "tags": [],
+      "keywords": [],
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "lastUpdateDate": "",
+      "lastUpdateTime": "",
+      "lastSeenDate": "",
+      "lastSeenTime": "",
+      "category": "snapshots",
+      "title": "角色丙",
+      "content": "",
+      "strength": 50,
+      "extra": []
+    },
+    {
+      "id": "snapshot_2mco90",
+      "name": "角色丁",
+      "identity": {
+        "gender": "",
+        "birthDate": "-0221-01-0",
+        "age": "",
+        "species": "",
+        "occupation": "",
+        "title": "",
+        "family": ""
+      },
+      "appearance": "",
+      "personality": {
+        "traits": [],
+        "quirks": [],
+        "values": [],
+        "speechStyle": ""
+      },
+      "background": {
+        "origin": "",
+        "history": ""
+      },
+      "relationships": [],
+      "social": {
+        "relationToUser": "",
+        "attitudeToUser": ""
+      },
+      "future": {
+        "todos": [],
+        "commitments": []
+      },
+      "tags": [],
+      "keywords": [],
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "lastUpdateDate": "",
+      "lastUpdateTime": "",
+      "lastSeenDate": "",
+      "lastSeenTime": "",
+      "category": "snapshots",
+      "title": "角色丁",
+      "content": "",
+      "strength": 50,
+      "extra": []
+    },
+    null,
+    {
+      "id": "snapshot_2mckb3",
+      "name": "角色戊",
+      "identity": {
+        "gender": "",
+        "birthDate": "1905-12-31",
+        "age": "",
+        "species": "",
+        "occupation": "",
+        "title": "",
+        "family": "",
+        "deceased": false
+      },
+      "appearance": "",
+      "personality": {
+        "traits": [
+          "急躁"
+        ],
+        "quirks": [],
+        "values": [],
+        "speechStyle": ""
+      },
+      "background": {
+        "origin": "",
+        "history": ""
+      },
+      "relationships": [],
+      "social": {
+        "relationToUser": "",
+        "attitudeToUser": ""
+      },
+      "future": {
+        "todos": [],
+        "commitments": []
+      },
+      "tags": [],
+      "keywords": [],
+      "floorStart": 0,
+      "floorEnd": 0,
+      "uses": 0,
+      "lastUpdateDate": "",
+      "lastUpdateTime": "",
+      "lastSeenDate": "",
+      "lastSeenTime": "",
+      "category": "snapshots",
+      "title": "角色戊",
+      "content": "",
+      "strength": 50,
+      "extra": []
+    }
+  ],
+  "currencies": [
+    {
+      "id": "cur_1xcp5ni",
+      "owner": "角色甲",
+      "name": "银元",
+      "unit": "",
+      "amount": 123456789,
+      "note": "",
+      "history": [
+        {
+          "date": "",
+          "delta": 1000,
+          "note": ""
+        }
+      ],
+      "date": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "tags": [],
+      "keywords": [],
+      "category": "currencies",
+      "title": "银元",
+      "content": "",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "owner",
+          "type": "string",
+          "value": "角色甲"
+        },
+        {
+          "name": "history",
+          "type": "integer",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "cur_1xcle05",
+      "owner": "角色甲",
+      "name": "贝壳",
+      "unit": "",
+      "amount": 42,
+      "note": "",
+      "history": [],
+      "date": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "tags": [],
+      "keywords": [],
+      "category": "currencies",
+      "title": "贝壳",
+      "content": "",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "owner",
+          "type": "string",
+          "value": "角色甲"
+        },
+        {
+          "name": "history",
+          "type": "integer",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "cur_1yyzx0t",
+      "owner": "角色乙",
+      "name": "美元",
+      "unit": "",
+      "amount": -12.5,
+      "note": "",
+      "history": [],
+      "date": "",
+      "uses": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "tags": [],
+      "keywords": [],
+      "category": "currencies",
+      "title": "美元",
+      "content": "",
+      "strength": 50,
+      "extra": [
+        {
+          "name": "owner",
+          "type": "string",
+          "value": "角色乙"
+        },
+        {
+          "name": "history",
+          "type": "integer",
+          "value": 0
+        }
+      ]
+    },
+    null
+  ],
+  "segments": [
+    {
+      "id": "seg_cr0mvn",
+      "header": "1919-11-29 ~ 1919-11-30",
+      "start": "",
+      "end": "",
+      "lines": [
+        {
+          "label": "交易线",
+          "text": "甲与乙敲定粮食转运安排。"
+        },
+        {
+          "label": "情感线",
+          "text": "两人关系转暖。"
+        }
+      ],
+      "atomIds": [
+        "a1",
+        "a2"
+      ],
+      "atomCount": 2,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "raw": "原文",
+      "manual": false,
+      "uses": 0,
+      "createdAt": 1790254645027,
+      "updatedAt": 1790254645027
+    },
+    {
+      "id": "seg_luzfq1",
+      "header": "1919-12-01 ~ 1919-12-03",
+      "start": "",
+      "end": "",
+      "lines": [
+        {
+          "label": "追查线",
+          "text": "甲循线索找到破坏者。"
+        }
+      ],
+      "atomIds": [
+        "a3"
+      ],
+      "atomCount": 1,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "raw": "### 1919-12-01 ~ 1919-12-03\n1. 追查线：甲循线索找到破坏者。",
+      "manual": true,
+      "uses": 0,
+      "createdAt": 1790254645027,
+      "updatedAt": 1790254645027
+    },
+    {
+      "id": "seg_h9q4lx",
+      "header": "未标注时间范围",
+      "start": "",
+      "end": "",
+      "lines": [],
+      "atomIds": [],
+      "atomCount": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "raw": "### 1919-11-25 ~ 1919-11-26\n1. 铺垫线: 码头风传货栈出事。",
+      "manual": false,
+      "uses": 0,
+      "createdAt": 1790254645027,
+      "updatedAt": 1790254645027
+    },
+    null
+  ],
+  "sortedSegments": [
+    "1919-11-29 ~ 1919-11-30",
+    "1919-12-01 ~ 1919-12-03",
+    "未标注时间范围"
+  ],
+  "segmentsText": "### 1919-11-29 ~ 1919-11-30\n1. 交易线：甲与乙敲定粮食转运安排。\n2. 情感线：两人关系转暖。\n\n### 1919-12-01 ~ 1919-12-03\n1. 追查线：甲循线索找到破坏者。\n\n### 未标注时间范围",
+  "parsedSegments": [
+    {
+      "id": "seg_cr0mvn",
+      "header": "1919-11-29 ~ 1919-11-30",
+      "start": "",
+      "end": "",
+      "lines": [
+        {
+          "label": "交易线",
+          "text": "甲与乙敲定转运。"
+        },
+        {
+          "label": "情感线",
+          "text": "关系转暖。"
+        }
+      ],
+      "atomIds": [],
+      "atomCount": 0,
+      "floorStart": 0,
+      "floorEnd": 0,
+      "raw": "### 1919-11-29 ~ 1919-11-30\n1. 交易线：甲与乙敲定转运。\n2. 情感线：关系转暖。",
+      "manual": false,
+      "uses": 0,
+      "createdAt": 1790254645028,
+      "updatedAt": 1790254645028
+    }
+  ],
+  "ageInfo": [
+    {
+      "age": "",
+      "birth": "1900-05-20",
+      "anchor": "",
+      "basis": "none",
+      "precision": "day",
+      "locked": true
+    },
+    {
+      "age": "",
+      "birth": "1890-01",
+      "anchor": "",
+      "basis": "none",
+      "precision": "month",
+      "locked": false
+    },
+    {
+      "age": "",
+      "birth": "",
+      "anchor": "",
+      "basis": "none",
+      "precision": "",
+      "locked": false
+    },
+    {
+      "age": "",
+      "birth": "-0221-01-0",
+      "anchor": "",
+      "basis": "none",
+      "precision": "",
+      "locked": false
+    },
+    {
+      "age": "",
+      "birth": "",
+      "anchor": "",
+      "basis": "none",
+      "precision": "",
+      "locked": false
+    },
+    {
+      "age": "",
+      "birth": "1905-12-31",
+      "anchor": "",
+      "basis": "none",
+      "precision": "day",
+      "locked": false
+    }
+  ],
+  "ageLocked": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "birthAnomaly": [
+    {
+      "a": "",
+      "label": "",
+      "short": ""
+    },
+    {
+      "a": "",
+      "label": "",
+      "short": ""
+    },
+    {
+      "a": "",
+      "label": "",
+      "short": ""
+    },
+    {
+      "a": "bad-format",
+      "label": "",
+      "short": ""
+    },
+    {
+      "a": "",
+      "label": "",
+      "short": ""
+    },
+    {
+      "a": "",
+      "label": "",
+      "short": ""
+    }
+  ],
+  "appearanceText": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "moneyNetFlows": [
+    750,
+    1,
+    0,
+    0,
+    0
+  ],
+  "moneyFlows": [
+    null,
+    {
+      "date": "1919-12-01",
+      "delta": -250,
+      "note": "雇车"
+    },
+    null
+  ],
+  "birthParts": [
+    {
+      "v": "1900-05-20",
+      "p": {
+        "y": 1900,
+        "m": 5,
+        "d": 20,
+        "precision": "day"
+      },
+      "prec": "day"
+    },
+    {
+      "v": "1890-01",
+      "p": {
+        "y": 1890,
+        "m": 1,
+        "d": 1,
+        "precision": "month"
+      },
+      "prec": "month"
+    },
+    {
+      "v": "1905-12-31",
+      "p": {
+        "y": 1905,
+        "m": 12,
+        "d": 31,
+        "precision": "day"
+      },
+      "prec": "day"
+    },
+    {
+      "v": "-0221-01-02",
+      "p": {
+        "y": -221,
+        "m": 1,
+        "d": 2,
+        "precision": "day"
+      },
+      "prec": "day"
+    },
+    {
+      "v": "",
+      "p": null,
+      "prec": ""
+    },
+    {
+      "v": null,
+      "p": null,
+      "prec": ""
+    }
+  ],
+  "calcAge": [
+    {
+      "b": "1900-05-20",
+      "a": "1920-03-15",
+      "age": "19"
+    },
+    {
+      "b": "1900-05-20",
+      "a": "1920-06-01",
+      "age": "20"
+    },
+    {
+      "b": "1890-01",
+      "a": "1920-03-15",
+      "age": "30"
+    },
+    {
+      "b": "-0221-01-02",
+      "a": "1920-03-15",
+      "age": "2141"
+    },
+    {
+      "b": "1900-05-20",
+      "a": "",
+      "age": ""
+    },
+    {
+      "b": "",
+      "a": "1920-03-15",
+      "age": ""
+    },
+    {
+      "b": "1905-12-31",
+      "a": "1900-01-01",
+      "age": ""
+    }
+  ],
+  "money": [
+    {
+      "v": "123456789",
+      "f": "1.23亿",
+      "r": 123456789,
+      "n": 0
+    },
+    {
+      "v": "0",
+      "f": "0",
+      "r": 0,
+      "n": 0
+    },
+    {
+      "v": "-12.5",
+      "f": "-12.5",
+      "r": -12.5,
+      "n": 0
+    },
+    {
+      "v": "100000000",
+      "f": "1亿",
+      "r": 100000000,
+      "n": 0
+    },
+    {
+      "v": "1000000000000",
+      "f": "1兆",
+      "r": 1000000000000,
+      "n": 0
+    },
+    {
+      "v": "10000000000000000",
+      "f": "1京",
+      "r": 10000000000000000,
+      "n": 0
+    },
+    {
+      "v": "100000000000000000000",
+      "f": "1垓",
+      "r": 100000000000000000000,
+      "n": 0
+    },
+    {
+      "v": "999",
+      "f": "999",
+      "r": 999,
+      "n": 0
+    },
+    {
+      "v": "1000",
+      "f": "1,000",
+      "r": 1000,
+      "n": 0
+    },
+    {
+      "v": "x",
+      "f": "",
+      "r": 0,
+      "n": 0
+    },
+    {
+      "v": "null",
+      "f": "0",
+      "r": 0,
+      "n": 0
+    },
+    {
+      "v": "3.14159",
+      "f": "3.14",
+      "r": 3.1416,
+      "n": 0
+    }
+  ],
+  "hashes": {
+    "snapshot": "i3gmng_1c1f1si",
+    "currency": "",
+    "segment": "10wunog_16cb9r9"
+  },
+  "helpers": {
+    "trackedRoles": {
+      "def": [],
+      "added": [
+        "角色甲"
+      ],
+      "isT": true,
+      "isF": false,
+      "removed": [],
+      "cleared": 0
+    },
+    "knownNames": [
+      "角色丁",
+      "角色丙",
+      "角色乙",
+      "角色戊",
+      "角色甲"
+    ],
+    "defaultOwner": [
+      "主角甲",
+      "主角甲"
+    ],
+    "plotSegmentId": "seg_yj77tu",
+    "plotSegmentRange": {
+      "start": "",
+      "end": ""
+    },
+    "timeKey": "0||000000000000000",
+    "segmentLines": [
+      {
+        "label": "交易线",
+        "text": "甲与乙敲定粮食转运安排。"
+      },
+      {
+        "label": "情感线",
+        "text": "两人关系转暖。"
+      }
+    ],
+    "foldFlat": {
+      "name": "折叠",
+      "gender": "女",
+      "traits": "a,b",
+      "todos": "x;y",
+      "identity": {
+        "gender": "女"
+      },
+      "personality": {
+        "traits": [
+          "a",
+          "b"
+        ]
+      },
+      "future": {
+        "todos": [
+          "x",
+          "y"
+        ]
+      }
+    }
+  }
+}
