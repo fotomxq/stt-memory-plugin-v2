@@ -22,6 +22,11 @@ export function statusText(extra) {
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
     if (extra && extra.import) lines.push('V1 导入：' + extra.import);
+    if (extra && extra.bootstrap && extra.bootstrap.popup) {
+        const pu = extra.bootstrap.popup;
+        lines.push('界面：弹窗优先（分页 ' + (pu.tabs || []).join('/') + '）· 弹窗能力 ' + (pu.canPopup ? '可用' : '不可用')
+            + ' · 抽屉卡片 ' + (pu.showDrawer ? '开' : '关'));
+    }
     if (extra && extra.bootstrap) {
         const b = extra.bootstrap;
         const panel = b.panel || {};
@@ -69,6 +74,20 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'V1 数据导入：默认干跑差异报告；`/ftt-import apply` 才真正写入（源数据不删）',
                 returns: '导入报告文本',
+            }));
+        }
+        if (hooks && typeof hooks.ui === 'function') {
+            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+                name: 'ftt-ui',
+                callback: async (named, unnamed) => {
+                    const tab = String(unnamed || '').trim();
+                    const r = await hooks.ui(tab || undefined);
+                    return r && r.ok
+                        ? ('已打开弹窗：' + (r.tab || '') + '（分页可切换：总览 / 数据台 / 提取 / 设置）')
+                        : ('弹窗打开失败：' + String((r && r.reason) || '未知') + '（可改用 /ftt-panel 诊断或抽屉面板）');
+                },
+                helpString: '打开 FTT 弹窗主界面：`/ftt-ui` 或 `/ftt-ui console|extract|settings`',
+                returns: '打开结果文本',
             }));
         }
         if (hooks && typeof hooks.panel === 'function') {

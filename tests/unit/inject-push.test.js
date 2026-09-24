@@ -15,6 +15,8 @@ import {
 import { fttGenerateInterceptor, interceptorStats, resetInterceptorStats } from '../../host/interceptor.js';
 
 const R = makeReporter('inject-push 内核配置与记忆注入（P3 首批）');
+/** 默认配置键数 = V1 的 217 + V2 专有界面键 3（见 config-clock-golden C1 白名单） */
+const DEF_KEYS = Object.keys(defaultCfg).length;
 const J = (v) => JSON.stringify(v);
 
 const host = makeHost({});
@@ -40,18 +42,18 @@ function richState() {
 }
 
 // ---------- P1 配置同步（内核 cfg ⇄ ST 配置） ----------
-R.assert('P1 loadKernelCfg：默认 217 键 → 内核视图；已存值优先、缺键补默认、未知键保留', (() => {
+R.assert('P1 loadKernelCfg：默认 217(V1)+3(V2 界面键) → 内核视图；已存值优先、缺键补默认、未知键保留', (() => {
     delete ctx.extensionSettings.ftt_memory_v2;
     const r = loadKernelCfg();
     const store = ctx.extensionSettings.ftt_memory_v2;
     const injected = { __custom: 1 };
     ctx.extensionSettings.ftt_memory_v2.cfg = { charBudget: 1234, __custom: { a: 1 } };
     const r2 = loadKernelCfg();
-    return r.keys === 217 && r.defaults === 217 && r.saved === 0
+    return r.keys === DEF_KEYS && r.defaults === DEF_KEYS && r.saved === 0
         && cfg.charBudget === 1234 && cfg.maxAtoms === defaultCfg.maxAtoms
         && cfg.__custom && cfg.__custom.a === 1
         && String(cfg.promptTemplates.injectGuide).length > 100
-        && r2.saved === 2 && !!store.cfg && kernelCfgStats().keys === 218   // 217 默认键 + __custom
+        && r2.saved === 2 && !!store.cfg && kernelCfgStats().keys === DEF_KEYS + 1   // 默认键 + __custom
         && J(mergeCfg({ a: { x: 1, y: 2 } }, { a: { y: 9 } })) === J({ a: { x: 1, y: 9 } })
         && typeof injected === 'object';
 })(), { keys: kernelCfgStats().keys });

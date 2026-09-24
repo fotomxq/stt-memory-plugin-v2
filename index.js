@@ -12,6 +12,7 @@ import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
+import { openPopup, setPopupHooks, popupInfo, popupAction, popupTabs } from './ui/popup.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPanelEvents } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
@@ -30,7 +31,7 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, cfg as cfgRef } from './core/model/runtime.js';
 
 const runtime = {
     ready: false,
@@ -68,7 +69,7 @@ export function extraForStatus() {
         extract: extractStats(),
         extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
         i18n: i18nStats(),
-        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), ready: runtime.ready }),
+        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), popup: popupInfo(), ready: runtime.ready }),
         cfg: runtime.cfg,
         inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
@@ -106,16 +107,24 @@ export async function init() {
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try { runtime.i18n = registerLocaleData(); } catch (e) { runtime.i18n = { ok: false, reason: 'error' }; }
-    try {
-        const mounted = await mountSettingsPanel({
-            probeMissing: runtime.probe.missing.join('、'),
-            hooks: panelHooks(),
-            status: panelStatusSnapshot(),
-        });
-        runtime.settingsVia = mounted.via;
-        runtime.bootstrap.panelReason = mounted.ok ? '' : String(mounted.reason || '');
-    } catch (e) { runtime.settingsVia = 'error'; runtime.bootstrap.lastError = String((e && e.message) || e); }
-    try { installMenuEntry({ onClick: forceMountPanel }); } catch (e) { /* 菜单入口失败不影响面板 */ }
+    // 界面形态：**弹窗优先**（用户要求对齐 V1）；仅当 cfg.uiShowDrawer 打开时才在扩展设置抽屉里渲染卡片
+    if (cfgShowDrawer()) {
+        try {
+            const mounted = await mountSettingsPanel({
+                probeMissing: runtime.probe.missing.join('、'),
+                hooks: panelHooks(),
+                status: panelStatusSnapshot(),
+            });
+            runtime.settingsVia = mounted.via;
+            runtime.bootstrap.panelReason = mounted.ok ? '' : String(mounted.reason || '');
+        } catch (e) { runtime.settingsVia = 'error'; runtime.bootstrap.lastError = String((e && e.message) || e); }
+    } else {
+        runtime.settingsVia = 'popup';
+        runtime.bootstrap.panelReason = '弹窗优先（cfg.uiShowDrawer = false）';
+    }
+    // 扩展菜单入口（主入口）→ 打开弹窗；不可用时由探针启用悬浮兜底
+    try { installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 菜单入口失败不影响功能 */ }
+    try { setPopupHooks(popupHooks()); } catch (e) { /* 忽略 */ }
     try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
@@ -213,7 +222,7 @@ function panelStatusSnapshot() {
  * 这样即使初始化没有触发（宿主事件缺失/加载时机不同），用户依然能用命令自查。
  */
 function bootstrapDiagnostics() {
-    const hooks = { importV1: runV1Import, extract: runExtract, pending: pendingFloors, panel: forceMountPanel };
+    const hooks = { importV1: runV1Import, extract: runExtract, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup };
     try {
         if (!runtime.slash) runtime.slash = registerSlashCommand(extraForStatus, hooks);
     } catch (e) { runtime.slash = false; }
@@ -221,7 +230,7 @@ function bootstrapDiagnostics() {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
     try {
-        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry }));
+        installDevtools(Object.assign({ importV1: runV1Import, importStatus, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction }));
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }
@@ -256,19 +265,32 @@ const POLL_MS = 750;
 const FLOAT_AFTER_TRIES = 4;
 let pollTimer = null;
 
+/** cfg.uiShowDrawer：是否在扩展设置抽屉里也渲染面板卡片（默认否 = 只用弹窗） */
+function cfgShowDrawer() { try { return cfgRef.uiShowDrawer === true; } catch (e) { return false; } }
+/** 是否已经有**可见入口**（弹窗主入口=菜单；或抽屉面板；或悬浮按钮） */
+function visibleEntryReady() {
+    try { return panelMountInfo().ok || menuInfo().installed || floatingInfo().installed; } catch (e) { return false; }
+}
+
 async function probeTick(why) {
     noteTrigger(why);
     try {
         if (!hasHost()) return false;
         if (!runtime.ready) await ensureReady(why);
-        if (runtime.ready && !panelMountInfo().ok) {
+        if (runtime.ready && cfgShowDrawer() && !panelMountInfo().ok) {
             try { await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { /* 下一轮再试 */ }
         }
-        if (runtime.ready && panelMountInfo().ok) { uninstallFloatingEntry(); stopReadyProbe(); return true; }
-        // 连续若干次都挂不上抽屉 → 启用悬浮兜底并停止轮询（不无限重试）
-        if (runtime.ready && runtime.bootstrap.pollTries >= FLOAT_AFTER_TRIES && !panelMountInfo().ok) {
-            const f = installFloatingEntry({ onClick: openPanelPopup });
-            runtime.bootstrap.floating = f;
+        if (runtime.ready && visibleEntryReady()) {
+            if (panelMountInfo().ok) uninstallFloatingEntry();
+            stopReadyProbe();
+            return true;
+        }
+        // 连续若干次仍没有可见入口 → 启用悬浮兜底并停止轮询（不无限重试）
+        if (runtime.ready && runtime.bootstrap.pollTries >= FLOAT_AFTER_TRIES) {
+            if (cfgRef.uiShowFloating !== false) {
+                const f = installFloatingEntry({ onClick: () => openPanelPopup() });
+                runtime.bootstrap.floating = f;
+            }
             stopReadyProbe();
         }
     } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
@@ -307,19 +329,26 @@ function panelHooks() {
  * 优先 `callGenericPopup(html, POPUP_TYPE.TEXT)`；不可用时退回「再试挂载 + 提示」。
  * @returns {Promise<{ok:boolean, via:string, reason?:string}>}
  */
-export async function openPanelPopup() {
-    const ctx = getCtx();
+export async function openPanelPopup(tab) {
+    // V1 风格主界面：**弹窗 + 分页**（总览 / 数据台 / 提取 / 设置）
     try {
-        if (ctx && typeof ctx.callGenericPopup === 'function') {
-            const html = fallbackPanelHtml(panelData({ hooks: panelHooks(), status: panelStatusSnapshot() }));
-            const type = (ctx.POPUP_TYPE && (ctx.POPUP_TYPE.TEXT || ctx.POPUP_TYPE.DISPLAY)) || 1;
-            await ctx.callGenericPopup(html, type, undefined, undefined, undefined);
-            try { bindPanelEvents(); } catch (e) { /* 绑不上也不影响展示 */ }
-            return { ok: true, via: 'popup' };
-        }
-    } catch (e) { /* 落到挂载尝试 */ }
+        setPopupHooks(popupHooks());
+        const r = await openPopup(tab);
+        if (r.ok) return r;
+    } catch (e) { /* 落到抽屉/挂载 */ }
     const m = await forceMountPanel();
     return { ok: !!m.ok, via: 'mount', reason: m.reason };
+}
+
+/** 弹窗动作钩子（提取 / 更新 / 清空注入 / 清单 / 状态） */
+function popupHooks() {
+    return {
+        extract: runExtract,
+        pending: pendingFloors,
+        extractStatus: extractSummary,
+        clearInject,
+        checkUpdate: checkUpdateNow,
+    };
 }
 
 /**
@@ -379,9 +408,10 @@ export async function runExtract(opts) {
     return r;
 }
 
-/** 面板/菜单挂载诊断（对外再导出，便于控制台与测试直接调用） */
+/** 面板/菜单/弹窗诊断（对外再导出，便于控制台与测试直接调用） */
 export { panelMountInfo } from './ui/settings-panel.js';
 export { menuInfo, installMenuEntry } from './ui/menu.js';
+export { popupInfo, popupAction, popupTabs, popupHtml, openPopup } from './ui/popup.js';
 
 /** 待分析楼层清单（命令与调试） */
 export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
@@ -504,7 +534,7 @@ bindAppLifecycle();
 
 // 3) 可见性探针：多触发 + 有限轮询 —— 宿主事件缺失/时机不符时仍会装配并挂载面板
 bindDocumentReady();
-try { installMenuEntry({ onClick: forceMountPanel }); } catch (e) { /* 忽略 */ }
+try { setPopupHooks(popupHooks()); installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 忽略 */ }
 startReadyProbe();
 
 // ---------------- 测试与自检用导出 ----------------
@@ -512,6 +542,7 @@ export const __internals = {
     VERSION, DATA_VERSION, MODULE_NAME,
     init, ensureReady, teardown, runtimeState, extraForStatus,
     forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
+    popupInfo, popupAction, popupTabs,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,

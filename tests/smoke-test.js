@@ -58,16 +58,22 @@ const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
 const before = entry.runtimeState();
-assert('B1 导入后尚未初始化（ready=false，等待 APP_READY）', before.ready === false, before);
+assert('B1 加载期探针即完成装配（无需 APP_READY；弹窗优先、抽屉卡片默认关）', (() => {
+    const b = entry.extraForStatus().bootstrap;
+    return before.ready === true && before.settingsVia === 'popup'
+        && before.bootstrap.triggers.indexOf('load') >= 0
+        && b.popup && b.popup.canPopup === true && b.popup.showDrawer === false
+        && b.menu && b.menu.menuFound === true;
+})(), { ready: before.ready, via: before.settingsVia, triggers: before.bootstrap.triggers });
 
 host.emit('APP_READY');
 await new Promise(r => setTimeout(r, 30));
 const st = entry.runtimeState();
-assert('B2 APP_READY 触发初始化：ready/探测/事件绑定/面板/命令/宏', (() => {
+assert('B2 APP_READY 再入装配（幂等）：ready/探测/事件绑定/命令/宏', (() => {
     const want = ['USER_MESSAGE_RENDERED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
     const got = (st.bind.bound || []).slice().sort().join(',');
     // 装配可能由「加载期探针」或「APP_READY」触发（多触发设计）；两者都算通过
-    const viaOk = st.settingsVia === 'template' || st.settingsVia === 'already';
+    const viaOk = st.settingsVia === 'popup' || st.settingsVia === 'template' || st.settingsVia === 'already';
     return st.ready === true && st.probe.ok === true && got === want.slice().sort().join(',') && st.bind.missing.length === 0
         && viaOk && st.slash === true && st.macros === true;
 })(), st);
@@ -79,7 +85,39 @@ assert('B2b P2 接线：记忆容器已载入内核（本机缓冲/服务端文�
         && st.chat.scopeKey === '角色甲';
 })(), st);
 
-assert('B3 设置面板已挂载到 #extensions_settings2（渲染真实 settings.html 模板）', (() => {
+// ---------- M 弹窗主界面（用户要求：对齐 V1 的弹窗形态） ----------
+assert('M1 弹窗主界面可用：/ftt-ui 入口 + 四个分页 + 切换分页渲染对应内容', (async () => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0];
+    const cap = [];
+    const saved = host.ctx.callGenericPopup;
+    host.ctx.callGenericPopup = async (h) => { cap.push(String(h)); return 1; };
+    try {
+        const open = await globalThis.FTT.ui('console');
+        const tabs = (globalThis.FTT.popupInfo() || {}).tabs || [];
+        const r1 = await entry.popupAction('tab', { tab: 'extract' });
+        const r2 = await entry.popupAction('tab', { tab: 'settings' });
+        const cmdText = cmd ? String(await cmd.callback({}, 'console')) : '';
+        return open.ok === true && open.via === 'popup' && cap.length >= 1
+            && cap[0].indexOf('ftt_v2_popup') >= 0 && cap[0].indexOf('data-ftt-tab="overview"') >= 0
+            && tabs.join(',') === 'overview,console,extract,settings'
+            && String(r1.html).indexOf('未分析楼层') >= 0
+            && String(r2.html).indexOf('ftt_v2_cfg_budget') >= 0
+            && cmdText.indexOf('已打开弹窗') >= 0;
+    } finally { host.ctx.callGenericPopup = saved; }
+})(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
+
+assert('M2 /ftt 状态含「界面：弹窗优先」与装配/面板/菜单诊断', (() => {
+    const out = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback());
+    return out.indexOf('界面：弹窗优先') >= 0 && out.indexOf('抽屉卡片 关') >= 0
+        && out.indexOf('装配：已初始化') >= 0 && out.indexOf('菜单入口：') >= 0;
+})(), String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).slice(0, 200));
+
+// 后续 B3/E/I/L 断言语义为「抽屉卡片路径」：按需打开该开关并强制挂载一次（用户默认不开，但功能仍需可用）
+const rtMod = await import('../core/model/runtime.js');
+rtMod.cfg.uiShowDrawer = true;
+await entry.forceMountPanel();
+
+assert('B3 抽屉卡片路径（cfg.uiShowDrawer=true 时）已挂载到 #extensions_settings2（渲染真实 settings.html 模板）', (() => {
     const el = doc.getElementById('extensions_settings2');
     return !!el && el.html.indexOf('ftt_v2_settings') >= 0 && el.html.indexOf('ftt_v2_budget') >= 0 && el.html.indexOf('ftt_v2_autoupd') >= 0;
 })(), doc.getElementById('extensions_settings2') && doc.getElementById('extensions_settings2').html.slice(0, 100));
@@ -245,6 +283,9 @@ assert('F5 /ftt 状态含 V1 导入行', (() => {
 
 // ---------- G 记忆注入（P3 首批：内核配置 → 注入推送 → 拦截器） ----------
 const rt = await import('../core/model/runtime.js');
+const coreCfgMod = await import('../core/config.js');
+/** 默认配置键数 = V1 的 217 + V2 专有界面键 3（uiShowDrawer / uiShowFloating / uiFirstTab） */
+const DEF_CFG_KEYS = Object.keys(coreCfgMod.defaultCfg).length;
 const inj = await import('../host/inject.js');
 const coreCfg = await import('../core/config.js');
 {
@@ -256,9 +297,9 @@ const coreCfg = await import('../core/config.js');
 rt.cfg.injectCurrentPrompt = true;
 rt.cfg.charBudget = 8000;
 
-assert('G1 内核配置已同步：默认 217 键进入内核视图并落盘 ST 配置容器', (() => {
+assert('G1 内核配置已同步：默认 217(V1)+3(V2 界面键) 进入内核视图并落盘 ST 配置容器', (() => {
     const store = host.ctx.extensionSettings.ftt_memory_v2;
-    return Object.keys(rt.cfg).length === 217 && rt.cfg.charBudget === 8000
+    return Object.keys(rt.cfg).length === DEF_CFG_KEYS && rt.cfg.charBudget === 8000
         && !!store && !!store.cfg && store.cfg.maxAtoms === coreCfg.defaultCfg.maxAtoms
         && String(rt.cfg.promptTemplates.injectGuide).length > 100;
 })(), { keys: Object.keys(rt.cfg).length });

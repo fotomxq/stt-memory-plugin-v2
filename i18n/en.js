@@ -49,5 +49,12 @@ export default {
     "清单入口未就绪": "Pending list entry not ready",
     "注入入口未就绪": "Injection entry not ready",
     "导入入口未就绪": "Import entry not ready",
-    "操作失败": "Operation failed"
+    "操作失败": "Operation failed",
+    "总览": "Overview",
+    "提取": "Extract",
+    "设置": "Settings",
+    "刷新": "Refresh",
+    "分析全部未分析楼层": "Analyze all unprocessed floors",
+    "弹窗": "Popup",
+    "分页": "Tabs"
 };
