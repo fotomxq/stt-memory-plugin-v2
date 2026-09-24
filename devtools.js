@@ -210,6 +210,27 @@ export function installDevtools(hooks) {
             sceneRepairApply: (entries) => (hooks && typeof hooks.sceneRepairApply === 'function' ? hooks.sceneRepairApply(entries) : null),
             sceneRepair: (opts) => (hooks && typeof hooks.sceneRepair === 'function' ? hooks.sceneRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
             scenesUnionMergeAll: () => (hooks && typeof hooks.scenesUnionMergeAll === 'function' ? hooks.scenesUnionMergeAll() : 0),
+            // B8-6c-3 物品修复（V1 v1.142 标签/名称聚类 + 低调用固定规则清理管道）
+            isCurrencyItemName: (name, desc) => (hooks && typeof hooks.isCurrencyItemName === 'function' ? hooks.isCurrencyItemName(name, desc) : false),
+            itemMergeExact: () => (hooks && typeof hooks.itemMergeExact === 'function' ? hooks.itemMergeExact() : null),
+            itemLowUsesPurge: () => (hooks && typeof hooks.itemLowUsesPurge === 'function' ? hooks.itemLowUsesPurge() : null),
+            itemRepairPrompt: (pick) => (hooks && typeof hooks.itemRepairPrompt === 'function' ? hooks.itemRepairPrompt(pick) : null),
+            itemRepairApply: (delta, pick) => (hooks && typeof hooks.itemRepairApply === 'function' ? hooks.itemRepairApply(delta, pick) : null),
+            itemRepair: (opts) => (hooks && typeof hooks.itemRepair === 'function' ? hooks.itemRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            // B8-6c-3 角色档案修复（V1 v1.139 提取策略 + v1.152 出生必给 + v1.176 机械处理 + v1.205 已去世跳过）
+            snapRepairFields: () => (hooks && typeof hooks.snapRepairFields === 'function' ? hooks.snapRepairFields() : null),
+            snapRepairFieldMap: () => (hooks && typeof hooks.snapRepairFieldMap === 'function' ? hooks.snapRepairFieldMap() : null),
+            snapshotAtomSize: (s) => (hooks && typeof hooks.snapshotAtomSize === 'function' ? hooks.snapshotAtomSize(s) : null),
+            characterRepairQueue: () => (hooks && typeof hooks.characterRepairQueue === 'function' ? hooks.characterRepairQueue() : null),
+            setSnapshotByPath: (s, path, val, o) => (hooks && typeof hooks.setSnapshotByPath === 'function' ? hooks.setSnapshotByPath(s, path, val, o) : null),
+            characterRepairPrompt: (targets, o) => (hooks && typeof hooks.characterRepairPrompt === 'function' ? hooks.characterRepairPrompt(targets, o) : null),
+            characterRepairApply: (delta, targets) => (hooks && typeof hooks.characterRepairApply === 'function' ? hooks.characterRepairApply(delta, targets) : null),
+            characterRepair: (opts) => (hooks && typeof hooks.characterRepair === 'function' ? hooks.characterRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
+            characterEvidencePack: (name, o) => (hooks && typeof hooks.characterEvidencePack === 'function' ? hooks.characterEvidencePack(name, o) : null),
+            ensureSnapshotTags: (s) => (hooks && typeof hooks.ensureSnapshotTags === 'function' ? hooks.ensureSnapshotTags(s) : null),
+            deriveSnapshotTags: (s, o) => (hooks && typeof hooks.deriveSnapshotTags === 'function' ? hooks.deriveSnapshotTags(s, o) : []),
+            characterMechanicalPass: (o) => (hooks && typeof hooks.characterMechanicalPass === 'function' ? hooks.characterMechanicalPass(o) : null),
+            correctSnapshotBirthDates: (o) => (hooks && typeof hooks.correctSnapshotBirthDates === 'function' ? hooks.correctSnapshotBirthDates(o) : null),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
         return true;

@@ -61,6 +61,15 @@ import {
     buildConceptRepairPrompt, applyConceptMergeGroups, runConceptRepair,
 } from './core/group-repair.js';
 import { buildSceneRepairPrompt, applySceneRebuild, runSceneRepair } from './core/scene-repair.js';
+import {
+    isCurrencyItemName, itemMergeExact, itemLowUsesPurge,
+    buildItemRepairPrompt, applyItemMergeGroups, runItemRepair,
+} from './core/item-repair.js';
+import {
+    SNAP_REPAIR_FIELDS, SNAP_REPAIR_FIELD_MAP, snapshotAtomSize, buildCharacterRepairQueue,
+    setSnapshotByPath, buildCharacterRepairPrompt, applyCharacterRepairResult, runCharacterRepair,
+    characterEvidencePack, ensureSnapshotTags, deriveSnapshotTags, runCharacterMechanicalPass, correctSnapshotBirthDates,
+} from './core/character-repair.js';
 import { retargetRelRefs } from './core/entries.js';
 import {
     setClockTextHooks, resolveStoryClock, clockAutoExtractOnce, scheduleClockExtract, clockExtractState,
@@ -466,6 +475,27 @@ function bootstrapDiagnostics() {
             sceneRepairPrompt: () => buildSceneRepairPrompt(),
             sceneRepairApply: (entries) => applySceneRebuild(entries),
             sceneRepair: (opts) => runSceneRepair(opts || {}),
+            // B8-6c-3 物品修复（V1 v1.142 标签/名称聚类 + 低调用固定规则清理管道）
+            isCurrencyItemName: (name, desc) => isCurrencyItemName(name, desc),
+            itemMergeExact: () => itemMergeExact(),
+            itemLowUsesPurge: () => itemLowUsesPurge(),
+            itemRepairPrompt: (pick) => buildItemRepairPrompt(pick),
+            itemRepairApply: (delta, pick) => applyItemMergeGroups(delta, pick),
+            itemRepair: (opts) => runItemRepair(opts || {}),
+            // B8-6c-3 角色档案修复（V1 v1.139 提取策略 + v1.152 出生必给 + v1.176 机械处理 + v1.205 已去世跳过）
+            snapRepairFields: () => SNAP_REPAIR_FIELDS,
+            snapRepairFieldMap: () => SNAP_REPAIR_FIELD_MAP,
+            snapshotAtomSize: (s) => snapshotAtomSize(s),
+            characterRepairQueue: () => buildCharacterRepairQueue(),
+            setSnapshotByPath: (s, path, val, o) => setSnapshotByPath(s, path, val, o),
+            characterRepairPrompt: (targets, o) => buildCharacterRepairPrompt(targets, o),
+            characterRepairApply: (delta, targets) => applyCharacterRepairResult(delta, targets),
+            characterRepair: (opts) => runCharacterRepair(opts || {}),
+            characterEvidencePack: (name, o) => characterEvidencePack(name, o),
+            ensureSnapshotTags: (s) => ensureSnapshotTags(s),
+            deriveSnapshotTags: (s, o) => deriveSnapshotTags(s, o),
+            characterMechanicalPass: (o) => runCharacterMechanicalPass(o),
+            correctSnapshotBirthDates: (o) => correctSnapshotBirthDates(o),
             scenesUnionMergeAll: () => scenesUnionMergeAll(),
             clockScene: () => latestSceneLocation(),
             storageBootstrap,

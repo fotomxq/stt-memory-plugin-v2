@@ -23,6 +23,9 @@ import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
+import { runItemRepair } from '../core/item-repair.js';
+import { runCharacterRepair } from '../core/character-repair.js';
+import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
@@ -267,6 +270,17 @@ function clearPSButtons() {
         + (hasSusp ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearSuspense" title="清空全部悬念（不弹确认）">🧹 清理悬念</button>' : '');
 }
 
+/**
+ * 角色页「🔧 修复角色」按钮（V1 `snapshotsHtml()`）：v1.172 出生日期倒挂 / 异常的角色数进优先档，
+ * 按钮文案带「（⚠️N 优先）」角标；title 与 V1 逐字一致。
+ */
+function characterRepairButton() {
+    let anomCount = 0;
+    try { anomCount = (state.snapshots || []).filter((x) => snapshotBirthAnomaly(x)).length; } catch (e) { /* 忽略 */ }
+    return '<button class="ftt-btn ftt-sm" data-ftt-action="characterRepair" title="出生日期倒挂者优先，其余按字数最薄弱 3 条">🔧 修复角色'
+        + (anomCount ? '（⚠️' + anomCount + ' 优先）' : '') + '</button>';
+}
+
 function dimBody(kind) {
     const q = ps.q[kind] || '';
     const list = listOf(kind, q, 300);
@@ -290,6 +304,13 @@ function dimBody(kind) {
         // V1 `scenesHtml()`：场景页按钮 **无显隐条件**（场景树为空时 V1 也照常渲染 sceneBar）——
         //   文案与 title 逐字对齐
         + (kind === 'scenes' ? '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button>' : '')
+        // V1 `itemsHtml()`：物品页顶部「🔧 修复物品」按钮（修复冗余/记录错误 + 结合正文更新最新流转）——
+        //   仅在有物品时显示（V1 `itemList.length` 条件），文案与 title 逐字对齐
+        + (kind === 'items' && total ? '<button class="ftt-btn ftt-sm" data-ftt-action="itemRepair" title="修复物品冗余与记录错误，并更新流转信息">🔧 修复物品</button>' : '')
+        // V1 `snapshotsHtml()`：角色页顶部「🔧 修复角色」按钮（结合正文补全档案 / 保守删除明显错误）——
+        //   v1.172：出生日期倒挂 / 异常的角色数进优先档，按钮文案带「（⚠️N 优先）」角标；
+        //   仅在有角色时显示（V1 `snapList.length` 条件），文案与 title 逐字对齐
+        + (kind === 'snapshots' && total ? characterRepairButton() : '')
         // V1 计划悬念页：「🧹 清理计划」「🧹 清理悬念」——各自库非空才显示（文案与 title 逐字对齐；V1 不弹确认）
         + (kind === 'plans' ? clearPSButtons() : '')
         // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
@@ -881,6 +902,50 @@ export async function panelAction(action, payload) {
             else parts.push('节点 ' + Number(r.before || 0) + ' → ' + Number(r.after || 0));
             setNote('场景修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, sceneRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'itemRepair') {
+            // 「🔧 修复物品」（V1 v1.142 物品页专用）：机械去重（同规范名）→ 低调用固定规则清理 →
+            //   标签/名称聚类选组 → 窄契约 AI 融合/完善说明 → 按编号精确应用（合并/修订/删除）；
+            //   无高相关组且无缺陷条目时**零 AI**，如实回报。
+            const r = await runItemRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('无需 AI 判断融合（机械合并 ' + Number(r.merged || 0) + ' 件 · 低调用清理 ' + Number(r.purged || 0) + ' 件）');
+            else {
+                // 注意：V1 `runItemRepair` 成功分支的返回结构**不含 `groupsTotal`**（黄金样本已固化，不得加键改形），
+                //   故此处以 `groups` 兜底展示（记忆/概念域的返回里才有 groupsTotal）。
+                const gt = (r.groupsTotal != null) ? r.groupsTotal : (Number(r.groups) || 0);
+                parts.push('高相关组 ' + Number(r.groups || 0) + '/' + Number(gt) + ' 组（核对 ' + Number(r.checked || 0) + ' 条）');
+                if (Number(r.fused || 0)) parts.push('合并 ' + Number(r.fused) + ' 组（-' + Number(r.removed || 0) + ' 件）');
+                if (Number(r.revised || 0)) parts.push('修订 ' + Number(r.revised) + ' 件');
+                if (Number(r.deleted || 0)) parts.push('删除 ' + Number(r.deleted) + ' 件');
+                if (Number(r.merged || 0)) parts.push('机械合并 ' + Number(r.merged) + ' 件');
+                if (Number(r.purged || 0)) parts.push('低调用清理 ' + Number(r.purged) + ' 件');
+            }
+            setNote('物品修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, itemRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'characterRepair') {
+            // 「🔧 修复角色」（V1 v1.139 角色页专用）：AI 前全局机械处理（出生日期/标签/年龄，零 AI）
+            //   → 待修复名单（字数门限 + 出生日期异常优先档 + 已去世跳过）→ 窄契约 AI（空手则加强重试一次）
+            //   → 按「姓名 + 中文点路径」精确应用（只填空不改写）→ 出生/标签兜底 + 年龄刷新。
+            const r = await runCharacterRepair();
+            const parts = [];
+            if (r.blocked) parts.push('已跳过（' + String(r.reason || '任务占用中') + '）');
+            else if (r.error) parts.push('失败：' + String(r.error));
+            else if (r.skipped) parts.push('暂无角色或无需修复（可修复 ' + Number(r.total || 0) + ' 名 · 门限 ' + Number((r.mech && r.mech.total) || 0) + ' 名已机械处理）');
+            else if (r.noChange) parts.push('本轮未产生实际变化（目标 ' + Number(r.targets || 0) + ' 名' + (r.attempts > 1 ? ' · AI 加强重试 ' + Number(r.attempts) + ' 轮' : '') + '）');
+            else {
+                parts.push('目标 ' + Number(r.targets || 0) + ' 名' + (r.attempts > 1 ? '（AI 加强重试 ' + Number(r.attempts) + ' 轮）' : ''));
+                parts.push('补全 ' + Number(r.rolesChanged || 0) + ' 名 / ' + Number(r.changed || 0) + ' 个字段');
+                if (Number(r.removed || 0)) parts.push('删除明显错误 ' + Number(r.removed) + ' 条');
+                if (Number(r.inferred || 0)) parts.push('保守推断 ' + Number(r.inferred) + ' 名');
+                if (Number(r.noBasis || 0)) parts.push('无依据 ' + Number(r.noBasis) + ' 名');
+                if (Number(r.queueLeft || 0)) parts.push('剩余待修 ' + Number(r.queueLeft) + ' 名');
+            }
+            setNote('角色修复：' + parts.join('；'));
+            result = Object.assign(result, { ok: true, action: a, characterRepair: r, made: r.made || 0 });
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）

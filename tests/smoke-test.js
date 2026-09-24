@@ -1236,6 +1236,8 @@ host.ctx.generateRaw = async () => {
     });
 };
 
+// ⚠️ 已知测试完整性问题（待专项批次修）：本节（以及套件内另外 42 处）把 async IIFE 的 **Promise** 直接传给 `assert`，
+//   而未 `await` —— Promise 恒真 → 断言实际**空转**（假绿）。专项批次将把断言器改为可 await 并逐一修好由此暴露的真实失败。
 assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 → 聚类选组 → AI 合并+删除落库 → 关联重挂 + 墓碑 + 复检口径，提示如实回报', (async () => {
     const st = rtMod.state;
     st.memories = [
@@ -1261,7 +1263,7 @@ assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 �
     const linkRows = (st.links || []).map((x) => [x.refId, x.who, x.how]);
     const memTombs = Object.keys((st.deleted || {}).memories || {});
     const linkTombs = Object.keys((st.deleted || {}).links || {});
-    const note = String(r.note || '');
+    const note = String((r.state || {}).note || '');      // 面板提示在 `state.note`（`r.note` 恒 undefined，曾致 W3 空转）
     return r.ok === true && r.made === 1 && memRepAiCalls === before + 1
         && mr.fused === 1 && mr.deleted === 1 && mr.retargeted === 1 && Number(mr.relMaint.swept) === 1
         && ids.join(',') === 'smoke-gp-m1' && m1.title === '码头交接货物' && String(m1.content).indexOf('银两') >= 0
@@ -1440,6 +1442,154 @@ assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空才显�
         && tombs.indexOf('smoke-zc-p1') >= 0 && tombs.indexOf('smoke-zc-u1') >= 0
         && html0.indexOf('data-ftt-action="clearPlans"') < 0 && html0.indexOf('data-ftt-action="clearSuspense"') < 0;
 })(), '');
+
+// ---------- AA 物品修复 + 角色档案修复（B8-6c-3） ----------
+assert('AA1 FTT 物品修复 + 角色档案修复入口齐备（物品：isCurrencyItemName / itemMergeExact / itemLowUsesPurge / itemRepairPrompt / itemRepairApply / itemRepair；角色：snapRepairFields / snapshotAtomSize / characterRepairQueue / setSnapshotByPath / characterRepairPrompt / characterRepairApply / characterRepair / characterEvidencePack / characterMechanicalPass / correctSnapshotBirthDates）', (() => {
+    const F = globalThis.FTT;
+    const names = ['isCurrencyItemName', 'itemMergeExact', 'itemLowUsesPurge', 'itemRepairPrompt', 'itemRepairApply', 'itemRepair',
+        'snapRepairFields', 'snapRepairFieldMap', 'snapshotAtomSize', 'characterRepairQueue', 'setSnapshotByPath',
+        'characterRepairPrompt', 'characterRepairApply', 'characterRepair', 'characterEvidencePack',
+        'ensureSnapshotTags', 'deriveSnapshotTags', 'characterMechanicalPass', 'correctSnapshotBirthDates'];
+    const missing = names.filter((n) => typeof F[n] !== 'function');
+    const st = rtMod.state;
+    st.items = [
+        { id: 'smoke-aa-i1', name: '铜钥匙', desc: '开门的钥匙。', location: '腰间', carried: true, qty: 1, tags: ['钥匙', '工具', '铜'], uses: 2, floorStart: 1, floorEnd: 2, seenDate: '2020-01-01' },
+        { id: 'smoke-aa-i2', name: '铁钥匙', desc: '另一把钥匙。', location: '背包', carried: false, qty: 1, tags: ['钥匙', '工具', '铁'], uses: 1, floorStart: 2, floorEnd: 4, seenDate: '2020-01-02' },
+        { id: 'smoke-aa-i3', name: '铜钥匙（旧）', desc: '旧钥匙，铜锈斑驳。', location: '', carried: false, qty: 1, tags: ['钥匙'], uses: 1, floorStart: 3, floorEnd: 3 },
+    ];
+    st.repairCursor = {}; st.deleted = {}; st.deletedH = {};
+    const me = F.itemMergeExact();                       // i3 规范名 = i1 → 合并 1 件（不写墓碑）
+    const purge = F.itemLowUsesPurge();
+    const pick = F.groupPick(F.groupSpec('items'));
+    const prompt = F.itemRepairPrompt(pick);
+    const applied = F.itemRepairApply({ '修订': [{ '编号': 2, '字段': '标签', '值': '钥匙,工具,铁,门禁' }] }, pick);
+    const k2 = (st.items || []).filter((x) => x.id === 'smoke-aa-i2')[0] || {};
+    const itemOk = me.merged === 1 && (st.items || []).length === 2
+        && Number(purge.total) === 2 && pick.picked === 1 && pick.entries.length === 2
+        && Array.isArray(prompt) && prompt.length === 2 && prompt[0].role === 'system'
+        && String(prompt[1].content).indexOf('【相关组 1】') >= 0
+        && applied.revised === 1 && (k2.tags || []).length === 4
+        && F.isCurrencyItemName('银两', '') === true && F.isCurrencyItemName('铁剑', '') === false;
+    // 角色档案修复：原子尺寸 / 待修复名单（异常优先档）/ 点路径写入 / 提示词 / 精确应用 / 相关原子数据
+    st.snapshots = [
+        { id: 'smoke-aa-c1', name: '角色乙', identity: { gender: '男', birthDate: '1900-01-01' }, appearance: '高个', tags: ['船长', '海家', '关键角色'], uses: 1 },
+        { id: 'smoke-aa-c2', name: '角色丁', identity: { birthDate: '约1890年' }, tags: ['旧档', '村民', '老人'], uses: 1 },
+    ];
+    st.atoms = [{ id: 'smoke-aa-a1', title: '码头初遇', text: '角色乙在码头出现。', date: '2020-01-01', tags: ['码头'], entities: ['角色乙'], uses: 1 }];
+    st.memories = []; st.currentStates = []; st.links = [];
+    const fields = F.snapRepairFields();
+    const atom = F.snapshotAtomSize(st.snapshots[0]);
+    const cq = F.characterRepairQueue();
+    const cPrompt = F.characterRepairPrompt(cq.list.slice(0, 2));
+    const cApplied = F.characterRepairApply({ snapshots: { update: [{ name: '角色乙', '补全': { '身份.种族': '人类' } }] } }, cq.list);
+    const ev = F.characterEvidencePack('角色乙');
+    const one = F.setSnapshotByPath({ identity: {} }, '身份.种族', '人类');
+    const c1 = (st.snapshots || []).filter((x) => x.id === 'smoke-aa-c1')[0] || {};
+    const charOk = Array.isArray(fields) && fields.length === 20 && !!F.snapRepairFieldMap()['身份.性别']
+        && atom.total === 19 && cq.list.length === 2 && cq.anomalyList.map(x => x.name).join(',') === '角色丁' && cq.deceasedCount === 0
+        && Array.isArray(cPrompt) && cPrompt.length === 2 && String(cPrompt[1].content).indexOf('⚠️ 出生日期异常') >= 0
+        && cApplied.changed >= 1 && c1.identity.species === '人类'
+        && ev.total >= 1 && one.ok === true && one.changed === true
+        && Number(F.characterMechanicalPass().total) === 2;
+    return missing.length === 0 && itemOk && charOk;
+})(), '');
+
+const aa2 = await (async () => {
+    const st = rtMod.state;
+    st.items = [{ id: 'smoke-aa-b1', name: '铜钥匙', desc: '开门的钥匙。', location: '腰间', carried: true, qty: 1, tags: ['钥匙', '工具', '铜'], uses: 2, floorStart: 1, floorEnd: 2 }];
+    const h1 = String((await entry.popupAction('tab', { tab: 'items' })).html || '');
+    st.items = [];
+    const h0 = String((await entry.popupAction('tab', { tab: 'items' })).html || '');
+    const itemOk = h1.indexOf('data-ftt-action="itemRepair"') >= 0 && h1.indexOf('🔧 修复物品') >= 0
+        && h1.indexOf('title="修复物品冗余与记录错误，并更新流转信息"') >= 0
+        && h0.indexOf('data-ftt-action="itemRepair"') < 0;      // 无物品 → 按钮隐藏（V1 `itemList.length` 条件）
+    // 角色页：有角色才显示「🔧 修复角色」；出生日期异常角色数进优先档 → 文案带「（⚠️N 优先）」角标
+    //   （固定剧情日期：出生日期异常判定依赖 ageAnchorDate，避免受前序小节推进的剧情日期影响）
+    const savedDate2 = (st.state || {}).date;
+    st.state = Object.assign({}, st.state, { date: '2020-06-01', time: '傍晚' });
+    st.snapshots = [
+        { id: 'smoke-aa-cb1', name: '角色乙', identity: { birthDate: '1990-01-01' }, tags: ['甲', '乙', '丙'], uses: 1 },
+        { id: 'smoke-aa-cb2', name: '角色丁', identity: { birthDate: '约1890年' }, tags: ['旧档', '村民', '老人'], uses: 1 },
+    ];
+    const c1 = String((await entry.popupAction('tab', { tab: 'snapshots' })).html || '');
+    st.snapshots = [];
+    const c0 = String((await entry.popupAction('tab', { tab: 'snapshots' })).html || '');
+    const charOk = c1.indexOf('data-ftt-action="characterRepair"') >= 0 && c1.indexOf('title="出生日期倒挂者优先，其余按字数最薄弱 3 条"') >= 0
+        && c1.indexOf('🔧 修复角色（⚠️1 优先）') >= 0
+        && c0.indexOf('data-ftt-action="characterRepair"') < 0;  // 无角色 → 按钮隐藏
+    st.state = Object.assign({}, st.state, { date: savedDate2 });
+    return itemOk && charOk;
+})();
+assert('AA2 面板按钮按 V1 条件显隐：物品页「🔧 修复物品」（有则显 / 无则隐）+ 角色页「🔧 修复角色」（有则显 / 无则隐，异常角色数进「（⚠️N 优先）」角标；文案与 title 逐字一致）', aa2, '');
+
+const origGenAA = host.ctx.generateRaw;
+let aaAiCalls = 0;
+let aaPayload = '';
+host.ctx.generateRaw = async () => { aaAiCalls++; return aaPayload; };
+const aa3 = await (async () => {
+    const st = rtMod.state;
+    st.items = [
+        { id: 'smoke-aa-k1', name: '铜钥匙', desc: '开门的钥匙。', location: '腰间', carried: true, qty: 1, tags: ['钥匙', '工具', '铜'], uses: 2, floorStart: 1, floorEnd: 2, seenDate: '2020-01-01' },
+        { id: 'smoke-aa-k2', name: '铁钥匙', desc: '另一把钥匙。', location: '背包', carried: false, qty: 1, tags: ['钥匙', '工具', '铁'], uses: 1, floorStart: 2, floorEnd: 4, seenDate: '2020-01-02' },
+        { id: 'smoke-aa-k3', name: '铁剑', desc: '一把铁剑。', location: '背后', carried: true, qty: 1, tags: ['武器', '铁'], uses: 1, floorStart: 5, floorEnd: 5, seenDate: '2020-01-05' },
+    ];
+    st.repairCursor = {}; st.deleted = {}; st.deletedH = {};
+    sweepMod.entryIndexInit();                               // 对齐删除留痕基线（等价 oracle 里的 entryIndexInit）
+    rtMod.cfg.itemRepairSim = 0.45; rtMod.cfg.itemRepairMaxClusters = 3;
+    rtMod.cfg.itemRepairMaxItems = 24; rtMod.cfg.itemRepairMaxClusterSize = 8;
+    rtMod.cfg.itemLowUsesMinItems = 100;                     // 库太小 → 低调用清理不动作（本节只验证聚类 + AI 段）
+    rtMod.cfg.itemLowUsesEveryFloors = 0;
+    aaPayload = JSON.stringify({
+        '合并': [{ '保留': 1, '并入': [2], '名称': '钥匙串', '说明': '一串可开正门侧门的钥匙。', '位置': '腰间', '数量': 2, '标签': ['钥匙', '工具', '门禁'] }],
+        '修订': [{ '编号': 3, '字段': '标签', '值': '武器,铁,近战' }],
+        '删除': [],
+    });
+    const before = aaAiCalls;
+    const r = await entry.popupAction('itemRepair', {});
+    const ir = r.itemRepair || {};
+    const k1 = (st.items || []).filter((x) => x.id === 'smoke-aa-k1')[0] || {};
+    const k3 = (st.items || []).filter((x) => x.id === 'smoke-aa-k3')[0] || {};
+    const tombs = Object.keys((st.deleted || {}).items || {});
+    const note = String(((r.state || {}).note) || r.note || '');
+    const itemOk = aaAiCalls === before + 1 && r.ok === true && r.made === 1
+        && ir.fused === 1 && ir.removed === 1 && ir.revised === 1 && ir.deleted === 1
+        && (st.items || []).length === 2 && k1.name === '钥匙串' && Number(k1.uses) === 3
+        && (k3.tags || []).length === 3
+        && tombs.indexOf('smoke-aa-k2') >= 0
+        && note.indexOf('物品修复：') >= 0 && note.indexOf('高相关组 1/1 组') >= 0 && note.indexOf('删除 1 件') >= 0;
+    // 角色档案修复：AI 前全局机械处理（零 AI）→ 待修复名单 → 窄契约 AI → 按「姓名 + 中文点路径」精确应用
+    st.items = [];
+    st.snapshots = [
+        { id: 'smoke-aa-cr1', name: '角色乙', identity: { gender: '男', birthDate: '1900-01-01' }, tags: ['船长', '海家', '关键角色'], uses: 1 },
+        { id: 'smoke-aa-cr2', name: '角色甲', identity: {}, tags: ['主角', '码头', '商人'], uses: 1 },
+    ];
+    st.atoms = [{ id: 'smoke-aa-ca1', title: '码头初遇', text: '角色甲在码头做买卖，认识角色乙。', date: '2020-01-01', tags: ['码头'], entities: ['角色甲', '角色乙'], uses: 1 }];
+    st.memories = []; st.currentStates = []; st.links = [];
+    st.deleted = {}; st.deletedH = {}; st.repairCursor = {};
+    st.state = Object.assign({}, st.state, { date: '2020-06-01', time: '傍晚' });   // 固定剧情日期（出生日期推算 / 年龄口径）
+    sweepMod.entryIndexInit();
+    rtMod.cfg.repairCharacterMinSize = 30; rtMod.cfg.repairCharacterBatch = 3; rtMod.cfg.repairFloors = 10;
+    aaPayload = JSON.stringify({
+        '角色档案': {
+            '更新': [{ '姓名': '角色甲', '补全': { '身份.职业': '商人', '身份.出生日期': '1990-03-05', '性格.性格特质': ['精明', '谨慎'] } }],
+            '推断': [], '无依据': [], '删除': [],
+        },
+    });
+    const beforeC = aaAiCalls;
+    const rc = await entry.popupAction('characterRepair', {});
+    const cr = rc.characterRepair || {};
+    const c2 = (st.snapshots || []).filter((x) => x.id === 'smoke-aa-cr2')[0] || {};
+    const noteC = String(((rc.state || {}).note) || rc.note || '');
+    const charOk = aaAiCalls === beforeC + 1 && rc.ok === true && rc.made === 1
+        && Number(cr.attempts) === 1 && Number(cr.rolesChanged) === 1
+        && c2.identity.occupation === '商人' && c2.identity.birthDate === '1990-03-05'
+        && (c2.personality.traits || []).length === 2 && c2.identity.age === '30'
+        && String(c2.lastUpdateDate || '').length > 0
+        && noteC.indexOf('角色修复：') >= 0 && noteC.indexOf('补全 1 名 / 3 个字段') >= 0;
+    return itemOk && charOk;
+})();
+host.ctx.generateRaw = origGenAA;
+assert('AA3 AI 桩端到端落库：物品修复（聚类选组 → AI 合并 + 修订 → 编号精确应用 + 墓碑）与角色档案修复（机械处理 → 待修复名单 → AI 按中文点路径补全 → 只填空不改写 + 年龄重算）各发 1 次 AI', aa3, '');
 
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {

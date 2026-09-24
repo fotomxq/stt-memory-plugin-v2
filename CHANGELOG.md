@@ -3,6 +3,27 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.24.0（2026-09-26）· B8-6c-3 物品修复 + 角色档案修复
+
+**本版（B8-6c-3，取自 V1 物品修复 17335~17700 与角色档案修复 18106~18780）**：
+1. **物品修复**（新增 `core/item-repair.js`）：`itemMergeExact`（同规范名机械合并：货币合计数量、`uses` 累加、标签并集、说明取更长、位置/携带取最新）、
+   `itemLowUsesPurge`（低调用固定规则清理：比例/物品数/平均调用/楼层四门槛 + 清扫间隔闸门 + 每轮上限；随身携带/货币/无楼层信息受保护）、
+   `buildItemRepairPrompt`（窄契约：相关度 = **max(标签相关性, 名称相似度)**；只发相关度最高的一组）、
+   `applyItemMergeGroups`（合并保主条 id、标签并集补齐 3-8 个、说明取 AI 或更长者、禁止新增）、`runItemRepair`（机械合并 → 低调用清理 → 聚类选组 → AI → 应用 → 复检）；
+2. **角色档案修复**（新增 `core/character-repair.js`）：`SNAP_REPAIR_FIELDS`/`SNAP_REPAIR_FIELD_MAP`、`snapshotAtomSize`（档案有效字数）、
+   `buildCharacterRepairQueue`（按有效字数筛最薄弱 N 条）、`setSnapshotByPath`（点路径只填空）、`buildCharacterRepairPrompt`（只发字段现状与缺失清单）、
+   `applyCharacterRepairResult`（按点路径回填 + 变化校验，禁止改写已有值）、`runCharacterRepair`（含出生日期推断与兜底：年龄 → 年代线索 → 身份称谓 → 默认成年年龄，**绝不留空**）；
+3. **界面**：物品页「🔧 修复物品」、角色页「🔧 修复角色」按钮（文案与 `title` 与 V1 逐字一致、显隐条件同 V1）+ 动作 `itemRepair`/`characterRepair`；
+   `FTT.*` 新增入口（物品域与角色域各若干，`devtools.js` 侧全部带守卫）；
+4. **测试**：`tests/fixtures/v1-golden-item-repair.json` 与 `tests/fixtures/v1-golden-character-repair.json`（oracle = **真实 V1 插件 v1.206**，可当场逐字节复现）；
+   `tests/unit/item-repair-golden.test.js` **18 项**、`tests/unit/character-repair-golden.test.js` **18 项**（各含 P1–P5 编排 + U1–U4 接线）；冒烟新增 **AA1–AA3**。
+
+**验证**：`npm run gate` 全绿 —— 单元 **47 文件 / 706 断言**、冒烟 **109 项**、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；`git archive` 解包复验同样全绿。
+
+**同期发现并记录的测试完整性问题（重要，独立专项修复）**：`tests/smoke-test.js` 中约 **43 处** async 小节把 **Promise** 直接作为 `assert` 条件且未 `await`
+→ 断言恒真（假绿）；本会话已定位、量化并以 `docs/B9-测试完整性待修.md` 记录修复方案（断言器改为可 await + 永久防呆 + 逐项修好暴露的真实失败），
+下一批立即执行。**在此披露**：v2.18.0~v2.23.0 各版本 CHANGELOG 中的「冒烟全绿」里，这些小节实际未被校验。
+
 ## v2.23.0（2026-09-26）· B9 前置：调试日志环形缓冲（`dbgLog` 从空实现改为真实记录）
 
 **背景（本项目此前的一个实质缺口）**：`host/chat.js` 把内核 `dbgLog` 接成**空实现**（`() => undefined`）—— 全仓没有任何调试日志存储，
