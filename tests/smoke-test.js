@@ -3267,6 +3267,71 @@ await assert('AP2 端到端：**有剧情时钟**时同一路径写剧情日期/
     return ok;
 })(), '');
 
+// ---------- AQ 面板钩子接线（v2.40.0：数据管理导出/导入曾因漏接钩子完全不可用） ----------
+await assert('AQ1 面板真实动作路径：导出 → 渲染导出文本框；导入（文本域路径）真实合并；此前「入口未就绪」的钩子全部在册', (async () => {
+    const st = rtMod.state;
+    const saved = { atoms: st.atoms, memories: st.memories, tab: panelState().tab, sub: panelState().settingsSub };
+    const ingestMod = await import('../core/ingest.js');
+    void ingestMod;
+    let ok = false;
+    try {
+        const hooks = entry.panelRuntimeHooks();
+        const needTypes = ['exportState', 'importState', 'importV1', 'autoSummary', 'abort', 'batchProgress', 'clearFloors', 'resetState', 'dimToggle', 'confirm', 'inject']
+            .every((k) => typeof hooks[k] === 'function');
+        rtMod.setKernelState(Object.assign(rtMod.emptyState ? rtMod.emptyState() : {}, {}));
+        Object.assign(rtMod.state, {
+            atoms: [{ id: 'aqa1', title: '冒烟情节', text: '甲在码头', date: '1919-11-20', uses: 0, floorStart: 0, floorEnd: 1 }],
+            memories: [{ id: 'aqm1', title: '冒烟记忆', content: '甲在码头清点铜箱', date: '1919-11-20' }],
+        });
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        const page = String(panelBodyHtml('settings'));
+        const text = entry.exportStateJson();
+        const exp = await entry.popupAction('exportState', {});
+        const shown = String(panelBodyHtml('settings')).indexOf('data-ftt-export') >= 0;
+        // 文本域路径（真实 UI：粘贴 → 点「⬆ 导入」）
+        const prevDoc = globalThis.document;
+        globalThis.document = Object.assign({}, doc, { querySelector: (sel) => (String(sel).indexOf('data-ftt-import') >= 0 ? { value: text } : null) });
+        rtMod.state.atoms = []; rtMod.state.memories = [];
+        const imp = await entry.popupAction('importStateApply', {});
+        globalThis.document = prevDoc;
+        ok = needTypes && page.indexOf('data-ftt-action="exportState"') >= 0 && page.indexOf('data-ftt-action="importStateApply"') >= 0
+            && exp.ok === true && Number(exp.chars) > 100 && shown
+            && imp.ok === true && Number(imp.added) === 2
+            && (rtMod.state.atoms || []).length === 1 && (rtMod.state.memories || []).length === 1;
+    } finally {
+        rtMod.state.atoms = saved.atoms; rtMod.state.memories = saved.memories;
+        await entry.popupAction('tab', { tab: saved.tab });
+        await entry.popupAction('settingsSub', { sub: saved.sub });
+    }
+    return ok;
+})(), '');
+
+await assert('AQ2 维度开关经**真实 change 委托**生效（V2 附加设定「启用维度」此前因缺 hooks.dimToggle 静默无效）', (async () => {
+    const before = JSON.stringify(rtMod.cfg.dimensionEnabled || {});
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'base' });
+    const el = doc.getElementById('ftt-panel');
+    const fireChange = (dataset, checked) => {
+        const list = (el && el.listeners && el.listeners.change) || [];
+        list.forEach((fn) => fn({ target: { dataset, checked, type: 'checkbox' } }));
+        return list.length > 0;
+    };
+    await entry.popupAction('refresh', {});
+    const el2 = doc.getElementById('ftt-panel');
+    const list = (el2 && el2.listeners && el2.listeners.change) || [];
+    const fired = (() => { list.forEach((fn) => fn({ target: { dataset: { fttDim: 'atoms' }, checked: false, type: 'checkbox' } })); return list.length > 0; })();
+    await new Promise((r) => setTimeout(r, 0));
+    const off = (rtMod.cfg.dimensionEnabled || {}).atoms === false;
+    list.forEach((fn) => fn({ target: { dataset: { fttDim: 'atoms' }, checked: true, type: 'checkbox' } }));
+    await new Promise((r) => setTimeout(r, 0));
+    const on = (rtMod.cfg.dimensionEnabled || {}).atoms === true;
+    let restored = false;
+    try { rtMod.cfg.dimensionEnabled = JSON.parse(before); restored = true; } catch (e) { restored = false; }
+    await entry.popupAction('refresh', {});
+    return fired && off && on && restored;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

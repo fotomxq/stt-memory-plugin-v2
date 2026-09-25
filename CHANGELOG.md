@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.40.0（2026-09-26）· 修复面板钩子接线（数据管理「导出/导入」不可用 · 影响 11 个功能）
+
+**用户报告**：「数据管理导出导入功能不可用。」
+
+**根因（一行接线，影响面 11 个功能）**：V1 同构浮层 `ui/panel.js` 通过 `hooks.*` 取宿主能力，而 index.js 只注入了
+`popupHooks()`（4~5 个键）；面板实际读取 **15** 个键，缺口 **11** 个 ——
+`exportState`（导出）/ `importState`（导入）/ `importV1`（V1 导入）/ `autoSummary`（批量摘要）/ `abort`（中断）/
+`clearFloors`（清除已处理记录）/ `dimToggle`（**启用维度勾选静默无效**）/ `batchProgress`（忙位进度）/`confirm`/`resetState`/`inject`
+—— 前 7 个直接落到「XX 入口未就绪」或静默失败。该缺口自 **v2.2.0（B1 批次）** 起就存在（面板外壳落地那一刻）。
+
+**为什么测试没抓到**：面板按钮与 devtools/`popupAction` 走**两套钩子** —— devtools 那套键是齐的，而既有测试全部走
+`popupAction`，于是「导出/导入能用」被**假绿**；没有任何测试断言「面板读到的 `hooks.X` ⊆ 注入的钩子集合」。
+
+**修复**：
+- index.js 新增 `panelRuntimeHooks()`（**唯一注入来源**，键集与面板需求一一对应），注入点收敛为
+  `setPanelHooks2(panelRuntimeHooks())`。
+- 新增 `setDimensionEnabled(kind, on)`：写内核 `cfg.dimensionEnabled[kind]` 并落盘（V1 同键同语义）—— 此前勾选无效。
+- 新增 `hostConfirm(text)`：**同步**布尔语义（有宿主 confirm 按其结果、无对话框返回 false → 按取消处理，V1 同款）；
+  文案逐字只用正文不带标题（与 V1 原生 `confirm(text)` 一致，冒烟 AE3 断言的文案因此保持不变）。
+- 面板其余缺口一次补齐：`exportState`/`importState`/`importV1`/`autoSummary`/`abort`/`batchProgress`/`clearFloors`/`resetState`/`inject`。
+
+**防回归（本批核心）**：
+- 新增 `tests/unit/panel-hooks.test.js`（7 项）：**静态交叉校验** —— 从 `ui/panel.js` 源码提取全部 `hooks.X`，
+  断言每个都在 `panelRuntimeHooks()` 中且为函数（缺一即失败）；单独断言「曾缺失的 11 键全部在册」；
+  断言注入点必须是 `panelRuntimeHooks()`（不得退回 `popupHooks()`）；行为断言（导出→文本框、导入**参数与文本域两条路径**真实合并、
+  空文本域如实拒绝、维度开关落 cfg、清台账/中断可用、confirm 同步布尔）。
+- 冒烟新增 **AQ1**（用 `panelRuntimeHooks()` + 面板动作 + DOM 桩文本域跑完「导出 → 清空 → 粘贴 → 导入」，added=2）与
+  **AQ2**（**真实 change 委托**驱动「启用维度」勾选 → `cfg.dimensionEnabled.atoms` 随之变化）—— 二者都不走 devtools 钩子。
+
+**验证**：修复前实测 `exportState → {ok:false}`、`importStateApply → no-hook`、`dimToggle` 不改 cfg；修复后
+`exportState → {ok:true, chars:1573}`、导入两条路径均 `{ok:true, added:2}`、`dimToggle → cfg.dimensionEnabled.atoms=false`、
+`clearFloors → {ok:true}`、V1 导入干跑正常。`npm run gate` 全绿 —— 单元 **66 文件 / 1013 断言**、冒烟 **149 项**、
+内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规。文档 `docs/P10f-面板钩子接线修复.md`。
+
 ## v2.39.0（2026-09-26）· 时钟不得取真实日期（必须与剧情对齐）· 修正 V1 缺陷 #4
 
 **用户报告**：「时钟缺陷，V1 修复过该问题，V2 必须对齐。即时钟不能取真实日期，必须和剧情对齐。」
