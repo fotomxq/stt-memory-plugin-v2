@@ -33,6 +33,7 @@ V1 src/modules/13-UI-设置与存储开关.js
 | 数据管理页动作 | **导出 JSON**（`exportStateJson()`：格式 `ftt-memory-v2-export` + 版本/作用域/时间戳 + state；结果进文本框并尝试写剪贴板）、**导入 JSON**（`importStateJson()`：接受导出的信封或裸 state，**按 id append-only 合并，同 id 以当前为准，绝不删除现有数据**）、**清除已处理记录**（复用 B3 的 `clearFloors`） |
 | 关于页 | 版本 / 模块名 / 内核配置键数 / 默认配置键数 + 对齐进度指引 |
 | V2 附加设定块 | V1 无、V2 有的能力保留：启动自动检查更新、更新检查仓库、检查更新、**V1 数据导入（干跑/写入）**、14 维启用勾选（避免被 V1 页面替换掉） |
+| ↳ 位置变更（v2.43.0） | 该块**一度挂在 14 个子页的页脚**（切到任何子页都在最底部）→ 现改为**「基础」子页内的一块分节**（`data-ftt-section="v2-extras"`，`settingsPageHtml('base', v2ExtrasSectionHtml())` 注入）。原因：它是「基础」配置的一部分，不应吊在无关子页末尾。回归见 `settings-pages.test.js` P7 |
 | 待后续批次（页内明确标注，**不放假实现**） | 提示词模板分组编辑/恢复默认/签名迁移（B6）；存储探测/测试/同步动作（B7）；内容弱化的词条库与规则库编辑（B8）；调试日志与缓存清理（B9）；API 页（V2 走宿主连接，已在页内说明） |
 
 ## 3. 测试（`tests/unit/settings-pages.test.js`，6 项）
