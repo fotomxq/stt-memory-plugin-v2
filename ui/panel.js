@@ -40,6 +40,8 @@ import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
 import { debugLogPush } from '../adapters/debug-log.js';
+// v2.42.0：交互/错误追踪（用户交互、处理器结果、耗时与代码站点 —— 「点哪个按钮 → 结果 → 代码位置」一条链）
+import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceCurrentOp } from '../core/trace.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -102,6 +104,7 @@ const ps = {
     peek: '',           // 情节速览：正在穿透查看的 id（V1 atomPeek）
     atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
 };
+const str0 = (v) => String(v == null ? '' : v);
 let overlayEl = null;
 let hooks = {};
 let escBound = false;
@@ -1079,6 +1082,7 @@ export function openPanel(tab) {
     const t = PANEL_TABS.some((x) => x[0] === tab) ? tab : (PANEL_TABS.some((x) => x[0] === cfg.uiFirstTab) ? cfg.uiFirstTab : 'overview');
     ps.tab = t;
     ps.open = true;
+    try { traceEvent({ cat: 'ui', kind: 'panel-open', level: 'info', detail: { tab: ps.tab, via: 'openPanel' }, site: traceSite() }); } catch (e2) { /* 忽略 */ }
     ps.opened += 1;
     const el = ensureOverlay();
     if (!el) return { ok: false, reason: '无法创建浮层（无 body 且无扩展容器）', tab: t };
@@ -1091,6 +1095,7 @@ export function openPanel(tab) {
 /** 关闭浮层 */
 export function closePanel() {
     ps.open = false;
+    try { traceEvent({ cat: 'ui', kind: 'panel-close', level: 'info', detail: { tab: ps.tab }, site: traceSite() }); } catch (e2) { /* 忽略 */ }
     const el = overlayEl;
     if (!el) return true;
     try { if (el.classList && el.classList.remove) el.classList.remove('ftt-open'); } catch (e) { /* 忽略 */ }
@@ -1134,6 +1139,12 @@ async function confirmDialog(text, title) {
  */
 export async function panelAction(action, payload) {
     const p = payload || {};
+    // v2.42.0：每次面板动作开一个 **op**（关联 id）—— 该 op 执行期间的宿主/内核/AI 事件都会自动带上它，
+    //   于是「用户点了什么 → 触发了哪些底层调用 → 结果如何」可用 opId 串起来；错误同样带 opId + 站点。
+    const traceOp = traceOpStart('ui.' + String(action || ''), {
+        tab: ps.tab, sub: ps.settingsSub, kind: p.kind, id: p.id,
+    });
+    const traceT0 = Date.now();
     const a = String(action || '');
     let result = { ok: true, action: a };
     try {
@@ -1847,7 +1858,34 @@ export async function panelAction(action, payload) {
         setNote('操作失败：' + result.error);
     }
     renderPanel();
-    return Object.assign(result, { html: panelHtml(), state: panelState() });
+    const out = Object.assign(result, { html: panelHtml(), state: panelState() });
+    // v2.42.0：交互完成事件（动作 / 入参摘要 / 结果 / 耗时 / 站点 / opId）—— 这是「所有用户交互」的主时间线
+    try {
+        const ended = traceOpEnd(traceOp, out);
+        traceEvent({
+            cat: 'ui', kind: String(action || ''), level: out.ok === false ? 'info' : 'debug',
+            ok: out.ok !== false, reason: String(out.reason || ''),
+            ms: Date.now() - traceT0,
+            detail: {
+                params: traceParamsOf(p), tab: ps.tab, sub: ps.settingsSub,
+                note: String(ps.note || ''), reason: String(out.reason || ''),
+                children: ended ? { opId: ended.opId, ms: ended.ms } : null,
+            },
+            opId: traceOp.opId, op: traceOp.name,
+        });
+    } catch (e) { /* 追踪失败不影响面板 */ }
+    return out;
+}
+
+/** 交互入参摘要（只取动作模块实际读的键；长值由 trace 内核截断/脱敏） */
+function traceParamsOf(p) {
+    const o = p || {};
+    const out = {};
+    ['kind', 'id', 'idx', 'index', 'tag', 'mode', 'from', 'to', 'row', 'dim', 'refId', 'name', 'editor', 'preset', 'sub', 'tab', 'snapId', 'promptKey', 'group', 'summary', 'floor', 'subject'].forEach((k) => {
+        if (o[k] !== undefined && o[k] !== '') out[k] = o[k];
+    });
+    if (o.text !== undefined) out.text = '[文本 ' + String(o.text || '').length + ' 字]';
+    return out;
 }
 
 /** 读取某配置键当前值（用于 change 时判断是否按数字写回） */
@@ -1868,6 +1906,20 @@ export function bindOverlay() {
         el.__fttBound = true;
         el.addEventListener('click', (e) => {
             const tg = e && e.target;
+            // v2.42.0：先记一条**原始交互**（点到了什么、携带哪些 data-ftt-* 属性、当前页）——
+            //   即使动作分发层判为未知/异常，也能看到用户到底点了什么（此前完全没有这条线索）。
+            try {
+                const dsx = (tg && tg.dataset) ? tg.dataset : {};
+                const attrs = {};
+                Object.keys(dsx).forEach((k) => { if (/^ftt/.test(k) && attrs && Object.keys(attrs).length < 12) attrs[k] = String(dsx[k]).slice(0, 60); });
+                const tag = str0(tg && tg.tagName ? tg.tagName : '') || 'el';
+                traceEvent({
+                    // 级别 debug（而非 trace）：默认级别即可见 —— 「用户点了什么」是可追溯链的**起点**，缺它则后面全断
+                    cat: 'ui', kind: 'click', level: 'debug',
+                    detail: { target: tag, attrs, tab: ps.tab, sub: ps.settingsSub },
+                    site: traceSite(),
+                });
+            } catch (err) { /* 追踪失败不影响交互 */ }
             // v2.38.0（对齐 V1 v1.206 26075~26078）：点在按钮/链接/动作元素上时阻止默认行为 ——
             //   `<a href="javascript:void(0)">` 的默认跳转与 form 内 `<button>` 的隐式提交都会让面板**跳顶**；
             //   仅对 `button, a, [data-ftt-action]` 生效，故不影响 `<label>` 内复选框等原生交互。
@@ -1954,6 +2006,18 @@ export function bindOverlay() {
             el.addEventListener('change', (e) => {
                 const tg = e && e.target;
                 if (!tg || !tg.dataset) return;
+                // v2.42.0：控件变更入流（键 + 旧值 → 新值）——「设置改了什么」也能追溯
+                try {
+                    const dsx = tg.dataset || {};
+                    const key = str0(dsx.fttCfg || dsx.fttV2 || dsx.fttSearch || dsx.fttSelect || dsx.fttDim || dsx.fttDimPreset || dsx.fttModelSelect || dsx.fttRelWho || '');
+                    const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
+                    const prev = (key && typeof readControlValue === 'function') ? readControlValue(key) : undefined;
+                    traceEvent({
+                        cat: 'ui', kind: 'change:' + (key || '(匿名控件)'), level: 'debug',
+                        detail: { key, from: prev, to: raw, tab: ps.tab, sub: ps.settingsSub },
+                        site: traceSite(),
+                    });
+                } catch (err) { /* 追踪失败不影响交互 */ }
                 if (tg.dataset.fttSearch !== undefined) {
                     // B9-b：「👥 选角色」面板的搜索框与列表页搜索同名属性（V1 `data-ftt-search="relPick"`）→ 分流到选择器搜索词
                     if (String(tg.dataset.fttSearch) === 'relPick') { void panelAction('relPickQuery', { q: tg.value }); return; }

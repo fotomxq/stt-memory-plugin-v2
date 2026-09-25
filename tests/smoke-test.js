@@ -172,11 +172,13 @@ await assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1
         && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
 
-assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/菜单诊断', (() => {
-    const out = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback());
+await assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/菜单诊断', (async () => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
+    // v2.42.0：命令回调经追踪包装 → async，须 await
+    const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
     return out.indexOf('界面：V1 同构浮层') >= 0 && out.indexOf('抽屉卡片 关') >= 0
         && out.indexOf('装配：已初始化') >= 0 && out.indexOf('菜单入口：') >= 0;
-})(), String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).slice(0, 200));
+})(), '');
 
 // 后续 B3/E/I/L 断言语义为「抽屉卡片路径」：按需打开该开关并强制挂载一次（用户默认不开，但功能仍需可用）
 const rtMod = await import('../core/model/runtime.js');
@@ -193,10 +195,11 @@ assert('B4 配置已初始化进 extensionSettings（含版本戳）', (() => {
     return !!s && s.version === VERSION && host.ctx.saveSettingsCount >= 1;
 })(), host.ctx.extensionSettings[MODULE_NAME]);
 
-assert('B5 /ftt 命令注册且回调可执行', (() => {
+await assert('B5 /ftt 命令注册且回调可执行（回调经追踪包装 → await）', (async () => {
     const cmd = (host.ctx.commands || [])[0];
-    return !!cmd && cmd.name === 'ftt' && String(cmd.callback()).indexOf(VERSION) >= 0;
-})(), host.ctx.commands);
+    const out = (cmd && typeof cmd.callback === 'function') ? String(await cmd.callback()) : '';
+    return !!cmd && cmd.name === 'ftt' && out.indexOf(VERSION) >= 0;
+})(), '');
 
 assert('B6 宏注册（fttVersion / fttStatus）', (() => {
     const names = (host.ctx.macrosRegistered || []).map(x => x.name);
@@ -275,11 +278,11 @@ assert('E6b 开启后「立即更新」才调用宿主 Git 更新端点并回填
 })(), doc.getElementById('ftt_v2_updstate').textContent);
 usegitEl.checked = false;
 usegitEl.dispatch('change');
-assert('E7 /ftt 状态输出含更新行', (() => {
-    const cmd = (host.ctx.commands || [])[0];
-    const out = String(cmd.callback());
+await assert('E7 /ftt 状态输出含更新行', (async () => {
+    const cmd = (host.ctx.commands || [])[0] || {};
+    const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
     return out.indexOf('更新：') >= 0;
-})(), String(((host.ctx.commands || [])[0] || {}).callback));
+})(), '');
 assert('E8 调试导出含更新状态', (() => {
     const F = globalThis.FTT;
     const u = F && typeof F.update === 'function' ? F.update() : null;
@@ -354,9 +357,9 @@ await assert('F4 /ftt-import 命令：默认干跑并给出「确认写入」提
     return dryText.indexOf('【干跑】') >= 0 && dryText.indexOf('确认写入') >= 0 && applyText.indexOf('【已写入】') >= 0;
 })(), typeof impCmd);
 
-assert('F5 /ftt 状态含 V1 导入行', (() => {
-    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0];
-    const out = String(cmd.callback());
+await assert('F5 /ftt 状态含 V1 导入行', (async () => {
+    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
+    const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
     return out.indexOf('V1 导入：') >= 0;
 })(), '');
 // 注意：localStorage 桩保留到测试结束 —— 真实酒馆始终有 localStorage，
@@ -454,7 +457,7 @@ await assert('H4 /ftt-analyze 命令：指定楼层与清单两种用法；/ftt 
     host.ctx.generateRaw = async () => aiDelta;
     try {
         const one = String(await cmd.callback({}, String(floorId)));
-        return list.indexOf('待分析楼层') >= 0 && one.indexOf('分析完成') >= 0 && String(st.callback()).indexOf('提取：') >= 0;
+        return list.indexOf('待分析楼层') >= 0 && one.indexOf('分析完成') >= 0 && String(await st.callback()).indexOf('提取：') >= 0;
     } finally { host.ctx.generateRaw = saved; }
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-analyze')[0]);
 
@@ -466,8 +469,9 @@ await assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即
     try {
         host.emit('GENERATION_ENDED');
         await new Promise((r) => setTimeout(r, 30));
-        return floorsMod.isFloorProcessed(newFloor) === true
-            && String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).indexOf('提取：') >= 0;
+        const stCmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
+        const stOut = String(typeof stCmd.callback === 'function' ? await stCmd.callback() : '');
+        return floorsMod.isFloorProcessed(newFloor) === true && stOut.indexOf('提取：') >= 0;
     } finally { host.ctx.generateRaw = saved; }
 })(), '');
 
@@ -626,14 +630,15 @@ assert('K1 词条已注册到宿主：zh-cn 与 en 两份（键集一致、JS �
         && Object.keys(host.ctx.localeData['zh-cn']).length === st.keys;
 })(), (() => { try { return JSON.stringify({ st: i18nMod.i18nStats(), calls: host.ctx.localeCalls, enKeys: Object.keys((host.ctx.localeData || {}).en || {}).length, zhKeys: Object.keys((host.ctx.localeData || {})['zh-cn'] || {}).length, sample: ((host.ctx.localeData || {}).en || {})['保存'] }); } catch (e) { return String(e.message); } })());
 
-assert('K2 文案查询与状态行：t() 按当前语言取词（缺失回退键本身，支持占位变量），/ftt 含语言行', (() => {
+await assert('K2 文案查询与状态行：t() 按当前语言取词（缺失回退键本身，支持占位变量），/ftt 含语言行', (async () => {
     host.ctx.locale = 'en';
     const en = globalThis.FTT.t('保存');
     const enMissing = globalThis.FTT.t('不存在的键');
     host.ctx.locale = 'zh-cn';
     const zh = globalThis.FTT.t('保存');
     const withVar = i18nMod.t('分析完成：成功 {n} / {m}', { n: 2, m: 3 });
-    const statusLine = String(((host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {}).callback()).indexOf('语言：') >= 0;
+    const k2cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
+    const statusLine = String(typeof k2cmd.callback === 'function' ? await k2cmd.callback() : '').indexOf('语言：') >= 0;
     return en === 'Save' && zh === '保存' && enMissing === '不存在的键' && withVar === '分析完成：成功 2 / 3' && statusLine;
 })(), String(globalThis.FTT.t('保存')));
 
@@ -3418,6 +3423,142 @@ await assert('AR3 入参透传回归：三个曾「点了没反应」的按钮�
     fire({ fttAction: 'checkMode', fttMode: 'kw' });
     await new Promise((r) => setTimeout(r, 0));
     return w0 !== w1 && w1.indexOf('冒烟标签Y') >= 0 && m0 === true && m1 === false && note.indexOf('已删除词条') >= 0;
+})(), '');
+
+// ---------- AS 交互/宿主/错误统一追踪（v2.42.0，用户要求：能追到底层关系与具体代码位置） ----------
+await assert('AS1 用户交互入流：真实点击 → ① 原始「click」事件（点了什么/带哪些 data-ftt-*）② 动作事件（入参摘要/结果/耗时/opId/代码位置）', (async () => {
+    const TR = await import('../core/trace.js');
+    TR.traceClear();
+    await entry.popupAction('tab', { tab: 'data' });
+    TR.traceClear();
+    const el = doc.getElementById('ftt-panel');
+    const click = (el && el.listeners && el.listeners.click) || [];
+    const tg = { tagName: 'BUTTON', dataset: { fttAction: 'refresh' }, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+    click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+    await new Promise((r) => setTimeout(r, 10));
+    const ui = TR.traceList({ cat: 'ui' });
+    const clickEv = ui.filter((x) => x.kind === 'click')[0];
+    const actEv = ui.filter((x) => x.kind === 'refresh')[0];
+    return !!clickEv && clickEv.level === 'debug' && clickEv.detail.target === 'BUTTON'
+        && !!clickEv.detail.attrs && clickEv.detail.attrs.fttAction === 'refresh'
+        && !!actEv && /^op\d+$/.test(actEv.opId) && actEv.op === 'ui.refresh'
+        && !!actEv.site && /\.js:\d+/.test(TR.traceSiteText(actEv.site))
+        && String(actEv.detail.note || '').length >= 0 && actEv.ms >= 0;
+})(), '');
+
+await assert('AS2 宿主调用入流：经 getCtx() 的调用自动记 方法/参数/返回/耗时；站点是**调用方**（不是包装层）；同 op 内自动带 opId；异步调用 resolve 后追记', (async () => {
+    const SA = await import('../host/st-api.js');
+    const TR = await import('../core/trace.js');
+    TR.traceClear();
+    const ctx = SA.getCtx();
+    const n0 = ctx.saveSettingsCount;
+    ctx.saveSettingsDebounced();
+    const sync = TR.traceList({ cat: 'host' })[0];
+    // opId 关联：op 内发生的宿主调用归属该 op（跨层可回溯「谁调用的」）
+    TR.traceClear();
+    const op = TR.traceOpStart('ui.smokeCase');
+    ctx.saveSettingsDebounced();
+    const inOp = TR.traceList({ cat: 'host' })[0];
+    TR.traceOpEnd(op, { ok: true });
+    // 异步宿主调用：resolve 后追记结果
+    TR.traceClear();
+    ctx.generateRaw = async () => 'ok-text';
+    await ctx.generateRaw({ prompt: 'x' });
+    await new Promise((r) => setTimeout(r, 20));
+    const asyncEv = TR.traceList({ cat: 'host' }).filter((x) => x.kind === 'generateRaw')[0];
+    delete ctx.generateRaw;
+    return !!sync && sync.cat === 'host' && sync.kind === 'saveSettingsDebounced' && sync.ok === true
+        && TR.traceSiteText(sync.site).indexOf('tests/smoke-test.js') === 0
+        && TR.traceSiteText(sync.site).indexOf('host/st-api.js') < 0
+        && ctx.saveSettingsCount === n0 + 2
+        && !!inOp && inOp.opId === op.opId && inOp.op === 'ui.smokeCase'
+        && !!asyncEv && asyncEv.ok === true && asyncEv.ms >= 0;
+})(), '');
+
+await assert('AS3 异常不再孤立：trace 里是 error 事件（带 file:line 站点），调试日志条目附带 traceId + 前后上下文窗口 + opId', (async () => {
+    const EV = await import('../host/events.js');
+    const DL = await import('../core/debug-log.js');
+    const AD = await import('../adapters/debug-log.js');
+    const TR = await import('../core/trace.js');
+    const oldWin = globalThis.window;
+    const listeners = {};
+    globalThis.window = Object.assign({}, oldWin, {
+        addEventListener: (t, fn) => { (listeners[t] = listeners[t] || []).push(fn); },
+        removeEventListener: (t, fn) => { listeners[t] = (listeners[t] || []).filter((x) => x !== fn); },
+    });
+    AD.wireDebugLog();
+    TR.traceClear();
+    // 先造一段「之前发生了什么」：同一 op 下的宿主调用 → 然后报错
+    const op = TR.traceOpStart('ui.smokeCrash');
+    TR.traceEvent({ cat: 'host', kind: 'smokeBefore', opId: op.opId, op: op.name });
+    const installed = EV.installErrorCapture();
+    (listeners.unhandledrejection || []).forEach((fn) => fn({ reason: new Error('smoke-trace-reject') }));
+    TR.traceOpEnd(op, { ok: false });
+    const est = TR.traceList({ cat: 'error' }).filter((x) => x.reason.indexOf('smoke-trace-reject') >= 0)[0];
+    const logs = DL.debugLogList ? DL.debugLogList() : [];
+    const rawEntry = (logs || []).filter((x) => x.kind === '异常' && String(x.data || '').indexOf('smoke-trace-reject') >= 0).pop();
+    const errData = (() => { try { return typeof rawEntry.data === 'string' ? JSON.parse(rawEntry.data) : (rawEntry.data || {}); } catch (e) { return {}; } })();
+    const errEntry = { data: errData };
+    const ctxWin = (est ? TR.traceContext(est.id, 20).window : []) || [];
+    EV.uninstallErrorCapture();
+    globalThis.window = oldWin;
+    return installed === true && !!est && est.ok === false && est.level === 'error' && !!est.site
+        && !!errEntry && !!errEntry.data.traceId && errEntry.data.traceId === est.id
+        && Array.isArray(errEntry.data.context.window) && errEntry.data.context.window.length >= 2
+        && errEntry.data.context.window.some((x) => x.kind === 'smokeBefore')
+        && errEntry.data.opId === op.opId && Array.isArray(errEntry.data.context.related)
+        && ctxWin.length >= 2 && !!errEntry.data.how;
+})(), '');
+
+await assert('AS4 调试页「🧭 交互与宿主调用时间线」区块 + 调试包（含 traceStats/trace/timeline 人读文本）；类别筛选按钮可用', (async () => {
+    const TR = await import('../core/trace.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const html = String(panelBodyHtml('settings') || '');
+    const hasSection = html.indexOf('🧭 交互与宿主调用时间线') >= 0
+        && html.indexOf('data-ftt-action="dbgTraceFilter"') >= 0
+        && html.indexOf('data-ftt-action="dbgTraceClear"') >= 0;
+    const r = await entry.popupAction('dbgTraceFilter', { kind: 'ui' });
+    const filtered = String(panelBodyHtml('settings') || '');
+    const r2 = await entry.popupAction('dbgTraceFilter', { kind: '' });
+    const bundle = globalThis.FTT.debugLogExport();
+    const timeline = globalThis.FTT.traceTimeline();
+    const tlTxt = String(bundle.timeline || '');
+    const statsOk = !!bundle.traceStats && typeof bundle.traceStats.total === 'number'
+        && Array.isArray(bundle.trace) && typeof bundle.timeline === 'string'
+        && (!tlTxt.length || /\d{2}:\d{2}:\d{2}\.\d{3}/.test(tlTxt))
+        && tlTxt.indexOf('ftt-memory-v2-debug') < 0;
+    const fttOk = typeof globalThis.FTT.trace === 'function' && typeof globalThis.FTT.traceList === 'function'
+        && typeof globalThis.FTT.traceStats === 'function' && typeof globalThis.FTT.traceContext === 'function'
+        && typeof globalThis.FTT.traceClear === 'function' && typeof globalThis.FTT.traceSite === 'function'
+        && typeof timeline === 'string';
+    return hasSection && r.ok !== false && r2.ok !== false && statsOk && fttOk
+        && String(filtered).indexOf('data-ftt-action="dbgTraceFilter"') >= 0
+        && JSON.stringify(globalThis.FTT.traceStats()).indexOf('session') >= 0;
+})(), '');
+
+await assert('AS5 开关生效：debugTraceUi=false 只停「用户交互」、debugTraceHost=false 只停「宿主调用」，其余类别照记；关闭后主流程不受影响', (async () => {
+    const TR = await import('../core/trace.js');
+    const RT = await import('../core/model/runtime.js');
+    const SA = await import('../host/st-api.js');
+    const ku = RT.cfg.debugTraceUi, kh = RT.cfg.debugTraceHost;
+    TR.traceClear();
+    RT.cfg.debugTraceUi = false;
+    TR.traceEvent({ cat: 'ui', kind: 'x' });
+    TR.traceEvent({ cat: 'error', kind: 'y', level: 'error' });
+    const uiOff = TR.traceList({ cat: 'ui' }).length === 0 && TR.traceList({ cat: 'error' }).length === 1;
+    RT.cfg.debugTraceUi = ku;
+    TR.traceClear();
+    RT.cfg.debugTraceHost = false;
+    SA.getCtx().saveSettingsDebounced();
+    TR.traceEvent({ cat: 'kernel', kind: 'z' });
+    const hostOff = TR.traceList({ cat: 'host' }).length === 0 && TR.traceList({ cat: 'kernel' }).length === 1;
+    RT.cfg.debugTraceHost = kh;
+    // 还原后仍可记录（开关不改行为，只改记录）
+    TR.traceClear();
+    SA.getCtx().saveSettingsDebounced();
+    const restored = TR.traceList({ cat: 'host' }).length === 1;
+    return uiOff && hostOff && restored && ku === true && kh === true;
 })(), '');
 
 // ---------- D 注入与收尾 ----------

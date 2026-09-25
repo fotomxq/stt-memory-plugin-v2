@@ -3,6 +3,32 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.42.0（2026-09-26）· 交互/宿主/错误统一追踪（可追到代码位置与上下文）
+
+**用户要求**：「调试日志应该捕捉用户交互、插件交互的**所有日志**，当前展示的属于业务日志，无法追溯底层关系，
+而且只有异常错误、没有上下文，无法追溯具体错误的代码位置。请约定和完善该设计。」
+
+**① 约定：三层事件流 + 三条硬要求**（`docs/P10h-交互与宿主追踪设计.md`）：`ui`（用户交互）· `host`（宿主 API 调用）·
+`cmd`（命令与 FTT 入口）+ `kernel/ai/error`；硬要求 A **opId 关联**（谁触发的宿主调用/报错可回溯）、
+B **site 代码位置**（`file:line:fn`，必须是**调用方**而非包装层）、C **错误上下文窗口**（前后各 20 条 + 同 opId 关联）。
+
+**② 内核：`core/trace.js`（新，纯内核）**：分级（`error<warn<info<debug<trace`，早退）· 去重（800ms 合并 `×N`）·
+脱敏（`key/password/secret/token/authorization`→`***`，`sk-*`→`sk-***`）· 正文只记长度 ·
+上限（分类 + 总量 800，内存恒定）· `traceEvent` **永不抛**。落盘经 `adapters/trace-store.js`（只存 120 条简报）。
+
+**③ 接入**：`getCtx()` 改为**缓存 Proxy**（方法/参数/返回/耗时/失败，站点取真实调用者）· `errPush` 附
+`traceId/site/opId/context/how` · 面板点击（含 `data-ftt-*`）/控件变更（旧值→新值）/动作全程 op ·
+`/ftt*` 命令与宏经 `tracedCommand/tracedMacro` 包装（回调 async）· 调试包新增 `traceStats/trace/timeline`。
+
+**④ 调试页新增「🧭 交互与宿主调用时间线」**：类别筛选 · 错误行默认展开并渲染上下文文本 · 清空按钮；
+新增 4 个开关 `debugLevel`/`debugTraceUi`/`debugTraceHost`/`debugTraceVerbose`。
+
+**⑤ 修掉两个真缺陷**：① 无函数名裸帧（`at file:///…:12:5`）会把**列号当行号** → 站点行号错误（正则重写，单测 B7/B8 锁死）；
+② 原始 `click` 事件此前是 `trace` 级，默认级别下被丢弃 → 交互链**起点消失**（改 `debug` 级，smoke AS1 锁死）。
+
+**⑥ 门禁**：新增 `tests/unit/trace.test.js`（63 断言，A–J 组）与冒烟 `AS1–AS5`（真实点击入流 / 宿主调用站点=调用方 /
+异常带上下文窗口 / 调试页区块与导出包 / 开关只拦自己类别）。合计单元 **68 文件 / 1083 断言**、冒烟 **157 项**，全绿。
+
 ## v2.41.0（2026-09-26）· 设定按钮/功能完整性审计 + 调试包导出 + 确认框 ACL 安全
 
 **用户报告**：「请核对设定相关的按钮、功能，是否完整，我发现大量异常点。而且调试日志应该支持导出，方便检查。

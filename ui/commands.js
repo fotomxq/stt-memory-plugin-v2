@@ -5,6 +5,47 @@
 import { VERSION } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
 import { updateStatusText } from '../host/update.js';
+// v2.42.0：命令/宏调用入流（『用户命令 → 底层调用 → 结果』可追溯，cat='cmd'）
+import { traceEvent, traceOpStart, traceOpEnd, traceSite } from '../core/trace.js';
+
+/**
+ * v2.42.0：命令回调的追踪包装（cat='cmd'）—— 记录命令名 / 参数摘要 / 结果 / 耗时 / **站点**，
+ *   并用 opId 关联该命令期间发生的宿主与内核事件（见 `core/trace.js` 的 op 栈约定）。
+ */
+function tracedCommand(name, fn) {
+    const run = (typeof fn === 'function') ? fn : (() => '');
+    return async (...args) => {
+        const op = traceOpStart('cmd.' + name, { args: args.map((a) => (typeof a === 'string' ? a.slice(0, 60) : typeof a)) });
+        try {
+            const r = await run(...args);
+            const ended = traceOpEnd(op, { ok: true });
+            const detail = { source: 'slash', args: args.map((a) => (typeof a === 'string' ? a.slice(0, 60) : typeof a)), ret: (typeof r === 'string' ? r.slice(0, 80) : typeof r) };
+            try { traceEvent({ cat: 'cmd', kind: name, level: 'info', ok: true, ms: ended ? ended.ms : 0, detail, site: traceSite(), opId: op.opId, op: op.name }); } catch (e) { /* 忽略 */ }
+            return r;
+        } catch (e) {
+            const ended = traceOpEnd(op, { ok: false, reason: String((e && e.message) || e) });
+            try { traceEvent({ cat: 'cmd', kind: name, level: 'warn', ok: false, reason: String((e && e.message) || e), ms: ended ? ended.ms : 0, detail: { source: 'slash' }, site: traceSite(), opId: op.opId, op: op.name }); } catch (e2) { /* 忽略 */ }
+            throw e;
+        }
+    };
+}
+/** v2.42.0：宏回调的追踪包装（cat='cmd'，source='macro'） */
+function tracedMacro(name, fn) {
+    const run = (typeof fn === 'function') ? fn : (() => '');
+    return (...args) => {
+        const op = traceOpStart('macro.' + name);
+        try {
+            const r = run(...args);
+            const ended = traceOpEnd(op, { ok: true });
+            try { traceEvent({ cat: 'cmd', kind: name, level: 'trace', ok: true, ms: ended ? ended.ms : 0, detail: { source: 'macro' }, site: traceSite(), opId: op.opId, op: op.name }); } catch (e) { /* 忽略 */ }
+            return r;
+        } catch (e) {
+            traceOpEnd(op, { ok: false, reason: String((e && e.message) || e) });
+            try { traceEvent({ cat: 'cmd', kind: name, level: 'warn', ok: false, reason: String((e && e.message) || e), detail: { source: 'macro' }, site: traceSite() }); } catch (e2) { /* 忽略 */ }
+            throw e;
+        }
+    };
+}
 
 /** 状态文本（/ftt 与调试导出共用） */
 export function statusText(extra) {
@@ -52,15 +93,19 @@ export function registerSlashCommand(getExtra, hooks) {
     const ctx = getCtx();
     if (!ctx || !ctx.SlashCommandParser || typeof ctx.SlashCommandParser.addCommandObject !== 'function') return false;
     if (!ctx.SlashCommand || typeof ctx.SlashCommand.fromProps !== 'function') return false;
+    // v2.42.0：命令回调统一包一层追踪（保持对象字面量结构不变）
+    const addCmd = (def) => ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps(Object.assign({}, def, {
+        callback: tracedCommand(String((def && def.name) || 'cmd'), def && def.callback),
+    })));
     try {
-        ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+        addCmd({
             name: 'ftt',
             callback: () => statusText(typeof getExtra === 'function' ? getExtra() : {}),
             helpString: 'FTT记忆组件 V2 状态：版本 / 宿主 / 能力探测 / 事件绑定 / 拦截器统计',
             returns: '状态文本',
-        }));
+        });
         if (hooks && typeof hooks.importV1 === 'function') {
-            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+            addCmd({
                 name: 'ftt-import',
                 callback: async (named, unnamed) => {
                     const raw = String(unnamed || '').toLowerCase();
@@ -75,10 +120,10 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'V1 数据导入：默认干跑差异报告；`/ftt-import apply` 才真正写入（源数据不删）',
                 returns: '导入报告文本',
-            }));
+            });
         }
         if (hooks && typeof hooks.ui === 'function') {
-            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+            addCmd({
                 name: 'ftt-ui',
                 callback: async (named, unnamed) => {
                     const tab = String(unnamed || '').trim();
@@ -89,10 +134,10 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: '打开 FTT 弹窗主界面：`/ftt-ui` 或 `/ftt-ui console|extract|settings`',
                 returns: '打开结果文本',
-            }));
+            });
         }
         if (hooks && typeof hooks.panel === 'function') {
-            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+            addCmd({
                 name: 'ftt-panel',
                 callback: async () => {
                     const r = await hooks.panel();
@@ -107,10 +152,10 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'FTT 面板诊断与强制挂载：报告面板容器/菜单入口状态并立即重新挂载一次',
                 returns: '诊断文本',
-            }));
+            });
         }
         if (hooks && typeof hooks.extract === 'function') {
-            ctx.SlashCommandParser.addCommandObject(ctx.SlashCommand.fromProps({
+            addCmd({
                 name: 'ftt-analyze',
                 callback: async (named, unnamed) => {
                     const raw = String(unnamed || '').trim();
@@ -128,7 +173,7 @@ export function registerSlashCommand(getExtra, hooks) {
                 },
                 helpString: 'FTT 记忆提取：`/ftt-analyze` 分析未分析楼层；`/ftt-analyze 12` 指定楼层；`/ftt-analyze list` 列出待分析',
                 returns: '提取结果文本',
-            }));
+            });
         }
         return true;
     } catch (e) {
@@ -148,8 +193,8 @@ export function registerMacros(getExtra) {
             return true;
         }
         if (typeof ctx.registerMacro === 'function') {
-            ctx.registerMacro('fttVersion', () => VERSION);
-            ctx.registerMacro('fttStatus', handler);
+            ctx.registerMacro('fttVersion', tracedMacro('fttVersion', () => VERSION));
+            ctx.registerMacro('fttStatus', tracedMacro('fttStatus', handler));
             return true;
         }
     } catch (e) { /* 忽略：宏只是增强项 */ }

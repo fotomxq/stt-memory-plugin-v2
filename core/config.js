@@ -1009,6 +1009,11 @@ const defaultCfg = {
     feedRegexWhitelist: [],
     feedRegexBlacklist: [],
     debugEnabled: true,
+    // v2.42.0：交互/宿主/命令追踪（「调试日志」的分级与分类开关；V1 只有 debugEnabled）
+    debugLevel: 'debug',          // error | warn | info | debug | trace
+    debugTraceUi: true,           // 记录用户交互（点击/变更/切页/搜索）
+    debugTraceHost: true,         // 记录插件↔宿主 API 调用
+    debugTraceVerbose: false,     // true = 记录截断后的原始参数/返回（默认只记摘要与长度）
     apiPresets: {},
     activeApiPreset: '',
     dimensionGrouping: 'unified',

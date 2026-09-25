@@ -802,6 +802,11 @@ export const SETTINGS_CONTROLS = {
         }
     ],
     "debug": [
+        // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled；本组为 V2 附加，调试页可见可关）
+        { "key": "debugLevel", "label": "记录级别（error/warn/info/debug/trace）", "type": "text" },
+        { "key": "debugTraceUi", "label": "记录用户交互（点击/变更/切页）", "type": "checkbox" },
+        { "key": "debugTraceHost", "label": "记录插件↔宿主 API 调用", "type": "checkbox" },
+        { "key": "debugTraceVerbose", "label": "详细模式（记录截断后的原始参数/返回）", "type": "checkbox" },
         {
             "key": "debugEnabled",
             "label": "记录调试日志",
