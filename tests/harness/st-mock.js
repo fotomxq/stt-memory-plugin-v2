@@ -95,7 +95,8 @@ export function makeHost(opts) {
         accountStorage: { getItem: () => null, setItem: () => true },
         variables: { local: {}, global: {} },
         substituteParams: (s) => String(s == null ? '' : s),
-        ConnectionManagerRequestService: { sendRequest: async () => '' },
+        // v2.35.0：酒馆「连接配置」服务桩（扩展通道 API）——默认无可用连接，测试可整体替换
+        ConnectionManagerRequestService: { sendRequest: async () => '', getSupportedProfiles: () => [] },
     };
     if (o.noEventSource) delete ctx.eventSource; else ctx.eventSource = eventSource;
     ctx.eventTypes = o.noEventSource ? undefined : eventTypes;

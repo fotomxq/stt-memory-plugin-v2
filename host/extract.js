@@ -21,6 +21,8 @@ import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
 import { scheduleParallelWeave, jsExtractKeywords } from '../core/parallel.js';
 import { scheduleAtomCompact } from '../core/atom-compact.js';
 import { DIM_LABELS } from '../core/config.js';
+// v2.35.0（API 三通道）：抽取管线的 AI 调用带上**用途 target**（V1 `overrideMain` / `dimensionPresets[维度]` 的等价物）
+import { resolveApiTarget } from '../core/api-channel.js';
 import { rawGenerate, generationAvailability } from './generation.js';
 import {
     floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
@@ -134,8 +136,11 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
     const label = '摘要[' + (groupDim === '统一' ? '统一' : (DIM_LABELS[groupDim] || groupDim)) + ']';
     try {
         const messages = await buildSummaryPrompt(floorText, dims);
-        const args = promptToGenerateArgs(messages);
-        // 第二参 label 与 V1 `callChatCompletion(prompt, override, label, 'analysis')` 的标签同源（宿主 `rawGenerate` 忽略它）
+        // v2.35.0：该组按维度解析 API target —— V1 `runSummarySeparate` 的 `dimensionPresets[dim] || overrideMain`
+        //   （v1.206 14795~14796）。`o.ai` 注入时（测试）该字段被忽略，行为不变。
+        const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'dim', dimension: groupDim }) });
+        // 第二参 label 与 V1 `callChatCompletion(prompt, override, label, 'analysis')` 的标签同源（宿主按它判定用途；
+        //   本组的**连接**已由上面的 `target` 决定，label 只作留痕）
         const resp = await gen(args, label);
         if (!resp || resp.ok === false) return { dim: groupDim, ok: false, error: String((resp && resp.error) || 'ai-error').slice(0, 80), label };
         const delta = extractJsonObject(resp.text);
@@ -156,8 +161,10 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
  * 语义（V1 原样）：生效维度各自构造提示词并**并行**请求；未启用维度合成一个「统一」组；
  *   每组独立解析/切片/`mergeDelta`/计成功失败；合并成功的组各自触发被动推演。
  * V2 适配（逐条见 docs/P9d）：
- *   ① AI 通道 = 注入钩子（`o.ai` 注入点 / 宿主 `generateRaw`），**不支持按次指定预设** —— 故 V1 的
- *      `cfg.dimensionPresets[维度]`（按维度选自建 API 预设）在 V2 **不适用**（不实现、不放假控件）；
+ *   ① AI 通道 = 注入钩子（`o.ai` 注入点 / 宿主 `rawGenerate`）；**v2.35.0 起** `cfg.dimensionPresets[维度]`
+ *      （按维度选 API 分组）**已实现**：每组按 `resolveApiTarget({purpose:'dim',dimension})` 解析出 target
+ *      并随 `args.target` 传给宿主（P9d 当年的「不适用」判定已被推翻 —— 酒馆向扩展暴露了
+ *      `ConnectionManagerRequestService` 官方通道，见 `docs/P10a-API页与按用途渠道对齐.md`）；
  *   ② V1 的 `abortTick()` / `newTaskStart()` / `pipeUpdate()` 未移植（V2 无任务中断标志与管线状态 UI）；
  *   ③ 形参 `silent` 在 V1 函数体内**从未被引用**（v1.206 原样），V2 直接不设该参数。
  * @param {string} floorText 楼层（或段）正文
@@ -195,7 +202,8 @@ export async function analyzeFloor(floorId, opts) {
         if (!o.ai && !av.generateRaw) { extractState.fail += 1; extractState.lastReason = 'no-generate'; return { ok: false, reason: 'no-generate' }; }
         const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
         const messages = await buildSummaryPrompt(text, dims);
-        const args = promptToGenerateArgs(messages);
+        // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
+        const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
         const resp = await gen(args);
         if (!resp || resp.ok === false) {
             extractState.fail += 1; extractState.lastReason = 'ai-error';
@@ -284,7 +292,8 @@ export async function analyzeSegment(start, end, opts) {
         }
         const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
         const messages = await buildSummaryPrompt(text, dims);
-        const args = promptToGenerateArgs(messages);
+        // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
+        const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
         const resp = await gen(args);
         if (!resp || resp.ok === false) return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
         const delta = extractJsonObject(resp.text);
