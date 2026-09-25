@@ -55,7 +55,7 @@ import {
     clearTrackedCurrencyRoles, trackPickState, setTrackPick, defaultCurrencyOwner, knownCharacterNames,
 } from '../core/model/money.js';
 import { resetState as kernelResetState } from '../adapters/store.js';
-import { getSettings, setSetting } from '../adapters/settings.js';
+import { getSettings, setSetting, panelWidthCssValue } from '../adapters/settings.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relStats, relByWho, relRowsOf, REL_DIMS, howLabel, relDimLabelOf, relFilterState, setRelFilter, relClearFilter, relPickState, setRelPick, relKnownNames, relPickAppendRow, relPickPanelHtml, relPickingOf, relJump, relGoto, setRelPickQuery } from './rel-table.js';
 import { injectCheckPanelHtml, injectCheckAction, setCheckKeywords, injectCheckStats } from './inject-check.js';
@@ -64,6 +64,21 @@ import { atomIsHidden } from '../core/merge.js';
 export const PANEL_ID = 'ftt-panel';
 /** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
 const UPDATE_SETTING_KEYS = ['autoUpdateCheck', 'updateRepo', 'updateBranch', 'updateCheckIntervalHours', 'useStGitEndpoint'];
+/** v2.36.0：同样是**适配层设置**（extensionSettings）而非内核 cfg 的界面键 —— 面板宽度 */
+const UI_SETTING_KEYS = ['panelMaxWidth'];
+/**
+ * v2.36.0 面板宽度档位（`panelMaxWidth`，单位 px；`0` = 铺满不设上限）。
+ * 默认 1280px：桌面（≥1025px）在该上限内随视口自适应，两侧恒留 16px；手机/平板档位由 CSS 媒体查询决定。
+ * 「需注意较宽」的取舍：默认**不**铺满（长行阅读与点击距离都更舒服），需要更宽由用户显式选择。
+ */
+export const PANEL_WIDTH_OPTIONS = Object.freeze([
+    { v: 960, label: '960px（紧凑）' },
+    { v: 1120, label: '1120px' },
+    { v: 1280, label: '1280px（默认 · 推荐）' },
+    { v: 1440, label: '1440px（大屏）' },
+    { v: 1600, label: '1600px（超宽）' },
+    { v: 0, label: '铺满（只留 32px 边距）' },
+]);
 /** V1 的 13 个分页（id 与标签逐字一致） */
 export const PANEL_TABS = Object.freeze([
     ['overview', '总览'], ['atoms', '情节'], ['states', '状态'], ['snapshots', '角色'],
@@ -833,6 +848,8 @@ function v2ExtrasHtml() {
     // 更新相关键属于**适配层设置**（extensionSettings），不是内核 cfg —— 读写都走 settings，避免"改了不生效"
     const s = (() => { try { return getSettings() || {}; } catch (e) { return {}; } })();
     const repo = String(s.updateRepo || '');
+    // 宽度档位（非法/缺失 → 默认档；`0` 是合法值 = 铺满，故用 Number.isFinite 判定而非 `||`）
+    const curWidth = (() => { const n = Number(s.panelMaxWidth); return Number.isFinite(n) && n >= 0 ? n : 1280; })();
     return [
         '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (s.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新</span>',
         '<input type="text" class="ftt-input" data-ftt-v2="updateRepo" value="' + attr(repo) + '" placeholder="更新检查仓库地址">',
@@ -844,6 +861,11 @@ function v2ExtrasHtml() {
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="importV1Dry">📥 V1 导入（干跑）</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply">📥 V1 导入（写入）</button>'
         + '<span class="ftt-muted">源数据不删除；写入为按 id 合并</span></div>',
+        // v2.36.0：面板宽度档位（V2 附加设定；V1 无此项 —— V1 固定 min(940px,94vw)）
+        '<div class="ftt-row"><span class="ftt-muted">面板最大宽度</span>'
+        + '<select class="ftt-input" data-ftt-v2="panelMaxWidth">'
+        + PANEL_WIDTH_OPTIONS.map((o) => '<option value="' + attr(String(o.v)) + '"' + (Number(curWidth) === Number(o.v) ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('')
+        + '</select><span class="ftt-muted">手机端恒铺满；此值作用于桌面/平板（≥701px）的上限，实际宽度随窗口自适应</span></div>',
         '<div class="ftt-field ftt-field-col"><label>启用维度</label><div class="ftt-v2-dims" id="ftt_v2_dims">' + dimsCheckboxHtml() + '</div></div>',
     ].join('\n');
 }
@@ -926,6 +948,7 @@ function ensureOverlay() {
         } catch (e) { return null; }
     }
     overlayEl = el;
+    applyPanelWidth(el);   // v2.36.0：新建浮层时即下发宽度上限（不等首次 renderPanel）
     bindOverlay();
     return el;
 }
@@ -934,10 +957,27 @@ function ensureOverlay() {
 export function renderPanel() {
     const el = overlayEl || ensureOverlay();
     const html = panelHtml();
+    applyPanelWidth(el);
     if (!el) return html;
     try { if (typeof el.innerHTML === 'string') { el.innerHTML = html; return html; } } catch (e) { /* 落到桩路径 */ }
     try { if (typeof el.insertAdjacentHTML === 'function') el.insertAdjacentHTML('beforeend', html); else el.html = html; } catch (e) { /* 忽略 */ }
     return html;
+}
+
+/**
+ * v2.36.0：把「面板最大宽度」档位下发给浮层元素（CSS 变量 `--ftt-panel-max-w`）。
+ * 无 style/无 DOM 的宿主（桩、受限环境）静默跳过；读取失败回落默认档。
+ * @param {object} [el] 浮层元素（缺省用当前浮层）
+ * @returns {string} 实际下发的 CSS 变量值（诊断/测试用）
+ */
+export function applyPanelWidth(el) {
+    const target = el || overlayEl || ensureOverlay();
+    const px = (() => { try { return getSettings().panelMaxWidth; } catch (e) { return 1280; } })();
+    const css = panelWidthCssValue(px);
+    try {
+        if (target && target.style && typeof target.style.setProperty === 'function') target.style.setProperty('--ftt-panel-max-w', css);
+    } catch (e) { /* 无 style 的宿主：忽略 */ }
+    return css;
 }
 
 /** 打开浮层（V1 的主入口行为） */
@@ -1796,7 +1836,7 @@ export function bindOverlay() {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
                     // 更新相关键写入**适配层设置**（updateConfig 读的是 settings；写内核 cfg 不会生效）
-                    if (UPDATE_SETTING_KEYS.indexOf(k) >= 0) setSetting(k, raw);
+                    if (UPDATE_SETTING_KEYS.indexOf(k) >= 0 || UI_SETTING_KEYS.indexOf(k) >= 0) setSetting(k, raw);
                     else applySettingsControl(k, raw);
                     setNote('已更新 ' + k);
                     renderPanel();

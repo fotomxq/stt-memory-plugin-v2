@@ -30,6 +30,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     updateRepo: DEFAULT_UPDATE_REPO,
     updateBranch: DEFAULT_UPDATE_BRANCH,
     updateCheckIntervalHours: DEFAULT_UPDATE_INTERVAL_HOURS,
+    // v2.36.0：面板最大宽度（px；0 = 铺满不设上限）—— 手机端由 CSS 媒体查询恒铺满，此值只作用于 ≥1025px 的桌面与平板区间；
+    //   为什么放在 extensionSettings 而不是内核 cfg：这是**界面偏好**（与更新检查/入口开关同类），不属于记忆内核配置。
+    panelMaxWidth: 1280,
     // 迁移
     migratedFrom: '',
 });
@@ -77,7 +80,20 @@ export function resetSettings() {
 export function setSetting(key, value) {
     const store = getSettings();
     if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return false;
-    store[key] = value;
+    if (key === 'panelMaxWidth') {
+        // 归一：有限数且 ≥0 → 取整并夹在 [0, 4000]；非法值回落默认（0 = 铺满）
+        const n = Number(value);
+        store[key] = (Number.isFinite(n) && n >= 0) ? Math.min(4000, Math.round(n)) : DEFAULT_SETTINGS.panelMaxWidth;
+    } else {
+        store[key] = value;
+    }
     saveSettings();
     return true;
+}
+
+/** v2.36.0：面板宽度档位 → CSS 变量值（0 = 铺满：变量置 100vw，实际由 `calc(100vw - 32px)` 收边） */
+export function panelWidthCssValue(px) {
+    const n = Number(px);
+    if (!Number.isFinite(n) || n <= 0) return '100vw';
+    return Math.min(4000, Math.round(n)) + 'px';
 }

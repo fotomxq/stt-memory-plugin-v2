@@ -3020,6 +3020,54 @@ await assert('AK3 API 三通道端到端：direct 直连（端点/鉴权/参数�
     return directOk && probeOk && modelsOk && badOk && errOk && profileOk && hostOk;
 })(), '');
 
+// ---------- AL 面板宽度自适应（v2.36.0） ----------
+await assert('AL1 面板宽度自适应端到端：打开即下发 CSS 变量（默认 1280px）→ 档位切换即时生效并落 extensionSettings（内核 cfg 不新增键）→ 铺满档 100vw', (async () => {
+    const S = await import('../adapters/settings.js');
+    const { cfg } = await import('../core/model/runtime.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'base' });
+    const el = doc.getElementById('ftt-panel');
+    const varOf = () => String((el && el.style && el.style.getPropertyValue('--ftt-panel-max-w')) || '');
+    const html0 = String(panelBodyHtml('settings') || '');
+    const ctrl = html0.indexOf('data-ftt-v2="panelMaxWidth"') >= 0 && html0.indexOf('铺满（只留 32px 边距）') >= 0
+        && html0.indexOf('<option value="1280" selected>') >= 0 && html0.indexOf('手机端恒铺满') >= 0;
+    const v0 = varOf();
+    const fireChange = (dataset, value) => {
+        const list = (el && el.listeners && el.listeners.change) || [];
+        list.forEach((fn) => fn({ target: { dataset, value, type: 'select-one' } }));
+        return list.length > 0;
+    };
+    const f1 = fireChange({ fttV2: 'panelMaxWidth' }, '1440');
+    await new Promise((r) => setTimeout(r, 0));
+    const v1 = varOf();
+    const stored1 = Number(S.getSettings().panelMaxWidth);
+    const f2 = fireChange({ fttV2: 'panelMaxWidth' }, '0');
+    await new Promise((r) => setTimeout(r, 0));
+    const v2 = varOf();
+    const stored2 = Number(S.getSettings().panelMaxWidth);
+    const notInCfg = !Object.prototype.hasOwnProperty.call(cfg, 'panelMaxWidth');
+    // 归位默认档并重绘（后续小节按默认档继续）
+    S.resetSettings();
+    await entry.popupAction('refresh', {});
+    const back = varOf();
+    return ctrl && v0 === '1280px' && f1 && v1 === '1440px' && stored1 === 1440
+        && f2 && v2 === '100vw' && stored2 === 0 && notInCfg && back === '1280px';
+})(), '');
+
+await assert('AL2 CSS 三档齐备且不写死宽度：桌面 min(变量, 100vw-32px) / 平板 min(变量, 96vw) / 手机 100dvw 全屏 + 宽面板溢出保护', (() => {
+    const CSS = readFileSync(join(ROOT, 'style.css'), 'utf8');
+    const base = /#ftt-panel\s*\{[^}]*--ftt-panel-max-w:\s*1280px/.test(CSS)
+        && CSS.indexOf('width: min(var(--ftt-panel-max-w), calc(100vw - 32px))') >= 0
+        && CSS.indexOf('width: min(940px, 94vw)') < 0;
+    const tabIdx = CSS.indexOf('@media (min-width: 701px) and (max-width: 1024px)');
+    const tab = tabIdx >= 0 && CSS.slice(tabIdx, tabIdx + 400).indexOf('min(var(--ftt-panel-max-w), 96vw)') >= 0;
+    const mobIdx = CSS.indexOf('@media (max-width: 700px)');
+    const mob = mobIdx >= 0 && (() => { const seg = CSS.slice(mobIdx, mobIdx + 900); return seg.indexOf('width: 100dvw') >= 0 && seg.indexOf('height: 100dvh') >= 0; })();
+    const guard = CSS.indexOf('#ftt-panel .ftt-body, #ftt-panel .ftt-section, #ftt-panel .ftt-settings-page { min-width: 0; max-width: 100%; }') >= 0
+        && CSS.indexOf('.ftt-v2-settings .ftt-v2-row { flex-wrap: wrap; }') >= 0;
+    return base && tab && mob && guard;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

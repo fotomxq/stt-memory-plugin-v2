@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.36.0（2026-09-26）· 面板宽度自适应（手机铺满 / PC 自适应 + 可调上限）
+
+**用户报告**：「宽度不足，插件自适应宽度。手机端可铺满、PC 可自适应，但需注意较宽。」
+
+**问题**：面板宽度此前**逐字照搬 V1** 的固定上限 `width: min(940px, 94vw)`（V1 v1.206:22389）。
+该值是为 V1 的**酒馆助手 iframe 浮层**选的保守值；V2 是**原生扩展**、浮层挂 `document.body` 且
+`position: fixed; inset: 0`，可用空间是整个视口 —— 宽屏 PC 上 940px 只占约半数宽度，即用户看到的「宽度不足」。
+
+**修复（`style.css` + `adapters/settings.js` + `ui/panel.js`）**：
+1. **一档变量 + 三档媒体查询**：`#ftt-panel { --ftt-panel-max-w: 1280px }`，
+   桌面（≥1025px）`width: min(var(--ftt-panel-max-w), calc(100vw - 32px))` —— **随窗口自适应、两侧恒留 16px、到上限收住**；
+   平板（701~1024px）`min(变量, 96vw)`；手机（≤700px）维持既有 `100dvw × 100dvh` **整屏铺满**（`dvh` 动态视口、去圆角/边框）。
+   默认 1280px 比改前 940px 宽 **+36%**（1024px 窗口实际 992px；1366px 窗口 1280px）。
+2. **可调上限**（「V2 附加设定 → 面板最大宽度」；**适配层设置** `extensionSettings.panelMaxWidth`，
+   **不进内核 cfg**）：960 / 1120 / **1280（默认·推荐）** / 1440 / 1600 / **铺满（只留 32px 边距）** 六档，
+   归一为「有限数 ≥0 → 取整并夹在 [0, 4000]，非法回落默认」（`0` 是合法档，故判 `Number.isFinite` 而非 `||`）。
+   通过 CSS 变量 `--ftt-panel-max-w` 下发给浮层，**新建浮层与每次重绘都下发**，切换即时生效；无 `style` 的宿主安全跳过。
+   手机档不受该设置影响（媒体查询优先级更高，恒铺满）。
+3. **「注意较宽」的落地（加宽后的溢出保护）**：`body/section/settings-page` 补 `min-width:0; max-width:100%`；
+   日志块/世界书条目/编辑器/代码块 `max-width:100%; overflow-x:auto`；`ftt-item-main` `min-width:0`；
+   抽屉卡片（v2.0 形态）在 ≤700px 下换行且文本输入占满整行。**不改列数**（保持 V1 的单列口径）。
+   `.ftt-pop*`（`min-width:78vw; max-width:1100px`）经核为 v2.0 弹窗时代的**死 CSS**（全仓 JS 零引用），本批不动。
+
+**偏离登记**：本项为 **V2 对 V1 的有意偏离**（V1 固定 940px 属 iframe 场景），已记入
+`docs/P10b-面板宽度自适应.md`。
+
+**验证**：`npm run gate` 全绿 —— 单元 **62 文件 / 976 断言**（新增 `tests/unit/panel-width.test.js` **9 项**：
+桌面/平板/手机三档 CSS、旧写死宽度已移除、溢出保护、默认值与 `panelWidthCssValue` 归一、
+`setSetting` 归一与未知键拒绝、打开即下发/档位切换/归位、无 `style` 宿主安全、控件六档、走适配层且内核 cfg 无该键）；
+冒烟 **141 项**（新增 **AL1** 真实 change 委托切档 1280→1440→铺满并断言落 `extensionSettings`、
+**AL2** CSS 三档与溢出保护）；内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规。
+测试基建：`tests/harness/st-mock.js#makeEl` 新增 `style.setProperty/getPropertyValue` 记录（此前桩元素无 `style`，
+「CSS 变量下发」无法断言）。
+
 ## v2.35.0（2026-09-26）· API 页真实化 + 按用途渠道对齐（B10-a · 推翻 §6.1 的「V2 不适用」判定）
 
 **用户报告**：「API 功能怎么没了？请核对 V1 版本对齐相关设定功能。」—— 核对后确认**用户判断正确**：
