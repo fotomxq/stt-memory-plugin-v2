@@ -93,8 +93,17 @@
 #ftt-panel.ftt-open { display: flex; }
 /* 弹窗安全居中 —— margin:auto 在弹窗高度超视口时自动退化为顶部对齐（margin 归零），
    杜绝 flex 居中把顶部推出屏幕（平板/横屏/键盘弹出场景「半个插件、顶部不可达」）；
-   max-height 用 vh→dvh 双声明：支持 dvh 的浏览器动态跟随视口，老浏览器回退 vh。 */
-#ftt-panel .ftt-modal { margin: auto; width: min(940px, 94vw); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: #1a1d24; color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+   max-height 用 vh→dvh 双声明：支持 dvh 的浏览器动态跟随视口，老浏览器回退 vh。
+
+   v2.36.0「面板宽度自适应」（用户要求：宽度不足 → 手机铺满 / PC 自适应，但注意不要太宽）：
+   · 宽度不再写死 940px：由 CSS 变量 `--ftt-panel-max-w`（**上限**，由「V2 附加设定 → 面板最大宽度」下发，
+     默认 1280px）与视口共同决定 → `min(上限, 100vw - 32px)`：
+       桌面（≥1025px）随窗口自适应并在上限处收住，两侧恒留 16px；
+       平板（701~1024px）96vw；手机（≤700px）整屏铺满（见下方媒体查询）。
+   · 上限可选档位见 `ui/panel.js#PANEL_WIDTH_OPTIONS`（960 / 1120 / 1280 / 1440 / 1600 / 铺满）；
+     「铺满」把变量置为 `100vw`（等价于只留 32px 边距）。 */
+#ftt-panel { --ftt-panel-max-w: 1280px; }
+#ftt-panel .ftt-modal { margin: auto; width: min(var(--ftt-panel-max-w), calc(100vw - 32px)); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: #1a1d24; color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
 /* 移动端适配 —— dvh 动态视口避免地址栏/键盘导致高度溢出；窄屏全屏布局确保可操作 */
 @media (max-width: 700px) {
   #ftt-panel { align-items: stretch; justify-content: center; }
@@ -121,10 +130,16 @@
 /* 平板区间适配（701-1024px）—— 此前落入桌面样式，高度受限时顶部溢出不可操作；
    此区间提高面板利用率并沿用安全居中与视口兜底，横竖屏均可用 */
 @media (min-width: 701px) and (max-width: 1024px) {
-  #ftt-panel .ftt-modal { width: 96vw; height: min(92vh, 960px); height: min(92dvh, 960px); }
+  #ftt-panel .ftt-modal { width: min(var(--ftt-panel-max-w), 96vw); height: min(92vh, 960px); height: min(92dvh, 960px); }
   #ftt-panel .ftt-modal-head { padding-top: max(10px, env(safe-area-inset-top)); }
   #ftt-panel .ftt-body { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
 }
+/* 宽面板（自适应加宽后）的溢出保护：长文本/表格/代码块/日志块不得撑破容器；
+   同时把「已加宽」的空间交给列表与表格（它们本来就需要横向空间），不为阅读改列数（保持 V1 的单列口径）。 */
+#ftt-panel .ftt-body, #ftt-panel .ftt-section, #ftt-panel .ftt-settings-page { min-width: 0; max-width: 100%; }
+#ftt-panel .ftt-dbg-data, #ftt-panel .ftt-wb-entries, #ftt-panel .ftt-editor, #ftt-panel .ftt-pre-box { max-width: 100%; overflow-x: auto; }
+#ftt-panel .ftt-item-main { min-width: 0; }
+
 #ftt-panel .ftt-modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #3a4048; background: #22262f; }
 #ftt-panel .ftt-modal-head .ftt-title { font-weight: 600; font-size: 14px; flex: 1; color: #f0ece6; }
 #ftt-panel .ftt-close { cursor: pointer; border: none; background: transparent; color: #b8b3ac; font-size: 18px; }
@@ -605,4 +620,11 @@ body.ftt-no-effects #toast-container *::before {
   #ftt-panel .ftt-modal-head { gap: 6px; padding: 8px 10px; }
   #ftt-panel .ftt-title { font-size: 12px; }
   #ftt-panel .ftt-modal-head .ftt-stat { font-size: 11px; padding: 2px 7px; }
+}
+
+/* v2.36.0：抽屉卡片（`#ftt_v2_settings` 内联卡片，v2.0 形态）在窄屏下的兜底 ——
+   卡片的宽度由酒馆抽屉决定，插件只保证行内控件不把卡片撑破 */
+@media (max-width: 700px) {
+  .ftt-v2-settings .ftt-v2-row { flex-wrap: wrap; }
+  .ftt-v2-settings .ftt-v2-row input[type="text"] { width: 100%; min-width: 0; }
 }

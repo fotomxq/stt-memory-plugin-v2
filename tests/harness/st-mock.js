@@ -6,7 +6,7 @@ import { HOST_EVENTS } from '../../core/constants.js';
 
 /** 最小 DOM 元素桩 */
 function makeEl(id) {
-    return {
+    const el = {
         id,
         html: '',
         textContent: '',
@@ -14,12 +14,22 @@ function makeEl(id) {
         value: '',
         children: [],
         listeners: {},
+        // v2.36.0：面板宽度以 CSS 变量下发 → 桩需能记录 style.setProperty（测试断言宽度档位用）
+        __styleVars: {},
+        style: {
+            setProperty(k, v) { this.owner.__styleVars[String(k)] = String(v); },
+            getPropertyValue(k) { return this.owner.__styleVars[String(k)] || ''; },
+            removeProperty(k) { delete this.owner.__styleVars[String(k)]; },
+            get cssText() { return Object.keys(this.owner.__styleVars).map((k) => k + ':' + this.owner.__styleVars[k]).join(';'); },
+        },
         insertAdjacentHTML(pos, html) { this.html += String(html); },
         addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
         removeChild() { return true; },
         parentNode: { removeChild() { return true; } },
         dispatch(type) { for (const fn of (this.listeners[type] || [])) fn(); },
     };
+    el.style.owner = el;
+    return el;
 }
 
 /** 最小 document 桩（只支持 getElementById） */
