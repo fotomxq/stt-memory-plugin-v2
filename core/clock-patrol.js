@@ -18,6 +18,8 @@ import {
     clockReplaceYear, clockNormTime,
 } from './clock.js';
 import { latestPlotByFloor } from './recall.js';
+// v2.44.0（用户报告）：手工录入同样可能粘进 HTML（如「码头仓库<br>」）→ 统一清洗后再解析
+import { cleanValue, hasHtmlTag, htmlStats } from './html-text.js';
 import { snapshotCreateFull } from './snapshots.js';
 // v2.37.0「时钟取值追踪」：锚点从哪来（手工 > 当前时钟 > 多数派）、为什么可信、为什么只统计不修改
 import {
@@ -54,6 +56,16 @@ function clockManualState() {
 function parseClockManualInput(input) {
     const o = input || {};
     const notes = [];
+    // v2.44.0：三项先做 HTML 清洗（`码头仓库<br>` → `码头仓库`），并如实说明剔除了什么
+    const rawAll = [o.date, o.time, o.location].map((x) => String(x == null ? '' : x)).join(' ');
+    if (hasHtmlTag(rawAll)) {
+        const cleaned = { date: cleanValue(o.date), time: cleanValue(o.time), location: cleanValue(o.location, 60) };
+        const st = htmlStats(rawAll);
+        notes.push('录入内容含 HTML 标签/实体，已自动剔除（标签 ' + (Number(st.tags) || 0) + ' 处'
+            + (Number(st.entities) ? ('、实体 ' + st.entities + ' 处') : '') + '）'
+            + (st.block && st.block.length ? ('，如 ' + st.block.join(' ')) : ''));
+        o.date = cleaned.date; o.time = cleaned.time; o.location = cleaned.location;
+    }
     const curDate = String((state.state && state.state.date) || '');
     const maj = clockPatrolMajority();
     const prevYear = clockDateValid(curDate) ? clockYearOf(curDate) : (maj && maj.year ? maj.year : '');

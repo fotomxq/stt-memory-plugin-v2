@@ -1,0 +1,130 @@
+{
+ "meta": {
+  "v1Version": "v1.206",
+  "generatedBy": "tests/fixtures/gen-v1-golden-html-pollution.cjs",
+  "note": "V1 不做 HTML 清洗：地点/场景取值与投喂楼层文本原样保留 <br>/<div>/<b>/&nbsp; —— V2 v2.44.0 已修正（core/html-text.js），本样本用于断言差异（V1 故障明确修正 #5）"
+ },
+ "A": {
+  "headerBr": {
+   "date": "1919-11-29",
+   "time": null,
+   "location": "码头仓库<br>",
+   "sceneDesc": "死寂的长街",
+   "source": {
+    "date": "header",
+    "location": "header"
+   },
+   "header": true
+  },
+  "headerBrOnly": {
+   "date": "1919-11-29",
+   "time": null,
+   "location": null,
+   "sceneDesc": "死寂的长街",
+   "source": {
+    "date": "header"
+   },
+   "header": true
+  },
+  "headerPlain": {
+   "date": "1919-11-29",
+   "time": null,
+   "location": "码头仓库",
+   "sceneDesc": "死寂的长街",
+   "source": {
+    "date": "header",
+    "location": "header"
+   },
+   "header": true
+  },
+  "markerBr": {
+   "date": "1919-11-29",
+   "time": "傍晚",
+   "location": "码头仓库<br>",
+   "sceneDesc": "",
+   "source": {
+    "date": "regex",
+    "time": "daypart",
+    "location": "marker"
+   },
+   "header": false
+  },
+  "markerDiv": {
+   "date": null,
+   "time": null,
+   "location": "<b>码头</b>&nbsp;仓库",
+   "sceneDesc": "",
+   "source": {
+    "location": "marker"
+   },
+   "header": false
+  },
+  "customLocationBr": {
+   "location": "码头仓库<br>",
+   "source": {
+    "date": "regex",
+    "time": "daypart",
+    "location": "custom"
+   }
+  }
+ },
+ "B": {
+  "html": {
+   "lines": [
+    "[第0楼 用户] 甲：去仓库看看。<br>",
+    "[第1楼 AI] ▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门，灰尘扑面。<div>墙角有一只铜箱。</div>"
+   ],
+   "feed": "",
+   "analyzable": "[第1楼 AI] ▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门，灰尘扑面。<div>墙角有一只铜箱。</div>"
+  },
+  "plain": {
+   "lines": [
+    "[第0楼 用户] 甲：去仓库看看。",
+    "[第1楼 AI] ▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库\n甲推开木门，灰尘扑面。\n墙角有一只铜箱。"
+   ],
+   "feed": "",
+   "analyzable": "[第1楼 AI] ▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库\n甲推开木门，灰尘扑面。\n墙角有一只铜箱。"
+  }
+ },
+ "C": {
+  "locationBr": {
+   "ok": true,
+   "date": "",
+   "time": "",
+   "location": "码头仓库<br>",
+   "notes": []
+  },
+  "locationDiv": {
+   "ok": true,
+   "date": "",
+   "time": "",
+   "location": "<div>码头仓库</div>",
+   "notes": []
+  },
+  "locationPlain": {
+   "ok": true,
+   "date": "",
+   "time": "",
+   "location": "码头仓库",
+   "notes": []
+  },
+  "dateTime": {
+   "ok": true,
+   "date": "",
+   "time": "傍晚",
+   "location": "码头仓库&nbsp;B1",
+   "notes": [
+    "日期「1919年11月29日」缺少年份，且当前剧情日期不可用 → 已忽略（请写完整年份，如 1919-11-29 或 公元1919年11月29日）"
+   ]
+  }
+ },
+ "D": {
+  "withTag": {
+   "unavailable": true
+  },
+  "plain": {
+   "unavailable": true
+  },
+  "note": "V1 是否内置「含 HTML 特征需拒绝」的校验 —— 由本样本如实记录（V2 v2.44.0 明确拒绝：reason=html-tag）"
+ }
+}

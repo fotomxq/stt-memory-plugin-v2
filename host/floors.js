@@ -9,6 +9,9 @@ import { hashText } from '../core/util.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { state, cfg, saveState, log, warn } from '../core/model/runtime.js';
 import { getCtx } from './st-api.js';
+// v2.44.0（用户报告）：投喂/时钟/修复取文统一剔 HTML 标签；**楼层哈希仍用原始稳定正文**（`floorStableText`），
+//   因此既有「已处理楼层」台账不会因本次清洗而整体失效（避免一次无谓的全量重提取）
+import { cleanText } from '../core/html-text.js';
 
 /** V1 台账版本与哈希自检签名（签名 = hashText(固定样本)，故与 V1 逐字符同值） */
 export const PROCESSED_VER = 'v1.174';
@@ -65,7 +68,7 @@ export function collectFloorLinesInRange(start, end, opts) {
             const m = floorMessage(i);
             if (!m || m.is_hidden) continue;
             if (aiOnly && (m.is_user || (m.role && m.role !== 'assistant'))) continue;
-            const text = assistantTextOf(m);
+            const text = cleanText(assistantTextOf(m));   // v2.44.0：投喂文本剔除 HTML（`<br>` → 换行）
             if (!text) continue;
             floors.push(`[第${i}楼 ${roleOf(m)}] ${text}`);
         }

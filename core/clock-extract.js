@@ -22,6 +22,8 @@ import { latestPlotByFloor, atomLatestDated, matchPresentNames } from './recall.
 import { clockManualRaw } from './clock-patrol.js';
 import { stampSnapshotsSeen } from './model/snapshot.js';
 import { scheduleStateDecay } from './ingest.js';
+// v2.44.0（用户报告）：「地点捕捉把 `<br>` 这种 HTML 标签也捕捉进来了」→ 正文/取值统一清洗（纯内核，见 docs/P10i）
+import { cleanText, cleanValue, hasHtmlTag, htmlStats } from './html-text.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」记成结构化追踪（纯记录，不参与判定）
 import {
     clockTraceStart, clockTraceText, clockTraceChain, clockTracePick, clockTraceReject,
@@ -77,7 +79,8 @@ function storyClockReference() {
 function extractClockFromHeader(text0) {
     const out = { date: '', era: '', season: '', sceneDesc: '', location: '', storyDay: 0, time: '', timeEnd: '', status: '' };
     try {
-        const text = clockNormBcText(String(text0 || ''));   // 公元前写法先归一
+        // v2.44.0：先剔除 HTML 标签（`▷码头仓库<br>` 曾把整行含标签当地点写进 state.state.location）
+        const text = clockNormBcText(cleanText(String(text0 || '')));   // 公元前写法先归一
         if (!text || !/[▷►▶▼▽»]/.test(text)) return out;
         const lines = text.split(/\r?\n/);
         for (const raw of lines) {
@@ -127,8 +130,8 @@ function extractClockFromHeader(text0) {
  * v2.37.0「时钟取值追踪」侧信道：最近一次 `extractClockFromText` 的**采用值与全部候选**（含原始片段）。
  * 返回结构本身保持与 V1 逐字一致，故诊断信息单独导出；`resolveStoryClock` 在调用后立即读取。
  */
-let lastExtractDiag = { picked: {}, candidates: {} };
-/** 最近一次文本提取的诊断信息（采用值 + 落选候选） */
+let lastExtractDiag = { picked: {}, candidates: {}, html: null };
+/** 最近一次文本提取的诊断信息（采用值 + 落选候选 + HTML 清洗统计） */
 export function clockExtractDiag() { return lastExtractDiag; }
 
 /**
@@ -137,8 +140,12 @@ export function clockExtractDiag() { return lastExtractDiag; }
 function extractClockFromText(text0, prevOpts) {
     const out = { date: null, time: null, location: null, source: {}, timeEnd: '', season: '', era: '', storyDay: 0, sceneDesc: '', statusText: '', header: false };
     try {
-        const text = String(text0 || '');
-        if (!text) return out;
+        const rawText = String(text0 || '');
+        if (!rawText) return out;
+        // v2.44.0：**只在文本确实含 HTML 标签/实体时才清洗** —— 其余路径逐字保持 V1 行为
+        //   （黄金样本 `J(got)===J(oracle)` 不受影响）；HTML 统计经侧信道导出，供追踪说明「为什么值变了」。
+        const html = hasHtmlTag(rawText) ? htmlStats(rawText) : null;
+        const text = html ? cleanText(rawText) : rawText;
         const prev = prevOpts || {};
         const hits = { date: [], time: [], location: [] };
         // v2.37.0「时钟取值追踪」：候选**连原始片段一起**记录（`raw` = 命中位置前 12 字 / 后 40 字，压平空白），
@@ -217,7 +224,7 @@ function extractClockFromText(text0, prevOpts) {
             const pick = sorted[0];
             if (field === 'date') { const d = clockParseDateText(pick.val, prevYear) || pick.val; out.date = String(d).slice(0, 10); }
             else if (field === 'time') { const t = clockNormTime(pick.val); out.time = (t || pick.val).slice(0, 20); }
-            else out.location = pick.val.slice(0, 60);
+            else out.location = cleanValue(pick.val, 60);
             out.source[field] = pick.src;
             picked[field] = {
                 val: pick.val, idx: pick.idx, src: pick.src, raw: pick.raw || '',
@@ -226,7 +233,7 @@ function extractClockFromText(text0, prevOpts) {
         }
         // v2.37.0：候选/采用值经**侧信道**导出（`clockExtractDiag()`），**不写进返回对象** ——
         //   返回结构必须与 V1 逐字一致（黄金样本用 `J(got)===J(oracle)` 校验）。
-        lastExtractDiag = { picked, candidates: hits };
+        lastExtractDiag = { picked, candidates: hits, html: html };
         return out;
     } catch (e) { return out; }
 }
@@ -327,6 +334,15 @@ function resolveStoryClock(opts) {
         let r = null;
         let diag = null;
         if (text) { try { r = extractClockFromText(text, prev); diag = clockExtractDiag(); } catch (e) { r = null; } }
+        // v2.44.0：HTML 清洗**如实入追踪**（用户要求「取值逻辑可追踪」）——回答「地点为什么少了标签」
+        const htmlDiag = (diag && diag.html) ? diag.html : null;
+        const htmlDropped = htmlDiag ? (Number(htmlDiag.tags) || 0) + (Number(htmlDiag.entities) || 0) : 0;
+        if (htmlDropped > 0) {
+            clockTraceNote(trace, '已剔除正文中的 HTML：标签 ' + (Number(htmlDiag.tags) || 0) + ' 处'
+                + (Number(htmlDiag.entities) ? ('、实体 ' + htmlDiag.entities + ' 处') : '')
+                + (htmlDiag.block && htmlDiag.block.length ? ('（如 ' + htmlDiag.block.join(' ') + '）') : '')
+                + ' —— 避免 `<br>` 之类标签被当作地点/场景写入数据');
+        }
         const plot = latestPlotByFloor();
         const glob = atomLatestDated();
         // 降级判定：① 用户强制降级；② 捕捉到的日期异常（格式非法 / 与锚点相差超阈值）
