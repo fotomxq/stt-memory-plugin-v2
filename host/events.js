@@ -49,6 +49,11 @@ export function eventTypeAvailability() {
 //     ③ 归一：**单条截断 2000 字**、同类同址 1 秒内**去重**（防抖避免刷屏）、写入 `kind='异常'`；
 //     ④ 幂等安装（`__fttErrBound`）+ `uninstallErrorCapture()` 供 teardown 解绑（事件解绑失败也不抛）。
 // ============================================================
+// v2.42.0：异常入流 + **上下文窗口**（用户报告「只有异常错误、没有上下文，无法追溯具体代码位置」）——
+//   每条异常同时进 trace（cat='error'，带站点与 opId），并把「错误前后各 N 条事件」快照写进调试日志条目，
+//   于是调试页/导出包能直接看到「出错前用户点了什么、调了哪些宿主 API」。
+import { traceEvent, traceSite, traceContext, traceCurrentOp } from '../core/trace.js';
+
 const ERR_KIND = '异常';
 const ERR_MAX = 2000;
 let errBound = false;
@@ -71,8 +76,38 @@ function errPush(payload) {
         const now = Date.now();
         if (key === errLastKey && (now - errLastAt) < 1000) return false;      // 1s 内同类同址去重
         errLastKey = key; errLastAt = now;
-        return debugLogPush(ERR_KIND, payload);
+        // ① 进 trace（cat='error'）：站点从栈里解析出**本仓库内的代码位置**；opId 关联到触发的交互/命令
+        let rec = null;
+        try {
+            rec = traceEvent({
+                cat: 'error', kind: String((payload && payload.kind) || '异常'), level: 'error', ok: false,
+                reason: String((payload && payload.message) || ''), stack: String((payload && payload.stack) || ''),
+                detail: { source: String((payload && payload.source) || ''), line: Number(payload && payload.line) || 0, col: Number(payload && payload.col) || 0 },
+            });
+        } catch (e2) { /* 追踪失败不影响异常记录 */ }
+        // ② 附带上下文窗口（错误前后各 20 条 + 同 opId 的全部事件）
+        try {
+            const ctx = traceContext(rec && rec.id, 20);
+            const cur = traceCurrentOp();
+            const enriched = Object.assign({}, payload, {
+                traceId: (rec && rec.id) || '',
+                site: traceSiteTextOf(payload && payload.stack),
+                opId: (rec && rec.opId) || cur.opId || '',
+                op: cur.op || '',
+                context: { window: (ctx.window || []).slice(-20), related: (ctx.related || []).slice(-10) },
+                how: '上下文见调试页「🧭 交互与宿主调用时间线」；导出调试包含完整时间线',
+            });
+            return debugLogPush(ERR_KIND, enriched);
+        } catch (e3) { return debugLogPush(ERR_KIND, payload); }
     } catch (e) { return false; }
+}
+
+/** 站点文本（供调试日志条目显示 file:line） */
+function traceSiteTextOf(stack) {
+    try {
+        const site = traceSite(stack, ['host/events.js']);
+        return site && site.file ? (site.file + ':' + site.line) : '';
+    } catch (e) { return ''; }
 }
 
 function onWindowError(evt) {

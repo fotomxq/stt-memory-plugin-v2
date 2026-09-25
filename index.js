@@ -23,9 +23,12 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
+import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
 // v2.41.0：调试包导出（面板「📦 导出调试包」与 FTT.debugLogExport 共用同一实现）
 import { setDebugHooks as setDebugPageHooks, buildDebugExport } from './ui/debug.js';
+// v2.42.0：交互/宿主/命令追踪（FTT 入口包装 + 诊断入口）
+import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceList, traceTimelineText, traceStats, traceContext, traceClear } from './core/trace.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
 import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, apiPresetLoad, apiPresetDelete } from './core/api-channel.js';
 // v2.37.0：时钟取值追踪（诊断入口）
@@ -403,6 +406,60 @@ function panelStatusSnapshot() {
 }
 
 /**
+ * v2.42.0：把 `globalThis.FTT.*` 的每个入口包一层追踪（cat='cmd'）——
+ *   入口名 / 参数摘要 / 返回摘要 / 耗时 / 站点；`trace*` 自身入口不包装（避免自递归）。
+ */
+function wrapFttEntries() {
+    try {
+        const F = globalThis.FTT;
+        if (!F) return false;
+        const SELF = ['trace', 'traceList', 'traceTimeline', 'traceStats', 'traceContext', 'traceClear', 'dbgDump', 'debugLogExport', 'debugLogExportText'];
+        let n = 0;
+        for (const k of Object.keys(F)) {
+            if (SELF.indexOf(k) >= 0) continue;
+            if (typeof F[k] !== 'function') continue;
+            if (F[k].__fttTraced) continue;
+            const orig = F[k];
+            const wrapped = function (...args) {
+                const op = traceOpStart('entry.' + k, { args: args.map((a) => (typeof a === 'string' ? a.slice(0, 60) : typeof a)) });
+                const t0 = Date.now();
+                try {
+                    const r = orig.apply(this, args);
+                    if (r && typeof r.then === 'function') {
+                        return r.then(
+                            (v) => { finishEntry(k, op, t0, { ok: true, ret: v }); return v; },
+                            (e) => { finishEntry(k, op, t0, { ok: false, reason: String((e && e.message) || e) }); throw e; },
+                        );
+                    }
+                    finishEntry(k, op, t0, { ok: true, ret: r });
+                    return r;
+                } catch (e) {
+                    finishEntry(k, op, t0, { ok: false, reason: String((e && e.message) || e) });
+                    throw e;
+                }
+            };
+            try { wrapped.__fttTraced = true; Object.defineProperty(wrapped, 'name', { value: k }); } catch (e) { /* 忽略 */ }
+            F[k] = wrapped;
+            n += 1;
+        }
+        return n;
+    } catch (e) { return false; }
+}
+/** 入口调用收尾：记录一条 cmd 事件（含耗时/站点/opId） */
+function finishEntry(key, op, t0, r) {
+    try {
+        const ok = !r || r.ok !== false;
+        traceOpEnd(op, { ok, reason: (r && r.reason) || '' });
+        traceEvent({
+            cat: 'cmd', kind: key, level: ok ? 'debug' : 'info', ok,
+            reason: String((r && r.reason) || ''), ms: Date.now() - t0,
+            detail: { source: 'FTT-entry', ret: (() => { const v = r && r.ret; if (v === undefined) return 'undefined'; if (typeof v === 'string') return v.slice(0, 80); if (Array.isArray(v)) return '[' + v.length + ']'; return typeof v; })() },
+            site: traceSite(undefined, ['/index.js']), opId: op.opId, op: op.name,
+        });
+    } catch (e) { /* 忽略 */ }
+}
+
+/**
  * 一键诊断快照（v2.34.0 引入，v2.41.0 抽成函数供 FTT 入口与调试包导出共用）：
  *   版本 / 就绪 / 调试接线 / 异常捕捉状态 / 异常计数与最近 3 条 / 日志统计 / 最近 10 条 / 探针缺失项 / 最后一条异常。
  */
@@ -595,6 +652,17 @@ function bootstrapDiagnostics() {
             dbgErrorCount: () => debugLogErrorCount(),
             dbgLastError: () => debugLogLastError(),
             errCaptureState: () => errorCaptureState(),
+            // v2.42.0：交互/宿主调用追踪（时间线 / 统计 / 上下文窗口 / 清空）
+            trace: (opts) => ({ stats: traceStats(), timeline: traceTimelineText((opts && opts.limit) || 50), list: traceList(opts || { limit: 50 }) }),
+            traceList: (opts) => traceList(opts || {}),
+            traceTimeline: (limit) => traceTimelineText(limit),
+            traceStats: () => traceStats(),
+            traceContext: (id, span) => traceContext(id, span),
+            traceClear: () => traceClear(),
+            traceStoreLoad: () => traceStoreLoad(),
+            traceStoreSave: (l) => traceStoreSave(l),
+            traceStoreClear: () => traceStoreClear(),
+            traceSite: () => traceSite(),
             // v2.41.0：调试包导出（面板「📦 导出调试包」同一实现）
             debugLogExport: () => { try { return buildDebugExport(); } catch (e) { return null; } },
             debugLogExportText: () => { try { return JSON.stringify(buildDebugExport(), null, 1); } catch (e) { return ''; } },
@@ -821,6 +889,10 @@ function bootstrapDiagnostics() {
             setTrackPick: (v) => setTrackPick(v),
             defaultCurrencyOwner: () => defaultCurrencyOwner(),
             scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+        // v2.42.0：**FTT.* 入口调用入流**（cat='cmd'）—— 用户/维护者在控制台调 `FTT.xxx()` 也能追溯：
+        //   记录入口名 / 参数摘要 / 结果 / 耗时 / 站点，并把该调用期间的宿主与内核事件用 opId 串起来。
+        try { wrapFttEntries(); } catch (e) { /* 追踪接线失败不影响调试入口 */ }
+        try { wireTraceStore(); } catch (e) { /* 追踪持久化失败不影响主流程 */ }
     } catch (e) { /* 忽略 */ }
     return { slash: runtime.slash, macros: runtime.macros };
 }

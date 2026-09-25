@@ -5,6 +5,9 @@
 // ============================================================
 
 import { hashText } from '../core/util.js';
+// v2.42.0：宿主调用追踪（把每次经 `getCtx()` 的 API 调用记进 trace —— 「插件交互」层）
+import { traceEvent, traceSite, traceSummarize } from '../core/trace.js';
+import { cfg } from '../core/model/runtime.js';
 
 function defaultProvider() {
     try {
@@ -27,10 +30,79 @@ export function resetContextProvider() {
     provider = defaultProvider;
 }
 
-/** 取宿主上下文（永不在失败时抛出） */
+/** 已包装的上下文（按原始 ctx 身份缓存，避免每次 `getCtx()` 重建 Proxy） */
+let tracedCtx = null;
+let tracedFrom = null;
+
+/**
+ * v2.42.0：给宿主上下文套一层**只包装函数属性**的追踪代理 ——
+ *   于是「所有插件↔宿主交互」自动入流（方法名 / 参数摘要 / 返回摘要 / 耗时 / 失败原因 / **调用站点 file:line**），
+ *   无需在几十个调用点手写日志；非函数属性原样透传（不影响任何既有语义与身份比较）。
+ * 关闭 `cfg.debugTraceHost` 时直接返回原始 ctx（零开销）。
+ */
+function wrapCtx(ctx) {
+    if (!ctx || typeof ctx !== 'object') return ctx;
+    try { if (cfgTraceOff()) return ctx; } catch (e) { /* 忽略 */ }
+    if (tracedCtx && tracedFrom === ctx) return tracedCtx;
+    try {
+        const cache = new Map();
+        const proxy = new Proxy(ctx, {
+            get(target, prop) {
+                const v = target[prop];
+                if (typeof v !== 'function') return v;
+                const key = String(prop);
+                if (cache.has(key)) return cache.get(key);
+                const wrapped = function (...args) {
+                    // 站点必须在**调用点**采集（此时栈里就是调用者）
+                    const site = traceSite(undefined, ['host/st-api.js']);   // 跳过本包装层 → 站点 = 真正的调用点
+                    const t0 = Date.now();
+                    // v2.42.0：**调用时重新读取**目标方法 —— 宿主/测试在运行期替换 `ctx.xxx` 时依然生效
+                    //   （只缓存包装器本身，不缓存被包装的函数引用）
+                    const fn = target[prop];
+                    if (typeof fn !== 'function') return undefined;
+                    let out; let err = null;
+                    try { out = fn.apply(target, args); } catch (e) { err = e; }
+                    const ms = Date.now() - t0;
+                    const isPromise = !!(out && typeof out.then === 'function');
+                    const done = (ok, val, e2) => {
+                        try {
+                            traceEvent({
+                                cat: 'host', kind: key, ok, ms: Date.now() - t0,
+                                reason: ok ? '' : String((e2 && e2.message) || e2 || ''),
+                                detail: {
+                                    args: traceSummarize(args, 0),
+                                    ret: ok ? traceSummarize(val, 0) : undefined,
+                                },
+                                site,
+                            });
+                        } catch (e3) { /* 追踪失败不影响调用 */ }
+                    };
+                    if (isPromise) {
+                        return out.then((val) => { done(true, val); return val; },
+                            (e2) => { done(false, undefined, e2); throw e2; });
+                    }
+                    done(!err, out, err);
+                    if (err) throw err;
+                    return out;
+                };
+                try { Object.defineProperty(wrapped, 'name', { value: key }); } catch (e) { /* 忽略 */ }
+                cache.set(key, wrapped);
+                return wrapped;
+            },
+        });
+        tracedCtx = proxy; tracedFrom = ctx;
+        return proxy;
+    } catch (e) { return ctx; }   // Proxy 不可用（极老宿主）→ 原样返回
+}
+function cfgTraceOff() {
+    try { return !!(cfg && cfg.debugTraceHost === false); } catch (e) { return false; }
+}
+
+/** 取宿主上下文（永不在失败时抛出）；v2.42.0 起返回**带追踪的代理** */
 export function getCtx() {
     try {
-        return provider() || null;
+        const ctx = provider() || null;
+        return ctx ? wrapCtx(ctx) : null;
     } catch (e) {
         return null;
     }

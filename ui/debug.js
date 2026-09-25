@@ -18,12 +18,16 @@ import { escHtml } from '../core/util.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
 import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear, clockSrcKeys } from '../core/clock-trace.js';
 import { VERSION } from '../core/constants.js';
+// v2.42.0：交互/宿主调用/命令/错误时间线（opId 关联、站点 file:line、错误上下文窗口）
+import { traceList, traceStats, traceTimelineText, traceContext, traceClear, traceSiteText, TRACE_CATS } from '../core/trace.js';
 import { getCtx } from '../host/st-api.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 import { settingsControlHtml } from './settings-pages.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
+/** v2.42.0：时间线类别中文名 */
+const DEBUG_CAT_LABEL = { ui: '🖱 交互', host: '🔌 宿主', cmd: '⌨️ 命令', kernel: '🧩 内核', ai: '🤖 AI', error: '❌ 异常' };
 
 /** V1 `formatBytes()`（约 325，逐字复制：B / KB / MB 三档） */
 function formatBytes(n) {
@@ -75,6 +79,8 @@ function debugSummary(l) {
  */
 /** v2.41.0：调试日志导出（用户要求「调试日志应该支持导出，方便检查」）—— 最近一次导出的文本（渲染用） */
 let lastDebugExport = '';
+/** v2.42.0：时间线类别过滤（'' = 全部） */
+let traceFilter = '';
 /** 宿主注入的额外诊断（`dump`：一键诊断快照；`meta`：环境信息）；默认 no-op */
 const debugHooks = { dump: () => null, meta: () => ({}) };
 export function setDebugHooks(next) { Object.assign(debugHooks, next || {}); return debugHooks; }
@@ -107,6 +113,10 @@ export function buildDebugExport() {
         errorCount: debugLogErrorCount(),
         stats: debugLogStats(),
         logs: debugLogList(),
+        // v2.42.0：交互/宿主/命令/内核/AI/异常统一时间线（结构化 + 人读文本）
+        traceStats: traceStats(),
+        trace: traceList({ limit: 300 }),
+        timeline: traceTimelineText(300),
     };
 }
 
@@ -168,6 +178,52 @@ export function debugLogHtml() {
 }
 
 /**
+ * 「🧭 交互与宿主调用时间线」区块（v2.42.0，只读）：
+ *   用户交互（点击/变更/切页）、插件↔宿主 API 调用、命令与 FTT 入口、落盘/注入、AI 调用与**异常**统一按时间列出；
+ *   每条带 opId（关联到触发它的交互）、耗时、结果与**代码站点**（file:line）；异常条目附**上下文窗口**。
+ * @param {string} [cat] 类别过滤（ui/host/cmd/kernel/ai/error）
+ */
+export function traceSectionHtml(cat) {
+    const st = traceStats();
+    const rows = traceList({ cat: cat || '', limit: 60 });
+    const chips = ['', ...TRACE_CATS].map((c) => {
+        const on = String(cat || '') === c;
+        const label = c === '' ? ('全部 ' + st.total) : ((DEBUG_CAT_LABEL[c] || c) + ' ' + ((st.cats && st.cats[c]) || 0));
+        return '<button class="ftt-btn ftt-sm' + (on ? ' ftt-primary' : '') + '" data-ftt-action="dbgTraceFilter" data-ftt-kind="' + esc(c) + '" title="只看该类别">' + esc(label) + '</button>';
+    }).join('');
+    const ctxText = (ctx) => (ctx.window || []).map((x) => [
+        new Date(Number(x.at) || 0).toLocaleTimeString('zh-CN', { hour12: false }),
+        x.cat, x.kind, x.ok === false ? ('失败:' + x.reason) : 'ok', x.ms ? (x.ms + 'ms') : '', x.opId, x.site,
+    ].filter(Boolean).join('  ')).join('\n');
+    const line = (e) => {
+        const t = new Date(Number(e.at) || 0).toLocaleTimeString('zh-CN', { hour12: false });
+        const isErr = e.cat === 'error' || e.ok === false;
+        const ctx = isErr ? traceContext(e.id, 20) : null;
+        const detail = (() => { try { const j = JSON.stringify(e.detail || {}); return (j === '{}' || j === 'null') ? '' : j.slice(0, 300); } catch (x) { return ''; } })();
+        const ctxHtml = ctx
+            ? ('<div class="ftt-dbg-data">上下文（错误前后 ' + (ctx.window || []).length + ' 条 · 同 opId ' + (ctx.related || []).length + ' 条）：\n' + esc(ctxText(ctx)) + '</div>')
+            : '';
+        const head = [e.kind, e.ok === false ? ('❌ ' + e.reason) : '', e.n > 1 ? ('×' + e.n) : '',
+            e.opId ? (e.opId + (e.op ? ('(' + e.op + ')') : '')) : '', traceSiteText(e.site)].filter(Boolean).join(' · ');
+        return '<details class="ftt-dbg-item"' + (isErr ? ' open' : '') + '><summary class="ftt-dbg-head">'
+            + '<span class="ftt-dbg-kind"' + (isErr ? ' style="color:#ff9a9a"' : '') + '>' + esc(e.cat) + '</span>'
+            + '<span class="ftt-dbg-time">' + esc(t) + '</span>'
+            + '<span class="ftt-dbg-size">' + esc(e.ms ? (e.ms + 'ms') : '') + '</span>'
+            + '<span class="ftt-dbg-sum">' + esc(head) + '</span>'
+            + '</summary><div class="ftt-dbg-data">' + esc(detail) + '</div>' + ctxHtml + '</details>';
+    };
+    return [
+        '<div class="ftt-row">' + chips + '</div>',
+        '<div class="ftt-muted">会话 ' + esc(st.session) + ' · 事件 ' + st.total + '（上限 ' + st.cap + '）· 级别 ' + esc(st.level)
+        + ' · 记录：用户交互（点击/变更/切页）· 宿主 API 调用 · 命令与 FTT 入口 · 落盘/注入 · AI 调用 · 异常（含上下文窗口）</div>',
+        (rows.length ? rows.map(line).join('\n') : '<div class="ftt-empty">暂无事件。任一交互/命令后在此显示（含点击了哪个按钮、调了哪些宿主 API、结果与代码位置）。</div>'),
+        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="dbgTraceClear">🗑 清空时间线</button>'
+        + '<button class="ftt-btn" data-ftt-action="dbgExport">⬇ 导出调试包（含完整时间线）</button>'
+        + '<span class="ftt-muted">时间线为纯内存环形缓冲；导出包可直接贴给维护者</span></div>',
+    ].join('\n');
+}
+
+/**
  * 调试页正文（V1 `activeSettingsSub === 'debug'` 分支逐字两节）。
  * @param {Array} controls `SETTINGS_CONTROLS.debug`（本页唯一控件 `debugEnabled`）
  */
@@ -197,6 +253,10 @@ export function debugPageHtml(controls) {
         '</div>',
         '<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
         debugLogHtml(),
+        '</div>',
+        // v2.42.0：交互与宿主调用时间线
+        '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线 <span class="ftt-muted">（点击 → opId → 底层调用 → 结果 → 代码位置）</span></div>',
+        traceSectionHtml(traceFilter),
         '</div>',
         // v2.41.0：调试包导出（用户要求）
         '<div class="ftt-section"><div class="ftt-sec-title">📦 导出调试包 <span class="ftt-muted">（日志 + 运行态，不含记忆正文）</span></div>',
@@ -252,6 +312,15 @@ export function clockTraceSectionHtml() {
  * @returns {{ok:boolean, action:string, note:string, cleared?:number}}
  */
 export async function debugAction(action, payload) {   // v2.41.0：改为 async（导出调试包需要 await 剪贴板）
+    // v2.42.0：时间线类别过滤 / 清空
+    if (String(action) === 'dbgTraceFilter') {
+        traceFilter = TRACE_CATS.indexOf(String(payload && payload.kind)) >= 0 ? String(payload.kind) : '';
+        return { ok: true, action: 'dbgTraceFilter', filter: traceFilter, note: '时间线过滤：' + (DEBUG_CAT_LABEL[traceFilter] || '全部') };
+    }
+    if (String(action) === 'dbgTraceClear') {
+        try { traceClear(); } catch (e) { /* 忽略 */ }
+        return { ok: true, action: 'dbgTraceClear', note: '已清空交互/宿主调用时间线（调试日志与时钟追踪不受影响）' };
+    }
     // v2.41.0：导出调试包（日志 + 运行态 → 剪贴板 + 文本域）
     if (String(action) === 'dbgExport') {
         return await exportDebugBundle();
@@ -274,7 +343,7 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgTraceFilter', 'dbgTraceClear']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出
 
 /** 调试页只读诊断（测试/排障用） */
 export function debugPageInfo() {

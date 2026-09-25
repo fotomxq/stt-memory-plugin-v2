@@ -72,6 +72,8 @@ v2.0.0 已可用：生成前**记忆注入**（永不 abort、不改 chat）→ 
 | `{{fttVersion}}` | 版本号 |
 | `{{fttStatus}}` | 状态文本 |
 | 控制台 `FTT` | 调试导出：`FTT.snapshot()` / `FTT.probe()` / `FTT.interceptor()` / `FTT.injectLength()` |
+| 调试页「🧭 交互与宿主调用时间线」 | **可追溯链**：点击 → `opId` → 宿主 API 调用 → 结果 → 代码位置（`file:line`）；错误行展开显示上下文窗口 |
+| 控制台 `FTT.trace*` | `traceList()` / `traceTimeline()` / `traceStats()` / `traceContext(id)` · `debugLogExport()`（调试包含完整时间线） |
 
 ## 4. 更新检查（Git 通道）
 

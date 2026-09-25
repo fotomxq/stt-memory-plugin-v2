@@ -34,8 +34,8 @@ R.assert('P2 控件表：共 179 项（B4 的 105 + B7-2 存储 13 + B8-1 基础
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 179 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 34
-        && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 1;
+    return info.totalControls === 183 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 34
+        && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 5;   // v2.42.0：调试页 +4（级别/交互/宿主/详细）
 })(), settingsPagesInfo());
 
 R.assert('P2b 存储页控件与 V1 手写页逐一对应：墓碑天数 / 原生通道 / 世界书 8 项 / 流量门控（顶层键 syncTrafficGuard）', (() => {
