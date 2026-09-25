@@ -24,6 +24,8 @@ import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './h
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
+// v2.41.0：调试包导出（面板「📦 导出调试包」与 FTT.debugLogExport 共用同一实现）
+import { setDebugHooks as setDebugPageHooks, buildDebugExport } from './ui/debug.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
 import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, apiPresetLoad, apiPresetDelete } from './core/api-channel.js';
 // v2.37.0：时钟取值追踪（诊断入口）
@@ -401,6 +403,27 @@ function panelStatusSnapshot() {
 }
 
 /**
+ * 一键诊断快照（v2.34.0 引入，v2.41.0 抽成函数供 FTT 入口与调试包导出共用）：
+ *   版本 / 就绪 / 调试接线 / 异常捕捉状态 / 异常计数与最近 3 条 / 日志统计 / 最近 10 条 / 探针缺失项 / 最后一条异常。
+ */
+export function debugDumpSnapshot() {
+    try {
+        return {
+            version: VERSION,
+            ready: !!runtime.ready,
+            debug: runtime.debug || null,
+            errCapture: errorCaptureState(),
+            errors: debugLogErrorCount(),
+            lastErrors: debugLogErrors(3),
+            stats: debugLogStats(),
+            recent: debugLogList().slice(0, 10),
+            probe: (runtime.probe && runtime.probe.missing) ? { missing: runtime.probe.missing } : null,
+            lastError: runtime.lastError || '',
+        };
+    } catch (e) { return { version: VERSION, error: String((e && e.message) || e) }; }
+}
+
+/**
  * 诊断入口**提前注册**（模块加载即注册，不依赖 APP_READY）：
  *   ① `/ftt`、`/ftt-panel`、`/ftt-analyze`、`/ftt-import` 命令与 `{{fttVersion}}`/`{{fttStatus}}` 宏；
  *   ② `window.FTT` 调试导出（含 `panelInfo()` / `forceMount()`）。
@@ -408,6 +431,18 @@ function panelStatusSnapshot() {
  */
 function bootstrapDiagnostics() {
     const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup, exportState: exportStateJson, importState: importStateJson };
+    // v2.41.0：调试页钩子**模块加载即接线**（`init` 未必触发；导出调试包需要 dump/meta）
+    try {
+        setDebugPageHooks({
+            dump: () => debugDumpSnapshot(),
+            meta: () => ({
+                scope: (runtime.store && runtime.store.scope) || '',
+                ready: !!runtime.ready,
+                probe: (runtime.probe && runtime.probe.missing) ? { missing: runtime.probe.missing } : null,
+                store: (runtime.store && { via: runtime.store.via || '', file: runtime.store.file || '' }) || null,
+            }),
+        });
+    } catch (e) { /* 钩子接线失败不影响诊断入口 */ }
     try {
         if (!runtime.slash) runtime.slash = registerSlashCommand(extraForStatus, hooks);
     } catch (e) { runtime.slash = false; }
@@ -555,26 +590,14 @@ function bootstrapDiagnostics() {
             flattenRumor: (r) => flattenRumor(r),
             // v2.34.0 调试强化：异常日志查询与捕捉开关状态
             // v2.34.0：一键诊断快照（异常/日志/运行态）——便于用户直接把结果贴给维护者
-            dbgDump: () => {
-                try {
-                    return {
-                        version: VERSION,
-                        ready: !!runtime.ready,
-                        debug: runtime.debug || null,
-                        errCapture: errorCaptureState(),
-                        errors: debugLogErrorCount(),
-                        lastErrors: debugLogErrors(3),
-                        stats: debugLogStats(),
-                        recent: debugLogList().slice(0, 10),
-                        probe: (runtime.probe && runtime.probe.missing) ? { missing: runtime.probe.missing } : null,
-                        lastError: runtime.lastError || '',
-                    };
-                } catch (e) { return { version: VERSION, error: String((e && e.message) || e) }; }
-            },
+            dbgDump: () => debugDumpSnapshot(),
             dbgErrors: (limit) => debugLogErrors(limit),
             dbgErrorCount: () => debugLogErrorCount(),
             dbgLastError: () => debugLogLastError(),
             errCaptureState: () => errorCaptureState(),
+            // v2.41.0：调试包导出（面板「📦 导出调试包」同一实现）
+            debugLogExport: () => { try { return buildDebugExport(); } catch (e) { return null; } },
+            debugLogExportText: () => { try { return JSON.stringify(buildDebugExport(), null, 1); } catch (e) { return ''; } },
             // v2.35.0（B10-a）：API 通道与「API 分组」预设入口（含连通性测试与模型列表）
             apiChannelSummary: () => apiChannelSummary(),
             apiChannelAvailability: () => apiChannelAvailability(),
@@ -901,6 +924,15 @@ export async function openPanelPopup(tab) {
     try {
         setPopupHooks(popupHooks());
         setPanelHooks2(panelRuntimeHooks());   // v2.40.0：面板所需的**全部**钩子（此前只用 popupHooks() → 导出/导入等缺接）
+        setDebugPageHooks({
+            dump: () => debugDumpSnapshot(),
+            meta: () => ({
+                scope: (runtime.store && runtime.store.scope) || '',
+                ready: !!runtime.ready,
+                probe: (runtime.probe && runtime.probe.missing) ? { missing: runtime.probe.missing } : null,
+                store: (runtime.store && { via: runtime.store.via || '', file: runtime.store.file || '' }) || null,
+            }),
+        });
         const r = openPanel(tab);
         if (r.ok) return r;
     } catch (e) { /* 落到抽屉/挂载 */ }
@@ -964,13 +996,30 @@ function setDimensionEnabled(kind, on) {
  * 确认对话框（**同步**，与 V1 的 `confirm()` 同口径）：优先宿主原生 `confirm`；
  * 无对话框能力的环境（测试桩 / 受限 webview）返回 `false` → 面板按「取消」处理（V1 同款：不执行破坏性动作）。
  */
-function hostConfirm(text, title) {
+async function hostConfirm(text, title) {
+    const msg = String(text || '');
     try {
-        // V1 用浏览器原生 `confirm(text)`（**无标题**）—— 文案逐字保持；`title` 仅保留给将来的宿主导航式对话框
-        void title;
-        if (typeof globalThis.confirm === 'function') return !!globalThis.confirm(String(text || ''));
-    } catch (e) { /* 忽略 */ }
-    return false;
+        // ① 酒馆自身的确认弹窗（**页面内 UI**，不经过宿主 ACL；返回 1=确认 / 0=取消 / null=关闭）
+        const ctx = getCtx();
+        if (ctx && typeof ctx.callGenericPopup === 'function') {
+            const r = await ctx.callGenericPopup(msg, 2, String(title || '') || null);   // POPUP_TYPE.CONFIRM === 2
+            return !!r;
+        }
+    } catch (e) { /* 落到下一方案 */ }
+    // ② 原生 confirm —— **只在返回同步布尔时采信**：
+    //   部分宿主（如 TauriTavern）把 `window.confirm` 桥接成宿主命令 `plugin:dialog|confirm`，
+    //   未授权时以 ACL 拒绝 → 既不能当成「已确认」（危险），也不能让它成为**未处理的 Promise 拒绝**
+    //   （用户报告的那条错误正是如此）。故：Tauri 环境直接跳过；thenable 一律不采信并吞掉拒绝。
+    try {
+        const w = globalThis;
+        if (w && (w.__TAURI__ || w.__TAURI_INTERNALS__)) return false;
+        if (!w || typeof w.confirm !== 'function') return false;
+        const r = w.confirm(msg);
+        // 桥接型（返回 Promise）：**await 其真实结果**（拒绝/ACL 失败 → 取消），绝不当成「已确认」，
+        //   也不留未处理的 Promise 拒绝（用户报告的那条 ACL 错误正是如此）
+        if (r && typeof r.then === 'function') { try { return !!(await r); } catch (e) { return false; } }
+        return !!r;
+    } catch (e) { return false; }
 }
 
 /**
@@ -1224,7 +1273,7 @@ export const __internals = {
     init, ensureReady, teardown, runtimeState, extraForStatus,
     forceMountPanel, panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry,
     popupInfo, popupAction, popupTabs, panelInfo, panelTabs, injectNow,
-    runSummaryBatch, abortExtraction, clearProcessedFloors, exportStateJson, importStateJson,
+    runSummaryBatch, abortExtraction, clearProcessedFloors, exportStateJson, importStateJson, debugDumpSnapshot, panelRuntimeHooks,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
     startupUpdateCheck, checkUpdateNow,

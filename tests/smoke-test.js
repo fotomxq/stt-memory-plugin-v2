@@ -2228,15 +2228,18 @@ await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文�
     const btnOk = h.indexOf('data-ftt-action="reset"') >= 0 && h.indexOf('>🗑 清空当前角色记忆</button>') >= 0
         && h.indexOf('data-ftt-action="exportState"') >= 0;
     // ② 无对话框 → 不执行（V1 口径），如实提示
+    //   v2.41.0：确认走 `hostConfirm` —— 优先酒馆弹窗（`ctx.callGenericPopup`），故这里把**两层**都撤掉
     const keepConfirm = globalThis.confirm;
+    const keepPopup = host.ctx.callGenericPopup;
     delete globalThis.confirm;
+    delete host.ctx.callGenericPopup;
     const r1 = await entry.popupAction('reset', {});
     const n1 = String(((r1.state || {}).note) || '');
     const stillThere = (rtMod.state.atoms || []).length === 1;
     const cancelOk = r1.ok === false && r1.reason === 'cancelled' && n1 === '已取消清空（记忆未改动）' && stillThere;
     // ③ 有确认 → 清空全部容器 + 不产生整批墓碑 + 如实回报
     let seen = '';
-    globalThis.confirm = (text) => { seen = String(text); return true; };
+    host.ctx.callGenericPopup = async (text) => { seen = String(text); return 1; };   // 酒馆弹窗返回 1 = 确认
     const r2 = await entry.popupAction('reset', {});
     const n2 = String(((r2.state || {}).note) || '');
     // 注意：`resetState()` 会**整体替换**内核 state 对象 → 必须重新读 `rtMod.state`（旧引用仍是清空前的容器）
@@ -2247,6 +2250,7 @@ await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文�
     const resOk = r2.ok === true && r2.action === 'reset' && n2.indexOf('已清空当前角色的 FTT 记忆') === 0
         && n2.indexOf('条已清除') > 0 && typeof F.resetState === 'function';
     if (keepConfirm === undefined) delete globalThis.confirm; else globalThis.confirm = keepConfirm;
+    if (keepPopup === undefined) delete host.ctx.callGenericPopup; else host.ctx.callGenericPopup = keepPopup;
     await entry.popupAction('tab', { tab: 'overview' });
     return btnOk && cancelOk && emptyOk && confirmOk && resOk;
 })(), '');
@@ -3330,6 +3334,90 @@ await assert('AQ2 维度开关经**真实 change 委托**生效（V2 附加设�
     try { rtMod.cfg.dimensionEnabled = JSON.parse(before); restored = true; } catch (e) { restored = false; }
     await entry.popupAction('refresh', {});
     return fired && off && on && restored;
+})(), '');
+
+// ---------- AR 调试包导出 / 确认框 ACL 安全 / 入参透传回归（v2.41.0） ----------
+await assert('AR1 调试包导出：面板「📦 导出调试包」产出可复制文本（含版本/环境/一键诊断/**全部日志**与「异常」类），并渲染文本框；`FTT.debugLogExport()` 同源', (async () => {
+    const DL = await import('../core/debug-log.js');
+    const AD = await import('../adapters/debug-log.js');
+    const RT = await import('../core/model/runtime.js');
+    // 造一条与用户报告一致的异常（宿主 ACL 拒绝 confirm）
+    AD.wireDebugLog();
+    DL.debugLogPush('异常', { kind: '未处理的 Promise 拒绝', message: 'Command plugin:dialog|confirm not allowed by ACL', source: 'unhandledrejection', line: 0, col: 0, stack: 'Command plugin:dialog|confirm not allowed by ACL' });
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const page = String(panelBodyHtml('settings') || '');
+    const hasBtn = page.indexOf('data-ftt-action="dbgExport"') >= 0 && page.indexOf('📦 导出调试包') >= 0;
+    const r = await entry.popupAction('dbgExport', {});
+    const after = String(panelBodyHtml('settings') || '');
+    const bundle = globalThis.FTT.debugLogExport();
+    const txt = globalThis.FTT.debugLogExportText();
+    const bundleOk = !!bundle && bundle.format === 'ftt-memory-v2-debug' && bundle.version === RT.VERSION
+        && !!bundle.env && !!bundle.dump && Array.isArray(bundle.logs) && bundle.logs.length >= 1
+        && JSON.stringify(bundle.errors).indexOf('not allowed by ACL') >= 0
+        && String(txt).indexOf('ftt-memory-v2-debug') >= 0;
+    return hasBtn && r.ok === true && Number(r.chars) > 200 && after.indexOf('data-ftt-debugexport') >= 0 && bundleOk;
+})(), '');
+
+await assert('AR2 确认框 ACL 安全（用户报告的那条错误）：桥接型 confirm 返回的 Promise **被 await 而不是当成已确认**；拒绝/ACL 失败 → 按取消且不产生未处理拒绝；Tauri 宿主跳过原生 confirm', (async () => {
+    const H = entry.panelRuntimeHooks();
+    const savedPopup = host.ctx.callGenericPopup;
+    const savedConfirm = globalThis.confirm;
+    let unhandled = null;
+    const onUnhandled = (e) => { unhandled = String((e && (e.reason || e.message)) || e); };
+    try {
+        process.on('unhandledRejection', onUnhandled);
+        // ① 桥接型原生 confirm：resolve(true) → 确认；reject（ACL）→ 取消
+        delete host.ctx.callGenericPopup;
+        globalThis.confirm = () => Promise.resolve(true);
+        const t1 = await H.confirm('测试确认', '');
+        globalThis.confirm = () => Promise.reject(new Error('Command plugin:dialog|confirm not allowed by ACL'));
+        const t2 = await H.confirm('测试确认', '');
+        // ② Tauri 宿主：原生 confirm 会撞 ACL → 直接跳过（不调用）
+        let called = false;
+        globalThis.__TAURI_INTERNALS__ = {};
+        globalThis.confirm = () => { called = true; return true; };
+        const t3 = await H.confirm('测试确认', '');
+        delete globalThis.__TAURI_INTERNALS__;
+        // ③ 酒馆弹窗优先
+        host.ctx.callGenericPopup = async () => 1;
+        const t4 = await H.confirm('测试确认', '');
+        await new Promise((r) => setTimeout(r, 30));
+        return t1 === true && t2 === false && t3 === false && called === false && t4 === true && unhandled === null;
+    } finally {
+        process.removeListener('unhandledRejection', onUnhandled);
+        if (savedPopup === undefined) delete host.ctx.callGenericPopup; else host.ctx.callGenericPopup = savedPopup;
+        if (savedConfirm === undefined) delete globalThis.confirm; else globalThis.confirm = savedConfirm;
+    }
+})(), '');
+
+await assert('AR3 入参透传回归：三个曾「点了没反应」的按钮经真实点击生效（投喂＋白 / 自查口径 / NSFW 词条删除）', (async () => {
+    const FS = await import('../ui/feed-scan.js');
+    const IC = await import('../ui/inject-check.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'safety' });
+    const el = doc.getElementById('ftt-panel');
+    const click = (el && el.listeners && el.listeners.click) || [];
+    const fire = (dataset) => {
+        const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+        click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+    };
+    const w0 = JSON.stringify(FS.rxFeedTagLists());
+    fire({ fttAction: 'rxAddTag', fttKind: 'white', fttTag: '冒烟标签Y' });
+    await new Promise((r) => setTimeout(r, 0));
+    const w1 = JSON.stringify(FS.rxFeedTagLists());
+    const m0 = IC.injectCheckStats().useKeywords;
+    fire({ fttAction: 'checkMode', fttMode: 'bare' });
+    await new Promise((r) => setTimeout(r, 0));
+    const m1 = IC.injectCheckStats().useKeywords;
+    fire({ fttAction: 'nsfwKwDel', fttIdx: '0' });
+    await new Promise((r) => setTimeout(r, 0));
+    const note = String(panelState().note || '');
+    // 收尾：把白名单与自查口径复位（避免影响后续小节）
+    try { const d = JSON.parse(w1); d.white = d.white.filter((x) => x !== '冒烟标签Y'); } catch (e) { /* 忽略 */ }
+    fire({ fttAction: 'checkMode', fttMode: 'kw' });
+    await new Promise((r) => setTimeout(r, 0));
+    return w0 !== w1 && w1.indexOf('冒烟标签Y') >= 0 && m0 === true && m1 === false && note.indexOf('已删除词条') >= 0;
 })(), '');
 
 // ---------- D 注入与收尾 ----------

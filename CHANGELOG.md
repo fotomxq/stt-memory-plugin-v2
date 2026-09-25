@@ -3,6 +3,46 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.41.0（2026-09-26）· 设定按钮/功能完整性审计 + 调试包导出 + 确认框 ACL 安全
+
+**用户报告**：「请核对设定相关的按钮、功能，是否完整，我发现大量异常点。而且调试日志应该支持导出，方便检查。
+最近发生的错误：`{"kind":"未处理的 Promise 拒绝","message":"Command plugin:dialog|confirm not allowed by ACL"}`」
+
+**① 新增七层可执行审计**（`tests/unit/panel-audit.test.js`，随门禁常跑）：
+L1 面板钩子完整（14 键）· L2 **13 分页 + 14 设定子页里全部 78 个 `data-ftt-action` 逐个调用**（不得 unknown-action/no-hook/「入口未就绪」）·
+L3 FTT 入口完整 · L4 配置控件完整（195 个 `data-ftt-cfg` 点路径可解析 + `data-ftt-v2` 全部有路由）·
+L5 委托属性完整（分类：dataset 直读 / 选择器读取 / 文档化标记白名单）· L6 委托入参透传完整 · L7 曾失效按钮的真实点击回归。
+
+**② 修掉真缺陷 1：控件带参数、动作读不到 → 按钮「点了没反应」**（委托此前只透传 7 个参数）：
+「＋白/＋黑」缺 `tag` → **永不收录**；「按本地召回/按最近关键词」缺 `mode` → **口径永不变**；
+NSFW 词条「💾 保存/🗑 删除」缺 `idx` → **永久无效**（索引无效）；NSFW 规则行缺 `from/to/row`。
+修复：委托入参全量映射（idx/index/relIdx/tag/mode/from/to/row/dim/refId/key/box/pick），并用 L6 静态断言 + L7 真实点击锁死。
+实测：白名单 `[]→['测试标签X']`；`useKeywords true→false`；「已删除词条：「做爱」· 当前生效 62 条」。
+
+**③ 修掉真缺陷 2：`FTT.*` 入口白名单漏镜像**（与 v2.40.0 的面板钩子漏接同类）：
+`devtools.js` 用显式白名单镜像 index.js 入口，新增键若忘加包装则**静默不存在**（本次 `debugLogExport` 即如此）。
+修复：`installDevtools` 在显式包装后**自动补全**未包装的键（安全包装、异常不抛），并暴露
+`FTT.hookKeys()`（351 键）与 `FTT.autoHooks()`（自动补全清单，累计报告）。实测 FTT 缺失 351→**0**。
+
+**④ 新增调试包导出**（用户要求）：设定 → 调试 → 「📦 导出调试包」一键导出 + 复制到剪贴板 + 同页文本域；
+内容 = 版本/时间/作用域 + `env`（宿主能力/是否 Tauri/locale/UA/探针缺失）+ `dump`（一键诊断快照）
++ **`errors`（全部「异常」类，含未处理 Promise 拒绝）** + `logs`（完整日志）；**不含记忆正文**，可直接贴给维护者。
+入口：动作 `dbgExport` + `FTT.debugLogExport()/debugLogExportText()`。用户报告的那条 ACL 错误会原样出现在包内。
+
+**⑤ 修掉真缺陷 3：确认框把 Promise 当「已确认」+ ACL 未处理拒绝**（用户报告的那条错误）：
+宿主把 `window.confirm` 桥接成 `plugin:dialog|confirm`，ACL 拒绝 → Promise rejected；而 `!!hooks.confirm(...)` **恒为真**
+⇒ 破坏性动作会**未经确认就执行**，拒绝也无人接住。修复三层：面板 `confirmDialog` 改 async 并 await（拒绝/异常 → 按取消）；
+`hostConfirm` 改为「① 酒馆页面内弹窗 `callGenericPopup(text, CONFIRM)` 优先 → ② Tauri 宿主**跳过**原生 confirm（避免撞 ACL）
+→ ③ 同步布尔采信、Promise 则 await 其真实结果（拒绝 → 取消）→ ④ 无对话框 → false」；冒烟 AE3 改为控制弹窗层（文案逐字不变），
+新增 AR2 断言桥接 resolve/reject、Tauri 跳过、弹窗优先，且**全程无 unhandledRejection**。
+
+**⑥ 配置键登记**：`apiChannel`/`apiProfileId`（v2.35.0 三通道）补进 `defaultCfg`（默认 `''`）；
+`config-clock-golden` 的 V2 专有键白名单同步 3 → 5 项。
+
+**验证**：`npm run gate` 全绿 —— 单元 **67 文件 / 1020 断言**（新增 panel-audit 7 项；panel-hooks 7 项含 ACL 安全）；
+冒烟 **152 项**（新增 AR1 调试包、AR2 确认框 ACL 安全、AR3 入参透传回归）；内核纯净度 0 / 内核标识符 0 / 词条 54 /
+版本一致 / 文档 0 违规。文档 `docs/P10g-设定按钮审计与调试包导出.md`。
+
 ## v2.40.0（2026-09-26）· 修复面板钩子接线（数据管理「导出/导入」不可用 · 影响 11 个功能）
 
 **用户报告**：「数据管理导出导入功能不可用。」

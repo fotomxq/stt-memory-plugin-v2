@@ -882,6 +882,9 @@ const defaultCfg = {
     // 位置：正文已作为**提示词模板** `promptTemplates.armorPreset`（提示词面板「⓪ 分析记忆前置提示词」组）；
     //   本键只保留**总开关**（默认开）—— 模板留空会在下次载入时被默认值补齐，故关闭请用本开关。
     armorPresetEnabled: true,
+    // v2.35.0 起的三通道：'' = 未显式选择（按旧数据迁移推断：地址+模型齐备 → direct，否则 host）
+    apiChannel: '',
+    apiProfileId: '',
     apiType: 'custom',
     apiUrl: '',
     apiKey: '',

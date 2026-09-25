@@ -1108,11 +1108,22 @@ function setNote(text) { ps.note = String(text == null ? '' : text); return ps.n
  *   ③ **都没有 → 返回 false（取消）** —— 与 V1「`D.confirm` 不是函数时 `ok=false` 直接 break」同口径，
  *      保证「转正需确认」在无对话框环境下不会被绕过。
  */
-function confirmDialog(text, title) {
+async function confirmDialog(text, title) {
+    // v2.41.0：**异步安全** —— 宿主确认框可能是 Promise（酒馆 `callGenericPopup`、或把 `window.confirm` 桥接到
+    //   宿主命令的实现）。此前 `!!hooks.confirm(...)` 把 **Promise 当"已确认"**（恒为真），且宿主拒绝时会变成
+    //   **未处理的 Promise 拒绝**（用户报告：`Command plugin:dialog|confirm not allowed by ACL`）。
+    //   现在：await 宿主返回值；抛错/拒绝 → 按「取消」；返回 thenable 的分支一律不采信并吞掉拒绝。
     try {
-        if (typeof hooks.confirm === 'function') return !!hooks.confirm(String(text || ''), String(title || ''));
+        if (typeof hooks.confirm === 'function') {
+            const r = await hooks.confirm(String(text || ''), String(title || ''));
+            if (r && typeof r.then === 'function') { try { r.then(() => { }, () => { }); } catch (e) { /* 忽略 */ } return false; }
+            return !!r;
+        }
         const w = (typeof globalThis !== 'undefined') ? globalThis : null;
-        return (w && typeof w.confirm === 'function') ? !!w.confirm(String(text || '')) : false;
+        if (!w || typeof w.confirm !== 'function') return false;
+        const r = w.confirm(String(text || ''));
+        if (r && typeof r.then === 'function') { try { r.then(() => { }, () => { }); } catch (e) { /* 忽略 */ } return false; }
+        return !!r;
     } catch (e) { return false; }
 }
 
@@ -1283,7 +1294,7 @@ export async function panelAction(action, payload) {
             else {
                 let go = true;
                 if (cfg.parallelPromoteConfirm !== false) {
-                    go = confirmDialog(`把「${String(ev.title || ev.text || '').slice(0, 30)}」转正为情节？\n\n转正 = 确认为**已发生事实**：会生成/更新一条情节（走正常注入与知情约束），并在情节落库后**自动移除该平行世界记录**（留删除墓碑，跨端不会复活）。`, 'FTT 平行事件转正');
+                    go = await confirmDialog(`把「${String(ev.title || ev.text || '').slice(0, 30)}」转正为情节？\n\n转正 = 确认为**已发生事实**：会生成/更新一条情节（走正常注入与知情约束），并在情节落库后**自动移除该平行世界记录**（留删除墓碑，跨端不会复活）。`, 'FTT 平行事件转正');
                 }
                 if (!go) { msg = '已取消转正（未生成情节）'; }
                 else {
@@ -1339,7 +1350,7 @@ export async function panelAction(action, payload) {
             //   （V1 原文：`confirm('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。')` → `resetState()` → `toast('已清空','info')`）。
             //   V1 用浏览器原生 `confirm`（无标题）；V2 走 `confirmDialog`（宿主 hooks.confirm → 原生 confirm → 无对话框时取消，同 V1 的
             //   「无对话框不执行」口径）；清空能力由**适配层** `adapters/store.js#resetState` 提供（UI 只调用），并可经 `hooks.resetState` 替换。
-            const go = confirmDialog('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。', 'FTT 清空当前角色记忆');
+            const go = await confirmDialog('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。', 'FTT 清空当前角色记忆');
             if (!go) {
                 setNote('已取消清空（记忆未改动）');
                 result = Object.assign(result, { ok: false, action: a, reason: 'cancelled' });
@@ -1778,7 +1789,7 @@ export async function panelAction(action, payload) {
         }
         else if (DEBUG_ACTIONS.indexOf(a) >= 0) {
             // 调试页动作（V1 同名：`dbgClear` —— 清空日志缓冲与 localStorage 持久层）
-            const dr = debugAction(a, p);
+            const dr = await debugAction(a, p);
             setNote(dr.note || '');
             result = Object.assign(result, dr);
         }
@@ -1914,6 +1925,9 @@ export function bindOverlay() {
                 void panelAction(act, { kind: kind || ds.fttKind || ps.tab, id, searchKind: ds.fttSearchKind || '', subject });
                 return;
             }
+            // v2.41.0：**动作入参全量透传** —— 此前这里只传 7 个键，导致「控件带了参数、动作却读不到」的按钮
+            //   **点了没反应**（用户报告的「大量异常点」）：投喂标签「＋白/＋黑」缺 `tag`、注入自查「关键词/全量」缺 `mode`、
+            //   NSFW 词条「💾 保存 / 🗑 删除」缺 `idx`、NSFW 规则行缺 `from/to/row`。此处按属性逐一映射（缺省空串）。
             void panelAction(act, {
                 kind, id, floor, subject,
                 summary: ds.fttSummary || '',
@@ -1921,7 +1935,19 @@ export function bindOverlay() {
                 //   行内删除按钮用 `data-ftt-rel-idx`（V1 用 `el.closest` 反查，V2 由拖出的索引直接给出）
                 name: String(ds.name || ''),
                 editor: String(ds.editor || ''),
-                idx: ds.relIdx || '',
+                idx: (ds.fttIdx !== undefined) ? ds.fttIdx : ((ds.relIdx !== undefined) ? ds.relIdx : ''),
+                index: (ds.fttIdx !== undefined) ? ds.fttIdx : '',
+                relIdx: (ds.relIdx !== undefined) ? ds.relIdx : '',
+                tag: ds.fttTag || '',
+                mode: ds.fttMode || '',
+                from: (ds.fttNsfwRuleFrom !== undefined) ? ds.fttNsfwRuleFrom : '',
+                to: (ds.fttNsfwRuleTo !== undefined) ? ds.fttNsfwRuleTo : '',
+                row: (ds.fttNsfwRuleRow !== undefined) ? ds.fttNsfwRuleRow : '',
+                dim: ds.fttDim || '',
+                refId: (ds.fttRefId !== undefined) ? ds.fttRefId : id,
+                key: ds.fttPromptKey || ds.fttKey || '',
+                box: ds.fttPromptBox || '',
+                pick: ds.fttRelPick || '',
             });
         });
         if (typeof el.addEventListener === 'function') {

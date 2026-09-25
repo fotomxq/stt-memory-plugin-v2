@@ -17,6 +17,8 @@
 import { escHtml } from '../core/util.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
 import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear, clockSrcKeys } from '../core/clock-trace.js';
+import { VERSION } from '../core/constants.js';
+import { getCtx } from '../host/st-api.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 import { settingsControlHtml } from './settings-pages.js';
@@ -71,6 +73,76 @@ function debugSummary(l) {
  * 日志列表 HTML（V1 `debugHtml()` 逐字结构：操作行 + 类别统计行 + 逐条 `<details class="ftt-dbg-item">`）
  * @returns {string}
  */
+/** v2.41.0：调试日志导出（用户要求「调试日志应该支持导出，方便检查」）—— 最近一次导出的文本（渲染用） */
+let lastDebugExport = '';
+/** 宿主注入的额外诊断（`dump`：一键诊断快照；`meta`：环境信息）；默认 no-op */
+const debugHooks = { dump: () => null, meta: () => ({}) };
+export function setDebugHooks(next) { Object.assign(debugHooks, next || {}); return debugHooks; }
+/** 最近一次导出的调试包（诊断/测试） */
+export function debugExportState() { return { chars: lastDebugExport.length, text: lastDebugExport }; }
+
+/**
+ * 组装**可导出的调试包**（纯数据、可 JSON 序列化）：
+ *   meta（版本/时间/作用域/宿主能力）+ dump（一键诊断：异常/日志/运行态/探针）+ errors + logs（完整日志，最新在前）。
+ * 与「导出记忆数据」分开：调试包**不含记忆正文**（只有日志与运行态），可直接贴给维护者。
+ */
+export function buildDebugExport() {
+    const ctx = getCtx();
+    const caps = (() => { try { return (debugHooks.meta && debugHooks.meta()) || {}; } catch (e) { return {}; } })();
+    const scope = (() => { try { return String((ctx && ctx.chatId) || (caps && caps.scope) || ''); } catch (e) { return ''; } })();
+    return {
+        format: 'ftt-memory-v2-debug',
+        version: VERSION,
+        at: new Date().toISOString(),
+        scope,
+        env: {
+            host: !!(ctx && typeof ctx === 'object'),
+            tauri: !!(typeof globalThis !== 'undefined' && (globalThis.__TAURI__ || globalThis.__TAURI_INTERNALS__)),
+            locale: String((ctx && ctx.locale) || ''),
+            userAgent: (() => { try { return String((globalThis.navigator && globalThis.navigator.userAgent) || ''); } catch (e) { return ''; } })(),
+            capabilities: caps || {},
+        },
+        dump: (() => { try { return (debugHooks.dump && debugHooks.dump()) || null; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
+        errors: debugLogErrors(),
+        errorCount: debugLogErrorCount(),
+        stats: debugLogStats(),
+        logs: debugLogList(),
+    };
+}
+
+/**
+ * 导出动作（面板 `dbgExport`）：组装调试包 → 尽力复制到剪贴板 → 文本落进 `lastDebugExport` 供页面文本域手动复制。
+ * @returns {Promise<{ok:boolean, action:string, chars:number, copied:boolean, note:string}>}
+ */
+export async function exportDebugBundle() {
+    let text = '';
+    try { text = JSON.stringify(buildDebugExport(), null, 1); } catch (e) { text = ''; }
+    if (!text) return { ok: false, action: 'dbgExport', chars: 0, copied: false, note: '调试日志导出失败（序列化异常）' };
+    lastDebugExport = text;
+    let copied = false;
+    try {
+        const nav = globalThis.navigator;
+        if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
+    } catch (e) { copied = false; }
+    return { ok: true, action: 'dbgExport', chars: text.length, copied, note: '已导出调试包 ' + text.length + ' 字符' + (copied ? '（已复制到剪贴板）' : '（见下方文本框，可手动复制）') };
+}
+
+/** 调试包导出区（按钮 + 文本域；空态只出按钮与说明） */
+export function debugExportSectionHtml() {
+    const rows = [
+        '<div class="ftt-muted">导出内容：版本 / 时间 / 作用域 / 宿主环境与能力探针 + 一键诊断快照（运行态、探针缺失项）'
+        + ' + <b>全部调试日志</b>（含「异常」类：未处理的 Promise 拒绝、脚本错误、面板动作失败）。'
+        + '调试包**不含记忆正文**，可直接贴给维护者排查。</div>',
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="dbgExport" title="导出调试包（日志 + 运行态）到剪贴板与下方文本框">⬇ 导出调试日志</button>'
+        + '<span class="ftt-muted">共 ' + debugLogList().length + ' 条日志 · 异常 ' + debugLogErrorCount() + ' 条</span></div>',
+    ];
+    if (lastDebugExport) {
+        rows.push('<div class="ftt-field ftt-field-col"><label>调试包（可复制）</label><textarea data-ftt-debugexport="1" rows="8">' + esc(lastDebugExport) + '</textarea></div>');
+    }
+    return rows.join('\n');
+}
+
+/** 日志列表 HTML（V1 `debugHtml()` 逐字结构：操作行 + 类别统计行 + 逐条 `<details class="ftt-dbg-item">`） */
 export function debugLogHtml() {
     const logs = debugLogList();
     if (!logs.length) return '<div class="ftt-empty">暂无日志。运行「AI 摘要」或「自动修复」后在此显示。</div>';
@@ -126,6 +198,10 @@ export function debugPageHtml(controls) {
         '<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
         debugLogHtml(),
         '</div>',
+        // v2.41.0：调试包导出（用户要求）
+        '<div class="ftt-section"><div class="ftt-sec-title">📦 导出调试包 <span class="ftt-muted">（日志 + 运行态，不含记忆正文）</span></div>',
+        debugExportSectionHtml(),
+        '</div>',
     ].join('\n');
 }
 
@@ -175,7 +251,11 @@ export function clockTraceSectionHtml() {
  * 调试页动作（V1 同名：`dbgClear`）
  * @returns {{ok:boolean, action:string, note:string, cleared?:number}}
  */
-export function debugAction(action, payload) {
+export async function debugAction(action, payload) {   // v2.41.0：改为 async（导出调试包需要 await 剪贴板）
+    // v2.41.0：导出调试包（日志 + 运行态 → 剪贴板 + 文本域）
+    if (String(action) === 'dbgExport') {
+        return await exportDebugBundle();
+    }
     // v2.37.0：清空时钟取值追踪（只清内存缓冲，不动调试日志）
     if (String(action) === 'clockTraceClear') {
         try { clockTraceClear(); } catch (e) { /* 忽略 */ }
@@ -194,7 +274,7 @@ export function debugAction(action, payload) {
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear']);   // v2.37.0：+ 清空时钟取值追踪
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出
 
 /** 调试页只读诊断（测试/排障用） */
 export function debugPageInfo() {
