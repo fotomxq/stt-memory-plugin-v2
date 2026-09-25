@@ -3579,6 +3579,42 @@ await assert('AT1 v2.43.0 位置修复：「V2 附加设定」只出现在**基�
     return onlyBase && insideBase && backOk;
 })(), '');
 
+await assert('AU1 v2.44.0 HTML 标签不污染数据：真实宿主楼层正文含 `<br>`/`<div>` → 自动提取落盘地点/场景不含标签；手工改写保存同样被清洗并如实回报', (async () => {
+    const CE = await import('../core/clock-extract.js');
+    const CP = await import('../core/clock-patrol.js');
+    const RT = await import('../core/model/runtime.js');
+    const saveChat = host.ctx.chat;
+    const savedLoc = RT.state.state.location;
+    const savedDate = RT.state.state.date;
+    try {
+        host.ctx.chat = [
+            { is_user: true, mes: '甲：去仓库看看。<br>' },
+            { is_user: false, mes: '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门。<div>墙角有一只铜箱。</div>' },
+            { is_user: true, mes: '继续。' },
+            { is_user: false, mes: '▷1919年11月30日（东汉建武二十七年）·冬(死寂的长街)\n▷钟鼓楼下<br>甲抬头看了看天色。' },
+        ];
+        RT.setLastMessageId(host.ctx.chat.length - 1);
+        const res = CE.resolveStoryClock({ text: undefined });
+        const r1 = CE.clockAutoExtractOnce({ force: true });
+        const loc = String(RT.state.state.location || '');
+        const scene = String(RT.state.state.sceneDesc || '');
+        const noTag = !/[<][a-zA-Z/]/.test(loc) && !/[<][a-zA-Z/]/.test(scene) && loc.length > 0;
+        // 手工改写：地点粘进 `<br>` → 落盘清洗 + note 说明
+        const m = CP.setClockManual({ date: '1919-11-29', time: '傍晚', location: '码头仓库<br>' });
+        const manLoc = String(RT.state.state.location || '');
+        const notes = (m.notes || []).join(' ');
+        // 最新一楼（HTML 排版）→ 地点应为「钟鼓楼下」；更早那楼不应再污染（单测 V 组已逐例覆盖）
+        return noTag && res.location === '钟鼓楼下' && loc === '钟鼓楼下'
+            && m.ok === true && manLoc === '码头仓库' && notes.indexOf('HTML') >= 0
+            && String(RT.state.state.clockManual.location) === '码头仓库';
+    } finally {
+        try { CP.clearClockManual(); } catch (e) { /* 忽略 */ }
+        host.ctx.chat = saveChat;
+        RT.state.state.location = savedLoc;
+        RT.state.state.date = savedDate;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

@@ -1,0 +1,298 @@
+// ============================================================
+// 单元测试 · v2.44.0「HTML 标签不得污染数据」（**V1 故障明确修正 #5**）
+// 背景（用户报告）：「地点捕捉把 `<br>` 这种 HTML 标签也捕捉进来了，应自动舍弃 HTML Tag 标签，避免污染数据。」
+//
+// oracle 证据：`tests/fixtures/v1-golden-html-pollution.json`（生成器 `gen-v1-golden-html-pollution.cjs`，
+//   oracle = 真实 V1 插件 v1.206）—— V1 在三处把标签当内容写进数据：
+//     ① 正文头地点行 `▷码头仓库<br>` → `state.state.location = '码头仓库<br>'`；
+//     ② 标记式 `【地点：<b>码头</b>&nbsp;仓库】` → 原样入库；
+//     ③ 手工录入 `码头仓库<br>` 原样保存；投喂给 AI 的楼层文本也原样带着 `<div>`；
+//     ④ 全文以 `<br>` 换行时，正文头**整段变一行** → 地点行**识别不到**（返回 null）。
+// V2 修正（v2.44.0）：`core/html-text.js` 统一清洗（块级标签→换行、其余标签删除、实体解码、
+//   `<` 后非字母不误删），在**取文边界**（host/chat.js、host/floors.js）与**取值环节**（时钟提取、手工录入、
+//   AI 正则校验）兜底；楼层哈希仍用原始稳定正文（台账不失效）。
+// 覆盖：
+//   O 组：oracle 自证（V1 确实把标签写进 location / 手工锚点；投喂文本原样带标签）；
+//   V 组：V2 修正后 —— 同输入地点/场景不含标签、与「无标签对照」逐字一致；`<br>` 换行也能正确取到地点；
+//   H 组：`core/html-text.js` 纯函数语义（块级换行 / 标签删除 / 实体解码 / `<10>`「甲 < 乙」不误删 / script·注释）；
+//   B 组：宿主取文边界 —— 楼层文本、投喂文本、可分析文本不含标签；**楼层哈希口径不变**（台账不失效）；聊天读入清洗；
+//   M 组：手工锚点清洗（并如实回报剔除了什么）；AI 生成的地点正则含标签特征 → 拒绝（reason=html-tag）；
+//   T 组：清洗入追踪（时钟取值追踪写「已剔除正文中的 HTML」；读文清除记入时间线 `kernel/html-clean`）。
+// 运行：node tests/unit/html-pollution.test.js
+// ============================================================
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
+import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHooks, setChatHooks } from '../../core/model/runtime.js';
+import { defaultCfg } from '../../core/config.js';
+import { emptyState } from '../../core/state.js';
+import { extractClockFromText, clockExtractDiag, setClockTextHooks, resolveStoryClock } from '../../core/clock-extract.js';
+import { parseClockManualInput, setClockManual, clockManualState, clearClockManual } from '../../core/clock-patrol.js';
+import { normalizeClockRegexFromAi, applyClockRegexResult } from '../../core/clock-ai.js';
+import { cleanText, cleanValue, stripHtmlTags, decodeHtmlEntities, hasHtmlTag, htmlStats } from '../../core/html-text.js';
+import { collectFloorLinesInRange, floorAnalyzableText, floorStableText, hashFloorText } from '../../host/floors.js';
+import { kernelChatMessages, latestAiMessageText } from '../../host/chat.js';
+import { clockTraceLast, clockTraceClear } from '../../core/clock-trace.js';
+import { traceList, traceClear } from '../../core/trace.js';
+import { debugLogPush, wireDebugLog } from '../../adapters/debug-log.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-html-pollution.json'), 'utf8'));
+const R = makeReporter('html-pollution v2.44.0 HTML 标签不得污染数据');
+const J = (v) => JSON.stringify(v);
+const A = (n, c, e) => R.assert(n, !!c, e);
+const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+
+const doc = makeDocument(['extensions_settings2']);
+doc.body = { insertAdjacentHTML() { }, addEventListener() { } };
+const host = makeHost({});
+const un = installGlobalHost(host, doc);
+wireDebugLog();
+setChatHooks({ latestAiFloorText: () => '', dbgLog: (k, d) => debugLogPush(k, d) });
+
+/** 与 oracle 相同的输入（逐字） */
+const TEXT_HEADER_BR = '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库<br>\n甲推开木门。';
+const TEXT_HEADER_BR_ONLY = '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门。';
+const TEXT_HEADER_PLAIN = '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库\n甲推开木门。';
+const TEXT_MARKER_BR = '1919年11月29日，傍晚。甲走进码头。【地点：码头仓库<br>】';
+const TEXT_MARKER_DIV = '<div>甲走进码头。</div>【地点：<b>码头</b>&nbsp;仓库】';
+
+function boot(text) {
+    Object.assign(cfg, clone(defaultCfg));
+    cfg.clockExtractEnabled = true;
+    cfg.clockAutoPatrol = false;
+    setScopeKey('甲');
+    setLastMessageId(3);
+    setKernelState(Object.assign(emptyState(), { state: { date: '', time: '', location: '', present: [] } }));
+    setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
+    setClockTextHooks({ latestAiText: () => String(text || ''), floorWindowText: () => '' });
+    clockTraceClear();
+    traceClear();
+}
+
+const tryExtract = (text, cfgPatch) => {
+    Object.assign(cfg, clone(defaultCfg));
+    Object.assign(cfg, cfgPatch || {});
+    const r = extractClockFromText(text, { date: '', time: '', location: '' });
+    return { date: r.date, time: r.time, location: r.location, sceneDesc: r.sceneDesc, source: r.source, header: r.header };
+};
+
+// ---------- O 组：oracle 自证（V1 的现状 = 标签入库） ----------
+A('O1 oracle 自证：V1 把 `<br>` 当内容写进地点（正文头 / 标记式 / 自定义正则三处）', (() => {
+    const a = G.A;
+    return a.headerBr.location === '码头仓库<br>' && a.markerBr.location === '码头仓库<br>'
+        && a.customLocationBr.location === '码头仓库<br>'
+        && a.headerBr.location.indexOf('<') >= 0 && a.headerPlain.location === '码头仓库';
+})(), J({ headerBr: G.A.headerBr.location, markerBr: G.A.markerBr.location, custom: G.A.customLocationBr.location }));
+
+A('O2 oracle 自证：V1 连 `<b>`/`&nbsp;` 也原样入库；全文 `<br>` 换行时地点行**识别不到**（返回 null）', (() => {
+    return G.A.markerDiv.location === '<b>码头</b>&nbsp;仓库' && G.A.headerBrOnly.location === null;
+})(), J({ markerDiv: G.A.markerDiv.location, headerBrOnly: G.A.headerBrOnly.location }));
+
+A('O3 oracle 自证：V1 手工锚点与投喂楼层文本同样原样带标签', (() => {
+    const c = G.C;
+    const lines = (G.B.html.lines || []).join('\n');
+    return c.locationBr.location === '码头仓库<br>' && c.locationDiv.location === '<div>码头仓库</div>'
+        && c.dateTime.location === '码头仓库&nbsp;B1'
+        && lines.indexOf('<div>') >= 0 && (G.B.html.analyzable || '').indexOf('<br>') >= 0;
+})(), J({ manual: G.C.locationBr.location, lines: G.B.html.lines }));
+
+// ---------- V 组：V2 修正（同输入 → 无标签，且与无标签对照逐字一致） ----------
+A('V1 修正 ①：正文头 `▷码头仓库<br>` → 地点 `码头仓库`（无标签），且与无标签对照逐字一致', (() => {
+    const html = tryExtract(TEXT_HEADER_BR);
+    const plain = tryExtract(TEXT_HEADER_PLAIN);
+    return html.location === '码头仓库' && plain.location === '码头仓库'
+        && html.date === plain.date && html.sceneDesc === plain.sceneDesc
+        && html.source.location === 'header' && html.header === true;
+})(), J(tryExtract(TEXT_HEADER_BR)));
+
+A('V1 修正 ②：标记式 `【地点：<b>码头</b>&nbsp;仓库】` → 地点不含标签/实体', (() => {
+    const r = tryExtract(TEXT_MARKER_DIV);
+    return !!r.location && r.location.indexOf('<') < 0 && r.location.indexOf('&') < 0 && r.location.indexOf('码头') >= 0;
+})(), J(tryExtract(TEXT_MARKER_DIV)));
+
+A('V1 修正 ③：自定义地点正则命中带标签片段 → 取值仍被清洗', (() => {
+    const r = tryExtract('1919年11月29日，傍晚。地点：码头仓库<br>', { clockLocationRegex: '地点[:：](.{1,20})' });
+    return r.location === '码头仓库' && r.source.location === 'custom';
+})(), J(tryExtract('1919年11月29日，傍晚。地点：码头仓库<br>', { clockLocationRegex: '地点[:：](.{1,20})' })));
+
+A('V1 修正 ④：全文以 `<br>` 换行时，正文头地点行**重新被识别**（V1 返回 null → V2 取到地点）', (() => {
+    const r = tryExtract(TEXT_HEADER_BR_ONLY);
+    return G.A.headerBrOnly.location === null && r.location === '码头仓库' && r.date === '1919-11-29';
+})(), J(tryExtract(TEXT_HEADER_BR_ONLY)));
+
+A('V1 修正 ⑤：正文头四项（日期/场景/时间/地点）在含标签时全部干净落值', (() => {
+    const r = tryExtract('▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>▶08:52->09:05(赶路)');
+    return r.date === '1919-11-29' && r.location === '码头仓库' && r.sceneDesc === '死寂的长街';
+})(), J(tryExtract('▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>▶08:52->09:05(赶路)')));
+
+A('V1 修正 ⑥：端到端 `resolveStoryClock` —— 落盘地点不含标签（这是用户看到的总览/注入值）', (() => {
+    boot(TEXT_HEADER_BR);
+    const r = resolveStoryClock();
+    return r.location === '码头仓库' && r.date === '1919-11-29' && r.source.location === 'header';
+})(), (() => { boot(TEXT_HEADER_BR); return J(resolveStoryClock()); })());
+
+A('V1 修正 ⑦：无标签文本**逐字不变**（V1 对齐不受影响）——与 oracle 的 headerPlain/markerBr 同值', (() => {
+    const plain = tryExtract(TEXT_HEADER_PLAIN);
+    const marker = tryExtract(TEXT_MARKER_BR, { clockLocationRegex: '' });
+    return plain.location === G.A.headerPlain.location && plain.date === G.A.headerPlain.date
+        && marker.location === '码头仓库' && marker.time === G.A.markerBr.time;
+})(), J({ plain: tryExtract(TEXT_HEADER_PLAIN), marker: tryExtract(TEXT_MARKER_BR) }));
+
+// ---------- H 组：纯函数语义（core/html-text.js） ----------
+A('H1 块级标签 → 换行；行内标签直接删除', (() => {
+    return cleanText('甲<br>乙') === '甲\n乙' && cleanText('<p>甲</p><p>乙</p>') === '甲\n\n乙'
+        && cleanText('<b>甲</b>乙') === '甲乙' && cleanValue('甲<br/>乙') === '甲 乙';
+})(), J([cleanText('甲<br>乙'), cleanText('<p>甲</p><p>乙</p>'), cleanText('<b>甲</b>乙'), cleanValue('甲<br/>乙')]));
+
+A('H2 实体解码：`&nbsp;`/`&amp;`/`&lt;`/数字实体；解码在去标签**之后**（`&lt;b&gt;` 不当作标签删掉）', (() => {
+    return decodeHtmlEntities('A&nbsp;B&amp;C&lt;D&gt;E&#39;F&#x4e2d;') === 'A B&C<D>E\'F中'
+        && stripHtmlTags('&lt;b&gt;甲&lt;/b&gt;') === '<b>甲</b>'
+        && cleanValue('甲&nbsp;&nbsp;乙') === '甲 乙';
+})(), J([decodeHtmlEntities('A&nbsp;B&amp;C&lt;D&gt;E&#39;F&#x4e2d;'), stripHtmlTags('&lt;b&gt;甲&lt;/b&gt;')]));
+
+A('H3 保守性：`<` 后不是字母不误删（`甲<10>乙`、`血压 < 正常`、`20<30`）', (() => {
+    return cleanText('甲<10>乙') === '甲<10>乙' && cleanText('血压 < 正常') === '血压 < 正常'
+        && cleanText('20<30 且 40>30') === '20<30 且 40>30' && hasHtmlTag('甲<10>乙') === false;
+})(), J([cleanText('甲<10>乙'), cleanText('血压 < 正常'), cleanText('20<30 且 40>30')]));
+
+A('H4 `<script>`/`<style>`/注释连同内容剔除；`<img>`/`<span style=…>` 只删标签', (() => {
+    const a = cleanText('<script>var x=1;</script>甲');
+    const b = cleanText('<style>.a{color:red}</style>乙');
+    const c = cleanText('<!-- 注释 -->丙');
+    const d = cleanText('甲<img src="x.png">乙<span style="color:red">丙</span>');
+    return a === '甲' && b === '乙' && c === '丙' && d === '甲乙丙';
+})(), J([cleanText('<script>var x=1;</script>甲'), cleanText('<style>.a{}</style>乙'), cleanText('甲<img src="x.png">乙')]));
+
+A('H5 `htmlStats` 如实统计标签/实体（追踪与日志用它说明剔除了什么）', (() => {
+    const st = htmlStats('▷码头仓库<br>甲<div>x</div>&nbsp;乙');
+    return Number(st.tags) >= 4 && Number(st.entities) === 1 && st.block.join('').indexOf('<br>') >= 0;
+})(), J(htmlStats('▷码头仓库<br>甲<div>x</div>&nbsp;乙')));
+
+A('H6 空值/非字符串安全（null/undefined/数字/对象都不抛）', (() => {
+    return cleanText(null) === '' && cleanValue(undefined) === '' && cleanText(12) === '12'
+        && stripHtmlTags({}) === '[object Object]' && hasHtmlTag(null) === false;
+})(), J([cleanText(null), cleanValue(undefined), cleanText(12)]));
+
+A('H7 长文本上限（`cleanText(s, max)` / `cleanValue(s, max)` 截断）', (() => {
+    const long = '<b>' + '甲'.repeat(80) + '</b>';
+    return cleanText(long, 10) === '甲'.repeat(10) && cleanValue(long, 5) === '甲'.repeat(5);
+})(), J([cleanText('<b>' + '甲'.repeat(80) + '</b>', 10)]));
+
+// ---------- B 组：宿主取文边界 ----------
+const FLOOR_HTML = [
+    { is_user: true, role: 'user', mes: '甲：去仓库看看。<br>' },
+    { is_user: false, role: 'assistant', mes: '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门，灰尘扑面。<div>墙角有一只铜箱。</div>' },
+];
+const FLOOR_PLAIN = [
+    { is_user: true, role: 'user', mes: '甲：去仓库看看。' },
+    { is_user: false, role: 'assistant', mes: '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库\n甲推开木门，灰尘扑面。\n墙角有一只铜箱。' },
+];
+
+A('B1 楼层取文清洗：`collectFloorLinesInRange` / `floorAnalyzableText` 不含任何标签（或 oracle 里含标签）', (() => {
+    host.ctx.chat = clone(FLOOR_HTML);
+    const lines = collectFloorLinesInRange(0, 1);
+    const an = floorAnalyzableText(1);
+    const joined = lines.join('\n');
+    const hasTag = /<\/?[a-zA-Z][^>]*>/.test(joined) || /<\/?[a-zA-Z][^>]*>/.test(an);
+    const oracleHasTag = (G.B.html.lines || []).join('\n').indexOf('<div>') >= 0;
+    return oracleHasTag && !hasTag && joined.indexOf('码头仓库') >= 0 && an.indexOf('<div>') < 0;
+})(), (() => { host.ctx.chat = clone(FLOOR_HTML); return J(collectFloorLinesInRange(0, 1)); })());
+
+A('B2 清洗后与「无标签正文」结果一致（HTML 换行 == 真实换行，不黏行）', (() => {
+    host.ctx.chat = clone(FLOOR_HTML);
+    const html = collectFloorLinesInRange(0, 1);
+    host.ctx.chat = clone(FLOOR_PLAIN);
+    const plain = collectFloorLinesInRange(0, 1);
+    return J(html) === J(plain);
+})(), (() => { host.ctx.chat = clone(FLOOR_PLAIN); return J(collectFloorLinesInRange(0, 1)); })());
+
+A('B3 **楼层哈希口径不变**（`floorStableText` 仍是原始正文 → 既有「已处理楼层」台账不会整体失效）', (() => {
+    host.ctx.chat = clone(FLOOR_HTML);
+    const raw = floorStableText(host.ctx.chat[1]);
+    const h = hashFloorText(1);
+    return raw.indexOf('<br>') >= 0 && !!h && h === hashFloorText(1);
+})(), (() => { host.ctx.chat = clone(FLOOR_HTML); return J({ stable: floorStableText(host.ctx.chat[1]).slice(0, 40), hash: hashFloorText(1) }); })());
+
+A('B4 聊天读入清洗：`kernelChatMessages` / `latestAiMessageText` 返回的正文不含标签（AI 提示词不再被污染）', (() => {
+    host.ctx.chat = clone(FLOOR_HTML);
+    const msgs = kernelChatMessages();
+    const last = latestAiMessageText();
+    const joined = msgs.map((m) => m.message).join('\n');
+    return !/<\/?[a-zA-Z][^>]*>/.test(joined) && last.indexOf('<br>') < 0 && last.indexOf('码头仓库') >= 0
+        && joined.indexOf('甲：去仓库看看。') >= 0;
+})(), (() => { host.ctx.chat = clone(FLOOR_HTML); return J(kernelChatMessages().map((m) => m.message)); })());
+
+// ---------- M 组：手工锚点 / AI 正则 ----------
+A('M1 手工录入含标签 → 值被清洗，并如实回报「剔除了什么」（notes）', (() => {
+    const r1 = parseClockManualInput({ location: '码头仓库<br>' });
+    const r2 = parseClockManualInput({ location: '<div>码头仓库</div>' });
+    const r3 = parseClockManualInput({ location: '码头仓库' });
+    return r1.location === '码头仓库' && r2.location === '码头仓库' && r3.location === '码头仓库'
+        && r1.notes.join('') .indexOf('HTML') >= 0 && r3.notes.length === 0;
+})(), J([parseClockManualInput({ location: '码头仓库<br>' }), parseClockManualInput({ location: '码头仓库' })]));
+
+A('M2 `setClockManual` 落盘为干净值（`state.state.location` 与手工锚点都不含标签）', (() => {
+    boot('');
+    const r = setClockManual({ date: '1919-11-29', time: '傍晚', location: '码头仓库<br>' });
+    const man = clockManualState();
+    const ok = r.ok === true && state.state.location === '码头仓库' && man.location === '码头仓库'
+        && String(state.state.clockManual.location) === '码头仓库';
+    clearClockManual();
+    return ok;
+})(), (() => { boot(''); const r = setClockManual({ location: '码头仓库<br>' }); return J({ r, loc: state.state.location }); })());
+
+A('M3 AI 生成的地点正则含 HTML 标签特征 → **拒绝**（reason=html-tag），干净写法照常通过', (() => {
+    const bad1 = normalizeClockRegexFromAi('▷([^<\\n]+)<br>');
+    const bad2 = normalizeClockRegexFromAi('&nbsp;([^\\n]+)');
+    const good = normalizeClockRegexFromAi('▷([^\\n]+)');
+    return bad1.ok === false && bad1.reason === 'html-tag' && bad2.ok === false && bad2.reason === 'html-tag'
+        && good.ok === true;
+})(), J([normalizeClockRegexFromAi('▷([^<\\n]+)<br>'), normalizeClockRegexFromAi('▷([^\\n]+)')]));
+
+A('M4 端到端：`applyClockRegexResult` 拿到含标签的地点正则 → 不写进 cfg，并如实回报跳过原因', (() => {
+    boot('');
+    cfg.clockLocationRegex = '';
+    const sample = TEXT_HEADER_BR;
+    const r = applyClockRegexResult(sample, { 日期正则: '([0-9]{4})年([0-9]{1,2})月([0-9]{1,2})日', 时间正则: '([0-9]{1,2}):([0-9]{1,2})', 地点正则: '▷([^<\\n]+)<br>' });
+    const skipped = (r.skipped || []).join(' ');
+    const cfgClean = String(cfg.clockLocationRegex || '').indexOf('<br>') < 0;
+    return cfgClean && skipped.indexOf('地点') >= 0 && skipped.indexOf('html-tag') >= 0;
+})(), (() => { boot(''); cfg.clockLocationRegex = ''; return J(applyClockRegexResult(TEXT_HEADER_BR, { 地点正则: '▷([^<\\n]+)<br>' })); })());
+
+// ---------- T 组：清洗可追踪（用户要求「取值逻辑可追踪」） ----------
+A('T1 时钟取值追踪记录「已剔除正文中的 HTML」（说明地点为什么少了标签）', (() => {
+    boot(TEXT_HEADER_BR);
+    resolveStoryClock();
+    const t = clockTraceLast('resolve');
+    const notes = (t && t.notes) ? t.notes.join(' ') : '';
+    return notes.indexOf('HTML') >= 0 && notes.indexOf('<br>') >= 0;
+})(), (() => { boot(TEXT_HEADER_BR); resolveStoryClock(); const t = clockTraceLast('resolve'); return J(t && t.notes); })());
+
+A('T2 无标签文本不产生该提示（不制造噪声）', (() => {
+    boot(TEXT_HEADER_PLAIN);
+    resolveStoryClock();
+    const t = clockTraceLast('resolve');
+    return ((t && t.notes) || []).join(' ').indexOf('HTML') < 0;
+})(), (() => { boot(TEXT_HEADER_PLAIN); resolveStoryClock(); return J(clockTraceLast('resolve').notes); })());
+
+A('T3 读文清洗记入交互时间线（`kernel/html-clean`，含标签数与示例）', (() => {
+    traceClear();
+    host.ctx.chat = clone(FLOOR_HTML);
+    kernelChatMessages();
+    const evs = traceList({ cat: 'kernel' }).filter((x) => x.kind === 'html-clean');
+    return evs.length >= 1 && Number(evs[0].detail.tags) >= 1;
+})(), (() => { traceClear(); host.ctx.chat = clone(FLOOR_HTML); kernelChatMessages(); return J(traceList({ cat: 'kernel' }).map((x) => [x.kind, x.detail])); })());
+
+A('T4 提取侧信道如实导出 HTML 统计（`clockExtractDiag().html`），无标签时为 null', (() => {
+    tryExtract(TEXT_HEADER_BR);
+    const withTags = clone(clockExtractDiag().html);
+    tryExtract(TEXT_HEADER_PLAIN);
+    const without = clockExtractDiag().html;
+    return !!withTags && Number(withTags.tags) >= 1 && without === null;
+})(), (() => { tryExtract(TEXT_HEADER_BR); return J(clockExtractDiag().html); })());
+
+boot('');
+un();
+R.done();

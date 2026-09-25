@@ -7,11 +7,27 @@
 import { getCtx } from './st-api.js';
 import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages } from '../core/model/runtime.js';
 import { debugLogPush } from '../adapters/debug-log.js';
+// v2.44.0（用户报告）：酒馆消息正文是可含 HTML 的富文本（`<br>`/`<p>`/`&nbsp;`…）→ 在**读入边界**统一清洗，
+//   这样「提取提示词 / 剧情时钟 / 楼层哈希之外的取文」都不会把标签带进数据（哈希仍用原始稳定正文，见 host/floors.js）
+import { cleanText, hasHtmlTag, htmlStats } from '../core/html-text.js';
+import { traceEvent } from '../core/trace.js';
 
 /** ST 聊天消息是 `{ is_user, mes, name, ... }`；内核沿用 V1 的 `{ is_user, message }` 口径 */
 function toKernelMessage(m) {
     if (!m || typeof m !== 'object') return null;
-    const text = String(m.mes != null ? m.mes : (m.message != null ? m.message : ''));
+    const rawText = String(m.mes != null ? m.mes : (m.message != null ? m.message : ''));
+    // v2.44.0：含标签才清洗（无标签路径零改动），并把剔除情况记入追踪时间线（可回答「AI 看到的正文里为什么没有 `<br>`」）
+    const text = hasHtmlTag(rawText) ? (() => {
+        const st = htmlStats(rawText);
+        try {
+            traceEvent({
+                cat: 'kernel', kind: 'html-clean', level: 'debug',
+                detail: { where: 'host/chat.js', tags: Number(st.tags) || 0, entities: Number(st.entities) || 0, block: (st.block || []).join(' '), name: String(m.name == null ? '' : m.name) },
+                dedupeKey: 'html-clean|' + (Number(st.tags) || 0),
+            });
+        } catch (e) { /* 追踪失败不影响读文 */ }
+        return cleanText(rawText);
+    })() : rawText;
     return {
         is_user: m.is_user === true,
         message: text,

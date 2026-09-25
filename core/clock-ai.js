@@ -58,6 +58,10 @@ function normalizeClockRegexFromAi(v) {
         const m = /^\/(.+)\/([gimsuy]*)$/.exec(s);
         if (m) s = m[1];
         if (!s) return { ok: false, reason: 'empty', re: '' };
+        // v2.44.0：含 HTML 标签特征的正则一律拒绝（AI 若按含 `<br>` 的样本总结，会把标签当特征写进数据）
+        if (/<\s*\/?\s*[a-zA-Z][a-zA-Z0-9-]*/.test(s) || /&(?:nbsp|lt|gt|amp);/.test(s)) {
+            return { ok: false, reason: 'html-tag', re: s };
+        }
         // 可编译 + 不能匹配空串（避免无限匹配/吞掉正文）
         try { new RegExp(s, 'g'); } catch (e) { return { ok: false, reason: 'invalid', re: s }; }
         try { if (new RegExp(s).test('')) return { ok: false, reason: 'matches-empty', re: s }; } catch (e) { /* 忽略 */ }
