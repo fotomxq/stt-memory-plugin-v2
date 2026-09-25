@@ -39,7 +39,8 @@
 //   ④ V1 的 `newTaskStart / abortTick / abortQuiet / pipeStart / pipeUpdate / pipeEnd / renderPanel` 未移植
 //      （V2 无任务中断标志与管线状态 UI；中断/重绘由宿主与 UI 层负责）；
 //   ⑤ `resolveParallelApiOverride()`（平行事件专用分析渠道预设 `cfg.parallelApiPreset`）**未移植** ——
-//      V2 的 AI 通道由宿主统一接线（`aiCallText`），无「按域切换 API 预设」概念；V1 的调用标签原样透传
+//      V2 的 AI 通道由宿主统一接线（`aiCallText`）；V1 的调用标签原样透传，宿主按标签判定用途
+//      （v2.35.0 起 `'[平行事件·…]'` → `parallelApiPreset` 分组，见 core/api-channel.js#purposeOfLabel）
 //      （`'[平行事件·交织]'` / `'平行事件推进'`）；
 //   ⑥ 定时调度改用注入的 `timerHooks.set(fn, ms)`（V1 直接 `setTimeout`）—— 未接线时内核默认 no-op；
 //   ⑦ 主流程增设可选 `opts.aiText` 注入点（与 `runRepair` / `runPlotSegmentSummary` 同约定，供黄金样本与离线测试）；

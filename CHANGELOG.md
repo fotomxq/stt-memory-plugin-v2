@@ -3,6 +3,68 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.35.0（2026-09-26）· API 页真实化 + 按用途渠道对齐（B10-a · 推翻 §6.1 的「V2 不适用」判定）
+
+**用户报告**：「API 功能怎么没了？请核对 V1 版本对齐相关设定功能。」—— 核对后确认**用户判断正确**：
+V2 的「API」设定子页此前是**空页**（只有一句说明，零控件），V1 的 API 一族能力整体缺席。
+
+**判定更正（取证推翻旧结论）**：`docs/P8` §6.1 曾整批把 API 一族判为「V2 不适用」，理由是「V2 走酒馆
+`generateRaw`，宿主签名无 preset/连接参数」（本机 ST `public/script.js:4109` 属实）。**该结论错在推论**：
+酒馆**向扩展暴露了官方通道** ——
+`getContext().ConnectionManagerRequestService`（`public/scripts/st-context.js:292`）的
+`sendRequest(profileId, prompt, maxTokens, custom, overridePayload)`（`extensions/shared.js:419`）支持
+`overridePayload` 覆盖 `temperature`/`top_p`/`max_tokens`/`model`，`getSupportedProfiles()`（:525）列出连接配置；
+另外 `generateRawData` 的 `responseLength` 形参**临时改写** `oai_settings.openai_max_tokens`（`public/script.js:4009`/`4140`）。
+
+**本版实现（B10-a）**：
+1. **API 子页真实化**（`ui/api-page.js` 新建）：V1 同款两分节 ——
+   「API 分组（预设管理）」（分组名 + 💾 保存当前设定为分组 / 📂 加载选中分组 / 🗑 删除选中分组 + 已存分组下拉）
+   与「API 设定（主 API 配置，摘要/修复默认）」（通道 / 连接配置 / 地址 / Key / 模型 / 选择模型 +
+   `temperature` / `max_tokens` / `top_p` 三项**与 V1 同键同标签同 placeholder** + 🧪 测试 / 📦 获取模型 +
+   `#ftt-api-result-main` 结果位）；动作名与 V1 **同名**：`presetSave`/`presetLoad`/`presetDelete`/`apiTest`/`apiModels`。
+2. **三通道**（`core/api-channel.js` + `host/api-channel.js` 新建）：
+   `host`（跟随酒馆当前连接，**默认**，行为与 v2.34.0 逐字节一致）· `profile`（酒馆「连接配置」，
+   经官方扩展通道发送并可按次覆盖采样参数）· `direct`（**V1 等价的自建直连**：`/chat/completions` + `Bearer`）。
+   参数生效矩阵：`max_tokens` 三通道全生效；`temperature`/`top_p` 在 `profile`/`direct` 生效、
+   在 `host` **无法覆盖**（已在 UI 如实标注）。
+   **旧数据迁移**：未设 `apiChannel` 时 —— 「地址 + 模型」齐备 → `direct`（正是 V1 的回落路径），否则 `host`。
+3. **按用途渠道**（对齐 V1 调用点，**原位渲染**）：各维度分组下拉（`cfg.dimensionPresets`，V1 分析记忆页原位，
+   `host/extract.js#runSeparateGroup` 传 `{purpose:'dim',dimension}`）· 平行渠道选择器（`parallelApiPreset`，
+   V1 平行页原位；`'[平行事件·…]'` 标签自动判用途）· 主渠道 `activeApiPreset`（V1 `overrideMain`，v1.206 14789）。
+   用途解析优先级逐条对齐 V1：显式 `preset` → 该用途分组 → 该用途内联配置（仅 kw/mem）→ 激活分组 → 主配置。
+4. **新增入口**：`FTT.apiChannelSummary / apiChannelAvailability / apiProfiles / apiTarget / apiPresetNames /
+   apiPresetSave / apiPresetLoad / apiPresetDelete / apiTest / apiModels / apiSend`（`devtools.js` 同 11 项，`typeof` 守卫）。
+
+**明确不做（不放假控件）**：`kwApiPreset`/`memApiPreset` + `kwApi`/`memApi` + Embedding/Rerank API 四组配置
+只服务于 V1 的**向量检索层**（`cfg.useVector` 三层结构），该层在 V2 **整体未实现**（全仓 `useVector` 仅命中默认值），
+故**不渲染控件**；内核解析（`purpose:'kw'|'mem'`）与 `probeTarget` 的 `embedding`/`rerank` kind 均已就位，
+向量层批次可直接接线。**「代理预设」（`apiType='preset'`+`proxyPreset`）** 因酒馆代理预设名不出现在扩展上下文，
+V1 的查表**无法复现** → V2 落到「地址+模型则直连，否则跟随酒馆」，**不伪造地址**（黄金样本 R2 断言）。
+`apiPresetSelectHtml` 经实测为 **V1 死代码**（仅 1 处定义、0 调用方），不移植。
+
+**修正 V1 故障 #3（第 3 处明确修正，非"保留怪癖"）**：V1 `settingsApplyAll` 的
+`else if (!key.startsWith('api'))`（v1.206 **26746**）把 `apiTemperature`/`apiMaxTokens`/`apiTopP` 一并排除 →
+**V1 这三个参数输入框永远写不进 cfg**（黄金样本 `quirks.q23` 实测：DOM 设 `0.9`/`123` 后 cfg 仍 `0.2`/`''`）。
+V2 走即时写回 → **参数真实生效**，并在单测中**断言该差异**。另登记 V1 缺陷 #4（在 API 子页点「保存设置」会顺带
+重置 kw/mem 策略与 `feedWorldbooks`，q18）—— V2 无 `savecfg`，该副作用不存在。
+
+**V1 oracle（真实取证，逐字节可复现）**：`tests/fixtures/v1-golden-api.json`（**257,359 B**）+ 入库生成器
+`tests/fixtures/gen-v1-golden-api.cjs`（1,058 行，真实加载 V1 v1.206；日志走 stderr、stdout 只输出 JSON）——
+队长**独立复跑两次 `cmp` 逐字节一致**（md5 `13fcb2228c7798ebc1c241d0a231fdb4`）。样本含 7 键：
+`resolve`（`resolveApiFor` 直调 22 例 + kw/mem/parallel 间接取证 15 例 + 生效预览 6 例）· `apiBlockHtml`（2 块 + 5 extras）·
+`apiPage`（真渲染投影，`panelsAgreeOnSubBody=true`）· `presetActions`（真实点击 14 步 / 13 toast）·
+`netSemantics`（`testApi` 6 + 端点后缀 16 + 错误 9 + `fetchModels` 8 + 非 200 + 点击委派 4）· **25 条 V1 怪癖台账** ·
+`meta`（18 段 V1 源码片段）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **61 文件 / 967 断言**（新增 `tests/unit/api-channel-golden.test.js` **16 项**：
+R0 样本自证 / R1 可复现 **17/17** 逐例比对（含 q02「V1 裸调不读 activeApiPreset、调用点读」的 `callsiteDiff===1`）/
+R2 代理预设「不伪造」+ V1 自身回落 5 例 / R3 用途 override 15 例与 **V1 真实请求**比对 / R4 生效预览 6 例 /
+N1 端点 16 例 / N2 `testApi` 请求与形态 6 例 / N3 错误与 HTTP 文案 10 例 / N4 `fetchModels` 12 例 /
+P1 预设动作 13 步 + `savecfg` 改判 / U1 页面结构 / U2 原位渲染且无假控件 / U3 结果文案 / Q1 怪癖裁决 /
+D1 通道降级 / D2 纯内核解析）、冒烟 **139 项**（新增 **AK1** API 页渲染 + 分组三动作端到端、**AK2** 用途渠道真实生效、
+**AK3** 三通道端到端：`direct` 的端点/鉴权/请求体、`profile` 的 `sendRequest` 实收、`host` 的 `responseLength`）、
+内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规。见 `docs/P10a-API页与按用途渠道对齐.md`。
+
 ## v2.34.0（2026-09-26）· 修复「设置的子标签点击无效」+ 异常捕捉强化
 
 **用户报告**：设置的子标签点击无效。排查后确认是**三处缺陷叠加**，全部修复：

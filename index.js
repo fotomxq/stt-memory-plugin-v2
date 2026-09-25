@@ -24,6 +24,9 @@ import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './h
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
+// v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
+import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, apiPresetLoad, apiPresetDelete } from './core/api-channel.js';
+import { probeTarget, fetchModels as probeModels, listConnectionProfiles, apiChannelAvailability, sendWithTarget } from './host/api-channel.js';
 import {
     aboutLoadJson, aboutEnsureLoaded, getAboutData, getAboutState, aboutSortDesc, aboutHtml,
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
@@ -559,6 +562,18 @@ function bootstrapDiagnostics() {
             dbgErrorCount: () => debugLogErrorCount(),
             dbgLastError: () => debugLogLastError(),
             errCaptureState: () => errorCaptureState(),
+            // v2.35.0（B10-a）：API 通道与「API 分组」预设入口（含连通性测试与模型列表）
+            apiChannelSummary: () => apiChannelSummary(),
+            apiChannelAvailability: () => apiChannelAvailability(),
+            apiProfiles: () => listConnectionProfiles(),
+            apiTarget: (opts) => resolveApiTarget(opts || {}),
+            apiPresetNames: () => apiChannelSummary().presets.map((p) => p.name),
+            apiPresetSave: (name) => { const r = apiPresetSave(name); if (r.ok) { try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ } } return r; },
+            apiPresetLoad: (name) => { const r = apiPresetLoad(name); if (r.ok) { try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ } } return r; },
+            apiPresetDelete: (name) => { const r = apiPresetDelete(name); if (r.ok) { try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ } } return r; },
+            apiTest: (opts) => probeTarget(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose }), (opts && opts.kind) || 'chat'),
+            apiModels: (opts) => probeModels(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose })),
+            apiSend: (opts) => sendWithTarget((opts && opts.target) || resolveApiTarget({ purpose: opts && opts.purpose }), { systemPrompt: opts && opts.systemPrompt, prompt: opts && opts.prompt }),
             worldbookEntries: (env) => buildWorldbookEntries(env),
             worldbookKeys: (n) => buildWorldbookKeys(n),
             worldbookIsFttEntry: (e) => worldbookIsFttEntry(e),
@@ -1004,9 +1019,14 @@ function installHostBridges() {
     });
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
-        callAi: async (messages) => {
+        callAi: async (messages, opts) => {
             try {
-                const r = await rawGenerate(promptToGenerateArgs(messages));
+                // v2.35.0：按 V1 调用标签判定用途（'[平行事件·…]' → parallel；其余 → main），
+                //   再解析出该用途的 API target（V1 `resolveApiFor` 家族等价物）。未配置任何通道时
+                //   target.channel === 'host'，行为与 v2.34.0 **完全一致**。
+                const label = opts && opts.label;
+                const target = resolveApiTarget({ purpose: purposeOfLabel(label) });
+                const r = await rawGenerate(Object.assign(promptToGenerateArgs(messages), { target }));
                 return r && r.ok ? { ok: true, text: String(r.text || '') } : { ok: false, error: String((r && r.error) || 'no-generate') };
             } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
         },

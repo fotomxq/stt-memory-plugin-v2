@@ -47,6 +47,8 @@ import { debugAction, DEBUG_ACTIONS } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 // B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
 import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
+// v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
+import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
 import {
     trackedCurrencyRoles, isTrackedCurrencyOwner, addTrackedCurrencyRole, removeTrackedCurrencyRole,
@@ -97,6 +99,11 @@ function aboutRerenderIfVisible() {
     try { if (ps.settingsSub === 'about') renderPanel(); } catch (e) { /* 重绘失败不影响数据 */ }
 }
 try { setAboutHooks({ rerender: aboutRerenderIfVisible }); } catch (e) { /* 钩子注入失败不影响面板 */ }
+/** API 页动作/自动结果后的重绘（仅当当前停在「API」子页）——与 about 页同模式 */
+function apiRerenderIfVisible() {
+    try { if (ps.settingsSub === 'api') renderPanel(); } catch (e) { /* 重绘失败不影响数据 */ }
+}
+try { setApiPageHooks({ rerender: apiRerenderIfVisible }); } catch (e) { /* 钩子注入失败不影响面板 */ }
 
 /** 注入动作钩子（index.js：提取 / 清单 / 更新 / 清空注入） */
 export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
@@ -1628,6 +1635,13 @@ export async function panelAction(action, payload) {
             setNote(sr.note || '');
             result = Object.assign(result, sr);
         }
+        else if (API_ACTIONS.indexOf(a) >= 0) {
+            // API 页动作（V1 同名：`presetSave`/`presetLoad`/`presetDelete`/`apiTest`/`apiModels`；
+            //   `dimPreset` 为 V2 的各维度分组下拉动作，写 `cfg.dimensionPresets`）
+            const ar = await apiAction(a, p);
+            setNote(ar.note || '');
+            result = Object.assign(result, ar);
+        }
         else if (DEBUG_ACTIONS.indexOf(a) >= 0) {
             // 调试页动作（V1 同名：`dbgClear` —— 清空日志缓冲与 localStorage 持久层）
             const dr = debugAction(a, p);
@@ -1788,6 +1802,18 @@ export function bindOverlay() {
                     renderPanel();
                     return;
                 }
+                if (tg.dataset.fttDimPreset !== undefined) {
+                    // v2.35.0：各维度 API 分组下拉（V1 `data-ftt-dim-preset`，v1.206 24570）
+                    void panelAction('dimPreset', { kind: String(tg.dataset.fttDimPreset), preset: String(tg.value == null ? '' : tg.value) });
+                    return;
+                }
+                if (tg.dataset.fttModelSelect !== undefined) {
+                    // v2.35.0：「选择模型」下拉（V1 26224 回填的是模型**输入框的 DOM**；V2 即时写回 cfg.model）
+                    applySettingsControl('model', String(tg.value == null ? '' : tg.value));
+                    setNote('已选择模型 ' + String(tg.value == null ? '' : tg.value));
+                    renderPanel();
+                    return;
+                }
                 if (tg.dataset.fttDim !== undefined) {
                     void panelAction('dimToggle', { kind: String(tg.dataset.fttDim), on: !!tg.checked });
                     return;
@@ -1799,7 +1825,10 @@ export function bindOverlay() {
                     // B9-c：投喂白/黑名单文本域在保存时**整表排重**（V1 `settingsApplyAll`：`rxDedupeTagList(wlTa.value.split('\n'))`）
                     if (isFeedTagKey(key)) raw = rxDedupeTagList(String(raw).split('\n'));
                     else if (typeof readControlValue(key) === 'number' && /^-?\d+(\.\d+)?$/.test(String(raw))) raw = Number(raw);
-                    applySettingsControl(key, raw);
+                    const applied = applySettingsControl(key, raw);
+                    // v2.35.0：瞬态键（「分组名」「已存分组」）**不落配置也不重绘** —— V1 同样跳过它们
+                    //   （v1.206 26280/26692），且重绘会清空用户正在输入的分组名。
+                    if (applied && applied.transient) return;
                     renderPanel();
                     return;
                 }

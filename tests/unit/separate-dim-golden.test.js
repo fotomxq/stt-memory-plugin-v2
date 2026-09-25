@@ -158,7 +158,11 @@ await A('G4 并行失败互不影响：fetch 抛错 / AI 通道失败 / 无该�
     return ok;
 }, () => ({ threw: 'x' }));
 
-await A('G5 `cfg.dimensionPresets` 在 V2 不适用：设置与否提示词与结果**完全一致**（宿主通道无按次预设），且未产生预设下拉控件', async () => {
+// v2.35.0（B10-a）：原 G5「`cfg.dimensionPresets` 在 V2 不适用」**已改判** —— 酒馆向扩展暴露
+//   `ConnectionManagerRequestService`（本机 ST `st-context.js:292` / `shared.js:419`）后，按维度选 API 分组**可以真实实现**；
+//   本用例改为断言「**已实现且不改变提示词**」：分组只决定**通道**，提示词构造与 V1 一致地不受影响。
+await A('G5（改判后）各维度分组已实现：`dimensionPresets[维度]` 命中分组 → 该维度 target 走分组连接；未命中 → 主配置；**提示词文本不受分组影响**', async () => {
+    const AC = await import('../../core/api-channel.js');
     const run = async (patch) => {
         boot(Object.assign({ dimensionGrouping: 'separate', dimensionEnabled: SEP_DIMS }, patch), ORACLE_SEED);
         const prompts = [];
@@ -167,16 +171,22 @@ await A('G5 `cfg.dimensionPresets` 在 V2 不适用：设置与否提示词与�
         await drainTimers();
         return { prompts, r: r.map((x) => x.dim + ':' + !!(x.ok && x.ok.ok)) };
     };
-    const legacy = await run({ dimensionPresets: { states: '预设甲' }, apiPresets: G.input.cfg.apiPresets, activeApiPreset: '' });
-    const none = await run({ dimensionPresets: {}, apiPresets: {}, activeApiPreset: '' });
+    const preset = { channel: 'direct', apiUrl: 'https://dim.example/v1', apiKey: 'k', model: 'dm' };
+    const legacy = await run({ dimensionPresets: { states: '预设甲' }, apiPresets: { 预设甲: preset }, activeApiPreset: '', apiChannel: 'host', apiUrl: '', apiKey: '', model: '' });
+    // target 解析必须**在带预设的配置生效时**求值（`run` 每次都会重装 cfg）
+    const tStates = AC.resolveApiTarget({ purpose: 'dim', dimension: 'states' });
+    const tAtoms = AC.resolveApiTarget({ purpose: 'dim', dimension: 'atoms' });
+    const none = await run({ dimensionPresets: {}, apiPresets: {}, activeApiPreset: '', apiChannel: 'host', apiUrl: '', apiKey: '', model: '' });
     const html = settingsPageHtml('analyze');
     const api = promptToGenerateArgs([{ role: 'system', content: 's' }, { role: 'user', content: 'u' }]);
-    return J(legacy) === J(none)
-        && Object.keys(api).sort().join(',') === 'prompt,systemPrompt'                  // V2 入参只有这两键（无 preset 概念）
+    return J(legacy) === J(none)                                                     // 分组**不改变**提示词与落库结果
+        && tStates.apiUrl === 'https://dim.example/v1' && tStates.channel === 'direct'   // 该维度走分组连接
+        && tAtoms.channel === 'host'                                                    // 未设分组的维度跟随主配置
+        && Object.keys(api).sort().join(',') === 'prompt,systemPrompt'                  // target 与提示词入参分离
         && html.indexOf('data-ftt-cfg="dimensionSeparate"') >= 0
-        // **不设**任何维度预设控件（不放假控件）：无 `dimensionPresets` 控件键 / 无 `data-ftt-dim-preset` / 无维度选择下拉
-        && html.indexOf('data-ftt-cfg="dimensionPresets"') < 0 && html.indexOf('data-ftt-dim-preset') < 0
-        && html.indexOf('<select data-ftt-cfg="dimension') < 0;
+        // v2.35.0：各维度分组下拉**按 V1 原位**渲染在本页（V1 `dimensionRowsHtml` 24565）
+        && html.indexOf('data-ftt-dim-preset="states"') >= 0 && html.indexOf('各维度独立子开关与分组') >= 0
+        && html.indexOf('跟随主配置') >= 0;
 }, '');
 
 await A('G6 V1 原样怪癖：AI 回**中文维度键** → 对照组判「无该维度数据」（切片发生在 `mergeDelta` 键归一之前）；零落库、零排程', async () => {
@@ -301,8 +311,9 @@ await A('U1 分析记忆页：V1 同款「独立分组」开关（标签逐字 +
         && html.indexOf('data-ftt-cfg="dimensionSeparate"') >= 0 && html.indexOf('checked') > 0 ? true : false;
     const r1 = applySettingsControl('dimensionSeparate', true);
     html = settingsPageHtml('analyze');
+    // v2.35.0：V1 开启态原文「独立分组（各维度可单独选预设并行请求）」**逐字恢复**（按维度选分组已实现）
     const on = r1.ok === true && cfg.dimensionGrouping === 'separate'
-        && html.indexOf('独立分组（各维度单独构造提示词并行请求）') >= 0 && html.indexOf('data-ftt-cfg="dimensionSeparate" checked') >= 0;
+        && html.indexOf('独立分组（各维度可单独选预设并行请求）') >= 0 && html.indexOf('data-ftt-cfg="dimensionSeparate" checked') >= 0;
     const r2 = applySettingsControl('dimensionSeparate', false);
     const back = cfg.dimensionGrouping === 'unified' && settingsPageHtml('analyze').indexOf('统一分组（一次请求全部维度）') >= 0;
     return tab.indexOf('data-ftt-subtab="analyze"') >= 0 && off && on && back && r2.ok === true

@@ -836,6 +836,8 @@ import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
 import { aboutHtml as aboutPageHtml } from './about.js';
 import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
+// v2.35.0（B10-a）：API 子页（三通道 + API 分组预设 + 按用途渠道）
+import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -869,6 +871,9 @@ export function applySettingsControl(key, raw) {
     const k = String(key || '');
     if (!k) return { ok: false, key: k };
     try {
+        // v2.35.0：V1 的「分组名」「已存分组」是**按钮入参**，`settingsApplyAll` 显式跳过它们（v1.206 26280 / 26692）
+        //   —— V2 同样**不写入配置**（保持逐字语义；由 `ui/api-page.js` 的按钮动作按需读取 DOM 值）。
+        if (k === 'presetName' || k === 'presetSelect') return { ok: true, key: k, transient: true };
         // P9d：V1 `settingsApplyAll`（v1.206 26693）的**代理键**原样保留 —— `data-ftt-cfg="dimensionSeparate"`（勾选态）
         //   写回真键 `cfg.dimensionGrouping`（`'separate'` / `'unified'`）。V2 沿用同一代理键，保持 V1 的控件 id 与勾选语义。
         if (k === 'dimensionSeparate') {
@@ -983,23 +988,37 @@ export function analyzePageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const separate = (() => { try { return cfg.dimensionGrouping === 'separate'; } catch (e) { return false; } })();
     // 开关标签「独立分组」与关闭态说明「统一分组（一次请求全部维度）」**与 V1 逐字**；
-    //   开启态 V1 原文为「独立分组（各维度可单独选预设并行请求）」——其中「可单独选预设」在 V2 不适用，故按实情改写并另起一行说明。
-    const stateText = separate ? '独立分组（各维度单独构造提示词并行请求）' : '统一分组（一次请求全部维度）';
+    //   v2.35.0：V1 开启态原文「独立分组（各维度可单独选预设并行请求）」现已**成立**（按维度选 API 分组已实现），故逐字恢复。
+    const stateText = separate ? '独立分组（各维度可单独选预设并行请求）' : '统一分组（一次请求全部维度）';
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
         '<label class="ftt-field"><label style="width:170px">独立分组</label>'
         + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="dimensionSeparate"' + (separate ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
         + '<span class="ftt-muted">' + esc(stateText) + '</span></label>',
         '<div class="ftt-muted">开启后各维度**分别**构造提示词并**并行**请求，逐维度过账；未开启的维度合并成一个「统一」请求。</div>',
-        '<div class="ftt-muted">V2 适配：维度子开关在「V2 附加设定 → 启用维度」；宿主生成通道不支持按次指定预设，故**没有**「各维度单独选 API 预设」控件（`cfg.dimensionPresets` 在 V2 不适用）。</div>',
+        '<div class="ftt-muted">V2 适配：维度子开关在「V2 附加设定 → 启用维度」（V1 的开关列在本节各行），故本节的维度行只出「分组」下拉。</div>',
+        '<div class="ftt-muted">各维度 API 分组：选中的维度按该分组的连接单独请求（V1 同键 `cfg.dimensionPresets`，v1.206 14795）；未选中的维跟随主配置。分组在「API」页创建。</div>',
+        '</div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">各维度独立子开关与分组（独立分组时生效）</div>',
+        dimPresetRowsHtml(),
         '</div>',
         list.map((c) => settingsControlHtml(c)).join('\n'),
     ].join('\n');
 }
 
+/** 平行设定页（V1：控件表 + 「推演/推进分析渠道」选择器，v1.206 25816） */
+export function parallelsPageHtml(controls) {
+    const list = Array.isArray(controls) ? controls : [];
+    return [
+        list.map((c) => settingsControlHtml(c)).join('\n'),
+        '<div class="ftt-section"><div class="ftt-sec-title">推演/推进分析渠道</div>',
+        parallelChannelFieldHtml(),
+        '</div>',
+    ].join('\n');
+}
+
 /** 页内「待后续批次」说明（不使用假实现） */
 const PENDING_NOTE = {
-    api: 'API 页在 V1 用于配置自定义 API/代理；V2 走宿主（ST 自身）的生成能力，因此本页仅保留相关配置键，模型/连接选择在 ST 的「连接」面板。',
     prompts: '提示词页的**模板分组编辑/恢复默认/签名迁移**在 B6 批次接入；本页先提供提示词相关开关与破限前置文本开关。',
     storage: '存储页的**探测/测试/同步动作**依赖 B7 批次的内核；本页先提供存储开关。',
 };
@@ -1010,6 +1029,9 @@ export function settingsPageHtml(pageId) {
     const list = Array.isArray(SETTINGS_CONTROLS[pid]) ? SETTINGS_CONTROLS[pid] : [];
     // 存储页：V1 的**分节布局**（记忆文件 / 原生存储 / 缓冲 / 一致性 / 世界书 / 状态与操作 / 同步日志）
     //   控件表仍由 SETTINGS_CONTROLS.storage 提供（同名同序），只是不再平铺渲染。
+    // API 页（B10-a / v2.35.0）：V1 同款两分节（API 分组（预设管理）+ API 设定（主 API 配置））+ 「按用途渠道」
+    //   —— 控件为 V1 形态的自定义标记（`data-ftt-api` 在 V2 一律落成 `data-ftt-cfg`，见 ui/api-page.js 头注）
+    if (pid === 'api') return apiPageHtml();
     if (pid === 'storage') return storagePageHtml(list);
     // 内容弱化（NSFW）页：V1 的**手写四节**（内容弱化 / 固定规则替换 / 转化库 / 识别词条库）
     if (pid === 'safety') return nsfwPageHtml();
@@ -1019,6 +1041,8 @@ export function settingsPageHtml(pageId) {
     if (pid === 'base') return basePageHtml(list);
     // 分析记忆页（P9d）：V1 的「维度分组（总开关）」节 + 控件表同名同序
     if (pid === 'analyze') return analyzePageHtml(list);
+    // 平行页（B10-a）：控件表 + V1 原位「推演/推进分析渠道」选择器
+    if (pid === 'parallels') return parallelsPageHtml(list);
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 它是什么 / 版本更新」三节（`ui/about.js#aboutHtml`）+ V2 附加信息

@@ -2696,9 +2696,12 @@ assert('AI1 独立分组接线齐备：FTT.* 4 项入口 + 分组构造（启用
         && J(groups) === J({ enabled: ['atoms', 'states'], rest: ['snapshots', 'memories', 'items', 'plans', 'scenes', 'concepts', 'currencies', 'rumors'] })
         && J(kw) === J(['码头', '铜箱'])
         && html.indexOf('data-ftt-cfg="dimensionSeparate"') >= 0 && html.indexOf('>独立分组</label>') >= 0
-        && html.indexOf('统一分组（一次请求全部维度）') >= 0 && html.indexOf('data-ftt-dim-preset') < 0
+        && html.indexOf('统一分组（一次请求全部维度）') >= 0
+        // v2.35.0（B10-a）：各维度 API 分组下拉**按 V1 原位**渲染在「分析记忆」页（V1 `dimensionRowsHtml` 24565）
+        && html.indexOf('data-ftt-dim-preset="states"') >= 0 && html.indexOf('各维度独立子开关与分组') >= 0
         && on && onHtml.indexOf('data-ftt-cfg="dimensionSeparate" checked') >= 0
-        && onHtml.indexOf('独立分组（各维度单独构造提示词并行请求）') >= 0 && rtMod.cfg.dimensionGrouping === 'unified';
+        // v2.35.0：V1 开启态原文「各维度可单独选预设并行请求」现已成立（按维度选分组已实现），逐字恢复
+        && onHtml.indexOf('独立分组（各维度可单独选预设并行请求）') >= 0 && rtMod.cfg.dimensionGrouping === 'unified';
 })(), String(rtMod.cfg.dimensionGrouping));
 
 const AI2dbg = {};
@@ -2857,6 +2860,164 @@ await assert('AJ3 异常捕捉强化：window error / unhandledrejection / 面�
     return installed === true && n1 === n0 + 2 && bad.ok === false && n2 === n1 + 1 && shown
         && !!dump && Number(dump.errors) >= n2 && Array.isArray(dump.recent) && !!dump.errCapture
         && un === true && n3 === n2 && EV.errorCaptureState().installed === false;
+})(), '');
+
+// ---------- AK API 页与按用途渠道（v2.35.0 / B10-a） ----------
+await assert('AK1 API 子页真实渲染（V1 同款分节与标记）+ 分组预设三动作端到端（保存 → 加载 → 删除）', (async () => {
+    const AC = await import('../core/api-channel.js');
+    const { cfg } = await import('../core/model/runtime.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'api' });
+    const html = String(panelBodyHtml('settings') || '');
+    const markup = html.indexOf('API 分组（预设管理）') >= 0 && html.indexOf('API 设定（主 API 配置，摘要/修复默认）') >= 0
+        && html.indexOf('data-ftt-action="presetSave"') >= 0 && html.indexOf('data-ftt-action="presetLoad"') >= 0
+        && html.indexOf('data-ftt-action="presetDelete"') >= 0 && html.indexOf('💾 保存当前设定为分组') >= 0
+        && html.indexOf('data-ftt-cfg="apiChannel"') >= 0 && html.indexOf('data-ftt-cfg="apiProfileId"') >= 0
+        && html.indexOf('data-ftt-cfg="apiUrl"') >= 0 && html.indexOf('data-ftt-cfg="apiKey"') >= 0
+        && html.indexOf('data-ftt-cfg="apiTemperature"') >= 0 && html.indexOf('data-ftt-cfg="apiMaxTokens"') >= 0
+        && html.indexOf('data-ftt-cfg="apiTopP"') >= 0 && html.indexOf('id="ftt-api-result-main"') >= 0
+        && html.indexOf('data-ftt-action="apiTest"') >= 0 && html.indexOf('data-ftt-action="apiModels"') >= 0
+        && html.indexOf('data-ftt-model-select="main"') >= 0
+        && html.indexOf('按用途渠道（V2 映射 V1 的多渠道设定）') >= 0;
+    const saved = { channel: cfg.apiChannel, url: cfg.apiUrl, key: cfg.apiKey, model: cfg.model, active: cfg.activeApiPreset, presets: cfg.apiPresets };
+    cfg.apiChannel = 'direct'; cfg.apiUrl = 'https://preset.example/v1/'; cfg.apiKey = 'sk-p'; cfg.model = 'pm'; cfg.activeApiPreset = ''; cfg.apiPresets = {};
+    const r1 = await entry.popupAction('presetSave', { name: '主API' });
+    const savedOk = r1.ok === true && String(r1.name) === '主API'
+        && !!cfg.apiPresets['主API'] && cfg.apiPresets['主API'].channel === 'direct'
+        && cfg.apiPresets['主API'].apiUrl === 'https://preset.example/v1';
+    cfg.apiUrl = ''; cfg.model = ''; cfg.apiKey = '';
+    const r2 = await entry.popupAction('presetLoad', { preset: '主API' });
+    const loadOk = r2.ok === true && cfg.apiUrl === 'https://preset.example/v1' && cfg.model === 'pm'
+        && cfg.apiKey === 'sk-p' && cfg.apiChannel === 'direct' && cfg.activeApiPreset === '主API';
+    const r3 = await entry.popupAction('presetDelete', { preset: '主API' });
+    const delOk = r3.ok === true && !cfg.apiPresets['主API'] && cfg.activeApiPreset === '';
+    const r4 = await entry.popupAction('presetDelete', { preset: '主API' });
+    const emptyName = await entry.popupAction('presetSave', { name: '   ' });
+    const html2 = String(panelBodyHtml('settings') || '');
+    cfg.apiChannel = saved.channel; cfg.apiUrl = saved.url; cfg.apiKey = saved.key; cfg.model = saved.model;
+    cfg.activeApiPreset = saved.active; cfg.apiPresets = saved.presets;
+    await entry.popupAction('refresh', {});
+    return markup && savedOk && loadOk && delOk && r4.ok === false && emptyName.ok === false
+        && html2.indexOf('API 分组（预设管理）') >= 0 && AC.apiPresetNames().length === Object.keys(saved.presets || {}).length;
+})(), '');
+
+await assert('AK2 按用途渠道真实生效：平行/维度分组解析 + 维度下拉与模型下拉的变更写入', (async () => {
+    const AC = await import('../core/api-channel.js');
+    const { cfg } = await import('../core/model/runtime.js');
+    const saved = { presets: cfg.apiPresets, active: cfg.activeApiPreset, channel: cfg.apiChannel, url: cfg.apiUrl, model: cfg.model, par: cfg.parallelApiPreset, dims: cfg.dimensionPresets, group: cfg.dimensionGrouping, key: cfg.apiKey };
+    cfg.apiPresets = { P1: { channel: 'direct', apiUrl: 'https://p1.example/v1', apiKey: 'k1', model: 'm1' }, P2: { channel: 'direct', apiUrl: 'https://p2.example/v1', apiKey: 'k2', model: 'm2' } };
+    cfg.apiChannel = 'host'; cfg.apiUrl = ''; cfg.apiKey = ''; cfg.model = ''; cfg.activeApiPreset = '';
+    cfg.parallelApiPreset = 'P2'; cfg.dimensionPresets = {}; cfg.dimensionGrouping = 'separate';
+    const tPar = AC.resolveApiTarget({ purpose: 'parallel' });
+    const tMain = AC.resolveApiTarget({ purpose: 'main' });
+    const labelOk = AC.purposeOfLabel('[平行事件·交织]') === 'parallel' && AC.purposeOfLabel('平行事件推进') === 'parallel'
+        && AC.purposeOfLabel('弱化NSFW') === 'main' && AC.purposeOfLabel('关键词提取') === 'kw'
+        && AC.purposeOfLabel('记忆分析发送') === 'mem';
+    // 维度下拉变更（真实 change 委托）—— 按 V1 原位渲染在「分析记忆」页；平行渠道在「平行」页
+    const el = doc.getElementById('ftt-panel');
+    const fireChange = (dataset, value) => { const l = (el && el.listeners && el.listeners.change) || []; l.forEach((fn) => fn({ target: { dataset, value, type: 'select-one' } })); return l.length > 0; };
+    await entry.popupAction('settingsSub', { sub: 'analyze' });
+    const analyzeHtml = String(panelBodyHtml('settings') || '');
+    const analyzeOk = analyzeHtml.indexOf('data-ftt-dim-preset="states"') >= 0 && analyzeHtml.indexOf('各维度独立子开关与分组') >= 0
+        && analyzeHtml.indexOf('独立分组（各维度可单独选预设并行请求）') >= 0;   // v2.35.0：V1 原文恢复
+    const f1 = fireChange({ fttDimPreset: 'states' }, 'P1');
+    await new Promise((r) => setTimeout(r, 0));
+    const dimSet = String((cfg.dimensionPresets || {}).states || '');
+    const tDim = AC.resolveApiTarget({ purpose: 'dim', dimension: 'states' });
+    await entry.popupAction('settingsSub', { sub: 'parallels' });
+    const parHtml = String(panelBodyHtml('settings') || '');
+    const parOk = parHtml.indexOf('推演/推进分析渠道') >= 0 && parHtml.indexOf('data-ftt-cfg="parallelApiPreset"') >= 0;
+    const f2 = fireChange({ fttModelSelect: 'main' }, 'm2');
+    await new Promise((r) => setTimeout(r, 0));
+    const modelSet = String(cfg.model || '');
+    await entry.popupAction('settingsSub', { sub: 'api' });
+    const apiHtml = String(panelBodyHtml('settings') || '');
+    const indexOk = apiHtml.indexOf('按用途渠道（V2 映射 V1 的多渠道设定）') >= 0
+        && apiHtml.indexOf('在「平行」设定页选择') >= 0 && apiHtml.indexOf('在「分析记忆」设定页选择') >= 0
+        && apiHtml.indexOf('data-ftt-dim-preset=') < 0 && apiHtml.indexOf('data-ftt-cfg="parallelApiPreset"') < 0;
+    cfg.apiPresets = saved.presets; cfg.activeApiPreset = saved.active; cfg.apiChannel = saved.channel; cfg.apiUrl = saved.url; cfg.model = saved.model;
+    cfg.parallelApiPreset = saved.par; cfg.dimensionPresets = saved.dims; cfg.dimensionGrouping = saved.group; cfg.apiKey = saved.key;
+    await entry.popupAction('refresh', {});
+    return tPar.apiUrl === 'https://p2.example/v1' && tPar.channel === 'direct' && tMain.channel === 'host'
+        && labelOk && analyzeOk && f1 && dimSet === 'P1' && tDim.apiUrl === 'https://p1.example/v1'
+        && parOk && f2 && modelSet === 'm2' && indexOk;
+})(), '');
+
+await assert('AK3 API 三通道端到端：direct 直连（端点/鉴权/参数）+ profile 经酒馆连接配置 + host 经 responseLength 覆盖 max_tokens', (async () => {
+    const AC = await import('../core/api-channel.js');
+    const HP = await import('../host/api-channel.js');
+    const GEN = await import('../host/generation.js');
+    const { cfg } = await import('../core/model/runtime.js');
+    const saved = { channel: cfg.apiChannel, url: cfg.apiUrl, key: cfg.apiKey, model: cfg.model, temp: cfg.apiTemperature, max: cfg.apiMaxTokens, top: cfg.apiTopP, presets: cfg.apiPresets, active: cfg.activeApiPreset };
+    cfg.apiChannel = 'direct'; cfg.apiUrl = 'https://direct.example/v1/'; cfg.apiKey = 'sk-d'; cfg.model = 'dm';
+    cfg.apiTemperature = 0.3; cfg.apiMaxTokens = 256; cfg.apiTopP = 0.9; cfg.apiPresets = {}; cfg.activeApiPreset = '';
+    const calls = [];
+    const mkOk = (text) => ({ status: 200, body: { choices: [{ message: { content: text } }] } });
+    const restore = installGlobalFetch((url, opts) => {
+        calls.push({ url, opts });
+        if (url.indexOf('fail.example') >= 0) return { status: 500, text: 'boom' };   // 先判失败域，避免被 /models 分支抢先
+        if (/\/models$/.test(url)) return { status: 200, body: { data: [{ id: 'm1' }, { id: 'm2' }] } };
+        return mkOk('DIRECT-OK');
+    });
+    let direct; let probe; let models; let bad;
+    try {
+        direct = await GEN.rawGenerate(Object.assign({ systemPrompt: 'S', prompt: 'P' }, { target: AC.resolveApiTarget({ purpose: 'main' }) }));
+        probe = await HP.probeTarget(AC.resolveApiTarget({ purpose: 'main' }), 'chat');
+        models = await HP.fetchModels(AC.resolveApiTarget({ purpose: 'main' }));
+        cfg.apiUrl = 'https://fail.example/v1';
+        bad = await HP.fetchModels(AC.resolveApiTarget({ purpose: 'main' }));
+        const noUrl = { channel: 'direct', apiUrl: '', model: 'dm' };
+        var probeNoUrl = await HP.probeTarget(noUrl, 'chat');
+        var probeNoModel = await HP.probeTarget({ channel: 'direct', apiUrl: 'https://direct.example/v1', model: '' }, 'chat');
+        var probeFail = await HP.probeTarget(AC.resolveApiTarget({ purpose: 'main' }), 'chat');
+    } finally { restore(); }
+    const chat = calls.filter((c) => String(c.url).indexOf('/chat/completions') >= 0)[0] || { url: '', opts: {} };
+    const body = JSON.parse(String(chat.opts.body || '{}'));
+    const directOk = direct.ok === true && direct.text === 'DIRECT-OK' && direct.via === 'direct'
+        && chat.url === 'https://direct.example/v1/chat/completions'
+        && (chat.opts.headers || {}).Authorization === 'Bearer sk-d'
+        && body.model === 'dm' && body.temperature === 0.3 && body.top_p === 0.9 && body.max_tokens === 256
+        && (body.messages || []).length === 2 && body.messages[0].role === 'system';
+    const probeOk = probe.ok === true && Number(probe.ms) >= 0 && probe.kind === 'chat';
+    const modelsOk = models.ok === true && models.models.join(',') === 'm1,m2';
+    const badOk = bad.ok === false && String(bad.error).indexOf('HTTP 500') === 0;
+    const errOk = String(probeNoUrl.error) === '未配置 API 地址' && String(probeNoModel.error) === '未配置模型'
+        && String(probeFail.error).indexOf('HTTP 500') === 0;
+    // profile 通道（替换酒馆连接配置服务桩）
+    const savedSvc = host.ctx.ConnectionManagerRequestService;
+    const sent = [];
+    host.ctx.ConnectionManagerRequestService = {
+        getSupportedProfiles: () => [{ id: 'p1', name: '主连接', api: 'openai', model: 'gpt-x' }],
+        sendRequest: async (id, messages, maxTokens, custom, override) => { sent.push({ id, messages, maxTokens, custom, override }); return { content: 'PROFILE-OK' }; },
+    };
+    cfg.apiChannel = 'profile'; cfg.apiProfileId = 'p1'; cfg.apiUrl = ''; cfg.model = '';
+    let prof; let profTest; let profModels; let avail;
+    try {
+        await new Promise((r) => setTimeout(r, 0));
+        avail = HP.apiChannelAvailability();
+        prof = await GEN.rawGenerate(Object.assign({ systemPrompt: 'S', prompt: 'P' }, { target: AC.resolveApiTarget({ purpose: 'main' }) }));
+        profTest = await HP.probeTarget(AC.resolveApiTarget({ purpose: 'main' }), 'chat');
+        profModels = await HP.fetchModels(AC.resolveApiTarget({ purpose: 'main' }));
+    } finally { host.ctx.ConnectionManagerRequestService = savedSvc; }
+    const s0 = sent[0] || {};
+    const profileOk = prof.ok === true && prof.text === 'PROFILE-OK' && prof.via === 'profile'
+        && s0.id === 'p1' && Array.isArray(s0.messages) && s0.messages.length === 2
+        && s0.maxTokens === 256 && s0.override && s0.override.temperature === 0.3 && s0.override.top_p === 0.9
+        && profTest.ok === true && profModels.ok === false && avail.profile.available === true && avail.profile.count === 1
+        && String(profModels.error).indexOf('连接配置') >= 0;
+    // host 通道：responseLength 覆盖 max_tokens；temperature 不在 payload（宿主签名无该形参）
+    cfg.apiChannel = 'host';
+    const savedGen = host.ctx.generateRaw;
+    let seen = null;
+    host.ctx.generateRaw = async (payload) => { seen = payload; return 'HOST-OK'; };
+    let hostRes;
+    try { hostRes = await GEN.rawGenerate(Object.assign({ prompt: 'P' }, { target: AC.resolveApiTarget({ purpose: 'main' }) })); } finally { host.ctx.generateRaw = savedGen; }
+    const hostOk = hostRes.ok === true && hostRes.text === 'HOST-OK' && hostRes.via === 'host'
+        && seen && seen.responseLength === 256 && seen.temperature === undefined && seen.prompt === 'P';
+    cfg.apiChannel = saved.channel; cfg.apiUrl = saved.url; cfg.apiKey = saved.key; cfg.model = saved.model;
+    cfg.apiTemperature = saved.temp; cfg.apiMaxTokens = saved.max; cfg.apiTopP = saved.top;
+    cfg.apiPresets = saved.presets; cfg.activeApiPreset = saved.active;
+    return directOk && probeOk && modelsOk && badOk && errOk && profileOk && hostOk;
 })(), '');
 
 // ---------- D 注入与收尾 ----------
