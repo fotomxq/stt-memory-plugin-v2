@@ -10,6 +10,7 @@
 // ============================================================
 
 import { clockDateTrim, clockDateValid, clockDateLabel, clockMonthDay, storyDateMsFromStr } from './clock.js';
+import { clamp } from './util.js';
 import { activeAtoms, atomIsHidden } from './merge.js';
 import { recallDateNum } from './migrate.js';
 import { defaultCurrencyOwner, formatMoney, isTrackedCurrencyOwner } from './model/money.js';
@@ -1358,7 +1359,19 @@ function relConceptSuffix(anchor) {
 }
 // 记忆行（关联感知；有差异 → 按角色分行）
 
-export { atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
+/**
+ * 重要度（V1 `calcImportance` / `importancePct` 逐字）：`clamp(base + uses × per, 0, 1)`，百分比四舍五入。
+ * 列表行展示「调用N次 · 重要度M%」依赖它（v2.47.0 补齐）。
+ */
+function calcImportance(item) {
+    const uses = Number(item && item.uses) || 0;
+    const base = Number(cfg.importanceBase) || 0.12;
+    const per = Number(cfg.importancePerUse) || 0.06;
+    return clamp(base + uses * per, 0, 1);
+}
+function importancePct(item) { return Math.round(calcImportance(item) * 100); }
+
+export { calcImportance, importancePct, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {

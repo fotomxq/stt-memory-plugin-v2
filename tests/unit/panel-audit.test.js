@@ -192,6 +192,10 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'relpick-name': '选择器点名标记（测试/高亮锚点）',
         'settings-page': '设定页容器（样式与测试锚点）',
         'section': '分节容器（v2.43.0：`data-ftt-section="v2-extras"` = V2 附加设定分节，样式/测试锚点）',
+        'scene-node': '场景树节点（v2.47.0：`data-ftt-scene-node="<路径>"` = 节点路径锚点，供折叠/定位与测试）',
+        'scene-children': '场景子树容器（v2.47.0：折叠切换用 `.ftt-scene-children[data-ftt-scene-children="<路径>"]`）',
+        'scene-caret': '场景折叠三角（v2.47.0：`data-ftt-scene-caret="1"` 标记，点击纯 DOM 切显隐，V1 v1.206 26185 同款）',
+        'scene-caret-for': '场景折叠三角对应路径（v2.47.0：`data-ftt-scene-caret-for="<路径>"`，点击时按它找子树）',
         'snap-inspect': '快照查看容器（重绘即更新）',
     };
     const unread = [];

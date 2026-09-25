@@ -222,7 +222,34 @@ const CLOCK_DATE_SCAN = [
 //   「1919年11月29日」里的「11月29日」。否则「取最后一次命中」的归一逻辑会把正确年份换成沿用年份
 //   （用户录入/正文里的完整日期会被截成半截）。规则：命中位置紧跟在「年」或数字之后 → 视为尾部，丢弃。
 
-export { clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, clockDateAnomaly, clockReplaceYear, clockNormTime, clockAddDays, clockMatchNotInline, CLOCK_DAY_PARTS, CLOCK_DATE_SCAN, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, dateStrCmp, clockParseDateText };
+/**
+ * **列表排序（V1 `sortRecent` 逐字）**：剧情日期倒序（今天的在前）→ 无日期的靠后 → 同类按 `floorEnd` 倒序。
+ * 供数据面板各「大类」列表使用（用户要求「注意展示顺序」）；纯函数、不改原数组。
+ * 日期键：`clockDateParts(clockDateTrim(x.date || x.eventTime))` → `y*10000+m*100+d+1e8`（负年份/公元前安全）。
+ */
+function sortRecentByStoryDate(arr) {
+    if (!Array.isArray(arr)) return [];
+    const dateKey = (x) => {
+        const p = clockDateParts(clockDateTrim((x && (x.date || x.eventTime)) || ''));
+        if (!p) return '';
+        return String(p.y * 10000 + p.m * 100 + p.d + 1e8).padStart(10, '0');
+    };
+    return arr.slice().sort((a, b) => {
+        const da = dateKey(a), db = dateKey(b);
+        if (da && db && da !== db) return da < db ? 1 : -1;
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        const fa = Number(a && a.floorEnd);
+        const fb = Number(b && b.floorEnd);
+        const ha = Number.isFinite(fa) && fa > 0;
+        const hb = Number.isFinite(fb) && fb > 0;
+        if (ha && hb) return fb - fa;
+        if (ha !== hb) return ha ? -1 : 1;
+        return 0;
+    });
+}
+
+export { sortRecentByStoryDate, clockDateTrim, clockDateParts, clockDateStr, clockDateValid, clockNormBcText, clockYearStr, storyDateMs, storyDateMsFromStr, clockDateFromParts, clockCnInt, clockValNum, clockValYear, clockYearOf, clockYearInRange, clockDateLabel, clockMonthDay, clockAnomalyJumpYears, clockDateAnomaly, clockReplaceYear, clockNormTime, clockAddDays, clockMatchNotInline, CLOCK_DAY_PARTS, CLOCK_DATE_SCAN, CLOCK_YEAR_MIN, CLOCK_CN_DIG, CLOCK_BC_PREFIX, CLOCK_BC_PREFIX_CN, CLOCK_BC_SUFFIX, dateStrCmp, clockParseDateText };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function dateStrCmp(a, b) {
