@@ -19,6 +19,11 @@ import {
 } from './clock.js';
 import { latestPlotByFloor } from './recall.js';
 import { snapshotCreateFull } from './snapshots.js';
+// v2.37.0「时钟取值追踪」：锚点从哪来（手工 > 当前时钟 > 多数派）、为什么可信、为什么只统计不修改
+import {
+    clockTraceStart, clockTraceChain, clockTracePick, clockTraceReject, clockTraceNote,
+    clockTraceApplied, clockTraceFinish,
+} from './clock-trace.js';
 
 /** 巡检覆盖的维度（V1 `CLOCK_PATROL_DIMS`）与中文标签 */
 const CLOCK_PATROL_DIMS = ['atoms', 'memories', 'plans', 'suspense', 'parallels'];
@@ -258,6 +263,22 @@ function clockPatrolRepairItem(it, finding, anchor) {
 function runClockPatrolRepair(opts) {
     const o = opts || {};
     const info = clockPatrolAnchorInfo();
+    // v2.37.0：锚点取值链追踪（「这个锚点是从哪来的、为什么可信、为什么不修改」）
+    const trace = clockTraceStart('patrol', '时间巡检与修复（零 AI）');
+    clockTraceChain(trace, '① 锚点择优：手工强制改写 > 当前剧情时钟 > 原子数据年份多数派（≥60% 且 ≥2 条）> 全库有效日期年份一致');
+    clockTraceChain(trace, '② 异常判定：格式非法 / 与锚点年份相差超阈值（jump|backward）');
+    clockTraceChain(trace, '③ 修复闸门：写回前先建全量快照；自动路径遇「锚点与库内多数年份冲突（≥3 条）」只统计不修改');
+    clockTracePick(trace, 'date', {
+        value: info.date || '',
+        from: info.source,
+        why: info.source === 'manual' ? '手工强制改写（最高可信）'
+            : (info.source === 'clock' ? '当前剧情时钟有效即用'
+                : (info.source === 'atoms-majority' ? '原子数据年份多数派（单条脏数据可能正好是最新情节，故多数派优先）'
+                    : '没有可用锚点（当前剧情日期与原子数据都拿不出可信日期）')),
+    });
+    if (info.conflict) {
+        clockTraceReject(trace, { field: 'date', value: info.conflict.year, from: 'atoms-majority', why: '锚点年份与库内多数年份冲突（' + Number(info.conflict.count) + '/' + Number(info.conflict.total) + ' 条）' + (o.force ? ' → 本次为手动点击，按锚点校正' : ' → 自动路径据此只统计不修改') });
+    }
     const rep = {
         scanned: 0, found: 0, fixed: 0, skipped: 0, remain: 0, reasons: {}, details: [], at: Date.now(),
         anchor: info.date, anchorSource: info.source, anchorUsable: info.usable, anchorConflict: info.conflict || null,
@@ -275,7 +296,25 @@ function runClockPatrolRepair(opts) {
             rep.remain = rep.found;
             rep.blocked = autoConflict ? 'anchor-conflict' : (!info.usable ? (info.ambiguous ? 'ambiguous-anchor' : 'no-anchor') : 'scan-only');
             clockPatrolLast = rep;
-            try { dbgLog('时钟', { action: '时间巡检（只统计，不修改）', why: rep.blocked, scanned: rep.scanned, found: rep.found, anchor: rep.anchor || '(无)' }); } catch (e) { /* 忽略 */ }
+            clockTraceNote(trace, '只统计未修改：' + rep.blocked + '；扫描 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条；原因分布 ' + JSON.stringify(rep.reasons));
+            clockTraceApplied(trace, { fields: [], locked: true, unchanged: rep.findings.slice(0, 8).map((f) => f.dim + '.' + f.field + '=' + String(f.value).slice(0, 12) + '（' + f.reason + '）'), note: '未修改任何数据' });
+            clockTraceFinish(trace);
+            try {
+                dbgLog('时钟', {
+                    action: '时间巡检（只统计，不修改）',
+                    why: rep.blocked, scanned: rep.scanned, found: rep.found, anchor: rep.anchor || '(无)',
+                    anchorFrom: CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '',
+                    anchorWhy: trace.picks.date ? trace.picks.date.why : '',
+                    anchorChain: '手工强制改写 > 当前剧情时钟 > 原子多数派 > 全库年份一致',
+                    conflict: info.conflict ? (info.conflict.year + '（' + Number(info.conflict.count) + '/' + Number(info.conflict.total) + ' 条）') : '',
+                    reasons: rep.reasons,
+                    samples: rep.findings.slice(0, 5).map((f) => (CLOCK_DIM_LABEL[f.dim] || f.dim) + '·' + f.field + '=' + String(f.value).slice(0, 16) + '（' + f.reason + '）'),
+                    traceId: trace.id,
+                    how: '取值追踪：FTT.clockTrace("patrol") / 设定→调试「🕒 时钟取值追踪」',
+                });
+            } catch (e) {
+                try { dbgLog('异常', { kind: '时钟巡检日志构造失败', message: String((e && e.message) || e), stage: 'patrol' }); } catch (e2) { /* 忽略 */ }
+            }
             if (!o.silent) {
                 const why = rep.blocked === 'scan-only'
                     ? '自动巡检默认只统计（如需自动修复，请在设定开启「巡检后自动修复」）'
@@ -301,7 +340,23 @@ function runClockPatrolRepair(opts) {
             if (rep.fixed) { try { saveState(); } catch (e) { /* 忽略 */ } }
         }
         clockPatrolLast = rep;
-        try { if (rep.fixed || rep.found) dbgLog('时钟', { action: '时间巡检与自动修复（v1.187）', anchor: rep.anchor, anchorFrom: rep.anchorSource, scanned: rep.scanned, found: rep.found, fixed: rep.fixed, skipped: rep.skipped, remain: rep.remain, reasons: rep.reasons }); } catch (e) { /* 忽略 */ }
+        clockTraceNote(trace, '扫描 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' · 保留原值 ' + rep.remain + '；原因分布 ' + JSON.stringify(rep.reasons) + (rep.snap ? ('；写回前快照 ' + String(rep.snap).slice(0, 12)) : ''));
+        clockTraceApplied(trace, { fields: rep.details.slice(0, 10).map((d) => ({ field: 'date/time', from: '', to: d, changed: true })), locked: false, unchanged: [], note: rep.snap ? ('已先建全量快照：' + rep.snap) : '' });
+        clockTraceFinish(trace);
+        try {
+            if (rep.fixed || rep.found) dbgLog('时钟', {
+                action: '时间巡检与自动修复（v1.187）',
+                anchor: rep.anchor, anchorFrom: CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '',
+                anchorWhy: trace.picks.date ? trace.picks.date.why : '',
+                scanned: rep.scanned, found: rep.found, fixed: rep.fixed, skipped: rep.skipped, remain: rep.remain, reasons: rep.reasons,
+                details: rep.details.slice(0, 6),
+                snap: rep.snap ? String(rep.snap).slice(0, 16) : '',
+                traceId: trace.id,
+                how: '取值追踪：FTT.clockTrace("patrol") / 设定→调试「🕒 时钟取值追踪」',
+            });
+        } catch (e) {
+            try { dbgLog('异常', { kind: '时钟巡检日志构造失败', message: String((e && e.message) || e), stage: 'patrol' }); } catch (e2) { /* 忽略 */ }
+        }
         if (!o.silent) {
             const src = CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '';
             const anchorTxt = rep.anchor ? `${rep.anchor}${src ? `（${src}）` : ''}` : '（无）';

@@ -3068,6 +3068,60 @@ await assert('AL2 CSS 三档齐备且不写死宽度：桌面 min(变量, 100vw-
     return base && tab && mob && guard;
 })(), '');
 
+// ---------- AN 时钟取值追踪（v2.37.0：值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么） ----------
+await assert('AN1 端到端：解析落盘后，时钟日志含「来源（含时间/地点）+ 判据 + 落选候选 + 落盘差异」四类信息；`FTT.clockTrace()` 可读', (async () => {
+    const DL = await import('../adapters/debug-log.js');
+    const CT = await import('../core/clock-trace.js');
+    globalThis.FTT.clockTraceClear();
+    const text = '▷1919年12月1日 09:10(钟楼内)\n▷凉州卫-钟鼓楼\n晚上甲与乙在码头清点铜箱。';
+    const ok = globalThis.FTT.clockExtractOnce({ text, force: true });
+    const logs = DL.debugLogList().filter((l) => l.kind === '时钟');
+    const d = (() => { try { return JSON.parse(logs[0].data); } catch (e) { return null; } })();
+    const trace = globalThis.FTT.clockTrace();
+    const info = globalThis.FTT.clockTrace('resolve');
+    const labels = globalThis.FTT.clockSrcLabels();
+    const summary = globalThis.FTT.clockTraceSummary('resolve');
+    return ok === true && !!d
+        // ① 来源（含此前缺失的「时间/地点」来源；日期用精确来源而非 V1 的 'regex' 统一标记）
+        && d.dateFrom === '正文头结构（▷/▶）' && d.dateFromV1 === '正文正则（最新正文）'
+        && d.timeFrom === '正文头结构（▷/▶）' && d.locationFrom === '正文头结构（▷/▶）' && String(d.presentFrom).length > 0
+        // ② 判据
+        && String(d.dateWhy).length > 10 && String(d.timeWhy).length > 5 && String(d.locationWhy).length > 5
+        && Array.isArray(d.chain) && d.chain.length >= 4 && String(d.how).indexOf('clockTrace') > 0
+        // ③ 落选候选（含原因与原文片段线索）
+        && Array.isArray(d.rejects) && d.rejects.length >= 1 && d.rejects.every((x) => x.indexOf('←') > 0 && x.indexOf('（') > 0)
+        // ④ 落盘差异
+        && Array.isArray(d.applied) && d.applied.length >= 2 && Number(d.textChars) > 0 && String(d.textFloors).length > 0
+        // FTT 入口与调试页
+        && !!trace && trace.stage === 'resolve' && !!info && info.picks.length >= 4 && info.text.sample.indexOf('▷') === 0
+        && labels.length >= 17 && labels.every((x) => !!x.label)
+        && summary.indexOf('🕒 取值 [resolve]') >= 0 && summary.indexOf('正文头结构（▷/▶）') >= 0;
+})(), '');
+
+await assert('AN2 无改动时不写提取日志（避免噪声），但取值追踪仍在；调试页「🕒 时钟取值追踪」区块渲染；清空入口可用', (async () => {
+    const DL = await import('../adapters/debug-log.js');
+    const DBG = await import('../ui/debug.js');
+    // 与现值完全相同 → 不写提取日志（V1 同口径）
+    // 用与 AN1 **完全相同**的正文再跑一次（此时 state 已等于解析结果）→ 不产生任何改动 → 不写提取日志
+    const text = '▷1919年12月1日 09:10(钟楼内)\n▷凉州卫-钟鼓楼\n晚上甲与乙在码头清点铜箱。';
+    globalThis.FTT.clockTraceClear();
+    const before = DL.debugLogList().filter((l) => l.kind === '时钟').length;
+    globalThis.FTT.clockExtractOnce({ text, force: true });
+    const after = DL.debugLogList().filter((l) => l.kind === '时钟').length;
+    const t = globalThis.FTT.clockTrace('resolve');
+    // 调试页区块
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const html = String(panelBodyHtml('settings') || '');
+    const section = DBG.clockTraceSectionHtml();
+    const cleared = globalThis.FTT.clockTraceClear();
+    const afterClear = DBG.clockTraceSectionHtml();
+    return after === before && !!t && t.picks.length >= 3
+        && html.indexOf('🕒 时钟取值追踪') >= 0 && html.indexOf('clockTraceClear') >= 0
+        && section.indexOf('自动解析（日期/时间/地点/在场）') >= 0 && section.indexOf('值 ← 来源') >= 0
+        && section.indexOf('未采用的候选') >= 0 && afterClear.indexOf('暂无记录') >= 0 && cleared === true;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

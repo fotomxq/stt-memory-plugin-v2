@@ -15,6 +15,8 @@
 //   ④ V1 把「最多 300 条」硬编码在文案里；V2 用内核常量 `DEBUG_CAP`（值同为 300）。
 // ============================================================
 import { escHtml } from '../core/util.js';
+// v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
+import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear, clockSrcKeys } from '../core/clock-trace.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 import { settingsControlHtml } from './settings-pages.js';
@@ -117,10 +119,56 @@ export function debugPageHtml(controls) {
                 + '</div>';
         })(),
         '<div class="ftt-row"><span class="ftt-muted">最近 3 条：' + esc(debugLogErrors(3).map((l) => { const d = (() => { try { return JSON.parse(l.data); } catch (e) { return {}; } })(); return String(d.message || l.data || '').slice(0, 60); }).join(' ｜ ')) + '</span></div>',
-'<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
+// v2.37.0：时钟取值追踪（只读）—— 「值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么」
+        '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪 <span class="ftt-muted">（日志口径：值 ← 来源；含落选候选与落盘差异）</span></div>',
+        clockTraceSectionHtml(),
+        '</div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
         debugLogHtml(),
         '</div>',
     ].join('\n');
+}
+
+/**
+ * 「🕒 时钟取值追踪」区块（v2.37.0 新增，**只读**）：
+ *   回答「这个时钟值是从哪里取的、取值逻辑是什么、还有什么候选没被采用、这次到底改了什么」。
+ *   数据来自 `core/clock-trace.js` 的内存环形缓冲（不落 localStorage，避免日志膨胀）。
+ */
+export function clockTraceSectionHtml() {
+    const stages = [['resolve', '自动解析（日期/时间/地点/在场）'], ['patrol', '时间巡检（锚点与修复）'], ['regex-ai', 'AI 捕捉正则'], ['time-repair', 'AI 时间修复']];
+    const rows = stages.map(([stage, label]) => {
+        const trace = clockTraceLast(stage);
+        const t = trace ? clockTraceInfo(trace) : null;
+        if (!t) return '<div class="ftt-muted">' + esc(label) + '：暂无记录（运行一次对应操作后在此显示）</div>';
+        const when = new Date(Number(t.at) || 0).toLocaleString('zh-CN', { hour12: false });
+        const picks = t.picks.map((p) => '<div class="ftt-dim-row"><span class="ftt-dim-name">' + esc(p.field) + '</span>'
+            + '<span class="ftt-muted" style="flex:1">' + esc(String(p.value || '（无）')) + ' ← <b>' + esc(p.fromLabel || '—') + '</b>'
+            + (p.why ? ('<br>' + esc(p.why)) : '') + '</span></div>').join('');
+        const rejects = t.rejects.length
+            ? ('<div class="ftt-muted">未采用的候选（' + t.rejects.length + '）：</div>' + t.rejects.slice(0, 6).map((r) => '<div class="ftt-dim-row"><span class="ftt-dim-name">' + esc(r.field) + '</span><span class="ftt-muted" style="flex:1">' + esc(String(r.value)) + ' ← ' + esc(r.fromLabel) + (r.raw ? (' · 原文「' + esc(r.raw) + '」') : '') + '<br>' + esc(r.why) + '</span></div>').join('') + (t.rejects.length > 6 ? '<div class="ftt-muted">…另有 ' + (t.rejects.length - 6) + ' 条</div>' : ''))
+            : '<div class="ftt-muted">未采用的候选：无</div>';
+        const applied = (t.applied && t.applied.fields && t.applied.fields.length)
+            ? ('<div class="ftt-muted">落盘：' + (t.applied.locked ? '已锁定（未覆盖日期/时间/地点）· ' : '')
+                + esc(t.applied.fields.map((x) => (x.changed ? (x.field + '：' + (x.from || '（空）') + ' → ' + (x.to || '（空））')) : (x.field + '（无改动）'))).join(' · ')) + '</div>')
+            : (t.applied && t.applied.locked ? '<div class="ftt-muted">落盘：已锁定（未覆盖任何字段）</div>' : '');
+        const unchanged = (t.applied && t.applied.unchanged && t.applied.unchanged.length)
+            ? ('<div class="ftt-muted">保留原值：' + esc(t.applied.unchanged.slice(0, 6).join(' · ')) + '</div>') : '';
+        return '<details class="ftt-dbg-item"><summary class="ftt-dbg-head"><span class="ftt-dbg-kind">' + esc(label) + '</span>'
+            + '<span class="ftt-dbg-time">' + esc(when) + '</span>'
+            + '<span class="ftt-dbg-sum">' + esc(clockTraceSummary(trace)) + '</span></summary>'
+            + '<div class="ftt-dbg-data">'
+            + '<div class="ftt-muted">取值环节（按判定顺序）：' + esc((t.chain || []).join(' → ') || '—') + '</div>'
+            + (t.text && (t.text.mode || t.text.chars) ? ('<div class="ftt-muted">取文：' + esc(t.text.mode || '—') + (t.text.floors ? (' · ' + esc(t.text.floors)) : '') + ' · ' + Number(t.text.chars) + ' 字' + (t.text.sample ? ('<br>样本「' + esc(t.text.sample) + '」') : '') + '</div>') : '')
+            + picks + rejects
+            + (t.degrade && (t.degrade.degraded || t.degrade.detail) ? ('<div class="ftt-hint">降级：' + esc(t.degrade.reasonLabel || t.degrade.reason || '—') + (t.degrade.detail ? (' · ' + esc(t.degrade.detail)) : '') + '</div>') : '')
+            + (t.notes && t.notes.length ? ('<div class="ftt-muted">备注：' + esc(t.notes.join(' ｜ ')) + '</div>') : '')
+            + applied + unchanged
+            + '</div></details>';
+    }).join('\n');
+    return '<div class="ftt-muted">字段含义：<b>值 ← 来源</b>（来源中文名取自 <code>core/clock-trace.js</code> 的全量登记表，共 ' + clockSrcKeys().length + ' 项）；「未采用的候选」给出放弃原因；「落盘」给出本次实际改动。</div>'
+        + rows
+        + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockTraceClear">🗑 清空时钟追踪</button>'
+        + '<span class="ftt-muted">仅内存（重启即空）；排障时先跑一次提取/巡检再回本页查看</span></div>';
 }
 
 /**
@@ -128,6 +176,11 @@ export function debugPageHtml(controls) {
  * @returns {{ok:boolean, action:string, note:string, cleared?:number}}
  */
 export function debugAction(action, payload) {
+    // v2.37.0：清空时钟取值追踪（只清内存缓冲，不动调试日志）
+    if (String(action) === 'clockTraceClear') {
+        try { clockTraceClear(); } catch (e) { /* 忽略 */ }
+        return { ok: true, action: 'clockTraceClear', note: '已清空时钟取值追踪（调试日志不受影响）' };
+    }
     const a = String(action || '');
     try {
         if (a === 'dbgClear') {
@@ -141,7 +194,7 @@ export function debugAction(action, payload) {
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear']);
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear']);   // v2.37.0：+ 清空时钟取值追踪
 
 /** 调试页只读诊断（测试/排障用） */
 export function debugPageInfo() {

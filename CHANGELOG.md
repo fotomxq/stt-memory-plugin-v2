@@ -3,6 +3,55 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.37.0（2026-09-26）· 剧情时钟「取值追踪」与日志口径（值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么）
+
+**用户报告**：「时钟日志记录有问题，需明确**从哪里取值，取值逻辑是什么**。以方便追踪问题。」
+
+**问题（逐条取证）**：时钟域原有 6 条 `dbgLog('时钟', …)`（逐字移植 V1）不足以回答取值来源 ——
+① 只有日期与在场标了来源（`dateFrom`/`presentFrom`），**时间/地点没有**；② 来源中文标签表**残缺**（仅 6 项），
+命中「纯时段词 / 自定义正则 / 标记式 / 相对推进 / 第 N 天换算 / 最新场景 / 锚点」等来源时**直接打印英文键**；
+③ 只记「取值」不记「**判据**」；④ 不记「**落选候选**」（正文里明明有另一个日期，为何没采用）；
+⑤ 降级只记 `degraded` 布尔，**原因与细节（对比锚点、年差）丢失**；⑥ 不记「**本次实际改了什么**」；
+⑦ 「日期来自正文头结构」被记成「正文正则」（V1 `resolveStoryClock` 对正文侧统一写 `source.date='regex'`，v1.206 20055 起）。
+
+**本版实现**：
+1. **`core/clock-trace.js`（新，纯内核）**：统一的取值追踪结构 ——
+   `text{mode,floors,chars,sample}` + `chain[]`（按判定顺序的取值环节）+ `picks{字段:{value,from,fromLabel,why}}` +
+   `rejects[{field,value,from,fromLabel,idx,raw,why}]`（含**原文片段**与放弃原因）+ `degrade{reason,reasonLabel,detail}` +
+   `applied{fields[prev→next],locked,unchanged,present}` + `notes[]`；**来源键 → 中文名全量登记（17 项）**，
+   未知键标注「（未登记）」；每阶段环形保留 5 条，**仅内存**（不落 localStorage）；**纯记录、不参与判定**。
+2. **接线四处时钟日志**（`extract` / `patrol` / `regex-ai` / `time-repair`）：日志新增
+   `traceId` · `dateFrom/timeFrom/locationFrom/presentFrom`（**补齐时间与地点**）· `dateFromV1`（V1 口径对照）·
+   `dateWhy/timeWhy/locationWhy/presentWhy` · `chain[]` · `rejects[]`+`rejectsTotal` · `degradeReason`（中文）·
+   `applied[]`/`unchanged`/`seenStamped` · `textMode/textFloors/textChars/sample` · `how`（指向排障入口）；
+   **动作名如实区分**：真改了日期/时间/地点才叫「自动解析…」，只有在场/见面标记变化叫「在场/见面时间维护（…本轮无改动）」，
+   什么都没变**不写日志**。
+3. **精确来源**：日期不再沿用 V1 的「正文侧统一记 regex」，而是按实际命中记 `正文头结构（▷/▶）` 或 `正文正则`，
+   同时另存 `dateFromV1` 保留旧口径（可对照历史日志与文档）。
+4. **界面**：设定 → 调试新增只读区块 **「🕒 时钟取值追踪」**（四阶段折叠：取值环节 / 取文 / 值←来源+判据 /
+   未采用候选 / 降级 / 备注 / 落盘 + 清空按钮）；总览时钟区新增一行 `🕒 取值 [resolve] …` 摘要（值 ← 来源 + 落盘改动 + 指引）；
+   时钟来源行的时间来源也改用全量标签（此前只显示日期与地点，且未知来源打印英文键）。
+5. **诊断入口**：`FTT.clockTrace(stage)` / `clockTraceAll()` / `clockTraceSummary(stage)` / `clockTraceClear()` /
+   `clockSrcLabel()` / `clockSrcLabels()` / `clockDegradeLabel()`（`devtools.js` 同 7 项，`typeof` 守卫）。
+6. **文档**：`docs/P10c-时钟取值追踪与日志口径.md` —— 逐字段「从哪取值 + 取值逻辑」表（日期 10 个来源、
+   时间/地点、在场 3 源、巡检锚点 4 源）、日志字段表、**排障手册（症状 → 看哪个字段 → 判据）**。
+
+**顺带修复两个真实缺陷**：
+- **追踪构造自身的作用域错误**（本批引入后当场发现）：`floorsTxt` 闭包引用块级 `last` → `ReferenceError` 被外层
+  `catch` 吞掉 → **解析结果突然变空**（日期/时间/地点全丢）。已修，并写成**回归断言**（单测 R2）+ 注释留痕。
+- **`storyDay` 误判「有改动」**（V1 移植遗留）：V1 比较 `Number(state.state.storyDay) !== sd`，而 V2 的 `emptyState()`
+  **没有该键** → `NaN !== 0` 恒成立 → **每次提取都判为有改动**（多写一次 state + 日志恒为「自动解析剧情时钟」，
+  正是「时钟日志有点乱」的一部分）。已改为缺失键视作 0（V1 语义等价）。
+- 时钟日志**构造失败不再静默**：三个日志点的 `catch` 改写一条 `kind='异常'`（v2.34.0 异常通道），
+  避免「日志缺口本身也查不到原因」（上面第一条缺陷正是被空 `catch` 掩盖的）。
+- 为不污染 V1 口径的返回结构，文本提取的诊断走**侧信道** `clockExtractDiag()`（黄金样本仍按 `J(got)===J(oracle)` 校验）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **63 文件 / 989 断言**（新增 `tests/unit/clock-trace.test.js` **13 项**：
+来源标签全量登记 / 正文头场景与真实落选原因 / 异常降级链 / 手工锁定 / 环形缓冲 / **返回结构零泄漏** /
+**楼层窗口回退不丢值（回归）** / 巡检锚点链与「只统计」/ 日志四类信息 / 无改动不写日志 / 调试页区块 / 总览摘要行 / 摘要一致性）；
+冒烟 **143 项**（新增 **AN1–AN2**）；内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规。
+既有 4 组时钟黄金样本（`clock-extract` 12 · `clock-ai` 17 · `clock-patrol` 23 等）**全部保持通过** —— 证明「追踪只记录、不改判定」。
+
 ## v2.36.0（2026-09-26）· 面板宽度自适应（手机铺满 / PC 自适应 + 可调上限）
 
 **用户报告**：「宽度不足，插件自适应宽度。手机端可铺满、PC 可自适应，但需注意较宽。」
