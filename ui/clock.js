@@ -185,10 +185,25 @@ export async function clockAction(action, payload) {
             return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
         }
         if (a === 'clockPatrol') {
-            const rep = runClockPatrolRepair({ force: true });
+            // v2.50.0：手动巡检**默认不再强制**（原实现 `force:true` 会绕过「锚点与库内多数年份冲突」闸门 →
+            //   锚点一旦错就整库改年 → 用户报告「会改错时钟数据」）。现在：
+            //   · 锚点与库内多数年份冲突 → **只统计不修改**，并在提示里给出两条正确出路；
+            //   · 需要按锚点强制整库校正时，显式点提示里的「按锚点强制校正」（`clockPatrolForce`）。
+            const rep = runClockPatrolRepair({});
             const src = clockSrcLabel(rep.anchorSource);
+            const conflict = rep.anchorConflict;
             const note = '巡检 ' + rep.scanned + ' 条（锚点 ' + (rep.anchor || '不可用') + (src ? '（' + src + '）' : '') + '）：异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
-                + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.blocked ? ' · ' + rep.blocked : '') + (rep.snap ? '（已留快照）' : '');
+                + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.blocked ? ' · ' + rep.blocked : '') + (rep.snap ? '（已留快照）' : '')
+                + (conflict ? ('；⚠️ 锚点年份与库内多数年份冲突（' + conflict.year + '，' + Number(conflict.count) + '/' + Number(conflict.total) + ' 条）→ 已**只统计不修改**：先把锚点改成正确日期（✏️ 手工改写），或点「按锚点强制校正」') : '');
+            return { ok: true, action: a, note, detail: rep };
+        }
+        if (a === 'clockPatrolForce') {
+            // 显式二次动作：用户明确要求「按当前锚点整库强制校正」（写回前会先建全量快照）
+            const rep = runClockPatrolRepair({ force: true });
+            const conflict = rep.anchorConflict;
+            const note = '按锚点强制校正（锚点 ' + (rep.anchor || '不可用') + '）：异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
+                + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.snap ? '（已留快照 ' + String(rep.snap).slice(0, 12) + '）' : '')
+                + (conflict ? ('；本次为显式强制：库内多数年份为 ' + conflict.year + '（' + Number(conflict.count) + '/' + Number(conflict.total) + ' 条）') : '');
             return { ok: true, action: a, note, detail: rep };
         }
         return { ok: false, action: a, note: '未知时钟动作：' + a };
@@ -200,7 +215,7 @@ export async function clockAction(action, payload) {
 }
 
 /** 时钟动作名（供面板分发；与 V1 逐字一致） */
-export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockRegexGen', 'clockRepair']);
+export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockPatrolForce', 'clockRegexGen', 'clockRepair']);
 
 /** 巡检/锚点诊断（FTT.* 与调试用） */
 export function clockUiInfo() {

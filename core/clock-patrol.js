@@ -245,18 +245,27 @@ function clockPatrolRepairItem(it, finding, anchor) {
         if (finding.field === 'date') {
             // 没有可信锚点就**不解析**（旧版这里用现实当前年份兜底 → 写出 2026 之类的现实年份）
             if (!anchorOk) return { changed: false, note: '无可信锚点 → 保留原值' };
-            const prevYear = clockYearOf(anchor);
-            const parsed = clockParseDateText(text, prevYear);
-            const safeParsed = clockPatrolSafeDate(parsed, anchor);
-            if (safeParsed) { it.date = safeParsed; return { changed: true, note: `按内容重解析 → ${safeParsed}` }; }
+            const invalid = finding.reason === 'invalid';       // 格式非法 / 日期不存在
+            // v2.50.0（用户报告「时间巡检修复会改错时钟数据」→ **V1 故障明确修正 #7**）：
+            //   V1 对**所有**异常都先做「按内容重解析」——包括「格式合法但年份漂移(jump/backward)」的条目。
+            //   于是一条日期本来正确的记录，只要**内容里顺带提到别的年份**（如「三年前的1916年」），
+            //   就会被覆盖成内容里的那个日期（安全闸门只校验「不异常」，挡不住这种误覆盖）→ 改错时钟数据。
+            //   本批收紧：**只有「格式非法/日期不存在」才允许按内容重解析**；
+            //   「格式合法但年份漂移」只允许**保留月日、把年份改为锚点年**，改不动就保留原值。
+            if (invalid) {
+                const prevYear = clockYearOf(anchor);
+                const parsed = clockParseDateText(text, prevYear);
+                const safeParsed = clockPatrolSafeDate(parsed, anchor);
+                if (safeParsed) { it.date = safeParsed; return { changed: true, note: `按内容重解析 → ${safeParsed}` }; }
+            }
             // 保留月日、把年份改为锚点年（年份漂移类脏数据）
             if (clockDateValid(finding.value)) {
                 const fixed = clockPatrolSafeDate(clockReplaceYear(finding.value, clockYearOf(anchor)), anchor);
-                if (fixed) { it.date = fixed; return { changed: true, note: `年份校正 → ${fixed}` }; }
+                if (fixed) { it.date = fixed; return { changed: true, note: `年份校正（保留月日）→ ${fixed}` }; }
             }
             // 只有「格式非法/日期不存在」才允许清空；格式合法但年份漂移一律保留原值
-            if (finding.reason === 'invalid' && it.date) { it.date = ''; return { changed: true, note: '日期非法且无法重解析 → 清空' }; }
-            return { changed: false, note: '无法可靠修正 → 保留原值' };
+            if (invalid && it.date) { it.date = ''; return { changed: true, note: '日期非法且无法重解析 → 清空' }; }
+            return { changed: false, note: (invalid ? '无法可靠修正 → 保留原值' : '年份异常但无法可靠校正 → 保留原值（不按内容重解析）') };
         }
         if (finding.field === 'time') {
             const m = /(\d{1,2})[:：](\d{1,2})/.exec(text) || /(凌晨|清晨|早晨|早上|上午|中午|午间|午后|下午|傍晚|黄昏|晚上|夜晚|深夜|夜里|半夜|午夜)/.exec(text);
