@@ -3561,6 +3561,24 @@ await assert('AS5 开关生效：debugTraceUi=false 只停「用户交互」、d
     return uiOff && hostOff && restored && ku === true && kh === true;
 })(), '');
 
+await assert('AT1 v2.43.0 位置修复：「V2 附加设定」只出现在**基础**子页（不再吊在 14 个子页页脚）；切换子页后随之消失/出现', (async () => {
+    const ST = await import('../ui/settings-pages.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    const seen = {};
+    for (const t of ST.SETTINGS_TABS) {
+        await entry.popupAction('settingsSub', { sub: t.id });
+        const h = String(panelBodyHtml('settings') || '');
+        seen[t.id] = { has: h.indexOf('data-ftt-section="v2-extras"') >= 0, pageAt: h.indexOf('data-ftt-settings-page="' + t.id + '"'), secAt: h.indexOf('data-ftt-section="v2-extras"') };
+    }
+    const onlyBase = Object.keys(seen).every((k) => (k === 'base' ? seen[k].has === true : seen[k].has === false));
+    const insideBase = seen.base.pageAt >= 0 && seen.base.secAt > seen.base.pageAt;   // 在基础页容器之内，而非容器之后的页脚
+    await entry.popupAction('settingsSub', { sub: 'base' });
+    const back = String(panelBodyHtml('settings') || '');
+    const backOk = back.indexOf('data-ftt-section="v2-extras"') >= 0 && back.indexOf('data-ftt-v2="panelMaxWidth"') >= 0
+        && back.indexOf('ftt_v2_dims') >= 0 && back.indexOf('data-ftt-action="importV1Dry"') >= 0;
+    return onlyBase && insideBase && backOk;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

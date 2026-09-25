@@ -191,6 +191,7 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'relfilter': '维度筛选**已收窄**（V2 用分页隔离维度；字段仅保留供对照，见 P8 §6）',
         'relpick-name': '选择器点名标记（测试/高亮锚点）',
         'settings-page': '设定页容器（样式与测试锚点）',
+        'section': '分节容器（v2.43.0：`data-ftt-section="v2-extras"` = V2 附加设定分节，样式/测试锚点）',
         'snap-inspect': '快照查看容器（重绘即更新）',
     };
     const unread = [];

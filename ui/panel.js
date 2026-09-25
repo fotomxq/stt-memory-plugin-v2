@@ -845,15 +845,30 @@ function settingsBody() {
     return [
         '<div class="ftt-row ftt-settings-subtabs">' + settingsSubTabsHtml(cur) + '</div>',
         '<div class="ftt-hint">设定 · ' + esc(label) + '（' + curInfo.controls + ' 个配置项 · 共 ' + info.totalControls + ' 项 / ' + info.pages.length + ' 页，结构与 V1 同名同序）</div>',
-        '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">' + settingsPageHtml(cur) + '</div>',
+        // v2.43.0（用户要求）：「V2 附加设定」不再挂在**每个**设定子页的最底部，而是作为
+        //   「基础」页的一块固定分节（默认进入设定页就是基础页，故仍一眼可见）。
+        '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">'
+            + settingsPageHtml(cur, cur === 'base' ? v2ExtrasSectionHtml() : '') + '</div>',
         (cur === 'prompts' ? atomCompactSectionHtml() : ''),
-        '<h4 class="ftt-h4-inline">V2 附加设定 <span class="ftt-muted">（V1 无此项：更新检查 / V1 数据导入 / 维度开关）</span></h4>',
-        v2ExtrasHtml(),
         (ps.exportText ? ('<div class="ftt-field ftt-field-col"><label>导出结果（可复制保存）</label><textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>') : ''),
     ].join('\n');
 }
 
-/** V2 附加设定块（V1 没有、但 V2 已有的能力：更新检查、V1 导入、维度勾选） */
+/**
+ * 「V2 附加设定」分节（V2 独有：更新检查 / V1 数据导入 / 维度开关 / 面板宽度）。
+ * v2.43.0：由「所有设定子页的页脚」改为「基础页内的一块分节」—— 位置由 `settingsPageHtml('base', …)` 注入，
+ *   因此它随基础页一起滚动，不再固定吊在每个子页末尾。
+ */
+export function v2ExtrasSectionHtml() {
+    return [
+        '<div class="ftt-section" data-ftt-section="v2-extras">',
+        '<div class="ftt-sec-title">V2 附加设定 <span class="ftt-muted">（V1 无此项：更新检查 / V1 数据导入 / 维度开关 / 面板宽度）</span></div>',
+        v2ExtrasHtml(),
+        '</div>',
+    ].join('\n');
+}
+
+/** V2 附加设定块的控件（V1 没有、但 V2 已有的能力：更新检查、V1 导入、维度勾选、面板宽度） */
 function v2ExtrasHtml() {
     // 更新相关键属于**适配层设置**（extensionSettings），不是内核 cfg —— 读写都走 settings，避免"改了不生效"
     const s = (() => { try { return getSettings() || {}; } catch (e) { return {}; } })();

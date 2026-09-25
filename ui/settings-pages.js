@@ -940,10 +940,10 @@ export function settingsControlHtml(c) {
 
 /**
  * 基础页正文（V1 的分节布局：组件开关 / 重要性计算 / 剧情时钟自动提取 / 时钟降级与时间巡检 / 界面特效）。
- * 说明：V1 的「显示界面开关（buttonLocation*）」在 V2 由「V2 附加设定」的悬浮/菜单开关承担，此处不重复；
+ * 说明：V1 的「显示界面开关（buttonLocation*）」在 V2 由「基础 → V2 附加设定」的悬浮/菜单开关承担，此处不重复；
  *   「AI 捕捉正文 → 生成正则」与「AI 结合正文修复日期时间」两条 AI 管线属 B8-2（本页先如实标注，不放假实现）。
  */
-export function basePageHtml(controls) {
+export function basePageHtml(controls, extrasHtml) {
     const list = Array.isArray(controls) ? controls : [];
     const find = (k) => list.filter((c) => String(c.key) === k)[0];
     const row = (k) => { const c = find(k); return c ? settingsControlHtml(c) : ''; };
@@ -972,12 +972,16 @@ export function basePageHtml(controls) {
         '<div class="ftt-hint">独立修复：只在点这个按钮时执行 —— 依据【近期正文】+【时间锚点】逐条判定正确值，插件只接受格式合法且年份未超阈值的修正（不合格丢弃、无法判定如实回报）。上面的「时间巡检」是零 AI 的机械修复，两者互不干扰。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
-        '<div class="ftt-muted">V2 的入口形态在「V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
+        '<div class="ftt-muted">V2 的入口形态在「基础 → V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">界面特效</div>',
         rows(['uiEffects']),
         '<div class="ftt-muted">关闭后面板与消息弹窗不再播放动画/过渡（适合低配设备）；系统「减少动态效果」自动按关闭处理。</div></div>',
-    ].join('\n');
+
+        // v2.43.0：V2 独有分节（更新检查 / V1 数据导入 / 维度开关 / 面板宽度）生在**基础页内**，
+        //   由调用方注入（本模块不得反向依赖 ui/panel.js，避免循环依赖）。
+        (extrasHtml ? String(extrasHtml) : ''),
+    ].filter(Boolean).join('\n');
 }
 
 /**
@@ -1001,7 +1005,7 @@ export function analyzePageHtml(controls) {
         + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="dimensionSeparate"' + (separate ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
         + '<span class="ftt-muted">' + esc(stateText) + '</span></label>',
         '<div class="ftt-muted">开启后各维度**分别**构造提示词并**并行**请求，逐维度过账；未开启的维度合并成一个「统一」请求。</div>',
-        '<div class="ftt-muted">V2 适配：维度子开关在「V2 附加设定 → 启用维度」（V1 的开关列在本节各行），故本节的维度行只出「分组」下拉。</div>',
+        '<div class="ftt-muted">V2 适配：维度子开关在「基础 → V2 附加设定 → 启用维度」（V1 的开关列在本节各行），故本节的维度行只出「分组」下拉。</div>',
         '<div class="ftt-muted">各维度 API 分组：选中的维度按该分组的连接单独请求（V1 同键 `cfg.dimensionPresets`，v1.206 14795）；未选中的维跟随主配置。分组在「API」页创建。</div>',
         '</div>',
         '<div class="ftt-section"><div class="ftt-sec-title">各维度独立子开关与分组（独立分组时生效）</div>',
@@ -1028,8 +1032,12 @@ const PENDING_NOTE = {
     storage: '存储页的**探测/测试/同步动作**依赖 B7 批次的内核；本页先提供存储开关。',
 };
 
-/** 单页 HTML（V1 同款子标签 + 字段列表 + 可选动作块 + 待办说明） */
-export function settingsPageHtml(pageId) {
+/**
+ * 单页 HTML（V1 同款子标签 + 字段列表 + 可选动作块 + 待办说明）。
+ * @param {string} pageId 子页 id
+ * @param {string} [extrasHtml] 仅**基础页**使用的「V2 附加设定」分节 HTML（v2.43.0：位置从页脚改为基础页内）
+ */
+export function settingsPageHtml(pageId, extrasHtml) {
     const pid = String(pageId || SETTINGS_TABS[0].id);
     const list = Array.isArray(SETTINGS_CONTROLS[pid]) ? SETTINGS_CONTROLS[pid] : [];
     // 存储页：V1 的**分节布局**（记忆文件 / 原生存储 / 缓冲 / 一致性 / 世界书 / 状态与操作 / 同步日志）
@@ -1043,7 +1051,7 @@ export function settingsPageHtml(pageId) {
     // 遗忘页：V1 的**五分节布局**（状态衰退 / 记忆遗忘 / 存储保底上限 / 通用清扫）+ V2 只读诊断行
     if (pid === 'forget') return forgetPageHtml(list);
     // 基础页：V1 的**分节布局**（组件开关 / 重要性 / 剧情时钟 / 巡检 / 界面特效），控件表同名同序
-    if (pid === 'base') return basePageHtml(list);
+    if (pid === 'base') return basePageHtml(list, extrasHtml);
     // 分析记忆页（P9d）：V1 的「维度分组（总开关）」节 + 控件表同名同序
     if (pid === 'analyze') return analyzePageHtml(list);
     // 平行页（B10-a）：控件表 + V1 原位「推演/推进分析渠道」选择器

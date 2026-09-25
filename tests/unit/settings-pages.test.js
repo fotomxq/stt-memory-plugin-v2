@@ -185,5 +185,29 @@ await A('P6 面板接线：settingsSub 切页只影响设定页；数据管理�
         && imp.ok === true && st.settingsSub === 'data';
 }, (() => { try { return JSON.stringify(panelState()).slice(0, 200); } catch (e) { return String(e.message); } })());
 
+await A('P7 v2.43.0 位置修复：「V2 附加设定」只作为**基础**子页内的一块分节（不再吊在 14 个子页的页脚）；其它子页不出现，切回基础仍在，且控件与动作齐备', async () => {
+    openPanel('settings');
+    const rows = {};
+    for (const t of SETTINGS_TABS) {
+        await panelAction('settingsSub', { sub: t.id });
+        const h = panelBodyHtml('settings');
+        const pageAt = h.indexOf('data-ftt-settings-page="' + t.id + '"');
+        const secAt = h.indexOf('data-ftt-section="v2-extras"');
+        rows[t.id] = { has: secAt >= 0, inside: pageAt >= 0 && secAt > pageAt, text: h.indexOf('V2 附加设定', secAt >= 0 ? secAt - 200 : 0) >= 0 };
+    }
+    await panelAction('settingsSub', { sub: 'base' });
+    const baseH = panelBodyHtml('settings');
+    const onlyBase = SETTINGS_TABS.filter((t) => t.id !== 'base').every((t) => rows[t.id].has === false);
+    // 基础页内：分节位于基础页容器**之内**（页脚 bug 的标志是「标题出现在容器之后」）
+    const inBase = rows.base.has === true && rows.base.inside === true;
+    // 控件与动作齐备（更新检查 / V1 导入 / 维度开关 / 面板宽度）
+    const ctrls = ['data-ftt-v2="autoUpdateCheck"', 'data-ftt-v2="updateRepo"', 'data-ftt-v2="panelMaxWidth"', 'ftt_v2_dims',
+        'data-ftt-action="check-update"', 'data-ftt-action="importV1Dry"', 'data-ftt-action="importV1Apply"']
+        .every((k) => baseH.indexOf(k) >= 0);
+    // 旧写法（固定页脚 `<h4 class="ftt-h4-inline">V2 附加设定`）必须消失
+    const noLegacyFooter = baseH.indexOf('ftt-h4-inline">V2 附加设定') < 0;
+    return onlyBase && inBase && ctrls && noLegacyFooter;
+}, () => J(Object.keys(rows).reduce((o, k) => { o[k] = rows[k].has ? (rows[k].inside ? 'base内' : '页脚') : '无'; return o; }, {})));
+
 un();
 R.done();
