@@ -661,7 +661,14 @@ function dimBodyList(kind) {
     if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + curTop + toolbar + curPick + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     const rows = list.map((e) => {
         const id = String(e.id || '');
-        const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || ''].filter(Boolean).join(' · ');
+        // v2.39.0（对齐 V1 v1.170 / v1.206 24508）：**现实墙钟只允许在 UI 里以「现实更新 …」出现**，
+        //   绝不与 📅 剧情日期混同（现实时间不是剧情时间）；仅平行等条目带 epoch 毫秒 `updatedAt`。
+        const wall = (() => {
+            const n = Number(e.updatedAt);
+            if (!(Number.isFinite(n) && n > 1e12)) return '';      // 剧情日期字符串（如 1919-11-20）→ 不是墙钟
+            try { return '现实更新 ' + new Date(n).toLocaleString(); } catch (x) { return '现实更新'; }
+        })();
+        const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || '', wall].filter(Boolean).join(' · ');
         const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
         const box = multi ? ('<input type="checkbox" data-ftt-select="' + attr(kind) + '" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';

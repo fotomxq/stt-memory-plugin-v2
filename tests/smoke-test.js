@@ -3202,6 +3202,71 @@ await assert('AO2 端到端：真实点击 → 重渲染（滚动归零）后**�
     return ok;
 })(), '');
 
+// ---------- AP 时钟不得取真实日期（v2.39.0：剧情时间字段只取剧情时间） ----------
+await assert('AP1 端到端：**无剧情时钟**时写入记忆/状态 → 剧情时间字段留空（不写今天），注入体不含今日年份；手工录入缺年份**只沿用语剧情年份或拒绝**（绝不用现实年份）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const REC = await import('../core/recall.js');
+    const CP = await import('../core/clock-patrol.js');
+    const ingestMod = await import('../core/ingest.js');
+    const st = rtMod.state;
+    const saved = { date: st.state.date, time: st.state.time, location: st.state.location, memories: st.memories, currentStates: st.currentStates };
+    const YEAR = String(new Date().getFullYear());
+    const TODAY = new Date().toISOString().slice(0, 10);
+    let ok = false;
+    try {
+        st.state.date = ''; st.state.time = ''; st.state.location = '';
+        st.memories = []; st.currentStates = [];
+        const r = ingestMod.mergeDelta({ memories: { add: [{ title: '记忆甲', content: '甲在码头清点铜箱' }] }, states: { add: [{ subject: '甲', field: '体力', value: '疲惫' }] } });
+        void r;
+        const mem = (st.memories || []).map((m) => String(m.date || ''));
+        const sts = (st.currentStates || []).map((x) => [String(x.updatedAt || ''), String(x.updatedAtTime || '')]);
+        const body = String(REC.buildMemoryBodyForInject('', { charBudget: 4000, maxMemories: 6, countUses: true, inject: true }) || '');
+        const manual = CP.parseClockManualInput({ date: '11月29日' });
+        // 手工录入缺年份：**要么拒绝**（库内无可用年份），**要么沿用剧情年份** —— 但**绝不**用现实年份
+        const manualNote = String((manual.notes || [])[0] || '');
+        const manualOk = manual.ok === true
+            ? (String(manual.date || '').indexOf(YEAR) < 0 && manualNote.indexOf('沿用年份') >= 0)
+            : (manualNote.indexOf('缺少年份') >= 0 || manualNote.indexOf('无法解析') >= 0);
+        ok = mem.length === 1 && mem[0] === '' && sts.length === 1 && sts[0][0] === '' && sts[0][1] === ''
+            && body.indexOf('记忆甲') >= 0 && body.indexOf(YEAR) < 0 && body.indexOf(TODAY) < 0
+            && manualOk;
+    } finally {
+        st.state.date = saved.date; st.state.time = saved.time; st.state.location = saved.location;
+        st.memories = saved.memories; st.currentStates = saved.currentStates;
+        await entry.popupAction('refresh', {});
+    }
+    return ok;
+})(), '');
+
+await assert('AP2 端到端：**有剧情时钟**时同一路径写剧情日期/时刻；平行事件行的现实墙钟只以「现实更新 …」标注出现（与 📅 剧情日期区分）', (async () => {
+    const ingestMod = await import('../core/ingest.js');
+    const st = rtMod.state;
+    const saved = { date: st.state.date, time: st.state.time, memories: st.memories, currentStates: st.currentStates, parallels: st.parallels };
+    let ok = false;
+    try {
+        st.state.date = '1919-11-20'; st.state.time = '傍晚';
+        st.memories = []; st.currentStates = [];
+        st.parallels = [
+            { id: 'sp1', title: '冒烟分支甲', text: '甲去了乙地', date: '1919-11-20', updatedAt: Date.now(), uses: 1, type: '推演' },
+            { id: 'sp2', title: '冒烟分支乙', text: '乙去了丙地', date: '1919-11-21', uses: 0, type: '推演' },
+        ];
+        ingestMod.mergeDelta({ memories: { add: [{ title: '记忆乙', content: '乙在钟鼓楼' }] }, states: { add: [{ subject: '乙', field: '状态', value: '警戒' }] } });
+        const mem = (st.memories || []).map((m) => String(m.date || ''))[0] || '';
+        const s0 = (st.currentStates || [])[0] || {};
+        const html = String(panelBodyHtml('parallels') || '');
+        const lineOf = (t) => (html.split('\n').filter((l) => l.indexOf(t) >= 0)[0] || '').replace(/<[^>]*>/g, '');
+        const l1 = lineOf('冒烟分支甲');
+        const l2 = lineOf('冒烟分支乙');
+        ok = mem === '1919-11-20' && String(s0.updatedAt || '') === '1919-11-20' && String(s0.updatedAtTime || '') === '傍晚'
+            && l1.indexOf('· 现实更新 ') > 0 && l1.indexOf('1919-11-20') > 0 && l2.indexOf('现实更新') < 0;
+    } finally {
+        st.state.date = saved.date; st.state.time = saved.time;
+        st.memories = saved.memories; st.currentStates = saved.currentStates; st.parallels = saved.parallels;
+        await entry.popupAction('refresh', {});
+    }
+    return ok;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

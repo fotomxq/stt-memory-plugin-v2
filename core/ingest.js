@@ -100,7 +100,8 @@ function mergeDelta(delta0, floorRange) {
         for (const s of delta.states?.add || []) {
             const n = normalizeCurrentState(s);
             if (n) {
-                const st = stampNowForState(); n.updatedAt = n.updatedAt || st.date; n.updatedAtTime = n.updatedAtTime || st.time;
+                // v2.39.0：无剧情日期时 `st.date` 为空 → **不写**（绝不用现实墙钟冒充剧情时间）
+                const st = stampNowForState(); if (st.date) { n.updatedAt = n.updatedAt || st.date; n.updatedAtTime = n.updatedAtTime || st.time; }
                 const i = state.currentStates.findIndex(x => x.id === n.id);
                 if (i >= 0) { state.currentStates[i] = { ...state.currentStates[i], ...n }; } else state.currentStates.push(n);
             }
@@ -108,7 +109,7 @@ function mergeDelta(delta0, floorRange) {
         for (const s of delta.states?.update || []) {
             const n = normalizeCurrentState(s);
             if (n) {
-                const st = stampNowForState(); n.updatedAt = st.date; n.updatedAtTime = st.time;
+                const st = stampNowForState(); if (st.date) { n.updatedAt = st.date; n.updatedAtTime = st.time; }
                 const i = state.currentStates.findIndex(x => x.id === n.id);
                 if (i >= 0) {
                     const prev = state.currentStates[i];
@@ -165,7 +166,8 @@ function mergeDelta(delta0, floorRange) {
             const n = normalizeMemory(m);
             if (n) {
                 // v1.63：记忆写入/更新即「想起」—— 无日期时自动补剧情日期（遗忘引擎时间轴；AI 自带日期保留）
-                if (!n.date) { try { const st = stampNowForState(); n.date = st.date; } catch (e) { } }
+                // v1.63 原意是「无日期时自动补**剧情日期**」；v2.39.0 起无剧情日期时**留空**（不再写现实日期）
+                if (!n.date) { try { const st = stampNowForState(); if (st.date) n.date = st.date; } catch (e) { } }
                 const i = state.memories.findIndex(x => x.id === n.id);
                 if (i >= 0) state.memories[i] = n; else state.memories.push(n);
             }

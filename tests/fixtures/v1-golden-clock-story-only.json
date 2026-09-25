@@ -1,0 +1,57 @@
+{
+ "meta": {
+  "v1Version": "v1.206",
+  "generatedBy": "tests/fixtures/gen-v1-golden-clock-story-only.cjs",
+  "note": "V1 在无剧情日期时把现实墙钟写进剧情时间字段（memories[].date / currentStates[].updatedAt|updatedAtTime）并进入注入正文 —— V2 v2.39.0 已修正为「只取剧情时间」，本样本用于断言差异"
+ },
+ "A": {
+  "memories": [
+   {
+    "title": "记忆甲",
+    "date": "<TODAY>"
+   }
+  ],
+  "states": [
+   {
+    "subject": "甲",
+    "updatedAt": "<TODAY>",
+    "updatedAtTime": "<NOW>"
+   }
+  ],
+  "manualYearless": {
+   "ok": true,
+   "date": "<YEAR>-11-29",
+   "notes": [
+    "日期「11月29日」解析为 <YEAR>-11-29（沿用年份 <YEAR>）"
+   ]
+  },
+  "majorityYear": {
+   "year": "<YEAR>",
+   "count": 1,
+   "total": 1
+  },
+  "injectMemoryLines": [
+   "- [<TODAY>]记忆甲：甲在码头清点铜箱",
+   "· 记忆「记忆甲」知情者 = （未记录）"
+  ]
+ },
+ "B": {
+  "memories": [
+   {
+    "title": "记忆乙",
+    "date": "1919-11-20"
+   }
+  ],
+  "states": [
+   {
+    "subject": "乙",
+    "updatedAt": "1919-11-20",
+    "updatedAtTime": "傍晚"
+   }
+  ],
+  "injectMemoryLines": [
+   "- [1919-11-20（今天）]记忆乙：乙在钟鼓楼",
+   "· 记忆「记忆乙」知情者 = （未记录）"
+  ]
+ }
+}
