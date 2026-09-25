@@ -52,6 +52,9 @@ import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from
 import { sortRecentByStoryDate } from '../core/clock.js';
 // v2.47.0：场景页 = V1 的**聚合树**（虚节点 + 当前位置高亮 + 折叠），此前 V2 是平铺列表
 import { scenesTreeHtml } from './scene-tree.js';
+// v2.49.0（用户报告：「导出和导入…应正确触发导出及下载文件，以及导入存档文件」）：
+//   真实文件下载（Blob + `<a download>`）与文件选择器读取（`<input type=file>` + FileReader），与 V1 同口径
+import { downloadTextFile, pickTextFile, fileIoCapabilities } from './file-io.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
 import { listRowMainHtml, stateRowMainHtml, listStatusFilter } from './list-rows.js';
@@ -111,6 +114,16 @@ const ps = {
     atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
 };
 const str0 = (v) => String(v == null ? '' : v);
+/** 默认导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；无哈希时退化为 `FTT记忆.json`） */
+function defaultExportFileName() {
+    try {
+        const scope = String(getScopeKey() || '');
+        if (!scope) return 'FTT记忆.json';
+        // 与 V1 同用 djb2→base36 短哈希（core/util.js#hashText），保证两端文件名口径一致
+        const h = (() => { let x = 5381; for (let i = 0; i < scope.length; i += 1) { x = ((x << 5) + x) ^ scope.charCodeAt(i); } return (x >>> 0).toString(36); })();
+        return 'FTT记忆_' + h + '.json';
+    } catch (e) { return 'FTT记忆.json'; }
+}
 let overlayEl = null;
 let hooks = {};
 let escBound = false;
@@ -1854,15 +1867,40 @@ export async function panelAction(action, payload) {
             if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             const text = String((await hooks.exportState()) || '');
             ps.exportText = text;
+            // ① **真实下载文件**（V1 `export` 动作同款：Blob + `<a download>`）
+            const fname = (() => {
+                try { return String((typeof hooks.exportFileName === 'function' ? hooks.exportFileName() : '') || '') || defaultExportFileName(); } catch (e) { return defaultExportFileName(); }
+            })();
+            const dl = text ? downloadTextFile(fname, text, 'application/json') : { ok: false, reason: 'empty' };
+            // ② 复制到剪贴板（保留，便于直接粘贴）
             let copied = false;
             try {
                 const nav = globalThis.navigator;
                 if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
             } catch (e) { copied = false; }
-            setNote('已导出 ' + text.length + ' 字符' + (copied ? '（已复制到剪贴板）' : '（见下方文本框，可手动复制）'));
-            result = Object.assign(result, { ok: true, chars: text.length, copied });
+            const bits = ['已导出 ' + text.length + ' 字符'];
+            bits.push(dl.ok ? ('已下载文件 ' + dl.filename) : ('未下载文件（' + dl.reason + '，可在下方文本框手动复制保存）'));
+            if (copied) bits.push('已复制到剪贴板');
+            setNote(bits.join(' · '));
+            result = Object.assign(result, { ok: true, chars: text.length, copied: copied, downloaded: !!dl.ok, filename: dl.ok ? dl.filename : '', downloadReason: dl.reason || '' });
         }
-        else if (a === 'importStateOpen') { setNote('在「导入 JSON」文本框粘贴内容后点「导入」'); }
+        else if (a === 'importStateOpen') {
+            // **真实选择存档文件**（V1 `import` 动作同款：`<input type=file>` → 读取 → 增量合并）
+            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (!fileIoCapabilities().pick) { setNote('当前宿主不支持文件选择器 → 请在下方「导入 JSON」文本框粘贴内容后点「导入」'); return { ok: false, reason: 'no-picker' }; }
+            setNote('请选择要导入的存档 JSON 文件…');
+            const picked = await pickTextFile({ accept: '.json,application/json' });
+            if (!picked.ok) {
+                const why = picked.reason === 'cancelled' ? '已取消选择文件' : ('未取到文件（' + picked.reason + '）');
+                setNote(why + ' → 也可在下方文本框粘贴后点「导入」');
+                return { ok: false, reason: picked.reason || 'no-file' };
+            }
+            const r = await hooks.importState(picked.text);
+            setNote(r && r.ok
+                ? ('已导入文件 ' + (picked.name || '（未命名）') + ' 并合并：新增 ' + (r.added || 0) + ' 条')
+                : ('导入失败（' + String((r && r.reason) || '未知') + '）：' + (picked.name || '')));
+            result = Object.assign(result, r || {}, { fileName: picked.name, fileSize: picked.size });
+        }
         else if (a === 'importV1Dry' || a === 'importV1Apply') {
             if (typeof hooks.importV1 !== 'function') { setNote('V1 导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             const apply = a === 'importV1Apply';

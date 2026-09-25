@@ -1076,15 +1076,17 @@ function pageExtraHtml(pid) {
             '<h4 class="ftt-h4-inline">数据管理</h4>',
             snapshotSectionHtml(),
             '<div class="ftt-row">',
-            '<button class="ftt-btn" data-ftt-action="exportState" title="导出当前角色记忆为 JSON（可保存为文件）">⬇ 导出 JSON</button>',
-            '<button class="ftt-btn" data-ftt-action="importStateOpen" title="粘贴 JSON 导入（合并进当前容器）">⬆ 导入 JSON</button>',
+            // v2.49.0：导出改为**真实下载文件**（Blob + `<a download>`，与 V1 同口径）；
+            //   导入改为**真实选择存档文件**（`<input type=file>` → 增量合并），文本框粘贴路径仍保留
+            '<button class="ftt-btn" data-ftt-action="exportState" title="导出当前角色记忆为 JSON 文件（触发浏览器下载；同时复制到剪贴板并显示在下文本框）">⬇ 导出 JSON</button>',
+            '<button class="ftt-btn" data-ftt-action="importStateOpen" title="增量导入：选择 JSON 存档文件后按原子内容哈希差异化合并 —— 相同跳过/新增插入/变更覆盖，保留本地现有数据">⬆ 导入 JSON（合并）</button>',
             '<button class="ftt-btn ftt-err" data-ftt-action="clearFloors" title="只清「已处理楼层」记录，不删除任何记忆条目">🧹 清除已处理记录</button>',
             // B9-a：V1 数据管理页第 4 个按钮（`data-ftt-action="reset"`，文案逐字「🗑 清空当前角色记忆」）。
             //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
             //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。
             '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="清空当前角色的全部 FTT 记忆（不可恢复，建议先导出备份）">🗑 清空当前角色记忆</button>',
             '</div>',
-            '<div class="ftt-field ftt-field-col"><label>导入 JSON（粘贴后点「导入」）</label><textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
+            '<div class="ftt-field ftt-field-col"><label>导入 JSON（上方「⬆ 导入 JSON（合并）」可直接选文件；也可在此粘贴后点「导入」）</label><textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
             '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="importStateApply">⬆ 导入</button></div>',
         ].join('\n');
     }

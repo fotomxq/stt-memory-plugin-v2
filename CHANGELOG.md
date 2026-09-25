@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.49.0（2026-09-26）· 导出下载文件 / 导入存档文件（文件机制修复）
+
+**用户报告**：「导出和导入，应该正确触发导出及下载文件，以及导入存档文件。该机制存在问题。」
+
+**① 问题**：V2 数据管理页只做了「半个」导入导出 —— 「⬇ 导出 JSON」只把内容塞进文本框 + 剪贴板（**不落文件**），
+「⬆ 导入 JSON」只提示去文本框粘贴（**不弹文件选择器**）；而 V1 是真的 `Blob + <a download>` 落文件
+（v1.206 27048/27214）与 `<input type=file> + FileReader` 读文件（27058/26218、27226）。
+
+**② 修复**：新增 `ui/file-io.js`（`downloadTextFile` / `pickTextFile` / `fileIoCapabilities`，失败一律返回
+`{ok:false,reason}` 永不抛、临时节点用完即移除、blob URL 延迟 5 秒回收）；`exportState` 改为**真实下载**
+（文件名经新钩子 `exportFileName()` = V1 口径 `FTT记忆_<角色哈希>.json`，同时保留剪贴板与文本框）；
+`importStateOpen` 改为**弹出文件选择器**读取存档后走既有 `importState` 增量合并（文本框粘贴路径保留）；
+数据管理页按钮文案/title 对齐 V1（`⬆ 导入 JSON（合并）`）。
+
+**③ 门禁**：新增 `tests/unit/file-io.test.js`（12 断言：下载链路/能力回落/选择读取/取消/FileReader 分支 +
+**真实点击**导出与导入的面板端到端）+ 冒烟 **AY1**（真实点击委托：导出产生 `blob:` 锚点且 `download` 为
+`FTT记忆_<hash>.json`；导入弹出 `input[type=file]` 并完成合并）。
+
+**④ 宿主差异（如实提示，不静默失败）**：无 `Blob`/`createObjectURL` 或无文件选择器时，导出提示
+「未下载文件（no-download…）+ 保留文本框」，导入提示「不支持文件选择器 → 请在文本框粘贴」。
+
+合计单元 **74 文件 / 1181 断言**、冒烟 **164 项**，全绿。
+
 ## v2.48.0（2026-09-26）· 「剧情第 N 天」不允许注入（仅供插件内校准）· 修正 V1 缺陷 #6
 
 **用户要求**：「剧情第N天，不允许注入，这个设定只是在插件内校准时间用的。」

@@ -3748,6 +3748,74 @@ await assert('AX1 v2.48.0「剧情第 N 天不允许注入」：真实注入通�
     }
 })(), '');
 
+await assert('AY1 v2.49.0 导出/导入文件机制：真实点击「⬇ 导出 JSON」**触发浏览器下载**（blob:<a download="FTT记忆_<hash>.json">）；「⬆ 导入 JSON（合并）」**弹出文件选择器**并读取存档完成合并', (async () => {
+    const PE = await import('../ui/panel.js');
+    const saveCreate = doc.createElement;
+    const saveURL = globalThis.URL;
+    const saveBlob = globalThis.Blob;
+    const created = [];
+    const urls = [];
+    const revoked = [];
+    const clicks = [];
+    try {
+        // ① 下载环境桩
+        doc.createElement = (tag) => {
+            const el = {
+                tagName: String(tag).toUpperCase(), style: {}, files: null, accept: '', type: '', value: '',
+                click() { clicks.push(this); if (typeof this.onclick === 'function') this.onclick(); },
+                remove() { this.removed = true; },
+                dataset: {}, listeners: {},
+            };
+            created.push(el);
+            return el;
+        };
+        globalThis.URL = { createObjectURL: () => { const u = 'blob:smoke/' + (urls.length + 1); urls.push(u); return u; }, revokeObjectURL: (u) => revoked.push(u) };
+        globalThis.Blob = function Blob(parts, opt) { this.parts = parts; this.type = (opt || {}).type || ''; };
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        // 真实点击委托（与用户点击同路径）
+        const el = doc.getElementById('ftt-panel');
+        const click = (el && el.listeners && el.listeners.click) || [];
+        const fire = (dataset) => {
+            const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+            click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+            return new Promise((r) => setTimeout(r, 20));
+        };
+        await fire({ fttAction: 'exportState' });
+        const anchor = clicks.filter((x) => x.tagName === 'A')[0];
+        const noteExport = String((panelState() || {}).note || '');
+        const downloadOk = !!anchor && /^FTT记忆_.*\.json$/.test(String(anchor.download || ''))
+            && String(anchor.href || '').indexOf('blob:') === 0 && urls.length === 1
+            && noteExport.indexOf('已下载文件 FTT记忆_') >= 0;
+        // ② 文件选择器桩：点击即注入一个存档文件
+        let fileInput = null;
+        doc.createElement = (tag) => {
+            const el = {
+                tagName: String(tag).toUpperCase(), style: {}, files: null, accept: '', type: '',
+                click() {
+                    if (this.type === 'file') { this.files = [{ name: '冒烟存档.json', size: 40, text: async () => JSON.stringify({ state: { atoms: [{ id: 'smoke-imp-1', text: '导入的情节正文。', date: '1919-11-20', floorStart: 1, floorEnd: 1 }] } }) }]; if (typeof this.onchange === 'function') this.onchange(); }
+                    else clicks.push(this);
+                },
+                remove() { this.removed = true; },
+                dataset: {}, listeners: {},
+            };
+            if (String(tag).toLowerCase() === 'input') fileInput = el;
+            created.push(el);
+            return el;
+        };
+        await fire({ fttAction: 'importStateOpen' });
+        await new Promise((r) => setTimeout(r, 30));
+        const noteImport = String((panelState() || {}).note || '');
+        const importOk = !!fileInput && fileInput.type === 'file' && String(fileInput.accept || '').indexOf('.json') >= 0
+            && noteImport.indexOf('已导入文件 冒烟存档.json') >= 0;
+        return downloadOk && importOk;
+    } finally {
+        doc.createElement = saveCreate;
+        if (saveURL === undefined) delete globalThis.URL; else globalThis.URL = saveURL;
+        if (saveBlob === undefined) delete globalThis.Blob; else globalThis.Blob = saveBlob;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
