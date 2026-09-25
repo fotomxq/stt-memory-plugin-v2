@@ -912,7 +912,9 @@ await assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜
     // 剧情天数取内核当前值（P4 的「▶第9天」解析结果）；原先硬编码 17602 是「未 await → 与 P4 并发」时读到的 P1/P2 旧值
     const sd = Number((rtMod.state.state || {}).storyDay) || 0;
     return html.indexOf('data-ftt-clock-src') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
-        && sd > 0 && html.indexOf('📆 剧情第 ' + sd + ' 天') >= 0 && typeof globalThis.FTT.clockScene === 'function';
+        // v2.48.0：剧情第 N 天**只用于插件内校准**（不注入）→ 总览展示带「校准用 · 不注入」标注
+        && sd > 0 && html.indexOf('📆 校准用：剧情第 ' + sd + ' 天') >= 0
+        && html.indexOf('仅用于日期换算，不注入') >= 0 && typeof globalThis.FTT.clockScene === 'function';
 })(), '');
 
 // ---------- Q 时钟域 AI 管线（B8-3：AI 捕捉正则 + AI 结合正文修复） ----------
@@ -3720,6 +3722,29 @@ await assert('AW1 v2.47.0 大类列表内容与顺序：情节行含 V1 的类�
         RT3.state.scenes = saveScenes;
         RT3.state.state = saveState0;
         RT3.state.atoms = saveAtoms;
+    }
+})(), '');
+
+await assert('AX1 v2.48.0「剧情第 N 天不允许注入」：真实注入通道里只有 日期/时间/地点/在场角色，**没有任何「第N天」**；该值仍留在内部（state.state.storyDay）用于校准', (async () => {
+    const RT4 = await import('../core/model/runtime.js');
+    const saveState1 = RT4.state.state;
+    const saveAtoms1 = RT4.state.atoms;
+    try {
+        RT4.state.atoms = [{ id: 'ax-a1', text: '甲把铜箱交给乙。', date: '1919-11-20', type: '主线', floorStart: 1, floorEnd: 2, uses: 1, tags: ['码头'] }];
+        RT4.state.state = Object.assign({}, saveState1, { date: '1919-11-25', time: '傍晚', location: '城市甲·码头', present: ['甲'], storyDay: 17602 });
+        await entry.injectNow();
+        await new Promise((r) => setTimeout(r, 20));
+        const val = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
+        const body = val.slice(0, val.indexOf('记忆结束。') >= 0 ? val.indexOf('记忆结束。') : val.length);
+        const noStoryDay = body.indexOf('剧情天数') < 0 && !/第\s*\d+\s*天/.test(body);
+        const keepsOthers = body.indexOf('日期:1919-11-25') >= 0 && body.indexOf('时间:傍晚') >= 0
+            && body.indexOf('地点:城市甲·码头') >= 0 && body.indexOf('在场角色') >= 0;
+        // 内部值仍在（校准用途不受影响）
+        const internal = Number(RT4.state.state.storyDay) === 17602;
+        return noStoryDay && keepsOthers && internal;
+    } finally {
+        RT4.state.atoms = saveAtoms1;
+        RT4.state.state = saveState1;
     }
 })(), '');
 

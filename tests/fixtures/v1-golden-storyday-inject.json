@@ -1,0 +1,60 @@
+{
+ "meta": {
+  "v1Version": "v1.206",
+  "generatedBy": "tests/fixtures/gen-v1-golden-storyday-inject.cjs",
+  "note": "V1 把「剧情天数:第N天」写进注入体的 [当前状态] 块（用户明确要求**不允许注入**：该值只在插件内做时间校准）。V2 v2.48.0 已移除，本样本用于断言差异（V1 故障明确修正 #6）。",
+  "storyDay": 500,
+  "epoch": "1919-11-01"
+ },
+ "A": {
+  "bodyHasStoryDay": true,
+  "storyDayLine": "剧情天数:第500天",
+  "stateLines": [
+   "日期:1919-11-25",
+   "时间:傍晚",
+   "剧情天数:第500天",
+   "地点:城市甲·码头"
+  ],
+  "bodyHead": [
+   "[当前状态]",
+   "日期:1919-11-25",
+   "时间:傍晚",
+   "剧情天数:第500天",
+   "地点:城市甲·码头",
+   "",
+   "[情节记忆]",
+   "- [1919-11-20（5天前）]甲把铜箱交给乙。"
+  ]
+ },
+ "B": {
+  "header": "▶第 500 天 08:52->09:05(赶路)",
+  "storyDay": 500,
+  "date": null,
+  "time": "08:52",
+  "timeEnd": "09:05",
+  "source": {
+   "date": "",
+   "time": "header",
+   "location": "",
+   "present": "keep-prev"
+  },
+  "note": "未设纪元首日（默认留空）→ 只记录天数、不换算日期"
+ },
+ "C": {
+  "epoch": "1919-11-01",
+  "storyDay": 500,
+  "date": "1921-03-14",
+  "source": {
+   "date": "storyday",
+   "time": "header",
+   "location": "",
+   "present": "keep-prev"
+  },
+  "note": "纪元首日 + (N-1) 天 → 日期（这正是该设定的用途：插件内校准，不注入）"
+ },
+ "D": {
+  "date": "1919-11-29",
+  "location": "码头仓库",
+  "storyDay": 0
+ }
+}

@@ -206,7 +206,9 @@ await A('U1 总览时钟区：自动提取后显示 日期/时间/地点 + 时�
     const html2 = panelBodyHtml('overview');
     return degraded && html2.indexOf('🕒 时钟来源：') >= 0
         && html2.indexOf('📅 日期：' + G.resolve[0].out.date) >= 0
-        && html2.indexOf('东汉建武二十七年') >= 0 && html2.indexOf('📆 剧情第 17602 天') >= 0
+        // v2.48.0：该值只用于**插件内校准时间**，总览展示时明确标注「校准用 · 不注入」
+        && html2.indexOf('东汉建武二十七年') >= 0 && html2.indexOf('📆 校准用：剧情第 17602 天') >= 0
+        && html2.indexOf('仅用于日期换算，不注入') >= 0
         && html2.indexOf('09:00 → 09:05') >= 0 && html2.indexOf('📍 地点：' + G.resolve[0].out.location) >= 0;
 }, '');
 
