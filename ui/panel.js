@@ -1962,7 +1962,11 @@ export function bindOverlay() {
                 if (tg === el) void panelAction('close', {});
                 return;
             }
-            const kind = ds.kind || '';
+            // v2.45.0 修复（用户报告「＋黑名单按钮功能」）：`kind` 必须兼容 **`data-ftt-kind`** ——
+            //   投喂标签「＋白/＋黑」与调试页时间线类别筛选按钮用的都是 V1 同款 `data-ftt-kind`，
+            //   而这里此前只读 `data-kind` → `kind` 恒为空串 → 点「＋黑」被 `feedScanAction` 归一为 `white`
+            //   （**实际加进了白名单**）、点类别筛选恒为「全部」（点了没反应）。V1 的 `rxAddTag` 直接读 `ds.fttKind`。
+            const kind = ds.kind || ds.fttKind || '';
             const id = ds.id || '';
             const floor = ds.fttFloor || '';
             const subject = ds.fttSubject || '';

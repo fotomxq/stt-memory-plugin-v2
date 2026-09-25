@@ -29,6 +29,7 @@ import {
     collectFloorLinesInRange, clearProcessedFloors,
 } from './floors.js';
 import { applyFeedRegex } from '../core/prompt.js';
+import { cleanText } from '../core/html-text.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
@@ -271,7 +272,8 @@ export async function analyzeSegment(start, end, opts) {
     const t0 = Date.now();
     extractState.activeSeg = { start: s0, end: e0 };
     try {
-        const text = String(applyFeedRegex(collectFloorLinesInRange(s0, e0).join('\n')) || '').trim();
+        // v2.44.0：先按投喂标签过滤（需标签），再去 HTML 交 AI（顺序不可颠倒，见 host/floors.js 头注）
+        const text = String(cleanText(applyFeedRegex(collectFloorLinesInRange(s0, e0).join('\n'))) || '').trim();
         if (!text) { recordProcessedFloors(s0, e0); return { ok: true, empty: true, added: 0, floorStart: s0, floorEnd: e0 }; }
         const gen = o.ai || rawGenerate;
         if (!o.ai && !generationAvailability().generateRaw) return { ok: false, reason: 'no-generate', floorStart: s0, floorEnd: e0 };

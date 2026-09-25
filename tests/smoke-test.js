@@ -3615,6 +3615,56 @@ await assert('AU1 v2.44.0 HTML 标签不污染数据：真实宿主楼层正文�
     }
 })(), '');
 
+await assert('AV1 v2.45.0 投喂白/黑名单按钮与联动修复：真实点击「＋黑」**进黑名单**（此前因 `kind` 读错属性被归一为白名单）；点完后下一次投喂立即生效（白名单只留标签内部内容）；调试页时间线类别筛选按钮同样生效', (async () => {
+    const FS = await import('../ui/feed-scan.js');
+    const FL = await import('../host/floors.js');
+    const DBG = await import('../ui/debug.js');
+    const RT2 = await import('../core/model/runtime.js');
+    const cfgRef = RT2.cfg;
+    const saveChat = host.ctx.chat;
+    try {
+        host.ctx.chat = [
+            { is_user: true, mes: '用户：继续。<br>' },
+            { is_user: false, mes: '<content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。' },
+        ];
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'feed' });
+        const el = doc.getElementById('ftt-panel');
+        const click = (el && el.listeners && el.listeners.click) || [];
+        const fire = (dataset) => {
+            const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+            click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+            return new Promise((r) => setTimeout(r, 0));
+        };
+        // 先清名单 → 分析 → 点「＋黑 system」与「＋白 content」
+        cfgRef.feedRegexBlacklist = []; cfgRef.feedRegexWhitelist = [];
+        await fire({ fttAction: 'rxScanTags' });
+        await fire({ fttAction: 'rxAddTag', fttKind: 'black', fttTag: 'system' });
+        const bl = FS.rxFeedTagLists().black;
+        await fire({ fttAction: 'rxAddTag', fttKind: 'white', fttTag: 'content' });
+        const wl = FS.rxFeedTagLists().white;
+        const feed = String(FL.buildFeedFloorText(10));
+        // 调试页：真实点击类别筛选按钮（此前 kind 恒空 → 恒为「全部」，点了没反应）
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const dbgBtn = { dataset: { fttAction: 'dbgTraceFilter', fttKind: 'host' }, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? dbgBtn : null) };
+        click.forEach((fn) => fn({ target: dbgBtn, preventDefault() { }, stopPropagation() { } }));
+        await new Promise((r) => setTimeout(r, 10));
+        const dbgHtml = String(panelBodyHtml('settings') || '');
+        // 生效判据：该类别按钮变为高亮（`ftt-primary`），且调试页仍渲染时间线区块
+        const filter = dbgHtml.indexOf('data-ftt-kind="host" title="只看该类别"') >= 0
+            && /data-ftt-kind="host"[^>]*class="ftt-btn ftt-sm ftt-primary"|class="ftt-btn ftt-sm ftt-primary"[^>]*data-ftt-kind="host"/.test(dbgHtml) ? 'host' : '';
+        const filtered = dbgHtml.indexOf('dbgTraceFilter') >= 0;
+        void DBG;
+        cfgRef.feedRegexBlacklist = []; cfgRef.feedRegexWhitelist = [];
+        return JSON.stringify(bl) === JSON.stringify(['system']) && JSON.stringify(wl) === JSON.stringify(['content'])
+            && feed === '甲走进仓库。' && filter === 'host' && filtered;
+    } finally {
+        host.ctx.chat = saveChat;
+        try { cfgRef.feedRegexBlacklist = []; cfgRef.feedRegexWhitelist = []; } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

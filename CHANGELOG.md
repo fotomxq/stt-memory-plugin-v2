@@ -3,6 +3,39 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.45.0（2026-09-26）· 投喂白/黑名单的按钮与「联动生效」修复
+
+**用户报告**：「投喂标签自动分析存在BUG，请核对加入白名单、黑名单的按钮功能，以及是否联动生效等细节。」
+
+**核对结论：按钮本身（`rxPushFeedTag`）与 V1 逐字一致，问题在另外两处 —— 都是真缺陷：**
+
+**① 过滤与去标签的顺序颠倒了**（**v2.44.0 自身回归**）：v2.44.0「HTML 标签不得污染数据」把去标签放在
+`applyFeedRegex` **之前**（`collectFloorLinesInRange` 直接清洗）→ 白名单「按标签名提取 `<content>…</content>`」
+与黑名单「按行匹配标签」**永远匹配不到** → 点「＋白 / ＋黑」后投喂文本与不过滤**一模一样**（这正是用户说的
+「不联动生效」）。修复：**取文保留标签 → 标签过滤 → 去标签 → 交 AI**（`host/floors.js` 的
+`buildFeedFloorText`/`buildFeedFloorTextRange`/`floorAnalyzableText` 与 `host/extract.js` 分段摘要；
+`applyFeedRegex` 本身未动，保持 V1 逐字）。楼层哈希仍取原始正文 → 既有「已处理台账」不失效。
+
+**② 委托读错属性名**：点击委托的 `kind` 只读 `data-kind`，而「＋白 / ＋黑」与调试页时间线「类别筛选」
+用的是 **V1 同款 `data-ftt-kind`**（V1 的 `rxAddTag` 直接读 `ds.fttKind`，v1.206 27095）→
+`kind` 恒为空串 → 点「＋黑」被 `feedScanAction` 归一为 `white`，**标签实际加进了白名单**；
+调试页类别筛选恒为「全部」（点了没反应）。修复：`const kind = ds.kind || ds.fttKind || '';`。
+
+**③ 门禁补齐（都做过反向验证 —— 临时回退修复即失败）**：
+- 新增 `tests/unit/feed-tag-link.test.js`（18 断言，G/L/B/T/E 组）+ oracle 样本
+  `tests/fixtures/v1-golden-feed-filter.json`（生成器 `gen-v1-golden-feed-filter.cjs`，V1 v1.206，两次运行逐字节一致）；
+- `panel-audit` 新增 **L8**（属性→入参**静态审计**：16 项参数属性必须在点击委托段被读成同名 dataset 键，
+  `kind` 只认派生那一行；审计前先剥注释，否则注释里提到 `ds.fttKind` 会假绿）与 **L9**（真实点击端到端）；
+- `html-pollution.test.js` B 组契约改写（原始行保留标签 / 交 AI 文本无标签 / 加名单后立即生效）+ 冒烟 **AV1**。
+
+**④ 升级提示（如实告知）**：修复前点「＋黑」会写进**白名单**，历史误写的标签**不会自动搬迁**（不擅自改用户配置），
+可在「投喂白名单标签」文本域删掉对应行。
+
+**⑤ 已知 V1 怪癖原样保留**（未顺手修正，见 `docs/P10j` §5）：白名单对非成对标签（如 `<br>`）无效、
+标签名必须无属性（`<content type=…>` 不匹配）——两者都会回退到「行内包含」语义，V1 同此。
+
+合计单元 **70 文件 / 1134 断言**、冒烟 **160 项**，全绿。
+
 ## v2.44.0（2026-09-26）· 正文 HTML 标签清洗（`<br>` 不得污染数据）· 修正 V1 缺陷 #5
 
 **用户报告**：「地点捕捉把 `<br>` 这种 HTML 标签也捕捉进来了，应自动舍弃 HTML Tag 标签，避免污染数据。」

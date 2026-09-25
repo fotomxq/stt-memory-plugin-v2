@@ -121,6 +121,22 @@
 ========== V2 冒烟：127 通过, 0 失败 ==========
 ```
 
+## 5.1 后续修复（v2.45.0，详见 `docs/P10j`）
+
+用户报告「投喂标签自动分析存在BUG」，核对后确认**两处真缺陷**（都不在 `rxPushFeedTag` 本身）：
+
+1. **过滤与去标签顺序颠倒**（v2.44.0 引入）：去标签被放在了 `applyFeedRegex` **之前** → 白名单按标签名提取
+   与黑名单按行匹配标签**永远不命中** → 点「＋白 / ＋黑」后投喂文本与不过滤一样（不联动生效）。
+   现改为「取文保留标签 → 过滤 → 去标签 → 交 AI」。
+2. **委托读错属性名**（`kind` 只读 `data-kind`，而按钮用 V1 同款 `data-ftt-kind`）→ 点「＋黑」被归一为
+   「＋白」（标签实际加进白名单）；调试页时间线「类别筛选」按钮恒为「全部」。
+   现为 `const kind = ds.kind || ds.fttKind || ''`（回到 V1 `ds.fttKind` 口径）。
+
+新增门禁：`tests/unit/feed-tag-link.test.js`（18 断言，含 V1 oracle `v1-golden-feed-filter.json`）、
+`panel-audit` **L8**（属性→入参静态审计，16 项参数属性）/ **L9**（真实点击端到端）、冒烟 **AV1**。
+
+---
+
 ## 5. 未实现项 / 遗留
 
 1. **V1 设定页「投喂世界书」节未实现**（V1 25528–25530：`<div data-ftt-wb-list>` 与 `renderWorldbookSettings()` 的世界书勾选/条目树）。该节属设定页**世界书投喂**能力，与本批（标签扫描/收录）无耦合；V2 侧 `cfg.feedWorldbooks` / `feedWorldbookEntries` 键存在但无界面与投喂读取，**按「不使用假实现」原则不放假控件**，留给后续批次（需先落 `renderWorldbookSettings` 等价内核）。

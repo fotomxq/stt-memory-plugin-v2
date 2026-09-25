@@ -9,8 +9,10 @@ import { hashText } from '../core/util.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { state, cfg, saveState, log, warn } from '../core/model/runtime.js';
 import { getCtx } from './st-api.js';
-// v2.44.0（用户报告）：投喂/时钟/修复取文统一剔 HTML 标签；**楼层哈希仍用原始稳定正文**（`floorStableText`），
-//   因此既有「已处理楼层」台账不会因本次清洗而整体失效（避免一次无谓的全量重提取）
+// v2.44.0（用户报告）：取文**保留 HTML**、在「过滤之后、交给 AI 之前」才剔标签 —— 顺序不可颠倒：
+//   投喂白名单是**按标签名提取 `<content>…</content>`**（`core/prompt.js#applyFeedRegex`），
+//   若在过滤前就把标签删掉，白/黑名单会永远匹配不到（v2.44.0 首版即为该缺陷，见 docs/P10j）。
+//   另：**楼层哈希仍用原始稳定正文**（`floorStableText`），既有「已处理楼层」台账不会失效。
 import { cleanText } from '../core/html-text.js';
 
 /** V1 台账版本与哈希自检签名（签名 = hashText(固定样本)，故与 V1 逐字符同值） */
@@ -59,7 +61,11 @@ function roleOf(m) {
     return 'AI';
 }
 
-/** 区间楼层原始行（V1 `collectFloorLinesInRange` 逐字：含 `[第N楼 角色]` 前缀、跳过隐藏楼） */
+/**
+ * 区间楼层原始行（V1 `collectFloorLinesInRange` 逐字：含 `[第N楼 角色]` 前缀、跳过隐藏楼）。
+ * **返回原始正文（含 HTML 标签）**：投喂白名单要按标签名提取 `<content>…</content>`，
+ *   故去标签只能发生在 `applyFeedRegex` **之后**（见 `buildFeedFloorText` / `floorAnalyzableText`）。
+ */
 export function collectFloorLinesInRange(start, end, opts) {
     const floors = [];
     const aiOnly = !!(opts && opts.aiOnly);
@@ -68,7 +74,7 @@ export function collectFloorLinesInRange(start, end, opts) {
             const m = floorMessage(i);
             if (!m || m.is_hidden) continue;
             if (aiOnly && (m.is_user || (m.role && m.role !== 'assistant'))) continue;
-            const text = cleanText(assistantTextOf(m));   // v2.44.0：投喂文本剔除 HTML（`<br>` → 换行）
+            const text = assistantTextOf(m);   // **保留 HTML**：投喂白/黑名单按标签名过滤需要原始标签
             if (!text) continue;
             floors.push(`[第${i}楼 ${roleOf(m)}] ${text}`);
         }
@@ -86,9 +92,13 @@ export function collectFloorLines(maxFloors) {
     } catch (e) { return []; }
 }
 
-/** 投喂文本（V1 `buildFeedFloorText`）：最近 N 楼原始行 → 投喂正则过滤（时钟/修复类管线共用） */
+/**
+ * 投喂文本（V1 `buildFeedFloorText`）：最近 N 楼原始行 → **投喂标签过滤（此时标签仍在）** → 去 HTML 交 AI。
+ * 顺序不可颠倒：白名单走 `<tag>…</tag>` 提取、黑名单按行匹配标签，必须在去标签**之前**；
+ *   去标签则保证 AI 提示词与后续落库不含 `<br>`/`<div>`（v2.44.0 用户报告）。
+ */
 export function buildFeedFloorText(maxFloors) {
-    try { return applyFeedRegex(collectFloorLines(maxFloors).join('\n')); } catch (e) { warn('楼层投喂构建失败', e); return ''; }
+    try { return cleanText(applyFeedRegex(collectFloorLines(maxFloors).join('\n'))); } catch (e) { warn('楼层投喂构建失败', e); return ''; }
 }
 /** 指定结束楼层的投喂文本（V1 `buildFeedFloorTextRange`：摘要用于排除生成中的最近楼） */
 export function buildFeedFloorTextRange(maxFloors, endFloor, opts) {
@@ -96,7 +106,7 @@ export function buildFeedFloorTextRange(maxFloors, endFloor, opts) {
         const end = Number(endFloor);
         const validEnd = Number.isInteger(end) && end >= 0 ? end : Math.max(0, (getCtx() && Array.isArray(getCtx().chat) ? getCtx().chat.length : 1) - 1);
         const n = Math.max(1, Number(maxFloors) || 10);
-        return applyFeedRegex(collectFloorLinesInRange(Math.max(0, validEnd - n + 1), validEnd, opts).join('\n'));
+        return cleanText(applyFeedRegex(collectFloorLinesInRange(Math.max(0, validEnd - n + 1), validEnd, opts).join('\n')));
     } catch (e) { warn('楼层投喂构建失败', e); return ''; }
 }
 
@@ -105,7 +115,8 @@ export function floorAnalyzableText(i) {
     try {
         const f = Number(i);
         if (!Number.isFinite(f) || f < 0) return '';
-        const raw = String(applyFeedRegex(collectFloorLinesInRange(f, f).join('\n')) || '').trim();
+        // 同样「先按标签过滤、再去标签」：过滤需要标签，投喂给 AI 的文本不能带标签
+        const raw = String(cleanText(applyFeedRegex(collectFloorLinesInRange(f, f).join('\n'))) || '').trim();
         if (!raw) return '';
         const body = raw.replace(/^\[第\d+楼[^\]]*\]\s*/, '').trim();
         if (!body || /^(?:\.{2,}|…+|—+|-+|·+)$/.test(body)) return '';
