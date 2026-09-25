@@ -3683,6 +3683,46 @@ await assert('AV1 v2.45.0 投喂白/黑名单按钮与联动修复：真实点�
     }
 })(), '');
 
+await assert('AW1 v2.47.0 大类列表内容与顺序：情节行含 V1 的类型/楼层/重要度/标签；计划行含进度与目标时间；场景页为**聚合树**（虚节点 + 📍 当前位置高亮 + 折叠按钮真实可用）', (async () => {
+    const RT3 = await import('../core/model/runtime.js');
+    const saveScenes = RT3.state.scenes;
+    const saveState0 = RT3.state.state;
+    const saveAtoms = RT3.state.atoms;
+    try {
+        RT3.state.state = Object.assign({}, saveState0, { date: '1919-11-25', location: '城市甲·码头' });
+        RT3.state.atoms = [
+            { id: 'aw-a1', title: '码头交货', text: '甲把铜箱交给乙。', type: '主线', date: '1919-11-20', floorStart: 3, floorEnd: 5, uses: 2, tags: ['码头'], validity: 'active', locations: ['城市甲·码头'] },
+        ];
+        RT3.state.scenes = [
+            { id: 'aw-sc1', name: '码头', pathArr: ['城市甲', '码头'], desc: '水汽很重。', tags: ['水边'], uses: 2, pathStr: '城市甲>码头' },
+            { id: 'aw-sc2', name: '里屋', pathArr: ['城市甲', '码头', '里屋'], desc: '有铜箱。', tags: [], uses: 1, pathStr: '城市甲>码头>里屋' },
+        ];
+        await entry.popupAction('tab', { tab: 'atoms' });
+        const atoms = String(panelBodyHtml('atoms') || '');
+        const atomsOk = atoms.indexOf('· 主线 · ') >= 0 && atoms.indexOf('3-5楼') >= 0 && atoms.indexOf('重要度24%') >= 0
+            && atoms.indexOf('#码头') >= 0 && atoms.indexOf('城市甲·码头') >= 0;
+        await entry.popupAction('tab', { tab: 'scenes' });
+        const tree = String(panelBodyHtml('scenes') || '');
+        const treeOk = tree.indexOf('data-ftt-scene-node="城市甲') >= 0
+            && tree.indexOf('data-ftt-scene-node="城市甲&gt;码头"') >= 0
+            && tree.indexOf('data-ftt-scene-node="城市甲&gt;码头&gt;里屋"') >= 0
+            && tree.indexOf('📍 当前：城市甲·码头（亮色分支 = 当前位置）') >= 0
+            && tree.indexOf('📍 当前</span>') >= 0 && tree.indexOf('class="ftt-scene-children"') >= 0;
+        // 折叠：真实点击 caret → 子树 display 切为 none、三角变 ▸（纯 DOM，不重绘）
+        const el = doc.getElementById('ftt-panel');
+        const click = (el && el.listeners && el.listeners.click) || [];
+        const caret = { textContent: '▾', dataset: { fttSceneCaret: '1', fttSceneCaretFor: '城市甲>码头' }, closest: () => null, tagName: 'SPAN' };
+        click.forEach((fn) => fn({ target: caret, preventDefault() { }, stopPropagation() { } }));
+        const box = el.querySelector('[data-ftt-scene-children="城市甲>码头"]');
+        const foldOk = !!box && box.style.display === 'none' && caret.textContent === '▸';
+        return atomsOk && treeOk && foldOk;
+    } finally {
+        RT3.state.scenes = saveScenes;
+        RT3.state.state = saveState0;
+        RT3.state.atoms = saveAtoms;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

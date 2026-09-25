@@ -13,7 +13,7 @@
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
 import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/model/runtime.js';
-import { consoleList, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
+import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
@@ -49,6 +49,12 @@ import { debugAction, DEBUG_ACTIONS } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 // B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
 import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
+import { sortRecentByStoryDate } from '../core/clock.js';
+// v2.47.0：场景页 = V1 的**聚合树**（虚节点 + 当前位置高亮 + 折叠），此前 V2 是平铺列表
+import { scenesTreeHtml } from './scene-tree.js';
+// v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
+//   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter } from './list-rows.js';
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
@@ -153,9 +159,22 @@ function dataKindOf(kind) { return kind === 'states' ? 'currentStates' : String(
 function selOf(kind) { if (!ps.sel[kind]) ps.sel[kind] = new Set(); return ps.sel[kind]; }
 /** 当前列表（含隐藏过滤） */
 function listOf(kind, q, limit) {
-    const base = consoleList(dataKindOf(kind), q === undefined ? (ps.q[kind] || '') : q, limit);
-    if (kind !== 'atoms' || ps.showHidden) return base;
-    try { return base.filter((x) => !atomIsHidden(x)); } catch (e) { return base; }
+    // v2.47.0：排序与可见范围对齐 V1 ——
+    //   ① `sortRecent`（剧情日期倒序 → floorEnd 倒序；V1 `sortRecent` 逐字，见 core/clock.js）；
+    //   ② 情节：隐藏已总结项（在排序/截断**之前**过滤，V1 `atomShowHidden ? state.atoms : activeAtoms()`）；
+    //   ③ 计划/悬念：只列 `status === 'open'`（V1 `plansHtml` 的 `openPlansAll/openSuspAll`）。
+    const dataKind = dataKindOf(kind);
+    const statusWant = listStatusFilter(kind);
+    let base = arrOf(dataKind);
+    if (kind === 'atoms' && !ps.showHidden) {
+        try { base = base.filter((x) => !atomIsHidden(x)); } catch (e) { /* 忽略 */ }
+    }
+    if (statusWant) base = base.filter((x) => String((x && x.status) || 'open') === statusWant);
+    try { base = sortRecentByStoryDate(base); } catch (e) { base = base.slice().reverse(); }
+    const needle = q === undefined ? (ps.q[kind] || '') : q;
+    const matched = base.filter((x) => entryMatches(x, needle));
+    const n = Number(limit) > 0 ? Number(limit) : matched.length;
+    return matched.slice(0, n);
 }
 function hiddenCount() { try { return arrOf('atoms').filter((x) => atomIsHidden(x)).length; } catch (e) { return 0; } }
 export function panelInfo() {
@@ -654,6 +673,9 @@ function dimBodyList(kind) {
     const ed = ps.editing && ps.editing.kind === kind
         ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '', { editor: true }) : ''))
         : '';
+    // 场景页（V1 `scenesHtml()`）：**聚合树**（虚节点 / 当前位置高亮 / 折叠），不是平铺列表；
+    //   树自带统计/搜索/工具条（含 ➕ 添加顶层场景、🔧 修复结构），编辑器仍由面板侧提供。
+    if (kind === 'scenes') return bars + ed + scenesTreeHtml({ q: q, multi: multi, sel: sel });
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
     // B8-7-b：平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 topBar；空库时同样显示）
     const ptb = (kind === 'parallels') ? parallelTopBar() : '';
@@ -664,23 +686,20 @@ function dimBodyList(kind) {
     if (!list.length) return (REL_TABDS[kind] ? subViewHtml(kind) : '') + curTop + toolbar + curPick + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     const rows = list.map((e) => {
         const id = String(e.id || '');
-        // v2.39.0（对齐 V1 v1.170 / v1.206 24508）：**现实墙钟只允许在 UI 里以「现实更新 …」出现**，
-        //   绝不与 📅 剧情日期混同（现实时间不是剧情时间）；仅平行等条目带 epoch 毫秒 `updatedAt`。
-        const wall = (() => {
-            const n = Number(e.updatedAt);
-            if (!(Number.isFinite(n) && n > 1e12)) return '';      // 剧情日期字符串（如 1919-11-20）→ 不是墙钟
-            try { return '现实更新 ' + new Date(n).toLocaleString(); } catch (x) { return '现实更新'; }
-        })();
-        const meta = [e.date || e.seenDate || '', Number(e.uses) ? '调用 ' + e.uses + ' 次' : '', e.who || e.owner || e.subject || '', wall].filter(Boolean).join(' · ');
+        // v2.47.0（用户报告）：行正文按 **V1 各维度行渲染器**的字段集合与顺序输出（见 ui/list-rows.js）。
+        //   情节/记忆/角色/物品/货币/传言/计划/悬念/概念/平行 各用各自的行；现实墙钟仅以「现实更新 …」出现
+        //   （由 parallels 行与内存行内统一处理，绝不与 📅 剧情日期混同）。
         const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
         const box = multi ? ('<input type="checkbox" data-ftt-select="' + attr(kind) + '" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
         const par = (kind === 'parallels') ? parallelRowBits(e) : null;
+        // 平行行的「相关角色 / 转正」备注在 V1 属**行内第 8 行** → 已并入 `listRowMainHtml('parallels')`，
+        //   此处不再重复输出（`par.ops` 仍提供 🚀/⬆ 操作按钮）。
+        // 记忆/平行/计划/悬念的「🔗 关联」已由 `listRowMainHtml` 按 **V1 行内位置**输出，此处不重复
+        const relJump = '';
         return '<div class="ftt-item ftt-inline">' + box
-            + '<span class="ftt-grow"><b>' + esc(entrySummary(e)) + '</b>' + (meta ? ' <span class="ftt-muted">' + esc(meta) + '</span>' : '') + (hidden ? ' <span class="ftt-badge">已总结</span>' : '') + (par ? par.note : '')
-            + (REL_TABDS[kind] ? (' ' + relJumpBtn(kind, e)) : '') + '</span>'
-            + (par ? par.ops : '')
-            + peekBtn
+            + '<span class="ftt-grow">' + listRowMainHtml(kind, e) + relJump + '</span>'
+            + (par ? par.ops : '') + peekBtn
             + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
             + '</div>';
@@ -820,11 +839,13 @@ function statesBody() {
         + '<span class="ftt-muted">共 ' + arrOf('currentStates').length + ' 条</span></div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
     if (!groups.size) return head + ed + '<div class="ftt-empty">（暂无状态记录）</div>';
-    const blocks = Array.from(groups.entries()).map(([subj, items]) => {
+    const blocks = Array.from(groups.entries()).map(([subj, items0]) => {
+        // V1：组内按 `floorEnd` 倒序（V1 `statesHtml` 的 `groups[subj].slice().sort(...)`）
+        const items = items0.slice().sort((a, b) => (Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0));
         const rows = items.map((e) => {
             const id = String(e.id || '');
-            return '<div class="ftt-item ftt-inline"><span class="ftt-grow"><b>' + esc(String(e.field || '')) + '</b>：' + esc(String(e.value || ''))
-                + (e.date ? ' <span class="ftt-muted">' + esc(e.date) + '</span>' : '') + '</span>'
+            // v2.47.0：状态行按 V1 `statesHtml()` —— `字段：值` + `调用N次 · 更新 日期 时间`（此前只有日期）
+            return '<div class="ftt-item ftt-inline"><span class="ftt-grow">' + stateRowMainHtml(e) + '</span>'
                 + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '">✏️</button>'
                 + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '">🗑</button></div>';
         }).join('\n');
@@ -1942,6 +1963,23 @@ export function bindOverlay() {
                 const hit = tg && tg.closest ? tg.closest('button, a, [data-ftt-action]') : null;
                 if (hit) { if (typeof e.preventDefault === 'function') e.preventDefault(); if (typeof e.stopPropagation === 'function') e.stopPropagation(); }
             } catch (err) { /* 忽略 */ }
+            // 场景树折叠（V1 v1.206 26185 同款）：点 `▾` 纯 DOM 收起/展开其子树，**不触发重绘**
+            try {
+                const caret = (tg && tg.dataset && tg.dataset.fttSceneCaret !== undefined) ? tg
+                    : ((tg && tg.closest) ? tg.closest('[data-ftt-scene-caret]') : null);
+                if (caret && caret.dataset) {
+                    const forPath = String(caret.dataset.fttSceneCaretFor || '');
+                    const box = (el && typeof el.querySelector === 'function') ? el.querySelector('[data-ftt-scene-children="' + forPath + '"]') : null;
+                    if (box && box.style) {
+                        const hidden = box.style.display === 'none';
+                        box.style.display = hidden ? '' : 'none';
+                        try { caret.textContent = hidden ? '▾' : '▸'; } catch (e2) { /* 忽略 */ }
+                    }
+                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                    return;
+                }
+            } catch (err) { /* 折叠失败不影响其它交互 */ }
             const tabEl = tg && tg.closest ? tg.closest('[data-ftt-tab]') : null;
             if (tabEl) { void panelAction('tab', { tab: tabEl.getAttribute('data-ftt-tab') }); return; }
             // 动作元素解析：点在内层元素（如按钮里的 <span>/<b>）时回退到最近的 `[data-ftt-action]` 宿主

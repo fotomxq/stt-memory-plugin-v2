@@ -27,6 +27,21 @@ function makeEl(id) {
         removeChild() { return true; },
         parentNode: { removeChild() { return true; } },
         dispatch(type) { for (const fn of (this.listeners[type] || [])) fn(); },
+        // v2.47.0：最小 `querySelector` —— 只支持 `[attr="value"]` 形态（场景树折叠用它找子树容器）。
+        //   **不是**完整 DOM：命中后返回一个稳定的伪节点（带 `style.display` / `textContent` / `dataset`），
+        //   足以断言「折叠按钮切了显示态」这类纯 DOM 行为。
+        querySelector(sel) {
+            const m = /^\[([a-zA-Z0-9_-]+)="([^"]*)"\]$/.exec(String(sel == null ? '' : sel));
+            if (!m) return null;
+            const attr = m[1];
+            // 属性值在 HTML 里是**实体转义**的（`>` → `&gt;`），而 CSS 选择器比的是解码值 —— 两种都试
+            const escHtmlVal = m[2].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const rx = (v) => new RegExp(attr + '="' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"');
+            if (!rx(m[2]).test(String(this.html || '')) && !rx(escHtmlVal).test(String(this.html || ''))) return null;
+            if (!this.__qs) this.__qs = {};
+            if (!this.__qs[sel]) this.__qs[sel] = { style: { display: '' }, textContent: '', dataset: {}, id: '' };
+            return this.__qs[sel];
+        },
     };
     el.style.owner = el;
     return el;
