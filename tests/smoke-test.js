@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { makeHost, makeDocument, installGlobalHost, installGlobalFetch } from './harness/st-mock.js';
 import { VERSION, MODULE_NAME, INJECT_ID } from '../core/constants.js';
 import { readUpdateState } from '../adapters/update-state.js';
-import { panelState, panelBodyHtml, setPanelHooks2 } from '../ui/panel.js';   // v2.34.0：子标签点击/异常区断言用
+import { panelState, panelBodyHtml, setPanelHooks2 } from '../ui/panel.js';
+import * as fttPanelMod from '../ui/panel.js';   // v2.38.0：按钮 type 加固 / 滚动保持断言用（避免与既有 panelMod 重名）   // v2.34.0：子标签点击/异常区断言用
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
@@ -3120,6 +3121,85 @@ await assert('AN2 无改动时不写提取日志（避免噪声），但取值�
         && html.indexOf('🕒 时钟取值追踪') >= 0 && html.indexOf('clockTraceClear') >= 0
         && section.indexOf('自动解析（日期/时间/地点/在场）') >= 0 && section.indexOf('值 ← 来源') >= 0
         && section.indexOf('未采用的候选') >= 0 && afterClear.indexOf('暂无记录') >= 0 && cleared === true;
+})(), '');
+
+// ---------- AO 点击不跳顶（v2.38.0：滚动保持 + 按钮 type + 点击入口防默认） ----------
+await assert('AO1 面板 HTML 的按钮全部带 `type="button"`（对齐 V1 v1.206 26525：无 type 的按钮在 form 内是 submit → 跳顶/刷新）', (() => {
+    const PM = fttPanelMod;
+    const raw = String(PM.panelHtml());
+    const hardened = String(PM.ensureButtonTypes(raw));
+    const rendered = String(PM.renderPanel());        // 真实渲染路径的返回值（renderPanel 内已加固）
+    const count = (x) => (x.match(/<button/g) || []).length;
+    const untyped = (x) => (x.match(/<button(?![^>]*\stype=)/g) || []).length;
+    return count(raw) >= 20 && untyped(raw) === count(raw)      // 加固前：全部无 type
+        && untyped(hardened) === 0 && untyped(rendered) === 0   // 加固后：一个不漏
+        && hardened.indexOf('<button type="button"') >= 0;
+})(), '');
+
+let AO2dbg = null;
+await assert('AO2 端到端：真实点击 → 重渲染（滚动归零）后**活动标签内容区**滚动位置被恢复；点击入口阻止默认行为', (async () => {
+    const prevEl = doc._els['ftt-panel'];
+    // DOM 影子：只实现本断言用到的选择器；`innerHTML=` 模拟真实重渲染（滚动归零）
+    const sc = { panel: 0, modal: 0, tabs: 0, subs: 0, bodies: { atoms: 0 } };
+    const nodes = {
+        modal: { get scrollTop() { return sc.modal; }, set scrollTop(v) { sc.modal = Number(v) || 0; } },
+        tabs: { get scrollLeft() { return sc.tabs; }, set scrollLeft(v) { sc.tabs = Number(v) || 0; } },
+        subs: { get scrollLeft() { return sc.subs; }, set scrollLeft(v) { sc.subs = Number(v) || 0; } },
+    };
+    const bodyNode = (t) => {
+        if (!nodes['b:' + t]) nodes['b:' + t] = { get scrollTop() { return sc.bodies[t] || 0; }, set scrollTop(v) { sc.bodies[t] = Number(v) || 0; } };
+        return nodes['b:' + t];
+    };
+    const fake = {
+        id: 'ftt-panel', _html: '', listeners: {},
+        get scrollTop() { return sc.panel; }, set scrollTop(v) { sc.panel = Number(v) || 0; },
+        style: { setProperty() { }, getPropertyValue() { return ''; } },
+        classList: { add() { }, remove() { }, contains() { return true; } },
+        parentNode: { removeChild() { return true; } },
+        get innerHTML() { return this._html; },
+        set innerHTML(v) { this._html = String(v); sc.panel = 0; sc.modal = 0; sc.tabs = 0; sc.subs = 0; const z = {}; Object.keys(sc.bodies).forEach((k) => { z[k] = 0; }); sc.bodies = z; },
+        addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); },
+        removeEventListener() { },
+        querySelector(sel) {
+            if (sel === '.ftt-modal') return nodes.modal;
+            if (sel === '.ftt-tabs') return nodes.tabs;
+            if (sel === '.ftt-subtabs') return nodes.subs;
+            const m = /^\.ftt-body\[data-ftt-body="([^"]*)"\]$/.exec(String(sel));
+            if (m) return bodyNode(m[1]);
+            if (sel === '.ftt-body') return bodyNode('overview');
+            return null;
+        },
+        querySelectorAll() { return []; },
+    };
+    let ok = false;
+    try {
+        // 先卸载（清掉模块内的浮层引用），再挂到 DOM 影子并重新打开 → 面板真的渲染进 fake
+        fttPanelMod.unmountPanel();
+        doc._els['ftt-panel'] = fake;
+        fttPanelMod.openPanel('atoms');
+        await new Promise((r) => setTimeout(r, 0));
+        sc.bodies.atoms = 640;
+        sc.tabs = 37;
+        sc.panel = 9;
+        const click = fake.listeners.click || [];
+        let prevented = 0;
+        let stopped = 0;
+        const btn = { dataset: { fttAction: 'refresh' } };
+        btn.closest = (sel) => (String(sel).indexOf('button') >= 0 || String(sel).indexOf('data-ftt-action') >= 0 ? btn : null);
+        click.forEach((fn) => fn({ target: btn, preventDefault() { prevented += 1; }, stopPropagation() { stopped += 1; } }));
+        await new Promise((r) => setTimeout(r, 0));
+        const n = click.length;
+        ok = n >= 1 && sc.bodies.atoms === 640 && sc.tabs === 37 && sc.panel === 9
+            && (sc.bodies.overview || 0) === 0              // 恢复目标必须是**活动标签**内容区，不能取第一个 .ftt-body（V1 注释点明的坑）
+            && prevented === n && stopped === n             // 点击入口 preventDefault + stopPropagation（V1 26075）
+            && String(fake._html).indexOf('data-ftt-body="atoms"') >= 0
+            && String(fake._html).indexOf('<button type="button"') >= 0;
+    } finally {
+        fttPanelMod.unmountPanel();
+        doc._els['ftt-panel'] = prevEl;
+        fttPanelMod.openPanel('overview');
+    }
+    return ok;
 })(), '');
 
 // ---------- D 注入与收尾 ----------

@@ -3,6 +3,39 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.38.0（2026-09-26）· 点击不跳顶（滚动保持）· 对齐 V1 修复
+
+**用户报告**：「按钮点击不能突然置顶，之前 V1 修复过该问题。V2 请对齐，点击后不能跳顶。」
+
+**根因**：V1 为「点击跳顶」做过**四处**修复，V2 此前**一处都没移植**（`ui/panel.js` 全文件无 `preventDefault`、
+无滚动捕获、面板按钮全部没有 `type`）：
+① `renderPanel()`（V1 26507~26536）重渲染前记录滚动位置（面板 + **当前活动标签**的内容区）并在渲染后恢复；
+② 同处 26525 给所有 `<button>` 补 `type="button"`（无 type 的按钮在 `<form>` 内默认 **submit** → 跳顶/刷新）；
+③ 切页/切子标签 26083/26166 记录 `.ftt-tabs`/`.ftt-subtabs` 的 `scrollLeft` 并 rAF 恢复；
+④ 点击入口 26075 对 `button, a, [data-ftt-action]` 做 `preventDefault()+stopPropagation()`。
+V2 的 `panelAction()` **每个动作结尾都 `renderPanel()`**，而它是 `el.innerHTML = panelHtml()` —— 子树整体替换 →
+滚动归零，于是「点任何按钮都跳回顶部」。
+
+**实现**：
+- `ui/panel.js` 新增 `ensureButtonTypes(html)`（字符串层补 `type="button"`，保留标签大小写）+ DOM 层 `hardenButtonTypes`；
+  `panelScrollState(el)` / `applyPanelScroll(el, st)`（面板 / 模态 / `.ftt-tabs` / `.ftt-subtabs` / **活动标签内容区**）；
+  `renderPanel()` 改为「捕获 → 渲染 → DOM 兜底补 type → 同步恢复 → rAF 再补一次」。
+  **保留 V1 关键点**：恢复目标取 `.ftt-body[data-ftt-body="<活动标签>"]`，**不是**第一个 `.ftt-body`（V1 注释点明：
+  旧实现取第一个=总览 → 计划/悬念等长列表页删除条目后仍回顶部）；仅在值非 0 时写入。
+- 点击委托开头新增 V1 同款 `preventDefault()+stopPropagation()`，**仅**对 `button / a / [data-ftt-action]` 生效
+  —— 不动 `<label>`（开关）/`<input>`（勾选）/`<select>`，避免「防跳顶把开关点不动」。
+- 增补（V2 特有）：点按钮内层 `<span>/<b>` 时用 `tg.closest('[data-ftt-action]')` 的 dataset 解析动作与参数
+  （V1 只读 `e.target.dataset`，点内层文字不响应）；动作参数读取统一走该 dataset，原有直接点击路径行为不变。
+- 文档 `docs/P10d-点击不跳顶与滚动保持.md`（V1 四处修复的行号取证 + V2 实现 + 差异登记 + 覆盖场景）。
+
+**验证**：`npm run gate` 全绿 —— 单元 **64 文件 / 997 断言**（新增 `tests/unit/panel-scroll.test.js` **8 项**：
+按钮 type 加固 8 例（含面板真实 HTML「加固前全无 type → 加固后一个不漏」）/ 滚动捕获取活动标签内容区（不是总览）/
+非 0 才写回 / renderPanel 端到端恢复 + 切页切换恢复目标 / 无 querySelector 宿主安全 /
+点击入口只对 button·a·[data-ftt-action] 拦截（label 与空白不拦截）/ 内层 span 触发父按钮动作）；
+冒烟 **145 项**（新增 **AO1** 加固前后按钮 type 计数、**AO2** DOM 影子端到端：真实点击 → 重渲染后
+活动内容区 640 / 标签条 37 / 面板 9 全部保持 + `preventDefault/stopPropagation` 按监听器数触发）；
+内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规。
+
 ## v2.37.0（2026-09-26）· 剧情时钟「取值追踪」与日志口径（值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么）
 
 **用户报告**：「时钟日志记录有问题，需明确**从哪里取值，取值逻辑是什么**。以方便追踪问题。」

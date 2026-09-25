@@ -953,14 +953,101 @@ function ensureOverlay() {
     return el;
 }
 
+/**
+ * v2.38.0：给内联按钮统一补 `type="button"`（**V1 的「点击跳顶」修复之一**，v1.206 26525）。
+ * 原因：无 `type` 的 `<button>` 在 `<form>` 内默认是 `submit` → 触发提交（页面跳顶/刷新）。
+ * 这里在**字符串层**先补一遍（不依赖 DOM 解析，桩宿主也生效），DOM 插入后再补一遍防守。
+ */
+export function ensureButtonTypes(html) {
+    // 保留原标签大小写（`<BUTTON>` 不改成 `<button>`，只补属性）
+    try { return String(html == null ? '' : html).replace(/<(button)(?![^>]*\stype=)/gi, '<$1 type="button"'); } catch (e) { return String(html == null ? '' : html); }
+}
+
+/** DOM 层兜底：把还没有 `type` 的按钮补成 `type="button"`（V1 `renderPanel` 的等价步骤） */
+function hardenButtonTypes(el) {
+    try {
+        if (!el || typeof el.querySelectorAll !== 'function') return 0;
+        const list = el.querySelectorAll('button');
+        let n = 0;
+        for (let i = 0; i < list.length; i++) {
+            const b = list[i];
+            if (b && typeof b.getAttribute === 'function' && !b.getAttribute('type') && typeof b.setAttribute === 'function') { b.setAttribute('type', 'button'); n += 1; }
+        }
+        return n;
+    } catch (e) { return 0; }
+}
+
+/**
+ * v2.38.0：重渲染前后**保持滚动位置**（对齐 V1 v1.206 26507~26536 的修复，用户报告「点击按钮突然置顶」）。
+ * V1 的关键点（原注释里写明）：恢复对象必须是**当前活动标签的内容区**
+ *   （`.ftt-body[data-ftt-body="<activeTab>"]`）——旧实现用 `querySelector('.ftt-body')` 恒取到第一个（总览），
+ *   于是长列表页（计划/悬念等）删除条目后仍会跳回顶部。
+ * V2 同构：滚动容器是 `.ftt-body`（`overflow-y:auto`），标签条 `.ftt-tabs` / 子标签条 `.ftt-subtabs` 横向滚动。
+ */
+export function panelScrollState(el) {
+    const st = { p: 0, modal: 0, b: 0, tabs: 0, subs: 0, tab: String(ps.tab || 'overview') };
+    try {
+        const target = el || overlayEl;
+        if (!target) return st;
+        st.p = Number(target.scrollTop) || 0;
+        const q = (sel) => (typeof target.querySelector === 'function' ? target.querySelector(sel) : null);
+        const modal = q('.ftt-modal'); if (modal) st.modal = Number(modal.scrollTop) || 0;
+        const tabs = q('.ftt-tabs'); if (tabs) st.tabs = Number(tabs.scrollLeft) || 0;
+        const subs = q('.ftt-subtabs'); if (subs) st.subs = Number(subs.scrollLeft) || 0;
+        const body = q('.ftt-body[data-ftt-body="' + st.tab + '"]') || q('.ftt-body');
+        if (body) st.b = Number(body.scrollTop) || 0;
+    } catch (e) { /* 无 DOM 的宿主：返回零值 */ }
+    return st;
+}
+
+/** 把捕获到的滚动位置写回（仅在非 0 时写入，避免把未滚动的容器显式置 0） */
+export function applyPanelScroll(el, st) {
+    const s = st || {};
+    try {
+        const target = el || overlayEl;
+        if (!target) return false;
+        const q = (sel) => (typeof target.querySelector === 'function' ? target.querySelector(sel) : null);
+        if (s.p) target.scrollTop = Number(s.p) || 0;
+        const modal = q('.ftt-modal'); if (modal && s.modal) modal.scrollTop = Number(s.modal) || 0;
+        const tabs = q('.ftt-tabs'); if (tabs && s.tabs) tabs.scrollLeft = Number(s.tabs) || 0;
+        const subs = q('.ftt-subtabs'); if (subs && s.subs) subs.scrollLeft = Number(s.subs) || 0;
+        const body = q('.ftt-body[data-ftt-body="' + String(s.tab || '') + '"]') || q('.ftt-body');
+        if (body && s.b) body.scrollTop = Number(s.b) || 0;
+        return true;
+    } catch (e) { return false; }
+}
+
+/** 布局落定后再补一次（字体/图片/异步内容改变高度时，同步恢复会被浏览器重置） */
+function scheduleScrollRestore(el, st) {
+    try {
+        const raf = globalThis.requestAnimationFrame;
+        if (typeof raf === 'function') { raf(() => { applyPanelScroll(el, st); }); return true; }
+    } catch (e) { /* 无 rAF 的宿主：只做同步恢复 */ }
+    return false;
+}
+
 /** 渲染（真实 DOM 用 innerHTML 替换；桩 DOM 记录到 el.html） */
 export function renderPanel() {
     const el = overlayEl || ensureOverlay();
-    const html = panelHtml();
+    // ① 重渲染**前**记录滚动位置（V1 同款；活动标签内容区，不是第一个 .ftt-body）
+    const scroll = panelScrollState(el);
+    // ② 字符串层补 `type="button"`（防止 form 内按钮提交导致跳顶）
+    const html = ensureButtonTypes(panelHtml());
     applyPanelWidth(el);
     if (!el) return html;
-    try { if (typeof el.innerHTML === 'string') { el.innerHTML = html; return html; } } catch (e) { /* 落到桩路径 */ }
+    try {
+        if (typeof el.innerHTML === 'string') {
+            el.innerHTML = html;
+            hardenButtonTypes(el);
+            applyPanelScroll(el, scroll);      // ③ 渲染后同步恢复
+            scheduleScrollRestore(el, scroll); // ④ 布局落定后再补一次
+            return html;
+        }
+    } catch (e) { /* 落到桩路径 */ }
     try { if (typeof el.insertAdjacentHTML === 'function') el.insertAdjacentHTML('beforeend', html); else el.html = html; } catch (e) { /* 忽略 */ }
+    hardenButtonTypes(el);
+    applyPanelScroll(el, scroll);
+    scheduleScrollRestore(el, scroll);
     return html;
 }
 
@@ -1763,60 +1850,71 @@ export function bindOverlay() {
         el.__fttBound = true;
         el.addEventListener('click', (e) => {
             const tg = e && e.target;
+            // v2.38.0（对齐 V1 v1.206 26075~26078）：点在按钮/链接/动作元素上时阻止默认行为 ——
+            //   `<a href="javascript:void(0)">` 的默认跳转与 form 内 `<button>` 的隐式提交都会让面板**跳顶**；
+            //   仅对 `button, a, [data-ftt-action]` 生效，故不影响 `<label>` 内复选框等原生交互。
+            try {
+                const hit = tg && tg.closest ? tg.closest('button, a, [data-ftt-action]') : null;
+                if (hit) { if (typeof e.preventDefault === 'function') e.preventDefault(); if (typeof e.stopPropagation === 'function') e.stopPropagation(); }
+            } catch (err) { /* 忽略 */ }
             const tabEl = tg && tg.closest ? tg.closest('[data-ftt-tab]') : null;
             if (tabEl) { void panelAction('tab', { tab: tabEl.getAttribute('data-ftt-tab') }); return; }
-            const act = tg && tg.dataset ? String(tg.dataset.fttAction || '') : '';
+            // 动作元素解析：点在内层元素（如按钮里的 <span>/<b>）时回退到最近的 `[data-ftt-action]` 宿主
+            const actEl = (tg && typeof tg.dataset === 'object' && tg.dataset && tg.dataset.fttAction)
+                ? tg : ((tg && tg.closest) ? tg.closest('[data-ftt-action]') : null);
+            const ds = (actEl && actEl.dataset) ? actEl.dataset : (tg && tg.dataset ? tg.dataset : {});
+            const act = String(ds.fttAction || '');
             if (!act) {
                 // ── 修复（v2.34.0）：「属性型」控件没有 `data-ftt-action`，此前被下面的 `!act → return` 直接吞掉，
                 //    导致**设定子标签 / 记忆子标签（列表·关系表·约束自查）/ 情节子标签（情节列表·分段总结）点击无效**。
                 //    这些控件在 V1 里同样是无 action 的 `<a>`，靠 dataset 分发；现统一在 `!act` 分支内先处理。
-                if (tg.dataset) {
-                    if (tg.dataset.fttSubtab !== undefined) { void panelAction('settingsSub', { sub: String(tg.dataset.fttSubtab || '') }); return; }
-                    if (tg.dataset.fttMsub !== undefined) { void panelAction('msub', { tab: ps.tab, sub: String(tg.dataset.fttMsub || '') }); return; }
-                    if (tg.dataset.fttAsub !== undefined) { void panelAction('atomSub', { sub: String(tg.dataset.fttAsub || '') }); return; }
-                    if (tg.dataset.fttSettings !== undefined) { void panelAction('settingsSub', { sub: String(tg.dataset.fttSettings || '') }); return; }   // 旧标记兼容
+                if (ds && Object.keys(ds).length) {
+                    if (ds.fttSubtab !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSubtab || '') }); return; }
+                    if (ds.fttMsub !== undefined) { void panelAction('msub', { tab: ps.tab, sub: String(ds.fttMsub || '') }); return; }
+                    if (ds.fttAsub !== undefined) { void panelAction('atomSub', { sub: String(ds.fttAsub || '') }); return; }
+                    if (ds.fttSettings !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSettings || '') }); return; }   // 旧标记兼容
                 }
                 if (tg === el) void panelAction('close', {});
                 return;
             }
-            const kind = tg.dataset ? tg.dataset.kind : '';
-            const id = tg.dataset ? tg.dataset.id : '';
-            const floor = tg.dataset ? tg.dataset.fttFloor : '';
-            const subject = tg.dataset ? tg.dataset.fttSubject : '';
+            const kind = ds.kind || '';
+            const id = ds.id || '';
+            const floor = ds.fttFloor || '';
+            const subject = ds.fttSubject || '';
             if (act === 'save') {
                 void panelAction('save', { kind, id, fields: collectEditorFields(el) });
                 return;
             }
-            const msub = tg.dataset ? String(tg.dataset.fttMsub || '') : '';
+            const msub = String(ds.fttMsub || '');
             if (msub) { void panelAction('msub', { tab: ps.tab, sub: msub }); return; }
-            if (tg.dataset && tg.dataset.fttAsub !== undefined) { void panelAction('atomSub', { sub: tg.dataset.fttAsub }); return; }
+            if (ds.fttAsub !== undefined) { void panelAction('atomSub', { sub: ds.fttAsub }); return; }
             if (String(act).indexOf('snap') === 0) {
-                void panelAction(act, { snapId: tg.dataset ? tg.dataset.fttSnapId : '' });
+                void panelAction(act, { snapId: ds.fttSnapId || '' });
                 return;
             }
             if (String(act).indexOf('prompt') === 0 || act === 'armorPresetImport') {
                 void panelAction(act, {
-                    promptKey: tg.dataset ? tg.dataset.fttPromptKey : '',
-                    group: tg.dataset ? tg.dataset.fttPromptGroup : '',
+                    promptKey: ds.fttPromptKey || '',
+                    group: ds.fttPromptGroup || '',
                 });
                 return;
             }
             if (act === 'settingsSub') {
-                void panelAction('settingsSub', { sub: tg.dataset ? tg.dataset.fttSettings : '' });
+                void panelAction('settingsSub', { sub: ds.fttSettings || '' });
                 return;
             }
             if (act === 'multiToggle' || act === 'selectAll' || act === 'selectNone' || act === 'bulkDelete' || act === 'searchClear' || act === 'add') {
-                void panelAction(act, { kind: kind || (tg.dataset ? tg.dataset.fttKind : '') || ps.tab, id, searchKind: tg.dataset ? tg.dataset.fttSearchKind : '', subject });
+                void panelAction(act, { kind: kind || ds.fttKind || ps.tab, id, searchKind: ds.fttSearchKind || '', subject });
                 return;
             }
             void panelAction(act, {
                 kind, id, floor, subject,
-                summary: tg.dataset ? tg.dataset.fttSummary : '',
+                summary: ds.fttSummary || '',
                 // B9-b：「👥 选角色」追加行需要角色名与编辑器作用域标记（V1 `data-ftt-name` / `data-ftt-editor`）；
                 //   行内删除按钮用 `data-ftt-rel-idx`（V1 用 `el.closest` 反查，V2 由拖出的索引直接给出）
-                name: tg.dataset ? String(tg.dataset.name || '') : '',
-                editor: tg.dataset ? String(tg.dataset.editor || '') : '',
-                idx: tg.dataset ? tg.dataset.relIdx : '',
+                name: String(ds.name || ''),
+                editor: String(ds.editor || ''),
+                idx: ds.relIdx || '',
             });
         });
         if (typeof el.addEventListener === 'function') {
