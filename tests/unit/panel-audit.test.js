@@ -249,5 +249,66 @@ A('L7 运行时回归：三个曾因「入参没透传」而完全失效的按�
     return L7.tagOk && L7.modeOk && L7.idxOk;
 })(), L7);
 
+// ---------- L8 属性→入参（v2.45.0：`＋黑` 曾因读错属性被当成「＋白」） ----------
+A('L8 属性→入参静态审计：markup 里每个**携带参数**的 `data-ftt-*` 属性，委托都必须读同名 dataset 键（`ds.ftt<Pascal>`）', (() => {
+    // 参数属性 → 委托应读取的 dataset 键（本表即「按钮带了参数，动作必须收得到」的可执行约定）
+    const PARAM_ATTRS = {
+        kind: 'fttKind', tag: 'fttTag', mode: 'fttMode', idx: 'fttIdx',
+        'nsfw-rule-from': 'fttNsfwRuleFrom', 'nsfw-rule-to': 'fttNsfwRuleTo', 'nsfw-rule-row': 'fttNsfwRuleRow',
+        dim: 'fttDim', 'ref-id': 'fttRefId', 'prompt-key': 'fttPromptKey', 'prompt-group': 'fttPromptGroup',
+        'prompt-box': 'fttPromptBox', 'rel-pick': 'fttRelPick', floor: 'fttFloor', subject: 'fttSubject', summary: 'fttSummary',
+    };
+    // 只看「点击委托」那一段（含 prompt/snap/multi 等专用分支）：属性必须在这里被读成 dataset 键
+    const CLICK_RAW = PANEL_SRC.slice(PANEL_SRC.indexOf('const actEl = (tg && typeof tg.dataset'), PANEL_SRC.indexOf("el.addEventListener('change'"));
+    // **先去注释**：否则注释里提到 `ds.fttKind` 会让本审计假绿（实测踩到）
+    const CLICK_SRC = CLICK_RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const kindLine = (CLICK_SRC.match(/const kind = [^;]+;/) || [''])[0];
+    const bad = [];
+    const seen = [];
+    for (const a of Object.keys(PARAM_ATTRS)) {
+        if (UI_SRC.indexOf('data-ftt-' + a + '=') < 0) continue;      // markup 未使用该属性 → 跳过
+        seen.push(a);
+        const key = PARAM_ATTRS[a];
+        // `kind` 只认**派生那一行**（别处出现 `ds.fttKind` 可能是其它分支，不能替代本行的读取）
+        const readInClick = (key !== 'fttKind') && CLICK_SRC.indexOf('ds.' + key) >= 0;
+        const readInKindLine = (key === 'fttKind') && kindLine.indexOf('ds.fttKind') >= 0;
+        if (!readInClick && !readInKindLine) bad.push('data-ftt-' + a + ' → ds.' + key);
+    }
+    if (seen.length < 8) bad.push('参数属性覆盖过少（' + seen.length + '）：' + seen.join(','));
+    // 反向：投喂/调试的 kind 按钮必须存在（避免本审计因属性改名而空转）
+    const hasKindBtn = UI_SRC.indexOf('data-ftt-kind="black"') >= 0 && UI_SRC.indexOf('data-ftt-action="rxAddTag"') >= 0;
+    return bad.length === 0 && hasKindBtn;
+})(), null);
+
+A('L9 端到端：经**真实点击**，`data-ftt-kind="black"` 收录进黑名单（此前读 `data-kind` → 恒空 → 被归一为白名单）；`dbgTraceFilter` 类别筛选按钮同样生效', (async () => {
+    const FS = await import('../../ui/feed-scan.js');
+    const TR = await import('../../core/trace.js');
+    boot();
+    openPanel('settings');
+    await panelAction('settingsSub', { sub: 'feed' });
+    const el = doc.getElementById('ftt-panel');
+    const click = (el && el.listeners && el.listeners.click) || [];
+    const fire = (dataset) => {
+        const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+        click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+        return new Promise((r) => setTimeout(r, 0));
+    };
+    await fire({ fttAction: 'rxScanTags' });
+    await fire({ fttAction: 'rxAddTag', fttKind: 'black', fttTag: '审计黑标签' });
+    const bl = FS.rxFeedTagLists().black;
+    const wl = FS.rxFeedTagLists().white;
+    // 调试页类别筛选：点击后走 `debugAction('dbgTraceFilter', { kind })`
+    const DBG = await import('../../ui/debug.js');
+    const r = await DBG.debugAction('dbgTraceFilter', { kind: 'host' });
+    const r2 = await DBG.debugAction('dbgTraceFilter', { kind: '不存在' });
+    // 顺带：该点击也应留下 params（v2.42.0 追踪），确认入参确实到过动作层
+    TR.traceClear();
+    await fire({ fttAction: 'rxAddTag', fttKind: 'black', fttTag: '审计黑标签2' });
+    const ev = TR.traceList({ cat: 'ui' }).filter((x) => x.kind === 'rxAddTag')[0];
+    const paramsOk = !!ev && String(ev.detail.params.kind || '') === 'black' && String(ev.detail.params.tag || '') === '审计黑标签2';
+    return JSON.stringify(bl) === JSON.stringify(['审计黑标签']) && wl.length === 0
+        && r.ok === true && r.filter === 'host' && r2.ok === true && r2.filter === '' && paramsOk;
+})(), null);
+
 un();
 R.done();

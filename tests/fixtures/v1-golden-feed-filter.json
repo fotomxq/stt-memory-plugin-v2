@@ -1,0 +1,216 @@
+{
+ "meta": {
+  "v1Version": "v1.206",
+  "generatedBy": "tests/fixtures/gen-v1-golden-feed-filter.cjs",
+  "note": "投喂白/黑名单的**联动口径**：过滤必须作用在原始正文上（白名单按标签名提取内部内容）。V2 v2.45.0 改为「先过滤、后去标签」后，有名单场景应与本样本逐字一致；无名单场景 V2 额外剔除 HTML（v2.44.0 有意差异）。"
+ },
+ "floorSamples": {
+  "HTML": [
+   {
+    "is_user": true,
+    "role": "user",
+    "mes": "用户：继续。<br>"
+   },
+   {
+    "is_user": false,
+    "role": "assistant",
+    "mes": "<content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+   }
+  ],
+  "PLAIN": [
+   {
+    "is_user": true,
+    "role": "user",
+    "mes": "用户：继续。"
+   },
+   {
+    "is_user": false,
+    "role": "assistant",
+    "mes": "甲走进仓库。旁白：铜箱是空的。\n普通正文一行。"
+   }
+  ],
+  "MARKER": [
+   {
+    "is_user": false,
+    "role": "assistant",
+    "mes": "正文开头【战斗】甲拔剑。<br>【状态】体力 5。"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "无名单（HTML 楼层）",
+   "floors": "HTML",
+   "white": [],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "[第0楼 用户] 用户：继续。<br>\n[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。",
+    "range": "[第0楼 用户] 用户：继续。<br>\n[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。",
+    "wl": [],
+    "bl": []
+   }
+  },
+  {
+   "name": "白名单 content",
+   "floors": "HTML",
+   "white": [
+    "content"
+   ],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "甲走进仓库。",
+    "range": "甲走进仓库。",
+    "wl": [
+     "content"
+    ],
+    "bl": []
+   }
+  },
+  {
+   "name": "白名单 content + 黑名单 system",
+   "floors": "HTML",
+   "white": [
+    "content"
+   ],
+   "black": [
+    "system"
+   ],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "甲走进仓库。",
+    "range": "甲走进仓库。",
+    "wl": [
+     "content"
+    ],
+    "bl": [
+     "system"
+    ]
+   }
+  },
+  {
+   "name": "白名单未命中（应回退原文）",
+   "floors": "HTML",
+   "white": [
+    "nope"
+   ],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "[第0楼 用户] 用户：继续。<br>\n[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。",
+    "range": "[第0楼 用户] 用户：继续。<br>\n[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。",
+    "wl": [
+     "nope"
+    ],
+    "bl": []
+   }
+  },
+  {
+   "name": "仅黑名单 system",
+   "floors": "HTML",
+   "white": [],
+   "black": [
+    "system"
+   ],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "[第0楼 用户] 用户：继续。<br>",
+    "range": "[第0楼 用户] 用户：继续。<br>",
+    "wl": [],
+    "bl": [
+     "system"
+    ]
+   }
+  },
+  {
+   "name": "白名单大小写不敏感（CONTENT）",
+   "floors": "HTML",
+   "white": [
+    "CONTENT"
+   ],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。<br>",
+     "[第1楼 AI] <content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。"
+    ],
+    "feed": "甲走进仓库。",
+    "range": "甲走进仓库。",
+    "wl": [
+     "CONTENT"
+    ],
+    "bl": []
+   }
+  },
+  {
+   "name": "行内标记白名单（战斗）",
+   "floors": "MARKER",
+   "white": [
+    "战斗"
+   ],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 AI] 正文开头【战斗】甲拔剑。<br>【状态】体力 5。"
+    ],
+    "feed": "[第0楼 AI] 正文开头【战斗】甲拔剑。<br>【状态】体力 5。",
+    "range": "[第0楼 AI] 正文开头【战斗】甲拔剑。<br>【状态】体力 5。",
+    "wl": [
+     "战斗"
+    ],
+    "bl": []
+   }
+  },
+  {
+   "name": "行内标记黑名单（状态）",
+   "floors": "MARKER",
+   "white": [],
+   "black": [
+    "状态"
+   ],
+   "out": {
+    "lines": [
+     "[第0楼 AI] 正文开头【战斗】甲拔剑。<br>【状态】体力 5。"
+    ],
+    "feed": "",
+    "range": "",
+    "wl": [],
+    "bl": [
+     "状态"
+    ]
+   }
+  },
+  {
+   "name": "无名单（纯文本楼层）",
+   "floors": "PLAIN",
+   "white": [],
+   "black": [],
+   "out": {
+    "lines": [
+     "[第0楼 用户] 用户：继续。",
+     "[第1楼 AI] 甲走进仓库。旁白：铜箱是空的。\n普通正文一行。"
+    ],
+    "feed": "[第0楼 用户] 用户：继续。\n[第1楼 AI] 甲走进仓库。旁白：铜箱是空的。\n普通正文一行。",
+    "range": "[第0楼 用户] 用户：继续。\n[第1楼 AI] 甲走进仓库。旁白：铜箱是空的。\n普通正文一行。",
+    "wl": [],
+    "bl": []
+   }
+  }
+ ]
+}

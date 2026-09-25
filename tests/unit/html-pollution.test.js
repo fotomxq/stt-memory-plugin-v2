@@ -31,8 +31,9 @@ import { extractClockFromText, clockExtractDiag, setClockTextHooks, resolveStory
 import { parseClockManualInput, setClockManual, clockManualState, clearClockManual } from '../../core/clock-patrol.js';
 import { normalizeClockRegexFromAi, applyClockRegexResult } from '../../core/clock-ai.js';
 import { cleanText, cleanValue, stripHtmlTags, decodeHtmlEntities, hasHtmlTag, htmlStats } from '../../core/html-text.js';
-import { collectFloorLinesInRange, floorAnalyzableText, floorStableText, hashFloorText } from '../../host/floors.js';
+import { collectFloorLinesInRange, buildFeedFloorText, floorAnalyzableText, floorStableText, hashFloorText } from '../../host/floors.js';
 import { kernelChatMessages, latestAiMessageText } from '../../host/chat.js';
+import { rxPushFeedTag, rxFeedTagLists } from '../../ui/feed-scan.js';
 import { clockTraceLast, clockTraceClear } from '../../core/clock-trace.js';
 import { traceList, traceClear } from '../../core/trace.js';
 import { debugLogPush, wireDebugLog } from '../../adapters/debug-log.js';
@@ -70,6 +71,9 @@ function boot(text) {
     clockTraceClear();
     traceClear();
 }
+
+/** 可分析正文（取不到时返回空串，避免测试自身抛错） */
+const floorAnalyableTextSafe = () => { try { return String(floorAnalyzableText(1) || '').trim(); } catch (e) { return ''; } };
 
 const tryExtract = (text, cfgPatch) => {
     Object.assign(cfg, clone(defaultCfg));
@@ -190,23 +194,56 @@ const FLOOR_PLAIN = [
     { is_user: false, role: 'assistant', mes: '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)\n▷码头仓库\n甲推开木门，灰尘扑面。\n墙角有一只铜箱。' },
 ];
 
-A('B1 楼层取文清洗：`collectFloorLinesInRange` / `floorAnalyzableText` 不含任何标签（或 oracle 里含标签）', (() => {
+A('B1 取文契约（v2.45.0 修正）：楼层原始行**保留 HTML**（投喂白名单要按标签名过滤），而交 AI 的文本已去标签', (() => {
     host.ctx.chat = clone(FLOOR_HTML);
     const lines = collectFloorLinesInRange(0, 1);
-    const an = floorAnalyzableText(1);
     const joined = lines.join('\n');
-    const hasTag = /<\/?[a-zA-Z][^>]*>/.test(joined) || /<\/?[a-zA-Z][^>]*>/.test(an);
+    const an = floorAnalyzableText(1);
+    const feed = String(buildFeedFloorText(2));
     const oracleHasTag = (G.B.html.lines || []).join('\n').indexOf('<div>') >= 0;
-    return oracleHasTag && !hasTag && joined.indexOf('码头仓库') >= 0 && an.indexOf('<div>') < 0;
-})(), (() => { host.ctx.chat = clone(FLOOR_HTML); return J(collectFloorLinesInRange(0, 1)); })());
+    return oracleHasTag
+        && /<\/?[a-zA-Z][^>]*>/.test(joined)                        // 原始行：标签必须在（否则白/黑名单永远匹配不到）
+        && joined.indexOf('码头仓库') >= 0
+        && !/<\/?[a-zA-Z][^>]*>/.test(an) && !/<\/?[a-zA-Z][^>]*>/.test(feed);   // 交 AI 的文本：无标签
+})(), (() => { host.ctx.chat = clone(FLOOR_HTML); return J({ lines: collectFloorLinesInRange(0, 1), an: floorAnalyzableText(1), feed: buildFeedFloorText(2) }); })());
 
-A('B2 清洗后与「无标签正文」结果一致（HTML 换行 == 真实换行，不黏行）', (() => {
+A('B2 去标签后与「无标签正文」逐行一致（HTML 换行 == 真实换行，不黏行）', (() => {
+    const nonEmpty = (t) => String(t).split('\n').map((x) => x.trim()).filter(Boolean);
     host.ctx.chat = clone(FLOOR_HTML);
-    const html = collectFloorLinesInRange(0, 1);
+    const html = nonEmpty(buildFeedFloorText(2));
+    const anHtml = nonEmpty(floorAnalyzableText(1));
     host.ctx.chat = clone(FLOOR_PLAIN);
-    const plain = collectFloorLinesInRange(0, 1);
-    return J(html) === J(plain);
-})(), (() => { host.ctx.chat = clone(FLOOR_PLAIN); return J(collectFloorLinesInRange(0, 1)); })());
+    const plain = nonEmpty(buildFeedFloorText(2));
+    const anPlain = nonEmpty(floorAnalyzableText(1));
+    // 关键：`▷码头仓库` 必须是**独立一行**（`<br>` 被当作换行，而不是与前后文黏成一行）
+    return J(html) === J(plain) && J(anHtml) === J(anPlain)
+        && html.some((l) => l.indexOf('码头仓库') >= 0 && l.indexOf('甲推开木门') < 0);
+})(), (() => {
+    const nonEmpty = (t) => String(t).split('\n').map((x) => x.trim()).filter(Boolean);
+    host.ctx.chat = clone(FLOOR_HTML); const h = nonEmpty(buildFeedFloorText(2));
+    host.ctx.chat = clone(FLOOR_PLAIN); const p2 = nonEmpty(buildFeedFloorText(2));
+    return J({ html: h, plain: p2 });
+})());
+
+A('B5 联动生效（v2.45.0 回归锁）：加入白/黑名单后**下一次投喂立即生效** —— 白名单只留标签内部内容、黑名单丢行，且结果不含标签', (() => {
+    host.ctx.chat = [
+        { is_user: true, mes: '用户：继续。<br>' },
+        { is_user: false, mes: '<content>甲走进仓库。</content><system>旁白：铜箱是空的。</system><br>普通正文一行。' },
+    ];
+    cfg.feedRegexWhitelist = []; cfg.feedRegexBlacklist = [];
+    const before = String(buildFeedFloorText(2));
+    const rw = rxPushFeedTag('white', 'content');
+    const white = String(buildFeedFloorText(2));
+    const rb = rxPushFeedTag('black', 'system');
+    const black = String(buildFeedFloorText(2));
+    const an = floorAnalyableTextSafe();
+    cfg.feedRegexWhitelist = []; cfg.feedRegexBlacklist = [];
+    return rw.added === true && rb.added === true
+        && before.indexOf('旁白：铜箱是空的') >= 0
+        && white === '甲走进仓库。'                                   // 白名单：只留 <content> 内部内容
+        && black.indexOf('旁白：铜箱是空的') < 0 && black.indexOf('甲走进仓库') >= 0 && black.indexOf('<') < 0
+        && an === '甲走进仓库。';
+})(), (() => { host.ctx.chat = clone(FLOOR_HTML); cfg.feedRegexWhitelist = []; cfg.feedRegexBlacklist = []; return J({ before: buildFeedFloorText(2) }); })());
 
 A('B3 **楼层哈希口径不变**（`floorStableText` 仍是原始正文 → 既有「已处理楼层」台账不会整体失效）', (() => {
     host.ctx.chat = clone(FLOOR_HTML);
