@@ -900,7 +900,7 @@ export async function openPanelPopup(tab) {
     // V1 同构主界面：**浮层 #ftt-panel**（13 分页 + V1 原样式）
     try {
         setPopupHooks(popupHooks());
-        setPanelHooks2(Object.assign({}, popupHooks(), { inject: injectNow }));
+        setPanelHooks2(panelRuntimeHooks());   // v2.40.0：面板所需的**全部**钩子（此前只用 popupHooks() → 导出/导入等缺接）
         const r = openPanel(tab);
         if (r.ok) return r;
     } catch (e) { /* 落到抽屉/挂载 */ }
@@ -912,6 +912,7 @@ export async function openPanelPopup(tab) {
 export async function injectNow() { return pushMemoryInject({ queryText: '' }); }
 
 /** 弹窗动作钩子（提取 / 更新 / 清空注入 / 清单 / 状态） */
+/** 弹窗（V2 附加入口）钩子 —— 仅用于 `openPanelPopup` 的小弹窗 */
 function popupHooks() {
     return {
         extract: runExtract,
@@ -920,6 +921,56 @@ function popupHooks() {
         clearInject,
         checkUpdate: checkUpdateNow,
     };
+}
+
+/**
+ * v2.40.0：**面板（V1 同构浮层）所需的全部运行时钩子**。
+ *
+ * 背景（用户报告「数据管理导出导入功能不可用」）：面板钩子此前只注入 `popupHooks()` 的 4~5 个键，
+ *   而 `ui/panel.js` 实际读取 15 个键 → **导出 / 导入 / V1 导入 / 批量摘要 / 中断 / 清台账 / 维度开关**
+ *   全部落到「入口未就绪」或静默不生效（自 v2.2.0 的 B1 批次起一直如此；当时测试只走 `popupAction` 的
+ *   devtools 钩子，所以没被发现）。现在把面板需要的键**一次性补齐**，并由
+ *   `tests/unit/panel-hooks.test.js` 做**静态交叉校验**（面板读到的每个 `hooks.X` 都必须在册），防止再次漏接。
+ */
+export function panelRuntimeHooks() {
+    return Object.assign({}, popupHooks(), {
+        inject: injectNow,
+        exportState: exportStateJson,
+        importState: importStateJson,
+        importV1: runV1Import,
+        autoSummary: runSummaryBatch,          // 总览「批量摘要」
+        abort: abortExtraction,                // 总览「中断」
+        batchProgress: batchProgress,          // 忙位进度（「分析中 x/y 段」）
+        clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
+        resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
+        dimToggle: (kind, on) => setDimensionEnabled(kind, on),
+        confirm: (text, title) => hostConfirm(text, title),
+    });
+}
+
+/** 维度开关（V2 附加设定「启用维度」）：写内核 `cfg.dimensionEnabled` 并落盘（V1 同键同语义） */
+function setDimensionEnabled(kind, on) {
+    const k = String(kind || '');
+    if (!k) return { ok: false, reason: 'no-kind' };
+    try {
+        cfgRef.dimensionEnabled = Object.assign({}, cfgRef.dimensionEnabled || {});
+        cfgRef.dimensionEnabled[k] = !!on;
+        try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+        return { ok: true, kind: k, on: !!on };
+    } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+
+/**
+ * 确认对话框（**同步**，与 V1 的 `confirm()` 同口径）：优先宿主原生 `confirm`；
+ * 无对话框能力的环境（测试桩 / 受限 webview）返回 `false` → 面板按「取消」处理（V1 同款：不执行破坏性动作）。
+ */
+function hostConfirm(text, title) {
+    try {
+        // V1 用浏览器原生 `confirm(text)`（**无标题**）—— 文案逐字保持；`title` 仅保留给将来的宿主导航式对话框
+        void title;
+        if (typeof globalThis.confirm === 'function') return !!globalThis.confirm(String(text || ''));
+    } catch (e) { /* 忽略 */ }
+    return false;
 }
 
 /**
