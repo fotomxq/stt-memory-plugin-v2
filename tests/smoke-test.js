@@ -11,10 +11,12 @@ import { fileURLToPath } from 'node:url';
 import { makeHost, makeDocument, installGlobalHost, installGlobalFetch } from './harness/st-mock.js';
 import { VERSION, MODULE_NAME, INJECT_ID } from '../core/constants.js';
 import { readUpdateState } from '../adapters/update-state.js';
+import { panelState, panelBodyHtml, setPanelHooks2 } from '../ui/panel.js';   // v2.34.0：子标签点击/异常区断言用
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
 const failures = [];
+const pendingGuards = [];   // v2.34.0：thenable 断言的收尾 flush 登记表
 function commit(name, cond, extra) {
     if (cond) { pass++; console.log('  ✅', name); }
     else { fail++; failures.push(name); console.log('  ❌', name, extra === undefined ? '' : JSON.stringify(extra)); }
@@ -40,7 +42,12 @@ function assert(name, cond, extra) {
         then(onFulfilled, onRejected) { slot.awaited = true; return running.then(onFulfilled, onRejected); },
         catch(onRejected) { slot.awaited = true; return running.catch(onRejected); },
         finally(onFinally) { slot.awaited = true; return running.finally(onFinally); },
+        // v2.34.0：供收尾统一 flush —— **不置 `awaited`**，故「调用点漏写 await」仍会被防呆抓到；
+        //   修复背景：未 await 的 thenable 断言若排在文件末尾，`process.exit(0)` 会在防呆微任务前结束进程，
+        //   导致该断言既不计数也不报错（静默消失）。收尾 flush 后此类断言一定被计入失败。
+        settle() { return running; },
     };
+    pendingGuards.push(guard);
     // 两个微任务之后仍未被 .then()（即 await）消费 → 调用点漏了 await：直接判失败并提示「请 await」
     queueMicrotask(() => queueMicrotask(() => {
         if (slot.awaited) return;
@@ -2781,6 +2788,77 @@ await assert('AI3 被动调度接线（合并成功后自动排程）：单楼�
     return out;
 })(), AI3dbg);
 
+// ---------- AJ 子标签点击修复 + 异常捕捉强化（v2.34.0） ----------
+await assert('AJ1 设定子标签点击真实生效：V1 同款标记（`<a href="javascript:void(0)" class="ftt-subtab" data-ftt-subtab>`）→ 点击切换 settingsSub 并重绘对应子页', (async () => {
+    await entry.popupAction('tab', { tab: 'settings' });
+    const before = String((panelState().settingsSub) || '');
+    const html0 = String(panelBodyHtml('settings') || '');
+    const el = doc.getElementById('ftt-panel');
+    const bound = !!el && el.__fttBound === true;
+    const fire = (dataset) => { const l = (el && el.listeners && el.listeners.click) || []; if (!l.length) return false; l.forEach((fn) => fn({ target: { dataset } })); return true; };
+    const okMarkup = html0.indexOf('data-ftt-subtab="base"') >= 0 && html0.indexOf('class="ftt-subtab') >= 0
+        && html0.indexOf('href="javascript:void(0)"') >= 0 && html0.indexOf('ftt-btn ftt-sm ftt-subtab') < 0;   // 修复前的错误标记不得再出现
+    const fired = fire({ fttSubtab: 'feed' });
+    await new Promise((r) => setTimeout(r, 0));
+    const after = String(panelState().settingsSub || '');
+    const html1 = String(panelBodyHtml('settings') || '');
+    const fired2 = fire({ fttSubtab: 'storage' });
+    await new Promise((r) => setTimeout(r, 0));
+    return bound && okMarkup && fired && after === 'feed' && html1.indexOf('data-ftt-settings-page="feed"') >= 0
+        && fired2 && String(panelState().settingsSub) === 'storage';
+})(), '');
+
+await assert('AJ2 记忆/情节子标签点击真实生效（此前同样被「无 action 即 return」吞掉）；且宿主已有面板节点时也会绑定委托', (async () => {
+    const el = doc.getElementById('ftt-panel');
+    const fire = (dataset) => { const l = (el && el.listeners && el.listeners.click) || []; l.forEach((fn) => fn({ target: { dataset } })); return l.length > 0; };
+    await entry.popupAction('tab', { tab: 'memories' });
+    const f1 = fire({ fttMsub: 'rel' });
+    await new Promise((r) => setTimeout(r, 0));
+    const relSub = String((panelState().relSub || {}).memories || '');
+    await entry.popupAction('tab', { tab: 'atoms' });
+    const f2 = fire({ fttAsub: 'segments' });
+    await new Promise((r) => setTimeout(r, 0));
+    const atSub = String(panelState().atomSub || '');
+    return el.__fttBound === true && f1 && relSub === 'rel' && f2 && atSub === 'segments';
+})(), '');
+
+await assert('AJ3 异常捕捉强化：window error / unhandledrejection / 面板动作失败 → 调试日志 kind=「异常」；调试页显示只读异常区；解绑后不再记录', (async () => {
+    const DL = await import('../core/debug-log.js');
+    const EV = await import('../host/events.js');
+    const AD = await import('../adapters/debug-log.js');
+    // 事件目标桩（smoke 的 window 桩可能没有 addEventListener → 临时补上并还原）
+    const oldWin = globalThis.window;
+    const listeners = {};
+    globalThis.window = Object.assign({}, oldWin, {
+        addEventListener: (t, fn) => { (listeners[t] = listeners[t] || []).push(fn); },
+        removeEventListener: (t, fn) => { listeners[t] = (listeners[t] || []).filter((x) => x !== fn); },
+    });
+    AD.wireDebugLog();
+    const n0 = DL.debugLogErrorCount();
+    const installed = EV.installErrorCapture();
+    (listeners.error || []).forEach((fn) => fn({ message: 'smoke-boom', filename: 'smoke.js', lineno: 11, colno: 2, error: new Error('smoke-boom') }));
+    (listeners.unhandledrejection || []).forEach((fn) => fn({ reason: new Error('smoke-reject') }));
+    const n1 = DL.debugLogErrorCount();
+    // 面板动作抛错（注入会抛的 hook）
+    setPanelHooks2({ importV1: () => { throw new Error('smoke-hook-boom'); } });
+    const bad = await entry.popupAction('importV1Apply', {});
+    const n2 = DL.debugLogErrorCount();
+    setPanelHooks2({});
+    // 调试页只读区
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const html = String(panelBodyHtml('settings') || '');
+    const shown = html.indexOf('⚠ 异常捕捉') >= 0 && /共 \d+ 条/.test(html);
+    const un = EV.uninstallErrorCapture();
+    (listeners.error || []).forEach((fn) => fn({ message: 'after-uninstall' }));
+    const n3 = DL.debugLogErrorCount();
+    globalThis.window = oldWin;
+    const dump = globalThis.FTT && typeof globalThis.FTT.dbgDump === 'function' ? globalThis.FTT.dbgDump() : null;
+    return installed === true && n1 === n0 + 2 && bad.ok === false && n2 === n1 + 1 && shown
+        && !!dump && Number(dump.errors) >= n2 && Array.isArray(dump.recent) && !!dump.errCapture
+        && un === true && n3 === n2 && EV.errorCaptureState().installed === false;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
@@ -2796,6 +2874,12 @@ assert('D2 teardown：解绑事件 + 清空注入 + 移除面板 + 清理调试�
 
 uninstall();
 uninstallFetch();      // 收尾：卸掉「服务端文件通道 / 更新检查」共用的 fetch 桩
+// v2.34.0：收尾 flush —— 先让未 await 的 thenable 断言完成、并等防呆微任务判定，再汇总（防「静默消失」）
+try {
+    for (const g of pendingGuards) { try { await g.settle(); } catch (e) { /* 断言自身异常已由内部捕获 */ } }
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+} catch (e) { /* 忽略 */ }
 console.log('\n========== V2 冒烟：' + pass + ' 通过, ' + fail + ' 失败 ==========');
 if (fail) { console.log('  失败项：' + failures.join(' | ')); process.exit(1); }
 process.exit(0);

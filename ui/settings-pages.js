@@ -1065,7 +1065,10 @@ function pageExtraHtml(pid) {
 /** 子标签条 HTML（V1 同款：`.ftt-tabs` 内的小标签） */
 export function settingsSubTabsHtml(current) {
     const cur = String(current || SETTINGS_TABS[0].id);
-    return SETTINGS_TABS.map((t) => '<button class="ftt-btn ftt-sm ftt-subtab' + (t.id === cur ? ' ftt-on' : '') + '" data-ftt-settings="' + esc(t.id) + '">' + esc(t.label) + '</button>').join(' ');
+    // V1 v1.206 L25988 逐字结构：`<a href="javascript:void(0)" class="ftt-subtab[ ftt-on]" data-ftt-subtab="<id>">`
+    //   —— 修复（v2.34.0）：V2 此前用 `<button data-ftt-settings>`，**属性名与 V1 不一致**，且因面板点击分发
+    //   「无 data-ftt-action 即 return」而**点击无效**。现按 V1 同款标记 + 分发前置处理修复。
+    return SETTINGS_TABS.map((t) => '<a href="javascript:void(0)" class="ftt-subtab' + (t.id === cur ? ' ftt-on' : '') + '" data-ftt-subtab="' + esc(t.id) + '">' + esc(t.label) + '</a>').join('');
 }
 
 /** 设置页诊断（页/控件统计；测试与排障用） */

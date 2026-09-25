@@ -91,6 +91,22 @@ function debugLogSync() {
     } catch (e) { return debugLogs.length; }
 }
 
+/**
+ * 异常日志（`host` 侧全局错误钩子写入 `kind='异常'`；调试页/FTT 自证用）
+ * @param {number} [limit] 最多返回条数（默认全部，最新在前）
+ */
+function debugLogErrors(limit) {
+    try {
+        const list = debugLogList().filter((l) => String((l && l.kind) || '') === '异常');
+        const n = Number(limit);
+        return Number.isFinite(n) && n > 0 ? list.slice(0, n) : list;
+    } catch (e) { return []; }
+}
+/** 异常计数 */
+function debugLogErrorCount() { return debugLogErrors().length; }
+/** 最近一条异常（无则 null） */
+function debugLogLastError() { return debugLogErrors(1)[0] || null; }
+
 /** 统计（调试页只读行用） */
 function debugLogStats() {
     const list = debugLogList();
@@ -102,4 +118,5 @@ function debugLogStats() {
 export {
     DEBUG_CAP, DEBUG_KEY, DEBUG_DATA_MAX,
     setDebugLogHooks, debugLogPush, debugLogList, debugLogClear, debugLogSync, debugLogStats, debugLogMerge, debugLogNormalize,
+    debugLogErrors, debugLogErrorCount, debugLogLastError,
 };

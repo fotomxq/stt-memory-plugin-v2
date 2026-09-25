@@ -39,6 +39,7 @@ import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
+import { debugLogPush } from '../adapters/debug-log.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
@@ -893,7 +894,10 @@ function ensureOverlay() {
     if (!doc) return null;
     let el = null;
     try { el = typeof doc.getElementById === 'function' ? doc.getElementById(PANEL_ID) : null; } catch (e) { el = null; }
-    if (el) { overlayEl = el; return el; }
+    // 修复（v2.34.0）：宿主里**已存在**面板节点时（UI 被酒馆重渲染 / 二次打开 / 测试预注册），
+    //   此前直接 return，**跳过了 bindOverlay()** → 面板点击委托从未绑定 → 所有按钮与子标签点击无效。
+    //   bindOverlay 以 `el.__fttBound` 幂等，重复调用安全。
+    if (el) { overlayEl = el; bindOverlay(); return el; }
     if (!doc.body) return null;
     try {
         if (typeof doc.body.insertAdjacentHTML === 'function') {
@@ -1679,6 +1683,8 @@ export async function panelAction(action, payload) {
         else { result = { ok: false, reason: 'unknown-action' }; }
     } catch (e) {
         result = { ok: false, reason: 'error', error: String((e && e.message) || e) };
+        // v2.34.0：面板动作异常统一留痕（强化调试）—— 写入内核调试日志的「异常」类，便于事后挖掘
+        try { debugLogPush('异常', { kind: '面板动作失败', action: String(action || ''), message: String((e && e.message) || e), stack: String((e && e.stack) || '').slice(0, 2000) }); } catch (err) { /* 忽略 */ }
         setNote('操作失败：' + result.error);
     }
     renderPanel();
@@ -1706,7 +1712,19 @@ export function bindOverlay() {
             const tabEl = tg && tg.closest ? tg.closest('[data-ftt-tab]') : null;
             if (tabEl) { void panelAction('tab', { tab: tabEl.getAttribute('data-ftt-tab') }); return; }
             const act = tg && tg.dataset ? String(tg.dataset.fttAction || '') : '';
-            if (!act) { if (tg === el) void panelAction('close', {}); return; }
+            if (!act) {
+                // ── 修复（v2.34.0）：「属性型」控件没有 `data-ftt-action`，此前被下面的 `!act → return` 直接吞掉，
+                //    导致**设定子标签 / 记忆子标签（列表·关系表·约束自查）/ 情节子标签（情节列表·分段总结）点击无效**。
+                //    这些控件在 V1 里同样是无 action 的 `<a>`，靠 dataset 分发；现统一在 `!act` 分支内先处理。
+                if (tg.dataset) {
+                    if (tg.dataset.fttSubtab !== undefined) { void panelAction('settingsSub', { sub: String(tg.dataset.fttSubtab || '') }); return; }
+                    if (tg.dataset.fttMsub !== undefined) { void panelAction('msub', { tab: ps.tab, sub: String(tg.dataset.fttMsub || '') }); return; }
+                    if (tg.dataset.fttAsub !== undefined) { void panelAction('atomSub', { sub: String(tg.dataset.fttAsub || '') }); return; }
+                    if (tg.dataset.fttSettings !== undefined) { void panelAction('settingsSub', { sub: String(tg.dataset.fttSettings || '') }); return; }   // 旧标记兼容
+                }
+                if (tg === el) void panelAction('close', {});
+                return;
+            }
             const kind = tg.dataset ? tg.dataset.kind : '';
             const id = tg.dataset ? tg.dataset.id : '';
             const floor = tg.dataset ? tg.dataset.fttFloor : '';

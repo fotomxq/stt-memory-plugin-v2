@@ -305,7 +305,7 @@ await A('U1 分析记忆页：V1 同款「独立分组」开关（标签逐字 +
         && html.indexOf('独立分组（各维度单独构造提示词并行请求）') >= 0 && html.indexOf('data-ftt-cfg="dimensionSeparate" checked') >= 0;
     const r2 = applySettingsControl('dimensionSeparate', false);
     const back = cfg.dimensionGrouping === 'unified' && settingsPageHtml('analyze').indexOf('统一分组（一次请求全部维度）') >= 0;
-    return tab.indexOf('data-ftt-settings="analyze"') >= 0 && off && on && back && r2.ok === true
+    return tab.indexOf('data-ftt-subtab="analyze"') >= 0 && off && on && back && r2.ok === true
         && (cfg.dimensionEnabled && typeof cfg.dimensionEnabled === 'object');
 }, '');
 

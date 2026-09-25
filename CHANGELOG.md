@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.34.0（2026-09-26）· 修复「设置的子标签点击无效」+ 异常捕捉强化
+
+**用户报告**：设置的子标签点击无效。排查后确认是**三处缺陷叠加**，全部修复：
+
+1. **（主因）面板点击委托未绑定** —— `ui/panel.js#ensureOverlay()` 在宿主中**已存在 `#ftt-panel` 节点**时直接 `return`，**跳过了 `bindOverlay()`**；
+   而点击事件是**委托**在面板根节点上的，未绑定即**整个面板的所有按钮与子标签都点不动**（酒馆重渲染 UI、二次打开、预注册节点时都会命中该路径）。修复：早退分支也调用 `bindOverlay()`（其以 `el.__fttBound` 幂等）。
+2. **设定子标签标记与 V1 不一致** —— V2 原为 `<button class="ftt-btn ftt-sm ftt-subtab" data-ftt-settings="<id>">`；
+   V1 是 `<a href="javascript:void(0)" class="ftt-subtab" data-ftt-subtab="<id>">`（v1.206 L25988；点击读取 `e.target.dataset.fttSubtab` L26167）。已改为 **V1 同款标记**（标签/类名/属性名/href 全对齐）。
+3. **属性型控件被点击分发吞掉** —— 分发逻辑遇到「无 `data-ftt-action`」即 `return`，导致**没有 action 只有 data 属性**的子标签全部失效；
+   除设定子标签外，还连带 **记忆子标签（列表/关系表/约束自查）** 与 **情节子标签（情节列表/分段总结）** 一起点不动。
+   修复：在早退分支内**先**处理 `data-ftt-subtab`（设定）、`data-ftt-msub`（记忆）、`data-ftt-asub`（情节），并保留旧 `data-ftt-settings` 兼容。
+
+**调试/异常捕捉强化（本轮新增）**：
+- **全局异常捕捉**（`host/events.js#installErrorCapture`）：`window 'error'` 与 `'unhandledrejection'` 统一写入内核调试日志（`kind='异常'`，含 message/source/line/col/stack，单条截断 2000 字，**同址 1 秒内去重**，幂等绑定，无 `window` 环境安全退化）；`teardown` 解绑。
+- **面板动作失败留痕**：动作分发的 `catch` 记录 `kind='面板动作失败'`（action + message + stack），不再静默。
+- **调试页新增「⚠ 异常捕捉」只读区**（`ui/debug.js`）：计数 + 最近一条（时间/类别/消息/来源行号）+ 最近 3 条摘要。
+- **一键诊断**：新增 `FTT.dbgErrors(limit)` / `dbgErrorCount()` / `dbgLastError()` / `errCaptureState()` / **`dbgDump()`**（汇总 version/ready/debug 接线/errCapture/errors/lastErrors/stats/recent/probe.missing/lastError）；`devtools.js` 同步镜像。
+
+**测试框架修复**：冒烟断言器（v2.25.0 起的 thenable 防呆）存在残留漏洞 —— **未 `await` 的 thenable 断言若排在文件末尾**，
+防呆判定微任务尚未执行脚本就 `process.exit(0)`，该断言**既不计数也不报错（静默消失）**。现登记 `pendingGuards`，收尾统一 flush 并等两个宏任务再汇总
+（`settle()` **不置 `awaited`**，故漏写 `await` 仍会被判定为失败）。本批新增断言曾触发该漏洞（无输出），修复后必计入。
+
+**验证**：`npm run gate` 全绿 —— 单元 **60 文件 / 951 断言**、冒烟 **136 项**（新增 **AJ1–AJ3**：真实点击派发断言设定/记忆/情节三类子标签均切换成功且宿主既有节点时 `__fttBound===true`；
+断言异常捕捉 install/去重/调试页展示/解绑/`dbgDump` 可用）、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；
+单元 `panel.test.js#A3`、`bootstrap.test.js#B10`、`separate-dim-golden.test.js#U1` 改为 V1 同款标记断言。修前修后对照实测：`settingsSub` `base→base`（无效）→ `base→feed→storage`；`relSub`/`atomSub` 由不变化为 `rel`/`segments`。
+
+**用户提供的 TauriTavern 日志解读（见 `docs/P9e-面板点击修复与异常捕捉强化.md` §4）**：
+`Failed to get extension version: Git handshake failed` 对日志里**约 40 个无关扩展**同样出现 ⇒ 是 TauriTavern「按 git 查询扩展版本」的网络/IO 问题，**与本插件无关**；
+本插件 `manifest.json` 保持 `auto_update: false`（v2.11.1 起）且自建更新检查走 `raw.githubusercontent.com` 的 **HTTP** 路径、不用 git。
+日志显示当时安装的是 **v2.0.0/v2.0.1（2026-09-24）**，远早于当前版本；`Upstream quota exhausted` 是用户 API 提供方配额耗尽，`Another local mutation is already running` 是 TauriTavern 本地并发写互斥，均非本插件问题。
+
 ## v2.33.0（2026-09-26）· 独立分组抽取（按维度并行）+ 被动调度接线（B8/B9 收尾）
 
 **本版补完总表 §7 登记的最后两处**管线**缺口**（V1 有、V2 之前只有函数或仅有配置键）**：
