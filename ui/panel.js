@@ -748,6 +748,22 @@ function flatFor(kind, item) {
     return out;
 }
 
+/**
+ * 某场景的**父级场景 id**（V1 `findSceneParentId` 23352 逐字）：
+ * 路径去掉末段即为父级路径，在场景库里按路径找到该父级记录并返回其 id；顶层或无父级记录 → ''。
+ * v2.50.0（用户报告「场景收纳能力异常」）：此前 V2 **没有**这一步 —— 编辑一条嵌套场景时父级下拉恒为「（顶层）」，
+ *   用户直接点保存就会把该场景**拍平成顶层**（`pathArr` 退化为 `[name]`），层级被悄悄丢掉。
+ */
+function findSceneParentId(scene) {
+    try {
+        const arr = Array.isArray(scene && scene.pathArr) ? scene.pathArr.slice() : [];
+        if (arr.length <= 1) return '';
+        const parentKey = arr.slice(0, -1).join('>');
+        const p = (arrOf('scenes') || []).find((x) => ((Array.isArray(x.pathArr) ? x.pathArr.join('>') : String(x.pathStr || '')) === parentKey));
+        return p ? String(p.id || '') : '';
+    } catch (e) { return ''; }
+}
+
 /** 编辑器（V1 `ftt-editor` 结构；字段表来自 `kindFields(kind)`，保存经 `deconstructEntry` 还原为入库 raw） */
 function editorHtml(kind, id, preset) {
     const isNew = !id;
@@ -774,8 +790,20 @@ function editorHtml(kind, id, preset) {
             return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
         }
         if (f.type === 'sceneParent') {
-            const opts = ['<option value="">（顶层）</option>'].concat(arrOf('scenes').map((sc) =>
-                '<option value="' + attr(sc.id) + '"' + (String(val) === String(sc.id) ? ' selected' : '') + '>' + esc(sc.name) + '</option>')).join('');
+            // v2.50.0（对齐 V1 23300~23313）：父级下拉 = 顶层 + **全部场景按完整路径排序**，
+            //   标签带层级缩进与完整路径（`　　name（A>B>name）`），选中项 = 预设父级 或 **该条自身的父级**。
+            const item = (!isNew && d) ? d.item : null;
+            const selId = String((preset && preset.parentSceneId) || (item ? findSceneParentId(item) : '') || '');
+            const all = arrOf('scenes').slice().sort((a, b) => {
+                const pa = (Array.isArray(a.pathArr) ? a.pathArr.join('/') : String(a.pathStr || a.name || ''));
+                const pb = (Array.isArray(b.pathArr) ? b.pathArr.join('/') : String(b.pathStr || b.name || ''));
+                return pa.localeCompare(pb);
+            });
+            const opts = ['<option value="">（顶层）</option>'].concat(all.map((sc) => {
+                const depth = Math.max(0, (Array.isArray(sc.pathArr) ? sc.pathArr.length : 1) - 1);
+                const label = '　'.repeat(depth) + String(sc.name || '') + '（' + (Array.isArray(sc.pathArr) ? sc.pathArr.join('>') : String(sc.name || '')) + '）';
+                return '<option value="' + attr(sc.id) + '"' + (String(sc.id) === selId ? ' selected' : '') + '>' + esc(label) + '</option>';
+            })).join('');
             return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
         }
         if (f.type === 'textarea') {

@@ -3816,6 +3816,34 @@ await assert('AY1 v2.49.0 导出/导入文件机制：真实点击「⬇ 导出 
     }
 })(), '');
 
+await assert('AZ1 v2.50.0 场景层级（收纳）修复：编辑**嵌套场景**时父级下拉选中其真实父级（下拉按完整路径排序 + 层级缩进 + 完整路径标签），保存后 `pathArr` 不被拍平', (async () => {
+    const RT5 = await import('../core/model/runtime.js');
+    const FD = await import('../ui/fields.js');
+    const saveScenes2 = RT5.state.scenes;
+    try {
+        RT5.state.scenes = [
+            { id: 'az-sc1', name: '城市甲', pathArr: ['城市甲'], pathStr: '城市甲', desc: '', tags: [], uses: 0 },
+            { id: 'az-sc2', name: '码头', pathArr: ['城市甲', '码头'], pathStr: '城市甲>码头', desc: '', tags: [], uses: 2 },
+            { id: 'az-sc3', name: '里屋', pathArr: ['城市甲', '码头', '里屋'], pathStr: '城市甲>码头>里屋', desc: '有铜箱。', tags: [], uses: 1 },
+        ];
+        await entry.popupAction('tab', { tab: 'scenes' });
+        await entry.popupAction('edit', { kind: 'scenes', id: 'az-sc3' });
+        const html = String(panelBodyHtml('scenes') || '');
+        const at = html.indexOf('data-ftt-ed="parent"');
+        const seg = html.slice(at, html.indexOf('</select>', at));
+        const selected = (/(<option value="([^"]*)"[^>]*selected)/.exec(seg) || [])[2] || '';
+        const labelOk = seg.indexOf('码头（城市甲&gt;码头）') >= 0 || seg.indexOf('码头（城市甲>码头）') >= 0;
+        const indentOk = seg.indexOf('　') >= 0;
+        // 用预填值保存（等价用户直接点「💾 保存」）
+        const raw = FD.deconstructEntry('scenes', { id: 'az-sc3', name: '里屋', parent: selected });
+        const after = (() => { const i = RT5.state.scenes.findIndex((x) => x.id === 'az-sc3'); RT5.state.scenes[i] = Object.assign({}, RT5.state.scenes[i], raw); return RT5.state.scenes[i]; })();
+        return selected === 'az-sc2' && labelOk && indentOk
+            && JSON.stringify(after.pathArr) === JSON.stringify(['城市甲', '码头', '里屋']);
+    } finally {
+        RT5.state.scenes = saveScenes2;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

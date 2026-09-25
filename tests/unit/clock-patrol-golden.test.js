@@ -239,9 +239,15 @@ await A('U5 动作 clockPatrol（面板分发）：按锚点修复并在提示�
     setPanelHooks2({});
     const r = await panelAction('clockPatrol', {});
     const st = panelState();
+    // v2.50.0（用户报告「时间巡检修复会改错时钟数据」→ V1 缺陷 #7）：
+    //   ① 手动巡检**默认不再 force**（锚点冲突时只统计），强制校正改为显式动作 `clockPatrolForce` → 动作数 7 → 8；
+    //   ② 「格式合法但年份漂移」的条目**不再按内容重解析**，只做「保留月日换年份」（见下方 details 断言）。
+    const drift = String((r.detail.details || []).join(' '));
     return r.ok === true && r.detail.fixed === 3 && r.detail.snap && String(r.note).indexOf('巡检 7 条') >= 0
         && String(r.note).indexOf('修复 3 条') >= 0 && String(st.note).indexOf('修复 3 条') >= 0
-        && CLOCK_ACTIONS.length === 7 && CLOCK_ACTIONS.indexOf('clockRegexGen') >= 0 && CLOCK_ACTIONS.indexOf('clockRepair') >= 0;
+        && drift.indexOf('年份校正（保留月日）') >= 0 && drift.indexOf('按内容重解析') < 0
+        && CLOCK_ACTIONS.length === 8 && CLOCK_ACTIONS.indexOf('clockPatrolForce') >= 0
+        && CLOCK_ACTIONS.indexOf('clockRegexGen') >= 0 && CLOCK_ACTIONS.indexOf('clockRepair') >= 0;
 }, (() => ({})));
 
 await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overviewBody → clockSectionHtml）', async () => {
