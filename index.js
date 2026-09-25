@@ -53,7 +53,8 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, cfg as cfgRef } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef } from './core/model/runtime.js';
+import { hashText } from './core/util.js';
 import {
     clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
     runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
@@ -1119,6 +1120,8 @@ export function panelRuntimeHooks() {
         inject: injectNow,
         exportState: exportStateJson,
         importState: importStateJson,
+        // v2.49.0：导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；`hashText` 与 V1 同算法）
+        exportFileName: () => { try { return 'FTT记忆_' + hashText(String(getScopeKey() || 'scope')) + '.json'; } catch (e) { return 'FTT记忆.json'; } },
         importV1: runV1Import,
         autoSummary: runSummaryBatch,          // 总览「批量摘要」
         abort: abortExtraction,                // 总览「中断」
