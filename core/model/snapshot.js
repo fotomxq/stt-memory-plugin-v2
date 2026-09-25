@@ -10,13 +10,22 @@ import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyD
 import { atomIsHidden } from '../merge.js';
 import { atomLatestDated } from '../recall.js';
 
+/**
+ * 状态/记忆条目的「最后更新时刻」采样（**只取剧情时间**）。
+ *
+ * v2.39.0 修正（V1 缺陷 #4，对齐 V1 自身文档口径）：V1 这里在**没有剧情日期**时回退到现实墙钟
+ *   （`new Date()` → `2026-09-25` + 当前时刻）。该值会写进 **`memories[].date`** 与
+ *   **`currentStates[].updatedAt/updatedAtTime`** —— 这些是**剧情时间线字段**（会参与注入、相对时间折算、
+ *   遗忘/衰退的时间轴），把墙钟写进去等于「时钟取了真实日期」，与 V1 文档明确写下的规则冲突：
+ *   `docs/03-数据模型与存储.md`「剧情时钟未知（`state.state.date` 为空）时**不折算**（不写现实时间，沿用 v1.161 口径）；
+ *    **现实墙钟不进注入正文**」、`docs/11`「绝不拿现实时间冒充剧情时间」。
+ * V2 口径：**无剧情日期 → 返回空**（调用方据此不写），现实时间只允许出现在**带「现实更新」标注的 UI** 与
+ *   纯记账用的 epoch 毫秒字段（如平行事件 `updatedAt` 的衰退窗口）里。
+ */
 function stampNowForState() {
     const d = getStoryNow();
-    const t = state.state?.time || '';
-    if (d) return { date: clockDateTrim(d), time: t };
-    const n = new Date();
-    const pad = (x) => String(x).padStart(2, '0');
-    return { date: `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`, time: `${pad(n.getHours())}:${pad(n.getMinutes())}` };
+    if (!d) return { date: '', time: '' };
+    return { date: clockDateTrim(d), time: String((state.state && state.state.time) || '') };
 }
 // ==================== v1.161：角色档案「剧情时间」采样 ====================
 // 用户要求：角色增加记录「最后一次更新时间」与「最后一次见面时间」，两者以**剧情时间**为基准取样。
