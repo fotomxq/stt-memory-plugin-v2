@@ -841,10 +841,14 @@ function buildMemoryBodyForInject(queryText, opts) {
         // [当前状态]（日期/时间/地点/在场角色 锚点，很短，总是优先）
         // 四要素合并为同一块分别成行 —— 任一存在即整块输出；修复 仅日期 时整块被 time||location 门槛隐藏
         const curParts = [];
-        // v1.188：日期行附「（纪年）·季节」，时间行显示区间，另有「剧情第 N 天」——仅在字段存在时追加
+        // v1.188：日期行附「（纪年）·季节」，时间行显示区间 —— 仅在字段存在时追加
         if (state.state.date) curParts.push(`日期:${clockDateLabel(state.state.date)}${state.state.era ? `（${state.state.era}）` : ''}${state.state.season ? `·${state.state.season}` : ''}`);   // v1.193：公元前加前缀
         if (state.state.time) curParts.push(`时间:${state.state.time}${state.state.timeEnd ? `→${state.state.timeEnd}` : ''}`);
-        if (state.state.storyDay) curParts.push(`剧情天数:第${state.state.storyDay}天`);
+        // v2.48.0（用户要求）：「**剧情第 N 天，不允许注入**，这个设定只是在插件内校准时间用的」——
+        //   V1 v1.206 11943 会把 `剧情天数:第N天` 写进注入体（V1 故障明确修正 #6），V2 起**不再注入**。
+        //   `state.state.storyDay` 仍照常记录，仅供**插件内时间校准**（`clockStoryDayEpoch` 纪元首日 →
+        //   「纪元首日 + (N-1) 天」换算日期，见 core/clock-extract.js 的 storyday 分支）与总览展示，
+        //   任何注入/投喂/世界书文本都不得出现「第 N 天」（门禁：tests/unit/storyday-no-inject.test.js）。
         if (state.state.location) curParts.push(`地点:${state.state.location}`);
         // 在场角色（顿号分割）；与 日期/时间/地点 同行块输出，正常应四行齐全
         if (present && present.length) curParts.push(`在场角色：${present.slice(0, 10).join('、')}`);

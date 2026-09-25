@@ -75,7 +75,9 @@ export function clockSectionHtml() {
         if (c.location) lines.push('<div class="ftt-item">📍 地点：' + esc(c.location) + manBadge(cMan, 'location') + '</div>');
         else if (ckRef && ckRef.location) lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（参考最近记忆：' + esc(ckRef.location) + '）</span></div>');
         else lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（未记录）</span></div>');
-        if (c.storyDay) lines.push('<div class="ftt-item">📆 剧情第 ' + esc(String(c.storyDay)) + ' 天' + (c.sceneDesc ? ' <span class="ftt-muted">（' + esc(c.sceneDesc) + '）</span>' : '') + '</div>');
+        // v2.48.0（用户要求）：该值**只用于插件内校准时间**（纪元首日 + (N-1) 天 → 日期），**不注入** ——
+        //   总览仍展示（便于核对锚点），但明确标注「校准用 · 不注入」
+        if (c.storyDay) lines.push('<div class="ftt-item">📆 校准用：剧情第 ' + esc(String(c.storyDay)) + ' 天 <span class="ftt-muted">（仅用于日期换算，不注入）</span>' + (c.sceneDesc ? ' <span class="ftt-muted">（' + esc(c.sceneDesc) + '）</span>' : '') + '</div>');
         // 手工改写工具行 + 编辑面板（三项输入；日期/时间宽松解析，地点自由文本）
         lines.push('<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="clockEdit" title="手工强制改写剧情日期 / 时间 / 地点（锚点错了就在这里改）">✏️ 手工改写日期/时间/地点</button>'
             + (cMan
