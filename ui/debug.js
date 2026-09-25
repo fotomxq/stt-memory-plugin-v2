@@ -15,7 +15,7 @@
 //   ④ V1 把「最多 300 条」硬编码在文案里；V2 用内核常量 `DEBUG_CAP`（值同为 300）。
 // ============================================================
 import { escHtml } from '../core/util.js';
-import { DEBUG_CAP } from '../core/debug-log.js';
+import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 import { settingsControlHtml } from './settings-pages.js';
 
@@ -105,7 +105,19 @@ export function debugPageHtml(controls) {
         sw,
         '<div class="ftt-muted">关闭后不再记录新日志；已存日志仍可查看。</div>',
         '</div>',
-        '<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
+                // v2.34.0：异常捕捉只读区（全局 error / unhandledrejection / 面板动作失败 → 内核调试日志 kind='异常'）
+        '<div class="ftt-section"><div class="ftt-sec-title">⚠ 异常捕捉 <span class="ftt-muted">共 ' + debugLogErrorCount() + ' 条（host 全局 error / unhandledrejection + 面板动作失败）</span></div>',
+        (() => {
+            const last = debugLogLastError();
+            if (!last) return '<div class="ftt-muted">暂无异常记录（未捕获错误会自动写入本页与调试日志）</div>';
+            const d = (() => { try { return JSON.parse(last.data); } catch (e) { return { message: String(last.data || '') }; } })();
+            return '<div class="ftt-hint">最近一条 · ' + esc(String(new Date(Number(last.at) || 0).toLocaleString('zh-CN', { hour12: false }))) + '<br>'
+                + esc(String(d.kind || '异常')) + '：' + esc(String(d.message || '')).slice(0, 300)
+                + (d.source ? ('<br><span class="ftt-muted">' + esc(String(d.source)) + (d.line ? (':' + Number(d.line) + (d.col ? (':' + Number(d.col)) : '')) : '') + '</span>') : '')
+                + '</div>';
+        })(),
+        '<div class="ftt-row"><span class="ftt-muted">最近 3 条：' + esc(debugLogErrors(3).map((l) => { const d = (() => { try { return JSON.parse(l.data); } catch (e) { return {}; } })(); return String(d.message || l.data || '').slice(0, 60); }).join(' ｜ ')) + '</span></div>',
+'<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
         debugLogHtml(),
         '</div>',
     ].join('\n');

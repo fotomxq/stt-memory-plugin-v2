@@ -5,7 +5,7 @@
 // ============================================================
 import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants.js';
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
-import { bindCoreEvents, eventTypeAvailability } from './host/events.js';
+import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
 import { clearInject, injectAvailable, pushMemoryInject, pushStats } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
@@ -23,6 +23,7 @@ import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
+import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
 import {
     aboutLoadJson, aboutEnsureLoaded, getAboutData, getAboutState, aboutSortDesc, aboutHtml,
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
@@ -232,6 +233,8 @@ export async function init() {
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
     // B9-a：调试日志接线（内核环形缓冲 ⇄ localStorage；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
     try { runtime.debug = wireDebugLog(); } catch (e) { runtime.debug = { persistent: false, synced: 0 }; }
+    // v2.34.0（强化调试）：安装全局异常捕捉 —— 未捕获错误 / 未处理 Promise 拒绝自动写入调试日志（`kind='异常'`）
+    try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; }
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try { runtime.i18n = registerLocaleData(); } catch (e) { runtime.i18n = { ok: false, reason: 'error' }; }
@@ -534,6 +537,28 @@ function bootstrapDiagnostics() {
             rumorExpired: (r) => rumorExpired(r),
             rumorInjLine: (r) => rumorInjLine(r),
             flattenRumor: (r) => flattenRumor(r),
+            // v2.34.0 调试强化：异常日志查询与捕捉开关状态
+            // v2.34.0：一键诊断快照（异常/日志/运行态）——便于用户直接把结果贴给维护者
+            dbgDump: () => {
+                try {
+                    return {
+                        version: VERSION,
+                        ready: !!runtime.ready,
+                        debug: runtime.debug || null,
+                        errCapture: errorCaptureState(),
+                        errors: debugLogErrorCount(),
+                        lastErrors: debugLogErrors(3),
+                        stats: debugLogStats(),
+                        recent: debugLogList().slice(0, 10),
+                        probe: (runtime.probe && runtime.probe.missing) ? { missing: runtime.probe.missing } : null,
+                        lastError: runtime.lastError || '',
+                    };
+                } catch (e) { return { version: VERSION, error: String((e && e.message) || e) }; }
+            },
+            dbgErrors: (limit) => debugLogErrors(limit),
+            dbgErrorCount: () => debugLogErrorCount(),
+            dbgLastError: () => debugLogLastError(),
+            errCaptureState: () => errorCaptureState(),
             worldbookEntries: (env) => buildWorldbookEntries(env),
             worldbookKeys: (n) => buildWorldbookKeys(n),
             worldbookIsFttEntry: (e) => worldbookIsFttEntry(e),
@@ -1024,6 +1049,7 @@ export function teardown() {
     try { uninstallMenuEntry(); } catch (e) { /* noop */ }
     try { uninstallFloatingEntry(); } catch (e) { /* noop */ }
     try { closePanel(); } catch (e) { /* noop */ }
+    try { uninstallErrorCapture(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     try { resetSyncState(); } catch (e) { /* noop */ }
     try { cancelForgetTimers(); } catch (e) { /* noop */ }

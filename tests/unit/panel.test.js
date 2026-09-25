@@ -168,7 +168,9 @@ await A('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；c
 
 R.assert('A3 设置分页：渲染 V1 的 14 组子页（子标签 + 当前页控件 + V2 附加设定块）', (() => {
     const h = panelBodyHtml('settings');
-    return h.indexOf('ftt-settings-subtabs') >= 0 && h.indexOf('data-ftt-settings="base"') >= 0
+    // v2.34.0：子标签标记改为 V1 同款（`<a href="javascript:void(0)" class="ftt-subtab" data-ftt-subtab="<id>">`）
+    return h.indexOf('ftt-settings-subtabs') >= 0 && h.indexOf('data-ftt-subtab="base"') >= 0
+        && h.indexOf('href="javascript:void(0)" class="ftt-subtab') >= 0
         && h.indexOf('data-ftt-settings-page="base"') >= 0 && h.indexOf('data-ftt-cfg="') >= 0
         && h.indexOf('V2 附加设定') >= 0 && h.indexOf('data-ftt-v2="autoUpdateCheck"') >= 0
         && h.indexOf('data-ftt-action="importV1Dry"') >= 0 && h.indexOf('ftt_v2_dims') >= 0;
