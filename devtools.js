@@ -11,6 +11,12 @@ import { statusText } from './ui/commands.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { updateStatusText, hasUpdate, updateConfig } from './host/update.js';
 
+// v2.46.0：启动更新检查的**排期**信息由宿主侧注入（延迟毫秒/原因/排期时刻）
+let extraHooks = {};
+function updateScheduleInfo() {
+    try { return (extraHooks && typeof extraHooks.updateSchedule === 'function') ? extraHooks.updateSchedule() : null; } catch (e) { return null; }
+}
+
 export function buildSnapshot(extra) {
     const probe = hasHost() ? probeCapabilities() : { need: {}, missing: ['host'], ok: false };
     return {
@@ -24,7 +30,11 @@ export function buildSnapshot(extra) {
         interceptor: interceptorStats(),
         inject: { available: injectAvailable(), key: MODULE_NAME, length: readInject().length },
         settings: getSettings(),
-        update: { config: updateConfig(), state: readUpdateState(), status: updateStatusText(), hasUpdate: hasUpdate() },
+        update: {
+            config: updateConfig(), state: readUpdateState(), status: updateStatusText(), hasUpdate: hasUpdate(),
+            // v2.46.0：排期（`{reason:'delayed', delayMs:4000, scheduledAt}` 或 null）——「为什么还没检查」一看便知
+            schedule: updateScheduleInfo(),
+        },
         dimensions: DIMENSIONS.map(d => d.kind),
         hostEvents: HOST_EVENTS.slice(),
         status: statusText(Object.assign({ host: hasHost(), probe, interceptor: interceptorStats() }, extra || {})),
@@ -33,6 +43,7 @@ export function buildSnapshot(extra) {
 
 /** 挂到 window.FTT（返回快照；不覆盖已存在的同名对象则合并） */
 export function installDevtools(hooks) {
+    extraHooks = hooks || {};
     const snap = buildSnapshot();
     try {
         const w = globalThis;
