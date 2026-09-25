@@ -37,6 +37,41 @@ export function judgeUpdate(current, remote) {
     return { status: 'same', remoteNewer: false, current: String(current), remote: String(remote) };
 }
 
+// ============================================================
+// 启动自动检查的**内置延迟**（v2.46.0，用户要求：「启动时自动检查更新，内置延迟几秒后执行，避免插件异常」）
+//
+// 为什么要延迟：插件加载期与酒馆自身的启动流程（事件源绑定、聊天载入、其它扩展初始化、本插件的存储对账）
+//   高度重叠。此时立刻发起更新检查会：
+//     ① 与启动期网络/存储竞争（实测在弱网或大体量存档下会拖慢首屏与「存储对账」）；
+//     ② 若宿主把 `POST /api/extensions/version` 桥接为 git handshake，可能**抢先弹出后端错误**，
+//        用户看到的是「插件异常」而不是「更新检查失败」。
+//   因此自动路径统一**延迟 `UPDATE_STARTUP_DELAY_MS` 后**再跑；**手动检查（用户点击）不延迟**。
+// 约定：延迟只影响「何时开始」，不影响「是否该查」（策略判定仍在 `shouldAutoCheck` 内，手工/首次/间隔语义不变）。
+// ============================================================
+
+/** 启动自动检查的默认延迟（毫秒）——4 秒：足够让酒馆完成启动与首屏，又不至于让用户等太久 */
+export const UPDATE_STARTUP_DELAY_MS = 4000;
+/** 延迟上限（毫秒）：即使调用方给了很大的值也不至于"永不检查" */
+export const UPDATE_STARTUP_DELAY_MAX_MS = 60000;
+
+/**
+ * 计算启动检查的延迟方案（纯函数，便于单测与诊断）。
+ * · 手动（`manual: true`）→ 0（用户点了就立刻查）；
+ * · 显式 `delayMs`（数字，含 0）→ 夹在 `0..UPDATE_STARTUP_DELAY_MAX_MS`；
+ * · 其余（启动自动路径）→ 默认 `UPDATE_STARTUP_DELAY_MS`。
+ * @param {object} [opts] manual / delayMs
+ * @returns {{ delayMs: number, reason: 'manual'|'explicit'|'startup' }}
+ */
+export function startupDelayPlan(opts) {
+    const o = opts || {};
+    if (o.manual) return { delayMs: 0, reason: 'manual' };
+    if (o.delayMs !== undefined && o.delayMs !== null && o.delayMs !== '' && Number.isFinite(Number(o.delayMs))) {
+        const n = Math.max(0, Math.min(UPDATE_STARTUP_DELAY_MAX_MS, Math.floor(Number(o.delayMs))));
+        return { delayMs: n, reason: 'explicit' };
+    }
+    return { delayMs: UPDATE_STARTUP_DELAY_MS, reason: 'startup' };
+}
+
 /**
  * 是否应执行自动检查（首次启动 / 间隔到期）。
  * @param {object} p autoUpdateCheck / lastCheckAt / startupCheckedAt / intervalHours / now / hasHost

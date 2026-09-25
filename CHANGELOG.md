@@ -3,6 +3,31 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.46.0（2026-09-26）· 启动自动检查更新：内置延迟 4 秒执行
+
+**用户要求**：「启动时自动检查更新，内置延迟几秒后执行，避免插件异常。」
+
+**① 行为**：自动路径不再在装配完成瞬间发请求，而是**排期 `UPDATE_STARTUP_DELAY_MS = 4000`（4 秒）**后执行
+（`core/update.js` 提供常量与纯函数 `startupDelayPlan`；上限 `UPDATE_STARTUP_DELAY_MAX_MS = 60000`）。
+原因：插件加载期与酒馆启动（事件绑定/聊天载入/其它扩展）及本插件「存储对账」高度重叠，立刻发请求会与启动期
+竞争；若宿主把版本端点桥接为 git handshake，还可能**抢先弹出后端错误**，用户会把它当成「插件异常」。
+
+**② 例外与兜底**：**手动检查（用户点「🔍 检查更新」）不延迟**（`manual → 0`）；`delayMs` 可显式覆盖（夹在 0..60s，
+`delayMs: 0` 供门禁/诊断）；调度经内核 `timerHooks`（可替换），另有 `setTimeout(ms+250)` 兜底防宿主吞掉定时器；
+定时器钩子抛错时**不延迟**照常检查（宁可检查，也不要永不检查）。
+
+**③ 可观测**：排期即留痕 —— `runtime.update = { ran:false, reason:'delayed', delayMs, delayReason, scheduledAt }`，
+`FTT.snapshot().update.schedule` 与 `/ftt` 状态（`extraForStatus().bootstrap.updateSchedule`）都能看到「已排期/延迟多少」；
+设置面板开关文案补注「（内置延迟 4 秒执行，避开启动高峰）」。
+
+**④ 取代与撤销**：连续触发（`init` + `APP_READY`）时**后一次排期取代前一次**（仅跑一次，被取代者返回 `superseded`）；
+`teardown()` 调 `cancelStartupUpdateDelay()` 撤销未执行的排期（不请求、不写状态）。
+
+**⑤ 门禁**：新增 `tests/unit/update-delay.test.js`（11 断言：P/S/M/C/F 组 —— 纯函数夹取、**只排期不发请求**、
+到点才检查并落盘、手动与 `delayMs:0` 不延迟、取代与撤销、定时器不可用不延迟）；冒烟新增 **E2a**
+（装配完成时 `reason=delayed`/`delayMs=4000` 且**零更新请求**，并断言两处诊断可见），E2/E3 改为撤销排期后显式立即执行。
+合计单元 **71 文件 / 1145 断言**、冒烟 **161 项**，全绿。
+
 ## v2.45.0（2026-09-26）· 投喂白/黑名单的按钮与「联动生效」修复
 
 **用户报告**：「投喂标签自动分析存在BUG，请核对加入白名单、黑名单的按钮功能，以及是否联动生效等细节。」

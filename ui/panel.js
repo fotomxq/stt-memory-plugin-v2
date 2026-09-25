@@ -876,7 +876,7 @@ function v2ExtrasHtml() {
     // 宽度档位（非法/缺失 → 默认档；`0` 是合法值 = 铺满，故用 Number.isFinite 判定而非 `||`）
     const curWidth = (() => { const n = Number(s.panelMaxWidth); return Number.isFinite(n) && n >= 0 ? n : 1280; })();
     return [
-        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (s.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新</span>',
+        '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="autoUpdateCheck"' + (s.autoUpdateCheck !== false ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">启动时自动检查更新（内置延迟 4 秒执行，避开启动高峰）</span>',
         '<input type="text" class="ftt-input" data-ftt-v2="updateRepo" value="' + attr(repo) + '" placeholder="更新检查仓库地址">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="check-update">🔍 检查更新</button></div>',
         '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="useStGitEndpoint"' + (s.useStGitEndpoint === true ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">使用宿主 Git 更新端点（默认关）</span></div>',

@@ -233,6 +233,24 @@ assert('E1 设置面板含更新区块（自动检查开关 / 仓库地址 / **�
         && el.html.indexOf('data-ftt-update-state') >= 0;
 })(), doc.getElementById('extensions_settings2').html.slice(0, 160));
 
+// v2.46.0（用户要求）：「启动时自动检查更新，内置延迟几秒后执行，避免插件异常」——
+//   先断言「启动时只是**排期**、并未立刻发起请求」，再撤掉排期按需立即跑一次（保证后续用例确定性）。
+assert('E2a 启动自动检查**内置延迟**：装配完成时只排期（`reason=delayed`、`delayMs=4000`），未立刻发起远端请求', (() => {
+    const u = entry.runtimeState().update || {};
+    const netCalls = fetchCalls.filter(u2 => String(u2).indexOf('/manifest.json') >= 0 || String(u2).indexOf('CHANGELOG') >= 0).length;
+    // 诊断可见：`FTT.snapshot().update.schedule` 与 `/ftt` 状态（`extraForStatus().bootstrap.updateSchedule`）
+    //   都应说明「已排期 / 延迟多少」——便于回答「为什么还没检查」
+    const snap = globalThis.FTT && typeof globalThis.FTT.snapshot === 'function' ? globalThis.FTT.snapshot() : null;
+    const d1 = (snap && snap.update && snap.update.schedule) || null;
+    const d2 = (entry.extraForStatus().bootstrap || {}).updateSchedule || null;
+    const sched = (x) => !!x && x.reason === 'delayed' && Number(x.delayMs) === 4000 && Number(x.scheduledAt) > 0;
+    return u.reason === 'delayed' && Number(u.delayMs) === 4000 && u.ran === false && u.scheduledAt > 0 && netCalls === 0
+        && sched(d1) && sched(d2);
+})(), (() => ({ update: entry.runtimeState().update, snapshotSchedule: (globalThis.FTT.snapshot() || {}).update && globalThis.FTT.snapshot().update.schedule, statusSchedule: (entry.extraForStatus().bootstrap || {}).updateSchedule, fetchCalls: fetchCalls.slice(0, 6) }))());
+
+// 撤销排期（避免真实 4 秒定时器在门禁中后发）→ 显式立即跑一次，供 E2/E3 断言落盘与状态行
+entry.cancelStartupUpdateDelay();
+await entry.startupUpdateCheck({ delayMs: 0 });
 await new Promise(r => setTimeout(r, 60));
 assert('E2 首次启动自动检查：写 startupCheckedAt/lastCheckAt，且**默认不触碰宿主 Git 端点**（回归 v2.11.1）', (() => {
     const st = readUpdateState();

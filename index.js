@@ -18,6 +18,8 @@ import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPa
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
 import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
+// v2.46.0：启动自动检查的**内置延迟**（用户要求：「内置延迟几秒后执行，避免插件异常」）
+import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
@@ -51,7 +53,7 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, cfg as cfgRef } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, cfg as cfgRef } from './core/model/runtime.js';
 import {
     clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
     runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
@@ -206,7 +208,13 @@ export function extraForStatus() {
         extract: extractStats(),
         extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
         i18n: i18nStats(),
-        bootstrap: Object.assign({}, runtime.bootstrap, { panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), popup: popupInfo(), ready: runtime.ready }),
+        bootstrap: Object.assign({}, runtime.bootstrap, {
+            panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), popup: popupInfo(), ready: runtime.ready,
+            // v2.46.0：启动自动检查的**排期**信息（延迟毫秒/原因/排期时刻），便于回答「为什么还没检查」
+            updateSchedule: (runtime.update && (runtime.update.reason === 'delayed' || runtime.update.delayMs))
+                ? { reason: runtime.update.reason || '', delayMs: Number(runtime.update.delayMs) || 0, delayReason: runtime.update.delayReason || '', scheduledAt: Number(runtime.update.scheduledAt) || 0 }
+                : null,
+        }),
         cfg: runtime.cfg,
         inject: pushStats(),
         update: (runtime.update && runtime.update.summary) || readUpdateState().lastResult || null,
@@ -316,18 +324,86 @@ export async function init() {
 /**
  * 启动时更新检查（首次启动必查，之后按间隔；失败静默不阻塞）。
  * 用户要求：「构建首次启动插件自动检查、设定手动检查更新的机制」。
- * @param {object} [opts] manual / now
+ *
+ * v2.46.0（用户要求）：「启动时自动检查更新，**内置延迟几秒后执行**，避免插件异常」——
+ *   自动路径统一**延迟 `UPDATE_STARTUP_DELAY_MS`（4 秒）**再发起请求：避开酒馆启动高峰与插件自身的启动对账，
+ *   也让宿主 git 端点/网络异常不至于在首屏就弹后端错误；**手动检查（`manual: true`）不延迟**。
+ *   延迟经内核 `timerHooks` 调度（与快照防抖、时钟调度同一套钩子），可被测试替换；`teardown()` 会撤销待执行的延迟。
+ * @param {object} [opts] manual / now / delayMs（`delayMs: 0` = 立即，测试用）
  */
 export async function startupUpdateCheck(opts) {
+    const o = opts || {};
+    const plan = startupDelayPlan(o);
     try {
-        const r = await maybeAutoCheckOnStartup(opts || {});
-        runtime.update = { ran: !!r.ran, reason: r.reason, summary: r.summary || null };
+        if (plan.delayMs > 0) {
+            // 排期即留痕（诊断/状态可查：「已排期，N 秒后检查」而非「尚未检查」）
+            runtime.update = { ran: false, reason: 'delayed', summary: null, delayMs: plan.delayMs, delayReason: plan.reason, scheduledAt: Date.now() };
+            const ok = await waitStartupUpdateDelay(plan.delayMs, o);
+            if (!ok) {
+                // 被新一轮调度取代 / 插件已卸载 → 放弃本次（不写状态、不提示）
+                return { ran: false, reason: 'superseded' };
+            }
+        }
+        const r = await maybeAutoCheckOnStartup(o);
+        runtime.update = { ran: !!r.ran, reason: r.reason, summary: r.summary || null, delayMs: plan.delayMs, delayReason: plan.reason };
         if (r.ran && r.summary) { try { setUpdateStatusLine(updateStatusText(r.summary)); } catch (e) { /* 面板可能未挂载 */ } }
         return r;
     } catch (e) {
-        runtime.update = { ran: false, reason: 'error', summary: null };
+        runtime.update = { ran: false, reason: 'error', summary: null, delayMs: plan.delayMs, delayReason: plan.reason };
         return { ran: false, reason: 'error' };
     }
+}
+
+/** 待执行的启动更新检查（同一时刻最多一个：新一轮调度会取代旧的） */
+let startupUpdatePending = null;
+
+/**
+ * 等待启动检查的延迟（可被取代 / 被 `teardown()` 取消）。
+ * @returns {Promise<boolean>} true = 该执行了；false = 已被取代或取消
+ */
+function waitStartupUpdateDelay(ms, opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+        const ticket = { id: 0, cancelled: false, resolve: resolve };
+        // 新一轮调度替代旧的一轮（例如 init 与 APP_READY 双双触发）
+        try { if (startupUpdatePending) cancelStartupUpdateDelay(); } catch (e) { /* 忽略 */ }
+        startupUpdatePending = ticket;
+        const done = (ok) => {
+            if (ticket.settled) return;
+            ticket.settled = true;
+            if (startupUpdatePending === ticket) startupUpdatePending = null;
+            resolve(!!ok);
+        };
+        ticket.done = done;
+        try {
+            const id = timerHooks.set(() => { done(true); }, ms);
+            ticket.id = id || 0;
+        } catch (e) {
+            done(true);        // 定时器不可用 → 不延迟（宁可检查，也不要永不检查）
+            return;
+        }
+        // 兜底：定时器钩子若未真正回调（被宿主吞掉），用原始 setTimeout 保证仍会执行
+        if (typeof setTimeout === 'function' && o.noFallbackTimer !== true) {
+            try {
+                const fb = setTimeout(() => { done(true); }, Math.max(0, Number(ms) || 0) + 250);
+                ticket.fallback = fb;
+            } catch (e) { /* 忽略 */ }
+        }
+    });
+}
+
+/** 取消待执行的启动更新检查（teardown / 新调度时调用；幂等） */
+export function cancelStartupUpdateDelay() {
+    try {
+        const t = startupUpdatePending;
+        if (!t) return false;
+        startupUpdatePending = null;
+        t.cancelled = true;
+        if (t.id) { try { timerHooks.clear(t.id); } catch (e) { /* 忽略 */ } }
+        if (t.fallback) { try { clearTimeout(t.fallback); } catch (e) { /* 忽略 */ } }
+        if (typeof t.done === 'function') t.done(false);
+        return true;
+    } catch (e) { return false; }
 }
 
 /** 手动检查更新（设置面板按钮 / 斜杠命令调用同一入口） */
@@ -508,6 +584,8 @@ function bootstrapDiagnostics() {
     } catch (e) { runtime.macros = false; }
     try {
         installDevtools(Object.assign({
+            // v2.46.0：启动自动检查的排期（供 `FTT.snapshot()/FTT.update()` 与调试包回答「为什么还没检查」）
+            updateSchedule: () => (runtime.update ? { ...runtime.update } : null),
             importV1: runV1Import, importStatus,
             // B7-2 跨端同步调试入口（与 V1 `FTT.*` 同名能力：同步状态 / 立即同步 / 刷新 / 校验 / 日志）
             syncStatus: storageStatusInfo,
@@ -1259,6 +1337,7 @@ export function teardown() {
     try { resetSyncState(); } catch (e) { /* noop */ }
     try { cancelForgetTimers(); } catch (e) { /* noop */ }
     try { cancelRepairTimers(); } catch (e) { /* noop */ }
+    try { cancelStartupUpdateDelay(); } catch (e) { /* noop */ }   // v2.46.0：撤销待执行的启动更新检查
     runtime.ready = false;
     return true;
 }
@@ -1348,5 +1427,5 @@ export const __internals = {
     runSummaryBatch, abortExtraction, clearProcessedFloors, exportStateJson, importStateJson, debugDumpSnapshot, panelRuntimeHooks,
     startReadyProbe, stopReadyProbe,
     eventTypeAvailability, interceptorStats, resetInterceptorStats, injectAvailable,
-    startupUpdateCheck, checkUpdateNow,
+    startupUpdateCheck, checkUpdateNow, cancelStartupUpdateDelay,
 };

@@ -150,7 +150,7 @@ export function fallbackPanelHtml(data) {
         '<div class="ftt-v2-note" id="ftt_v2_action"></div>',
         '<div class="ftt-v2-sub">数据台</div>',
         '<div class="ftt-console-host" id="ftt_v2_console"></div>',
-        '<div class="ftt-v2-row"><label>启动时自动检查更新</label><input type="checkbox" id="ftt_v2_autoupd"' + (d.autoUpdateCheck ? ' checked' : '') + '></div>',
+        '<div class="ftt-v2-row"><label>启动时自动检查更新（内置延迟 4 秒执行）</label><input type="checkbox" id="ftt_v2_autoupd"' + (d.autoUpdateCheck ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label title="宿主 Git 端点会做远端 git handshake；无 git 的宿主（如 TauriTavern）会报「后端错误：Git handshake failed」。默认关：改用 GitHub raw 清单判定版本。">使用宿主 Git 更新端点（默认关）</label><input type="checkbox" id="ftt_v2_usegit"' + (d.useStGitEndpoint ? ' checked' : '') + '></div>',
         '<div class="ftt-v2-row"><label>更新检查仓库</label><input type="text" id="ftt_v2_updrepo" value="' + escAttr(d.updateRepo) + '"></div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_checkupd">🔍 检查更新</button><button class="menu_button" id="ftt_v2_doupd">⬆ 立即更新（ST）</button></div>',
