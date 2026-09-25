@@ -125,22 +125,49 @@ A('B2 维度开关 `dimToggle` 真实写内核 `cfg.dimensionEnabled` 并落盘�
         && typeof HOOKS.autoSummary === 'function' && typeof HOOKS.importV1 === 'function' && typeof HOOKS.inject === 'function';
 })(), null);
 
-// ---------- D 组：确认对话框语义 ----------
-A('D1 `confirm` 为**同步**布尔语义：有原生 `confirm` 时按其结果；无对话框能力时返回 `false`（破坏性动作按「取消」处理，V1 同款）', (() => {
-    const prev = globalThis.confirm;
+// ---------- D 组：确认对话框语义（v2.41.0：异步安全 + ACL 不炸） ----------
+const D1 = await (async () => {
+    const savedPopup = host.ctx.callGenericPopup;
+    const savedConfirm = globalThis.confirm;
+    // ① 酒馆自身弹窗（页面内 UI，不走宿主 ACL）按其真实结果
+    let askedPopup = 0;
+    host.ctx.callGenericPopup = async () => { askedPopup += 1; return 1; };
+    const popupYes = await HOOKS.confirm('确定清空？', '数据管理');
+    host.ctx.callGenericPopup = async () => 0;
+    const popupNo = await HOOKS.confirm('确定清空？', '数据管理');
+    host.ctx.callGenericPopup = async () => { throw new Error('ACL denied'); };
+    const popupThrow = await HOOKS.confirm('确定清空？', '数据管理');   // 抛错 → 落到原生 confirm（此处无 → false）
+    // ② 无酒馆弹窗 → 原生 confirm：同步布尔采信；Promise 桥接**不采信**（ACL 拒绝不得变成未处理拒绝）
+    delete host.ctx.callGenericPopup;
     let asked = '';
     globalThis.confirm = (msg) => { asked = String(msg); return true; };
-    const yes = HOOKS.confirm('确定清空？', '数据管理');
+    const nativeYes = await HOOKS.confirm('确定清空？', '数据管理');
     globalThis.confirm = () => false;
-    const no = HOOKS.confirm('确定清空？', '数据管理');
+    const nativeNo = await HOOKS.confirm('确定清空？', '数据管理');
+    globalThis.confirm = () => Promise.reject(new Error('Command plugin:dialog|confirm not allowed by ACL'));
+    const bridged = await HOOKS.confirm('确定清空？', '数据管理');
+    globalThis.confirm = () => Promise.resolve(true);
+    const bridgedTrue = await HOOKS.confirm('确定清空？', '数据管理');
+    // ③ Tauri 宿主：原生 confirm 会撞 ACL → 直接跳过（不调用）
+    let calledInTauri = false;
+    globalThis.__TAURI_INTERNALS__ = {};
+    globalThis.confirm = () => { calledInTauri = true; return true; };
+    const tauri = await HOOKS.confirm('确定清空？', '数据管理');
+    delete globalThis.__TAURI_INTERNALS__;
+    // ④ 完全没有对话框能力 → false（按取消，V1 同款）
     delete globalThis.confirm;
-    const none = HOOKS.confirm('确定清空？', '数据管理');
-    globalThis.confirm = prev;
-    // V1 用原生 `confirm(text)`（**无标题**）→ 文案逐字只有正文；`title` 仅保留给将来的宿主对话框
-    return yes === true && no === false && none === false
-        && asked === '确定清空？'
-        && typeof yes === 'boolean' && typeof none === 'boolean';   // 必须是布尔（Promise 会被 `!!` 误判为确认）
-})(), null);
+    const none = await HOOKS.confirm('确定清空？', '数据管理');
+    // 收尾
+    if (savedPopup === undefined) delete host.ctx.callGenericPopup; else host.ctx.callGenericPopup = savedPopup;
+    if (savedConfirm === undefined) delete globalThis.confirm; else globalThis.confirm = savedConfirm;
+    await new Promise((r) => setTimeout(r, 0));   // 给被吞掉的拒绝一个落定机会（未处理拒绝会在此暴露）
+    const diag = { popupYes, popupNo, askedPopup, popupThrow, nativeYes, nativeNo, asked, bridged, bridgedTrue, tauri, calledInTauri, none };
+    globalThis.__d1diag = diag;
+    return popupYes === true && popupNo === false && askedPopup === 1 && popupThrow === false
+        && nativeYes === true && nativeNo === false && asked === '确定清空？'
+        && bridged === false && bridgedTrue === true && tauri === false && calledInTauri === false && none === false;
+})();
+A('D1 `confirm` 异步安全：酒馆弹窗 / 原生同步 confirm 按真实结果；**Promise 桥接与拒绝 → 取消**（不产生未处理拒绝）；Tauri 宿主跳过会触发 ACL 的原生 confirm；无对话框 → false', D1, globalThis.__d1diag);
 
 A('D2 面板状态可读（接线后不改变既有行为）：`panelState()` 结构完整', (() => {
     boot();

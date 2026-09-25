@@ -439,6 +439,28 @@ export function installDevtools(hooks) {
             defaultCurrencyOwner: () => (hooks && typeof hooks.defaultCurrencyOwner === 'function' ? hooks.defaultCurrencyOwner() : '主角'),
             t: (key, vars) => (hooks && typeof hooks.t === 'function' ? hooks.t(key, vars) : String(key == null ? '' : key)),
         });
+        // v2.41.0：**自动补全**未被显式包装的入口 ——
+        //   背景：本文件用「显式白名单」镜像 index.js 提供的 `FTT.*` 入口，index.js 新增键时若忘记在这里加包装，
+        //   该入口就**静默不存在**（用户报告「大量异常点」的一类根因；`debugLogExport` 就踩过）。
+        //   现在：显式包装优先（带 typeof 守卫与默认值），其余键统一自动挂一个安全包装（异常也不抛），
+        //   并把「自动挂载清单」暴露为 `FTT.hookKeys()/FTT.autoHooks()`（诊断 + 单测断言用）。
+        const autoHooks = [];
+        try {
+            const target = w.FTT;
+            for (const k of Object.keys(hooks || {})) {
+                if (Object.prototype.hasOwnProperty.call(target, k)) continue;
+                if (typeof hooks[k] !== 'function') continue;
+                const fn = hooks[k];
+                target[k] = (...args) => { try { return fn(...args); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; } };
+                autoHooks.push(k);
+            }
+            target.hookKeys = () => Object.keys(hooks || {}).slice();
+            // 累计报告（`installDevtools` 会被调用多次：模块加载 + init；第二次起这些键已存在 → 不能把清单覆盖成空）
+            const prevAuto = (typeof target.autoHooks === 'function') ? (target.autoHooks() || []) : [];
+            const merged = prevAuto.slice();
+            autoHooks.forEach((k) => { if (merged.indexOf(k) < 0) merged.push(k); });
+            target.autoHooks = () => merged.slice();
+        } catch (e) { /* 自动挂载失败不影响显式入口 */ }
         return true;
     } catch (e) {
         return false;

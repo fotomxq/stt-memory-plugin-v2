@@ -24,7 +24,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致 + 仅允许 V2 专有键（
     // 口径：V1 键必须**逐值**相同（保真）；V2 新增键须在白名单内（防悄悄加键/改键）
     // B9-d 例外（显式白名单）：`storage.stateFileSlim` / `storage.stateFileGzip` 为 V2 专有开关
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
-    const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab'];
+    // V2 专有键（V1 无）：界面形态 3 项 + API 三通道 2 项（v2.35.0 起；`''` = 未显式选择，按旧数据迁移推断）
+    const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'apiChannel', 'apiProfileId'];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && J(v1[k]) !== J(defaultCfg[k]));
