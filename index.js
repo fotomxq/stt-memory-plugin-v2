@@ -26,6 +26,11 @@ import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats 
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
 import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, apiPresetLoad, apiPresetDelete } from './core/api-channel.js';
+// v2.37.0：时钟取值追踪（诊断入口）
+import {
+    clockTraceLast, clockTraceList, clockTraceInfo, clockTraceSummary, clockTraceClear,
+    clockSrcLabel, clockSrcKeys, clockDegradeLabel,
+} from './core/clock-trace.js';
 import { probeTarget, fetchModels as probeModels, listConnectionProfiles, apiChannelAvailability, sendWithTarget } from './host/api-channel.js';
 import {
     aboutLoadJson, aboutEnsureLoaded, getAboutData, getAboutState, aboutSortDesc, aboutHtml,
@@ -461,6 +466,14 @@ function bootstrapDiagnostics() {
             clockUi: () => clockUiInfo(),
             clockPatrol: (opts) => runClockPatrolRepair(opts || {}),
             clockPatrolState: () => clockPatrolState(),
+            // v2.37.0「时钟取值追踪」：值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么
+            clockTrace: (stage) => clockTraceInfo(stage ? clockTraceLast(stage) : clockTraceLast()),
+            clockTraceAll: () => ({ resolve: clockTraceList('resolve').map(clockTraceInfo), patrol: clockTraceList('patrol').map(clockTraceInfo), 'regex-ai': clockTraceList('regex-ai').map(clockTraceInfo), 'time-repair': clockTraceList('time-repair').map(clockTraceInfo) }),
+            clockTraceSummary: (stage) => clockTraceSummary(stage ? clockTraceLast(stage) : clockTraceLast()),
+            clockTraceClear: () => clockTraceClear(),
+            clockSrcLabel: (k) => clockSrcLabel(k),
+            clockSrcLabels: () => clockSrcKeys().map((k) => ({ key: k, label: clockSrcLabel(k) })),
+            clockDegradeLabel: (r) => clockDegradeLabel(r),
             clockPatrolAuto: () => clockPatrolAutoOnce(),
             clockAnchor: () => clockPatrolAnchorInfo(),
             clockMajority: () => clockPatrolMajority(),

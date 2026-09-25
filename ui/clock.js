@@ -4,6 +4,7 @@
 //   「✏️ 手工改写日期/时间/地点」工具行与编辑面板（三项输入，宽松解析）+「🩺 时间巡检」状态行与手动巡检按钮。
 // 动作名与 V1 逐字一致：`clockEdit` / `clockEditCancel` / `clockManualSave` / `clockManualClear` / `clockPatrol`。
 // ============================================================
+import { clockSrcLabel, clockDegradeLabel, clockTraceSummary, clockTraceLast } from '../core/clock-trace.js';   // v2.37.0 取值追踪
 import { state, notifyHooks } from '../core/model/runtime.js';
 import { clockDateLabel } from '../core/clock.js';
 import { storyClockReference } from '../core/clock-extract.js';
@@ -30,11 +31,11 @@ function clockSrcHtml() {
     try {
         const cs = state && state.state && state.state.clockSrc;
         if (!cs || !(cs.date || cs.location || cs.present)) return '';
-        const L = { regex: '正则（最新正文）', plot: '最新情节', 'atom-latest': '原子数据兜底', prev: '沿用已有值', scene: '最新场景', manual: '手工改写' };
-        const fmt = (v) => esc(L[v] || v || '—');
-        const RM = { force: '强制降级（设定已开启）', 'anomaly:jump': '日期异常：年份远超当前时钟', 'anomaly:backward': '日期异常：剧情时间大幅倒退', 'anomaly:invalid': '日期异常：格式非法', 'no-date': '正文未识别到日期' };
-        const rsn = cs.degradeReason ? (RM[cs.degradeReason] || cs.degradeReason) : '';
-        return '<div class="ftt-hint ftt-w-full" data-ftt-clock-src>🕒 时钟来源：日期 ' + fmt(cs.date) + ' · 地点 ' + fmt(cs.location) + ' · 在场 ' + fmt(cs.present)
+        // v2.37.0：来源标签统一取自 core/clock-trace.js 的**全量登记表**（此前本页只有 6 项残缺映射 → 其它来源会打印英文原键）
+        const L = null; void L;
+        const fmt = (v) => esc(clockSrcLabel(v));
+        const rsn = cs.degradeReason ? clockDegradeLabel(cs.degradeReason) : '';
+        return '<div class="ftt-hint ftt-w-full" data-ftt-clock-src>🕒 时钟来源：日期 ' + fmt(cs.date) + ' · 时间 ' + fmt(cs.time || cs.date) + ' · 地点 ' + fmt(cs.location) + ' · 在场 ' + fmt(cs.present)
             + (cs.degraded ? ' · ⚠️ 已降级' + (rsn ? '（' + esc(rsn) + '）' : '') + ' → 采用「最新情节的日期与时间 + 最新的场景」' : '')
             + (cs.jumpYears ? ' · ⚠️ 日期较此前跳变 ' + esc(String(cs.jumpYears)) + ' 年，请确认是否为脏数据' : '') + '</div>';
     } catch (e) { return ''; }
@@ -44,7 +45,7 @@ function clockSrcHtml() {
 function patrolRowHtml() {
     try {
         const cp = clockPatrolState();
-        const cpAnchor = cp ? (cp.anchor ? esc(cp.anchor) + (cp.anchorSource ? '（' + esc(cp.anchorSource === 'manual' ? '手工改写' : cp.anchorSource === 'clock' ? '当前时钟' : cp.anchorSource === 'plot' ? '最新情节' : '原子多数派') + '）' : '') : '不可用') : '';
+        const cpAnchor = cp ? (cp.anchor ? esc(cp.anchor) + (cp.anchorSource ? '（' + esc(clockSrcLabel(cp.anchorSource)) + '）' : '') : '不可用') : '';
         const cpNote = cp ? (cp.blocked === 'no-anchor' || cp.blocked === 'ambiguous-anchor' ? ' · ⚠️ 未修改（请先手工设定剧情日期）'
             : (cp.blocked === 'scan-only' ? ' · 仅统计（未开启自动修复）'
                 : (cp.blocked === 'anchor-conflict' ? ' · ⚠️ 未修改（锚点与库内多数年份冲突）' : ''))) : '';
@@ -96,6 +97,9 @@ export function clockSectionHtml() {
         else lines.push('<div class="ftt-item">👥 在场角色：<span class="ftt-muted">（未识别 · 不限制注入）</span></div>');
         const src = clockSrcHtml();
         if (src) lines.push(src);
+        // v2.37.0：最近一次取值的**一行摘要**（值 ← 来源；含落盘改动），详情见 设定→调试「🕒 时钟取值追踪」
+        const tr = (() => { try { return clockTraceSummary(clockTraceLast('resolve')); } catch (e) { return ''; } })();
+        if (tr) lines.push('<div class="ftt-muted ftt-w-full" data-ftt-clock-trace>' + esc(tr) + ' · 详情：设定→调试「🕒 时钟取值追踪」</div>');
         lines.push(patrolRowHtml());
     } catch (e) { /* 忽略 */ }
     return lines.join('\n');
@@ -180,7 +184,7 @@ export async function clockAction(action, payload) {
         }
         if (a === 'clockPatrol') {
             const rep = runClockPatrolRepair({ force: true });
-            const src = rep.anchorSource === 'manual' ? '手工改写' : rep.anchorSource === 'clock' ? '当前时钟' : rep.anchorSource === 'plot' ? '最新情节' : rep.anchorSource === 'atoms-majority' ? '原子多数派' : '';
+            const src = clockSrcLabel(rep.anchorSource);
             const note = '巡检 ' + rep.scanned + ' 条（锚点 ' + (rep.anchor || '不可用') + (src ? '（' + src + '）' : '') + '）：异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
                 + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.blocked ? ' · ' + rep.blocked : '') + (rep.snap ? '（已留快照）' : '');
             return { ok: true, action: a, note, detail: rep };

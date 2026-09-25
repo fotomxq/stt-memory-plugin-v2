@@ -14,6 +14,8 @@
 // 一致性由 tests/unit/clock-ai-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { cfg, state, saveState, saveCfg, notifyHooks, dbgLog } from './model/runtime.js';
+// v2.37.0「时钟取值追踪」：AI 捕捉正则 / 时间修复的取值来源与落盘清单
+import { clockTraceStart, clockTraceText, clockTraceChain, clockTracePick, clockTraceNote, clockTraceApplied, clockTraceFinish } from './clock-trace.js';
 import { extractJsonObject } from './util.js';
 import { PROMPT_TEMPLATES_V2, normalizeDeltaKeys } from './config.js';
 import { clockNormTime } from './clock.js';
@@ -127,7 +129,30 @@ async function genClockRegexes(opts) {
         } else {
             notify('warning', 'AI 捕捉正则：未采用任何正则', `未采用：${r.skipped.join(' / ')}。可能是样本里没有明确的时间/地点写法，或 AI 返回的正则不适合本插件（会匹配空串 / 无法编译）。`);
         }
-        try { dbgLog('时钟', { action: 'AI 捕捉时钟正则（v1.184）', floors, chars: sample.length, dateRe: r.regexes.date, timeRe: r.regexes.time, locationRe: r.regexes.location, hits: r.hits, probe: r.probe, note: r.note }); } catch (e) { /* 忽略 */ }
+        // v2.37.0：取值追踪（样本来源 → AI 给出的正则 → 是否采用 → 试算命中）
+        try {
+        const tr1 = clockTraceStart('regex-ai', 'AI 捕捉时钟正则');
+        clockTraceText(tr1, { mode: o.sample != null ? 'given' : 'floor-window', floors: '最近 ' + floors + ' 楼', chars: sample.length, sample });
+        clockTraceChain(tr1, '① 取样本（最近 N 楼正文）→ ② AI 给出日期/时间/地点正则 → ③ 逐条校验（可编译 / 不匹配空串 / 有命中）→ ④ 采用或列入未采用');
+        const appliedHit = (pfx) => (r.applied || []).filter((x) => String(x).indexOf(pfx) === 0)[0] || '';
+        clockTracePick(tr1, 'date', { value: r.regexes.date || '', from: appliedHit('日期') ? 'custom' : '', why: appliedHit('日期') ? ('AI 给出且通过校验 → 已写入 cfg.clockDateRegex（' + appliedHit('日期') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
+        clockTracePick(tr1, 'time', { value: r.regexes.time || '', from: appliedHit('时间') ? 'custom' : '', why: appliedHit('时间') ? ('AI 给出且通过校验 → 已写入 cfg.clockTimeRegex（' + appliedHit('时间') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
+        clockTracePick(tr1, 'location', { value: r.regexes.location || '', from: appliedHit('地点') ? 'custom' : '', why: appliedHit('地点') ? ('AI 给出且通过校验 → 已写入 cfg.clockLocationRegex（' + appliedHit('地点') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
+        clockTraceApplied(tr1, { fields: Object.keys(r.hits || {}).map((k) => ({ field: k, from: '', to: String(r.hits[k]), changed: Number(r.hits[k]) > 0 })), locked: false, unchanged: (r.skipped || []).slice(), note: r.note || '' });
+        clockTraceFinish(tr1);
+        } catch (e) { try { dbgLog('异常', { kind: '时钟正则追踪构造失败', message: String((e && e.message) || e) }); } catch (e2) { /* 忽略 */ } }
+        try {
+            dbgLog('时钟', {
+                action: 'AI 捕捉时钟正则（v1.184）', floors, chars: sample.length,
+                dateRe: r.regexes.date, timeRe: r.regexes.time, locationRe: r.regexes.location,
+                hits: r.hits, probe: r.probe, note: r.note,
+                applied: r.applied, skipped: r.skipped,
+                sample: String(sample).slice(0, 80),
+                how: '取值追踪：FTT.clockTrace("regex-ai") / 设定→调试「🕒 时钟取值追踪」',
+            });
+        } catch (e) {
+            try { dbgLog('异常', { kind: '时钟正则日志构造失败', message: String((e && e.message) || e), stage: 'regex-ai' }); } catch (e2) { /* 忽略 */ }
+        }
         return { ok: r.applied.length > 0, applied: r.applied, skipped: r.skipped, hits: r.hits, probe: r.probe, regexes: r.regexes };
     } catch (e) {
         notify('error', 'AI 捕捉正则失败', String((e && e.message) || e).slice(0, 120));
@@ -279,7 +304,26 @@ async function runClockRepair(opts) {
                     ? `${parts.join(' · ')}；${r.details.length ? '例：' + r.details.slice(0, 3).join('；') : ''}`
                     : 'AI 未返回可用修正（可能正文里也没有可依据的时间表达）。可先用「🩺 时间巡检修复」（零 AI）做机械修复，或补齐正文后重试。');
         }
-        try { dbgLog('时钟', { action: '时间修复（结合正文 · v1.185）', anchor: pack.anchor, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, applied: r.applied, cleared: r.cleared, skipped: r.skipped, unknown: r.unknown, ms: Date.now() - t0 }); } catch (e) { /* 忽略 */ }
+        // v2.37.0：取值追踪（锚点 → 提交批次 → AI 改写清单 → 落盘）
+        try {
+        const tr2 = clockTraceStart('time-repair', '时间修复（结合正文 · v1.185）');
+        clockTraceChain(tr2, '① 锚点取自当前剧情时钟（clockPatrolAnchorInfo：手工 > 当前时钟 > 多数派）→ ② 打包异常条目（上限 clockRepairBatch）→ ③ AI 逐条给新日期/时间 → ④ 仅在能安全写回时落盘（其余保留原值）');
+        clockTracePick(tr2, 'date', { value: pack.anchor || '', from: 'clock', why: '参照锚点（当前剧情日期；AI 修复以此为准）' });
+        clockTraceNote(tr2, '共 ' + pack.total + ' 条异常，本次提交 ' + pack.entries.length + ' 条' + (pack.truncated ? '（已达上限截断）' : '') + '；耗时 ' + (Date.now() - t0) + 'ms');
+        clockTraceApplied(tr2, { fields: (r.applied || []).slice(0, 10).map((x) => ({ field: 'date/time', from: '', to: String(x), changed: true })), locked: false, unchanged: (r.skipped || []).concat(r.unknown || []).slice(0, 10).map(String), note: (r.cleared && r.cleared.length) ? ('清空 ' + r.cleared.length + ' 条') : '' });
+        clockTraceFinish(tr2);
+        } catch (e) { try { dbgLog('异常', { kind: '时间修复追踪构造失败', message: String((e && e.message) || e) }); } catch (e2) { /* 忽略 */ } }
+        try {
+            dbgLog('时钟', {
+                action: '时间修复（结合正文 · v1.185）',
+                anchor: pack.anchor, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated,
+                applied: r.applied, cleared: r.cleared, skipped: r.skipped, unknown: r.unknown, ms: Date.now() - t0,
+                anchorWhy: '锚点 = 当前剧情日期（手工改写 > 当前时钟 > 原子多数派）',
+                how: '取值追踪：FTT.clockTrace("time-repair") / 设定→调试「🕒 时钟取值追踪」',
+            });
+        } catch (e) {
+            try { dbgLog('异常', { kind: '时间修复日志构造失败', message: String((e && e.message) || e), stage: 'time-repair' }); } catch (e2) { /* 忽略 */ }
+        }
         return { made: r.applied + r.cleared, applied: r.applied, cleared: r.cleared, skipped: r.skipped, unknown: r.unknown, total: pack.total, submitted: pack.entries.length, details: r.details };
     } catch (e) {
         notify('error', '日期时间修复失败', String((e && e.message) || e).slice(0, 120));
