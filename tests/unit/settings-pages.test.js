@@ -36,7 +36,8 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v2.51.0 时钟改版：基础页删除 10 个废弃时钟设定 → 总数 183 → 173、base 21 → 11
     // v2.76.0：12 个非召回控件（货币记录开关 + 各大类单条字数上限）由「提取记忆」迁到「分析记忆」→ analyze 5→17、extract 34→22（总数不变）
-    return info.totalControls === 173 && m.base === 11 && m.feed === 37 && m.analyze === 17 && m.extract === 22
+    // v2.78.0：「重要性计算」两项（importanceBase / importancePerUse）属**召回打分** → base 11→9、extract 22→24（总数不变）
+    return info.totalControls === 173 && m.base === 9 && m.feed === 37 && m.analyze === 17 && m.extract === 24
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 5;   // v2.42.0：调试页 +4（级别/交互/宿主/详细）
 })(), settingsPagesInfo());
 

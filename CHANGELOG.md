@@ -3,6 +3,26 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.78.0（2026-09-26）· 「重要性计算」归位到「提取记忆」页（+ 两项写回夹取对齐 V1）
+
+**用户要求**：「设定的「重要性计算」是提取记忆用的，需迁移位置。」
+
+**① 归位**：`importanceBase`（初始重要性）/ `importancePerUse`（每次调用增量）由 设定 → 基础 迁到 设定 → 提取记忆，
+新增分节「重要性计算（调用次数驱动）」（位于「召回上限」之后、「其它召回行为」之前）。事实核对：
+`core/recall.js#calcImportance` = `clamp(初始值 + 调用次数 × 增量, 0, 1)`，用于**召回打分 / 排序**与列表行「重要度M%」，
+而「调用次数」正是条目**被召回命中**时 `markUsed` 累加的 —— 属召回链路；V1 放在「基础」页，本版按用户要求改排布（**有意偏差**，键名与标签逐字不变）。
+
+**② 纯搬运**：`SETTINGS_CONTROLS` 中 base 11 → **9**、extract 22 → **24**，控件总数仍 **173**；
+基础页原跨页指路句补为「『召回参数』与『重要性计算』在『提取记忆』页」。
+
+**③ 写回夹取（对齐 V1）**：`applySettingsControl` 对这两项按 V1 `settingsApplyAll`（v1.206 26743/26744）逐字夹取 ——
+`importanceBase ∈ [0,1]`、`importancePerUse ∈ [0,0.5]`，非法值回落 0（V1 `Number(el.value) || 0`）。
+此前 V2 只做数字类型转换、不做范围夹取，用户可写出越界值 —— 这两项现在是用户直接编辑的召回参数，夹取必须在写回处生效。
+
+**门禁**：新增 `tests/unit/importance-placement.test.js`（12 断言：控件表位置与标签逐字 / 基础页移除且保留指路 /
+提取页独立分节与顺序 / 渲染键集合 / 夹取四态 / 写回返回值 / `calcImportance` 与 `importancePct` 真实读这两项 / 提示长度与去重）；
+`settings-pages` P2、`settings-capacity` C5/C7、`analyze-grouping` A10 的逐页数量口径同步。详见 `docs/P10ap`。
+
 ## v2.77.0（2026-09-26）· 宿主原生存储（TauriTavern 官方契约）+ 文件通道后端路由
 
 **用户要求**：「当主体酒馆为 TauriTavern 时，优化存储设计，采用官方认可的存储方式进行存储，确保同步等机制满足条件。」

@@ -26,6 +26,8 @@ const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</
 
 /** 本页各层的控件键（其余键归「召回参数」） */
 const LAYER_KEYS = ['useVector', 'vectorTopN', 'vectorMinScore', 'vectorTimeoutMs', 'jsExtractEnabled', 'useKeywordFlow'];
+/** 重要性计算键（v2.78.0：属**召回打分**，从「基础」页迁来 → 单独分节，不进「其它召回行为」） */
+const IMP_KEYS = ['importanceBase', 'importancePerUse'];
 
 /** 分组下拉（V1 `apiBlockHtml` 的「代理预设名」在 V2 的等价物：本插件 API 分组） */
 function presetSelect(key, cur) {
@@ -99,7 +101,8 @@ export function extractPageHtml(controls, renderControl) {
         'maxSnapshots', 'maxMemories', 'maxItems', 'maxPlans', 'maxSuspense', 'maxScenes', 'maxConcepts', 'maxParallelsInj', 'maxCurrencies'];
     const budget = rest.filter((c) => String(c.key) === 'charBudget');
     const caps = rest.filter((c) => CAP_KEYS.indexOf(String(c.key)) >= 0);
-    const other = rest.filter((c) => budget.indexOf(c) < 0 && caps.indexOf(c) < 0);
+    const imp = rest.filter((c) => IMP_KEYS.indexOf(String(c.key)) >= 0);
+    const other = rest.filter((c) => budget.indexOf(c) < 0 && caps.indexOf(c) < 0 && imp.indexOf(c) < 0);
     const vec = (() => { try { return vectorLayerInfo(); } catch (e) { return { embedding: { ok: false, error: '读取失败' }, rerank: { ok: false, error: '读取失败' }, rerankActive: false }; } })();
     const ai = (() => { try { return aiLayerInfo(); } catch (e) { return { kw: {}, mem: {} }; } })();
     const cache = (() => { try { return vectorCacheStats(); } catch (e) { return { memory: 0, indexedDb: false, fallback: '' }; } })();
@@ -172,6 +175,17 @@ export function extractPageHtml(controls, renderControl) {
         caps.map((c) => settingsControlHtml(c)).join('\n'),
         shortHintHtml('这里的条数只是候选上限；默认已按 2000-3000 条库存规模放宽，预算不足时按优先级截取。'),
         '</div>',
+
+        // v2.78.0（用户要求）：「重要性计算」是**提取记忆**（召回打分）用的 —— 从「基础」页迁到本页。
+        //   公式与 V1 同口径（`core/recall.js#calcImportance`）：重要度 = 初始值 + 调用次数 × 每次增量，
+        //   其中「调用次数」在条目被召回命中时累加（`markUsed`），随后参与排序与遗忘判定。
+        (imp.length
+            ? '<div class="ftt-section"><div class="ftt-sec-title">重要性计算（调用次数驱动）</div>'
+            + imp.map((c) => settingsControlHtml(c)).join('\n')
+            + shortHintHtml('重要度 = 初始值 + 调用次数 × 每次增量；被召回命中一次即累加一次。')
+            + hintDetailsHtml('说明', '<div>' + esc('结果夹取在 0-1：初始值 0-1、每次增量 0-0.5。重要度参与召回排序（列表行的「重要度M%」也读它），并被遗忘机制用作保护阈值参考。') + '</div>')
+            + '</div>'
+            : ''),
 
         (other.length
             ? '<div class="ftt-section"><div class="ftt-sec-title">其它召回行为</div>' + other.map((c) => settingsControlHtml(c)).join('\n') + '</div>'

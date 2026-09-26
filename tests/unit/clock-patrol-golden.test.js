@@ -178,11 +178,13 @@ await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overview
 // ============================================================
 // P 组：设定「基础」页（V1 分节 + 强制开关 + 新增控件）
 // ============================================================
-R.assert('P1（v2.51.0 改版）基础页控件：删除 10 个废弃时钟设定后共 11 项（不再含 clockAutoPatrol/clockPatrolAutoFix/clockRegexPreset/…）', (() => {
+R.assert('P1（v2.51.0 改版 / v2.78.0 搬运）基础页控件：删除 10 个废弃时钟设定、再迁出重要性计算两项 → 共 9 项', (() => {
     const keys = (SETTINGS_CONTROLS.base || []).map((c) => String(c.key));
     const removed = ['clockAutoPatrol', 'clockPatrolAutoFix', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex',
         'clockLocationRegex', 'clockRelative', 'clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch'];
-    return keys.length === 11 && removed.every((k) => keys.indexOf(k) < 0)
+    // v2.78.0：「重要性计算」（importanceBase / importancePerUse）属召回打分 → 迁到「提取记忆」页
+    return keys.length === 9 && removed.every((k) => keys.indexOf(k) < 0)
+        && keys.indexOf('importanceBase') < 0 && keys.indexOf('importancePerUse') < 0
         && keys.indexOf('clockExtractEnabled') >= 0 && keys.indexOf('clockRepairBatch') >= 0;
 })(), (SETTINGS_CONTROLS.base || []).map((c) => c.key));
 

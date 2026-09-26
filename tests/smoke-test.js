@@ -827,7 +827,9 @@ await assert('O4 设定「基础」页（v2.51.0）：时钟两节按新设计�
     await entry.popupAction('tab', { tab: 'settings' });
     await entry.popupAction('settingsSub', { sub: 'base' });
     const h = String(panelBodyHtml('settings') || '');
-    return keys.length === 11 && removed.every((k) => keys.indexOf(k) < 0)
+    // v2.78.0：「重要性计算」两项迁到「提取记忆」页（召回打分）→ base 11 → 9
+    return keys.length === 9 && removed.every((k) => keys.indexOf(k) < 0)
+        && keys.indexOf('importanceBase') < 0 && keys.indexOf('importancePerUse') < 0
         && h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
         && h.indexOf('只检查') >= 0 && h.indexOf('格式非法') >= 0;   // v2.60.0：提示精简（长解释移入折叠说明）
 })(), '');

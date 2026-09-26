@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.77.0",
+  "version": "2.78.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.78.0",
+      "date": "2026-09-26",
+      "title": "「重要性计算」归位到「提取记忆」页（+ 两项写回夹取对齐 V1）",
+      "points": [
+        "① 归位：importanceBase（初始重要性）/ importancePerUse（每次调用增量）由 设定 → 基础 迁到 设定 → 提取记忆，新增分节「重要性计算（调用次…",
+        "② 纯搬运：SETTINGS_CONTROLS 中 base 11 → 9、extract 22 → 24，控件总数仍 173；基础页原跨页指路句补为「『召回参数』与『重要性计算…",
+        "③ 写回夹取（对齐 V1）：applySettingsControl 对这两项按 V1 settingsApplyAll（v1.206 26743/26744）逐字夹取 ——im…"
+      ]
+    },
     {
       "version": "2.77.0",
       "date": "2026-09-26",
