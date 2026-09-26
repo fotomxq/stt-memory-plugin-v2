@@ -558,6 +558,10 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-details > summary::-webkit-details-marker { display: none; }
 #ftt-panel .ftt-details > summary::before { content: '▸ '; }
 #ftt-panel .ftt-details[open] > summary::before { content: '▾ '; }
+/* v2.57.0：折叠说明（ⓘ 说明 / 参数说明）与控件悬停标记 —— 扩展提示走交互，不挤占版面 */
+#ftt-panel .ftt-hint-details > summary { color: var(--ftt-text-3); }
+#ftt-panel .ftt-hint-body { margin: 4px 0 2px 4px; padding-left: 8px; border-left: 2px solid var(--ftt-text-3); }
+#ftt-panel .ftt-hint-mark { color: var(--ftt-teal); cursor: help; font-size: var(--ftt-font-xs); }
 #ftt-panel .ftt-filter-tight { margin: 4px 0 6px; gap: 6px; align-items: center; }
 #ftt-panel .ftt-field-col { align-items: flex-start; }
 #ftt-panel .ftt-select-sm { max-width: 132px; }

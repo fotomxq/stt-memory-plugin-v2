@@ -176,9 +176,9 @@ export function dimPresetRowsHtml() {
 /** 平行推演渠道下拉（V1 `parallelApiPreset` 选择器，v1.206 25816）——**渲染在「平行」页**（V1 原位） */
 export function parallelChannelFieldHtml() {
     const cur = String(cfg.parallelApiPreset || '');
-    return '<div class="ftt-field"><label>推演/推进分析渠道</label><select data-ftt-cfg="parallelApiPreset">'
-        + presetOptions(cur, '（默认主渠道）') + '</select></div>'
-        + '<div class="ftt-muted">平行事件的「交织推演」与「推进分析」都走该分组（V1 同键 <code>parallelApiPreset</code>，v1.206 13124 / 13941）。</div>';
+    // v2.57.0：删掉「V1 同键 + 行号」这类开发说明，只留一句用途（悬停提示承载细节）
+    return '<div class="ftt-field"><label title="「交织推演」与「推进分析」都使用该分组；不选则跟随主配置">推演/推进分析渠道</label>'
+        + '<select data-ftt-cfg="parallelApiPreset">' + presetOptions(cur, '（默认主渠道）') + '</select></div>';
 }
 
 /** 「按用途渠道」分节（**只作索引**：各选择器按 V1 原位渲染在对应分页 / 未实现项如实登记） */

@@ -349,137 +349,164 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "stateDecayRatio",
-            "label": "触发比例（默认 0.5＝超出上限 50% 触发）",
+            "label": "触发比例",
+            "hint": "默认 0.5 = 超出存储上限 50% 时触发衰退",
             "type": "text"
         },
         {
             "key": "stateDecayCutoff",
-            "label": "移除阈值（默认 0.95）",
+            "label": "移除阈值",
+            "hint": "默认 0.95：保留度低于该值即移除",
             "type": "text"
         },
         {
             "key": "stateDecaySubjectYears",
-            "label": "角色停更删除年限（剧情年，默认 0=不生效；填 >0 才启用「角色久未登场 → 整组删除其状态」）",
+            "label": "角色停更删除年限（剧情年）",
+            "hint": "默认 0 = 不生效；填 >0 才启用「角色久未登场 → 整组删除其状态」",
             "type": "text"
         },
         {
             "key": "stateDecayStaleYears",
-            "label": "单条绝对久远年限（剧情年，默认 6）",
+            "label": "单条久远年限（剧情年）",
+            "hint": "默认 6：单条状态久未出现超过该年限即移除",
             "type": "text"
         },
         {
             "key": "stateRepairBatch",
-            "label": "状态修复·每轮主体数（默认 3）",
+            "label": "修复每轮主体数",
+            "hint": "默认 3：每次「修复状态」处理的主体数量",
             "type": "text"
         },
         {
             "key": "stateRepairMatchSim",
-            "label": "主体匹配相似度（默认 0.72，低于视为无档案）",
+            "label": "主体匹配相似度",
+            "hint": "默认 0.72：低于该值视为匹配不到角色档案",
             "type": "text"
         },
         {
             "key": "memoryForgetEnabled",
-            "label": "启用记忆遗忘机制",
+            "label": "启用记忆遗忘",
+            "hint": "再次被写入即刷新（想起）；只按剧情日期，不跌破保底",
             "type": "checkbox"
         },
         {
             "key": "memoryForgetRatio",
-            "label": "触发比例（默认 0.5＝超出存储上限 50% 触发）",
+            "label": "触发比例",
+            "hint": "默认 0.5 = 超出存储上限 50% 时触发遗忘",
             "type": "text"
         },
         {
             "key": "memoryForgetCutoff",
-            "label": "遗忘阈值（默认 0.95）",
+            "label": "遗忘阈值",
+            "hint": "默认 0.95：保留度低于该值的旧记忆被移除",
             "type": "text"
         },
         {
             "key": "storeMinAtoms",
-            "label": "情节保底（默认 100，清理不跌破）",
+            "label": "情节保底",
+            "hint": "默认 100：自动机制不会清到该条数以下",
             "type": "text"
         },
         {
             "key": "storeMaxAtoms",
-            "label": "情节存储上限（默认 400）",
+            "label": "情节上限",
+            "hint": "默认 400：常规裁剪目标",
             "type": "text"
         },
         {
             "key": "storeMinMemories",
-            "label": "记忆保底条数（默认 200）",
+            "label": "记忆保底",
+            "hint": "默认 200",
             "type": "text"
         },
         {
             "key": "storeMaxMemories",
-            "label": "记忆存储上限（默认 600）",
+            "label": "记忆上限",
+            "hint": "默认 600",
             "type": "text"
         },
         {
             "key": "storeMinSnapshots",
-            "label": "角色档案保底（默认 100）",
+            "label": "角色档案保底",
+            "hint": "默认 100",
             "type": "text"
         },
         {
             "key": "storeMaxSnapshots",
-            "label": "角色档案上限（默认 300）",
+            "label": "角色档案上限",
+            "hint": "默认 300",
             "type": "text"
         },
         {
             "key": "storeMinItems",
-            "label": "物品保底（默认 150）",
+            "label": "物品保底",
+            "hint": "默认 150",
             "type": "text"
         },
         {
             "key": "storeMaxItems",
-            "label": "物品上限（默认 400）",
+            "label": "物品上限",
+            "hint": "默认 400",
             "type": "text"
         },
         {
             "key": "storeMinConcepts",
-            "label": "概念保底（默认 200）",
+            "label": "概念保底",
+            "hint": "默认 200",
             "type": "text"
         },
         {
             "key": "storeMaxConcepts",
-            "label": "概念上限（默认 600）",
+            "label": "概念上限",
+            "hint": "默认 600",
             "type": "text"
         },
         {
             "key": "lowUseForgetEnabled",
-            "label": "通用遗忘清扫（修复内执行、零 AI、缓慢）",
+            "label": "启用通用遗忘清扫",
+            "hint": "随「自动修复」执行，零 AI 调用、缓慢生效",
             "type": "checkbox"
         },
         {
             "key": "lowUseForgetRatio",
-            "label": "低使用比例（默认 0.05）",
+            "label": "低使用比例",
+            "hint": "默认 0.05：调用次数低于全库平均值该比例才可能被清",
             "type": "text"
         },
         {
             "key": "lowUseForgetMinItems",
-            "label": "条目数门槛（默认 80）",
+            "label": "条目数门槛",
+            "hint": "默认 80：该维度条目少于此值不清理",
             "type": "text"
         },
         {
             "key": "lowUseForgetMinAvg",
-            "label": "平均调用门槛（默认 5）",
+            "label": "平均调用门槛",
+            "hint": "默认 5：平均调用次数低于该值才考虑清理",
             "type": "text"
         },
         {
             "key": "lowUseForgetMinFloors",
-            "label": "长期未现楼层门槛（默认 300；0=不生效）",
+            "label": "长期未现楼层",
+            "hint": "默认 300 楼；0 = 不生效",
             "type": "text"
         },
         {
             "key": "lowUseForgetMaxDelete",
-            "label": "每轮最多清扫条数（默认 1）",
+            "label": "每轮最多清扫",
+            "hint": "默认 1 条（每维度）",
             "type": "text"
         },
         {
             "key": "lowUseForgetProtectImportance",
-            "label": "重要度保护（默认 0.7，≥ 不清扫）",
+            "label": "重要度保护",
+            "hint": "默认 0.7：重要度 ≥ 该值不清扫",
             "type": "text"
         },
         {
             "key": "lowUseForgetEveryFloors",
-            "label": "清扫间隔（默认 40 楼；0=不限制）",
+            "label": "清扫间隔（楼）",
+            "hint": "默认 40 楼；0 = 不限制",
             "type": "text"
         },
     
@@ -487,72 +514,86 @@ export const SETTINGS_CONTROLS = {
     "rumors": [
         {
             "key": "rumorEnabled",
-            "label": "传言（记录 + 演化 + 注入）",
+            "label": "启用传言",
+            "hint": "记录 + 演化 + 注入一并开启",
             "type": "checkbox"
         },
         {
             "key": "maxRumors",
-            "label": "传言注入上限（默认 6）",
+            "label": "注入上限",
+            "hint": "默认 6：每次最多注入几条传言",
             "type": "text"
         },
         {
             "key": "rumorChangeEveryRounds",
-            "label": "每隔 N 楼轮次演化一次（默认 5）",
+            "label": "演化间隔（楼）",
+            "hint": "默认 5：每隔 N 楼演化一次",
             "type": "text"
         },
         {
             "key": "rumorChangeNeedRounds",
-            "label": "单次变化过程所需轮次（默认 2，变化不会立刻生效）",
+            "label": "演化所需轮次",
+            "hint": "默认 2：单次变化需要几个轮次才生效（不会立刻变）",
             "type": "text"
         },
         {
             "key": "rumorFissionFerment",
-            "label": "触发裂变的最低发酵度（默认 80）",
+            "label": "裂变发酵度",
+            "hint": "默认 80：达到该发酵度才可能裂变",
             "type": "text"
         },
         {
             "key": "rumorFissionChance",
-            "label": "裂变 / 变异概率（0-1，默认 0.3）",
+            "label": "裂变 / 变异概率",
+            "hint": "0-1，默认 0.3",
             "type": "text"
         },
         {
             "key": "rumorParallelLinkSim",
-            "label": "与平行事件联动的标签关联阈值（默认 0.34）",
+            "label": "平行联动相似度",
+            "hint": "默认 0.34：与平行事件标签的关联阈值",
             "type": "text"
         },
         {
             "key": "rumorParallelLinkChance",
-            "label": "联动概率（0-1，默认 0.35）",
+            "label": "平行联动概率",
+            "hint": "0-1，默认 0.35",
             "type": "text"
         },
         {
             "key": "rumorMediaLifeDays",
-            "label": "载体基础寿命（剧情天数，默认 30；实际 = 本值 × 载体耐久度）",
+            "label": "载体寿命（剧情天）",
+            "hint": "默认 30；实际寿命 = 本值 × 载体耐久度",
             "type": "text"
         },
         {
             "key": "rumorDecayEnabled",
             "label": "启用传言衰退",
+            "hint": "超出存储上限后按保留度淘汰旧传言",
             "type": "checkbox"
         },
         {
             "key": "rumorDecayRatio",
-            "label": "触发比例（默认 0.5＝超出存储上限 50% 触发）",
+            "label": "衰退触发比例",
+            "hint": "默认 0.5 = 超出存储上限 50% 时触发",
             "type": "text"
         },
         {
             "key": "rumorDecayCutoff",
-            "label": "移除阈值（默认 0.95）",
+            "label": "移除阈值",
+            "hint": "默认 0.95：保留度低于该值即移除",
             "type": "text"
         },
         {
             "key": "storeMinRumors",
-            "label": "存储保底（默认 0＝无硬保底）",
+            "label": "存储保底",
+            "hint": "默认 0 = 无硬保底",
             "type": "text"
         },
         {
             "key": "storeMaxRumors",
-            "label": "存储上限（默认 200）",
+            "label": "存储上限",
+            "hint": "默认 200",
             "type": "text"
         },
     
@@ -560,37 +601,44 @@ export const SETTINGS_CONTROLS = {
     "parallels": [
         {
             "key": "parallelWeaveEnabled",
-            "label": "提取后自动推演平行事件",
+            "label": "提取后自动推演",
+            "hint": "每次提取记忆后织入平行事件（交织推演）",
             "type": "checkbox"
         },
         {
             "key": "parallelWeaveInterval",
-            "label": "被动触发楼层间隔（默认 10 楼）",
+            "label": "被动推演间隔（楼）",
+            "hint": "默认 10 楼：被动触发的楼层间隔",
             "type": "text"
         },
         {
             "key": "maxParallels",
-            "label": "平行事件上限（默认 30）",
+            "label": "存储上限",
+            "hint": "默认 30：平行事件最多保留条数",
             "type": "text"
         },
         {
             "key": "maxParallelsInj",
-            "label": "平行事件注入上限（默认 8）",
+            "label": "注入上限",
+            "hint": "默认 8：每次最多注入几条平行事件",
             "type": "text"
         },
         {
             "key": "parallelDecayEnabled",
             "label": "启用平行事件衰退",
+            "hint": "超出上限后按保留度淘汰旧事件",
             "type": "checkbox"
         },
         {
             "key": "parallelDecayRatio",
-            "label": "触发比例（默认 0.5＝超出上限 50% 触发）",
+            "label": "衰退触发比例",
+            "hint": "默认 0.5 = 超出上限 50% 时触发",
             "type": "text"
         },
         {
             "key": "parallelDecayCutoff",
-            "label": "移除阈值（默认 0.95）",
+            "label": "移除阈值",
+            "hint": "默认 0.95：保留度低于该值即移除",
             "type": "text"
         },
     
@@ -813,6 +861,7 @@ import { saveKernelCfg } from '../adapters/config-store.js';
 import { worldbookNames } from '../host/worldbook.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
+import { hintDetailsHtml, paramListHtml, shortHintHtml } from './hints.js';
 import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
@@ -886,12 +935,15 @@ export function settingsControlHtml(c) {
     const label = String(c.label || cnLabel(key));
     const v = readControl(key);
     const type = c.type || 'text';
+    const hint = String(c.hint || '');
+    const tip = hint ? (' title="' + esc(hint) + '"') : '';
+    const mark = hint ? (' <span class="ftt-hint-mark"' + tip + '>ⓘ</span>') : '';
     if (type === 'checkbox') {
         // V1 `swForce`：被强制项（如「及时分析」开启时的 autoExtract/autoSummary/injectCurrentPrompt）显示为强制开启且禁用
         const forced = !!(c.forceWhen && (() => { try { return readControl(String(c.forceWhen)) === true; } catch (e) { return false; } })());
         const on = forced || (v !== false && v !== undefined && v !== null && v !== '' && v !== 0);
-        return '<div class="ftt-field"><label>' + esc(label) + '</label>'
-            + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="' + esc(key) + '"' + (on ? ' checked' : '') + (forced ? ' disabled' : '') + '><span class="ftt-slider"></span></label>'
+        return '<div class="ftt-field"><label' + tip + '>' + esc(label) + mark + '</label>'
+            + '<label class="ftt-switch"' + tip + '><input type="checkbox" data-ftt-cfg="' + esc(key) + '"' + (on ? ' checked' : '') + (forced ? ' disabled' : '') + '><span class="ftt-slider"></span></label>'
             + '<span class="ftt-muted">' + (on ? '已开启' : '已关闭') + (forced ? '（由「及时分析」强制开启）' : '') + '</span></div>';
     }
     if (type === 'select') {
@@ -907,14 +959,14 @@ export function settingsControlHtml(c) {
         const cur = String(v == null ? '' : v);
         const items = (list.length ? list : [cur]).map(norm);
         const opts = items.map((o) => '<option value="' + esc(o.v) + '"' + (cur === o.v ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('');
-        return '<div class="ftt-field"><label>' + esc(label) + '</label><select data-ftt-cfg="' + esc(key) + '">' + opts + '</select></div>';
+        return '<div class="ftt-field"><label' + tip + '>' + esc(label) + mark + '</label><select data-ftt-cfg="' + esc(key) + '"' + tip + '>' + opts + '</select></div>';
     }
     if (type === 'textarea') {
-        return '<div class="ftt-field ftt-field-col"><label>' + esc(label) + '</label><textarea data-ftt-cfg="' + esc(key) + '" rows="4">' + esc(v == null ? '' : v) + '</textarea></div>';
+        return '<div class="ftt-field ftt-field-col"><label' + tip + '>' + esc(label) + mark + '</label><textarea data-ftt-cfg="' + esc(key) + '"' + tip + ' rows="4">' + esc(v == null ? '' : v) + '</textarea></div>';
     }
     const missing = (v === undefined);
-    return '<div class="ftt-field"><label>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + '</label>'
-        + '<input type="' + (type === 'number' ? 'number' : 'text') + '" data-ftt-cfg="' + esc(key) + '" value="' + esc(v == null ? '' : v) + '"></div>';
+    return '<div class="ftt-field"><label' + tip + '>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + mark + '</label>'
+        + '<input type="' + (type === 'number' ? 'number' : 'text') + '" data-ftt-cfg="' + esc(key) + '"' + tip + ' value="' + esc(v == null ? '' : v) + '"></div>';
 }
 
 /**
@@ -998,11 +1050,31 @@ export function analyzePageHtml(controls) {
     ].join('\n');
 }
 
+/**
+ * 传言设定页（控件表 + 折叠说明）。
+ * v2.57.0（用户要求：言简意赅 + 扩展提示走 UI 交互）：页面上只留一句「传言怎么流转」，
+ *   每个参数的含义由控件 `hint`（悬停提示）与「ⓘ 参数说明」折叠块承载，不再把长解释铺在页面上。
+ */
+export function rumorsPageHtml(controls) {
+    const list = Array.isArray(controls) ? controls : [];
+    return [
+        shortHintHtml('传言：记录 → 按剧情轮次演化 → 注入；发酵到阈值可裂变。'),
+        list.map((c) => settingsControlHtml(c)).join('\n'),
+        hintDetailsHtml('参数说明',
+            '<div>' + esc('裂变 = 发酵度达到阈值后按概率分裂出新传言（可与平行事件联动）；衰退 = 超出存储上限后按保留度淘汰旧传言。') + '</div>'
+            + paramListHtml(list)),
+    ].join('\n');
+}
+
 /** 平行设定页（V1：控件表 + 「推演/推进分析渠道」选择器，v1.206 25816） */
 export function parallelsPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     return [
+        shortHintHtml('平行事件：主线的「另一种可能」，不影响当前剧情。'),
         list.map((c) => settingsControlHtml(c)).join('\n'),
+        hintDetailsHtml('参数说明',
+            '<div>' + esc('被动推演按楼层间隔自动触发；衰退在超出存储上限后按保留度淘汰旧事件。') + '</div>'
+            + paramListHtml(list)),
         '<div class="ftt-section"><div class="ftt-sec-title">推演/推进分析渠道</div>',
         parallelChannelFieldHtml(),
         '</div>',
@@ -1036,6 +1108,8 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'analyze') return analyzePageHtml(list);
     // 平行页（B10-a）：控件表 + V1 原位「推演/推进分析渠道」选择器
     if (pid === 'parallels') return parallelsPageHtml(list);
+    // 传言页（v2.57.0）：控件表 + 一句短提示 + 折叠「参数说明」
+    if (pid === 'rumors') return rumorsPageHtml(list);
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 功能 / 版本更新」三节（`ui/about.js#aboutHtml`）
