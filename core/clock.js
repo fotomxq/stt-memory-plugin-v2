@@ -190,11 +190,14 @@ function clockMonthDay(v) {
     } catch (e) { return ''; }
 }
 
-function clockAnomalyJumpYears() {
-    const n = Number(cfg && cfg.clockAnomalyJumpYears);
-    if (!Number.isFinite(n)) return 100;
-    return n <= 0 ? 0 : Math.min(9999, Math.round(n));
-}
+/**
+ * 年份异常判定阈值（**内部常量**，v2.51.0 起不再可配置）：
+ *   V1 原为设定项 `clockAnomalyJumpYears`（默认 50）；时钟改版删除该设定后，为保留
+ *   「写回安全闸门」（`clockPatrolSafeDate` / 手工录入年份回退）仍需要这个阈值，
+ *   故固定为 V1 的默认值 50（`CLOCK_JUMP_YEARS_DEFAULT`）。0 = 关闭判定（不再可达）。
+ */
+const CLOCK_JUMP_YEARS_DEFAULT = 50;
+function clockAnomalyJumpYears() { return CLOCK_JUMP_YEARS_DEFAULT; }
 
 const CLOCK_YEAR_MIN = -9999, CLOCK_YEAR_MAX = 9999;
 

@@ -14,9 +14,11 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { clockNormTime, clockDateAnomaly, clockReplaceYear } from '../../core/clock.js';
 import {
-    clockPatrolMajority, clockPatrolAnchorInfo, clockPatrolScan, runClockPatrolRepair, clockPatrolState,
-    parseClockManualInput, setClockManual, clearClockManual, clockManualState, clockPatrolAutoOnce,
+    clockPatrolAnchorInfo, clockPatrolScan,
+    parseClockManualInput, setClockManual, clearClockManual, clockManualState,
 } from '../../core/clock-patrol.js';
+// v2.51.0：巡检修复功能已移除 —— 本文件用它断言「导出确实没了」（只保留扫描供 AI 修复打包）
+import * as PATROL from '../../core/clock-patrol.js';
 import { clockSectionHtml, clockAction, clockEditingState, setClockEditing, CLOCK_ACTIONS } from '../../ui/clock.js';
 import { panelAction, panelBodyHtml, openPanel, setPanelHooks2, panelState } from '../../ui/panel.js';
 import { settingsPageHtml, SETTINGS_CONTROLS } from '../../ui/settings-pages.js';
@@ -79,20 +81,14 @@ R.assert('S3 换年份 clockReplaceYear：保留月日 / 越界与非法返回�
 // ============================================================
 // S4–S6 多数派与锚点（四来源 + 不可用 + 分歧）
 // ============================================================
-R.assert('S4 年份多数派 clockPatrolMajority：count/share/total/latest/consensus/years 与 V1 一致', (() => {
-    boot(G.scenarioA);
-    return J(clockPatrolMajority()) === J(G.majorityA);
-})(), (() => { boot(G.scenarioA); return { got: clockPatrolMajority(), want: G.majorityA }; })());
-
-R.assert('S5 锚点择优：① 无时钟 → 多数派；② 无有效日期 → 不可用；③ 年份分歧 → ambiguous（宁可不修）', (() => {
+R.assert('S5（v2.51.0 改版）锚点只有「手工强制改写 > 当前剧情时钟」：无时钟且无手工值 → 不可用（不再用多数派）', (() => {
     boot(G.scenarioA, { date: '' });
     const a = clockPatrolAnchorInfo();
-    boot(G.scenarioB, { date: '' });
+    boot(G.scenarioA, { date: '1919-12-31' });
     const b = clockPatrolAnchorInfo();
-    boot(G.scenarioC, { date: '' });
-    const c = clockPatrolAnchorInfo();
-    return J(a) === J(G.anchorA) && J(b) === J(G.anchorB) && J(c) === J(G.anchorC) && a.usable === true && b.usable === false && c.ambiguous === true;
-})(), (() => { boot(G.scenarioC, { date: '' }); return clockPatrolAnchorInfo(); })());
+    return a.usable === false && a.source === '' && a.conflict === null && a.ambiguous === false
+        && b.usable === true && b.source === 'clock' && b.date === '1919-12-31';
+})(), (() => { boot(G.scenarioA, { date: '' }); const a = clockPatrolAnchorInfo(); boot(G.scenarioA, { date: '1919-12-31' }); return { noClock: a, withClock: clockPatrolAnchorInfo() }; })());
 
 R.assert('S6 锚点优先级：手工改写 > 当前剧情时钟 > 多数派（V1 v1.187 口径）', (() => {
     boot(G.scenarioA, { date: '' });
@@ -110,16 +106,22 @@ R.assert('S6 锚点优先级：手工改写 > 当前剧情时钟 > 多数派（V
 // ============================================================
 // S7 手工改写：解析 / 落库效应 / 解锁
 // ============================================================
-R.assert('S7 手工录入解析 parseClockManualInput：5 组输入（含缺年份沿用库内年份、时间非法忽略、全空）与 V1 一致', (() => {
+R.assert('S7（v2.51.0 改版）手工录入解析：缺年份时**只沿用当前时钟年份**；无时钟则拒绝（不再用多数派兜底）', (() => {
+    // 无时钟：缺年份 → 拒绝；时间非法 → 忽略；全空 → ok=false
     boot(G.scenarioA, { date: '' });
-    const bad = G.parseManual.filter((c) => J(parseClockManualInput(c.inp)) !== J(c.out));
-    return bad.length === 0;
-})(), G.parseManual.map((c) => [c.tag, parseClockManualInput(c.inp), c.out]));
-
-R.assert('S7b 无可用年份时拒绝缺年份日期（绝不用现实年份兜底）', (() => {
-    boot(G.scenarioB, { date: '' });
-    return J(parseClockManualInput({ date: '11月29日' })) === J(G.parseManualNoYear);
-})(), (() => { boot(G.scenarioB, { date: '' }); return parseClockManualInput({ date: '11月29日' }); })());
+    const noClock = [parseClockManualInput({ date: '11月29日' }), parseClockManualInput({ time: '25:99' }), parseClockManualInput({})];
+    // 有时钟：缺年份 → 沿用时钟年份
+    boot(G.scenarioA, { date: '1919-12-31' });
+    const withClock = [parseClockManualInput({ date: '11月29日' }), parseClockManualInput({ time: '下午三点' })];
+    return noClock[0].ok === false && noClock[1].ok === false && noClock[2].ok === false
+        && withClock[0].ok === true && withClock[0].date === '1919-11-29'
+        && withClock[1].ok === true && withClock[1].time === '15:00';
+})(), (() => {
+    boot(G.scenarioA, { date: '' });
+    const a = parseClockManualInput({ date: '11月29日' });
+    boot(G.scenarioA, { date: '1919-12-31' });
+    return { noClock: a, withClock: parseClockManualInput({ date: '11月29日' }) };
+})());
 
 R.assert('S8 保存手工改写：写入 state.state.clockManual + 覆盖 日期/时间/地点 + clockSrc 标记（与 V1 状态一致）', (() => {
     boot(G.scenarioA, { date: '' });
@@ -142,113 +144,25 @@ R.assert('S9 解锁 clearClockManual：删除手工值与 clockSrc.manual 标记
 })(), (() => state.state));
 
 // ============================================================
-// S10–S12 零 AI 巡检
 // ============================================================
-R.assert('S10 巡检扫描 clockPatrolScan：3 条异常（时间非法 / 日期非法 / 年份跳变）与 V1 逐项一致', (() => {
-    boot(G.scenarioA, { date: '' });
-    const scan = clockPatrolScan(clockPatrolAnchorInfo());
-    return J(scan) === J(G.scanA);
-})(), (() => { boot(G.scenarioA, { date: '' }); return clockPatrolScan(clockPatrolAnchorInfo()); })());
-
-R.assert('S11 只统计（scanOnly）：不改任何数据、blocked=scan-only、remain=found（V1 安全口径①）', (() => {
-    boot(G.scenarioA, { date: '' });
-    const rep = runClockPatrolRepair({ silent: true, scanOnly: true });
-    const cmp = (x) => ({ scanned: x.scanned, found: x.found, fixed: x.fixed, skipped: x.skipped, remain: x.remain, reasons: x.reasons, details: x.details, anchor: x.anchor, anchorSource: x.anchorSource, anchorUsable: x.anchorUsable, anchorConflict: x.anchorConflict, scanOnly: x.scanOnly, blocked: x.blocked, snap: x.snap });
-    return J(cmp(rep)) === J(G.patrolScanOnly) && state.atoms[3].date === G.scenarioA.atoms[3].date;
-})(), (() => { boot(G.scenarioA, { date: '' }); return runClockPatrolRepair({ silent: true, scanOnly: true }); })());
-
-R.assert('S12 手动强制修复（force）：3 条异常全部修复 + 写回前留全量快照（V1 安全口径④），结果与 V1 逐一一致', (() => {
-    boot(G.scenarioA, { date: '' });
-    const rep = runClockPatrolRepair({ silent: true, force: true });
-    const cmp = { scanned: rep.scanned, found: rep.found, fixed: rep.fixed, skipped: rep.skipped, remain: rep.remain, blocked: rep.blocked, reasons: rep.reasons, anchor: rep.anchor, anchorSource: rep.anchorSource, hasSnap: !!rep.snap, detailCount: (rep.details || []).length };
-    return J(cmp) === J(G.patrolForce) && J(dimsSnapshot()) === J(G.afterForce);
-})(), (() => { boot(G.scenarioA, { date: '' }); const rep = runClockPatrolRepair({ silent: true, force: true }); return { rep: { fixed: rep.fixed }, dims: dimsSnapshot() }; })());
-
-R.assert('S13 自动路径遇「锚点与库内多数年份冲突」→ 只统计不修改（blocked=anchor-conflict，V1 v1.187）', (() => {
-    boot(G.scenarioA, { date: '1950-01-01' });
-    const auto = runClockPatrolRepair({ silent: true });
-    const cmp = { blocked: auto.blocked, fixed: auto.fixed, remain: auto.remain, anchor: auto.anchor, anchorConflict: auto.anchorConflict };
-    return J(cmp) === J(G.patrolAutoConflict) && state.atoms[3].date === '不是日期';
-})(), (() => { boot(G.scenarioA, { date: '1950-01-01' }); return runClockPatrolRepair({ silent: true }); })());
-
-R.assert('S14 巡检状态与自动巡检入口：clockPatrolState 保留最近一次报告；clockPatrolAutoOnce 默认只统计（scanOnly）', (() => {
-    boot(G.scenarioA, { date: '' });
-    cfg.clockAutoPatrol = true; cfg.clockPatrolAutoFix = false;
-    const rep = clockPatrolAutoOnce();
-    const st = clockPatrolState();
-    cfg.clockPatrolAutoFix = true;
-    const rep2 = clockPatrolAutoOnce();
-    cfg.clockAutoPatrol = false;
-    const off = clockPatrolAutoOnce();
-    return !!st && st.blocked === 'scan-only' && st.scanOnly === true && rep.fixed === 0
-        && rep2.fixed === 3 && off === null;
-})(), '');
-
+// S10（v2.51.0 改版）：巡检修复功能**已移除**，只保留 clockPatrolScan 供 AI 修复打包
 // ============================================================
-// U 组：总览时钟区 + 动作分发
-// ============================================================
-await A('U1 总览时钟区（V1 同构）：日期/时间/地点 + 参考最近记忆 + 手工工具行 + 时间巡检状态行', async () => {
-    boot(G.scenarioA, { date: '' });
-    state.state.date = ''; state.state.time = ''; state.state.location = '';
-    const html = clockSectionHtml();
-    const r2 = runClockPatrolRepair({ silent: true, scanOnly: true });
-    const html2 = clockSectionHtml();
-    return html.indexOf('📅 日期：') >= 0 && html.indexOf('（参考最近记忆：') >= 0
-        && html.indexOf('data-ftt-action="clockEdit"') >= 0 && html.indexOf('✏️ 手工改写日期/时间/地点') >= 0
-        && html.indexOf('自动提取中') >= 0
-        && html2.indexOf('data-ftt-clock-patrol') >= 0 && html2.indexOf('🩺 时间巡检修复') >= 0
-        && html2.indexOf('上次巡检：扫描 ' + r2.scanned + ' 条') >= 0 && html2.indexOf('仅统计') >= 0;
-}, '');
-
-await A('U2 动作 clockEdit / clockEditCancel：展开与收起手工面板（含三项输入与保存按钮）', async () => {
-    boot(G.scenarioA, { date: '1919-12-31' });
-    setClockEditing(false);
-    const r1 = await clockAction('clockEdit', {});
-    const editingAfterOpen = clockEditingState();          // 注意：必须在「取消」之前取，否则被取消动作覆盖
-    const openHtml = clockSectionHtml();
-    const r2 = await clockAction('clockEditCancel', {});
-    const editingAfterCancel = clockEditingState();
-    const closedHtml = clockSectionHtml();
-    return r1.ok === true && editingAfterOpen === true
-        && openHtml.indexOf('data-ftt-clock-manual="date"') >= 0 && openHtml.indexOf('data-ftt-clock-manual="time"') >= 0
-        && openHtml.indexOf('data-ftt-clock-manual="location"') >= 0 && openHtml.indexOf('💾 保存并锁定') >= 0
-        && r2.ok === true && editingAfterCancel === false && closedHtml.indexOf('data-ftt-clock-manual="date"') < 0;
-}, (() => ({ note: '见 tests/unit/clock-patrol-golden.test.js U2' })));
-
-await A('U3 动作 clockManualSave：写入并锁定 + 提示；clockManualClear：解锁并恢复自动', async () => {
-    boot(G.scenarioA, { date: '' });
-    setClockEditing(true);
-    const save = await clockAction('clockManualSave', { date: '1919-12-31', time: '下午三点', location: '城市甲·码头' });
-    const locked = clockManualState();
-    const saveHtml = clockSectionHtml();
-    const clr = await clockAction('clockManualClear', {});
-    return save.ok === true && state.state.date === '1919-12-31' && state.state.time === '15:00'
-        && locked && locked.lock === true && saveHtml.indexOf('🔒 已手工锁定') >= 0 && saveHtml.indexOf('🔓 解锁并恢复自动') >= 0
-        && clr.ok === true && clockManualState() === null && clr.note.indexOf('已解除手工锁定') >= 0;
-}, (() => ({ note: state.state })));
-
-await A('U4 动作 clockManualSave 空输入：不写入并如实提示（不产生假成功）', async () => {
-    boot(G.scenarioA, { date: '' });
-    const r = await clockAction('clockManualSave', { date: '', time: '', location: '' });
-    return r.ok === false && clockManualState() === null && r.note.length > 0;
-}, '');
-
-await A('U5 动作 clockPatrol（面板分发）：按锚点修复并在提示里回报 扫描/异常/修复/保留/快照', async () => {
-    boot(G.scenarioA, { date: '' });
-    openPanel('overview');
-    setPanelHooks2({});
-    const r = await panelAction('clockPatrol', {});
-    const st = panelState();
-    // v2.50.0（用户报告「时间巡检修复会改错时钟数据」→ V1 缺陷 #7）：
-    //   ① 手动巡检**默认不再 force**（锚点冲突时只统计），强制校正改为显式动作 `clockPatrolForce` → 动作数 7 → 8；
-    //   ② 「格式合法但年份漂移」的条目**不再按内容重解析**，只做「保留月日换年份」（见下方 details 断言）。
-    const drift = String((r.detail.details || []).join(' '));
-    return r.ok === true && r.detail.fixed === 3 && r.detail.snap && String(r.note).indexOf('巡检 7 条') >= 0
-        && String(r.note).indexOf('修复 3 条') >= 0 && String(st.note).indexOf('修复 3 条') >= 0
-        && drift.indexOf('年份校正（保留月日）') >= 0 && drift.indexOf('按内容重解析') < 0
-        && CLOCK_ACTIONS.length === 8 && CLOCK_ACTIONS.indexOf('clockPatrolForce') >= 0
-        && CLOCK_ACTIONS.indexOf('clockRegexGen') >= 0 && CLOCK_ACTIONS.indexOf('clockRepair') >= 0;
-}, (() => ({})));
+R.assert('S10（v2.51.0）巡检修复功能已移除：不再导出 runClockPatrolRepair / clockPatrolState / clockPatrolAutoOnce；clockPatrolScan 只扫情节且只报格式非法', (() => {
+    const mod = PATROL;
+    const gone = ['runClockPatrolRepair', 'clockPatrolState', 'clockPatrolAutoOnce', 'clockPatrolMajority'].every((k) => mod[k] === undefined);
+    boot({ atoms: [
+        { id: 'p1', text: '甲在码头。', date: '1919-11-20', floorStart: 1, floorEnd: 1, uses: 0, tags: [] },
+        { id: 'p2', text: '乙在钟鼓楼。', date: '不是日期', floorStart: 2, floorEnd: 2, uses: 0, tags: [] },
+        { id: 'p3', text: '总结条', date: '2035-01-01', floorStart: 3, floorEnd: 3, mergedSummary: { by: 'auto', sourceCount: 2 } },
+        { id: 'p4', text: '已总结隐藏', date: '2035-01-02', floorStart: 4, floorEnd: 4, summarizedBy: 'p3' },
+    ], state: { date: '1919-11-20' } });
+    const scan = mod.clockPatrolScan(mod.clockPatrolAnchorInfo());
+    const dims = Array.from(new Set((scan.findings || []).map((f) => f.dim)));
+    const ids = (scan.findings || []).map((f) => f.id);
+    return gone && scan.scanned === 2 && J(dims) === J(['atoms'])
+        && ids.indexOf('p2') >= 0 && ids.indexOf('p3') < 0 && ids.indexOf('p4') < 0
+        && (scan.findings || []).every((f) => f.reason === 'invalid');
+})(), (() => { const mod = PATROL; return { hasRepair: typeof mod.runClockPatrolRepair }; })());
 
 await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overviewBody → clockSectionHtml）', async () => {
     boot(G.scenarioA, { date: '1919-12-31' });
@@ -264,28 +178,32 @@ await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overview
 // ============================================================
 // P 组：设定「基础」页（V1 分节 + 强制开关 + 新增控件）
 // ============================================================
-R.assert('P1 基础页控件：21 项、与 V1 同名同序（含 enabled/autoRepair/clockAutoPatrol/clockPatrolAutoFix/uiEffects/clockRegexPreset）', (() => {
-    const keys = SETTINGS_CONTROLS.base.map((c) => c.key);
-    const want = ['enabled', 'timelyAnalysis', 'autoExtract', 'autoSummary', 'autoRepair', 'injectCurrentPrompt',
-        'importanceBase', 'importancePerUse', 'clockExtractEnabled', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex',
-        'clockLocationRegex', 'clockRelative', 'clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch',
-        'clockAutoPatrol', 'clockPatrolAutoFix', 'clockRepairBatch', 'uiEffects'];
-    return keys.length === 21 && J(keys) === J(want);
-})(), SETTINGS_CONTROLS.base.map((c) => c.key));
+R.assert('P1（v2.51.0 改版）基础页控件：删除 10 个废弃时钟设定后共 11 项（不再含 clockAutoPatrol/clockPatrolAutoFix/clockRegexPreset/…）', (() => {
+    const keys = (SETTINGS_CONTROLS.base || []).map((c) => String(c.key));
+    const removed = ['clockAutoPatrol', 'clockPatrolAutoFix', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex',
+        'clockLocationRegex', 'clockRelative', 'clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch'];
+    return keys.length === 11 && removed.every((k) => keys.indexOf(k) < 0)
+        && keys.indexOf('clockExtractEnabled') >= 0 && keys.indexOf('clockRepairBatch') >= 0;
+})(), (SETTINGS_CONTROLS.base || []).map((c) => c.key));
 
-R.assert('P2 基础页渲染：V1 五节 + 强制开关标记（timelyAnalysis 开启时 autoExtract/autoSummary/injectCurrentPrompt 强制开启且禁用）', (() => {
-    Object.assign(cfg, clone(defaultCfg));
-    cfg.timelyAnalysis = true;
-    const html = settingsPageHtml('base');
-    const forced = html.match(/disabled/g) || [];
-    cfg.timelyAnalysis = false;
-    const html2 = settingsPageHtml('base');
-    return html.indexOf('组件开关') >= 0 && html.indexOf('重要性计算（调用次数驱动）') >= 0
-        && html.indexOf('剧情时钟自动提取（总览 日期/时间/地点）') >= 0 && html.indexOf('时钟降级与时间巡检（总览）') >= 0
-        && html.indexOf('界面特效') >= 0 && forced.length === 3 && html.indexOf('（由「及时分析」强制开启）') >= 0
-        && html2.indexOf('disabled') < 0 && html2.indexOf('中文常用 + 标记式（推荐，最全）') >= 0
-        && html.indexOf('data-ftt-action="clockRegexGen"') >= 0 && html.indexOf('data-ftt-action="clockRepair"') >= 0;
+R.assert('P2（v2.51.0 改版）基础页渲染：时钟分节按新设计（只取最新情节 / 巡检只针对情节），不再出现废弃内容', (() => {
+    const h = settingsPageHtml('base');
+    const gone = ['强制使用降级方案', '日期异常判定', '纪元首日', '时间巡检：载入后自动巡检', '自动修复（默认关', '自定义 · 日期正则', '相对日期推进'];
+    return h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
+        && h.indexOf('巡检范围只有') >= 0 && gone.every((t) => h.indexOf(t) < 0);
 })(), '');
+
+await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overviewBody → clockSectionHtml）；巡检修复入口已移除', async () => {
+    boot(G.scenarioA, { date: '1919-12-31' });
+    setClockEditing(false);
+    openPanel('overview');
+    const closed = panelBodyHtml('overview');
+    await panelAction('clockEdit', {});
+    const opened = panelBodyHtml('overview');
+    return closed.indexOf('✏️ 手工改写日期/时间/地点') >= 0 && closed.indexOf('data-ftt-clock-manual="date"') < 0
+        && opened.indexOf('data-ftt-clock-manual="date"') >= 0 && opened.indexOf('data-ftt-action="clockManualSave"') >= 0
+        && closed.indexOf('时间巡检') < 0 && closed.indexOf('clockPatrol') < 0;
+}, '');
 
 un();
 R.done();

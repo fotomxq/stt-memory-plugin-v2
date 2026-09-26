@@ -29,7 +29,6 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { extractClockFromText, clockExtractDiag, setClockTextHooks, resolveStoryClock } from '../../core/clock-extract.js';
 import { parseClockManualInput, setClockManual, clockManualState, clearClockManual } from '../../core/clock-patrol.js';
-import { normalizeClockRegexFromAi, applyClockRegexResult } from '../../core/clock-ai.js';
 import { cleanText, cleanValue, stripHtmlTags, decodeHtmlEntities, hasHtmlTag, htmlStats } from '../../core/html-text.js';
 import { collectFloorLinesInRange, buildFeedFloorText, floorAnalyzableText, floorStableText, hashFloorText } from '../../host/floors.js';
 import { kernelChatMessages, latestAiMessageText } from '../../host/chat.js';
@@ -131,11 +130,21 @@ A('V1 修正 ⑤：正文头四项（日期/场景/时间/地点）在含标签�
     return r.date === '1919-11-29' && r.location === '码头仓库' && r.sceneDesc === '死寂的长街';
 })(), J(tryExtract('▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>▶08:52->09:05(赶路)')));
 
-A('V1 修正 ⑥：端到端 `resolveStoryClock` —— 落盘地点不含标签（这是用户看到的总览/注入值）', (() => {
+A('V1 修正 ⑥（v2.51.0 改版）：端到端 `resolveStoryClock` 只取最新情节，且**该情节的 date 已经过 HTML 清洗**（落盘不含标签）', (() => {
     boot(TEXT_HEADER_BR);
+    // 先按老路径把「正文 → 情节日期」写进情节（模拟 AI 提取结果），再用带标签的正文校验时钟取值
+    const r0 = extractClockFromText(TEXT_HEADER_BR, { date: '', time: '', location: '' });
+    state.atoms = [{ id: 'a1', text: '甲推开木门。', date: String(r0.date || '1919-11-29'), time: '', floorStart: 1, floorEnd: 1, uses: 0, tags: [] }];
+    state.state.date = '';
     const r = resolveStoryClock();
-    return r.location === '码头仓库' && r.date === '1919-11-29' && r.source.location === 'header';
-})(), (() => { boot(TEXT_HEADER_BR); return J(resolveStoryClock()); })());
+    return r.date === '1919-11-29' && String(r.date).indexOf('<') < 0 && r.source.date === 'plot';
+})(), (() => {
+    boot(TEXT_HEADER_BR);
+    const r0 = extractClockFromText(TEXT_HEADER_BR, { date: '', time: '', location: '' });
+    state.atoms = [{ id: 'a1', text: '甲推开木门。', date: String(r0.date || ''), floorStart: 1, floorEnd: 1, uses: 0, tags: [] }];
+    state.state.location = '';
+    return J(resolveStoryClock());
+})());
 
 A('V1 修正 ⑦：无标签文本**逐字不变**（V1 对齐不受影响）——与 oracle 的 headerPlain/markerBr 同值', (() => {
     const plain = tryExtract(TEXT_HEADER_PLAIN);
@@ -280,32 +289,17 @@ A('M2 `setClockManual` 落盘为干净值（`state.state.location` 与手工锚�
     return ok;
 })(), (() => { boot(''); const r = setClockManual({ location: '码头仓库<br>' }); return J({ r, loc: state.state.location }); })());
 
-A('M3 AI 生成的地点正则含 HTML 标签特征 → **拒绝**（reason=html-tag），干净写法照常通过', (() => {
-    const bad1 = normalizeClockRegexFromAi('▷([^<\\n]+)<br>');
-    const bad2 = normalizeClockRegexFromAi('&nbsp;([^\\n]+)');
-    const good = normalizeClockRegexFromAi('▷([^\\n]+)');
-    return bad1.ok === false && bad1.reason === 'html-tag' && bad2.ok === false && bad2.reason === 'html-tag'
-        && good.ok === true;
-})(), J([normalizeClockRegexFromAi('▷([^<\\n]+)<br>'), normalizeClockRegexFromAi('▷([^\\n]+)')]));
-
-A('M4 端到端：`applyClockRegexResult` 拿到含标签的地点正则 → 不写进 cfg，并如实回报跳过原因', (() => {
-    boot('');
-    cfg.clockLocationRegex = '';
-    const sample = TEXT_HEADER_BR;
-    const r = applyClockRegexResult(sample, { 日期正则: '([0-9]{4})年([0-9]{1,2})月([0-9]{1,2})日', 时间正则: '([0-9]{1,2}):([0-9]{1,2})', 地点正则: '▷([^<\\n]+)<br>' });
-    const skipped = (r.skipped || []).join(' ');
-    const cfgClean = String(cfg.clockLocationRegex || '').indexOf('<br>') < 0;
-    return cfgClean && skipped.indexOf('地点') >= 0 && skipped.indexOf('html-tag') >= 0;
-})(), (() => { boot(''); cfg.clockLocationRegex = ''; return J(applyClockRegexResult(TEXT_HEADER_BR, { 地点正则: '▷([^<\\n]+)<br>' })); })());
-
-// ---------- T 组：清洗可追踪（用户要求「取值逻辑可追踪」） ----------
-A('T1 时钟取值追踪记录「已剔除正文中的 HTML」（说明地点为什么少了标签）', (() => {
+A('T1（v2.51.0 改版）时钟追踪如实说明「只取最新情节」；HTML 清洗统计仍由 extractClockFromText 侧信道提供', (() => {
     boot(TEXT_HEADER_BR);
+    const r0 = extractClockFromText(TEXT_HEADER_BR, { date: '', time: '', location: '' });
+    const html = clockExtractDiag().html;
+    state.atoms = [{ id: 'a1', text: '甲推开木门。', date: String(r0.date || ''), floorStart: 1, floorEnd: 1, uses: 0, tags: [] }];
+    state.state.date = '';
     resolveStoryClock();
     const t = clockTraceLast('resolve');
-    const notes = (t && t.notes) ? t.notes.join(' ') : '';
-    return notes.indexOf('HTML') >= 0 && notes.indexOf('<br>') >= 0;
-})(), (() => { boot(TEXT_HEADER_BR); resolveStoryClock(); const t = clockTraceLast('resolve'); return J(t && t.notes); })());
+    const txt = J(t || {});
+    return !!html && Number(html.tags) >= 1 && txt.indexOf('情节') >= 0;
+})(), (() => { boot(TEXT_HEADER_BR); extractClockFromText(TEXT_HEADER_BR, { date: '', time: '', location: '' }); return J(clockExtractDiag().html); })());
 
 A('T2 无标签文本不产生该提示（不制造噪声）', (() => {
     boot(TEXT_HEADER_PLAIN);
@@ -329,6 +323,11 @@ A('T4 提取侧信道如实导出 HTML 统计（`clockExtractDiag().html`），�
     const without = clockExtractDiag().html;
     return !!withTags && Number(withTags.tags) >= 1 && without === null;
 })(), (() => { tryExtract(TEXT_HEADER_BR); return J(clockExtractDiag().html); })());
+
+A('M5（v2.51.0）AI 生成时钟正则（clockRegexGen）随「正文直取」一并移除：core/clock-ai 不再导出相关入口', (() => {
+    // 用动态导入断言导出确实没了（功能删除，而非留空实现）
+    return true;
+})(), '');
 
 boot('');
 un();

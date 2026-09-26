@@ -271,7 +271,8 @@ export function debugPageHtml(controls) {
  *   数据来自 `core/clock-trace.js` 的内存环形缓冲（不落 localStorage，避免日志膨胀）。
  */
 export function clockTraceSectionHtml() {
-    const stages = [['resolve', '自动解析（日期/时间/地点/在场）'], ['patrol', '时间巡检（锚点与修复）'], ['regex-ai', 'AI 捕捉正则'], ['time-repair', 'AI 时间修复']];
+    // v2.51.0 时钟改版：「时间巡检（锚点与修复）」与「AI 捕捉正则」两块功能已移除 → 不再列出（避免废弃内容）
+    const stages = [['resolve', '自动解析（只取最新情节：日期/时间/地点/在场）'], ['time-repair', 'AI 时间修复']];
     const rows = stages.map(([stage, label]) => {
         const trace = clockTraceLast(stage);
         const t = trace ? clockTraceInfo(trace) : null;

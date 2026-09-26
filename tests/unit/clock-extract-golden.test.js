@@ -16,7 +16,7 @@ import {
     extractClockFromHeader, extractClockFromText, resolveStoryClock, resolvePresentNames,
     latestSceneLocation, clockAutoExtractOnce, scheduleClockExtract, clockExtractState, setClockTextHooks,
 } from '../../core/clock-extract.js';
-import { setClockManual } from '../../core/clock-patrol.js';
+import { setClockManual, clearClockManual } from '../../core/clock-patrol.js';
 import { clockSectionHtml } from '../../ui/clock.js';
 import { panelAction, openPanel, panelBodyHtml, setPanelHooks2 } from '../../ui/panel.js';
 
@@ -39,6 +39,10 @@ const A = async (name, fn, detail) => {
 
 /** 装默认配置 + 指定 state（逐例回放 oracle 输入） */
 function boot(stateLike, cfgPatch) {
+    // v2.51.0：这些旧设定已从默认配置删除 —— 显式清除，避免上一用例的残留值影响独立解析器的对照
+    ['clockRegexPreset', 'clockRelative', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex',
+        'clockStoryDayEpoch', 'clockForceDegrade', 'clockAnomalyJumpYears', 'clockAutoPatrol', 'clockPatrolAutoFix']
+        .forEach((k) => { try { delete cfg[k]; } catch (e) { /* 忽略 */ } });
     Object.assign(cfg, clone(defaultCfg));
     if (cfgPatch) Object.assign(cfg, clone(cfgPatch));
     setScopeKey('甲');
@@ -75,28 +79,37 @@ R.assert('H2 文本提取 extractClockFromText：9 例（正则/带已存年份/
     }
     return bad.slice(0, 3);
 })());
-
-R.assert('H3 统一解析 resolveStoryClock：10 例（正文头胜出/正则与情节择优/异常降级/强制降级/场景兜底/沿用旧值/纪元换算/手工锁定）逐例一致', (() => {
+R.assert('H3（v2.51.0 改版）统一解析 resolveStoryClock：**只取最新情节**的 date/time/location；正文/其它类别一律不参与', (() => {
+    const cases = [
+        { tag: 'plot-wins', atoms: [
+            { id: 'p1', text: '剧情正文里写着 1919年12月31日 23:59。', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 5, floorEnd: 5, uses: 1, tags: [] },
+        ], want: { date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼' } },
+        { tag: 'plot-newest-by-floor', atoms: [
+            { id: 'p1', text: '旧。', date: '1919-11-18', floorStart: 1, floorEnd: 2, uses: 0, tags: [] },
+            { id: 'p2', text: '新。', date: '1919-11-25', time: '夜里', floorStart: 9, floorEnd: 9, uses: 0, tags: [] },
+        ], want: { date: '1919-11-25', time: '夜里', location: '' } },
+        { tag: 'summary-excluded', atoms: [
+            { id: 'p1', text: '被总结的原文。', date: '1919-11-20', floorStart: 25, floorEnd: 25, uses: 0, tags: [], summarizedBy: 's1' },
+            { id: 's1', text: '情节总结条。', date: '2035-01-01', floorStart: 30, floorEnd: 30, uses: 0, tags: [], mergedSummary: { by: 'auto', sourceCount: 1 } },
+            { id: 'p2', text: '可用情节。', date: '1919-11-22', floorStart: 10, floorEnd: 10, uses: 0, tags: [] },
+        ], want: { date: '1919-11-22', time: '', location: '' } },
+    ];
     const bad = [];
-    for (const c of G.resolve) {
-        boot(c.state, c.cfg);
-        const got = resolveStoryClock(c.opts);
-        if (J(got) !== J(c.out)) bad.push({ tag: c.tag, got, want: c.out });
+    for (const c of cases) {
+        boot({ atoms: c.atoms, state: { date: '', time: '', location: '' } });
+        setClockTextHooks({ latestAiText: () => '正文里的 1919年12月31日 不该被采纳', floorWindowText: () => '同上' });
+        const r = resolveStoryClock({});
+        const got = { date: r.date, time: r.time, location: r.location };
+        if (J(got) !== J(c.want)) bad.push({ tag: c.tag, got, want: c.want });
     }
     return bad.length === 0;
 })(), (() => {
-    const bad = [];
-    for (const c of G.resolve) {
-        boot(c.state, c.cfg);
-        const got = resolveStoryClock(c.opts);
-        if (J(got) !== J(c.out)) bad.push({ tag: c.tag, keys: Object.keys(got) });
-    }
-    return bad;
+    boot({ atoms: [{ id: 'p1', text: '正文 1919年12月31日', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }], state: { date: '', time: '', location: '' } });
+    setClockTextHooks({ latestAiText: () => '正文 1919年12月31日', floorWindowText: () => '' });
+    return J(resolveStoryClock({}));
 })());
 
-// ============================================================
-// S 组：场景 / 在场
-// ============================================================
+
 R.assert('S1 降级地点来源 latestSceneLocation：无当前地点 → 取楼层最新场景；与当前地点同路径 → 优先同路径', (() => {
     const st = clone(G.resolve[0].state);
     boot(st);
@@ -120,21 +133,19 @@ R.assert('S2 在场解析 resolvePresentNames：最新正文命中 / 最新情�
 // ============================================================
 // A 组：落盘与调度
 // ============================================================
-R.assert('A1 clockAutoExtractOnce：写 日期/时间/地点（与 resolveStoryClock 同源）+ 正文头附加字段（时间区间/季节/纪年/剧情天数/场景描述）+ clockSrc 来源 + 在场', (() => {
-    boot(G.resolve[0].state);
-    const ok = clockAutoExtractOnce({ text: G.header[0].text, force: true });
-    const st = state.state;
-    const res = clockExtractState();
-    const want = G.resolve[0].out;                      // 与 V1 同一判据：日期取最新候选（此处为最新情节）
-    return ok === true && st.date === want.date && st.time === want.time && st.location === want.location
-        && st.timeEnd === want.timeEnd && st.season === want.season && st.era === want.era
-        && st.storyDay === want.storyDay && st.sceneDesc === want.sceneDesc && st.statusText === want.statusText
-        && st.clockSrc && st.clockSrc.date === want.source.date && st.clockSrc.time === want.source.time
-        && st.clockSrc.location === want.source.location && st.clockSrc.degraded === want.degraded
-        && st.clockSrc.degradeReason === want.degradeReason
-        && Array.isArray(st.present) && J(st.present) === J(want.present)
-        && res && res.header === true;
-})(), (() => state.state));
+R.assert('A1（v2.51.0 改版）clockAutoExtractOnce：从**最新情节**落盘 日期/时间/地点 + clockSrc 来源（不再有正文头附加字段/降级）', (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '凉州卫·钟鼓楼', floorStart: 5, floorEnd: 5, uses: 1, tags: ['码头'] }], state: { date: '', time: '', location: '', present: [] } });
+    const ok = clockAutoExtractOnce({ force: true });
+    const cs = state.state.clockSrc || {};
+    return ok === true && state.state.date === '1919-11-30' && state.state.time === '08:52'
+        && state.state.location === '凉州卫·钟鼓楼' && cs.date === 'plot' && cs.time === 'plot' && cs.location === 'plot'
+        && state.state.header === undefined && state.state.storyDay === undefined;
+})(), (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '凉州卫·钟鼓楼', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }], state: { date: '' } });
+    clockAutoExtractOnce({ force: true });
+    return J({ state: state.state });
+})());
+
 
 R.assert('A2 clockAutoExtractOnce 幂等：同文本再跑一次 → 无改动（不重复落盘）', (() => {
     boot(G.resolve[0].state);
@@ -142,20 +153,19 @@ R.assert('A2 clockAutoExtractOnce 幂等：同文本再跑一次 → 无改动�
     const again = clockAutoExtractOnce({ text: G.header[0].text, force: true });
     return again === false;
 })(), '');
+R.assert('A3（v2.51.0 改版）手工锁定：不覆盖 日期/时间/地点；解锁后按**最新情节**同步', (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '码头', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }], state: { date: '1900-01-01', time: '01:00', location: '旧地点' } });
+    setClockManual({ date: '1919-11-01', time: '02:00', location: '手工地点' });
+    clockAutoExtractOnce({ force: true });
+    const locked = J({ d: state.state.date, t: state.state.time, l: state.state.location });
+    clearClockManual();
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '码头', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }], state: { date: '', time: '', location: '' } });
+    clockAutoExtractOnce({ force: true });
+    const unlocked = J({ d: state.state.date, t: state.state.time, l: state.state.location });
+    return locked === J({ d: '1919-11-01', t: '02:00', l: '手工地点' })
+        && unlocked === J({ d: '1919-11-30', t: '08:52', l: '码头' });
+})(), '');
 
-R.assert('A3 手工锁定：解析走 manual 且不覆盖 日期/时间/地点（只维护在场与来源）；未锁定则按正文更新', (() => {
-    // 锁定路径走真实入口 setClockManual（同时写 state.state.date 与 clockManual）
-    boot(G.resolve[0].state);
-    setClockManual({ date: '1919-12-31', time: '08:30', location: '城市甲·码头' });
-    clockAutoExtractOnce({ text: '1920-05-05，主角甲在城市乙。', force: true });
-    const locked = { date: state.state.date, time: state.state.time, location: state.state.location };
-    boot(G.resolve[0].state, { clockManualLock: false });
-    setClockManual({ date: '1919-12-31', time: '08:30', location: '城市甲·码头' });
-    clockAutoExtractOnce({ text: '1920-05-05，主角甲在城市乙。', force: true });
-    const unlocked = { date: state.state.date, time: state.state.time };
-    return locked.date === '1919-12-31' && locked.time === '08:30' && locked.location === '城市甲·码头'
-        && unlocked.date === '1920-05-05';
-})(), (() => state.state));
 
 R.assert('A4 开关关门：cfg.clockExtractEnabled=false 或 cfg.enabled=false → 不提取（force 可绕过，供测试与手动）', (() => {
     boot(G.resolve[0].state, { clockExtractEnabled: false });
@@ -179,38 +189,26 @@ R.assert('A5 scheduleClockExtract：`cfg.clockExtractEnabled=false` 不排程；
     // fired ≥ 1：第一次是时钟提取本身，后续可能来自「剧情日期推进 → 调度状态记录衰退」（同一 timerHooks）
     return a === false && b === true && c === false && fired >= 1 && state.state.date === G.resolve[0].out.date;
 })(), '');
+R.assert('A6（v2.51.0 改版）正文/楼层窗口文本**不再参与**时钟（即便提供了窗口文本，时钟仍只取情节）', (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }], state: { date: '' } });
+    setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '▷1919年12月31日 08:00 正文' });
+    const r = resolveStoryClock({});
+    return r.date === '1919-11-30' && r.source.date === 'plot' && r.textMode === 'plot-only';
+})(), (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }], state: { date: '' } });
+    setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '▷1919年12月31日' });
+    return J(resolveStoryClock({}));
+})());
 
-await A('A6 楼层窗口回退（宿主注入文本）：无最新正文时用窗口文本提取日期/时间/地点；在场**不取窗口文本**（只认最新正文或最新情节）', async () => {
-    boot(G.resolve[0].state);
-    state.state.present = ['旧角色甲'];
-    setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '1919-12-09，主角甲来到城市壬。' });
-    const ok = clockAutoExtractOnce({ force: true });
-    const res = clockExtractState();
-    return ok === true && state.state.date === '1919-12-09' && res.textMode === 'floor-window'
-        && res.source.present === 'plot-atom' && J(state.state.present) === J(['主角甲']);
-}, (() => ({ mode: (clockExtractState() || {}).textMode })));
-
-// ============================================================
-// U 组：界面接线（总览时钟来源行随自动提取更新）
-// ============================================================
-await A('U1 总览时钟区：自动提取后显示 日期/时间/地点 + 时钟来源行（正则/正文头）+ 降级说明', async () => {
-    boot(G.resolve[0].state);
-    setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '' });
-    clockAutoExtractOnce({ text: '2011年5月6日，主角甲在城市庚。', force: true });      // 异常 → 降级
-    openPanel('overview');
-    setPanelHooks2({});
-    const html = panelBodyHtml('overview');
-    const degraded = html.indexOf('data-ftt-clock-src') >= 0 && html.indexOf('已降级') >= 0;
-    boot(G.resolve[0].state);
-    clockAutoExtractOnce({ text: G.header[0].text, force: true });
-    const html2 = panelBodyHtml('overview');
-    return degraded && html2.indexOf('🕒 时钟来源：') >= 0
-        && html2.indexOf('📅 日期：' + G.resolve[0].out.date) >= 0
-        // v2.48.0：该值只用于**插件内校准时间**，总览展示时明确标注「校准用 · 不注入」
-        && html2.indexOf('东汉建武二十七年') >= 0 && html2.indexOf('📆 校准用：剧情第 17602 天') >= 0
-        && html2.indexOf('仅用于日期换算，不注入') >= 0
-        && html2.indexOf('09:00 → 09:05') >= 0 && html2.indexOf('📍 地点：' + G.resolve[0].out.location) >= 0;
-}, '');
+R.assert('U1（v2.51.0 改版）总览时钟区：显示 日期/时间/地点 + 时钟来源行（来源=最新情节），无降级/巡检/第N天等废弃提示', (() => {
+    boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '城市甲·码头', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }], state: { date: '', time: '', location: '', present: ['甲'] } });
+    clockAutoExtractOnce({ force: true });
+    const html = String(panelBodyHtml('overview') || '');
+    const gone = ['已降级', '日期较此前跳变', '时间巡检', '剧情第 ', '校准用'];
+    return html.indexOf('📅 日期：1919-11-30') >= 0 && html.indexOf('⏱ 时间：08:52') >= 0
+        && html.indexOf('📍 地点：城市甲·码头') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
+        && html.indexOf('最新情节') >= 0 && gone.every((t) => html.indexOf(t) < 0);
+})(), '');
 
 un();
 R.done();

@@ -30,11 +30,12 @@ R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 179 项（B4 的 105 + B7-2 存储 13 + B8-1 基础页 9 + B8-5 补齐 V1 `switchField` 开关 20 + B8-6c 补齐 V1 手写 `data-ftt-cfg` 块 32），逐页数量与 V1 提取一致', (() => {
+R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 183 && m.base === 21 && m.feed === 37 && m.analyze === 5 && m.extract === 34
+    // v2.51.0 时钟改版：基础页删除 10 个废弃时钟设定 → 总数 183 → 173、base 21 → 11
+    return info.totalControls === 173 && m.base === 11 && m.feed === 37 && m.analyze === 5 && m.extract === 34
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 5;   // v2.42.0：调试页 +4（级别/交互/宿主/详细）
 })(), settingsPagesInfo());
 
