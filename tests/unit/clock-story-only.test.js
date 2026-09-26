@@ -136,7 +136,7 @@ A('I1 注入体真实装配：无剧情时钟时记忆行**不带**伪剧情日�
 })(), null);
 
 // ---------- S 组：同族守卫复核 ----------
-A('S1 手工录入缺年份且无可用年份 → **拒绝**并提示补全（V1 v1.187 口径，V2 一致）；`clockPatrolAnchorInfo` 在无数据时不可信（宁可不修）', (() => {
+A('S1（v2.51.0 改版）手工录入缺年份且**无当前时钟** → 拒绝并提示补全；`clockPatrolAnchorInfo` 无手工值/无时钟时不可用（绝不借用其它数据）', (() => {
     boot('');
     const r = parseClockManualInput({ date: '11月29日' });
     const info = clockPatrolAnchorInfo();
@@ -144,7 +144,7 @@ A('S1 手工录入缺年份且无可用年份 → **拒绝**并提示补全（V1
     const rep = clockPatrolRepairItem(item, { field: 'date', value: '11月29日', reason: 'invalid' }, '');
     return r.ok === false && String((r.notes || [])[0] || '').indexOf('缺少年份') >= 0
         && info.usable === false && info.date === ''
-        && rep.changed === false && item.date === '11月29日' && String(rep.note).indexOf('保留原值') >= 0;
+        && rep.changed === true && item.date === '' && String(rep.note).indexOf('清空') >= 0;
 })(), null);
 
 A('S2 角色档案「最后更新/最后见面」采样：无剧情日期 → 不采样（留空）；有 → 剧情日期（V1 v1.161 口径，V2 一致）', (() => {

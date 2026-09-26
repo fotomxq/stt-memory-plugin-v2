@@ -36,7 +36,7 @@ import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, api
 // v2.37.0：时钟取值追踪（诊断入口）
 import {
     clockTraceLast, clockTraceList, clockTraceInfo, clockTraceSummary, clockTraceClear,
-    clockSrcLabel, clockSrcKeys, clockDegradeLabel,
+    clockSrcLabel, clockSrcKeys,
 } from './core/clock-trace.js';
 import { probeTarget, fetchModels as probeModels, listConnectionProfiles, apiChannelAvailability, sendWithTarget } from './host/api-channel.js';
 import {
@@ -56,8 +56,8 @@ import { emptyState } from './core/state.js';
 import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef } from './core/model/runtime.js';
 import { hashText } from './core/util.js';
 import {
-    clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
-    runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolScan,
+    clockManualState, setClockManual, clearClockManual,
+    clockPatrolAnchorInfo, clockPatrolScan,
 } from './core/clock-patrol.js';
 import {
     setRepairHooks, runRepairMech, runRepair, repairReport, repairLogPush, repairTotalCount,
@@ -282,10 +282,7 @@ export async function init() {
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
     //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
     try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
-    // B8-1：载入后自动时间巡检一次（V1 `clockPatrolAutoOnce`：默认只统计，`cfg.clockPatrolAutoFix` 才自动修复）
-    try {
-        setTimeout(() => { try { clockPatrolAutoOnce(); } catch (e) { /* 忽略 */ } }, 2600);
-    } catch (e) { /* 忽略 */ }
+    // v2.51.0：载入后自动时间巡检已随「时间巡检修复」功能一并移除（时钟只取最新情节，无需巡检）
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
         const onFloorChanged = () => {
@@ -635,8 +632,6 @@ function bootstrapDiagnostics() {
             storageEnvValid: (env) => storageEnvValid(env),
             // B8-1 剧情时钟（与 V1 `FTT.*` 同名能力：巡检 / 锚点 / 手工改写）
             clockUi: () => clockUiInfo(),
-            clockPatrol: (opts) => runClockPatrolRepair(opts || {}),
-            clockPatrolState: () => clockPatrolState(),
             // v2.37.0「时钟取值追踪」：值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么
             clockTrace: (stage) => clockTraceInfo(stage ? clockTraceLast(stage) : clockTraceLast()),
             clockTraceAll: () => ({ resolve: clockTraceList('resolve').map(clockTraceInfo), patrol: clockTraceList('patrol').map(clockTraceInfo), 'regex-ai': clockTraceList('regex-ai').map(clockTraceInfo), 'time-repair': clockTraceList('time-repair').map(clockTraceInfo) }),
@@ -644,8 +639,6 @@ function bootstrapDiagnostics() {
             clockTraceClear: () => clockTraceClear(),
             clockSrcLabel: (k) => clockSrcLabel(k),
             clockSrcLabels: () => clockSrcKeys().map((k) => ({ key: k, label: clockSrcLabel(k) })),
-            clockDegradeLabel: (r) => clockDegradeLabel(r),
-            clockPatrolAuto: () => clockPatrolAutoOnce(),
             clockAnchor: () => clockPatrolAnchorInfo(),
             clockScan: () => clockPatrolScan(),
             clockManual: () => clockManualState(),

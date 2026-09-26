@@ -918,7 +918,7 @@ export function settingsControlHtml(c) {
 }
 
 /**
- * 基础页正文（V1 的分节布局：组件开关 / 重要性计算 / 剧情时钟自动提取 / 时钟降级与时间巡检 / 界面特效）。
+ * 基础页正文（v2.51.0：组件开关 / 重要性计算 / 剧情时钟（只取最新情节）/ 情节日期时间修复 / 界面特效）。
  * 说明：V1 的「显示界面开关（buttonLocation*）」在 V2 由「基础 → V2 附加设定」的悬浮/菜单开关承担，此处不重复；
  *   「AI 捕捉正文 → 生成正则」与「AI 结合正文修复日期时间」两条 AI 管线属 B8-2（本页先如实标注，不放假实现）。
  */
@@ -946,13 +946,13 @@ export function basePageHtml(controls, extrasHtml) {
         '<div class="ftt-muted">最新情节没有日期时会退到次新的<b>带日期情节</b>；完全没有可用情节 → 时钟<b>保持原值</b>（不清空、不引入其它来源）。'
         + '需要人工校正时用总览「✏️ 手工改写日期/时间/地点」（默认锁定，自动同步不会覆盖）。</div></div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">时间巡检与修复（只针对情节）</div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">情节日期时间修复（只针对情节）</div>',
         rows(['clockRepairBatch']),
         '<div class="ftt-muted">巡检范围只有<b>情节</b>：报出<b>格式非法</b>的日期与时间（排除情节总结 / 已总结隐藏）。'
         + '修复闸门：① 锚点 = 手工改写 ＞ 当前时钟（都来自可信情节）；无锚点 → 只统计不修改；② 写回前自动留全量快照（可回滚）。</div>',
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRepair" title="把情节里格式非法的日期/时间连同该条正文交 AI 判定并修复（只改情节的日期与时间字段）">🩺 AI 结合正文修复日期时间</button></div>',
         '<div class="ftt-hint">AI 修复只打包<b>情节</b>中格式非法的条目（单次上限见上），逐条给新日期/时间；插件只接受格式合法且在锚点附近的结果，不合格一律丢弃并如实回报。'
-        + '总览「🩺 时间巡检修复」是零 AI 的机械修复（同样只针对情节），两者互不干扰。</div></div>',
+        + '插件只接受格式合法且在锚点附近的结果，不合格一律丢弃并如实回报。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
         '<div class="ftt-muted">V2 的入口形态在「基础 → V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',

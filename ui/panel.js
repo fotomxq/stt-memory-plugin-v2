@@ -221,7 +221,7 @@ function totalMemory() {
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];
-    // B8-1：时钟区（V1 同构：日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源 + 时间巡检行）
+    // 时钟区（v2.51.0：日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源；巡检修复功能已移除）
     try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
     const audit = injectAudit({ rows: false });
     lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧷 注入</b> <span class="ftt-muted" style="flex:1 1 auto;min-width:0">当前注入 ' + audit.chars + ' 字 · 命中 ' + audit.injected + ' / 未命中 ' + audit.missing + ' · 预算 ' + (Number(cfg.charBudget) || 0) + ' 字符</span></div>');
@@ -1633,7 +1633,7 @@ export async function panelAction(action, payload) {
             result = Object.assign(result, pr);
         }
         else if (CLOCK_ACTIONS.indexOf(a) >= 0) {
-            // 时钟动作（V1 同名：手工改写 / 解锁 / 时间巡检修复）
+            // 时钟动作（v2.51.0：手工改写 / 解锁 / AI 修复情节日期时间）
             const cr = await clockAction(a, p);
             setNote(cr.note || '');
             result = Object.assign(result, cr);

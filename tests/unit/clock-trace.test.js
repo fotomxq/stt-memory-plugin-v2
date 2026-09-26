@@ -27,7 +27,7 @@ import {
     extractClockFromText, clockExtractDiag, resolveStoryClock, clockAutoExtractOnce,
     clockExtractState, setClockTextHooks, scheduleClockExtract,
 } from '../../core/clock-extract.js';
-import { runClockPatrolRepair, setClockManual, clearClockManual } from '../../core/clock-patrol.js';
+import { setClockManual, clearClockManual } from '../../core/clock-patrol.js';
 import { clockTraceSectionHtml } from '../../ui/debug.js';
 import { clockSectionHtml } from '../../ui/clock.js';
 import { debugLogList, wireDebugLog, debugLogPush } from '../../adapters/debug-log.js';
@@ -76,185 +76,95 @@ A('L1 来源标签表覆盖全部产源键（正文正则/正文头/自定义正
 })(), CLOCK_SRC_LABEL);
 
 // ---------- T 组：追踪结构 ----------
-A('T1 正文头场景：追踪记录 取文来源/楼层、候选（含原文片段）、选定值 ← 来源标签 + 判据，落选候选带**真实**原因', (() => {
+// ---------- T 组（v2.51.0 改版）：追踪如实记录「只取最新情节」 ----------
+A('T1（v2.51.0 改版）追踪记录：取值来源 = 最新情节（`source.date === "plot"` + 情节 id/楼层），无正文候选', (() => {
     boot();
-    // 注：V1 的正文头解析器只认中文年月日写法（`▷1919年11月30日 …`）；`1919-11-30` 会落到普通日期正则
-    const res = resolveStoryClock({ text: '▷1919年11月30日 08:52\n▷凉州卫-钟鼓楼\n晚上又到了码头' });
+    state.atoms = [
+        { id: 'a-old', text: '旧情节。', date: '1919-11-18', floorStart: 1, floorEnd: 2, uses: 0, tags: [] },
+        { id: 'a-new', text: '最新情节。', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 9, floorEnd: 9, uses: 1, tags: [] },
+    ];
+    const res = resolveStoryClock({ text: '▷1919年12月31日 23:59 正文里另有日期（不再被采纳）' });
     const t = clockTraceLast('resolve');
     const info = clockTraceInfo(t);
-    const pick = (f) => info.picks.filter((x) => x.field === f)[0] || {};
+    const dp = info.picks.filter((x) => x.field === 'date')[0] || {};
     return res.date === '1919-11-30' && res.time === '08:52' && res.location === '凉州卫-钟鼓楼'
-        && t.id && t.stage === 'resolve' && t.action.indexOf('统一解析') >= 0
-        && info.text.mode === 'given' && info.text.floors === '调用方给定' && info.text.chars > 0 && info.text.sample.indexOf('▷') === 0
-        && info.chain.length >= 4
-        && info.notes.join(' ').indexOf('V1 口径') >= 0
-        && pick('date').value === '1919-11-30' && pick('date').from === 'header' && /正文头结构/.test(pick('date').fromLabel || '') && /异常闸门|恰好|正文侧/.test(pick('date').why)
-        && pick('time').from === 'header' && pick('location').from === 'header'
-        && info.rejects.length >= 2
-        && info.rejects.some((r) => r.from === 'regex' && r.fromLabel === '正文正则（最新正文）' && r.raw && r.raw.length > 0)
-        && info.picks.some((p) => p.field === 'date' && /▷1919年11月30日/.test(String(p.value) + String(info.text.sample)))
-        && info.rejects.some((r) => /与采用值\*\*相同\*\*|同值副本/.test(r.why))
-        && info.rejects.some((r) => /纯时段词权重低于带数字/.test(r.why));
-})(), null);
-
-A('T2 多源择优：正文日期异常 → 降级采用最新情节；追踪记下输入探测值、被放弃的正文候选、降级原因与细节', (() => {
-    boot({
-        atoms: [{ id: 'a1', title: '旧事', text: '甲在码头', date: '1919-11-20', time: '10:00', location: '码头', uses: 0, floorStart: 0, floorEnd: 1 }],
-        state: { date: '1919-11-20', time: '10:00', location: '码头' },
-    }, { clockAnomalyJumpYears: 5 });
-    const res = resolveStoryClock({ text: '公元1999年1月1日，甲醒来。' });
-    const t = clockTraceLast('resolve');
-    const info = clockTraceInfo(t);
-    const pick = (f) => info.picks.filter((x) => x.field === f)[0] || {};
-    return res.date === '1919-11-20' && (info.degrade.degraded === true)
-        && /anomaly:/.test(info.degrade.reason) && info.degrade.reasonLabel.length > 0 && info.degrade.detail.indexOf('1999-01-01') >= 0
-        && pick('date').from === 'plot' && /最新情节/.test(pick('date').fromLabel)
-        && info.rejects.some((r) => r.field === 'date' && String(r.value).indexOf('1999') === 0);
-})(), null);
-
-A('T3 手工锁定：追踪记「手工强制改写」判据，且落盘为锁定（未覆盖），不产生任何候选采纳', (() => {
-    boot({ state: { date: '1919-11-20', time: '09:00', location: '码头' } });
-    setClockManual({ date: '1919-12-01', time: '07:30', location: '钟鼓楼' });
-    const res = resolveStoryClock({ text: '▷1919-11-30 08:52\n▷城门' });
-    const t = clockTraceLast('resolve');
-    const info = clockTraceInfo(t);
-    const pick = (f) => info.picks.filter((x) => x.field === f)[0] || {};
-    const lockedChain = info.chain.some((x) => x.indexOf('手工强制改写') >= 0);
-    clearClockManual();
-    return res.date === '1919-12-01' && res.time === '07:30' && res.location === '钟鼓楼'
-        && pick('date').from === 'manual' && /手工值直接采用/.test(pick('date').why) && lockedChain
-        && info.degrade.detail.indexOf('跳过') >= 0;
-})(), null);
-
-A('T4 追踪为**环形缓冲**：每阶段只留最近 ' + CLOCK_TRACE_KEEP + ' 条；`clockTraceList()` 最新在前；清空即空', (() => {
+        && res.source.date === 'plot' && res.plotId === 'a-new' && Number(res.plotFloor) === 9
+        && res.textMode === 'plot-only' && dp.from === 'plot'
+        && J(info.candidates || {}) === J({});
+})(), (() => {
     boot();
-    for (let i = 0; i < CLOCK_TRACE_KEEP + 3; i++) resolveStoryClock({ text: '1919-11-' + String(10 + i).padStart(2, '0') + '，甲出发。' });
-    const list = clockTraceList('resolve');
-    const ids = list.map((x) => Number(String(x.id).replace('ct', '')));
-    const desc = ids.every((v, i) => i === 0 || ids[i - 1] > v);
-    const cleared = clockTraceClear();
-    return list.length === CLOCK_TRACE_KEEP && desc && cleared === true && clockTraceLast('resolve') === null;
-})(), null);
+    state.atoms = [{ id: 'a-new', text: '最新情节。', date: '1919-11-30', time: '08:52', floorStart: 9, floorEnd: 9, uses: 1, tags: [] }];
+    return J(resolveStoryClock({ text: '▷1919年12月31日' }));
+})());
+
+A('T2（v2.51.0 改版）最新情节缺日期 → 只在**情节内**退到次新带日期项（仍不引入其它来源）', (() => {
+    boot();
+    state.atoms = [
+        { id: 'a-dated', text: '有日期的情节。', date: '1919-11-18', floorStart: 1, floorEnd: 2, uses: 0, tags: [] },
+        { id: 'a-nodate', text: '最新但没写日期。', date: '', floorStart: 9, floorEnd: 9, uses: 1, tags: [] },
+    ];
+    const res = resolveStoryClock({ text: '▷1919年12月31日（正文日期不参与）' });
+    return res.date === '1919-11-18' && res.source.date === 'plot' && res.plotId === 'a-dated';
+})(), (() => {
+    boot();
+    state.atoms = [
+        { id: 'a-dated', text: '有日期的情节。', date: '1919-11-18', floorStart: 1, floorEnd: 2, uses: 0, tags: [] },
+        { id: 'a-nodate', text: '最新但没写日期。', date: '', floorStart: 9, floorEnd: 9, uses: 1, tags: [] },
+    ];
+    return J(resolveStoryClock({}));
+})());
 
 // ---------- R 组：回归（追踪只记录，不改判定） ----------
-A('R1 追踪不改变解析结果：返回对象的**键集与取值**与 V1 结构一致（无 trace/candidates 等新增键泄漏）', (() => {
+A('R1（v2.51.0 改版）追踪不改变解析结果：返回键集固定（含 plotId/plotFloor），无 trace/candidates 泄漏', (() => {
     boot();
-    const res = resolveStoryClock({ text: '▷1919-11-30 08:52\n▷凉州卫-钟鼓楼' });
-    const want = ['date', 'time', 'location', 'present', 'source', 'degraded', 'textMode', 'jumpYears', 'degradeReason', 'timeEnd', 'season', 'era', 'storyDay', 'sceneDesc', 'statusText', 'header'];
-    const got = Object.keys(res);
-    const extra = got.filter((k) => want.indexOf(k) < 0);
-    const missing = want.filter((k) => got.indexOf(k) < 0);
-    // `extractClockFromText` 同样不得新增键（诊断走 clockExtractDiag 侧信道）
-    const ex = extractClockFromText('1919-11-30，甲出发。', {});
-    const exExtra = Object.keys(ex).filter((k) => ['date', 'time', 'location', 'source', 'timeEnd', 'season', 'era', 'storyDay', 'sceneDesc', 'statusText', 'header'].indexOf(k) < 0);
-    const diag = clockExtractDiag();
-    return extra.length === 0 && missing.length === 0 && exExtra.length === 0
-        // V1 口径：正文侧的 `source.date` 统一记为 'regex'（正文头结构亦如此）；精确来源见追踪（T1 断言 from==='header'）
-        && J(res.source) === J({ date: 'regex', time: 'header', location: 'header', present: 'keep-prev' })
-        && diag.picked && diag.picked.date && diag.picked.date.raw.length > 0 && Array.isArray(diag.candidates.date);
-})(), null);
+    state.atoms = [{ id: 'a1', text: '情节。', date: '1919-11-20', time: '傍晚', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }];
+    const a = resolveStoryClock({});
+    const b = resolveStoryClock({});
+    const KEYS = ['date', 'time', 'location', 'present', 'source', 'degraded', 'textMode', 'jumpYears', 'timeEnd', 'season', 'era', 'storyDay', 'sceneDesc', 'statusText', 'header', 'plotId', 'plotFloor'];
+    return J(Object.keys(a).sort()) === J(KEYS.slice().sort()) && J(a) === J(b);
+})(), (() => { boot(); return J(Object.keys(resolveStoryClock({})).sort()); })());
 
-A('R2 回归：楼层窗口回退分支**不得因追踪构造失败而丢值**（曾在追踪里误用块级 `last` → ReferenceError 被吞 → 日期变空）', (() => {
+A('R2（v2.51.0 改版）**没有可用情节**时：不改动时钟（保持原值）、不抛错、追踪如实说明', (() => {
     boot();
-    setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '1919-12-09，主角甲来到城市壬。' });
-    const ok = clockAutoExtractOnce({ force: true });
-    const res = clockExtractState();
+    state.atoms = [];
+    state.state = { date: '1919-11-01', time: '清晨', location: '旧地点', present: [] };
+    const res = resolveStoryClock({ text: '▷1919年12月31日' });
     const t = clockTraceLast('resolve');
     const info = clockTraceInfo(t);
-    return ok === true && state.state.date === '1919-12-09' && res.textMode === 'floor-window'
-        && /^第\d+-\d+楼/.test(String(info.text.floors)) && info.text.chars > 0
-        && info.text.mode === 'floor-window';
-})(), null);
+    return res.date === '' && res.time === '' && res.location === ''
+        && String((info.notes || []).join(' ')).indexOf('没有任何可用情节') >= 0
+        && state.state.date === '1919-11-01';
+})(), (() => {
+    boot();
+    state.atoms = [];
+    state.state = { date: '1919-11-01', present: [] };
+    const r = resolveStoryClock({});
+    return J({ r, kept: state.state.date });
+})());
 
 // ---------- P 组：巡检锚点链 ----------
-A('P1 巡检锚点取值链：锚点来自「当前剧情时钟」并记明判据；自动路径遇锚点与库内多数年份冲突时**只统计**（落选记载 + 未修改）', (() => {
-    boot({
-        atoms: [
-            { id: 'a1', title: '一', text: '甲', date: '1919-11-20', time: '08:00', uses: 0, floorStart: 0, floorEnd: 1 },
-            { id: 'a2', title: '二', text: '乙', date: '1919-11-21', time: '09:00', uses: 0, floorStart: 0, floorEnd: 2 },
-            { id: 'a3', title: '三', text: '丙', date: '1919-11-22', time: '10:00', uses: 0, floorStart: 0, floorEnd: 3 },
-            { id: 'a4', title: '四', text: '丁', date: '1999-01-01', time: '25:99', uses: 0, floorStart: 0, floorEnd: 4 },
-        ],
-        state: { date: '1919-11-22', time: '10:00', location: '码头' },
-    });
-    const rep = runClockPatrolRepair({ silent: true });
-    const t = clockTraceLast('patrol');
-    const info = clockTraceInfo(t);
-    const pick = info.picks.filter((x) => x.field === 'date')[0] || {};
-    const chainOk = info.chain.some((x) => x.indexOf('手工强制改写 > 当前剧情时钟') >= 0);
-    const applied = info.applied && info.applied.fields ? info.applied.fields.length : 0;
-    return rep.anchor === '1919-11-22' && rep.anchorSource === 'clock'
-        && pick.from === 'clock' && /当前剧情时钟有效即用/.test(pick.why) && chainOk
-        && info.notes.join(' ').indexOf('扫描') >= 0
-        && (rep.fixed > 0 ? applied > 0 : (info.applied.locked === true));
-})(), null);
-
-// ---------- A 组：日志口径 ----------
-await (async () => {
-    boot();
-    clockAutoExtractOnce({ force: true, text: '▷1919年12月1日 09:10\n▷凉州卫-钟鼓楼\n甲与乙在码头清点铜箱。' });
-    const d = logData();
-    A('A1 时钟日志含四类追踪信息：来源（含**时间/地点**来源，此前缺失）、判据（why）、落选候选（含原因）、落盘差异（prev → next）', (() => {
-        return !!d && d.traceId && d.dateFrom === '正文头结构（▷/▶）' && d.dateFromV1 === '正文正则（最新正文）'
-            && d.timeFrom === '正文头结构（▷/▶）' && d.locationFrom === '正文头结构（▷/▶）'
-            && String(d.dateWhy).length > 10 && String(d.timeWhy).length > 5 && String(d.locationWhy).length > 5 && String(d.presentWhy).length > 3
-            && Array.isArray(d.chain) && d.chain.length >= 4
-            && Array.isArray(d.rejects) && d.rejects.length >= 1 && d.rejects.every((x) => x.indexOf('←') > 0 && x.indexOf('（') > 0)
-            && Number(d.rejectsTotal) >= 1 && Array.isArray(d.applied) && d.applied.length >= 1
-            && d.textFloors === '调用方给定' && d.textChars > 0 && String(d.sample).length > 0
-            && String(d.how).indexOf('clockTrace') > 0 && d.degradeReason === '';
-    })(), d);
-
-    A('A2 无改动时**不写日志**（与 V1 同口径：只在 changed/present/见面标记变化时记一条），但取值追踪仍可查；手工锁定时 `unchanged` 记明锁定', (() => {
-        // 场景一：日期/时间/地点与现值完全相同、在场与见面标记也没变化 → 不写日志（避免「日志噪音」= 用户报告的问题源之一）
-        boot({ state: { date: '1919-12-01', time: '09:10', location: '凉州卫-钟鼓楼', present: [] } });
-        const before = debugLogList().filter((l) => l.kind === '时钟').length;
-        clockAutoExtractOnce({ force: true, text: '▷1919年12月1日 09:10\n▷凉州卫-钟鼓楼' });
-        const after = debugLogList().filter((l) => l.kind === '时钟').length;
-        const noLog = after === before;
-        const traceStillThere = !!clockTraceLast('resolve') && clockTraceInfo(clockTraceLast('resolve')).picks.length >= 3;
-        const noChangeFlag = (() => { const t = clockTraceLast('resolve'); return t && Array.isArray(t.applied.fields) && t.applied.fields.every((x) => x.changed === false); })();
-        // 场景二：手工锁定 → 日期/时间/地点不被覆盖（取值追踪的 `applied.locked` 与 `unchanged` 如实标锁定），
-        //   且「未改动」时同样不写提取日志（V1 口径：手工改写自身会单独记一条）
-        boot({ state: { date: '1919-11-20', time: '', location: '' } });
-        const beforeManual = debugLogList().filter((l) => l.kind === '时钟').length;
-        setClockManual({ date: '1919-12-05' });
-        clockAutoExtractOnce({ force: true, text: '▷1919年12月1日 09:10\n▷城门' });
-        const t2 = clockTraceLast('resolve');
-        const lockedOk = !!t2 && t2.applied.locked === true
-            && (t2.applied.unchanged || []).join('|').indexOf('手工锁定') >= 0
-            && (t2.applied.fields || []).every((x) => x.changed === false);
-        const extractLogs = debugLogList().filter((l) => l.kind === '时钟').length - beforeManual;
-        const manualLogged = debugLogList().some((l) => { try { return String(JSON.parse(l.data).action).indexOf('手工强制改写') >= 0; } catch (e) { return false; } });
-        clearClockManual();
-        return noLog && traceStillThere && noChangeFlag && state.state.date === '1919-12-05' && lockedOk
-            && extractLogs === 1 && manualLogged;   // 这 1 条来自「手工强制改写」自身，而不是提取
-    
-    })(), null);
-})();
-
-// ---------- U 组：界面 ----------
-A('U1 调试页「🕒 时钟取值追踪」区块：四个阶段分节 + 值←来源 + 未采用候选 + 落盘 + 清空按钮；无记录时如实说明', (() => {
+A('U1（v2.51.0）调试页「🕒 时钟取值追踪」区块：只保留「自动解析（只取最新情节）」与「AI 时间修复」两节 + 落盘 + 清空按钮；无记录时如实说明', (() => {
     boot();
     const empty = clockTraceSectionHtml();
     resolveStoryClock({ text: '▷1919年11月30日 08:52\n▷凉州卫-钟鼓楼' });
     const html = clockTraceSectionHtml();
+    // v2.51.0：巡检与「AI 捕捉正则」两块已随功能移除 —— 区块只保留「自动解析（只取最新情节）/ AI 时间修复」
     return empty.indexOf('暂无记录') >= 0
-        && html.indexOf('自动解析（日期/时间/地点/在场）') >= 0 && html.indexOf('时间巡检（锚点与修复）') >= 0
-        && html.indexOf('AI 捕捉正则') >= 0 && html.indexOf('AI 时间修复') >= 0
-        && html.indexOf('未采用的候选') >= 0 && html.indexOf('落盘') >= 0
+        && html.indexOf('自动解析（只取最新情节：日期/时间/地点/在场）') >= 0
+        && html.indexOf('时间巡检') < 0 && html.indexOf('AI 捕捉正则') < 0
+        && html.indexOf('落盘') >= 0
         && html.indexOf('data-ftt-action="clockTraceClear"') >= 0
-        && html.indexOf('正文头结构（▷/▶）') >= 0 && html.indexOf('共 ' + clockSrcKeys().length + ' 项') >= 0;
+        && html.indexOf('共 ' + clockSrcKeys().length + ' 项') >= 0;
 })(), null);
 
 A('U2 总览时钟区：展示最近一次取值摘要行（值 ← 来源 + 落盘改动 + 指向调试页的路径）', (() => {
     boot();
     // 走完整落盘（写 state + clockSrc + 追踪），总览的「时钟来源行」才会出现
-    clockAutoExtractOnce({ force: true, text: '▷1919年11月30日 08:52\n▷凉州卫-钟鼓楼' });
+    state.atoms = [{ id: 'a1', text: '最新情节。', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 9, floorEnd: 9, uses: 1, tags: [] }];
+    clockAutoExtractOnce({ force: true });
     const html = clockSectionHtml();
     return html.indexOf('data-ftt-clock-trace') >= 0 && html.indexOf('🕒 取值 [resolve]') >= 0
-        && html.indexOf('正文头结构（▷/▶）') >= 0 && html.indexOf('设定→调试「🕒 时钟取值追踪」') >= 0
-        // 来源行的时间来源也走全量标签（不再是英文原键）
+        && html.indexOf('设定→调试「🕒 时钟取值追踪」') >= 0
         && html.indexOf('data-ftt-clock-src') >= 0;
 })(), null);
 

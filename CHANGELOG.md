@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.51.0（2026-09-26）· 剧情时钟改版：只取最新情节（V2 专属改版）
+
+**用户要求**：「时钟设计存在大量缺陷，改版**只从情节最新的一条获取**，其他所有原子数据皆不可信；
+其次**情节总结不涵盖在内**。总览提示与设定需按新设计调节，**去掉废弃设定或提示内容**」；
+后续：①「第 N 天」为原子数据**预留的天数计数器**（保留、不联动时钟、不注入）；②「时间巡检修复」**功能移除**。
+
+**① 唯一可信来源 = 最新一条「情节」**：新增 `core/recall.js#latestTrustedPlot()`；`resolveStoryClock()` 重写为
+情节单一来源（`date`/`time`/`location`）。**正文解析（正则/正文头/标记式/相对日期/第N天换算）完全退出时钟**；
+记忆/角色/物品/货币/传言/计划/悬念/场景/概念/平行 **不取值、不降级、不巡检**；
+**情节总结不参与**（`mergedSummary` 含半自动聚合条、`summarizedBy`/`hidden`、`plotSegments` 全部排除）；
+最新情节缺日期只在**情节内**回退到次新带日期项，完全没有则**不改动时钟**。
+
+**②「第 N 天」改为保留字段**：`recordReservedStoryDay()` 只把 `▶第 N 天` 记到该情节的 `storyDay`
+（不换算日期、不写 `state.state.storyDay`、不注入、总览不再显示）。
+
+**③「时间巡检修复」功能移除**：删除总览状态行/按钮、`clockPatrol`/`clockPatrolForce` 动作、`runClockPatrolRepair`、
+`clockPatrolAutoOnce`/`clockPatrolState`、载入后自动巡检、`clockPatrolMajority`（年份多数派）与年份异常判定；
+保留 `clockPatrolScan()`（只扫情节、只报格式非法）供「AI 结合正文修复」打包，锚点 = 手工改写 ＞ 当前时钟、
+无锚点不执行、写回前留快照；年份阈值改为内部常量 50。
+
+**④ 删除废弃设定与提示（不留残留）**：`clockRegexPreset`/`clockDateRegex`/`clockTimeRegex`/`clockLocationRegex`/
+`clockRelative`/`clockStoryDayEpoch`/`clockForceDegrade`/`clockAnomalyJumpYears`/`clockAutoPatrol`/`clockPatrolAutoFix`
+共 10 项设定；「AI 捕捉正文 → 生成正则」按钮与 `clockRegexGen` 模板；调试页两节旧阶段；
+基础页时钟两节按新设计重写（基础页控件 21 → 11、全站 183 → 173）。
+
+**⑤ 测试迁移（按用户指示：后续修改仅针对 V2）**：`clock-extract-golden`/`clock-patrol-golden`/`clock-ai-golden`/
+`clock-trace`/`clock-story-only`/`storyday-no-inject`（重写）/`html-pollution`/`config-clock-golden`（删除键白名单登记）/
+`settings-pages`/`prompts` 全部迁移到新契约；冒烟 O/P/Q/AU/AN 段同步；删除 `clock-repair-safe`（功能已移除）。
+
+合计单元 **75 文件 / 1160 断言**、冒烟 **162 项**，全绿；详见 `docs/P10o-时钟改版-只取最新情节.md`。
+
 ## v2.50.0（2026-09-26）· 时间巡检修复不再改错时钟数据 + 场景层级（收纳）修复
 
 **用户报告**：「场景收纳能力异常需修复。时间循环修复，会改错时钟数据。」

@@ -128,18 +128,13 @@ export function installDevtools(hooks) {
             storageEnvValid: (env) => (hooks && typeof hooks.storageEnvValid === 'function' ? hooks.storageEnvValid(env) : false),
             // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
             clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),
-            clockPatrol: (opts) => (hooks && typeof hooks.clockPatrol === 'function' ? hooks.clockPatrol(opts || {}) : null),
-            clockPatrolState: () => (hooks && typeof hooks.clockPatrolState === 'function' ? hooks.clockPatrolState() : null),
             clockTrace: (stage) => (hooks && typeof hooks.clockTrace === 'function' ? hooks.clockTrace(stage) : null),
             clockTraceAll: () => (hooks && typeof hooks.clockTraceAll === 'function' ? hooks.clockTraceAll() : null),
             clockTraceSummary: (stage) => (hooks && typeof hooks.clockTraceSummary === 'function' ? hooks.clockTraceSummary(stage) : ''),
             clockTraceClear: () => (hooks && typeof hooks.clockTraceClear === 'function' ? hooks.clockTraceClear() : false),
             clockSrcLabel: (k) => (hooks && typeof hooks.clockSrcLabel === 'function' ? hooks.clockSrcLabel(k) : ''),
             clockSrcLabels: () => (hooks && typeof hooks.clockSrcLabels === 'function' ? hooks.clockSrcLabels() : []),
-            clockDegradeLabel: (r) => (hooks && typeof hooks.clockDegradeLabel === 'function' ? hooks.clockDegradeLabel(r) : ''),
-            clockPatrolAuto: () => (hooks && typeof hooks.clockPatrolAuto === 'function' ? hooks.clockPatrolAuto() : null),
             clockAnchor: () => (hooks && typeof hooks.clockAnchor === 'function' ? hooks.clockAnchor() : null),
-            clockMajority: () => (hooks && typeof hooks.clockMajority === 'function' ? hooks.clockMajority() : null),
             clockScan: () => (hooks && typeof hooks.clockScan === 'function' ? hooks.clockScan() : null),
             clockManual: () => (hooks && typeof hooks.clockManual === 'function' ? hooks.clockManual() : null),
             clockManualSet: (input) => (hooks && typeof hooks.clockManualSet === 'function' ? hooks.clockManualSet(input || {}) : { ok: false, notes: ['no-hook'] }),
@@ -153,7 +148,6 @@ export function installDevtools(hooks) {
             clockExtractText: (text, prev) => (hooks && typeof hooks.clockExtractText === 'function' ? hooks.clockExtractText(text, prev || {}) : null),
             clockScene: () => (hooks && typeof hooks.clockScene === 'function' ? hooks.clockScene() : ''),
             // B8-3 时钟域 AI 管线
-            clockRegexGen: (opts) => (hooks && typeof hooks.clockRegexGen === 'function' ? hooks.clockRegexGen(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             clockRepair: (opts) => (hooks && typeof hooks.clockRepair === 'function' ? hooks.clockRepair(opts || {}) : Promise.resolve({ made: 0, error: 'no-hook' })),
             clockRepairPack: () => (hooks && typeof hooks.clockRepairPack === 'function' ? hooks.clockRepairPack() : null),
             // B8-4 内容弱化（NSFW）

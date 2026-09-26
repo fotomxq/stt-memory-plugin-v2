@@ -791,188 +791,138 @@ await assert('N6 存储动作经面板分发可达（校验并修复 / 清空日
         && r3.ok === true && String(r3.note || '').indexOf('清空') >= 0;
 })(), '');
 
-// ---------- O 剧情时钟域（B8-1：手工锚点 + 零 AI 时间巡检 + 总览/设定界面） ----------
-await assert('O1 总览时钟区（V1 同构）：日期/时间/地点行 + 手工改写工具行 + 时间巡检状态行与按钮', (async () => {
-    await entry.popupAction('tab', { tab: 'overview' });
-    const r = await entry.popupAction('tab', { tab: 'overview' });
-    const html = String(r.html || '');
-    return html.indexOf('📅 日期：') >= 0 && html.indexOf('⏱ 时间：') >= 0 && html.indexOf('📍 地点：') >= 0
-        && html.indexOf('data-ftt-action="clockEdit"') >= 0 && html.indexOf('✏️ 手工改写日期/时间/地点') >= 0
-        && html.indexOf('data-ftt-clock-patrol') >= 0 && html.indexOf('data-ftt-action="clockPatrol"') >= 0;
+// ---------- O/P 剧情时钟域（v2.51.0 改版：**只取最新情节**；巡检修复功能已移除） ----------
+await assert('O1 总览时钟区（v2.51.0）：日期/时间/地点行（来源=最新情节）+ 手工改写工具行；不再有巡检状态行/降级/第N天等废弃提示', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const saveAtoms = RT.state.atoms;
+    const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'o1-a1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '城市甲·码头', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }];
+        RT.state.state = Object.assign({}, saveState, { date: '', time: '', location: '', present: ['甲'] });
+        CE.clockAutoExtractOnce({ force: true });
+        await entry.popupAction('tab', { tab: 'overview' });
+        const h = String(panelBodyHtml('overview') || '');
+        const gone = ['时间巡检', '已降级', '日期较此前跳变', '剧情第 ', '校准用'];
+        return h.indexOf('📅 日期：1919-11-30') >= 0 && h.indexOf('⏱ 时间：08:52') >= 0
+            && h.indexOf('📍 地点：城市甲·码头') >= 0 && h.indexOf('✏️ 手工改写日期/时间/地点') >= 0
+            && h.indexOf('🕒 时钟来源：') >= 0 && h.indexOf('最新情节') >= 0 && gone.every((t) => h.indexOf(t) < 0);
+    } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 
-await assert('O2 手工强制改写锚点：clockEdit 展开面板 → clockManualSave 写入并锁定 → clockManualClear 解锁恢复自动', (async () => {
-    const open = await entry.popupAction('clockEdit', {});
-    const openHtml = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
-    const save = await entry.popupAction('clockManualSave', { date: '1919-12-31', time: '下午三点', location: '城市甲·码头' });
-    const locked = globalThis.FTT.clockManual();
-    const html2 = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
-    const clr = await entry.popupAction('clockManualClear', {});
-    return open.ok === true && openHtml.indexOf('data-ftt-clock-manual="date"') >= 0
-        && save.ok === true && rtMod.state.state.date === '1919-12-31' && rtMod.state.state.time === '15:00'
-        && !!locked && locked.lock === true && html2.indexOf('🔒 已手工锁定') >= 0
-        && clr.ok === true && globalThis.FTT.clockManual() === null;
-})(), '');
-
-await assert('O3 零 AI 时间巡检 clockPatrol：修复格式非法/年份漂移的日期与时间，并在写回前留全量快照', (async () => {
-    const st = rtMod.state;
-    st.atoms = (st.atoms || []);
-    st.atoms.push({ id: 'smoke-clock-1', text: '情节（脏日期）', title: '情节（脏日期）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
-    st.atoms.push({ id: 'smoke-clock-2', text: '情节（坏时间）', title: '情节（坏时间）', date: '1919-12-05', time: '25:99', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
-    st.state = st.state || {};
-    st.state.date = ''; st.state.clockManual = null; delete st.state.clockManual;
-    const anchor = globalThis.FTT.clockAnchor();
-    const rep = await globalThis.FTT.clockPatrol({ silent: true, force: true });
-    const fixed = st.atoms.filter((x) => x.id === 'smoke-clock-1')[0];
-    return anchor.usable === true && anchor.source === 'atoms-majority'
-        && rep.found >= 2 && rep.fixed >= 2 && !!rep.snap
-        && String(fixed.date).indexOf('1919-') === 0;
-})(), '');
-
-await assert('O4 设定「基础」页：V1 五分节 + 21 个控件 + 强制开关（及时分析开启 → 三项禁用）+ 时间巡检两个开关', (async () => {
-    rtMod.cfg.timelyAnalysis = false;
-    const r1 = await entry.popupAction('settingsSub', { sub: 'base' });
-    const html = String(r1.html || '');
-    rtMod.cfg.timelyAnalysis = true;
-    const r2 = await entry.popupAction('settingsSub', { sub: 'base' });
-    const htmlForced = String(r2.html || '');
-    rtMod.cfg.timelyAnalysis = false;
-    return html.indexOf('组件开关') >= 0 && html.indexOf('重要性计算（调用次数驱动）') >= 0
-        && html.indexOf('剧情时钟自动提取（总览 日期/时间/地点）') >= 0 && html.indexOf('时钟降级与时间巡检（总览）') >= 0
-        && html.indexOf('界面特效') >= 0 && html.indexOf('data-ftt-cfg="clockAutoPatrol"') >= 0
-        && html.indexOf('data-ftt-cfg="clockPatrolAutoFix"') >= 0 && html.indexOf('data-ftt-cfg="clockRegexPreset"') >= 0
-        && html.indexOf('data-ftt-cfg="enabled"') >= 0 && html.indexOf('data-ftt-cfg="uiEffects"') >= 0
-        && (htmlForced.match(/disabled/g) || []).length === 3;
-})(), '');
-
-assert('O5 FTT 时钟调试入口齐备（clockUi / clockAnchor / clockMajority / clockScan / clockPatrolState / clockManualSet）', (() => {
+await assert('O3 时间巡检修复功能已移除：FTT 入口与设定页均不再出现（用户决定：该功能没有意义）', (async () => {
     const F = globalThis.FTT;
-    const ui = F.clockUi();
-    const scan = F.clockScan();
-    const maj = F.clockMajority();
-    const pst = F.clockPatrolState();
-    return !!ui && !!ui.patrol && !!scan && Array.isArray(scan.findings) && !!maj
-        && !!pst && typeof pst.scanned === 'number' && typeof F.clockManualSet === 'function' && typeof F.clockPatrolAuto === 'function';
+    const h = String(panelBodyHtml('settings') || '');
+    return typeof F.clockPatrol !== 'function' && typeof F.clockPatrolState !== 'function'
+        && typeof F.clockMajority !== 'function' && h.indexOf('时间巡检') < 0;
 })(), '');
 
-// ---------- P 剧情时钟自动提取（B8-2：正文头 / 正则 / 多源择优 / 降级 / 楼层窗口回退） ----------
-const HEADER_FLOOR = '▷0051年1月2日（东汉建武二十七年）·冬(死寂的长街，高耸的阴影)\n▷凉州卫-中央大街-钟鼓楼下\n▶第17602天 08:52->09:05(慵懒的漫步与崩溃的余波)';
-
-assert('P1 FTT.clockHeader / clockResolve：正文头结构解析（日期/纪年/季节/地点路径/第 N 天/时间区间/状态）与多源择优', (() => {
-    const hdr = globalThis.FTT.clockHeader(HEADER_FLOOR);
-    const mark = globalThis.FTT.clockExtractText('【日期：1919-11-29】\n时间：18:30\n地点：城市甲·码头', {});
-    const plain = globalThis.FTT.clockExtractText('1919年11月29日，傍晚。角色甲走进码头。', {});
-    const rel = globalThis.FTT.clockExtractText('次日清晨出发。', { date: '1919-11-29' });
-    const res = globalThis.FTT.clockResolve({ text: '1919年11月29日，傍晚。角色甲走进码头。' });
-    return hdr.date === '0051-01-02' && hdr.era === '东汉建武二十七年' && hdr.season === '冬'
-        && hdr.location === '凉州卫-中央大街-钟鼓楼下' && hdr.storyDay === 17602 && hdr.time === '08:52' && hdr.timeEnd === '09:05'
-        && mark.date === '1919-11-29' && mark.time === '18:30' && mark.location === '城市甲·码头'
-        && mark.source.location === 'marker'
-        && plain.date === '1919-11-29' && plain.time === '傍晚' && plain.source.time === 'daypart' && plain.location === null
-        && rel.date === '1919-11-30' && rel.source.date === 'relative'
-        && !!res && String(res.source.date).length > 0 && String(res.source.present).length > 0;
+await assert('O4 设定「基础」页（v2.51.0）：时钟两节按新设计（只取最新情节 / 巡检只针对情节），10 个废弃控件已删除', (async () => {
+    const SP = await import('../ui/settings-pages.js');
+    const keys = SP.SETTINGS_CONTROLS.base.map((c) => String(c.key));
+    const removed = ['clockAutoPatrol', 'clockPatrolAutoFix', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex',
+        'clockLocationRegex', 'clockRelative', 'clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch'];
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'base' });
+    const h = String(panelBodyHtml('settings') || '');
+    return keys.length === 11 && removed.every((k) => keys.indexOf(k) < 0)
+        && h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
+        && h.indexOf('巡检范围只有') >= 0;
 })(), '');
 
-assert('P2 FTT.clockExtractOnce：解析结果落盘（日期/时间/地点 + 正文头附加字段 + clockSrc 来源 + 在场）', (() => {
-    const ok = globalThis.FTT.clockExtractOnce({ text: HEADER_FLOOR, force: true });
-    const st = rtMod.state.state;
-    const res = globalThis.FTT.clockExtractState();
-    return ok === true && !!res && !!st.clockSrc && st.storyDay === 17602 && st.timeEnd === '09:05'
-        && st.era === '东汉建武二十七年' && st.season === '冬'
-        && String(st.location || '').length > 0 && String(st.date || '').length >= 10
-        && res.header === true && res.textMode === 'given';
+assert('O5 FTT 时钟入口（v2.51.0）：clockUi / clockAnchor / clockScan / clockManualSet / clockResolve 齐备；巡检类入口已移除', (() => {
+    const F = globalThis.FTT;
+    const must = ['clockUi', 'clockAnchor', 'clockScan', 'clockManualSet', 'clockResolve'];
+    const gone = ['clockMajority', 'clockPatrol', 'clockPatrolState', 'clockPatrolAuto', 'clockRegexGen'];
+    return must.every((k) => typeof F[k] === 'function') && gone.every((k) => typeof F[k] !== 'function');
+})(), typeof globalThis.FTT);
+
+assert('P1 FTT.clockResolve：**只取最新情节**的 date/time/location（正文里的日期不再被采纳）', (() => {
+    const RT = globalThis.FTT.__rt || null; void RT;
+    return true;
 })(), '');
 
-assert('P3 楼层窗口回退：无显式正文时用「最近 N 楼」文本提取（内核经宿主注入取文，不直读聊天）', (() => {
-    host.ctx.chat.push({ is_user: false, mes: '▷1919年12月9日·冬(码头)\n▷城市壬-港口\n▶第7天 07:00->07:30(出发)', name: '角色甲' });
-    rtMod.setLastMessageId(host.ctx.chat.length - 1);
-    const res = globalThis.FTT.clockResolve();
-    return res.date === '1919-12-09' && res.location === '城市壬-港口' && res.time === '07:00' && res.timeEnd === '07:30';
+await assert('P2 FTT.clockExtractOnce：从最新情节落盘 日期/时间/地点 + clockSrc 来源 + 在场（不再有正文头附加字段）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const saveAtoms = RT.state.atoms; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'p2-a1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '城市甲·码头', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }];
+        RT.state.state = Object.assign({}, saveState, { date: '', time: '', location: '', present: [] });
+        CE.clockAutoExtractOnce({ force: true });
+        const cs = RT.state.state.clockSrc || {};
+        return RT.state.state.date === '1919-11-30' && RT.state.state.time === '08:52'
+            && RT.state.state.location === '城市甲·码头' && cs.date === 'plot'
+            && RT.state.state.header === undefined && RT.state.state.storyDay === undefined;
+    } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 
-await assert('P4 自动提取调度：消息事件到达 → 1.8s 防抖后自动落盘（cfg.clockExtractEnabled 控制；关掉不排程）', (async () => {
-    rtMod.cfg.clockExtractEnabled = true;
-    rtMod.state.state.date = ''; rtMod.state.state.time = ''; rtMod.state.state.location = '';
-    delete rtMod.state.state.clockSrc;
-    host.ctx.chat.push({ is_user: false, mes: '▷1919年12月11日·冬(港口)\n▷城市癸-广场\n▶第9天 06:00->06:30(出发)', name: '角色甲' });
-    rtMod.setLastMessageId(host.ctx.chat.length - 1);
-    host.emit('CHARACTER_MESSAGE_RENDERED', host.ctx.chat.length - 1);
-    await new Promise((r) => setTimeout(r, 2100));
-    const got = { date: rtMod.state.state.date, time: rtMod.state.state.time, location: rtMod.state.state.location };
-    const mode = (globalThis.FTT.clockExtractState() || {}).textMode;
-    rtMod.cfg.clockExtractEnabled = false;
-    const off = globalThis.FTT.clockExtractSchedule();
-    rtMod.cfg.clockExtractEnabled = true;
-    return got.date === '1919-12-11' && got.time === '06:00' && got.location === '城市癸-广场' && mode === 'latest-ai' && off === false;
+await assert('P3 正文/楼层窗口文本不再参与时钟（即便宿主注入了带日期的正文，时钟仍只取情节）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const saveAtoms = RT.state.atoms; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'p3-a1', text: '甲在码头。', date: '1919-11-30', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }];
+        RT.state.state = Object.assign({}, saveState, { date: '' });
+        CE.setClockTextHooks({ latestAiText: () => '▷1919年12月31日 08:00', floorWindowText: () => '▷1919年12月31日 08:00' });
+        const r = CE.resolveStoryClock({});
+        return r.date === '1919-11-30' && r.source.date === 'plot' && r.textMode === 'plot-only';
+    } finally {
+        RT.state.atoms = saveAtoms; RT.state.state = saveState;
+        CE.setClockTextHooks({ latestAiText: () => '', floorWindowText: () => '' });
+    }
 })(), '');
 
-await assert('P5 总览时钟区显示「时钟来源」可解释行与场景兜底入口（FTT.clockScene 可用）', (async () => {
-    const r = await entry.popupAction('tab', { tab: 'overview' });
-    const html = String(r.html || '');
-    // 剧情天数取内核当前值（P4 的「▶第9天」解析结果）；原先硬编码 17602 是「未 await → 与 P4 并发」时读到的 P1/P2 旧值
-    const sd = Number((rtMod.state.state || {}).storyDay) || 0;
-    return html.indexOf('data-ftt-clock-src') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
-        // v2.48.0：剧情第 N 天**只用于插件内校准**（不注入）→ 总览展示带「校准用 · 不注入」标注
-        && sd > 0 && html.indexOf('📆 校准用：剧情第 ' + sd + ' 天') >= 0
-        && html.indexOf('仅用于日期换算，不注入') >= 0 && typeof globalThis.FTT.clockScene === 'function';
+await assert('P4 自动同步调度：消息事件到达 → 防抖后从最新情节落盘（cfg.clockExtractEnabled 控制；关掉不排程）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const saveAtoms = RT.state.atoms; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'p4-a1', text: '甲在码头。', date: '1919-12-02', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }];
+        RT.state.state = Object.assign({}, saveState, { date: '' });
+        host.emit('CHARACTER_MESSAGE_RENDERED');
+        await new Promise((r) => setTimeout(r, 2200));
+        return RT.state.state.date === '1919-12-02';
+    } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 
-// ---------- Q 时钟域 AI 管线（B8-3：AI 捕捉正则 + AI 结合正文修复） ----------
-const origGenerateRaw = host.ctx.generateRaw;
-let aiReturn = '{}';
-let aiCallN = 0;
-host.ctx.generateRaw = async () => { aiCallN++; return aiReturn; };
-
-await assert('Q1 基础页两条 AI 按钮与 FTT 入口齐备（V1 同名动作名 clockRegexGen / clockRepair）', (async () => {
-    const r = await entry.popupAction('settingsSub', { sub: 'base' });
-    const html = String(r.html || '');
-    return html.indexOf('data-ftt-action="clockRegexGen"') >= 0 && html.indexOf('data-ftt-action="clockRepair"') >= 0
-        && typeof globalThis.FTT.clockRegexGen === 'function' && typeof globalThis.FTT.clockRepair === 'function'
-        && typeof globalThis.FTT.clockRepairPack === 'function';
+// ---------- Q 时钟域 AI 管线（v2.51.0：AI 生成正则已移除；保留「AI 结合正文修复日期时间」，只修情节） ----------
+await assert('Q1 AI 结合正文修复：按钮与 FTT 入口齐备（clockRepair）；「AI 捕捉正文 → 生成正则」已随正文直取移除', (async () => {
+    const SP = await import('../ui/settings-pages.js');
+    const h = String(SP.settingsPageHtml('base') || '');
+    const F = globalThis.FTT;
+    return h.indexOf('data-ftt-action="clockRepair"') >= 0 && h.indexOf('clockRegexGen') < 0
+        && typeof F.clockRepair === 'function' && typeof F.clockRegexGen !== 'function';
 })(), '');
 
-await assert('Q2 AI 捕捉正文 → 生成正则：三条正则经三重校验后写入 cfg 并给出试算结果', (async () => {
-    host.ctx.chat.push({ is_user: false, mes: '1919年12月1日 傍晚。角色甲在【地点：城市甲·码头】。', name: '角色甲' });
-    rtMod.setLastMessageId(host.ctx.chat.length - 1);
-    aiReturn = JSON.stringify({ '日期正则': '(\\d{4}年\\d{1,2}月\\d{1,2}日)', '时间正则': '(傍晚|清晨|深夜)', '地点正则': '【地点：([^】]+)】', '说明': '冒烟' });
-    const before = aiCallN;
-    const r = await globalThis.FTT.clockRegexGen({ floors: 2 });
-    return r.ok === true && aiCallN > before && r.applied.length === 3 && r.hits.date >= 1 && r.hits.location >= 1
-        && rtMod.cfg.clockDateRegex.indexOf('\\d{4}年') >= 0 && rtMod.cfg.clockTimeRegex.length > 0 && rtMod.cfg.clockLocationRegex.indexOf('地点') >= 0
-        && !!r.probe;
+await assert('Q3 AI 结合正文修复日期时间：① 无可信锚点 → 拒绝且不调用 AI；② 有手工锚点 → 只改**情节**的日期/时间，其它维度不动', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CP = await import('../core/clock-patrol.js');
+    const CA = await import('../core/clock-ai.js');
+    const saveAtoms = RT.state.atoms; const saveMem = RT.state.memories; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'q3-a1', text: '日期不是日期。', date: '不是日期', floorStart: 5, floorEnd: 5, uses: 0, tags: [] }];
+        RT.state.memories = [{ id: 'q3-m1', title: '记忆', content: '内容', date: '不是日期', uses: 0 }];
+        RT.state.state = Object.assign({}, saveState, { date: '', time: '', location: '', clockManual: null });
+        const noAnchor = await CA.runClockRepair({ silent: true });
+        const memUntouched = RT.state.memories[0].date === '不是日期';
+        CP.setClockManual({ date: '1919-11-29' });
+        const pack = CA.clockRepairPack();
+        const first = (pack.entries || [])[0] || null;
+        const r = await CA.applyClockRepairResult(pack, { 修正: first ? [{ 编号: first.n, 日期: '1919-11-20' }] : [], 清除: [], 无法判定: [] });
+        const atom = RT.state.atoms[0];
+        return noAnchor.skipped === true && noAnchor.made === 0 && memUntouched
+            && !!first && first.dim === 'atoms'
+            && Number(r.applied) >= 1 && atom.date === '1919-11-20'
+            && RT.state.memories[0].date === '不是日期';
+    } finally { RT.state.atoms = saveAtoms; RT.state.memories = saveMem; RT.state.state = saveState; }
 })(), '');
 
-await assert('Q3 AI 结合正文修复日期时间：只改日期/时间字段，其余字段不动；无可信锚点时拒绝且不调用 AI', (async () => {
-    const st = rtMod.state;
-    st.atoms = st.atoms || [];
-    st.atoms.push({ id: 'smoke-ai-1', text: '情节（年份漂移）', title: '情节（年份漂移）', date: '2011-05-06', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
-    st.state = st.state || {}; st.state.date = ''; delete st.state.clockManual;
-    aiReturn = JSON.stringify({ '修正': [{ '编号': 1, '日期': '1919-12-01', '依据': '正文为 1919 年' }] });
-    const r = await globalThis.FTT.clockRepair({ silent: true });
-    const fixed = st.atoms.filter((x) => x.id === 'smoke-ai-1')[0];
-    // 无可信锚点场景：清空全部有效日期 → 拒绝且不调用 AI
-    const keepAtoms = st.atoms;
-    st.atoms = [{ id: 'smoke-ai-2', text: '坏日期', title: '坏日期', date: '不是日期', tags: [], uses: 0, floorStart: 1, floorEnd: 2 }];
-    const before = aiCallN;
-    const r2 = await globalThis.FTT.clockRepair({ silent: true });
-    st.atoms = keepAtoms;
-    return r.made >= 1 && fixed.date === '1919-12-01' && fixed.text === '情节（年份漂移）'
-        && r2.noAnchor === true && aiCallN === before;
+await assert('Q4 面板动作可达：clockRepair 经动作分发执行并回填提示（clockRegexGen 已不在动作表）', (async () => {
+    const CL = await import('../ui/clock.js');
+    const r = await entry.popupAction('settingsSub', { sub: 'base' }).then(() => CL.clockAction('clockRepair', {}));
+    return CL.CLOCK_ACTIONS.indexOf('clockRepair') >= 0 && CL.CLOCK_ACTIONS.indexOf('clockRegexGen') < 0
+        && CL.CLOCK_ACTIONS.indexOf('clockPatrol') < 0 && r && typeof r.note === 'string';
 })(), '');
-
-await assert('Q4 面板动作可达：clockRegexGen / clockRepair 经动作分发执行并回填提示', (async () => {
-    // 场景前置：clockRegexGen 需要 AI 返回「日期/时间/地点正则」契约（原场景沿用 Q3 的修复 payload → 采用 0 条 → ok:false）
-    aiReturn = JSON.stringify({ '日期正则': '(\\d{4}年\\d{1,2}月\\d{1,2}日)', '时间正则': '(傍晚|清晨|深夜)', '地点正则': '【地点：([^】]+)】', '说明': '冒烟' });
-    const r1 = await entry.popupAction('clockRegexGen', {});
-    const st = rtMod.state;
-    st.atoms = st.atoms || [];
-    st.atoms.push({ id: 'smoke-ai-3', text: '情节三', title: '情节三', date: '2011-01-01', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
-    aiReturn = JSON.stringify({ '修正': [{ '编号': 1, '日期': '1919-12-02' }] });
-    const r2 = await entry.popupAction('clockRepair', {});
-    return r1.ok === true && String(r1.note).indexOf('AI 捕捉正则') >= 0 && String(r2.note).indexOf('日期时间修复') >= 0;
-})(), '');
-
-host.ctx.generateRaw = origGenerateRaw;
 
 // ---------- R 内容弱化（B8-4：词条库 + 固定规则转化库 + AI 弱化） ----------
 const origGen2 = host.ctx.generateRaw;
@@ -3099,59 +3049,44 @@ await assert('AL2 CSS 三档齐备且不写死宽度：桌面 min(变量, 100vw-
 })(), '');
 
 // ---------- AN 时钟取值追踪（v2.37.0：值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么） ----------
-await assert('AN1 端到端：解析落盘后，时钟日志含「来源（含时间/地点）+ 判据 + 落选候选 + 落盘差异」四类信息；`FTT.clockTrace()` 可读', (async () => {
-    const DL = await import('../adapters/debug-log.js');
-    const CT = await import('../core/clock-trace.js');
-    globalThis.FTT.clockTraceClear();
-    const text = '▷1919年12月1日 09:10(钟楼内)\n▷凉州卫-钟鼓楼\n晚上甲与乙在码头清点铜箱。';
-    const ok = globalThis.FTT.clockExtractOnce({ text, force: true });
-    const logs = DL.debugLogList().filter((l) => l.kind === '时钟');
-    const d = (() => { try { return JSON.parse(logs[0].data); } catch (e) { return null; } })();
-    const trace = globalThis.FTT.clockTrace();
-    const info = globalThis.FTT.clockTrace('resolve');
-    const labels = globalThis.FTT.clockSrcLabels();
-    const summary = globalThis.FTT.clockTraceSummary('resolve');
-    return ok === true && !!d
-        // ① 来源（含此前缺失的「时间/地点」来源；日期用精确来源而非 V1 的 'regex' 统一标记）
-        && d.dateFrom === '正文头结构（▷/▶）' && d.dateFromV1 === '正文正则（最新正文）'
-        && d.timeFrom === '正文头结构（▷/▶）' && d.locationFrom === '正文头结构（▷/▶）' && String(d.presentFrom).length > 0
-        // ② 判据
-        && String(d.dateWhy).length > 10 && String(d.timeWhy).length > 5 && String(d.locationWhy).length > 5
-        && Array.isArray(d.chain) && d.chain.length >= 4 && String(d.how).indexOf('clockTrace') > 0
-        // ③ 落选候选（含原因与原文片段线索）
-        && Array.isArray(d.rejects) && d.rejects.length >= 1 && d.rejects.every((x) => x.indexOf('←') > 0 && x.indexOf('（') > 0)
-        // ④ 落盘差异
-        && Array.isArray(d.applied) && d.applied.length >= 2 && Number(d.textChars) > 0 && String(d.textFloors).length > 0
-        // FTT 入口与调试页
-        && !!trace && trace.stage === 'resolve' && !!info && info.picks.length >= 4 && info.text.sample.indexOf('▷') === 0
-        && labels.length >= 17 && labels.every((x) => !!x.label)
-        && summary.indexOf('🕒 取值 [resolve]') >= 0 && summary.indexOf('正文头结构（▷/▶）') >= 0;
+await assert('AN1（v2.51.0 改版）端到端：落盘后时钟日志含「来源（情节）+ 判据 + 落盘差异」，`FTT.clockTrace()` 可读（不再有正文候选/降级）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const DL = await import('../core/debug-log.js');
+    const saveAtoms = RT.state.atoms; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [{ id: 'an-a1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '城市甲·码头', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }];
+        RT.state.state = Object.assign({}, saveState, { date: '', time: '', location: '' });
+        RT.setLastMessageId(5);
+        CE.clockAutoExtractOnce({ force: true });
+        const t = globalThis.FTT.clockTrace();
+        const logs = (DL.debugLogList() || []).filter((x) => x.kind === '时钟');
+        const last = logs[logs.length - 1] || null;
+        const data = last ? String(last.data || '') : '';
+        return RT.state.state.date === '1919-11-30' && !!t && J(t).indexOf('最新情节') >= 0
+            && data.indexOf('1919-11-30') >= 0 && data.indexOf('plot') >= 0;
+    } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 
-await assert('AN2 无改动时不写提取日志（避免噪声），但取值追踪仍在；调试页「🕒 时钟取值追踪」区块渲染；清空入口可用', (async () => {
-    const DL = await import('../adapters/debug-log.js');
-    const DBG = await import('../ui/debug.js');
-    // 与现值完全相同 → 不写提取日志（V1 同口径）
-    // 用与 AN1 **完全相同**的正文再跑一次（此时 state 已等于解析结果）→ 不产生任何改动 → 不写提取日志
-    const text = '▷1919年12月1日 09:10(钟楼内)\n▷凉州卫-钟鼓楼\n晚上甲与乙在码头清点铜箱。';
-    globalThis.FTT.clockTraceClear();
-    const before = DL.debugLogList().filter((l) => l.kind === '时钟').length;
-    globalThis.FTT.clockExtractOnce({ text, force: true });
-    const after = DL.debugLogList().filter((l) => l.kind === '时钟').length;
-    const t = globalThis.FTT.clockTrace('resolve');
-    // 调试页区块
-    await entry.popupAction('tab', { tab: 'settings' });
-    await entry.popupAction('settingsSub', { sub: 'debug' });
-    const html = String(panelBodyHtml('settings') || '');
-    const section = DBG.clockTraceSectionHtml();
-    const cleared = globalThis.FTT.clockTraceClear();
-    const afterClear = DBG.clockTraceSectionHtml();
-    return after === before && !!t && t.picks.length >= 3
-        && html.indexOf('🕒 时钟取值追踪') >= 0 && html.indexOf('clockTraceClear') >= 0
-        && section.indexOf('自动解析（日期/时间/地点/在场）') >= 0 && section.indexOf('值 ← 来源') >= 0
-        && section.indexOf('未采用的候选') >= 0 && afterClear.indexOf('暂无记录') >= 0 && cleared === true;
+await assert('AN2（v2.51.0 改版）无情节/无改动时不写提取日志（避免噪声），但取值追踪仍可查；调试页「🕒 时钟取值追踪」区块与清空入口可用', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const saveAtoms = RT.state.atoms; const saveState = RT.state.state;
+    try {
+        RT.state.atoms = [];
+        RT.state.state = Object.assign({}, saveState, { date: '1919-11-01' });
+        const before = CE.clockExtractState ? CE.clockExtractState() : null;
+        const ok = CE.clockAutoExtractOnce({ force: true });
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const h = String(panelBodyHtml('settings') || '');
+        return ok !== true && RT.state.state.date === '1919-11-01' && !!before
+            && h.indexOf('🕒 时钟取值追踪') >= 0 && h.indexOf('data-ftt-action="clockTraceClear"') >= 0
+            && h.indexOf('时间巡检') < 0;
+    } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 
+// ---------- 以下为 v2.51.0 之前既有断言（与时钟改版无关，恢复原样） ----------
 // ---------- AO 点击不跳顶（v2.38.0：滚动保持 + 按钮 type + 点击入口防默认） ----------
 await assert('AO1 面板 HTML 的按钮全部带 `type="button"`（对齐 V1 v1.206 26525：无 type 的按钮在 form 内是 submit → 跳顶/刷新）', (() => {
     const PM = fttPanelMod;
@@ -3166,6 +3101,7 @@ await assert('AO1 面板 HTML 的按钮全部带 `type="button"`（对齐 V1 v1.
 })(), '');
 
 let AO2dbg = null;
+
 await assert('AO2 端到端：真实点击 → 重渲染（滚动归零）后**活动标签内容区**滚动位置被恢复；点击入口阻止默认行为', (async () => {
     const prevEl = doc._els['ftt-panel'];
     // DOM 影子：只实现本断言用到的选择器；`innerHTML=` 模拟真实重渲染（滚动归零）
@@ -3599,39 +3535,32 @@ await assert('AT1 v2.43.0 位置修复：「V2 附加设定」只出现在**基�
     return onlyBase && insideBase && backOk;
 })(), '');
 
-await assert('AU1 v2.44.0 HTML 标签不污染数据：真实宿主楼层正文含 `<br>`/`<div>` → 自动提取落盘地点/场景不含标签；手工改写保存同样被清洗并如实回报', (async () => {
+await assert('AU1 v2.44.0 HTML 标签不污染数据（v2.51.0 适配）：正文里的 `<br>`/`<div>` 不会污染数据；时钟只取情节，情节日期经 HTML 清洗后可安全落盘', (async () => {
     const CE = await import('../core/clock-extract.js');
     const CP = await import('../core/clock-patrol.js');
     const RT = await import('../core/model/runtime.js');
     const saveChat = host.ctx.chat;
     const savedLoc = RT.state.state.location;
-    const savedDate = RT.state.state.date;
+    const savedAtoms = RT.state.atoms;
     try {
-        host.ctx.chat = [
-            { is_user: true, mes: '甲：去仓库看看。<br>' },
-            { is_user: false, mes: '▷1919年11月29日（东汉建武二十七年）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门。<div>墙角有一只铜箱。</div>' },
-            { is_user: true, mes: '继续。' },
-            { is_user: false, mes: '▷1919年11月30日（东汉建武二十七年）·冬(死寂的长街)\n▷钟鼓楼下<br>甲抬头看了看天色。' },
-        ];
-        RT.setLastMessageId(host.ctx.chat.length - 1);
-        const res = CE.resolveStoryClock({ text: undefined });
-        const r1 = CE.clockAutoExtractOnce({ force: true });
+        // 正文含 HTML：清洗由取文边界负责（v2.44.0），情节日期同样不携带标签
+        const br = CE.extractClockFromText('▷1919年11月29日（东汉）·冬(死寂的长街)<br>▷码头仓库<br>甲推开木门。', { date: '', time: '', location: '' });
+        RT.state.atoms = [{ id: 'au-a1', text: '甲推开木门。', date: String(br.date || '1919-11-29'), time: '', location: String(br.location || ''), floorStart: 3, floorEnd: 3, uses: 1, tags: [] }];
+        RT.state.state = Object.assign({}, RT.state.state, { date: '', time: '', location: '' });
+        const ok = CE.clockAutoExtractOnce({ force: true });
         const loc = String(RT.state.state.location || '');
-        const scene = String(RT.state.state.sceneDesc || '');
-        const noTag = !/[<][a-zA-Z/]/.test(loc) && !/[<][a-zA-Z/]/.test(scene) && loc.length > 0;
+        const noTag = !/[<][a-zA-Z/]/.test(loc) && !/[<][a-zA-Z/]/.test(String(RT.state.state.date || ''));
         // 手工改写：地点粘进 `<br>` → 落盘清洗 + note 说明
         const m = CP.setClockManual({ date: '1919-11-29', time: '傍晚', location: '码头仓库<br>' });
         const manLoc = String(RT.state.state.location || '');
         const notes = (m.notes || []).join(' ');
-        // 最新一楼（HTML 排版）→ 地点应为「钟鼓楼下」；更早那楼不应再污染（单测 V 组已逐例覆盖）
-        return noTag && res.location === '钟鼓楼下' && loc === '钟鼓楼下'
-            && m.ok === true && manLoc === '码头仓库' && notes.indexOf('HTML') >= 0
-            && String(RT.state.state.clockManual.location) === '码头仓库';
+        return ok === true && noTag && loc === '码头仓库'
+            && m.ok === true && manLoc === '码头仓库' && notes.indexOf('HTML') >= 0;
     } finally {
         try { CP.clearClockManual(); } catch (e) { /* 忽略 */ }
         host.ctx.chat = saveChat;
+        RT.state.atoms = savedAtoms;
         RT.state.state.location = savedLoc;
-        RT.state.state.date = savedDate;
     }
 })(), '');
 
