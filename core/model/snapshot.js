@@ -188,13 +188,55 @@ function snapshotBirthAnomaly(s) {
                 }
             }
         }
-        const ageTxt = calcAge(bd, ageAnchorDate());
+        const anchor = ageAnchorDate();
+        const ageTxt = calcAge(bd, anchor);
         const age = ageTxt === '' ? NaN : Number(ageTxt);
         // v1.193：**公元前出生（年份为负）不判「超过 120 岁」** —— 跨公元前后的长寿角色（如公元 1919 年的剧情里
         //   出生于公元前 221 年）是用户明确要求支持的写法，年龄上千岁属预期；倒挂（after-record / future）仍照常判定。
-        if (Number.isFinite(age) && age > 120 && !(parts.y < 0)) return 'overage';
+        if (Number.isFinite(age) && age > 120 && !(parts.y < 0)) {
+            // v2.69.0（用户报告：「主角 0001-01-01 出生、剧情到 0191-09-23 触发生日日期异常」）——两条豁免：
+            //   ① **非人 / 长生设定**（精灵、龙裔、仙神、亡灵、巫妖、人造体…）：年龄本就可能远超凡人寿命，
+            //      V1 只豁免「公元前出生」，对这类档案不成立；
+            //   ② **非现实纪元**：`age > 120` 是现实人类寿命的经验值；剧情锚点年份 < 1000（如 0191 年这种自设纪元、
+            //      或故事从 0001-01-01 起算的编年）时该阈值不适用 —— 190 岁是设定而非数据错误。
+            //   真正的**倒挂**（出生晚于剧情 / 晚于记录日期 / 格式非法）不受影响，照常判定。
+            if (!snapshotLongLived(s) && !snapshotLowEpochCalendar(anchor)) return 'overage';
+        }
         return '';
     } catch (e) { return ''; }
+}
+
+/**
+ * v2.69.0：**非人 / 长生设定**判定（只看档案内容，不看姓名）。
+ *   「出生日期算出的年龄 > 120 岁」是否算异常，取决于这个角色是不是凡人 —— 精灵/龙/仙神/亡灵/巫妖/人造体等的年龄
+ *   不是数据错误。比对范围：species / race / title / occupation / family / birthNote / 背景 origin·history / 标签 / 外貌。
+ */
+function snapshotLongLived(s) {
+    try {
+        if (!s || typeof s !== 'object') return false;
+        const i0 = s.identity || {}, b0 = s.background || {};
+        const blob = [i0.species, i0.race, i0.title, i0.occupation, i0.family, i0.birthNote,
+            b0.origin, b0.history, (s.appearance && s.appearance.text),
+            (Array.isArray(s.tags) ? s.tags.join(' ') : '')].filter(Boolean).join(' ');
+        if (!blob) return false;
+        return SNAP_LONG_LIVED_RE.test(String(blob));
+    } catch (e) { return false; }
+}
+
+/**
+ * v2.69.0：**非现实纪元**判定 —— 取剧情锚点年份，`< 1000` 视为自设纪元 / 编年起点
+ *   （如故事从 0001-01-01 起算、剧情到 0191-09-23），此时「凡人寿命 120 岁」这条现实经验阈值不适用；
+ *   出生年份为负（公元前）同样按此口径处理。锚点缺失 → false（无法判断时不额外豁免，保持 V1 行为）。
+ */
+function snapshotLowEpochCalendar(anchor) {
+    try {
+        const t = String(anchor == null ? '' : anchor).trim();
+        const m = t.match(/^(-?\d{1,4})/);
+        if (!m) return false;
+        const y = Number(m[1]);
+        if (!Number.isFinite(y)) return false;
+        return y < 1000;
+    } catch (e) { return false; }
 }
 
 function snapshotBirthAnomalyLabel(code) { try { return SNAP_BIRTH_ANOMALY_LABEL[code] || ''; } catch (e) { return ''; } }
@@ -621,10 +663,12 @@ function normalizeSnapshot(e0) {
 // 显示：`formatMoney(n)` —— 千分位 + 中文数量级（万 1e4 / 亿 1e8 / 兆 1e12 / 京 1e16；≥1e20 用「垓」），
 //   保留 2 位小数并去尾零；负数（净支出/负债）保留符号；非数字 → ''。
 
-export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotFlag, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
+export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,4}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
+// v2.69.0：非人 / 长生设定的档案信号（供 `snapshotLongLived` 豁免「年龄 > 120 岁」判定）
+const SNAP_LONG_LIVED_RE = /(精灵|半精灵|暗精灵|龙裔|龙族|幼龙|古龙|神族|神明|半神|天使|恶魔|魔鬼|魔族|仙人|修士|道士|妖精|妖怪|魔物|不死|长生|永生|长寿|万岁|千年|万年|亡灵|死灵|巫妖|吸血鬼|血族|狼人|兽人|亚人|人偶|人造|傀儡|机械体|机器人|外星|星际|异种|元素生命|史莱姆|幽灵|魂魄|器灵|龙人|龙女)/;
 // 剧情时间锚点（剧情日期优先；缺失时退回剧情时间线里**最近记录的日期**（情节 → 记忆）；
 //   两者都无 → 空 = 无法判定）。**绝不退回现实日期** —— 现实时间不是剧情时间（v1.161 口径）。
 
