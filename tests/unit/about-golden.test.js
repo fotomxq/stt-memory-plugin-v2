@@ -59,7 +59,7 @@ const DOC = {
     intro: { what: 'SillyTavern 记忆扩展', highlights: ['自动提取', '自动注入'] },
     changelog: [
         { version: '2.51.0', date: '2026-09-01', title: '时钟改版', points: ['情节唯一可信', '去掉巡检'] },
-        { version: '2.53.0', date: '2026-10-01', title: '关于页', points: ['a', 'b', 'c', 'd', 'e'] },
+        { version: VERSION, date: '2026-10-01', title: '关于页', points: ['a', 'b', 'c', 'd', 'e'] },
         { version: '2.52.0', date: '2026-09-20', title: '总览精简', points: ['管线状态'] },
     ],
 };
@@ -259,7 +259,7 @@ await (async () => {
         const secAt = h.indexOf('版本更新（最新在最前）');
         if (secAt < 0) return false;
         const sec = h.slice(secAt);
-        const order = ['2.53.0', '2.52.0', '2.51.0'].map((v) => sec.indexOf(v));
+        const order = [VERSION, '2.52.0', '2.51.0'].map((v) => sec.indexOf(v));
         const ok3 = sec.indexOf('>a<') >= 0 && sec.indexOf('>b<') >= 0 && sec.indexOf('>c<') >= 0
             && sec.indexOf('>d<') < 0 && sec.indexOf('>e<') < 0;
         return ok3 && order[0] >= 0 && order[0] < order[1] && order[1] < order[2] && sec.indexOf('当前版本</span>') >= 0;
@@ -291,16 +291,18 @@ A('B2 数据管理页含「本地缓冲」统计与清除按钮；关于页不�
     aboutWriteCache(DOC);
     const dataHtml = settingsPageHtml('data', '');
     const aboutPage = settingsPageHtml('about', '');
-    return dataHtml.indexOf('本地缓冲') >= 0 && dataHtml.indexOf('版本清单缓存：已缓存 3 个版本') >= 0
-        && dataHtml.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dataHtml.indexOf('🧹 清除版本清单缓存') >= 0
+    return dataHtml.indexOf('🗂 本地缓冲') >= 0 && dataHtml.indexOf('版本清单缓存：已缓存 3 个版本') >= 0
+        && dataHtml.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dataHtml.indexOf('🧹 清除') >= 0
         && dataHtml.indexOf('调试日志：') >= 0 && dataHtml.indexOf('交互追踪简报：') >= 0
+        && dataHtml.indexOf('不影响任何记忆数据') >= 0
         && aboutPage.indexOf('本地缓冲') < 0 && aboutPage.indexOf('V2 附加信息') < 0 && aboutPage.indexOf('内核配置键') < 0;
 })(), '见断言');
 
 A('B3 无缓存时数据页清除按钮禁用（不误导用户点空操作）', (() => {
     aboutClearCache();
     const h = settingsPageHtml('data', '');
-    return h.indexOf('版本清单缓存：（无缓存）') >= 0 && h.indexOf('aboutClearCache" disabled') >= 0;
+    return h.indexOf('版本清单缓存：（无缓存）') >= 0 && /data-ftt-action="aboutClearCache"[^>]*disabled/.test(h)
+        && /data-ftt-action="dbgClear"[^>]*disabled/.test(h) && /data-ftt-action="dbgTraceClear"[^>]*disabled/.test(h);
 })(), '见断言');
 
 // ---- D 组：与「真实随发布的清单」契约（防文档/代码各写一套，也证明成功态不是只能靠桩） ----

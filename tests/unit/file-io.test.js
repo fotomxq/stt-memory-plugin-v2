@@ -248,8 +248,8 @@ await (async () => {
         click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
         await new Promise((r) => prevTimeout(r, 20));
         const st = panelState();
-        A('I2 取消选择文件 → 不调用 importState，并提示「已取消选择文件 → 也可在下方文本框粘贴后点「导入」」',
-            called === 0 && String(st.note || '').indexOf('已取消选择文件') >= 0 && String(st.note || '').indexOf('文本框粘贴') >= 0,
+        A('I2 取消选择文件 → 不调用 importState，并提示改走粘贴（「已取消选择文件 —— 也可把 JSON 内容粘贴到文本框…」）',
+            called === 0 && String(st.note || '').indexOf('已取消选择文件') >= 0 && String(st.note || '').indexOf('导入粘贴内容') >= 0,
             J({ called, note: st.note }));
     } finally { env.restore(); globalThis.setTimeout = prevTimeout; }
 })();
@@ -262,13 +262,40 @@ A('I3 文本框兜底路径仍可用：`importStateApply` 读 `[data-ftt-import]
     return r.ok === true && got === '{"state":{}}' && String(panelState().note || '').indexOf('新增 2 条') >= 0;
 })(), '');
 
-A('I4 数据管理页按钮文案与 title 对齐 V1（导出=下载文件；导入=增量合并并提示选择文件）', (() => {
+A('I4 数据管理页导出/导入 UI（v2.54.0 重排）：按用途分块、危险动作隔离、粘贴框与其按钮相邻、提示说明「这是什么 / 有什么后果」', (async () => {
     boot();
     openPanel('settings');
+    await panelAction('settingsSub', { sub: 'data' });
     const html = String(panelBodyHtml('settings') || '');
-    return html.indexOf('data-ftt-action="exportState"') >= 0 && html.indexOf('⬇ 导出 JSON') >= 0
-        && html.indexOf('data-ftt-action="importStateOpen"') >= 0 && html.indexOf('⬆ 导入 JSON（合并）') >= 0
-        && html.indexOf('触发浏览器下载') >= 0 && html.indexOf('增量导入：选择 JSON 存档文件') >= 0;
+    const at = (s) => html.indexOf(s);
+    const seg = (a, b) => html.slice(at(a), at(b));
+    const linkGroup = seg('data-ftt-import="1"', 'data-ftt-action="importStateApply"');
+    const danger = seg('⚠️ 删除数据（不可恢复）', '🧬 快照链（自动备份）');
+    return at('📤 导出备份') >= 0 && at('data-ftt-action="exportState"') >= 0 && at('⬇ 导出 JSON 文件') >= 0
+        && at('📥 导入存档（合并）') >= 0 && at('data-ftt-action="importStateOpen"') >= 0 && at('⬆ 选择文件导入') >= 0
+        && at('data-ftt-import="1"') >= 0 && at('data-ftt-action="importStateApply"') >= 0 && at('⬆ 导入粘贴内容') >= 0
+        // 粘贴框与它的导入按钮之间不再插别的分节（旧版把按钮甩到「本地缓冲」之后）
+        && at('data-ftt-import="1"') < at('data-ftt-action="importStateApply"')
+        && linkGroup.indexOf('ftt-sec-title') < 0 && linkGroup.indexOf('本地缓冲') < 0
+        // 危险动作单独成块、排在导入之后，且不与导出/导入同块
+        && at('⚠️ 删除数据（不可恢复）') > at('📥 导入存档（合并）')
+        && at('data-ftt-action="reset"') > at('⚠️ 删除数据（不可恢复）')
+        && danger.indexOf('exportState') < 0 && danger.indexOf('importStateOpen') < 0
+        // 提示讲清后果
+        && html.indexOf('不会删除') >= 0 && html.indexOf('不可恢复') >= 0
+        && html.indexOf('只重置「哪些楼层已摘要」') >= 0;
+})(), '');
+
+A('I5 导出结果文本框只在数据管理页出现（不再吊在所有设定子页底部）', (async () => {
+    boot();
+    openPanel('settings');
+    await panelAction('settingsSub', { sub: 'data' });
+    setPanelHooks2({ exportState: () => J({ format: 'ftt-memory-v2-export', state: { atoms: [] } }) });
+    await panelAction('exportState', {});
+    const dataHtml = String(panelBodyHtml('settings') || '');
+    await panelAction('settingsSub', { sub: 'base' });
+    const baseHtml = String(panelBodyHtml('settings') || '');
+    return dataHtml.indexOf('data-ftt-export') >= 0 && baseHtml.indexOf('data-ftt-export') < 0;
 })(), '');
 
 un();

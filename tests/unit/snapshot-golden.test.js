@@ -13,7 +13,7 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { entryIndexBuild, entryIndexInit, tombstoneSweep } from '../../core/sweep.js';
 import { snapshotCreateFull, snapshotCreateIncr, snapshotConsolidate, snapshotRestore, snapshotClear, snapshotStats, SNAP_CAP } from '../../core/snapshots.js';
-import { snapshotSectionHtml, snapshotAction, snapshotInspectItems, snapshotInspectState } from '../../ui/snapshots.js';
+import { snapshotSectionHtml, snapshotStatText, snapshotSummary, snapshotAction, snapshotInspectItems, snapshotInspectState } from '../../ui/snapshots.js';
 import { saveStateNow, maintainSnapshots } from '../../adapters/store.js';
 import { panelAction, panelBodyHtml, setPanelHooks2, openPanel } from '../../ui/panel.js';
 
@@ -208,6 +208,49 @@ await A('S8 数据管理页：快照区块（统计/列表/还原/删除/建根/
         && cons.ok === true && create.ok === true && restore.ok === true && clear.ok === true
         && String(clear.html).indexOf('（暂无快照') >= 0;
 }, (() => { try { return { total: snapshotStats().total }; } catch (e) { return String(e.message); } })());
+
+// ---------- v2.54.0：只统计 + 明细折叠（用户要求「展示信息仅为统计信息，而不是具体明细」） ----------
+R.assert('S9 快照统计行与链内容**逐项一致**（total/root/incr/deleted/covered/bytes 全部现算，不与明细打架）', (() => {
+    boot();
+    snapshotCreateFull();
+    state.atoms.push(clone(G.added));
+    entryIndexBuild(true);
+    snapshotCreateIncr();
+    state.atoms = state.atoms.filter((x) => x.id !== G.removedId);
+    entryIndexBuild(true);
+    snapshotCreateIncr();
+    const list = state.snapStore || [];
+    const st = snapshotSummary();
+    const root = list.filter((s) => s.kind === 'root').length;
+    const deleted = list.reduce((n, s) => n + Object.keys(s.deleted || {}).length, 0);
+    const covered = Object.keys(list.reduce((m, s) => { Object.keys(s.atomsHashes || {}).forEach((id) => { m[id] = true; }); return m; }, {})).length;
+    const bytes = new TextEncoder().encode(JSON.stringify(list)).length;
+    const text = snapshotStatText();
+    return st.total === list.length && st.root === root && st.incr === list.length - root
+        && st.deleted === deleted && st.covered === covered && st.bytes === bytes && st.cap === SNAP_CAP
+        && text.indexOf('共 ' + list.length + ' 条') >= 0 && text.indexOf('根 ' + root) >= 0
+        && text.indexOf('增量 ' + (list.length - root)) >= 0 && text.indexOf('可还原原子 ' + covered) >= 0
+        && text.indexOf('删除台账 ' + deleted) >= 0 && text.indexOf('上限 ' + SNAP_CAP) >= 0;
+})(), (() => { try { return { summary: snapshotSummary(), list: (state.snapStore || []).length }; } catch (e) { return String(e.message); } })());
+
+R.assert('S10 数据管理页默认**只出统计**：统计行在明处、逐条明细收在默认折叠的 details 里（且数字同源）', (() => {
+    boot();
+    snapshotCreateFull();
+    state.atoms.push(clone(G.added));
+    entryIndexBuild(true);
+    snapshotCreateIncr();
+    const h = snapshotSectionHtml();
+    const n = (state.snapStore || []).length;
+    const statAt = h.indexOf('data-ftt-snap-stat');
+    const detAt = h.indexOf('data-ftt-snap-details');
+    const rowAt = h.indexOf('data-ftt-action="snapRestore"');
+    return statAt >= 0 && detAt > statAt && rowAt > detAt
+        && h.indexOf(snapshotStatText()) >= 0                                  // 统计行 = 快照真实统计
+        && h.indexOf('<details class="ftt-details" data-ftt-snap-details>') >= 0   // 默认收起（无 open）
+        && h.indexOf('🔧 高级：快照明细与还原（' + n + ' 条）') >= 0
+        && h.indexOf('data-ftt-action="snapDelete"') >= 0                      // 明细仍在（只是折叠）
+        && h.indexOf('共 ' + n + ' 条（根 ') >= 0;
+})(), (() => { try { return snapshotSectionHtml().slice(0, 200); } catch (e) { return String(e.message); } })());
 
 unFetch();
 un();

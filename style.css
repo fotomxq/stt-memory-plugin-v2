@@ -551,6 +551,13 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-my-2 { margin-top: var(--ftt-space-2); margin-bottom: var(--ftt-space-2); }
 #ftt-panel .ftt-ml-2 { margin-left: var(--ftt-space-2); }
 #ftt-panel .ftt-h4-inline { display: flex; align-items: center; gap: var(--ftt-space-2); margin: 8px 0 4px; color: var(--ftt-accent); font-size: var(--ftt-font-md); }
+#ftt-panel .ftt-mb-0 { margin-bottom: 0; }
+/* —— 折叠块（数据管理 → 快照「高级：明细与还原」；默认收起，明处只留统计行）—— */
+#ftt-panel .ftt-details { margin: 6px 0 2px; }
+#ftt-panel .ftt-details > summary { cursor: pointer; user-select: none; list-style: none; }
+#ftt-panel .ftt-details > summary::-webkit-details-marker { display: none; }
+#ftt-panel .ftt-details > summary::before { content: '▸ '; }
+#ftt-panel .ftt-details[open] > summary::before { content: '▾ '; }
 #ftt-panel .ftt-filter-tight { margin: 4px 0 6px; gap: 6px; align-items: center; }
 #ftt-panel .ftt-field-col { align-items: flex-start; }
 #ftt-panel .ftt-select-sm { max-width: 132px; }

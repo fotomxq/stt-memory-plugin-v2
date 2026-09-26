@@ -215,11 +215,12 @@ export function traceSectionHtml(cat) {
     return [
         '<div class="ftt-row">' + chips + '</div>',
         '<div class="ftt-muted">会话 ' + esc(st.session) + ' · 事件 ' + st.total + '（上限 ' + st.cap + '）· 级别 ' + esc(st.level)
+        + ' · 本机另存最近 120 条简报（「设定 → 数据管理 → 本地缓冲」可见条数并清理）'
         + ' · 记录：用户交互（点击/变更/切页）· 宿主 API 调用 · 命令与 FTT 入口 · 落盘/注入 · AI 调用 · 异常（含上下文窗口）</div>',
         (rows.length ? rows.map(line).join('\n') : '<div class="ftt-empty">暂无事件。任一交互/命令后在此显示（含点击了哪个按钮、调了哪些宿主 API、结果与代码位置）。</div>'),
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="dbgTraceClear">🗑 清空时间线</button>'
         + '<button class="ftt-btn" data-ftt-action="dbgExport">⬇ 导出调试包（含完整时间线）</button>'
-        + '<span class="ftt-muted">时间线为纯内存环形缓冲；导出包可直接贴给维护者</span></div>',
+        + '<span class="ftt-muted">时间线为纯内存环形缓冲（「清空时间线」会同时清掉本机简报）；导出包可直接贴给维护者</span></div>',
     ].join('\n');
 }
 
@@ -320,7 +321,7 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
     }
     if (String(action) === 'dbgTraceClear') {
         try { traceClear(); } catch (e) { /* 忽略 */ }
-        return { ok: true, action: 'dbgTraceClear', note: '已清空交互/宿主调用时间线（调试日志与时钟追踪不受影响）' };
+        return { ok: true, action: 'dbgTraceClear', note: '已清空交互/宿主调用时间线（含本机简报；调试日志与时钟追踪不受影响）' };
     }
     // v2.41.0：导出调试包（日志 + 运行态 → 剪贴板 + 文本域）
     if (String(action) === 'dbgExport') {

@@ -817,9 +817,8 @@ import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
-import { aboutHtml as aboutPageHtml, aboutCacheStats } from './about.js';
-import { debugLogStats } from '../adapters/debug-log.js';
-import { traceStats } from '../core/trace.js';
+import { aboutHtml as aboutPageHtml } from './about.js';
+import { bufferSectionHtml } from './buffer-manage.js';
 import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
 // v2.35.0（B10-a）：API 子页（三通道 + API 分组预设 + 按用途渠道）
 import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
@@ -1042,8 +1041,9 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'parallels') return parallelsPageHtml(list);
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
-    // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 它是什么 / 版本更新」三节（`ui/about.js#aboutHtml`）+ V2 附加信息
-    if (pid === 'about') return aboutPageHtml() + pageExtraHtml('about');
+    // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 功能 / 版本更新」三节（`ui/about.js#aboutHtml`）
+    //   v2.53.0：不再追加「V2 附加信息」开发块（`pageExtraHtml('about')` 已返回空串）
+    if (pid === 'about') return aboutPageHtml();
     // 投喂页（B9-c）：V1 的控件行 + 「投喂标签自动分析」节 + 投喂白/黑名单两节（`ui/feed-scan.js`）
     //   控件表同名同序；扫描 / 一键收录入口为 B9-c 新增（V1 约 25513~25527 同段落）
     if (pid === 'feed') return list.map((c) => settingsControlHtml(c)).join('\n') + feedScanSectionHtml() + feedTagListSectionsHtml();
@@ -1054,48 +1054,53 @@ export function settingsPageHtml(pageId, extrasHtml) {
 }
 
 /**
- * 数据管理 · 本地缓冲（v2.53.0）：先给**统计**（缓存了什么、多少条、多少字节），再由用户决定是否清理。
- * 目前可清理项：版本清单缓存（关于页的版本更新数据；清理后下次打开「关于」会重新从代码库获取）。
- * 其它缓冲（调试日志 / 交互追踪简报）在其专属页面维护，这里只显示统计与去处，避免重复入口。
+ * 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账/清空当前角色记忆；其余明确标注）
+ *
+ * v2.54.0 数据管理页重排（用户报告：「下面的导入和导出 UI 设计有问题，请完善」＋
+ *   「提示信息过于罗嗦，完全没告清楚用户这是什么、使用有什么后果」）：
+ *   ① 按**用途分块**：📤 导出备份 / 📥 导入存档（合并）/ ⚠️ 删除数据（不可恢复）/ 🧬 快照链 / 🗂 本地缓冲；
+ *   ② 导出与导入不再和「清空」类按钮挤在同一行（危险动作隔离，各自带后果说明）；
+ *   ③ 粘贴导入的文本框与它的「导入」按钮**紧挨在一起**（旧布局把按钮甩到缓冲分节之后）；
+ *   ④ 每条提示只讲两件事：这是做什么的 + 做了会怎样（不写实现细节）。
  */
-function bufferSectionHtml() {
-    const st = (() => { try { return aboutCacheStats(); } catch (e) { return { cached: false, versions: 0, bytes: 0 }; } })();
-    const logs = (() => { try { const s = debugLogStats(); return s || null; } catch (e) { return null; } })();
-    const tr = (() => { try { return traceStats(); } catch (e) { return null; } })();
-    const rows = [];
-    rows.push('<div class="ftt-muted">版本清单缓存：' + (st.cached ? ('已缓存 ' + st.versions + ' 个版本 · 约 ' + st.bytes + ' 字节') : '（无缓存）')
-        + ' <button class="ftt-btn ftt-sm" data-ftt-action="aboutClearCache"' + (st.cached ? '' : ' disabled') + '>🧹 清除版本清单缓存</button></div>');
-    if (logs) rows.push('<div class="ftt-muted">调试日志：' + (Number(logs.count) || 0) + ' 条（在「调试」页查看 / 清空）</div>');
-    if (tr) rows.push('<div class="ftt-muted">交互追踪简报：' + (Number(tr.total) || 0) + ' 条（在「调试」页查看 / 清空）</div>');
-    return '<h4 class="ftt-h4-inline">本地缓冲</h4>' + rows.join('\n');
-}
-
-/** 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账/清空当前角色记忆；其余明确标注） */
 function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
-            '<h4 class="ftt-h4-inline">数据管理</h4>',
-            snapshotSectionHtml(),
+            // ① 导出
+            '<div class="ftt-section"><div class="ftt-sec-title">📤 导出备份</div>',
+            '<div class="ftt-hint">把当前角色的全部记忆导出成 JSON 文件并下载到本机（同时复制到剪贴板），可用于备份或迁移到同一角色的其它设备。</div>',
+            '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="exportState" title="导出当前角色全部记忆为 JSON 文件（触发浏览器下载）">⬇ 导出 JSON 文件</button></div>',
+            '</div>',
+            // ② 导入（文件 + 粘贴两条路，各自与说明和按钮成组）
+            '<div class="ftt-section"><div class="ftt-sec-title">📥 导入存档（合并）</div>',
+            '<div class="ftt-hint">选择或粘贴之前导出的 JSON，把其中的记忆<b>并入</b>当前角色：内容相同的跳过、新条目插入、同一条目有变更时以文件内容为准 —— <b>不会删除</b>本地已有的记忆。</div>',
+            '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateOpen" title="选择 JSON 存档文件后增量合并（相同跳过 / 新增插入 / 变更覆盖，不删除本地数据）">⬆ 选择文件导入</button></div>',
+            '<div class="ftt-field ftt-field-col"><label>或者把 JSON 内容粘贴到这里：</label>'
+            + '<textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
+            '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateApply" title="导入上方文本框中的 JSON（合并规则同上）">⬆ 导入粘贴内容</button></div>',
+            '</div>',
+            // ③ 危险动作单独成块
+            '<div class="ftt-section"><div class="ftt-sec-title">⚠️ 删除数据（不可恢复）</div>',
+            '<div class="ftt-hint">下面两项都会永久删除本地记录，<b>删除前建议先「⬇ 导出 JSON 文件」备份</b>。</div>',
             '<div class="ftt-row">',
-            // v2.49.0：导出改为**真实下载文件**（Blob + `<a download>`，与 V1 同口径）；
-            //   导入改为**真实选择存档文件**（`<input type=file>` → 增量合并），文本框粘贴路径仍保留
-            '<button class="ftt-btn" data-ftt-action="exportState" title="导出当前角色记忆为 JSON 文件（触发浏览器下载；同时复制到剪贴板并显示在下文本框）">⬇ 导出 JSON</button>',
-            '<button class="ftt-btn" data-ftt-action="importStateOpen" title="增量导入：选择 JSON 存档文件后按原子内容哈希差异化合并 —— 相同跳过/新增插入/变更覆盖，保留本地现有数据">⬆ 导入 JSON（合并）</button>',
-            '<button class="ftt-btn ftt-err" data-ftt-action="clearFloors" title="只清「已处理楼层」记录，不删除任何记忆条目">🧹 清除已处理记录</button>',
+            '<button class="ftt-btn" data-ftt-action="clearFloors" title="只清「已处理楼层」的计数，不删除任何记忆条目">🧹 清除已处理楼层记录</button>',
             // B9-a：V1 数据管理页第 4 个按钮（`data-ftt-action="reset"`，文案逐字「🗑 清空当前角色记忆」）。
             //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
             //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。
-            '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="清空当前角色的全部 FTT 记忆（不可恢复，建议先导出备份）">🗑 清空当前角色记忆</button>',
+            '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="删除当前角色的全部记忆（不可恢复）">🗑 清空当前角色记忆</button>',
             '</div>',
-            '<div class="ftt-field ftt-field-col"><label>导入 JSON（上方「⬆ 导入 JSON（合并）」可直接选文件；也可在此粘贴后点「导入」）</label><textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
-            // v2.53.0（用户要求）：「清理本地缓冲」从「关于」页迁移到**数据管理**，并先给出统计让用户决策
-            bufferSectionHtml(),
-            '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="importStateApply">⬆ 导入</button></div>',
+            '<div class="ftt-hint ftt-mb-0">· 清除已处理楼层记录：只重置「哪些楼层已摘要」，记忆条目一条不删；</div>',
+            '<div class="ftt-hint">· 清空当前角色记忆：删除该角色的全部记忆条目，其它角色不受影响。</div>',
+            '</div>',
+            // ④ 快照链（只统计 + 动作，明细折叠在「高级」里）
+            '<div class="ftt-section"><div class="ftt-sec-title">🧬 快照链（自动备份）</div>', snapshotSectionHtml(), '</div>',
+            // ⑤ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来）
+            '<div class="ftt-section">', bufferSectionHtml(), '</div>',
         ].join('\n');
     }
     if (pid === 'about') {
         // v2.53.0（用户要求）：「关于」页不再附开发/历史说明（原「V2 附加信息」＝ 版本 / 模块名 / 内核配置键数 /
-        //   对齐进度指引）—— 该页只由 `ui/about.js#aboutHtml()` 呈现「它是什么 + 版本更新」，言简意赅。
+        //   对齐进度指引）—— 该页只由 `ui/about.js#aboutHtml()` 呈现「功能 + 版本更新」，言简意赅。
         return '';
     }
     return '';

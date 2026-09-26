@@ -184,6 +184,11 @@ await A('P6 面板接线：settingsSub 切页只影响设定页；数据管理�
         && r2.ok === true && about.indexOf('设定 · 关于') >= 0 && about.indexOf('关于 · FTT记忆组件') >= 0
         && about.indexOf('内核配置键：') < 0 && about.indexOf('V2 附加信息') < 0   // v2.53.0：关于页不再附开发/历史块
         && page.indexOf('本地缓冲') >= 0 && page.indexOf('data-ftt-action="aboutClearCache"') >= 0  // v2.53.0：缓冲清理在数据管理
+        // v2.54.0：数据管理页按用途分块 + 危险动作隔离 + 快照只出统计 + 缓冲三项可清
+        && page.indexOf('📤 导出备份') >= 0 && page.indexOf('📥 导入存档（合并）') >= 0
+        && page.indexOf('⚠️ 删除数据（不可恢复）') >= 0 && page.indexOf('data-ftt-snap-stat') >= 0
+        && page.indexOf('data-ftt-action="dbgClear"') >= 0 && page.indexOf('data-ftt-action="dbgTraceClear"') >= 0
+        && page.indexOf('不会删除') >= 0 && page.indexOf('不可恢复') >= 0
         && exp.ok === true && exp.chars > 10 && st.exportChars > 10
         && imp.ok === true && st.settingsSub === 'data';
 }, (() => { try { return JSON.stringify(panelState()).slice(0, 200); } catch (e) { return String(e.message); } })());
