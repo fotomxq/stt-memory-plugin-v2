@@ -146,7 +146,7 @@ export function fallbackPanelHtml(data) {
         '<div class="ftt-v2-row ftt-v2-row-col"><label>启用维度</label><div class="ftt-v2-dims" id="ftt_v2_dims">' + String(d.dimsHtml || '') + '</div></div>',
         '<div class="ftt-v2-note ftt-v2-status" id="ftt_v2_status">' + escHtml(d.statusHtml || '') + '</div>',
         '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_analyze">🧠 分析未分析楼层</button><button class="menu_button" id="ftt_v2_list">📋 待分析清单</button><button class="menu_button" id="ftt_v2_clearinj">🧹 清空注入</button></div>',
-        '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_imp_dry">📥 V1 导入（干跑）</button><button class="menu_button" id="ftt_v2_imp_apply">📥 V1 导入（写入）</button></div>',
+        '<div class="ftt-v2-row ftt-v2-row-actions"><button class="menu_button" id="ftt_v2_imp_dry">📥 导入旧版数据（干跑）</button><button class="menu_button" id="ftt_v2_imp_apply">📥 导入旧版数据（写入）</button></div>',
         '<div class="ftt-v2-note" id="ftt_v2_action"></div>',
         '<div class="ftt-v2-sub">数据台</div>',
         '<div class="ftt-console-host" id="ftt_v2_console"></div>',

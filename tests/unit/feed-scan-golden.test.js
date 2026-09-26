@@ -261,7 +261,8 @@ await A('R8 「投喂标签自动分析」设定节：节标题 / 两个按钮�
     // V1 的静态片段 → V2 同一个节里的等价片段（节容器同结构）
     const wantSection = '<div class="ftt-section"><div class="ftt-sec-title">投喂标签自动分析</div>'
         + '<div class="ftt-row">' + wantButtons + '</div>'
-        + '<div class="ftt-muted ftt-my-1">' + fp.scanNoteInner + '</div>'
+        // v2.60.0（用户要求：去罗嗦）：说明文案精简为一句（V1 原文见 fixture `feedPage.scanNoteInner`）
+        + '<div class="ftt-muted ftt-my-1">扫描<b>最近一条 AI 正文</b>：列出 HTML 标签与行内标记；点「＋白 / ＋黑」收录，自动排重。</div>'
         + fp.scanHtml
         + '</div>';
     const gotSection = (() => {

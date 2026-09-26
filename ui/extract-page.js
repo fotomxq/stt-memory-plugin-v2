@@ -129,7 +129,7 @@ export function extractPageHtml(controls, renderControl) {
         '<div class="ftt-muted" data-ftt-vector-cache>向量缓存：内存 ' + cache.memory + ' 条 · IndexedDB ' + (cache.indexedDb ? '可用' : '不可用（退化为内存缓存）')
         + (cache.fallback ? (' · 最近降级：' + esc(cache.fallback)) : '') + '</div>',
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="vectorCacheClear" title="清空本机向量缓存（下次召回会重新请求 embedding）">🧹 清空向量缓存</button>'
-        + '<span class="ftt-muted">缓存键为「类别:id」，与 V1 共用同一 IndexedDB 库（FTTMemoryVectorCache/embeddings）。</span></div>',
+        + '<span class="ftt-muted">缓存键为「类别:id」；无 IndexedDB 时退化为内存缓存。</span></div>',
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">🟡 第二层 · 浏览器 JS 抽取记忆</div>',

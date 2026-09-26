@@ -46,8 +46,8 @@ export function stateFileStatusHtml() {
         if (!s.enabled) return '记忆文件：<b>已关闭</b>（改用存档变量通道 —— 不推荐）';
         const when = Number(s.lastOkAt) ? fmtTime(s.lastOkAt) : '';
         return '记忆文件：<b>已启用</b>' + (s.archive ? (' · 角色「' + esc(s.archive) + '」') : '') + '<br>'
-            + '主文件 ' + mono(s.name) + (s.bakEnabled ? (' · 备份 ' + mono(s.bak)) : '') + (s.snapEnabled ? (' · 快照 ' + mono(s.snap)) : '') + '<br>'
-            + (when ? ('最近写入 ' + when) : '本次会话尚未写入（打开页面会自动拉取合并）')
+            + '主文件 ' + mono(s.name) + (s.bakEnabled ? ' · 含备份' : '') + (s.snapEnabled ? ' · 含快照' : '') + '<br>'
+            + (when ? ('最近写入 ' + when) : '本次会话尚未写入')
             + (s.mirrorSettings ? ' · settings 镜像已开启' : ' · settings 已剥离')
             + (Number(s.bytes) ? (' · 主文件 ' + fmtBytes(s.bytes)) : '');
     } catch (e) { return '记忆文件：状态读取失败'; }
@@ -116,10 +116,10 @@ export function divergenceBannerHtml() {
 export function slimGzipInfoHtml() {
     try {
         const i = slimGzipInfo();
-        return '<div class="ftt-muted ftt-hint" data-ftt-slim-gzip>存储编码：条目瘦身 ' + (i.slim ? '<b>已开启</b>' : '关闭（默认）')
-            + ' · gzip 写入 ' + (i.gzip ? '<b>已开启</b>' : '关闭（默认）')
+        return '<div class="ftt-muted ftt-hint" data-ftt-slim-gzip>存储编码：瘦身 ' + (i.slim ? '<b>已开启</b>' : '关')
+            + ' · gzip ' + (i.gzip ? '<b>已开启</b>' : '关')
             + ' · 当前写入名 ' + mono(i.writeName)
-            + '（读取自动识别格式，旧文件仍可读）</div>';
+            + '；旧文件仍可读</div>';
     } catch (e) { return ''; }
 }
 

@@ -103,7 +103,7 @@ export function bufferSectionHtml() {
     const tStat = t.count + ' / ' + t.cap + ' 条 · 约 ' + fmtBytes(t.bytes) + (fmtTs(t.newestAt) ? (' · 最近 ' + fmtTs(t.newestAt)) : '');
     return [
         '<h4 class="ftt-h4-inline">🗂 本地缓冲 <span class="ftt-muted">共约 ' + fmtBytes(st.totalBytes) + '</span></h4>',
-        '<div class="ftt-hint">浏览器本地缓存与日志，用于「关于」页版本更新与排障；清理只删这些缓存，**不影响任何记忆数据**。</div>',
+        '<div class="ftt-hint">本地缓存与日志（用于版本更新与排障）；清理只删缓存，<b>不影响记忆数据</b>。</div>',
         rowHtml('版本清单缓存', vStat, 'aboutClearCache', '清除后下次打开「关于」页会重新从代码库获取', !v.cached),
         rowHtml('调试日志', dStat, 'dbgClear', '清空调试日志（记忆数据不受影响）', d.count === 0),
         rowHtml('交互追踪简报', tStat, 'dbgTraceClear', '清空交互/宿主调用简报（调试日志与记忆数据不受影响）', t.count === 0),

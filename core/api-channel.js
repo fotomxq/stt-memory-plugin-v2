@@ -33,7 +33,7 @@ export const API_CHANNELS = ['host', 'profile', 'direct'];
 export const API_CHANNEL_LABELS = {
     host: '跟随酒馆当前连接',
     profile: '酒馆连接配置',
-    direct: '自建连接（V1 等价）',
+    direct: '自建连接',
 };
 /** 用途枚举与文案 */
 export const API_PURPOSE_LABELS = {

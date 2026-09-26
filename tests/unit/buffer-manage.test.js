@@ -137,7 +137,7 @@ A('H1 分节 HTML 只含统计与清理入口：出现条数/上限/字节，不
 
 A('H2 文案说明「这是什么 + 清理有什么后果」（本地缓存 / 不影响记忆数据）', (() => {
     const h = bufferSectionHtml();
-    return h.indexOf('本地缓存与日志') >= 0 && h.indexOf('不影响任何记忆数据') >= 0
+    return h.indexOf('本地缓存与日志') >= 0 && h.indexOf('不影响记忆数据') >= 0
         && h.indexOf('10 分钟') < 0 && h.indexOf('相对路径') < 0 && h.indexOf('localStorage') < 0;
 })(), '见断言');
 

@@ -62,14 +62,21 @@ R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一�
     && J(Object.keys(PROMPT_TEMPLATES_V2).sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
     [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
 // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 —— 比对时两侧同步剔除该键与对应文案
+// v2.60.0（用户要求：去罗嗦/去历史）：分组**描述**已重写为 V2 文案，故此处的 V1 逐字比对只保留
+//   「标题 + keys」结构（描述另在 C5b 做 V2 自检：非空、≤ 60 字、与模板条数一致）。
 const normPromptGroup = (g) => Object.assign({}, g, {
-    desc: String(g.desc || '').replace('+ 时钟正则生成（AI 从正文总结日期/时间/地点写法）', ''),
+    desc: undefined,
     keys: (g.keys || []).filter((k) => k !== 'clockRegexGen'),
 });
 R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致（剔除已移除的时钟正则生成项）',
     J(PROMPT_GROUPS.map(normPromptGroup)) === J((G.promptGroups || []).map(normPromptGroup))
     && J(Object.keys(PROMPT_LEGACY_SIGS).sort()) === J((G.promptLegacySigsKeys || []).filter((k) => k !== 'clockRegexGen').sort())
     && J(ARMOR_PRESET_V1178_DEFAULT) === J(G.armorPresetDefault), Object.keys(PROMPT_LEGACY_SIGS).length);
+R.assert('C5b 提示词分组描述为 V2 精简文案（非空、≤ 60 字、不吃掉分组结构）', (() => {
+    const bad = PROMPT_GROUPS.filter((g) => !String(g.desc || '').trim() || String(g.desc).length > 60);
+    return bad.length === 0 && PROMPT_GROUPS.length >= 5 && PROMPT_GROUPS.every((g) => (g.keys || []).length > 0);
+})(), PROMPT_GROUPS.map((g) => String(g.desc || '').length));
+
 R.assert('C6 模板并入默认配置（defaultCfg.promptTemplates 与 PROMPT_TEMPLATES_V2 同值）',
     J(defaultCfg.promptTemplates) === J(PROMPT_TEMPLATES_V2), Object.keys(defaultCfg.promptTemplates).length);
 R.assert('C7 KIND_MAP 维度键：V1 的 14 键齐全且 get/set 读写注入 state + V2 别名 currentStates（白名单）', (() => {

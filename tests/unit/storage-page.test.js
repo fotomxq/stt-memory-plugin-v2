@@ -128,9 +128,10 @@ A('B1 记忆文件状态行保留：已启用 / 角色 / 主文件（+备份/快
 
 A('B2 存储编码行只讲「开关 + 当前写入名 + 旧文件仍可读」，不提通道能力与魔数', (() => {
     const h = page();
-    return h.indexOf('data-ftt-slim-gzip') >= 0 && h.indexOf('存储编码：条目瘦身') >= 0
-        && h.indexOf('当前写入名') >= 0 && h.indexOf('读取自动识别格式，旧文件仍可读') >= 0
-        && h.indexOf('魔数') < 0 && h.indexOf('不支持压缩') < 0;
+    // v2.60.0：再精简为「存储编码：瘦身 关 · gzip 关 · 当前写入名 …；旧文件仍可读」
+    return h.indexOf('data-ftt-slim-gzip') >= 0 && h.indexOf('存储编码：瘦身') >= 0
+        && h.indexOf('当前写入名') >= 0 && h.indexOf('旧文件仍可读') >= 0
+        && h.indexOf('魔数') < 0 && h.indexOf('不支持压缩') < 0 && h.indexOf('支持压缩') < 0;
 })(), '见断言');
 
 R.done();

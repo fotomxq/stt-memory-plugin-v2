@@ -91,6 +91,14 @@ function projCurPage(h) {
     };
 }
 
+/** v2.60.0：V1 黄金样本里的 Markdown 粗体 `**x**` 与 V2 的 `<b>x</b>` 视为等义（V2 统一用 <b>，避免星号原样显示） */
+function normBold(v) {
+    if (typeof v === 'string') return v.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    if (Array.isArray(v)) return v.map(normBold);
+    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = normBold(v[k]); return o; }
+    return v;
+}
+
 /** 与 oracle 同一场景（角色档案 4 条含重名 + 3 条货币 + 主角标签） */
 function scenario() {
     const snaps = clone(G.actionFlow.steps.length ? [
@@ -265,9 +273,9 @@ await A('R6 货币页三态投影（未标定·选择器关闭 / 打开选择器
     await panelAction('curTrackPick', {});
     const closed = projCurPage(panelBodyHtml('currencies'));
     const fails = [];
-    if (J(base) !== J(steps[0].page)) fails.push('base');
-    if (J(open) !== J(steps[1].page)) fails.push('open');
-    if (J(closed) !== J(steps[2].page)) fails.push('closed');
+    if (J(base) !== J(normBold(steps[0].page))) fails.push('base');
+    if (J(open) !== J(normBold(steps[1].page))) fails.push('open');
+    if (J(closed) !== J(normBold(steps[2].page))) fails.push('closed');
     VFAILS = fails;
     return fails.length === 0 && base.hasTrackChips === false && base.pickBtn.cls === 'ftt-btn'
         && open.pickBtn.cls === 'ftt-btn ftt-primary' && open.toggleBtns.length === 3 && closed.toggleBtns.length === 0
@@ -299,7 +307,7 @@ await A('R7 动作序 11 步（真实点击委托）：标定名单 / 选择器�
         if (t) expectNote = t.title ? (t.title + '：' + t.text) : t.text;
         const note = String((r && r.state && r.state.note) || '');
         if (note !== expectNote) fails.push(i + ' note ' + J(note) + '≠' + J(expectNote));
-        if (s.page && J(projCurPage(panelBodyHtml('currencies'))) !== J(s.page)) fails.push(i + ' page');
+        if (s.page && J(projCurPage(panelBodyHtml('currencies'))) !== J(normBold(s.page))) fails.push(i + ' page');
     }
     VFAILS = fails;
     return fails.length === 0 && G.actionFlow.steps.length === 12;
@@ -322,9 +330,9 @@ await A('R8 空角色档案 / 搜索无匹配 / 搜索命中三态：空态文�
     await panelAction('search', { kind: 'currencyTrackPick', q: '乙' });
     const hit = projCurPage(panelBodyHtml('currencies'));
     const fails = [];
-    if (J(empty) !== J(G.emptyArchive.page)) fails.push('empty');
-    if (J(noMatch) !== J(G.noMatch.page)) fails.push('noMatch');
-    if (J(hit) !== J(G.searchHit.page)) fails.push('hit');
+    if (J(empty) !== J(normBold(G.emptyArchive.page))) fails.push('empty');
+    if (J(noMatch) !== J(normBold(G.noMatch.page))) fails.push('noMatch');
+    if (J(hit) !== J(normBold(G.searchHit.page))) fails.push('hit');
     VFAILS = fails;
     return fails.length === 0
         && noMatch.emptyNoMatch === '不存在' && noMatch.toggleBtns.length === 0
@@ -347,13 +355,13 @@ await A('V1 货币页接线：统计胶囊（含「已标定 N 名」）/ 说明
     return off.statChip === '共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1）'
         && off.clearBtn === null && off.pickBtn.text === '👥 指定角色'
         && off.pickBtn.title === '从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）'
-        && off.noteText === want.noteText
-        && J(on.chipNames) === J(want.chipNames) && on.chipNote === want.chipNote
+        && off.noteText === normBold(want.noteText)
+        && J(on.chipNames) === J(normBold(want.chipNames)) && on.chipNote === normBold(want.chipNote)
         && on.pickBtn.text === '👥 指定角色（1）' && on.clearBtn.text === '✖ 清空标定'
         && on.clearBtn.title === '取消全部标定角色' && on.clearBtn.cls === 'ftt-btn ftt-err'
         && on.statChip === '共 3 条货币 · 3 个归属（角色甲 1 / 角色乙 1 / 角色丙 1） · 已标定 1 名'
         && on.pickerTitle === '👥 指定跟踪角色 · 从「角色」大类选择（已标定 1 名）'
-        && on.pickerNote === want.pickerNote && on.pickerSearch && on.pickerCloseText === '关闭';
+        && on.pickerNote === normBold(want.pickerNote) && on.pickerSearch && on.pickerCloseText === '关闭';
 }, () => ({ stat: projCurPage(panelBodyHtml('currencies')).statChip }));
 
 await A('V2 端到端：打开选择器 → 标定两名 → 胶囊/角标/✅ 递增 → 「✖ 清空标定」清空并回报条数；分析提示词同步纳入', async () => {

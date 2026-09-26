@@ -12,6 +12,7 @@ import { cfg } from '../core/model/runtime.js';
 import { PROMPT_GROUPS, PROMPT_TEMPLATES_V2, PROMPT_LEGACY_SIGS, PROMPT_DEFAULT_VERSION, ARMOR_PRESET_V1178_DEFAULT, defaultCfg } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { promptSig, promptMigrateStats } from '../core/prompt-migrate.js';
+import { mdBold } from './hints.js';   // v2.60.0：统一富文本（`**x**` → 粗体）
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
@@ -98,7 +99,7 @@ export function promptsPageHtml(opts) {
     const st = promptStats();
     const out = [];
     out.push('<div class="ftt-cat-stat ftt-chip">提示词模板 ' + st.templates + ' 条 / ' + st.groups + ' 组 · 已自定义 ' + st.customized + ' 条'
-        + ' · 默认版本 ' + esc(PROMPT_DEFAULT_VERSION) + (st.ungrouped.length ? (' · ⚠️ 未分组 ' + st.ungrouped.length + ' 条：' + esc(st.ungrouped.join('、'))) : '') + '</div>');
+        + (st.ungrouped.length ? (' · ⚠️ 未分组 ' + st.ungrouped.length + ' 条：' + esc(st.ungrouped.join('、'))) : '') + '</div>');
     const mi = st.migrate;
     if (mi) {
         out.push('<div class="ftt-hint">上次载入迁移（' + esc(String(mi.version)) + '）：刷新 ' + (mi.refreshed || []).length + ' 条'
@@ -113,7 +114,7 @@ export function promptsPageHtml(opts) {
         const custom = keys.filter((k) => isPromptCustomized(k)).length;
         out.push('<h4 class="ftt-h4-inline">' + esc(g.title) + ' <span class="ftt-muted">' + keys.length + ' 条' + (custom ? (' · 自定义 ' + custom) : '') + '</span>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="promptGroupReset" data-ftt-prompt-group="' + attr(g.title) + '">↩ 本组恢复默认</button></h4>');
-        if (g.desc) out.push('<div class="ftt-hint">' + esc(g.desc) + '</div>');
+        if (g.desc) out.push('<div class="ftt-hint">' + mdBold(g.desc) + '</div>');
         if (g.switchKey) {
             const on = cfg[g.switchKey] !== false;
             out.push('<div class="ftt-field"><label>' + esc(g.switchLabel || g.switchKey) + '</label><label class="ftt-switch"><input type="checkbox" data-ftt-cfg="' + attr(g.switchKey) + '"' + (on ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">' + (on ? '已开启' : '已关闭') + '</span></div>');
@@ -124,7 +125,7 @@ export function promptsPageHtml(opts) {
     out.push('<h4 class="ftt-h4-inline">破甲预设导入 <span class="ftt-muted">（同目录 FTT-memory-preset.txt 或粘贴）</span></h4>');
     out.push('<div class="ftt-field ftt-field-col"><label>粘贴预设文本（采用后写入 armorPreset 模板）</label><textarea data-ftt-armor-import="1" rows="4" placeholder="在此粘贴…"></textarea></div>');
     out.push('<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="armorPresetImport">⬇ 采用为破甲预设</button>'
-        + '<span class="ftt-hint">V1 会在启动时读取与插件同目录的预设文件并在**未自定义**时采用；该文件读取需宿主文件通道，见 B9 批次。</span></div>');
+        + '<span class="ftt-hint">也可把预设文本存成同目录的 FTT-memory-preset.txt，由插件自动采用。</span></div>');
     return out.join('\n');
 }
 
