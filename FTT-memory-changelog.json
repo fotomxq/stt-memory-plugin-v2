@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.74.0",
+  "version": "2.75.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.75.0",
+      "date": "2026-09-26",
+      "title": "总览「查看提取内容」改看注入内容（不再展示 AI 回复 JSON）",
+      "points": [
+        "① 改动：总览「📤 最后一次提取」下的折叠块改为展示当前实际注入给 AI 的正文（读回 ST 注入通道，含结构头与「记忆结束。」），标题给出字数（「查看注入内容（当前注入给 A…",
+        "② 落点：ui/panel.js 折叠块 + 新增 hooks.injectText（index.js → host/inject.js#readInject），总览不再依赖 l…",
+        "③ 标记：新折叠块内容带 data-ftt-inject-preview，便于测试与排障定位。"
+      ]
+    },
     {
       "version": "2.74.0",
       "date": "2026-09-26",

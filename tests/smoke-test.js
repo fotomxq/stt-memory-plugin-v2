@@ -2264,7 +2264,7 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
     }
 })(), '');
 
-await assert('BA3 v2.59.0 总览「📤 最后一次提取」：真实跑一次摘要 → 总览一行给出时间/来源/楼层/新增/关键词，提取内容默认收起可展开', (async () => {
+await assert('BA3 v2.59.0 总览「📤 最后一次提取」：真实跑一次摘要 → 总览一行给出时间/来源/楼层/新增/关键词；折叠块展示**注入内容**（v2.75.0）', (async () => {
     const EX9 = await import('../host/extract.js');
     const keepGen = host.ctx.generateRaw;
     // 摘要成功会排程「推演 1.8s / 情节总结 4s」防抖定时器 —— 本小节自接管并在收尾驱动掉，
@@ -2289,8 +2289,16 @@ await assert('BA3 v2.59.0 总览「📤 最后一次提取」：真实跑一次�
             && html.indexOf('📤 最后一次提取') >= 0 && html.indexOf('data-ftt-last-extract') >= 0
             && /(单楼分析|分段分析|批量摘要)（(手动|自动)）/.test(line) && /新增 \d+ 条/.test(line)
             && html.indexOf('data-ftt-inject') >= 0 && html.indexOf('data-ftt-last-extract') > html.indexOf('data-ftt-inject')
-            && html.indexOf('ftt-hint-details') >= 0 && html.indexOf('查看提取内容') >= 0
-            && html.indexOf('ba3-new') >= 0;      // 提取内容（AI 回复原文）在总览可展开查看
+            && html.indexOf('ftt-hint-details') >= 0 && html.indexOf('查看注入内容') >= 0
+            && html.indexOf('data-ftt-inject-preview') >= 0
+            // v2.75.0（用户要求）：折叠块里是**注入内容**，不含 AI 回复的 JSON 原文
+            //   （注：`html` 为整块面板 HTML，可能含其它分页内容，故只在折叠块切片内断言）
+            && (() => {
+                const a = html.indexOf('查看注入内容');
+                const b = html.indexOf('</details>', a);
+                const det = (a >= 0 && b > a) ? html.slice(a, b) : '';
+                return det.length > 0 && det.indexOf('ba3-new') < 0 && det.indexOf('&quot;atoms&quot;') < 0 && det.indexOf('"atoms"') < 0;
+            })();
         void run;
         return ok;
     } finally {

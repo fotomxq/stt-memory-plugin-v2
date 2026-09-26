@@ -7,7 +7,7 @@ import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
-import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight } from './host/inject.js';
+import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight, readInject } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
@@ -50,7 +50,6 @@ import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extract
 import { calibrateBasics } from './host/preflight.js';
 import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
-import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
 import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
@@ -1171,6 +1170,8 @@ export function panelRuntimeHooks() {
         inject: injectNow,
         // v2.74.0：「📤 提取记忆」= 发送前召回（向量/JS 为主，不占分析管道、可并行）
         recall: (opts) => runRecallNow(opts || {}),
+        // v2.75.0：总览「查看注入内容」= 当前实际注入给 AI 的正文（读回 ST 注入通道）
+        injectText: () => { try { return readInject(); } catch (e) { return ''; } },
         recallState: () => ({ inFlight: injectInFlight(), stats: pushStats() }),
         exportState: exportStateJson,
         importState: importStateJson,

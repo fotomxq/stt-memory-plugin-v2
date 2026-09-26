@@ -397,14 +397,19 @@ function overviewBody() {
             })();
             return t + ' · ' + viaLabel + '（' + trig + '）' + scope + made + add + chars + dims + kws + calText;
         })();
-        const hasText = !!(le && le.text);
         out.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-last-extract><b class="ftt-pipe-title">📤 最后一次提取</b>'
             + ' <span style="flex:1 1 auto;min-width:0" class="ftt-muted" data-ftt-last-extract-line>' + esc(line) + '</span></div>');
-        if (hasText) {
-            // v2.66.0（用户报告「查看提取内容高度不足」）：此前用 `.ftt-scroll-40`（上限 40px，只能看两行）
-            //   → 改用 `.ftt-extract-pre`（min-height 160px / max-height 46vh，见 style.css）
-            out.push(hintDetailsHtml('查看提取内容（AI 回复原文，最多 ' + String(le.text.length) + ' 字）',
-                '<div class="ftt-pre ftt-extract-pre">' + esc(String(le.text)) + '</div>'));
+        // v2.75.0（用户要求）：「总览中查看提取内容，应该展示的是**注入内容**，而不是提取的 JSON 结构。」
+        //   折叠块改为展示**当前实际注入给 AI 的正文**（`hooks.injectText()` → ST 注入通道读回，含结构头与「记忆结束。」），
+        //   并给出字数；无注入时如实说明原因（注入开关关 / 未命中 / 空库），不再展示 AI 回复的 JSON 原文
+        //   （原始输出仍留在调试日志与 `FTT.lastExtract().text` 里，供排障时取用）。
+        const inj = (() => { try { return (typeof hooks.injectText === 'function') ? String(hooks.injectText() || '') : ''; } catch (e) { return ''; } })();
+        if (inj) {
+            out.push(hintDetailsHtml('查看注入内容（当前注入给 AI 的正文，' + inj.length + ' 字）',
+                '<div class="ftt-pre ftt-extract-pre" data-ftt-inject-preview>' + esc(inj) + '</div>'));
+        } else {
+            out.push(hintDetailsHtml('查看注入内容',
+                '<div class="ftt-muted" data-ftt-inject-preview>' + esc('当前没有注入内容（注入开关关闭 / 未命中 / 记忆库为空）。把「注入当前提示词」或「及时分析」打开即可在发送前写入。') + '</div>'));
         }
         return out.join('\n');
     })();

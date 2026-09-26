@@ -40,8 +40,10 @@ function boot(extra) {
     Object.assign(cfg, JSON.parse(JSON.stringify(defaultCfg)));
     setKernelState(Object.assign(emptyState(), extra || {}));
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
-    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [3, 5, 7], lastExtract: () => LAST, flushDrain: () => 0 });
+    // v2.75.0：折叠块展示**注入内容** → 提供注入读取钩子（与宿主 `hooks.injectText` 同源）
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [3, 5, 7], lastExtract: () => LAST, injectText: () => INJECT, flushDrain: () => 0 });
 }
+const INJECT = '【FTT记忆注入】以下为该角色的长期记忆库。\n[情节记忆] 甲打开木箱取出账册。\n记忆结束。';
 const LAST = {
     at: Date.now(), via: 'segment', trigger: 'manual', floors: '3-5', added: 2, made: 1, chars: 1234,
     dims: ['atoms', 'memories'], keywords: ['木箱', '账册'], text: '甲打开木箱取出账册。\n'.repeat(30),
@@ -64,14 +66,17 @@ A('O1 总览统一容器与顺序：「最后一次提取」在最末端（时�
         && H.slice(at('data-ftt-last-extract-line')).indexOf('<div class="ftt-item') < 0;
 })(), '见断言');
 
-A('O2 「查看提取内容」用足高度：`.ftt-extract-pre`（不再用 40px 上限的 `.ftt-scroll-40`）', (() => {
-    const m = H.match(/<details class="ftt-details ftt-hint-details"[\s\S]*?<\/details>/);
-    const det = m ? m[0] : '';
+A('O2 「查看注入内容」用足高度：`.ftt-extract-pre`（不再用 40px 上限的 `.ftt-scroll-40`）', (() => {
+    // v2.75.0：折叠块内容改为**注入内容**（`data-ftt-inject-preview`），高度类仍是 `.ftt-extract-pre`
+    const a = H.indexOf('查看注入内容');
+    const b = H.indexOf('</details>', a);
+    const det = (a >= 0 && b > a) ? H.slice(a, b) : '';
     const css = (CSS.match(/[^\n]*\.ftt-extract-pre\s*\{[^}]*\}/) || [''])[0];
     const minH = Number((css.match(/min-height:\s*(\d+)px/) || [])[1] || 0);
     const maxH = Number((css.match(/max-height:\s*(\d+)px/) || [])[1] || 0);
-    return det.indexOf('ftt-pre ftt-extract-pre') >= 0 && det.indexOf('ftt-scroll-40') < 0
-        && det.indexOf('甲打开木箱取出账册') >= 0
+    return det.indexOf('ftt-pre ftt-extract-pre') >= 0 && det.indexOf('data-ftt-inject-preview') >= 0
+        && det.indexOf('【FTT记忆注入】') >= 0 && det.indexOf('记忆结束。') >= 0
+        && det.indexOf('ftt-scroll-40') < 0
         && minH >= 120 && maxH === 0 && css.indexOf('max-height: 46vh') > 0;
 })(), '见断言');
 

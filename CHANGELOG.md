@@ -3,6 +3,22 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.75.0（2026-09-26）· 总览「查看提取内容」改看注入内容（不再展示 AI 回复 JSON）
+
+**用户要求**：「总览中查看提取内容，应该展示的是**注入内容**，而不是提取的 JSON 结构。」
+
+**① 改动**：总览「📤 最后一次提取」下的折叠块改为展示**当前实际注入给 AI 的正文**（读回 ST 注入通道，含结构头与「记忆结束。」），
+标题给出字数（「查看注入内容（当前注入给 AI 的正文，N 字）」），内容沿用 v2.66.0 的 `.ftt-extract-pre`（min-height 160px / max-height 46vh）；
+无注入时**如实说明原因**（注入开关关闭 / 未命中 / 记忆库为空 + 如何打开），不再展示 AI 回复的 JSON 原文。
+
+**② 落点**：`ui/panel.js` 折叠块 + 新增 `hooks.injectText`（`index.js` → `host/inject.js#readInject`），总览不再依赖 `lastExtract().text` 渲染；
+AI 回复原文**仍然留存**（`FTT.lastExtract().text`、调试日志与「最后一次提取」一行里的 AI 字数/维度/关键词），只是不占用总览版面。
+
+**③ 标记**：新折叠块内容带 `data-ftt-inject-preview`，便于测试与排障定位。
+
+**门禁**：`tests/unit/overview-last-extract.test.js`（U3 改为断言「折叠块 = 注入内容、不含 JSON」；新增 U4b 无注入时的空态说明）；
+`tests/unit/overview-layout.test.js` O2 与冒烟 BA3 同步（改为在折叠块切片内断言，避免误把其它分页里的条目 id 当作 JSON 残留）。详见 `docs/P10am`。
+
 ## v2.74.0（2026-09-26）· 提取记忆不占管道：向量/JS 召回可并行、发送前提取并按开关注入
 
 **用户要求**：「提取记忆应该**不占用管道**，因为提取记忆用的是**独立的向量或固定 JS 为主**。确保提取记忆可以**并行处理**，而且在**用户请求发送前提取好记忆**，按照**开关约定注入提示词信息**。」
