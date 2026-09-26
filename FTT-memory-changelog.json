@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.60.0",
+  "version": "2.61.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.61.0",
+      "date": "2026-09-26",
+      "title": "提取记忆：第一步先校对时钟等基本信息，然后再去提取",
+      "points": [
+        "① 新增提取前置校对：（host/preflight.js#calibrateBasics()）：从最新一条非总结情节（时钟唯一可信来源，口径不变）解析并落盘 state.sta…",
+        "② 接入两条提取路径：（host/extract.js）：analyzeFloor（单楼）与 analyzeSegment（分段，批量=逐段）都在",
+        "③ 提取结果继承校对后的时钟：新情节/记忆缺日期时按 V1 口径用已校对的剧情日期补齐（实测：校对 1919-11-29 08:52 凉州卫-钟鼓楼 → 新增情节与记忆日期均为 …"
+      ]
+    },
     {
       "version": "2.60.0",
       "date": "2026-09-26",

@@ -266,7 +266,19 @@ function overviewBody() {
             const chars = Number(le.chars) ? (' · AI ' + (Number(le.chars) >= 1000 ? ((Number(le.chars) / 1000).toFixed(1) + 'k') : Number(le.chars)) + ' 字') : '';
             const dims = (Array.isArray(le.dims) && le.dims.length) ? (' · ' + le.dims.slice(0, 4).join('/')) : '';
             const kws = (Array.isArray(le.keywords) && le.keywords.length) ? (' · 🔑 ' + le.keywords.slice(0, 6).join('、')) : '';
-            return t + ' · ' + viaLabel + '（' + trig + '）' + scope + made + add + chars + dims + kws;
+            // v2.61.0：提取前的「校对时钟」结果（用户要求：第一步先校对基本信息，再去提取）
+            const cal = (le.calib && typeof le.calib === 'object') ? le.calib : null;
+            const calText = (() => {
+                if (!cal) return '';
+                if (cal.skipped === 'auto-off') return ' · 🕒 未校对（时钟自动同步已关）';
+                if (cal.skipped === 'disabled') return ' · 🕒 未校对（组件未启用）';
+                if (cal.skipped === 'error') return ' · 🕒 校对失败';
+                const c = cal.clock || {};
+                const brief = [c.date, c.time].filter(Boolean).join(' ');
+                if (!brief && !c.location) return ' · 🕒 无可校对信息';
+                return ' · 🕒 ' + (cal.changed ? '已校对 ' : '时钟未变 ') + [brief, c.location].filter(Boolean).join(' · ');
+            })();
+            return t + ' · ' + viaLabel + '（' + trig + '）' + scope + made + add + chars + dims + kws + calText;
         })();
         const hasText = !!(le && le.text);
         lines.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-last-extract><b class="ftt-pipe-title">📤 最后一次提取</b>'

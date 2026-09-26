@@ -3223,7 +3223,7 @@ await assert('AN1（v2.51.0 改版）端到端：落盘后时钟日志含「来�
         CE.clockAutoExtractOnce({ force: true });
         const t = globalThis.FTT.clockTrace();
         const logs = (DL.debugLogList() || []).filter((x) => x.kind === '时钟');
-        const last = logs[logs.length - 1] || null;
+        const last = logs[0] || null;   // debugLogList 为「新→旧」：最新一条即本次落盘产生的日志
         const data = last ? String(last.data || '') : '';
         return RT.state.state.date === '1919-11-30' && !!t && J(t).indexOf('最新情节') >= 0
             && data.indexOf('1919-11-30') >= 0 && data.indexOf('plot') >= 0;

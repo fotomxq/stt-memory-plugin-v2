@@ -44,7 +44,8 @@ import {
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
 } from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord } from './host/extract.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
+import { calibrateBasics } from './host/preflight.js';
 import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
@@ -1115,6 +1116,8 @@ function popupHooks() {
         pending: pendingFloors,
         extractStatus: extractSummary,
         lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：最后一次提取记录（总览组件同源）
+        lastPreflight: () => { try { return lastPreflightInfo(); } catch (e) { return null; } },   // v2.61.0：提取前校对结果
+        calibrateBasics: (opts) => { try { return calibrateBasics(opts || {}); } catch (e) { return null; } },
         clearInject,
         checkUpdate: checkUpdateNow,
     };
