@@ -313,5 +313,15 @@ export function traceTimelineText(limit) {
     } catch (e) { return ''; }
 }
 
-/** 清空（调试页/测试） */
-export function traceClear() { try { events = []; dedupe.clear(); opStack = []; return true; } catch (e) { return false; } }
+/**
+ * 清空（调试页/测试）。
+ * v2.54.0：清内存的同时把**本机持久简报**也置空（`hooks.save([])`）—— 否则「调试页显示 0 条、
+ *   数据管理的本地缓冲仍显示 N 条」这种不一致会一直存在（用户报告要求核对内容一致性）。
+ */
+export function traceClear() {
+    try {
+        events = []; dedupe.clear(); opStack = [];
+        try { hooks.save([]); } catch (e2) { /* 落盘失败不影响清空 */ }
+        return true;
+    } catch (e) { return false; }
+}

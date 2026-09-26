@@ -917,7 +917,12 @@ function settingsBody() {
         '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">'
             + settingsPageHtml(cur, cur === 'base' ? v2ExtrasSectionHtml() : '') + '</div>',
         (cur === 'prompts' ? atomCompactSectionHtml() : ''),
-        (ps.exportText ? ('<div class="ftt-field ftt-field-col"><label>导出结果（可复制保存）</label><textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>') : ''),
+        // v2.54.0（用户报告「导出 UI 设计有问题」）：导出结果只出现在**数据管理页**（就近显示在导出分节下方），
+        //   其它子页不再吊一个来路不明的文本框；标题也写清「这是什么、要拿它做什么」。
+        (cur === 'data' && ps.exportText
+            ? ('<div class="ftt-field ftt-field-col"><label>导出结果（上面「⬇ 导出 JSON 文件」的内容；浏览器未触发下载时可从这里手动复制保存）</label>'
+                + '<textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>')
+            : ''),
     ].join('\n');
 }
 
@@ -1911,8 +1916,8 @@ export async function panelAction(action, payload) {
                 const nav = globalThis.navigator;
                 if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
             } catch (e) { copied = false; }
-            const bits = ['已导出 ' + text.length + ' 字符'];
-            bits.push(dl.ok ? ('已下载文件 ' + dl.filename) : ('未下载文件（' + dl.reason + '，可在下方文本框手动复制保存）'));
+            const bits = ['已导出 ' + text.length + ' 字符（备份 / 迁移用）'];
+            bits.push(dl.ok ? ('已下载文件 ' + dl.filename) : ('未下载文件（' + dl.reason + '）—— 可从下方文本框手动复制保存'));
             if (copied) bits.push('已复制到剪贴板');
             setNote(bits.join(' · '));
             result = Object.assign(result, { ok: true, chars: text.length, copied: copied, downloaded: !!dl.ok, filename: dl.ok ? dl.filename : '', downloadReason: dl.reason || '' });
@@ -1920,17 +1925,17 @@ export async function panelAction(action, payload) {
         else if (a === 'importStateOpen') {
             // **真实选择存档文件**（V1 `import` 动作同款：`<input type=file>` → 读取 → 增量合并）
             if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
-            if (!fileIoCapabilities().pick) { setNote('当前宿主不支持文件选择器 → 请在下方「导入 JSON」文本框粘贴内容后点「导入」'); return { ok: false, reason: 'no-picker' }; }
-            setNote('请选择要导入的存档 JSON 文件…');
+            if (!fileIoCapabilities().pick) { setNote('当前宿主不支持文件选择器 —— 请把 JSON 内容粘贴到文本框，再点「⬆ 导入粘贴内容」'); return { ok: false, reason: 'no-picker' }; }
+            setNote('请选择要导入的 JSON 存档文件…');
             const picked = await pickTextFile({ accept: '.json,application/json' });
             if (!picked.ok) {
                 const why = picked.reason === 'cancelled' ? '已取消选择文件' : ('未取到文件（' + picked.reason + '）');
-                setNote(why + ' → 也可在下方文本框粘贴后点「导入」');
+                setNote(why + ' —— 也可把 JSON 内容粘贴到文本框，再点「⬆ 导入粘贴内容」');
                 return { ok: false, reason: picked.reason || 'no-file' };
             }
             const r = await hooks.importState(picked.text);
             setNote(r && r.ok
-                ? ('已导入文件 ' + (picked.name || '（未命名）') + ' 并合并：新增 ' + (r.added || 0) + ' 条')
+                ? ('已导入文件 ' + (picked.name || '（未命名）') + ' 并合并：新增 ' + (r.added || 0) + ' 条（相同的跳过 / 变更覆盖，未删除本地记忆）')
                 : ('导入失败（' + String((r && r.reason) || '未知') + '）：' + (picked.name || '')));
             result = Object.assign(result, r || {}, { fileName: picked.name, fileSize: picked.size });
         }
@@ -1951,9 +1956,11 @@ export async function panelAction(action, payload) {
             if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             const el = (() => { try { const doc = globalThis.document; return doc && doc.querySelector ? doc.querySelector('[data-ftt-import]') : null; } catch (e) { return null; } })();
             const text = String(p.text != null ? p.text : (el ? el.value : ''));
-            if (!text.trim()) { setNote('导入失败：文本框为空'); return { ok: false, reason: 'empty' }; }
+            if (!text.trim()) { setNote('导入失败：文本框是空的 —— 请先粘贴导出的 JSON 内容'); return { ok: false, reason: 'empty' }; }
             const r = await hooks.importState(text);
-            setNote(r && r.ok ? ('已导入并合并：新增 ' + (r.added || 0) + ' 条') : ('导入失败：' + String((r && r.reason) || '未知')));
+            setNote(r && r.ok
+                ? ('已导入并合并：新增 ' + (r.added || 0) + ' 条（相同的跳过 / 变更覆盖，未删除本地记忆）')
+                : ('导入失败：' + String((r && r.reason) || '未知')));
             result = Object.assign(result, r || {});
         }
         else if (a === 'refresh' || a === 'noop') { /* 仅重渲染 */ }

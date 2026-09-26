@@ -2188,9 +2188,10 @@ await assert('AE2 关于页 v2.53.0：版本清单**优先取代码库 raw json*
         // ⑤ 「本地缓冲」清理入口迁到数据管理页，并展示统计（无缓存 → 按钮禁用）
         await entry.popupAction('settingsSub', { sub: 'data' });
         const dh = String((await entry.popupAction('refresh', {})).html || '');
-        const bufOk = dh.indexOf('本地缓冲') >= 0 && dh.indexOf('版本清单缓存：（无缓存）') >= 0
-            && dh.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dh.indexOf('🧹 清除版本清单缓存') >= 0
-            && dh.indexOf('aboutClearCache" disabled') >= 0;
+        const bufOk = dh.indexOf('🗂 本地缓冲') >= 0 && dh.indexOf('版本清单缓存：（无缓存）') >= 0
+            && dh.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dh.indexOf('🧹 清除') >= 0
+            && /data-ftt-action="aboutClearCache"[^>]*disabled/.test(dh)
+            && dh.indexOf('调试日志：') >= 0 && dh.indexOf('交互追踪简报：') >= 0;
         // ⑥ 恢复：切回总览（避免影响后续小节）
         await entry.popupAction('tab', { tab: 'overview' });
         return candOk && failOk && okOk && htmlOk && clearOk && bufOk;
@@ -2198,6 +2199,66 @@ await assert('AE2 关于页 v2.53.0：版本清单**优先取代码库 raw json*
         aboutJsonText = '';
         if (keepLs === undefined) delete globalThis.window.localStorage; else globalThis.window.localStorage = keepLs;
         try { globalThis.FTT.aboutClearCache(); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导入/删除/快照/缓冲）、危险动作隔离、快照只出统计（明细折叠）、本地缓冲统计与真实持久层逐项一致', (async () => {
+    const DL = await import('../adapters/debug-log.js');
+    const TR = await import('../adapters/trace-store.js');
+    const BM = await import('../ui/buffer-manage.js');
+    const keepLs = globalThis.window && globalThis.window.localStorage;
+    const map = new Map();
+    globalThis.window.localStorage = {
+        getItem: (k) => (map.has(String(k)) ? map.get(String(k)) : null),
+        setItem: (k, v) => { map.set(String(k), String(v)); },
+        removeItem: (k) => { map.delete(String(k)); },
+    };
+    try {
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        await entry.popupAction('snapCreate', {});     // 先建一份快照，确保「统计 + 折叠明细」都有内容
+        const h = String((await entry.popupAction('refresh', {})).html || '');
+        const at = (s) => h.indexOf(s);
+        // ① 分块与顺序 + 危险动作隔离 + 粘贴框与其按钮相邻
+        const layoutOk = at('📤 导出备份') >= 0 && at('📥 导入存档（合并）') > at('📤 导出备份')
+            && at('⚠️ 删除数据（不可恢复）') > at('📥 导入存档（合并）')
+            && at('🧬 快照链') > at('⚠️ 删除数据（不可恢复）') && at('🗂 本地缓冲') > at('🧬 快照链')
+            && at('data-ftt-import="1"') < at('data-ftt-action="importStateApply"')
+            && h.slice(at('data-ftt-import="1"'), at('data-ftt-action="importStateApply"')).indexOf('本地缓冲') < 0
+            && h.slice(at('⚠️ 删除数据（不可恢复）'), at('🧬 快照链')).indexOf('exportState') < 0
+            && h.indexOf('不会删除') >= 0 && h.indexOf('不可恢复') >= 0;
+        // ② 快照：统计行在明处、明细折叠（默认无 open）
+        const snapOk = at('data-ftt-snap-stat') >= 0 && h.indexOf('可还原原子 ') >= 0 && h.indexOf('删除台账 ') >= 0
+            && at('data-ftt-snap-details') > at('data-ftt-snap-stat')
+            && at('data-ftt-action="snapRestore"') > at('data-ftt-snap-details')
+            && h.indexOf('<details class="ftt-details" data-ftt-snap-details>') >= 0;
+        // ③ 本地缓冲：数字来自真实持久层（2 条日志 / 1 条简报 / 版本清单），且不出明细
+        DL.debugLogClear();
+        DL.debugLogPush('摘要', { text: '冒烟缓冲明细甲' });
+        DL.debugLogPush('对账', { text: '冒烟缓冲明细乙' });
+        TR.traceStoreSave([{ id: 'smoke-trace-1', at: Date.now(), cat: 'ui', kind: 'click', ok: true, opId: '', site: 'smoke.js:1' }]);
+        const st = BM.bufferStats();
+        // 同一时刻取持久层字节：refresh 动作本身也会写追踪持久层，晚一步比就会误判
+        const rawD = BM.rawBytes(DL.DEBUG_KEY), rawT = BM.rawBytes(TR.TRACE_KEY);
+        const h2 = String((await entry.popupAction('refresh', {})).html || '');
+        const bufOk = st.debugLog.count === 2 && st.debugLog.cap === 300 && st.trace.count === 1 && st.trace.cap === 120
+            && st.debugLog.bytes === rawD && st.trace.bytes === rawT
+            && h2.indexOf('调试日志：2 / 300 条') >= 0 && h2.indexOf('交互追踪简报：1 / 120 条') >= 0
+            && h2.indexOf('版本清单缓存：') >= 0 && h2.indexOf('不影响任何记忆数据') >= 0
+            && h2.indexOf('冒烟缓冲明细甲') < 0 && h2.indexOf('smoke.js:1') < 0;   // 只统计，不列明细
+        // ④ 清理入口真实生效：清空简报后旧的持久简报消失（动作自身至多留 1 条）
+        await entry.popupAction('dbgTraceClear', {});
+        const left = TR.traceStoreLoad();
+        const clearOk = left.every((x) => x && x.id !== 'smoke-trace-1') && left.length <= 1
+            && BM.bufferStats().trace.count === left.length;
+        // ⑤ 恢复
+        DL.debugLogClear();
+        TR.traceStoreClear();
+        await entry.popupAction('snapshotClear', {});
+        await entry.popupAction('tab', { tab: 'overview' });
+        return layoutOk && snapOk && bufOk && clearOk;
+    } finally {
+        if (keepLs === undefined) delete globalThis.window.localStorage; else globalThis.window.localStorage = keepLs;
     }
 })(), '');
 
