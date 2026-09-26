@@ -3,6 +3,18 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.67.0（2026-09-26）· 扩展菜单主入口修复（强制开启、被重建也不丢）
+
+**用户报告**：「底部扩展菜单看不到面板激活的按钮，请修复该问题，该设计为强制打开，不允许用户关闭。其他位置的显示可根据需求调整。」
+
+**① 陈旧标志（根因之一）**：此前安装成功后模块只记一个节点引用，`menuInstalled()` 恒为真。酒馆**每次打开魔杖菜单都会重建 `#extensionsMenu` 的内容**，我们插入的那一项被清掉后模块仍以为「已安装」→ **再也不会补回**（表现就是看不到按钮）。现在 `menuInstalled()` 校验节点是否仍挂在文档里（`isConnected` / `document.contains`）并回查 `#ftt-menu-button`，陈旧引用会被清掉。
+
+**② 安装时机（根因之二）**：`#extensionsMenu` 由酒馆按需创建，插件初始化时可能还不存在，一次失败后此前不再重试。现在新增幂等的 `ensureMenuEntry()`，并在这些时机补回：初始化与每次 `syncEntryButtons`、可见性探针每一轮、**点击魔杖按钮之后**（酒馆正是在这一步重建菜单）、以及 `#extensionsMenu` 的 `MutationObserver`（内容被清空即补回，且不会重复插入）。
+
+**③ 菜单项形态与强制语义**：菜单项改用酒馆扩展菜单项的标准结构（`list-group-item flex-container flexGap5 interactable` + 图标 + 文本，保留 V1 同名 id `ftt-menu-button`、`tabindex`/`role` 与键盘 Enter/Space 触发）；`cfg.buttonLocations.menu=false` 不生效（`syncEntryButtons` 走 `ensureMenuEntry`），设置页仍不展示该开关；`/ftt` 的「入口：」一行把扩展菜单项**无论装没装上**都列出来，并给出 `FTT.menuInfo()` / `FTT.ensureMenu()` 自查入口。
+
+**门禁**：新增 `tests/unit/menu-entry.test.js`（8 断言：安装形态 / 陈旧标志与补回 / 点击魔杖按钮后补回 / MutationObserver 补回且不重复 / 晚建容器 / 强制语义 / 卸载后不再补回 / 诊断字段）；`bootstrap` B3、`entry-buttons` B2/C3 同步（新结构与真实安装态）。详见 `docs/P10ae`。
+
 ## v2.66.0（2026-09-26）· 总览 UI 调整：最后一次提取移到末端、提取内容给足高度、去掉无用时钟提示
 
 **用户要求**：「新版本，UI 调整：① 总览的最后一次提取应该放到最后末端；② 查看提取内容高度不足；③ 时钟来源这些提示信息完全没用；④ 最后总览的整体 UI 布局微调优化。」

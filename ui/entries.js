@@ -17,7 +17,7 @@
 //   ② 悬浮按钮区分来源（用户开启 / 可见性兜底），设置里关掉只移除「用户开启」的那一个（见 `ui/floating.js`）。
 //   ③ 顶栏/页面底部按钮在宿主缺少对应容器时**不会出现**（如实返回 reason，不造假 DOM）。
 // ============================================================
-import { installMenuEntry, uninstallMenuEntry, menuInfo, menuInstalled } from './menu.js';
+import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, menuInfo, menuInstalled, bindMenuWatch } from './menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo, floatingInstalled } from './floating.js';
 
 /** V1 逐字：入口位置与顺序 */
@@ -233,7 +233,8 @@ export function syncEntryButtons(locations, hooks) {
     // 强制项写回配置（V1 存档/跨端带过来的 false 不生效）
     for (const k of FORCED_ENTRIES) { try { loc[k] = true; } catch (e) { /* 只读配置对象：忽略 */ } }
     const applied = {
-        menu: norm.menu ? installMenuEntry(use) : uninstallMenuEntry(),
+        // v2.67.0：菜单项 = 强制主入口，用 ensure（被酒馆重建清掉时补回；配置里的关闭意图不生效）
+        menu: norm.menu ? ensureMenuEntry(use) : uninstallMenuEntry(),
         topbar: norm.topbar ? installTopbarEntry(use) : uninstallTopbarEntry(),
         qr: norm.qr ? installQrEntry(use) : uninstallQrEntry(),
         float: norm.float ? installFloatingEntry(use, { reason: 'user' }) : uninstallFloatIfUser(),

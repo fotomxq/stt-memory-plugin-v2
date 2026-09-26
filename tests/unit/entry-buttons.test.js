@@ -117,6 +117,14 @@ function boot(nextDoc) {
     setPanelHooks2({});
 }
 const reset = () => { uninstallAllEntries(); };
+/** 节点文本（含子节点；迷你 DOM 不聚合 textContent） */
+function nodeText(n) {
+    if (!n) return '';
+    let t = String(n.textContent || '');
+    for (const c of (n.children || [])) t += nodeText(c);
+    return t;
+}
+
 /** 在容器里按 id 找节点（含一层嵌套，见 qr 的 bar → wrap → btn） */
 function findById(nodes, id) {
     for (const n of (nodes || [])) {
@@ -192,7 +200,9 @@ A('B2 全开：四个入口都按 V1 同名 id 与标记落地（顶栏插在 pe
     const menu = findById(doc._els.extensionsMenu.children, 'ftt-menu-button');
     return !!topbar && topbar.className === 'drawer' && String(topbar.innerHTML).indexOf('drawer-toggle') >= 0
         && !!qr && qr.className === 'ftt-qr-btn menu_button interactable' && qr.textContent === 'FTT记忆'
-        && !!flt && flt.textContent === '📖' && !!menu && menu.textContent === 'FTT记忆';
+        && !!flt && nodeText(flt) === '📖' && !!menu && nodeText(menu) === 'FTT记忆'
+        && String(menu.className).indexOf('extensionsMenuExtensionButton') < 0
+        && (menu.children || []).some((c) => String(c.className).indexOf('extensionsMenuExtensionButton') >= 0);
 })(), J({ holder: (doc._els['top-settings-holder'].children || []).map((c) => c.id), body: (doc.body.children || []).map((c) => c.id) }));
 
 A('B3 关闭即移除：顶栏 / 页面底部 / 悬浮 三个入口从 DOM 上撤掉（菜单不受影响）', (() => {
@@ -305,8 +315,8 @@ A('C3 菜单入口诊断与旧 id 清理：`menuInfo().btnId` 为 V1 名，安�
     reset();
     const r = installMenuEntry({ onClick: () => undefined });
     const info = menuInfo();
-    return j(info.btnId) && info.btnId === 'ftt-menu-button' && info.installed === true && r.ok === true && info.menuFound === true;
-    function j(x) { return x === 'ftt-menu-button'; }
+    return info.btnId === 'ftt-menu-button' && info.installed === true && r.ok === true
+        && info.menuFound === true && info.wandId === 'extensionsMenuButton';
 })(), J(menuInfo()));
 
 reset();

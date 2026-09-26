@@ -10,7 +10,7 @@ import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats,
 import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
-import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
+import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
 // v2.65.0（用户要求「显示界面开关与 V1 对齐 + 扩展菜单入口强制开启且不展示开关」）：入口按钮统一管理
 import { syncEntryButtons, entryButtonsState, uninstallAllEntries, entryEnabled, ENTRY_LOCATIONS, ENTRY_LABELS, FORCED_ENTRIES } from './ui/entries.js';
@@ -986,7 +986,7 @@ function bootstrapDiagnostics() {
             trackPickState: () => trackPickState(),
             setTrackPick: (v) => setTrackPick(v),
             defaultCurrencyOwner: () => defaultCurrencyOwner(),
-            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, menuInfo, ensureMenu: () => ensureMenuEntry(entryClickHooks()), i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
         // v2.42.0：**FTT.* 入口调用入流**（cat='cmd'）—— 用户/维护者在控制台调 `FTT.xxx()` 也能追溯：
         //   记录入口名 / 参数摘要 / 结果 / 耗时 / 站点，并把该调用期间的宿主与内核事件用 opId 串起来。
         try { wrapFttEntries(); } catch (e) { /* 追踪接线失败不影响调试入口 */ }
@@ -1064,6 +1064,8 @@ async function probeTick(why) {
     try {
         if (!hasHost()) return false;
         if (!runtime.ready) await ensureReady(why);
+        // v2.67.0：主入口（扩展菜单项）每轮补一次 —— 酒馆可能晚建/重建 `#extensionsMenu`
+        try { ensureMenuEntry(entryClickHooks()); } catch (e) { /* 忽略 */ }
         if (runtime.ready && cfgShowDrawer() && !panelMountInfo().ok) {
             try { await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { /* 下一轮再试 */ }
         }
@@ -1291,7 +1293,7 @@ export async function runExtract(opts) {
 
 /** 面板/菜单/弹窗诊断（对外再导出，便于控制台与测试直接调用） */
 export { panelMountInfo } from './ui/settings-panel.js';
-export { menuInfo, installMenuEntry, uninstallMenuEntry } from './ui/menu.js';
+export { menuInfo, installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch } from './ui/menu.js';
 export { floatingInfo, installFloatingEntry, uninstallFloatingEntry } from './ui/floating.js';
 // v2.65.0：入口按钮（顶栏 / 页面底部 / 悬浮 / 扩展菜单）统一启停与诊断
 export { syncEntryButtons, entryButtonsState, uninstallAllEntries, entryEnabled, normalizeEntryLocations, ENTRY_LOCATIONS, ENTRY_LABELS, FORCED_ENTRIES } from './ui/entries.js';

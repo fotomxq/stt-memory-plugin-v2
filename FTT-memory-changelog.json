@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.66.0",
+  "version": "2.67.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.67.0",
+      "date": "2026-09-26",
+      "title": "扩展菜单主入口修复（强制开启、被重建也不丢）",
+      "points": [
+        "① 陈旧标志（根因之一）：此前安装成功后模块只记一个节点引用，menuInstalled() 恒为真。酒馆每次打开魔杖菜单都会重建 #extensionsMenu 的内容，我们插…",
+        "② 安装时机（根因之二）：extensionsMenu 由酒馆按需创建，插件初始化时可能还不存在，一次失败后此前不再重试。现在新增幂等的 ensureMenuEntry()，并在…",
+        "③ 菜单项形态与强制语义：菜单项改用酒馆扩展菜单项的标准结构（list-group-item flex-container flexGap5 interactable + 图标 …"
+      ]
+    },
     {
       "version": "2.66.0",
       "date": "2026-09-26",

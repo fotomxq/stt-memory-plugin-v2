@@ -77,8 +77,9 @@ export function statusText(extra) {
         if (b.entries && b.entries.installed) {
             const ins = b.entries.installed;
             const 名 = b.entries.labels || {};
+            // 扩展菜单项 = 强制主入口（用户不得关闭）：无论装没装上都要出现在这一行里，便于用户/维护者核对
             const on = ['menu', 'qr', 'float', 'topbar'].filter((k) => ins[k]).map((k) => 名[k] || k);
-            const off = ['topbar', 'qr', 'float'].filter((k) => !ins[k]).map((k) => 名[k] || k);
+            const off = ['menu', 'topbar', 'qr', 'float'].filter((k) => !ins[k]).map((k) => 名[k] || k);
             lines.push('入口：' + (on.length ? on.join(' · ') : '（无）') + (off.length ? '（未显示：' + off.join(' · ') + '）' : ''));
         } else if (b.menu) {
             lines.push('菜单入口：' + (b.menu.installed ? '已加入扩展菜单（魔杖）' : '未加入（' + (b.menu.menuFound ? '插入失败' : '无 #extensionsMenu') + '）'));

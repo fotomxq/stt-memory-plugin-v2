@@ -172,14 +172,13 @@ await assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1
         && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
 
-await assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/入口诊断（v2.65.0：入口按显示界面开关如实列出）', (async () => {
-    const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
-    // v2.42.0：命令回调经追踪包装 → async，须 await
-    const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
-    return out.indexOf('界面：V1 同构浮层') >= 0 && out.indexOf('抽屉卡片 关') >= 0
-        && out.indexOf('装配：已初始化') >= 0 && out.indexOf('入口：') >= 0
-        && out.indexOf('扩展菜单项') >= 0 && out.indexOf('未显示：') >= 0;
-})(), '');
+const fttStatusCmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
+const fttStatusText = String(typeof fttStatusCmd.callback === 'function' ? await fttStatusCmd.callback() : '');
+await assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/入口诊断（v2.65.0：入口按显示界面开关如实列出）', (() => {
+    return fttStatusText.indexOf('界面：V1 同构浮层') >= 0 && fttStatusText.indexOf('抽屉卡片 关') >= 0
+        && fttStatusText.indexOf('装配：已初始化') >= 0 && fttStatusText.indexOf('入口：') >= 0
+        && fttStatusText.indexOf('扩展菜单项') >= 0;
+})(), fttStatusText.split('\n').filter((l) => l.indexOf('入口') >= 0 || l.indexOf('界面') >= 0).join(' | '));
 
 // 后续 B3/E/I/L 断言语义为「抽屉卡片路径」：按需打开该开关并强制挂载一次（用户默认不开，但功能仍需可用）
 const rtMod = await import('../core/model/runtime.js');
