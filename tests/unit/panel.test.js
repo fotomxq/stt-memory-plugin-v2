@@ -83,14 +83,17 @@ R.assert('S3 打开/关闭：写入 #ftt-panel、置 open 标记、关闭清空�
 })(), panelInfo());
 
 // ---------- 13 分页内容 ----------
-R.assert('P1 总览：剧情时钟三行 + 在场 + 注入审计 + 类目统计 + 已处理区间 + 未摘要楼层按钮', (() => {
+R.assert('P1（v2.52.0）总览：剧情时钟三行 + 在场 + **管线状态行** + 注入概览 + 类目统计 + 未摘要楼层按钮；历史遗留平铺信息已精简', (() => {
     const h = panelBodyHtml('overview');
     return h.indexOf('📅 日期：1919-11-29') >= 0 && h.indexOf('⏱ 时间：夜') >= 0 && h.indexOf('📍 地点：码头') >= 0
         && h.indexOf('👥 在场角色：甲、乙') >= 0
-        && h.indexOf('🧷 注入') >= 0 && h.indexOf('📚 类目统计') >= 0
-        && h.indexOf('已处理区间：0-1、3') >= 0
+        && h.indexOf('🧵 管线状态') >= 0 && h.indexOf('空闲') >= 0      // v2.52.0：管线提示此前缺失
+        && h.indexOf('🧷 注入') >= 0 && h.indexOf('📚 共 ') >= 0
         && h.indexOf('data-ftt-action="summaryFloor" data-ftt-floor="4"') >= 0
-        && h.indexOf('data-ftt-action="summary"') >= 0 && h.indexOf('data-ftt-action="inject"') >= 0;
+        && h.indexOf('data-ftt-action="summary"') >= 0 && h.indexOf('data-ftt-action="inject"') >= 0
+        // 历史遗留平铺信息已移除：已处理区间长清单 / 「立即注入」长说明 / 清除已处理记录按钮
+        && h.indexOf('已处理区间：') < 0 && h.indexOf('「提取记忆」= 分析未摘要楼层') < 0
+        && h.indexOf('data-ftt-action="clearFloors"') < 0;
 })(), '');
 
 R.assert('P2 维度分页：V1 行样式（.ftt-item/.ftt-inline/.ftt-btn）+ 搜索框 + 编辑/删除按钮；计划页含悬念', (() => {

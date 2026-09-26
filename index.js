@@ -1117,6 +1117,7 @@ export function panelRuntimeHooks() {
         autoSummary: runSummaryBatch,          // 总览「批量摘要」
         abort: abortExtraction,                // 总览「中断」
         batchProgress: batchProgress,          // 忙位进度（「分析中 x/y 段」）
+        busy: () => { try { return !!extractBusy(); } catch (e) { return false; } },   // v2.52.0：总览「管线状态」行 + 中断按钮的条件展示
         clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
         dimToggle: (kind, on) => setDimensionEnabled(kind, on),
