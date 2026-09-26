@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.64.0",
+  "version": "2.65.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.65.0",
+      "date": "2026-09-26",
+      "title": "显示界面开关对齐 V1 + 扩展菜单入口强制开启",
+      "points": [
+        "核对（新建 oracle：tests/fixtures/gen-v1-golden-entry-buttons.cjs 直调真实 V1 v1.206）：| 项 | V1 | V2…",
+        "实现：新增 ui/entries.js（V1 createTopbarButton/createQrButton 逐条移植 + syncButtons() 等价物syncEntr…"
+      ]
+    },
     {
       "version": "2.64.0",
       "date": "2026-09-26",

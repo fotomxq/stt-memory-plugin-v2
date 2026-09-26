@@ -172,12 +172,13 @@ await assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1
         && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
 
-await assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/菜单诊断', (async () => {
+await assert('M2 /ftt 状态含「界面：V1 同构浮层」与装配/面板/入口诊断（v2.65.0：入口按显示界面开关如实列出）', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
     // v2.42.0：命令回调经追踪包装 → async，须 await
     const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
     return out.indexOf('界面：V1 同构浮层') >= 0 && out.indexOf('抽屉卡片 关') >= 0
-        && out.indexOf('装配：已初始化') >= 0 && out.indexOf('菜单入口：') >= 0;
+        && out.indexOf('装配：已初始化') >= 0 && out.indexOf('入口：') >= 0
+        && out.indexOf('扩展菜单项') >= 0 && out.indexOf('未显示：') >= 0;
 })(), '');
 
 // 后续 B3/E/I/L 断言语义为「抽屉卡片路径」：按需打开该开关并强制挂载一次（用户默认不开，但功能仍需可用）
@@ -694,7 +695,8 @@ assert('L3 面板状态块含挂载诊断行（用户可在面板里看到「面
 assert('L4 魔杖菜单入口已插入 #extensionsMenu（面板容器异常时的可见兜底）', (() => {
     const html = String((doc._els.extensionsMenu || {}).html || '');
     const info = globalThis.FTT && typeof globalThis.FTT.menuInfo === 'function' ? globalThis.FTT.menuInfo() : null;
-    return html.indexOf('ftt_v2_menu_btn') >= 0 && !!info && info.menuFound === true;
+    // v2.65.0：入口改用 V1 同名 id `ftt-menu-button`（桩 DOM 无 appendChild → 字符串插入路径）
+    return html.indexOf('ftt-menu-button') >= 0 && !!info && info.menuFound === true;
 })(), (() => { try { return JSON.stringify(globalThis.FTT.menuInfo()); } catch (e) { return String(e.message); } })());
 
 // ---------- L5 悬浮兜底（抽屉容器异常时的最后可见性方案） ----------
@@ -710,7 +712,7 @@ await assert('L5 悬浮兜底链路：抽屉不可用时装悬浮入口 → 点�
     doc._els.extensions_settings2 = saved.a; doc._els.extensions_settings = saved.b; doc._els.rm_extensions_block = saved.c;
     const back = await entry.ensureVisibleEntry();
     return vis.panel.ok === false && vis.floating.ok === true
-        && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0
+        && String(doc.body.html).indexOf('ftt-float-button') >= 0
         && clickR.ok === true && clickR.via === 'overlay' && popupHtml.length === 0
         && String((doc._els['ftt-panel'] || {}).html || '').indexOf('ftt-modal') >= 0
         && back.panel.ok === true && back.floating.ok === false

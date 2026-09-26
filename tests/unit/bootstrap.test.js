@@ -53,13 +53,17 @@ R.assert('B2 诊断入口加载期即注册：/ftt、/ftt-panel、/ftt-analyze�
         && typeof globalThis.FTT.panelInfo === 'function' && typeof globalThis.FTT.forceMount === 'function';
 })(), ((host.ctx.commands || []).map((c) => c.name)));
 
-R.assert('B3 魔杖菜单入口：容器存在时插入成功（桩 DOM 不解析 HTML → resolved=false）', (() => {
-    const html = String(doc._els.extensionsMenu.html || '');
+R.assert('B3 魔杖菜单入口：容器存在时插入成功（v2.65.0 起用 V1 同名 id `ftt-menu-button` 的 DOM 节点）', (() => {
+    const menuEl = doc._els.extensionsMenu || {};
+    const kids = menuEl.children || [];
+    const node = kids.filter((c) => c && c.id === 'ftt-menu-button')[0];
+    const html = String(menuEl.html || '');
     const info = globalThis.FTT.menuInfo();
     const res = installMenuEntryFn({ onClick: () => undefined });     // 幂等：已装则 already
-    return html.indexOf('ftt_v2_menu_btn') >= 0 && info.menuFound === true
+    // 真实 DOM 走节点插入（children 有节点）；桩 DOM 无 appendChild → 退化字符串插入（html 含 id）
+    return (!!node || html.indexOf('ftt-menu-button') >= 0) && info.menuFound === true
         && (res.ok === true && (res.inserted === true || res.reason === 'already'));
-})(), (() => { try { return J(globalThis.FTT.menuInfo()); } catch (e) { return String(e.message); } })());
+})(), (() => { try { return J({ info: globalThis.FTT.menuInfo(), kids: ((doc._els.extensionsMenu || {}).children || []).map((c) => c && c.id) }); } catch (e) { return String(e.message); } })());
 
 await (async () => {
     // 容器回退：删掉首选容器，保留第三候选
@@ -134,10 +138,10 @@ await (async () => {
     doc.body = { html: '', insertAdjacentHTML(pos, h) { this.html += String(h); } };
     const okBody = mod.installFloatingEntry({ onClick: () => undefined });
     const info = mod.floatingInfo();
-    R.assert('B9 无抽屉容器时可启用悬浮入口：无 body 明确拒绝，有 body 则插入并记录诊断', (() => {
+    R.assert('B9 无抽屉容器时可启用悬浮入口：无 body 明确拒绝，有 body 则插入并记录诊断（v2.65.0：V1 同名 id `ftt-float-button`）', (() => {
         return noBody.ok === false && String(noBody.reason).indexOf('无 body') >= 0
             && okBody.ok === true && okBody.inserted === true
-            && String(doc.body.html).indexOf('ftt_v2_float_btn') >= 0 && info.bodyFound === true;
+            && String(doc.body.html).indexOf('ftt-float-button') >= 0 && info.bodyFound === true;
     })(), (() => { try { return J({ noBody, info }); } catch (e) { return String(e.message); } })());
 
     // 点击悬浮入口 → 打开 **V1 同构浮层**（不再依赖 callGenericPopup）
@@ -167,7 +171,7 @@ await (async () => {
     R.assert('B11 可见入口自动切换：挂不上抽屉时装悬浮入口；抽屉恢复后挂上面板并移除悬浮入口', (() => {
         return r1.panel.ok === false && r1.floating.ok === true
             && r2.panel.ok === true && r2.floating.ok === false
-            && String(r2.floating.reason).indexOf('无需悬浮入口') >= 0;
+            && String(r2.floating.reason).indexOf('面板已挂载') >= 0;
     })(), (() => { try { return J({ r1: { p: r1.panel.ok, f: r1.floating.ok }, r2: { p: r2.panel.ok, f: r2.floating.ok } }); } catch (e) { return String(e.message); } })());
 })();
 

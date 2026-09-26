@@ -73,7 +73,16 @@ export function statusText(extra) {
         const panel = b.panel || {};
         lines.push('装配：' + (b.ready ? '已初始化' : '未初始化') + ' · 触发 ' + ((b.triggers || []).join('→') || '—')
             + ' · 面板 ' + (panel.ok ? ('已挂载 #' + (panel.container || '?')) : ('未挂载：' + (panel.reason || '未知'))));
-        if (b.menu) lines.push('菜单入口：' + (b.menu.installed ? '已加入扩展菜单（魔杖）' : ('未加入（' + (b.menu.menuFound ? '插入失败' : '无 #extensionsMenu') + '）')));
+        // v2.65.0：入口按「显示界面开关」的设置如实报告（扩展菜单项 = 主入口，强制开启）
+        if (b.entries && b.entries.installed) {
+            const ins = b.entries.installed;
+            const 名 = b.entries.labels || {};
+            const on = ['menu', 'qr', 'float', 'topbar'].filter((k) => ins[k]).map((k) => 名[k] || k);
+            const off = ['topbar', 'qr', 'float'].filter((k) => !ins[k]).map((k) => 名[k] || k);
+            lines.push('入口：' + (on.length ? on.join(' · ') : '（无）') + (off.length ? '（未显示：' + off.join(' · ') + '）' : ''));
+        } else if (b.menu) {
+            lines.push('菜单入口：' + (b.menu.installed ? '已加入扩展菜单（魔杖）' : '未加入（' + (b.menu.menuFound ? '插入失败' : '无 #extensionsMenu') + '）'));
+        }
     }
     if (extra && extra.i18n) lines.push('语言：' + extra.i18n.locale + ' · 词条 ' + extra.i18n.keys + ' 条 · 注册 ' + (extra.i18n.registered.ok ? extra.i18n.registered.locales.join('/') : '未注册'));
     if (extra && extra.extract) {

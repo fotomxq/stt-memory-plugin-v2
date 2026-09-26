@@ -2412,6 +2412,19 @@ export function bindOverlay() {
                     // v2.35.0：瞬态键（「分组名」「已存分组」）**不落配置也不重绘** —— V1 同样跳过它们
                     //   （v1.206 26280/26692），且重绘会清空用户正在输入的分组名。
                     if (applied && applied.transient) return;
+                    // v2.65.0：「扩展设置抽屉卡片」开关立即生效（挂载 / 卸载抽屉卡片）
+                    if (key === 'uiShowDrawer' && typeof hooks.showDrawer === 'function') { try { void hooks.showDrawer(raw); } catch (e) { /* 忽略 */ } }
+                    renderPanel();
+                    return;
+                }
+                if (tg.dataset.fttLoc !== undefined) {
+                    // v2.65.0（V1 v1.206 `settingsApplyAll` 同口径）：`data-ftt-loc="<入口>"` 写 `cfg.buttonLocations[<入口>]`
+                    //   并**立即重建/移除**对应入口（扩展菜单项由宿主强制开启，配置里的关闭意图不生效）
+                    const loc = String(tg.dataset.fttLoc || '');
+                    const on = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value) !== '';
+                    if (loc) applySettingsControl('buttonLocations.' + loc, on);
+                    if (typeof hooks.syncEntries === 'function') { try { hooks.syncEntries(cfg.buttonLocations); } catch (e) { /* 忽略 */ } }
+                    setNote('入口「' + loc + '」已' + (on ? '显示' : '隐藏'));
                     renderPanel();
                     return;
                 }

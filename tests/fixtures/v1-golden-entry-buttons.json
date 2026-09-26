@@ -1,0 +1,114 @@
+{
+ "generatedFrom": "src/FTT记忆组件-v1.205.js（当前 src 最新版）",
+ "locations": [
+  "topbar",
+  "qr",
+  "float",
+  "menu"
+ ],
+ "labels": {
+  "topbar": "顶栏按钮",
+  "qr": "页面底部按钮",
+  "float": "悬浮按钮",
+  "menu": "扩展菜单项"
+ },
+ "defaults": {
+  "topbar": false,
+  "qr": true,
+  "float": false,
+  "menu": false
+ },
+ "ids": {
+  "topbar": "ftt-topbar-button",
+  "qr": "ftt-qr-button",
+  "float": "ftt-float-button",
+  "menu": "ftt-menu-button"
+ },
+ "section": {
+  "title": "显示界面开关",
+  "rows": [
+   {
+    "loc": "topbar",
+    "label": "顶栏按钮",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   },
+   {
+    "loc": "qr",
+    "label": "页面底部按钮",
+    "hasSwitch": true,
+    "checked": true,
+    "stateText": "显示"
+   },
+   {
+    "loc": "float",
+    "label": "悬浮按钮",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   },
+   {
+    "loc": "menu",
+    "label": "扩展菜单项",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   }
+  ],
+  "hint": "插件自建按钮的位置开关：页面底部按钮默认开启，保存后即时生效；顶栏/悬浮/扩展菜单按需开启。"
+ },
+ "sectionAllOff": {
+  "title": "显示界面开关",
+  "rows": [
+   {
+    "loc": "topbar",
+    "label": "顶栏按钮",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   },
+   {
+    "loc": "qr",
+    "label": "页面底部按钮",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   },
+   {
+    "loc": "float",
+    "label": "悬浮按钮",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   },
+   {
+    "loc": "menu",
+    "label": "扩展菜单项",
+    "hasSwitch": true,
+    "checked": false,
+    "stateText": "隐藏"
+   }
+  ],
+  "hint": "插件自建按钮的位置开关：页面底部按钮默认开启，保存后即时生效；顶栏/悬浮/扩展菜单按需开启。"
+ },
+ "syncAllOn": {
+  "topbar": false,
+  "qr": true,
+  "float": true,
+  "menu": true
+ },
+ "syncDefaults": {
+  "locations": {
+   "topbar": false,
+   "qr": true,
+   "float": false,
+   "menu": false
+  }
+ },
+ "notes": [
+  "V1 的「扩展菜单项」与其他入口一样可关闭（syncButtons: loc.menu 为真才建）——V2 按用户要求**强制开启且不展示开关**（有意差异）。",
+  "V1 的页面底部按钮（qr）默认开启（`loc.qr !== false`），顶栏/悬浮/扩展菜单默认关闭。",
+  "V1 的关闭路径用 `getElementById(id).remove()`；测试桩的 getElementById 不登记动态节点，故 off 方向只在源码层面成立，此处只观察 on 方向。"
+ ]
+}

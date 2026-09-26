@@ -3,6 +3,30 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.65.0（2026-09-26）· 显示界面开关对齐 V1 + 扩展菜单入口强制开启
+
+**用户要求**：「设定的显示界面开关存在问题，应该与 V1 对齐，且根据需求展示对应的按钮入口。
+其中注意，当前扩展中的窗口入口选项是强制开启的，禁止被关闭，且不展示该开关。」
+
+**核对（新建 oracle：`tests/fixtures/gen-v1-golden-entry-buttons.cjs` 直调真实 V1 v1.206）**：
+
+| 项 | V1 | V2（本批前） | V2（本批） |
+| --- | --- | --- | --- |
+| 入口清单 / 名称 | `topbar` 顶栏按钮 / `qr` 页面底部按钮 / `float` 悬浮按钮 / `menu` 扩展菜单项 | 配置键在册但**无人读取** | 四入口全部真实实现并接线 |
+| 默认值 | `{topbar:false, qr:true, float:false, menu:false}` | 同（但无界面） | 同（设置页可改，改完即时生效） |
+| 设置区块 | `.ftt-loc-row` + `data-ftt-loc` + 显示/隐藏 | **没有任何开关**（只有一句占位说明） | 三个开关 + 扩展菜单项「始终开启」一行 + V2 附带的抽屉卡片开关 |
+| 元素 id | `#ftt-topbar-button` / `#ftt-qr-button` / `#ftt-float-button` / `#ftt-menu-button` | 悬浮/菜单用 V2 私有 id（`style.css` 里 V1 的按钮样式**用不上**） | 改用 V1 同名 id 与标记，样式生效 |
+| 扩展菜单项 | 可关闭 | 可关闭（且无说明） | **强制开启、不展示开关**（用户要求） |
+
+**实现**：新增 `ui/entries.js`（V1 `createTopbarButton`/`createQrButton` 逐条移植 + `syncButtons()` 等价物
+`syncEntryButtons()` + `entryButtonsState()`）；`ui/menu.js`/`ui/floating.js` 改用 V1 同名 id 与标记，悬浮按钮区分
+「用户开启 / 可见性兜底」来源；`ui/settings-pages.js` 的「显示界面开关」按 V1 `buttonLocationRowsHtml()` 重写；
+`ui/panel.js` 新增 `data-ftt-loc` 委托（改动即时重建入口）与 `uiShowDrawer` → 抽屉卡片即时挂载/卸载；
+`index.js` 启动即同步入口（菜单项强制）、`/ftt` 状态与 `FTT.entryButtons()` 如实列出各入口。
+
+**门禁**：新增 `tests/unit/entry-buttons.test.js`（14 断言：oracle 对齐 / 四入口真实安装与移除 / 强制项 /
+缺容器如实报告 / 兜底来源保留 / 设定页开关经真实 change 委托即时生效）。详见 `docs/P10ac`。
+
 ## v2.64.0（2026-09-26）· 未摘要楼层跳过机制核对（已有记忆数据的楼层不再需要分析）
 
 **用户报告**：「未摘要楼层存在问题，很多无法分析或不应该分析的会被展示出来，请核对跳过机制。

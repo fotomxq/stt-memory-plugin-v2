@@ -169,14 +169,18 @@ await A('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；c
         && open2 === true && panelInfo().open === false;
 }, panelState());
 
-R.assert('A3 设置分页：渲染 V1 的 14 组子页（子标签 + 当前页控件 + V2 附加设定块）', (() => {
+R.assert('A3 设置分页：渲染 V1 的 14 组子页（子标签 + 当前页控件 + 附加设定块 + 显示界面开关）', (() => {
     const h = panelBodyHtml('settings');
     // v2.34.0：子标签标记改为 V1 同款（`<a href="javascript:void(0)" class="ftt-subtab" data-ftt-subtab="<id>">`）
+    // v2.65.0：「显示界面开关」按 V1 对齐（`data-ftt-loc` 四入口 + 扩展菜单项强制开启不展示开关）
     return h.indexOf('ftt-settings-subtabs') >= 0 && h.indexOf('data-ftt-subtab="base"') >= 0
         && h.indexOf('href="javascript:void(0)" class="ftt-subtab') >= 0
         && h.indexOf('data-ftt-settings-page="base"') >= 0 && h.indexOf('data-ftt-cfg="') >= 0
-        && h.indexOf('V2 附加设定') >= 0 && h.indexOf('data-ftt-v2="autoUpdateCheck"') >= 0
-        && h.indexOf('data-ftt-action="importV1Dry"') >= 0 && h.indexOf('ftt_v2_dims') >= 0;
+        && h.indexOf('附加设定') >= 0 && h.indexOf('data-ftt-v2="autoUpdateCheck"') >= 0
+        && h.indexOf('data-ftt-action="importV1Dry"') >= 0 && h.indexOf('ftt_v2_dims') >= 0
+        && h.indexOf('data-ftt-loc="topbar"') >= 0 && h.indexOf('data-ftt-loc="qr"') >= 0
+        && h.indexOf('data-ftt-loc="float"') >= 0 && h.indexOf('data-ftt-loc="menu"') < 0
+        && h.indexOf('始终开启（主入口，不可关闭）') >= 0;
 })(), '');
 
 await A('A4 未知动作与卸载：未知动作返回失败不抛；unmount 关闭并清空浮层引用', async () => {
