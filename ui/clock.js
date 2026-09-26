@@ -1,15 +1,16 @@
 // ============================================================
 // ui/clock.js —— **剧情时钟界面**（B8-1；结构与文案对齐 V1 `12-UI-编辑与面板.js` 总览时钟区 + `14` 动作）
 // 覆盖：总览「📅 日期 / ⏱ 时间 / 📍 地点」（含 🔒 手工徽标、缺值时的「参考最近记忆」行）+
-//   「✏️ 手工改写日期/时间/地点」工具行与编辑面板（三项输入，宽松解析）+「🩺 时间巡检」状态行与手动巡检按钮。
-// 动作名与 V1 逐字一致：`clockEdit` / `clockEditCancel` / `clockManualSave` / `clockManualClear` / `clockPatrol`。
+//   「✏️ 手工改写日期/时间/地点」工具行与编辑面板（三项输入，宽松解析）；时钟来源行说明「只取最新情节」。
+// 动作名：`clockEdit` / `clockEditCancel` / `clockManualSave` / `clockManualClear` / `clockRepair`。
+//   v2.51.0：`clockPatrol`（时间巡检修复）按用户决定整段移除。
 // ============================================================
 import { clockSrcLabel, clockDegradeLabel, clockTraceSummary, clockTraceLast } from '../core/clock-trace.js';   // v2.37.0 取值追踪
 import { state, notifyHooks } from '../core/model/runtime.js';
 import { clockDateLabel } from '../core/clock.js';
 import { storyClockReference } from '../core/clock-extract.js';
 import {
-    clockManualState, setClockManual, clearClockManual, runClockPatrolRepair, clockPatrolState,
+    clockManualState, setClockManual, clearClockManual,
 } from '../core/clock-patrol.js';
 import { runClockRepair } from '../core/clock-ai.js';
 
@@ -37,22 +38,7 @@ function clockSrcHtml() {
     } catch (e) { return ''; }
 }
 
-/** 时间巡检状态行（V1 `clockPatrolState()`；锚点不可用/只统计时如实说明） */
-function patrolRowHtml() {
-    try {
-        const cp = clockPatrolState();
-        const cpAnchor = cp ? (cp.anchor ? esc(cp.anchor) + (cp.anchorSource ? '（' + esc(clockSrcLabel(cp.anchorSource)) + '）' : '') : '不可用') : '';
-        const cpNote = cp ? (cp.blocked === 'no-anchor' ? ' · ⚠️ 未修改（请先用手工改写设定剧情日期作为锚点）'
-            : (cp.blocked === 'scan-only' ? ' · 仅统计（未修改）' : '')) : '';
-        const cpTxt = cp
-            ? '上次巡检（只针对情节）：扫描 ' + cp.scanned + ' 条 · 异常 ' + cp.found + ' 条 · 已修复 ' + cp.fixed + ' 条' + (cp.remain ? ' · 保留原值 ' + cp.remain + ' 条' : '') + '（锚点 ' + cpAnchor + cpNote + '）'
-            : '尚未巡检（点右侧按钮执行；只巡检情节的日期/时间）';
-        return '<div class="ftt-item ftt-inline"><b class="ftt-pipe-title">🩺 时间巡检</b> <span data-ftt-clock-patrol style="flex:1 1 auto;min-width:0" class="ftt-muted">' + cpTxt + '</span>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="clockPatrol" title="只巡检情节里格式非法的日期与时间（零 AI）；锚点 = 手工改写 > 当前时钟，写回前留全量快照">🩺 时间巡检修复</button></div>';
-    } catch (e) { return ''; }
-}
-
-/** 总览时钟区块（V1 同序：日期 → 时间 → 地点 → 手工工具行/编辑面板 → 在场 → 时钟来源 → 时间巡检） */
+/** 总览时钟区块（v2.51.0：日期 → 时间 → 地点 → 手工工具行/编辑面板 → 在场 → 时钟来源；巡检修复功能已移除） */
 export function clockSectionHtml() {
     const lines = [];
     try {
@@ -94,7 +80,6 @@ export function clockSectionHtml() {
         // v2.37.0：最近一次取值的**一行摘要**（值 ← 来源；含落盘改动），详情见 设定→调试「🕒 时钟取值追踪」
         const tr = (() => { try { return clockTraceSummary(clockTraceLast('resolve')); } catch (e) { return ''; } })();
         if (tr) lines.push('<div class="ftt-muted ftt-w-full" data-ftt-clock-trace>' + esc(tr) + ' · 详情：设定→调试「🕒 时钟取值追踪」</div>');
-        lines.push(patrolRowHtml());
     } catch (e) { /* 忽略 */ }
     return lines.join('\n');
 }
@@ -168,27 +153,62 @@ export async function clockAction(action, payload) {
             }
             return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
         }
-        if (a === 'clockPatrol') {
-            // v2.50.0：手动巡检**默认不再强制**（原实现 `force:true` 会绕过「锚点与库内多数年份冲突」闸门 →
-            //   锚点一旦错就整库改年 → 用户报告「会改错时钟数据」）。现在：
-            //   · 锚点与库内多数年份冲突 → **只统计不修改**，并在提示里给出两条正确出路；
-            //   · 需要按锚点强制整库校正时，显式点提示里的「按锚点强制校正」（`clockPatrolForce`）。
-            const rep = runClockPatrolRepair({});
-            const src = clockSrcLabel(rep.anchorSource);
-            const conflict = rep.anchorConflict;
-            const note = '巡检 ' + rep.scanned + ' 条（锚点 ' + (rep.anchor || '不可用') + (src ? '（' + src + '）' : '') + '）：异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
-                + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.blocked ? ' · ' + rep.blocked : '') + (rep.snap ? '（已留快照）' : '')
-                + (conflict ? ('；⚠️ 锚点年份与库内多数年份冲突（' + conflict.year + '，' + Number(conflict.count) + '/' + Number(conflict.total) + ' 条）→ 已**只统计不修改**：先把锚点改成正确日期（✏️ 手工改写），或点「按锚点强制校正」') : '');
-            return { ok: true, action: a, note, detail: rep };
+        if (a === 'clockRepair') {
+            // B8-3：「AI 结合正文修复日期时间」（V1 同名动作；只改日期与时间字段，逐条过安全闸门）
+            const r = await runClockRepair({});
+            let note;
+            if (r.blocked && r.noAnchor) note = '日期时间修复：缺少可信锚点 → 未调用 AI、未改动数据（请先在总览手工设定剧情日期）';
+            else if (r.blocked) note = '日期时间修复：任务进行中，请稍候再试';
+            else if (r.skipped && r.total === 0) note = '日期时间修复：没有需要修复的日期/时间';
+            else if (r.error === 'no-ai') note = '日期时间修复：AI 未返回内容（未改动数据）';
+            else if (r.error) note = '日期时间修复失败：' + String(r.error).slice(0, 120);
+            else {
+                const parts = [];
+                if (r.applied) parts.push('修正 ' + r.applied + ' 条');
+                if (r.cleared) parts.push('清空 ' + r.cleared + ' 条');
+                if (r.skipped) parts.push('丢弃不合格 ' + r.skipped + ' 条');
+                if (r.unknown) parts.push('无法判定 ' + r.unknown + ' 条');
+                note = '日期时间修复：' + (parts.length ? parts.join(' · ') : 'AI 未给出可用结果') + (r.details && r.details.length ? '；例：' + r.details.slice(0, 3).join('；') : '');
+            }
+            return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
         }
-        if (a === 'clockPatrolForce') {
-            // 显式二次动作：用户明确要求「按当前锚点整库强制校正」（写回前会先建全量快照）
-            const rep = runClockPatrolRepair({ force: true });
-            const conflict = rep.anchorConflict;
-            const note = '按锚点强制校正（锚点 ' + (rep.anchor || '不可用') + '）：异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
-                + (rep.remain ? ' · 保留原值 ' + rep.remain + ' 条' : '') + (rep.snap ? '（已留快照 ' + String(rep.snap).slice(0, 12) + '）' : '')
-                + (conflict ? ('；本次为显式强制：库内多数年份为 ' + conflict.year + '（' + Number(conflict.count) + '/' + Number(conflict.total) + ' 条）') : '');
-            return { ok: true, action: a, note, detail: rep };
+        if (a === 'clockRepair') {
+            // B8-3：「AI 结合正文修复日期时间」（V1 同名动作；只改日期与时间字段，逐条过安全闸门）
+            const r = await runClockRepair({});
+            let note;
+            if (r.blocked && r.noAnchor) note = '日期时间修复：缺少可信锚点 → 未调用 AI、未改动数据（请先在总览手工设定剧情日期）';
+            else if (r.blocked) note = '日期时间修复：任务进行中，请稍候再试';
+            else if (r.skipped && r.total === 0) note = '日期时间修复：没有需要修复的日期/时间';
+            else if (r.error === 'no-ai') note = '日期时间修复：AI 未返回内容（未改动数据）';
+            else if (r.error) note = '日期时间修复失败：' + String(r.error).slice(0, 120);
+            else {
+                const parts = [];
+                if (r.applied) parts.push('修正 ' + r.applied + ' 条');
+                if (r.cleared) parts.push('清空 ' + r.cleared + ' 条');
+                if (r.skipped) parts.push('丢弃不合格 ' + r.skipped + ' 条');
+                if (r.unknown) parts.push('无法判定 ' + r.unknown + ' 条');
+                note = '日期时间修复：' + (parts.length ? parts.join(' · ') : 'AI 未给出可用结果') + (r.details && r.details.length ? '；例：' + r.details.slice(0, 3).join('；') : '');
+            }
+            return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
+        }
+        if (a === 'clockRepair') {
+            // B8-3：「AI 结合正文修复日期时间」（V1 同名动作；只改日期与时间字段，逐条过安全闸门）
+            const r = await runClockRepair({});
+            let note;
+            if (r.blocked && r.noAnchor) note = '日期时间修复：缺少可信锚点 → 未调用 AI、未改动数据（请先在总览手工设定剧情日期）';
+            else if (r.blocked) note = '日期时间修复：任务进行中，请稍候再试';
+            else if (r.skipped && r.total === 0) note = '日期时间修复：没有需要修复的日期/时间';
+            else if (r.error === 'no-ai') note = '日期时间修复：AI 未返回内容（未改动数据）';
+            else if (r.error) note = '日期时间修复失败：' + String(r.error).slice(0, 120);
+            else {
+                const parts = [];
+                if (r.applied) parts.push('修正 ' + r.applied + ' 条');
+                if (r.cleared) parts.push('清空 ' + r.cleared + ' 条');
+                if (r.skipped) parts.push('丢弃不合格 ' + r.skipped + ' 条');
+                if (r.unknown) parts.push('无法判定 ' + r.unknown + ' 条');
+                note = '日期时间修复：' + (parts.length ? parts.join(' · ') : 'AI 未给出可用结果') + (r.details && r.details.length ? '；例：' + r.details.slice(0, 3).join('；') : '');
+            }
+            return { ok: !!(r.applied || r.cleared || (r.made > 0)), action: a, note, detail: r };
         }
         return { ok: false, action: a, note: '未知时钟动作：' + a };
     } catch (e) {
@@ -199,9 +219,9 @@ export async function clockAction(action, payload) {
 }
 
 /** 时钟动作名（供面板分发；与 V1 逐字一致） */
-export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockPatrolForce', 'clockRepair']);
+export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockRepair']);
 
 /** 巡检/锚点诊断（FTT.* 与调试用） */
 export function clockUiInfo() {
-    return { editing: clockEditing, patrol: clockPatrolState(), manual: clockManualState() };
+    return { editing: clockEditing, manual: clockManualState() };
 }
