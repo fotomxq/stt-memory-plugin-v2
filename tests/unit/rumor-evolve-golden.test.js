@@ -589,11 +589,12 @@ await A('Y5 mergeRumorListBy（model 层导出）：按签名并集、保留先�
         && J(mergeRumorListBy([{ t: 1 }, { t: 1 }, { t: 2 }], [], x => String(x.t))) === J([{ t: 1 }, { t: 2 }]),
     '');
 
-await A('Y6 模块契约：导入零副作用（导入时 state 仍为 null）且导出清单完整（35 项、全部为函数）', () => {
-    const want = ['clearRumors', 'flattenRumor', 'mergeRumorListBy', 'rumorActiveMediaCount', 'rumorAdvancePending', 'rumorAgeMedia', 'rumorAiHas', 'rumorApplyAiDelta', 'rumorChainPush', 'rumorCommitPending', 'rumorDayDiff', 'rumorDecayScore', 'rumorEnabledOn', 'rumorEveryRounds', 'rumorExpired', 'rumorFermentDelta', 'rumorInjLine', 'rumorMarkParallelChange', 'rumorMaybeStartChange', 'rumorMediaWeight', 'rumorMergeAiInto', 'rumorNeedRounds', 'rumorParallelLink', 'rumorParallelLinkScore', 'rumorRoll', 'rumorStartPending', 'rumorStoryDate', 'rumorTickAdvance', 'rumorTickState', 'rumorVariantFor', 'runRumorDecay', 'runRumorEvolve', 'runRumorEvolveNow', 'scheduleRumorDecay', 'scheduleRumorEvolve'];
+await A('Y6 模块契约：导入零副作用（导入时 state 仍为 null）且导出清单完整（37 函数 + 2 常量；v2.70.0 新增时间判断拆解）', () => {
+    const want = ['clearRumors', 'flattenRumor', 'mergeRumorListBy', 'rumorActiveMediaCount', 'rumorAdvancePending', 'rumorAgeMedia', 'rumorAgeSpeed', 'rumorAiHas', 'rumorApplyAiDelta', 'rumorChainPush', 'rumorCommitPending', 'rumorDayDiff', 'rumorDecayBreakdown', 'rumorDecayScore', 'rumorEnabledOn', 'rumorEveryRounds', 'rumorExpired', 'rumorFermentDelta', 'rumorInjLine', 'rumorMarkParallelChange', 'rumorMaybeStartChange', 'rumorMediaWeight', 'rumorMergeAiInto', 'rumorNeedRounds', 'rumorParallelLink', 'rumorParallelLinkScore', 'rumorRoll', 'rumorStartPending', 'rumorStoryDate', 'rumorTickAdvance', 'rumorTickState', 'rumorVariantFor', 'runRumorDecay', 'runRumorEvolve', 'runRumorEvolveNow', 'scheduleRumorDecay', 'scheduleRumorEvolve'];
+    const consts = ['RUMOR_AGE_HORIZON_DAYS', 'RUMOR_AGE_MAX_BOOST'];
     const have = Object.keys(RU).sort();
-    return STATE_AT_IMPORT === null && J(have) === J(want) && have.length === 35
-        && have.every(k => typeof RU[k] === 'function');
+    return STATE_AT_IMPORT === null && J(have) === J(want.concat(consts).sort()) && have.length === 39
+        && want.every(k => typeof RU[k] === 'function') && consts.every(k => typeof RU[k] === 'number');
 }, '');
 
 await A('Y7 确定性：全量 V2 结果连跑两次逐字节一致（时间戳已由投影剔除）',

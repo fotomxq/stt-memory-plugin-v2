@@ -384,13 +384,70 @@ function scheduleRumorEvolve(reason) {
     } catch (e) { }
 }
 // —— 传言衰退（复用 calcTimeDecay 通用多级时间衰退；参数与平行事件同款） ——
-function rumorDecayScore(r) {
+// v2.70.0（用户要求）：「传言的衰退系数增加**时间判断**，如果**发生时间越久远，衰退速度越快**」。
+//   原口径（V1 v1.192 原样）只按**现实墙钟**上的 `updatedAt` 衰减，而 `updatedAt` 会在机械演化 / 平行联动 /
+//   裂变 / AI 更新时被刷新（`Date.now()`）→ **越老的传言只要还在被提及就永远不会消退**。
+//   现在在原有系数之上再乘一个**剧情时间久远度**加速项：以「发生时间」=（该说法的 `date` 与各载体 `at` 中**最早**者）
+//   相对**当前剧情时钟**的差距计速，满 `RUMOR_AGE_HORIZON_DAYS`（1 年剧情时间）时把系数翻倍（上限 ×2）。
+//   无剧情时钟 / 无发生日期 / 发生日期在未来 → 加速项为 0（完全保持原行为，不受影响）。
+const RUMOR_AGE_HORIZON_DAYS = 365;   // 剧情时间：满 1 年 → 加速拉满（与 calcTimeDecay 的「年」量级一致）
+const RUMOR_AGE_MAX_BOOST = 1;        // 乘法加速上限：墙钟系数最多 ×(1+1)=2
+const RUMOR_AGE_MIN_ADD = 0.5;        // 加法下限：满额时直接 +0.5 —— 保证「久远」本身就能推动消退（不依赖墙钟相对位置）
+const RUMOR_DAY_MS = 86400000;
+
+/** 传言的「发生时间」（剧情时间 ms）：`date`（该说法日期）与载体 `at`（各载体日期）中最早的有效日期 */
+function rumorStoryDateMs(r) {
+    try {
+        const cands = [];
+        const own = storyDateMsFromStr(clockDateTrim(String((r && r.date) || '')));
+        if (Number.isFinite(own)) cands.push(own);
+        const media = Array.isArray(r && r.media) ? r.media : [];
+        for (const m of media) {
+            const t = storyDateMsFromStr(clockDateTrim(String((m && m.at) || '')));
+            if (Number.isFinite(t)) cands.push(t);
+        }
+        if (!cands.length) return NaN;
+        return Math.min.apply(null, cands);
+    } catch (e) { return NaN; }
+}
+
+/**
+ * 剧情时间久远度（0~1；越久远越大）—— 用户要求的「时间判断」。
+ * 0 = 无法判断（无剧情时钟 / 无发生日期 / 发生在未来）或刚刚发生；1 = 距今 ≥ 1 年剧情时间。
+ */
+function rumorAgeSpeed(r) {
+    try {
+        const now = storyDateMsFromStr(clockDateTrim(getStoryNow()));
+        if (!Number.isFinite(now)) return 0;
+        const at = rumorStoryDateMs(r);
+        if (!Number.isFinite(at)) return 0;
+        const days = (now - at) / RUMOR_DAY_MS;
+        if (!(days > 0)) return 0;
+        return Math.min(1, days / RUMOR_AGE_HORIZON_DAYS);
+    } catch (e) { return 0; }
+}
+
+/** 衰退系数拆解（诊断 / 测试 / 日志用）：base = V1 原口径，speed = 剧情时间久远度，score = base × (1 + speed) */
+function rumorDecayBreakdown(r) {
     const list = state.rumors || [];
     const ts = list.map(x => Number(x && x.updatedAt) || 0).filter(t => t > 0);
     const earliest = ts.length ? Math.min.apply(null, ts) : 0;
     const latest = ts.length ? Math.max.apply(null, ts) : (Number(r && r.updatedAt) || 0);
-    return calcTimeDecay(earliest, latest, Date.now(), Number(r && r.updatedAt) || 0, list.length);
+    const base = calcTimeDecay(earliest, latest, Date.now(), Number(r && r.updatedAt) || 0, list.length);
+    const speed = rumorAgeSpeed(r);
+    const now = storyDateMsFromStr(clockDateTrim(getStoryNow()));
+    const at = rumorStoryDateMs(r);
+    const ageDays = (Number.isFinite(now) && Number.isFinite(at)) ? Math.floor((now - at) / RUMOR_DAY_MS) : -1;
+    // v2.70.0 组合口径：**乘法加速**（系数随久远度放大，最多 ×2）+ **加法下限**（满额 +0.5）
+    //   → 久远传言即便墙钟上刚被刷新过，也会被推到接近/达到移除阈值；新传言完全不变。
+    const score = Math.min(1, Math.max(0, base * (1 + RUMOR_AGE_MAX_BOOST * speed) + RUMOR_AGE_MIN_ADD * speed));
+    return {
+        base: base, speed: speed, boost: 1 + RUMOR_AGE_MAX_BOOST * speed, add: RUMOR_AGE_MIN_ADD * speed, score: score,
+        date: String((r && r.date) || ''), ageDays: ageDays, horizonDays: RUMOR_AGE_HORIZON_DAYS,
+    };
 }
+
+function rumorDecayScore(r) { return rumorDecayBreakdown(r).score; }
 function rumorExpired(r) {
     if (!cfg || cfg.rumorDecayEnabled === false) return false;
     const cutoff = Number(cfg.rumorDecayCutoff) != null ? Number(cfg.rumorDecayCutoff) : 0.95;
@@ -427,7 +484,12 @@ async function runRumorDecay(opts) {
             try { saveState(); } catch (e) { }
         }
         try {
-            dbgLog('摘要', { action: '传言衰退', n, cap, overRatio, cutoff: Number(cfg.rumorDecayCutoff), removed: expired.length, subjects: expired.slice(0, 6).map(x => x.subject || x.id || '') });
+            dbgLog('摘要', {
+                action: '传言衰退', n, cap, overRatio, cutoff: Number(cfg.rumorDecayCutoff), removed: expired.length,
+                subjects: expired.slice(0, 6).map(x => x.subject || x.id || ''),
+                // v2.70.0：逐条给出「原系数 / 剧情时间久远度 / 加速后系数」，便于核对时间判断是否生效
+                detail: expired.slice(0, 6).map(x => { try { return Object.assign({ subject: String(x.subject || x.id || '') }, rumorDecayBreakdown(x)); } catch (e) { return null; } }).filter(Boolean),
+            });
         } catch (e) { }
         if (expired.length) {
             const remain = (state.rumors || []).length;
@@ -606,8 +668,9 @@ export {
     rumorStartPending, rumorAdvancePending, rumorCommitPending, rumorMaybeStartChange,
     // —— 演化主流程 / 轮次推进 ——
     runRumorEvolve, runRumorEvolveNow, rumorTickAdvance, rumorMarkParallelChange, scheduleRumorEvolve,
-    // —— 衰退 ——
-    rumorDecayScore, rumorExpired, scheduleRumorDecay, runRumorDecay,
+    // —— 衰退（v2.70.0：新增剧情时间久远度加速项与拆解诊断） ——
+    rumorDecayScore, rumorExpired, scheduleRumorDecay, runRumorDecay, rumorAgeSpeed, rumorDecayBreakdown,
+    RUMOR_AGE_HORIZON_DAYS, RUMOR_AGE_MAX_BOOST,
     // —— AI 补写窄契约 / 清空 / 编辑器回填 ——
     rumorAiHas, rumorMergeAiInto, rumorApplyAiDelta, clearRumors, flattenRumor,
 };

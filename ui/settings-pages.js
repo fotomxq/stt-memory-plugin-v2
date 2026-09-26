@@ -569,7 +569,7 @@ export const SETTINGS_CONTROLS = {
         {
             "key": "rumorDecayEnabled",
             "label": "启用传言衰退",
-            "hint": "超出存储上限后按保留度淘汰旧传言",
+            "hint": "超出存储上限后按保留度淘汰旧传言；发生越久远消退越快",
             "type": "checkbox"
         },
         {
@@ -581,7 +581,7 @@ export const SETTINGS_CONTROLS = {
         {
             "key": "rumorDecayCutoff",
             "label": "移除阈值",
-            "hint": "默认 0.95：保留度低于该值即移除",
+            "hint": "默认 0.95：系数 ≥ 该值即移除（系数含剧情时间久远度）",
             "type": "text"
         },
         {
@@ -1089,7 +1089,7 @@ export function analyzePageHtml(controls) {
 export function rumorsPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     return [
-        shortHintHtml('传言：记录 → 按剧情轮次演化 → 注入；发酵到阈值可裂变。'),
+        shortHintHtml('传言：记录 → 按剧情轮次演化 → 注入；发酵可裂变，发生越久远消退越快。'),
         list.map((c) => settingsControlHtml(c)).join('\n'),
         hintDetailsHtml('参数说明',
             '<div>' + esc('裂变 = 发酵度达到阈值后按概率分裂出新传言（可与平行事件联动）；衰退 = 超出存储上限后按保留度淘汰旧传言。') + '</div>'
