@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.68.0",
+  "version": "2.69.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.69.0",
+      "date": "2026-09-26",
+      "title": "生日日期异常误判修复（自设纪元 / 长生设定不再判超龄）",
+      "points": [
+        "① 真根因（V1 原样的现实世界假设）：snapshotBirthAnomaly() 的 overage 判据是 calcAge(出生, 剧情锚点) > 120 && !(出生年…",
+        "② 影响面（用户实际看到的）：角色档案列表挂「⚠️ 出生日期异常」角标 → 角色页「🔧 修复角色」出现「（⚠️N 优先）」→ buildCharacterRepairQueue…",
+        "③ 修复（只放宽 overage，两条豁免）：新增 snapshotLongLived(s)（只看档案内容：species/race/title/occupation/famil…"
+      ]
+    },
     {
       "version": "2.68.0",
       "date": "2026-09-26",
