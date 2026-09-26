@@ -415,7 +415,7 @@ function overviewBody() {
     lines.push('<div class="ftt-row">'
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
         + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订">🛠 自动修复</button>'
-        + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
+        + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn" title="按向量 / JS 抽取召回相关记忆并刷新注入（零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 提取记忆</button>'
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
         + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
@@ -1649,12 +1649,28 @@ export async function panelAction(action, payload) {
                 ? ('摘要完成：' + r.segments + ' 段 · 读取楼层 ' + r.floors + ' · 新增 ' + r.added + ' 条' + (r.aborted ? '（中断：剩余 ' + r.aborted + ' 段未分析）' : ''))
                 : ('未完成：' + String((r && r.reason) || '未知') + (r && r.failed ? '（失败 ' + r.failed + ' 段）' : '')));
         } else if (a === 'extractNow') {
-            if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return { ok: false, reason: 'no-hook' }; }
-            setNote('分析中…');
-            const r = await hooks.extract({});
-            setNote(r && Array.isArray(r.results)
-                ? ('分析完成：成功 ' + r.done + ' / ' + r.results.length + (r.note ? '（' + r.note + '）' : ''))
-                : (r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('未完成：' + String((r && r.reason) || '未知'))));
+            // v2.74.0（用户要求）：「提取记忆」= **发送前召回**（向量 → JS 抽取 → AI 分析，前两层零 AI 为主）——
+            //   **不占分析管道**、可与摘要等长任务并行；结果按开关（`提取记忆`页各层 + 注入开关）写入提示词注入。
+            //   `hooks.recall` 未接线时回落到旧的 AI 摘要入口（`hooks.extract`），保证任何宿主形态都可用。
+            if (typeof hooks.recall === 'function') {
+                setNote('召回中…（向量 / JS 为主，不占用分析管道）');
+                const r = await hooks.recall({});
+                const layerLabel = { vector: '向量层', js: 'JS 抽取层', ai: 'AI 分析层' }[String((r && r.hitLayer) || '')] || '';
+                setNote(r && r.ok
+                    ? ('召回完成：' + Number((r && r.count) || 0) + ' 条' + (layerLabel ? '（' + layerLabel + '）' : '')
+                        + ' · 注入 ' + Number((r && r.chars) || 0) + ' 字 · ' + Number((r && r.ms) || 0) + 'ms'
+                        + (r && r.busy ? '（与在途长任务并行）' : ''))
+                    : ('召回未完成：' + String((r && r.reason) || '未知')));
+            } else if (typeof hooks.extract === 'function') {
+                setNote('分析中…');
+                const r = await hooks.extract({});
+                setNote(r && Array.isArray(r.results)
+                    ? ('分析完成：成功 ' + r.done + ' / ' + r.results.length + (r.note ? '（' + r.note + '）' : ''))
+                    : (r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('未完成：' + String((r && r.reason) || '未知'))));
+            } else {
+                setNote('提取入口未就绪');
+                return { ok: false, reason: 'no-hook' };
+            }
         } else if (a === 'abortAnalysis' || a === 'abort') {
             const r = (typeof hooks.abort === 'function') ? hooks.abort() : { ok: false };
             setNote(r && r.busy ? '已请求中断：当前段完成后停止' : '当前没有正在运行的分析任务');

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.73.0",
+  "version": "2.74.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.74.0",
+      "date": "2026-09-26",
+      "title": "提取记忆不占管道：向量/JS 召回可并行、发送前提取并按开关注入",
+      "points": [
+        "① 问题：「📤 提取记忆」按钮走的是 runExtract = AI 摘要管道（analyzeFloors）——它会占用忙碌位（extractState.busy），与「⚡ 立…",
+        "② 新入口 runRecallNow()：发送前召回（pushMemoryInject），不设置也不检查摘要忙碌位 → 可与摘要 / 修复 / 推演等长任务并行；「📤 提取记忆…",
+        "③ 单飞（single-flight）并行安全：pushMemoryInject 同一时刻只构建一次，并发调用者共享同一次结果（pushStats().joined 计数），既不…"
+      ]
+    },
     {
       "version": "2.73.0",
       "date": "2026-09-26",

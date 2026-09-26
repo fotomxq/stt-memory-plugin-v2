@@ -3,6 +3,22 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.74.0（2026-09-26）· 提取记忆不占管道：向量/JS 召回可并行、发送前提取并按开关注入
+
+**用户要求**：「提取记忆应该**不占用管道**，因为提取记忆用的是**独立的向量或固定 JS 为主**。确保提取记忆可以**并行处理**，而且在**用户请求发送前提取好记忆**，按照**开关约定注入提示词信息**。」
+
+**① 问题**：「📤 提取记忆」按钮走的是 `runExtract` = **AI 摘要管道**（`analyzeFloors`）——它会占用忙碌位（`extractState.busy`），与「⚡ 立即 AI 摘要」互相排队；而它本该是**发送前召回**（向量 → JS 抽取 → AI 分析，前两层零 AI 的本地能力）。
+
+**② 新入口 `runRecallNow()`**：发送前召回（`pushMemoryInject`），**不设置也不检查**摘要忙碌位 → 可与摘要 / 修复 / 推演等长任务**并行**；「📤 提取记忆」按钮改走它（`hooks.recall`，宿主未接线时回落旧入口，不会「入口未就绪」），note 直接给出「召回完成：N 条（层级）· 注入 X 字 · Yms（与在途长任务并行）」。
+
+**③ 单飞（single-flight）并行安全**：`pushMemoryInject` 同一时刻只构建一次，并发调用者**共享同一次结果**（`pushStats().joined` 计数），既不重复消耗向量/AI 请求，也不会互相覆盖注入（seq 令牌仍在）。
+
+**④ 长任务在途自动跳过 AI 层**：`host/extract-flow.js` 在 `aiBusy()` 为真时默认把 `ai` 层从本次召回中剔除（向量/JS 层照常），避免与在途任务抢 AI 通道；诊断场景可用 `allowAiDuringBusy: true` 强制保留。
+
+**⑤ 发送前提取 + 按开关注入**（沿用并明确）：拦截器 `fttGenerateInterceptor` 在放行前 `await` 一次召回刷新，注入写入后才继续；闸门仍是 `injectCurrentPrompt` / `timelyAnalysis`（都关 = 不推送也不清空已有注入），层开关 `useVector` / `jsExtractEnabled` / `useKeywordFlow` 决定走哪一层；`readInject()` 可核对注入体。
+
+**门禁**：新增 `tests/unit/recall-parallel.test.js`（14 断言：并发只构建一次且结果一致 / 注入只推一次 / 长任务在途召回照常且不改忙碌位 / 召回前后 `extractBusy()` 均 false / 旧入口仍是 AI 管道 / 忙位跳过 AI 层而空闲时调用 / 注入闸门与层开关 / 拦截器发送前完成且永不 abort / 面板按钮走召回与回落 / 诊断字段 / 按钮文案）。详见 `docs/P10al`。
+
 ## v2.73.0（2026-09-26）· 设定 → 分析记忆：UI 布局分组（补齐最底部一组）
 
 **用户要求**：「新版本，分析记忆的 UI 布局需优化，合理分组，**尤其是最底部的一组设定**。」
