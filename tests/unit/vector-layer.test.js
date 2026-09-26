@@ -247,7 +247,8 @@ A('U1 提取页含 V1 的三层结构 + Embedding / Rerank 区块 + 检索参数
         && h.indexOf('data-ftt-api-pfx="emb"') >= 0 && h.indexOf('data-ftt-api-pfx="rerank"') >= 0
         && h.indexOf('data-ftt-api-kind="embedding"') >= 0 && h.indexOf('data-ftt-api-kind="rerank"') >= 0
         && h.indexOf('data-ftt-action="vectorCacheClear"') >= 0
-        && h.indexOf('召回参数') >= 0 && h.indexOf('data-ftt-cfg="charBudget"') >= 0;
+        // v2.76.0：召回参数再分三组（注入预算 / 召回上限 / 其它召回行为）
+        && h.indexOf('注入预算') >= 0 && h.indexOf('召回上限（各大类注入条数）') >= 0 && h.indexOf('data-ftt-cfg="charBudget"') >= 0;
 })(), settingsPageHtml('extract', '').slice(0, 200));
 
 A('U2 提取页不再只渲染裸控件：Embedding/Rerank 区块给出「当前生效 / 尚未可用」的真实状态', (() => {

@@ -94,6 +94,12 @@ export function extractPageHtml(controls, renderControl) {
     const find = (k) => list.filter((c) => String(c.key) === k)[0];
     const rows = (keys) => keys.map((k) => { const c = find(k); return c ? settingsControlHtml(c) : ''; }).filter(Boolean).join('\n');
     const rest = list.filter((c) => LAYER_KEYS.indexOf(String(c.key)) < 0);
+    // v2.76.0：召回参数再分三组（预算 / 条数上限 / 其它召回行为）
+    const CAP_KEYS = ['maxAtoms', 'atomsRecentRatio', 'maxStates', 'stateMinPerSubject', 'stateMaxPerSubject',
+        'maxSnapshots', 'maxMemories', 'maxItems', 'maxPlans', 'maxSuspense', 'maxScenes', 'maxConcepts', 'maxParallelsInj', 'maxCurrencies'];
+    const budget = rest.filter((c) => String(c.key) === 'charBudget');
+    const caps = rest.filter((c) => CAP_KEYS.indexOf(String(c.key)) >= 0);
+    const other = rest.filter((c) => budget.indexOf(c) < 0 && caps.indexOf(c) < 0);
     const vec = (() => { try { return vectorLayerInfo(); } catch (e) { return { embedding: { ok: false, error: '读取失败' }, rerank: { ok: false, error: '读取失败' }, rerankActive: false }; } })();
     const ai = (() => { try { return aiLayerInfo(); } catch (e) { return { kw: {}, mem: {} }; } })();
     const cache = (() => { try { return vectorCacheStats(); } catch (e) { return { memory: 0, indexedDb: false, fallback: '' }; } })();
@@ -154,9 +160,22 @@ export function extractPageHtml(controls, renderControl) {
         + '<span class="ftt-muted">未选 = 跟随主配置。当前通道：' + esc(API_CHANNEL_LABELS[ai.mem && ai.mem.channel] || '主配置') + '</span></div>',
         '</div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">召回参数</div>',
-        rest.map((c) => settingsControlHtml(c)).join('\n'),
+        // v2.76.0（用户要求）：「设定-提取记忆中很多设置根本不是召回处理用的」→ 非召回项已搬到「分析记忆」页
+        //   （货币记录开关 + 各大类单条字数上限）。本页只留**召回**相关，并再分三组：
+        //   注入预算（真正的上限）/ 召回上限（各大类注入条数）/ 其它召回行为。
+        '<div class="ftt-section"><div class="ftt-sec-title">注入预算</div>',
+        budget.map((c) => settingsControlHtml(c)).join('\n'),
+        shortHintHtml('预算才是注入体的真正上限：按优先级择优填充，单条放不下整条跳过（不截断条目）。'),
         '</div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">召回上限（各大类注入条数）</div>',
+        caps.map((c) => settingsControlHtml(c)).join('\n'),
+        shortHintHtml('这里的条数只是候选上限；默认已按 2000-3000 条库存规模放宽，预算不足时按优先级截取。'),
+        '</div>',
+
+        (other.length
+            ? '<div class="ftt-section"><div class="ftt-sec-title">其它召回行为</div>' + other.map((c) => settingsControlHtml(c)).join('\n') + '</div>'
+            : ''),
     ].join('\n');
 }
 

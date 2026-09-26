@@ -35,7 +35,8 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v2.51.0 时钟改版：基础页删除 10 个废弃时钟设定 → 总数 183 → 173、base 21 → 11
-    return info.totalControls === 173 && m.base === 11 && m.feed === 37 && m.analyze === 5 && m.extract === 34
+    // v2.76.0：12 个非召回控件（货币记录开关 + 各大类单条字数上限）由「提取记忆」迁到「分析记忆」→ analyze 5→17、extract 34→22（总数不变）
+    return info.totalControls === 173 && m.base === 11 && m.feed === 37 && m.analyze === 17 && m.extract === 22
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 5;   // v2.42.0：调试页 +4（级别/交互/宿主/详细）
 })(), settingsPagesInfo());
 
@@ -88,7 +89,7 @@ R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签�
     return J(tail) === J(want) && badDef.length === 0 && renderOk;
 })(), () => SETTINGS_CONTROLS.feed.slice(-22).map((c) => c.key));
 
-R.assert('P2d 提取页补齐 V1「各大类单条字数上限」10 个控件：键/标签按 V1、写入 `cfg.dimCharLimits.*` 且**真实影响入库硬截断**（dimCap）', (() => {
+R.assert('P2d v2.76.0：「各大类单条字数上限」10 个控件归入**分析记忆**页（键/标签按 V1、写入 `cfg.dimCharLimits.*` 且**真实影响入库硬截断** dimCap）', (() => {
     const want = [
         ['dimCharLimits.atoms', '情节正文上限'], ['dimCharLimits.states', '状态值上限'],
         ['dimCharLimits.snapshots', '角色档案累计上限'], ['dimCharLimits.memories', '记忆正文上限'],
@@ -96,7 +97,7 @@ R.assert('P2d 提取页补齐 V1「各大类单条字数上限」10 个控件：
         ['dimCharLimits.suspense', '悬念内容上限'], ['dimCharLimits.scenes', '场景描述上限'],
         ['dimCharLimits.concepts', '概念内容上限'], ['dimCharLimits.parallels', '平行事件(推演)上限'],
     ];
-    const ex = SETTINGS_CONTROLS.extract.map((c) => [String(c.key), String(c.label)]);
+    const ex = SETTINGS_CONTROLS.analyze.map((c) => [String(c.key), String(c.label)]);
     const tail = ex.slice(ex.length - want.length);
     // 点路径读写 + 内核真的用它做硬截断（long → 截到新上限）
     const before = readControl('dimCharLimits.atoms');
@@ -107,7 +108,7 @@ R.assert('P2d 提取页补齐 V1「各大类单条字数上限」10 个控件：
     applySettingsControl('dimCharLimits.atoms', before);
     return J(tail) === J(want) && Number(after) === 30 && capped.length === 30
         && Number(readControl('dimCharLimits.atoms')) === Number(before);
-})(), () => SETTINGS_CONTROLS.extract.slice(-10).map((c) => c.key));
+})(), () => SETTINGS_CONTROLS.analyze.slice(-10).map((c) => c.key));
 
 R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、点路径键（storage.* / dimCharLimits.*）逐层在 defaultCfg 内（提取零漏配）', (() => {
     const bad = [];

@@ -33,14 +33,25 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     //   删除项必须在 V2 中**不存在**且不落入「V2 专有键」白名单。
     const REMOVED_V1_KEYS = ['clockForceDegrade', 'clockAnomalyJumpYears', 'clockAutoPatrol', 'clockPatrolAutoFix',
         'clockStoryDayEpoch', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative'];
+    // v2.76.0（用户要求）：「各大类支持的默认词条数量限制提高，整体控制在 2000-3000 原子数量支持即可」——
+    //   以下 25 个**条数/存储上限**的默认值**有意提高**（V1 逐值相同的口径在此让位于该要求）：
+    //   注入条数上限合计 2980（落在 2000-3000），存储上限合计 5600（承载 2-3k 条库存的任意分布）。
+    const RAISED_CAP_KEYS = ['maxAtoms', 'maxMemories', 'maxStates', 'maxSnapshots', 'maxItems', 'maxPlans', 'maxSuspense',
+        'maxScenes', 'maxConcepts', 'maxNpcs', 'maxParallels', 'maxParallelsInj', 'maxCurrencies', 'maxRumors',
+        'storeMaxAtoms', 'storeMaxMemories', 'storeMaxSnapshots', 'storeMaxItems', 'storeMaxConcepts', 'storeMaxScenes',
+        'storeMaxPlans', 'storeMaxSuspense', 'storeMaxNpcs', 'storeMaxRumors', 'storeMaxCurrencies'];
     const v1 = G.defaultCfg || {};
-    const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));
+    const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
+        && RAISED_CAP_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));
     const stillThere = REMOVED_V1_KEYS.filter((k) => k in defaultCfg);
     const v1s = v1.storage || {}, cur = defaultCfg.storage || {};
     const storageDiff = Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k]));
     const storageExtra = Object.keys(cur).filter((k) => !(k in v1s));
     const extra = Object.keys(defaultCfg).filter((k) => !(k in v1));
+    // 白名单内的键必须**确实**与 V1 不同（防白名单被滥用成「随便改」）
+    const raised = RAISED_CAP_KEYS.filter((k) => (k in v1) && Number(defaultCfg[k]) > Number(v1[k]));
     return Object.keys(v1).length === 217 && diff.length === 0 && stillThere.length === 0
+        && raised.length === RAISED_CAP_KEYS.length
         && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length
         && storageDiff.length === 0 && J(storageExtra.slice().sort()) === J(V2_STORAGE_ONLY.slice().sort())
         && cur.stateFileSlim === false && cur.stateFileGzip === false;

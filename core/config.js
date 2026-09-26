@@ -711,7 +711,7 @@ const defaultCfg = {
     autoRepair: false,
     parallelWeaveEnabled: true,  // v1.58：提取记忆后自动调度「交织管线」推演/更新平行事件
     parallelApiPreset: '',        // v1.92：平行事件（推演/推进）分析渠道预设；留空 = 主渠道
-    maxParallels: 30,            // v1.59：平行事件上限（默认 30，超出自动挤出最旧；设定可调）
+    maxParallels: 200,            // v1.59：平行事件上限（默认 30，超出自动挤出最旧；设定可调）
     parallelDecayEnabled: true,  // v1.60/1.61：平行事件衰退机制（多级时间衰退，年月日时综合；条目数超上限×比例触发清扫，衰退值达阈值自动移除）
     parallelDecayRatio: 0.5,     // 触发比例：条目数 > 上限×该比例 时触发衰退清扫
     parallelDecayCutoff: 0.95,    // v1.145：0.9→0.95（调低清扫强度，更难被清）
@@ -733,35 +733,39 @@ const defaultCfg = {
     atomCompactBatch: 40,        // 单轮批次数上限（防单次 API 调用过多）
     injectCurrentPrompt: true,
     charBudget: 8000,
-    maxAtoms: 16,
+    // v2.76.0（用户要求）：「各大类支持的默认词条数量限制提高，整体控制在 2000-3000 原子数量支持即可，
+    //   用户可自行修改现有设定来提升。」→ 注入条数上限整体上调（合计 2980，落在 2000-3000）：
+    //   **条数只是候选上限**，真正决定注入体大小的是 `charBudget`（默认 8000 字）—— 条数放宽后
+    //   由预算按优先级择优填充，大库不再被「16 条情节」这类小上限截住。
+    maxAtoms: 800,
     // v1.175：情节注入的两段配额比例（近期档 = 只按剧情时间取最新，不受关键词门槛限制；其余走机制档）
     //   0 = 关闭近期档（全部按原机制；仍保证输出按时间从早到晚）；1 = 只取最新（机制档让位）
     atomsRecentRatio: 0.4,
-    maxMemories: 8,
+    maxMemories: 400,
     // v1.40：各注入维度独立条数上限（预算内轮询均等分布，单条超预算则整条跳过不截断）
-    maxStates: 30,
+    maxStates: 400,
     // v1.101：状态固定模板 —— 每角色 最少/最多 状态条数（超出自动裁掉最旧；最少为提示词要求，不自动生成）
     stateMinPerSubject: 1,
     stateMaxPerSubject: 10,
-    maxSnapshots: 10,
-    maxItems: 16,
-    maxPlans: 8,
-    maxSuspense: 8,
-    maxScenes: 24,
-    maxConcepts: 10,
-    maxNpcs: 24,                  // v1.143：名册条数上限（此前无名册上限，靠提示词约束）
+    maxSnapshots: 200,
+    maxItems: 200,
+    maxPlans: 120,
+    maxSuspense: 120,
+    maxScenes: 200,
+    maxConcepts: 200,
+    maxNpcs: 80,                  // v1.143：名册条数上限（此前无名册上限，靠提示词约束）
     // v1.147：**存储保底/上限**（与上面「注入条数上限」区分）—— 防止清理/情节总结/遗忘把库存打到过低：
     //   保底 = 任何自动清理都不得跌破；上限 = 常规裁剪到该值（上限取 max(上限, 保底)）
-    storeMinAtoms: 100, storeMaxAtoms: 400,          // 情节：保底 100
-    storeMinMemories: 200, storeMaxMemories: 600,    // 记忆：保底 200
-    storeMinSnapshots: 100, storeMaxSnapshots: 300,  // 角色档案：保底 100
-    storeMinItems: 150, storeMaxItems: 400,          // 物品：保底 150
-    storeMinConcepts: 200, storeMaxConcepts: 600,    // 概念：保底 200
-    storeMinScenes: 0, storeMaxScenes: 300,          // 场景（无硬保底）
-    storeMinPlans: 0, storeMaxPlans: 200,            // 计划
-    storeMinSuspense: 0, storeMaxSuspense: 200,      // 悬念
-    storeMinNpcs: 0, storeMaxNpcs: 200,              // 名册
-    maxParallelsInj: 8,          // v1.66：平行事件注入上限 —— 标题+描述按关键词触发并入提取记忆（平行事件总上限仍 maxParallels）
+    storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100
+    storeMinMemories: 200, storeMaxMemories: 800,    // 记忆：保底 200
+    storeMinSnapshots: 100, storeMaxSnapshots: 400,  // 角色档案：保底 100
+    storeMinItems: 150, storeMaxItems: 500,          // 物品：保底 150
+    storeMinConcepts: 200, storeMaxConcepts: 700,    // 概念：保底 200
+    storeMinScenes: 0, storeMaxScenes: 400,          // 场景（无硬保底）
+    storeMinPlans: 0, storeMaxPlans: 300,            // 计划
+    storeMinSuspense: 0, storeMaxSuspense: 300,      // 悬念
+    storeMinNpcs: 0, storeMaxNpcs: 300,              // 名册
+    maxParallelsInj: 100,          // v1.66：平行事件注入上限 —— 标题+描述按关键词触发并入提取记忆（平行事件总上限仍 maxParallels）
     // ==================== v1.181：货币大类（当前主角持有的货币；多主角支持） ====================
     // 用户要求：① 记录当前主角持有的货币；多主角支持，涉及其他角色**必须人工/正文明确指定**，否则默认只记主角；
     //   ② 支持币种（贝壳 / 银元 / 美元 / 信用点…）；③ 额度为**数字**，显示时按 万/亿/兆/京 动态适配；
@@ -770,8 +774,8 @@ const defaultCfg = {
     //   ⑥ 条目内支持**收支记录**（history：收入/支出 + 结余）；⑦ 记录/注入开关默认开启。
     currencyEnabled: true,           // 记录 + 注入总开关（默认开；关 = 不抽取该维度、也不注入 [货币] 区块）
     currencyDynamicEnabled: true,    // 动态提示词：按本轮正文**发现的其他角色**追加识别说明（默认开）
-    maxCurrencies: 8,                // 注入条数上限
-    storeMinCurrencies: 0, storeMaxCurrencies: 300,   // 条数上限（无硬保底）
+    maxCurrencies: 100,                // 注入条数上限
+    storeMinCurrencies: 0, storeMaxCurrencies: 400,   // 条数上限（无硬保底）
     // ==================== v1.195：NSFW 弱化（分析侧开关 + 总览手动处理，共用同一套核心） ====================
     // 用户要求：「新增功能用于弱化 NSFW 的内容，如果发现有相关内容，用更柔性的话术替代，不露骨」；
     //   「① 设定中开启，默认关闭；开启后分析记忆加入提示词，避免数据出现 NSFW 露骨内容」；
@@ -833,8 +837,8 @@ const defaultCfg = {
     rumorDecayEnabled: true,          // 传言衰退（复用通用多级时间衰退，与平行事件同款）
     rumorDecayRatio: 0.5,             // 触发比例：条数 > 存储上限 × 该比例时触发衰退清扫
     rumorDecayCutoff: 0.95,           // 移除阈值：衰退值 ≥ 该值自动移除（留墓碑）
-    maxRumors: 6,                     // 注入条数上限
-    storeMinRumors: 0, storeMaxRumors: 200,   // 存储保底/上限（保底 0 = 无硬保底）
+    maxRumors: 60,                     // 注入条数上限
+    storeMinRumors: 0, storeMaxRumors: 300,   // 存储保底/上限（保底 0 = 无硬保底）
     // ==================== v1.184：剧情时钟增强（公元兼容 / AI 捕捉正则 / 降级方案 / 时间巡检） ====================
     // 用户要求：① 日期/时间/地点识别兼容「公元XX年」「公元X年」「公元XX年X月X日」等结构；
     //   ② 设定中增加「AI 捕捉正文日期·时间·地点 → 形成正则」的按钮；
