@@ -1,0 +1,593 @@
+{
+  "name": "FTT记忆组件",
+  "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
+  "version": "2.53.0",
+  "updatedAt": "2026-09-26",
+  "generatedAt": "2026-09-26",
+  "intro": {
+    "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
+    "highlights": [
+      "自动提取：从楼层文本提炼 情节 / 记忆 / 角色 / 物品 / 货币 等原子数据。",
+      "按预算注入：把记忆拼进上下文，可查看命中与未命中审计。",
+      "剧情时钟：只以最新一条「情节」为唯一可信来源，不猜、不巡检改写。",
+      "可追溯：交互 / 宿主调用 / 错误统一追踪，调试日志可导出。"
+    ],
+    "entries": [],
+    "notes": ""
+  },
+  "changelog": [
+    {
+      "version": "2.53.0",
+      "date": "2026-09-26",
+      "title": "关于页：版本清单改取代码库 JSON、提示言简意赅、缓冲清理迁到数据管理",
+      "points": [
+        "① 版本清单来源改为代码库 JSON（真实落地，不是改文案）：新增仓库根 FTT-memory-changelog.json（由 CHANGELOG.md 生成，见 script…",
+        "② 提示收敛为三态且不扩散实现：获取中… / 已获取版本更新 · 共 N 个版本[（本次未联网，使用上次缓存）] /无法获取版本更新 —— 可在代码库查看：<仓库页>；删除来源路…",
+        "③ 重新获取修复：aboutReload 先清在途标志 aboutLoading 与节流时刻 aboutLastAttemptAt 再强制重取（旧实现命中在途 Promise /…"
+      ]
+    },
+    {
+      "version": "2.52.0",
+      "date": "2026-09-26",
+      "title": "总览精简：补回管线状态、中断按钮改条件展示、移除越位入口",
+      "points": [
+        "① 管线状态行（此前缺失）：总览新增 🧵 管线状态 行 —— 进行中显示「正在分析记忆（AI 摘要）· 分段 x/y ·第 a-b 楼 · 已用时 Ns · 已请求中断」，空闲…",
+        "② 中断按钮改条件展示：✖ 中断 只在管线进行中渲染，空闲时 DOM 中不存在（动作入口保留供命令调用）。",
+        "③ 提示精简（言简意赅）：总览收敛为 5 段 —— 时钟区 / 管线状态 / 一行注入概览 / 工具行 /一行类目胶囊 + 未摘要楼层按钮 + 一行「已处理 N 楼」；删除已处理…"
+      ]
+    },
+    {
+      "version": "2.51.0",
+      "date": "2026-09-26",
+      "title": "剧情时钟改版：只取最新情节（V2 专属改版）",
+      "points": [
+        "① 唯一可信来源 = 最新一条「情节」：新增 core/recall.js#latestTrustedPlot()；resolveStoryClock() 重写为情节单一来源（d…",
+        "②「第 N 天」改为保留字段：recordReservedStoryDay() 只把 ▶第 N 天 记到该情节的 storyDay（不换算日期、不写 state.state.st…",
+        "③「时间巡检修复」功能移除：删除总览状态行/按钮、clockPatrol/clockPatrolForce 动作、runClockPatrolRepair、clockPatrol…"
+      ]
+    },
+    {
+      "version": "2.50.0",
+      "date": "2026-09-26",
+      "title": "时间巡检修复不再改错时钟数据 + 场景层级（收纳）修复",
+      "points": [
+        "① 时间巡检两处真缺陷（V1 缺陷 #7，oracle 证据 v1-golden-clock-repair-safe.json）：clockPatrolRepairItem 对所…",
+        "② 场景层级（收纳）异常：V2 编辑器缺 V1 的 findSceneParentId()，父级下拉只列裸 name、未排序无缩进 →编辑嵌套场景时下拉恒为「（顶层）」，用户直接…",
+        "③ 门禁：新增 tests/unit/clock-repair-safe.test.js（11 断言，含 V1 oracle 自证）+ oracle 样本v1-golden-cl…"
+      ]
+    },
+    {
+      "version": "2.49.0",
+      "date": "2026-09-26",
+      "title": "导出下载文件 / 导入存档文件（文件机制修复）",
+      "points": [
+        "① 问题：V2 数据管理页只做了「半个」导入导出 —— 「⬇ 导出 JSON」只把内容塞进文本框 + 剪贴板（不落文件），「⬆ 导入 JSON」只提示去文本框粘贴（不弹文件选择器…",
+        "② 修复：新增 ui/file-io.js（downloadTextFile / pickTextFile / fileIoCapabilities，失败一律返回{ok:fals…",
+        "③ 门禁：新增 tests/unit/file-io.test.js（12 断言：下载链路/能力回落/选择读取/取消/FileReader 分支 +"
+      ]
+    },
+    {
+      "version": "2.48.0",
+      "date": "2026-09-26",
+      "title": "「剧情第 N 天」不允许注入（仅供插件内校准）· 修正 V1 缺陷 #6",
+      "points": [
+        "① 问题（V1 缺陷 #6）：V1 v1.206（11943）把 剧情天数:第N天 拼进注入体的 [当前状态] 块 ——「第 N 天」是插件内部的时间计数（正文头 ▶第 N 天 …",
+        "② 修复：core/recall.js 注入体删除该行（其余 [当前状态] 行与顺序不变：日期 → 时间 → 地点 → 在场角色）；state.state.storyDay 照常…",
+        "③ 门禁：新增 tests/unit/storyday-no-inject.test.js（10 断言：O 组 oracle 自证 · N 组注入体不含「剧情天数/第N天」（三种…"
+      ]
+    },
+    {
+      "version": "2.47.0",
+      "date": "2026-09-26",
+      "title": "数据面板「大类」列表：内容与顺序对齐 V1",
+      "points": [
+        "① 问题：V2 此前所有维度共用一句摘要（entrySummary() 截 90 字）+ 一行 日期 · 调用N次 · 归属，且排序用「容器倒序」。于是各维度自有字段全部缺失（情…",
+        "② 行渲染：新增 ui/list-rows.js —— 按 V1 各维度行渲染器逐条对齐字段与先后顺序（头注列出 V1 源码行号），并补齐 V1 的「下钻/引用」块（relCha…",
+        "③ 排序与可见范围：core/clock.js 新增 sortRecentByStoryDate()（V1 sortRecent 逐字：剧情日期倒序 →无日期靠后 → floor…"
+      ]
+    },
+    {
+      "version": "2.46.0",
+      "date": "2026-09-26",
+      "title": "启动自动检查更新：内置延迟 4 秒执行",
+      "points": [
+        "① 行为：自动路径不再在装配完成瞬间发请求，而是排期 UPDATE_STARTUP_DELAY_MS = 4000（4 秒）后执行（core/update.js 提供常量与纯函数…",
+        "② 例外与兜底：手动检查（用户点「🔍 检查更新」）不延迟（manual → 0）；delayMs 可显式覆盖（夹在 0..60s，delayMs: 0 供门禁/诊断）；调度经内…",
+        "③ 可观测：排期即留痕 —— runtime.update = { ran:false, reason:'delayed', delayMs, delayReason, sche…"
+      ]
+    },
+    {
+      "version": "2.45.0",
+      "date": "2026-09-26",
+      "title": "投喂白/黑名单的按钮与「联动生效」修复",
+      "points": [
+        "① 过滤与去标签的顺序颠倒了：（v2.44.0 自身回归）：v2.44.0「HTML 标签不得污染数据」把去标签放在applyFeedRegex 之前（collectFloorL…",
+        "② 委托读错属性名：点击委托的 kind 只读 data-kind，而「＋白 / ＋黑」与调试页时间线「类别筛选」用的是 V1 同款 data-ftt-kind（V1 的 rxA…",
+        "③ 门禁补齐（都做过反向验证 —— 临时回退修复即失败）：新增 tests/unit/feed-tag-link.test.js（18 断言，G/L/B/T/E 组）+ orac…"
+      ]
+    },
+    {
+      "version": "2.44.0",
+      "date": "2026-09-26",
+      "title": "正文 HTML 标签清洗（<br> 不得污染数据）· 修正 V1 缺陷 #5",
+      "points": [
+        "① 问题定性（：V1 缺陷 #5）：酒馆消息正文是可含 HTML 的富文本。V1（v1.206）取文/取值两处都不清洗，于是标签被当内容入库：正文头 ▷码头仓库<br> → st…",
+        "② 约定：（docs/P10i-HTML标签清洗.md）：core/html-text.js 统一清洗 —— ① 块级标签 → 换行（<br>/</p>/</div>… 保楼层分…",
+        "③ 落点（双保险）：取文边界 —— host/chat.js 读入即清洗（命中记时间线 kernel/html-clean）、host/floors.js 投喂/窗口文本清洗（楼…"
+      ]
+    },
+    {
+      "version": "2.43.0",
+      "date": "2026-09-26",
+      "title": "「V2 附加设定」从子页页脚迁入「基础」页",
+      "points": [
+        "① 位置修复：该块（更新检查 / V1 数据导入 / 14 维启用 / 面板最大宽度）此前由 settingsBody() 无条件渲染在设定页正文末尾 —— 于是切到任何子页（A…",
+        "② 文案同步：基础页「显示界面开关」与「分析记忆」页的指引改为「基础 → V2 附加设定 → 启用维度」，入口位置不再含糊。",
+        "③ 门禁：新增 settings-pages.test.js P7（14 个子页逐个渲染：仅基础页出现，且分节位于基础页容器之内；旧的页脚写法 <h4 class=\"ftt-h4…"
+      ]
+    },
+    {
+      "version": "2.42.0",
+      "date": "2026-09-26",
+      "title": "交互/宿主/错误统一追踪（可追到代码位置与上下文）",
+      "points": [
+        "① 约定：三层事件流 + 三条硬要求：（docs/P10h-交互与宿主追踪设计.md）：ui（用户交互）· host（宿主 API 调用）·cmd（命令与 FTT 入口）+ ke…",
+        "② 内核：core/trace.js（新，纯内核）：分级（error<warn<info<debug<trace，早退）· 去重（800ms 合并 ×N）·脱敏（key/pass…",
+        "③ 接入：getCtx() 改为缓存 Proxy（方法/参数/返回/耗时/失败，站点取真实调用者）· errPush 附traceId/site/opId/context/how…"
+      ]
+    },
+    {
+      "version": "2.41.0",
+      "date": "2026-09-26",
+      "title": "设定按钮/功能完整性审计 + 调试包导出 + 确认框 ACL 安全",
+      "points": [
+        "① 新增七层可执行审计：（tests/unit/panel-audit.test.js，随门禁常跑）：L1 面板钩子完整（14 键）· L2 13 分页 + 14 设定子页里全部…",
+        "② 修掉真缺陷 1：控件带参数、动作读不到 → 按钮「点了没反应」：（委托此前只透传 7 个参数）：「＋白/＋黑」缺 tag → 永不收录；「按本地召回/按最近关键词」缺 mod…",
+        "③ 修掉真缺陷 2：FTT.* 入口白名单漏镜像：（与 v2.40.0 的面板钩子漏接同类）：devtools.js 用显式白名单镜像 index.js 入口，新增键若忘加包装则…"
+      ]
+    },
+    {
+      "version": "2.40.0",
+      "date": "2026-09-26",
+      "title": "修复面板钩子接线（数据管理「导出/导入」不可用 · 影响 11 个功能）",
+      "points": [
+        "用户报告：「数据管理导出导入功能不可用。」",
+        "根因（一行接线，影响面 11 个功能）：V1 同构浮层 ui/panel.js 通过 hooks.* 取宿主能力，而 index.js 只注入了popupHooks()（4~5 …",
+        "修复：index.js 新增 panelRuntimeHooks()（唯一注入来源，键集与面板需求一一对应），注入点收敛为setPanelHooks2(panelRuntimeH…"
+      ]
+    },
+    {
+      "version": "2.39.0",
+      "date": "2026-09-26",
+      "title": "时钟不得取真实日期（必须与剧情对齐）· 修正 V1 缺陷 #4",
+      "points": [
+        "用户报告：「时钟缺陷，V1 修复过该问题，V2 必须对齐。即时钟不能取真实日期，必须和剧情对齐。」",
+        "定位（V1 oracle 差分实测）：V1 自己写下的规则是「剧情时钟未知时不折算（不写现实时间）；现实墙钟不进注入正文；",
+        "绝不退回现实日期：（现实时间不是剧情时间）」（V1 docs/03 / docs/11 / docs/12，以及 v1.161 / v1.170 / v1.187 三批修复）。V…"
+      ]
+    },
+    {
+      "version": "2.38.0",
+      "date": "2026-09-26",
+      "title": "点击不跳顶（滚动保持）· 对齐 V1 修复",
+      "points": [
+        "用户报告：「按钮点击不能突然置顶，之前 V1 修复过该问题。V2 请对齐，点击后不能跳顶。」",
+        "根因：V1 为「点击跳顶」做过四处修复，V2 此前一处都没移植（ui/panel.js 全文件无 preventDefault、无滚动捕获、面板按钮全部没有 type）：① re…",
+        "实现：ui/panel.js 新增 ensureButtonTypes(html)（字符串层补 type=\"button\"，保留标签大小写）+ DOM 层 hardenButto…"
+      ]
+    },
+    {
+      "version": "2.37.0",
+      "date": "2026-09-26",
+      "title": "剧情时钟「取值追踪」与日志口径（值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么）",
+      "points": [
+        "用户报告：「时钟日志记录有问题，需明确从哪里取值，取值逻辑是什么。以方便追踪问题。」",
+        "问题（逐条取证）：时钟域原有 6 条 dbgLog('时钟', …)（逐字移植 V1）不足以回答取值来源 ——① 只有日期与在场标了来源（dateFrom/presentFrom…",
+        "本版实现：1. core/clock-trace.js（新，纯内核）：统一的取值追踪结构 ——text{mode,floors,chars,sample} + chain[]（按…"
+      ]
+    },
+    {
+      "version": "2.36.0",
+      "date": "2026-09-26",
+      "title": "面板宽度自适应（手机铺满 / PC 自适应 + 可调上限）",
+      "points": [
+        "用户报告：「宽度不足，插件自适应宽度。手机端可铺满、PC 可自适应，但需注意较宽。」",
+        "问题：面板宽度此前逐字照搬 V1 的固定上限 width: min(940px, 94vw)（V1 v1.206:22389）。该值是为 V1 的酒馆助手 iframe 浮层选的…",
+        "修复（style.css + adapters/settings.js + ui/panel.js）：1. 一档变量 + 三档媒体查询：#ftt-panel { --ftt-pa…"
+      ]
+    },
+    {
+      "version": "2.35.0",
+      "date": "2026-09-26",
+      "title": "API 页真实化 + 按用途渠道对齐（B10-a · 推翻 §6.1 的「V2 不适用」判定）",
+      "points": [
+        "用户报告：「API 功能怎么没了？请核对 V1 版本对齐相关设定功能。」—— 核对后确认用户判断正确：V2 的「API」设定子页此前是空页（只有一句说明，零控件），V1 的 AP…",
+        "判定更正（取证推翻旧结论）：docs/P8 §6.1 曾整批把 API 一族判为「V2 不适用」，理由是「V2 走酒馆generateRaw，宿主签名无 preset/连接参数」…",
+        "本版实现（B10-a）：1. API 子页真实化（ui/api-page.js 新建）：V1 同款两分节 ——「API 分组（预设管理）」（分组名 + 💾 保存当前设定为分组 …"
+      ]
+    },
+    {
+      "version": "2.34.0",
+      "date": "2026-09-26",
+      "title": "修复「设置的子标签点击无效」+ 异常捕捉强化",
+      "points": [
+        "用户报告：设置的子标签点击无效。排查后确认是三处缺陷叠加，全部修复：1. （主因）面板点击委托未绑定 —— ui/panel.js#ensureOverlay() 在宿主中已存在…",
+        "调试/异常捕捉强化（本轮新增）：全局异常捕捉（host/events.js#installErrorCapture）：window 'error' 与 'unhandledrej…",
+        "测试框架修复：冒烟断言器（v2.25.0 起的 thenable 防呆）存在残留漏洞 —— 未 await 的 thenable 断言若排在文件末尾，防呆判定微任务尚未执行脚本就…"
+      ]
+    },
+    {
+      "version": "2.33.0",
+      "date": "2026-09-26",
+      "title": "独立分组抽取（按维度并行）+ 被动调度接线（B8/B9 收尾）",
+      "points": [
+        "本版补完总表 §7 登记的最后两处：管线缺口（V1 有、V2 之前只有函数或仅有配置键）：1. dimensionGrouping === 'separate'「独立分组」（ho…",
+        "并行：调用 AI（注入钩子 aiCallText），逐组 mergeDelta 并独立计成功/失败（任一组失败不影响其它组）；V1 原生「分组构造 + 每组提示词」已用黄金样本逐…",
+        "验证：v1-golden-separate-dim.json（576 行 / 5 组 run）由入库生成器直调真实 V1 v1.206 生成，队长独立复跑生成器 → 0 差异；覆…"
+      ]
+    },
+    {
+      "version": "2.32.0",
+      "date": "2026-09-26",
+      "title": "B9-d 条目瘦身 + gzip 存储 + 跨端同步分歧选择（B9 收官）",
+      "points": [
+        "本版（B9-d，取自 V1 v1.206 slim*/SLIM_EXT_GZ/gzip 读写 与 syncPickLocal/syncPickRemote）：1. 条目瘦身（新增…",
+        "验证：两份 fixture（v1-golden-slim-gzip.json 13 组 / v1-golden-sync-pick.json 10 组）由入库生成器直调真实 V1…",
+        "队长独立复跑生成器 → 0 差异：；覆盖四域瘦身/还原逐字、slimDataForStorage 键集与 snapIndex、快照链瘦身/还原、gzip 往返（魔数/文本全等/体…"
+      ]
+    },
+    {
+      "version": "2.31.0",
+      "date": "2026-09-26",
+      "title": "B9-c 投喂标签自动分析 + 货币追踪「👥 指定角色」标定",
+      "points": [
+        "本版（B9-c，取自 V1 v1.206 latestAiFloorInfo/rx* 族 与 curTrack* 族）：1. 投喂标签自动分析（新增 ui/feed-scan.j…",
+        "验证：v1-golden-feed-scan.json（879 行）与 v1-golden-cur-track.json（891 行）由真实 V1 v1.206 直调生成，rxT…",
+        "队长独立复跑两份入库生成器 → 与 fixture 0 差异：；单元 feed-scan-golden.test.js 17 项、cur-track-golden.test.js…"
+      ]
+    },
+    {
+      "version": "2.30.0",
+      "date": "2026-09-26",
+      "title": "B9-b 关系表双向定位跳转 + 「👥 选角色」选择器",
+      "points": [
+        "本版（B9-b，取自 V1 v1.206 relJump/relGoto/relPick/relPickClose/relPickAdd/relClearFilter）：1. u…",
+        "验证：v1-golden-rel-nav.json（1120 行 / sha256 09f9ad60…ce04b）由真实 V1 v1.206 oracle 生成 —— 动作类走真…",
+        "收窄与偏差（明示）：① relClearFilter 收窄为「清角色筛选 + 定位 + 选择器态」（V2 关系表按分页隔离维度，V1 的「维度筛选」在 V2 语义下不适用，dim…"
+      ]
+    },
+    {
+      "version": "2.29.0",
+      "date": "2026-09-26",
+      "title": "B9-a 调试页（日志查看器 + 清空）+ 关于页（版本清单/清缓存/重载）+ 数据管理 reset",
+      "points": [
+        "本版（B9-a，取自 V1 v1.206 dbgLog/dbgGet/dbgClear 与 about* 族 + resetState）：1. 调试页（新增 ui/debug.j…",
+        "取文件路径：V2 为原生扩展（无 iframe base），以扩展目录 HTTP 挂载根 /scripts/extensions/<folder>/FTT-memory-chan…",
+        "V2 仓库当前无 FTT-memory-changelog.json：→ 未读到时如实报 fail + 兜底说明，不伪造版本数据（冒烟 AE2 覆盖缺失态）；3. reset（清…"
+      ]
+    },
+    {
+      "version": "2.28.0",
+      "date": "2026-09-26",
+      "title": "B8-7-b 平行世界推演 + 平行事件推进/转正",
+      "points": [
+        "本版（B8-7-b，取自 V1 v1.206 约 11114~14000 平行族 + 对应动作）：1. 推演（weave）：weaveEnabled/weavePassiveDu…",
+        "验证：v1-golden-parallel.json（1342 行 / 5 组 30 例）由真实 V1 v1.206 oracle 生成，oracle 连跑两次逐字节一致且与入库…",
+        "V1 原生缺陷/怪癖（原样保留，单测与文档固化）：① scheduleParallelWeave 的「已在调度中」静默丢弃后到请求；② 去重跳过时 state.weaveLast…"
+      ]
+    },
+    {
+      "version": "2.27.0",
+      "date": "2026-09-26",
+      "title": "B8-7-a 情节总结（原子压缩/合并摘要）+ 分段总结",
+      "points": [
+        "本版（B8-7-a，取自 V1 v1.206）：1. 情节总结（新增 core/atom-compact.js，495 行）：atomCompactPlan（三粒度分组 + 体量…",
+        "产物只归档、不注入、不参与任何自动动作：（V1 原样，面板已有同款提示）；3. 界面：情节页四个 V1 同款按钮 —— 「半自动情节总结」（atomCompactNow）、「情节…",
+        "验证：v1-golden-atom-compact.json（1505 行）与 v1-golden-plot-segment.json（680 行）均由真实 V1 v1.206 …"
+      ]
+    },
+    {
+      "version": "2.26.0",
+      "date": "2026-09-26",
+      "title": "B8-6c-4 状态记录修复 + 计划悬念修复",
+      "points": [
+        "本版（B8-6c-4，取自 V1 状态修复 ~17908~18105 与计划悬念修复 ~19085~19300）：1. 状态记录修复（新增 core/state-repair.j…",
+        "验证：v1-golden-state-repair.json（24 组）与 v1-golden-plan-repair.json（18 组）均由真实 V1 v1.206 orac…",
+        "与 V1 一致的既有缺陷（如实保留，未\"顺手修正\"）：① applyStateRepair 只认 ops['删除']/ops.delete，而中文键经 normalizeDelt…"
+      ]
+    },
+    {
+      "version": "2.25.0",
+      "date": "2026-09-26",
+      "title": "测试完整性专项：冒烟套件「未 await 的异步断言」修复 + /ftt-import apply 实现缺陷修复",
+      "points": [
+        "本版是：质量版本，不新增功能，但显著提升门禁可信度：1. 修好冒烟套件 45 处「假绿」断言（tests/smoke-test.js）：- 断言器改造为「同步条件立即计数（零影响…",
+        "验证：npm run gate 全绿 —— 单元 47 文件 / 706 断言、冒烟 109 项（109 项全部真实求值）、内核纯净度 0、内核标识符 0、词条 54、版本一致、…",
+        "历史口径纠偏（重要披露）：v2.9.0~v2.24.0 各版本 CHANGELOG 中的「冒烟 N 项全绿」，其中最多 45 项属于上述未求值的假绿小节；自本版起冒烟断言器带永久…"
+      ]
+    },
+    {
+      "version": "2.24.0",
+      "date": "2026-09-26",
+      "title": "B8-6c-3 物品修复 + 角色档案修复",
+      "points": [
+        "本版（B8-6c-3，取自 V1 物品修复 17335~17700 与角色档案修复 18106~18780）：1. 物品修复（新增 core/item-repair.js）：it…",
+        "验证：npm run gate 全绿 —— 单元 47 文件 / 706 断言、冒烟 109 项、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；git a…",
+        "同期发现并记录的测试完整性问题（重要，独立专项修复）：tests/smoke-test.js 中约 43 处 async 小节把 Promise 直接作为 assert 条件且未…"
+      ]
+    },
+    {
+      "version": "2.23.0",
+      "date": "2026-09-26",
+      "title": "B9 前置：调试日志环形缓冲（dbgLog 从空实现改为真实记录）",
+      "points": [
+        "验证：npm run gate 全绿 —— 单元 45 文件 / 670 断言、冒烟 106 项、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；git a…",
+        "待接线（下一批）：FTT.dbgLog()/dbgClear() 入口、设定「调试」页日志查看器（分页/按类别过滤）、aboutClearCache/aboutReload 等 …"
+      ]
+    },
+    {
+      "version": "2.22.0",
+      "date": "2026-09-26",
+      "title": "计划/悬念库清理动作补齐（clearPlans / clearSuspense）",
+      "points": [
+        "本版补齐 V1 数据面板「计划悬念」页的两个一键清理动作（此前 V2 只有逐条删除与多选删除）：1. 界面：计划悬念页工具条按 V1 plansHtml() 条件渲染 —— 「\ud83e…",
+        "验证：npm run gate 全绿 —— 单元 44 文件 / 665 断言、冒烟 106 项、内核纯净度 0、内核标识符 0、词条 54、版本一致、文档 0 违规；git a…",
+        "偏差：与 V1 一致「不弹确认」（V1 原样：title 已注明）；墓碑写入沿用 V2 core/merge.js#tombMany（V1 同为墓碑机制）。"
+      ]
+    },
+    {
+      "version": "2.21.0",
+      "date": "2026-09-26",
+      "title": "B8-7 传言演化与世界书镜像接线（界面/动作/FTT 入口）",
+      "points": [
+        "本版把 v2.20.0 的两套内核接到界面与调试入口上（此前为「内核已就位、待接线」）：1. 传言演化接线：传言页工具条新增 V1 同款按钮 —— 「🧪 立即演化」（title…",
+        "验证：npm run gate 全绿 —— 单元 44 文件 / 665 断言、冒烟 105 项（新增 Y1–Y3：FTT 24 入口齐备 + rumorRoll 确定性 / 传…",
+        "偏差：ui/sync.js 新增的 worldbookRefresh 使 SYNC_ACTIONS 由 5 项变 6 项（同步适配单测 I2 已同步扩到 6 项并加断言）；世界书…"
+      ]
+    },
+    {
+      "version": "2.20.0",
+      "date": "2026-09-26",
+      "title": "B8-7 传言演化引擎 + 世界书单向镜像（内核）",
+      "points": [
+        "本版（B8-7 内核部分；取自 V1 传言引擎 13261~13820 与 storageProviders.worldbook 4604 起）：1. 传言演化引擎（新增 cor…",
+        "验证：npm run gate 全绿 —— 单元 44 文件 / 665 断言、冒烟 102 项、内核纯净度 0（40 个 core 文件）、内核标识符 0（79 个文件）、词条…",
+        "偏差与待接线（详见 docs/P8t-B8-7传言演化引擎.md §2 / docs/P8y-B8-7世界书单向镜像.md §2）：① 传言引擎零 AI、无 callChatCo…"
+      ]
+    },
+    {
+      "version": "2.19.0",
+      "date": "2026-09-26",
+      "title": "B8-6c-2 概念与场景修复（+ 设定页第二批 10 控件、快照内容查看、覆盖度审计）",
+      "points": [
+        "本版（B8-6c-2，取自 V1 v1.139/v1.140 概念修复 + 场景修复）：1. 概念修复（core/group-repair.js 扩展）：conceptMerge…",
+        "同时并入（队长自办，均为 V1 对齐补齐）：5. 设定页第二批 10 个控件（ui/settings-pages.js）：V1 设定⑥提取页里手写 div 形式的「各大类单条字数…",
+        "验证：黄金样本 v1-golden-concept-repair.json、v1-golden-scene-repair.json（oracle = 真实 V1 插件 v1.20…"
+      ]
+    },
+    {
+      "version": "2.18.0",
+      "date": "2026-09-26",
+      "title": "B8-6c-1 相关组聚类修复（通用聚类引擎 + 记忆修复管道 + 设定页补齐 22 控件）",
+      "points": [
+        "本版（B8-6c-1，新增 core/group-repair.js，取自 V1 v1.140 通用聚类引擎 + v1.168 记忆修复）：1. 通用聚类引擎：GROUP_REP…",
+        "与 V1 一致不写墓碑：；合并同步 retargetRelRefs 重挂关联）→ ② relRepairMaint（B8-6b+，零 AI 关系层维护）→ ③ groupPick…",
+        "验证：黄金样本 tests/fixtures/v1-golden-group-repair.json（18 组：四域 groupRelatedness/groupClusters…"
+      ]
+    },
+    {
+      "version": "2.17.0",
+      "date": "2026-09-26",
+      "title": "B8-6b+ 关联层机械维护（修复第 1 段收尾 + AI 修订后复检）",
+      "points": [
+        "本版（B8-6b+，新增 core/rel-maint.js，取自 V1 v1.168「修复记忆内的关系层机械维护」）：1. relRepairMaint（零 AI）：① 始终清…",
+        "验证：tests/unit/rel-maint-golden.test.js 16 项 + 冒烟 V1–V4；门禁全绿：单元 39 文件 / 539 断言、冒烟 96 项、内核纯…",
+        "偏差（详见 docs/P8q-B8-6b+关联维护.md §2）：V1 的 relMaintRun（非修复路径的关联维护编排）在 v1.206 内只有定义、无调用点（且未导出），…"
+      ]
+    },
+    {
+      "version": "2.16.0",
+      "date": "2026-09-26",
+      "title": "B8-6b 修复管线第 2/3 段（候选筛选 + 窄契约 AI 修订）",
+      "points": [
+        "本版（B8-6b）：1. 第 2 段 候选筛选（core/repair.js 扩展，取自 V1 09-AI摘要与楼层处理.js）：① repairTagSetOf + repai…",
+        "抽查轮询：（游标写回 state.repairCursor，长期覆盖全部）→ 候选不足用中间带按相关性补足（绝不用低相关孤例凑数）；2. 第 3 段 窄契约 AI 修订：buil…",
+        "验证：tests/unit/repair-ai-golden.test.js 12 项 + 冒烟 U1–U4；门禁全绿：单元 38 文件 / 523 断言、冒烟 92 项、内核纯…"
+      ]
+    },
+    {
+      "version": "2.15.0",
+      "date": "2026-09-26",
+      "title": "B8-6a 修复管线第 1 段（JS 机械清理 · 零 AI）",
+      "points": [
+        "本版（B8-6a）：1. 内核（新增 core/repair.js，取自 V1 09-AI摘要与楼层处理.js 修复族「第 1 段」）：① repairMergeDedupe：内…",
+        "验证：tests/unit/repair-golden.test.js 13 项 + 冒烟 T1–T3；门禁全绿：单元 37 文件 / 511 断言、冒烟 88 项、内核纯净度 …",
+        "范围说明（详见 docs/P8o-B8-6a修复管线第1段.md §2）：本批交付 V1 三段式修复的第 1 段；第 2 段（候选筛选）与第 3 段（窄契约 AI 修订）属 B8…"
+      ]
+    },
+    {
+      "version": "2.14.0",
+      "date": "2026-09-26",
+      "title": "B8-5 遗忘域（记忆遗忘 + 通用遗忘清扫 + 设定页控件补齐）",
+      "points": [
+        "本版（B8-5）：1. 内核（新增 core/forget.js，取自 V1 09-AI摘要与楼层处理.js 遗忘族）：① 记忆遗忘机制（v1.63）：memoryForgetA…",
+        "修正 calcTimeDecay：V1 的 item <= 0 会把 1970 年前的剧情日期（负毫秒）当成「无时间信息」→ 状态衰退 / 记忆遗忘 /平行事件衰退对 19~20…",
+        "验证：tests/unit/forget-golden.test.js 17 项 + 冒烟 S1–S4；门禁全绿：单元 36 文件 / 498 断言、冒烟 85 项、内核纯净度 …"
+      ]
+    },
+    {
+      "version": "2.13.0",
+      "date": "2026-09-26",
+      "title": "B8-4 内容弱化（NSFW）（词条库 + 固定规则转化库 + AI 弱化）",
+      "points": [
+        "本版（B8-4）：1. 内核（新增 core/nsfw.js，取自 V1 09-AI摘要与楼层处理.js NSFW 族）：① 识别词条库（63 条内置 + cfg.nsfwKey…",
+        "验证：tests/unit/nsfw-golden.test.js 22 项 + 冒烟 R1–R5；门禁全绿：单元 35 文件 / 481 断言、冒烟 81 项、内核纯净度 0、…",
+        "偏差（详见 docs/P8m-B8-4内容弱化NSFW.md §2）：AI 通道走共用注入钩子（ST generateRaw）；V1 的任务管线 UI（pipeStart/…/a…"
+      ]
+    },
+    {
+      "version": "2.12.0",
+      "date": "2026-09-26",
+      "title": "B8-3 时钟域 AI 管线（AI 捕捉正则 + AI 结合正文修复日期时间）",
+      "points": [
+        "本版（B8-3）：1. 内核（新增 core/clock-ai.js，取自 V1 09-AI摘要与楼层处理.js）：① 「AI 捕捉正文 → 生成正则」：取最近 N 楼投喂文本 …",
+        "三重校验：（可编译 / 不匹配空串 / 样本确有命中）→ 写入 cfg.clockDateRegex/clockTimeRegex/clockLocationRegex →保存配…",
+        "验证：tests/unit/clock-ai-golden.test.js 17 项 + 冒烟 Q1–Q4；门禁全绿：单元 34 文件 / 459 断言、冒烟 76 项、内核纯净…"
+      ]
+    },
+    {
+      "version": "2.11.2",
+      "date": "2026-09-26",
+      "title": "注释与文档澄清（行为与 v2.11.1 完全一致）",
+      "points": [
+        "本版仅：更新 host/update.js 文件头注释与 docs/更新检查机制.md 中的通道顺序描述（v2.11.1 已改为 HTTP 优先、宿主 Git 端点默认关），使代…"
+      ]
+    },
+    {
+      "version": "2.11.1",
+      "date": "2026-09-26",
+      "title": "修复：无 git 宿主上的「后端错误：Git handshake failed」弹窗",
+      "points": [
+        "问题：（用户报告）：安装后宿主弹出「后端错误 / Failed to get extension version: Internal error: Git handshake f…",
+        "根因（两条，均已修）：1. manifest.json 的 auto_update: true 会让酒馆自身在加载期对第三方扩展做 Git 版本校验（POST /api/exte…",
+        "修复：1. manifest.json → auto_update: false（本插件自带更新检查，不依赖酒馆代做 git 检查）；2. 更新检查改为默认 HTTP 优先：只用…"
+      ]
+    },
+    {
+      "version": "2.11.0",
+      "date": "2026-09-26",
+      "title": "B8-2 剧情时钟自动提取（正文头结构 + 多源择优 + 自动降级）",
+      "points": [
+        "本版（B8-2）：1. 内核（新增 core/clock-extract.js，取自 V1 09-AI摘要与楼层处理.js 时钟提取族）：① extractClockFromHe…",
+        "验证：tests/unit/clock-extract-golden.test.js 12 项 + 冒烟 P1–P5；门禁全绿：单元 33 文件 / 439 断言、冒烟 71 项…",
+        "偏差（详见 docs/P8k-B8-2剧情时钟自动提取.md §2）：取文改经注入钩子（保留内核零宿主依赖）；提示/调度/重绘走注入钩子与 UI 层；clockRegexGen …"
+      ]
+    },
+    {
+      "version": "2.10.0",
+      "date": "2026-09-26",
+      "title": "B8-1 剧情时钟域（手工锚点 + 零 AI 时间巡检 + 基础页对齐）",
+      "points": [
+        "本版（B8-1）：1. 内核（新增 core/clock-patrol.js，取自 V1 09-AI摘要与楼层处理.js 时钟族）：① 手工强制改写锚点（v1.186）：cloc…",
+        "验证：tests/unit/clock-patrol-golden.test.js 23 项 + 冒烟 O1–O5；门禁全绿：单元 32 文件 / 427 断言、冒烟 66 项、…",
+        "偏差（详见 docs/P8j-B8-1时钟巡检与手工锚点.md §3）：AI 两条管线（clockRegexGen / clockRepair）属 B8-2，基础页以「属后续批次…"
+      ]
+    },
+    {
+      "version": "2.9.0",
+      "date": "2026-09-26",
+      "title": "B7-2 跨端同步与镜像（文件通道 + 清单预判 + 快照文件 + 同步日志 + 流量门控）",
+      "points": [
+        "本版（B7-2）：1. 内核移植（新增 core/cross-sync.js，取自 V1 06-存储后端与三型归类.js）：dataAggHash / diffAtomData …",
+        "快照链独立文件：上传/并集合并（承载 snapStore + snapFp）、refreshFromServer（刷新状态：取服务端真值 → 全部候选源并集合并 → 回推）、cr…",
+        "验证：tests/unit/cross-sync-golden.test.js 15 项 + tests/unit/sync-adapter.test.js 27 项（文件通道 …"
+      ]
+    },
+    {
+      "version": "2.8.0",
+      "date": "2026-09-25",
+      "title": "B7-1 快照链（内核移植 + 界面 + 真实 V1 黄金样本）",
+      "points": [
+        "本版（B7-1）：1. 内核逐字移植（新增 core/snapshots.js，259 行取自 V1 05-记忆状态与存储抽象.js）：atomSerialize / snapF…",
+        "快照结构指纹逐项一致：、还原到根的集合一致（[\"a1\",\"a2\"]）、统计一致（{total:3,root:1,incr:2,covered:3,deleted:1}）。",
+        "验证：新增 tests/unit/snapshot-golden.test.js 8 项（指纹一致 / 统计一致 / 还原到根 / 还原到增量不复活已删 / 整理（自带+强制超限…"
+      ]
+    },
+    {
+      "version": "2.7.0",
+      "date": "2026-09-24",
+      "title": "B6 提示词模板编辑（V1 迁移链 + 分组编辑器）",
+      "points": [
+        "本版（B6）：1. 迁移链逐字移植（新增 core/prompt-migrate.js，纯逻辑零宿主依赖）：promptSig（FNV-1a→hex+长度）、migratePro…",
+        "验证：新增 tests/unit/prompts.test.js 8 项（promptSig 逐字含空串/中文、模板与分组统计、迁移保留自定义、破甲迁移幂等、载入接线与 last…"
+      ]
+    },
+    {
+      "version": "2.6.0",
+      "date": "2026-09-24",
+      "title": "B5 关系表与注入自查",
+      "points": [
+        "本版（B5）：1. 关系表（ui/rel-table.js）：记忆/计划/悬念/平行四个维度的「谁知道 / 谁相关」总览与编辑 ——行字段与类名同 V1（角色 / 知情方式 / …",
+        "清除「推定」关联：（留墓碑，不动人工/AI 行）；按角色筛选（按 V1 方式优先级排序）；编辑器内追加该条目的关系表；未保存改动以草稿承载并显示「（有未保存改动）」。2. 注入自…",
+        "未进注入的非公共信息：及原因（关键词未命中 / 候选未入选）；工具行同 V1（🔄 刷新 / 🔑 按最近关键词 / 🧭 按本地召回）。3. 面板接线：记忆页三子标签（📚 列…"
+      ]
+    },
+    {
+      "version": "2.5.0",
+      "date": "2026-09-24",
+      "title": "B4 设定 14 组子页（首批：框架 + 105 个配置控件）",
+      "points": [
+        "对齐方式：不手写页面 —— 从 V1 src/modules/13-UI-设置与存储开关.js 自动提取控件表（subTabs 14 组 + 各页 f/swT/swForce/s…",
+        "本批交付：1. 设定分页改为 V1 同名同序的 14 组子页（.ftt-subtab 子标签条 + 当前页内容 + 页/控件计数提示）；2. 105 项全部可渲染与写回：开关用 …",
+        "验证：新增 tests/unit/settings-pages.test.js 6 项（页序与标签逐字、控件总数与逐页数量、105 键全部可在配置里解析、渲染结构、写回与持久化、…"
+      ]
+    },
+    {
+      "version": "2.4.0",
+      "date": "2026-09-24",
+      "title": "B3 提取与楼层管理（分段批量摘要 / 中断 / 清台账）",
+      "points": [
+        "本版（B3）：1. 分段批量摘要（V1 runAutoSummary）：runAutoSummary({silent, chunkSize}) —— 按 cfg.summaryC…",
+        "验证：新增 tests/unit/extract-batch.test.js 9 项（分段构建 / 整段记账 / 失败不记账 / 空段跳过 / 手动批量 / 静默补全跳过 / 协…"
+      ]
+    },
+    {
+      "version": "2.3.0",
+      "date": "2026-09-24",
+      "title": "B2 条目操作与编辑器全量（V1 字段表）",
+      "points": [
+        "本版（B2）：1. 移植 V1 字段表：新增 ui/fields.js —— kindFields(kind)（13 维字段定义）、flattenSnapshot（档案分组展开）…",
+        "测试基建修复（重要）：tests/harness/st-mock.js#makeReporter.assert 增防呆 —— 断言条件是 Promise/thenable 直接判…"
+      ]
+    },
+    {
+      "version": "2.2.0",
+      "date": "2026-09-24",
+      "title": "V1 面板外壳与样式对齐（B1）",
+      "points": [
+        "本版（B1）：1. 样式逐字搬运：V1 ensureStyle() 的 527 行 CSS（437 处 #ftt-panel 规则）逐字并入 style.css（带「逐字移植自 …",
+        "验证：新增 tests/unit/panel.test.js 12 项（样式并入 / DOM 同构 / 打开关闭 / 总览 / 维度与编辑器 / 删除墓碑 / 提取与注入 / 切…"
+      ]
+    },
+    {
+      "version": "2.1.0",
+      "date": "2026-09-24",
+      "title": "弹窗主界面（对齐 V1 交互形态）",
+      "points": [
+        "改动：1. 新增 ui/popup.js（约 230 行）—— 弹窗 + 分页主界面，四个分页：",
+        "总览：（状态/维度计数/注入审计/快捷动作）、数据台（14 维浏览·搜索·编辑·删除·注入自查，复用 ui/console.js）、",
+        "提取：（未分析楼层清单 + 逐楼分析 + 全部分析 + 统计）、设置（内核配置 / 更新 / V1 导入 / 诊断，复用设定面板表单与绑定）；2. 弹窗为默认形态：扩展魔杖菜单「…"
+      ]
+    },
+    {
+      "version": "2.0.2",
+      "date": "2026-09-24",
+      "title": "可见性兜底（悬浮入口）+ 更新检查的传输层失败处理",
+      "points": [
+        "判断：这类 Git handshake failed / IO error 是宿主的 git 取远端失败（网络不通），属于更新检查路径，与面板显示无关，也不会阻止扩展加载（宿主把…",
+        "本版改动：1. 悬浮入口兜底（ui/floating.js）：当扩展设置抽屉的三个候选容器一个都找不到时，自动在页面右下角显示固定的「FTT」小按钮；点击即以弹窗（callGen…",
+        "验证：单元新增 B9–B11（无抽屉时启用悬浮 / 无 body 明确拒绝 / 点击弹窗展示面板 / 容器恢复后自动切换）、U10（传输层失败只打一次端点 + 进入退避 + 错误…"
+      ]
+    },
+    {
+      "version": "2.0.1",
+      "date": "2026-09-24",
+      "title": "修复「安装后看不到面板」",
+      "points": [
+        "现象：（用户实测）：TauriTavern 里扩展已成功安装（后端日志 Extension installed: FTT记忆组件 V2 v2.0.0、目录 …/extension…",
+        "根因：v2.0.0 的初始化只挂在 APP_READY 事件上——① 宿主若不发该事件（或事件时机早于插件脚本加载，且不补发），init() 永不执行 → 面板、命令、注入、提取…",
+        "修复：1. 多触发装配：APP_READY / APP_INITIALIZED / DOMContentLoaded / window.load / 有限轮询（20 次 × 75…"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-09-24",
+      "title": "首个可用版本",
+      "points": [
+        "P0：可安装骨架 + 宿主 API 探针结论（原生扩展形态立项）：用户要求：「开始开发V2版」（承接 V2 设计稿 docs/13+docs/14：结合现有架构与功能体系，构建酒…",
+        "ST 原生 git 更新端点：、世界书 / 弹窗 / 宏 / 命令 / 连接配置等）。- 行为：安装后 activate 挂载生成前拦截器（永不 abort）；APP_READY…",
+        "保真度门禁：V1 源码切片产出黄金样本 tests/fixtures/v1-golden.json（10 维度固定夹具 + 6 组哈希 + 7 项助手），model-golden…"
+      ]
+    }
+  ]
+}

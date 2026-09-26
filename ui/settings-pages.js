@@ -808,17 +808,18 @@ export const SETTINGS_CONTROLS = {
 //   （`ui/feed-scan.js`，对应 V1 `rxTagScanHtml()` 与 `rxScanTags`/`rxAddTag`/`rxScanClear` 三个动作）。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
-import { defaultCfg, CN_KEY_MAP } from '../core/config.js';
+import { CN_KEY_MAP } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { worldbookNames } from '../host/worldbook.js';
-import { VERSION } from '../core/constants.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
 import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
-import { aboutHtml as aboutPageHtml } from './about.js';
+import { aboutHtml as aboutPageHtml, aboutCacheStats } from './about.js';
+import { debugLogStats } from '../adapters/debug-log.js';
+import { traceStats } from '../core/trace.js';
 import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
 // v2.35.0（B10-a）：API 子页（三通道 + API 分组预设 + 按用途渠道）
 import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
@@ -1052,6 +1053,23 @@ export function settingsPageHtml(pageId, extrasHtml) {
     return rows + extra + note + (list.length ? '' : (extra || note ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>'));
 }
 
+/**
+ * 数据管理 · 本地缓冲（v2.53.0）：先给**统计**（缓存了什么、多少条、多少字节），再由用户决定是否清理。
+ * 目前可清理项：版本清单缓存（关于页的版本更新数据；清理后下次打开「关于」会重新从代码库获取）。
+ * 其它缓冲（调试日志 / 交互追踪简报）在其专属页面维护，这里只显示统计与去处，避免重复入口。
+ */
+function bufferSectionHtml() {
+    const st = (() => { try { return aboutCacheStats(); } catch (e) { return { cached: false, versions: 0, bytes: 0 }; } })();
+    const logs = (() => { try { const s = debugLogStats(); return s || null; } catch (e) { return null; } })();
+    const tr = (() => { try { return traceStats(); } catch (e) { return null; } })();
+    const rows = [];
+    rows.push('<div class="ftt-muted">版本清单缓存：' + (st.cached ? ('已缓存 ' + st.versions + ' 个版本 · 约 ' + st.bytes + ' 字节') : '（无缓存）')
+        + ' <button class="ftt-btn ftt-sm" data-ftt-action="aboutClearCache"' + (st.cached ? '' : ' disabled') + '>🧹 清除版本清单缓存</button></div>');
+    if (logs) rows.push('<div class="ftt-muted">调试日志：' + (Number(logs.count) || 0) + ' 条（在「调试」页查看 / 清空）</div>');
+    if (tr) rows.push('<div class="ftt-muted">交互追踪简报：' + (Number(tr.total) || 0) + ' 条（在「调试」页查看 / 清空）</div>');
+    return '<h4 class="ftt-h4-inline">本地缓冲</h4>' + rows.join('\n');
+}
+
 /** 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账/清空当前角色记忆；其余明确标注） */
 function pageExtraHtml(pid) {
     if (pid === 'data') {
@@ -1070,16 +1088,15 @@ function pageExtraHtml(pid) {
             '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="清空当前角色的全部 FTT 记忆（不可恢复，建议先导出备份）">🗑 清空当前角色记忆</button>',
             '</div>',
             '<div class="ftt-field ftt-field-col"><label>导入 JSON（上方「⬆ 导入 JSON（合并）」可直接选文件；也可在此粘贴后点「导入」）</label><textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
+            // v2.53.0（用户要求）：「清理本地缓冲」从「关于」页迁移到**数据管理**，并先给出统计让用户决策
+            bufferSectionHtml(),
             '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="importStateApply">⬆ 导入</button></div>',
         ].join('\n');
     }
     if (pid === 'about') {
-        return [
-            '<h4 class="ftt-h4-inline">V2 附加信息</h4>',
-            '<div class="ftt-item">版本：' + esc(VERSION) + ' · 模块：ftt_memory_v2</div>',
-            '<div class="ftt-item">内核配置键：' + Object.keys(cfg || {}).length + ' · 默认配置键：' + Object.keys(defaultCfg || {}).length + '</div>',
-            '<div class="ftt-hint">与 V1 的功能对齐按批次推进（B1–B9），进度见 docs/P8-功能对齐总表.md。</div>',
-        ].join('\n');
+        // v2.53.0（用户要求）：「关于」页不再附开发/历史说明（原「V2 附加信息」＝ 版本 / 模块名 / 内核配置键数 /
+        //   对齐进度指引）—— 该页只由 `ui/about.js#aboutHtml()` 呈现「它是什么 + 版本更新」，言简意赅。
+        return '';
     }
     return '';
 }

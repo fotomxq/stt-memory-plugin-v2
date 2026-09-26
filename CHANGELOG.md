@@ -3,6 +3,34 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.53.0（2026-09-26）· 关于页：版本清单改取代码库 JSON、提示言简意赅、缓冲清理迁到数据管理
+
+**用户要求**：「设定-关于中大量历史/文档提示需**言简意赅**，指明功能即可，不扩散开发内容；
+**版本更新应取代码库中的 json 文件**（修正获取逻辑，提示只留「获取中」/ 无法获取则告诉用户去哪看）；
+『关于 · FTT记忆组件』的**重新获取**设计有错误，需修复；**清理本地缓冲**设计应移到**数据管理**，
+并展示缓冲统计让用户决定是否清理。」
+
+**① 版本清单来源改为代码库 JSON（真实落地，不是改文案）**：新增仓库根 `FTT-memory-changelog.json`
+（由 `CHANGELOG.md` 生成，见 `scripts/gen-changelog-json.js`）；`ui/about.js#aboutCandidateUrls()` 第一候选 =
+`raw.githubusercontent.com/<updateRepo>/<updateBranch>/FTT-memory-changelog.json`（仓库/分支取更新检查设置，
+默认 `fotomxq/stt-memory-plugin-v2` / `main`），扩展目录与 V1 相对路径降为离线兜底。
+**此前仓库里没有该 JSON** → 真实部署永远只能是失败态（成功态仅经 fetch 桩），本批补上该缺失的部署物，
+并把「清单 ↔ CHANGELOG」纳入门禁（`scripts/check-changelog-json.js`），杜绝手改漂移。
+**② 提示收敛为三态且不扩散实现**：`获取中…` / `已获取版本更新 · 共 N 个版本[（本次未联网，使用上次缓存）]` /
+`无法获取版本更新 —— 可在代码库查看：<仓库页>`；删除来源路径、时间戳、emoji、扩展目录与「文件该放哪」说明。
+**③ 重新获取修复**：`aboutReload` 先清在途标志 `aboutLoading` 与节流时刻 `aboutLastAttemptAt` 再强制重取
+（旧实现命中在途 Promise / TTL 节流时直接返回上一轮结果，用户点了等于没点）；动作回报改由 `aboutStatusText()`
+单一来源生成，与页面状态行永远一致。
+**④ 关于页只留功能与版本更新**：仅「🔄 重新获取」一个按钮；删除「V2 附加信息」（版本/模块名/内核配置键数/
+对齐进度指引）与兜底数据里的实现说明；版本条目每条最多 3 条要点。
+**⑤ 清理本地缓冲迁到「设定 → 数据管理」**：新增 `ui/about.js#aboutCacheStats()`（`{cached, versions, bytes}`），
+数据管理页「本地缓冲」分节展示「版本清单缓存：已缓存 N 个版本 · 约 B 字节（无缓存时按钮禁用）」，
+并提供 `🧹 清除版本清单缓存`；调试日志/交互追踪简报改为只读指针（仍在其各自页面清理）。
+
+门禁：重写 `tests/unit/about-golden.test.js`（V2 契约，28 断言：候选/三态/强制重取/精简渲染/缓冲统计）；
+`settings-pages.test.js` P6 与冒烟 AE2 同步（关于页无开发块、数据页含缓冲统计入口）；
+`npm run gate` 新增 `check-changelog-json`。合计单元 **75 文件 / 1175 断言**、冒烟 **162 项**，全绿。
+
 ## v2.52.0（2026-09-26）· 总览精简：补回管线状态、中断按钮改条件展示、移除越位入口
 
 **用户要求**：「总览的管道提示信息缺失；停止按钮是有条件展示，不是始终出现；总览提示信息太多（多为历史遗留），

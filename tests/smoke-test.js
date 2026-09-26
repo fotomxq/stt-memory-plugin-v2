@@ -113,7 +113,7 @@ const uninstallFetch = installGlobalFetch((url, opts) => {
     if (url.endsWith('/manifest.json')) return { status: 200, text: JSON.stringify({ version: remoteVersion }) };
     if (url.endsWith('/CHANGELOG.md')) return { status: 200, text: '# 版本历史\n\n## v' + remoteVersion + '（2026-10-01）\n\n- 新增：更新检查机制\n' };
     if (v1FileName && url === '/user/files/' + v1FileName) return { status: 200, text: v1FileText };
-    // B9-a 关于页：版本清单按扩展目录（或相对路径）读取；`aboutJsonText` 为空 → 404（如实失败路径）
+    // B9-a 关于页：版本清单**代码库 raw 优先**（v2.53.0；扩展目录/相对路径仅兜底）；`aboutJsonText` 为空 → 404（如实失败路径）
     if (url.indexOf('FTT-memory-changelog.json') >= 0) return aboutJsonText ? { status: 200, text: aboutJsonText } : { status: 404, body: {} };
     return { status: 404, body: {} };
 });
@@ -2120,8 +2120,10 @@ await assert('AE1 调试页：V1 同款控件与日志查看器（计数/类别�
     }
 })(), '');
 
-await assert('AE2 关于页：按**扩展目录**读取版本清单（成功态：来源/计数/倒序条目/按钮）+ 清缓存删键复位；清单缺失时如实失败不伪造数据', (async () => {
+await assert('AE2 关于页 v2.53.0：版本清单**优先取代码库 raw json**；成功/失败文案三态且言简意赅；清单缺失如实失败；清缓存动作删键复位；「本地缓冲」清理入口在数据管理页', (async () => {
     const F = globalThis.FTT;
+    const REPO_RAW = 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/FTT-memory-changelog.json';
+    const REPO_PAGE = 'https://github.com/fotomxq/stt-memory-plugin-v2';
     const lsMap = new Map();
     const ls = {
         getItem: (k) => (lsMap.has(String(k)) ? lsMap.get(String(k)) : null),
@@ -2131,21 +2133,22 @@ await assert('AE2 关于页：按**扩展目录**读取版本清单（成功态�
     const keepLs = globalThis.window && globalThis.window.localStorage;
     globalThis.window.localStorage = ls;
     try {
-        // 候选地址：扩展目录绝对路径优先 + V1 同款相对路径
+        // 候选地址：**代码库 raw 第一优先**（用户要求），扩展目录与 V1 相对路径仅兜底
         const cands = F.aboutCandidateUrls();
         const dir = F.aboutDirUrl();
-        const candOk = dir === '/scripts/extensions/third-party/ftt-memory-v2/'
-            && cands[0] === dir + 'FTT-memory-changelog.json'
+        const candOk = cands[0] === REPO_RAW
+            && dir === '/scripts/extensions/third-party/ftt-memory-v2/'
+            && cands.indexOf(dir + 'FTT-memory-changelog.json') > 0
             && JSON.stringify(F.aboutJsonPaths()) === JSON.stringify(['FTT-memory-changelog.json', './FTT-memory-changelog.json']);
-        // ① 清单缺失 → 如实失败（不伪造版本数据）
+        // ① 清单缺失 → 如实失败（不伪造版本数据），提示只告诉用户「去哪看」
         aboutJsonText = '';
         F.aboutClearCache();
         const bad = await entry.popupAction('aboutReload', {});
         const badNote = String(((bad.state || {}).note) || '');
-        const failOk = bad.ok === false && badNote.indexOf('未能读取版本清单') === 0
-            && badNote.indexOf(dir) > 0 && F.aboutState().status === 'fail' && F.aboutData().fallback === true
+        const failOk = bad.ok === false && badNote === '无法获取版本更新 —— 可在代码库查看：' + REPO_PAGE
+            && F.aboutState().status === 'fail' && F.aboutData().fallback === true
             && (F.aboutData().changelog || []).length === 0;
-        // ② 清单存在 → 成功读取（来源 = 扩展目录首个候选）+ 写本地缓存
+        // ② 清单存在 → 成功读取（来源 = 代码库 raw 首候选）+ 写本地缓存
         aboutJsonText = JSON.stringify({
             name: 'FTT记忆组件', title: '示例标题', version: VERSION, updatedAt: '2026-09-26',
             intro: { what: '示例说明', highlights: ['甲'], entries: ['乙'], notes: '丙' },
@@ -2158,33 +2161,39 @@ await assert('AE2 关于页：按**扩展目录**读取版本清单（成功态�
         const okNote = String(((ok.state || {}).note) || '');
         const st = F.aboutState();
         const cacheRaw = ls.getItem('fttAboutJson');
-        const okOk = ok.ok === true && okNote.indexOf('版本清单已更新') === 0 && okNote.indexOf('共 2 个版本') > 0
-            && st.status === 'ok' && st.from === dir + 'FTT-memory-changelog.json' && !!cacheRaw
+        const okOk = ok.ok === true && okNote === '已获取版本更新 · 共 2 个版本'
+            && st.status === 'ok' && st.from === REPO_RAW && !!cacheRaw
             && F.aboutSortDesc(F.aboutData().changelog).map((e) => e.version).join(',') === '1.0.0,0.9.0';
-        // ③ 页面渲染（停在「关于」子页）
+        // ③ 页面渲染（停在「关于」子页）：言简意赅 —— 无开发/历史块、无清缓存按钮
         await entry.popupAction('settingsSub', { sub: 'about' });
         const h = String((await entry.popupAction('refresh', {})).html || '');
         const htmlOk = h.indexOf('data-ftt-settings-page="about"') >= 0
-            && h.indexOf('关于 · FTT记忆组件') >= 0 && h.indexOf('它是什么') >= 0 && h.indexOf('版本更新（倒序 · 最新在最前）') >= 0
+            && h.indexOf('关于 · FTT记忆组件') >= 0 && h.indexOf('版本更新（最新在最前）') >= 0
             && h.indexOf('data-ftt-action="aboutReload"') >= 0 && h.indexOf('🔄 重新获取') >= 0
-            && h.indexOf('data-ftt-action="aboutClearCache"') >= 0 && h.indexOf('🧹 清除本地缓存') >= 0
-            && h.indexOf('✅ 版本清单已读取 · 2 个版本') >= 0 && h.indexOf('共 2 个版本') >= 0
+            && h.indexOf('已获取版本更新 · 共 2 个版本') >= 0
             && h.indexOf('首个版本') >= 0 && h.indexOf('建立记忆容器') >= 0
-            && h.indexOf('内核配置键：') >= 0;      // V2 附加信息块
+            && ['内核配置键：', 'V2 附加信息', 'aboutClearCache', '清除本地缓存', '扩展目录',
+                '入口与用法', '对齐总表', 'fttAboutJson'].every((s) => h.indexOf(s) < 0);
         // ④ 清缓存：先等「页面停在关于子页」触发的自动读取落定（渲染即自动读取并回写缓存）
         await new Promise((r) => setTimeout(r, 60));
         const hadCache = ls.getItem('fttAboutJson') !== null;
         const removedNow = F.aboutClearCache();
         const directOk = hadCache === true && removedNow === true && ls.getItem('fttAboutJson') === null
             && F.aboutData() === null && F.aboutState().status === 'idle' && F.aboutState().ts === 0;
-        // 动作路径（V1 同名 `aboutClearCache`）：如实回报；此后面板重绘会再自动读一次（V1 同行为）
+        // 动作路径：如实回报（V1 同名 `aboutClearCache`）
         aboutJsonText = '';
         const cleared = await entry.popupAction('aboutClearCache', {});
         const clearNote = String(((cleared.state || {}).note) || '');
-        const clearOk = directOk && cleared.ok === true && clearNote.indexOf('已清除版本清单本地缓存') === 0;
-        // ⑤ 恢复：切回总览（避免影响后续小节）
+        const clearOk = directOk && cleared.ok === true && clearNote.indexOf('已清除版本清单缓存') === 0;
+        // ⑤ 「本地缓冲」清理入口迁到数据管理页，并展示统计（无缓存 → 按钮禁用）
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        const dh = String((await entry.popupAction('refresh', {})).html || '');
+        const bufOk = dh.indexOf('本地缓冲') >= 0 && dh.indexOf('版本清单缓存：（无缓存）') >= 0
+            && dh.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dh.indexOf('🧹 清除版本清单缓存') >= 0
+            && dh.indexOf('aboutClearCache" disabled') >= 0;
+        // ⑥ 恢复：切回总览（避免影响后续小节）
         await entry.popupAction('tab', { tab: 'overview' });
-        return candOk && failOk && okOk && htmlOk && clearOk;
+        return candOk && failOk && okOk && htmlOk && clearOk && bufOk;
     } finally {
         aboutJsonText = '';
         if (keepLs === undefined) delete globalThis.window.localStorage; else globalThis.window.localStorage = keepLs;

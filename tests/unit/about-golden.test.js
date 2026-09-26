@@ -1,319 +1,329 @@
 // ============================================================
-// 单元测试 · B9-a 关于页（**与真实 V1 插件 v1.206 逐项比对**）
-// 黄金样本：tests/fixtures/v1-golden-about.json（oracle = 真实 V1 插件 v1.206 直调；
-//   `aboutFallback` / `aboutSortDesc` / `aboutLoadJson`（stub fetch 成功/失败/缓存/无 fetch）/ `aboutHtml` 渲染投影）
-// 覆盖：候选地址（V2 = 扩展目录绝对路径优先）/ 版本号倒序 / 兜底文案（不伪造版本数据）/ 初始态 /
-//   成功读取（内存态 + localStorage 缓存 `{ts,data}` + 零重复 fetch）/ 非 force 命中内存缓存 /
-//   `aboutEnsureLoaded` 新鲜态不重复拉取 / cached 与 fail 两态 / 渲染投影（分节·按钮·计数·倒序条目·版本不一致警告）/
-//   清缓存（删键 + 复位状态）/ **V1 原生缺陷 #1（渲染→重试风暴）与 #2（在途标志污染）已修** 的断言
+// 单元测试 · v2.53.0「关于页：从代码库取版本清单 + 言简意赅 + 缓冲清理迁到数据管理」
+//
+// 用户报告（v2.53.0 三条）：
+//   ① 「版本更新应该是**代码库中的 json 文件**」—— 旧实现首候选是扩展目录/相对路径，代码库清单不在候选里；
+//   ② 「『关于·FTT记忆组件』**重新获取**设计有错误」—— 旧 `aboutReload` 命中在途 Promise / TTL 节流时直接返回旧结果；
+//   ③ 「关于页大量历史/文档提示需言简意赅，不扩散开发内容」+「清理本地缓冲应移到数据管理，并展示缓冲统计」。
+//
+// 本测试是 **V2 契约测试**（不是 V1 HTML 逐字对照）：`tests/fixtures/v1-golden-about.json` 仍是 V1 v1.206 的
+//   原始证据（docs 引用保留），但 V2 在以下 4 点**有意偏离** V1，故不再逐字比对：
+//   ① 候选顺序 = 代码库 raw 优先（V1 只有相对路径）；② 状态文案收敛为三态（V1 带来源路径/时间戳/emoji）；
+//   ③ 「关于」页不渲染开发/历史块（V1 放「入口与用法 / 配置键数 / 缓存 TTL / 扩展目录」等）；
+//   ④ 「清理本地缓冲」不在关于页，迁至 设定 → 数据管理（带条数/字节统计，见 docs/P10q）。
+// 覆盖：C 候选与常量 ｜ L 读取/缓存/失败三态 ｜ R 「重新获取」强制重取与清缓存动作 ｜ H 渲染精简 ｜ B 缓冲统计与数据页。
+// 运行：node tests/unit/about-golden.test.js
 // ============================================================
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { makeReporter } from '../harness/st-mock.js';
-import { VERSION } from '../../core/constants.js';
+import { makeReporter, makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '../harness/st-mock.js';
+import { setKernelState } from '../../core/model/runtime.js';
+import { emptyState } from '../../core/state.js';
 import {
-    ABOUT_JSON_PATHS, ABOUT_FILE, ABOUT_CACHE_KEY, ABOUT_ACTIONS, ABOUT_TTL_MS,
-    aboutFallback, aboutReadCache, aboutClearCache, aboutCandidateUrls, aboutDirUrl,
-    aboutSortDesc, aboutLoadJson, aboutEnsureLoaded, getAboutData, getAboutState,
-    aboutHtml, aboutStatusText, aboutAction, aboutInfo, setAboutHooks,
+    ABOUT_FILE, ABOUT_JSON_PATHS, ABOUT_CACHE_KEY, ABOUT_TTL_MS,
+    aboutCandidateUrls, aboutRepoRawUrl, aboutRepoPageUrl, aboutDirUrl,
+    aboutLoadJson, aboutSortDesc, aboutClearCache, aboutWriteCache, aboutReadCache,
+    aboutStatusText, aboutHtml, aboutAction, aboutCacheStats, aboutInfo,
+    getAboutData, getAboutState, setAboutHooks,
 } from '../../ui/about.js';
+import { settingsPageHtml } from '../../ui/settings-pages.js';
+import { VERSION } from '../../core/constants.js';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-about.json'), 'utf8'));
-const R = makeReporter('about-golden B9-a 关于页（V1 黄金样本逐项比对）');
+const R = makeReporter('about v2.53.0 关于页：代码库清单 / 强制重取 / 精简渲染 / 缓冲清理');
 const J = (v) => JSON.stringify(v);
-const clone = (v) => JSON.parse(JSON.stringify(v));
-const FIXED_NOW = G.meta.fixedNow;
-const SAMPLE = G.meta.sample;
+const A = (n, c, e) => R.assert(n, !!c, e);
 
-/** detail 传**函数**（惰性求值：只在失败时收集现场，避免把 await 前的旧快照当证据） */
-const A = async (name, fn, detailFn) => {
-    let cond = false, extra = '';
-    try { cond = await fn(); } catch (e) { cond = false; extra = String((e && e.message) || e); }
-    if (cond !== true && !extra && typeof detailFn === 'function') { try { extra = detailFn(); } catch (e) { extra = String((e && e.message) || e); } }
-    R.assert(name, cond === true, extra);
+// ---- 宿主与 localStorage 桩 ----
+const doc = makeDocument(['ftt-panel', 'extensions_settings2']);
+const host = makeHost({});
+installGlobalHost(host, doc);
+setKernelState(emptyState());
+
+const lsMap = new Map();
+const ls = {
+    getItem: (k) => (lsMap.has(String(k)) ? lsMap.get(String(k)) : null),
+    setItem: (k, v) => { lsMap.set(String(k), String(v)); },
+    removeItem: (k) => { lsMap.delete(String(k)); },
+    clear: () => lsMap.clear(),
+    key: (i) => Array.from(lsMap.keys())[i] || null,
+    get length() { return lsMap.size; },
+};
+const keepWin = globalThis.window;
+globalThis.window = Object.assign({}, globalThis.window, { localStorage: ls });
+
+const REPO_PAGE = 'https://github.com/fotomxq/stt-memory-plugin-v2';
+const REPO_RAW = 'https://raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/FTT-memory-changelog.json';
+const EXT_DIR = '/scripts/extensions/third-party/ftt-memory-v2/';
+
+const DOC = {
+    name: 'FTT记忆组件', version: VERSION, updatedAt: '2026-10-01',
+    intro: { what: 'SillyTavern 记忆扩展', highlights: ['自动提取', '自动注入'] },
+    changelog: [
+        { version: '2.51.0', date: '2026-09-01', title: '时钟改版', points: ['情节唯一可信', '去掉巡检'] },
+        { version: '2.53.0', date: '2026-10-01', title: '关于页', points: ['a', 'b', 'c', 'd', 'e'] },
+        { version: '2.52.0', date: '2026-09-20', title: '总览精简', points: ['管线状态'] },
+    ],
 };
 
-const realNow = Date.now;
-function freezeNow(v) { Date.now = () => v; }
-function nowOff() { Date.now = realNow; }
+/** 仓库里真实随发布的版本清单（由 CHANGELOG.md 生成；用于「关于页 ↔ 部署物」契约） */
+const REAL_TEXT = readFileSync(new URL('../../FTT-memory-changelog.json', import.meta.url), 'utf8');
+const REAL = JSON.parse(REAL_TEXT);
 
-/** 内存 localStorage 桩 */
-function makeLS() {
-    const map = new Map();
-    return {
-        _map: map,
-        getItem: (k) => (map.has(String(k)) ? map.get(String(k)) : null),
-        setItem: (k, v) => { map.set(String(k), String(v)); },
-        removeItem: (k) => { map.delete(String(k)); },
-    };
-}
-let LS = null;
-let calls = [];
-let route = () => ({ status: 404, text: 'gone' });
-const realFetch = globalThis.fetch;
-function installRoute() {
-    globalThis.fetch = async (url, opts) => {
-        calls.push(String(url));
-        const base = String(url).split('?')[0];
-        const r = route(base, String(url));
-        if (r && r.throw) throw new Error(r.throw);
-        return {
-            ok: Number(r.status) >= 200 && Number(r.status) < 300, status: Number(r.status) || 0,
-            async text() { return String(r.text == null ? '' : r.text); },
-            async json() { return JSON.parse(String(r.text == null ? '' : r.text)); },
-        };
-    };
-}
-function uninstallFetch() { if (realFetch === undefined) delete globalThis.fetch; else globalThis.fetch = realFetch; }
+/** 可编排的 fetch 桩：记录每次请求 URL；`mode` 控制响应 */
+const fetchLog = { urls: [], mode: 'ok' };
+const unFetch = installGlobalFetch((url) => {
+    fetchLog.urls.push(String(url));
+    if (fetchLog.mode === 'real') return { status: 200, text: REAL_TEXT };
+    if (fetchLog.mode === 'ok') return { status: 200, text: J(DOC) };
+    if (fetchLog.mode === 'bad-json') return { status: 200, text: 'not-json' };
+    if (fetchLog.mode === 'no-array') return { status: 200, text: J({ version: '9.9.9' }) };
+    return { status: 404, body: {} };
+});
+const resetFetch = (mode) => { fetchLog.urls = []; fetchLog.mode = mode || 'ok'; };
 
-/** 渲染投影（提取与 oracle 同名的字段；V2 无法逐字节比对整段 HTML，故按关键证据比对） */
-function htmlProj() {
-    const h = String(aboutHtml() || '');
-    const grab = (re) => { const m = h.match(re); return m ? String(m[1]) : null; };
-    return {
-        sections: ['关于 · FTT记忆组件', '它是什么', '版本更新（倒序 · 最新在最前）'].filter((t) => h.indexOf(t) >= 0),
-        hasReloadBtn: h.indexOf('data-ftt-action="aboutReload"') >= 0,
-        hasClearBtn: h.indexOf('data-ftt-action="aboutClearCache"') >= 0,
-        reloadLabel: h.indexOf('🔄 重新获取') >= 0,
-        clearLabel: h.indexOf('🧹 清除本地缓存') >= 0,
-        btnCount: (h.match(/data-ftt-action="about(Reload|ClearCache)"/g) || []).length,
-        nameLine: grab(/<div class="ftt-my-2"><b>([^<]*)<\/b>/),
-        countLine: grab(/共 (\d+) 个版本/),
-        entries: (h.match(/<b class="[^"]*">([^<]*)<\/b>/g) || []).map((s) => s.replace(/<[^>]*>/g, '')),
-        emptyText: h.indexOf('清单暂无版本条目') >= 0,
-        statusText: grab(/<div class="ftt-hint ftt-mt-4">([^<]*)</),
-        warnText: grab(/ftt-note-warn[^>]*>([^<]*)</),
-        introWhat: grab(/<div class="ftt-sec-title">它是什么<\/div><div>([^<]*)</),
-    };
-}
+// ---- C 组：候选地址与常量契约 ----
+A('C1 常量与 V1 同值：文件名 / 缓存键 / 相对路径候选 / TTL', ABOUT_FILE === 'FTT-memory-changelog.json'
+    && ABOUT_CACHE_KEY === 'fttAboutJson'
+    && J(ABOUT_JSON_PATHS) === J(['FTT-memory-changelog.json', './FTT-memory-changelog.json'])
+    && ABOUT_TTL_MS === 600000, J({ file: ABOUT_FILE, key: ABOUT_CACHE_KEY, paths: ABOUT_JSON_PATHS, ttl: ABOUT_TTL_MS }));
 
-LS = makeLS();
-globalThis.window = { localStorage: LS };
-setAboutHooks({ rerender: () => undefined });      // 测试内不触面板重绘
-installRoute();
-freezeNow(FIXED_NOW);
-aboutClearCache();                                  // 复位模块内存态 → 与 V1 oracle 的初始态一致
+A('C2 代码库 raw 清单 = 第一候选（用户要求「版本更新应取代码库中的 json 文件」）', (() => {
+    const c = aboutCandidateUrls();
+    return aboutRepoRawUrl() === REPO_RAW && c[0] === REPO_RAW;
+})(), J(aboutCandidateUrls()));
 
-// ---------------- A0 候选地址与常量（V2 取文件路径的适配） ----------------
-await A('A0 候选地址：V2 = **扩展目录绝对路径优先** + V1 同款两条相对路径；ABOUT_JSON_PATHS 与 V1 逐字一致；缓存键同名', () => {
-    const cand = aboutCandidateUrls();
+A('C3 兜底候选仍在且不重复：扩展目录 → V1 相对路径', (() => {
+    const c = aboutCandidateUrls();
     const dir = aboutDirUrl();
-    return J(ABOUT_JSON_PATHS) === J(G.aboutJsonPaths)
-        && ABOUT_FILE === 'FTT-memory-changelog.json' && ABOUT_CACHE_KEY === G.meta.cacheKey
-        && dir === '/scripts/extensions/third-party/ftt-memory-v2/'
-        && J(cand) === J([dir + ABOUT_FILE].concat(G.aboutJsonPaths))
-        && cand[0] === dir + ABOUT_FILE;
-}, () => ({ cand: aboutCandidateUrls(), v1: G.candidateUrls }));
+    const noDup = c.length === new Set(c).size;
+    const hasRel = c.indexOf('FTT-memory-changelog.json') >= 0 && c.indexOf('./FTT-memory-changelog.json') >= 0;
+    return noDup && hasRel && (dir ? c.indexOf(dir + ABOUT_FILE) > 0 : true);
+})(), J(aboutCandidateUrls()));
 
-// ---------------- A1 初始态 ----------------
-await A('A1 初始态：数据为 null、状态为 idle（与 V1 逐项一致）；`aboutInfo()` 暴露候选/缓存/目录诊断', () => {
+A('C4 代码库页面地址可用于失败提示的「去哪看」', aboutRepoPageUrl() === REPO_PAGE
+    && aboutRepoRawUrl().indexOf('raw.githubusercontent.com/fotomxq/stt-memory-plugin-v2/main/') >= 0,
+    aboutRepoPageUrl());
+
+A('C5 仓库设置可覆写（HTTPS / SSH / slug 形态都归一为 owner/name@branch）', (() => {
+    const out = [];
+    for (const repo of ['https://github.com/foo/bar', 'git@github.com:foo/bar.git', 'foo/bar']) {
+        globalThis.__fttAboutRepo = { repo: repo, branch: 'dev' };
+        out.push(aboutRepoRawUrl());
+    }
+    delete globalThis.__fttAboutRepo;
+    return J(out) === J([
+        'https://raw.githubusercontent.com/foo/bar/dev/FTT-memory-changelog.json',
+        'https://raw.githubusercontent.com/foo/bar/dev/FTT-memory-changelog.json',
+        'https://raw.githubusercontent.com/foo/bar/dev/FTT-memory-changelog.json',
+    ]) && aboutRepoRawUrl() === REPO_RAW;
+})(), '见断言');
+
+A('C6 aboutSortDesc：版本倒序、非法版本按 0.0.0、入参不被修改', (() => {
+    const src = [{ version: '2.9.0' }, { version: 'bad' }, { version: '2.10.0' }, { version: 'v2.10.1' }, {}];
+    const before = J(src);
+    const got = aboutSortDesc(src).map((e) => e.version);
+    return J(got) === J(['v2.10.1', '2.10.0', '2.9.0', 'bad', null])
+        && J(src) === before;
+})(), '(见断言)');
+
+// ---- L 组：读取 / 缓存 / 三态文案 ----
+await (async () => {
     aboutClearCache();
-    const st = getAboutState();
-    const info = aboutInfo();
-    return J(getAboutData()) === J(G.initial.data) && J(st) === J(G.initial.state)
-        && info.status === 'idle' && info.hasData === false && info.cached === false
-        && J(info.candidates) === J(aboutCandidateUrls());
-}, () => ({ data: getAboutData(), state: getAboutState() }));
+    resetFetch('ok');
+    const r = await aboutLoadJson(true);
+    A('L1 成功：ok / 3 个版本 / 来源为代码库 raw / 写本地缓存', r.ok === true && (r.data.changelog || []).length === 3
+        && r.from === REPO_RAW && getAboutState().status === 'ok'
+        && ls.getItem(ABOUT_CACHE_KEY) !== null && aboutReadCache() !== null,
+        J({ from: r.from, status: getAboutState().status, cached: !!aboutReadCache() }));
 
-// ---------------- A2 版本号倒序（V1 `aboutSortDesc` 逐值比对） ----------------
-await A('A2 `aboutSortDesc`：乱序样本 + 带 v 前缀/短号/非法项 + 非数组 + 空数组，四组输出与 V1 逐值一致', () => {
-    const cases = G.sortDesc.cases;
-    // 版本号归一与 oracle 同式：`String((e && e.version) || '')`（null/'' → ''）
-    const verOf = (e) => String((e && e.version) || '');
-    const got = [
-        aboutSortDesc(SAMPLE.changelog).map(verOf),
-        aboutSortDesc(cases[1].input.map((v) => ({ version: v }))).map(verOf),
-        aboutSortDesc(null).map(verOf),
-        aboutSortDesc([]).map(verOf),
-    ];
-    return cases.every((c, i) => J(got[i]) === J(c.out));
-}, () => { try { return { got: aboutSortDesc(SAMPLE.changelog).map((e) => e.version), want: G.sortDesc.stableOut }; } catch (e) { return String(e.message); } });
+    A('L2 首个请求地址 = 代码库 raw 候选（不是扩展目录）', fetchLog.urls.length >= 1
+        && fetchLog.urls[0] === REPO_RAW && aboutInfo().candidates[0] === REPO_RAW,
+        J(fetchLog.urls.slice(0, 3)));
 
-// ---------------- A3 兜底文案（不伪造版本内容） ----------------
-await A('A3 `aboutFallback()`：**只说明读不到清单**（changelog 为空、fallback=true），除 3 处 V2 形态适配（title / intro.what / intro.notes）外与 V1 逐字段一致', () => {
-    const fb = aboutFallback();
-    const v1 = G.fallback;
-    const diff = ['title', 'version', 'intro'];
-    const sameCore = fb.name === v1.name && fb.updatedAt === v1.updatedAt && fb.generatedAt === v1.generatedAt
-        && fb.fallback === v1.fallback && J(fb.changelog) === J(v1.changelog)
-        && J(fb.intro.highlights) === J(v1.intro.highlights) && J(fb.intro.entries) === J(v1.intro.entries)
-        && Object.keys(fb).sort().join(',') === Object.keys(v1).sort().join(',')
-        && diff.length === 3;
-    // V2 适配：title 说明形态；intro.what/notes 给出扩展目录（V1 给的是「与插件 JS 同目录」）
-    const adapted = fb.title === 'SillyTavern 长期记忆插件（原生扩展形态）'
-        && fb.version === VERSION
-        && fb.intro.what.indexOf('未能读取版本清单 JSON') === 0
-        && fb.intro.notes.indexOf(aboutDirUrl() + ABOUT_FILE) >= 0
-        && v1.intro.notes.indexOf('本插件 JS 放在同一目录') >= 0;
-    return sameCore && adapted;
-}, () => { try { return { v2: aboutFallback(), v1: G.fallback }; } catch (e) { return String(e.message); } });
+    A('L3 成功态文案 =「已获取版本更新 · 共 3 个版本」（不含来源/时间戳/emoji）', aboutStatusText() === '已获取版本更新 · 共 3 个版本'
+        && aboutStatusText().indexOf('raw.githubusercontent') < 0 && aboutStatusText().indexOf('✅') < 0,
+        aboutStatusText());
 
-// ---------------- A4 成功读取（相对扩展目录） ----------------
-await A('A4 成功读取：命中**扩展目录**首个候选 → status=ok、data 与 V1 逐字段一致、localStorage 缓存 `{ts,data}` 一致（ts=固定时钟）', () => {
+    // 离线 + 有缓存 → cached 态，仍 ok
+    resetFetch('fail');
+    const c = await aboutLoadJson(true);
+    A('L4 离线但有缓存：status=cached、ok=true、文案注明「本次未联网，使用上次缓存」', c.ok === true
+        && getAboutState().status === 'cached'
+        && aboutStatusText() === '已获取版本更新 · 共 3 个版本（本次未联网，使用上次缓存）',
+        J({ ok: c.ok, status: getAboutState().status, text: aboutStatusText() }));
+
+    // 无缓存 + 离线 → fail 态，如实失败不伪造
     aboutClearCache();
-    calls = [];
-    route = () => ({ status: 200, text: J(SAMPLE) });
-    return aboutLoadJson(true).then((res) => {
-        const cache = JSON.parse(LS.getItem(ABOUT_CACHE_KEY) || 'null');
-        const dirUrl = aboutDirUrl() + ABOUT_FILE;
-        const ok = res.ok === true && res.status === 'ok' && res.from === dirUrl
-            && J(res.data) === J(G.success.data) && J(getAboutData()) === J(G.success.data)
-            && getAboutState().status === 'ok' && getAboutState().from === dirUrl && getAboutState().ts === FIXED_NOW
-            && J(cache) === J(G.success.cache) && calls.length === 1 && calls[0] === dirUrl
-            // V1 首个候选是相对路径（`FTT-memory-changelog.json`）；V2 首个候选是扩展目录绝对路径（适配①）
-            && G.success.calls.length === 1 && G.success.res.from === 'FTT-memory-changelog.json';
-        return ok;
-    });
-}, () => { try { return { from: getAboutState().from, status: getAboutState().status, calls: calls, cache: LS.getItem(ABOUT_CACHE_KEY) }; } catch (e) { return String(e.message); } });
+    resetFetch('fail');
+    const f = await aboutLoadJson(true);
+    A('L5 无缓存且离线：ok=false、status=fail、只回退说明且 changelog 为空（不伪造版本数据）', f.ok === false
+        && getAboutState().status === 'fail' && f.data.fallback === true && (f.data.changelog || []).length === 0,
+        J({ ok: f.ok, status: getAboutState().status, changelog: f.data.changelog, fallback: f.data.fallback }));
 
-// ---------------- A5 非 force 命中内存缓存（零 fetch） ----------------
-await A('A5 非 force 二次调用：命中内存缓存直接返回（零新增 fetch），与 V1 `noForce` 一致', async () => {
-    calls = [];
-    const res = await aboutLoadJson(false);
-    return res.ok === true && res.status === 'ok' && J(res.data) === J(G.success.data)
-        && J(calls) === J(G.noForce.calls) && res.from === undefined;
-}, () => ({ calls: calls }));
+    A('L6 失败文案 =「无法获取版本更新 —— 可在代码库查看：<仓库页>」（不含扩展目录/相对路径等实现细节）',
+        aboutStatusText() === ('无法获取版本更新 —— 可在代码库查看：' + REPO_PAGE)
+        && aboutStatusText().indexOf(EXT_DIR) < 0 && aboutStatusText().indexOf('相对路径') < 0,
+        aboutStatusText());
 
-// ---------------- A6 aboutEnsureLoaded 新鲜态不重复拉取 ----------------
-await A('A6 `aboutEnsureLoaded()`：状态 ok 且未过期 → false（零 fetch），与 V1 `ensureFresh` 一致', async () => {
-    calls = [];
-    const ret = aboutEnsureLoaded();
-    await new Promise((r) => setTimeout(r, 30));
-    return ret === G.ensureFresh.ret && ret === false && J(calls) === J(G.ensureFresh.calls);
-}, () => ({ ret: aboutEnsureLoaded(), calls: calls }));
+    A('L7 坏 JSON / changelog 非数组 → 一律判失败', await (async () => {
+        aboutClearCache(); resetFetch('bad-json');
+        const a = await aboutLoadJson(true);
+        aboutClearCache(); resetFetch('no-array');
+        const b = await aboutLoadJson(true);
+        return a.ok === false && b.ok === false && getAboutState().status === 'fail';
+    })(), '见断言');
 
-// ---------------- A7 cached 态（读取失败但有缓存） ----------------
-await A('A7 读取失败但有缓存 → status=cached、ok=true、data 用缓存（非兜底）；四轮候选与 cache-buster 与 V1 一致', async () => {
-    calls = [];
-    route = () => ({ status: 404, text: 'gone' });
-    const res = await aboutLoadJson(true);
-    const dirUrl = aboutDirUrl() + ABOUT_FILE;
-    // V2 比 V1 多一条候选（扩展目录绝对路径）→ 每轮 3 条、两轮共 6 次；V1 为 2 条候选 × 2 轮 = 4 次
-    const wantCalls = [dirUrl, G.aboutJsonPaths[0], G.aboutJsonPaths[1],
-        dirUrl + '?ftt=' + FIXED_NOW, G.aboutJsonPaths[0] + '?ftt=' + FIXED_NOW, G.aboutJsonPaths[1] + '?ftt=' + FIXED_NOW];
-    return res.ok === true && res.status === 'cached' && res.error === 'http-404'
-        && getAboutState().status === 'cached' && getAboutState().ts === FIXED_NOW
-        && String(getAboutData().version) === G.cached.dataVersion
-        && getAboutData().fallback !== true
-        && J(calls) === J(wantCalls) && G.cached.callsN === 4;
-}, () => { try { return { state: getAboutState(), calls: calls }; } catch (e) { return String(e.message); } });
-
-// ---------------- A8 fail 态（无缓存 + 兜底，不伪造版本数据） ----------------
-await A('A8 读取失败且无缓存 → status=fail、ok=false、data 为兜底（changelog 空、fallback=true）；与 V1 `fail` 逐项一致', async () => {
+    // V1 缺陷 #2 回归：no-fetch 早退分支不得污染在途标志
+    const keepFetch = globalThis.fetch;
+    delete globalThis.fetch;
     aboutClearCache();
-    LS.removeItem(ABOUT_CACHE_KEY);
-    calls = [];
-    route = () => ({ status: 404, text: 'gone' });
-    const res = await aboutLoadJson(true);
-    const st = getAboutState();
-    return res.ok === G.fail.res.ok && res.status === 'fail' && st.status === 'fail' && st.error === 'http-404'
-        && getAboutData().fallback === true && getAboutData().changelog.length === 0
-        && G.fail.dataFallback === true && G.fail.dataChangelogN === 0
-        && G.fail.callsN === 4 && calls.length === 6;      // V2 多一条扩展目录候选 → 6 次（V1 为 4 次）
-}, () => { try { return { state: getAboutState(), calls: calls, data: getAboutData() }; } catch (e) { return String(e.message); } });
+    const n1 = await aboutLoadJson(true);
+    globalThis.fetch = keepFetch;
+    resetFetch('ok');
+    const n2 = await aboutLoadJson(true);
+    A('L8 V1「在途标志污染」回归：无 fetch 分支返回后，恢复 fetch 仍能真正取到数据（不是旧结果）', n1.ok === false
+        && n1.error === 'no-fetch' && n2.ok === true && (n2.data.changelog || []).length === 3,
+        J({ n1: { ok: n1.ok, error: n1.error }, n2: { ok: n2.ok, status: n2.status } }));
 
-// ---------------- A9 渲染投影（成功态，与 V1 `htmlOk` 逐项一致） ----------------
-await A('A9 渲染（成功态）：三节标题 / 两个 V1 同款按钮 / 版本计数 / 倒序条目 / 版本不一致警告文案均与 V1 一致；状态行前缀一致', async () => {
-    route = () => ({ status: 200, text: J(SAMPLE) });
+    A('L9 写缓存 → 读缓存往返一致（`{ts, data}` 结构）', (() => {
+        aboutClearCache();
+        aboutWriteCache(DOC);
+        const c2 = aboutReadCache();
+        return !!c2 && !!c2.data && c2.data.version === DOC.version && typeof c2.ts === 'number' && c2.ts > 0;
+    })(), '见断言');
+})();
+
+// ---- R 组：「重新获取」与清缓存动作 ----
+await (async () => {
+    aboutClearCache();
+    resetFetch('ok');
+    const r1 = await aboutAction('aboutReload', {});
+    const calls1 = fetchLog.urls.length;
+    const r2 = await aboutAction('aboutReload', {});
+    const calls2 = fetchLog.urls.length;
+    A('R1 「重新获取」强制重取：两次点击都真的发请求（旧实现在途去重/节流会直接返回旧结果）',
+        r1.ok === true && r2.ok === true && calls1 >= 1 && calls2 > calls1,
+        J({ calls1, calls2, note: r1.note }));
+
+    A('R2 成功提示言简意赅：「已获取版本更新 · 共 3 个版本」', r1.note === '已获取版本更新 · 共 3 个版本'
+        && r1.versions === 3 && r1.note.indexOf('来源') < 0,
+        String(r1.note));
+
+    resetFetch('fail');
+    const rf = await aboutAction('aboutReload', {});
+    A('R3 离线但有缓存：动作仍 ok=true，提示如实说明「使用上次缓存」', rf.ok === true
+        && rf.note === '已获取版本更新 · 共 3 个版本（本次未联网，使用上次缓存）',
+        String(rf.note));
+
+    aboutClearCache();
+    resetFetch('fail');
+    const rf2 = await aboutAction('aboutReload', {});
+    A('R4 无缓存且离线：ok=false 且提示「无法获取版本更新 —— 可在代码库查看：<仓库页>」',
+        rf2.ok === false && rf2.note === ('无法获取版本更新 —— 可在代码库查看：' + REPO_PAGE),
+        String(rf2.note));
+
+    // 先造出缓存，再验证清缓存动作真的删键（removed 如实回报）
+    aboutWriteCache(DOC);
+    const cl = await aboutAction('aboutClearCache', {});
+    A('R5 清缓存动作：删 localStorage 键 + 复位内存态（data=null / status=idle / ts=0）', cl.ok === true
+        && cl.removed === true && ls.getItem(ABOUT_CACHE_KEY) === null
+        && getAboutData() === null && getAboutState().status === 'idle' && getAboutState().ts === 0,
+        J({ ok: cl.ok, removed: cl.removed, status: getAboutState().status }));
+
+    A('R6 未知动作如实返回失败（不静默成功）', await (async () => {
+        const x = await aboutAction('aboutNope', {});
+        return x.ok === false && x.note.indexOf('未知关于页动作') === 0;
+    })(), '见断言');
+})();
+
+// ---- H 组：渲染精简（言简意赅，不扩散开发内容） ----
+await (async () => {
+    setAboutHooks({ rerender: () => undefined });
+    aboutClearCache();
+    resetFetch('ok');
     await aboutLoadJson(true);
-    calls = [];
-    const got = htmlProj();
-    const v1 = G.htmlOk;
-    const sameExceptStatus = J(got.sections) === J(v1.sections)
-        && got.hasReloadBtn === v1.hasReloadBtn && got.hasClearBtn === v1.hasClearBtn
-        && got.reloadLabel === v1.reloadLabel && got.clearLabel === v1.clearLabel && got.btnCount === v1.btnCount
-        && got.nameLine === v1.nameLine && got.countLine === v1.countLine && J(got.entries) === J(v1.entries)
-        && got.emptyText === v1.emptyText && got.introWhat === v1.introWhat
-        && got.warnText === G.htmlOk.warnText.replace('v1.206', VERSION)
-        && calls.length === v1.ensureCalls.length;
-    const statusOk = got.statusText === ('✅ 版本清单已读取 · 3 个版本 · ' + new Date(FIXED_NOW).toLocaleString())
-        || got.statusText.indexOf('✅ 版本清单已读取 · 3 个版本 · ') === 0;
-    return sameExceptStatus && statusOk && v1.countLine === '3' && J(v1.entries) === J(['1.0.0', '0.10.0', '0.9.0']);
-}, () => { try { return htmlProj(); } catch (e) { return String(e.message); } });
+    const h = aboutHtml();
+    A('H1 结构齐备：标题 / 一句话定位 / 当前版本 / 重新获取 / 状态行 / 功能 / 版本更新', h.indexOf('关于 · FTT记忆组件') >= 0
+        && h.indexOf('SillyTavern 记忆扩展') >= 0 && h.indexOf('当前版本 <b>' + VERSION + '</b>') >= 0
+        && h.indexOf('data-ftt-action="aboutReload"') >= 0 && h.indexOf('🔄 重新获取') >= 0
+        && h.indexOf('data-ftt-about-status') >= 0 && h.indexOf('已获取版本更新 · 共 3 个版本') >= 0
+        && h.indexOf('功能') >= 0 && h.indexOf('版本更新（最新在最前）') >= 0,
+        h.slice(0, 200));
 
-// ---------------- A10 缓存态渲染：V1 缺陷 #1 已修（不再渲染即重试风暴） ----------------
-await A('A10 渲染（缓存态）：V1 `htmlCached` 会因 `aboutEnsureLoaded` 恒判 stale 而渲染出「⏳ 正在读取版本清单…」并每次渲染都再发一轮读取（**原生缺陷 #1**）；V2 以重试间隔闸门修掉 → 渲染出「📦 上次缓存…」且**零新增 fetch**', async () => {
-    route = () => ({ status: 404, text: 'gone' });
-    await aboutLoadJson(true);            // → cached
-    calls = [];
-    const got = htmlProj();
-    const st = getAboutState();
-    return G.htmlCached.statusText === '⏳ 正在读取版本清单…' && G.htmlCached.ensureCalls.length === 1
-        && calls.length === 0 && st.status === 'cached'
-        && got.statusText.indexOf('📦 上次缓存（') === 0 && got.statusText.indexOf('打开本页自动重试') > 0
-        && got.countLine === G.htmlCached.countLine && J(got.entries) === J(G.htmlCached.entries)
-        && aboutStatusText().indexOf('📦 上次缓存（') === 0;
-}, () => { try { return { state: getAboutState(), calls: calls.length, status: aboutStatusText() }; } catch (e) { return String(e.message); } });
+    A('H2 不出现开发/历史内容，也不出现清缓存按钮（已迁数据管理）', ['V2 附加信息', '内核配置键', '默认配置键',
+        '扩展目录', '相对路径', '入口与用法', '缓存 TTL', 'fttAboutJson', '对齐总表', 'docs/', '本页自动重试',
+        'aboutClearCache', '清除本地缓存'].every((s) => h.indexOf(s) < 0),
+        h);
 
-// ---------------- A11 失败态渲染（无缓存 + stale 但受闸门保护） ----------------
-await A('A11 渲染（失败态）：状态行给出**扩展目录**提示（V1 给的是「与插件 JS 同目录」）且零新增 fetch；表格为空时展示 V1 同款空态', async () => {
+    A('H3 版本条目倒序且每条最多 3 条要点（用户要求言简意赅）', (() => {
+        // 只在「版本更新」分节内比对顺序（节外「当前版本」行也含版本号，会干扰 indexOf）
+        const secAt = h.indexOf('版本更新（最新在最前）');
+        if (secAt < 0) return false;
+        const sec = h.slice(secAt);
+        const order = ['2.53.0', '2.52.0', '2.51.0'].map((v) => sec.indexOf(v));
+        const ok3 = sec.indexOf('>a<') >= 0 && sec.indexOf('>b<') >= 0 && sec.indexOf('>c<') >= 0
+            && sec.indexOf('>d<') < 0 && sec.indexOf('>e<') < 0;
+        return ok3 && order[0] >= 0 && order[0] < order[1] && order[1] < order[2] && sec.indexOf('当前版本</span>') >= 0;
+    })(), '见断言');
+
     aboutClearCache();
-    LS.removeItem(ABOUT_CACHE_KEY);
-    route = () => ({ status: 404, text: 'gone' });
-    await aboutLoadJson(true);            // → fail（aboutLastAttemptAt 已置位 → 闸门生效）
-    calls = [];
-    const got = htmlProj();
-    // V1 现场：失败态渲染时 `aboutEnsureLoaded()` 立刻把状态置为 loading → 渲染出「⏳ 正在读取版本清单…」（缺陷 #1）；
-    //   V2 因重试闸门不再自触发，渲染出真实失败文案（给出扩展目录路径）
-    return G.htmlFail.statusText === '⏳ 正在读取版本清单…' && G.htmlFail.ensureCalls.length === 1
-        && G.htmlFail.countLine === null && G.htmlFail.emptyText === true
-        && got.countLine === null && got.emptyText === true && got.entries.length === 0
-        && calls.length === 0
-        && got.statusText.indexOf('⚠️ 版本清单读取失败') === 0
-        && got.statusText.indexOf('确认 ' + ABOUT_FILE + ' 在扩展目录（' + aboutDirUrl() + '）') > 0;
-}, () => { try { return { status: aboutStatusText(), calls: calls.length, info: aboutInfo() }; } catch (e) { return String(e.message); } });
+    resetFetch('fail');
+    await aboutLoadJson(true);
+    const hf = aboutHtml();
+    A('H4 失败态：渲染骨架（标题/重新获取），状态行指向代码库，版本更新区为空态说明；不渲染兜底里的实现说明',
+        hf.indexOf('关于 · FTT记忆组件') >= 0 && hf.indexOf('🔄 重新获取') >= 0
+        && hf.indexOf('无法获取版本更新 —— 可在代码库查看：' + REPO_PAGE) >= 0
+        && hf.indexOf('ftt-empty') >= 0 && hf.indexOf('首个版本') < 0
+        && hf.indexOf('扩展目录') < 0 && hf.indexOf('最新版本') < 0 && hf.indexOf('不一致') < 0,
+        hf.slice(0, 300));
+})();
 
-// ---------------- A12 清缓存（V1 `case 'aboutClearCache'`） ----------------
-await A('A12 `aboutClearCache()`：删除 localStorage 键 `fttAboutJson` + 数据复位 null + 状态复位 idle；动作 `aboutClearCache` 文案一致', async () => {
-    route = () => ({ status: 200, text: J(SAMPLE) });
-    await aboutLoadJson(true);                       // 写缓存
-    const before = LS.getItem(ABOUT_CACHE_KEY) !== null;
-    const ar = await aboutAction('aboutClearCache', {});
-    return before === true && LS.getItem(ABOUT_CACHE_KEY) === null && getAboutData() === null
-        && J(getAboutState()) === J(G.initial.state) && ar.ok === true && ar.removed === true
-        && ar.note.indexOf('已清除版本清单本地缓存') === 0
-        && ABOUT_ACTIONS.join(',') === 'aboutReload,aboutClearCache'
-        && ABOUT_TTL_MS === 10 * 60 * 1000;
-}, () => { try { return { cache: LS.getItem(ABOUT_CACHE_KEY), state: getAboutState(), info: aboutInfo() }; } catch (e) { return String(e.message); } });
-
-// ---------------- A13 动作 aboutReload（成功 / 失败两态如实提示） ----------------
-await A('A13 动作 `aboutReload`：成功 → 「版本清单已更新（来源 … · 共 3 个版本）」；失败 → 如实提示扩展目录 + 错误码（不伪造数据）', async () => {
+// ---- B 组：缓冲统计 + 数据管理页 ----
+A('B1 aboutCacheStats：无缓存 = 0 条 0 字节；有缓存 = 条数/字节/已缓存', (() => {
     aboutClearCache();
-    route = () => ({ status: 200, text: J(SAMPLE) });
-    const okRes = await aboutAction('aboutReload', {});
-    route = () => ({ status: 500, text: 'boom' });
-    aboutClearCache();
-    const badRes = await aboutAction('aboutReload', {});
-    return okRes.ok === true && okRes.versions === 3
-        && okRes.note.indexOf('版本清单已更新（来源 ' + (aboutDirUrl() + ABOUT_FILE)) === 0
-        && okRes.note.indexOf('共 3 个版本') > 0
-        && badRes.ok === false && badRes.note.indexOf('未能读取版本清单') === 0
-        && badRes.note.indexOf('http-500') > 0 && badRes.note.indexOf(aboutDirUrl()) > 0
-        && getAboutData().fallback === true;
-}, () => { try { return { ok: getAboutState(), data: getAboutData() }; } catch (e) { return String(e.message); } });
+    const s0 = aboutCacheStats();
+    aboutWriteCache(DOC);
+    const s1 = aboutCacheStats();
+    return s0.cached === false && s0.versions === 0 && s0.bytes === 0
+        && s1.cached === true && s1.versions === 3 && s1.bytes > 50;
+})(), J(aboutCacheStats()));
 
-// ---------------- A14 V1 缺陷 #2 已修：no-fetch 分支不再污染在途标志 ----------------
-await A('A14 **V1 原生缺陷 #2 已修**：无 fetch 环境下 `aboutLoadJson` 的早退分支不再污染在途标志 —— V2 恢复 fetch 后能立刻重新读取（黄金样本 `noFetch.poisoned=true`）', async () => {
-    aboutClearCache();
-    const keep = globalThis.fetch;
-    try {
-        delete globalThis.fetch;
-        const r1 = await aboutLoadJson(true);
-        const r2 = await aboutLoadJson(true);
-        globalThis.fetch = keep;
-        route = () => ({ status: 200, text: J(SAMPLE) });
-        const r3 = await aboutLoadJson(true);
-        return G.noFetch.poisoned === true
-            && r1.ok === false && r1.status === 'fail' && r1.error === 'no-fetch'
-            && r2.ok === false && r2.error === 'no-fetch'
-            && r3.ok === true && r3.status === 'ok' && getAboutState().status === 'ok'
-            && getAboutData().fallback !== true;
-    } finally { globalThis.fetch = keep; }
-}, () => { try { return { state: getAboutState(), info: aboutInfo(), v1: G.noFetch.poisoned }; } catch (e) { return String(e.message); } });
+A('B2 数据管理页含「本地缓冲」统计与清除按钮；关于页不含开发块', (() => {
+    aboutWriteCache(DOC);
+    const dataHtml = settingsPageHtml('data', '');
+    const aboutPage = settingsPageHtml('about', '');
+    return dataHtml.indexOf('本地缓冲') >= 0 && dataHtml.indexOf('版本清单缓存：已缓存 3 个版本') >= 0
+        && dataHtml.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dataHtml.indexOf('🧹 清除版本清单缓存') >= 0
+        && dataHtml.indexOf('调试日志：') >= 0 && dataHtml.indexOf('交互追踪简报：') >= 0
+        && aboutPage.indexOf('本地缓冲') < 0 && aboutPage.indexOf('V2 附加信息') < 0 && aboutPage.indexOf('内核配置键') < 0;
+})(), '见断言');
 
-uninstallFetch();
-try { delete globalThis.window; } catch (e) { /* 忽略 */ }
-nowOff();
+A('B3 无缓存时数据页清除按钮禁用（不误导用户点空操作）', (() => {
+    aboutClearCache();
+    const h = settingsPageHtml('data', '');
+    return h.indexOf('版本清单缓存：（无缓存）') >= 0 && h.indexOf('aboutClearCache" disabled') >= 0;
+})(), '见断言');
+
+// ---- D 组：与「真实随发布的清单」契约（防文档/代码各写一套，也证明成功态不是只能靠桩） ----
+await (async () => {
+    A('D1 仓库清单结构：version == 当前版本、首条 = 当前版本、每条含 version/date/title/points', REAL.version === VERSION
+        && String((REAL.changelog[0] || {}).version) === VERSION && REAL.changelog.length >= 50
+        && REAL.changelog.every((e) => /^\d+\.\d+\.\d+$/.test(String(e.version)) && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date))
+            && typeof e.title === 'string' && Array.isArray(e.points) && e.points.length > 0),
+        J({ version: REAL.version, n: REAL.changelog.length, first: REAL.changelog[0] && REAL.changelog[0].version }));
+
+    aboutClearCache();
+    resetFetch('real');
+    const r = await aboutLoadJson(true);
+    const hr = aboutHtml();
+    A('D2 用真实清单渲染：成功态计数一致、当前版本条目标注「当前版本」、倒序首条 = 当前版本', r.ok === true
+        && getAboutState().status === 'ok'
+        && aboutStatusText() === ('已获取版本更新 · 共 ' + REAL.changelog.length + ' 个版本')
+        && hr.indexOf('版本更新（最新在最前）') >= 0
+        && hr.indexOf('当前版本</span>') >= 0
+        && hr.indexOf(String(REAL.changelog[1].version)) > hr.indexOf(String(REAL.changelog[0].version)),
+        J({ status: getAboutState().status, text: aboutStatusText() }));
+})();
+
+unFetch();
+if (keepWin === undefined) delete globalThis.window; else globalThis.window = keepWin;
 R.done();
