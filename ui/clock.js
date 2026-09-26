@@ -1,11 +1,11 @@
 // ============================================================
 // ui/clock.js —— **剧情时钟界面**（B8-1；结构与文案对齐 V1 `12-UI-编辑与面板.js` 总览时钟区 + `14` 动作）
 // 覆盖：总览「📅 日期 / ⏱ 时间 / 📍 地点」（含 🔒 手工徽标、缺值时的「参考最近记忆」行）+
-//   「✏️ 手工改写日期/时间/地点」工具行与编辑面板（三项输入，宽松解析）；时钟来源行说明「只取最新情节」。
+//   「✏️ 手工改写日期/时间/地点」工具行与编辑面板（三项输入，宽松解析）。
+//   v2.66.0（用户要求）：「时钟来源」「最近一次取值」这类提示行**从总览移除**（信息无实际用途，取值过程看 设定→调试）。
 // 动作名：`clockEdit` / `clockEditCancel` / `clockManualSave` / `clockManualClear` / `clockRepair`。
 //   v2.51.0：`clockPatrol`（时间巡检修复）按用户决定整段移除。
 // ============================================================
-import { clockSrcLabel, clockDegradeLabel, clockTraceSummary, clockTraceLast } from '../core/clock-trace.js';   // v2.37.0 取值追踪
 import { state, notifyHooks } from '../core/model/runtime.js';
 import { clockDateLabel } from '../core/clock.js';
 import { storyClockReference } from '../core/clock-extract.js';
@@ -27,17 +27,6 @@ function manBadge(cMan, field) {
     return (cMan && cMan[field]) ? ' <span class="ftt-badge ftt-badge--public" title="手工强制改写（锁定中，自动提取不会覆盖）">🔒 手工</span>' : '';
 }
 
-/** 时钟来源可解释行（v2.51.0：唯一来源 = 最新情节；不再有「降级 / 跳变 / 原子兜底」等废弃说法） */
-function clockSrcHtml() {
-    try {
-        const cs = state && state.state && state.state.clockSrc;
-        if (!cs || !(cs.date || cs.location || cs.present)) return '';
-        const fmt = (v) => esc(clockSrcLabel(v));
-        return '<div class="ftt-hint ftt-w-full" data-ftt-clock-src>🕒 时钟来源：日期 ' + fmt(cs.date) + ' · 时间 ' + fmt(cs.time || cs.date) + ' · 地点 ' + fmt(cs.location) + ' · 在场 ' + fmt(cs.present)
-            + '<span class="ftt-muted">（唯一可信来源：最新情节；记忆/角色/计划/悬念/平行等均不参与）</span></div>';
-    } catch (e) { return ''; }
-}
-
 /** 总览时钟区块（v2.51.0：日期 → 时间 → 地点 → 手工工具行/编辑面板 → 在场 → 时钟来源；巡检修复功能已移除） */
 export function clockSectionHtml() {
     const lines = [];
@@ -47,15 +36,24 @@ export function clockSectionHtml() {
         const cMan = clockManualState();
         const eraTxt = c.era ? '（' + esc(c.era) + '）' : '';
         const seasonTxt = c.season ? '·' + esc(c.season) : '';
-        if (c.date) lines.push('<div class="ftt-item">📅 日期：' + esc(clockDateLabel(c.date)) + eraTxt + seasonTxt + manBadge(cMan, 'date') + '</div>');
-        else if (ckRef && ckRef.date) lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（参考最近情节：' + esc(clockDateLabel(ckRef.date)) + '）</span></div>');
-        else lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（未记录 · 可用「✏️ 手工改写」设定锚点）</span></div>');
-        if (c.time) lines.push('<div class="ftt-item">⏱ 时间：' + esc(c.timeEnd ? c.time + ' → ' + c.timeEnd : c.time) + manBadge(cMan, 'time') + '</div>');
-        else if (ckRef && ckRef.time) lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.time) + '）</span></div>');
-        else lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（未记录）</span></div>');
-        if (c.location) lines.push('<div class="ftt-item">📍 地点：' + esc(c.location) + manBadge(cMan, 'location') + '</div>');
-        else if (ckRef && ckRef.location) lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.location) + '）</span></div>');
-        else lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（未记录）</span></div>');
+        // v2.66.0：日期 / 时间 / 地点 / 在场合并为**一个紧凑块**（行间不再各占一条虚线分隔），
+        //   并把「时钟来源」「最近一次取值」两类提示行移除（用户：这些提示信息完全没用）——
+        //   取值过程仍在 设定 → 调试「🕒 时钟取值追踪」里可查。
+        const rows = [];
+        if (c.date) rows.push('<div class="ftt-clock-line">📅 日期：' + esc(clockDateLabel(c.date)) + eraTxt + seasonTxt + manBadge(cMan, 'date') + '</div>');
+        else if (ckRef && ckRef.date) rows.push('<div class="ftt-clock-line">📅 日期：<span class="ftt-muted">（参考最近情节：' + esc(clockDateLabel(ckRef.date)) + '）</span></div>');
+        else rows.push('<div class="ftt-clock-line">📅 日期：<span class="ftt-muted">（未记录 · 可用「✏️ 手工改写」设定锚点）</span></div>');
+        if (c.time) rows.push('<div class="ftt-clock-line">⏱ 时间：' + esc(c.timeEnd ? c.time + ' → ' + c.timeEnd : c.time) + manBadge(cMan, 'time') + '</div>');
+        else if (ckRef && ckRef.time) rows.push('<div class="ftt-clock-line">⏱ 时间：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.time) + '）</span></div>');
+        else rows.push('<div class="ftt-clock-line">⏱ 时间：<span class="ftt-muted">（未记录）</span></div>');
+        if (c.location) rows.push('<div class="ftt-clock-line">📍 地点：' + esc(c.location) + manBadge(cMan, 'location') + '</div>');
+        else if (ckRef && ckRef.location) rows.push('<div class="ftt-clock-line">📍 地点：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.location) + '）</span></div>');
+        else rows.push('<div class="ftt-clock-line">📍 地点：<span class="ftt-muted">（未记录）</span></div>');
+        const pres = Array.isArray(c.present) ? c.present : null;
+        if (pres && pres.length) rows.push('<div class="ftt-clock-line">👥 在场角色：' + esc(pres.slice(0, 12).join('、')) + '</div>');
+        else if (pres !== null) rows.push('<div class="ftt-clock-line">👥 在场角色：<span class="ftt-muted">（最近正文/情节未识别到已知角色）</span></div>');
+        else rows.push('<div class="ftt-clock-line">👥 在场角色：<span class="ftt-muted">（未识别 · 不限制注入）</span></div>');
+        lines.push('<div class="ftt-item ftt-item--col" data-ftt-clock>' + rows.join('\n') + '</div>');
         // 手工改写工具行 + 编辑面板（三项输入；日期/时间宽松解析，地点自由文本）
         lines.push('<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="clockEdit" title="手工强制改写剧情日期 / 时间 / 地点（锚点错了就在这里改）">✏️ 手工改写日期/时间/地点</button>'
             + (cMan
@@ -71,15 +69,6 @@ export function clockSectionHtml() {
                 + '<div class="ftt-field"><label>地点</label><input type="text" data-ftt-clock-manual="location" value="' + attr(String(c.location || '')) + '" placeholder="如 城市甲·码头"></div>'
                 + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="clockManualSave">💾 保存并锁定</button><button class="ftt-btn" data-ftt-action="clockEditCancel">取消</button></div></div>');
         }
-        const pres = Array.isArray(c.present) ? c.present : null;
-        if (pres && pres.length) lines.push('<div class="ftt-item">👥 在场角色：' + esc(pres.slice(0, 12).join('、')) + '</div>');
-        else if (pres !== null) lines.push('<div class="ftt-item">👥 在场角色：<span class="ftt-muted">（最近正文/情节未识别到已知角色）</span></div>');
-        else lines.push('<div class="ftt-item">👥 在场角色：<span class="ftt-muted">（未识别 · 不限制注入）</span></div>');
-        const src = clockSrcHtml();
-        if (src) lines.push(src);
-        // v2.37.0：最近一次取值的**一行摘要**（值 ← 来源；含落盘改动），详情见 设定→调试「🕒 时钟取值追踪」
-        const tr = (() => { try { return clockTraceSummary(clockTraceLast('resolve')); } catch (e) { return ''; } })();
-        if (tr) lines.push('<div class="ftt-muted ftt-w-full" data-ftt-clock-trace>' + esc(tr) + ' · 详情：设定→调试「🕒 时钟取值追踪」</div>');
     } catch (e) { /* 忽略 */ }
     return lines.join('\n');
 }
