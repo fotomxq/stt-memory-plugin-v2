@@ -138,6 +138,26 @@ export function clockExtractDiag() { return lastExtractDiag; }
 /**
  * 主提取（V1 `extractClockFromText`）：text=正文（可多楼层拼接，取最后一次出现的表达）；prev={date,time,location}
  */
+
+/**
+ * **保留字段**：「第 N 天」天数计数器（v2.51.0 用户设计说明）——
+ *   该计数器是「原子数据兼容任意时间格式」的**预留项**：只记录、只随存档往返，
+ *   **不与时钟联动**（不做「纪元首日 + N-1 天」之类的日期换算）、**不参与注入**、也不参与巡检。
+ *   来源：情节正文头 `▶第 N 天 …`（`extractClockFromHeader` 的既有解析）。没有则不动。
+ * @returns {number} 记录到的天数（0 = 无）
+ */
+function recordReservedStoryDay(node) {
+    try {
+        if (!node) return 0;
+        const txt = [node.title, node.text, node.content].filter(Boolean).join('\n');
+        if (!txt) return 0;
+        const hdr = extractClockFromHeader(txt);
+        const n = Number(hdr && hdr.storyDay) || 0;
+        if (n > 0 && Number(node.storyDay) !== n) { node.storyDay = n; return n; }
+        return 0;
+    } catch (e) { return 0; }
+}
+
 function extractClockFromText(text0, prevOpts) {
     const out = { date: null, time: null, location: null, source: {}, timeEnd: '', season: '', era: '', storyDay: 0, sceneDesc: '', statusText: '', header: false };
     try {
@@ -367,6 +387,12 @@ export function clockAutoExtractOnce(opts) {
             location: String((state.state && state.state.location) || ''),
         };
         const res = resolveStoryClock(o.text != null ? { text: o.text } : undefined);
+        // 保留字段：只把「第 N 天」记到该情节上（与时钟无关、不注入）——见 recordReservedStoryDay 头注
+        let reserved = 0;
+        try {
+            const node = res && res.plotId ? (state.atoms || []).find((a) => a && String(a.id) === String(res.plotId)) : null;
+            reserved = recordReservedStoryDay(node);
+        } catch (e) { reserved = 0; }
         clockExtractLast = res;
         // v2.37.0：取本次解析的取值追踪（`resolveStoryClock` 已写入环形缓冲），用于补「实际落盘差异」并写日志
         const trace = clockTraceLast('resolve');

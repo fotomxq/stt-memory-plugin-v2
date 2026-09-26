@@ -20,7 +20,7 @@ const J = (v) => JSON.stringify(v);
 cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
 
 // ---------- 配置层 ----------
-R.assert('C1 defaultCfg：V1 的 217 键逐值一致 + 仅允许 V2 专有键（界面形态）', (() => {
+R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个时钟键除外）+ 仅允许 V2 专有键（界面形态）', (() => {
     // 口径：V1 键必须**逐值**相同（保真）；V2 新增键须在白名单内（防悄悄加键/改键）
     // B9-d 例外（显式白名单）：`storage.stateFileSlim` / `storage.stateFileGzip` 为 V2 专有开关
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
@@ -29,13 +29,18 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致 + 仅允许 V2 专有键（
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
         'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose'];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip'];
+    // v2.51.0 时钟改版（用户要求）：V1 的这 10 个时钟设定**有意删除**（只取最新情节后全部失效，插件内不留废弃项）——
+    //   删除项必须在 V2 中**不存在**且不落入「V2 专有键」白名单。
+    const REMOVED_V1_KEYS = ['clockForceDegrade', 'clockAnomalyJumpYears', 'clockAutoPatrol', 'clockPatrolAutoFix',
+        'clockStoryDayEpoch', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative'];
     const v1 = G.defaultCfg || {};
-    const diff = Object.keys(v1).filter((k) => k !== 'storage' && J(v1[k]) !== J(defaultCfg[k]));
+    const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));
+    const stillThere = REMOVED_V1_KEYS.filter((k) => k in defaultCfg);
     const v1s = v1.storage || {}, cur = defaultCfg.storage || {};
     const storageDiff = Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k]));
     const storageExtra = Object.keys(cur).filter((k) => !(k in v1s));
     const extra = Object.keys(defaultCfg).filter((k) => !(k in v1));
-    return Object.keys(v1).length === 217 && diff.length === 0
+    return Object.keys(v1).length === 217 && diff.length === 0 && stillThere.length === 0
         && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length
         && storageDiff.length === 0 && J(storageExtra.slice().sort()) === J(V2_STORAGE_ONLY.slice().sort())
         && cur.stateFileSlim === false && cur.stateFileGzip === false;
@@ -53,9 +58,17 @@ R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原
 R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一致',
     J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
     && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion
-    && J(Object.keys(PROMPT_TEMPLATES_V2).sort()) === J(G.promptTemplateKeys), [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
-R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致',
-    J(PROMPT_GROUPS) === J(G.promptGroups) && J(Object.keys(PROMPT_LEGACY_SIGS).sort()) === J(G.promptLegacySigsKeys)
+    // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 → 模板键集合 = V1 键集合减去它
+    && J(Object.keys(PROMPT_TEMPLATES_V2).sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
+    [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
+// v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 —— 比对时两侧同步剔除该键与对应文案
+const normPromptGroup = (g) => Object.assign({}, g, {
+    desc: String(g.desc || '').replace('+ 时钟正则生成（AI 从正文总结日期/时间/地点写法）', ''),
+    keys: (g.keys || []).filter((k) => k !== 'clockRegexGen'),
+});
+R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致（剔除已移除的时钟正则生成项）',
+    J(PROMPT_GROUPS.map(normPromptGroup)) === J((G.promptGroups || []).map(normPromptGroup))
+    && J(Object.keys(PROMPT_LEGACY_SIGS).sort()) === J((G.promptLegacySigsKeys || []).filter((k) => k !== 'clockRegexGen').sort())
     && J(ARMOR_PRESET_V1178_DEFAULT) === J(G.armorPresetDefault), Object.keys(PROMPT_LEGACY_SIGS).length);
 R.assert('C6 模板并入默认配置（defaultCfg.promptTemplates 与 PROMPT_TEMPLATES_V2 同值）',
     J(defaultCfg.promptTemplates) === J(PROMPT_TEMPLATES_V2), Object.keys(defaultCfg.promptTemplates).length);
@@ -99,13 +112,13 @@ R.assert('K6 clockYearOf / clockYearInRange / clockDateLabel / clockMonthDay 与
     && J([-9999, -221, 0, 1919, 99999].map(y => clockYearInRange(y))) === J(G.clock.yearInRange)
     && J(['1919-11-29', '-0221-01-02', '1919-11', '', null].map(d => clockDateLabel(d))) === J(G.clock.dateLabel)
     && J(['1919-11-29', '1919-11', '', null].map(d => clockMonthDay(d))) === J(G.clock.monthDay), G.clock.dateLabel);
-R.assert('K7 clockAnomalyJumpYears 读注入配置（默认 50）', clockAnomalyJumpYears() === G.clock.anomalyCfg, clockAnomalyJumpYears());
-R.assert('K8 注入 cfg 变化可影响校验（阈值 0 = 关闭异常判定）', (() => {
+R.assert('K7（v2.51.0 已移除该设定）时钟不再有「日期异常判定阈值」——确认废弃键已从默认配置删除', (() => {
+    return !('clockAnomalyJumpYears' in defaultCfg) && !('clockForceDegrade' in defaultCfg) && !('clockAutoPatrol' in defaultCfg);
+})(), Object.keys(defaultCfg).filter((k) => /^clock/.test(k)));
+R.assert('K8 日期校验与本设定无关（阈值设定已删除，校验行为不变）', (() => {
     const before = clockDateValid('1919-11-29');
-    cfg.clockAnomalyJumpYears = 0;
-    const off = clockDateValid('1919-11-29');
-    cfg.clockAnomalyJumpYears = defaultCfg.clockAnomalyJumpYears;
-    return before === true && off === true;
+    const after = clockDateValid('1919-11-29');
+    return before === true && after === true && clockDateValid('1919-13-45') === false;
 })(), '');
 
 R.done();
