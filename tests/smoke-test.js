@@ -2262,6 +2262,43 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
     }
 })(), '');
 
+await assert('BA3 v2.59.0 总览「📤 最后一次提取」：真实跑一次摘要 → 总览一行给出时间/来源/楼层/新增/关键词，提取内容默认收起可展开', (async () => {
+    const EX9 = await import('../host/extract.js');
+    const keepGen = host.ctx.generateRaw;
+    // 摘要成功会排程「推演 1.8s / 情节总结 4s」防抖定时器 —— 本小节自接管并在收尾驱动掉，
+    //   避免遗留定时器让后续 P9d（AI2/AI3）的排程闸门（weaveTimer 非空即 early-return）失效。
+    const t9 = p9dTimers();
+    try {
+        // 造一楼可分析正文 + 一条带关键词的情节（本地关键词抽取有料）
+        host.ctx.chat.push({ is_user: false, mes: '甲打开木箱取出账册，仓库里堆着货箱。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        const RT9 = await import('../core/model/runtime.js');
+        RT9.setLastMessageId(host.ctx.chat.length - 1);
+        RT9.state.atoms = [{ id: 'ba3-kw', text: '甲有铜钥匙。', date: '1919-11-01', floorStart: 0, floorEnd: 0, tags: [], keywords: ['木箱', '账册'], validity: 'active' }];
+        host.ctx.generateRaw = async () => JSON.stringify({ atoms: { add: [{ id: 'ba3-new', text: '甲打开木箱取出账册。', floorStart: 1, floorEnd: 1 }] } });
+        const r = await entry.popupAction('tab', { tab: 'overview' });
+        void r;
+        const run = await entry.popupAction('summary', {});
+        const rec = EX9.lastExtractRecord();
+        const html = String((await entry.popupAction('tab', { tab: 'overview' })).html || '');
+        const line = (html.match(/data-ftt-last-extract-line>([^<]*)</) || [])[1] || '';
+        const ok = !!rec && (rec.via === 'segment' || rec.via === 'batch' || rec.via === 'floor')
+            && Number(rec.added) >= 0 && String(rec.text || '').indexOf('ba3-new') >= 0
+            && html.indexOf('📤 最后一次提取') >= 0 && html.indexOf('data-ftt-last-extract') >= 0
+            && /(单楼分析|分段分析|批量摘要)（(手动|自动)）/.test(line) && /新增 \d+ 条/.test(line)
+            && html.indexOf('data-ftt-inject') >= 0 && html.indexOf('data-ftt-last-extract') > html.indexOf('data-ftt-inject')
+            && html.indexOf('ftt-hint-details') >= 0 && html.indexOf('查看提取内容') >= 0
+            && html.indexOf('ba3-new') >= 0;      // 提取内容（AI 回复原文）在总览可展开查看
+        void run;
+        return ok;
+    } finally {
+        host.ctx.generateRaw = keepGen;
+        try { await p9dDrain(t9.rec); } catch (e) { /* 忽略 */ }
+        t9.restore();
+        try { await new Promise((r) => setTimeout(r, 5)); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 await assert('BA2 v2.58.0 提取记忆三层：开启「启用向量检索」后发送前走**第一层向量召回**（真实 embedding 请求 → 注入体为向量命中行）；关闭/失败自动降级到本地召回', (async () => {
     const RT7 = await import('../core/model/runtime.js');
     const INJ = await import('../host/inject.js');

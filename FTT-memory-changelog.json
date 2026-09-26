@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.58.0",
+  "version": "2.59.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.59.0",
+      "date": "2026-09-26",
+      "title": "总览新增「📤 最后一次提取」组件（含提取内容）",
+      "points": [
+        "① 记录最后一次提取：（host/extract.js）：单楼 / 分段 / 批量三条路径成功后写入一条记录 ——at · via(floor|segment|batch) · …",
+        "② 总览新组件：（ui/panel.js#overviewBody，排在「注入概览」之后、工具行之前）：「📤 最后一次提取」一行给出 时间 · 来源（手动/自动）· 第 X-Y…",
+        "③ 入口与诊断：新增 FTT.lastExtract()（index.js）与 devtools.js 同名包装；面板钩子 hooks.lastExtract。门禁：新增 tes…"
+      ]
+    },
     {
       "version": "2.58.0",
       "date": "2026-09-26",
