@@ -1,0 +1,81 @@
+{
+ "generatedFrom": "src/FTT记忆组件-v1.205.js（当前 src 最新版）parallelsHtml()",
+ "cssRule": "#ftt-panel .ftt-ops-col { flex-direction: column; align-items: center; justify-content: center; flex: 0 0 auto; }",
+ "opsColClassUsageInV1": 1,
+ "opsColMentionsInV1": 2,
+ "rows": [
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "parallelAdvance",
+    "promoteParallel",
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  },
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "parallelAdvance",
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  },
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "promoteParallel",
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  }
+ ],
+ "rowsWhenExpired": [
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "promoteParallel",
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  },
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  },
+  {
+   "opsClass": "ftt-item-ops ftt-ops-col",
+   "opsActions": [
+    "promoteParallel",
+    "editEntry",
+    "delEntry"
+   ],
+   "hasMain": true,
+   "hasOpsCol": true,
+   "hasMultiCheckboxInOps": false
+  }
+ ],
+ "notes": [
+  "V1 只有平行页用 `ftt-ops-col`（竖向操作列），其余维度沿用横向 `.ftt-item-ops`。",
+  "V1 的「🔗 关联」跳转在备注行内（V2 放在行主体末尾，位置差异已登记）。",
+  "V1 的 🚀 在 `parallelExpired` 为真时不渲染；⬆ 在 `promotedTo` 非空时不渲染。"
+ ]
+}

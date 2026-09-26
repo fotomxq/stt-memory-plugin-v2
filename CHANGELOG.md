@@ -3,6 +3,18 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.71.0（2026-09-26）· 平行大类列表：右侧按钮改竖向排列（对齐 V1）
+
+**用户要求**：「平行大类中的 UI 布局需优化，尤其是列表右侧按钮会大量挤占空间。默认应该将按钮竖向排列，V1 也有类似处理。」
+
+**① 对齐 V1**：V1 v1.206 `parallelsHtml()`（24481）把这一页的操作区写成 `<div class="ftt-item-ops ftt-ops-col">`，CSS（22758）为 `flex-direction: column` —— **全库只有平行页这样写**（`ftt-item-ops ftt-ops-col` 仅 1 处）。V2 此前把 🚀 推进 / ⬆ 转正 / ✏️ 编辑 / 🗑 删除 四个按钮横排塞在行右侧，挤压主体内容。
+
+**② 修复**：`ui/panel.js` 的行装配对平行行改为 `<div class="ftt-item-ops ftt-ops-col">` 竖排容器（行主体仍由 `.ftt-grow` 占满剩余宽度），**按钮顺序与条件渲染照旧**：🚀 推进 → ⬆ 转正 → ✏️ 编辑 → 🗑 删除，已达衰退阈值不渲染 🚀、已转正不渲染 ⬆；其余维度（情节/记忆/传言/物品…）**保持 V1 的横向操作区**不变；CSS 沿用 V1 已移植的 `#ftt-panel .ftt-ops-col` 规则（未改样式表）。
+
+**③ 附带说明**：多选模式的勾选框仍在行首（V2 各页统一口径；V1 把勾选框放在竖排列里 —— 属已登记的差异，未改动）。
+
+**门禁**：新增 oracle `tests/fixtures/gen-v1-golden-parallels-row.cjs`（真实 V1 v1.206 `parallelsHtml()` 的行投影：操作区类名 / 动作顺序 / 条件分支 / CSS 规则）+ `tests/unit/parallels-layout.test.js`（9 断言：oracle 齐备 / CSS 竖向语义 / V2 竖排容器与顺序 / 条件渲染 / 主体仍在 `.ftt-grow` / 其余维度保持横向 / 多选模式 / 窄屏规则不受影响）。详见 `docs/P10ai`。
+
 ## v2.70.0（2026-09-26）· 传言衰退增加时间判断（发生越久远消退越快）
 
 **用户要求**：「传言的衰退系数增加时间判断，如果发生时间越久远，衰退速度越快。」

@@ -883,11 +883,20 @@ function dimBodyList(kind) {
         //   此处不再重复输出（`par.ops` 仍提供 🚀/⬆ 操作按钮）。
         // 记忆/平行/计划/悬念的「🔗 关联」已由 `listRowMainHtml` 按 **V1 行内位置**输出，此处不重复
         const relJump = '';
+        const editBtn = '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>';
+        const delBtn = '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>';
+        // v2.71.0（用户要求）：「平行大类…列表右侧按钮会大量挤占空间。默认应该将按钮**竖向排列**，V1 也有类似处理。」
+        //   V1 `parallelsHtml()`（v1.206 24481）正是把这一页的操作区写成 `<div class="ftt-item-ops ftt-ops-col">`
+        //   （CSS 22758：`flex-direction: column`），其余维度沿用横向 `.ftt-item-ops`。此处按 V1 口径对齐：
+        //   平行行 = 一个**竖排操作列**（🚀 推进 / ⬆ 转正 / ✏️ 编辑 / 🗑 删除 + 选中态的多选由左侧方框承担），
+        //   行主体仍占满剩余宽度（`.ftt-grow`），不再被按钮横向挤压。
+        const opsInner = (par ? par.ops : '') + peekBtn + editBtn + delBtn;
+        const ops = (kind === 'parallels')
+            ? ('<div class="ftt-item-ops ftt-ops-col">' + opsInner + '</div>')
+            : opsInner;
         return '<div class="ftt-item ftt-inline">' + box
             + '<span class="ftt-grow">' + listRowMainHtml(kind, e) + relJump + '</span>'
-            + (par ? par.ops : '') + peekBtn
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="编辑">✏️</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="' + attr(kind) + '" data-id="' + attr(id) + '" title="删除（留墓碑）">🗑</button>'
+            + ops
             + '</div>';
     }).join('\n');
     return (REL_TABDS[kind] ? subViewHtml(kind) : '') + curTop + toolbar + curPick + ptb + head + ed + peek + rows;

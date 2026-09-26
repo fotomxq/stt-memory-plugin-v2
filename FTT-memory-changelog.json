@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.70.0",
+  "version": "2.71.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.71.0",
+      "date": "2026-09-26",
+      "title": "平行大类列表：右侧按钮改竖向排列（对齐 V1）",
+      "points": [
+        "① 对齐 V1：V1 v1.206 parallelsHtml()（24481）把这一页的操作区写成 <div class=\"ftt-item-ops ftt-ops-col\">…",
+        "② 修复：ui/panel.js 的行装配对平行行改为 <div class=\"ftt-item-ops ftt-ops-col\"> 竖排容器（行主体仍由 .ftt-grow 占…",
+        "③ 附带说明：多选模式的勾选框仍在行首（V2 各页统一口径；V1 把勾选框放在竖排列里 —— 属已登记的差异，未改动）。"
+      ]
+    },
     {
       "version": "2.70.0",
       "date": "2026-09-26",
