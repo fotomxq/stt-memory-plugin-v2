@@ -35,6 +35,7 @@ import { cleanText } from '../core/html-text.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
+    busySince: 0,   // v2.63.0：忙位开始时刻（真实任务的起点；面板读秒据此计算）
     // v2.59.0（用户报告：「概览缺少展示最后一次提取记忆内容的组件」）：记录**最后一次提取**的时间/来源/范围/
     //   新增条数/维度/关键词/AI 回复正文（截断），供总览渲染 —— V1 总览用 `lastExtractTime` + `lastExtractKeywords`
     //   只给了时间与关键词，V2 连**提取内容**（AI 回复）一并留存，便于「刚才到底提了什么」一目了然。
@@ -65,7 +66,12 @@ export function abortPending() { return abortRequested === true; }
 export function activeSegment() { return extractState.activeSeg ? Object.assign({}, extractState.activeSeg) : null; }
 /** 批量进度（面板头部 busy 文案用） */
 export function batchProgress() {
-    return { segTotal: extractState.segTotal, segDone: extractState.segDone, range: extractState.segRange, activeSeg: activeSegment(), aborted: extractState.aborted };
+    // v2.63.0（用户报告「管线状态的计时器不动」）：带上**忙位起始时刻** `since` —— 面板据此显示真实读秒，
+    //   而不是「面板渲染那一刻」才开始计时（V1 的 `busy.pipe.startedAt` 同口径）。
+    return {
+        segTotal: extractState.segTotal, segDone: extractState.segDone, range: extractState.segRange,
+        activeSeg: activeSegment(), aborted: extractState.aborted, since: Number(extractState.busySince) || 0,
+    };
 }
 
 /** 提取统计（/ftt、FTT 调试导出与设置面板共用） */
@@ -286,6 +292,7 @@ export async function analyzeFloors(opts) {
     const o = opts || {};
     if (extractState.busy) return { ok: false, reason: 'busy' };
     extractState.busy = true;
+    extractState.busySince = Date.now();
     try {
         let ids = Array.isArray(o.ids) ? o.ids.slice() : null;
         if (!ids) ids = o.onlyLatest ? listUnprocessedFloors({ limit: 1 }).slice(-1) : listUnprocessedFloors({ limit: Number(o.limit) > 0 ? Number(o.limit) : 0 });
@@ -299,6 +306,7 @@ export async function analyzeFloors(opts) {
         return { ok: done > 0, floors: ids, results, done, failed: results.length - done };
     } finally {
         extractState.busy = false;
+        extractState.busySince = 0;
     }
 }
 
@@ -388,6 +396,7 @@ export async function runAutoSummary(opts) {
     const o = opts || {};
     if (extractState.busy) return { ok: false, reason: 'busy', made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
     extractState.busy = true;
+    extractState.busySince = Date.now();
     abortRequested = false;
     extractState.segTotal = 0;
     extractState.segDone = 0;
@@ -444,6 +453,7 @@ export async function runAutoSummary(opts) {
         return { ok: false, reason: 'error', error: extractState.lastReason, made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
     } finally {
         extractState.busy = false;
+        extractState.busySince = 0;
         extractState.activeSeg = null;
         abortRequested = false;
         // V1 v1.206 15537（`runAutoSummary` 的 finally）：批量摘要收尾 → 情节总结检查点（4s 防抖，体量未达标内部跳过）
