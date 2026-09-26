@@ -201,6 +201,7 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'layer-result': '「提取记忆」层测试结果行（v2.58.0：`data-ftt-layer-result` 由 `testLayer` 动作重绘）',
         'layer-preview': '「提取记忆」层命中预览容器（v2.58.0：`data-ftt-layer-preview` 由 `testLayer` 动作重绘）',
         'vector-cache': '向量缓存统计行（v2.58.0：清空动作后重绘即更新）',
+        'search-count': '列表命中计数行（v2.62.0：筛选条右侧「共 N 条 · 命中 M」，重绘即更新）',
     };
     const unread = [];
     for (const a of attrs) {

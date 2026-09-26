@@ -311,7 +311,8 @@ R.assert('U1 状态分页渲染 V1 同款「🔧 修复状态」按钮（有状�
     boot({ currentStates: [] });
     openPanel('states');
     const empty = panelBodyHtml('states');
-    return hasBtn && empty.indexOf('data-ftt-action="stateRepair"') < 0 && empty.indexOf('（暂无状态记录）') >= 0;
+    // v2.62.0：状态页空态文案对齐 V1（「暂无状态记录。运行「AI 摘要」或点「添加状态」创建。」）
+    return hasBtn && empty.indexOf('data-ftt-action="stateRepair"') < 0 && empty.indexOf('暂无状态记录。运行「AI 摘要」或点「添加状态」创建。') >= 0;
 })(), '');
 
 await A('U2 面板动作 stateRepair 可达：走 runStateRepair 全链路并把结果写回面板 `state.note`（AI 从共用注入钩子取，不伪造结果）', async () => {
