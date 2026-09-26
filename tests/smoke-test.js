@@ -2722,13 +2722,13 @@ await assert('AH2 存储页如实呈现瘦身/gzip 开关与写入名；两个�
     await entry.popupAction('tab', { tab: 'settings' });
     await entry.popupAction('settingsSub', { sub: 'storage' });
     const off = String((await entry.popupAction('refresh', {})).html || '');
-    const offOk = off.indexOf('data-ftt-slim-gzip') >= 0 && off.indexOf('条目瘦身 关闭（默认）') >= 0
-        && off.indexOf('gzip 写入 关闭（默认）') >= 0 && off.indexOf('魔数') < 0 && off.indexOf('支持压缩') < 0
+    const offOk = off.indexOf('data-ftt-slim-gzip') >= 0 && off.indexOf('瘦身 关') >= 0
+        && off.indexOf('gzip 关') >= 0 && off.indexOf('魔数') < 0 && off.indexOf('支持压缩') < 0
         && off.indexOf('data-ftt-action="syncPickLocal"') < 0;          // 无待选 → 不渲染横幅按钮
     rtMod.cfg.storage.stateFileSlim = true; rtMod.cfg.storage.stateFileGzip = true;
     const on = String((await entry.popupAction('refresh', {})).html || '');
-    const onOk = on.indexOf('条目瘦身 <b>已开启</b>') >= 0 && on.indexOf('gzip 写入 <b>已开启</b>') >= 0
-        && on.indexOf('读取自动识别格式，旧文件仍可读') >= 0;   // v2.56.0：说明行精简（去「魔数」等实现细节）
+    const onOk = on.indexOf('瘦身 <b>已开启</b>') >= 0 && on.indexOf('gzip <b>已开启</b>') >= 0
+        && on.indexOf('旧文件仍可读') >= 0;   // v2.60.0：说明行再精简（去「魔数」等实现细节）
     rtMod.cfg.storage.stateFileSlim = keepSlim; rtMod.cfg.storage.stateFileGzip = keepGzip;
     // 无待选时点「采用对端」：如实警示 + 不改动本端
     const before = J((rtMod.state.atoms || []).map((x) => x.id).sort());
