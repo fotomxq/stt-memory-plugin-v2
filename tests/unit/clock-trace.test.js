@@ -143,18 +143,20 @@ A('R2（v2.51.0 改版）**没有可用情节**时：不改动时钟（保持原
 })());
 
 // ---------- P 组：巡检锚点链 ----------
-A('U1（v2.51.0）调试页「🕒 时钟取值追踪」区块：只保留「自动解析（只取最新情节）」与「AI 时间修复」两节 + 落盘 + 清空按钮；无记录时如实说明', (() => {
+A('U1（v2.55.0）调试页「🕒 时钟取值追踪」区块：只保留「自动解析（只取最新情节）」与「AI 时间修复」两节 + 落盘 + 清空；空态一句「暂无记录」；不含开发说明（来源表规模/dev 路径）', (() => {
     boot();
     const empty = clockTraceSectionHtml();
     resolveStoryClock({ text: '▷1919年11月30日 08:52\n▷凉州卫-钟鼓楼' });
     const html = clockTraceSectionHtml();
-    // v2.51.0：巡检与「AI 捕捉正则」两块已随功能移除 —— 区块只保留「自动解析（只取最新情节）/ AI 时间修复」
+    // v2.51.0：巡检与「AI 捕捉正则」两块已随功能移除；v2.55.0：删除「字段含义…共 N 项 / core/clock-trace.js」等开发说明
     return empty.indexOf('暂无记录') >= 0
         && html.indexOf('自动解析（只取最新情节：日期/时间/地点/在场）') >= 0
         && html.indexOf('时间巡检') < 0 && html.indexOf('AI 捕捉正则') < 0
         && html.indexOf('落盘') >= 0
         && html.indexOf('data-ftt-action="clockTraceClear"') >= 0
-        && html.indexOf('共 ' + clockSrcKeys().length + ' 项') >= 0;
+        && html.indexOf('取值口径：') >= 0 && html.indexOf('值 ← 来源') >= 0
+        && html.indexOf('clock-trace') < 0 && html.indexOf('共 ' + clockSrcKeys().length + ' 项') < 0
+        && html.indexOf(' 项') < 0;
 })(), null);
 
 A('U2 总览时钟区：展示最近一次取值摘要行（值 ← 来源 + 落盘改动 + 指向调试页的路径）', (() => {

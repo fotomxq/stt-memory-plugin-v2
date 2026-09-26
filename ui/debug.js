@@ -16,7 +16,7 @@
 // ============================================================
 import { escHtml } from '../core/util.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
-import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear, clockSrcKeys } from '../core/clock-trace.js';
+import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear } from '../core/clock-trace.js';
 import { VERSION } from '../core/constants.js';
 // v2.42.0：交互/宿主调用/命令/错误时间线（opId 关联、站点 file:line、错误上下文窗口）
 import { traceList, traceStats, traceTimelineText, traceContext, traceClear, traceSiteText, TRACE_CATS } from '../core/trace.js';
@@ -137,13 +137,11 @@ export async function exportDebugBundle() {
     return { ok: true, action: 'dbgExport', chars: text.length, copied, note: '已导出调试包 ' + text.length + ' 字符' + (copied ? '（已复制到剪贴板）' : '（见下方文本框，可手动复制）') };
 }
 
-/** 调试包导出区（按钮 + 文本域；空态只出按钮与说明） */
+/** 调试包导出区（按钮 + 文本域；空态只出按钮与一句话说明） */
 export function debugExportSectionHtml() {
     const rows = [
-        '<div class="ftt-muted">导出内容：版本 / 时间 / 作用域 / 宿主环境与能力探针 + 一键诊断快照（运行态、探针缺失项）'
-        + ' + <b>全部调试日志</b>（含「异常」类：未处理的 Promise 拒绝、脚本错误、面板动作失败）。'
-        + '调试包**不含记忆正文**，可直接贴给维护者排查。</div>',
-        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="dbgExport" title="导出调试包（日志 + 运行态）到剪贴板与下方文本框">⬇ 导出调试日志</button>'
+        '<div class="ftt-muted">包含全部日志与运行态诊断，不含记忆正文；导出后可直接贴给维护者排查。</div>',
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="dbgExport" title="导出调试包（日志 + 运行态）到剪贴板与下方文本框">⬇ 导出调试包</button>'
         + '<span class="ftt-muted">共 ' + debugLogList().length + ' 条日志 · 异常 ' + debugLogErrorCount() + ' 条</span></div>',
     ];
     if (lastDebugExport) {
@@ -152,10 +150,10 @@ export function debugExportSectionHtml() {
     return rows.join('\n');
 }
 
-/** 日志列表 HTML（V1 `debugHtml()` 逐字结构：操作行 + 类别统计行 + 逐条 `<details class="ftt-dbg-item">`） */
+/** 日志列表 HTML（V1 `debugHtml()` 结构：操作行 + 类别统计行 + 逐条 `<details class="ftt-dbg-item">`） */
 export function debugLogHtml() {
     const logs = debugLogList();
-    if (!logs.length) return '<div class="ftt-empty">暂无日志。运行「AI 摘要」或「自动修复」后在此显示。</div>';
+    if (!logs.length) return '<div class="ftt-empty">暂无日志。</div>';
     // 日志统计（各 kind 计数；顺序 = 首次出现顺序，V1 原样）
     const statCount = {};
     for (const l of logs) statCount[l.kind] = (statCount[l.kind] || 0) + 1;
@@ -164,7 +162,7 @@ export function debugLogHtml() {
     let totalBytes = 0;
     for (const l of logs) { try { totalBytes += (l.data || '').length; } catch (e) { /* 忽略 */ } }
     const sizeNote = ' · 总占用 ' + formatBytes(totalBytes);
-    return '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="dbgClear">🗑 清空日志</button><span class="ftt-muted">共 ' + logs.length + ' 条' + sizeNote + '（最多 ' + DEBUG_CAP + ' 条，最新在上；点击展开详情）</span></div><div class="ftt-row">' + statHtml + '</div>' + logs.map((l) => {
+    return '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="dbgClear">🗑 清空日志</button><span class="ftt-muted">共 ' + logs.length + ' 条' + sizeNote + '（最多 ' + DEBUG_CAP + ' 条 · 最新在上 · 点击展开）</span></div><div class="ftt-row">' + statHtml + '</div>' + logs.map((l) => {
         // 日期+时间（不只记录时间；V1 用 toLocaleString('zh-CN', { hour12: false })）
         const t = new Date(l.at).toLocaleString('zh-CN', { hour12: false });
         const color = DEBUG_KIND_COLOR[l.kind] || '#b8b3ac';
@@ -214,54 +212,55 @@ export function traceSectionHtml(cat) {
     };
     return [
         '<div class="ftt-row">' + chips + '</div>',
-        '<div class="ftt-muted">会话 ' + esc(st.session) + ' · 事件 ' + st.total + '（上限 ' + st.cap + '）· 级别 ' + esc(st.level)
-        + ' · 本机另存最近 120 条简报（「设定 → 数据管理 → 本地缓冲」可见条数并清理）'
-        + ' · 记录：用户交互（点击/变更/切页）· 宿主 API 调用 · 命令与 FTT 入口 · 落盘/注入 · AI 调用 · 异常（含上下文窗口）</div>',
-        (rows.length ? rows.map(line).join('\n') : '<div class="ftt-empty">暂无事件。任一交互/命令后在此显示（含点击了哪个按钮、调了哪些宿主 API、结果与代码位置）。</div>'),
-        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="dbgTraceClear">🗑 清空时间线</button>'
-        + '<button class="ftt-btn" data-ftt-action="dbgExport">⬇ 导出调试包（含完整时间线）</button>'
-        + '<span class="ftt-muted">时间线为纯内存环形缓冲（「清空时间线」会同时清掉本机简报）；导出包可直接贴给维护者</span></div>',
+        '<div class="ftt-muted">会话 ' + esc(st.session) + ' · 事件 ' + st.total + '（上限 ' + st.cap + '）· 级别 ' + esc(st.level) + '</div>',
+        (rows.length ? rows.map(line).join('\n') : '<div class="ftt-empty">暂无事件。</div>'),
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="dbgTraceClear">🗑 清空时间线</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="dbgExport">⬇ 导出调试包（含时间线）</button>'
+        + '<span class="ftt-muted">仅内存，重启即空</span></div>',
     ].join('\n');
 }
 
-/**
- * 调试页正文（V1 `activeSettingsSub === 'debug'` 分支逐字两节）。
+/** 调试页正文（v2.55.0 精简：只留「看审计日志 / 导出日志」，删除开发与历史说明）
  * @param {Array} controls `SETTINGS_CONTROLS.debug`（本页唯一控件 `debugEnabled`）
  */
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
+    const errCount = debugLogErrorCount();
+    const errRows = (() => {
+        if (!errCount) return '<div class="ftt-muted">暂无异常记录。</div>';
+        const last = debugLogLastError();
+        const d = (() => { try { return JSON.parse(last.data); } catch (e) { return { message: String((last && last.data) || '') }; } })();
+        return '<div class="ftt-hint">最近一条 · ' + esc(String(new Date(Number(last.at) || 0).toLocaleString('zh-CN', { hour12: false }))) + '<br>'
+            + esc(String(d.kind || '异常')) + '：' + esc(String(d.message || '')).slice(0, 300)
+            + (d.source ? ('<br><span class="ftt-muted">' + esc(String(d.source)) + (d.line ? (':' + Number(d.line) + (d.col ? (':' + Number(d.col)) : '')) : '') + '</span>') : '')
+            + '</div>'
+            + '<div class="ftt-row"><span class="ftt-muted">最近 3 条：' + esc(debugLogErrors(3).map((l) => { const x = (() => { try { return JSON.parse(l.data); } catch (e) { return {}; } })(); return String(x.message || l.data || '').slice(0, 60); }).join(' ｜ ')) + '</span></div>';
+    })();
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">调试日志</div>',
         sw,
         '<div class="ftt-muted">关闭后不再记录新日志；已存日志仍可查看。</div>',
         '</div>',
-                // v2.34.0：异常捕捉只读区（全局 error / unhandledrejection / 面板动作失败 → 内核调试日志 kind='异常'）
-        '<div class="ftt-section"><div class="ftt-sec-title">⚠ 异常捕捉 <span class="ftt-muted">共 ' + debugLogErrorCount() + ' 条（host 全局 error / unhandledrejection + 面板动作失败）</span></div>',
-        (() => {
-            const last = debugLogLastError();
-            if (!last) return '<div class="ftt-muted">暂无异常记录（未捕获错误会自动写入本页与调试日志）</div>';
-            const d = (() => { try { return JSON.parse(last.data); } catch (e) { return { message: String(last.data || '') }; } })();
-            return '<div class="ftt-hint">最近一条 · ' + esc(String(new Date(Number(last.at) || 0).toLocaleString('zh-CN', { hour12: false }))) + '<br>'
-                + esc(String(d.kind || '异常')) + '：' + esc(String(d.message || '')).slice(0, 300)
-                + (d.source ? ('<br><span class="ftt-muted">' + esc(String(d.source)) + (d.line ? (':' + Number(d.line) + (d.col ? (':' + Number(d.col)) : '')) : '') + '</span>') : '')
-                + '</div>';
-        })(),
-        '<div class="ftt-row"><span class="ftt-muted">最近 3 条：' + esc(debugLogErrors(3).map((l) => { const d = (() => { try { return JSON.parse(l.data); } catch (e) { return {}; } })(); return String(d.message || l.data || '').slice(0, 60); }).join(' ｜ ')) + '</span></div>',
-// v2.37.0：时钟取值追踪（只读）—— 「值从哪来 / 为什么取它 / 有什么没被采用 / 这次改了什么」
-        '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪 <span class="ftt-muted">（日志口径：值 ← 来源；含落选候选与落盘差异）</span></div>',
-        clockTraceSectionHtml(),
-        '</div>',
-        '<div class="ftt-section"><div class="ftt-sec-title">调试日志（上一轮请求的关键词 / 向量提取 / 发送记忆 / 请求日志）</div>',
+        // ① 日志查看器（本页核心：看审计日志）
+        '<div class="ftt-section"><div class="ftt-sec-title">📋 日志</div>',
         debugLogHtml(),
         '</div>',
-        // v2.42.0：交互与宿主调用时间线
-        '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线 <span class="ftt-muted">（点击 → opId → 底层调用 → 结果 → 代码位置）</span></div>',
+        // ② 导出（本页核心操作之二，紧跟日志）
+        '<div class="ftt-section"><div class="ftt-sec-title">📦 导出调试包</div>',
+        debugExportSectionHtml(),
+        '</div>',
+        // ③ 异常（只看结果，不解释实现）
+        '<div class="ftt-section"><div class="ftt-sec-title">⚠ 异常捕捉 <span class="ftt-muted">共 ' + errCount + ' 条</span></div>',
+        errRows,
+        '</div>',
+        // ④ 交互与宿主调用时间线
+        '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
         traceSectionHtml(traceFilter),
         '</div>',
-        // v2.41.0：调试包导出（用户要求）
-        '<div class="ftt-section"><div class="ftt-sec-title">📦 导出调试包 <span class="ftt-muted">（日志 + 运行态，不含记忆正文）</span></div>',
-        debugExportSectionHtml(),
+        // ⑤ 时钟取值追踪（时钟链路的审计视图）
+        '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪</div>',
+        clockTraceSectionHtml(),
         '</div>',
     ].join('\n');
 }
@@ -277,7 +276,7 @@ export function clockTraceSectionHtml() {
     const rows = stages.map(([stage, label]) => {
         const trace = clockTraceLast(stage);
         const t = trace ? clockTraceInfo(trace) : null;
-        if (!t) return '<div class="ftt-muted">' + esc(label) + '：暂无记录（运行一次对应操作后在此显示）</div>';
+        if (!t) return '<div class="ftt-muted">' + esc(label) + '：暂无记录</div>';
         const when = new Date(Number(t.at) || 0).toLocaleString('zh-CN', { hour12: false });
         const picks = t.picks.map((p) => '<div class="ftt-dim-row"><span class="ftt-dim-name">' + esc(p.field) + '</span>'
             + '<span class="ftt-muted" style="flex:1">' + esc(String(p.value || '（无）')) + ' ← <b>' + esc(p.fromLabel || '—') + '</b>'
@@ -303,10 +302,10 @@ export function clockTraceSectionHtml() {
             + applied + unchanged
             + '</div></details>';
     }).join('\n');
-    return '<div class="ftt-muted">字段含义：<b>值 ← 来源</b>（来源中文名取自 <code>core/clock-trace.js</code> 的全量登记表，共 ' + clockSrcKeys().length + ' 项）；「未采用的候选」给出放弃原因；「落盘」给出本次实际改动。</div>'
+    return '<div class="ftt-muted">取值口径：<b>值 ← 来源</b>；同时列出未采用的候选与本次落盘结果。</div>'
         + rows
-        + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockTraceClear">🗑 清空时钟追踪</button>'
-        + '<span class="ftt-muted">仅内存（重启即空）；排障时先跑一次提取/巡检再回本页查看</span></div>';
+        + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="clockTraceClear">🗑 清空时钟追踪</button>'
+        + '<span class="ftt-muted">仅内存，重启即空</span></div>';
 }
 
 /**
