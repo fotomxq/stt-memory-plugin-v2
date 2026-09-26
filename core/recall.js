@@ -1396,6 +1396,52 @@ function relConceptSuffix(anchor) {
     try { if (anchor && anchor.conceptRef) return `｜概念：${anchor.conceptRef}`; } catch (e) { }
     return '';
 }
+
+/**
+ * 向量层召回结果的**注入行**（v2.58.0，逐条对齐 V1 `vectorSearchMemory` 的 pairs 构造，约 12544~12568）：
+ *   · 情节行：`- [日期（相对时间）]正文`，且**同批情节按剧情时间从早到晚**（相似度只决定取哪几条，不决定阅读顺序）；
+ *   · 记忆行：`- （归属）[日期（相对时间）]标题：正文`；状态行：`- 主体·字段: 值`；
+ *   · 角色档案行：`- 名称（职业）`；概念行：`- 名称 [日期（相对时间）]：正文`；平行事件行：`- ` + `parallelInjLine()`。
+ * 非情节行保持相似度顺序（V1 靠稳定排序实现同一效果）。
+ * @param {Array<{entry:{kind:string,item:object}, score:number}>} ranked
+ * @returns {string[]}
+ */
+function vectorInjectionLines(ranked) {
+    const storyNow = getStoryNow();
+    const pairs = [];
+    for (const x of (Array.isArray(ranked) ? ranked : [])) {
+        const b = x && x.entry;
+        if (!b || !b.item) continue;
+        const it = b.item;
+        if (b.kind === 'atoms') {
+            const d = it.date ? `[${it.date}${relTag(it.date, storyNow)}]` : '';
+            pairs.push({ kind: 'atoms', sort: it, line: `- ${d}${it.text}` });
+        } else if (b.kind === 'memories') {
+            const md = String(it.date || '').trim();
+            const when = md ? `[${md}${relTag(md, storyNow)}]` : '';
+            pairs.push({ kind: 'memories', sort: null, line: `- （${it.owner}）${when}${it.title}：${it.content}` });
+        } else if (b.kind === 'states') {
+            pairs.push({ kind: 'states', sort: null, line: `- ${it.subject}·${it.field}: ${it.value}` });
+        } else if (b.kind === 'snapshots') {
+            pairs.push({ kind: 'snapshots', sort: null, line: `- ${it.name}（${(it.identity || {}).occupation || ''}）` });
+        } else if (b.kind === 'concepts') {
+            const cd = String(it.date || '').trim();
+            pairs.push({ kind: 'concepts', sort: null, line: `- ${it.name}${cd ? ` [${cd}${relTag(cd, storyNow)}]` : ''}${it.content ? `：${it.content}` : ''}` });
+        } else if (b.kind === 'parallels') {
+            pairs.push({ kind: 'parallels', sort: null, line: `- ${parallelInjLine(it)}` });
+        }
+    }
+    // 情节行按剧情时间从早到晚（V1：先算时间序，再仅对「情节 ↔ 情节」重排；非情节对保持相似度顺序）
+    const atomOrder = new Map();
+    pairs.filter((p) => p.kind === 'atoms').map((p) => p.sort).slice()
+        .sort((a, b) => atomTimeAsc(a, b))
+        .forEach((a, i) => { if (!atomOrder.has(a)) atomOrder.set(a, i); });
+    pairs.sort((p, q) => {
+        if (p.kind !== 'atoms' || q.kind !== 'atoms') return 0;
+        return (atomOrder.get(p.sort) || 0) - (atomOrder.get(q.sort) || 0);
+    });
+    return pairs.map((p) => p.line);
+}
 // 记忆行（关联感知；有差异 → 按角色分行）
 
 /**
@@ -1410,7 +1456,7 @@ function calcImportance(item) {
 }
 function importancePct(item) { return Math.round(calcImportance(item) * 100); }
 
-export { calcImportance, importancePct, latestTrustedPlot, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
+export { calcImportance, importancePct, latestTrustedPlot, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {

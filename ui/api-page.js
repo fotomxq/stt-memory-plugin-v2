@@ -33,11 +33,18 @@ import {
     setPurposePreset, resolveApiTarget, mainApiChannel,
 } from '../core/api-channel.js';
 import { listConnectionProfiles, apiChannelAvailability, probeTarget, fetchModels } from '../host/api-channel.js';
+// v2.58.0：向量层（Embedding / Rerank 测试）与「提取记忆」页的层测试结果态
+import { vectorTarget } from '../host/embeddings.js';
+import { testLayer as runLayerTest } from '../host/extract-flow.js';
+import { vectorCacheClear, vectorCacheStats } from '../adapters/vector-cache.js';
+import { setVectorTestResult, setLayerResult } from './extract-page.js';
+import { collectFloorLinesInRange } from '../host/floors.js';
+import { getCtx } from '../host/st-api.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 
 /** 本页动作（V1 同名：`presetSave`/`presetLoad`/`presetDelete`/`apiTest`/`apiModels`；`dimPreset` 为 V2 的分组下拉动作） */
-export const API_ACTIONS = ['presetSave', 'presetLoad', 'presetDelete', 'apiTest', 'apiModels', 'dimPreset'];
+export const API_ACTIONS = ['presetSave', 'presetLoad', 'presetDelete', 'apiTest', 'apiModels', 'dimPreset', 'testLayer', 'vectorCacheClear'];
 
 /** V1 `#ftt-api-result-<pfx>` 的结果文案（模块态；V2 由渲染写回，不直接改 DOM） */
 let apiTestResult = { text: '', kind: '' };
@@ -195,9 +202,8 @@ function purposeSectionHtml() {
         '<div class="ftt-dim-row"><span class="ftt-dim-name">各维度分组</span><span class="ftt-muted ftt-flex-1">'
             + esc((separate ? '独立分组' : '当前为统一分组') + '；已设 ' + dimCount + ' 个维度分组')
             + ' —— 在「分析记忆」设定页选择</span></div>',
-        '<div class="ftt-muted">未实现用途（**不给控件**，避免假控件）：V1 的「关键词提取 API 分组」（<code>kwApiPreset</code>）与「记忆分析发送分组」（<code>memApiPreset</code>）'
-            + '以及 Embedding / Rerank API 都只服务于 V1 的**向量检索层**（<code>cfg.useVector</code> 三层结构）；该层在 V2 尚未实现，故本页如实登记而不放假开关。'
-            + '内核解析逻辑已就位（<code>core/api-channel.js</code> 支持 <code>kw</code>/<code>mem</code> 用途），向量层批次落地后直接接线。</div>',
+        '<div class="ftt-muted">向量层用途（<code>kwApiPreset</code> 关键词提取 / <code>memApiPreset</code> 记忆分析发送）与 '
+            + 'Embedding / Rerank 的连接设置在「提取记忆」页（V1 原位）：本页只管连接与分组，分组建好后在那边选择。</div>',
         '</div>',
     ].join('\n');
 }
@@ -254,6 +260,24 @@ export async function apiAction(action, p) {
         return { ok: true, action: a, dimension: r.dimension, name: r.name, note: '维度「' + dim + '」分组：' + (name || '跟随主配置') };
     }
     if (a === 'apiTest') {
+        // v2.58.0：Embedding / Rerank 区块的「🧪 测试」带 `data-ftt-api-pfx`（emb / rerank）——
+        //   目标连接由 `vectorTarget()` 解析（自填地址 或 本插件 API 分组），与 V1 `apiBlockHtml(kind)` 同义。
+        const pfx = String(params.apiPfx || params.pfx || '');
+        if (pfx === 'emb' || pfx === 'rerank') {
+            // kind 由标记 `data-ftt-api-kind` 透传（缺省按 pfx 推断，与 V1 `data-ftt-api-kind` 同义）
+            const kind = (String(params.apiKind || '') === 'rerank' || String(params.apiKind || '') === 'embedding')
+                ? String(params.apiKind) : (pfx === 'emb' ? 'embedding' : 'rerank');
+            const t = vectorTarget(kind);
+            setVectorTestResult(pfx, '⏳ 测试中…');
+            apiHooks.rerender();
+            const r = t.ok
+                ? await probeTarget({ channel: 'direct', apiUrl: t.url, apiKey: t.key, model: t.model }, kind)
+                : { ok: false, error: t.error };
+            const text = r.ok ? ('✅ 可用（' + (r.ms || 0) + 'ms）') : ('❌ ' + String(r.error || '测试失败').slice(0, 80));
+            setVectorTestResult(pfx, text);
+            apiHooks.rerender();
+            return { ok: !!r.ok, action: a, pfx: pfx, kind: kind, result: text, ms: r.ms || 0, note: text };
+        }
         const target = params.target && typeof params.target === 'object' ? params.target : resolveApiTarget({ purpose: 'main' });
         const kind = String(params.kind || 'chat');
         apiTestResult = { text: '⏳ 测试中…', kind: 'main' };
@@ -263,6 +287,34 @@ export async function apiAction(action, p) {
         apiTestResult = { text, kind: 'main' };
         apiHooks.rerender();
         return { ok: !!r.ok, action: a, result: text, ms: r.ms || 0, channel: target.channel, note: text };
+    }
+    if (a === 'testLayer') {
+        // V1 `testLayer`（27340）：真实跑一层并把「命中 N 条 + 关键词 + 前 900 字预览」写回页面
+        const layer = String(params.layer || params.kind || '');
+        const floorText = String((params.floorText != null && params.floorText !== '') ? params.floorText : (() => {
+            try {
+                const last = Number((getCtx() && typeof getCtx().lastMessageId === 'number') ? getCtx().lastMessageId : -1);
+                if (!Number.isFinite(last) || last < 0) return '';
+                const n = 3;
+                return collectFloorLinesInRange(Math.max(0, last - n + 1), last).join('\n');
+            } catch (e) { return ''; }
+        })());
+        setLayerResult(layer, { text: '⏳ 测试中…', lines: [] });
+        apiHooks.rerender();
+        const r = await runLayerTest(layer, floorText);
+        setLayerResult(layer, { text: ((r.ok ? '✅ ' : '❌ ') + String(r.note || '')), lines: r.lines || [] });
+        apiHooks.rerender();
+        return { ok: !!r.ok, action: a, layer: layer, count: r.count || 0, keywords: r.keywords || [], result: r.note, note: String(r.note || ''), ms: r.ms || 0 };
+    }
+    if (a === 'vectorCacheClear') {
+        const before = vectorCacheStats();
+        const r = await vectorCacheClear();
+        const after = vectorCacheStats();
+        const note = r.ok
+            ? ('已清空向量缓存（内存 ' + before.memory + ' 条 → ' + after.memory + ' 条' + (r.via === 'indexeddb' ? '，IndexedDB 表已清空' : '，仅内存回退') + '）')
+            : ('清空向量缓存失败：' + String(r.error || '未知'));
+        apiHooks.rerender();
+        return { ok: !!r.ok, action: a, note: note, cleared: r.cleared || 0, via: r.via || '' };
     }
     if (a === 'apiModels') {
         const target = params.target && typeof params.target === 'object' ? params.target : resolveApiTarget({ purpose: 'main' });

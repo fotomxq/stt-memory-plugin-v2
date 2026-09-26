@@ -197,6 +197,10 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'scene-caret': '场景折叠三角（v2.47.0：`data-ftt-scene-caret="1"` 标记，点击纯 DOM 切显隐，V1 v1.206 26185 同款）',
         'scene-caret-for': '场景折叠三角对应路径（v2.47.0：`data-ftt-scene-caret-for="<路径>"`，点击时按它找子树）',
         'snap-inspect': '快照查看容器（重绘即更新）',
+        'api-result': '向量层（Embedding / Rerank）测试结果行（v2.58.0：由动作写入模块态、重绘输出）',
+        'layer-result': '「提取记忆」层测试结果行（v2.58.0：`data-ftt-layer-result` 由 `testLayer` 动作重绘）',
+        'layer-preview': '「提取记忆」层命中预览容器（v2.58.0：`data-ftt-layer-preview` 由 `testLayer` 动作重绘）',
+        'vector-cache': '向量缓存统计行（v2.58.0：清空动作后重绘即更新）',
     };
     const unread = [];
     for (const a of attrs) {
