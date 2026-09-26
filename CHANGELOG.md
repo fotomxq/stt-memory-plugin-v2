@@ -3,6 +3,26 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.63.0（2026-09-26）· 管线状态读秒改为动态心跳（对齐 V1）
+
+**用户要求**：「管线状态的计时器不动，需改进，应该是动态变化的。」
+
+**核对**：V1 v1.206 `pipelineTickStart()`（14546 行）确有 **500ms 心跳** `setInterval(() => updatePipelineStatusDom(), 500)`，
+`pipelineElapsedSec()` 每次按 `Date.now() - busy.pipe.startedAt` 重算；V2 v2.52.0 移入总览时只留了「渲染那一刻算一次」，
+中间**没有任何定时器** → 读秒冻结。
+
+**修复（`ui/panel.js` + `host/extract.js`）**：
+
+| # | 问题 | 落地 |
+| --- | --- | --- |
+| ① | 读秒冻结 | 新增 `pipelineStatusText(now)`（每次按当前时刻重算）＋ 模块级 500ms 心跳 `syncPipelineTick()`（V1 同值），回调只调 `updatePipelineStatusDom()` 原地改那一行文本，**不整页重绘**（不打断输入与滚动） |
+| ② | 起点少报 | `host/extract.js` 新增 `extractState.busySince`（`analyzeFloors` / `runAutoSummary` 置为真实起点、`finally` 清零），`batchProgress().since` 下发；面板优先用它（对应 V1 `busy.pipe.startedAt`），拿不到才回落到「首次观察到忙位」 |
+| ③ | 停表 | 空闲 / `closePanel()` / `unmountPanel()` / 切离总览 / 拿不到节点 → 立即 `clearInterval` 并置空；内容未变不写 DOM（V1 同款） |
+| ④ | 标记名 | 行标记改为 V1 同名 **`data-ftt-pipeline-label`**（原 `data-ftt-pipeline`）；断言文案 `空闲`（V1 为「暂无」，V2 依用户 v2.52.0 要求保留「空闲」） |
+
+**门禁**：新增 `tests/unit/pipeline-tick.test.js`（12 断言：起点取值 / 纯函数读秒 / 500ms 心跳 / 只改一行且未变不写 / 不重复起表 / 空闲·关闭·卸载·切页·无节点停表）。
+详见 `docs/P10aa`。
+
 ## v2.62.0（2026-09-26）· 状态大类细节核对并对齐 V1
 
 **用户要求**：「核对状态大类的提示词等细节，确保对齐 V1。」

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.62.0",
+  "version": "2.63.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.63.0",
+      "date": "2026-09-26",
+      "title": "管线状态读秒改为动态心跳（对齐 V1）",
+      "points": [
+        "核对：V1 v1.206 pipelineTickStart()（14546 行）确有 500ms 心跳 setInterval(() => updatePipelineStat…",
+        "修复（ui/panel.js + host/extract.js）：| # | 问题 | 落地 || --- | --- | --- || ① | 读秒冻结 | 新增 pipel…"
+      ]
+    },
     {
       "version": "2.62.0",
       "date": "2026-09-26",

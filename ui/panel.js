@@ -275,30 +275,89 @@ function totalMemory() {
     try { return DIMENSIONS.reduce((n, d) => n + arrOf(d.kind).length, 0); } catch (e) { return 0; }
 }
 
+/**
+ * 管线状态（总览「🧵 管线状态」行）的**实时**计算 —— 每次调用都按当前时刻重算读秒。
+ * v2.63.0（用户报告「管线状态的计时器不动，需改进，应该是动态变化的」）：
+ *   此前秒数只在**面板重绘**那一刻计算一次，之后没有任何定时器去刷新 → 读秒冻结。
+ *   现在抽出本函数给「渲染」与「1s 计时器」共用；起始时刻优先取批次真实起点（`batchProgress().since`），
+ *   其次用面板首次观察到 busy 的时刻（`busySince`）。
+ * @returns {{busy:boolean, txt:string, sec:number}}
+ */
+export function pipelineStatusText(now) {
+    const at = Number(now) || Date.now();
+    try {
+        const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+        const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
+        const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
+        const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
+        if (busy && !busySince) busySince = Number(bp.since) > 0 ? Number(bp.since) : at;   // 首次观察到忙位
+        if (busy && Number(bp.since) > 0) busySince = Number(bp.since);                     // 批次给出真实起点 → 采用
+        if (!busy) busySince = 0;
+        const sec = busySince ? Math.max(0, Math.floor((at - busySince) / 1000)) : 0;
+        const txt = busy
+            ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range + (sec ? (' · 已用时 ' + sec + 's') : '') + (bp.aborted ? ' · 已请求中断' : ''))
+            : '空闲';
+        return { busy: busy, sec: sec, txt: txt };
+    } catch (e) { return { busy: false, sec: 0, txt: '空闲' }; }
+}
+
+/**
+ * 只更新「管线状态」那一行的文本（V1 `updatePipelineStatusDom()` 同口径：找到就写、内容没变不写）。
+ * v2.63.0：属性名与 V1 一致用 `[data-ftt-pipeline-label]`；**不整页重绘**，避免打断输入与滚动。
+ */
+export function updatePipelineStatusDom(now) {
+    try {
+        const doc = globalThis.document;
+        const el = doc && doc.querySelector ? doc.querySelector('[data-ftt-pipeline-label]') : null;
+        if (!el) return false;
+        const st = pipelineStatusText(now);
+        if (el.textContent !== st.txt) el.textContent = st.txt;
+        return true;
+    } catch (e) { return false; }
+}
+
+/** 管线状态计时器（V1 v1.85：500ms 心跳）——忙位期间动态刷新读秒；空闲/面板不可见时自动停止（不泄漏定时器） */
+let pipelineTimer = null;
+/** 计时器是否在跑（测试/诊断） */
+export function pipelineTickState() { return { running: !!pipelineTimer, busySince: busySince }; }
+function stopPipelineTick() {
+    if (pipelineTimer) { try { clearInterval(pipelineTimer); } catch (e) { /* 忽略 */ } pipelineTimer = null; }
+    return true;
+}
+/** 那一行是否在 DOM 里（V1 `pipelineTickStart` 同款前置检查；V2 在首个心跳时复查，见下） */
+function pipelineRowPresent() {
+    try { const doc = globalThis.document; return !!(doc && doc.querySelector && doc.querySelector('[data-ftt-pipeline-label]')); } catch (e) { return false; }
+}
+/** 按「忙位 + 面板开着 + 停在总览页」启停计时器（每次渲染/动作后调用） */
+function syncPipelineTick() {
+    try {
+        const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+        const onOverview = String(ps.tab) === 'overview';
+        // 离开总览 / 面板关闭 → 立即停表，别留一个「只在下次回调里才自停」的定时器
+        if (!busy || !ps.open || !onOverview) { stopPipelineTick(); return false; }
+        if (pipelineTimer) return true;
+        const iv = (typeof setInterval === 'function') ? setInterval(() => {
+            try {
+                // 面板已关/切页 → 停；那一行不在 DOM（拿不到节点）→ 停；否则只更新那一行文本
+                // （V1 v1.85 500ms 心跳；**不重绘**，避免打断输入与滚动）
+                if (!ps.open || String(ps.tab) !== 'overview' || !(typeof hooks.busy === 'function' ? hooks.busy() : false)) { stopPipelineTick(); return; }
+                if (!pipelineRowPresent() || !updatePipelineStatusDom()) stopPipelineTick();
+            } catch (e) { stopPipelineTick(); }
+        }, 500) : null;
+        pipelineTimer = iv;
+        return !!iv;
+    } catch (e) { return false; }
+}
+
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];
     // ① 剧情时钟（日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源）
     try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
-    // ② 管线状态（v2.52.0 用户报告：此前缺失）——进行中给出任务/进度/读秒；空闲明确写「空闲」
-    const pipe = (() => {
-        try {
-            const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
-            const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
-            const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
-            const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
-            // 忙位起始时刻（本次渲染周期内首次观察到 busy 时记录；空闲即清零）
-            if (busy && !busySince) busySince = Date.now();
-            if (!busy) busySince = 0;
-            const t0 = busySince;
-            const sec = t0 ? Math.max(0, Math.round((Date.now() - t0) / 1000)) : 0;
-            const txt = busy
-                ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range + (sec ? (' · 已用时 ' + sec + 's') : '') + (bp.aborted ? ' · 已请求中断' : ''))
-                : '空闲';
-            return { busy: busy, txt: txt };
-        } catch (e) { return { busy: false, txt: '空闲' }; }
-    })();
-    lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧵 管线状态</b> <span data-ftt-pipeline style="flex:1 1 auto;min-width:0" class="ftt-muted">' + esc(pipe.txt) + '</span>'
+    // ② 管线状态（v2.52.0 缺失修复 + v2.63.0 动态读秒）——进行中给出任务/进度/读秒；空闲明确写「空闲」
+    //   读秒计时器由 `renderPanel()` 在**写入 DOM 之后**启停（此刻那一行才真的存在，见 `syncPipelineTick`）
+    const pipe = pipelineStatusText();
+    lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧵 管线状态</b> <span data-ftt-pipeline-label style="flex:1 1 auto;min-width:0" class="ftt-muted">' + esc(pipe.txt) + '</span>'
         // ③ 「中断」按钮**只在管线进行中出现**（v2.52.0 用户要求：有条件展示，不是始终出现）
         + (pipe.busy ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
         + '</div>');
@@ -1245,6 +1304,8 @@ function scheduleScrollRestore(el, st) {
 /** 渲染（真实 DOM 用 innerHTML 替换；桩 DOM 记录到 el.html） */
 export function renderPanel() {
     const el = overlayEl || ensureOverlay();
+    // v2.63.0：DOM 写完后启停「管线状态」读秒计时器（此刻那一行才真的存在；切页/关闭/空闲则停表）
+    const finish = (html) => { try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ } return html; };
     // ① 重渲染**前**记录滚动位置（V1 同款；活动标签内容区，不是第一个 .ftt-body）
     const scroll = panelScrollState(el);
     // ② 字符串层补 `type="button"`（防止 form 内按钮提交导致跳顶）
@@ -1257,14 +1318,14 @@ export function renderPanel() {
             hardenButtonTypes(el);
             applyPanelScroll(el, scroll);      // ③ 渲染后同步恢复
             scheduleScrollRestore(el, scroll); // ④ 布局落定后再补一次
-            return html;
+            return finish(html);
         }
     } catch (e) { /* 落到桩路径 */ }
     try { if (typeof el.insertAdjacentHTML === 'function') el.insertAdjacentHTML('beforeend', html); else el.html = html; } catch (e) { /* 忽略 */ }
     hardenButtonTypes(el);
     applyPanelScroll(el, scroll);
     scheduleScrollRestore(el, scroll);
-    return html;
+    return finish(html);
 }
 
 /**
@@ -1301,6 +1362,7 @@ export function openPanel(tab) {
 /** 关闭浮层 */
 export function closePanel() {
     ps.open = false;
+    stopPipelineTick();   // v2.63.0：面板关闭即停读秒计时器（不泄漏定时器）
     try { traceEvent({ cat: 'ui', kind: 'panel-close', level: 'info', detail: { tab: ps.tab }, site: traceSite() }); } catch (e2) { /* 忽略 */ }
     const el = overlayEl;
     if (!el) return true;
@@ -1354,7 +1416,7 @@ export async function panelAction(action, payload) {
     const a = String(action || '');
     let result = { ok: true, action: a };
     try {
-        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; }
+        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; }   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
         else if (a === 'close') { closePanel(); }
         else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }
         else if (a === 'edit' || a === 'editEntry') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: p.preset || null }; }
@@ -2391,6 +2453,7 @@ export function bindEscClose() {
 
 /** 卸载（disable / delete） */
 export function unmountPanel() {
+    stopPipelineTick();
     closePanel();
     const doc = docEl();
     try {
