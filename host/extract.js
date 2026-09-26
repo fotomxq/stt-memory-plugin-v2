@@ -28,7 +28,7 @@ import { resolveApiTarget } from '../core/api-channel.js';
 import { rawGenerate, generationAvailability } from './generation.js';
 import {
     floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
-    collectFloorLinesInRange, clearProcessedFloors,
+    collectFloorLinesInRange, clearProcessedFloors, scanPendingFloors,
 } from './floors.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { cleanText } from '../core/html-text.js';
@@ -484,5 +484,16 @@ export async function autoExtractLatest(opts) {
 export function extractSummary() {
     const s = extractStats();
     const st = processedStats();
-    return Object.assign({}, s, { processed: st, pending: listUnprocessedFloors({}).length, floorHash: (n) => hashFloorText(n) });
+    // v2.64.0：待分析清单改为「扫描结果」——额外给出**跳过明细**（用户楼/隐藏楼/无正文/已处理/已有记忆数据），
+    //   便于核对「为什么这楼没被列出来」（`pendingCovered` = 已有记忆数据的楼层数）
+    let scan = null;
+    try { scan = scanPendingFloors({}); } catch (e) { scan = null; }
+    return Object.assign({}, s, {
+        processed: st,
+        pending: scan ? scan.floors.length : listUnprocessedFloors({}).length,
+        pendingCovered: scan ? scan.covered : 0,
+        pendingSkipped: scan ? scan.skipped : null,
+        pendingEnd: scan ? scan.endFloor : -1,
+        floorHash: (n) => hashFloorText(n),
+    });
 }
