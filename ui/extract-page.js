@@ -37,6 +37,22 @@ function presetSelect(key, cur) {
         + '<span class="ftt-muted">' + (names.length ? (names.length + ' 个分组可用') : '（还没建分组：可在「API」页创建）') + '</span></div>';
 }
 
+/** 「选择模型」下拉（选项来自该区块自己的「📦 获取模型」结果；当前值不在列表里也保留为已选项） */
+function modelSelectHtml(pfx, modelKey, cur, kind) {
+    const st = blockModelList(pfx);
+    const label = kind === 'embedding' ? 'Embedding' : 'Rerank';
+    const list = st.models.slice();
+    if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+    const head = st.error
+        ? ('（获取失败：' + st.error.slice(0, 40) + '）')
+        : (list.length ? '（选择模型）' : '（先点「获取模型」）');
+    const opts = ['<option value="">' + esc(head) + '</option>'].concat(list.map((m) => '<option value="' + esc(m) + '"' + (m === cur ? ' selected' : '') + '>' + esc(m) + '</option>')).join('');
+    const note = st.error ? ('获取失败：' + st.error.slice(0, 30))
+        : (list.length ? (label + ' 已获取 ' + st.models.length + ' 个模型') : '点「📦 获取模型」按本区块地址拉取');
+    return '<div class="ftt-field"><label>选择模型</label><select data-ftt-cfg="' + esc(modelKey) + '" data-ftt-model-select="' + esc(pfx) + '">' + opts + '</select>'
+        + '<span class="ftt-muted">' + esc(note) + '</span></div>';
+}
+
 /** V1 `apiBlockHtml` 的 V2 等价物（Embedding / Rerank）：地址 / Key / 模型 / 分组 + 测试 + 获取模型 */
 function apiBlockHtml(pfx, title, keys, kind, info) {
     const url = String(cfg[keys.url] || '');
@@ -50,6 +66,10 @@ function apiBlockHtml(pfx, title, keys, kind, info) {
         '<div class="ftt-field"><label>API 地址</label><input type="text" data-ftt-cfg="' + esc(keys.url) + '" value="' + esc(url) + '" placeholder="如 https://api.example.com/v1"></div>',
         '<div class="ftt-field"><label>API Key</label><input type="password" data-ftt-cfg="' + esc(keys.key) + '" value="' + esc(key) + '" autocomplete="off" spellcheck="false"></div>',
         '<div class="ftt-field"><label>模型</label><input type="text" data-ftt-cfg="' + esc(keys.model) + '" value="' + esc(model) + '" placeholder="' + esc(kind === 'embedding' ? '如 text-embedding-3-small' : '如 bge-reranker-v2-m3') + '"></div>',
+        // v2.79.0（用户报告「Embedding、Rerank 设定存在严重错误」）：V1 每个区块都有「选择模型」下拉，
+        //   「📦 获取模型」把结果填进**该区块自己的**下拉；V2 此前丢了这一项，且该按钮串到了主 API。
+        //   这下拉直接用 `data-ftt-cfg="<区块自己的模型键>"`，选中即写回（与 V2 即时写回口径一致）。
+        modelSelectHtml(pfx, keys.model, model, kind),
         presetSelect(keys.preset, preset),
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="apiTest" data-ftt-api-pfx="' + esc(pfx) + '" data-ftt-api-kind="' + esc(kind) + '">🧪 测试</button>',
@@ -61,6 +81,21 @@ function apiBlockHtml(pfx, title, keys, kind, info) {
             : ('尚未可用：' + esc((info && info.error) || '未配置'))) + '</div>',
         '</div>',
     ].join('\n');
+}
+
+/** 各区块（emb / rerank）的模型列表（由「📦 获取模型」写入；V1 是直接改该区块的 select，V2 走渲染态） */
+const blockModels = { emb: { models: [], error: '', at: 0 }, rerank: { models: [], error: '', at: 0 } };
+export function setBlockModelList(pfx, list) {
+    const p = String(pfx || '');
+    if (!blockModels[p]) return { models: [], error: '', at: 0 };
+    const m = (list && Array.isArray(list.models)) ? list.models.map((x) => String(x)).filter(Boolean) : [];
+    blockModels[p] = { models: m, error: String((list && list.error) || ''), at: Date.now() };
+    return { models: blockModels[p].models.slice(), error: blockModels[p].error, at: blockModels[p].at };
+}
+export function blockModelList(pfx) {
+    const p = String(pfx || '');
+    const row = blockModels[p] || { models: [], error: '', at: 0 };
+    return { models: row.models.slice(), error: row.error, at: row.at };
 }
 
 /** 测试结果（由 `ui/api-page.js` 的动作写入；此处读同一份模块态，避免两处各写一套） */

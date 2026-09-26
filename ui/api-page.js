@@ -38,7 +38,7 @@ import { listConnectionProfiles, apiChannelAvailability, probeTarget, fetchModel
 import { vectorTarget } from '../host/embeddings.js';
 import { testLayer as runLayerTest } from '../host/extract-flow.js';
 import { vectorCacheClear, vectorCacheStats } from '../adapters/vector-cache.js';
-import { setVectorTestResult, setLayerResult } from './extract-page.js';
+import { setVectorTestResult, setLayerResult, setBlockModelList, blockModelList } from './extract-page.js';
 import { collectFloorLinesInRange } from '../host/floors.js';
 import { getCtx } from '../host/st-api.js';
 
@@ -61,6 +61,7 @@ export function apiPageState() {
     return {
         test: { text: apiTestResult.text, kind: apiTestResult.kind },
         models: { targetKey: apiModelList.targetKey, count: apiModelList.models.length, error: apiModelList.error, models: apiModelList.models.slice(0, 50) },
+        blockModels: { emb: blockModelList('emb'), rerank: blockModelList('rerank') },
         channel: mainApiChannel(),
     };
 }
@@ -72,6 +73,42 @@ function domValue(key) {
         const el = doc && typeof doc.querySelector === 'function' ? doc.querySelector('[data-ftt-cfg="' + String(key) + '"]') : null;
         return el ? String(el.value == null ? '' : el.value) : '';
     } catch (e) { return ''; }
+}
+
+/**
+ * 读「屏幕上」某个向量区块的当前连接（V1 `collectApiBlock(pfx)` 的 V2 等价物）。
+ * 为什么需要它（v2.79.0 修正）：区块里的输入是**即时写回**（change 事件），但用户「刚打完字就点测试」时
+ *   该事件可能还没派发 —— 此时若只读 `cfg`，测的就是上一次保存的旧值（看起来像「设定没生效/串了」）。
+ *   与 V1 一致：点按钮时按**当前输入框的值**解析目标；读不到 DOM（测试/无宿主）→ 返回 null 由调用方回落 cfg。
+ * @returns {{ok:boolean,url:string,key:string,model:string,preset:string,from:string,error?:string,apiUrl:string,apiKey:string}|null}
+ */
+function domBlockTarget(pfx) {
+    const pre = pfx === 'emb' ? 'embedding' : (pfx === 'rerank' ? 'rerank' : '');
+    if (!pre) return null;
+    try {
+        const doc = globalThis.document;
+        if (!doc || typeof doc.querySelector !== 'function') return null;
+        const pick = (k) => {
+            const el = doc.querySelector('[data-ftt-cfg="' + k + '"]');
+            return el ? String(el.value == null ? '' : el.value).trim() : '';
+        };
+        const probe = doc.querySelector('[data-ftt-cfg="' + pre + 'Url"]');
+        if (!probe) return null;                                   // 页面上没有该区块 → 回落 cfg
+        const url = pick(pre + 'Url').replace(/\/+$/, '');
+        const key = pick(pre + 'Key');
+        const model = pick(pre + 'Model');
+        const preset = pick(pre + 'ProxyPreset');
+        const label = pre === 'rerank' ? 'Rerank' : 'Embedding';
+        const base = { url: url, key: key, model: model, preset: preset, from: 'dom', apiUrl: url, apiKey: key };
+        if (!url) return Object.assign(base, { ok: false, error: label + ' API 未配置（缺少地址）' });
+        if (!model) return Object.assign(base, { ok: false, error: label + ' API 未配置模型' });
+        return Object.assign(base, { ok: true });
+    } catch (e) { return null; }
+}
+
+/** 区块的有效连接（DOM 优先，其次 cfg 的 `vectorTarget`） */
+function blockTarget(pfx, kind) {
+    return domBlockTarget(pfx) || vectorTarget(kind);
 }
 
 /** 持久化（内核只改内存，落盘由 UI 层负责 —— 与 settings-pages 同口径） */
@@ -265,11 +302,11 @@ export async function apiAction(action, p) {
             // kind 由标记 `data-ftt-api-kind` 透传（缺省按 pfx 推断，与 V1 `data-ftt-api-kind` 同义）
             const kind = (String(params.apiKind || '') === 'rerank' || String(params.apiKind || '') === 'embedding')
                 ? String(params.apiKind) : (pfx === 'emb' ? 'embedding' : 'rerank');
-            const t = vectorTarget(kind);
+            const t = blockTarget(pfx, kind);                     // v2.79.0：以屏幕上当前值为准（V1 collectApiBlock 语义）
             setVectorTestResult(pfx, '⏳ 测试中…');
             apiHooks.rerender();
             const r = t.ok
-                ? await probeTarget({ channel: 'direct', apiUrl: t.url, apiKey: t.key, model: t.model }, kind)
+                ? await probeTarget({ channel: 'direct', apiUrl: t.url, apiKey: t.key, model: t.model }, kind, cfg.vectorTimeoutMs)
                 : { ok: false, error: t.error };
             const text = r.ok ? ('✅ 可用（' + (r.ms || 0) + 'ms）') : ('❌ ' + String(r.error || '测试失败').slice(0, 80));
             setVectorTestResult(pfx, text);
@@ -315,6 +352,30 @@ export async function apiAction(action, p) {
         return { ok: !!r.ok, action: a, note: note, cleared: r.cleared || 0, via: r.via || '' };
     }
     if (a === 'apiModels') {
+        // v2.79.0 修正（用户报告「Embedding、Rerank 设定存在严重错误、串行问题」）：
+        //   此前本动作用 `resolveApiTarget({purpose:'main'})` —— 于是「Embedding / Rerank」区块里的
+        //   「📦 获取模型」实际去拉**主 API**（默认通道为「跟随酒馆当前连接」时报主通道的错、且一个请求都不发），
+        //   结果无处可看。现在按 `data-ftt-api-pfx` 走**该区块自己的**地址/Key，并把结果回填该区块的「选择模型」下拉。
+        const pfx = String(params.apiPfx || params.pfx || '');
+        if (pfx === 'emb' || pfx === 'rerank') {
+            const kind = pfx === 'emb' ? 'embedding' : 'rerank';
+            const label = kind === 'embedding' ? 'Embedding' : 'Rerank';
+            const t = blockTarget(pfx, kind);
+            if (!t.ok) {
+                setBlockModelList(pfx, { models: [], error: t.error });
+                apiHooks.rerender();
+                return { ok: false, action: a, pfx: pfx, note: '❌ ' + label + ' 获取模型失败：' + t.error, error: t.error };
+            }
+            const r = await fetchModels({ channel: 'direct', apiUrl: t.url, apiKey: t.key });
+            if (r.ok) {
+                setBlockModelList(pfx, { models: r.models, error: '' });
+                apiHooks.rerender();
+                return { ok: true, action: a, pfx: pfx, count: r.models.length, models: r.models, note: '✅ ' + label + ' 获取到 ' + r.models.length + ' 个模型' + (r.models.length ? '（可在本区块「选择模型」里挑）' : '') };
+            }
+            setBlockModelList(pfx, { models: [], error: String(r.error || '获取失败') });
+            apiHooks.rerender();
+            return { ok: false, action: a, pfx: pfx, note: '❌ ' + label + ' 获取模型失败：' + String(r.error || '').slice(0, 80), error: r.error };
+        }
         const target = params.target && typeof params.target === 'object' ? params.target : resolveApiTarget({ purpose: 'main' });
         const r = await fetchModels(target);
         if (r.ok) {
@@ -334,5 +395,7 @@ export async function apiAction(action, p) {
 export function resetApiPageState() {
     apiTestResult = { text: '', kind: '' };
     apiModelList = { targetKey: '', models: [], error: '', at: 0 };
+    setBlockModelList('emb', { models: [], error: '' });
+    setBlockModelList('rerank', { models: [], error: '' });
     return apiPageState();
 }

@@ -2,6 +2,7 @@
 // host/embeddings.js —— **Embedding / Rerank 请求**（v2.58.0，对齐 V1 v1.206）
 //
 // V1 出处：`src/FTT记忆组件-v1.206.js#requestEmbeddings` 约 12452~12493：
+// v2.79.0 修正：① 不完整 embedding 返回必须失败（V1 空槽数组缺陷）；② 超时统一读 `cfg.vectorTimeoutMs`。
 //   · 地址/Key/模型取 `cfg.embeddingUrl/embeddingKey/embeddingModel`；**地址为空且设了代理预设名**时，
 //     从代理预设读 `settings.apiurl/key`（V1 走 TavernHelper `getPreset`）；
 //   · 未配置 → 抛「Embedding API 未配置」；无输入 → 返回空；
@@ -113,14 +114,18 @@ export async function requestEmbeddings(texts) {
         return { ok: false, vectors: [], error: r.error };
     }
     const data = Array.isArray(r.json && r.json.data) ? r.json.data : [];
-    const out = new Array(inputs.length);
+    // v2.79.0 修正（V1 同款实现缺陷）：V1 用 `new Array(n)` 建结果数组，**空槽（hole）会被 `Array.prototype.some`
+    //   跳过** → 服务端少返回几条时 `out.some(...)` 恒为 false，残缺结果被当成成功（`vectors` 里是 null/空槽）。
+    //   现改为显式填 null 再校验，缺项一律判失败（调用方据此降级，绝不拿半份向量去打分）。
+    const out = new Array(inputs.length).fill(null);
     data.forEach((d, i) => {
         const idx = Number.isInteger(d && d.index) ? d.index : i;
         if (idx >= 0 && idx < inputs.length && Array.isArray(d && d.embedding) && d.embedding.length) out[idx] = d.embedding.map(Number);
     });
-    if (out.some((x) => !Array.isArray(x) || !x.length)) {
-        logVec({ action: 'embedding', ok: false, model: t.model, inputs: inputs.length, from: t.from, error: '返回不完整' });
-        return { ok: false, vectors: [], error: 'Embedding 返回不完整' };
+    const missing = out.filter((x) => !Array.isArray(x) || !x.length).length;
+    if (missing) {
+        logVec({ action: 'embedding', ok: false, model: t.model, inputs: inputs.length, from: t.from, missing: missing, error: '返回不完整' });
+        return { ok: false, vectors: [], error: 'Embedding 返回不完整（' + missing + '/' + inputs.length + ' 条缺失）' };
     }
     logVec({ action: 'embedding', ok: true, model: t.model, inputs: inputs.length, dims: out[0].length, from: t.from });
     return { ok: true, vectors: out, model: t.model, from: t.from, dims: out[0].length };

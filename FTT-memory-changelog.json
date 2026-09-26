@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.78.0",
+  "version": "2.79.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.79.0",
+      "date": "2026-09-26",
+      "title": "Embedding / Rerank 设定与向量层修复（串线 · 串行 · 静默失效）",
+      "points": [
+        "① 「📦 获取模型」串到主 API（严重）：Embedding / Rerank 区块里的该按钮走的是 resolveApiTarget({purpose:'main'})，在…",
+        "② 补齐「选择模型」下拉：（V1 modelSelect 的等价物）：每个区块新增下拉（data-ftt-model-select），选项来自该区块的获取结果、选中即写回该区块的…",
+        "③ 串行 → 并行（性能）：库向量与关键词向量是两个互相独立的请求，此前串行等待（实测两次 30ms 往返 = 63ms、同一时刻仅 1 个在途）。现在 Promise.all …"
+      ]
+    },
     {
       "version": "2.78.0",
       "date": "2026-09-26",

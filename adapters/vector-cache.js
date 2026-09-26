@@ -103,6 +103,37 @@ export async function vecCachePutMany(entries) {
     }
 }
 
+/**
+ * 批量删除向量（v2.79.0：**旧维度向量清理**用 —— 换了 Embedding 模型后维度不符的缓存必须真正删掉，
+ * 否则每次召回都要重试一次注定失败的比对；重嵌成功时走 `vecCachePutMany` 覆盖，无需删除）。
+ * @param {string[]} keys
+ * @returns {Promise<number>} 实际删除条数（内存计数）
+ */
+export async function vecCacheDeleteMany(keys) {
+    const list = (Array.isArray(keys) ? keys : []).map(str).filter(Boolean);
+    if (!list.length) return 0;
+    let n = 0;
+    list.forEach((k) => { if (mem.delete(k)) n += 1; });
+    if (!idb()) return n;
+    try {
+        const db = await openVectorDb();
+        await new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction(VEC_STORE, 'readwrite');
+                const store = tx.objectStore(VEC_STORE);
+                for (const k of list) store.delete(k);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error || new Error('向量删除失败'));
+            } catch (e) { reject(e); }
+        });
+        try { db.close(); } catch (e) { /* 忽略 */ }
+        return n;
+    } catch (e) {
+        lastFallback = 'delete-failed:' + str((e && e.message) || e).slice(0, 60);
+        return n;
+    }
+}
+
 /** 清空向量缓存（内存 + IndexedDB 表；诊断/设置用） */
 export async function vectorCacheClear() {
     const n = mem.size;
