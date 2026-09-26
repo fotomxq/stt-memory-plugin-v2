@@ -46,7 +46,7 @@ import {
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
 } from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, summaryDimsForPrompt, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
 import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
@@ -986,7 +986,7 @@ function bootstrapDiagnostics() {
             trackPickState: () => trackPickState(),
             setTrackPick: (v) => setTrackPick(v),
             defaultCurrencyOwner: () => defaultCurrencyOwner(),
-            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, menuInfo, ensureMenu: () => ensureMenuEntry(entryClickHooks()), i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, summaryDims: () => summaryDimsForPrompt(), menuInfo, ensureMenu: () => ensureMenuEntry(entryClickHooks()), i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
         // v2.42.0：**FTT.* 入口调用入流**（cat='cmd'）—— 用户/维护者在控制台调 `FTT.xxx()` 也能追溯：
         //   记录入口名 / 参数摘要 / 结果 / 耗时 / 站点，并把该调用期间的宿主与内核事件用 opId 串起来。
         try { wrapFttEntries(); } catch (e) { /* 追踪接线失败不影响调试入口 */ }

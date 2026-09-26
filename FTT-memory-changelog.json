@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.67.0",
+  "version": "2.68.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.68.0",
+      "date": "2026-09-26",
+      "title": "状态大类总是没数据：提示词维度键不匹配（真根因）+ 黄金样本重建",
+      "points": [
+        "① 真根因（提示词维度键不匹配）：buildSummaryPrompt() 按 V1 模板键逐维度取模板（atoms/states/snapshots/…，if (pt[d]) …",
+        "② 维度开关认 V1 别名键：V1 存档的 cfg.dimensionEnabled 用 states，V2 用 currentStates —— 此前只看精确键，导致 V1 存…",
+        "③ 黄金样本是被污染的要因：旧 tests/fixtures/v1-golden-prompt.json 的 dims 记的是 V2 容器 kind（由旧生成器喂给 V1 的 b…"
+      ]
+    },
     {
       "version": "2.67.0",
       "date": "2026-09-26",

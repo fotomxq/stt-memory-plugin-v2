@@ -3,6 +3,20 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.68.0（2026-09-26）· 状态大类总是没数据：提示词维度键不匹配（真根因）+ 黄金样本重建
+
+**用户报告**：「状态大类总是没数据，请核对提示词、分析记忆等位置是否存在问题。」
+
+**① 真根因（提示词维度键不匹配）**：`buildSummaryPrompt()` 按 **V1 模板键**逐维度取模板（`atoms/states/snapshots/…`，`if (pt[d]) lines.push(pt[d])`），而 V2 的容器 kind 是 `currentStates`；提取链路把 `enabledDims()` 的 **V2 kind** 直接传进构造器 → `pt['currentStates']` 不存在 → **「状态记录」整段抽取说明（1104 字：主体/字段/值的取值域、唯一性、双重记录禁令、输出格式）从不进提示词** → AI 不知道要抽状态。同一错配还把 V2 容器里的 `parallels` 塞进了摘要提示词（V1 摘要不抽平行事件，由交织管线负责）。新增 `summaryDimsForPrompt()` 统一投影为 V1 摘要维度键（`currentStates`→`states`，按 V1 顺序去重、剔除无摘要模板的容器），`analyzeFloor` / `analyzeSegment` 一律走它。
+
+**② 维度开关认 V1 别名键**：V1 存档的 `cfg.dimensionEnabled` 用 `states`，V2 用 `currentStates` —— 此前只看精确键，导致 V1 存档里「状态关闭」的设定不生效（反之亦然）。`enabledDims()` 与「启用维度」勾选框现在都认别名键，**精确键优先**（显式 `currentStates:true` 可覆盖遗留的 `states:false`）。
+
+**③ 黄金样本是被污染的要因**：旧 `tests/fixtures/v1-golden-prompt.json` 的 `dims` 记的是 **V2 容器 kind**（由旧生成器喂给 V1 的 `buildSummaryPrompt`），于是「缺状态模板 + 混入平行事件」被固化成「V1 原样」，错误无从暴露。新增 `tests/fixtures/gen-v1-golden-prompt.cjs`：从 V1 源码读出 `const DIMENSIONS = [...]`（10 个摘要维度键）重新生成，并记录每段模板签名；重建后 10/10 维度模板 + 当前状态锚点齐备、「平行事件」不在。`extract-prompt-flow` 的逐字节比对在新样本下依旧通过（V2 提示词构造器与 V1 逐字一致）。
+
+**④ 自查出口**：`extractSummary().promptDims` 与 `FTT.summaryDims()` 直接列出「本次会请求哪些维度」——某大类没数据时先看它是否在表里。
+
+**门禁**：新增 `tests/unit/state-extract.test.js`（13 断言：键投影 / 真实流水线提示词含状态模板且不含平行事件 / 黄金样本签名 / 单楼与批量落库 / 中文键输出经 `CN_KEY_MAP` 归一 / 更新合并写变更史 / 维度开关别名与精确键优先 / 显式维度子集 / 状态页可见 / 诊断出口 / 独立分组同源）。详见 `docs/P10af`。
+
 ## v2.67.0（2026-09-26）· 扩展菜单主入口修复（强制开启、被重建也不丢）
 
 **用户报告**：「底部扩展菜单看不到面板激活的按钮，请修复该问题，该设计为强制打开，不允许用户关闭。其他位置的显示可根据需求调整。」
