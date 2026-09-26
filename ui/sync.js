@@ -4,8 +4,9 @@
 //   同步日志（最近 30 条：本地 → 对端 → 同步后 的条数与大小 + 处置 + 本端源头）。
 // B9-d 追加：**跨端分歧待选横幅**（V1 `renderStorageStatus` 尾部 `ftt-warn-box`(~26490)）+ 两个 V1 同名动作
 //   `syncPickLocal`(~26862「保留本端（覆盖对端）」)/ `syncPickRemote`(~26882「采用对端（整体替换）」)。
-// 说明：V1 的「存储治理（统一抽象·只读）」「宿主原生存储（TauriTavern）」两节依赖 V1 的多后端抽象，
-//   V2 为「本机缓冲 + 服务端记忆文件」两型 → 以只读说明行呈现（不使用假实现），详见 docs/P8i。
+// 说明：V1 的「存储治理（统一抽象·只读）」依赖其多后端抽象，V2 为「本机缓冲 + 文件通道」两型 →
+//   以只读说明行呈现；「宿主原生存储」自 v2.77.0 起为**真实实现**（`adapters/tt-store.js` 官方契约 +
+//   `adapters/file-transport.js` 后端路由）→ 存储页恢复该分区与通道状态行。
 // ============================================================
 import { cfg, state } from '../core/model/runtime.js';
 import { VERSION } from '../core/constants.js';
@@ -21,6 +22,8 @@ import { storageEnvelope } from '../core/envelope.js';
 import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
+// v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
+import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 const pad2 = (x) => String(x).padStart(2, '0');
@@ -133,6 +136,18 @@ function syncMiniInfoHtml() {
 }
 
 /**
+ * 存储通道状态行（宿主原生存储 / 酒馆用户目录文件；只读数据行）
+ * 行内只给「当前通道 + 读写计数」，命名空间与原因放折叠详情（避免页面提示罗嗦）。
+ */
+export function storageChannelHtml() {
+    try {
+        return '<div class="ftt-muted ftt-hint" data-ftt-tt-channel>' + ttChannelStatusHtml() + '</div>'
+            + '<details class="ftt-details ftt-hint-details"><summary>通道详情</summary>'
+            + '<div class="ftt-desc">' + ttChannelDetailHtml() + '</div></details>';
+    } catch (e) { return ''; }
+}
+
+/**
  * 存储页正文（对齐 V1 的分节布局；控件来自 `SETTINGS_CONTROLS.storage`，不重复定义）
  *
  * v2.56.0 精简（用户要求：「设定-存储中的大量提示信息需优化，避免出现历史版本、无关内容、罗嗦提示」）：
@@ -141,8 +156,8 @@ function syncMiniInfoHtml() {
  *   ② 删除无关内容：「📤 导出 / 📥 导入已移至数据管理」的指路、与按钮 title 重复的操作解释、
  *      重复渲染两次的记忆文件状态行（只在这一节保留一份）；
  *   ③ 每条提示只讲「这是什么 + 会有什么后果」，并修掉文件名里 `<slug>` 被二次转义显示成 `&lt;slug&gt;` 的问题。
- *   宿主原生存储（V1 的 TauriTavern `api.extension.store` 通道）在 V2 尚无实现，配置键保留（V1 导入兼容），
- *   但**不再在页面上展示无效开关** —— 避免「看着能开、其实无效」的误导。
+ * v2.77.0：宿主原生存储通道**已实现**（`adapters/tt-store.js`）→ 恢复「存储通道」分区：
+ *   状态行 + 后端选择（自动/强制/关闭）+ 镜像开关；未检测到宿主时同样如实呈现「当前 = 酒馆用户目录文件」。
  * @param {Array} controls 存储页控件表
  */
 export function storagePageHtml(controls) {
@@ -163,6 +178,11 @@ export function storagePageHtml(controls) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">本机缓冲（仅缓冲 · 权威=记忆文件）</div>',
         '<div class="ftt-muted">本机只做加速读取与离线回退，可随时清除；权威数据是服务端记忆文件。</div></div>',
+
+        '<div class="ftt-section"><div class="ftt-sec-title">存储通道（自动识别宿主）</div>',
+        storageChannelHtml(),
+        box(['storage.tauriNative', 'storage.tauriMirror']),
+        '<div class="ftt-muted">宿主提供原生存储时记忆文件改走它；读取未命中会回退到酒馆文件。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">一致性</div>',
         box(['storage.verifyOnLoad', 'storage.syncOnSave', 'storage.crossPullOnActivity', 'storage.crossPullOnVisible', 'storage.syncMetaProbe', 'syncTrafficGuard']),

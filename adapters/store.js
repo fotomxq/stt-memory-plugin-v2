@@ -18,7 +18,9 @@ import { storageEnvelope, storageHash } from '../core/envelope.js';
 import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
 import { collectAtomHashes } from '../core/merge.js';
 import { scopeId, emptyState } from '../core/state.js';
-import { stateFileName, uploadStateFile, readStateFileAuto, deleteStateFile } from './user-file.js';
+import { stateFileName } from './user-file.js';
+// v2.77.0：文件通道统一走 `adapters/file-transport.js`（宿主原生存储 / 酒馆用户目录文件自动切换）
+import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 import { hydrateStorageData } from '../core/slim.js';
@@ -164,8 +166,8 @@ export function loadFromLocalStorage() {
 export async function loadFromServerFile() {
     // B9-d：`stateFileGzip` 关闭（默认）时**仅读规范明文名** —— 与 B7-2 的请求序列/时序逐字节一致（零额外请求）；
     //   开启时先试 `.json.gz` 再回退明文（V1 的候选顺序）。读取按**内容魔数**解压（`readStateFileAuto`）。
-    let r = await readStateFileAuto(stateFileName(scopeId()));
-    if ((!r || !r.ok) && stateFileGzipOn()) r = await readStateFileAuto(stateFileGzName());
+    let r = await fileTransportReadAuto(stateFileName(scopeId()));
+    if ((!r || !r.ok) && stateFileGzipOn()) r = await fileTransportReadAuto(stateFileGzName());
     if (!r || !r.ok) return null;
     try {
         const env = JSON.parse(r.text);
@@ -182,7 +184,7 @@ export async function loadFromServerFile() {
 
 /** 删除服务端文件（数据管理用） */
 export async function removeServerFile() {
-    return deleteStateFile(stateFileName(scopeId()));
+    return fileTransportDelete(stateFileName(scopeId()));
 }
 
 /**

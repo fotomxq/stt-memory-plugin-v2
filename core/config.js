@@ -1041,7 +1041,10 @@ const defaultCfg = {
         //     通道不支持压缩或压缩失败 → 自动回退明文 `.json`（绝不写坏文件）。
         stateFileSlim: false,   // 条目瘦身（剥运行期/可重算字段 + 快照内容剥离为 snapIndex）
         stateFileGzip: false,   // 主/备份/快照文件 gzip 写入（`.json.gz`；写入失败回退明文）
-        // ==================== v1.150：宿主平台 TauriTavern（原生存储 · 自动兼容切换） ====================
+        // ==================== v1.150 / v2.77.0：宿主平台 TauriTavern（原生存储 · 自动兼容切换） ====================
+        // v2.77.0：本通道**已实现**（`adapters/tt-store.js` 官方契约 + `adapters/file-transport.js` 后端路由）——
+        //   命名空间 `ftt2-files`、表 `main`；小载荷走 KV JSON、大载荷（记忆文件/备份/快照）走 Blob；
+        //   读取未命中回退酒馆用户目录文件；详见 docs/P10ao。
         // TauriTavern（SillyTavern 的 Tauri/Rust 原生移植）提供 `window.__TAURITAVERN__.api.extension.store`
         //   作为扩展专用持久化（KV + Blob，落 `_tauritavern/extension-store/`）。检测到该宿主特征/API 时，
         //   文件通道（记忆文件 / -bak 备份 / 快照文件 / 清单文件 / 同步日志镜像）自动改走原生存储；

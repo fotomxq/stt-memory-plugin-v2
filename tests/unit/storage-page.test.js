@@ -10,7 +10,9 @@
 //   · 删除内部术语：墓碑 / 哈希（页面提示层）/ 魔数 / 标准化信封 / 统一存储抽象 / 治理视图 / 通道支持压缩；
 //   · 修掉文件名里 `<角色>` 被二次转义（页面显示成 &lt;角色&gt;）的真实渲染缺陷；
 //   · 控制项标签去术语：删除墓碑保留（天）→ 已删除条目的保留天数 等；
-//   · 宿主原生存储（V2 无实现）不再展示无效开关（配置键仍保留，供 V1 导入兼容）。
+//   · 宿主原生存储（v2.56.0 时 V2 无实现）不再展示无效开关（配置键仍保留，供 V1 导入兼容）。
+// v2.77.0 更新：宿主原生存储通道**已按官方契约实现**（`adapters/tt-store.js` + `adapters/file-transport.js`）
+//   → 存储页恢复「存储通道」分区与两个开关（N4 断言随之改为「恢复展示」），N1 也不再禁止出现宿主名/API 名。
 // 另：所有提示行长度 ≤ 80 字（状态行除外，那是状态不是提示）。
 // 运行：node tests/unit/storage-page.test.js
 // ============================================================
@@ -66,10 +68,13 @@ A('S2 记忆文件状态行只渲染一份（旧版在「记忆文件」与「�
 })(), '见断言');
 
 // ---- N 组：历史 / 无关 / 内部术语必须消失 ----
-A('N1 无历史与沿革：不出现 V1 / V2 / docs 路径 / 批次 / 治理视图 / TauriTavern 原生存储整节', (() => {
+A('N1 无历史与沿革：不出现 V1 / V2 / docs 路径 / 批次 / 治理视图（v2.77.0：通道已实现 → 允许出现宿主名与 API 名）', (() => {
     const h = page();
+    // v2.77.0 起「宿主原生存储」为真实实现：通道详情里出现宿主名（TauriTavern）与
+    //   `api.extension.store` 属于**如实告知当前通道**，不再算「历史/沿革」文案。
+    //   命名空间与宿主名只在折叠的「通道详情」里；可见状态行只有「当前通道：…」+ 计数。
     const gone = ['V1', 'V2', 'docs/', 'P8i', '批次', '治理视图', '统一存储抽象', '标准化信封',
-        'TauriTavern', '__TAURITAVERN__', 'api.extension.store', '宿主平台 · 原生存储'];
+        '宿主平台 · 原生存储'];
     const hit = gone.filter((s) => h.indexOf(s) >= 0);
     return hit.length === 0;
 })(), '见断言（hit 为空）');
@@ -87,14 +92,15 @@ A('N3 提示层无内部术语：墓碑 / 哈希 / 魔数 / 支持压缩 / slug 
     return hit.length === 0;
 })(), J({ hints: hintTexts(page()) }));
 
-A('N4 无效的宿主原生存储开关不再展示（配置键与控件定义仍保留，供 V1 导入兼容）', (() => {
+A('N4 v2.77.0：宿主原生存储通道已实现 → 开关恢复展示（后端选择 + 镜像），且与状态行同节', (() => {
     const h = page();
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
     const native = SETTINGS_CONTROLS.storage.filter((c) => c.key === 'storage.tauriNative')[0];
-    return h.indexOf('storage.tauriNative') < 0 && h.indexOf('storage.tauriMirror') < 0
-        && h.indexOf('原生存储通道') < 0 && h.indexOf('原生模式下同时镜像写酒馆文件') < 0
+    const mirror = SETTINGS_CONTROLS.storage.filter((c) => c.key === 'storage.tauriMirror')[0];
+    return h.indexOf('data-ftt-tt-channel') >= 0 && h.indexOf('存储通道（自动识别宿主）') >= 0
+        && h.indexOf('storage.tauriNative') >= 0 && h.indexOf('storage.tauriMirror') >= 0
         && keys.indexOf('storage.tauriNative') >= 0 && keys.indexOf('storage.tauriMirror') >= 0
-        && !!native && settingsControlHtml(native).indexOf('<select') >= 0;
+        && !!native && settingsControlHtml(native).indexOf('<select') >= 0 && !!mirror;
 })(), '见断言');
 
 A('N5 文件名里的尖括号只转义一次（旧版把 &lt;slug&gt; 再转义成 &amp;lt;slug&amp;gt;，页面显示成 &lt;slug&gt;）', (() => {

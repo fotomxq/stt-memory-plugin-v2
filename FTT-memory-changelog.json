@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.76.0",
+  "version": "2.77.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.77.0",
+      "date": "2026-09-26",
+      "title": "宿主原生存储（TauriTavern 官方契约）+ 文件通道后端路由",
+      "points": [
+        "① 官方认可的存储通道：（adapters/tt-store.js，新增）：接入宿主公开契约 window.__TAURITAVERN__.api.extension.store…",
+        "② 按官方建议分通道 + 未命中不惊动宿主：小载荷（清单 / 同步日志）走 KV JSON（官方建议「绝大多数情况下使用 KV JSON」），大载荷（记忆文件 / 备份 / 快照…",
+        "③ 文件通道后端路由：（adapters/file-transport.js，新增）：记忆文件 / -bak / 快照 / 清单 / 同步日志镜像五类载荷统一走此入口。未检测到宿…"
+      ]
+    },
     {
       "version": "2.76.0",
       "date": "2026-09-26",

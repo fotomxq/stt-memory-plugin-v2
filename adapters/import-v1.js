@@ -16,7 +16,8 @@ import { hashText } from '../core/util.js';
 import { DIMENSIONS } from '../core/constants.js';
 import { scopeId, emptyState } from '../core/state.js';
 import { migrateState } from '../core/migrate.js';
-import { readStateFileBytes } from './user-file.js';
+// v2.77.0：读取走统一文件通道；`legacy:true` 时同时探测 V1 命名空间（V1 在 TauriTavern 上的宿主存储）
+import { fileTransportReadBytes } from './file-transport.js';
 import { getCtx } from '../host/st-api.js';
 
 export const V1_NAMES = Object.freeze({
@@ -354,7 +355,7 @@ export async function discoverV1Sources(opts) {
     const max = Number(o.maxFiles) > 0 ? Number(o.maxFiles) : 16;
     const sources = [];
     for (const item of names.slice(0, max)) {
-        const got = await readStateFileBytes(item.name);
+        const got = await fileTransportReadBytes(item.name, { legacy: true });
         if (!got.ok) { sources.push({ name: item.name, from: item.from, ok: false, error: got.error || ('status:' + got.status) }); continue; }
         let text = '';
         if (isGzipBytes(got.bytes)) {

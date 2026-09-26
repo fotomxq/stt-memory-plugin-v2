@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.77.0（2026-09-26）· 宿主原生存储（TauriTavern 官方契约）+ 文件通道后端路由
+
+**用户要求**：「当主体酒馆为 TauriTavern 时，优化存储设计，采用官方认可的存储方式进行存储，确保同步等机制满足条件。」
+
+**① 官方认可的存储通道**（`adapters/tt-store.js`，新增）：接入宿主公开契约 `window.__TAURITAVERN__.api.extension.store`
+（官方文档 `docs/API/Extension.md` / `README.md`；调用前 `await __TAURITAVERN__.ready`）。命名空间 `ftt2-files`、表 `main`
+（官方命名规则 `[A-Za-z0-9_.-]`，落盘 `_tauritavern/extension-store/`）——该目录正是官方同步**默认数据集** `extensions.store`，
+故写入即参与 TT-Sync / LAN Sync（「每个文件原子发布并保留修改时间」，单 key 写入即一次增量）。V1 命名空间 `ftt-files` 作为**只读**迁移入口。
+
+**② 按官方建议分通道 + 未命中不惊动宿主**：小载荷（清单 / 同步日志）走 KV JSON（官方建议「绝大多数情况下使用 KV JSON」），
+大载荷（记忆文件 / 备份 / 快照）走 Blob（`setBlob` 直收 `Uint8Array`，省掉 base64 膨胀与 JSON 转义）；读取先按写入通道再试另一通道。
+未命中处理结构性规避 V1 v1.156 实测的宿主报错：KV **只信 `tryGetJson` 的 `found`**（绝不追问 `getJson`），
+Blob 先用官方 `listBlobKeys` 判存在（缺 `tryGetBlob`），并有 30s 负缓存与写入/删除即失效；宿主无 Blob 能力 → 自动退回 KV。
+
+**③ 文件通道后端路由**（`adapters/file-transport.js`，新增）：记忆文件 / `-bak` / 快照 / 清单 / 同步日志镜像五类载荷统一走此入口。
+未检测到宿主 → **零行为变化**（直接返回既有实现同一 Promise，请求序列与字节不变）；检测到宿主 → 原生优先、读取未命中回退酒馆文件（旧数据迁移）、
+原生写失败自动回退、删除**两个后端都删**（避免被另一通道唤醒）、按 key 记住命中后端；`tauriNative` = auto/on/off 可强制，
+`tauriMirror` 开启时额外镜像写一份酒馆文件；原生已接管且文件通道 404/鉴权失败 → 本会话停用回退（不再无谓请求）。
+
+**④ 界面与诊断**：设定 → 存储恢复「存储通道（自动识别宿主）」分区（只读状态行 + 折叠通道详情 + 后端选择/镜像开关，
+此前该分区因「未实现」被整段隐去）；调试包新增 `env.storageChannel`；新增 `FTT.fileChannel() / fileChannelKeys() / ttChannel() /
+ttMissStats() / ttStoreOverview()` 等诊断入口。
+
+**门禁**：新增 `tests/unit/tt-store.test.js`（46 断言：契约常量与 key 归一 / 宿主探测含 API 未就绪 / KV 写入形状与三种历史形态兼容 /
+未命中不追问 getJson 与负缓存 / 无 tryGetJson 时的 Not found 与真实错误 / Blob 选型与缺失键不调 getBlob / 无 Blob 能力与写失败降级 /
+双通道删除与键清单 / 就绪超时 / 旧命名空间只读 / gzip 魔数解码 / 提示一次）与 `tests/unit/file-transport.test.js`
+（28 断言：无宿主零额外请求 / 自动切换且原生命中不触网 / 回退与读路由 / 探测停用 / off 与 on 强制语义 / 镜像 / 原生双通道失败回退 /
+双端删除 / gzip 与清单 / 存储页接线）。既有通道回归（`sync-adapter` / `store-chat` / `slim-gzip-golden` / `sync-pick-golden` / `v1-importer`）全部通过。
+事实源与边界见 `docs/P10ao`。
+
 ## v2.76.0（2026-09-26）· 默认词条数量上限提高（2000-3000 规模）+ 提取记忆页非召回设定归位
 
 **用户要求**：「各大类支持的默认词条数量限制提高，整体控制在 2000-3000 原子数量支持即可，用户可自行修改现有设定来提升。设定-提取记忆中很多设置根本不是召回处理用的，请正确归纳到对应设定中。」

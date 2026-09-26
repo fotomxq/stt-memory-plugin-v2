@@ -181,6 +181,9 @@ import {
     snapshotIndexFrom, slimSnapshotStoreForStorage, hydrateSnapshotStore,
 } from './core/slim.js';
 import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes } from './adapters/gzip.js';
+// v2.77.0：文件通道后端路由 + 宿主原生存储（官方契约）诊断入口
+import { fileTransportStatus, fileTransportListKeys, fileTransportKey, fileTransportDropCaches, resetFileTransportSession } from './adapters/file-transport.js';
+import { ttChannelInfo, ttMissStats, ttStoreOverview, TT_NS, TT_LEGACY_NS, TT_TABLE } from './adapters/tt-store.js';
 
 const runtime = {
     ready: false,
@@ -610,6 +613,16 @@ function bootstrapDiagnostics() {
             syncLogPush: (rec) => syncLogPush(rec || {}),
             syncSource: () => syncLocalSource(),
             syncDropCache: () => fileCacheDropAll(),
+            // v2.77.0 存储通道（宿主原生存储 / 酒馆用户目录文件）：现状 / 键清单 / 未命中抑制 / 缓存
+            fileChannel: () => fileTransportStatus(),
+            fileChannelKeys: () => fileTransportListKeys(),
+            fileChannelKey: (name) => fileTransportKey(name),
+            fileChannelDropCache: () => fileTransportDropCaches(),
+            fileChannelReset: () => resetFileTransportSession(),
+            ttChannel: () => ttChannelInfo(),
+            ttMissStats: () => ttMissStats(),
+            ttStoreOverview: () => ttStoreOverview(),
+            ttStoreInfo: () => ({ ns: TT_NS, legacyNs: TT_LEGACY_NS, table: TT_TABLE }),
             // B9-d 条目瘦身 + gzip 传输（V1 `__FTT` 同名能力：slimEntryForStorage / hydrateSlimEntry /
             //   slimDataForStorage / hydrateStorageData / snapshotIndexFrom / slimSnapshotStoreForStorage /
             //   hydrateSnapshotStore / gzipToBase64 / gunzipFromBytes / bytesToBase64 / base64ToBytes）
