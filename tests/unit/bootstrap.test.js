@@ -154,7 +154,7 @@ await (async () => {
             && String(entry.popupHtml()).indexOf('ftt-modal') >= 0
             && String(r1.html).indexOf('data-ftt-subtab="base"') >= 0 && String(r1.html).indexOf('data-ftt-cfg="') >= 0
             && String(r2.html).indexOf('data-ftt-search="atoms"') >= 0
-            && String(r3.html).indexOf('📚 类目统计') >= 0;
+            && String(r3.html).indexOf('📚 共 ') >= 0;
         return ok;
     }, { via: clickR.via, calls: captured.length });
 

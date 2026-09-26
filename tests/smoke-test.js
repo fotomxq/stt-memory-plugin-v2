@@ -168,7 +168,7 @@ await assert('M1 V1 同构面板：/ftt-ui 与 FTT.ui() 打开浮层、13 个 V1
         && String(r1.html).indexOf('data-ftt-search="atoms"') >= 0
         && String(r2.html).indexOf('data-ftt-settings-page="base"') >= 0        // V1 同构浮层的设定页标记（原断言 ftt_v2_cfg_budget 属抽屉模板 settings.html，浮层里恒不存在）
         && String(r2.html).indexOf('data-ftt-cfg="autoExtract"') >= 0           // base 子页的控件（settings-pages.js basePageHtml 首节）
-        && String(r3.html).indexOf('📚 类目统计') >= 0
+        && String(r3.html).indexOf('📚 共 ') >= 0
         && cmdText.indexOf('已打开 V1 同构面板') >= 0;
 })(), typeof (host.ctx.commands || []).filter((c) => c.name === 'ftt-ui')[0]);
 
@@ -986,12 +986,13 @@ assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd 
         && apply.text === '他进入' && Array.isArray(F.nsfwRules()) && typeof F.nsfwScan === 'function' && typeof F.nsfwHits === 'function';
 })(), '');
 
-await assert('R5 分析侧开关：开启后总览显示「🌶 内容弱化」状态行，且 /ftt 与调试导出可读开关态', (async () => {
+await assert('R5 分析侧开关：开启后总览出现「🌶 弱化NSFW」按钮，且 /ftt 与调试导出可读开关态', (async () => {
     rtMod.cfg.nsfwSoftenEnabled = true;
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
-    const ok = html.indexOf('data-ftt-action="nsfwSoften"') >= 0 && html.indexOf('data-ftt-nsfw-state') >= 0
-        && html.indexOf('🌶 内容弱化：分析侧开关') >= 0 && globalThis.FTT.nsfwState().enabled === true;
+    // v2.52.0：总览提示精简 —— NSFW 长段落改为「按钮 + 开关态可读」，不再平铺状态说明
+    const ok = html.indexOf('data-ftt-action="nsfwSoften"') >= 0
+        && html.indexOf('🌶 弱化NSFW') >= 0 && globalThis.FTT.nsfwState().enabled === true;
     rtMod.cfg.nsfwSoftenEnabled = false;
     return ok;
 })(), '');

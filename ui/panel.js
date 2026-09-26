@@ -114,6 +114,8 @@ const ps = {
     atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
 };
 const str0 = (v) => String(v == null ? '' : v);
+/** 管线忙位起始时刻（v2.52.0：总览「管线状态」行的读秒） */
+let busySince = 0;
 /** 默认导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；无哈希时退化为 `FTT记忆.json`） */
 function defaultExportFileName() {
     try {
@@ -221,54 +223,57 @@ function totalMemory() {
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];
-    // 时钟区（v2.51.0：日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源；巡检修复功能已移除）
+    // ① 剧情时钟（日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源）
     try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
+    // ② 管线状态（v2.52.0 用户报告：此前缺失）——进行中给出任务/进度/读秒；空闲明确写「空闲」
+    const pipe = (() => {
+        try {
+            const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+            const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
+            const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
+            const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
+            // 忙位起始时刻（本次渲染周期内首次观察到 busy 时记录；空闲即清零）
+            if (busy && !busySince) busySince = Date.now();
+            if (!busy) busySince = 0;
+            const t0 = busySince;
+            const sec = t0 ? Math.max(0, Math.round((Date.now() - t0) / 1000)) : 0;
+            const txt = busy
+                ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range + (sec ? (' · 已用时 ' + sec + 's') : '') + (bp.aborted ? ' · 已请求中断' : ''))
+                : '空闲';
+            return { busy: busy, txt: txt };
+        } catch (e) { return { busy: false, txt: '空闲' }; }
+    })();
+    lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧵 管线状态</b> <span data-ftt-pipeline style="flex:1 1 auto;min-width:0" class="ftt-muted">' + esc(pipe.txt) + '</span>'
+        // ③ 「中断」按钮**只在管线进行中出现**（v2.52.0 用户要求：有条件展示，不是始终出现）
+        + (pipe.busy ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
+        + '</div>');
+    // ④ 注入概览（一句话）
     const audit = injectAudit({ rows: false });
-    lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧷 注入</b> <span class="ftt-muted" style="flex:1 1 auto;min-width:0">当前注入 ' + audit.chars + ' 字 · 命中 ' + audit.injected + ' / 未命中 ' + audit.missing + ' · 预算 ' + (Number(cfg.charBudget) || 0) + ' 字符</span></div>');
-    // 维度计数（V1 总览有逐类目统计）
-    const sum = consoleSummary();
-    lines.push('<h4 class="ftt-h4-inline">📚 类目统计 <span class="ftt-muted">共 ' + sum.total + ' 条</span></h4>');
-    lines.push('<div class="ftt-row">' + sum.dims.map((d) => '<span class="ftt-badge">' + esc(d.label) + ' ' + d.count + '</span>').join(' ') + '</div>');
-    // 已处理 / 未摘要楼层（V1 的楼层管理入口）
-    const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
-    const nums = pf.map((x) => Number(x && typeof x === 'object' ? x.f : x)).filter(Number.isFinite).sort((a, b) => a - b);
-    const last = nums.length ? nums[nums.length - 1] : -1;
-    lines.push('<h4 class="ftt-h4-inline">✅ 已处理楼层 <span class="ftt-muted">' + pf.length + ' 个' + (last >= 0 ? ' · 最新至第 ' + last + ' 楼' : '') + '</span></h4>');
-    if (nums.length) lines.push('<div class="ftt-hint ftt-scroll-40">已处理区间：' + esc(rangesText(nums)) + '</div>');
-    else lines.push('<div class="ftt-muted">尚未处理任何楼层。「⚡ 立即 AI 摘要」或「📤 提取记忆」后自动记录。</div>');
-    const pending = (typeof hooks.pending === 'function') ? (hooks.pending({}) || []) : [];
-    if (pending.length) {
-        lines.push('<div class="ftt-item ftt-item--warn ftt-item--col"><b class="ftt-pend-title">⏳ 未摘要楼层：' + pending.length + ' 个 · 可点击单独分析</b><div class="ftt-pend-list">'
-            + pending.slice(0, 40).map((f) => '<button class="ftt-btn ftt-sm ftt-floor-btn" data-ftt-action="summaryFloor" data-ftt-floor="' + attr(f) + '" title="单独分析该楼层">第' + esc(f) + '楼</button>').join(' ')
-            + (pending.length > 40 ? ' …等 ' + pending.length + ' 个' : '') + '</div></div>');
-    } else lines.push('<div class="ftt-muted">🎉 最近楼层均已摘要。</div>');
-    // 工具行（V1 同名按钮；未实现的动作给出明确提示，避免「按了没反应」）
-    // B8-4：V1 总览的「🌶 弱化NSFW」按钮（V2 既有布局把它放在「📤 提取记忆」右侧；
-    //   V1 v1.206 的顺序实为「弱化NSFW → 提取记忆 → 推演世界」，本批按 V1 注释语义把「🧭 推演世界」
-    //   紧贴提取记忆右侧，弱化NSFW 顺延到推演世界之后 —— 文案/title 与 V1 逐字一致）
+    lines.push('<div class="ftt-hint" data-ftt-inject>🧷 注入 ' + audit.chars + ' 字 · 命中 ' + audit.injected + ' / 未命中 ' + audit.missing + ' · 预算 ' + (Number(cfg.charBudget) || 0) + '</div>');
+    // ⑤ 工具行（v2.52.0：移出「清除已处理记录」—— 该动作属 设定 → 数据管理；提示合并为一句话）
     const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
-    const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="'
-        + (nsfwSt && nsfwSt.enabled ? '分析侧开关已开（新数据不含露骨内容）；本按钮按关键词扫描已有原子数据并交 AI 弱化' : '按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页开启）')
-        + '">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
+    const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页）">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
     lines.push('<div class="ftt-row">'
         + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
-        + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理（零 AI）→ ② 候选筛选 → ③ 窄契约 AI 修订；本批已交付第 1 段">🛠 自动修复</button>'
+        + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订">🛠 自动修复</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn">📤 提取记忆</button>'
-        // B8-7-b：V1 总览「🧭 推演世界」（紧贴「📤 提取记忆」右侧；V1 注释「提取记忆右侧 = 平行事件触发分析（推演世界）」）
-        //   文案 / title / 位置与 V1 逐字一致（V1 `panelHtml()` 总览工具行）
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
         + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>'
-        + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearFloors" id="ftt-clearfloors-btn" title="清除「已处理楼层」记录（不删除任何记忆条目）">🧹 清除已处理记录</button>'
         + '</div>');
-    lines.push('<div class="ftt-hint">「提取记忆」= 分析未摘要楼层（逐楼 AI 摘要 → 落库）；「立即注入」= 立刻把当前记忆按预算注入提示词。</div>');
-    if (nsfwSt && nsfwSt.enabled) {
-        const dimTxt = Object.keys(nsfwSt.byDim || {}).map((k) => (NSFW_DIM_LABEL[k] || k) + ' ' + nsfwSt.byDim[k]).join(' · ');
-        lines.push('<div class="ftt-hint" data-ftt-nsfw-state>🌶 内容弱化：分析侧开关已开启（设定 →「内容弱化」页可调开关、识别词条库与固定规则转化库；提示词模板「内容弱化（NSFW）」随分析记忆投喂 → 新数据不含露骨内容）；'
-            + '固定规则自动转化' + (nsfwSt.ruleAuto ? '已开启' : '已关闭') + '（' + nsfwSt.rules + ' 条）；当前按词条库扫描到 ' + nsfwSt.candidates + ' 处可弱化内容'
-            + (dimTxt ? '（' + dimTxt + '）' : '') + '，可点上方按钮逐批处理。</div>');
+    // ⑥ 类目统计（一行胶囊）
+    const sum = consoleSummary();
+    lines.push('<div class="ftt-row"><span class="ftt-muted">📚 共 ' + sum.total + ' 条</span>'
+        + sum.dims.map((d) => '<span class="ftt-badge">' + esc(d.label) + ' ' + d.count + '</span>').join(' ') + '</div>');
+    // ⑦ 未摘要楼层（可点单楼分析）；已处理楼层只留一行计数（区间过长的历史信息不再平铺）
+    const pending = (typeof hooks.pending === 'function') ? (hooks.pending({}) || []) : [];
+    if (pending.length) {
+        lines.push('<div class="ftt-item ftt-item--warn ftt-item--col"><b class="ftt-pend-title">⏳ 未摘要 ' + pending.length + ' 楼（可点击单楼分析）</b><div class="ftt-pend-list">'
+            + pending.slice(0, 40).map((f) => '<button class="ftt-btn ftt-sm ftt-floor-btn" data-ftt-action="summaryFloor" data-ftt-floor="' + attr(f) + '" title="单独分析该楼层">第' + esc(f) + '楼</button>').join(' ')
+            + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
     }
+    const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
+    lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要') + '</div>');
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
     return lines.join('\n');
 }

@@ -164,11 +164,11 @@ await (async () => {
     const note = await panelAction('tab', { tab: 'overview' });
     await panelAction('abortAnalysis', {});
     const r2 = await panelAction('clearFloors', {});
-    R.assert('B5 面板接线：⚡ 立即 AI 摘要 触发批量；✖ 中断 调钩子；🧹 清除已处理记录 回填条数', (() => {
+    R.assert('B5（v2.52.0）面板接线：⚡ 立即 AI 摘要 触发批量并回填完成文案；总览不再出现「清除已处理记录」（改属设定→数据管理）', (() => {
         return batchArgs && batchArgs.silent === false && abortCalled === 1 && r2.ok === true
             && String(note.html).indexOf('摘要完成：2 段 · 读取楼层 4-9 · 新增 3 条') >= 0
-            && String(note.html).indexOf('data-ftt-action="abortAnalysis"') >= 0
-            && String(note.html).indexOf('data-ftt-action="clearFloors"') >= 0;
+            && String(note.html).indexOf('data-ftt-action="clearFloors"') < 0
+            && String(note.html).indexOf('🧵 管线状态') >= 0;
     })(), { batchArgs, abortCalled, r2, note: String(note.html).match(/data-ftt-note>[^<]*/) });
 
     // busy 头部文案与楼层脉冲（V1 动效口径）：批量进行中时头部加 ftt-head-busy、当前段楼层加 ftt-floor-pulse
