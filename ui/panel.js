@@ -17,7 +17,7 @@ import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, en
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS } from './settings-pages.js';
-import { hintDetailsHtml } from './hints.js';   // v2.59.0：总览「最后一次提取」内容折叠展示（不挤占 UI）
+import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.0 折叠说明；v2.60.0 统一富文本（`**x**` → 粗体）
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
@@ -361,7 +361,7 @@ function subViewHtml(tab) {
             + '<div class="ftt-field"><label>按角色筛选</label><input type="text" data-ftt-rel-who="1" value="' + attr(who) + '" placeholder="角色名（回车）"></div>'
             + pickHtml
             + filterHtml
-            + '<div class="ftt-hint">点条目行的 ✏️ 打开编辑器后可编辑该条目的关联；下方为该维度**关联总览**（按条目聚合）。</div>'
+            + '<div class="ftt-hint">点条目行的 ✏️ 打开编辑器后可编辑关联；下方为按条目聚合的 <b>关联总览</b>。</div>'
             + relOverviewHtml(dim);
     }
     if (cur === 'check') return bars + injectCheckPanelHtml();
@@ -498,7 +498,8 @@ function plotSegmentsBodyHtml() {
     const view = sortPlotSegments(segs, 'desc');        // v1.190：默认按时间范围倒序（最新在最上、早期靠后）
     const out = [];
     out.push('<div class="ftt-cat-stat ftt-chip">共 ' + segs.length + ' 段分段总结</div>');
-    out.push('<div class="ftt-muted ftt-w-full">分段总结 = 把情节**打包给 AI 拆成多段**（每段以 <code>### 时间范围</code> 为头，段内按剧情线逐条列出：<code>1. 感情线: …</code>）。该内容**不会注入给 AI**（不进召回 / 遗忘 / 质检），只是归档供人工查阅；**只有手动删除才会消失**（AI 生成不会删段、也不会覆盖已存在的时间范围）。列表**默认按时间范围倒序**（最新的一段在最上、早期的靠后）。<br><b>两个入口</b>：① 「🧩 生成分段总结」= 把**全部有效情节**按剧情时间自动切批；② 「📜 情节列表」切多选模式勾选后点「🧩 分段总结（N）」= **只总结勾选的那些情节**（同一个归档区）。</div>');
+    out.push(shortHintHtml('分段总结：把情节打包交 AI 拆成多段归档（只归档、不注入）。'));
+    out.push(hintDetailsHtml('说明', '<div>' + esc('每段以「### 时间范围」为头，段内按剧情线逐条列出。内容只作人工查阅，不参与注入 / 召回 / 遗忘；只有手动删除才会消失。列表默认按时间范围倒序。两个入口：①「生成分段总结」= 全部有效情节按时间切批；②「情节列表」多选后点「分段总结（N）」= 只归档勾选的那些。') + '</div>'));
     out.push('<div class="ftt-addbar ftt-toolbar"><button class="ftt-btn" data-ftt-action="summary" data-ftt-summary="plotSegments" title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）">🧩 生成分段总结</button><button class="ftt-btn" data-ftt-action="addEntry" data-kind="plotSegments">➕ 手动补一段</button>'
         + (segs.length ? '<button class="ftt-btn ftt-err" data-ftt-action="clearPlotSegments" title="清空全部分段总结（不弹确认）">🧹 清理分段</button>' : '') + '</div>');
     if (!segs.length) out.push('<div class="ftt-empty">暂无分段总结。点「🧩 生成分段总结」把情节交 AI 分段整理。</div>');
@@ -609,7 +610,7 @@ function currencyTopHtml() {
     const head = '<div class="ftt-cat-stat ftt-chip">' + esc(currencyStatText()) + '</div>'
         + '<div class="ftt-note ftt-note-info">💰 默认只记<b>主角</b>（当前判定：' + esc(me) + '）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。</div>';
     const trackChips = tracked.length
-        ? '<div class="ftt-note ftt-note-info" data-ftt-track-chips>⭐ 已标定跟踪：' + tracked.map((n) => '<span class="ftt-badge ftt-badge--fact">' + esc(n) + '<span class="ftt-rel-jump" data-ftt-action="curTrackToggle" data-name="' + attr(n) + '" title="取消标定该角色"> ✖</span></span>').join(' ') + ' <span class="ftt-muted">被标定后：分析记忆会**恒定**考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。</span></div>'
+        ? '<div class="ftt-note ftt-note-info" data-ftt-track-chips>⭐ 已标定跟踪：' + tracked.map((n) => '<span class="ftt-badge ftt-badge--fact">' + esc(n) + '<span class="ftt-rel-jump" data-ftt-action="curTrackToggle" data-name="' + attr(n) + '" title="取消标定该角色"> ✖</span></span>').join(' ') + ' <span class="ftt-muted">被标定后：分析记忆会<b>恒定</b>考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。</span></div>'
         : '';
     return head + trackChips;
 }
@@ -647,7 +648,7 @@ function currencyPickPanelHtml() {
         }).join('\n');
     }
     return '<div class="ftt-editor"><div class="ftt-editor-title">👥 指定跟踪角色 · 从「角色」大类选择（已标定 ' + tracked.length + ' 名）</div>'
-        + '<div class="ftt-muted ftt-w-full">被标定的角色：后续**分析记忆**会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），**注入**时与主角一样恒定列出（行尾标 ⭐已标定）。</div>'
+        + '<div class="ftt-muted ftt-w-full">被标定的角色：后续<b>分析记忆</b>会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），<b>注入</b>时与主角一样恒定列出（行尾标 ⭐已标定）。</div>'
         + '<input class="ftt-input" type="text" data-ftt-search="currencyTrackPick" value="' + attr(ps.q.currencyTrackPick || '') + '" placeholder="搜索角色名…">'
         + '<div class="ftt-hint">角色档案 ' + names.length + ' 名 · 显示 ' + shown.length + ' 名</div>'
         + '<div data-ftt-cur-list="currencyTrackPick">' + body + '</div>'
@@ -704,7 +705,7 @@ function dimBodyList(kind) {
         //   「✖ 清空标定」（仅在有标定角色时显示）—— 文案与 title 逐字对齐（B9-c）
         + (kind === 'currencies' ? currencyTrackButtons() : '')
         + '</div>'
-        + (kind === 'rumors' ? ('<div class="ftt-hint">📢 传言随剧情时间<b>机械演化</b>（零 AI 调用）：每 <b>' + rumorEveryRounds() + '</b> 楼轮次演化一次（当前已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次；平行世界发生变化后重新计数）；每次变化都会写入该条的<b>传导链路</b>，变化过程需 <b>' + rumorNeedRounds() + '</b> 轮才生效。传言<b>未经证实</b>，注入时只作为「听说 / 都在传」的参考。</div>') : '')
+        + (kind === 'rumors' ? ('<div class="ftt-hint">📢 按剧情时间机械演化（零 AI）：每 <b>' + rumorEveryRounds() + '</b> 楼一次、变化需 <b>' + rumorNeedRounds() + '</b> 轮生效（已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次）；传言未经证实，注入只作参考。</div>') : '')
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
@@ -960,7 +961,7 @@ function settingsBody() {
 export function v2ExtrasSectionHtml() {
     return [
         '<div class="ftt-section" data-ftt-section="v2-extras">',
-        '<div class="ftt-sec-title">V2 附加设定 <span class="ftt-muted">（V1 无此项：更新检查 / V1 数据导入 / 维度开关 / 面板宽度）</span></div>',
+        '<div class="ftt-sec-title">附加设定 <span class="ftt-muted">更新检查 · 旧数据导入 · 启用维度 · 面板宽度</span></div>',
         v2ExtrasHtml(),
         '</div>',
     ].join('\n');
@@ -978,11 +979,9 @@ function v2ExtrasHtml() {
         '<input type="text" class="ftt-input" data-ftt-v2="updateRepo" value="' + attr(repo) + '" placeholder="更新检查仓库地址">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="check-update">🔍 检查更新</button></div>',
         '<div class="ftt-row"><label class="ftt-switch"><input type="checkbox" data-ftt-v2="useStGitEndpoint"' + (s.useStGitEndpoint === true ? ' checked' : '') + '><span class="ftt-slider"></span></label><span class="ftt-muted">使用宿主 Git 更新端点（默认关）</span></div>',
-        '<div class="ftt-hint">宿主 Git 端点（<span class="ftt-mono">/api/extensions/version|update</span>）会在酒馆后端对远端仓库做 git handshake；'
-        + '在**没有 git 能力的宿主**（如 TauriTavern 原生移植）上会失败并弹出「后端错误：Git handshake failed」。默认关闭，改用 GitHub raw 清单判定版本（无需 git）；'
-        + '仅在确认宿主 git 可用时再开启，届时「立即更新」按钮才会调用宿主做 git 更新。</div>',
-        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="importV1Dry">📥 V1 导入（干跑）</button>'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply">📥 V1 导入（写入）</button>'
+        hintDetailsHtml('说明', '<div>' + esc('宿主 Git 端点会在酒馆后端对远端仓库做 git 校验；宿主不支持时会报错。默认关闭，改用 GitHub 清单判定版本（无需 git）；确认宿主可 git 更新时再开启。') + '</div>'),
+        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="importV1Dry" title="读取旧版插件的数据并预演合并结果，不写入">📥 导入旧版数据（干跑）</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="importV1Apply" title="把旧版插件的数据按 id 合并写入">📥 导入旧版数据（写入）</button>'
         + '<span class="ftt-muted">源数据不删除；写入为按 id 合并</span></div>',
         // v2.36.0：面板宽度档位（V2 附加设定；V1 无此项 —— V1 固定 min(940px,94vw)）
         '<div class="ftt-row"><span class="ftt-muted">面板最大宽度</span>'
@@ -1001,7 +1000,7 @@ function v2ExtrasHtml() {
 function atomCompactSectionHtml() {
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">早期情节压缩</div>',
-        '<div class="ftt-muted">达阈值自动压缩早期情节（保护最近 N 条）：同日 ≥2 条归组压成 1 条；不足则按月、再按年降级。上方 switch 与参数即本节的配置项（V1 同键）。</div>',
+        '<div class="ftt-muted">达阈值时自动压缩早期情节（保护最近 N 条）：同日 ≥2 条归并；不足则按月、再按年降级。</div>',
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="atomCompactNow" title="立即对早期情节执行一次半自动情节总结（聚合为情节总结，原文保留并隐藏）">🧷 立即聚合早期情节</button><span class="ftt-muted" data-ftt-compact-result></span></div>',
         '</div>',
     ].join('\n');
@@ -1418,7 +1417,7 @@ export async function panelAction(action, payload) {
             else {
                 let go = true;
                 if (cfg.parallelPromoteConfirm !== false) {
-                    go = await confirmDialog(`把「${String(ev.title || ev.text || '').slice(0, 30)}」转正为情节？\n\n转正 = 确认为**已发生事实**：会生成/更新一条情节（走正常注入与知情约束），并在情节落库后**自动移除该平行世界记录**（留删除墓碑，跨端不会复活）。`, 'FTT 平行事件转正');
+                    go = await confirmDialog(`把「${String(ev.title || ev.text || '').slice(0, 30)}」转正为情节？\n\n转正 = 确认为<b>已发生事实</b>：会生成/更新一条情节（走正常注入与知情约束），并在情节落库后<b>自动移除该平行世界记录</b>（留删除墓碑，跨端不会复活）。`, 'FTT 平行事件转正');
                 }
                 if (!go) { msg = '已取消转正（未生成情节）'; }
                 else {
@@ -1966,7 +1965,7 @@ export async function panelAction(action, payload) {
             result = Object.assign(result, r || {}, { fileName: picked.name, fileSize: picked.size });
         }
         else if (a === 'importV1Dry' || a === 'importV1Apply') {
-            if (typeof hooks.importV1 !== 'function') { setNote('V1 导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.importV1 !== 'function') { setNote('旧版导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
             const apply = a === 'importV1Apply';
             setNote(apply ? '导入并写入…' : '读取 V1 数据…');
             const r = await hooks.importV1({ apply });

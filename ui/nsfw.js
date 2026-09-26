@@ -68,24 +68,20 @@ export function nsfwPageHtml() {
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">内容弱化（NSFW）</div>',
         switchRow('nsfwSoftenEnabled', '分析记忆时弱化露骨内容（默认关）', '追加提示词模板「内容弱化（NSFW）」'),
-        '<div class="ftt-muted ftt-w-full">开启后：每次分析记忆都会把提示词模板「内容弱化（NSFW）」（提示词面板可编辑）追加进系统提示词，让「读正文 → 分析成记忆」这一步就不产生露骨描写：'
-        + '剧情、关系、因果一律照实保留，只把性行为与性器官的直述换成柔性、克制、留白的表述。关闭（默认）时完全不追加，既有行为不变。</div>',
+        '<div class="ftt-muted ftt-w-full">开启后：分析记忆时追加「内容弱化（NSFW）」模板，让新记忆不产生露骨描写（剧情与因果照实保留）。</div>',
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="nsfwSoften" title="按词条库扫描已有原子数据并交 AI 逐条弱化（与总览「🌶 弱化NSFW」同一套核心）">🌶 立即弱化（按词条库扫描）</button>',
         '<span class="ftt-muted" data-ftt-nsfw-state>扫描：原子 ' + st.scannedItems + ' 条 / 文本字段 ' + st.scannedFields + ' 个 → 命中 <b>' + st.candidates + '</b> 处（每批最多 ' + st.batch + ' 条，可反复运行）</span></div>',
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">固定规则替换（不调用 AI 的机械转化）</div>',
         switchRow('nsfwReplaceAuto', '自动：交给 AI 弱化前先按固定规则处理一次（默认开）', ''),
-        '<div class="ftt-muted ftt-w-full">开启（默认）时：点「🌶 立即弱化」或总览「🌶 弱化NSFW」，会先用固定规则库把匹配词机械替换成转化词，再把剩余命中交 AI 处置第二次，弱化更彻底且省一档 AI 负担；'
-        + '关闭后固定规则只在手动点下面按钮时执行。固定规则零 AI、纯字面替换（中文原样、英文忽略大小写并避开 cumulative 一类普通词），'
-        + '写完即刷新条目的 <span class="ftt-mono">updatedAt</span>（跨端合并取较新）。</div>',
+        '<div class="ftt-muted ftt-w-full">开启（默认）：弱化时先按固定规则机械替换，再把剩余命中交 AI 处置，更彻底也更省 AI 调用；关闭则只在点下面按钮时替换。</div>',
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="nsfwRuleApply" title="按固定规则库机械替换已有原子数据的匹配词（零 AI 消耗）">🔁 立即固定规则替换</button>',
         '<span class="ftt-muted" data-ftt-nsfw-rule-state>转化库 ' + ruleList.length + ' 条' + (ruleCustom ? '（<b>自定义</b>）' : '（<b>内置默认</b>）') + ' · 自动：' + (nsfwReplaceAutoOn() ? '<b>已开启</b>' : '已关闭') + '</span></div>',
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">转化库（匹配词 → 转化词，可在设定中管理）</div>',
-        '<div class="ftt-muted ftt-w-full">内置一套标准转化库，默认词条与下方「识别词条库」的匹配词一一对应（共 <b>' + ruleList.length + '</b> 条）。'
-        + '可改转化词、可增删条目；增删改任意一条即切换为自定义列表，「恢复内置默认」清空自定义并回到内置库。</div>',
+        '<div class="ftt-muted ftt-w-full">内置标准转化库（与「识别词条库」一一对应，共 ' + ruleList.length + ' 条）；改任意一条即转为自定义，「恢复内置默认」可还原。</div>',
         '<div class="ftt-row" style="align-items:center;gap:6px">',
         '<input type="text" data-ftt-nsfw-rule-new-from placeholder="匹配词（如：做爱）" style="flex:0 1 40%;min-width:80px">',
         '<span class="ftt-muted">→</span>',
@@ -97,8 +93,7 @@ export function nsfwPageHtml() {
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">识别词条库（用于匹配需弱化的内容）</div>',
-        '<div class="ftt-muted ftt-w-full">内置一套标准词条（中文原样匹配、英文忽略大小写并按词界匹配）。当前生效 <b>' + kwList.length + '</b> 条' + (kwCustom ? '（<b>自定义</b>）' : '（<b>内置默认</b>，未自定义）') + '：'
-        + '增删改任意一条即自动切换为自定义列表；「恢复内置默认」清空自定义并回到内置库。</div>',
+        '<div class="ftt-muted ftt-w-full">当前生效 <b>' + kwList.length + '</b> 条' + (kwCustom ? '（自定义）' : '（内置默认）') + '；改任意一条即转为自定义，「恢复内置默认」可还原。</div>',
         '<div class="ftt-row" style="align-items:center;gap:6px">',
         '<input type="text" data-ftt-nsfw-kw-new placeholder="新增词条（如：露骨词 / explicit）" style="flex:1 1 auto;min-width:160px">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwKwAdd" title="加入词条库（自动排重）">＋ 新增</button>',

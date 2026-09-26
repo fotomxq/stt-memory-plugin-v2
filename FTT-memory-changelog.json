@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.59.0",
+  "version": "2.60.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.60.0",
+      "date": "2026-09-26",
+      "title": "全站页面提示体检：去罗嗦 / 去历史 / 措辞一致",
+      "points": [
+        "① 新增提示组件能力：（ui/hints.js#mdBold）：全站统一富文本 —— 此前多处提示直接写 Markdown 粗体 …，浏览器会把星号原样显示（如「不影响记忆数据」…",
+        "② 去历史/开发内容：基础页附加设定的「宿主 Git 端点（/api/extensions/version|update）… git handshake…TauriTavern …",
+        "③ 去罗嗦：情节页「分段总结」280 字说明 → 一句 + 折叠说明；时钟两节长段 → 一句 + 折叠说明；NSFW 词条库/转化库/主开关三处长段 → 各一句；存储页状态行去掉…"
+      ]
+    },
     {
       "version": "2.59.0",
       "date": "2026-09-26",

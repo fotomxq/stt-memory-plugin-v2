@@ -294,7 +294,7 @@ A('B2 数据管理页含「本地缓冲」统计与清除按钮；关于页不�
     return dataHtml.indexOf('🗂 本地缓冲') >= 0 && dataHtml.indexOf('版本清单缓存：已缓存 3 个版本') >= 0
         && dataHtml.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dataHtml.indexOf('🧹 清除') >= 0
         && dataHtml.indexOf('调试日志：') >= 0 && dataHtml.indexOf('交互追踪简报：') >= 0
-        && dataHtml.indexOf('不影响任何记忆数据') >= 0
+        && dataHtml.indexOf('不影响记忆数据') >= 0
         && aboutPage.indexOf('本地缓冲') < 0 && aboutPage.indexOf('V2 附加信息') < 0 && aboutPage.indexOf('内核配置键') < 0;
 })(), '见断言');
 

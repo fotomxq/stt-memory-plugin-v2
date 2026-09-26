@@ -190,7 +190,7 @@ R.assert('P2（v2.51.0 改版）基础页渲染：时钟分节按新设计（只
     const h = settingsPageHtml('base');
     const gone = ['强制使用降级方案', '日期异常判定', '纪元首日', '时间巡检：载入后自动巡检', '自动修复（默认关', '自定义 · 日期正则', '相对日期推进'];
     return h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
-        && h.indexOf('巡检范围只有') >= 0 && gone.every((t) => h.indexOf(t) < 0);
+        && h.indexOf('只检查') >= 0 && h.indexOf('格式非法') >= 0 && gone.every((t) => h.indexOf(t) < 0);
 })(), '');
 
 await A('U6 总览渲染含时钟区与手工面板（panelBodyHtml 走 overviewBody → clockSectionHtml）；巡检修复入口已移除', async () => {

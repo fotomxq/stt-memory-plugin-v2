@@ -375,10 +375,10 @@ await assert('F4 /ftt-import 命令：默认干跑并给出「确认写入」提
     return dryText.indexOf('【干跑】') >= 0 && dryText.indexOf('确认写入') >= 0 && applyText.indexOf('【已写入】') >= 0;
 })(), typeof impCmd);
 
-await assert('F5 /ftt 状态含 V1 导入行', (async () => {
+await assert('F5 /ftt 状态含旧版导入行', (async () => {
     const cmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
     const out = String(typeof cmd.callback === 'function' ? await cmd.callback() : '');
-    return out.indexOf('V1 导入：') >= 0;
+    return out.indexOf('旧版导入：') >= 0;   // v2.60.0：文案去历史版本号（功能不变）
 })(), '');
 // 注意：localStorage 桩保留到测试结束 —— 真实酒馆始终有 localStorage，
 // 后续（数据台/H 段）的「保存是否真的落盘」断言依赖它（F 段引入，不在此卸载）。
@@ -827,7 +827,7 @@ await assert('O4 设定「基础」页（v2.51.0）：时钟两节按新设计�
     const h = String(panelBodyHtml('settings') || '');
     return keys.length === 11 && removed.every((k) => keys.indexOf(k) < 0)
         && h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
-        && h.indexOf('巡检范围只有') >= 0;
+        && h.indexOf('只检查') >= 0 && h.indexOf('格式非法') >= 0;   // v2.60.0：提示精简（长解释移入折叠说明）
 })(), '');
 
 assert('O5 FTT 时钟入口（v2.51.0）：clockUi / clockAnchor / clockScan / clockManualSet / clockResolve 齐备；巡检类入口已移除', (() => {
@@ -2244,7 +2244,7 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
         const bufOk = st.debugLog.count === 2 && st.debugLog.cap === 300 && st.trace.count === 1 && st.trace.cap === 120
             && st.debugLog.bytes === rawD && st.trace.bytes === rawT
             && h2.indexOf('调试日志：2 / 300 条') >= 0 && h2.indexOf('交互追踪简报：1 / 120 条') >= 0
-            && h2.indexOf('版本清单缓存：') >= 0 && h2.indexOf('不影响任何记忆数据') >= 0
+            && h2.indexOf('版本清单缓存：') >= 0 && h2.indexOf('不影响记忆数据') >= 0
             && h2.indexOf('冒烟缓冲明细甲') < 0 && h2.indexOf('smoke.js:1') < 0;   // 只统计，不列明细
         // ④ 清理入口真实生效：清空简报后旧的持久简报消失（动作自身至多留 1 条）
         await entry.popupAction('dbgTraceClear', {});
@@ -3020,7 +3020,7 @@ await assert('AK1 API 子页真实渲染（V1 同款分节与标记）+ 分组�
         && html.indexOf('data-ftt-cfg="apiTopP"') >= 0 && html.indexOf('id="ftt-api-result-main"') >= 0
         && html.indexOf('data-ftt-action="apiTest"') >= 0 && html.indexOf('data-ftt-action="apiModels"') >= 0
         && html.indexOf('data-ftt-model-select="main"') >= 0
-        && html.indexOf('按用途渠道（V2 映射 V1 的多渠道设定）') >= 0;
+        && html.indexOf('按用途渠道') >= 0;
     const saved = { channel: cfg.apiChannel, url: cfg.apiUrl, key: cfg.apiKey, model: cfg.model, active: cfg.activeApiPreset, presets: cfg.apiPresets };
     cfg.apiChannel = 'direct'; cfg.apiUrl = 'https://preset.example/v1/'; cfg.apiKey = 'sk-p'; cfg.model = 'pm'; cfg.activeApiPreset = ''; cfg.apiPresets = {};
     const r1 = await entry.popupAction('presetSave', { name: '主API' });
@@ -3074,7 +3074,7 @@ await assert('AK2 按用途渠道真实生效：平行/维度分组解析 + 维�
     const modelSet = String(cfg.model || '');
     await entry.popupAction('settingsSub', { sub: 'api' });
     const apiHtml = String(panelBodyHtml('settings') || '');
-    const indexOk = apiHtml.indexOf('按用途渠道（V2 映射 V1 的多渠道设定）') >= 0
+    const indexOk = apiHtml.indexOf('按用途渠道') >= 0
         && apiHtml.indexOf('在「平行」设定页选择') >= 0 && apiHtml.indexOf('在「分析记忆」设定页选择') >= 0
         && apiHtml.indexOf('data-ftt-dim-preset=') < 0 && apiHtml.indexOf('data-ftt-cfg="parallelApiPreset"') < 0;
     cfg.apiPresets = saved.presets; cfg.activeApiPreset = saved.active; cfg.apiChannel = saved.channel; cfg.apiUrl = saved.url; cfg.model = saved.model;

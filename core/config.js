@@ -78,11 +78,11 @@ const DIM_LABELS = { atoms: '情节', states: '状态', snapshots: '角色', mem
 const PROMPT_DEFAULT_VERSION = 'v1.195';   // v1.195：新增「内容弱化（NSFW）」模板（分析侧开关 / 总览手动按钮共用核心）
 
 const PROMPT_GROUPS = [
-    { title: '⓪ 破限提示词（分析记忆前置）', desc: '投喂在「AI 摘要（读本轮正文 → 分析成记忆）」系统提示词**最前面**的自定义前置文本 —— 用于约束分析口径/风格；文本框可任意替换（自动保存）；开关关闭即不生效；也可把文本存成同目录 FTT-memory-preset.txt 由插件自动采用为默认', keys: ['armorPreset'], switchKey: 'armorPresetEnabled', switchLabel: '启用破限提示词', extra: 'armorPresetFile' },
+    { title: '⓪ 破限提示词（分析记忆前置）', desc: '分析记忆时贴在系统提示词最前面的自定义文本，用于约束口径与风格；开关关闭即不生效。', keys: ['armorPreset'], switchKey: 'armorPresetEnabled', switchLabel: '启用破限提示词', extra: 'armorPresetFile' },
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
-    { title: '② 维度抽取模板', desc: '统一骨架「记录什么 / 不记录什么（边界）/ 字段与取值 / 上限 / 输出 / 示例」—— 决定 AI 如何抽取与更新记忆（货币维度另有「动态识别」与「标定跟踪」模板，由插件按本轮发现的角色 / 用户标定的角色填充后追加）', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
+    { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
-    { title: '④ 质检维护', desc: '全量质检与修复规则（时间线/占位/字段/重复/维度交叉）+ 场景/概念/记忆/物品/角色/计划悬念 专用修复（相似融合、补全修正、冗余清理）+ 情节分段总结（把情节拆成多段归档，产物不注入）+ **内容弱化（NSFW：分析侧开关与总览「🌶 弱化NSFW」按钮共用本模板）**', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'planSuspRepair', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften'] },
+    { title: '④ 质检维护', desc: '质检与修复规则 + 各维度专用修复 + 情节分段总结 + 内容弱化（与「内容弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'planSuspRepair', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften'] },
 ];
 
 const PROMPT_TEMPLATES_V2 = {

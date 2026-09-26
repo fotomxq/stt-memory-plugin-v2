@@ -342,12 +342,13 @@ R.assert('V2 存储页说明行如实呈现开关与写入名（`slimGzipInfoHtm
     const onHtml = slimGzipInfoHtml();
     const pageHtml = storagePageHtml(SETTINGS_CONTROLS.storage);
     // v2.56.0：说明行精简（去掉「通道支持压缩」「魔数」等实现细节），只留开关状态 + 当前写入名 + 旧文件仍可读
-    return offHtml.indexOf('data-ftt-slim-gzip') >= 0 && offHtml.indexOf('条目瘦身 关闭（默认）') >= 0
-        && offHtml.indexOf('gzip 写入 关闭（默认）') >= 0
+    // v2.60.0：说明行再精简（「存储编码：瘦身 关 · gzip 关 · 当前写入名 …；旧文件仍可读」）
+    return offHtml.indexOf('data-ftt-slim-gzip') >= 0 && offHtml.indexOf('瘦身 关') >= 0
+        && offHtml.indexOf('gzip 关') >= 0
         && offInfo.slim === false && offInfo.gzip === false && offInfo.gzipAvailable === true
         && offInfo.writeName === stateFileName() && offInfo.gzName === stateFileGzName()
-        && onHtml.indexOf('条目瘦身 <b>已开启</b>') >= 0 && onHtml.indexOf('gzip 写入 <b>已开启</b>') >= 0
-        && onHtml.indexOf('读取自动识别格式，旧文件仍可读') >= 0
+        && onHtml.indexOf('瘦身 <b>已开启</b>') >= 0 && onHtml.indexOf('gzip <b>已开启</b>') >= 0
+        && onHtml.indexOf('旧文件仍可读') >= 0
         && onHtml.indexOf('魔数') < 0 && offHtml.indexOf('支持压缩') < 0
         && pageHtml.indexOf('data-ftt-slim-gzip') >= 0;
 })(), '');

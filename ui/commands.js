@@ -62,7 +62,7 @@ export function statusText(extra) {
     if (extra && extra.bind) lines.push('事件绑定：' + (extra.bind.bound || []).length + ' 个（缺 ' + ((extra.bind.missing || []).length) + '）');
     if (extra && extra.interceptor) lines.push('拦截器调用：' + extra.interceptor.calls + ' 次（最近类型 ' + (extra.interceptor.lastType || '—') + '）');
     if (extra && extra.update) lines.push('更新：' + updateStatusText(extra.update));
-    if (extra && extra.import) lines.push('V1 导入：' + extra.import);
+    if (extra && extra.import) lines.push('旧版导入：' + extra.import);
     if (extra && extra.bootstrap && extra.bootstrap.popup) {
         const pu = extra.bootstrap.popup;
         lines.push('界面：V1 同构浮层（' + (pu.tabs || []).length + ' 个分页）· 已挂载 ' + ((pu.mounted || pu.open) ? '是' : '否')
@@ -113,7 +113,7 @@ export function registerSlashCommand(getExtra, hooks) {
                     // 修正（B9 专项）：`runV1Import` 只认 `apply === true`（`o.apply`），此前传 `{ dryRun: !apply }` 会被吞掉 → 永远干跑
                     const res = await hooks.importV1({ apply });
                     const t = res && res.report ? res.report.totals : { v1Entries: 0, add: 0, exist: 0, conflict: 0 };
-                    const head = (res && res.dryRun ? '【干跑】' : '【已写入】') + 'V1 导入：' + (res && res.via ? res.via + ' / ' + res.name : '未发现数据');
+                    const head = (res && res.dryRun ? '【干跑】' : '【已写入】') + '旧版导入：' + (res && res.via ? res.via + ' / ' + res.name : '未发现数据');
                     const body = 'V1 条目 ' + t.v1Entries + ' → 新增 ' + t.add + ' · 已存在 ' + t.exist + ' · 冲突 ' + t.conflict;
                     const notes = (res && res.notes ? res.notes : []).map((n) => '· ' + n).join('\n');
                     return [head, body, notes, (!res || res.dryRun) ? '（确认写入请用 /ftt-import apply）' : ''].filter(Boolean).join('\n');

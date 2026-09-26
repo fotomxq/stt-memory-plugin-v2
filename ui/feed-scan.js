@@ -206,7 +206,7 @@ export function rxTagScanHtml() {
 export function feedScanSectionHtml() {
     return '<div class="ftt-section"><div class="ftt-sec-title">投喂标签自动分析</div>'
         + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="rxScanTags">🔍 分析最新正文结构</button><button class="ftt-btn ftt-sm" data-ftt-action="rxScanClear">清空结果</button></div>'
-        + '<div class="ftt-muted ftt-my-1">扫描<b>最近一条 AI 正文</b>：列出 HTML 标签（白名单走「标签内部内容」）与行内标记（走「行内包含」）；点「＋白 / ＋黑」收录，<b>自动排重</b>（大小写不敏感）。</div>'
+        + '<div class="ftt-muted ftt-my-1">扫描<b>最近一条 AI 正文</b>：列出 HTML 标签与行内标记；点「＋白 / ＋黑」收录，自动排重。</div>'
         + rxTagScanHtml()
         + '</div>';
 }

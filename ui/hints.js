@@ -46,6 +46,15 @@ export function paramListHtml(controls) {
     return rows.join('');
 }
 
+/**
+ * 展示用富文本：转义后再把 `**x**` 渲染成 `<b>x</b>`。
+ * v2.60.0：此前多处提示直接写着 Markdown 粗体（`**…**`），浏览器会把星号**原样显示**出来
+ *   —— 全站统一走本函数，既修正观感又保证措辞风格一致。
+ */
+export function mdBold(text) {
+    return esc(text).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+}
+
 /** 一行短提示（页面上唯一的说明行；超出 40 字请改放 `hintDetailsHtml`） */
 export function shortHintHtml(text) {
     return '<div class="ftt-muted" data-ftt-short-hint>' + esc(text) + '</div>';

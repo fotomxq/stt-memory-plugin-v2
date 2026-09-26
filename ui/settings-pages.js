@@ -68,7 +68,7 @@ export const SETTINGS_CONTROLS = {
         { "key": "injectCurrentPrompt", "label": "注入当前提示词", "type": "checkbox", "forceWhen": "timelyAnalysis" },
         { "key": "importanceBase", "label": "初始重要性(0次调用)", "type": "text" },
         { "key": "importancePerUse", "label": "每次调用增量", "type": "text" },
-        { "key": "clockExtractEnabled", "label": "消息后自动同步时钟（**只取最新情节**的日期/时间/地点）", "type": "checkbox" },
+        { "key": "clockExtractEnabled", "label": "消息后自动同步时钟（只取最新情节）", "type": "checkbox" },
         { "key": "clockRepairBatch", "label": "AI 结合正文修复：单次提交条数（默认 20）", "type": "text" },
         { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" }
     ],
@@ -994,18 +994,16 @@ export function basePageHtml(controls, extrasHtml) {
         //   不再保留任何「正文正则/自定义正则/相对日期/强制降级/年份异常阈值/第N天纪元/自动巡检」等废弃内容。
         '<div class="ftt-section"><div class="ftt-sec-title">剧情时钟（总览 日期/时间/地点）</div>',
         rows(['clockExtractEnabled']),
-        '<div class="ftt-muted">时钟来源只有一个：<b>最新一条「情节」</b>的 日期 / 时间 / 地点 字段（排除情节总结与已总结隐藏的情节）。'
-        + '记忆 / 角色 / 物品 / 货币 / 传言 / 计划 / 悬念 / 场景 / 概念 / 平行事件<b>都不参与</b>；正文里的日期也不再被解析。</div>',
-        '<div class="ftt-muted">最新情节没有日期时会退到次新的<b>带日期情节</b>；完全没有可用情节 → 时钟<b>保持原值</b>（不清空、不引入其它来源）。'
-        + '需要人工校正时用总览「✏️ 手工改写日期/时间/地点」（默认锁定，自动同步不会覆盖）。</div></div>',
+        '<div class="ftt-muted">时钟只取<b>最新一条「情节」</b>的日期 / 时间 / 地点。</div>',
+        hintDetailsHtml('说明', '<div>' + esc('其它维度（记忆 / 角色 / 物品 / 货币 / 传言 / 计划 / 悬念 / 场景 / 概念 / 平行事件）与正文解析都不参与；情节总结与已总结隐藏的情节也不算。最新情节没有日期时退到次新的带日期情节；完全没有可用情节则保持原值（不清空）。需要人工校正时用总览「✏️ 手工改写日期/时间/地点」。') + '</div>'),
+        '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">情节日期时间修复（只针对情节）</div>',
         rows(['clockRepairBatch']),
-        '<div class="ftt-muted">巡检范围只有<b>情节</b>：报出<b>格式非法</b>的日期与时间（排除情节总结 / 已总结隐藏）。'
-        + '修复闸门：① 锚点 = 手工改写 ＞ 当前时钟（都来自可信情节）；无锚点 → 只统计不修改；② 写回前自动留全量快照（可回滚）。</div>',
+        '<div class="ftt-muted">只检查<b>情节</b>里格式非法的日期与时间；无可信锚点时只报告、不修改。</div>',
+        hintDetailsHtml('说明', '<div>' + esc('锚点 = 手工改写 ＞ 当前时钟（都来自可信情节）；写回前自动留全量快照，可回滚。') + '</div>'),
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRepair" title="把情节里格式非法的日期/时间连同该条正文交 AI 判定并修复（只改情节的日期与时间字段）">🩺 AI 结合正文修复日期时间</button></div>',
-        '<div class="ftt-hint">AI 修复只打包<b>情节</b>中格式非法的条目（单次上限见上），逐条给新日期/时间；插件只接受格式合法且在锚点附近的结果，不合格一律丢弃并如实回报。'
-        + '插件只接受格式合法且在锚点附近的结果，不合格一律丢弃并如实回报。</div></div>',
+        '<div class="ftt-hint">AI 修复只打包<b>情节</b>中格式非法的条目，逐条给新日期/时间；格式非法或偏离锚点的结果一律丢弃并如实回报。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
         '<div class="ftt-muted">V2 的入口形态在「基础 → V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
@@ -1040,9 +1038,8 @@ export function analyzePageHtml(controls) {
         '<label class="ftt-field"><label style="width:170px">独立分组</label>'
         + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="dimensionSeparate"' + (separate ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
         + '<span class="ftt-muted">' + esc(stateText) + '</span></label>',
-        '<div class="ftt-muted">开启后各维度**分别**构造提示词并**并行**请求，逐维度过账；未开启的维度合并成一个「统一」请求。</div>',
-        '<div class="ftt-muted">V2 适配：维度子开关在「基础 → V2 附加设定 → 启用维度」（V1 的开关列在本节各行），故本节的维度行只出「分组」下拉。</div>',
-        '<div class="ftt-muted">各维度 API 分组：选中的维度按该分组的连接单独请求（V1 同键 `cfg.dimensionPresets`，v1.206 14795）；未选中的维跟随主配置。分组在「API」页创建。</div>',
+        '<div class="ftt-muted">开启后各维度<b>分别</b>构造提示词并<b>并行</b>请求；未开启的维度合并成一个「统一」请求。</div>',
+        '<div class="ftt-muted">维度子开关在「附加设定 → 启用维度」；下方每组只选「API 分组」，未选 = 跟随主配置（分组在「API」页创建）。</div>',
         '</div>',
         '<div class="ftt-section"><div class="ftt-sec-title">各维度独立子开关与分组（独立分组时生效）</div>',
         dimPresetRowsHtml(),
@@ -1146,7 +1143,7 @@ function pageExtraHtml(pid) {
             '</div>',
             // ② 导入（文件 + 粘贴两条路，各自与说明和按钮成组）
             '<div class="ftt-section"><div class="ftt-sec-title">📥 导入存档（合并）</div>',
-            '<div class="ftt-hint">选择或粘贴之前导出的 JSON，把其中的记忆<b>并入</b>当前角色：内容相同的跳过、新条目插入、同一条目有变更时以文件内容为准 —— <b>不会删除</b>本地已有的记忆。</div>',
+            '<div class="ftt-hint">把 JSON 里的记忆<b>并入</b>当前角色：相同跳过、新条目插入、变更以文件为准；<b>不会删除</b>本地记忆。</div>',
             '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateOpen" title="选择 JSON 存档文件后增量合并（相同跳过 / 新增插入 / 变更覆盖，不删除本地数据）">⬆ 选择文件导入</button></div>',
             '<div class="ftt-field ftt-field-col"><label>或者把 JSON 内容粘贴到这里：</label>'
             + '<textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',

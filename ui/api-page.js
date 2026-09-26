@@ -24,6 +24,7 @@
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
 import { escHtml } from '../core/util.js';
+import { hintDetailsHtml, shortHintHtml } from './hints.js';   // v2.60.0：长说明改折叠、页面只留一句
 import { DIM_LABELS } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { V1_SUMMARY_DIM_KEYS } from '../host/extract.js';
@@ -110,8 +111,8 @@ function presetSectionHtml() {
         '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="presetDelete" title="删除选中分组（不弹确认，与 V1 一致）">🗑 删除选中分组</button>',
         '</div>',
         '<div class="ftt-field"><label>已存分组</label><select data-ftt-cfg="presetSelect">' + opts + '</select></div>',
-        '<div class="ftt-muted">API 分组 = 一组完整**连接**设定（通道 / 连接配置 / 地址 / Key / 模型），主 API 与「提取记忆」共用。当前激活：' + esc(sum.activePreset || '主配置（未用分组）') + '。</div>',
-        '<div class="ftt-muted">V2 适配：温度 / 上限 / top_p **不进分组**（V1 亦然，那三项是全局参数）；「分组名」「已存分组」与 V1 一致**不写入配置**，仅供三个按钮读取。</div>',
+        '<div class="ftt-muted">API 分组 = 一组完整<b>连接</b>设定（通道 / 连接配置 / 地址 / Key / 模型），主 API 与「提取记忆」共用。当前激活：' + esc(sum.activePreset || '主配置（未用分组）') + '。</div>',
+        '<div class="ftt-muted">温度 / 上限 / top_p 是全局参数，<b>不进分组</b>；分组只记录连接设定。</div>',
         '</div>',
     ].join('\n');
 }
@@ -158,11 +159,9 @@ function mainApiSectionHtml() {
         '<span class="ftt-api-test-result" id="ftt-api-result-main">' + esc(apiTestResult.kind === 'main' ? apiTestResult.text : '') + '</span>',
         '</div>',
         '<div class="ftt-field"><label>选择模型</label><select data-ftt-model-select="main">' + modelOpts + '</select></div>',
-        '<div class="ftt-muted">通道语义：<b>跟随酒馆当前连接</b> = 用酒馆「连接」面板的设置（默认，行为与 v2.34.0 一致）；'
-            + '<b>酒馆连接配置</b> = 指定酒馆「连接管理」里的一条配置（鉴权/地址/模型/预设由酒馆管理，插件可按次覆盖温度与 top_p）；'
-            + '<b>自建连接</b> = V1 等价物（插件自己直连 <code>/chat/completions</code>，浏览器直连受 CORS 限制）。</div>',
-        '<div class="ftt-muted">通道限制（如实说明）：<code>max_tokens</code> 在三个通道**都生效**（前两者直传，<code>host</code> 经宿主 <code>responseLength</code> 临时覆盖）；'
-            + '<code>temperature</code>/<code>top_p</code> 在 <code>profile</code> 与 <code>direct</code> 通道生效，在 <code>host</code> 通道**无法覆盖**（宿主 <code>generateRaw</code> 无该形参，见 ST <code>public/script.js:4109</code>）。</div>',
+        '<div class="ftt-muted">通道：<b>跟随酒馆当前连接</b>（默认）· <b>酒馆连接配置</b>（用「连接管理」里的一条）· <b>自建连接</b>（插件直连，受 CORS 限制）。</div>',
+        hintDetailsHtml('通道差异说明',
+            '<div>' + esc('max_tokens 三个通道都生效；temperature / top_p 在「酒馆连接配置」与「自建连接」通道生效，在「跟随酒馆当前连接」通道无法覆盖（宿主接口没有该参数）。') + '</div>'),
         '</div>',
     ].join('\n');
 }
@@ -194,16 +193,15 @@ function purposeSectionHtml() {
     const separate = cfg.dimensionGrouping === 'separate';
     const dimCount = Object.keys(sum.purposes.dims || {}).length;
     return [
-        '<div class="ftt-section"><div class="ftt-sec-title">按用途渠道（V2 映射 V1 的多渠道设定）</div>',
-        '<div class="ftt-muted">本页只管**连接与分组**；各用途的分组选择器按 V1 的**原位**渲染：</div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">按用途渠道</div>',
+        '<div class="ftt-muted">本页只管连接与分组；各用途的选择器在对应页面：</div>',
         '<div class="ftt-dim-row"><span class="ftt-dim-name">平行推演</span><span class="ftt-muted ftt-flex-1">'
             + esc(sum.purposes.parallel ? ('使用分组「' + sum.purposes.parallel + '」') : '跟随主渠道')
             + ' —— 在「平行」设定页选择</span></div>',
         '<div class="ftt-dim-row"><span class="ftt-dim-name">各维度分组</span><span class="ftt-muted ftt-flex-1">'
             + esc((separate ? '独立分组' : '当前为统一分组') + '；已设 ' + dimCount + ' 个维度分组')
             + ' —— 在「分析记忆」设定页选择</span></div>',
-        '<div class="ftt-muted">向量层用途（<code>kwApiPreset</code> 关键词提取 / <code>memApiPreset</code> 记忆分析发送）与 '
-            + 'Embedding / Rerank 的连接设置在「提取记忆」页（V1 原位）：本页只管连接与分组，分组建好后在那边选择。</div>',
+        '<div class="ftt-muted">Embedding / Rerank 与关键词提取、记忆分析分组的连接设置都在「提取记忆」页；本页只负责建分组。</div>',
         '</div>',
     ].join('\n');
 }
