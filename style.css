@@ -551,6 +551,9 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-my-2 { margin-top: var(--ftt-space-2); margin-bottom: var(--ftt-space-2); }
 #ftt-panel .ftt-ml-2 { margin-left: var(--ftt-space-2); }
 #ftt-panel .ftt-h4-inline { display: flex; align-items: center; gap: var(--ftt-space-2); margin: 8px 0 4px; color: var(--ftt-accent); font-size: var(--ftt-font-md); }
+/* v2.72.0（用户要求：「设定的投喂范围，UI 布局做优化分组」）：设定页内的**子组标题**
+   （如「各域相关组修复」下的 概念 / 记忆 / 悬念 / 物品）——左侧色条 + 紧凑间距，与 `.ftt-sec-title` 形成两级层次 */
+#ftt-panel .ftt-group-title { margin: 10px 0 4px; padding-left: 7px; border-left: 3px solid var(--ftt-accent); color: var(--ftt-text-1); font-size: var(--ftt-font-md); font-weight: 600; line-height: 1.4; }
 #ftt-panel .ftt-mb-0 { margin-bottom: 0; }
 /* —— 折叠块（数据管理 → 快照「高级：明细与还原」；默认收起，明处只留统计行）—— */
 #ftt-panel .ftt-details { margin: 6px 0 2px; }

@@ -1120,6 +1120,97 @@ export function parallelsPageHtml(controls) {
  * @param {string} pageId 子页 id
  * @param {string} [extrasHtml] 仅**基础页**使用的「V2 附加设定」分节 HTML（v2.43.0：位置从页脚改为基础页内）
  */
+/**
+ * v2.72.0（用户要求）：「设定的**投喂范围**，UI 布局做**优化分组**」。
+ *   此前该页把 37 个控件**平铺**成一长条（没有分节标题，四域修复参数还带着「概念修复…」这类重复前缀），
+ *   找一项要滚很久。现在按用途分为五节，并在「各域相关组修复」下再分四个子组：
+ *     ① 📥 投喂楼层 ② 🏷 投喂标签范围（扫描 + 白/黑名单，两块**必须相邻**，见 `feed-scan-golden` R8）
+ *     ③ 🛠 自动修复（总开关与节奏）④ 🎯 候选筛选 ⑤ 🧑 角色修复
+ *     ⑥ 🧩 各域相关组修复（概念 / 记忆 / 悬念 / 物品 四个子组）⑦ 🧹 低调用清理
+ *   控件键与 `SETTINGS_CONTROLS.feed` 完全一致（**一个都不少**，未登记键回落末节）；只做**渲染层**的分组与
+ *   组内短标签（把「概念修复」前缀挪进子组标题），控件表本身保持 V1 原样。
+ */
+const FEED_GROUPS = Object.freeze([
+    { id: 'floor', title: '📥 投喂楼层', keys: ['feedFloors'], hint: '摘要与修复各用各自最近 N 楼；修复留空跟随摘要值（默认 10）。调大更全面，也更费 token。' },
+    { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems'], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
+    { id: 'pick', title: '🎯 候选筛选（相关性阈值与抽查）', keys: ['repairTagSimHigh', 'repairTagSimLow', 'repairSampleRatio', 'repairMinCandidates'], hint: '候选按同维度标签组相关性排序：过高优先核对、过低不列入、中间带按比例抽查。' },
+    { id: 'character', title: '🧑 角色修复', keys: ['repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
+    {
+        id: 'domains', title: '🧩 各域相关组修复', hint: '相关度 = 标签相关性；每轮只核对最相关的几组，禁止新增条目，只做合并与补齐。',
+        keys: ['conceptRepairSim', 'conceptRepairMaxClusters', 'conceptRepairMaxItems', 'conceptRepairMaxClusterSize',
+            'memoryRepairSim', 'memoryRepairMaxClusters', 'memoryRepairMaxItems', 'memoryRepairMaxClusterSize',
+            'suspenseRepairSim', 'suspenseRepairMaxClusters', 'suspenseRepairMaxItems', 'suspenseRepairMaxClusterSize',
+            'itemRepairSim', 'itemRepairMaxClusters', 'itemRepairMaxItems', 'itemRepairMaxClusterSize'],
+        subs: [
+            { name: '概念修复', keys: ['conceptRepairSim', 'conceptRepairMaxClusters', 'conceptRepairMaxItems', 'conceptRepairMaxClusterSize'] },
+            { name: '记忆修复', keys: ['memoryRepairSim', 'memoryRepairMaxClusters', 'memoryRepairMaxItems', 'memoryRepairMaxClusterSize'] },
+            { name: '悬念修复', keys: ['suspenseRepairSim', 'suspenseRepairMaxClusters', 'suspenseRepairMaxItems', 'suspenseRepairMaxClusterSize'] },
+            { name: '物品修复', keys: ['itemRepairSim', 'itemRepairMaxClusters', 'itemRepairMaxItems', 'itemRepairMaxClusterSize'] },
+        ],
+    },
+    { id: 'lowuses', title: '🧹 低调用清理（物品）', keys: ['itemLowUsesRatio', 'itemLowUsesMinItems', 'itemLowUsesMinAvg', 'itemLowUsesMinFloors', 'itemLowUsesEveryFloors', 'itemLowUsesMaxDelete'], hint: '达双门槛后清理「调用少且久未再现」的物品；随身携带 / 货币 / 无楼层信息受保护。' },
+]);
+
+/** 组内短标签（只影响渲染文案；`SETTINGS_CONTROLS.feed` 的 V1 原标签不动） */
+const FEED_SHORT_LABELS = Object.freeze({
+    conceptRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
+    conceptRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    conceptRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
+    conceptRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
+    memoryRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
+    memoryRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    memoryRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
+    memoryRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
+    suspenseRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
+    suspenseRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    suspenseRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
+    suspenseRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
+    itemRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
+    itemRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    itemRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
+    itemRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
+    itemLowUsesRatio: '比例（默认 0.05）',
+    itemLowUsesMinItems: '物品数门槛（默认 100）',
+    itemLowUsesMinAvg: '平均调用门槛（默认 5）',
+    itemLowUsesMinFloors: '楼层门槛（默认 200；0=不生效）',
+    itemLowUsesEveryFloors: '清扫间隔（默认 40 楼；0=不限制）',
+    itemLowUsesMaxDelete: '每轮最多删除（默认 1）',
+});
+
+/** 投喂范围页正文（分组渲染；控件键一个不少，未登记键回落末节「其它」） */
+export function feedPageHtml(controls, opts) {
+    const o = opts || {};
+    const list = Array.isArray(controls) ? controls : [];
+    const byKey = {};
+    for (const c of list) byKey[String(c.key)] = c;
+    const row = (c) => settingsControlHtml(Object.assign({}, c, { label: FEED_SHORT_LABELS[String(c.key)] || c.label }));
+    const used = {};
+    const sec = (title, inner) => {
+        const body = String(inner == null ? '' : inner).trim();
+        if (!body) return '';
+        return '<div class="ftt-section"><div class="ftt-sec-title">' + esc(title) + '</div>' + body + '</div>';
+    };
+    const out = [];
+    for (const g of FEED_GROUPS) {
+        const rows = [];
+        if (Array.isArray(g.subs)) {
+            for (const sub of g.subs) {
+                const inner = sub.keys.filter((k) => byKey[k]).map((k) => { used[k] = true; return row(byKey[k]); });
+                if (inner.length) rows.push('<div class="ftt-group-title">' + esc(sub.name) + '</div>' + inner.join('\n'));
+            }
+        } else {
+            for (const k of g.keys) if (byKey[k]) { used[k] = true; rows.push(row(byKey[k])); }
+        }
+        if (!rows.length) continue;
+        out.push(sec(g.title, rows.join('\n') + (g.hint ? shortHintHtml(g.hint) : '')));
+        // 投喂标签范围（扫描 + 白/黑名单）紧跟「投喂楼层」——同属「投什么进分析」
+        if (g.id === 'floor' && typeof o.tagSections === 'function') out.push(String(o.tagSections() || ''));
+    }
+    const rest = list.filter((c) => !used[String(c.key)]).map((c) => settingsControlHtml(c));
+    if (rest.length) out.push(sec('其它', rest.join('\n')));
+    return out.filter(Boolean).join('\n');
+}
+
 export function settingsPageHtml(pageId, extrasHtml) {
     const pid = String(pageId || SETTINGS_TABS[0].id);
     const list = Array.isArray(SETTINGS_CONTROLS[pid]) ? SETTINGS_CONTROLS[pid] : [];
@@ -1150,7 +1241,8 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'about') return aboutPageHtml();
     // 投喂页（B9-c）：V1 的控件行 + 「投喂标签自动分析」节 + 投喂白/黑名单两节（`ui/feed-scan.js`）
     //   控件表同名同序；扫描 / 一键收录入口为 B9-c 新增（V1 约 25513~25527 同段落）
-    if (pid === 'feed') return list.map((c) => settingsControlHtml(c)).join('\n') + feedScanSectionHtml() + feedTagListSectionsHtml();
+    // v2.72.0：投喂范围页按用途分组渲染（楼层 / 标签范围 / 自动修复 / 候选筛选 / 角色修复 / 各域修复 / 低调用清理）
+    if (pid === 'feed') return feedPageHtml(list, { tagSections: () => feedScanSectionHtml() + feedTagListSectionsHtml() });
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     return rows + extra + (list.length || extra ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>');
