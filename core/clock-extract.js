@@ -18,7 +18,7 @@ import {
     clockAddDays, clockMatchNotInline, clockNormBcText, clockYearOf, clockAnomalyJumpYears, clockDateAnomaly,
     CLOCK_DATE_SCAN, CLOCK_DAY_PARTS,
 } from './clock.js';
-import { latestPlotByFloor, atomLatestDated, matchPresentNames } from './recall.js';
+import { latestPlotByFloor, latestTrustedPlot, atomLatestDated, matchPresentNames } from './recall.js';
 import { clockManualRaw } from './clock-patrol.js';
 import { stampSnapshotsSeen } from './model/snapshot.js';
 import { scheduleStateDecay } from './ingest.js';
@@ -65,10 +65,11 @@ function latestSceneLocation() {
 
 /** 兜底参考：原子数据「最新存在日期」的节点（仅供总览展示，不写入） */
 function storyClockReference() {
+    // v2.51.0：参考值同样**只来自最新情节**（此前扫全部原子数据的最新日期 → 新设计下不可信）
     try {
-        const n = atomLatestDated();
-        if (!n) return { date: '', time: '', location: '' };
-        return { date: n.date || '', time: n.time || '', location: n.location || '' };
+        const p = latestTrustedPlot({});
+        if (!p) return { date: '', time: '', location: '' };
+        return { date: p.date || '', time: p.time || '', location: p.location || '' };
     } catch (e) { return { date: '', time: '', location: '' }; }
 }
 
@@ -266,16 +267,22 @@ function resolveStoryClock(opts) {
     const out = {
         date: '', time: '', location: '', present: null,
         source: { date: '', time: '', location: '', present: '' },
-        degraded: false, textMode: 'none', jumpYears: 0,
+        degraded: false, textMode: 'plot-only', jumpYears: 0,
         timeEnd: '', season: '', era: '', storyDay: 0, sceneDesc: '', statusText: '', header: false,
     };
-    // v2.37.0：追踪对象**不进 out**（保持与 V1 逐字一致的返回结构，黄金样本继续按 `J(got)===J(oracle)` 校验），
-    //   而是存进 `core/clock-trace.js` 的环形缓冲，由 `FTT.clockTrace()` / 调试页 / 日志读取。
-    const trace = clockTraceStart('resolve', '统一解析剧情时钟（多源择优 + 降级）');
+    // v2.51.0（用户要求「时钟改版」）——**唯一可信来源 = 最新一条「情节」**：
+    //   · 不再从正文解析（▷/▶ 正文头、正则预设、自定义正则、标记式、相对日期推进、第 N 天纪元换算）取值；
+    //   · 不再用其它任何数据类别（记忆/角色/物品/货币/传言/计划/悬念/场景/概念/平行）取值或降级；
+    //   · 「情节总结」（合并总结条 `mergedSummary`）与「已总结隐藏」的情节（`hidden`/`summarizedBy`）**不参与**；
+    //     分段总结库（`plotSegments`）同样不参与；
+    //   · 手工强制改写（`clockManual*`，默认锁定）仍是最高优先，照旧生效。
+    //   取值语义：取「最新的、**带可用日期**的、非总结」情节节点 → 其 `date`/`time`/`location` 即时钟；
+    //   若最新情节没有日期，则退到次新的带日期情节（仍只来自情节）；完全没有 → **不改动时钟**（不清空、不引入他源）。
+    const trace = clockTraceStart('resolve', '剧情时钟：**只取最新情节**（唯一可信来源）');
     try {
         const cur = (state && state.state) || {};
         const prev = { date: String(cur.date || '').trim(), time: String(cur.time || '').trim(), location: String(cur.location || '').trim() };
-        // 手工强制改写优先：锁定时直接采用手工值；未锁定则作为「已存值」参与择优
+        // ── ⓪ 手工强制改写（最高优先；锁定时直接采用手工值） ──
         const manual = clockManualRaw();
         const manualLock = !!(manual && (!cfg || cfg.clockManualLock !== false));
         if (manualLock) {
@@ -286,220 +293,54 @@ function resolveStoryClock(opts) {
             out.source.time = manual.time ? 'manual' : '';
             out.source.location = manual.location ? 'manual' : '';
             out.manual = true;
-            clockTraceChain(trace, '① 手工强制改写（cfg.clockManualLock 默认锁定）');
+            clockTraceChain(trace, '① 手工强制改写（cfg.clockManualLock 默认锁定）→ 跳过情节取值');
             clockTracePick(trace, 'date', { value: out.date, from: out.source.date, why: manual.date ? '手工值直接采用；锁定中，自动提取不覆盖' : '手工未给日期 → 沿用已有值' });
-            clockTracePick(trace, 'time', { value: out.time, from: out.source.time || (out.time ? 'prev' : ''), why: manual.time ? '手工值直接采用；锁定中，自动提取不覆盖' : '手工未给时间 → 沿用已有值' });
-            clockTracePick(trace, 'location', { value: out.location, from: out.source.location || (out.location ? 'prev' : ''), why: manual.location ? '手工值直接采用；锁定中，自动提取不覆盖' : '手工未给地点 → 沿用已有值' });
-            clockTraceDegrade(trace, { degraded: false, reason: '', detail: '手工锁定：跳过正文/数据侧全部候选' });
-            const presText0 = String(o.text != null ? o.text : (textHooks.latestAiText() || '')).trim();
-            const pres = resolvePresentNames(presText0, latestPlotByFloor());
-            out.source.present = pres.source;
-            out.present = pres.list;
-            clockTracePick(trace, 'present', { value: (pres.list || []).join('、'), from: pres.source, why: pres.source === 'latest-ai' ? '最新 AI 正文里点名到已建档角色' : (pres.source === 'plot-atom' ? '最新情节的涉及角色' : '本轮无点名 → 沿用旧名单（不限制）') });
+            clockTracePick(trace, 'time', { value: out.time, from: out.source.time || (out.time ? 'prev' : ''), why: manual.time ? '手工值直接采用；锁定中' : '手工未给时间 → 沿用已有值' });
+            clockTracePick(trace, 'location', { value: out.location, from: out.source.location || (out.location ? 'prev' : ''), why: manual.location ? '手工值直接采用；锁定中' : '手工未给地点 → 沿用已有值' });
+            clockTraceDegrade(trace, { degraded: false, reason: '', detail: '手工锁定：跳过情节取值' });
+            const pres0 = resolvePresentNames(String(o.text != null ? o.text : ''), latestTrustedPlot());
+            out.source.present = pres0.source;
+            out.present = pres0.list;
             clockTraceFinish(trace);
             return out;
         }
-        if (manual && (manual.date || manual.time || manual.location)) {
-            if (manual.date) prev.date = manual.date;
-            if (manual.time) prev.time = manual.time;
-            if (manual.location) prev.location = manual.location;
+        // ── ① 唯一来源：最新（带日期的）非总结情节 ──
+        const plot = latestTrustedPlot({ needDate: true });
+        clockTraceChain(trace, '① 取值：最新一条「情节」（排除情节总结 / 已总结隐藏 / 无效情节；它类数据一律不参与）');
+        if (!plot || !plot.node) {
+            out.present = null;
+            clockTraceNote(trace, '没有任何可用情节 → **不改动时钟**（不清空、不从其它数据类别取值）');
+            clockTracePick(trace, 'date', { value: '', from: '', why: '无可用情节（时钟保持原值：' + (prev.date || '（空）') + '）' });
+            clockTraceFinish(trace);
+            return out;
         }
-        // ① 正则来源（最新 AI 正文 → 楼层窗口回退，仅用于日期/时间/地点）
-        let text = String(o.text != null ? o.text : '').trim();
-        let mode = text ? 'given' : 'none';
-        if (!text) {
-            try { text = String(textHooks.latestAiText() || '').trim(); } catch (e) { text = ''; }
-            if (text) mode = 'latest-ai';
-        }
-        if (!text) {
-            const last = Number(getLastMessageId());
-            if (last >= 0) {
-                try { text = String(textHooks.floorWindowText() || '').trim(); } catch (e) { text = ''; }
-                if (text) mode = 'floor-window';
-            }
-        }
-        out.textMode = mode;
-        // 取文来源（追踪用）：模式 + 楼层来源 + 字符数 + 样本前 80 字
-        // 注意：`last` 在上面的 if 块内声明（块级作用域），此处必须重新取楼层号 —— 否则追踪构造会抛 ReferenceError
-        //   并被外层 catch 吞掉 → 表现为「解析结果突然变空」（本批实际踩到过，故在此留注释与回归断言）。
-        const traceLastId = Number(getLastMessageId());
-        const floorsTxt = (() => {
-            if (mode === 'latest-ai') return '第' + traceLastId + '楼（最新 AI 回复）';
-            if (mode === 'floor-window') return ('第' + Math.max(0, traceLastId - (Number(cfg && cfg.feedFloors) || 2) + 1) + '-' + traceLastId + '楼（窗口回退·仅日期/时间/地点）');
-            if (mode === 'given') return '调用方给定';
-            return '（无正文）';
-        })();
-        clockTraceText(trace, { mode, floors: floorsTxt, chars: text.length, sample: text.slice(0, 80) });
-        clockTraceChain(trace, mode === 'floor-window' ? '② 取文：最新 AI 正文为空 → 回退楼层窗口（在场角色不参与）' : (mode === 'none' ? '② 取文：没有可用正文' : '② 取文：最新 AI 正文'));
-        let r = null;
-        let diag = null;
-        if (text) { try { r = extractClockFromText(text, prev); diag = clockExtractDiag(); } catch (e) { r = null; } }
-        // v2.44.0：HTML 清洗**如实入追踪**（用户要求「取值逻辑可追踪」）——回答「地点为什么少了标签」
-        const htmlDiag = (diag && diag.html) ? diag.html : null;
-        const htmlDropped = htmlDiag ? (Number(htmlDiag.tags) || 0) + (Number(htmlDiag.entities) || 0) : 0;
-        if (htmlDropped > 0) {
-            clockTraceNote(trace, '已剔除正文中的 HTML：标签 ' + (Number(htmlDiag.tags) || 0) + ' 处'
-                + (Number(htmlDiag.entities) ? ('、实体 ' + htmlDiag.entities + ' 处') : '')
-                + (htmlDiag.block && htmlDiag.block.length ? ('（如 ' + htmlDiag.block.join(' ') + '）') : '')
-                + ' —— 避免 `<br>` 之类标签被当作地点/场景写入数据');
-        }
-        const plot = latestPlotByFloor();
-        const glob = atomLatestDated();
-        // 降级判定：① 用户强制降级；② 捕捉到的日期异常（格式非法 / 与锚点相差超阈值）
-        const forceDegrade = !!(cfg && cfg.clockForceDegrade === true);
-        const probeDate = (r && clockDateValid(r.date)) ? String(r.date).slice(0, 10) : '';
-        let anomaly = { bad: false, reason: '' };
-        if (probeDate) { try { anomaly = clockDateAnomaly(probeDate, prev.date || (plot && plot.date) || (glob && glob.date) || ''); } catch (e) { anomaly = { bad: false, reason: '' }; } }
-        const degrade = forceDegrade || anomaly.bad || !probeDate;
-        const reason = forceDegrade ? 'force' : (anomaly.bad ? ('anomaly:' + anomaly.reason) : (probeDate ? '' : 'no-date'));
-        const regexCand = (probeDate && !degrade) ? { date: probeDate, src: 'regex', time: String(r.time || ''), location: String(r.location || '') } : null;
-        const asCand = (srcObj, src) => (srcObj && clockDateValid(srcObj.date))
-            ? { date: String(srcObj.date).slice(0, 10), src, time: String(srcObj.time || ''), location: String(srcObj.location || '') } : null;
-        const cands = [regexCand, asCand(plot, 'plot'), asCand(glob, 'atom-latest')].filter(Boolean);
-        const hasPrev = clockDateValid(prev.date);
-        if (hasPrev) cands.push({ date: prev.date, src: 'prev', time: '', location: '' });
-        // ── 追踪：正文侧候选（含原始片段）与降级判定 ──
-        clockTraceChain(trace, '③ 正文侧候选：正文头结构 > 日期正则/自定义正则 > 标记式 > 相对日期推进（各取最后一次命中）');
-        clockTraceChain(trace, '④ 数据侧候选：最新情节 > 原子数据最新日期 > 沿用已有值（按日期字符串取最大，同日按 情节>正文>原子>沿用 优先级）');
-        // 正文侧落选候选 + **如实**的落选原因（正文头结构带位置加成 / 纯时段词权重更低 / 同来源取最后一次）
-        const rejectSeen = {};
-        const rejectOnce = (cand) => {
-            const key = [cand.field, cand.value, cand.from, Number(cand.idx) || 0].join('\u0001');
-            if (rejectSeen[key]) { rejectSeen[key] += 1; return; }
-            rejectSeen[key] = 1;
-            clockTraceReject(trace, cand);
-        };
-        const loserWhy = (field, cand, pickSrc, pickIdx, pickVal) => {
-            if (String(cand.val) === String(pickVal)) return '与采用值**相同**但来源不同（同值副本 → 采用更优先的来源）';
-            if (field === 'time' && cand.src === 'daypart') return '纯时段词权重低于带数字的时间（正文侧归一规则）';
-            if (pickSrc === 'header' && cand.src !== 'header') return '正文头结构（▷/▶）带位置加成，压过同文本里的零散命中（v1.188）';
-            if (Number(cand.idx) < Number(pickIdx)) return '同来源中更早出现（正文侧取**最后一次**命中）';
-            return '命中位置/来源优先级排在采用值之后';
-        };
-        if (r && diag && diag.picked) {
-            for (const f of ['date', 'time', 'location']) {
-                const pk = diag.picked[f];
-                if (!pk) continue;
-                for (const o2 of (pk.others || [])) {
-                    rejectOnce({ field: f, value: o2.val, from: o2.src, idx: o2.idx, raw: o2.raw, why: loserWhy(f, o2, pk.src, pk.idx, pk.val) });
-                }
-            }
-        }
-        if (probeDate) {
-            clockTracePick(trace, 'date.probe', { value: probeDate, from: (r && r.source && r.source.date) || 'regex', why: '正文侧解析出的日期（参与择优与异常判定）' });
-        }
-        clockTraceDegrade(trace, {
-            degraded: forceDegrade || anomaly.bad || !probeDate,
-            reason,
-            detail: forceDegrade ? '设定 clockForceDegrade=true → 强制走降级路径'
-                : (anomaly.bad ? ('正文日期 ' + probeDate + ' 与参考锚点（' + String(prev.date || (plot && plot.date) || (glob && glob.date) || '（无）') + '）比较：' + anomaly.reason + (anomaly.years ? ('（相差 ' + anomaly.years + ' 年）') : ''))
-                    : (probeDate ? '' : '正文侧没有解析出合法日期')),
-        });
-        clockTraceChain(trace, '⑤ 日期异常闸门：格式非法 / 年份远超当前时钟 / 剧情时间大幅倒退 → 该正文日期不采用（降级）');
-        const PRI = { plot: 3, regex: 2, 'atom-latest': 1, prev: 0 };
-        let win = null;
-        if (cands.length) {
-            cands.sort((a, b) => String(b.date).localeCompare(String(a.date)) || ((PRI[b.src] || 0) - (PRI[a.src] || 0)));
-            win = cands[0];
-            out.date = win.date;
-            out.source.date = (win.src === 'prev') ? (hasPrev ? 'prev' : '') : win.src;
-            out.degraded = forceDegrade || anomaly.bad || (!(r && clockDateValid(r.date)) && !(plot && clockDateValid(plot.date)));
-            out.degradeReason = forceDegrade ? 'force'
-                : (anomaly.bad ? ('anomaly:' + anomaly.reason) : (out.degraded ? 'no-date' : ''));
-            if (hasPrev && out.date > prev.date) {
-                const dy = clockYearOf(out.date) - clockYearOf(prev.date);
-                out.jumpYears = dy;
-            }
-            // ── 追踪：日期取值与落选候选（说清「为什么是它」） ──
-            const dateWhy = {
-                regex: '正文侧解析出的日期（正文头结构优先；正则取最后一次命中），且通过异常闸门',
-                plot: '最新情节节点的日期（正文侧没有可用日期 / 正文日期被判定异常）',
-                'atom-latest': '原子数据里最新存在日期（正文与情节都不可用时降级）',
-                prev: '沿用当前剧情时钟（没有更新的候选）',
-            }[win.src] || '按择优规则采用';
-            // 正文侧的精确来源：V1 的 `out.source.date` 对正文侧**统一标成 'regex'**（即使实际来自正文头结构，
-            //   见 v1.206 `regexCand = { date: probeDate, src: 'regex' }`）。追踪用**精确来源**（header/regex），
-            //   并把这处 V1 口径差异记进备注，避免日志把「正文头结构」误报成「正文正则」。
-            const bodySrc = (r && r.source && r.source.date === 'header') ? 'header' : 'regex';
-            const traceSrc = (out.source.date === 'regex') ? bodySrc : out.source.date;
-            if (out.source.date === 'regex' && bodySrc === 'header') clockTraceNote(trace, 'V1 口径 out.source.date 对正文侧统一记为 "regex"；本次实际命中「正文头结构（▷/▶）」（追踪按精确来源记录）');
-            clockTracePick(trace, 'date', { value: out.date, from: traceSrc, why: dateWhy + '；比较口径：日期字符串取最大，同日按 最新情节>正文>原子降级>沿用旧值' });
-            for (const c of cands.slice(1)) {
-                rejectOnce({
-                    field: 'date', value: c.date, from: c.src,
-                    why: '择优未选中：' + (String(c.date) < String(win.date) ? '日期更早' : '同日但来源优先级更低（最新情节>正文>原子降级>沿用旧值）'),
-                });
-            }
-            if (probeDate && !regexCand) {
-                clockTraceReject(trace, { field: 'date', value: probeDate, from: (r && r.source && r.source.date) || 'regex', why: '正文日期未通过异常闸门（' + (anomaly.reason || '格式非法') + '）→ 不参与择优' });
-            }
-        } else if (degrade) {
-            out.degradeReason = reason;
-            clockTraceReject(trace, { field: 'date', value: probeDate || '（无）', from: (r && r.source && r.source.date) || 'regex', why: '降级：' + (reason || '无可用日期') + ' → 无候选，保持原值' });
-        }
-        // 时间 / 地点：有胜出日期时只从同一天/同一节点取；否则按 正则 → 最新情节 → 原子降级
-        const srcOf = (c) => c === r ? ((c && c.source && c.source.date === 'header') ? 'header' : 'regex') : (c === plot ? 'plot' : (c === glob ? 'atom-latest' : ''));
-        const sameDay = (c) => (c && clockDateValid(c.date) && String(c.date).slice(0, 10) === out.date) ? c : null;
-        const own = win ? (win.src === 'plot' ? plot : (win.src === 'regex' ? r : (win.src === 'atom-latest' ? glob : null))) : null;
-        const order = out.date
-            ? [own, sameDay(r), sameDay(plot), sameDay(glob)].filter(Boolean)
-            : [r, plot, glob].filter(Boolean);
-        for (const c of order) { if (c && c.time && !out.time) { out.time = String(c.time).slice(0, 20); out.source.time = srcOf(c); } }
-        for (const c of order) { if (c && c.location && !out.location) { out.location = String(c.location).slice(0, 60); out.source.location = srcOf(c); } }
-        // ── 追踪：时间 / 地点（说明「与胜出日期同源优先 → 同一天其它来源」这条链） ──
-        const chainTxt = out.date ? '与胜出日期同源优先 → 同日期的其它来源' : '正文 → 最新情节 → 原子数据';
-        const sideWhy = { regex: '正文正则/正文头结构命中', header: '正文头结构（▷/▶）命中', custom: '自定义正则命中', marker: '标记式命中', daypart: '正文只有纯时段词（权重低于带数字的时间）', plot: '取最新情节节点', 'atom-latest': '取原子数据最新节点', scene: '降级路径补「最新场景」' };
-        clockTracePick(trace, 'time', { value: out.time, from: out.source.time, why: (out.time ? '按「' + chainTxt + '」取值；' : '本次没有可用时间；') + (sideWhy[out.source.time] || '') });
-        clockTracePick(trace, 'location', { value: out.location, from: out.source.location, why: (out.location ? '按「' + chainTxt + '」取值；' : '本次没有可用地点；') + (sideWhy[out.source.location] || '') });
-        for (const c of order) {
-            const src = srcOf(c);
-            if (c && c.time && out.time && String(c.time).slice(0, 20) !== out.time) clockTraceReject(trace, { field: 'time', value: String(c.time).slice(0, 20), from: src, why: '已有更优先来源提供时间 → 未采用（' + chainTxt + '）' });
-            if (c && c.location && out.location && String(c.location).slice(0, 60) !== out.location) clockTraceReject(trace, { field: 'location', value: String(c.location).slice(0, 60), from: src, why: '已有更优先来源提供地点 → 未采用（' + chainTxt + '）' });
-        }
-        // 正文头结构带出的附加字段（只在最新正文用了结构头时带出）
-        try {
-            const hdrSrc = (r && (r.header === true || (r.source && r.source.date === 'header'))) ? r : null;
-            if (hdrSrc) {
-                out.timeEnd = String(hdrSrc.timeEnd || '').slice(0, 10);
-                out.season = String(hdrSrc.season || '').slice(0, 4);
-                out.era = String(hdrSrc.era || '').slice(0, 30);
-                out.sceneDesc = String(hdrSrc.sceneDesc || '').slice(0, 80);
-                out.storyDay = Number(hdrSrc.storyDay) || 0;
-                out.statusText = String(hdrSrc.statusText || '').slice(0, 60);
-                out.header = true;
-                if (out.time) out.source.time = 'header';
-                if (out.location) out.source.location = 'header';
-            }
-            // 可选换算：正文只给「第 N 天」时，用配置的纪元首日把天数换算成日期（默认关：不换算）
-            const epoch = String((cfg && cfg.clockStoryDayEpoch) || '').trim();
-            if (!out.date && out.storyDay > 0 && clockDateValid(epoch)) {
-                const d = clockAddDays(epoch.slice(0, 10), out.storyDay - 1);
-                if (clockDateValid(d)) { out.date = d; out.source.date = 'storyday'; clockTracePick(trace, 'date', { value: d, from: 'storyday', why: '正文只给「第 ' + out.storyDay + ' 天」→ 按设定 clockStoryDayEpoch（' + epoch.slice(0, 10) + '）换算成日期' }); }
-            }
-        } catch (e) { /* 忽略 */ }
-        // 降级时地点补「最新的场景」（仅在降级路径且前面没能给出地点时）
-        if (degrade && !out.location) {
-            try {
-                const sc = latestSceneLocation();
-                if (sc) { out.location = String(sc).slice(0, 60); out.source.location = 'scene'; clockTracePick(trace, 'location', { value: out.location, from: 'scene', why: '降级路径 + 前面没有地点 → 补「最新场景」（按 floorEnd/uses/路径长度排序取最新）' }); }
-            } catch (e) { /* 忽略 */ }
-        }
-        // 在场角色：只聚焦最新 AI 正文或最新情节分析（窗口回退文本不用于在场，避免跨楼层扩散）
-        const presText = (mode === 'latest-ai' || mode === 'given') ? text : '';
-        const pres = resolvePresentNames(presText, plot);
+        const node = plot.node;
+        const d = clockDateValid(node.date) ? String(node.date).slice(0, 10) : '';
+        const t = String(node.time || '').slice(0, 20);
+        const locs = Array.isArray(node.locations) ? node.locations.filter(Boolean) : [];
+        const loc = String(node.location || locs[0] || '').slice(0, 60);
+        out.date = d;
+        out.time = t;
+        out.location = loc;
+        out.source.date = d ? 'plot' : '';
+        out.source.time = (t && d) ? 'plot' : '';
+        out.source.location = (loc && d) ? 'plot' : '';
+        out.plotId = String(node.id || '');
+        out.plotFloor = Number(node.floorEnd) || Number(node.floorStart) || 0;
+        out.textMode = 'plot-only';
+        clockTracePick(trace, 'date', { value: d, from: 'plot', why: '最新情节「' + String(node.title || node.text || node.id || '').slice(0, 24) + '」（第 ' + (Number(node.floorEnd) || 0) + ' 楼）的日期字段' });
+        clockTracePick(trace, 'time', { value: t, from: out.source.time, why: t ? '同一情节节点的时间字段' : '该情节没有时间字段 → 时间保持原值' });
+        clockTracePick(trace, 'location', { value: loc, from: out.source.location, why: loc ? '同一情节节点的地点字段（或 locations[0]）' : '该情节没有地点字段 → 地点保持原值' });
+        // 在场角色：只用该情节的涉及角色（正文不再参与）
+        const pres = resolvePresentNames('', plot);
         out.source.present = pres.source;
         out.present = pres.list;
-        clockTraceChain(trace, '⑥ 在场角色：只聚焦最新 AI 正文 / 最新情节（窗口回退文本不参与，避免跨楼层扩散）');
-        clockTracePick(trace, 'present', {
-            value: (pres.list || []).join('、'),
-            from: pres.source,
-            why: pres.source === 'latest-ai' ? '最新 AI 正文里点名到已建档角色'
-                : (pres.source === 'plot-atom' ? '最新情节的涉及角色（正文无点名）'
-                    : '本轮无点名 → 沿用旧名单（不清空）'),
-        });
+        clockTracePick(trace, 'present', { value: (pres.list || []).join('、'), from: pres.source, why: pres.source === 'plot-atom' ? '最新情节的涉及角色' : '本轮无点名 → 沿用旧名单（不清空）' });
         clockTraceFinish(trace);
         return out;
-    } catch (e) { clockTraceFinish(trace, '统一解析剧情时钟（异常中止）'); return out; }
+    } catch (e) {
+        return out;
+    }
 }
 
 // ---------- 自动提取落盘（V1 `clockAutoExtractOnce`） ----------

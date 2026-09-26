@@ -3,7 +3,7 @@
 // 覆盖：
 //   ① 手工强制改写锚点（v1.186）：`clockManualRaw` / `clockManualState` / `parseClockManualInput` /
 //      `setClockManual` / `clearClockManual`（存 `state.state.clockManual`，随存档跨端同步；`cfg.clockManualLock` 默认锁定）；
-//   ② 可信时间锚点（v1.187）：`clockPatrolMajority`（原子数据年份多数派）→ `clockPatrolAnchorInfo`
+//   ② 可信时间锚点（v2.51.0 改版）：`clockPatrolAnchorInfo` = 手工强制改写 > 当前剧情时钟（不再有「原子数据多数派」）
 //      （手工 > 当前剧情时钟 > 多数派 > 一致性年份；不确定时 `usable=false`，宁可不修）；
 //   ③ 零 AI 时间巡检（v1.184~v1.193）：`clockPatrolSafeDate`（唯一写回闸门）/ `clockPatrolScan`（扫描异常）/
 //      `clockPatrolRepairItem`（按内容重解析 → 保留月日换年份 → 仅「格式非法」才清空）/
@@ -27,8 +27,6 @@ import {
     clockTraceApplied, clockTraceFinish,
 } from './clock-trace.js';
 
-/** 巡检覆盖的维度（V1 `CLOCK_PATROL_DIMS`）与中文标签 */
-const CLOCK_PATROL_DIMS = ['atoms', 'memories', 'plans', 'suspense', 'parallels'];
 const CLOCK_DIM_LABEL = { atoms: '情节', memories: '记忆', plans: '计划', suspense: '悬念', parallels: '平行事件' };
 const CLOCK_ANCHOR_SRC_LABEL = { manual: '手工改写', clock: '当前剧情时钟', plot: '最新情节', 'atoms-majority': '原子数据多数派' };
 
@@ -67,8 +65,8 @@ function parseClockManualInput(input) {
         o.date = cleaned.date; o.time = cleaned.time; o.location = cleaned.location;
     }
     const curDate = String((state.state && state.state.date) || '');
-    const maj = clockPatrolMajority();
-    const prevYear = clockDateValid(curDate) ? clockYearOf(curDate) : (maj && maj.year ? maj.year : '');
+    // v2.51.0：年份回退只用**当前剧情时钟**（来自最新情节）—— 不再用「原子数据多数派」
+    const prevYear = clockDateValid(curDate) ? clockYearOf(curDate) : '';
     let date = String(o.date == null ? '' : o.date).trim();
     if (date) {
         if (!clockDateValid(date)) {
@@ -136,74 +134,23 @@ function clearClockManual() {
 
 // ==================== 可信时间锚点（v1.187） ====================
 /** 原子数据里「有效日期」的年份分布 → { year, count, share, total, latest, consensus, years } */
-function clockPatrolMajority() {
-    try {
-        const dates = [];
-        for (const dim of CLOCK_PATROL_DIMS) {
-            for (const it of (state[dim] || [])) {
-                const d = String((it && it.date) || '').trim();
-                if (clockDateValid(d)) dates.push(clockDateTrim(d));
-            }
-        }
-        if (!dates.length) return null;
-        const cnt = {};
-        for (const d of dates) { const yk = clockYearStr(clockYearOf(d)); cnt[yk] = (cnt[yk] || 0) + 1; }
-        const year = Object.keys(cnt).sort((a, b) => (cnt[b] - cnt[a]) || (b > a ? 1 : -1))[0];
-        const same = dates.filter(d => clockYearStr(clockYearOf(d)) === year).sort();
-        // consensus = 全部有效日期年份完全一致（含只有 1 条的情形）；trusted = 多数派占比 ≥60% 且 ≥2 条
-        const years = Object.keys(cnt);
-        return {
-            year, count: cnt[year], share: cnt[year] / dates.length, total: dates.length, latest: same[same.length - 1],
-            consensus: years.length === 1, years,
-        };
-    } catch (e) { return null; }
-}
 /** 锚点择优：手工 > 当前剧情时钟 > 多数派 > 一致性年份；不确定 → usable=false（宁可不修） */
 function clockPatrolAnchorInfo() {
+    // v2.51.0 改版：锚点**只有**手工强制改写 > 当前剧情时钟（其值本身也来自最新情节）。
+    //   不再用「原子数据年份多数派/全库一致」等跨条目统计（用户要求：其他数据皆不可信）。
     const out = { date: '', source: '', usable: false, conflict: null, ambiguous: false };
     try {
-        const maj = clockPatrolMajority();
-        const majTrusted = !!(maj && (maj.share >= 0.6 && maj.count >= 2));
-        const consensus = !!(maj && maj.consensus);
-        const plot = latestPlotByFloor();
-        const plotDate = (plot && clockDateValid(plot.date)) ? clockDateTrim(plot.date) : '';
-        const markConflict = (dateStr) => {
-            if (majTrusted && maj.year !== clockYearStr(clockYearOf(dateStr))) out.conflict = { year: maj.year, count: maj.count, total: maj.total };
-        };
-        // ① 手工强制改写（用户显式设定 —— 最高可信；与库内多数年份冲突时记录 conflict，由调用方决定是否放行）
         const man = clockManualRaw();
-        if (man && clockDateValid(man.date)) {
-            out.date = clockDateTrim(man.date); out.source = 'manual'; out.usable = true;
-            markConflict(out.date);
-            return out;
-        }
-        // ② 当前剧情时钟（有效即用）
+        if (man && clockDateValid(man.date)) { out.date = clockDateTrim(man.date); out.source = 'manual'; out.usable = true; return out; }
         const cur = String((state.state && state.state.date) || '').trim();
-        if (clockDateValid(cur)) {
-            out.date = clockDateTrim(cur); out.source = 'clock'; out.usable = true;
-            markConflict(out.date);
-            return out;
-        }
-        // ③ 多数派优先于「最新情节」（单条脏数据可能正好是最新情节，采信它会把整库年份带偏）
-        if (majTrusted) {
-            out.date = (plotDate && clockYearStr(clockYearOf(plotDate)) === maj.year) ? (plotDate > maj.latest ? plotDate : maj.latest) : maj.latest;
-            out.source = 'atoms-majority'; out.usable = true;
-            if (plotDate && clockYearStr(clockYearOf(plotDate)) !== maj.year) out.conflict = { year: maj.year, count: maj.count, total: maj.total, from: 'plot' };
-            return out;
-        }
-        // ③b 无多数派：只有「全部有效日期年份一致」时才用该年份；否则视为不可信 → 只统计
-        if (consensus) {
-            out.date = maj.latest; out.source = 'atoms-majority'; out.usable = true;
-            return out;
-        }
-        // ④ 彻底没有有效日期 → 不可信（不再用年份众数/现实年份兜底）
-        out.ambiguous = !!maj;
+        if (clockDateValid(cur)) { out.date = clockDateTrim(cur); out.source = 'clock'; out.usable = true; return out; }
         return out;
     } catch (e) { return out; }
 }
-/** 兼容旧调用（仅返回日期字符串） */
+
+/** 当前锚点日期（手工 > 当前剧情时钟；v2.51.0 改版后仅此两源） */
 function clockPatrolAnchor() { return clockPatrolAnchorInfo().date; }
-/** 写回前的唯一安全闸门：格式必须合法，且（有锚点时）不得触发年份异常 */
+
 function clockPatrolSafeDate(val, anchor) {
     try {
         const v = String(val == null ? '' : val).trim();
@@ -215,185 +162,123 @@ function clockPatrolSafeDate(val, anchor) {
 
 // ==================== 零 AI 巡检（v1.184~v1.193） ====================
 /** 扫描各维度的 date/time 异常（不改数据） */
+/** 最近一次巡检结果（总览展示用） */
+let clockPatrolLast = null;
+/**
+ * 巡检扫描（v2.51.0 改版）：**只扫「情节」**，且只报**格式非法/日期不存在**的条目。
+ *   · 其它数据类别（记忆/角色/物品/货币/传言/计划/悬念/场景/概念/平行）**不参与**（用户要求「皆不可信」）；
+ *   · 情节总结（`mergedSummary`）与已总结隐藏的原情节（`hidden`/`summarizedBy`）不参与；
+ *   · 不再做「年份漂移/异常阈值」判定（该设定已删除）——时钟只取最新情节，无需跨条目比对。
+ */
 function clockPatrolScan(anchorInfo) {
     const info = anchorInfo || clockPatrolAnchorInfo();
-    const out = { anchor: info.date, anchorSource: info.source, anchorUsable: info.usable, anchorConflict: info.conflict || null, scanned: 0, findings: [] };
+    const out = { anchor: info.date, anchorSource: info.source, anchorUsable: info.usable, anchorConflict: null, scanned: 0, findings: [] };
     try {
-        const anchor = out.anchor;
-        for (const dim of CLOCK_PATROL_DIMS) {
-            for (const it of (state[dim] || [])) {
-                if (!it || typeof it !== 'object') continue;
-                out.scanned++;
-                const d = String(it.date || '').trim();
-                if (d && !clockDateValid(d)) out.findings.push({ dim, id: it.id, field: 'date', value: d, reason: 'invalid', fixable: true });
-                else if (d && anchor) {
-                    const a = clockDateAnomaly(d, anchor);
-                    if (a.bad && a.reason !== 'invalid') out.findings.push({ dim, id: it.id, field: 'date', value: d, reason: a.reason, years: a.years, fixable: true });
-                }
-                const t = String(it.time || '').trim();
-                if (t && !clockNormTime(t)) out.findings.push({ dim, id: it.id, field: 'time', value: t, reason: 'time-invalid', fixable: true });
+        for (const it of (state.atoms || [])) {
+            if (!it || typeof it !== 'object') continue;
+            if (it.hidden === true || String(it.summarizedBy || '').trim() || it.mergedSummary) continue;   // 总结/已总结隐藏 → 不参与
+            out.scanned++;
+            const d = String(it.date || '').trim();
+            if (d && !clockDateValid(d)) out.findings.push({ dim: 'atoms', id: it.id, field: 'date', value: d, reason: 'invalid', fixable: true });
+            const t = String(it.time || '').trim();
+            if (t && !clockNormTime(t) && !/^(凌晨|清晨|早晨|早上|上午|中午|午间|午后|下午|傍晚|黄昏|晚上|夜晚|深夜|夜里|半夜|午夜)$/.test(t)) {
+                out.findings.push({ dim: 'atoms', id: it.id, field: 'time', value: t, reason: 'invalid', fixable: true });
             }
         }
-        return out;
-    } catch (e) { return out; }
+    } catch (e) { /* 忽略 */ }
+    return out;
 }
-/** 单条修复：只在能确定安全值时改动，否则一律保留原值 */
+
+/**
+ * 单条修复（v2.51.0）：只处理**格式非法/日期不存在**的字段（情节自己的字段）。
+ * 日期：先按该条正文重解析（结果必须是合法日期，且在有锚点时不得与锚点相差过大）→ 否则清空；
+ * 时间：按正文重解析为 HH:MM 或时段词 → 否则清空。
+ */
 function clockPatrolRepairItem(it, finding, anchor) {
     try {
-        const anchorOk = clockDateValid(anchor);
         const text = [it.title, it.text, it.content, it.desc, it.note, it.causalLine].filter(Boolean).join(' ');
         if (finding.field === 'date') {
-            // 没有可信锚点就**不解析**（旧版这里用现实当前年份兜底 → 写出 2026 之类的现实年份）
-            if (!anchorOk) return { changed: false, note: '无可信锚点 → 保留原值' };
-            const invalid = finding.reason === 'invalid';       // 格式非法 / 日期不存在
-            // v2.50.0（用户报告「时间巡检修复会改错时钟数据」→ **V1 故障明确修正 #7**）：
-            //   V1 对**所有**异常都先做「按内容重解析」——包括「格式合法但年份漂移(jump/backward)」的条目。
-            //   于是一条日期本来正确的记录，只要**内容里顺带提到别的年份**（如「三年前的1916年」），
-            //   就会被覆盖成内容里的那个日期（安全闸门只校验「不异常」，挡不住这种误覆盖）→ 改错时钟数据。
-            //   本批收紧：**只有「格式非法/日期不存在」才允许按内容重解析**；
-            //   「格式合法但年份漂移」只允许**保留月日、把年份改为锚点年**，改不动就保留原值。
-            if (invalid) {
-                const prevYear = clockYearOf(anchor);
-                const parsed = clockParseDateText(text, prevYear);
-                const safeParsed = clockPatrolSafeDate(parsed, anchor);
-                if (safeParsed) { it.date = safeParsed; return { changed: true, note: `按内容重解析 → ${safeParsed}` }; }
-            }
-            // 保留月日、把年份改为锚点年（年份漂移类脏数据）
-            if (clockDateValid(finding.value)) {
-                const fixed = clockPatrolSafeDate(clockReplaceYear(finding.value, clockYearOf(anchor)), anchor);
-                if (fixed) { it.date = fixed; return { changed: true, note: `年份校正（保留月日）→ ${fixed}` }; }
-            }
-            // 只有「格式非法/日期不存在」才允许清空；格式合法但年份漂移一律保留原值
-            if (invalid && it.date) { it.date = ''; return { changed: true, note: '日期非法且无法重解析 → 清空' }; }
-            return { changed: false, note: (invalid ? '无法可靠修正 → 保留原值' : '年份异常但无法可靠校正 → 保留原值（不按内容重解析）') };
+            const parsed = clockParseDateText(text, clockDateValid(anchor) ? clockYearOf(anchor) : '');
+            const safe = clockPatrolSafeDate(parsed, anchor);
+            if (safe) { it.date = safe; return { changed: true, note: `按情节正文重解析 → ${safe}` }; }
+            if (it.date) { it.date = ''; return { changed: true, note: '日期非法且无法重解析 → 清空（该情节将不再提供时钟）' }; }
+            return { changed: false, note: '无法修正 → 保留原值' };
         }
         if (finding.field === 'time') {
             const m = /(\d{1,2})[:：](\d{1,2})/.exec(text) || /(凌晨|清晨|早晨|早上|上午|中午|午间|午后|下午|傍晚|黄昏|晚上|夜晚|深夜|夜里|半夜|午夜)/.exec(text);
             const fixed = m ? clockNormTime(m[0]) : '';
-            if (fixed) { it.time = fixed; return { changed: true, note: `时间重解析 → ${fixed}` }; }
+            if (fixed) { it.time = fixed; return { changed: true, note: `按情节正文重解析 → ${fixed}` }; }
             it.time = '';
             return { changed: true, note: '时间非法且无法重解析 → 清空' };
         }
         return { changed: false, note: '' };
     } catch (e) { return { changed: false, note: '' }; }
 }
+
 /**
- * 时间巡检与修复（零 AI）。
- * @param {object} [opts] silent（不提示）/ scanOnly（只统计）/ force（手动点击：允许「锚点与库内多数年份冲突」时按锚点校正）
+ * 时间巡检与修复（v2.51.0 改版：**只针对情节**）。
+ * 锚点 = 手工强制改写（最高）＞ 当前剧情时钟（其本身也来自最新情节）；无锚点 → 只统计不修改。
+ * @param {object} [opts] silent / scanOnly / force（兼容旧签名；force 已无差别）
  */
 function runClockPatrolRepair(opts) {
     const o = opts || {};
     const info = clockPatrolAnchorInfo();
-    // v2.37.0：锚点取值链追踪（「这个锚点是从哪来的、为什么可信、为什么不修改」）
-    const trace = clockTraceStart('patrol', '时间巡检与修复（零 AI）');
-    clockTraceChain(trace, '① 锚点择优：手工强制改写 > 当前剧情时钟 > 原子数据年份多数派（≥60% 且 ≥2 条）> 全库有效日期年份一致');
-    clockTraceChain(trace, '② 异常判定：格式非法 / 与锚点年份相差超阈值（jump|backward）');
-    clockTraceChain(trace, '③ 修复闸门：写回前先建全量快照；自动路径遇「锚点与库内多数年份冲突（≥3 条）」只统计不修改');
-    clockTracePick(trace, 'date', {
-        value: info.date || '',
-        from: info.source,
-        why: info.source === 'manual' ? '手工强制改写（最高可信）'
-            : (info.source === 'clock' ? '当前剧情时钟有效即用'
-                : (info.source === 'atoms-majority' ? '原子数据年份多数派（单条脏数据可能正好是最新情节，故多数派优先）'
-                    : '没有可用锚点（当前剧情日期与原子数据都拿不出可信日期）')),
-    });
-    if (info.conflict) {
-        clockTraceReject(trace, { field: 'date', value: info.conflict.year, from: 'atoms-majority', why: '锚点年份与库内多数年份冲突（' + Number(info.conflict.count) + '/' + Number(info.conflict.total) + ' 条）' + (o.force ? ' → 本次为手动点击，按锚点校正' : ' → 自动路径据此只统计不修改') });
-    }
-    const rep = {
-        scanned: 0, found: 0, fixed: 0, skipped: 0, remain: 0, reasons: {}, details: [], at: Date.now(),
-        anchor: info.date, anchorSource: info.source, anchorUsable: info.usable, anchorConflict: info.conflict || null,
-        scanOnly: !!o.scanOnly, blocked: '', snap: '',
-    };
+    const trace = clockTraceStart('patrol', '时间巡检与修复（只针对情节）');
+    clockTraceChain(trace, '① 锚点：手工强制改写 > 当前剧情时钟（其值也来自最新情节）');
+    clockTraceChain(trace, '② 扫描范围：**只有情节**（排除情节总结 / 已总结隐藏）；只报「格式非法」的日期与时间');
+    clockTracePick(trace, 'date', { value: info.date || '', from: info.source, why: info.source === 'manual' ? '手工强制改写（最高可信）' : (info.source === 'clock' ? '当前剧情时钟（来自最新情节）' : '没有可用锚点（无手工值且当前时钟为空/非法）') });
+    const rep = { scanned: 0, found: 0, fixed: 0, skipped: 0, remain: 0, reasons: {}, details: [], at: Date.now(), anchor: info.date, anchorSource: info.source, anchorUsable: info.usable, anchorConflict: null, scanOnly: !!o.scanOnly, blocked: '', snap: '' };
     try {
         const scan = clockPatrolScan(info);
         rep.scanned = scan.scanned;
         rep.found = scan.findings.length;
-        for (const f of scan.findings) { rep.reasons[f.reason] = (rep.reasons[f.reason] || 0) + 1; }
-        // 自动路径（非手动点击）遇到「锚点与库内多数年份冲突」→ 只统计，绝不按锚点整库校正
-        const autoConflict = !o.force && !!(info.conflict && info.conflict.count >= 3);
-        const canWrite = !o.scanOnly && info.usable && !autoConflict;
+        for (const f of scan.findings) rep.reasons[f.reason] = (rep.reasons[f.reason] || 0) + 1;
+        const canWrite = !o.scanOnly && info.usable;
         if (rep.found && !canWrite) {
             rep.remain = rep.found;
-            rep.blocked = autoConflict ? 'anchor-conflict' : (!info.usable ? (info.ambiguous ? 'ambiguous-anchor' : 'no-anchor') : 'scan-only');
+            rep.blocked = info.usable ? 'scan-only' : 'no-anchor';
             clockPatrolLast = rep;
-            clockTraceNote(trace, '只统计未修改：' + rep.blocked + '；扫描 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条；原因分布 ' + JSON.stringify(rep.reasons));
-            clockTraceApplied(trace, { fields: [], locked: true, unchanged: rep.findings.slice(0, 8).map((f) => f.dim + '.' + f.field + '=' + String(f.value).slice(0, 12) + '（' + f.reason + '）'), note: '未修改任何数据' });
+            clockTraceNote(trace, '只统计未修改：' + rep.blocked + '；扫描情节 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条');
             clockTraceFinish(trace);
-            try {
-                dbgLog('时钟', {
-                    action: '时间巡检（只统计，不修改）',
-                    why: rep.blocked, scanned: rep.scanned, found: rep.found, anchor: rep.anchor || '(无)',
-                    anchorFrom: CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '',
-                    anchorWhy: trace.picks.date ? trace.picks.date.why : '',
-                    anchorChain: '手工强制改写 > 当前剧情时钟 > 原子多数派 > 全库年份一致',
-                    conflict: info.conflict ? (info.conflict.year + '（' + Number(info.conflict.count) + '/' + Number(info.conflict.total) + ' 条）') : '',
-                    reasons: rep.reasons,
-                    samples: rep.findings.slice(0, 5).map((f) => (CLOCK_DIM_LABEL[f.dim] || f.dim) + '·' + f.field + '=' + String(f.value).slice(0, 16) + '（' + f.reason + '）'),
-                    traceId: trace.id,
-                    how: '取值追踪：FTT.clockTrace("patrol") / 设定→调试「🕒 时钟取值追踪」',
-                });
-            } catch (e) {
-                try { dbgLog('异常', { kind: '时钟巡检日志构造失败', message: String((e && e.message) || e), stage: 'patrol' }); } catch (e2) { /* 忽略 */ }
-            }
+            try { dbgLog('时钟', { action: '时间巡检（只统计，不修改）', why: rep.blocked, scanned: rep.scanned, found: rep.found, anchor: rep.anchor || '(无)', traceId: trace.id }); } catch (e) { /* 忽略 */ }
             if (!o.silent) {
-                const why = rep.blocked === 'scan-only'
-                    ? '自动巡检默认只统计（如需自动修复，请在设定开启「巡检后自动修复」）'
-                    : (rep.blocked === 'anchor-conflict'
-                        ? `当前锚点（${rep.anchor}）与库内多数日期年份（${info.conflict.year}，${info.conflict.count}/${info.conflict.total} 条）冲突`
-                        : (rep.blocked === 'ambiguous-anchor' ? '库内日期年份分歧过大 → 找不到可信锚点' : '找不到可信时间锚点（当前剧情日期与原子数据都没有可用日期）'));
                 notify('warning', '时间巡检：只统计，未修改',
-                    `${why}。共扫描 ${rep.scanned} 条，发现异常 ${rep.found} 条（未改动任何数据）。请先在总览「✏️ 手工改写日期/时间/地点」确认正确的剧情日期作为锚点，再点「🩺 时间巡检修复」。`);
+                    (info.usable ? '本次为只统计模式' : '找不到可信锚点（当前剧情时钟为空或非法）—— 请先在总览「✏️ 手工改写日期/时间/地点」写入正确日期作为锚点')
+                    + '。共扫描情节 ' + rep.scanned + ' 条，发现格式非法的日期/时间 ' + rep.found + ' 条（未改动任何数据）。');
             }
             return rep;
         }
         if (rep.found) {
-            // 写回前先留**全量快照**（可到 数据管理 → 快照 还原）
-            try { const s = snapshotCreateFull(); if (s && s.id) rep.snap = s.id; } catch (e) { /* 忽略 */ }
+            try { const sn = snapshotCreateFull(); if (sn && sn.id) rep.snap = sn.id; } catch (e) { /* 忽略 */ }
             for (const f of scan.findings) {
-                const list = state[f.dim] || [];
-                const it = list.find(x => x && String(x.id) === String(f.id));
+                const it = (state.atoms || []).find((x) => x && String(x.id) === String(f.id));
                 if (!it) continue;
                 const r = clockPatrolRepairItem(it, f, scan.anchor);
-                if (r.changed) { rep.fixed++; rep.details.push(`${CLOCK_DIM_LABEL[f.dim] || f.dim} · ${f.field}：${String(f.value).slice(0, 12)} → ${r.note}`); }
+                if (r.changed) { rep.fixed++; rep.details.push('情节 · ' + f.field + '：' + String(f.value).slice(0, 12) + ' → ' + r.note); }
                 else { rep.skipped++; rep.remain++; }
             }
             if (rep.fixed) { try { saveState(); } catch (e) { /* 忽略 */ } }
         }
         clockPatrolLast = rep;
-        clockTraceNote(trace, '扫描 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' · 保留原值 ' + rep.remain + '；原因分布 ' + JSON.stringify(rep.reasons) + (rep.snap ? ('；写回前快照 ' + String(rep.snap).slice(0, 12)) : ''));
-        clockTraceApplied(trace, { fields: rep.details.slice(0, 10).map((d) => ({ field: 'date/time', from: '', to: d, changed: true })), locked: false, unchanged: [], note: rep.snap ? ('已先建全量快照：' + rep.snap) : '' });
+        clockTraceNote(trace, '扫描情节 ' + rep.scanned + ' 条，异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' · 保留原值 ' + rep.remain + (rep.snap ? ('；写回前快照 ' + String(rep.snap).slice(0, 12)) : ''));
         clockTraceFinish(trace);
         try {
-            if (rep.fixed || rep.found) dbgLog('时钟', {
-                action: '时间巡检与自动修复（v1.187）',
-                anchor: rep.anchor, anchorFrom: CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '',
-                anchorWhy: trace.picks.date ? trace.picks.date.why : '',
-                scanned: rep.scanned, found: rep.found, fixed: rep.fixed, skipped: rep.skipped, remain: rep.remain, reasons: rep.reasons,
-                details: rep.details.slice(0, 6),
-                snap: rep.snap ? String(rep.snap).slice(0, 16) : '',
-                traceId: trace.id,
-                how: '取值追踪：FTT.clockTrace("patrol") / 设定→调试「🕒 时钟取值追踪」',
-            });
-        } catch (e) {
-            try { dbgLog('异常', { kind: '时钟巡检日志构造失败', message: String((e && e.message) || e), stage: 'patrol' }); } catch (e2) { /* 忽略 */ }
-        }
-        if (!o.silent) {
-            const src = CLOCK_ANCHOR_SRC_LABEL[rep.anchorSource] || rep.anchorSource || '';
-            const anchorTxt = rep.anchor ? `${rep.anchor}${src ? `（${src}）` : ''}` : '（无）';
-            const conflictTxt = rep.anchorConflict ? `（锚点与库内多数年份 ${rep.anchorConflict.year} 冲突：${rep.anchorConflict.count}/${rep.anchorConflict.total} 条；本次按锚点校正，请核对）` : '';
-            if (rep.found) notify(rep.fixed ? 'success' : 'warning', rep.fixed ? '时间巡检完成：已修复' : '时间巡检完成：发现异常',
-                `巡检 ${rep.scanned} 条（锚点 ${anchorTxt}${conflictTxt}）：异常 ${rep.found} 条 → 修复 ${rep.fixed} 条${rep.remain ? ` · 保留原值 ${rep.remain} 条` : ''}${rep.snap ? '（已先留快照，可到数据管理还原）' : ''}。${rep.details.length ? '例：' + rep.details.slice(0, 3).join('；') : ''}`);
-            else notify('info', '时间巡检完成', `巡检 ${rep.scanned} 条原子数据（锚点 ${anchorTxt}）：未发现日期/时间异常。`);
+            if (rep.fixed || rep.found) dbgLog('时钟', { action: '时间巡检与修复（只针对情节）', scanned: rep.scanned, found: rep.found, fixed: rep.fixed, remain: rep.remain, anchor: rep.anchor || '(无)', snap: rep.snap || '', details: rep.details.slice(0, 5), traceId: trace.id });
+        } catch (e) { /* 忽略 */ }
+        if (!o.silent && rep.found) {
+            notify(rep.fixed ? 'success' : 'info', '时间巡检完成（只针对情节）',
+                '扫描情节 ' + rep.scanned + ' 条 · 异常 ' + rep.found + ' 条 → 修复 ' + rep.fixed + ' 条'
+                + (rep.remain ? (' · 保留 ' + rep.remain + ' 条') : '') + (rep.snap ? '（已留快照，可回滚）' : ''));
         }
         return rep;
     } catch (e) {
-        clockPatrolLast = rep;
+        rep.blocked = 'error';
+        clockTraceNote(trace, '巡检异常：' + String((e && e.message) || e));
+        clockTraceFinish(trace);
         return rep;
     }
 }
-/** 巡检结果快照（总览展示用） */
-let clockPatrolLast = null;
+
 function clockPatrolState() { return clockPatrolLast; }
 /** 载入后自动巡检一次（`cfg.clockAutoPatrol`；默认只统计，`cfg.clockPatrolAutoFix` 才自动修复） */
 function clockPatrolAutoOnce() {
@@ -413,8 +298,8 @@ function notify(kind, title, text) {
 }
 
 export {
-    CLOCK_PATROL_DIMS, CLOCK_DIM_LABEL, CLOCK_ANCHOR_SRC_LABEL,
+    CLOCK_DIM_LABEL, CLOCK_ANCHOR_SRC_LABEL,
     clockManualRaw, clockManualState, parseClockManualInput, setClockManual, clearClockManual,
-    clockPatrolMajority, clockPatrolAnchorInfo, clockPatrolAnchor, clockPatrolSafeDate,
+    clockPatrolAnchorInfo, clockPatrolAnchor, clockPatrolSafeDate,
     clockPatrolScan, clockPatrolRepairItem, runClockPatrolRepair, clockPatrolState, clockPatrolAutoOnce,
 };
