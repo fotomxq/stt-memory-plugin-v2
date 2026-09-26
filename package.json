@@ -1,6 +1,6 @@
 {
     "name": "ftt-memory-v2",
-    "version": "2.74.0",
+    "version": "2.75.0",
     "private": true,
     "type": "module",
     "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",

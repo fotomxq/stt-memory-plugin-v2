@@ -6,7 +6,8 @@
 //   「📄 字数 / 🔢 token 估算 / 🕒 **最后提取/更新** 时间 / 🔑 最近提取关键词」并铺开预览正文；
 //   V2 总览（v2.52.0 精简后）只留一句「🧷 注入 N 字 · 命中/未命中 · 预算」—— 缺这块。
 // 本批：`host/extract.js` 记录**最后一次提取**（时间/来源/楼层范围/新增条数/维度/关键词/AI 回复正文，正文截 4000 字），
-//   总览新增「📤 最后一次提取」一行 + 默认收起的「查看提取内容」（AI 回复原文，不挤占 UI）。
+//   总览新增「📤 最后一次提取」一行 + 默认收起的折叠块。
+// v2.75.0（用户要求）：折叠块展示的改为**注入内容**（当前注入给 AI 的正文），不再是 AI 回复的 JSON 原文。
 // 覆盖：R 记录（单楼 / 分段 / 批量 + 关键词登记 + 截断）｜U 总览渲染（空态 / 有记录 / 折叠内容 / 来源与范围）。
 // 运行：node tests/unit/overview-last-extract.test.js
 // ============================================================
@@ -16,6 +17,7 @@ import { emptyState } from '../../core/state.js';
 import { analyzeFloor, analyzeSegment, runAutoSummary, lastExtractRecord, LAST_EXTRACT_TEXT_CAP } from '../../host/extract.js';
 import { parallelLastKeywords } from '../../core/parallel.js';
 import { openPanel, panelBodyHtml, setPanelHooks2, panelState } from '../../ui/panel.js';
+import { pushMemoryInject, readInject } from '../../host/inject.js';
 
 const R = makeReporter('overview-last-extract v2.59.0 总览「最后一次提取」');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -98,9 +100,12 @@ await (async () => {
 // ---- U 组：总览渲染 ----
 await (async () => {
     seed('甲打开木箱取出账册，仓库里堆着货箱。', '6');
-    setPanelHooks2({ lastExtract: () => lastExtractRecord(), busy: () => false, batchProgress: () => ({}) });
+    setPanelHooks2({ lastExtract: () => lastExtractRecord(), busy: () => false, batchProgress: () => ({}), injectText: () => readInject() });
     openPanel('overview');
     await analyzeFloor(1, { ai: async () => ({ ok: true, text: JSON.stringify(AI_DELTA) }) });
+    // v2.75.0：折叠块展示的是**注入内容** → 先按开关推一次注入（注入开关 = injectCurrentPrompt）
+    cfg.injectCurrentPrompt = true;
+    await pushMemoryInject({});
     openPanel('overview');
     const h = panelBodyHtml('overview');
     const line = (h.match(/data-ftt-last-extract-line>([^<]*)</) || [])[1] || '';
@@ -109,10 +114,14 @@ await (async () => {
         && line.indexOf('AI ') > 0 && line.indexOf('atoms/memories') > 0 && line.indexOf('🔑 木箱、账册') > 0,
         J(line));
 
-    A('U3 提取内容默认**收起**（`<details class="ftt-details ftt-hint-details">`），点开才看 AI 回复原文', h.indexOf('ftt-hint-details') >= 0
-        && h.indexOf('查看提取内容（AI 回复原文') >= 0 && h.indexOf('<details class="ftt-details ftt-hint-details">') >= 0
-        && h.indexOf('new-a1') >= 0,
-        '见断言');
+    A('U3 折叠块展示**注入内容**（v2.75.0）：默认收起，点开是当前注入给 AI 的正文，而不是 AI 回复的 JSON', (() => {
+        const inj = readInject();
+        return h.indexOf('ftt-hint-details') >= 0
+            && h.indexOf('查看注入内容（当前注入给 AI 的正文，' + inj.length + ' 字）') >= 0
+            && h.indexOf('data-ftt-inject-preview') >= 0
+            && inj.indexOf('【FTT记忆注入】') === 0 && h.indexOf(inj.slice(0, 24).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) >= 0
+            && h.indexOf('new-a1') < 0 && h.indexOf('&quot;atoms&quot;') < 0;
+    })(), J({ inj: readInject().length }));
 
     A('U4 v2.66.0：组件移到总览**最末端**（时钟 → 管线 → 注入 → 工具行 → 统计 → 未摘要/已处理 → 最后一次提取）', (() => {
         const at = (s) => h.indexOf(s);
@@ -120,6 +129,15 @@ await (async () => {
             && at('data-ftt-last-extract') > at('ftt-summary-btn')
             && at('data-ftt-last-extract') > at('⏳ 未摘要') && at('data-ftt-last-extract') > at('✅ 已处理')
             && at('data-ftt-last-extract') > at('📚 共 ');
+    })(), '见断言');
+
+    A('U4b 无注入时如实说明原因（注入开关关闭 / 未命中 / 空库），不展示 AI JSON', (() => {
+        const hooks = { lastExtract: () => lastExtractRecord(), busy: () => false, batchProgress: () => ({}), injectText: () => '' };
+        setPanelHooks2(hooks);
+        openPanel('overview');
+        const h2 = panelBodyHtml('overview');
+        return h2.indexOf('查看注入内容') >= 0 && h2.indexOf('当前没有注入内容') >= 0
+            && h2.indexOf('data-ftt-inject-preview') >= 0 && h2.indexOf('new-a1') < 0;
     })(), '见断言');
 
     A('U5 与注入概览是两个组件（不合并、不互相覆盖）', h.indexOf('data-ftt-inject') >= 0 && h.indexOf('data-ftt-last-extract') >= 0
