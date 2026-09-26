@@ -15,6 +15,8 @@
 import { DIMENSIONS } from '../core/constants.js';
 import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/runtime.js';
 import { buildSummaryPrompt } from '../core/prompt.js';
+// v2.61.0（用户要求：「提取记忆优化，第一步先校对时钟等基本信息，然后再去提取」）
+import { calibrateBasics, withBasics } from './preflight.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
@@ -39,6 +41,9 @@ const extractState = {
     // B3：分段批量（V1 runAutoSummary）状态
     segTotal: 0, segDone: 0, segRange: '', activeSeg: null, aborted: 0, lastBatch: null,
 };
+/** v2.61.0：最后一次「提取前校对」结果（总览/日志展示） */
+let lastPreflight = null;
+export function lastPreflightInfo() { try { return lastPreflight ? JSON.parse(JSON.stringify(lastPreflight)) : null; } catch (e) { return null; } }
 /** 最后一次提取记录里保留的 AI 回复上限（字符；避免总览带着几十 KB 文本到处跑） */
 export const LAST_EXTRACT_TEXT_CAP = 4000;
 /** v2.59.0：最后一次提取记录（总览「📤 最后一次提取」组件的数据源） */
@@ -224,7 +229,11 @@ export async function analyzeFloor(floorId, opts) {
         const gen = o.ai || rawGenerate;
         if (!o.ai && !av.generateRaw) { extractState.fail += 1; extractState.lastReason = 'no-generate'; return { ok: false, reason: 'no-generate' }; }
         const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
-        const messages = await buildSummaryPrompt(text, dims);
+        // ① 先校对时钟等基本信息（时钟唯一来源仍是「最新情节」，见 host/preflight.js 头注）
+        const calib = calibrateBasics({ text: text });
+        lastPreflight = calib;
+        // ② 再用「已校对的基本信息 + 正文」去提取
+        const messages = withBasics(await buildSummaryPrompt(text, dims), calib);
         // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
         const resp = await gen(args);
@@ -256,6 +265,7 @@ export async function analyzeFloor(floorId, opts) {
         const kws = (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })();
         recordLastExtract({
             via: 'floor', trigger: String(o.trigger || 'manual'), floors: String(Number(floorId)),
+            calib: (calib ? { changed: !!calib.changed, skipped: String(calib.skipped || ''), note: String(calib.note || ''), clock: calib.clock } : null),
             added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
             dims: Object.keys(delta).slice(0, 12), keywords: kws, text: String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP),
         });
@@ -321,7 +331,11 @@ export async function analyzeSegment(start, end, opts) {
             };
         }
         const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
-        const messages = await buildSummaryPrompt(text, dims);
+        // ① 先校对时钟等基本信息（与单楼同一套口径与顺序）
+        const calib = calibrateBasics({ text: text });
+        lastPreflight = calib;
+        // ② 再提取
+        const messages = withBasics(await buildSummaryPrompt(text, dims), calib);
         // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
         const resp = await gen(args);
@@ -342,6 +356,7 @@ export async function analyzeSegment(start, end, opts) {
         lastSegmentText = String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP);
         recordLastExtract({
             via: 'segment', trigger: String(o.trigger || 'manual'), floors: s0 + '-' + e0,
+            calib: (calib ? { changed: !!calib.changed, skipped: String(calib.skipped || ''), note: String(calib.note || ''), clock: calib.clock } : null),
             added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
             dims: Object.keys(delta).slice(0, 12), keywords: (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })(),
             text: lastSegmentText,
