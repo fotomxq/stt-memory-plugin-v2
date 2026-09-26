@@ -46,7 +46,7 @@ import {
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
-import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
+import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
@@ -981,7 +981,7 @@ function bootstrapDiagnostics() {
             trackPickState: () => trackPickState(),
             setTrackPick: (v) => setTrackPick(v),
             defaultCurrencyOwner: () => defaultCurrencyOwner(),
-            scheduleStorageSync, extract: runExtract, pendingFloors, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
         // v2.42.0：**FTT.* 入口调用入流**（cat='cmd'）—— 用户/维护者在控制台调 `FTT.xxx()` 也能追溯：
         //   记录入口名 / 参数摘要 / 结果 / 耗时 / 站点，并把该调用期间的宿主与内核事件用 opId 串起来。
         try { wrapFttEntries(); } catch (e) { /* 追踪接线失败不影响调试入口 */ }
@@ -1270,8 +1270,15 @@ export function abortExtraction() { return abortExtract(); }
 /** 清除已处理楼层台账（V1「清除已处理记录」；不删除任何记忆条目） */
 export function clearProcessedFloors() { return clearFloors(); }
 
-/** 待分析楼层清单（命令与调试） */
-export function pendingFloors(opts) { return listUnprocessedFloors(opts || {}); }
+/** 待分析楼层清单（命令与调试）；`{detail:true}` → 返回扫描明细（跳过计数 / 覆盖数 / 扫描区间） */
+export function pendingFloors(opts) {
+    const o = opts || {};
+    if (o.detail === true) return pendingScan(o);
+    return listUnprocessedFloors(o);
+}
+
+/** 待分析扫描明细（核对「未摘要楼层跳过机制」用：哪些楼被跳过、为什么） */
+export function pendingScan(opts) { try { return scanPendingFloors(opts || {}); } catch (e) { return { floors: [], error: String((e && e.message) || e) }; } }
 
 /** 导入状态（/ftt 与 FTT.importStatus()） */
 export function importStatus() { return runtime.import; }

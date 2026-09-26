@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.63.0",
+  "version": "2.64.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.64.0",
+      "date": "2026-09-26",
+      "title": "未摘要楼层跳过机制核对（已有记忆数据的楼层不再需要分析）",
+      "points": [
+        "用户报告：「未摘要楼层存在问题，很多无法分析或不应该分析的会被展示出来，请核对跳过机制。当原子数据对应的楼层存在时，则不需要分析。」",
+        "新建 oracle：（tests/fixtures/gen-v1-golden-pending-floors.cjs：真实 V1 v1.206 pendingFloorList …",
+        "实现：新增内核纯函数 core/floor-cover.js：meaningfulFloorRange / floorRanges / floorCoverage—— 任一记忆维…"
+      ]
+    },
     {
       "version": "2.63.0",
       "date": "2026-09-26",

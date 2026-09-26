@@ -40,6 +40,8 @@ import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
+// v2.64.0：楼层覆盖统计（「未摘要」跳过「已有记忆数据的楼层」，此处显示覆盖数，便于核对跳过机制）
+import { floorCoverage } from '../core/floor-cover.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 // v2.42.0：交互/错误追踪（用户交互、处理器结果、耗时与代码站点 —— 「点哪个按钮 → 结果 → 代码位置」一条链）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceCurrentOp } from '../core/trace.js';
@@ -417,6 +419,9 @@ function overviewBody() {
     lines.push('<div class="ftt-row"><span class="ftt-muted">📚 共 ' + sum.total + ' 条</span>'
         + sum.dims.map((d) => '<span class="ftt-badge">' + esc(d.label) + ' ' + d.count + '</span>').join(' ') + '</div>');
     // ⑦ 未摘要楼层（可点单楼分析）；已处理楼层只留一行计数（区间过长的历史信息不再平铺）
+    //   v2.64.0（用户报告：「未摘要楼层…很多无法分析或不应该分析的会被展示出来…当原子数据对应的楼层存在时，
+    //   则不需要分析」）：清单由 `hooks.pending` 给出，已在宿主侧按「已有记忆数据的楼层」跳过；
+    //   此处再补一句被跳过的覆盖数，便于用户核对跳过机制确实生效。
     const pending = (typeof hooks.pending === 'function') ? (hooks.pending({}) || []) : [];
     if (pending.length) {
         lines.push('<div class="ftt-item ftt-item--warn ftt-item--col"><b class="ftt-pend-title">⏳ 未摘要 ' + pending.length + ' 楼（可点击单楼分析）</b><div class="ftt-pend-list">'
@@ -424,7 +429,9 @@ function overviewBody() {
             + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
     }
     const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
-    lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要') + '</div>');
+    const covered = (() => { try { return floorCoverage(state).floors; } catch (e) { return 0; } })();
+    lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要')
+        + (covered ? (' · 已有记忆数据 ' + covered + ' 楼') : '') + '</div>');
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
     return lines.join('\n');
 }

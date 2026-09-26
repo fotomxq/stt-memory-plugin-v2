@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.64.0（2026-09-26）· 未摘要楼层跳过机制核对（已有记忆数据的楼层不再需要分析）
+
+**用户报告**：「未摘要楼层存在问题，很多无法分析或不应该分析的会被展示出来，请核对跳过机制。
+当原子数据对应的楼层存在时，则不需要分析。」
+
+**新建 oracle**（`tests/fixtures/gen-v1-golden-pending-floors.cjs`：真实 V1 v1.206 `pendingFloorList` × 同一合成聊天 ×
+真实 V2 清单；fixture `tests/fixtures/v1-golden-pending-floors.json`，10 场景 / 3 条已记录差异 / 连跑逐字节一致）：
+
+| 判据 | V1 | V2（本批前） | V2（本批） |
+| --- | --- | --- | --- |
+| 非 AI 楼 / 隐藏楼 | 跳过 | 跳过 | 跳过 |
+| 无可分析正文（占位楼、投喂白黑名单过滤） | 跳过 | 跳过 + 去 HTML 后判空（v2.44.0） | 同 |
+| 台账已处理（哈希一致） | 跳过 | 跳过 | 跳过 |
+| 台账在册但哈希不符（正文被改写） | **重新分析** | 重新分析 | 重新分析（优先于覆盖判据） |
+| 旧标记升级迁移（版本签名不符） | 按当前口径重算哈希 | 同样做，但**缺版本短路**（每次都重刷 → 被改写的楼永久判为已处理） | 补版本短路（对齐 V1） |
+| 哈希归位对账（索引错位） | v1.70 有（20s 节流），但**只在条数变化时写回** | 未移植 | 移植 + 修「条数不变、楼层号整体后移」不写回的缺陷 |
+| 哈希漂移防呆（取文口径变化） | v1.174 有（≥50% 失配 → 整体刷新） | 未移植 | 移植 |
+| **已有记忆数据（情节/记忆/状态/物品/…带楼层区间覆盖该楼）** | 无此判据 | 无 | **新增：跳过**（用户要求） |
+
+**实现**：
+- 新增内核纯函数 `core/floor-cover.js`：`meaningfulFloorRange` / `floorRanges` / `floorCoverage`
+  —— 任一记忆维度条目带有效区间（整数、`0 ≤ start ≤ end`、且**不是 `0/0`** 这种「区间未知」默认值）即覆盖该楼；
+  相邻/重叠区间合并，`has(i)` 二分查找；
+- `host/floors.js`：新增 `scanPendingFloors()`（含跳过明细分桶）、`processedDriftGuard()`、
+  `reconcileProcessedFloors()`；`migrateProcessedFloorsV170()` 补版本短路与「超范围标记丢弃」；
+  `listUnprocessedFloors()` 改为其薄封装（**列表与执行同源**）；
+- `host/extract.js#extractSummary()`：新增 `pendingCovered / pendingSkipped / pendingEnd`；
+- `index.js`：新增 `FTT.pendingScan()`，`FTT.pendingFloors({detail:true})` 返回扫描明细；
+- `ui/panel.js`：总览「已处理」一行补 `· 已有记忆数据 N 楼`（覆盖数可见，便于核对跳过机制）。
+
+**门禁**：新增 `tests/unit/pending-floors.test.js`（17 断言：oracle 不变量「V2 从不比 V1 多列」/ 包含关系 /
+差异有据可查 / 10 场景实时复算 / 跳过分桶 / 覆盖边界 / 优先序 / 列表与执行同源 / 诊断出口 / 总览联动 /
+内核 `lastMessageId` 落后时不漏扫新楼）。详见 `docs/P10ab`。
+
 ## v2.63.0（2026-09-26）· 管线状态读秒改为动态心跳（对齐 V1）
 
 **用户要求**：「管线状态的计时器不动，需改进，应该是动态变化的。」
