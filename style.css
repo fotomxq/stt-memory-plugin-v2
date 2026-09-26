@@ -540,7 +540,7 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-item--col { flex-direction: column; align-items: flex-start; }
 #ftt-panel .ftt-pipe-title { color: var(--ftt-info); flex: 0 0 auto; }
 #ftt-panel .ftt-pend-title { color: var(--ftt-accent-3); }
-#ftt-panel .ftt-pend-list { display: flex; flex-wrap: wrap; gap: var(--ftt-space-1); color: var(--ftt-warn); }
+#ftt-panel .ftt-pend-list { display: flex; flex-wrap: wrap; gap: var(--ftt-space-1); color: var(--ftt-warn); max-height: 32vh; overflow-y: auto; }
 /* —— 结构工具类（替代各处内联 flex/margin/宽度）—— */
 #ftt-panel .ftt-inline-flex { display: inline-flex; align-items: center; gap: var(--ftt-space-1); }
 #ftt-panel .ftt-grow { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -568,6 +568,15 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-pre { color: var(--ftt-text-2); white-space: pre-wrap; max-height: 40vh; overflow-y: auto; }
 #ftt-panel .ftt-pre-inline { color: var(--ftt-text-2); white-space: pre-wrap; overflow-y: auto; }
 #ftt-panel .ftt-scroll-40 { max-height: 40px; overflow-y: auto; }
+/* v2.66.0（用户报告：「查看提取内容高度不足」）—— 提取正文给足可读高度（此前误用 40px 上限的 .ftt-scroll-40） */
+#ftt-panel .ftt-extract-pre { min-height: 160px; max-height: 46vh; overflow-y: auto; border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); padding: 6px 8px; background: var(--ftt-bg-0); }
+/* v2.66.0 总览布局微调：统一容器收紧区块间距；时钟块四行紧凑排列；未摘要楼层列表限高可滚（40+ 按钮不再无限撑高） */
+#ftt-panel .ftt-overview > .ftt-item { padding: 4px 0; }
+#ftt-panel .ftt-overview > .ftt-item:last-child { border-bottom: none; }
+#ftt-panel .ftt-overview .ftt-row { margin: 6px 0; }
+#ftt-panel .ftt-overview .ftt-hint { margin: 2px 0; }
+#ftt-panel .ftt-clock-line { padding: 1px 0; }
+#ftt-panel .ftt-clock-line + .ftt-clock-line { border-top: 1px dotted var(--ftt-line-soft); }
 #ftt-panel .ftt-panel-error { padding: 14px; color: var(--ftt-text-2); }
 #ftt-panel .ftt-pipe-line { padding: 1px 0; font-size: var(--ftt-font-xs); }
 #ftt-panel .ftt-scene-caret { cursor: pointer; display: inline-block; width: 16px; text-align: center; color: var(--ftt-warn); user-select: none; }

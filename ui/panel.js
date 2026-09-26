@@ -368,10 +368,12 @@ function overviewBody() {
     lines.push('<div class="ftt-hint" data-ftt-inject>🧷 注入 ' + audit.chars + ' 字 · 命中 ' + audit.injected + ' / 未命中 ' + audit.missing + ' · 预算 ' + (Number(cfg.charBudget) || 0) + '</div>');
     // ④b v2.59.0（用户报告：「概览缺少展示最后一次提取记忆内容的组件」）：最后一次提取 —— 时间 / 来源 /
     //   楼层范围 / 新增条数 / 维度 / 关键词，提取正文（AI 回复）放进默认收起的「查看提取内容」。
-    try {
+    //   v2.66.0（用户要求）：「最后一次提取」整块**移到总览最末端**（它是「刚刚发生了什么」的回顾，不占首屏）。
+    const lastExtractLines = (() => {
+        const out = [];
         const le = (typeof hooks.lastExtract === 'function') ? hooks.lastExtract() : null;
         const line = (() => {
-            if (!le || !le.at) return '尚无提取记录（点下方「📤 提取记忆」或等自动提取后会在这里显示）';
+            if (!le || !le.at) return '尚无提取记录（点上方「📤 提取记忆」或等自动提取后会在这里显示）';
             const t = new Date(Number(le.at)).toLocaleString('zh-CN', { hour12: false });
             const viaLabel = { floor: '单楼分析', segment: '分段分析', batch: '批量摘要' }[String(le.via || '')] || '提取';
             const trig = String(le.trigger || '') === 'auto' ? '自动' : '手动';
@@ -396,13 +398,17 @@ function overviewBody() {
             return t + ' · ' + viaLabel + '（' + trig + '）' + scope + made + add + chars + dims + kws + calText;
         })();
         const hasText = !!(le && le.text);
-        lines.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-last-extract><b class="ftt-pipe-title">📤 最后一次提取</b>'
+        out.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-last-extract><b class="ftt-pipe-title">📤 最后一次提取</b>'
             + ' <span style="flex:1 1 auto;min-width:0" class="ftt-muted" data-ftt-last-extract-line>' + esc(line) + '</span></div>');
         if (hasText) {
-            lines.push(hintDetailsHtml('查看提取内容（AI 回复原文，最多 ' + String(le.text.length) + ' 字）',
-                '<div class="ftt-pre ftt-scroll-40">' + esc(String(le.text)) + '</div>'));
+            // v2.66.0（用户报告「查看提取内容高度不足」）：此前用 `.ftt-scroll-40`（上限 40px，只能看两行）
+            //   → 改用 `.ftt-extract-pre`（min-height 160px / max-height 46vh，见 style.css）
+            out.push(hintDetailsHtml('查看提取内容（AI 回复原文，最多 ' + String(le.text.length) + ' 字）',
+                '<div class="ftt-pre ftt-extract-pre">' + esc(String(le.text)) + '</div>'));
         }
-    } catch (e) { /* 记录渲染失败不影响总览 */ }
+        return out.join('\n');
+    })();
+
     // ⑤ 工具行（v2.52.0：移出「清除已处理记录」—— 该动作属 设定 → 数据管理；提示合并为一句话）
     const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
     const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页）">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
@@ -433,7 +439,10 @@ function overviewBody() {
     lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要')
         + (covered ? (' · 已有记忆数据 ' + covered + ' 楼') : '') + '</div>');
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
-    return lines.join('\n');
+    // ⑧ v2.66.0：最后一次提取放**最末端**（回顾性质，不占首屏；折叠内容给足高度）
+    if (lastExtractLines) lines.push(lastExtractLines);
+    // v2.66.0：总览统一容器（布局微调锚点：收紧区块间距、限高可滚的未摘要列表，见 style.css）
+    return '<div class="ftt-overview">' + lines.join('\n') + '</div>';
 }
 
 /** 楼层号压缩为区间文本（V1 `processedRanges` 的等价简化） */

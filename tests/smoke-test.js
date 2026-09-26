@@ -794,7 +794,7 @@ await assert('N6 存储动作经面板分发可达（校验并修复 / 清空日
 })(), '');
 
 // ---------- O/P 剧情时钟域（v2.51.0 改版：**只取最新情节**；巡检修复功能已移除） ----------
-await assert('O1 总览时钟区（v2.51.0）：日期/时间/地点行（来源=最新情节）+ 手工改写工具行；不再有巡检状态行/降级/第N天等废弃提示', (async () => {
+await assert('O1 总览时钟区（v2.51.0 + v2.66.0 精简）：紧凑时钟块（日期/时间/地点/在场）+ 手工改写工具行；不再有巡检/降级/第N天/时钟来源等废弃提示', (async () => {
     const RT = await import('../core/model/runtime.js');
     const CE = await import('../core/clock-extract.js');
     const saveAtoms = RT.state.atoms;
@@ -805,10 +805,11 @@ await assert('O1 总览时钟区（v2.51.0）：日期/时间/地点行（来源
         CE.clockAutoExtractOnce({ force: true });
         await entry.popupAction('tab', { tab: 'overview' });
         const h = String(panelBodyHtml('overview') || '');
-        const gone = ['时间巡检', '已降级', '日期较此前跳变', '剧情第 ', '校准用'];
-        return h.indexOf('📅 日期：1919-11-30') >= 0 && h.indexOf('⏱ 时间：08:52') >= 0
+        const gone = ['时间巡检', '已降级', '日期较此前跳变', '剧情第 ', '校准用', '🕒 时钟来源：', 'data-ftt-clock-src', 'data-ftt-clock-trace'];
+        return h.indexOf('data-ftt-clock') >= 0 && h.indexOf('ftt-clock-line') >= 0
+            && h.indexOf('📅 日期：1919-11-30') >= 0 && h.indexOf('⏱ 时间：08:52') >= 0
             && h.indexOf('📍 地点：城市甲·码头') >= 0 && h.indexOf('✏️ 手工改写日期/时间/地点') >= 0
-            && h.indexOf('🕒 时钟来源：') >= 0 && h.indexOf('最新情节') >= 0 && gone.every((t) => h.indexOf(t) < 0);
+            && h.indexOf('最新情节') >= 0 && gone.every((t) => h.indexOf(t) < 0);
     } finally { RT.state.atoms = saveAtoms; RT.state.state = saveState; }
 })(), '');
 

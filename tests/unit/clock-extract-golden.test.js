@@ -200,14 +200,15 @@ R.assert('A6（v2.51.0 改版）正文/楼层窗口文本**不再参与**时钟�
     return J(resolveStoryClock({}));
 })());
 
-R.assert('U1（v2.51.0 改版）总览时钟区：显示 日期/时间/地点 + 时钟来源行（来源=最新情节），无降级/巡检/第N天等废弃提示', (() => {
+R.assert('U1（v2.51.0 改版 + v2.66.0 精简）总览时钟区：紧凑一块显示 日期/时间/地点/在场；不再有「时钟来源」提示与降级/巡检/第N天等废弃说法', (() => {
     boot({ atoms: [{ id: 'p1', text: '甲在码头。', date: '1919-11-30', time: '08:52', location: '城市甲·码头', floorStart: 5, floorEnd: 5, uses: 1, tags: [] }], state: { date: '', time: '', location: '', present: ['甲'] } });
     clockAutoExtractOnce({ force: true });
     const html = String(panelBodyHtml('overview') || '');
-    const gone = ['已降级', '日期较此前跳变', '时间巡检', '剧情第 ', '校准用'];
-    return html.indexOf('📅 日期：1919-11-30') >= 0 && html.indexOf('⏱ 时间：08:52') >= 0
-        && html.indexOf('📍 地点：城市甲·码头') >= 0 && html.indexOf('🕒 时钟来源：') >= 0
-        && html.indexOf('最新情节') >= 0 && gone.every((t) => html.indexOf(t) < 0);
+    const gone = ['已降级', '日期较此前跳变', '时间巡检', '剧情第 ', '校准用', '🕒 时钟来源：', 'data-ftt-clock-src', 'data-ftt-clock-trace'];
+    return html.indexOf('data-ftt-clock') >= 0 && html.indexOf('ftt-clock-line') >= 0
+        && html.indexOf('📅 日期：1919-11-30') >= 0 && html.indexOf('⏱ 时间：08:52') >= 0
+        && html.indexOf('📍 地点：城市甲·码头') >= 0 && html.indexOf('👥 在场角色：甲') >= 0
+        && gone.every((t) => html.indexOf(t) < 0);
 })(), '');
 
 un();

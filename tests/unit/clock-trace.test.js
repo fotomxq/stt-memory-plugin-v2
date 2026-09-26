@@ -159,15 +159,16 @@ A('U1（v2.55.0）调试页「🕒 时钟取值追踪」区块：只保留「自
         && html.indexOf(' 项') < 0;
 })(), null);
 
-A('U2 总览时钟区：展示最近一次取值摘要行（值 ← 来源 + 落盘改动 + 指向调试页的路径）', (() => {
+A('U2 总览时钟区：v2.66.0 起**不再**展示「时钟来源 / 最近一次取值」提示行（用户：这些提示完全没用）——取值过程只在调试页', (() => {
     boot();
-    // 走完整落盘（写 state + clockSrc + 追踪），总览的「时钟来源行」才会出现
     state.atoms = [{ id: 'a1', text: '最新情节。', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 9, floorEnd: 9, uses: 1, tags: [] }];
     clockAutoExtractOnce({ force: true });
     const html = clockSectionHtml();
-    return html.indexOf('data-ftt-clock-trace') >= 0 && html.indexOf('🕒 取值 [resolve]') >= 0
-        && html.indexOf('设定→调试「🕒 时钟取值追踪」') >= 0
-        && html.indexOf('data-ftt-clock-src') >= 0;
+    // 追踪本身仍在（core 环形缓冲 + 调试页），只是总览不再铺这些提示
+    return html.indexOf('data-ftt-clock-trace') < 0 && html.indexOf('data-ftt-clock-src') < 0
+        && html.indexOf('时钟来源') < 0 && html.indexOf('取值') < 0
+        && html.indexOf('📅 日期：1919-11-30') >= 0 && html.indexOf('@') < 0
+        && !!clockTraceLast('resolve');
 })(), null);
 
 A('U3 摘要与结构化信息一致：`clockTraceSummary` 含四字段与落盘结论；`clockTraceInfo().picks` 逐字段带中文来源名', (() => {

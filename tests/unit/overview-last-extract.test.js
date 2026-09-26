@@ -114,10 +114,12 @@ await (async () => {
         && h.indexOf('new-a1') >= 0,
         '见断言');
 
-    A('U4 组件排在注入概览之后、工具行之前（总览信息顺序：时钟 → 管线 → 注入 → 最后一次提取 → 工具行）', (() => {
+    A('U4 v2.66.0：组件移到总览**最末端**（时钟 → 管线 → 注入 → 工具行 → 统计 → 未摘要/已处理 → 最后一次提取）', (() => {
         const at = (s) => h.indexOf(s);
-        return at('data-ftt-inject') > 0 && at('data-ftt-last-extract') > at('data-ftt-inject')
-            && at('ftt-summary-btn') > at('data-ftt-last-extract');
+        return at('data-ftt-inject') > 0 && at('ftt-summary-btn') > at('data-ftt-inject')
+            && at('data-ftt-last-extract') > at('ftt-summary-btn')
+            && at('data-ftt-last-extract') > at('⏳ 未摘要') && at('data-ftt-last-extract') > at('✅ 已处理')
+            && at('data-ftt-last-extract') > at('📚 共 ');
     })(), '见断言');
 
     A('U5 与注入概览是两个组件（不合并、不互相覆盖）', h.indexOf('data-ftt-inject') >= 0 && h.indexOf('data-ftt-last-extract') >= 0
