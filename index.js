@@ -7,7 +7,7 @@ import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
-import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime } from './host/inject.js';
+import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
@@ -986,7 +986,7 @@ function bootstrapDiagnostics() {
             trackPickState: () => trackPickState(),
             setTrackPick: (v) => setTrackPick(v),
             defaultCurrencyOwner: () => defaultCurrencyOwner(),
-            scheduleStorageSync, extract: runExtract, pendingFloors, pendingScan, extractStatus: extractSummary, summaryDims: () => summaryDimsForPrompt(), menuInfo, ensureMenu: () => ensureMenuEntry(entryClickHooks()), i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
+            scheduleStorageSync, extract: runExtract, recall: (opts) => runRecallNow(opts || {}), recallState: () => ({ inFlight: injectInFlight(), stats: pushStats() }), pendingFloors, pendingScan, extractStatus: extractSummary, summaryDims: () => summaryDimsForPrompt(), menuInfo, ensureMenu: () => ensureMenuEntry(entryClickHooks()), i18n: i18nStats, t, folderInfo, forceMountPanel, panelInfo: panelMountInfo, menuInfo, floatingInfo, openPanelPopup, ensureVisibleEntry, popupInfo, popupAction, v1PanelInfo: panelInfo, v1PanelTabs: panelTabs, injectNow, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, exportState: exportStateJson, importState: importStateJson }));
         // v2.42.0：**FTT.* 入口调用入流**（cat='cmd'）—— 用户/维护者在控制台调 `FTT.xxx()` 也能追溯：
         //   记录入口名 / 参数摘要 / 结果 / 耗时 / 站点，并把该调用期间的宿主与内核事件用 opId 串起来。
         try { wrapFttEntries(); } catch (e) { /* 追踪接线失败不影响调试入口 */ }
@@ -1169,6 +1169,9 @@ function popupHooks() {
 export function panelRuntimeHooks() {
     return Object.assign({}, popupHooks(), {
         inject: injectNow,
+        // v2.74.0：「📤 提取记忆」= 发送前召回（向量/JS 为主，不占分析管道、可并行）
+        recall: (opts) => runRecallNow(opts || {}),
+        recallState: () => ({ inFlight: injectInFlight(), stats: pushStats() }),
         exportState: exportStateJson,
         importState: importStateJson,
         // v2.49.0：导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；`hashText` 与 V1 同算法）
@@ -1282,6 +1285,24 @@ export async function runAutoExtract(opts) {
 }
 
 /** 手动提取（命令 / 调试入口）：`{ floor }` 指定楼层，缺省分析未分析清单（可带 limit） */
+/**
+ * v2.74.0（用户要求）：「提取记忆应该**不占用管道**…确保**并行处理**，而且在用户请求发送前提取好记忆，
+ *   按照开关约定注入提示词信息。」
+ *   · 本入口 = **发送前召回**（三层：向量 → JS 抽取 → AI 分析；零 AI 的前两层为主），
+ *     **不设置也不检查** AI 摘要的忙碌位（`extractState.busy`）——因此可以与「⚡ 立即 AI 摘要」等长任务**并行**；
+ *   · 长任务在途时自动**跳过 AI 层**（不与在途任务抢 AI 通道），向量/JS 层照常；
+ *   · 结果按开关注入提示词（`injectCurrentPrompt` / `timelyAnalysis` 闸门 + 各层开关），发送前由拦截器再刷一次。
+ * @param {object} [opts] queryText / floorText / layers / allowAiDuringBusy
+ * @returns {Promise<{ok:boolean, reason?:string, hitLayer:string, count:number, chars:number, injected:boolean, ms:number, busy:boolean}>}
+ */
+export async function runRecallNow(opts) {
+    const o = opts || {};
+    const busy = (() => { try { return !!extractBusy(); } catch (e) { return false; } })();
+    const r = await pushMemoryInject(o);
+    try { runtime.inject = pushStats(); } catch (e) { /* 忽略 */ }
+    return Object.assign({ busy: busy }, r);
+}
+
 export async function runExtract(opts) {
     const o = opts || {};
     const r = (Number.isFinite(Number(o.floor)) && Number(o.floor) >= 0)

@@ -60,7 +60,11 @@ export function readInject() {
 
 let injectSeq = 0;
 let lastInjectText = '';
-const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, lastChars: 0, lastAt: 0, lastError: '' };
+const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '' };
+// v2.74.0（用户要求）：「提取记忆…确保可以**并行处理**」——**单飞（single-flight）**：
+//   同一时刻只允许一次「构建 + 推送」，并发调用者**共享同一次结果**（await 同一个 Promise），
+//   既不互相覆盖注入（既有 seq 令牌仍然生效），也不会因为重复构建而重复调用向量 / AI 接口。
+let inFlight = null;
 
 /** 注入统计（/ftt 与调试导出） */
 export function pushStats() { return Object.assign({}, injectStats, { seq: injectSeq, lastChars: lastInjectText.length }); }
@@ -115,6 +119,21 @@ export function wrapInjectText(body) {
  */
 export async function pushMemoryInject(opts) {
     const o = opts || {};
+    // 并发调用：直接共享在途的那一次（并行安全，且不重复消耗向量/AI 请求）
+    if (inFlight) { injectStats.joined += 1; return await inFlight; }
+    inFlight = (async () => {
+        try { return await buildAndPushInject(o); }
+        finally { inFlight = null; }
+    })();
+    return await inFlight;
+}
+
+/** 是否有一次「构建 + 推送」在途（诊断 / 测试） */
+export function injectInFlight() { return !!inFlight; }
+
+/** 实际的构建与推送（由 `pushMemoryInject` 单飞包装调用） */
+async function buildAndPushInject(o) {
+    const t0 = Date.now();
     try {
         injectStats.builds += 1;
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
@@ -142,9 +161,12 @@ export async function pushMemoryInject(opts) {
         }
         const text = wrapInjectText(body);
         if (mySeq !== injectSeq) { injectStats.stale += 1; return { ok: true, reason: 'stale', chars: 0, injected: false }; }
+        const ms = Date.now() - t0;
+        const count = String(body || '').split('\n').filter((x) => String(x).trim()).length;
         if (!text && lastInjectText) {
             injectStats.keptLast += 1;
-            return { ok: true, reason: 'kept-last', chars: lastInjectText.length, injected: false };
+            injectStats.lastMs = ms;
+            return { ok: true, reason: 'kept-last', chars: lastInjectText.length, count: 0, injected: false, hitLayer: hitLayer, ms: ms };
         }
         if (!text) injectStats.empties += 1;
         const r = setInject(text, { position: PROMPT_POSITION.IN_PROMPT, depth: 0, scan: false, role: PROMPT_ROLE.SYSTEM });
@@ -152,11 +174,13 @@ export async function pushMemoryInject(opts) {
         injectStats.pushes += 1;
         injectStats.lastChars = text.length;
         injectStats.lastAt = Date.now();
+        injectStats.lastMs = ms;
+        injectStats.lastLayer = String(hitLayer || (body ? 'js' : ''));
         injectStats.lastHitLayer = hitLayer;
-        return { ok: !!r.ok, reason: r.reason, chars: text.length, injected: true, hitLayer: hitLayer };
+        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms };
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
-        return { ok: false, reason: 'error', chars: 0, injected: false };
+        return { ok: false, reason: 'error', chars: 0, count: 0, injected: false, ms: Date.now() - t0 };
     }
 }
 

@@ -14,6 +14,7 @@
 //     注入体装配在 `core/recall.js`（保持内核纯净度）。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
+import { aiBusy } from '../core/ai-hooks.js';
 import { jsExtractKeywords } from '../core/parallel.js';
 import { buildMemoryBodyForInject } from '../core/recall.js';
 import { vectorRecall } from './vector-recall.js';
@@ -38,7 +39,14 @@ export async function runExtractFlow(floorText, opts) {
     if (!Array.isArray(keywords)) keywords = [];
     trace.push({ layer: 'keywords', via: 'js', count: keywords.length });
 
-    const want = Array.isArray(o.layers) && o.layers.length ? o.layers : ['vector', 'js', 'ai'];
+    let want = Array.isArray(o.layers) && o.layers.length ? o.layers : ['vector', 'js', 'ai'];
+    // v2.74.0（用户要求）：「提取记忆…用独立的向量或固定 JS 为主…确保可以**并行处理**」——
+    //   向量层与 JS 层零 AI（纯本地 / 本地向量服务），任何时刻都能跑；**AI 层**才会占用 AI 通道，
+    //   因此当有长任务在途（摘要 / 修复 / 推演…）时默认**跳过 AI 层**：与在途任务并行但不去抢它的 AI 调用。
+    //   调用方可用 `o.allowAiDuringBusy === true` 强制保留（诊断 / 单层测试）。
+    let aiSkippedBusy = false;
+    if (want.indexOf('ai') >= 0 && o.allowAiDuringBusy !== true && aiBusy()) { want = want.filter((x) => x !== 'ai'); aiSkippedBusy = true; }
+    if (aiSkippedBusy) trace.push({ layer: 'ai', skipped: 'busy', reason: '长任务在途：提取记忆不抢 AI 通道' });
 
     // ① 向量层
     if (want.indexOf('vector') >= 0 && cfg.useVector === true) {
