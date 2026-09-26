@@ -18,7 +18,7 @@ import { buildSummaryPrompt } from '../core/prompt.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
-import { scheduleParallelWeave, jsExtractKeywords } from '../core/parallel.js';
+import { scheduleParallelWeave, jsExtractKeywords, setParallelLastKeywords, parallelLastKeywords } from '../core/parallel.js';
 import { scheduleAtomCompact } from '../core/atom-compact.js';
 import { DIM_LABELS } from '../core/config.js';
 // v2.35.0（API 三通道）：抽取管线的 AI 调用带上**用途 target**（V1 `overrideMain` / `dimensionPresets[维度]` 的等价物）
@@ -33,9 +33,18 @@ import { cleanText } from '../core/html-text.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
+    // v2.59.0（用户报告：「概览缺少展示最后一次提取记忆内容的组件」）：记录**最后一次提取**的时间/来源/范围/
+    //   新增条数/维度/关键词/AI 回复正文（截断），供总览渲染 —— V1 总览用 `lastExtractTime` + `lastExtractKeywords`
+    //   只给了时间与关键词，V2 连**提取内容**（AI 回复）一并留存，便于「刚才到底提了什么」一目了然。
     // B3：分段批量（V1 runAutoSummary）状态
     segTotal: 0, segDone: 0, segRange: '', activeSeg: null, aborted: 0, lastBatch: null,
 };
+/** 最后一次提取记录里保留的 AI 回复上限（字符；避免总览带着几十 KB 文本到处跑） */
+export const LAST_EXTRACT_TEXT_CAP = 4000;
+/** v2.59.0：最后一次提取记录（总览「📤 最后一次提取」组件的数据源） */
+let lastExtract = null;
+/** 最近一个分段分析得到的 AI 回复（批量记录时带上，供总览展示「提取内容」） */
+let lastSegmentText = '';
 /** 中断请求标志（协作式中断：段与段之间生效；在途 AI 请求由宿主决定是否可取消） */
 let abortRequested = false;
 /** 请求中断当前批量分析（V1 abortAnalysis 的 V2 版） */
@@ -56,6 +65,19 @@ export function batchProgress() {
 
 /** 提取统计（/ftt、FTT 调试导出与设置面板共用） */
 export function extractStats() { return Object.assign({}, extractState); }
+
+/** 最后一次提取的记忆（只读快照；无记录 → null） */
+export function lastExtractRecord() {
+    try { return lastExtract ? JSON.parse(JSON.stringify(lastExtract)) : null; } catch (e) { return null; }
+}
+/** 写入最后一次提取记录（内部；同时把关键词登记到推演模块，V1 `lastExtractKeywords` 同源） */
+function recordLastExtract(rec) {
+    try {
+        lastExtract = Object.assign({ at: Date.now() }, rec || {});
+        if (Array.isArray(lastExtract.keywords) && lastExtract.keywords.length) { try { setParallelLastKeywords(lastExtract.keywords); } catch (e2) { /* 忽略 */ } }
+    } catch (e) { /* 记录失败不影响主流程 */ }
+    return lastExtract;
+}
 export function extractBusy() { return extractState.busy; }
 
 /** 生效维度（V1 `dimensionEnabled`）：未配置即全部启用 */
@@ -231,6 +253,12 @@ export async function analyzeFloor(floorId, opts) {
         extractState.lastMs = ms;
         extractState.lastDims = Object.keys(delta);
         try { dbgLog('摘要', { action: '单楼分析完成', floor: Number(floorId), added: mr.added, total: mr.total, ms, chars: String(resp.text || '').length, dims: Object.keys(delta).slice(0, 8) }); } catch (e) { /* 忽略 */ }
+        const kws = (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })();
+        recordLastExtract({
+            via: 'floor', trigger: String(o.trigger || 'manual'), floors: String(Number(floorId)),
+            added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
+            dims: Object.keys(delta).slice(0, 12), keywords: kws, text: String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP),
+        });
         return { ok: true, added: mr.added, total: mr.total, chars: String(resp.text || '').length, ms, deltaKeys: Object.keys(delta) };
     } catch (e) {
         extractState.fail += 1;
@@ -311,6 +339,13 @@ export async function analyzeSegment(start, end, opts) {
         // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
         recordProcessedFloors(s0, e0);
         const ms = Date.now() - t0;
+        lastSegmentText = String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP);
+        recordLastExtract({
+            via: 'segment', trigger: String(o.trigger || 'manual'), floors: s0 + '-' + e0,
+            added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
+            dims: Object.keys(delta).slice(0, 12), keywords: (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })(),
+            text: lastSegmentText,
+        });
         return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta) };
     } finally {
         extractState.activeSeg = null;
@@ -378,6 +413,13 @@ export async function runAutoSummary(opts) {
         }
         const out = { ok: made > 0 || (failed === 0 && aborted === 0), made, added, failed, floors: start + '-' + effLast, segments: segments.length, aborted, ms: Date.now() - t0 };
         extractState.lastBatch = out;
+        // v2.59.0：批量汇总也记一条（总览显示「本次批量：N 段 / 新增 M 条」；正文沿用最后一段的 AI 回复）
+        recordLastExtract({
+            via: 'batch', trigger: String(o.trigger || (silent ? 'auto' : 'manual')), floors: out.floors,
+            added: added, total: 0, chars: String(lastSegmentText || '').length, ms: out.ms,
+            made: made, failed: failed, segments: segments.length, aborted: aborted,
+            keywords: (() => { try { return parallelLastKeywords(); } catch (e2) { return []; } })(), text: lastSegmentText,
+        });
         if (made) extractState.ok += 1;
         if (failed) extractState.fail += 1;
         return out;

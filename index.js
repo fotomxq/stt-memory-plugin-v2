@@ -44,7 +44,7 @@ import {
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
 } from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
-import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled } from './host/extract.js';
+import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord } from './host/extract.js';
 import { listUnprocessedFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { readInject } from './host/inject.js';
@@ -1114,6 +1114,7 @@ function popupHooks() {
         extract: runExtract,
         pending: pendingFloors,
         extractStatus: extractSummary,
+        lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：最后一次提取记录（总览组件同源）
         clearInject,
         checkUpdate: checkUpdateNow,
     };
@@ -1140,6 +1141,7 @@ export function panelRuntimeHooks() {
         abort: abortExtraction,                // 总览「中断」
         batchProgress: batchProgress,          // 忙位进度（「分析中 x/y 段」）
         busy: () => { try { return !!extractBusy(); } catch (e) { return false; } },   // v2.52.0：总览「管线状态」行 + 中断按钮的条件展示
+        lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：总览「📤 最后一次提取」组件
         clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
         dimToggle: (kind, on) => setDimensionEnabled(kind, on),

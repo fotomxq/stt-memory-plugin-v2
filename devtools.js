@@ -63,6 +63,7 @@ export function installDevtools(hooks) {
             analyze: (opts) => (hooks && typeof hooks.extract === 'function' ? hooks.extract(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             pendingFloors: (opts) => (hooks && typeof hooks.pendingFloors === 'function' ? hooks.pendingFloors(opts || {}) : []),
             extractStatus: () => (hooks && typeof hooks.extractStatus === 'function' ? hooks.extractStatus() : null),
+            lastExtract: () => (hooks && typeof hooks.lastExtract === 'function' ? hooks.lastExtract() : null),
             i18n: () => (hooks && typeof hooks.i18n === 'function' ? hooks.i18n() : null),
             folderInfo: () => (hooks && typeof hooks.folderInfo === 'function' ? hooks.folderInfo() : null),
             // 可见性诊断（用户报「装上了但看不到面板」时的第一现场）
