@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.69.0",
+  "version": "2.70.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.70.0",
+      "date": "2026-09-26",
+      "title": "传言衰退增加时间判断（发生越久远消退越快）",
+      "points": [
+        "① 问题：传言衰退沿用 calcTimeDecay 的现实墙钟口径（updatedAt 多级时间尺度 + 类目相对位置 + 拥挤度），而 updatedAt 会在机械演化 / 平…",
+        "② 修复（在原有系数上叠加剧情时间久远度）：core/rumor-evolve.js 新增 rumorAgeSpeed(r) 与 rumorDecayBreakdown(r)；发…",
+        "③ 保守性：无剧情时钟 / 无发生日期 / 发生时间在未来 → 久远度恒为 0，完全保持原行为（不引入新的删除风险）；平行事件的衰退口径未动（用户本次只提传言）。"
+      ]
+    },
     {
       "version": "2.69.0",
       "date": "2026-09-26",
