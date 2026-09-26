@@ -641,12 +641,12 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "storage.snapshotFile",
-            "label": "快照链独立文件",
+            "label": "快照存独立文件",
             "type": "checkbox"
         },
         {
             "key": "storage.settingsMirror",
-            "label": "仍镜像写回存档变量",
+            "label": "同时写回存档变量（兼容旧格式）",
             "type": "checkbox"
         },
         {
@@ -666,12 +666,12 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "storage.verifyOnLoad",
-            "label": "载入时哈希校验",
+            "label": "载入时校验数据完整性",
             "type": "checkbox"
         },
         {
             "key": "storage.syncOnSave",
-            "label": "保存时同步镜像",
+            "label": "保存时同步到服务端",
             "type": "checkbox"
         },
         {
@@ -686,7 +686,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "storage.syncMetaProbe",
-            "label": "服务端清单预判（省流量·推荐开启）",
+            "label": "同步前先比对清单（省流量·推荐开启）",
             "type": "checkbox"
         },
         {
@@ -696,7 +696,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "storage.deletedKeepDays",
-            "label": "删除墓碑保留（天）",
+            "label": "已删除条目的保留天数",
             "type": "text"
         },
         {
@@ -776,7 +776,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "syncTrafficGuard",
-            "label": "楼层哈希差异门控（省流量·推荐开启）",
+            "label": "仅变化时同步（省流量·推荐开启）",
             "type": "checkbox"
         }
     ],

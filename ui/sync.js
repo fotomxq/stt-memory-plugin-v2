@@ -14,7 +14,7 @@ import { syncLogShortHash, syncLogStat } from '../core/sync-log.js';
 import {
     storageStatusInfo, stateFileStatus, syncLogServerStatus, syncLogList, syncLogClear,
     syncLogServerMerge, storageVerify, crossSyncManual, refreshFromServer, syncLocalSource,
-    noteSyncReport, syncToast, syncInfo, crossPendingView, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
+    noteSyncReport, syncToast, crossPendingView, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
     storageWriteAll, slimGzipInfo, syncLogPush,
 } from '../adapters/sync.js';
 import { storageEnvelope } from '../core/envelope.js';
@@ -45,10 +45,9 @@ export function stateFileStatusHtml() {
         const s = stateFileStatus();
         if (!s.enabled) return '记忆文件：<b>已关闭</b>（改用存档变量通道 —— 不推荐）';
         const when = Number(s.lastOkAt) ? fmtTime(s.lastOkAt) : '';
-        return '记忆文件：<b>已启用</b>（存档名 <b>' + esc(s.archive || '—') + '</b> → slug <span class="ftt-mono">' + esc(s.slug || '') + '</span>）<br>'
+        return '记忆文件：<b>已启用</b>' + (s.archive ? (' · 角色「' + esc(s.archive) + '」') : '') + '<br>'
             + '主文件 ' + mono(s.name) + (s.bakEnabled ? (' · 备份 ' + mono(s.bak)) : '') + (s.snapEnabled ? (' · 快照 ' + mono(s.snap)) : '') + '<br>'
-            + '清单 ' + mono(s.meta) + '（' + (Number(s.metaOkAt) ? ('最近写入 ' + fmtTime(s.metaOkAt)) : (s.metaErr ? ('不可用 ' + esc(s.metaErr)) : '本会话尚未写入')) + '）<br>'
-            + (when ? ('最近写入 ' + when) : '本会话尚未写入（打开页面会自动拉取合并）')
+            + (when ? ('最近写入 ' + when) : '本次会话尚未写入（打开页面会自动拉取合并）')
             + (s.mirrorSettings ? ' · settings 镜像已开启' : ' · settings 已剥离')
             + (Number(s.bytes) ? (' · 主文件 ' + fmtBytes(s.bytes)) : '');
     } catch (e) { return '记忆文件：状态读取失败'; }
@@ -119,26 +118,31 @@ export function slimGzipInfoHtml() {
         const i = slimGzipInfo();
         return '<div class="ftt-muted ftt-hint" data-ftt-slim-gzip>存储编码：条目瘦身 ' + (i.slim ? '<b>已开启</b>' : '关闭（默认）')
             + ' · gzip 写入 ' + (i.gzip ? '<b>已开启</b>' : '关闭（默认）')
-            + ' · 通道' + (i.gzipAvailable ? '支持压缩' : '不支持压缩（自动回退明文）')
             + ' · 当前写入名 ' + mono(i.writeName)
-            + (i.gzip ? '（读取按内容魔数自动识别，明文旧文件仍可读）' : '') + '</div>';
+            + '（读取自动识别格式，旧文件仍可读）</div>';
     } catch (e) { return ''; }
 }
 
-/** 同步区块内的一次性小工具行（本端源头 / 流量门控状态） */function syncMiniInfoHtml() {
+/** 同步区块内的一次性小工具行（本端源头 / 流量门控状态） */
+function syncMiniInfoHtml() {
     try {
-        const info = syncInfo();
         const g = storageStatusInfo().gates;
         return '<div class="ftt-muted ftt-hint">本端源头 📡' + esc(syncLocalSource())
-            + ' · 流量门控 ' + (g.traffic ? '<b>开</b>' : '<b>关</b>')
-            + ' · 镜像签名 ' + (g.mirrorNeeded ? '待推送' : '已一致')
-            + ' · 楼层门控 ' + esc(String((g.floor && g.floor.why) || ''))
-            + ' · 文件缓存 ' + Number(info.cacheNames || 0) + ' 项</div>';
+            + ' · 流量门控 ' + (g.traffic ? '<b>开</b>' : '<b>关</b>') + '</div>';
     } catch (e) { return ''; }
 }
 
 /**
  * 存储页正文（对齐 V1 的分节布局；控件来自 `SETTINGS_CONTROLS.storage`，不重复定义）
+ *
+ * v2.56.0 精简（用户要求：「设定-存储中的大量提示信息需优化，避免出现历史版本、无关内容、罗嗦提示」）：
+ *   ① 删除历史/开发说明：V1 治理视图说明、「V1 在检测到 TauriTavern 时…V2 现阶段…（后续批次）」整节、
+ *      docs/P8i 指向、「标准化信封」「统一存储抽象」等架构描述、「墓碑/哈希/魔数」等内部术语；
+ *   ② 删除无关内容：「📤 导出 / 📥 导入已移至数据管理」的指路、与按钮 title 重复的操作解释、
+ *      重复渲染两次的记忆文件状态行（只在这一节保留一份）；
+ *   ③ 每条提示只讲「这是什么 + 会有什么后果」，并修掉文件名里 `<slug>` 被二次转义显示成 `&lt;slug&gt;` 的问题。
+ *   宿主原生存储（V1 的 TauriTavern `api.extension.store` 通道）在 V2 尚无实现，配置键保留（V1 导入兼容），
+ *   但**不再在页面上展示无效开关** —— 避免「看着能开、其实无效」的误导。
  * @param {Array} controls 存储页控件表
  */
 export function storagePageHtml(controls) {
@@ -151,26 +155,18 @@ export function storagePageHtml(controls) {
         'storage.worldbookDepth', 'storage.worldbookPreventRecursion', 'storage.worldbookProbability', 'storage.worldbookSticky',
         'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes'].indexOf(String(c.key)) < 0);
     return [
-        '<div class="ftt-muted ftt-mb-2">只列开关与状态；统一存储抽象（分类 → 载体 → 后端 → 策略）为 V1 的治理视图，V2 收敛为「本机缓冲 + 服务端记忆文件」两型（见 docs/P8i）。</div>',
-
         '<div class="ftt-section"><div class="ftt-sec-title">记忆文件（服务端 · 核心基准）</div>',
-        '<div class="ftt-muted">记忆数据<b>独立成文件</b>存于服务端用户目录（不塞进 settings）；文件名固定 ' + mono('ftt2-state-&lt;slug&gt;.json') + '。</div>',
+        '<div class="ftt-muted">记忆数据存在服务端的独立文件里（文件名 ' + mono('ftt2-state-<角色>.json') + '）。</div>',
         '<div class="ftt-muted ftt-my-1" data-ftt-state-file-status>' + stateFileStatusHtml() + '</div>',
         box(['storage.stateFile', 'storage.stateFileBak', 'storage.snapshotFile', 'storage.settingsMirror', 'storage.deletedKeepDays']),
-        '<div class="ftt-muted">删除条目记「id + 内容哈希」双墓碑并随文件同步：对端以新 id 重写也不会复活。</div></div>',
-
-        '<div class="ftt-section"><div class="ftt-sec-title">宿主平台 · 原生存储（自动切换）</div>',
-        '<div class="ftt-muted ftt-my-1">V1 在检测到 TauriTavern（<span class="ftt-mono">window.__TAURITAVERN__</span>）时改走其原生存储 <span class="ftt-mono">api.extension.store</span>；'
-        + 'V2 现阶段统一走酒馆用户目录文件（原生存储通道属后续批次，本页仅保留同名配置键与说明）。</div>',
-        box(['storage.tauriNative', 'storage.tauriMirror']) + '</div>',
+        '<div class="ftt-muted">删除条目会留下记录并随文件同步，对端不会把已删条目复活。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">本机缓冲（仅缓冲 · 权威=记忆文件）</div>',
-        '<div class="ftt-muted">localStorage / IndexedDB 仅作本机<b>缓冲</b>（常驻、无开关）：加速读取与离线回退；权威数据是<b>服务端记忆文件</b>。</div></div>',
+        '<div class="ftt-muted">本机只做加速读取与离线回退，可随时清除；权威数据是服务端记忆文件。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">一致性</div>',
         box(['storage.verifyOnLoad', 'storage.syncOnSave', 'storage.crossPullOnActivity', 'storage.crossPullOnVisible', 'storage.syncMetaProbe', 'syncTrafficGuard']),
-        '<div class="ftt-muted">关闭「服务端清单预判」则每轮完整下载远端记忆文件（慢链路一次省 20s+）；关闭「楼层哈希差异门控」则每次保存都联网对账（不推荐）。</div>',
-        '<div class="ftt-muted">统一「标准化信封」+ 哈希校验/损坏降级；本机缓冲常驻，权威=服务端记忆文件，跨端异步对账补充。</div>',
+        '<div class="ftt-muted">上面两个「省流量」开关关闭后，每次保存都会联网对账（更慢，不推荐关闭）。</div>',
         syncMiniInfoHtml() + '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">世界书存储（单向写入 · 由下方开关联动）</div>',
@@ -178,24 +174,22 @@ export function storagePageHtml(controls) {
             'storage.worldbookDepth', 'storage.worldbookPreventRecursion', 'storage.worldbookProbability', 'storage.worldbookSticky',
             'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes']),
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="worldbookRefresh">📚 刷新世界书列表</button>'
-        + '<span class="ftt-muted">词条镜像为<b>单向写入</b>（只出不进）：类目常驻词条 + 每原子一条词条，Markdown 分层；数据变更后延迟 8s 自动重建（8s 防抖合并）。</span></div>',
-        '<div class="ftt-muted">需酒馆提供世界书写入接口（TavernHelper）；纯酒馆且无该接口时写入按 V1 静默失败并告警，不影响主存储。</div></div>',
+        + '<span class="ftt-muted">只写世界书、不读回；记忆变更后自动重建。</span></div>',
+        '<div class="ftt-muted">写入需要酒馆的世界书接口；宿主不支持时会提示，且不影响记忆数据。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">状态与操作</div>',
-        '<div class="ftt-muted" data-ftt-storage-status>' + stateFileStatusHtml() + '</div>',
         divergenceBannerHtml(),
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageStatusRefresh" title="读取服务端真值并与本端合并">🔄 刷新状态（取服务端最新并合并）</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageSync" title="双向同步并写入服务端（含备份与快照）">🔄 立即同步（含备份）</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageVerify">✅ 校验并修复</button>',
-        '<span class="ftt-muted">📤 导出 / 📥 导入已移至「设定 → 数据管理」。</span></div>',
-        '<div class="ftt-muted">「刷新状态」＝取服务端最新并合并；「立即同步」＝双向同步 + 备份 + 快照。</div>',
+        '</div>',
         slimGzipInfoHtml() + '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">🔄 同步日志（最近 30 条 · 本角色）</div>',
-        '<div class="ftt-muted ftt-mb-1">每次对账/镜像记一条：<b>本地 → 对端 → 同步后</b>（条数/大小）+ 处置；新→旧，用于追溯不同步。</div>',
+        '<div class="ftt-muted ftt-mb-1">每次对账 / 同步 / 镜像推送记一条（本地 → 对端 → 同步后），用于追溯不同步。</div>',
         box(['storage.syncLogServer']),
-        '<div class="ftt-muted ftt-mb-1">开启后日志存服务端（随账号持久化）；打开页面自动与服务端交叉合并（去重取并集，最近 30 条），仅本机更全时回传。关闭则只存本机。</div>',
+        '<div class="ftt-muted ftt-mb-1">开启后日志随账号存到服务端（双端可见），关闭则只存本机。</div>',
         '<div class="ftt-muted ftt-mb-1" data-ftt-sync-log-status>' + syncLogServerStatusHtml() + '</div>',
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="syncLogRefresh">🔄 刷新日志（与服务端合并）</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="syncLogClear">🧹 清空日志</button><span class="ftt-muted">（仅本聊天角色）</span></div>',
