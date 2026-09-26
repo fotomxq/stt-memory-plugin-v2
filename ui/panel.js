@@ -16,7 +16,7 @@ import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/mo
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, entrySummary, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
-import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, settingsPagesInfo, SETTINGS_TABS } from './settings-pages.js';
+import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS } from './settings-pages.js';
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
@@ -907,11 +907,11 @@ function statesBody() {
 function settingsBody() {
     const cur = SETTINGS_TABS.some((t) => t.id === ps.settingsSub) ? ps.settingsSub : SETTINGS_TABS[0].id;
     const label = (SETTINGS_TABS.filter((t) => t.id === cur)[0] || {}).label || cur;
-    const info = settingsPagesInfo();
-    const curInfo = info.pages.filter((p) => p.id === cur)[0] || { controls: 0 };
     return [
         '<div class="ftt-row ftt-settings-subtabs">' + settingsSubTabsHtml(cur) + '</div>',
-        '<div class="ftt-hint">设定 · ' + esc(label) + '（' + curInfo.controls + ' 个配置项 · 共 ' + info.totalControls + ' 项 / ' + info.pages.length + ' 页，结构与 V1 同名同序）</div>',
+        // v2.55.0（用户要求：页面上不要开发/历史内容）：标题行只留「设定 · <页名>」，
+        //   不再展示「N 个配置项 · 共 X 项 / 13 页 · 结构与 V1 同名同序」这类实现与沿革说明。
+        '<div class="ftt-hint">设定 · ' + esc(label) + '</div>',
         // v2.43.0（用户要求）：「V2 附加设定」不再挂在**每个**设定子页的最底部，而是作为
         //   「基础」页的一块固定分节（默认进入设定页就是基础页，故仍一眼可见）。
         '<div class="ftt-settings-page" data-ftt-settings-page="' + attr(cur) + '">'

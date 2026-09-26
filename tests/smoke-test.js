@@ -2098,7 +2098,7 @@ await assert('AE1 调试页：V1 同款控件与日志查看器（计数/类别�
         const pageOk = h.indexOf('data-ftt-settings-page="debug"') >= 0 && h.indexOf('data-ftt-cfg="debugEnabled"') >= 0
             && h.indexOf('关闭后不再记录新日志；已存日志仍可查看。') >= 0
             && h.indexOf('data-ftt-action="dbgClear"') >= 0 && h.indexOf('🗑 清空日志') >= 0
-            && h.indexOf('共 2 条') >= 0 && h.indexOf('（最多 300 条，最新在上；点击展开详情）') >= 0
+            && h.indexOf('共 2 条') >= 0 && h.indexOf('（最多 300 条 · 最新在上 · 点击展开）') >= 0
             && h.indexOf('class="ftt-dbg-item"') >= 0 && h.indexOf('🧠 分析记忆 1') >= 0 && h.indexOf('🔄 存储对账 1') >= 0
             && h.indexOf('单楼分析完成') >= 0;
         rtMod.cfg.debugEnabled = false;
@@ -2111,7 +2111,7 @@ await assert('AE1 调试页：V1 同款控件与日志查看器（计数/类别�
         const clearedOk = c.ok === true && note === '已清空调试日志'
             && c.cleared === 2 && after.length === 0 && JSON.parse(ls.getItem('SPreset_FTTMemoryDebug')).length === 0;
         h = String((await entry.popupAction('refresh', {})).html || '');
-        const emptyOk = h.indexOf('暂无日志。运行「AI 摘要」或「自动修复」后在此显示。') >= 0;
+        const emptyOk = h.indexOf('暂无日志。') >= 0;
         return missing.length === 0 && stats.n === 2 && stats.cap === 300 && typeof stored === 'string'
             && pageOk && offRet === false && clearedOk && emptyOk;
     } finally {

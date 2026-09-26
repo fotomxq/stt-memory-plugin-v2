@@ -217,5 +217,21 @@ await A('P7 v2.43.0 位置修复：「V2 附加设定」只作为**基础**子�
     return onlyBase && inBase && ctrls && noLegacyFooter;
 }, () => J(Object.keys(rows).reduce((o, k) => { o[k] = rows[k].has ? (rows[k].inside ? 'base内' : '页脚') : '无'; return o; }, {})));
 
+await A('P8 v2.55.0 设定页标题行只留「设定 · <页名>」：不再展示「N 个配置项 / 共 X 项 / 结构与 V1 同名同序」等开发与沿革说明，也不再出现「B6/B7 批次接入」这类历史待办', async () => {
+    openPanel('settings');
+    const seen = [];
+    for (const t of SETTINGS_TABS) {
+        await panelAction('settingsSub', { sub: t.id });
+        const h = panelBodyHtml('settings');
+        seen.push({
+            id: t.id,
+            head: h.indexOf('设定 · ' + t.label) >= 0,
+            dev: h.indexOf('结构与 V1 同名同序') >= 0 || h.indexOf('个配置项') >= 0 || h.indexOf('批次接入') >= 0,
+        });
+    }
+    await panelAction('settingsSub', { sub: 'base' });
+    return seen.every((x) => x.head === true && x.dev === false);
+}, () => J(SETTINGS_TABS.map((t) => t.label)));
+
 un();
 R.done();

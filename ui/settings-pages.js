@@ -1009,14 +1009,11 @@ export function parallelsPageHtml(controls) {
     ].join('\n');
 }
 
-/** 页内「待后续批次」说明（不使用假实现） */
-const PENDING_NOTE = {
-    prompts: '提示词页的**模板分组编辑/恢复默认/签名迁移**在 B6 批次接入；本页先提供提示词相关开关与破限前置文本开关。',
-    storage: '存储页的**探测/测试/同步动作**依赖 B7 批次的内核；本页先提供存储开关。',
-};
+// v2.55.0（用户要求：页面上不要开发/历史内容）：删除原来的 PENDING_NOTE（提示词页/存储页各一条
+//   「在 B6/B7 批次接入…」的**开发批次说明**）——那些批次早已交付，留着只会让用户看到过时的开发内容。
 
 /**
- * 单页 HTML（V1 同款子标签 + 字段列表 + 可选动作块 + 待办说明）。
+ * 单页 HTML（V1 同款子标签 + 字段列表 + 可选动作块）。
  * @param {string} pageId 子页 id
  * @param {string} [extrasHtml] 仅**基础页**使用的「V2 附加设定」分节 HTML（v2.43.0：位置从页脚改为基础页内）
  */
@@ -1049,8 +1046,7 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'feed') return list.map((c) => settingsControlHtml(c)).join('\n') + feedScanSectionHtml() + feedTagListSectionsHtml();
     const rows = list.map((c) => settingsControlHtml(c)).join('\n');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
-    const note = PENDING_NOTE[pid] ? '<div class="ftt-hint">' + esc(PENDING_NOTE[pid]) + '</div>' : '';
-    return rows + extra + note + (list.length ? '' : (extra || note ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>'));
+    return rows + extra + (list.length || extra ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>');
 }
 
 /**
