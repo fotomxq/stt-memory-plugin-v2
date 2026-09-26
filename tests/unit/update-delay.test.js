@@ -85,6 +85,13 @@ A('P2 常量可被文档/设置引用（4 秒默认 + 60 秒上限，避免「�
 
 // ---------- S 组：排期语义 ----------
 await (async () => {
+    // v2.77.0 说明（本次修正的时序脆弱点）：插件自身的 `init()` 也会调用一次启动自动检查
+    //   （index.js 注释里的「init 与 APP_READY 双双触发」——新一轮取代旧一轮）。init 走的是
+    //   probeTick 的延后初始路径，落地时机取决于模块装载量；若它在我们显式调用**之后**才落地，
+    //   就会把我们这一轮取代掉（`scheduled` 变 2 条、`p` 返回 superseded）。
+    //   本组只验证「显式调用这一轮」的排期语义，故先等 init 的自动排期落地（此时用的是真实定时器钩子，
+    //   不会被下面的虚拟定时器记录），再装虚拟定时器开测 —— 断言与实现顺序解耦。
+    for (let i = 0; i < 60 && !Number(((entry.runtimeState() || {}).update || {}).delayMs); i += 1) await tick();
     const timers = virtualTimers();
     const calls = [];
     const net = stubNet(calls);

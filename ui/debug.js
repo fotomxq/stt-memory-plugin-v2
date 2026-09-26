@@ -23,6 +23,8 @@ import { traceList, traceStats, traceTimelineText, traceContext, traceClear, tra
 import { getCtx } from '../host/st-api.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
+// v2.77.0：文件通道（宿主原生存储 / 酒馆用户目录文件）现状 —— 排障时先看这一项
+import { fileTransportStatus } from '../adapters/file-transport.js';
 import { settingsControlHtml } from './settings-pages.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
@@ -104,6 +106,7 @@ export function buildDebugExport() {
         env: {
             host: !!(ctx && typeof ctx === 'object'),
             tauri: !!(typeof globalThis !== 'undefined' && (globalThis.__TAURI__ || globalThis.__TAURI_INTERNALS__)),
+            storageChannel: (() => { try { return fileTransportStatus(); } catch (e) { return { error: String((e && e.message) || e) }; } })(),
             locale: String((ctx && ctx.locale) || ''),
             userAgent: (() => { try { return String((globalThis.navigator && globalThis.navigator.userAgent) || ''); } catch (e) { return ''; } })(),
             capabilities: caps || {},

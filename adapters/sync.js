@@ -47,9 +47,12 @@ import { hashFloorText } from '../host/floors.js';
 import { extractBusy } from '../host/extract.js';
 import { getCtx } from '../host/st-api.js';
 import {
-    slugify, stateFileName as scopedStateFileName, uploadStateFile, uploadStateFileGz, readStateFile,
-    readStateFileAuto, FILE_EXT_GZ,
+    slugify, stateFileName as scopedStateFileName, FILE_EXT_GZ,
 } from './user-file.js';
+// v2.77.0：文件通道统一走 `adapters/file-transport.js`（后端识别切换：宿主原生存储 / 酒馆用户目录文件）
+import {
+    fileTransportReadAuto, fileTransportUploadText, fileTransportUploadGz, fileTransportDropCaches,
+} from './file-transport.js';
 import {
     slimEntryForStorage, hydrateSlimEntry, slimDataForStorage, hydrateStorageData,
     slimSnapshotStoreForStorage, hydrateSnapshotStore, snapshotIndexFrom,
@@ -174,13 +177,17 @@ export function snapshotFileReadCandidates() { return stateFileGzipOn() ? [snaps
 export function bakReadCandidates() { return stateFileGzipOn() ? [bakGzName(), bakFileName()] : [bakFileName()]; }
 
 // ---------- 文件通道（读缓存：同名文件同会话不重复下载） ----------
-/** 清空文件读缓存（手动「刷新状态」「立即同步」= 取真值 → 绕开缓存） */
-export function fileCacheDropAll() { fileReadCache = {}; return true; }
+/** 清空文件读缓存（手动「刷新状态」「立即同步」= 取真值 → 绕开缓存；含通道侧路由/列表缓存） */
+export function fileCacheDropAll() {
+    fileReadCache = {};
+    try { fileTransportDropCaches(); } catch (e) { /* 忽略 */ }
+    return true;
+}
 export function fileCacheStats() { return { names: Object.keys(fileReadCache).length }; }
 
 async function filesReadText(name) {
     try {
-        const r = await readStateFileAuto(name);
+        const r = await fileTransportReadAuto(name);
         if (!r || !r.ok) return '';
         return String(r.text == null ? '' : r.text);
     } catch (e) { return ''; }
@@ -188,7 +195,7 @@ async function filesReadText(name) {
 /** 按**内容魔数**读取（gzip 自动解压）—— 读缓存命中判定与 V1 同口径（同名同会话只下一次） */
 async function filesReadContentAuto(name) {
     try {
-        const r = await readStateFileAuto(name);
+        const r = await fileTransportReadAuto(name);
         if (!r || !r.ok) return null;
         return { text: String(r.text == null ? '' : r.text), gz: !!r.gz };
     } catch (e) { return null; }
@@ -206,7 +213,7 @@ async function filesReadContentCached(name) {
     } catch (e) { return null; }
 }
 async function filesUploadText(name, text) {
-    try { return await uploadStateFile(name, text); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+    try { return await fileTransportUploadText(name, text); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
 // ---------- 远端已合入指纹（清单预判的比对基准） ----------
@@ -414,14 +421,14 @@ async function uploadContentMaybeGz(gzName, plainName, text, wantGz) {
     fileCacheInvalidateBase(gzName, plainName);
     let gzFail = '';
     if (wantGz) {
-        const rg = await uploadStateFileGz(gzName, text);
+        const rg = await fileTransportUploadGz(gzName, text);
         if (rg && rg.ok) {
             fileReadCache[gzName] = { at: Date.now(), text, gz: true };
             return { ok: true, name: gzName, gz: true, bytes: rg.bytes };
         }
         gzFail = String((rg && (rg.reason || rg.error || rg.status)) || 'gz-failed');
     }
-    const rp = await uploadStateFile(plainName, text);
+    const rp = await fileTransportUploadText(plainName, text);
     if (rp && rp.ok) {
         fileReadCache[plainName] = { at: Date.now(), text, gz: false };
         return { ok: true, name: plainName, gz: false, gzFallback: wantGz, gzFail };
