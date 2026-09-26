@@ -136,9 +136,10 @@ A('A10 v2.76.0 归纳：货币记录与「各大类单条字数上限」两组�
     const moved = ['currencyEnabled', 'currencyDynamicEnabled', 'dimCharLimits.atoms', 'dimCharLimits.states',
         'dimCharLimits.snapshots', 'dimCharLimits.memories', 'dimCharLimits.items', 'dimCharLimits.plans',
         'dimCharLimits.suspense', 'dimCharLimits.scenes', 'dimCharLimits.concepts', 'dimCharLimits.parallels'];
+    // v2.78.0：「重要性计算」迁到提取记忆页（属召回打分）→ extract 22→24（analyze 不变）
     return moved.every((k) => an.indexOf(k) >= 0 && ex.indexOf(k) < 0)
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms')
-        && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 22
+        && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 24
         && SETTINGS_CONTROLS.analyze.length === 17;
 })(), J({ analyze: SETTINGS_CONTROLS.analyze.length, extract: SETTINGS_CONTROLS.extract.length }));
 

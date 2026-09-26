@@ -66,8 +66,6 @@ export const SETTINGS_CONTROLS = {
         { "key": "autoSummary", "label": "生成后自动 AI 摘要", "type": "checkbox", "forceWhen": "timelyAnalysis" },
         { "key": "autoRepair", "label": "生成后自动修复", "type": "checkbox" },
         { "key": "injectCurrentPrompt", "label": "注入当前提示词", "type": "checkbox", "forceWhen": "timelyAnalysis" },
-        { "key": "importanceBase", "label": "初始重要性(0次调用)", "type": "text" },
-        { "key": "importancePerUse", "label": "每次调用增量", "type": "text" },
         { "key": "clockExtractEnabled", "label": "消息后自动同步时钟（只取最新情节）", "type": "checkbox" },
         { "key": "clockRepairBatch", "label": "AI 结合正文修复：单次提交条数（默认 20）", "type": "text" },
         { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" }
@@ -321,6 +319,16 @@ export const SETTINGS_CONTROLS = {
         {
             "key": "maxParallelsInj",
             "label": "平行事件(注入)上限（默认 8）",
+            "type": "text"
+        },
+        {
+            "key": "importanceBase",
+            "label": "初始重要性(0次调用)",
+            "type": "text"
+        },
+        {
+            "key": "importancePerUse",
+            "label": "每次调用增量",
             "type": "text"
         },
         {
@@ -848,6 +856,7 @@ export const SETTINGS_CONTROLS = {
 //   （`ui/feed-scan.js`，对应 V1 `rxTagScanHtml()` 与 `rxScanTags`/`rxAddTag`/`rxScanClear` 三个动作）。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
+import { clamp } from '../core/util.js';
 import { CN_KEY_MAP } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { worldbookNames } from '../host/worldbook.js';
@@ -909,6 +918,11 @@ export function applySettingsControl(key, raw) {
             try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
             return { ok: true, key: k, value: cfg.dimensionGrouping };
         }
+        // v2.78.0：V1 `settingsApplyAll` 的两项数值夹取**逐字对齐**（v1.206 26743/26744）——
+        //   `importanceBase` ∈ [0,1]、`importancePerUse` ∈ [0,0.5]；非法数值回落 0（V1 `Number(el.value) || 0`）。
+        //   这两项随「重要性计算」迁到「提取记忆」页后由用户直接编辑，夹取必须在写回处生效。
+        if (k === 'importanceBase') raw = clamp(Number(raw) || 0, 0, 1);
+        else if (k === 'importancePerUse') raw = clamp(Number(raw) || 0, 0, 0.5);
         if (k.indexOf('storage.') === 0) {
             cfg.storage = Object.assign({}, cfg.storage || {});
             cfg.storage[k.slice(8)] = raw;
@@ -992,7 +1006,9 @@ function entryLocationRowsHtml() {
 }
 
 /**
- * 基础页正文（v2.51.0：组件开关 / 重要性计算 / 剧情时钟（只取最新情节）/ 情节日期时间修复 / 界面特效）。
+ * 基础页正文（v2.51.0：组件开关 / 剧情时钟（只取最新情节）/ 情节日期时间修复 / 界面特效）。
+ * v2.78.0（用户要求）：「重要性计算」属**召回**（`core/recall.js#calcImportance`：初始值 + 调用次数 × 增量，
+ *   调用次数在召回命中时累加）→ 从本页迁到「提取记忆」页（分节「重要性计算（调用次数驱动）」）。
  * v2.65.0：「显示界面开关」按 V1 v1.206 `buttonLocationRowsHtml()` 对齐（顶栏 / 页面底部 / 悬浮 / 扩展菜单项 +
  *   开关即时生效）；扩展菜单项强制开启、不展示开关（用户要求）；另加 V2 附加的「扩展设置抽屉卡片」；
  *   「AI 捕捉正文 → 生成正则」与「AI 结合正文修复日期时间」两条 AI 管线属 B8-2（本页先如实标注，不放假实现）。
@@ -1006,11 +1022,7 @@ export function basePageHtml(controls, extrasHtml) {
         '<div class="ftt-section"><div class="ftt-sec-title">组件开关</div>',
         rows(['enabled', 'timelyAnalysis', 'autoExtract', 'autoSummary', 'autoRepair', 'injectCurrentPrompt']),
         '<div class="ftt-muted">内置自动触发：消息后提取记忆；「注入当前提示词」开启则一并注入，关闭则仅提取记忆（不越权注入）。</div>',
-        '<div class="ftt-muted">「记录调试日志」在「调试」页；「召回参数」在「提取记忆」页。</div></div>',
-
-        '<div class="ftt-section"><div class="ftt-sec-title">重要性计算（调用次数驱动）</div>',
-        rows(['importanceBase', 'importancePerUse']),
-        '<div class="ftt-muted">重要性 = 初始值 + 调用次数 × 增量，自动计算。</div></div>',
+        '<div class="ftt-muted">「记录调试日志」在「调试」页；「召回参数」与「重要性计算」在「提取记忆」页。</div></div>',
 
         // v2.51.0 时钟改版（用户要求）：「只取最新情节」为唯一可信来源 —— 以下设定与提示按新设计重写，
         //   不再保留任何「正文正则/自定义正则/相对日期/强制降级/年份异常阈值/第N天纪元/自动巡检」等废弃内容。
