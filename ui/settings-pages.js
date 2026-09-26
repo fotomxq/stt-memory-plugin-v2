@@ -203,6 +203,18 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
     
+        { "key": "currencyEnabled", "label": "货币（记录 + 注入）", "type": "checkbox" },
+        { "key": "currencyDynamicEnabled", "label": "货币 · 动态识别其他角色", "type": "checkbox" },
+        { "key": "dimCharLimits.atoms", "label": "情节正文上限", "type": "text" },
+        { "key": "dimCharLimits.states", "label": "状态值上限", "type": "text" },
+        { "key": "dimCharLimits.snapshots", "label": "角色档案累计上限", "type": "text" },
+        { "key": "dimCharLimits.memories", "label": "记忆正文上限", "type": "text" },
+        { "key": "dimCharLimits.items", "label": "物品说明上限", "type": "text" },
+        { "key": "dimCharLimits.plans", "label": "计划内容上限", "type": "text" },
+        { "key": "dimCharLimits.suspense", "label": "悬念内容上限", "type": "text" },
+        { "key": "dimCharLimits.scenes", "label": "场景描述上限", "type": "text" },
+        { "key": "dimCharLimits.concepts", "label": "概念内容上限", "type": "text" },
+        { "key": "dimCharLimits.parallels", "label": "平行事件(推演)上限", "type": "text" },
     ],
     "safety": [],
     "extract": [
@@ -292,16 +304,6 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
-            "key": "currencyEnabled",
-            "label": "货币（记录 + 注入）",
-            "type": "checkbox"
-        },
-        {
-            "key": "currencyDynamicEnabled",
-            "label": "货币 · 动态识别其他角色",
-            "type": "checkbox"
-        },
-        {
             "key": "maxCurrencies",
             "label": "货币注入上限（默认 8）",
             "type": "text"
@@ -330,16 +332,6 @@ export const SETTINGS_CONTROLS = {
         //    （B4 自动提取同样漏掉手写块；V1 用 `dcl_*` 代理键写 `cfg.dimCharLimits.*`，V2 控件引擎原生支持点路径，故直接用真键）
         //    语义（V1 原样）：单条正文超上限**入库即硬截断**（历史数据不回溯），AI 提示词里的目标字数不变；
         //    注意 V2 的默认值整体高于 V1 的提示词目标（V2 硬截断留余量，见 `core/config.js` 注释），属既定偏差，不是控件默认值写错。
-        { "key": "dimCharLimits.atoms", "label": "情节正文上限", "type": "text" },
-        { "key": "dimCharLimits.states", "label": "状态值上限", "type": "text" },
-        { "key": "dimCharLimits.snapshots", "label": "角色档案累计上限", "type": "text" },
-        { "key": "dimCharLimits.memories", "label": "记忆正文上限", "type": "text" },
-        { "key": "dimCharLimits.items", "label": "物品说明上限", "type": "text" },
-        { "key": "dimCharLimits.plans", "label": "计划内容上限", "type": "text" },
-        { "key": "dimCharLimits.suspense", "label": "悬念内容上限", "type": "text" },
-        { "key": "dimCharLimits.scenes", "label": "场景描述上限", "type": "text" },
-        { "key": "dimCharLimits.concepts", "label": "概念内容上限", "type": "text" },
-        { "key": "dimCharLimits.parallels", "label": "平行事件(推演)上限", "type": "text" },
     ],
     "forget": [
         {
@@ -1078,6 +1070,18 @@ export function analyzePageHtml(controls) {
     const scope = ['summaryChunkSize'].map(row).filter(Boolean).join('\n');
     const segKeys = ['plotSegmentBatchAtoms', 'plotSegmentProtectManual', 'plotSegmentIncremental', 'plotSegmentTextLimit'];
     const seg = segKeys.map(row).filter(Boolean).join('\n');
+    // v2.76.0（用户要求）：「设定-提取记忆中很多设置根本不是召回处理用的，请正确归纳到对应设定中。」
+    //   以下两类**不是召回参数**，本批从「提取记忆」页搬到本页（分析/入库口径）：
+    //   ① 货币记录开关（`currencyEnabled` / `currencyDynamicEnabled`）—— 决定「分析时抽不抽货币、是否动态识别其他角色」；
+    //   ② 各大类单条字数上限（`dimCharLimits.*`）—— 入库时的**硬截断**（`dimCap`），约束 AI 能写入多长。
+    const money = ['currencyEnabled', 'currencyDynamicEnabled'].map(row).filter(Boolean).join('\n');
+    const DIM_CAP_LABELS = {
+        atoms: '情节正文上限', states: '状态值上限', snapshots: '角色档案累计上限', memories: '记忆正文上限',
+        items: '物品说明上限', plans: '计划内容上限', suspense: '悬念内容上限', scenes: '场景描述上限',
+        concepts: '概念内容上限', parallels: '平行事件(推演)上限',
+    };
+    const capKeys = Object.keys(DIM_CAP_LABELS).map((k) => 'dimCharLimits.' + k);
+    const caps = capKeys.map(row).filter(Boolean).join('\n');
     const rest = list.filter((c) => !used[String(c.key)]).map((c) => settingsControlHtml(c));
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
@@ -1099,6 +1103,17 @@ export function analyzePageHtml(controls) {
             ? '<div class="ftt-section"><div class="ftt-sec-title">情节分段总结（情节页「🧩 分段总结」）</div>' + seg
             + shortHintHtml('把情节按时间从早到晚切成批次，逐批拆成多段归档（不注入、不参与召回与遗忘）。')
             + hintDetailsHtml('说明', '<div>' + esc('「🧩 生成分段总结」按上方条数打包情节，每段以「### 时间范围」为头、段内逐条列出剧情线；单次运行最多 12 批，可再次点击继续。保护已存在的时间范围：同一时间范围的段落已存在时跳过，AI 运行永不删除段落（唯一消失途径是手动删除）。增量：已被现有段落覆盖的批次直接跳过（省 token）；关闭则每次全量重跑。字数上限为入库硬截断。该内容只归档供人工查阅与编辑，不注入给 AI。') + '</div>')
+            + '</div>'
+            : ''),
+        (money
+            ? '<div class="ftt-section"><div class="ftt-sec-title">货币记录</div>' + money
+            + shortHintHtml('决定「分析记忆」时是否抽取货币、是否按正文出现的角色动态识别归属。')
+            + '</div>'
+            : ''),
+        (caps
+            ? '<div class="ftt-section"><div class="ftt-sec-title">各大类单条字数上限</div>' + caps
+            + shortHintHtml('入库时的硬截断：AI 写超了按上限截断，同时是提示词里的字数要求依据。')
+            + hintDetailsHtml('说明', '<div>' + esc('这些上限作用于入库（`dimCap`）：情节正文、状态值、角色档案累计、记忆正文、物品说明、计划内容、悬念内容、场景描述、概念内容与平行事件推演正文。它们不影响注入体大小 —— 注入体由「提取记忆」页的注入预算（charBudget）决定；条数上限也在该页。') + '</div>')
             + '</div>'
             : ''),
         (rest.length ? '<div class="ftt-section"><div class="ftt-sec-title">其它</div>' + rest.join('\n') + '</div>' : ''),

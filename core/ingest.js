@@ -47,17 +47,19 @@ let memoryForgetTimer = null;
 
 const RUMOR_CHAIN_KINDS = ['起源', '传播', '发酵', '消退', '异变', '裂变', '联动', '载体停用'];
 
+// 兜底上限 = `core/config.js#defaultCfg` 的默认值（v2.76.0 整体上调：句表内合计 5600，
+//   承载 2000-3000 条原子数据的任意分布；用户可在 设定 → 遗忘 → 存储保底与上限 自行调整）
 const STORE_LIMITS = {
-    atoms:     ['storeMinAtoms', 'storeMaxAtoms', 400, '情节'],
-    memories:  ['storeMinMemories', 'storeMaxMemories', 600, '记忆'],
-    snapshots: ['storeMinSnapshots', 'storeMaxSnapshots', 300, '角色档案'],
-    items:     ['storeMinItems', 'storeMaxItems', 400, '物品'],
-    concepts:  ['storeMinConcepts', 'storeMaxConcepts', 600, '概念'],
-    scenes:    ['storeMinScenes', 'storeMaxScenes', 300, '场景'],
-    plans:     ['storeMinPlans', 'storeMaxPlans', 200, '计划'],
-    suspense:  ['storeMinSuspense', 'storeMaxSuspense', 200, '悬念'],
-    npcs:      ['storeMinNpcs', 'storeMaxNpcs', 200, '名册'],
-    rumors:    ['storeMinRumors', 'storeMaxRumors', 200, '传言'],   // v1.192：传言（存储上限；传言另有自己的时间衰退清扫）
+    atoms:     ['storeMinAtoms', 'storeMaxAtoms', 1200, '情节'],
+    memories:  ['storeMinMemories', 'storeMaxMemories', 800, '记忆'],
+    snapshots: ['storeMinSnapshots', 'storeMaxSnapshots', 400, '角色档案'],
+    items:     ['storeMinItems', 'storeMaxItems', 500, '物品'],
+    concepts:  ['storeMinConcepts', 'storeMaxConcepts', 700, '概念'],
+    scenes:    ['storeMinScenes', 'storeMaxScenes', 400, '场景'],
+    plans:     ['storeMinPlans', 'storeMaxPlans', 300, '计划'],
+    suspense:  ['storeMinSuspense', 'storeMaxSuspense', 300, '悬念'],
+    npcs:      ['storeMinNpcs', 'storeMaxNpcs', 300, '名册'],
+    rumors:    ['storeMinRumors', 'storeMaxRumors', 300, '传言'],   // v1.192：传言（存储上限；传言另有自己的时间衰退清扫）
 };
 
 const DIM_CAP_KEYS = Object.keys(STORE_LIMITS).map(dim => [dim, STORE_LIMITS[dim][3]]);

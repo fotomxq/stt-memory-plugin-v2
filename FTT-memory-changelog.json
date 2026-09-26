@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.75.0",
+  "version": "2.76.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.76.0",
+      "date": "2026-09-26",
+      "title": "默认词条数量上限提高（2000-3000 规模）+ 提取记忆页非召回设定归位",
+      "points": [
+        "① 默认上限提高：（core/config.js，core/ingest.js#STORE_LIMITS 兜底同步）：- 注入条数上限（max*）合计 152 → 2980（落在…",
+        "② 非召回设定归位：currencyEnabled / currencyDynamicEnabled（货币记录口径）与 dimCharLimits.*（10 项入库硬截断）从「提…"
+      ]
+    },
     {
       "version": "2.75.0",
       "date": "2026-09-26",

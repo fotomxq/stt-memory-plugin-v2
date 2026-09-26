@@ -54,7 +54,9 @@ function boot(stateLike, cfgPatch) {
 }
 const setFloor = (n) => { floorNow = n; setLastMessageId(n); };
 const SWEEP_CFG = { lowUseForgetEnabled: true, lowUseForgetEveryFloors: 40, lowUseForgetMinItems: 20, lowUseForgetMinAvg: 5, lowUseForgetMinFloors: 300, lowUseForgetMaxDelete: 1, lowUseForgetProtectImportance: 0.7, storeMinConcepts: 0, storeMinScenes: 0, storeMinNpcs: 0, storeMinPlans: 0, storeMinSuspense: 0, storeMinSnapshots: 0 };
-const MEM_CFG = { memoryForgetEnabled: true, memoryForgetCutoff: 0.9, memoryForgetRatio: 0.5, storeMinMemories: 2 };
+// v2.76.0：默认存储上限上调（记忆 600→800）——本组黄金样本按 V1 默认 600 录制，故此处**显式固定**，
+//   保证比对的是遗忘算法本身而不是默认值变化。
+const MEM_CFG = { memoryForgetEnabled: true, memoryForgetCutoff: 0.9, memoryForgetRatio: 0.5, storeMinMemories: 2, storeMaxMemories: 600 };
 
 // ============================================================
 // H 组：与 V1 逐项比对
