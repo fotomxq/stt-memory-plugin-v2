@@ -166,8 +166,15 @@ export function fallbackPanelHtml(data) {
  */
 export function dimsCheckboxHtml() {
     const map = (cfg && cfg.dimensionEnabled) || {};
+    // v2.68.0：勾选态与执行侧同口径 —— V1 存档的别名键 `states`（= V2 `currentStates`）也要认，
+    //   否则「状态记录」在 V1 存档里被关过、界面却显示为已启用（用户报告「状态大类总是没数据」的排查中发现）
+    const ALIAS = { currentStates: ['states'] };
+    const off = (kind) => {
+        if (Object.prototype.hasOwnProperty.call(map, kind)) return map[kind] === false;
+        return (ALIAS[kind] || []).some((k) => Object.prototype.hasOwnProperty.call(map, k) && map[k] === false);
+    };
     return DIMENSIONS.map((d) => {
-        const on = map[d.kind] !== false;
+        const on = !off(d.kind);
         return '<label><input type="checkbox" data-ftt-dim="' + escAttr(d.kind) + '"' + (on ? ' checked' : '') + '>' + escHtml(d.label) + '</label>';
     }).join('');
 }

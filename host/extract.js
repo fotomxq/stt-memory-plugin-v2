@@ -91,13 +91,49 @@ function recordLastExtract(rec) {
 }
 export function extractBusy() { return extractState.busy; }
 
+/**
+ * 维度开关的「别名键」：V1 存档的 `cfg.dimensionEnabled` 用 **V1 界面键** `states`，
+ *   V2 容器键是 `currentStates` —— 两边都要认（用户报告「状态大类总是没数据」的排查中发现该口径不统一）。
+ * 优先级：**精确键优先**（显式 `currentStates:true` 可覆盖 V1 遗留的 `states:false`），无精确键时才看别名。
+ */
+const DIM_KEY_ALIAS = { currentStates: ['states'] };
+/** 该维度是否被用户关闭（V1 别名键一并认） */
+export function dimDisabledOf(map, kind) {
+    const m = map || {};
+    if (Object.prototype.hasOwnProperty.call(m, kind)) return m[kind] === false;
+    const al = DIM_KEY_ALIAS[kind] || [];
+    return al.some((k) => Object.prototype.hasOwnProperty.call(m, k) && m[k] === false);
+}
+
 /** 生效维度（V1 `dimensionEnabled`）：未配置即全部启用 */
 export function enabledDims() {
     try {
         const map = cfg.dimensionEnabled || {};
-        const on = DIMENSIONS.filter((d) => map[d.kind] !== false).map((d) => d.kind);
+        const on = DIMENSIONS.filter((d) => !dimDisabledOf(map, d.kind)).map((d) => d.kind);
         return on.length ? on : DIMENSIONS.map((d) => d.kind);
     } catch (e) { return DIMENSIONS.map((d) => d.kind); }
+}
+
+/**
+ * v2.68.0（用户报告：「状态大类总是没数据」）——**提示词维度键投影**（本轮真 BUG 的修复点）。
+ *   `buildSummaryPrompt()` 的维度说明按 **V1 模板键**（`atoms/states/snapshots/…`，见 `V1_SUMMARY_DIM_KEYS`）取模板
+ *   （`if (pt[d]) lines.push(pt[d])`）；而 V2 的容器 kind 是 `currentStates` —— 直接把 kind 传进去时
+ *   `pt['currentStates']` 不存在 → **「状态记录」的抽取说明整段不会进提示词**（AI 不知道要抽状态 → 状态大类长期为空）。
+ *   此外 V2 容器还含 `parallels`（V1 摘要**不抽**平行事件，由交织管线负责）与 `links/plotSegments/suspense`
+ *   （无摘要模板），一并投影掉，保持与 V1 提示词一致。
+ * @param {string[]} [dimsOverride] 显式维度子集（可用 V2 kind 或 V1 键）
+ * @returns {string[]} V1 摘要维度键（顺序 = V1 `DIMENSIONS`）
+ */
+export function summaryDimsForPrompt(dimsOverride) {
+    try {
+        const on = (Array.isArray(dimsOverride) && dimsOverride.length) ? dimsOverride.map(String) : enabledDims();
+        const keys = [];
+        for (const k of on) {
+            const v1 = KIND_TO_SUMMARY_DIM[k] || String(k);
+            if (V1_SUMMARY_DIM_KEYS.indexOf(v1) >= 0 && keys.indexOf(v1) < 0) keys.push(v1);
+        }
+        return keys.length ? V1_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) >= 0) : V1_SUMMARY_DIM_KEYS.slice();
+    } catch (e) { return V1_SUMMARY_DIM_KEYS.slice(); }
 }
 
 /** 提示词 → ST generateRaw 的入参（V1 是 messages 数组：首条 system，其余并入 prompt） */
@@ -234,7 +270,8 @@ export async function analyzeFloor(floorId, opts) {
         const av = generationAvailability();
         const gen = o.ai || rawGenerate;
         if (!o.ai && !av.generateRaw) { extractState.fail += 1; extractState.lastReason = 'no-generate'; return { ok: false, reason: 'no-generate' }; }
-        const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
+        // v2.68.0：这里必须投影成 **V1 摘要维度键**（`currentStates` → `states`），否则「状态记录」模板整段丢失
+        const dims = summaryDimsForPrompt(o.dims);
         // ① 先校对时钟等基本信息（时钟唯一来源仍是「最新情节」，见 host/preflight.js 头注）
         const calib = calibrateBasics({ text: text });
         lastPreflight = calib;
@@ -338,7 +375,7 @@ export async function analyzeSegment(start, end, opts) {
                 groupFailed: results.length - okN, groupResults: results, chars: text.length, ms, floorStart: s0, floorEnd: e0,
             };
         }
-        const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims : enabledDims());
+        const dims = summaryDimsForPrompt(o.dims);   // v2.68.0：同上，投影成 V1 摘要维度键（含 states）
         // ① 先校对时钟等基本信息（与单楼同一套口径与顺序）
         const calib = calibrateBasics({ text: text });
         lastPreflight = calib;
@@ -490,6 +527,9 @@ export function extractSummary() {
     try { scan = scanPendingFloors({}); } catch (e) { scan = null; }
     return Object.assign({}, s, {
         processed: st,
+        // v2.68.0：本次会请求的**提示词维度键**（V1 摘要键；`currentStates` 会投影成 `states`）——
+        //   「某大类总是没数据」时先看这里：维度不在表里 = 提示词根本没带该维度的抽取说明
+        promptDims: (() => { try { return summaryDimsForPrompt(); } catch (e) { return []; } })(),
         pending: scan ? scan.floors.length : listUnprocessedFloors({}).length,
         pendingCovered: scan ? scan.covered : 0,
         pendingSkipped: scan ? scan.skipped : null,
