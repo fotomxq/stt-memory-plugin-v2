@@ -35,7 +35,7 @@ import {
 import {
     runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
 } from '../core/parallel.js';
-import { parallelExpired } from '../core/recall.js';
+import { parallelExpired, importancePct } from '../core/recall.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
 import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
@@ -110,6 +110,8 @@ const ps = {
     exportText: '',     // 数据管理页的导出 JSON（供复制/查看）
     sel: {},            // 多选集合：{ [kind]: Set<id> }
     multi: {},          // 多选模式：{ [kind]: bool }
+    // v2.62.0（状态页对齐 V1）：每页筛选态 `{ field, sort, extra }`（V1 `pageFilter` 口径）
+    f: {},
     showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
     peek: '',           // 情节速览：正在穿透查看的 id（V1 atomPeek）
     atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
@@ -154,6 +156,7 @@ export function panelState() {
         tabs: PANEL_TABS.map((t) => t[0]), editing: ps.editing ? Object.assign({}, ps.editing) : null,
         search: Object.assign({}, ps.q),
         multi: Object.assign({}, ps.multi),
+        filter: JSON.parse(JSON.stringify(ps.f || {})),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
         showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub, atomSub: ps.atomSub,
         relSub: Object.assign({}, ps.relSub), relWho: String(relFilterState().who || ''),
@@ -171,6 +174,57 @@ function dataKindOf(kind) { return kind === 'states' ? 'currentStates' : String(
 //   V2 统一用规范维度键（states → currentStates）写入与读取，使删除墓碑真正生效；UI 标签/分页 id 仍与 V1 一致。
 //   登记于 docs/P8c-B2条目操作.md「有意偏离」。
 
+/** 每页筛选态（V1 `pageFilter(kind)` = { field, sort, extra }；缺省 = 全部字段 / 默认排序 / 全部） */
+const LIST_FILTER_DEFAULT = Object.freeze({ field: 'all', sort: 'default', extra: 'all' });
+function listFilterOf(kind) { return Object.assign({}, LIST_FILTER_DEFAULT, (ps.f && ps.f[kind]) || {}); }
+/** 按字段取检索文本（V1 `fieldHay` 逐条等价：title/desc/tags/name 各一档，其余走通用 hay） */
+function fieldHayOf(it, field) {
+    try {
+        if (field === 'title') return String((it && (it.title || it.name)) || '').toLowerCase();
+        if (field === 'desc') return String((it && (it.desc || it.content || it.text)) || '').toLowerCase();
+        if (field === 'tags') return (Array.isArray(it && it.tags) ? it.tags.join(' ') : '').toLowerCase();
+        if (field === 'name') return String((it && (it.name || it.title)) || '').toLowerCase();
+    } catch (e) { /* 忽略 */ }
+    return String((it && (it.subject || '') + ' ' + (it.field || '') + ' ' + (it.value || '') + ' ' + (it.title || '') + ' ' + (it.content || '') + ' ' + (it.text || '') + ' ' + (Array.isArray(it && it.tags) ? it.tags.join(' ') : '')) || '').toLowerCase();
+}
+/** 额外条件（V1 `pageExtraMatch`）：目前只用于状态页（全部状态 / 仅已失效） */
+function extraMatchOf(kind, it, extra) {
+    const ex = String(extra || 'all');
+    if (ex === 'all') return true;
+    if (kind === 'states') {
+        const inactive = String((it && it.status) || '').toLowerCase() === 'inactive';
+        return ex === 'inactive' ? inactive : !inactive;
+    }
+    return true;
+}
+/** 排序（V1 `pageSortItems` 的 V2 等价物：默认 / 最新在前 / 最早在前 / 重要度 / 调用次数） */
+function listSortOf(kind, arr) {
+    const s = listFilterOf(kind).sort;
+    const a = Array.isArray(arr) ? arr.slice() : [];
+    if (s === 'new') { try { return sortRecentByStoryDate(a); } catch (e) { return a; } }
+    if (s === 'old') { try { return sortRecentByStoryDate(a).reverse(); } catch (e) { return a.reverse(); } }
+    if (s === 'importance') { return a.sort((x, y) => (Number(importancePct(y)) || 0) - (Number(importancePct(x)) || 0)); }
+    if (s === 'uses') return a.sort((x, y) => (Number(y && y.uses) || 0) - (Number(x && x.uses) || 0));
+    return a;
+}
+/** 筛选条控件（V1 `searchBoxHtml` 的 V2 等价物：字段 / 排序 / 额外条件；多选仍用 V2 的按钮形态） */
+function listFilterBarHtml(kind, opts) {
+    const o = opts || {};
+    const f = listFilterOf(kind);
+    const q = ps.q[kind] || '';
+    const sel = (attr0, list, cur) => '<select class="ftt-select-sm" ' + attr0 + '>' + list.map(([v, l]) => '<option value="' + attr(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>';
+    const fieldOpts = [['all', '全部字段'], ['title', '标题'], ['desc', '描述'], ['tags', '标签'], ['name', '名称']];
+    const sortOpts = [['default', '默认排序'], ['new', '最新在前'], ['old', '最早在前'], ['importance', '重要度'], ['uses', '调用次数']];
+    const extraOpts = Array.isArray(o.extraOpts) ? o.extraOpts : null;
+    return '<div class="ftt-row ftt-filterbar ftt-toolbar ftt-filter-tight">'
+        + '<input type="text" class="ftt-input" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="' + attr(o.placeholder || '搜索：标题 / 描述 / 关键词…') + '">'
+        + sel('data-ftt-filter="' + attr(kind) + '" data-ftt-filter-key="field"', fieldOpts, f.field)
+        + sel('data-ftt-filter="' + attr(kind) + '" data-ftt-filter-key="sort"', sortOpts, f.sort)
+        + (extraOpts ? sel('data-ftt-filter="' + attr(kind) + '" data-ftt-filter-key="extra"', extraOpts, f.extra) : '')
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
+        + '<span class="ftt-muted" data-ftt-search-count="' + attr(kind) + '">' + esc(o.countText || '') + '</span>'
+        + '</div>';
+}
 /** 某维度的多选集合（缺省即建） */
 function selOf(kind) { if (!ps.sel[kind]) ps.sel[kind] = new Set(); return ps.sel[kind]; }
 /** 当前列表（含隐藏过滤） */
@@ -907,39 +961,67 @@ function collectEditorFields(el) {
 
 /** 状态页：按主体分组（V1 同款：每组标题带「➕ 添加」「🗑 删除分组」） */
 function statesBody() {
-    const q = ps.q.states || '';
-    const list = listOf('states', q, 300);
+    // v2.62.0（用户要求：核对状态大类的提示词等细节，确保对齐 V1）—— 状态页按 V1 `statesHtml()`（v1.206 23988~24027）对齐：
+    //   ① 分组键：`String(subject||'').trim() || '（无主体）'`（V1 对空白主体同样归到「（无主体）」）；
+    //   ② 主体排序：`subjects.sort((a,b)=>a.localeCompare(b))`（V1 原文；此前 V2 用列表顺序，组序与 V1 不一致）；
+    //   ③ 检索：`fieldHay(s, 字段范围).includes(q) || subject.includes(q)`（V1 语义：命中角色名也保留）；
+    //   ④ 额外条件：全部状态 / 仅已失效（V1 `pageExtraOptions('states')`）；
+    //   ⑤ 排序：默认 / 最新在前 / 最早在前 / 重要度 / 调用次数（V1 `pageSortItems`）；
+    //   ⑥ 文案：占位符与空态、无匹配文案逐字对齐 V1。
+    const q = String(ps.q.states || '');
+    const qs = q.trim().toLowerCase();
+    const f = listFilterOf('states');
+    const all = arrOf('currentStates');
+    const byQ = qs
+        ? all.filter((it) => fieldHayOf(it, f.field).includes(qs) || String((it && it.subject) || '').toLowerCase().includes(qs))
+        : all.slice();
+    const byE = byQ.filter((it) => { try { return extraMatchOf('states', it, f.extra); } catch (e) { return true; } });
+    const matched = listSortOf('states', byE);
     const groups = new Map();
-    for (const e of list) {
-        const k = String((e && e.subject) || '（未标主体）');
+    for (const e of matched) {
+        const k = String((e && e.subject) || '').trim() || '（无主体）';
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k).push(e);
     }
-    const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="states" value="' + attr(q) + '" placeholder="搜索（主体 / 字段 / 值）">'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="states">✕ 清除</button>'
+    const subjects = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
+    const multi = ps.multi.states === true;
+    const sel = selOf('states');
+    const repBtn = all.length
+        ? '<button class="ftt-btn ftt-sm" data-ftt-action="stateRepair" title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理">🔧 修复状态</button>'
+        : '';
+    const filterBar = listFilterBarHtml('states', {
+        placeholder: '搜索：角色 / 字段 / 值 / 关键词…',
+        extraOpts: [['all', '全部状态'], ['inactive', '仅已失效']],
+        countText: '共 ' + all.length + ' 条 · 命中 ' + matched.length,
+    });
+    const toolbar = '<div class="ftt-addbar ftt-toolbar">'
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="states">➕ 新增</button>'
-        // V1 `statesHtml()`：「🔧 修复状态」——只在有状态记录时显示（V1 v1.159 修正用 state.currentStates 计数）；
-        //   文案与 title 逐字对齐
-        + (arrOf('currentStates').length ? '<button class="ftt-btn ftt-sm" data-ftt-action="stateRepair" title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理">🔧 修复状态</button>' : '')
-        + '<span class="ftt-muted">共 ' + arrOf('currentStates').length + ' 条</span></div>';
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="states" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
+        + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="states">全选</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="states">清空选择</button>'
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="states"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
+        + repBtn + '</div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
-    if (!groups.size) return head + ed + '<div class="ftt-empty">（暂无状态记录）</div>';
-    const blocks = Array.from(groups.entries()).map(([subj, items0]) => {
-        // V1：组内按 `floorEnd` 倒序（V1 `statesHtml` 的 `groups[subj].slice().sort(...)`）
-        const items = items0.slice().sort((a, b) => (Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0));
+    const head = '<div class="ftt-cat-stat ftt-chip">共 ' + all.length + ' 条状态（有效 ' + all.filter((x) => String((x && x.status) || 'active') !== 'inactive').length + '）· ' + groups.size + ' 个角色组</div>'
+        + filterBar + toolbar + ed;
+    // 文案与 V1 逐字一致（空库 / 有库但筛选无命中）
+    if (!all.length) return head + '<div class="ftt-empty">暂无状态记录。运行「AI 摘要」或点「添加状态」创建。</div>';
+    if (!matched.length) return head + '<div class="ftt-empty">无匹配结果（搜索/筛选：' + esc(String(q)) + '）</div>';
+    const blocks = subjects.map((subj) => {
+        const items = groups.get(subj).slice().sort((a, b) => (Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0));
         const rows = items.map((e) => {
             const id = String(e.id || '');
-            // v2.47.0：状态行按 V1 `statesHtml()` —— `字段：值` + `调用N次 · 更新 日期 时间`（此前只有日期）
-            return '<div class="ftt-item ftt-inline"><span class="ftt-grow">' + stateRowMainHtml(e) + '</span>'
+            const box = multi ? ('<input type="checkbox" data-ftt-select="states" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
+            return '<div class="ftt-item ftt-inline">' + box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>'
                 + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '">✏️</button>'
                 + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '">🗑</button></div>';
         }).join('\n');
-        return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + items.length + ')</span>'
+        return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + groups.get(subj).length + ')</span>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="addStateFor" data-ftt-subject="' + attr(subj) + '">➕ 添加</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delStateGroup" data-ftt-subject="' + attr(subj) + '" title="删除该角色全部状态">🗑 删除分组</button></h4>'
             + rows;
     }).join('\n');
-    return head + ed + blocks;
+    return head + blocks;
 }
 
 /** 设置分页：V1 的 **14 组子页**（子标签条 + 当前页控件；写回内核 cfg 并持久化） */
@@ -1284,6 +1366,18 @@ export async function panelAction(action, payload) {
             ps.editing = { kind: 'scenes', id: '', preset: { parentSceneId: parent } };
         }
         else if (a === 'multiToggle') { const k = String(p.kind || ps.tab); ps.multi[k] = !(ps.multi[k] === true); }
+        else if (a === 'listFilter') {
+            // v2.62.0：列表筛选条（V1 `data-ftt-filter` + `data-ftt-filter-key`）——字段范围 / 排序 / 额外条件
+            const k = String(p.kind || ps.tab);
+            const key = String(p.key || '');
+            const val = String(p.value == null ? '' : p.value);
+            if (['field', 'sort', 'extra'].indexOf(key) >= 0) {
+                const cur = listFilterOf(k);
+                cur[key] = val;
+                ps.f[k] = cur;
+                setNote('筛选：' + k + ' ' + key + ' = ' + val);
+            }
+        }
         else if (a === 'selectAll') { const k = String(p.kind || ps.tab); const set = selOf(k); listOf(k, ps.q[k], 300).forEach((x) => set.add(String(x.id || ''))); }
         else if (a === 'selectNone') { selOf(String(p.kind || ps.tab)).clear(); }
         else if (a === 'bulkDelete') {
@@ -1296,7 +1390,7 @@ export async function panelAction(action, payload) {
             setNote('已删除 ' + n + ' 条（多选批量删除 · 含跨端墓碑）');
             result = Object.assign(result, { ok: true, deleted: n });
         }
-        else if (a === 'searchClear') { const k = String(p.searchKind || p.kind || ps.tab); ps.q[k] = ''; selOf(k).clear(); }
+        else if (a === 'searchClear') { const k = String(p.searchKind || p.kind || ps.tab); ps.q[k] = ''; selOf(k).clear(); delete (ps.f || {})[k]; }   // v2.62.0：与 V1 同义（清除搜索与筛选）
         else if (a === 'atomToggleHidden') { ps.showHidden = !ps.showHidden; }
         else if (a === 'atomPeek') { const id = String(p.id || ''); ps.peek = (ps.peek === id) ? '' : id; }
         else if (a === 'atomPeekClose') { ps.peek = ''; }
@@ -2211,6 +2305,15 @@ export function bindOverlay() {
                     else applySettingsControl(k, raw);
                     setNote('已更新 ' + k);
                     renderPanel();
+                    return;
+                }
+                if (tg.dataset.fttFilter !== undefined) {
+                    // v2.62.0：列表筛选条（字段 / 排序 / 额外条件）——V1 同款标记 `data-ftt-filter` + `data-ftt-filter-key`
+                    void panelAction('listFilter', {
+                        kind: String(tg.dataset.fttFilter || ''),
+                        key: String(tg.dataset.fttFilterKey || ''),
+                        value: String(tg.value == null ? '' : tg.value),
+                    });
                     return;
                 }
                 if (tg.dataset.fttDimPreset !== undefined) {

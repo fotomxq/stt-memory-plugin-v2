@@ -1716,7 +1716,7 @@ await assert('AB2 面板按钮按 V1 条件显隐：状态页「🔧 修复状�
     const h0 = String((await entry.popupAction('tab', { tab: 'states' })).html || '');
     const statesOk = h1.indexOf('data-ftt-action="stateRepair"') >= 0 && h1.indexOf('🔧 修复状态') >= 0
         && h1.indexOf('title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理"') >= 0
-        && h0.indexOf('data-ftt-action="stateRepair"') < 0 && h0.indexOf('（暂无状态记录）') >= 0;
+        && h0.indexOf('data-ftt-action="stateRepair"') < 0 && h0.indexOf('暂无状态记录。运行「AI 摘要」或点「添加状态」创建。') >= 0;   // v2.62.0：空态文案对齐 V1
     st.plans = [{ id: 'smoke-ab-bp1', content: '查明敲门者。', status: 'open', tags: ['计划'], uses: 1 }];
     st.suspense = [];
     const h2 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');

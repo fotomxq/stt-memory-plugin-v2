@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.61.0",
+  "version": "2.62.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.62.0",
+      "date": "2026-09-26",
+      "title": "状态大类细节核对并对齐 V1",
+      "points": [
+        "核对（新建 oracle：tests/fixtures/gen-v1-golden-state-align.cjs 直调真实 V1 v1.206）：| 项 | 结论 || ---…",
+        "修正（状态页对齐）：① 空态文案：（暂无状态记录） → 「暂无状态记录。运行「AI 摘要」或点「添加状态」创建。」（V1 逐字）；② 无匹配文案：此前无 → 「无匹配结果（搜索/…"
+      ]
+    },
     {
       "version": "2.61.0",
       "date": "2026-09-26",
