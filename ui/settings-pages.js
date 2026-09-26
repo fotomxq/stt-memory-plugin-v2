@@ -870,6 +870,8 @@ import { debugPageHtml } from './debug.js';
 import { aboutHtml as aboutPageHtml } from './about.js';
 import { bufferSectionHtml } from './buffer-manage.js';
 import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
+// v2.65.0：显示界面开关 = V1 同款入口清单（顶栏 / 页面底部 / 悬浮 / 扩展菜单）
+import { ENTRY_LOCATIONS, ENTRY_LABELS, ENTRY_DEFAULTS, FORCED_ENTRIES } from './entries.js';
 // v2.35.0（B10-a）：API 子页（三通道 + API 分组预设 + 按用途渠道）
 import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
 
@@ -971,8 +973,36 @@ export function settingsControlHtml(c) {
 }
 
 /**
+ * 「显示界面开关」行（V1 v1.206 `buttonLocationRowsHtml()` 同款结构：`.ftt-loc-row` + `.ftt-loc-name` + 开关 + 显示/隐藏）。
+ * v2.65.0（用户要求）：
+ *   ① 与 V1 对齐：顶栏按钮 / 页面底部按钮 / 悬浮按钮 / 扩展菜单项 四项，顺序、名称、默认值、显示/隐藏 文案均与 V1 相同；
+ *   ② **扩展菜单项强制开启**（`FORCED_ENTRIES`）：不渲染开关，只给一行「始终开启」；
+ *   ③ V2 附加一项「扩展设置抽屉卡片」（`cfg.uiShowDrawer`，V1 无此形态）。
+ * 开关用 V1 同款标记 `data-ftt-loc="<loc>"`（面板委托写 `cfg.buttonLocations[loc]` 并即时重建入口）。
+ */
+function entryLocationRowsHtml() {
+    const loc = (() => { try { return cfg.buttonLocations || {}; } catch (e) { return {}; } })();
+    const rows = ENTRY_LOCATIONS.map((l) => {
+        const label = ENTRY_LABELS[l] || l;
+        if (FORCED_ENTRIES.indexOf(l) >= 0) {
+            return '<div class="ftt-loc-row"><span class="ftt-loc-name">' + esc(label) + '</span><span class="ftt-muted">始终开启（主入口，不可关闭）</span></div>';
+        }
+        const on = (loc[l] === undefined || loc[l] === null) ? ENTRY_DEFAULTS[l] === true : !!loc[l];
+        return '<div class="ftt-loc-row"><span class="ftt-loc-name">' + esc(label) + '</span>'
+            + '<label class="ftt-switch"><input type="checkbox" data-ftt-loc="' + esc(l) + '"' + (on ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
+            + '<span class="ftt-muted">' + (on ? '显示' : '隐藏') + '</span></div>';
+    });
+    const drawer = (() => { try { return cfg.uiShowDrawer === true; } catch (e) { return false; } })();
+    rows.push('<div class="ftt-loc-row"><span class="ftt-loc-name">扩展设置抽屉卡片</span>'
+        + '<label class="ftt-switch"><input type="checkbox" data-ftt-cfg="uiShowDrawer"' + (drawer ? ' checked' : '') + '><span class="ftt-slider"></span></label>'
+        + '<span class="ftt-muted">' + (drawer ? '显示' : '隐藏') + '</span></div>');
+    return rows.join('\n');
+}
+
+/**
  * 基础页正文（v2.51.0：组件开关 / 重要性计算 / 剧情时钟（只取最新情节）/ 情节日期时间修复 / 界面特效）。
- * 说明：V1 的「显示界面开关（buttonLocation*）」在 V2 由「基础 → V2 附加设定」的悬浮/菜单开关承担，此处不重复；
+ * v2.65.0：「显示界面开关」按 V1 v1.206 `buttonLocationRowsHtml()` 对齐（顶栏 / 页面底部 / 悬浮 / 扩展菜单项 +
+ *   开关即时生效）；扩展菜单项强制开启、不展示开关（用户要求）；另加 V2 附加的「扩展设置抽屉卡片」；
  *   「AI 捕捉正文 → 生成正则」与「AI 结合正文修复日期时间」两条 AI 管线属 B8-2（本页先如实标注，不放假实现）。
  */
 export function basePageHtml(controls, extrasHtml) {
@@ -1006,7 +1036,10 @@ export function basePageHtml(controls, extrasHtml) {
         '<div class="ftt-hint">AI 修复只打包<b>情节</b>中格式非法的条目，逐条给新日期/时间；格式非法或偏离锚点的结果一律丢弃并如实回报。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
-        '<div class="ftt-muted">V2 的入口形态在「基础 → V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',
+        entryLocationRowsHtml(),
+        shortHintHtml('插件自建入口的显示开关，改完即时生效；扩展菜单项是主入口，始终开启、不可关闭。'),
+        hintDetailsHtml('说明', '<div>' + esc('顶栏按钮 = 酒馆顶栏的抽屉按钮；页面底部按钮 = 输入区快捷栏按钮；悬浮按钮 = 页面右下角圆形按钮；扩展菜单项 = 魔杖菜单里的「FTT记忆」（主入口，始终开启）。宿主缺少对应容器时该入口不会出现。悬浮按钮关闭后，若面板挂不上抽屉，仍会自动出现一次兜底入口，避免装上了却看不到。扩展设置抽屉卡片会在酒馆「扩展设置」区块内联渲染面板（默认关，用弹窗即可）。') + '</div>'),
+        '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">界面特效</div>',
         rows(['uiEffects']),

@@ -12,6 +12,8 @@ import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
+// v2.65.0（用户要求「显示界面开关与 V1 对齐 + 扩展菜单入口强制开启且不展示开关」）：入口按钮统一管理
+import { syncEntryButtons, entryButtonsState, uninstallAllEntries, entryEnabled, ENTRY_LOCATIONS, ENTRY_LABELS, FORCED_ENTRIES } from './ui/entries.js';
 import { openPopup, setPopupHooks, popupInfo, popupAction, popupTabs } from './ui/popup.js';
 import { openPanel, closePanel, panelInfo, panelTabs, setPanelHooks2, unmountPanel } from './ui/panel.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPanelEvents } from './ui/settings-panel.js';
@@ -219,6 +221,8 @@ export function extraForStatus() {
         i18n: i18nStats(),
         bootstrap: Object.assign({}, runtime.bootstrap, {
             panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), popup: popupInfo(), ready: runtime.ready,
+            // v2.65.0：四个「插件自建入口」的安装态（顶栏 / 页面底部 / 悬浮 / 扩展菜单）
+            entries: (() => { try { return entryButtonsState(); } catch (e) { return null; } })(),
             // v2.46.0：启动自动检查的**排期**信息（延迟毫秒/原因/排期时刻），便于回答「为什么还没检查」
             updateSchedule: (runtime.update && (runtime.update.reason === 'delayed' || runtime.update.delayMs))
                 ? { reason: runtime.update.reason || '', delayMs: Number(runtime.update.delayMs) || 0, delayReason: runtime.update.delayReason || '', scheduledAt: Number(runtime.update.scheduledAt) || 0 }
@@ -283,8 +287,9 @@ export async function init() {
         runtime.settingsVia = 'overlay';
         runtime.bootstrap.panelReason = 'V1 同构浮层优先（cfg.uiShowDrawer = false 时不挂抽屉卡片）';
     }
-    // 扩展菜单入口（主入口）→ 打开弹窗；不可用时由探针启用悬浮兜底
-    try { installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 菜单入口失败不影响功能 */ }
+    // 插件自建入口（V1 `syncButtons()` 同口径）：扩展菜单项**强制开启**；顶栏/底部/悬浮按设置；
+    //   全部失败时由可见性探针启用悬浮兜底（`reason='fallback'`）
+    try { syncEntriesNow(); } catch (e) { /* 入口安装失败不影响功能 */ }
     try { setPopupHooks(popupHooks()); } catch (e) { /* 忽略 */ }
     try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
@@ -1022,9 +1027,36 @@ let pollTimer = null;
 
 /** cfg.uiShowDrawer：是否在扩展设置抽屉里也渲染面板卡片（默认否 = 只用弹窗） */
 function cfgShowDrawer() { try { return cfgRef.uiShowDrawer === true; } catch (e) { return false; } }
-/** 是否已经有**可见入口**（弹窗主入口=菜单；或抽屉面板；或悬浮按钮） */
+/** 是否已经有**可见入口**（主入口=扩展菜单；或抽屉面板；或悬浮按钮；或顶栏/底部按钮） */
 function visibleEntryReady() {
-    try { return panelMountInfo().ok || menuInfo().installed || floatingInfo().installed; } catch (e) { return false; }
+    try {
+        const st = entryButtonsState().installed;
+        return panelMountInfo().ok || st.menu || st.float || st.topbar || st.qr;
+    } catch (e) { return false; }
+}
+/** 入口点击 → 打开面板弹窗（V1 `togglePanel` 的 V2 等价物） */
+function entryClickHooks() { return { onClick: () => openPanelPopup() }; }
+/** v2.65.0：按 `cfg.buttonLocations` 启停全部插件自建入口（设置页改开关 → 立即生效） */
+function syncEntriesNow(locations) {
+    try { return syncEntryButtons(locations || cfgRef.buttonLocations || {}, entryClickHooks()); }
+    catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+/** 只移除「可见性兜底」来源的悬浮按钮（用户自己开启的保留） */
+function dropFallbackFloat() {
+    try { if (floatingInfo().reason === 'fallback') return uninstallFloatingEntry(); } catch (e) { /* 忽略 */ }
+    return false;
+}
+/** v2.65.0：`cfg.uiShowDrawer` 开关立即生效（挂载 / 卸载扩展设置抽屉卡片） */
+async function applyDrawerVisibility(on) {
+    const want = (on === undefined) ? cfgShowDrawer() : !!on;
+    try {
+        if (want) {
+            const r = await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() });
+            return { ok: !!r.ok, on: true, reason: r.reason || '' };
+        }
+        const off = unmountSettingsPanel();
+        return { ok: true, on: false, removed: !!off };
+    } catch (e) { return { ok: false, on: want, reason: String((e && e.message) || e) }; }
 }
 
 async function probeTick(why) {
@@ -1036,14 +1068,14 @@ async function probeTick(why) {
             try { await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { /* 下一轮再试 */ }
         }
         if (runtime.ready && visibleEntryReady()) {
-            if (panelMountInfo().ok) uninstallFloatingEntry();
+            if (panelMountInfo().ok) dropFallbackFloat();
             stopReadyProbe();
             return true;
         }
         // 连续若干次仍没有可见入口 → 启用悬浮兜底并停止轮询（不无限重试）
         if (runtime.ready && runtime.bootstrap.pollTries >= FLOAT_AFTER_TRIES) {
             if (cfgRef.uiShowFloating !== false) {
-                const f = installFloatingEntry({ onClick: () => openPanelPopup() });
+                const f = installFloatingEntry(entryClickHooks(), { reason: 'fallback' });
                 runtime.bootstrap.floating = f;
             }
             stopReadyProbe();
@@ -1149,6 +1181,9 @@ export function panelRuntimeHooks() {
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
         dimToggle: (kind, on) => setDimensionEnabled(kind, on),
         confirm: (text, title) => hostConfirm(text, title),
+        // v2.65.0：显示界面开关 —— 改开关立即重建/移除对应的入口按钮；抽屉卡片开关立即挂载/卸载
+        syncEntries: (locations) => syncEntriesNow(locations),
+        showDrawer: (on) => applyDrawerVisibility(on),
     });
 }
 
@@ -1195,20 +1230,22 @@ async function hostConfirm(text, title) {
 }
 
 /**
- * 确保有一个可见入口：面板挂上 → 移除悬浮按钮；挂不上 → 安装悬浮按钮（点击弹窗打开面板）。
- * @returns {Promise<{panel:object, floating:object}>}
+ * 确保有一个可见入口：先按 `cfg.buttonLocations` 同步全部自建入口（主入口=扩展菜单，强制开启）；
+ * 抽屉面板挂上 → 移除「兜底」悬浮按钮；挂不上 → 安装兜底悬浮按钮（点击弹窗打开面板）。
+ * @returns {Promise<{panel:object, floating:object, entries:object}>}
  */
 export async function ensureVisibleEntry() {
     let panel = { ok: false, reason: '' };
     try { panel = await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot() }); } catch (e) { panel = { ok: false, reason: String((e && e.message) || e) }; }
+    const entries = syncEntriesNow();
     let floating = { ok: false, reason: '' };
     if (panel.ok) {
-        try { uninstallFloatingEntry(); } catch (e) { /* 忽略 */ }
-        floating = { ok: false, reason: '面板已挂载（无需悬浮入口）' };
+        dropFallbackFloat();
+        floating = { ok: entryEnabled('float', cfgRef.buttonLocations), reason: '面板已挂载（悬浮按钮按设置保留；兜底入口已移除）' };
     } else {
-        try { floating = installFloatingEntry({ onClick: openPanelPopup }); } catch (e) { floating = { ok: false, reason: String((e && e.message) || e) }; }
+        try { floating = installFloatingEntry(entryClickHooks(), { reason: 'fallback' }); } catch (e) { floating = { ok: false, reason: String((e && e.message) || e) }; }
     }
-    return { panel, floating };
+    return { panel, floating, entries };
 }
 
 /**
@@ -1219,16 +1256,17 @@ export async function forceMountPanel() {
     let mount = { ok: false, via: 'none', reason: '' };
     try { mount = await mountSettingsPanel({ hooks: panelHooks(), status: panelStatusSnapshot(), force: true }); }
     catch (e) { mount = { ok: false, via: 'error', reason: String((e && e.message) || e) }; }
-    let menu = { ok: false, reason: '' };
-    try { menu = installMenuEntry({ onClick: forceMountPanel }); } catch (e) { menu = { ok: false, reason: String((e && e.message) || e) }; }
+    // v2.65.0：入口按设置同步（扩展菜单项强制开启，忽略配置里的关闭意图）
+    const entries = syncEntriesNow();
+    const menu = (entries.applied && entries.applied.menu) ? entries.applied.menu : { ok: false, reason: '未安装' };
     // 挂不上抽屉 → 至少给一个悬浮入口（点击以弹窗展示面板）
     let floating = { ok: false, reason: '' };
     try {
-        if (mount.ok) floating = { ok: false, reason: '面板已挂载' };
-        else floating = installFloatingEntry({ onClick: openPanelPopup });
+        if (mount.ok) floating = { ok: entryEnabled('float', cfgRef.buttonLocations), reason: '面板已挂载' };
+        else floating = installFloatingEntry(entryClickHooks(), { reason: 'fallback' });
     } catch (e) { floating = { ok: false, reason: String((e && e.message) || e) }; }
     runtime.bootstrap.lastError = mount.ok ? '' : String(mount.reason || '');
-    return Object.assign({}, mount, { menu, floating, info: panelMountInfo(), menuInfo: menuInfo(), floatingInfo: floatingInfo() });
+    return Object.assign({}, mount, { menu, floating, entries, info: panelMountInfo(), menuInfo: menuInfo(), floatingInfo: floatingInfo() });
 }
 
 /**
@@ -1253,7 +1291,10 @@ export async function runExtract(opts) {
 
 /** 面板/菜单/弹窗诊断（对外再导出，便于控制台与测试直接调用） */
 export { panelMountInfo } from './ui/settings-panel.js';
-export { menuInfo, installMenuEntry } from './ui/menu.js';
+export { menuInfo, installMenuEntry, uninstallMenuEntry } from './ui/menu.js';
+export { floatingInfo, installFloatingEntry, uninstallFloatingEntry } from './ui/floating.js';
+// v2.65.0：入口按钮（顶栏 / 页面底部 / 悬浮 / 扩展菜单）统一启停与诊断
+export { syncEntryButtons, entryButtonsState, uninstallAllEntries, entryEnabled, normalizeEntryLocations, ENTRY_LOCATIONS, ENTRY_LABELS, FORCED_ENTRIES } from './ui/entries.js';
 export { popupInfo, popupAction, popupTabs, popupHtml, openPopup } from './ui/popup.js';
 export { panelInfo, panelTabs, panelHtml, panelAction, closePanel } from './ui/panel.js';
 
@@ -1371,8 +1412,7 @@ export function teardown() {
     try { unmountPanel(); } catch (e) { /* noop */ }
     try { uninstallGlobalInterceptor(); } catch (e) { /* noop */ }
     try { stopReadyProbe(); } catch (e) { /* noop */ }
-    try { uninstallMenuEntry(); } catch (e) { /* noop */ }
-    try { uninstallFloatingEntry(); } catch (e) { /* noop */ }
+    try { uninstallAllEntries(); } catch (e) { /* noop */ }
     try { closePanel(); } catch (e) { /* noop */ }
     try { uninstallErrorCapture(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
@@ -1457,7 +1497,7 @@ bindAppLifecycle();
 
 // 3) 可见性探针：多触发 + 有限轮询 —— 宿主事件缺失/时机不符时仍会装配并挂载面板
 bindDocumentReady();
-try { setPopupHooks(popupHooks()); installMenuEntry({ onClick: () => openPanelPopup() }); } catch (e) { /* 忽略 */ }
+try { setPopupHooks(popupHooks()); syncEntryButtons(cfgRef.buttonLocations || {}, entryClickHooks()); } catch (e) { /* 忽略 */ }
 startReadyProbe();
 
 // ---------------- 测试与自检用导出 ----------------
