@@ -57,7 +57,7 @@ import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timer
 import { hashText } from './core/util.js';
 import {
     clockPatrolAutoOnce, clockPatrolState, clockManualState, setClockManual, clearClockManual,
-    runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolMajority, clockPatrolScan,
+    runClockPatrolRepair, clockPatrolAnchorInfo, clockPatrolScan,
 } from './core/clock-patrol.js';
 import {
     setRepairHooks, runRepairMech, runRepair, repairReport, repairLogPush, repairTotalCount,
@@ -145,7 +145,7 @@ import {
     extractClockFromHeader, extractClockFromText, latestSceneLocation,
 } from './core/clock-extract.js';
 import { storageEnvelope, storageHash } from './core/envelope.js';
-import { setClockAiHooks, genClockRegexes, runClockRepair, clockRepairPack } from './core/clock-ai.js';
+import { setClockAiHooks, runClockRepair, clockRepairPack } from './core/clock-ai.js';
 import {
     forgetState, forgetRunAll, runMemoryForget, sweepLowUseForget, lowUseSweepGate, cancelForgetTimers,
 } from './core/forget.js';
@@ -647,7 +647,6 @@ function bootstrapDiagnostics() {
             clockDegradeLabel: (r) => clockDegradeLabel(r),
             clockPatrolAuto: () => clockPatrolAutoOnce(),
             clockAnchor: () => clockPatrolAnchorInfo(),
-            clockMajority: () => clockPatrolMajority(),
             clockScan: () => clockPatrolScan(),
             clockManual: () => clockManualState(),
             clockManualSet: (input) => setClockManual(input || {}),
@@ -660,7 +659,6 @@ function bootstrapDiagnostics() {
             clockHeader: (text) => extractClockFromHeader(text),
             clockExtractText: (text, prev) => extractClockFromText(text, prev || {}),
             // B8-3 时钟域 AI 管线
-            clockRegexGen: (opts) => genClockRegexes(opts || {}),
             clockRepair: (opts) => runClockRepair(opts || {}),
             clockRepairPack: () => clockRepairPack(),
             // B8-4 内容弱化（NSFW）

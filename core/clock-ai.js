@@ -68,102 +68,6 @@ function normalizeClockRegexFromAi(v) {
         return { ok: true, reason: '', re: s };
     } catch (e) { return { ok: false, reason: 'error', re: '' }; }
 }
-/** 提示词（V1 `buildClockRegexPrompt`） */
-function buildClockRegexPrompt(sample) {
-    const tpl = promptTpl('clockRegexGen', '从正文样本中总结「日期 / 时间 / 地点」的书写规律，输出三条 JavaScript 正则（不带斜杠与标志位）。');
-    return [
-        { role: 'system', content: tpl },
-        { role: 'user', content: `【正文样本】\n${String(sample || '').slice(-6000)}\n\n输出：只输出一个合法 JSON 对象：{"日期正则":"…","时间正则":"…","地点正则":"…","说明":"…"}（正则不带 / 与 g 标志；不要输出代码块标记）。` },
-    ];
-}
-/**
- * 用样本试算正则命中数（V1 `test`）。
- * @returns {number} 命中次数（正则可编译且样本命中）
- */
-function countRegexHits(re, sample) {
-    if (!re || !re.ok) return 0;
-    try { const rr = new RegExp(re.re, 'g'); const hits = String(sample).match(rr); return hits ? hits.length : 0; } catch (e) { return 0; }
-}
-/**
- * 纯函数：把 AI 返回的解析对象应用到 cfg（三重校验 + 命中判定 + 写回 + 试算）。
- * @returns {{applied:string[], skipped:string[], hits:object, probe:object, regexes:object}}
- */
-function applyClockRegexResult(sample, parsed) {
-    const j = parsed || {};
-    const pick = (k, en) => (j[k] !== undefined ? j[k] : j[en]);
-    const dr = normalizeClockRegexFromAi(pick('日期正则', 'dateRegex'));
-    const tr = normalizeClockRegexFromAi(pick('时间正则', 'timeRegex'));
-    const lr = normalizeClockRegexFromAi(pick('地点正则', 'locationRegex'));
-    const applied = [];
-    const skipped = [];
-    const hits = { date: countRegexHits(dr, sample), time: countRegexHits(tr, sample), location: countRegexHits(lr, sample) };
-    if (dr.ok && hits.date > 0) { cfg.clockDateRegex = dr.re; applied.push(`日期（命中 ${hits.date} 处）`); } else skipped.push('日期' + (dr.ok ? '（样本无命中）' : `（${dr.reason}）`));
-    if (tr.ok && hits.time > 0) { cfg.clockTimeRegex = tr.re; applied.push(`时间（命中 ${hits.time} 处）`); } else skipped.push('时间' + (tr.ok ? '（样本无命中）' : `（${tr.reason}）`));
-    if (lr.ok && hits.location > 0) { cfg.clockLocationRegex = lr.re; applied.push(`地点（命中 ${hits.location} 处）`); } else skipped.push('地点' + (lr.ok ? '（样本无命中）' : `（${lr.reason}）`));
-    // 试算：用新正则跑一遍样本
-    let probe = { date: '', time: '', location: '' };
-    try { probe = extractClockFromText(sample, { date: String((state.state && state.state.date) || ''), time: '', location: '' }); } catch (e) { /* 忽略 */ }
-    return { applied, skipped, hits, probe, regexes: { date: cfg.clockDateRegex || '', time: cfg.clockTimeRegex || '', location: cfg.clockLocationRegex || '' }, note: String(pick('说明', 'note') || '').slice(0, 120) };
-}
-/**
- * 「AI 捕捉正文 → 生成正则」（设定页按钮；V1 `genClockRegexesFromText`）。
- * @param {object} [opts] floors（取最近 N 楼；默认 `cfg.feedFloors`）/ sample（显式样本，测试与调试）
- */
-async function genClockRegexes(opts) {
-    const o = opts || {};
-    try {
-        if (busyNow()) {
-            notify('warning', '任务进行中', '已有分析/修复/同步任务在运行，请稍候再试。');
-            return { ok: false, blocked: true };
-        }
-        const floors = Math.max(1, Number(o.floors) || Number(cfg.feedFloors) || 10);
-        const sample = String(o.sample != null ? o.sample : aiFeedText(floors)).trim();
-        if (!sample) {
-            notify('error', 'AI 捕捉正则：没有可用正文', '最近楼层没有可分析的正文（或在投喂过滤后为空）。');
-            return { ok: false, reason: 'no-text' };
-        }
-        const resp = await callAiText(buildClockRegexPrompt(sample), 'AI 捕捉时钟正则');
-        if (!resp) { notify('warning', 'AI 捕捉正则：无返回', 'AI 未返回内容（可能未配置模型或请求失败）。'); return { ok: false, reason: 'no-ai' }; }
-        const parsed = extractJsonObject(resp) || {};
-        const r = applyClockRegexResult(sample, parsed);
-        try { saveCfg(); } catch (e) { /* 落盘失败不阻塞 */ }
-        if (r.applied.length) {
-            notify('success', 'AI 捕捉正则完成',
-                `已应用：${r.applied.join(' · ')}${r.skipped.length ? `；未采用：${r.skipped.join(' / ')}` : ''}。试算结果：日期 ${r.probe.date || '（未识别）'} · 时间 ${r.probe.time || '（未识别）'} · 地点 ${r.probe.location || '（未识别）'}${r.note ? `。说明：${r.note}` : ''}`);
-        } else {
-            notify('warning', 'AI 捕捉正则：未采用任何正则', `未采用：${r.skipped.join(' / ')}。可能是样本里没有明确的时间/地点写法，或 AI 返回的正则不适合本插件（会匹配空串 / 无法编译）。`);
-        }
-        // v2.37.0：取值追踪（样本来源 → AI 给出的正则 → 是否采用 → 试算命中）
-        try {
-        const tr1 = clockTraceStart('regex-ai', 'AI 捕捉时钟正则');
-        clockTraceText(tr1, { mode: o.sample != null ? 'given' : 'floor-window', floors: '最近 ' + floors + ' 楼', chars: sample.length, sample });
-        clockTraceChain(tr1, '① 取样本（最近 N 楼正文）→ ② AI 给出日期/时间/地点正则 → ③ 逐条校验（可编译 / 不匹配空串 / 有命中）→ ④ 采用或列入未采用');
-        const appliedHit = (pfx) => (r.applied || []).filter((x) => String(x).indexOf(pfx) === 0)[0] || '';
-        clockTracePick(tr1, 'date', { value: r.regexes.date || '', from: appliedHit('日期') ? 'custom' : '', why: appliedHit('日期') ? ('AI 给出且通过校验 → 已写入 cfg.clockDateRegex（' + appliedHit('日期') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
-        clockTracePick(tr1, 'time', { value: r.regexes.time || '', from: appliedHit('时间') ? 'custom' : '', why: appliedHit('时间') ? ('AI 给出且通过校验 → 已写入 cfg.clockTimeRegex（' + appliedHit('时间') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
-        clockTracePick(tr1, 'location', { value: r.regexes.location || '', from: appliedHit('地点') ? 'custom' : '', why: appliedHit('地点') ? ('AI 给出且通过校验 → 已写入 cfg.clockLocationRegex（' + appliedHit('地点') + '）') : '未采用（' + String((r.skipped || []).join(' / ') || 'AI 未给出') + '）' });
-        clockTraceApplied(tr1, { fields: Object.keys(r.hits || {}).map((k) => ({ field: k, from: '', to: String(r.hits[k]), changed: Number(r.hits[k]) > 0 })), locked: false, unchanged: (r.skipped || []).slice(), note: r.note || '' });
-        clockTraceFinish(tr1);
-        } catch (e) { try { dbgLog('异常', { kind: '时钟正则追踪构造失败', message: String((e && e.message) || e) }); } catch (e2) { /* 忽略 */ } }
-        try {
-            dbgLog('时钟', {
-                action: 'AI 捕捉时钟正则（v1.184）', floors, chars: sample.length,
-                dateRe: r.regexes.date, timeRe: r.regexes.time, locationRe: r.regexes.location,
-                hits: r.hits, probe: r.probe, note: r.note,
-                applied: r.applied, skipped: r.skipped,
-                sample: String(sample).slice(0, 80),
-                how: '取值追踪：FTT.clockTrace("regex-ai") / 设定→调试「🕒 时钟取值追踪」',
-            });
-        } catch (e) {
-            try { dbgLog('异常', { kind: '时钟正则日志构造失败', message: String((e && e.message) || e), stage: 'regex-ai' }); } catch (e2) { /* 忽略 */ }
-        }
-        return { ok: r.applied.length > 0, applied: r.applied, skipped: r.skipped, hits: r.hits, probe: r.probe, regexes: r.regexes };
-    } catch (e) {
-        notify('error', 'AI 捕捉正则失败', String((e && e.message) || e).slice(0, 120));
-        return { ok: false, error: String((e && e.message) || e) };
-    }
-}
-
 // ==================== ② AI 结合正文修复日期时间（v1.185） ====================
 /** 打包异常条目（V1 `clockRepairPack`）：单次提交上限 `cfg.clockRepairBatch`（默认 20，硬上限 200） */
 function clockRepairPack(opts) {
@@ -336,6 +240,5 @@ async function runClockRepair(opts) {
 }
 
 export {
-    normalizeClockRegexFromAi, buildClockRegexPrompt, applyClockRegexResult, genClockRegexes,
     clockRepairPack, buildClockRepairPrompt, applyClockRepairResult, runClockRepair,
 };

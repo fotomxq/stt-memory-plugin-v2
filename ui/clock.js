@@ -11,7 +11,7 @@ import { storyClockReference } from '../core/clock-extract.js';
 import {
     clockManualState, setClockManual, clearClockManual, runClockPatrolRepair, clockPatrolState,
 } from '../core/clock-patrol.js';
-import { genClockRegexes, runClockRepair } from '../core/clock-ai.js';
+import { runClockRepair } from '../core/clock-ai.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
@@ -26,18 +26,14 @@ function manBadge(cMan, field) {
     return (cMan && cMan[field]) ? ' <span class="ftt-badge ftt-badge--public" title="手工强制改写（锁定中，自动提取不会覆盖）">🔒 手工</span>' : '';
 }
 
-/** 时钟来源可解释行（V1 `state.state.clockSrc`） */
+/** 时钟来源可解释行（v2.51.0：唯一来源 = 最新情节；不再有「降级 / 跳变 / 原子兜底」等废弃说法） */
 function clockSrcHtml() {
     try {
         const cs = state && state.state && state.state.clockSrc;
         if (!cs || !(cs.date || cs.location || cs.present)) return '';
-        // v2.37.0：来源标签统一取自 core/clock-trace.js 的**全量登记表**（此前本页只有 6 项残缺映射 → 其它来源会打印英文原键）
-        const L = null; void L;
         const fmt = (v) => esc(clockSrcLabel(v));
-        const rsn = cs.degradeReason ? clockDegradeLabel(cs.degradeReason) : '';
         return '<div class="ftt-hint ftt-w-full" data-ftt-clock-src>🕒 时钟来源：日期 ' + fmt(cs.date) + ' · 时间 ' + fmt(cs.time || cs.date) + ' · 地点 ' + fmt(cs.location) + ' · 在场 ' + fmt(cs.present)
-            + (cs.degraded ? ' · ⚠️ 已降级' + (rsn ? '（' + esc(rsn) + '）' : '') + ' → 采用「最新情节的日期与时间 + 最新的场景」' : '')
-            + (cs.jumpYears ? ' · ⚠️ 日期较此前跳变 ' + esc(String(cs.jumpYears)) + ' 年，请确认是否为脏数据' : '') + '</div>';
+            + '<span class="ftt-muted">（唯一可信来源：最新情节；记忆/角色/计划/悬念/平行等均不参与）</span></div>';
     } catch (e) { return ''; }
 }
 
@@ -46,14 +42,13 @@ function patrolRowHtml() {
     try {
         const cp = clockPatrolState();
         const cpAnchor = cp ? (cp.anchor ? esc(cp.anchor) + (cp.anchorSource ? '（' + esc(clockSrcLabel(cp.anchorSource)) + '）' : '') : '不可用') : '';
-        const cpNote = cp ? (cp.blocked === 'no-anchor' || cp.blocked === 'ambiguous-anchor' ? ' · ⚠️ 未修改（请先手工设定剧情日期）'
-            : (cp.blocked === 'scan-only' ? ' · 仅统计（未开启自动修复）'
-                : (cp.blocked === 'anchor-conflict' ? ' · ⚠️ 未修改（锚点与库内多数年份冲突）' : ''))) : '';
+        const cpNote = cp ? (cp.blocked === 'no-anchor' ? ' · ⚠️ 未修改（请先用手工改写设定剧情日期作为锚点）'
+            : (cp.blocked === 'scan-only' ? ' · 仅统计（未修改）' : '')) : '';
         const cpTxt = cp
-            ? '上次巡检：扫描 ' + cp.scanned + ' 条 · 异常 ' + cp.found + ' 条 · 已修复 ' + cp.fixed + ' 条' + (cp.remain ? ' · 保留原值 ' + cp.remain + ' 条' : '') + '（锚点 ' + cpAnchor + cpNote + '）'
-            : '尚未巡检（开启「时间巡检」后载入时自动执行）';
+            ? '上次巡检（只针对情节）：扫描 ' + cp.scanned + ' 条 · 异常 ' + cp.found + ' 条 · 已修复 ' + cp.fixed + ' 条' + (cp.remain ? ' · 保留原值 ' + cp.remain + ' 条' : '') + '（锚点 ' + cpAnchor + cpNote + '）'
+            : '尚未巡检（点右侧按钮执行；只巡检情节的日期/时间）';
         return '<div class="ftt-item ftt-inline"><b class="ftt-pipe-title">🩺 时间巡检</b> <span data-ftt-clock-patrol style="flex:1 1 auto;min-width:0" class="ftt-muted">' + cpTxt + '</span>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="clockPatrol" title="巡检并修复原子数据（情节/记忆/计划/悬念/平行事件）里格式非法或年份漂移的日期与时间（零 AI）">🩺 时间巡检修复</button></div>';
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="clockPatrol" title="只巡检情节里格式非法的日期与时间（零 AI）；锚点 = 手工改写 > 当前时钟，写回前留全量快照">🩺 时间巡检修复</button></div>';
     } catch (e) { return ''; }
 }
 
@@ -67,25 +62,22 @@ export function clockSectionHtml() {
         const eraTxt = c.era ? '（' + esc(c.era) + '）' : '';
         const seasonTxt = c.season ? '·' + esc(c.season) : '';
         if (c.date) lines.push('<div class="ftt-item">📅 日期：' + esc(clockDateLabel(c.date)) + eraTxt + seasonTxt + manBadge(cMan, 'date') + '</div>');
-        else if (ckRef && ckRef.date) lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（参考最近记忆：' + esc(clockDateLabel(ckRef.date)) + '）</span></div>');
+        else if (ckRef && ckRef.date) lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（参考最近情节：' + esc(clockDateLabel(ckRef.date)) + '）</span></div>');
         else lines.push('<div class="ftt-item">📅 日期：<span class="ftt-muted">（未记录 · 可用「✏️ 手工改写」设定锚点）</span></div>');
         if (c.time) lines.push('<div class="ftt-item">⏱ 时间：' + esc(c.timeEnd ? c.time + ' → ' + c.timeEnd : c.time) + manBadge(cMan, 'time') + '</div>');
-        else if (ckRef && ckRef.time) lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（参考最近记忆：' + esc(ckRef.time) + '）</span></div>');
+        else if (ckRef && ckRef.time) lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.time) + '）</span></div>');
         else lines.push('<div class="ftt-item">⏱ 时间：<span class="ftt-muted">（未记录）</span></div>');
         if (c.location) lines.push('<div class="ftt-item">📍 地点：' + esc(c.location) + manBadge(cMan, 'location') + '</div>');
-        else if (ckRef && ckRef.location) lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（参考最近记忆：' + esc(ckRef.location) + '）</span></div>');
+        else if (ckRef && ckRef.location) lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（参考最近情节：' + esc(ckRef.location) + '）</span></div>');
         else lines.push('<div class="ftt-item">📍 地点：<span class="ftt-muted">（未记录）</span></div>');
-        // v2.48.0（用户要求）：该值**只用于插件内校准时间**（纪元首日 + (N-1) 天 → 日期），**不注入** ——
-        //   总览仍展示（便于核对锚点），但明确标注「校准用 · 不注入」
-        if (c.storyDay) lines.push('<div class="ftt-item">📆 校准用：剧情第 ' + esc(String(c.storyDay)) + ' 天 <span class="ftt-muted">（仅用于日期换算，不注入）</span>' + (c.sceneDesc ? ' <span class="ftt-muted">（' + esc(c.sceneDesc) + '）</span>' : '') + '</div>');
         // 手工改写工具行 + 编辑面板（三项输入；日期/时间宽松解析，地点自由文本）
         lines.push('<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="clockEdit" title="手工强制改写剧情日期 / 时间 / 地点（锚点错了就在这里改）">✏️ 手工改写日期/时间/地点</button>'
             + (cMan
-                ? '<span class="ftt-muted">🔒 已手工锁定' + (cMan.lock ? '' : '（未锁定：仍可被自动提取覆盖）') + '</span><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clockManualClear" title="解除手工值，恢复自动提取">🔓 解锁并恢复自动</button>'
-                : '<span class="ftt-muted">自动提取中（日期/时间/地点来自正文正则 / 最新情节 / 原子兜底）</span>') + '</div>');
+                ? '<span class="ftt-muted">🔒 已手工锁定' + (cMan.lock ? '' : '（未锁定：仍可被自动提取覆盖）') + '</span><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clockManualClear" title="解除手工值，恢复自动提取">🔓 解锁并恢复自动同步</button>'
+                : '<span class="ftt-muted">自动同步中（日期/时间/地点只取<b>最新情节</b>；其它数据类别与正文解析都不参与）</span>') + '</div>');
         if (clockEditing) {
             lines.push('<div class="ftt-editor"><div class="ftt-editor-title">✏️ 手工强制改写剧情时钟（锚点）</div>'
-                + '<div class="ftt-muted ftt-w-full">填入后点「💾 保存并锁定」即强制生效：自动提取不再覆盖这三项，直到点「🔓 解锁并恢复自动」。'
+                + '<div class="ftt-muted ftt-w-full">填入后点「💾 保存并锁定」即强制生效：自动同步不再覆盖这三项，直到点「🔓 解锁并恢复自动」。'
                 + '日期支持「公元1919年11月29日」「公元前221年1月2日」「1919-11-29」「-221-01-02」「三月一日」等写法（公元前 = 负年份）；'
                 + '时间支持「15:20」「下午三点」「傍晚」等；留空的项目保持原值。</div>'
                 + '<div class="ftt-field"><label>日期</label><input type="text" data-ftt-clock-manual="date" value="' + attr(String(c.date || '')) + '" placeholder="如 1919-11-29 / 公元1919年11月29日 / 公元前221年1月2日 / -221-01-02"></div>'
@@ -157,14 +149,6 @@ export async function clockAction(action, payload) {
             toast('info', had ? '已解除手工锁定，恢复自动提取' : '当前没有手工改写值', '');
             return { ok: true, action: a, note: had ? '已解除手工锁定（恢复自动提取）' : '当前没有手工改写值', detail: { had } };
         }
-        if (a === 'clockRegexGen') {
-            // B8-3：「AI 捕捉正文 → 生成日期/时间/地点正则」（V1 同名动作；样本取最近楼层投喂文本）
-            const r = await genClockRegexes(p.floors ? { floors: p.floors } : {});
-            const note = r.ok
-                ? ('AI 捕捉正则完成：已应用 ' + r.applied.join(' · ') + (r.skipped.length ? '；未采用 ' + r.skipped.join(' / ') : '') + '；试算 日期 ' + (r.probe.date || '（未识别）') + ' · 时间 ' + (r.probe.time || '（未识别）') + ' · 地点 ' + (r.probe.location || '（未识别）'))
-                : (r.blocked ? '任务进行中：已有分析/修复/同步在运行，请稍候再试' : (r.reason === 'no-text' ? 'AI 捕捉正则：最近楼层没有可分析正文' : (r.reason === 'no-ai' ? 'AI 捕捉正则：AI 未返回内容' : ('AI 捕捉正则失败：' + String(r.error || '未知')))));
-            return { ok: r.ok === true, action: a, note, detail: r };
-        }
         if (a === 'clockRepair') {
             // B8-3：「AI 结合正文修复日期时间」（V1 同名动作；只改日期与时间字段，逐条过安全闸门）
             const r = await runClockRepair({});
@@ -215,7 +199,7 @@ export async function clockAction(action, payload) {
 }
 
 /** 时钟动作名（供面板分发；与 V1 逐字一致） */
-export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockPatrolForce', 'clockRegexGen', 'clockRepair']);
+export const CLOCK_ACTIONS = Object.freeze(['clockEdit', 'clockEditCancel', 'clockManualSave', 'clockManualClear', 'clockPatrol', 'clockPatrolForce', 'clockRepair']);
 
 /** 巡检/锚点诊断（FTT.* 与调试用） */
 export function clockUiInfo() {

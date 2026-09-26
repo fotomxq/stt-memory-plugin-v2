@@ -68,28 +68,7 @@ export const SETTINGS_CONTROLS = {
         { "key": "injectCurrentPrompt", "label": "注入当前提示词", "type": "checkbox", "forceWhen": "timelyAnalysis" },
         { "key": "importanceBase", "label": "初始重要性(0次调用)", "type": "text" },
         { "key": "importancePerUse", "label": "每次调用增量", "type": "text" },
-        { "key": "clockExtractEnabled", "label": "消息后自动提取（不再只靠 AI）", "type": "checkbox" },
-        {
-            "key": "clockRegexPreset",
-            "label": "参考表达式预设",
-            "type": "select",
-            "options": [
-                { "v": "cn", "label": "中文常用（阿拉伯/中文数字年月日 + 时刻词 + 24 小时制）" },
-                { "v": "marker", "label": "标记式（【时间：】/ 时间：/ 地点：… 带值）" },
-                { "v": "cn+marker", "label": "中文常用 + 标记式（推荐，最全）" },
-                { "v": "story", "label": "正文头结构（▷ 日期（纪年）·季节 / ▷ 地点路径 / ▶第 N 天 起止时间）" },
-                { "v": "none", "label": "仅用下方自定义正则" }
-            ]
-        },
-        { "key": "clockDateRegex", "label": "自定义 · 日期正则", "type": "text" },
-        { "key": "clockTimeRegex", "label": "自定义 · 时间正则", "type": "text" },
-        { "key": "clockLocationRegex", "label": "自定义 · 地点正则", "type": "text" },
-        { "key": "clockRelative", "label": "相对日期推进（次日/第二天/隔天/明日 等）", "type": "checkbox" },
-        { "key": "clockForceDegrade", "label": "强制使用降级方案（最新情节的日期时间 + 最新的场景）", "type": "checkbox" },
-        { "key": "clockAnomalyJumpYears", "label": "日期异常判定：与当前时钟相差超过 N 年（默认 50，0 = 关闭）", "type": "text" },
-        { "key": "clockStoryDayEpoch", "label": "正文头「第 N 天」纪元首日（如 0001-01-01；留空 = 只记录天数不换算）", "type": "text" },
-        { "key": "clockAutoPatrol", "label": "时间巡检：载入后自动巡检原子数据日期时间（默认开，默认只统计）", "type": "checkbox" },
-        { "key": "clockPatrolAutoFix", "label": "时间巡检：自动修复（默认关 —— 只统计不修改）", "type": "checkbox" },
+        { "key": "clockExtractEnabled", "label": "消息后自动同步时钟（**只取最新情节**的日期/时间/地点）", "type": "checkbox" },
         { "key": "clockRepairBatch", "label": "AI 结合正文修复：单次提交条数（默认 20）", "type": "text" },
         { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" }
     ],
@@ -958,18 +937,22 @@ export function basePageHtml(controls, extrasHtml) {
         rows(['importanceBase', 'importancePerUse']),
         '<div class="ftt-muted">重要性 = 初始值 + 调用次数 × 增量，自动计算。</div></div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">剧情时钟自动提取（总览 日期/时间/地点）</div>',
-        rows(['clockExtractEnabled', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative']),
-        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRegexGen" title="把最近楼层正文交给 AI，总结日期/时间/地点的书写规律并生成三条正则（会校验：可编译、不匹配空串、样本中有命中）">🤖 AI 捕捉正文 → 生成正则</button></div>',
-        '<div class="ftt-hint">AI 只依据正文样本总结写法（兼容「公元1919年11月29日」「公元9年」「一九一九年三月一日」等），生成后自动写入上方三个输入框并给出试算结果；不合适可手动改写或清空。该操作只影响总览的 日期/时间/地点 自动提取。</div>',
-        '<div class="ftt-muted">取用顺序：正则直取 → 标记式带值 → 时段词/时刻 → 相对日期推进 → AI 摘要的当前状态 → 无结果时展示最近记忆参考（不写入）。仅影响总览 日期/时间/地点 的自动提取。</div></div>',
+        // v2.51.0 时钟改版（用户要求）：「只取最新情节」为唯一可信来源 —— 以下设定与提示按新设计重写，
+        //   不再保留任何「正文正则/自定义正则/相对日期/强制降级/年份异常阈值/第N天纪元/自动巡检」等废弃内容。
+        '<div class="ftt-section"><div class="ftt-sec-title">剧情时钟（总览 日期/时间/地点）</div>',
+        rows(['clockExtractEnabled']),
+        '<div class="ftt-muted">时钟来源只有一个：<b>最新一条「情节」</b>的 日期 / 时间 / 地点 字段（排除情节总结与已总结隐藏的情节）。'
+        + '记忆 / 角色 / 物品 / 货币 / 传言 / 计划 / 悬念 / 场景 / 概念 / 平行事件<b>都不参与</b>；正文里的日期也不再被解析。</div>',
+        '<div class="ftt-muted">最新情节没有日期时会退到次新的<b>带日期情节</b>；完全没有可用情节 → 时钟<b>保持原值</b>（不清空、不引入其它来源）。'
+        + '需要人工校正时用总览「✏️ 手工改写日期/时间/地点」（默认锁定，自动同步不会覆盖）。</div></div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">时钟降级与时间巡检（总览）</div>',
-        rows(['clockForceDegrade', 'clockAnomalyJumpYears', 'clockStoryDayEpoch', 'clockAutoPatrol', 'clockPatrolAutoFix', 'clockRepairBatch']),
-        '<div class="ftt-muted">判定项：① 日期格式非法；② 年份比当前时钟/最新情节晚超过 N 年（如 1919 剧情里出现 2011）；③ 早超过 N 年（剧情时间大幅倒退）。命中即降级，并在总览「🕒 时钟来源」里注明原因。</div>',
-        '<div class="ftt-muted">巡检 情节 / 记忆 / 计划 / 悬念 / 平行事件 的 日期 与 时间：格式非法 → 按内容重解析（解析不出则清空）；年份漂移 → 按内容重解析或保留月日改年份。安全口径：① 锚点不可信 → 只统计不修改；② 任何写回都要求「格式合法 + 不触发年份异常」；③ 格式合法但年份漂移、又无法可靠修正 → 保留原值；④ 写回前自动留一份全量快照。总览「🩺 时间巡检修复」为手动修复（按当前锚点校正年份，请先确认锚点正确）。</div>',
-        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRepair" title="把异常日期/时间连同最近正文交 AI 判定并修复（只改日期与时间字段；独立修复，不影响自动巡检）">🩺 AI 结合正文修复日期时间</button></div>',
-        '<div class="ftt-hint">独立修复：只在点这个按钮时执行 —— 依据【近期正文】+【时间锚点】逐条判定正确值，插件只接受格式合法且年份未超阈值的修正（不合格丢弃、无法判定如实回报）。上面的「时间巡检」是零 AI 的机械修复，两者互不干扰。</div></div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">时间巡检与修复（只针对情节）</div>',
+        rows(['clockRepairBatch']),
+        '<div class="ftt-muted">巡检范围只有<b>情节</b>：报出<b>格式非法</b>的日期与时间（排除情节总结 / 已总结隐藏）。'
+        + '修复闸门：① 锚点 = 手工改写 ＞ 当前时钟（都来自可信情节）；无锚点 → 只统计不修改；② 写回前自动留全量快照（可回滚）。</div>',
+        '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="clockRepair" title="把情节里格式非法的日期/时间连同该条正文交 AI 判定并修复（只改情节的日期与时间字段）">🩺 AI 结合正文修复日期时间</button></div>',
+        '<div class="ftt-hint">AI 修复只打包<b>情节</b>中格式非法的条目（单次上限见上），逐条给新日期/时间；插件只接受格式合法且在锚点附近的结果，不合格一律丢弃并如实回报。'
+        + '总览「🩺 时间巡检修复」是零 AI 的机械修复（同样只针对情节），两者互不干扰。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">显示界面开关</div>',
         '<div class="ftt-muted">V2 的入口形态在「基础 → V2 附加设定」中配置（悬浮按钮 / 菜单入口 / 抽屉卡片），此处不重复。</div></div>',

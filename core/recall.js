@@ -1303,6 +1303,41 @@ function scheduleUseFlush() {
 
 // 取字段值（对象路径）
 
+/**
+ * **唯一可信的时钟来源**：最新一条「情节」（v2.51.0 用户要求「时钟改版：只从情节最新的一条获取」）。
+ * 排除项（都不可信/不是剧情当下）：
+ *   · `hidden === true` 或 `summarizedBy`（已总结隐藏的原情节）；
+ *   · `mergedSummary`（情节总结条，包括半自动聚合产物）；
+ *   · `validity === 'inactive'`（已失效）。
+ * 顺序：先按剧情时间/楼层取最新；`needDate` 为真时只接受**带可用日期**的节点（仍只在情节内回退）；
+ *   找不到则返回 null（调用方**不得**改用其它数据类别）。
+ * @param {object} [opts] needDate
+ * @returns {{dim:string,node:object,date:string,time:string,location:string}|null}
+ */
+function latestTrustedPlot(opts) {
+    try {
+        const o = opts || {};
+        const list = (state.atoms || []).filter((a) => a && a.validity !== 'inactive'
+            && !(a.hidden === true) && !String(a.summarizedBy || '').trim() && !a.mergedSummary);
+        if (!list.length) return null;
+        const floorOf = (a) => Math.max(Number(a.floorEnd) || 0, Number(a.floorStart) || 0);
+        const sorted = list.slice().sort((a, b) => (floorOf(b) - floorOf(a))
+            || (atomTimeDesc(a, b))
+            || String(b.id || '').localeCompare(String(a.id || '')));
+        for (const a of sorted) {
+            const d = clockDateValid(a.date) ? String(a.date).slice(0, 10) : '';
+            if (o.needDate && !d) continue;
+            const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
+            return {
+                dim: 'atoms', node: a, date: d,
+                time: String(a.time || '').slice(0, 20),
+                location: String(a.location || locs[0] || '').slice(0, 60),
+            };
+        }
+        return null;
+    } catch (e) { return null; }
+}
+
 function latestPlotByFloor() {
     try {
         const list = activeAtoms().filter(a => a && a.validity !== 'inactive');   // v1.203：已总结隐藏的不作为「最近情节现场」
@@ -1375,7 +1410,7 @@ function calcImportance(item) {
 }
 function importancePct(item) { return Math.round(calcImportance(item) * 100); }
 
-export { calcImportance, importancePct, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
+export { calcImportance, importancePct, latestTrustedPlot, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {
