@@ -185,6 +185,7 @@ core/ ◄─ 禁止 import host/ adapters/ ui/    （由 scripts/check-core-puri
 ├── index.js               # 入口：装配 + 生命周期钩子导出
 ├── settings.html          # 扩展设置抽屉模板（Handlebars）
 ├── style.css              # 面板样式（继承 ST 主题变量）
+├── FTT-memory-changelog.json  # 版本清单（关于页「版本更新」读取；由 CHANGELOG.md 生成，门禁强制同步）
 ├── core/                  # 纯内核（零宿主依赖）
 │   └── model/             # 数据模型：V1 逐字移植 + tests/fixtures/v1-golden.json 保真度门禁
 ├── host/                  # 宿主适配层

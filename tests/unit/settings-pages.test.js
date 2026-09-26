@@ -181,7 +181,9 @@ await A('P6 面板接线：settingsSub 切页只影响设定页；数据管理�
     return r1.ok === true && page.indexOf('data-ftt-settings-page="data"') >= 0
         && page.indexOf('data-ftt-action="exportState"') >= 0 && page.indexOf('data-ftt-import="1"') >= 0
         && page.indexOf('data-ftt-action="clearFloors"') >= 0
-        && r2.ok === true && about.indexOf('设定 · 关于') >= 0 && about.indexOf('内核配置键：') >= 0
+        && r2.ok === true && about.indexOf('设定 · 关于') >= 0 && about.indexOf('关于 · FTT记忆组件') >= 0
+        && about.indexOf('内核配置键：') < 0 && about.indexOf('V2 附加信息') < 0   // v2.53.0：关于页不再附开发/历史块
+        && page.indexOf('本地缓冲') >= 0 && page.indexOf('data-ftt-action="aboutClearCache"') >= 0  // v2.53.0：缓冲清理在数据管理
         && exp.ok === true && exp.chars > 10 && st.exportChars > 10
         && imp.ok === true && st.settingsSub === 'data';
 }, (() => { try { return JSON.stringify(panelState()).slice(0, 200); } catch (e) { return String(e.message); } })());
