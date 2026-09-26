@@ -24,9 +24,10 @@ import { vecCacheGetMany, vecCachePutMany, vectorCacheClear, vectorCacheStats, r
 import { requestEmbeddings, requestRerank, vectorTarget, vectorLayerInfo } from '../../host/embeddings.js';
 import { vectorRecall, vectorLayerStatus } from '../../host/vector-recall.js';
 import { runExtractFlow, testLayer } from '../../host/extract-flow.js';
-import { extractPageHtml, layerTestResults, vectorTestResults } from '../../ui/extract-page.js';
+import { extractPageHtml, layerTestResults, vectorTestResults, blockModelList, setBlockModelList } from '../../ui/extract-page.js';
 import { settingsPageHtml, SETTINGS_CONTROLS, settingsControlHtml } from '../../ui/settings-pages.js';
-import { apiAction, API_ACTIONS, setApiPageHooks } from '../../ui/api-page.js';
+import { apiAction, API_ACTIONS, setApiPageHooks, resetApiPageState } from '../../ui/api-page.js';
+import { resolveApiTarget } from '../../core/api-channel.js';
 
 const R = makeReporter('vector-layer v2.58.0 提取记忆：向量 API 设置与 V1 对齐 + 向量层');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -175,7 +176,9 @@ await (async () => {
             globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: [{ index: 0, embedding: [1] }] }) });
             const bad = await requestEmbeddings(['a', 'b']);
             globalThis.fetch = keep;
-            return bad.ok === false && bad.error === 'Embedding 返回不完整' && bad.vectors.length === 0;
+            // v2.79.0：错误文案保留 V1 前缀，并补上缺项计数（`Embedding 返回不完整（1/2 条缺失）`）
+            return bad.ok === false && bad.error.indexOf('Embedding 返回不完整') === 0
+                && bad.error.indexOf('1/2') > 0 && bad.vectors.length === 0;
         })(), '见断言');
     } finally { un(); }
 })();
@@ -260,6 +263,17 @@ A('U2 提取页不再只渲染裸控件：Embedding/Rerank 区块给出「当前
     return h1.indexOf('当前生效：emb-1') >= 0 && h2.indexOf('尚未可用：Embedding API 未配置') >= 0;
 })(), '见断言');
 
+A('U4 v2.79.0：每个区块都有「选择模型」下拉（写回本区块模型键），选项来自该区块的「📦 获取模型」', (() => {
+    setBlockModelList('emb', { models: ['emb-x', 'emb-y'], error: '' });
+    setBlockModelList('rerank', { models: [], error: 'HTTP 404' });
+    const h = settingsPageHtml('extract', '');
+    setBlockModelList('emb', { models: [], error: '' });
+    setBlockModelList('rerank', { models: [], error: '' });
+    return h.indexOf('data-ftt-model-select="emb"') >= 0 && h.indexOf('data-ftt-model-select="rerank"') >= 0
+        && h.indexOf('<option value="emb-x"') >= 0 && h.indexOf('（获取失败：HTTP 404）') >= 0
+        && h.indexOf('选择模型') >= 0;
+})(), '见断言');
+
 A('U3 extractPageHtml 与设定页渲染同源（同一份内容，避免两处各写一套）', (() => {
     return extractPageHtml(SETTINGS_CONTROLS.extract, settingsControlHtml) === settingsPageHtml('extract', '');
 })(), '见断言');
@@ -269,7 +283,12 @@ await (async () => {
     seedState();
     cfg.useVector = true; cfg.embeddingUrl = 'https://api.example.com/v1'; cfg.embeddingModel = 'emb-1'; cfg.embeddingKey = '';
     cfg.rerankUrl = 'https://api.example.com/v1'; cfg.rerankModel = 'rr-1'; cfg.vectorMinScore = 0;
-    const un = installGlobalFetch((url, opts) => ({ status: 200, body: { data: [{ index: 0, embedding: [1, 0] }], results: [{ index: 0, relevance_score: 0.5 }] } }));
+    const fetchCalls = [];
+    const un = installGlobalFetch((url, opts) => {
+        fetchCalls.push(String(url));
+        if (String(url).indexOf('/models') >= 0) return { status: 200, body: { data: [{ id: 'emb-a1' }, { id: 'emb-a2' }] } };
+        return { status: 200, body: { data: [{ index: 0, embedding: [1, 0] }], results: [{ index: 0, relevance_score: 0.5 }] } };
+    });
     setApiPageHooks({ rerender: () => undefined });
     try {
         A('A1 动作表包含 testLayer 与 vectorCacheClear（面板可分发）', API_ACTIONS.indexOf('testLayer') >= 0 && API_ACTIONS.indexOf('vectorCacheClear') >= 0, J(API_ACTIONS));
@@ -299,6 +318,45 @@ await (async () => {
         A('A6 未启用时层测试动作如实失败（不假装命中）', t2.ok === false && t2.count === 0
             && (String(t2.note).indexOf('请先启用') >= 0 || String(t2.note).indexOf('未命中') >= 0), J(t2));
         cfg.useVector = true;
+
+        // ---- v2.79.0：Embedding / Rerank 区块的「📦 获取模型」必须按**本区块**的连接走（此前串到主 API） ----
+        resetApiPageState();
+        const mainTarget = resolveApiTarget({ purpose: 'main' });
+        const m = await apiAction('apiModels', { apiPfx: 'emb' });
+        A('A7 `apiModels`（Embedding 区块）：拉的是本区块的地址（不是主 API），且结果写进本区块模型态',
+            m.ok === true && m.pfx === 'emb' && m.count === 2 && m.models[0] === 'emb-a1'
+            && String(m.note).indexOf('Embedding') >= 0 && blockModelList('emb').models.length === 2,
+            J({ note: m.note, main: mainTarget.channel, block: blockModelList('emb') }));
+        A('A7b 模型列表按区块分开存放（Rerank 区块不会被 Embedding 的结果串台）',
+            blockModelList('rerank').models.length === 0 && blockModelList('emb').models[0] === 'emb-a1',
+            J({ emb: blockModelList('emb').models, rerank: blockModelList('rerank').models }));
+
+        const savedRr = { url: cfg.rerankUrl, model: cfg.rerankModel };
+        cfg.rerankUrl = ''; cfg.rerankModel = '';
+        const m2 = await apiAction('apiModels', { apiPfx: 'rerank' });
+        A('A8 未配置的区块如实报**本区块**的原因（不是主 API 的原因）',
+            m2.ok === false && String(m2.note).indexOf('Rerank') >= 0 && String(m2.note).indexOf('缺少地址') >= 0
+            && String(m2.note).indexOf('跟随酒馆当前连接') < 0 && blockModelList('rerank').error.indexOf('缺少地址') >= 0,
+            J({ note: m2.note, block: blockModelList('rerank') }));
+        cfg.rerankUrl = savedRr.url; cfg.rerankModel = savedRr.model;
+
+        // DOM 优先：屏幕上刚改（尚未派发 change）的值应当被「🧪 测试」采用（V1 collectApiBlock 语义）
+        const prevDoc = globalThis.document;
+        const makeEl = (v) => ({ value: v });
+        globalThis.document = {
+            querySelector: (sel) => {
+                const key = String(sel).replace(/^\[data-ftt-cfg="|"\]$/g, '');
+                if (key === 'embeddingUrl') return makeEl('https://typed.example.com/v1');
+                if (key === 'embeddingKey') return makeEl('TYPED');
+                if (key === 'embeddingModel') return makeEl('typed-model');
+                return null;
+            },
+        };
+        const t3 = await apiAction('apiTest', { apiPfx: 'emb', kind: 'embedding' });
+        globalThis.document = prevDoc;
+        A('A9 `apiTest`（Embedding 区块）：以屏幕上当前输入值为准（DOM 优先，回落 cfg）',
+            t3.ok === true && String(t3.note).indexOf('可用') >= 0 && fetchCalls.indexOf('https://typed.example.com/v1/embeddings') >= 0,
+            J({ note: t3.note, calls: fetchCalls.slice(-2) }));
     } finally { un(); }
 })();
 

@@ -209,7 +209,7 @@ export async function sendWithTarget(target, { systemPrompt, prompt } = {}) {
  *     UI 暂不暴露按钮（避免"假控件"）。
  * 返回 `{ok:true,ms,kind}` 或 `{ok:false,error}`（错误文案与 V1 同源：未配置地址/模型、`HTTP <code>: <body>`）。
  */
-export async function probeTarget(target, kind) {
+export async function probeTarget(target, kind, timeoutMs) {
     const t = target || {};
     const k = str(kind) || 'chat';
     if (t.channel === 'profile') {
@@ -230,7 +230,9 @@ export async function probeTarget(target, kind) {
     const headers = { 'Content-Type': 'application/json' };
     if (str(t.apiKey)) headers.Authorization = 'Bearer ' + str(t.apiKey);
     const t0 = Date.now();
-    const tOut = withTimeout();
+    // v2.79.0：允许调用方指定超时（向量区块的「🧪 测试」传 `cfg.vectorTimeoutMs`，与「检索参数 · 超时(ms)」一致；
+    //   此前该测试恒用默认 120s，用户把超时设成 15s 也不生效）。
+    const tOut = withTimeout(timeoutMs);
     try {
         if (k === 'embedding' || k === 'rerank') {
             if (!str(t.model)) return { ok: false, error: k === 'embedding' ? '未配置 Embedding 模型' : '未配置 Rerank 模型' };
