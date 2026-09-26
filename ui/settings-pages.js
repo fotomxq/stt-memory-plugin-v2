@@ -1066,6 +1066,19 @@ export function analyzePageHtml(controls) {
     // 开关标签「独立分组」与关闭态说明「统一分组（一次请求全部维度）」**与 V1 逐字**；
     //   v2.35.0：V1 开启态原文「独立分组（各维度可单独选预设并行请求）」现已**成立**（按维度选 API 分组已实现），故逐字恢复。
     const stateText = separate ? '独立分组（各维度可单独选预设并行请求）' : '统一分组（一次请求全部维度）';
+    // v2.73.0（用户要求）：「分析记忆的 UI 布局需优化，合理分组，尤其是**最底部的一组设定**。」
+    //   此前页面末尾把 5 个控件（分段读取楼层数 + 情节分段总结 4 项）**平铺**在维度行之后 —— 无节标题、无说明，
+    //   和上面的维度分组混成一片。现按 V1 的分节口径补齐两节：
+    //     「分析范围」（分批读取）与「情节分段总结（情节页「🧩 分段总结」）」；
+    //   长解释收进折叠说明（v2.60 口径：页面一句短提示 + 细节可展开），控件键一个不少（未登记键回落末节）。
+    const byKey = {};
+    for (const c of list) byKey[String(c.key)] = c;
+    const used = {};
+    const row = (k) => { const c = byKey[k]; if (!c) return ''; used[k] = true; return settingsControlHtml(c); };
+    const scope = ['summaryChunkSize'].map(row).filter(Boolean).join('\n');
+    const segKeys = ['plotSegmentBatchAtoms', 'plotSegmentProtectManual', 'plotSegmentIncremental', 'plotSegmentTextLimit'];
+    const seg = segKeys.map(row).filter(Boolean).join('\n');
+    const rest = list.filter((c) => !used[String(c.key)]).map((c) => settingsControlHtml(c));
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
         '<label class="ftt-field"><label style="width:170px">独立分组</label>'
@@ -1077,8 +1090,19 @@ export function analyzePageHtml(controls) {
         '<div class="ftt-section"><div class="ftt-sec-title">各维度独立子开关与分组（独立分组时生效）</div>',
         dimPresetRowsHtml(),
         '</div>',
-        list.map((c) => settingsControlHtml(c)).join('\n'),
-    ].join('\n');
+        (scope
+            ? '<div class="ftt-section"><div class="ftt-sec-title">分析范围</div>' + scope
+            + shortHintHtml('分批处理（默认 10）：按该值把正文分批提取；自动补全覆盖全部未摘要楼层，手动摘要只处理最近楼层（默认 2）。')
+            + '</div>'
+            : ''),
+        (seg
+            ? '<div class="ftt-section"><div class="ftt-sec-title">情节分段总结（情节页「🧩 分段总结」）</div>' + seg
+            + shortHintHtml('把情节按时间从早到晚切成批次，逐批拆成多段归档（不注入、不参与召回与遗忘）。')
+            + hintDetailsHtml('说明', '<div>' + esc('「🧩 生成分段总结」按上方条数打包情节，每段以「### 时间范围」为头、段内逐条列出剧情线；单次运行最多 12 批，可再次点击继续。保护已存在的时间范围：同一时间范围的段落已存在时跳过，AI 运行永不删除段落（唯一消失途径是手动删除）。增量：已被现有段落覆盖的批次直接跳过（省 token）；关闭则每次全量重跑。字数上限为入库硬截断。该内容只归档供人工查阅与编辑，不注入给 AI。') + '</div>')
+            + '</div>'
+            : ''),
+        (rest.length ? '<div class="ftt-section"><div class="ftt-sec-title">其它</div>' + rest.join('\n') + '</div>' : ''),
+    ].filter(Boolean).join('\n');
 }
 
 /**
