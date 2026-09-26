@@ -2135,6 +2135,10 @@ export function bindOverlay() {
                 key: ds.fttPromptKey || ds.fttKey || '',
                 box: ds.fttPromptBox || '',
                 pick: ds.fttRelPick || '',
+                // v2.58.0：向量层区块与「提取记忆」层测试的入参（`data-ftt-api-pfx` / `data-ftt-api-kind` / `data-ftt-layer`）
+                apiPfx: ds.fttApiPfx || '',
+                apiKind: ds.fttApiKind || '',
+                layer: ds.fttLayer || '',
             });
         });
         if (typeof el.addEventListener === 'function') {

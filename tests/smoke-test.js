@@ -2262,6 +2262,60 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
     }
 })(), '');
 
+await assert('BA2 v2.58.0 提取记忆三层：开启「启用向量检索」后发送前走**第一层向量召回**（真实 embedding 请求 → 注入体为向量命中行）；关闭/失败自动降级到本地召回', (async () => {
+    const RT7 = await import('../core/model/runtime.js');
+    const INJ = await import('../host/inject.js');
+    const keepUse = RT7.cfg.useVector, keepUrl = RT7.cfg.embeddingUrl, keepModel = RT7.cfg.embeddingModel, keepKey = RT7.cfg.embeddingKey;
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    let embCalls = 0;
+    const restoreFetch = installGlobalFetch((url, opts) => {
+        if (String(url).indexOf('/embeddings') >= 0) {
+            embCalls += 1;
+            const body = opts && opts.body ? JSON.parse(opts.body) : {};
+            const inputs = Array.isArray(body.input) ? body.input : [];
+            // 桩：含「木箱/账册/仓库」→ 第一维高，其余第二维高
+            return { status: 200, body: { data: inputs.map((t, i) => ({ index: i, embedding: /木箱|账册|仓库/.test(t) ? [1, 0] : [0, 1] })) } };
+        }
+        return { status: 404, body: {} };
+    });
+    try {
+        // 造一段可抽取关键词的最近楼层 + 一条含特征词的情节
+        host.ctx.chat.push({ is_user: false, mes: '甲打开木箱取出账册，仓库里堆着货箱。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RT7.state.atoms = [
+            { id: 'vec-a1', text: '甲在仓库打开木箱，取出账册。', date: '1919-11-20', floorStart: 1, floorEnd: 1, uses: 1, tags: [], keywords: ['木箱', '账册'], validity: 'active' },
+            { id: 'vec-a2', text: '乙在码头等船。', date: '1919-11-21', floorStart: 2, floorEnd: 2, uses: 1, tags: [], validity: 'active' },
+        ];
+        RT7.cfg.useVector = true;
+        RT7.cfg.embeddingUrl = 'https://stub.example.com/v1';
+        RT7.cfg.embeddingModel = 'stub-emb';
+        RT7.cfg.embeddingKey = '';
+        RT7.cfg.vectorMinScore = 0;
+        const r1 = await entry.injectNow();
+        const txt1 = INJ.readInject();
+        const st1 = INJ.pushStats();
+        const vecOk = r1.ok === true && embCalls >= 1 && r1.hitLayer === 'vector'
+            && String(txt1).indexOf('甲在仓库打开木箱') >= 0 && String(st1.lastHitLayer) === 'vector';
+        // 关闭向量层 → 本地召回（hitLayer 为空，不再请求 embedding）
+        const callsBefore = embCalls;
+        RT7.cfg.useVector = false;
+        await entry.injectNow();
+        const st2 = INJ.pushStats();
+        const fallbackOk = embCalls === callsBefore && (st2.lastHitLayer === '' || st2.lastHitLayer === 'js');
+        // 向量层配置缺失（开着但没地址）→ 不抛错、自动降级
+        RT7.cfg.useVector = true; RT7.cfg.embeddingUrl = '';
+        const r3 = await entry.injectNow();
+        const degradeOk = r3.ok === true && embCalls === callsBefore;
+        return vecOk && fallbackOk && degradeOk;
+    } finally {
+        RT7.cfg.useVector = keepUse; RT7.cfg.embeddingUrl = keepUrl; RT7.cfg.embeddingModel = keepModel; RT7.cfg.embeddingKey = keepKey;
+        host.ctx.chat.length = 0; keepChat.forEach((m) => host.ctx.chat.push(m));
+        host.ctx.getLastMessageId = keepLast;
+        restoreFetch();
+    }
+})(), '');
+
 await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文案逐字一致；无对话框时不执行（取消态如实提示）、确认后清空并留「先导出备份」提示', (async () => {
     const F = globalThis.FTT;
     const st = rtMod.state;

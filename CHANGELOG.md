@@ -3,6 +3,46 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.58.0（2026-09-26）· 提取记忆：向量 API 设置对齐 V1（Embedding / Rerank）+ 向量层落地
+
+**用户报告**：「提取信息的**向量 API 设置在哪里**？这些内容与 **V1 完全没对齐**，请核对并修复。」
+
+**核对结论（V1 v1.206 `extract` 页 ≈25630~25675 vs V2 旧实现）**：V1 该页是**三层结构**（🟢 向量检索 /
+🟡 浏览器 JS 抽取 / 🔴 AI 分析）并带 **Embedding API** 与 **Rerank API** 两个 `apiBlockHtml` 区块（地址 / Key /
+模型 / 代理预设 + 🧪 测试 + 📦 获取模型）、「检索参数」三项、两个 `groupStrategyHtml`（关键词提取 API / 记忆分析 API
+独立分组）；**V2 此前只有一排裸控件**（useVector / vectorTopN / …），既没有 Embedding / Rerank 设置，
+向量层也完全没有实现（`ui/api-page.js` 甚至写着「该层在 V2 尚未实现，故不给控件」）——本次全部补齐并接线。
+
+**① 新增向量层实现（真实可跑，非假控件）**：
+`core/vector.js`（纯内核：`cosineSimilarity` / `meanVector` / `vectorBank` 6 类候选 / `rankVector`）、
+`adapters/vector-cache.js`（IndexedDB 库 **`FTTMemoryVectorCache`** / 表 **`embeddings`**，与 V1 **同名同结构**，
+V1 缓存可直接复用；无 IndexedDB 时退化为内存）、
+`host/embeddings.js`（`requestEmbeddings` / `requestRerank` / `vectorTarget`：端点拼 `/embeddings`·`/rerank`、
+Bearer 鉴权、体 `{model,input}`·`{model,query,documents,top_n}`、按 `index` 归位、超时 `vectorTimeoutMs`、
+逐传输降级、`kind='向量'` 调试日志）、
+`host/vector-recall.js`（候选库 → 缓存 → 缺项 embedding → 关键词均值查询向量 → 余弦 TopN → **Rerank 精排** →
+注入行）、
+`core/recall.js#vectorInjectionLines`（六类行格式与 V1 逐字一致；**情节行按剧情时间从早到晚**，相似度只决定取哪几条）。
+**② 接进发送前流程**：`host/extract-flow.js` 编排三层（命中即返回、逐层降级），`host/inject.js#pushMemoryInject`
+在 `useVector` / `useKeywordFlow` 开启时先走三层流程（默认关闭 → 行为与旧版**完全一致**），失败自动回落既有本地召回；
+注入统计新增 `lastHitLayer`。AI 层：`host/ai-recall.js`（`keywordExtract` / `memorySend` 模板 + kw / mem 目标，
+`resolveApiTarget({purpose:'kw'|'mem'})` 的「分组优先于内联」语义已就位）。
+**③ 设置页重建**：`ui/extract-page.js` 按 V1 原位渲染 —— 三层结构说明、🟢 第一层（开关 + 🧪 测试向量提取 + 命中预览）、
+**Embedding** 与 **Rerank** 区块（地址 / Key / 模型 / 使用 API 分组 + 🧪 测试 + 📦 获取模型 + 「当前生效 / 尚未可用」真实状态）、
+检索参数（TopN / 最低相似度 / 超时 + 向量缓存统计与「🧹 清空向量缓存」）、🟡 第二层、🔴 第三层、
+关键词提取 API 与记忆分析 API 分组下拉、召回参数。
+**④ 动作接线**：`apiTest` 支持 `data-ftt-api-pfx=emb|rerank`（用向量层 target 真实探测）、
+新增 `testLayer`（真实跑一层并写回「命中 N 条 + 关键词 + 前 900 字预览」）、`vectorCacheClear`；
+面板委托透传 `apiPfx` / `apiKind` / `layer`。`ui/api-page.js` 的「向量层未实现」说明同步改为指向提取页。
+**⑤ 与 V1 的两处有意差异（已登记）**：V1 的「代理预设名」来自 TavernHelper 预设（原生扩展拿不到）→ V2 的等价物是
+**本插件 API 分组**（键名沿用 `embeddingProxyPreset` / `rerankProxyPreset`）；V1 只提供 Rerank 的设置与测试、
+搜索路径并未调用 → V2 在配置了 Rerank 时**真的会精排**。
+
+门禁：新增 `tests/unit/vector-layer.test.js`（28 断言：余弦/均值/候选库/打分、缓存往返与回退、Embedding/Rerank
+请求与失败降级、三层流程与降级、提取页 UI 全要素、三个动作端到端）；冒烟新增 `BA2`（开启向量检索后
+**真实 embedding 请求 → 注入体为向量命中行**，关闭/缺配置自动降级）。合计单元 **80 文件 / 1252 断言**、
+冒烟 **164 项**，全绿。
+
 ## v2.57.0（2026-09-26）· 遗忘 / 传言 / 平行：提示言简意赅 + 扩展提示走折叠交互
 
 **用户要求**：「设定的**遗忘、传言、平行**的提示信息需全面完善，避免罗嗦的提示信息，展示内容必须**言简意赅**，

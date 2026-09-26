@@ -7,7 +7,7 @@ import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
-import { clearInject, injectAvailable, pushMemoryInject, pushStats } from './host/inject.js';
+import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, uninstallMenuEntry, menuInfo } from './ui/menu.js';
@@ -156,6 +156,13 @@ import {
     nsfwKeywordReset, nsfwRuleReset,
 } from './core/nsfw.js';
 import { promptToGenerateArgs } from './host/extract.js';
+// v2.58.0：提取记忆三层流程（向量 / JS / AI）与向量层宿主适配（对齐 V1 的 Embedding / Rerank API 设置）
+import { runExtractFlow, testLayer } from './host/extract-flow.js';
+import { vectorRecall, vectorLayerStatus } from './host/vector-recall.js';
+import { requestEmbeddings, requestRerank, vectorLayerInfo, vectorTarget } from './host/embeddings.js';
+import { vectorCacheClear, vectorCacheStats, vecCachePutMany } from './adapters/vector-cache.js';
+import { extractKeywordsFromText, analyzeMemorySend, aiLayerInfo, setAiRecallHooks } from './host/ai-recall.js';
+import { getStoryNow } from './core/model/runtime.js';
 import { rawGenerate } from './host/generation.js';
 import { clockUiInfo } from './ui/clock.js';
 import {
@@ -748,6 +755,21 @@ function bootstrapDiagnostics() {
             apiTest: (opts) => probeTarget(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose }), (opts && opts.kind) || 'chat'),
             apiModels: (opts) => probeModels(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose })),
             apiSend: (opts) => sendWithTarget((opts && opts.target) || resolveApiTarget({ purpose: opts && opts.purpose }), { systemPrompt: opts && opts.systemPrompt, prompt: opts && opts.prompt }),
+            // v2.58.0：提取记忆三层（向量 / JS / AI）—— 设置页测试、诊断与命令共用
+            vectorLayerInfo: () => vectorLayerInfo(),
+            vectorLayerStatus: () => vectorLayerStatus(),
+            vectorTarget: (kind) => vectorTarget(kind),
+            vectorRecall: (keywords, opts) => vectorRecall(keywords, opts || {}),
+            embeddingsRequest: (texts) => requestEmbeddings(texts),
+            rerankRequest: (query, docs, topN) => requestRerank(query, docs, topN),
+            vectorCacheStats: () => vectorCacheStats(),
+            vectorCacheClear: () => vectorCacheClear(),
+            vectorCachePut: (entries) => vecCachePutMany(entries),
+            extractFlow: (floorText, opts) => runExtractFlow(floorText, opts || {}),
+            testLayer: (layer, floorText, opts) => testLayer(layer, floorText, opts || {}),
+            aiLayerInfo: () => aiLayerInfo(),
+            aiKeywords: (text) => extractKeywordsFromText(text),
+            aiMemorySend: (keywords, floorText, dump) => analyzeMemorySend(keywords, floorText, dump),
             worldbookEntries: (env) => buildWorldbookEntries(env),
             worldbookKeys: (n) => buildWorldbookKeys(n),
             worldbookIsFttEntry: (e) => worldbookIsFttEntry(e),
@@ -1271,6 +1293,19 @@ function installHostBridges() {
     });
     // B8-6：修复域钩子（楼层面板哈希走 host/floors；内核不直读宿主聊天）
     setRepairHooks({ floorHash: (i) => { try { return hashFloorText(i); } catch (e) { return ''; } } });
+    // v2.58.0：向量层接线（三层流程 + 最近楼层正文 + 剧情日期）—— 向量/rerank 请求在 host/embeddings.js
+    setInjectRuntime({ extractFlow: (text, opts) => runExtractFlow(text, opts) });
+    setInjectRuntime({
+        recentFloorText: () => {
+            try {
+                const last = Number((getCtx() && typeof getCtx().getLastMessageId === 'function') ? getCtx().getLastMessageId() : -1);
+                if (!Number.isFinite(last) || last < 0) return '';
+                const n = Math.max(1, Number(cfgRef.feedFloors) || 2);
+                return collectFloorLinesInRange(Math.max(0, last - n + 1), last).join('\n');
+            } catch (e) { return ''; }
+        },
+    });
+    setAiRecallHooks({ getStoryNow: () => { try { return getStoryNow(); } catch (e) { return ''; } } });
     // B8-7-b：平行事件取文钩子（V1 `collectFloorLinesInRange(start, end, {})`；内核不直读宿主聊天）
     setParallelTextHooks({
         floorLinesInRange: (start, end) => { try { return collectFloorLinesInRange(Number(start) || 0, Number(end) || 0); } catch (e) { return []; } },

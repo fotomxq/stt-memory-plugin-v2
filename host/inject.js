@@ -10,7 +10,7 @@ import { buildMemoryBodyForInject } from '../core/recall.js';
 import { clockDateLabel } from '../core/clock.js';
 
 // 内核视图引用（配置 / 剧情时钟 / 召回函数）—— 延迟取用，允许测试替换
-const runtimeRef = { cfg: kernelCfg, getStoryNow, buildMemoryBodyForInject };
+const runtimeRef = { cfg: kernelCfg, getStoryNow, buildMemoryBodyForInject, extractFlow: null, recentFloorText: null };
 /** 替换内核视图引用（仅测试与调试使用） */
 export function setInjectRuntime(ref) { Object.assign(runtimeRef, ref || {}); return runtimeRef; }
 
@@ -103,9 +103,15 @@ export function wrapInjectText(body) {
 }
 
 /**
- * 构建并推送记忆注入（P3 主入口；同步、纯本地召回，不发起 AI 调用）。
- * @param {object} [opts] queryText 查询意图（默认空：与 V1 注入路径一致，交由本地召回按预算选条）
- * @returns {Promise<{ok:boolean, reason?:string, chars:number, injected:boolean}>}
+ * 构建并推送记忆注入（P3 主入口）。
+ *
+ * v2.58.0（对齐 V1 的三层提取）：开启「启用向量检索」后，发送前先走**第一层向量检索**
+ *   （关键词 → embedding → 余弦 TopN →（可）Rerank 精排）——命中即用向量召回的行作为注入体；
+ *   未命中/未配置/请求失败则**自动降级**到既有本地召回（第二层 JS 抽取）。
+ *   此处不直接依赖 host 模块，流程由 `runtimeRef.extractFlow`（`index.js` 注入 `host/extract-flow.js`）
+ *   提供 —— 保持本模块在测试中可独立替换。
+ * @param {object} [opts] queryText 查询意图 / floorText 最近楼层正文（向量层的关键词来源）
+ * @returns {Promise<{ok:boolean, reason?:string, chars:number, injected:boolean, hitLayer?:string}>}
  */
 export async function pushMemoryInject(opts) {
     const o = opts || {};
@@ -114,12 +120,26 @@ export async function pushMemoryInject(opts) {
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
         const mySeq = ++injectSeq;
         const cfg = runtimeRef.cfg || {};
-        const body = runtimeRef.buildMemoryBodyForInject
-            ? runtimeRef.buildMemoryBodyForInject(String(o.queryText || ''), {
+        let body = '';
+        let hitLayer = '';
+        // ① 三层流程（仅在启用向量层或 AI 层时进入；否则保持既有同步本地召回路径不变）
+        if (typeof runtimeRef.extractFlow === 'function' && (cfg.useVector === true || cfg.useKeywordFlow === true)) {
+            try {
+                const ft = String(o.floorText || (typeof runtimeRef.recentFloorText === 'function' ? (runtimeRef.recentFloorText() || '') : '') || o.queryText || '');
+                const flow = await runtimeRef.extractFlow(ft, {
+                    queryText: String(o.queryText || ''),
+                    charBudget: cfg.charBudget,
+                });
+                if (flow && flow.ok && flow.lines.length) { body = flow.lines.join('\n'); hitLayer = flow.hitLayer || ''; }
+            } catch (e) { /* 向量/AI 层失败 → 降级到本地召回 */ }
+        }
+        // ② 本地召回（第二层 JS 抽取 / 兜底）
+        if (!body && runtimeRef.buildMemoryBodyForInject) {
+            body = runtimeRef.buildMemoryBodyForInject(String(o.queryText || ''), {
                 charBudget: cfg.charBudget, maxAtoms: cfg.maxAtoms, maxMemories: cfg.maxMemories,
                 countUses: true, inject: true,
-            })
-            : '';
+            });
+        }
         const text = wrapInjectText(body);
         if (mySeq !== injectSeq) { injectStats.stale += 1; return { ok: true, reason: 'stale', chars: 0, injected: false }; }
         if (!text && lastInjectText) {
@@ -132,7 +152,8 @@ export async function pushMemoryInject(opts) {
         injectStats.pushes += 1;
         injectStats.lastChars = text.length;
         injectStats.lastAt = Date.now();
-        return { ok: !!r.ok, reason: r.reason, chars: text.length, injected: true };
+        injectStats.lastHitLayer = hitLayer;
+        return { ok: !!r.ok, reason: r.reason, chars: text.length, injected: true, hitLayer: hitLayer };
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
         return { ok: false, reason: 'error', chars: 0, injected: false };

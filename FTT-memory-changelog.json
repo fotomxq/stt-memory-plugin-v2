@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.57.0",
+  "version": "2.58.0",
   "updatedAt": "2026-09-26",
   "generatedAt": "2026-09-26",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.58.0",
+      "date": "2026-09-26",
+      "title": "提取记忆：向量 API 设置对齐 V1（Embedding / Rerank）+ 向量层落地",
+      "points": [
+        "① 新增向量层实现（真实可跑，非假控件）：core/vector.js（纯内核：cosineSimilarity / meanVector / vectorBank 6 类候选 …",
+        "② 接进发送前流程：host/extract-flow.js 编排三层（命中即返回、逐层降级），host/inject.js#pushMemoryInject在 useVecto…",
+        "③ 设置页重建：ui/extract-page.js 按 V1 原位渲染 —— 三层结构说明、🟢 第一层（开关 + 🧪 测试向量提取 + 命中预览）、"
+      ]
+    },
     {
       "version": "2.57.0",
       "date": "2026-09-26",

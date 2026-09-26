@@ -862,6 +862,7 @@ import { worldbookNames } from '../host/worldbook.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
 import { hintDetailsHtml, paramListHtml, shortHintHtml } from './hints.js';
+import { extractPageHtml } from './extract-page.js';
 import { storagePageHtml } from './sync.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
@@ -1110,6 +1111,8 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'parallels') return parallelsPageHtml(list);
     // 传言页（v2.57.0）：控件表 + 一句短提示 + 折叠「参数说明」
     if (pid === 'rumors') return rumorsPageHtml(list);
+    // 提取页（v2.58.0）：V1 的三层结构布局（向量层含 Embedding / Rerank API 区块 + kw/mem 分组 + 测试按钮）
+    if (pid === 'extract') return extractPageHtml(list, settingsControlHtml);
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 功能 / 版本更新」三节（`ui/about.js#aboutHtml`）
