@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.84.0",
+  "version": "2.85.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.85.0",
+      "date": "2026-09-27",
+      "title": "占比滚动条拖动中实时联动 + 保底被动下移（上限权威）",
+      "points": [
+        "① 拖动中实时联动：（core/ingest.js#allotStoreShares + ui/panel.js#shareDragInput，v2.85.0）：v2.84.0 …",
+        "② 保底被动下移（上限权威）：（core/ingest.js#storeCapRaw/storeMinFor/clampStoreFloors + adapters/config…",
+        "③ 修掉实施中的一处比例失真：首版把「被拖动项的新值」先写进基准表再调 allotStoreShares —— 基准表因此不足 100，归一化把差额补给了最大项（实测「记忆」被抬…"
+      ]
+    },
     {
       "version": "2.84.0",
       "date": "2026-09-27",

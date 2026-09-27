@@ -1442,10 +1442,44 @@ function repairClampNum(v, lo, hi, dft) {
     return Math.min(hi, Math.max(lo, n));
 }
 
-function storeMinFor(dim) {
+// v2.85.0（用户要求：「存储总上限的保底数据应该被动联动，如情节调节后，如果保底数据高于该数据则自动下移数字」）：
+//   · 新口径（总上限模式）下，**占比推导出的上限是权威值**，保底**只降不升**地跟到它下面（`clampStoreFloors`）；
+//   · 兼容口径（`storeTotalMax` 为 0 / 缺键）下保持 V1 原样 —— 上限 = max(storeMax*, 保底)，逐字一致。
+
+/** 该维**配置保底**（原样读配置，不做任何夹取；兼容口径下这就是对外保底） */
+function storeFloorRaw(dim) {
     try { const e = STORE_LIMITS[dim]; const v = Number(cfg && e && cfg[e[0]]); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0; } catch (e) { return 0; }
 }
-// 有效上限 = max(配置上限, 保底) —— 保证任何裁剪都不会跌破保底
+
+/** 是否处于「总上限」新口径（`storeTotalMax` 为正数）；否则回落旧的逐维 `storeMax*` */
+function storeTotalMode() {
+    try { const t = Number(cfg && cfg.storeTotalMax); return Number.isFinite(t) && t > 0; } catch (e) { return false; }
+}
+
+/**
+ * 该维**基准上限**（不含保底）：
+ *   · 新口径：`四舍五入(storeTotalMax × storeShare[dim] / 100)`；
+ *   · 兼容口径：旧的逐维 `storeMax*`（缺失 → 表内默认）。
+ */
+function storeCapRaw(dim) {
+    try {
+        const e = STORE_LIMITS[dim];
+        if (storeTotalMode()) return Math.round(Number(cfg.storeTotalMax) * (storeShareOf(dim) / 100));
+        const v = Number(cfg && e && cfg[e[1]]);
+        return Number.isFinite(v) && v > 0 ? Math.floor(v) : (e ? e[2] : 0);
+    } catch (e) { return 0; }
+}
+
+/**
+ * 该维**保底**（对外口径，v2.85.0 改）：
+ *   · 新口径：**被动下移** —— 不超过该维有效上限（占比调小 → 保底自动跟下来）；
+ *   · 兼容口径：原样返回（V1 逐字一致）。
+ */
+function storeMinFor(dim) {
+    const floor = storeFloorRaw(dim);
+    if (!storeTotalMode()) return floor;
+    return Math.max(0, Math.min(floor, Math.max(1, storeCapRaw(dim))));
+}
 
 /**
  * 某维的**默认占比**（%，表内第 5 位；未知维度 0）
@@ -1491,11 +1525,12 @@ function storeShareOf(dim) { try { return normStoreShares(cfg && cfg.storeShare)
  *   · 被拖动的维度取用户值（0-100 整数）；
  *   · 其余维度按**原占比比例**缩放到 `100 - 该值`；
  *   · 全部四舍五入后若合计不为 100，差额补给「除被拖动项外的最大项」（都补不动则补被拖动项）。
+ * 本函数**纯函数**（不改任何配置）—— 供 UI 拖动中做**实时联动预览**复用，提交走 `setStoreShare`。
  */
-function setStoreShare(dim, value) {
+function allotStoreShares(raw, dim, value) {
+    const cur = normStoreShares(raw);
     const d = String(dim || '');
-    if (STORE_SHARE_DIMS.indexOf(d) < 0) return normStoreShares(cfg && cfg.storeShare);
-    const cur = normStoreShares(cfg && cfg.storeShare);
+    if (STORE_SHARE_DIMS.indexOf(d) < 0) return cur;
     const target = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
     const others = STORE_SHARE_DIMS.filter((x) => x !== d);
     const restSum = others.reduce((n, x) => n + cur[x], 0);
@@ -1518,14 +1553,52 @@ function setStoreShare(dim, value) {
     return normStoreShares(next);
 }
 
-/** 各维**有效上限**（条）：四舍五入(总上限 × 占比/100)，且不低于保底 —— UI 与诊断共用 */
+/**
+ * 把各维**保底被动下移**到不超过「该维有效上限」（v2.85.0 用户要求；**只降不升**，绝不臆造用户没设的值）。
+ *   · `shares` 省略时用当前配置占比；传入拖动**预览占比**时按预览值判定（提交前就能算出正确保底）；
+ *   · 兼容口径（未启用总上限）下**不动**任何保底 —— V1 语义逐字保留；
+ *   · 直接写 `cfg.storeMin<Dim>`（只改被下移的那几维）并返回明细，供 UI / 调试如实回报。
+ */
+function clampStoreFloors(shares) {
+    const moved = [];
+    try {
+        if (!storeTotalMode()) return moved;
+        const table = normStoreShares(shares === undefined ? (cfg && cfg.storeShare) : shares);
+        const total = storeTotalMax();
+        for (const dim of STORE_SHARE_DIMS) {
+            const e = STORE_LIMITS[dim];
+            if (!e) continue;
+            const cap = Math.max(1, Math.round(total * (Number(table[dim]) || 0) / 100));
+            const floor = storeFloorRaw(dim);
+            if (floor > cap) {
+                try { cfg[e[0]] = cap; } catch (err) { /* 单项写失败不影响其余 */ }
+                moved.push({ dim: dim, label: String(e[3]), key: String(e[0]), from: floor, to: cap });
+            }
+        }
+    } catch (e) { }
+    return moved;
+}
+
+/**
+ * 拖动某维占比（**写回口径**）：写入 `cfg.storeShare`，并把被牵连的保底**下移**到新上限之下，返回归一后的完整占比表。
+ * 说明：`ui/panel.js` 的 `storeShare` 动作为了拿到「下移明细」走的是 `allotStoreShares` + `clampStoreFloors` 两步（同口径）；
+ *   其余调用方（调试入口 / 测试）直接用本函数即可，二者结果逐值一致。
+ */
+function setStoreShare(dim, value) {
+    const next = allotStoreShares(cfg && cfg.storeShare, dim, value);
+    try { cfg.storeShare = Object.assign({}, next); } catch (e) { /* 写失败不抛 */ }
+    try { if (STORE_SHARE_DIMS.indexOf(String(dim || '')) >= 0) clampStoreFloors(next); } catch (e) { /* 保底下移失败不影响占比 */ }
+    return next;
+}
+
+/** 各维**有效上限**（条）：新口径 = 四舍五入(总上限 × 占比/100)；兼容口径 = max(storeMax*, 保底) —— UI 与诊断共用 */
 function storeEffectiveCaps() {
     try {
         const total = storeTotalMax();
         const shares = normStoreShares(cfg && cfg.storeShare);
         const out = { total: total, shares: shares, caps: {}, sum: 0 };
         for (const dim of STORE_SHARE_DIMS) {
-            const cap = Math.max(1, Math.max(storeMinFor(dim), Math.round(total * (shares[dim] || 0) / 100)));
+            const cap = storeCapFor(dim);
             out.caps[dim] = cap;
             out.sum += cap;
         }
@@ -1534,21 +1607,15 @@ function storeEffectiveCaps() {
 }
 
 /**
- * 某维的**有效存储上限**（v2.84.0 改口径）：
- *   · 新口径（默认）：`四舍五入(storeTotalMax × storeShare[dim] / 100)`，且不低于保底；
- *   · 兼容口径：未配置 `storeTotalMax` 时回落旧的逐维 `storeMax*`（老存档/未迁移配置行为不变）。
+ * 某维的**有效存储上限**（v2.84.0 改口径、v2.85.0 定「上限权威」）：
+ *   · 新口径（默认）：`四舍五入(storeTotalMax × storeShare[dim] / 100)`（保底已被动下移到其下）；
+ *   · 兼容口径：未配置 `storeTotalMax` 时回落旧的逐维 `storeMax*`（并保持 V1 的 `max(上限, 保底)`）。
  */
 function storeCapFor(dim) {
     try {
-        const e = STORE_LIMITS[dim];
-        const total = Number(cfg && cfg.storeTotalMax);
-        if (Number.isFinite(total) && total > 0) {
-            const cap = Math.round(total * (storeShareOf(dim) / 100));
-            return Math.max(1, Math.max(cap, storeMinFor(dim)));
-        }
-        const v = Number(cfg && e && cfg[e[1]]);
-        const cap = Number.isFinite(v) && v > 0 ? Math.floor(v) : (e ? e[2] : 0);
-        return Math.max(1, Math.max(cap, storeMinFor(dim)));
+        const raw = storeCapRaw(dim);
+        if (storeTotalMode()) return Math.max(1, raw);
+        return Math.max(1, Math.max(raw, storeFloorRaw(dim)));
     } catch (e) { return 1; }
 }
 
@@ -1634,6 +1701,7 @@ export {
     // v2.84.0：存储总上限 + 各大类占比（设定 → 遗忘 的滚动条 UI 与诊断共用）
     storeTotalMax, storeShareOf, storeShareDefault, normStoreShares, setStoreShare, storeEffectiveCaps,
     STORE_TOTAL_MAX_DEFAULT, STORE_SHARE_DIMS,
+    allotStoreShares, clampStoreFloors, storeFloorRaw, storeCapRaw, storeTotalMode,
     // B8-6：修复管线共用助手（同一套文本规范化/相似度，避免重复实现）
     repairNormText, repairKeyText, repairBigrams, repairSimilarity,
     scenesUnionMergeAll, statesSubjectUnionMerge,

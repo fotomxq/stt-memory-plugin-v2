@@ -37,7 +37,12 @@ import {
 } from '../core/parallel.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
 // v2.84.0（用户要求）：存储上限 = 总上限 × 各大类占比（滚动条拖动，其余按比例补齐到 100%）
-import { setStoreShare, STORE_LIMITS } from '../core/ingest.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
+// v2.85.0（用户要求）：滚动条**拖动中实时联动** + 保底高于上限时**自动下移**
+import {
+    STORE_LIMITS, STORE_SHARE_DIMS, storeShareOf, storeTotalMax, normStoreShares,
+    allotStoreShares, clampStoreFloors,
+} from '../core/ingest.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
+import { shareFloorText, shareSumHtml } from './forget.js';
 import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
@@ -1675,15 +1680,23 @@ export async function panelAction(action, payload) {
             else setNote('更新入口未就绪');
         } else if (a === 'storeShare') {
             // v2.84.0：存储占比滚动条（设定 → 遗忘）—— 被拖动项权威，其余按原比例补齐到 100%
+            // v2.85.0：提交时把被牵连的**保底下移**到新上限之下（用户要求「保底高于该数字则自动下移」）
             const dim = String(p.dim == null ? '' : p.dim);
-            const next = (() => { try { return setStoreShare(dim, Number(p.value) || 0); } catch (e) { return null; } })();
-            if (!next) { setNote('未知维度：' + dim); result = { ok: false, reason: 'bad-dim' }; }
+            if (STORE_SHARE_DIMS.indexOf(dim) < 0) { setNote('未知维度：' + dim); result = { ok: false, reason: 'bad-dim' }; }
             else {
-                try { cfg.storeShare = Object.assign({}, next); } catch (e) { /* 忽略 */ }
-                try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
-                const label = String((STORE_LIMITS[dim] || [])[3] || dim);
-                setNote('已调整「' + label + '」占比为 ' + Math.round(Number(p.value) || 0) + '%，其余按比例补齐（合计 100%）');
-                result = Object.assign(result, { ok: true, dim: dim, shares: next });
+                const next = (() => { try { return allotStoreShares(cfg && cfg.storeShare, dim, Number(p.value) || 0); } catch (e) { return null; } })();
+                if (!next) { setNote('占比调整失败'); result = { ok: false, reason: 'allot-failed' }; }
+                else {
+                    try { cfg.storeShare = Object.assign({}, next); } catch (e) { /* 忽略 */ }
+                    const moved = (() => { try { return clampStoreFloors(next); } catch (e) { return []; } })();
+                    try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+                    const label = String((STORE_LIMITS[dim] || [])[3] || dim);
+                    const movedTxt = moved.length
+                        ? ('；保底已下移：' + moved.map((m) => m.label + ' ' + m.from + '→' + m.to).join(' / '))
+                        : '';
+                    setNote('已调整「' + label + '」占比为 ' + Math.round(Number(p.value) || 0) + '%，其余按比例联动（合计 100%）' + movedTxt);
+                    result = Object.assign(result, { ok: true, dim: dim, shares: next, floorsMoved: moved });
+                }
             }
         } else if (a === 'linkQuery') {
             // v2.83.0：关联层派生视图的查询（设定 → 约束 → 🔗 关联层）；只写页内查询词，结果渲染时现算
@@ -2224,6 +2237,89 @@ function readControlValue(key) {
     } catch (e) { return undefined; }
 }
 
+/**
+ * ============================================================
+ * v2.85.0（用户要求）：「存储总上限 / 各大类占比」滚动条的**拖动中实时联动**
+ *   用户原话：①「各大类百分比滚动条没有联动，调节一个其他应该等比例变化。」
+ *             ②「存储总上限的保底数据应该被动联动，如情节调节后，如果保底数据高于该数字则自动下移数字。」
+ * 口径：
+ *   · 联动算法与提交完全同源（`core/ingest.js#allotStoreShares`）—— 被拖动项权威，其余按**基准占比**等比例缩放，
+ *     四舍五入 + 余数给最大项，合计恒为 100%；
+ *   · **基准占比**在本次拖动首次 input 时快照（`shareDrag.base`），全程以它为比例基准 —— 避免「每帧按已改过的值再缩放」
+ *     造成比例漂移；松手（change）后清空；
+ *   · 拖动只改 DOM（滚动条 / 读数 / 保底文字 / 合计行 / 保底输入框），**不写配置**；落盘仍走 change → `storeShare` 动作。
+ * ============================================================
+ */
+let shareDrag = null;      // { el, dim, base } —— 本次拖动的基准占比（DOM 快照；松手即清空）
+
+/** 读当前页面上所有占比滚动条的取值（域内 DOM 快照） */
+function shareSliderValues(root) {
+    const out = {};
+    try {
+        const nodes = (root && typeof root.querySelectorAll === 'function') ? root.querySelectorAll('[data-ftt-share]') : [];
+        for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            const d = String((n.dataset || {}).fttShare || '');
+            if (d) out[d] = Number(n.value) || 0;
+        }
+    } catch (e) { /* 快照失败 → 用配置值兜底（见调用方） */ }
+    return out;
+}
+
+/**
+ * 按给定占比表刷新「占比区」的全部读数：滚动条值 / 占比读数 / 保底文字 / 合计行 / 保底输入框。
+ * @param {object} root 面板根（或任一含占比区的容器）
+ * @param {object} shares 归一后的占比表
+ * @param {number} total 总上限（拖动总上限时传预览值）
+ * @param {Element} [skip] 正在被拖动的滚动条（不回写它的 value，避免与手指位置打架）
+ */
+function applySharePreview(root, shares, total, skip) {
+    let sumPct = 0, sumCap = 0;
+    for (const d of STORE_SHARE_DIMS) {
+        const pct = Number(shares[d]) || 0;
+        const cap = Math.max(1, Math.round(Number(total) * (pct / 100)));
+        sumPct += pct;
+        sumCap += cap;
+        const input = (typeof root.querySelector === 'function') ? root.querySelector('[data-ftt-share="' + d + '"]') : null;
+        if (input && input !== skip) input.value = String(pct);
+        const out = (typeof root.querySelector === 'function') ? root.querySelector('[data-ftt-share-out="' + d + '"]') : null;
+        if (out) out.textContent = pct + '% · ≈' + cap + ' 条';
+        const floorEl = (typeof root.querySelector === 'function') ? root.querySelector('[data-ftt-share-floor="' + d + '"]') : null;
+        if (floorEl) floorEl.textContent = shareFloorText(d, cap);
+        // 保底输入框（设定 → 遗忘 上方的保底控件，v2.85.0「自动下移数字」）：高于上限就跟着降到上限
+        const minKey = String((STORE_LIMITS[d] || [])[0] || '');
+        const minInput = (minKey && typeof root.querySelector === 'function') ? root.querySelector('[data-ftt-cfg="' + minKey + '"]') : null;
+        if (minInput && Number(minInput.value) > cap) minInput.value = String(cap);
+    }
+    const sumEl = (typeof root.querySelector === 'function') ? root.querySelector('[data-ftt-share-sum]') : null;
+    if (sumEl) sumEl.innerHTML = shareSumHtml(sumPct, sumCap, total);
+}
+
+/** 拖动「某维占比」时的实时联动（input 事件；只改 DOM，不落盘） */
+function shareDragInput(root, tg) {
+    const dim = String((tg.dataset || {}).fttShare || '');
+    if (STORE_SHARE_DIMS.indexOf(dim) < 0) return;
+    if (!shareDrag || shareDrag.el !== tg) {
+        const snap = shareSliderValues(root);
+        const base = {};
+        for (const d of STORE_SHARE_DIMS) base[d] = (snap[d] === undefined) ? Number(storeShareOf(d)) || 0 : snap[d];
+        shareDrag = { el: tg, dim: dim, base: base };
+    }
+    const value = Number(tg.value) || 0;
+    // 基准表恒为**合计 100 的完整表**（被拖动项在表里仍留旧值）：`allotStoreShares` 只按其余维度的**比例**缩放，
+    //   若先把被拖项的新值写进基准表，表就不足 100 → 归一化会把差额补给最大项，比例当场失真。
+    const next = allotStoreShares(shareDrag.base, dim, value);
+    applySharePreview(root, next, storeTotalMax(), tg);
+}
+
+/** 拖动「存储总上限」时的实时联动（占比不变，但各维条数 / 保底会随之变） */
+function shareTotalInput(root, total) {
+    let shares = null;
+    try { shares = normStoreShares(cfg && cfg.storeShare); } catch (e) { shares = null; }
+    if (!shares) return;
+    applySharePreview(root, shares, Math.max(1, Math.floor(Number(total) || 0)), null);
+}
+
 /** 真实 DOM 事件委托（V1 用委托；无 addEventListener 的环境跳过） */
 export function bindOverlay() {
     const el = overlayEl;
@@ -2357,6 +2453,7 @@ export function bindOverlay() {
         });
         if (typeof el.addEventListener === 'function') {
             // v2.84.0：滚动条拖动时**实时刷新读数**（写配置与重绘留到 change/松手，避免拖动过程抖动与频繁落盘）
+            // v2.85.0：占比滚动条与总上限滚动条额外做**实时联动**（其余占比 / 各维条数 / 保底文字 / 合计行同步变化）
             el.addEventListener('input', (e) => {
                 try {
                     const tg = e && e.target;
@@ -2368,10 +2465,15 @@ export function bindOverlay() {
                         ? ('[data-ftt-share-out="' + ds2.fttShare + '"]')
                         : ('[data-ftt-range-out="' + ds2.fttCfg + '"]');
                     const out = (box && typeof box.querySelector === 'function') ? box.querySelector(sel) : null;
-                    if (!out) return;
-                    const num = Number(tg.value);
-                    const isPct = String(ds2.fttCfg || '') === 'storage.worldbookProbability';
-                    out.textContent = isPct ? (Math.round(num) + '%') : String(Math.round(num * 1000) / 1000);
+                    if (out) {
+                        const num = Number(tg.value);
+                        const isPct = String(ds2.fttCfg || '') === 'storage.worldbookProbability';
+                        out.textContent = isPct ? (Math.round(num) + '%') : String(Math.round(num * 1000) / 1000);
+                    }
+                    // v2.85.0：占比滚动条 → 其余维度**当场**等比联动（基准占比在本次拖动首次 input 时快照）
+                    if (ds2.fttShare !== undefined) { shareDragInput(el, tg); return; }
+                    // v2.85.0：总上限滚动条 → 各维条数与保底文字当场跟着变（占比不变）
+                    if (String(ds2.fttCfg) === 'storeTotalMax') { shareTotalInput(el, Number(tg.value)); }
                 } catch (err) { /* 读数刷新失败不影响拖动 */ }
             });
             el.addEventListener('change', (e) => {
@@ -2399,7 +2501,7 @@ export function bindOverlay() {
                 }
                 if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
                 if (tg.dataset.fttLinkq !== undefined) { void panelAction('linkQuery', { q: tg.value }); return; }
-                if (tg.dataset.fttShare !== undefined) { void panelAction('storeShare', { dim: tg.dataset.fttShare, value: tg.value }); return; }
+                if (tg.dataset.fttShare !== undefined) { shareDrag = null; void panelAction('storeShare', { dim: tg.dataset.fttShare, value: tg.value }); return; }
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);
@@ -2446,6 +2548,15 @@ export function bindOverlay() {
                     // v2.35.0：瞬态键（「分组名」「已存分组」）**不落配置也不重绘** —— V1 同样跳过它们
                     //   （v1.206 26280/26692），且重绘会清空用户正在输入的分组名。
                     if (applied && applied.transient) return;
+                    // v2.85.0（用户要求：「保底数据应该被动联动…高于该数据则自动下移数字」）：
+                    //   改「存储总上限」或任一「保底」后，把高于有效上限的保底**下移**到上限（只降不升）并落盘。
+                    if (key === 'storeTotalMax' || key.indexOf('storeMin') === 0) {
+                        const moved = (() => { try { return clampStoreFloors(); } catch (e) { return []; } })();
+                        if (moved.length) {
+                            try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+                            setNote('保底已随上限下移：' + moved.map((m) => m.label + ' ' + m.from + '→' + m.to).join(' / '));
+                        }
+                    }
                     // v2.65.0：「扩展设置抽屉卡片」开关立即生效（挂载 / 卸载抽屉卡片）
                     if (key === 'uiShowDrawer' && typeof hooks.showDrawer === 'function') { try { void hooks.showDrawer(raw); } catch (e) { /* 忽略 */ } }
                     renderPanel();

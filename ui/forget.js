@@ -12,11 +12,32 @@ import { settingsControlHtml } from './settings-pages.js';
 import { hintDetailsHtml, paramListHtml, shortHintHtml } from './hints.js';
 import { forgetState } from '../core/forget.js';
 // v2.84.0（用户要求）：存储上限改为「总上限 + 各大类占比（滚动条拖动，动态满足 100%）」
+// v2.85.0（用户要求）：占比滚动条**拖动中实时联动**；保底高于占比推导的上限时**自动下移**
 import {
-    storeEffectiveCaps, storeShareDefault, storeTotalMax, storeMinFor, STORE_LIMITS, STORE_SHARE_DIMS, STORE_TOTAL_MAX_DEFAULT,
+    storeEffectiveCaps, storeShareDefault, storeTotalMax, storeMinFor, storeFloorRaw,
+    STORE_LIMITS, STORE_SHARE_DIMS, STORE_TOTAL_MAX_DEFAULT,
 } from '../core/ingest.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * 某维「默认 x% · 保底 M 条」行尾文字（v2.85.0：保底被下移时如实标注）。
+ * @param {string} dim 维度
+ * @param {number} [cap] 该维当前上限（省略 → 按配置现算；传预览上限 → 拖动中实时反映下移结果）
+ */
+export function shareFloorText(dim, cap) {
+    const def = (() => { try { return storeShareDefault(dim); } catch (e) { return 0; } })();
+    const raw = (() => { try { return storeFloorRaw(dim); } catch (e) { return 0; } })();
+    const lim = (cap === undefined || cap === null)
+        ? (() => { try { return storeMinFor(dim); } catch (e) { return raw; } })()
+        : Math.max(0, Math.min(raw, Math.max(1, Number(cap) || 1)));
+    return '默认 ' + Number(def) + '% · 保底 ' + Number(lim) + ' 条' + (lim < raw ? '（已随上限下移）' : '');
+}
+
+/** 合计行 HTML（v2.85.0：拖动联动与初始渲染共用同一口径，避免两处文案漂移） */
+export function shareSumHtml(sumPct, sumCap, total) {
+    return '合计 <b>' + esc(sumPct) + '%</b> · 有效上限合计 ≈ ' + esc(sumCap) + ' 条（总上限 ' + esc(total) + ' 条）';
+}
 
 /** 遗忘页正文（V1 四分节 + V2 只读诊断行；每节 = 一句短提示 + 控件 + 折叠说明） */
 export function forgetPageHtml(controls) {
@@ -68,11 +89,13 @@ export function forgetPageHtml(controls) {
 }
 
 /**
- * 「各大类占比」滚动条区（v2.84.0，用户要求）：
- *   · 每维一条 `input[type=range]`（0-100，步进 1），**拖动任一条，其余按原比例自动补齐**，合计恒为 100%；
+ * 「各大类占比」滚动条区（v2.84.0 起，v2.85.0 加**拖动中实时联动**）：
+ *   · 每维一条 `input[type=range]`（0-100，步进 1），**拖动任一条，其余按原比例**在拖动过程中**即时而变**，合计恒为 100%；
  *   · 右侧实时读数 = 「占比% · ≈N 条」（N = 四舍五入(总上限 × 占比 ÷ 100)，四舍五入口径与内核一致）；
- *   · 滚动条上的**浅色刻度 = 该维默认占比位置**，右侧文字给出「默认 x% · 保底 M」；
- *   · 合计行如实显示「合计 100% · ≈总条数」，若与总上限不一致（异常数据）会红字提示。
+ *   · 滚动条上的**浅色刻度 = 该维默认占比位置**，右侧文字给出「默认 x% · 保底 M 条」；
+ *   · 某维保底若高于占比推导的上限 → **自动下移**并标注「已随上限下移」（提交时落盘，见 `core/ingest.js#clampStoreFloors`）；
+ *   · 合计行带 `data-ftt-share-sum`，拖动中由面板 input 委托实时重写；
+ *   · 若占比合计不为 100（异常数据）会红字提示，拖动任一滚动条即重新配平。
  */
 export function storeShareSectionHtml() {
     let eff = null;
@@ -86,22 +109,21 @@ export function storeShareSectionHtml() {
         const label = String((STORE_LIMITS[dim] || [])[3] || dim);
         const pct = Number(shares[dim] || 0);
         const def = (() => { try { return storeShareDefault(dim); } catch (e) { return 0; } })();
-        const floor = (() => { try { return storeMinFor(dim); } catch (e) { return 0; } })();
         return '<div class="ftt-field ftt-field-range" data-ftt-share-row="' + esc(dim) + '">'
             + '<label>' + esc(label) + '</label>'
             + '<input type="range" data-ftt-share="' + esc(dim) + '" min="0" max="100" step="1" value="' + esc(pct) + '"'
             + ' style="--ftt-range-def:' + esc(Math.max(0, Math.min(100, Math.round(def)))) + '%"'
-            + ' title="拖动后其余大类按原比例自动补齐，合计恒为 100%">'
+            + ' title="拖动时其余大类即按原比例联动，合计恒为 100%；保底高于上限时自动下移">'
             + '<output class="ftt-range-out" data-ftt-share-out="' + esc(dim) + '">' + esc(pct) + '% · ≈' + esc(Number(caps[dim] || 0)) + ' 条</output>'
-            + '<span class="ftt-muted ftt-range-def">默认 ' + esc(def) + '% · 保底 ' + esc(floor) + ' 条</span></div>';
+            + '<span class="ftt-muted ftt-range-def" data-ftt-share-floor="' + esc(dim) + '">' + esc(shareFloorText(dim, caps[dim])) + '</span></div>';
     }).join('\n');
     const warn = (sumPct === 100)
         ? ''
         : ('<div class="ftt-hint">⚠️ 占比合计为 ' + esc(sumPct) + '%（应为 100%）—— 拖动任一滚动条即会重新配平。</div>');
     return [
         '<div class="ftt-section" data-ftt-section="store-share">',
-        '<div class="ftt-sec-title">各大类占比 <span class="ftt-muted">拖动任一维，其余按比例自动补齐</span></div>',
-        '<div class="ftt-hint">合计 <b>' + esc(sumPct) + '%</b> · 有效上限合计 ≈ ' + esc(sumCap) + ' 条（总上限 ' + esc(total) + ' 条）</div>',
+        '<div class="ftt-sec-title">各大类占比 <span class="ftt-muted">拖动任一维，其余<b>实时</b>按比例联动</span></div>',
+        '<div class="ftt-hint" data-ftt-share-sum>' + shareSumHtml(sumPct, sumCap, total) + '</div>',
         warn,
         rows,
         '</div>',

@@ -1053,6 +1053,43 @@ await assert('BS1 v2.84.0 存储上限与百分比滚动条：遗忘页渲染「
     }
 })(), '');
 
+await assert('BS2 v2.85.0 占比滚动条**拖动中实时联动** + 保底**被动下移**：拖「情节」时其余滚动条当场等比变化且**不写配置**；松手后高于新上限的保底自动降下来并在提示里如实回报', (async () => {
+    const RTB = await import('../core/model/runtime.js');
+    const { defaultCfg: DCFG } = await import('../core/config.js');
+    const { allotStoreShares } = await import('../core/ingest.js');
+    const el = doc.getElementById('ftt-panel');
+    const keep = {
+        share: JSON.parse(JSON.stringify(RTB.cfg.storeShare || {})),
+        minAtoms: RTB.cfg.storeMinAtoms, total: RTB.cfg.storeTotalMax,
+    };
+    try {
+        Object.assign(RTB.cfg, JSON.parse(JSON.stringify(DCFG)));
+        RTB.cfg.storeMinAtoms = 5000;                     // 人为把「情节」保底顶到上限之上（690）
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'forget' });
+        const fire = (type, tg) => { const l = (el && el.listeners && el.listeners[type]) || []; l.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } })); };
+        // ① input（拖动中）：其余滚动条**当场**等比变化，且配置**一个字节都没写**
+        const beforeAtoms = String(RTB.cfg.storeShare.atoms);
+        fire('input', { dataset: { fttShare: 'atoms' }, value: '3', type: 'range', closest: () => ({ querySelector: () => null }) });
+        const expect = allotStoreShares(DCFG.storeShare, 'atoms', 3);
+        const memSlider = el.querySelector('[data-ftt-share="memories"]');
+        const memOut = el.querySelector('[data-ftt-share-out="memories"]');
+        const liveOk = !!memSlider && String(memSlider.value) === String(expect.memories)
+            && !!memOut && String(memOut.textContent).indexOf(String(expect.memories) + '%') === 0
+            && String(RTB.cfg.storeShare.atoms) === beforeAtoms;
+        // ② change（松手提交）：占比落盘 + 保底下移到新上限（情节 3% × 3000 = 90 → 保底 5000 跟到 90）
+        fire('change', { dataset: { fttShare: 'atoms' }, value: '3', type: 'range' });
+        await new Promise((r) => setTimeout(r, 10));
+        const note = String((panelState() || {}).note || '');
+        return liveOk && Number(RTB.cfg.storeShare.atoms) === 3 && Number(RTB.cfg.storeMinAtoms) === 90
+            && note.indexOf('保底已下移') >= 0 && note.indexOf('情节 5000→90') >= 0;
+    } finally {
+        RTB.cfg.storeShare = keep.share;
+        RTB.cfg.storeMinAtoms = keep.minAtoms;
+        RTB.cfg.storeTotalMax = keep.total;
+    }
+})(), '');
+
 await assert('S2 记忆遗忘：低重要度旧记忆被移除并留下 id 墓碑（跨端不复活）；无剧情时钟时不清理', (async () => {
     const st = rtMod.state;
     const mem = (id, date, imp) => ({ id, title: '记忆' + id, content: '内容' + id, date, importance: imp, uses: 1, floorStart: 1, floorEnd: 2, tags: [] });
