@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.80.1",
+  "version": "2.81.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.81.0",
+      "date": "2026-09-27",
+      "title": "分析记忆后按「最新一条情节」同步日期/时间/地点/在场角色",
+      "points": [
+        "① 落库后没有任何同步（主缺口）：提取前只由 calibrateBasics() 校对一次（v2.61.0，来源是当时已存在的情节），host/extract.js 的 3 处 …",
+        "② 修掉一个 V1 同款缺陷：「在场角色 ← 最新情节的涉及角色」是死路径：resolvePresentNames(textIn, plotIn)直读 plot.entities…"
+      ]
+    },
     {
       "version": "2.80.1",
       "date": "2026-09-27",

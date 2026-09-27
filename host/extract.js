@@ -16,7 +16,7 @@ import { DIMENSIONS } from '../core/constants.js';
 import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/runtime.js';
 import { buildSummaryPrompt } from '../core/prompt.js';
 // v2.61.0（用户要求：「提取记忆优化，第一步先校对时钟等基本信息，然后再去提取」）
-import { calibrateBasics, withBasics } from './preflight.js';
+import { calibrateBasics, withBasics, atomsSignature, recalibrateAfterExtract } from './preflight.js';
 import { extractJsonObject } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
@@ -217,9 +217,15 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
         if (!delta) return { dim: groupDim, ok: false, error: 'AI 未返回有效 JSON', label };
         const sub = groupDeltaSlice(dims, delta);
         if (!Object.keys(sub).some((k) => sub[k] !== undefined)) return { dim: groupDim, ok: false, error: '无该维度数据', label };
+        // v2.81.0：合并前取情节签名 → 落库成功后「情节有更新则按最新情节同步日期/时间/地点/在场角色」
+        const atomSig = atomsSignature();
         const ok = mergeDelta(sub, floorRange);
-        if (ok) { try { scheduleParallelWeave(floorRange, jsExtractKeywords(floorText)); } catch (e) { /* 忽略 */ } }
-        return { dim: groupDim, ok, label };
+        let postCalib = null;
+        if (ok) {
+            try { postCalib = recalibrateAfterExtract(atomSig); } catch (e) { /* 忽略 */ }
+            try { scheduleParallelWeave(floorRange, jsExtractKeywords(floorText)); } catch (e) { /* 忽略 */ }
+        }
+        return { dim: groupDim, ok, label, postCalib };
     } catch (e) {
         warn('维度[' + (DIM_LABELS[groupDim] || groupDim) + ']摘要失败', e);
         return { dim: groupDim, ok: false, error: String((e && e.message) || e).slice(0, 80), label };
@@ -290,6 +296,7 @@ export async function analyzeFloor(floorId, opts) {
             try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
             return { ok: false, reason: 'no-json', chars: String(resp.text || '').length };
         }
+        const atomSig = atomsSignature();      // v2.81.0：分析前的情节基线
         const mr = mergeDelta(delta, { start: Number(floorId), end: Number(floorId) });
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         // V1 v1.206 15240~15242（单楼分析 `runSummaryFloor`）：合并成功 → 被动调度推演（关键词取该楼正文）；
@@ -297,6 +304,8 @@ export async function analyzeFloor(floorId, opts) {
         if (mr && mr.ok) { try { scheduleParallelWeave({ start: Number(floorId), end: Number(floorId) }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ } }
         try { scheduleAtomCompact(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) { extractState.fail += 1; extractState.lastReason = 'merge-fail'; return { ok: false, reason: 'merge-fail' }; }
+        // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
+        const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
         recordProcessedFloors(Number(floorId), Number(floorId));
         const ms = Date.now() - t0;
         extractState.ok += 1;
@@ -309,10 +318,11 @@ export async function analyzeFloor(floorId, opts) {
         recordLastExtract({
             via: 'floor', trigger: String(o.trigger || 'manual'), floors: String(Number(floorId)),
             calib: (calib ? { changed: !!calib.changed, skipped: String(calib.skipped || ''), note: String(calib.note || ''), clock: calib.clock } : null),
+            postCalib: (postCalib ? { changed: !!postCalib.changed, skipped: String(postCalib.skipped || ''), note: String(postCalib.note || ''), clock: postCalib.clock } : null),
             added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
             dims: Object.keys(delta).slice(0, 12), keywords: kws, text: String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP),
         });
-        return { ok: true, added: mr.added, total: mr.total, chars: String(resp.text || '').length, ms, deltaKeys: Object.keys(delta) };
+        return { ok: true, added: mr.added, total: mr.total, chars: String(resp.text || '').length, ms, deltaKeys: Object.keys(delta), postCalib: postCalib };
     } catch (e) {
         extractState.fail += 1;
         extractState.lastReason = String((e && e.message) || e);
@@ -370,9 +380,18 @@ export async function analyzeSegment(start, end, opts) {
             recordProcessedFloors(s0, e0);
             const ms = Date.now() - t0;
             // V1 原样怪癖：独立分组分支**不累加** `totalAdded`（V1 通知里的「本次提取 N 条」在独立分组下恒为 0）→ 这里 `added: 0`
+            // v2.81.0：各组的「分析后同步」汇总（每组各自新增的情节都应被反映；任一组同步即算同步）
+            const postCalib = (() => {
+                try {
+                    const hit = results.map((r) => r && r.postCalib).filter((x) => x && x.ok);
+                    if (!hit.length) return (results.map((r) => r && r.postCalib).filter(Boolean)[0] || null);
+                    return hit.reduce((a, b) => (b.changed ? b : a), hit[0]);
+                } catch (e) { return null; }
+            })();
             return {
                 ok: okN > 0, added: 0, separate: true, groups: results.length, groupOk: okN,
                 groupFailed: results.length - okN, groupResults: results, chars: text.length, ms, floorStart: s0, floorEnd: e0,
+                postCalib: (postCalib ? { changed: !!postCalib.changed, skipped: String(postCalib.skipped || ''), note: String(postCalib.note || ''), clock: postCalib.clock } : null),
             };
         }
         const dims = summaryDimsForPrompt(o.dims);   // v2.68.0：同上，投影成 V1 摘要维度键（含 states）
@@ -390,9 +409,12 @@ export async function analyzeSegment(start, end, opts) {
             try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
             return { ok: false, reason: 'no-json', chars: String(resp.text || '').length, floorStart: s0, floorEnd: e0 };
         }
+        const atomSig = atomsSignature();      // v2.81.0：分析前的情节基线
         const mr = mergeDelta(delta, { start: s0, end: e0 });
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
+        // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
+        const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
         // V1 v1.206 15490（分段分析）：合并成功 → 被动调度推演（关键词取**段文本**）
         try { scheduleParallelWeave({ start: s0, end: e0 }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ }
         // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
@@ -402,11 +424,12 @@ export async function analyzeSegment(start, end, opts) {
         recordLastExtract({
             via: 'segment', trigger: String(o.trigger || 'manual'), floors: s0 + '-' + e0,
             calib: (calib ? { changed: !!calib.changed, skipped: String(calib.skipped || ''), note: String(calib.note || ''), clock: calib.clock } : null),
+            postCalib: (postCalib ? { changed: !!postCalib.changed, skipped: String(postCalib.skipped || ''), note: String(postCalib.note || ''), clock: postCalib.clock } : null),
             added: Number(mr.added) || 0, total: Number(mr.total) || 0, chars: String(resp.text || '').length, ms: ms,
             dims: Object.keys(delta).slice(0, 12), keywords: (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })(),
             text: lastSegmentText,
         });
-        return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta) };
+        return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta), postCalib: postCalib };
     } finally {
         extractState.activeSeg = null;
     }
@@ -457,6 +480,12 @@ export async function runAutoSummary(opts) {
         extractState.segTotal = segments.length;
         extractState.segRange = start + '-' + effLast;
         let made = 0, added = 0, failed = 0, aborted = 0;
+        // v2.81.0：汇总各段的「分析后同步」（有 changed 的优先；都没有则取首个非空），供总览/调试观测
+        let postCalibAgg = null;
+        const mergePost = (pc) => {
+            if (!pc || !pc.ok) return;
+            if (pc.changed || !postCalibAgg) postCalibAgg = pc;
+        };
         for (const seg of segments) {
             if (abortRequested) { aborted = segments.length - extractState.segDone; extractState.aborted = aborted; break; }
             // 静默模式：整段已完成 → 跳过（V1 同口径）
@@ -466,19 +495,22 @@ export async function runAutoSummary(opts) {
                 if (!segIds.length) { extractState.segDone += 1; continue; }
             }
             const r = await analyzeSegment(seg.start, seg.end, o);
+            try { mergePost(r && r.postCalib); } catch (e) { /* 忽略 */ }
             extractState.segDone += 1;
             if (r.ok && !r.empty) { made += 1; added += Number(r.added) || 0; }
             else if (!r.ok) failed += 1;
             extractState.lastAdded = added;
             if (typeof o.onProgress === 'function') { try { o.onProgress({ seg: Object.assign({}, seg), result: r, done: extractState.segDone, total: extractState.segTotal }); } catch (e) { /* 忽略 */ } }
         }
-        const out = { ok: made > 0 || (failed === 0 && aborted === 0), made, added, failed, floors: start + '-' + effLast, segments: segments.length, aborted, ms: Date.now() - t0 };
+        const out = { ok: made > 0 || (failed === 0 && aborted === 0), made, added, failed, floors: start + '-' + effLast, segments: segments.length, aborted, ms: Date.now() - t0,
+            postCalib: (postCalibAgg ? { changed: !!postCalibAgg.changed, skipped: String(postCalibAgg.skipped || ''), note: String(postCalibAgg.note || ''), clock: postCalibAgg.clock } : null) };
         extractState.lastBatch = out;
         // v2.59.0：批量汇总也记一条（总览显示「本次批量：N 段 / 新增 M 条」；正文沿用最后一段的 AI 回复）
         recordLastExtract({
             via: 'batch', trigger: String(o.trigger || (silent ? 'auto' : 'manual')), floors: out.floors,
             added: added, total: 0, chars: String(lastSegmentText || '').length, ms: out.ms,
             made: made, failed: failed, segments: segments.length, aborted: aborted,
+            postCalib: (postCalibAgg ? { changed: !!postCalibAgg.changed, skipped: String(postCalibAgg.skipped || ''), note: String(postCalibAgg.note || ''), clock: postCalibAgg.clock } : null),
             keywords: (() => { try { return parallelLastKeywords(); } catch (e2) { return []; } })(), text: lastSegmentText,
         });
         if (made) extractState.ok += 1;

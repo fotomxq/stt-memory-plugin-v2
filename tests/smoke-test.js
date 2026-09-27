@@ -2311,6 +2311,47 @@ await assert('BA3 v2.59.0 总览「📤 最后一次提取」：真实跑一次�
     }
 })(), '');
 
+await assert('BD1 v2.81.0 分析记忆后按最新情节同步：情节有更新 → 日期/时间/地点/**在场角色**跟随最新一条（并修复「在场角色←最新情节涉及角色」的 V1 死路径）；情节没变则完全不碰时钟', (async () => {
+    const EXD = await import('../host/extract.js');
+    const RTD = await import('../core/model/runtime.js');
+    const PRED = await import('../host/preflight.js');
+    const keepGen = host.ctx.generateRaw;
+    const keepAtoms = RTD.state.atoms, keepSnaps = RTD.state.snapshots;
+    const keepState = JSON.parse(JSON.stringify(RTD.state.state));
+    const tD = p9dTimers();
+    try {
+        // 旧情节 + 旧时钟（在场 = 甲角色）
+        RTD.state.atoms = [{ id: 'bd-old', text: '甲角色在码头交货。', date: '1919-11-01', time: '早晨', location: '码头', floorStart: 0, floorEnd: 0, entities: ['甲角色'], tags: [], validity: 'active' }];
+        RTD.state.snapshots = [{ id: 'bd-s1', name: '甲角色' }, { id: 'bd-s2', name: '乙角色' }, { id: 'bd-s3', name: '丙角色' }];
+        RTD.state.state = Object.assign({}, RTD.state.state, { date: '1919-11-01', time: '早晨', location: '码头', present: ['甲角色'] });
+        RTD.state.state.clockManual = null;
+        // ① 情节没变 → 跳过（不解析、不落盘）
+        const quiet = PRED.recalibrateAfterExtract(PRED.atomsSignature());
+        const quietOk = quiet.skipped === 'atoms-unchanged' && RTD.state.state.date === '1919-11-01';
+        // ② 真实跑一次「分析记忆」，产出**更新的一条**情节（乙角色/丙角色 在仓库）
+        host.ctx.chat.push({ is_user: false, mes: '乙角色与丙角色在仓库盘货。', name: '角色乙' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RTD.setLastMessageId(host.ctx.chat.length - 1);
+        const flD = host.ctx.chat.length - 1;
+        host.ctx.generateRaw = async () => JSON.stringify({ atoms: { add: [{ id: 'bd-new', text: '乙角色与丙角色在仓库盘货。', date: '1919-12-05', time: '深夜', locations: ['仓库'], floorStart: flD, floorEnd: flD, entities: ['乙角色', '丙角色'] }] } });
+        await entry.popupAction('summary', {});
+        const st = RTD.state.state;
+        const pres = st.present || [];
+        const recD = EXD.lastExtractRecord();
+        return quietOk && !!recD
+            && st.date === '1919-12-05' && st.time === '深夜' && st.location === '仓库'
+            && pres.indexOf('乙角色') >= 0 && pres.indexOf('丙角色') >= 0 && pres.indexOf('甲角色') < 0
+            && String((st.clockSrc || {}).present) === 'plot-atom'
+            && String((st.clockSrc || {}).date) === 'plot';
+    } finally {
+        host.ctx.generateRaw = keepGen;
+        RTD.state.atoms = keepAtoms; RTD.state.snapshots = keepSnaps; RTD.state.state = keepState;
+        try { await p9dDrain(tD.rec); } catch (e) { /* 忽略 */ }
+        tD.restore();
+        try { await new Promise((r) => setTimeout(r, 5)); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 await assert('BA2 v2.58.0 提取记忆三层：开启「启用向量检索」后发送前走**第一层向量召回**（真实 embedding 请求 → 注入体为向量命中行）；关闭/失败自动降级到本地召回', (async () => {
     const RT7 = await import('../core/model/runtime.js');
     const INJ = await import('../host/inject.js');

@@ -268,7 +268,13 @@ function resolvePresentNames(textIn, plotIn) {
             if (hit.present && hit.present.length) return { list: hit.present, source: 'latest-ai' };
         }
         const plot = plotIn || latestPlotByFloor();
-        const ents = (plot && plot.entities) || [];
+        // v2.81.0 修复（**有意偏离 V1**）：V1 这里直读 `plot.entities`，而**两个调用点传的都是包装对象**
+        //   （`latestTrustedPlot()` / `latestPlotByFloor()` 返回 `{dim, node, date, time, location}`，
+        //   真正的情节节点在 `plot.node`）→ `plot.entities` 恒为 `undefined` →
+        //   「在场角色 ← 最新情节的涉及角色（`plot-atom`）」在 V1 与 V2 都是**死路径**，
+        //   永远落到 `keep-prev`（保留旧名单、绝不用最新情节更新在场）。此处兼容两种入参。
+        const node = (plot && plot.node) || plot;
+        const ents = (node && node.entities) || [];
         if (ents.length) {
             const hit2 = matchPresentNames(ents.join('、'));
             if (hit2.present && hit2.present.length) return { list: hit2.present, source: 'plot-atom' };
