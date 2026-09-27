@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.87.0",
+  "version": "2.88.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.88.0",
+      "date": "2026-09-27",
+      "title": "注入体改 Markdown 结构 + 提示词同步",
+      "points": [
+        "① 注入体 Markdown 化：（core/recall.js + host/inject.js）：外框改为 # FTT 记忆注入 + > … 引用行；每个大类由 [区块] 改…",
+        "② 预算按「内容」计：（新 core/recall.js#mdCostOf）：Markdown 标记（## / > 说明： / / 二级缩进）不挤占预算 ——否则同样的内容会比 …",
+        "③ 提示词同步：（core/config.js#PROMPT_TEMPLATES_V2.injectGuide）：「不得输出任何 [区块] 标记」→「不得输出任何 Markdow…"
+      ]
+    },
     {
       "version": "2.87.0",
       "date": "2026-09-27",

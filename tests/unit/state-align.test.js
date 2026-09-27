@@ -81,14 +81,24 @@ function boot(states) {
     if (states) state.currentStates = JSON.parse(JSON.stringify(states));
     entryIndexInit(); entryIndexBuild(true);
 }
-/** 只取注入体里的 [状态记录] 块（与 oracle 同一截取口径） */
-function injectStateBlock(text) {
+/**
+ * 只取注入体里的 `## 状态记录` 小节（v2.88.0：注入体改 Markdown，小节边界由 `## ` 标题划分）。
+ * @param {string} text 注入体
+ * @param {boolean} [plain] true → 去掉 Markdown 标记（用于与 V1 原文逐字对照）
+ */
+function injectStateBlock(text, plain) {
     const b = String(text || '');
-    const i = b.indexOf('[状态记录]');
+    const i = b.indexOf('## 状态记录');
     if (i < 0) return '';
     const rest = b.slice(i);
-    const j = rest.slice(1).search(/\n\[/);
-    return (j >= 0 ? rest.slice(0, j + 1) : rest).trim();
+    const j = rest.slice(1).search(/\n## /);
+    let out = (j >= 0 ? rest.slice(0, j + 1) : rest).trim();
+    if (plain) {
+        out = out.split('\n').filter((l) => !/^\s*>\s*说明：/.test(l))
+            .map((l) => l.replace(/^##\s*/, '').replace(/\*\*/g, '').replace(/^-\s*/, '').replace(/^\s+-\s*/, '').replace(/：/g, ':'))
+            .join('\n').trim();
+    }
+    return out;
 }
 
 // ---- T 组：提示词模板逐字节对齐 ----
@@ -167,7 +177,7 @@ A('P5 无匹配：文案与 V1 逐字一致（「无匹配结果（搜索/筛选
 })(), J(projectStatesPage(panelBodyHtml('states')).empty));
 
 // ---- I 组：注入体 [状态记录] 块逐字节对齐 ----
-A('I1 注入 [状态记录] 块与 V1 **逐字节相同**（在场过滤 + 行格式；不在场的角色不注入）', (() => {
+A('I1 注入 `## 状态记录` 小节的**内容**与 V1 逐字一致（v2.88.0 起外形改 Markdown：`## 标题` + 粗体字段 + 二级列表，内容与在场过滤不变）', (() => {
     boot(STATES);
     cfg.charBudget = 6000; cfg.maxStates = 30;
     cfg.stateMinPerSubject = 1; cfg.stateMaxPerSubject = 10;
@@ -175,9 +185,21 @@ A('I1 注入 [状态记录] 块与 V1 **逐字节相同**（在场过滤 + 行�
     state.state = { date: '1919-11-29', time: '傍晚', location: '码头', present: ['甲'] };
     const body = String(buildMemoryBodyForInject('', { inject: true, countUses: false }) || '');
     const block = injectStateBlock(body);
-    return G.inject.hasBlock === true && block === G.inject.block
+    const plain = injectStateBlock(body, true);
+    // 有意偏离（用户要求 markdown 化）：结构标记归一后与 V1 逐字比对；另断言 Markdown 外形确实生效
+    const lines = body.split('\n');
+    const headIdx = lines.indexOf('## 状态记录');
+    const mdOk = headIdx >= 0 && /^\s+- \*\*[^*]+\*\*/.test(lines[headIdx + 2] || '');
+    // 归一化（两侧同样处理）：去方括号/粗体/行首符号、冒号统一、压掉所有空白 → 只比内容与顺序
+    const canon = (t) => String(t || '')
+        .replace(/^##\s+/gm, '').replace(/^>\s*说明：?/gm, '')      // v2.88.0：Markdown 小节标记
+        .replace(/[\[\]]/g, '').replace(/\*\*/g, '')
+        .split('\n').map((l) => l.replace(/^[\s·\-]+/, '')).join('\n')
+        .replace(/[：:]\s*/g, '').replace(/\s+/g, '');
+    return G.inject.hasBlock === true && canon(block) === canon(G.inject.block)
+        && mdOk
         && block.indexOf('乙') < 0 && block.indexOf('丙') < 0;      // 不在场 → 不注入
-})(), J({ got: injectStateBlock(buildMemoryBodyForInject('', { inject: true, countUses: false })), want: G.inject.block }));
+})(), J({ got: injectStateBlock(buildMemoryBodyForInject('', { inject: true, countUses: false }), true), want: G.inject.block }));
 
 // ---- B 组：条数钳制 ----
 A('B1 每角色条数钳制（`stateMaxPerSubject`，超出裁最旧、保调用次数高者）与 V1 同结果', (() => {

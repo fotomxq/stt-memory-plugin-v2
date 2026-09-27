@@ -83,13 +83,15 @@ A('N1 注入体**不含**「剧情天数 / 第 N 天」（保留字段不进注�
     return b.length > 0 && b.indexOf('剧情天数') < 0 && !/第\s*\d+\s*天/.test(stateBlock);
 })(), (() => { boot(); clockAutoExtractOnce({ force: true }); return J(bodyOf().split('\n').slice(0, 6)); })());
 
-A('N2 注入体的 `[当前状态]` 只有 日期/时间/地点/在场角色（顺序不变）', (() => {
+A('N2 注入体的 `## 当前状态` 只有 日期/时间/地点/在场角色（Markdown 列表，顺序不变）', (() => {
     boot();
     state.state = { date: '1919-11-25', time: '傍晚', location: '城市甲·码头', present: ['甲'] };
     const lines = bodyOf().split('\n');
+    // v2.88.0：`## 当前状态` 小节改 Markdown 列表（`- **日期**：…`），字段顺序与内容不变
     const idx = (s) => lines.indexOf(s);
-    return idx('日期:1919-11-25') >= 0 && idx('日期:1919-11-25') < idx('时间:傍晚')
-        && idx('时间:傍晚') < idx('地点:城市甲·码头') && idx('地点:城市甲·码头') < idx('在场角色：甲');
+    return idx('## 当前状态') >= 0
+        && idx('- **日期**：1919-11-25') > 0 && idx('- **日期**：1919-11-25') < idx('- **时间**：傍晚')
+        && idx('- **时间**：傍晚') < idx('- **地点**：城市甲·码头') && idx('- **地点**：城市甲·码头') < idx('- **在场角色**：甲');
 })(), (() => { boot(); state.state = { date: '1919-11-25', time: '傍晚', location: '城市甲·码头', present: ['甲'] }; return J(bodyOf().split('\n').slice(0, 6)); })());
 
 // ---------- S 组：设定与总览不留废弃内容 ----------

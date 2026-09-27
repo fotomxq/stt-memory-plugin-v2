@@ -16,6 +16,22 @@ const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-rec
 const R = makeReporter('recall-golden V1 移植保真度（批次 6）');
 const I = G.inputs;
 const J = (v) => JSON.stringify(v);
+/**
+ * v2.88.0（用户要求：「提取记忆的注入内容，应改为 markdown 结构」）——**有意偏离登记**：
+ *   注入体外形由 `[区块]` + `·` 改为 Markdown（`## 小节` + `> 说明：…` + `- ` / `  - ` 列表 + `**粗体**`）。
+ *   本函数把两侧都归一为「纯内容」：去标题/引用/列表标记、去粗体、去括号与所有冒号、压掉空白 ——
+ *   于是仍能逐字校验 **内容与顺序** 未被改动；Markdown 外形本身由各断言里的 `## ` 检查覆盖。
+ */
+const canonMd = (t) => String(t == null ? '' : t)
+    .replace(/^##\s+/gm, '')
+    .replace(/^>\s*/gm, '').replace(/说明：/g, '')
+    .replace(/【注入约束】/g, '注入约束')
+    .replace(/\*\*/g, '')
+    .split('\n').map((l) => l.replace(/^[\s·\-]+/, '')).join('\n')
+    .replace(/[：:]/g, '')
+    .replace(/[（()）\[\]]/g, '')
+    .replace(/\s+/g, '');
+const isMd = (t) => /^## /m.test(String(t || ''));
 const clone = (v) => JSON.parse(J(v));
 
 // 与 oracle 同口径的环境：配置、注入态、聊天/调试钩子、楼层号
@@ -52,18 +68,23 @@ R.assert('R5 计划/悬念注入行 planSuspLine 与 V1 一致', J(planSuspLine(
 R.assert('R6 传言注入行 rumorInjLine 与 V1 一致', rumorInjLine(clone(I.STATE.rumors[0])) === G.rumorInjLine, rumorInjLine(clone(I.STATE.rumors[0])));
 R.assert('R7 平行事件注入行 parallelInjLine 与 V1 一致', parallelInjLine(clone(I.STATE.parallels[0])) === G.parallelInjLine, parallelInjLine(clone(I.STATE.parallels[0])));
 R.assert('R8 场景树注入行 buildSceneTreeLines 与 V1 一致', J(buildSceneTreeLines()) === J(G.buildSceneTreeLines), buildSceneTreeLines());
-R.assert('R9 固定约束段 buildInjectConstraints 与 V1 逐字符一致（在场 / 私密范围 / 知情人说明）',
-    buildInjectConstraints() === G.buildInjectConstraints, buildInjectConstraints());
-R.assert('R10 注入体 buildMemoryBodyForInject 与 V1 逐字符一致（默认预算）',
-    buildMemoryBodyForInject('码头 木箱 线人', {}) === G.body, [String(buildMemoryBodyForInject('码头 木箱 线人', {})).slice(0, 120), String(G.body).slice(0, 120)]);
-R.assert('R11 注入体在 300 字预算下与 V1 一致（预算裁剪/整条跳过不截断）',
-    buildMemoryBodyForInject('码头 木箱 线人', { budget: 300 }) === G.bodyBudget, String(buildMemoryBodyForInject('码头 木箱 线人', { budget: 300 })).slice(0, 120));
-R.assert('R12 同一注入态下可复现（两次调用在各自重置注入态后都与 V1 一致；说明构建会累积 uses 的既有行为）', (() => {
+R.assert('R9 固定约束段 buildInjectConstraints：内容与 V1 逐字节一致（Markdown 外形归一；v2.88.0 有意偏离）',
+    canonMd(buildInjectConstraints()) === canonMd(G.buildInjectConstraints) && isMd(buildInjectConstraints()),
+    [String(buildInjectConstraints()).slice(0, 120), String(G.buildInjectConstraints).slice(0, 120)]);
+R.assert('R10 注入体 buildMemoryBodyForInject：内容与 V1 逐字节一致且**已是 Markdown**（`## 小节`；v2.88.0 有意偏离）',
+    canonMd(buildMemoryBodyForInject('码头 木箱 线人', {})) === canonMd(G.body)
+    && isMd(buildMemoryBodyForInject('码头 木箱 线人', {})),
+    [String(buildMemoryBodyForInject('码头 木箱 线人', {})).slice(0, 120), String(G.body).slice(0, 120)]);
+R.assert('R11 注入体在 300 字预算下：内容与 V1 一致（预算裁剪/整条跳过不截断）+ Markdown 外形',
+    canonMd(buildMemoryBodyForInject('码头 木箱 线人', { budget: 300 })) === canonMd(G.bodyBudget)
+    && isMd(buildMemoryBodyForInject('码头 木箱 线人', { budget: 300 })),
+    String(buildMemoryBodyForInject('码头 木箱 线人', { budget: 300 })).slice(0, 120));
+R.assert('R12 同一注入态下可复现（两次调用在各自重置注入态后**内容**都与 V1 一致且都是 Markdown；说明构建会累积 uses 的既有行为）', (() => {
     setKernelState(clone(I.STATE));
     const b1 = buildMemoryBodyForInject('码头 木箱 线人', {});
     setKernelState(clone(I.STATE));
     const b2 = buildMemoryBodyForInject('码头 木箱 线人', {});
-    return b1 === G.body && b2 === G.body;
+    return b1 === b2 && canonMd(b1) === canonMd(G.body) && isMd(b1);
 })(), '');
 
 setKernelState(null);

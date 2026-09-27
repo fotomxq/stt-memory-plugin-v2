@@ -119,7 +119,7 @@ await (async () => {
         return h.indexOf('ftt-hint-details') >= 0
             && h.indexOf('查看注入内容（当前注入给 AI 的正文，' + inj.length + ' 字）') >= 0
             && h.indexOf('data-ftt-inject-preview') >= 0
-            && inj.indexOf('【FTT记忆注入】') === 0 && h.indexOf(inj.slice(0, 24).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) >= 0
+            && inj.indexOf('# FTT 记忆注入') === 0 && h.indexOf(inj.slice(0, 24).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) >= 0
             && h.indexOf('new-a1') < 0 && h.indexOf('&quot;atoms&quot;') < 0;
     })(), J({ inj: readInject().length }));
 

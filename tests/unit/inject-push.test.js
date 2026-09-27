@@ -70,16 +70,18 @@ R.assert('P1b saveKernelCfg：内核改动写回 ST 配置并可再载入（用�
 })(), { charBudget: cfg.charBudget });
 
 // ---------- P2 注入包装 ----------
-R.assert('P2 wrapInjectText：结构头（标题 + 区块标记 + 剧情日期口径 + 使用说明）+ 正文 + 结束标记', (() => {
+R.assert('P2 wrapInjectText：结构头（Markdown 标题 + 小节标题说明 + 剧情日期口径 + 使用说明）+ 正文 + 结束标记', (() => {
     setKernelState(richState());
     setScopeKey('角色甲');
-    const text = wrapInjectText('[情节记忆]\n- 内容');
+    const text = wrapInjectText('## 情节记忆\n- 内容');   // v2.88.0：正文本身已是 Markdown 小节
     const lines = text.split('\n');
-    return lines[0].indexOf('【FTT记忆注入】') === 0
-        && lines[1].indexOf('区块标记（[当前状态] / [情节记忆]') === 0
-        && lines[2].indexOf('当前剧情日期：1919-11-29（「今天」即此日）') === 0
+    // v2.88.0：注入体外框改 Markdown（`# FTT 记忆注入` + `> …` 引用行；小节标题改 `## 名称`）
+    return lines[0].indexOf('# FTT 记忆注入') === 0
+        && lines[1].indexOf('> 以下为该角色的长期记忆库') === 0
+        && lines[2].indexOf('> 区块标题（`## 当前状态` / `## 情节记忆`') === 0
+        && lines[3].indexOf('当前剧情日期：1919-11-29（「今天」即此日）') === 0
         && text.indexOf('自定义使用说明') >= 0
-        && text.indexOf('[情节记忆]\n- 内容') >= 0
+        && text.indexOf('## 情节记忆\n- 内容') >= 0
         && text.trim().endsWith('记忆结束。')
         && wrapInjectText('') === '' && wrapInjectText('   ') === '';
 })(), { head: (wrapInjectText('x') || '').slice(0, 40) });
@@ -103,10 +105,10 @@ await (async () => {
     const r = await pushMemoryInject({});
     const val = readInject();
     const prompt = ctx.extensionPrompts[INJECT_ID];
-    R.assert('P3 pushMemoryInject：写进 ST 注入通道（POSITION.IN_PROMPT / depth 0）、含区块与结束标记', (() => {
+    R.assert('P3 pushMemoryInject：写进 ST 注入通道（POSITION.IN_PROMPT / depth 0）、含 Markdown 小节与结束标记', (() => {
         return r.ok === true && r.injected === true && r.chars > 200
-            && val.indexOf('【FTT记忆注入】') === 0 && val.indexOf('记忆结束。') > 0
-            && (val.indexOf('[情节记忆]') > 0 || val.indexOf('[长期记忆]') > 0)
+            && val.indexOf('# FTT 记忆注入') === 0 && val.indexOf('记忆结束。') > 0
+            && (val.indexOf('## 情节记忆') > 0 || val.indexOf('## 长期记忆') > 0)
             && val.indexOf('发现木箱') > 0 && val.indexOf('巷口徘徊') > 0
             && prompt.position === PROMPT_POSITION.IN_PROMPT && prompt.depth === 0
             && cfg.charBudget === 4321;
@@ -178,7 +180,7 @@ await (async () => {
             && st.calls === 1 && st.lastType === 'normal' && st.lastChatSize === 2
             && st.lastPush && st.lastPush.ok === true && st.lastPush.injected === true
             && st.injectedLength === val.length && val.length > 200
-            && val.indexOf('【FTT记忆注入】') === 0;
+            && val.indexOf('# FTT 记忆注入') === 0;
     })(), { injectedLength: st.injectedLength, aborted });
 
     R.assert('P6b 总开关关闭：拦截器仍被调用并放行（不改 chat、不 abort），且不新增注入', (() => {

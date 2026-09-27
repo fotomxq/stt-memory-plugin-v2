@@ -411,7 +411,7 @@ await new Promise((r) => setTimeout(r, 20));
 assert('G2 楼层事件刷新注入：写入 ST 注入通道（结构头 + 正文 + 结束标记）', (() => {
     const p = host.ctx.extensionPrompts[INJECT_ID];
     const val = p ? String(p.value) : '';
-    return val.indexOf('【FTT记忆注入】') === 0 && val.indexOf('记忆结束。') > 0
+    return val.indexOf('# FTT 记忆注入') === 0 && val.indexOf('记忆结束。') > 0
         && val.indexOf('发现一只木箱') > 0 && p.position === 0 && p.depth === 0;
 })(), String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '').slice(0, 60));
 
@@ -424,7 +424,7 @@ await assert('G3 生成前拦截器：刷新注入、不改 chat、永不 abort'
     const val = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
     const st = entry.runtimeState().interceptor;
     return smokeAborted === 0 && JSON.stringify(smokeChat) === smokeChatCopy
-        && val.indexOf('【FTT记忆注入】') === 0 && st.calls >= 1 && st.injectedLength === val.length
+        && val.indexOf('# FTT 记忆注入') === 0 && st.calls >= 1 && st.injectedLength === val.length
         && st.lastPush && st.lastPush.injected === true;
 })(), typeof globalThis.fttGenerateInterceptor);
 
@@ -504,7 +504,7 @@ await assert('H6 提取失败姿态：AI 不可用时只回报原因，不影响
         return r.ok === false && r.reason === 'no-generate'
             && floorsMod.isFloorProcessed(f) === false
             && host.ctx.chat[f].mes.indexOf('回头看了一眼') > 0
-            && (injectVal === '' || injectVal.indexOf('【FTT记忆注入】') === 0);
+            && (injectVal === '' || injectVal.indexOf('# FTT 记忆注入') === 0);
     } finally { host.ctx.generateRaw = saved; }
 })(), '');
 
@@ -4058,8 +4058,9 @@ await assert('AX1 v2.48.0「剧情第 N 天不允许注入」：真实注入通�
         const val = String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '');
         const body = val.slice(0, val.indexOf('记忆结束。') >= 0 ? val.indexOf('记忆结束。') : val.length);
         const noStoryDay = body.indexOf('剧情天数') < 0 && !/第\s*\d+\s*天/.test(body);
-        const keepsOthers = body.indexOf('日期:1919-11-25') >= 0 && body.indexOf('时间:傍晚') >= 0
-            && body.indexOf('地点:城市甲·码头') >= 0 && body.indexOf('在场角色') >= 0;
+        // v2.88.0：注入体改 Markdown → 四要素为 `- **日期**：…` 列表项（字段与顺序不变）
+        const keepsOthers = body.indexOf('- **日期**：1919-11-25') >= 0 && body.indexOf('- **时间**：傍晚') >= 0
+            && body.indexOf('- **地点**：城市甲·码头') >= 0 && body.indexOf('- **在场角色**') >= 0;
         // 内部值仍在（校准用途不受影响）
         const internal = Number(RT4.state.state.storyDay) === 17602;
         return noStoryDay && keepsOthers && internal;
