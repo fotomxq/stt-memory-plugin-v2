@@ -36,6 +36,7 @@ import {
     runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
 } from '../core/parallel.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
+import { notifyError } from '../core/model/runtime.js';   // v2.87.0：错误要有可见提示，不只写日志
 // v2.84.0（用户要求）：存储上限 = 总上限 × 各大类占比（滚动条拖动，其余按比例补齐到 100%）
 // v2.85.0（用户要求）：滚动条**拖动中实时联动** + 保底高于上限时**自动下移**
 import {
@@ -2196,7 +2197,17 @@ export async function panelAction(action, payload) {
         // v2.34.0：面板动作异常统一留痕（强化调试）—— 写入内核调试日志的「异常」类，便于事后挖掘
         try { debugLogPush('异常', { kind: '面板动作失败', action: String(action || ''), message: String((e && e.message) || e), stack: String((e && e.stack) || '').slice(0, 2000) }); } catch (err) { /* 忽略 */ }
         setNote('操作失败：' + result.error);
+        // v2.87.0（用户要求：「错误信息除了日志记录外，应该通知异常，而不是什么都没反应」）：
+        //   用户主动触发的动作异常 → **强制**弹一次可见提示（不受每会话上限约束）
+        try { notifyError('操作失败：' + result.error, { force: true }); } catch (err) { /* 忽略 */ }
     }
+    // v2.87.0：动作**被拒绝**（ok:false，例如未知动作 / 前置条件缺失）也要可见 —— 走节流（同文案 60s 一次）
+    try {
+        if (result && result.ok === false) {
+            const why = String(result.error || result.reason || '未知原因');
+            if (why !== 'unknown-action' || true) notifyError('操作未完成：' + why);
+        }
+    } catch (err) { /* 忽略 */ }
     renderPanel();
     const out = Object.assign(result, { html: panelHtml(), state: panelState() });
     // v2.42.0：交互完成事件（动作 / 入参摘要 / 结果 / 耗时 / 站点 / opId）—— 这是「所有用户交互」的主时间线

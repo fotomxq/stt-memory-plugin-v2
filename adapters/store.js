@@ -24,6 +24,7 @@ import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js'
 import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 import { hydrateStorageData } from '../core/slim.js';
+import { debugLogPush } from './debug-log.js';   // v2.87.0：内核 warn → 调试日志（kind = 异常）
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -196,7 +197,9 @@ export function wirePersistHooks() {
         saveState: () => { void saveStateNow({ reason: 'kernel' }); return true; },
         saveCfg: () => saveKernelCfg(),
         log: (m, e) => { if (e !== undefined) kernelLog(m, e); },
-        warn: () => undefined,
+        // v2.87.0 修复：此前是 `() => undefined` —— 内核所有 `warn(...)` 被静默丢弃（用户报告「什么都没反应」）。
+        //   现在写进调试日志（kind = 异常，便于调试页筛选与调试包取证）；用户可见提示由 `runtime.js#warn` 统一发出。
+        warn: (...a) => { try { debugLogPush('异常', { action: '内核告警', message: a.map((x) => (x instanceof Error ? x.message : String(x == null ? '' : x))).join(' ').slice(0, 300) }); } catch (e) { /* 忽略 */ } },
     });
     return { debounceMs: SAVE_DEBOUNCE_MS, storage: 'localStorage+indexedDB+file' };
 }

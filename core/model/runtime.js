@@ -125,11 +125,59 @@ export function log(...args) {
     return undefined;
 }
 
-/** 告警钩子（内核默认 no-op；宿主可注入真实告警/调试日志） */
+/**
+ * 告警出口（v2.87.0 修复：**不再「什么都没反应」**）。
+ * 用户报告：「一些错误信息除了日志记录外，应该通知异常，而不是什么都没反应。」
+ * 现状缺陷：`adapters/store.js` 把 `persistHooks.warn` 接成了 `() => undefined` —— 内核所有 `warn(...)` 被丢弃，
+ *   既没进调试日志，也没有任何用户可见提示。
+ * 现口径（一次调用，三件事）：
+ *   ① 交宿主注入的 `persistHooks.warn`（写调试日志）；
+ *   ② 写 `dbgLog`（保证至少进调试日志，供调试页/调试包取证）；
+ *   ③ 经 `notifyHooks.toast(..., 'error')` 给用户**可见的异常提示**（带节流，避免连环报错刷屏）。
+ */
 export function warn(...args) {
-    try { if (typeof persistHooks.warn === 'function') return persistHooks.warn(...args); } catch (e) { /* noop */ }
+    const msg = (() => {
+        try {
+            const a = args.map((x) => (x instanceof Error ? (x.message || String(x)) : (typeof x === 'object' ? (() => { try { return JSON.stringify(x); } catch (e2) { return String(x); } })() : String(x == null ? '' : x))));
+            return a.filter(Boolean).join(' ').slice(0, 300);
+        } catch (e) { return ''; }
+    })();
+    try { if (typeof persistHooks.warn === 'function') persistHooks.warn(...args); } catch (e) { /* noop */ }
+    try { dbgLog('异常', { action: '内核告警', message: msg, args: args.length }); } catch (e) { /* noop */ }
+    try { notifyError(msg); } catch (e) { /* noop */ }
     return undefined;
 }
+
+// 告警提示的**节流**：同一条文案 60s 内只弹一次（累计计数）；**每会话最多 5 条**，避免连环报错刷屏。
+const WARN_THROTTLE_MS = 60000;
+const WARN_MAX_PER_SESSION = 5;
+let warnSeen = Object.create(null);
+let warnShown = 0;
+
+/**
+ * 用户可见的异常提示（节流）；`force=true` 绕过节流与上限（用于明确的用户动作失败）。
+ * @param {string} text 提示文案
+ * @param {object} [opts] `{ force?:boolean, kind?:string }`
+ */
+export function notifyError(text, opts) {
+    const o = opts || {};
+    const key = String(text == null ? '' : text).slice(0, 200);
+    if (!key) return { shown: false, reason: 'empty' };
+    const now = Date.now();
+    if (!o.force) {
+        if (warnShown >= WARN_MAX_PER_SESSION) return { shown: false, reason: 'cap' };
+        const last = warnSeen[key] || 0;
+        if (now - last < WARN_THROTTLE_MS) { warnSeen[key] = last; return { shown: false, reason: 'throttled' }; }
+    }
+    warnSeen[key] = now;
+    warnShown += 1;
+    try { notifyHooks.toast('⚠️ ' + key, String(o.kind || 'error')); } catch (e) { /* noop */ }
+    return { shown: true, count: warnShown };
+}
+/** 告警提示统计（诊断 / 单测） */
+export function warnStats() { try { return { shown: warnShown, seen: Object.keys(warnSeen).length, max: WARN_MAX_PER_SESSION }; } catch (e) { return { shown: 0, seen: 0, max: WARN_MAX_PER_SESSION }; } }
+/** 复位告警节流（测试与「清空日志」用） */
+export function resetWarnThrottle() { warnSeen = Object.create(null); warnShown = 0; return true; }
 
 /** 同上：`saveState()` */
 export function saveState() {
