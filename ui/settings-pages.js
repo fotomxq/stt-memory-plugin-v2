@@ -37,6 +37,10 @@ export const SETTINGS_TABS = [
         "label": "平行"
     },
     {
+        "id": "constraint",
+        "label": "约束"
+    },
+    {
         "id": "prompts",
         "label": "提示词"
     },
@@ -643,6 +647,8 @@ export const SETTINGS_CONTROLS = {
         },
     
     ],
+    // v2.80.0：约束页无配置控件（正文 = 关系表（四维页内切换）+ 约束自查，见 ui/constraint-page.js）
+    "constraint": [],
     "prompts": [
         {
             "key": "atomCompactEnabled",
@@ -1285,6 +1291,9 @@ export function settingsPageHtml(pageId, extrasHtml) {
     if (pid === 'rumors') return rumorsPageHtml(list);
     // 提取页（v2.58.0）：V1 的三层结构布局（向量层含 Embedding / Rerank API 区块 + kw/mem 分组 + 测试按钮）
     if (pid === 'extract') return extractPageHtml(list, settingsControlHtml);
+    // 约束页（v2.80.0，用户要求：关系表 / 约束自查 由列表页移入设定页）：控件表为空 —— 正文由
+    //   `ui/constraint-page.js#constraintPageHtml()` 渲染，面板在设定页容器内注入（见 ui/panel.js#settingsBody）。
+    if (pid === 'constraint') return '';
     // 调试页（B9-a）：V1 的「调试日志」开关节 + 「调试日志（…）」查看器节（`ui/debug.js#debugPageHtml`）
     if (pid === 'debug') return debugPageHtml(list);
     // 关于页（B9-a）：V1 的「关于 · FTT记忆组件 / 功能 / 版本更新」三节（`ui/about.js#aboutHtml`）

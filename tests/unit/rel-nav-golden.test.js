@@ -9,8 +9,14 @@
 //   R 组（与 V1 逐项比对）：relEntryTitle / relFindEntryId / relKnownNames / relPickAppendRow 三态 /
 //     relPickState / relFilterState 迁移（含副本语义）/ relPickPanelHtml 结构投影（条目·编辑器·平行·空档案）/
 //     relJump·relClearFilter·relGoto 的状态迁移 / relPickAdd 三态提示文案；
-//   V 组（V2 编排/接线）：条目行「🔗 关联（N）」入口 / relJump 切页-子标签-定位提示 / relGoto 页面搜索词 /
-//     relPick 开关与搜索分流 / relPickAdd→relSave 端到端落库 / msub 重置定位与选择器态。
+//   V 组（V2 编排/接线）：条目行「🔗 关联（N）」入口 / relJump 切「设定 → 约束」+ 维度与定位提示 /
+//     relGoto 页面搜索词 / relPick 开关与搜索分流 / relPickAdd→relSave 端到端落库 /
+//     constraintDim（页内维度切换）重置定位与选择器态。
+//
+// v2.80.0 追加（用户要求：「记忆大类的关系表、关系约束放入设定-约束标签中」）：
+//   四个列表页的「🔗 关系表 / 🧷 约束自查」子标签移除 → 关系表与约束自查集中到 **设定 → 约束**；
+//   `msub` 动作（列表页子标签）由 `constraintDim`（约束页维度切换）取代，状态迁移语义不变
+//   （只清 跳转定位 + 选角色态，不清角色筛选）。
 // 与 V1 的**必要偏离**（本文件断言其差异，登记于 docs/P9a-B9关系表定位与选角色.md）：
 //   ① 跳转落点：V1 `relJump` 恒切「记忆」页（靠维度筛选过滤），V2 关系表按分页隔离维度 → 切到**条目所在页**；
 //   ② 「维度筛选」在 V2 不适用（`relFilterState().dim` 仅保留字段，不参与过滤）；
@@ -246,24 +252,27 @@ await A('R9 `relJump` 状态迁移：四个维度（记忆/计划/悬念/平行�
 await A('R10 `relClearFilter` 收窄语义：清「角色筛选 + 跳转定位 + 选角色态」；`dim` 字段保留但**不参与过滤**（V2 页面即维度）', async () => {
     boot();
     openPanel('memories');
-    await panelAction('msub', { tab: 'memories', sub: 'rel' });
+    await panelAction('tab', { tab: 'settings' });
+    await panelAction('settingsSub', { sub: 'constraint' });
+    await panelAction('constraintDim', { dim: 'memories' });
     // 先设 角色筛选 + 定位 + 选择器态
     const f0 = setRelFilter('plans', '角色丙', { dim: 'memories', id: 'm1', title: '甲在码头看到木箱' });
     setRelPick({ dim: 'memories', id: 'm1', editor: false });
-    const withFilter = panelBodyHtml('memories');
+    const withFilter = panelBodyHtml('settings');
     const cleared = relClearFilter();
-    const afterHtml = panelBodyHtml('memories');
+    const afterHtml = panelBodyHtml('settings');
     const cl = G.actionFlow.steps.filter((s) => s.name === 'relJump 后清除筛选')[0];
     // V1 清空后：{dim:'all', who:'', jump:null}
     const v1Ok = J(cl.filter) === J({ dim: 'all', who: '', jump: null });
-    // V2 收窄证据：把 dim 设为 'plans' 后，记忆页的关系总览仍列出记忆条目（维度不参与过滤）
+    // V2 收窄证据：把 `relFilterState().dim` 设为 'plans' 后，约束页（当前维度=记忆）仍列出记忆条目
+    await panelAction('constraintDim', { dim: 'memories' });
     setRelFilter('plans', '', null);
-    const dimInert = panelBodyHtml('memories').indexOf('data-ftt-rel-entry="memories|m1"') >= 0;
+    const dimInert = panelBodyHtml('settings').indexOf('data-ftt-rel-entry="memories|m1"') >= 0;
     setRelFilter('all', '', null);
     return f0.dim === 'plans' && J(cleared) === J({ dim: 'all', who: '', jump: null }) && relPickState() === null
         && withFilter.indexOf('当前筛选：') >= 0 && withFilter.indexOf('data-ftt-action="relClearFilter"') >= 0
         && afterHtml.indexOf('当前筛选：') < 0 && dimInert && v1Ok;
-}, () => ({ cleared: relFilterState(), dimInertHint: panelBodyHtml('memories').slice(0, 120) }));
+}, () => ({ cleared: relFilterState(), dimInertHint: panelBodyHtml('settings').slice(0, 120) }));
 
 await A('R11 `relGoto` 状态迁移：页面映射（悬念 → 计划悬念页）、搜索词取「标题优先，空则正文前 12 字」、清跳转/选择器态 —— 与 V1 actionFlow 的页面搜索词逐个一致', () => {
     const got = G.actionFlow.steps.filter((s) => s.name.indexOf('relGoto(') === 0).map((s) => {
@@ -285,7 +294,8 @@ await A('R11 `relGoto` 状态迁移：页面映射（悬念 → 计划悬念页�
 await A('R12 `relPickAdd` 三态提示文案：成功 / 重复（`dup`）/ 容器缺失 —— 与 V1 `toast` 逐字一致（含 12 字截断）', async () => {
     boot();
     openPanel('memories');
-    await panelAction('msub', { tab: 'memories', sub: 'rel' });
+    await panelAction('tab', { tab: 'settings' });
+    await panelAction('settingsSub', { sub: 'constraint' });
     await panelAction('relPick', { kind: 'memories', id: 'm2' });
     const a1 = await panelAction('relPickAdd', { kind: 'memories', id: 'm2', name: '角色乙' });
     const n1 = String(((a1.state || {}).note) || '');
@@ -310,8 +320,8 @@ await A('R12 `relPickAdd` 三态提示文案：成功 / 重复（`dup`）/ 容�
 await A('V1 条目行「🔗 关联」入口：四个关系维度分页的行内按钮存在（记忆带人数角标 `🔗 关联（N）`），且携带 `data-kind`/`data-id`', async () => {
     boot();
     upsertRelLinks('memories', 'm1', [{ who: '角色甲', how: 'participant' }, { who: '角色乙', how: 'witness' }], { replace: true });
-    // 先切回列表子标签（关系表子页只渲染总览，不渲染条目行）
-    for (const k of ['memories', 'plans', 'suspense', 'parallels']) await panelAction('msub', { tab: k, sub: 'list' });
+    // v2.80.0：列表页不再有子标签（关系表已移入设定页），列表页恒渲染条目行，无需切子标签
+    await panelAction('tab', { tab: 'memories' });
     const rows = { memories: 'm1', plans: 'p1', suspense: 's1', parallels: 'pa1' };
     const fails = [];
     for (const kind of Object.keys(rows)) {
@@ -327,28 +337,30 @@ await A('V1 条目行「🔗 关联」入口：四个关系维度分页的行内
     const par = panelBodyHtml('parallels');
     return fails.length === 0
         && memo.indexOf('🔗 关联（2）') >= 0                       // V1 `🔗 关联（people.length）`
-        && plan.indexOf('在「记忆 → 关系表」里编辑这条计划的知情者') >= 0
-        && plan.indexOf('在「记忆 → 关系表」里编辑这条悬念的知情者') >= 0
-        && par.indexOf('在关系表里编辑相关角色') >= 0
+        // v2.80.0：标题落点由「记忆 → 关系表」改为「设定 → 约束 → 关系表」
+        && plan.indexOf('在「设定 → 约束 → 关系表」里编辑这条计划的知情者') >= 0
+        && plan.indexOf('在「设定 → 约束 → 关系表」里编辑这条悬念的知情者') >= 0
+        && par.indexOf('在「设定 → 约束 → 关系表」里编辑平行事件的相关角色') >= 0
         && G.entryRowEntry.label === '🔗 关联（1）';                // oracle：同场景 m1 只有 1 人（本断言用的是 2 人的本地数据）
 }, () => ({ memo: (panelBodyHtml('memories').match(/🔗 关联（\d+）/) || [])[0], fails: 'see-per-kind' }));
 
-await A('V2 `relJump` 面板编排：切到条目所在页 + 该维度子标签置 rel + 跳转提示与「清除筛选」入口 + 定位目标行出现（即使暂无关联）+ 目标条目选择器态被关', async () => {
+await A('V2 `relJump` 面板编排 v2.80.0：切到「设定 → 约束」+ 该维度 + 跳转提示与「清除筛选」入口 + 定位目标行出现（即使暂无关联）+ 目标条目选择器态被关', async () => {
     boot();
     openPanel('plans');
-    const r = await panelAction('relJump', { kind: 'suspense', id: 's1' });     // 悬念条目 → 计划悬念页
+    const r = await panelAction('relJump', { kind: 'suspense', id: 's1' });     // 悬念条目 → 约束页（悬念维度）
     const st = r.state || {};
-    const html = String(r.html || '');
-    const ok1 = r.ok === true && st.tab === 'plans' && st.relSub && st.relSub.suspense === 'rel'
-        && String(st.note).indexOf('已定位到关系表：悬念') === 0
+    const html = String(panelBodyHtml('settings') || '');
+    const ok1 = r.ok === true && st.tab === 'settings' && st.settingsSub === 'constraint' && st.constraintDim === 'suspense'
+        && String(st.note).indexOf('已定位到「约束 → 关系表」：悬念') === 0
+        && html.indexOf('ftt-subtab ftt-on" data-ftt-cdim="suspense"') >= 0
         && html.indexOf('当前筛选：定位 悬念「断口之谜：断口来源不明') >= 0
         && html.indexOf('data-ftt-action="relClearFilter"') >= 0
         && html.indexOf('data-ftt-rel-entry="suspense|s1"') >= 0;
     // 记忆条目：无关联也必须在总览里列出（V1 `!rows.length && !jump` 的定位例外）
     const r2 = await panelAction('relJump', { kind: 'memories', id: 'm2' });
     const st2 = r2.state || {};
-    const html2 = String(r2.html || '');
-    const ok2 = r2.ok === true && st2.tab === 'memories' && st2.relSub.memories === 'rel'
+    const html2 = String(panelBodyHtml('settings') || '');
+    const ok2 = r2.ok === true && st2.tab === 'settings' && st2.settingsSub === 'constraint' && st2.constraintDim === 'memories'
         && html2.indexOf('data-ftt-rel-entry="memories|m2"') >= 0 && html2.indexOf('🔗 定位') >= 0
         && html2.indexOf('当前筛选：定位 记忆「仓库清点：乙清点仓库，少了三箱。」') >= 0;
     // 编辑态被清空（V1 `editor = null`）
@@ -386,7 +398,9 @@ await A('V3 `relGoto` 面板编排：切到条目所在页并把**该页搜索�
 await A('V4 `relPick` / `relPickClose` / `relPickQuery`：同条目再点一次收起、跨条目切换、关闭清空；搜索词只在选角色面板内生效（不污染列表页搜索）', async () => {
     boot();
     openPanel('memories');
-    await panelAction('msub', { tab: 'memories', sub: 'rel' });
+    await panelAction('tab', { tab: 'settings' });
+    await panelAction('settingsSub', { sub: 'constraint' });
+    await panelAction('constraintDim', { dim: 'memories' });
     const p1 = await panelAction('relPick', { kind: 'memories', id: 'm1' });
     const on1 = String(p1.html || '').indexOf('data-ftt-rel-pick="memories|m1"') >= 0;
     const p2 = await panelAction('relPick', { kind: 'memories', id: 'm1' });
@@ -394,19 +408,20 @@ await A('V4 `relPick` / `relPickClose` / `relPickQuery`：同条目再点一次�
     const p3 = await panelAction('relPick', { kind: 'memories', id: 'm1' });
     await panelAction('relPickQuery', { q: '乙' });
     const q = relPickQueryOf();
-    const htmlQ = panelBodyHtml('memories');
+    const htmlQ = panelBodyHtml('settings');
     const filtered = htmlQ.indexOf('data-name="角色乙"') >= 0 && htmlQ.indexOf('data-name="角色甲"') < 0;
     const listSearch = String((await panelAction('search', { kind: 'memories', q: '' })).state.search.memories) === '';
     await panelAction('relPickQuery', { q: '' });
     const c = await panelAction('relPickClose', {});
     const closed = relPickState() === null && String((c.state || {}).note) === '已收起「👥 选角色」';
-    // 编辑器作用域：面板键为 `dim|editor`（V1 relPickKey 口径）—— 需先打开编辑器（V2 编辑器在列表子标签下渲染）
-    await panelAction('relEdit', { kind: 'memories', id: 'm1' });
+    // 编辑器作用域：面板键为 `dim|editor`（V1 relPickKey 口径）—— `relEdit` 会**切回该条目的列表页**并打开编辑器
+    const ed0 = await panelAction('relEdit', { kind: 'memories', id: 'm1' });
+    const edTabOk = String((ed0.state || {}).tab) === 'memories' && !!((ed0.state || {}).editing);
     await panelAction('relPick', { kind: 'memories', id: 'm1', editor: '1' });
     const ed = String((await panelAction('refresh', {})).html || '');
     const edKey = (ed.match(/data-ftt-rel-pick="([^"]*)"/) || [])[1] || null;
     await panelAction('relPickClose', {});
-    return on1 && off2 && q === '乙' && filtered && listSearch && closed
+    return on1 && off2 && q === '乙' && filtered && listSearch && closed && edTabOk
         && relPickState() === null && G.pickPanel.editor.key === 'memories|editor' && edKey === 'memories|editor';
 }, () => ({ pick: relPickState(), q: relPickQueryOf(), edKey: (String(panelBodyHtml('memories')).match(/data-ftt-rel-pick="([^"]*)"/) || [])[1] }));
 
@@ -421,7 +436,7 @@ await A('V5 端到端：条目行 → relJump → 选角色 → ➕ 追加（草
     const libBefore = relLinksOf('memories', 'm2').filter((x) => x.who).length;      // 未保存 → 库内仍为 0
     const save = await panelAction('relSave', { kind: 'memories', id: 'm2' });
     const libAfter = relLinksOf('memories', 'm2').filter((x) => x.who).map((x) => x.who + '/' + x.how);
-    const view = panelBodyHtml('memories');
+    const view = panelBodyHtml('settings');      // v2.80.0：关系总览在「设定 → 约束」
     const oracleRows = (G.pickAdd.addOk.rowsAfterFirst || []).map((r) => r.who + '/' + r.how);
     return add1.appended === true && add2.dup === true
         && J(draft) === J(oracleRows) && libBefore === 0
@@ -430,12 +445,12 @@ await A('V5 端到端：条目行 → relJump → 选角色 → ➕ 追加（草
         && relPickState() === null;                                          // V1 `case 'relSave'`：保存后关选择器
 }, () => ({ draft: relRowsOf('memories', 'm2'), lib: relLinksOf('memories', 'm2') }));
 
-await A('V6 子标签切换（`msub`）重置跳转定位与选择器态，但**不清角色筛选**（V1 `fttMsub` 点击口径）；关系层关闭时选角色追加如实失败', async () => {
+await A('V6 v2.80.0 页内维度切换（`constraintDim`）重置跳转定位与选择器态，但**不清角色筛选**（同 V1 `fttMsub` 点击口径）；关系层关闭时选角色追加如实失败', async () => {
     boot();
     openPanel('memories');
     setRelFilter('memories', '角色甲', { dim: 'memories', id: 'm1', title: '码头见闻' });
     setRelPick({ dim: 'memories', id: 'm1', editor: false });
-    const r = await panelAction('msub', { tab: 'memories', sub: 'list' });
+    const r = await panelAction('constraintDim', { dim: 'memories' });
     const s = relFilterState();
     const v1Step = G.actionFlow.steps.filter((x) => x.name.indexOf('子标签点击') === 0)[0];
     const v1Ok = J(v1Step.filter) === J({ dim: 'memories', who: '', jump: null });

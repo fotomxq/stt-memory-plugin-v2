@@ -2447,7 +2447,7 @@ await assert('AF1 关系表定位/选角色 FTT 入口齐备：setRelPick 归一
         && pickOk && filterOk && jumpOk && clearedOk && rowOk && noteOk && savedOk;
 })(), '');
 
-await assert('AF2 面板编排：条目行「🔗 关联（N）」；`relJump` 切到条目所在页 + 维度子标签置 rel + 定位提示 + 「清除筛选」；`relWho` 只写角色筛选（不再顺带开编辑器）；`relGoto` 把该页搜索词设为条目标题（悬念→计划悬念页）', (async () => {
+await assert('AF2 面板编排 v2.80.0：条目行「🔗 关联（N）」；`relJump` 切到「设定 → 约束」+ 该维度 + 定位提示 + 「清除筛选」；`relWho` 只写角色筛选（不再顺带开编辑器）；`relGoto` 把该页搜索词设为条目标题（悬念→计划悬念页）', (async () => {
     const F = globalThis.FTT;
     const st = rtMod.state;
     st.memories = [{ id: 'smoke-af-m2', owner: '甲角色', title: '码头见闻', content: '甲在码头看到木箱。' }];
@@ -2456,16 +2456,16 @@ await assert('AF2 面板编排：条目行「🔗 关联（N）」；`relJump` �
     st.parallels = [{ id: 'smoke-af-pa1', title: '第三方插手', text: '若木箱属第三方。' }];
     st.links = [{ id: 'smoke-af-l1', dim: 'memories', refId: 'smoke-af-m2', who: '甲角色', how: 'participant', deviation: 'unknown' }];
     await entry.popupAction('tab', { tab: 'memories' });
-    await entry.popupAction('msub', { tab: 'memories', sub: 'list' });
     const listHtml = String((await entry.popupAction('refresh', {})).html || '');
     const btnOk = listHtml.indexOf('data-ftt-action="relJump"') >= 0
         && listHtml.indexOf('data-kind="memories" data-id="smoke-af-m2"') >= 0
         && listHtml.indexOf('🔗 关联（1）') >= 0;
-    // relJump：悬念条目 → 计划悬念页 + 悬念段子标签置 rel（V2 页面即维度的落点）
+    // relJump：v2.80.0 → 切「设定 → 约束」并把页内维度设为该条目维度（悬念）
     const j = await entry.popupAction('relJump', { kind: 'suspense', id: 'smoke-af-su1' });
     const js = j.state || {}, jh = String(j.html || '');
-    const jumpOk = j.ok === true && js.tab === 'plans' && js.relSub && js.relSub.suspense === 'rel'
-        && String(js.note).indexOf('已定位到关系表：悬念') === 0
+    const jumpOk = j.ok === true && js.tab === 'settings' && js.settingsSub === 'constraint' && js.constraintDim === 'suspense'
+        && jh.indexOf('ftt-subtab ftt-on" data-ftt-cdim="suspense"') >= 0
+        && String(js.note).indexOf('已定位到「约束 → 关系表」：悬念') === 0
         && jh.indexOf('当前筛选：定位 悬念「断口之谜：断口来源不明') >= 0
         && jh.indexOf('data-ftt-action="relClearFilter"') >= 0
         && jh.indexOf('data-ftt-rel-entry="suspense|smoke-af-su1"') >= 0;      // 定位目标即使暂无关联也列出
@@ -2965,18 +2965,20 @@ await assert('AJ1 设定子标签点击真实生效：V1 同款标记（`<a href
         && fired2 && String(panelState().settingsSub) === 'storage';
 })(), '');
 
-await assert('AJ2 记忆/情节子标签点击真实生效（此前同样被「无 action 即 return」吞掉）；且宿主已有面板节点时也会绑定委托', (async () => {
+await assert('AJ2 v2.80.0 约束页维度切换 / 情节子标签点击真实生效（此前同样被「无 action 即 return」吞掉）；且宿主已有面板节点时也会绑定委托', (async () => {
     const el = doc.getElementById('ftt-panel');
     const fire = (dataset) => { const l = (el && el.listeners && el.listeners.click) || []; l.forEach((fn) => fn({ target: { dataset } })); return l.length > 0; };
-    await entry.popupAction('tab', { tab: 'memories' });
-    const f1 = fire({ fttMsub: 'rel' });
+    // 「属性型」控件：`data-ftt-cdim`（约束页维度切换，取代已移除的列表页 `data-ftt-msub`）
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'constraint' });
+    const f1 = fire({ fttCdim: 'parallels' });
     await new Promise((r) => setTimeout(r, 0));
-    const relSub = String((panelState().relSub || {}).memories || '');
+    const cdim = String(panelState().constraintDim || '');
     await entry.popupAction('tab', { tab: 'atoms' });
     const f2 = fire({ fttAsub: 'segments' });
     await new Promise((r) => setTimeout(r, 0));
     const atSub = String(panelState().atomSub || '');
-    return el.__fttBound === true && f1 && relSub === 'rel' && f2 && atSub === 'segments';
+    return el.__fttBound === true && f1 && cdim === 'parallels' && f2 && atSub === 'segments';
 })(), '');
 
 await assert('AJ3 异常捕捉强化：window error / unhandledrejection / 面板动作失败 → 调试日志 kind=「异常」；调试页显示只读异常区；解绑后不再记录', (async () => {
@@ -3944,6 +3946,56 @@ await assert('AZ1 v2.50.0 场景层级（收纳）修复：编辑**嵌套场景*
             && JSON.stringify(after.pathArr) === JSON.stringify(['城市甲', '码头', '里屋']);
     } finally {
         RT5.state.scenes = saveScenes2;
+    }
+})(), '');
+
+// ---------- BB v2.80.0：状态行去冒号 + 关系表/约束自查收进「设定 → 约束」 ----------
+await assert('BB1 v2.80.0 状态大类列表行**不再输出「：」**（用户要求）：字段与值空格分隔；值为空只留字段、字段为空只留值', (async () => {
+    const RT = (await import('../core/model/runtime.js')).state;
+    const save = RT.currentStates;
+    try {
+        RT.currentStates = [
+            { id: 'bb1', subject: '甲', field: '体力', value: '疲惫', uses: 2, floorEnd: 3 },
+            { id: 'bb2', subject: '甲', field: '心情', value: '', uses: 0, floorEnd: 2 },
+            { id: 'bb3', subject: '甲', field: '', value: '旧伤未愈', uses: 0, floorEnd: 1 },
+        ];
+        await entry.popupAction('tab', { tab: 'states' });
+        const html = String(panelBodyHtml('states') || '');
+        const body = html.slice(html.indexOf('👤 甲'));
+        return html.indexOf('👤 甲') >= 0 && body.indexOf('<b>体力</b> 疲惫') >= 0
+            && body.indexOf('：') < 0                                  // 整段无冒号（含组内全部行）
+            && body.indexOf('<b>心情</b><div') >= 0                    // 值为空 → 不留空格/冒号
+            && body.indexOf('旧伤未愈') >= 0 && body.indexOf('<b></b>') < 0;   // 字段为空 → 不出空标签
+    } finally {
+        RT.currentStates = save;
+    }
+})(), '');
+
+await assert('BB2 v2.80.0「设定 → 约束」端到端：子页存在且渲染四维切换条 + 角色筛选 + 关联总览 + 约束自查；页内切维度真实生效；四个列表页不再有子标签', (async () => {
+    const ST = (await import('../core/model/runtime.js')).state;
+    const save = { links: ST.links, memories: ST.memories };
+    try {
+        ST.memories = [{ id: 'bb-m1', owner: '甲', content: '甲记得昨夜有人在巷口徘徊。' }];
+        ST.links = [{ id: 'bb-l1', dim: 'memories', refId: 'bb-m1', who: '甲', how: 'participant' }];
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'constraint' });
+        // 约束页的维度是**页内状态**（跨次保留）→ 断言前显式切到「记忆」维度
+        await entry.popupAction('constraintDim', { dim: 'memories' });
+        const con = String(panelBodyHtml('settings') || '');
+        const subTabs = String(await import('../ui/settings-pages.js').then((m) => m.settingsSubTabsHtml('constraint')));
+        const switchDim = await entry.popupAction('constraintDim', { dim: 'plans' });
+        const plans = String(panelBodyHtml('settings') || '');
+        await entry.popupAction('tab', { tab: 'memories' });
+        const list = String(panelBodyHtml('memories') || '');
+        return subTabs.indexOf('data-ftt-subtab="constraint"') >= 0 && subTabs.indexOf('>约束<') >= 0
+            && con.indexOf('data-ftt-cdim="memories"') >= 0 && con.indexOf('data-ftt-cdim="parallels"') >= 0
+            && con.indexOf('data-ftt-rel-who="1"') >= 0 && con.indexOf('data-ftt-rel-entry="memories|bb-m1"') >= 0
+            && con.indexOf('data-ftt-section="constraint-check"') >= 0 && con.indexOf('ftt-inject-check') >= 0
+            && switchDim.ok === true && plans.indexOf('ftt-subtab ftt-on" data-ftt-cdim="plans"') >= 0
+            && list.indexOf('data-ftt-msub') < 0 && list.indexOf('ftt-inject-check') < 0
+            && list.indexOf('data-ftt-action="relJump"') >= 0;         // 列表页仍保留「🔗 关联」入口
+    } finally {
+        ST.links = save.links; ST.memories = save.memories;
     }
 })(), '');
 

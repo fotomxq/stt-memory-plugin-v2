@@ -7,7 +7,8 @@
 //   生成器 `tests/fixtures/gen-v1-golden-state-align.cjs`，连跑两次逐字节一致）。覆盖：
 //     · 提示词模板 `state` / `states` / `statesRepair`（V1 v1.206 1582 / 1617 / 2028）；
 //     · 状态页 `statesHtml()`（23988~24027）：空态文案、主体分组（localeCompare 排序）、组内行
-//       `字段：值` + `调用N次[ · 更新 日期 时间]`、搜索占位符、无匹配文案、修复按钮显隐；
+//       `字段 值`（**v2.80.0 起取消 V1 的 `：` 分隔符**，见 P3b）+ `调用N次[ · 更新 日期 时间]`、
+//       搜索占位符、无匹配文案、修复按钮显隐；
 //     · 注入体 `[状态记录]` 块（在场过滤 + 行格式，V1 `buildMemoryBodyForInject`）；
 //     · 条数钳制 `applyStateBounds`（经 `mergeDelta` 触发；每角色 > `stateMaxPerSubject` 裁最旧）。
 // 另覆盖 V2 本轮补上的 **筛选条**（字段范围 / 排序 / 额外条件「仅已失效」）真实生效。
@@ -51,9 +52,11 @@ function projectStatesPage(html) {
         const nextAt = rest.search(/<h4 class="ftt-h4-inline ftt-mt-6">/);
         const body = nextAt >= 0 ? rest.slice(0, nextAt) : rest;
         const rows = [];
-        const rowRe = /<b>([\s\S]*?)<\/b>：([\s\S]*?)<div class="ftt-meta">([\s\S]*?)<\/div>/g;
+        // v2.80.0：行格式由 V1 的 `<b>字段</b>：值` 改为 `<b>字段</b> 值`（取消冒号；字段或值为空时只留一侧）
+        //   → 投影改为「<b> 可选 + 分隔文本 + meta」，两侧仍取 field / value 供与 oracle 逐条比对。
+        const rowRe = /<span class="ftt-grow">(?:<b>([\s\S]*?)<\/b>)?([\s\S]*?)<div class="ftt-meta">([\s\S]*?)<\/div>/g;
         let rm;
-        while ((rm = rowRe.exec(body))) rows.push({ field: strip(rm[1]), value: strip(rm[2]), meta: strip(rm[3]) });
+        while ((rm = rowRe.exec(body))) rows.push({ field: strip(rm[1] || ''), value: strip(rm[2] || ''), meta: strip(rm[3]) });
         groups.push({ subject: strip(name), count: count, rows: rows, addBtn: body.indexOf('data-ftt-action="addStateFor"') >= 0, delGroupBtn: body.indexOf('data-ftt-action="delStateGroup"') >= 0 });
     }
     return {
@@ -122,10 +125,26 @@ A('P2 有数据：占位符 / 修复按钮 / 主体分组（localeCompare 排序
         && J(p.groups.map((g) => g.count)) === J(G.pageGrouped.groups.map((g) => g.count));
 })(), J(projectStatesPage(panelBodyHtml('states')).groups.map((g) => g.subject)));
 
-A('P3 组内行（字段：值 + 调用N次[ · 更新 日期 时间]）与组内 floorEnd 倒序逐条一致', (() => {
+A('P3 组内行（字段 值 + 调用N次[ · 更新 日期 时间]）与组内 floorEnd 倒序逐条一致（**有意偏离 V1**：取消 `：`，投影后字段与值仍与 oracle 逐条相同）', (() => {
     const p = projectStatesPage(panelBodyHtml('states'));
     return J(p.groups.map((g) => g.rows)) === J(G.pageGrouped.groups.map((g) => g.rows));
 })(), J(projectStatesPage(panelBodyHtml('states')).groups));
+
+A('P3b v2.80.0 状态行**不再输出冒号**（用户要求「不应该总是显示『：』，请去掉该符号」）：完整行空格分隔；值为空/字段为空时都不留孤立标点', (async () => {
+    boot([
+        { id: 'p3b-1', subject: '甲', field: '体力', value: '疲惫', uses: 2, floorEnd: 3 },
+        { id: 'p3b-2', subject: '甲', field: '心情', value: '', uses: 0, floorEnd: 2 },        // 值为空（旧版留拖尾冒号）
+        { id: 'p3b-3', subject: '甲', field: '', value: '旧伤未愈', uses: 0, floorEnd: 1 },     // 字段为空（旧版留前导冒号）
+    ]);
+    openPanel('states');
+    const html = String(panelBodyHtml('states') || '');
+    const body = html.slice(html.indexOf('👤 甲'));
+    const full = body.indexOf('<b>体力</b> 疲惫') >= 0;                     // 字段 + 空格 + 值
+    const noColon = body.indexOf('：') < 0;                                  // 整段（含组内全部行）无冒号
+    const noDangling = body.indexOf('<b>心情</b><div') >= 0                  // 值为空 → 只留字段，不接空格/冒号
+        && body.indexOf('旧伤未愈') >= 0 && body.indexOf('<b></b>') < 0;      // 字段为空 → 只留值，不出空标签
+    return full && noColon && noDangling;
+})(), (() => { const h = String(panelBodyHtml('states') || ''); const i = h.indexOf('👤 甲'); return h.slice(i, i + 460); })());
 
 A('P4 搜索命中：与 V1 同一投影（含「命中角色名也保留」的 V1 语义）', (async () => {
     boot(STATES);

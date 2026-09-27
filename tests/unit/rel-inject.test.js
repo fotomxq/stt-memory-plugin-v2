@@ -148,24 +148,37 @@ await (async () => {
     boot();
     openPanel('memories');
     setPanelHooks2({ pending: () => [] });
-    // 先建一条关联，使「关系表」子页的总览有行可断言（V1 关系表总览按条目聚合）
+    // 先建一条关联，使「约束」页的关系总览有行可断言（V1 关系表总览按条目聚合）
     await panelAction('relAddRow', { kind: 'memories', id: 'm1' });
     await panelAction('relSave', { kind: 'memories', id: 'm1', rows: [{ who: '甲', how: 'participant' }] });
-    const m1 = await panelAction('msub', { tab: 'memories', sub: 'rel' });
-    const relView = panelBodyHtml('memories');
+    // v2.80.0（用户要求：关系表 / 约束自查 收进设定页）→ 面板动作改为：切设定页 + `settingsSub='constraint'`
+    const tab = await panelAction('tab', { tab: 'settings' });
+    const sub = await panelAction('settingsSub', { sub: 'constraint' });
+    const relView = panelBodyHtml('settings');
     const relWho = await panelAction('relWho', { who: '甲' });
-    const checkView = await panelAction('msub', { tab: 'memories', sub: 'check' });
-    const checkHtml = panelBodyHtml('memories');
+    const relWhoView = panelBodyHtml('settings');
+    // 页内维度切换（data-ftt-cdim）→ 关系总览随之换维度
+    const dimSwitch = await panelAction('constraintDim', { dim: 'parallels' });
+    const parView = panelBodyHtml('settings');
+    await panelAction('constraintDim', { dim: 'memories' });
     const add = await panelAction('relAddRow', { kind: 'memories', id: 'm2' });
     const save = await panelAction('relSave', { kind: 'memories', id: 'm2', rows: [{ who: '乙' }] });
-    const state1 = panelAction && (await panelAction('tab', { tab: 'memories' }));
-    R.assert('R7 面板接线：记忆页三子标签（列表/关系表/约束自查）切换与动作转发、保存提示', (() => {
-        return m1.ok === true && relView.indexOf('data-ftt-msub="rel"') >= 0 && relView.indexOf('data-ftt-rel-who="1"') >= 0
-            && relView.indexOf('data-ftt-action="relEdit"') >= 0
-            && relWho.ok === true && checkView.ok === true && checkHtml.indexOf('ftt-inject-check') >= 0
+    // 列表页不再有 关系表 / 约束自查 子标签（按该分页正文断言，与 `panelBodyHtml` 同路径）
+    await panelAction('tab', { tab: 'memories' });
+    const listView = panelBodyHtml('memories');
+    R.assert('R7 面板接线 v2.80.0：关系表与约束自查收进「设定 → 约束」（维度页内切换 + 角色筛选 + 保存提示）；四个列表页不再有子标签', (() => {
+        return tab.ok === true && sub.ok === true && String(sub.state && sub.state.settingsSub) === 'constraint'
+            && relView.indexOf('ftt-subtab ftt-on" data-ftt-cdim="memories"') >= 0          // 维度切换条：缺省「记忆」高亮
+            && relView.indexOf('data-ftt-cdim="parallels"') >= 0
+            && relView.indexOf('data-ftt-rel-who="1"') >= 0 && relView.indexOf('data-ftt-action="relEdit"') >= 0
+            && relView.indexOf('ftt-inject-check') >= 0 && relView.indexOf('🧷 约束自查') >= 0
+            && relWho.ok === true && relWhoView.indexOf('角色含「甲」') >= 0
+            && dimSwitch.ok === true && dimSwitch.dim === 'parallels'
+            && parView.indexOf('ftt-subtab ftt-on" data-ftt-cdim="parallels"') >= 0            // 页内切换后高亮随之移动
+            && parView.indexOf('（该维度暂无关联行）') >= 0                                       // 关系总览同步换成该维度（平行事件无关联行）
             && add.ok === true && save.ok === true && save.saved === 1
-            && String(state1.html).indexOf('data-ftt-msub="check"') >= 0;
-    })(), { saved: save.saved, note: String(state1.html).match(/data-ftt-note>[^<]*/) });
+            && String(listView).indexOf('data-ftt-msub') < 0 && String(listView).indexOf('ftt-inject-check') < 0;
+    })(), { saved: save.saved, dim: dimSwitch.dim, sub: String(sub.state && sub.state.settingsSub) });
 })();
 
 un();
