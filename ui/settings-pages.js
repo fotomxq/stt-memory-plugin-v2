@@ -1219,7 +1219,7 @@ export function analyzePageHtml(controls) {
         '</div>',
         (scope
             ? '<div class="ftt-section"><div class="ftt-sec-title">分析范围</div>' + scope
-            + shortHintHtml('分批处理（默认 10）：按该值把正文分批提取；自动补全覆盖全部未摘要楼层，手动摘要只处理最近楼层（默认 2）。')
+            + shortHintHtml('分批处理（默认 10）；自动补全覆盖全部未摘要楼层，手动摘要只处理最近楼层。')
             + '</div>'
             : ''),
         (seg
@@ -1235,7 +1235,7 @@ export function analyzePageHtml(controls) {
             : ''),
         (links
             ? '<div class="ftt-section"><div class="ftt-sec-title">关联层（谁知道 / 谁相关）</div>' + links
-            + shortHintHtml('关联层记录每条记忆 / 计划 / 悬念 / 平行事件的知情者与关联条目；关闭后不再读写关联行。')
+            + shortHintHtml('关联层记录知情者与关联；关闭后不再读写关联行。')
             + hintDetailsHtml('说明', '<div>' + esc('关联行上限按条目计（含锚行）；孤儿关联 = 目标条目已不存在的行。处置口径：「保留并提示」只统计不改动（历史数据不臆造关联）、「自动清理」删除孤儿行（留墓碑，跨端不复活）、「清理 + 转公开」在清理后给没有任何关联的条目补一条公开锚行。关联层的派生视图（谁依赖我 / 引用了谁）在「设定 → 约束」页。') + '</div>')
             + '</div>'
             : ''),

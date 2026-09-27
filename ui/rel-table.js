@@ -109,7 +109,7 @@ function relRowHtml(dim, row, idx) {
         + '<td><input class="ftt-rel-w-who" data-ftt-relf="from" value="' + attr(String((row && row.from) || '')) + '" placeholder="' + (how === 'told' ? '告知者' : '—') + '"></td>'
         + '<td><input class="ftt-rel-w-date" data-ftt-relf="at" value="' + attr(String((row && row.at) || '')) + '" placeholder="YYYY-MM-DD"></td>'
         + '<td><input data-ftt-relf="note" value="' + attr(String((row && row.note) || '')) + '" placeholder="备注"></td>'
-        + '<td><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="relRowDel" data-ftt-rel-idx="' + attr(idx) + '">🗑</button></td>'
+        + '<td><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="relRowDel" data-ftt-rel-idx="' + attr(idx) + '" title="删除这一行关系">🗑</button></td>'
         + '</tr>';
 }
 

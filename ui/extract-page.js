@@ -146,7 +146,7 @@ export function extractPageHtml(controls, renderControl) {
     const kwCh = (k) => { const c = find(k); return c ? settingsControlHtml(c) : ''; };
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">提取记忆 · 三层结构</div>',
-        shortHintHtml('发送前按层级依次尝试，命中即返回：向量检索 → 本地 JS 抽取 → AI 分析。'),
+        shortHintHtml('按层级依次尝试，命中即返回：向量 → 本地 JS → AI。'),
         hintDetailsHtml('说明',
             '<div>' + esc('🟢 向量检索：关键词 embedding → 余弦 TopN（配置了 Rerank 时再精排）。') + '</div>'
             + '<div>' + esc('🟡 浏览器 JS 抽取：本地匹配，零 API 消耗。') + '</div>'
@@ -208,7 +208,7 @@ export function extractPageHtml(controls, renderControl) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">召回上限（各大类注入条数）</div>',
         caps.map((c) => settingsControlHtml(c)).join('\n'),
-        shortHintHtml('这里的条数只是候选上限；默认已按 2000-3000 条库存规模放宽，预算不足时按优先级截取。'),
+        shortHintHtml('这些只是候选上限；预算不足时按优先级截取。'),
         '</div>',
 
         // v2.78.0（用户要求）：「重要性计算」是**提取记忆**（召回打分）用的 —— 从「基础」页迁到本页。

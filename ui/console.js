@@ -173,7 +173,7 @@ export function consoleHtml() {
             '<span class="ftt-console-id">' + esc(id) + '</span>' +
             '<span class="ftt-console-sum">' + esc(entrySummary(e)) + '</span>' +
             '<span class="ftt-console-meta">' + esc(date) + (uses ? ' · ' + uses + '次' : '') + '</span>' +
-            '<button class="menu_button" data-ftt-console="del" data-kind="' + esc(cs.tab) + '" data-id="' + esc(id) + '">🗑</button>' +
+            '<button class="menu_button" data-ftt-console="del" data-kind="' + esc(cs.tab) + '" data-id="' + esc(id) + '" title="删除这条记忆（留墓碑，跨端不复活）">🗑</button>' +
             '</div>';
     }).join('') || '<div class="ftt-v2-note">（该维度暂无条目）</div>';
     const open = cs.open ? consoleEntry(cs.open.kind, cs.open.id) : null;
