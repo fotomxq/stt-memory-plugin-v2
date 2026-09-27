@@ -302,6 +302,38 @@ function planSuspRelPrefix(dim, e, kind) {
 }
 // 平行事件前缀：相关 ≠ 知情（角色一律不知情）
 
+/**
+ * v2.88.0（用户要求：「提取记忆的注入内容，应改为 markdown 结构」）——**小节标题渲染**。
+ * 口径：内部仍用 `[区块]` 字符串作为**逻辑键**（预算分配 / 排序 / 诊断 / 测试对照都用它，保持不变）；
+ *   渲染时统一转成 Markdown：`## 名称`，括号说明转成紧跟其后的引用行 `> 说明：…`。
+ * @param {string} head 逻辑键（如 `[长期记忆]（说明：…）`）
+ * @returns {string} Markdown 小节（形如 `## 长期记忆\n> 说明：…`）
+ */
+function mdHeadOf(head) {
+    try {
+        const raw = String(head || '');
+        const m = /^\[([^\]]+)\]\s*[（(]([\s\S]*)[）)]$/.exec(raw);
+        if (m) return `## ${m[1]}\n> 说明：${m[2]}`;
+        const m2 = /^\[([^\]]+)\]$/.exec(raw);
+        if (m2) return `## ${m2[1]}`;
+        return '## ' + raw;
+    } catch (e) { return '## ' + String(head || ''); }
+}
+
+/**
+ * v2.88.0：**预算按「内容」计**（Markdown 标记不挤占预算）。
+ *   注入体已改为 Markdown（`## 小节` / `> 说明：` / `- ` / `**粗体**` / 二级缩进），若按渲染后长度计费，
+ *   同样的内容会比 V1 少注入若干条目、并可能把约束段尾句挤掉。故所有预算判定统一用本函数（去掉标记后的长度），
+ *   渲染与输出仍是 Markdown。
+ */
+function mdCostOf(t) {
+    try {
+        return String(t == null ? '' : t)
+            .replace(/^##\s+/gm, '').replace(/^>\s*/gm, '').replace(/\*\*/g, '')
+            .split('\n').map((l) => l.replace(/^[\s·\-]+/, '')).join('\n').length;
+    } catch (e) { return String(t == null ? '' : t).length; }
+}
+
 function buildInjectConstraints(ctx) {
     try {
         if (cfg && cfg.injectConstraintBlock === false) return '';
@@ -310,7 +342,8 @@ function buildInjectConstraints(ctx) {
         const nameAll = cfg && cfg.injectConstraintNameAll === true;
         const present = relPresentList();
         const injected = o.injected || {};
-        const lines = ['【注入约束】（以下为硬约束，优先级高于上文任何区块；未列出的角色一律按「不知情」处理）'];
+        // v2.88.0：约束段同样 Markdown 化（`## 注入约束` + `> 说明` + 有序列表 1./2.…，明细用二级列表 `  - `）
+        const lines = ['## 注入约束', '> 说明：以下为硬约束，优先级高于上文任何区块；未列出的角色一律按「不知情」处理'];
         lines.push(`1. 当前在场：${present.length ? present.join('、') : '（未记录）'}。`);
         // 2. 非公共信息（被召回的逐条点名；未被召回的聚合计数 —— 保证约束不随召回丢失）
         const detail = [];
@@ -326,7 +359,7 @@ function buildInjectConstraints(ctx) {
             const title = String(m.title || m.content || '').slice(0, 24);
             if (inSet('memories', m.id)) {
                         const known = rows.length ? rows.map(x => `${relShortName(x.who)}（${relHowLabelOf(x.how)}）`).join('、') : (m.owner && m.owner !== '通用' ? `${m.owner}（归属）` : '（未记录）');
-                detail.push(`· 记忆「${title}」知情者 = ${known}`);
+                detail.push(`  - 记忆「${title}」知情者 = ${known}`);
             } else agg.memories++;
         }
         for (const p of (state.plans || [])) {
@@ -337,7 +370,7 @@ function buildInjectConstraints(ctx) {
             const title = String(p.title || p.content || '').slice(0, 24);
             if (inSet('plans', p.id)) {
                 const known = rows.length ? rows.map(x => `${relShortName(x.who)}（${relHowLabelOf(x.how)}）`).join('、') : '（未记录，按"涉及"保守处理）';
-                detail.push(`· 计划「${title}」知情者 = ${known}`);
+                detail.push(`  - 计划「${title}」知情者 = ${known}`);
             } else agg.plans++;
         }
         for (const s of (state.suspense || [])) {
@@ -347,7 +380,7 @@ function buildInjectConstraints(ctx) {
             const title = String(s.title || s.content || '').slice(0, 24);
             if (inSet('suspense', s.id)) {
                 const known = rows.length ? rows.map(x => `${relShortName(x.who)}（${relHowLabelOf(x.how)}）`).join('、') : '（未记录，按"当事人"保守处理）';
-                detail.push(`· 悬念「${title}」知情者 = ${known}`);
+                detail.push(`  - 悬念「${title}」知情者 = ${known}`);
             } else agg.suspense++;
         }
         for (const x of (state.parallels || [])) {
@@ -364,10 +397,10 @@ function buildInjectConstraints(ctx) {
         if (nameAll) {
             const allNames = [];
             for (const m of (state.memories || [])) { if (m && m.id) { try { const an = relLinksOf('memories', m.id).find(x => !x.who); if (an && an.public) continue; } catch (e) { } allNames.push(String(m.title || '').slice(0, 20)); } }
-            if (allNames.length) infoLines.push(`· 记忆（共 ${allNames.length} 条）：${allNames.slice(0, 12).join('、')}`);
+            if (allNames.length) infoLines.push(`  - 记忆（共 ${allNames.length} 条）：${allNames.slice(0, 12).join('、')}`);
         }
         if (detail.length) infoLines.push(...detail);
-        if (aggLine) infoLines.push('· ' + aggLine);
+        if (aggLine) infoLines.push('  - ' + aggLine);
         if (detail.length || aggLine || nameAll) lines.push(...infoLines);
         // 3. 不得当作已发生
         lines.push('3. 不得当作已发生：计划（尚未执行）、悬念（尚未揭晓）、平行事件（正文之外推演）、传言（**未经证实的说法**，可能不实或被夸大）一律不得被角色当作已发生事实；平行事件对任何角色都不可见。');
@@ -383,14 +416,14 @@ function buildInjectConstraints(ctx) {
             if ((Number.isFinite(prog) && prog > 0 && prog < 100) || open || ph) {
                 const title = String(p.title || p.content || '').slice(0, 20);
                 const phTxt = ph === 'blocked' ? `当前受阻${p.statusNote ? `（${String(p.statusNote).slice(0, 20)}）` : ''}，` : (ph === 'abandoned' ? '已放弃但尚未了结，' : '');
-                unfin.push(`· 计划「${title}」${phTxt}${Number.isFinite(prog) ? `进度 ${Math.max(0, Math.min(100, Math.round(prog)))}%` : ''}${open ? `${Number.isFinite(prog) ? '，' : ''}尚有 ${open} 个未完成步骤` : ''}：未完成部分不得当作已完成。`);
+                unfin.push(`  - 计划「${title}」${phTxt}${Number.isFinite(prog) ? `进度 ${Math.max(0, Math.min(100, Math.round(prog)))}%` : ''}${open ? `${Number.isFinite(prog) ? '，' : ''}尚有 ${open} 个未完成步骤` : ''}：未完成部分不得当作已完成。`);
             }
         }
         for (const s of (state.suspense || [])) {
             if (!s || !s.id || !inSet('suspense', s.id)) continue;
             const clues = Array.isArray(s.clues) ? s.clues : [];
             const title = String(s.title || s.content || '').slice(0, 20);
-            if (clues.length) unfin.push(`· 悬念「${title}」现有 ${clues.length} 条线索（只证明线索本身，不得据此推出答案）${s.resolveCondition ? `；揭晓条件：${String(s.resolveCondition).slice(0, 30)}` : ''}。`);
+            if (clues.length) unfin.push(`  - 悬念「${title}」现有 ${clues.length} 条线索（只证明线索本身，不得据此推出答案）${s.resolveCondition ? `；揭晓条件：${String(s.resolveCondition).slice(0, 30)}` : ''}。`);
         }
         if (unfin.length) lines.push('4. 未完成 / 未证实：', ...unfin);
         // 4.5 传言传播范围（v1.192）：只有列出的传播者 / 听闻者知道这条说法在传，且说法本身未必为真
@@ -399,7 +432,7 @@ function buildInjectConstraints(ctx) {
             if (!r || !r.id || !inSet('rumors', r.id)) continue;
             const who = (Array.isArray(r.carriers) ? r.carriers : []).filter(c => c && c.who)
                 .map(c => `${relShortName(c.who)}（${c.role || '传播者'}）`).join('、');
-            rumorKnow.push(`· 传言「${String(r.subject || '').slice(0, 16)}」（${r.objectivity || '主观'}）传播者 = ${who || '（未记录，按「无人确知」处理）'}：未列出者既不知道这条说法，也不知道它在传。`);
+            rumorKnow.push(`  - 传言「${String(r.subject || '').slice(0, 16)}」（${r.objectivity || '主观'}）传播者 = ${who || '（未记录，按「无人确知」处理）'}：未列出者既不知道这条说法，也不知道它在传。`);
         }
         if (rumorKnow.length) lines.push('4.5 传言传播范围（说法未必为真，任何角色都不得当作事实使用）：', ...rumorKnow);
         // 5. 平行事件（一律不可见）
@@ -429,7 +462,7 @@ function buildInjectConstraints(ctx) {
             else sections.push({ head: '', body: [l] });
         }
         const prio = (head) => {
-            if (!head) return 0;                       // 段头（【注入约束】标题行）永远保留
+            if (!head) return 0;                       // 段头（`## 注入约束` 标题行）永远保留
             if (/^1\./.test(head)) return 1;
             if (/^2\./.test(head)) return 2;
             if (/^3\./.test(head)) return 3;
@@ -438,19 +471,29 @@ function buildInjectConstraints(ctx) {
             return 6;
         };
         const render = (list) => list.map(s => [s.head].concat(s.body).filter(Boolean).join('\n')).filter(Boolean).join('\n');
+        /**
+         * v2.88.0：约束段的**长度预算按「内容」计**（不计 Markdown 标记开销）——
+         *   渲染后是 Markdown（`## 标题` / `> 说明：` / `- ` / `**粗体**` / 二级列表缩进），
+         *   这些标记不该挤占 `injectConstraintMaxChars` 的内容额度；否则同样的内容会被裁掉尾部
+         *   （与 V1 内容不再一致）。故裁剪判定一律用 `mdLen`，返回的仍是 Markdown 文本。
+         */
+        const mdLen = (t) => String(t || '')
+            .replace(/^##\s+/gm, '').replace(/^>\s*/gm, '')
+            .replace(/\*\*/g, '')
+            .split('\n').map((l) => l.replace(/^[\s·\-]+/, '')).join('\n').length;
         let text = render(sections);
-        if (text.length > maxChars) {
+        if (mdLen(text) > maxChars) {
             // ① 先丢最低优先级整段（6 → 5 → 4）
             let work = sections.slice();
             for (const drop of [6, 5, 4]) {
-                if (text.length <= maxChars) break;
+                if (mdLen(text) <= maxChars) break;
                 work = work.filter(s => prio(s.head) !== drop);
                 text = render(work);
             }
             // ② 仍超长 → 非公共信息明细逐条丢弃（保留段头与总括句）
-            if (text.length > maxChars) {
+            if (mdLen(text) > maxChars) {
                 const info = work.find(s => prio(s.head) === 2);
-                while (info && info.body.length > 1 && text.length > maxChars) {
+                while (info && info.body.length > 1 && mdLen(text) > maxChars) {
                     const dropped = info.body.pop();
                     if (!/未在本轮注入/.test(dropped)) {
                         const last = info.body[info.body.length - 1];
@@ -460,7 +503,7 @@ function buildInjectConstraints(ctx) {
                 }
             }
             // ③ 兜底：只留 1./2.（段头 + 总括句）+ 3.，绝不切句
-            if (text.length > maxChars) {
+            if (mdLen(text) > maxChars) {
                 const minimal = work.filter(s => prio(s.head) <= 3).map(s => {
                     if (prio(s.head) === 2) {
                         const agg = s.body.filter(x => /未在本轮注入/.test(x));
@@ -470,10 +513,10 @@ function buildInjectConstraints(ctx) {
                 });
                 text = render(minimal);
             }
-            if (text.length > maxChars) text = render(sections.filter(s => prio(s.head) <= 2)) ;
+            if (mdLen(text) > maxChars) text = render(sections.filter(s => prio(s.head) <= 2)) ;
         }
-        if (text.length > maxChars) text = text.slice(0, maxChars) ;   // 极端兜底（配置被调得极小）
-        if (text.indexOf('其余约束从略') < 0 && text.length > maxChars * 0.8) text += '\n' + TAIL;
+        if (mdLen(text) > maxChars) text = text.slice(0, maxChars) ;   // 极端兜底（配置被调得极小）
+        if (text.indexOf('其余约束从略') < 0 && mdLen(text) > maxChars * 0.8) text += '\n' + TAIL;
         return text;
     } catch (e) { return ''; }
 }
@@ -845,18 +888,19 @@ function buildMemoryBodyForInject(queryText, opts) {
         // 四要素合并为同一块分别成行 —— 任一存在即整块输出；修复 仅日期 时整块被 time||location 门槛隐藏
         const curParts = [];
         // v1.188：日期行附「（纪年）·季节」，时间行显示区间 —— 仅在字段存在时追加
-        if (state.state.date) curParts.push(`日期:${clockDateLabel(state.state.date)}${state.state.era ? `（${state.state.era}）` : ''}${state.state.season ? `·${state.state.season}` : ''}`);   // v1.193：公元前加前缀
-        if (state.state.time) curParts.push(`时间:${state.state.time}${state.state.timeEnd ? `→${state.state.timeEnd}` : ''}`);
+        // v2.88.0：改为 Markdown 列表项 + 粗体标签（`- **日期**：…`）—— 内容与字段顺序不变，只换呈现形态
+        if (state.state.date) curParts.push(`- **日期**：${clockDateLabel(state.state.date)}${state.state.era ? `（${state.state.era}）` : ''}${state.state.season ? `·${state.state.season}` : ''}`);   // v1.193：公元前加前缀
+        if (state.state.time) curParts.push(`- **时间**：${state.state.time}${state.state.timeEnd ? `→${state.state.timeEnd}` : ''}`);
         // v2.48.0（用户要求）：「**剧情第 N 天，不允许注入**，这个设定只是在插件内校准时间用的」——
         //   V1 v1.206 11943 会把 `剧情天数:第N天` 写进注入体（V1 故障明确修正 #6），V2 起**不再注入**。
         //   `state.state.storyDay` 仍照常记录，仅供**插件内时间校准**（`clockStoryDayEpoch` 纪元首日 →
         //   「纪元首日 + (N-1) 天」换算日期，见 core/clock-extract.js 的 storyday 分支）与总览展示，
         //   任何注入/投喂/世界书文本都不得出现「第 N 天」（门禁：tests/unit/storyday-no-inject.test.js）。
-        if (state.state.location) curParts.push(`地点:${state.state.location}`);
+        if (state.state.location) curParts.push(`- **地点**：${state.state.location}`);
         // 在场角色（顿号分割）；与 日期/时间/地点 同行块输出，正常应四行齐全
-        if (present && present.length) curParts.push(`在场角色：${present.slice(0, 10).join('、')}`);
+        if (present && present.length) curParts.push(`- **在场角色**：${present.slice(0, 10).join('、')}`);
         const curLines = curParts.length ? [curParts.join('\n')] : [];
-        cats.push({ head: '[当前状态]', rows: curLines.map(t => ({ text: t })) });
+        cats.push({ head: '[当前状态]', md: mdHeadOf('[当前状态]'), rows: curLines.map(t => ({ text: t })) });
         // [情节记忆]（v1.175：**两段配额切分** —— 近期档（比例 `atomsRecentRatio`，默认 0.4）只按剧情时间取最新、
         //   不受关键词门槛限制，保证 AI 一定看到最近发了什么；机制档（其余配额）按原优先级评分/关键词投票择优，
         //   平局按「最新在前」稳定序；合并去重后 **输出顺序一律按剧情时间从早到晚**（预算消费顺序仍按优先级，渲染时重排））
@@ -899,7 +943,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         const atomRowCands = recentCands.sort((a, b) => (b.score || 0) - (a.score || 0) || atomTimeDesc(a.e, b.e))
             .concat(mechCands.sort((a, b) => (b.score || 0) - (a.score || 0) || atomTimeDesc(a.e, b.e)));
         for (const c of atomRowCands) { if (countUses) markUsed('atoms', c.e); atomRows.push({ text: c.text, score: c.score, sort: c.e }); }
-        cats.push({ head: '[情节记忆]', rows: atomRows });
+        cats.push({ head: '[情节记忆]', md: mdHeadOf('[情节记忆]'), rows: atomRows });
         // [状态记录]：匹配的 当前状态 按优先级取最近 maxStates 条 → 按角色分组输出（分组行仍为一个候选行）
         const activeStates = (state.currentStates || []).slice().reverse().filter(s => s.status !== 'inactive');
         const stateCands = [];
@@ -917,10 +961,10 @@ function buildMemoryBodyForInject(queryText, opts) {
         for (const [subj, list] of Object.entries(stateGroups)) {
             const items = [];
             let bestS = 0;
-            for (const s of list) { if (countUses) markUsed('states', s); const sc = rcScore('states')(s); if (sc > bestS) bestS = sc; items.push(`· ${s.field}: ${s.value}`); }
-            stateGroupRows.push({ score: Number(bestS.toFixed(4)), text: `- ${subj}：\n${items.map(x => `  ${x}`).join('\n')}` });
+            for (const s of list) { if (countUses) markUsed('states', s); const sc = rcScore('states')(s); if (sc > bestS) bestS = sc; items.push(`- **${s.field}**：${s.value}`); }   // v2.88.0：markdown 二级列表 + 粗体字段名
+            stateGroupRows.push({ score: Number(bestS.toFixed(4)), text: `- **${subj}**\n${items.map(x => `  ${x}`).join('\n')}` });
         }
-        cats.push({ head: '[状态记录]', rows: stateGroupRows });
+        cats.push({ head: '[状态记录]', md: mdHeadOf('[状态记录]'), rows: stateGroupRows });
         // [角色档案]（按姓名命中后按优先级取 maxSnapshots 名；无剧情日期 → 楼层/活跃度主导）
         const snapRows = [];
         const snapCands = [];
@@ -950,7 +994,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         snapCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of snapCands.slice(0, maxSnapshots)) { if (countUses) markUsed('snapshots', c.e); snapRows.push({ text: c.text }); }
-        cats.push({ head: '[角色档案]', rows: snapRows });
+        cats.push({ head: '[角色档案]', md: mdHeadOf('[角色档案]'), rows: snapRows });
         // [长期记忆]（匹配候选按优先级取 maxMemories 条；平局按「最新在前」）
         const memRows = [];
         const memCands = [];
@@ -966,7 +1010,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         memCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of memCands.slice(0, maxMemories)) { if (countUses) markUsed('memories', c.e); memRows.push({ text: c.text, ref: c.ref }); }
-        cats.push({ head: '[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）', rows: memRows });
+        cats.push({ head: '[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）', md: mdHeadOf('[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）'), rows: memRows });
         // [物品]（命中的物品按优先级取 maxItems 件）—— 标签作为触发关键词与记忆一致
         const itemRows = [];
         const itemCands = [];
@@ -983,7 +1027,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         itemCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of itemCands.slice(0, maxItems)) { if (countUses) markUsed('items', c.e); itemRows.push({ text: c.text }); }
-        cats.push({ head: '[物品]', rows: itemRows });
+        cats.push({ head: '[物品]', md: mdHeadOf('[物品]'), rows: itemRows });
         // [货币]（v1.181）：**主角的货币恒定注入**（不受关键词门槛限制）；其他角色的货币只在「被关键词/在场命中」时注入
         //   —— 符合用户要求「默认只记主角，涉及其他角色必须明确指定」；额度用 formatMoney 动态适配（万/亿/兆/京）。
         //   v1.183：用户在货币页**标定跟踪**的角色（`currencyTrackedRoles`）与主角同等待遇 —— **恒定注入**，
@@ -1023,7 +1067,7 @@ function buildMemoryBodyForInject(queryText, opts) {
                 const mark = c.tracked ? ' ⭐已标定' : '';
                 curRows.push({ text: `- ${owner || me}·${cu.name}${unit ? '' : ''} ${amtTxt}${unit ? ` ${unit}` : ''}${note}${histTxt}${mark}`, ref: { dim: 'currencies', id: cu.id }, score: c.score });
             }
-            if (curRows.length) cats.push({ head: '[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）', rows: curRows });
+            if (curRows.length) cats.push({ head: '[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）', md: mdHeadOf('[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）'), rows: curRows });
         }
         // [传言]（v1.192）：正在流传的**说法**（未经证实）—— 开关 `rumorEnabled`（默认开）；
         //   排序 = 「与在场/关键词相关」优先 + 发酵度；沉寂条目不注入；行文本自带客观性与阶段，便于 AI 以
@@ -1047,20 +1091,20 @@ function buildMemoryBodyForInject(queryText, opts) {
                 if (countUses) markUsed('rumors', c.e);
                 rumorRows.push({ text: `- ${rumorInjLine(c.e)}`, ref: { dim: 'rumors', id: c.e.id } });
             }
-            if (rumorRows.length) cats.push({ head: '[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）', rows: rumorRows });
+            if (rumorRows.length) cats.push({ head: '[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）', md: mdHeadOf('[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）'), rows: rumorRows });
         }
         // [计划]：进行中（匹配）按优先级取 maxPlans 条 —— 注入必带 时间/角色/标题/描述
         const planCands = (state.plans || []).slice().reverse().filter(p => p.status === 'open' && (!q || rawMatch(p.content, q) || rawMatch(p.title || '', q) || tagMatch(p.tags, q) || (p.characters || []).some(c => nameMatch(c, q))));
         planCands.forEach(p => markCand('plans', p.id));
         planCands.sort((a, b) => (rcScore('plans')(b) || 0) - (rcScore('plans')(a) || 0));
         const openPlans = planCands.slice(0, maxPlans);
-        cats.push({ head: '[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）', rows: openPlans.map(p => { if (countUses) markUsed('plans', p); return { score: rcScore('plans')(p), text: `- ${planSuspRelPrefix('plans', p, 'plan')}${planSuspLine(p, 'plan')}`, ref: { dim: 'plans', id: p.id } }; }) });
+        cats.push({ head: '[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）', md: mdHeadOf('[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）'), rows: openPlans.map(p => { if (countUses) markUsed('plans', p); return { score: rcScore('plans')(p), text: `- ${planSuspRelPrefix('plans', p, 'plan')}${planSuspLine(p, 'plan')}`, ref: { dim: 'plans', id: p.id } }; }) });
         // [悬念]：未解（匹配）按优先级取 maxSuspense 条 —— 注入必带 时间/角色/标题/描述
         const suspCands = (state.suspense || []).slice().reverse().filter(s => s.status === 'open' && (!q || rawMatch(s.content, q) || rawMatch(s.title || '', q) || tagMatch(s.tags, q) || (s.characters || []).some(c => nameMatch(c, q))));
         suspCands.forEach(s => markCand('suspense', s.id));
         suspCands.sort((a, b) => (rcScore('suspense')(b) || 0) - (rcScore('suspense')(a) || 0));
         const openSusp = suspCands.slice(0, maxSuspense);
-        cats.push({ head: '[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）', rows: openSusp.map(s => { if (countUses) markUsed('suspense', s); return { score: rcScore('suspense')(s), text: `- ${planSuspRelPrefix('suspense', s, 'suspense')}${planSuspLine(s, 'suspense')}`, ref: { dim: 'suspense', id: s.id } }; }) });
+        cats.push({ head: '[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）', md: mdHeadOf('[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）'), rows: openSusp.map(s => { if (countUses) markUsed('suspense', s); return { score: rcScore('suspense')(s), text: `- ${planSuspRelPrefix('suspense', s, 'suspense')}${planSuspLine(s, 'suspense')}`, ref: { dim: 'suspense', id: s.id } }; }) });
         // 平行事件 —— 标题+描述与其他原子数据一致，按关键词触发并入提取记忆用于注入
         //   触发匹配：标签相关性 / 标题/描述/类型/角色/地点包含关键词；已达衰退阈值（💀 待清理）的不注入；
         //   注入正文 = 纯内容（标题：描述），不带卦象/因果线/概率等检索性字段（可在「平行」页查看）
@@ -1080,7 +1124,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         parCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of parCands.slice(0, maxParallelsInj)) { if (countUses) markUsed('parallels', c.e); parRows.push({ text: c.text, ref: c.ref }); }
-        cats.push({ head: '[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', rows: parRows });
+        cats.push({ head: '[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', md: mdHeadOf('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）'), rows: parRows });
         // [场景地点]：树整体作为一块（保持层级；预算放不下整块则跳过）
         let sceneText = '';
         const scenes = (state.scenes || []).slice();
@@ -1093,7 +1137,7 @@ function buildMemoryBodyForInject(queryText, opts) {
                 sceneText = sceneLines.join('\n');
             }
         }
-        cats.push({ head: '[场景地点]', rows: sceneText ? [{ text: sceneText }] : [] });
+        cats.push({ head: '[场景地点]', md: mdHeadOf('[场景地点]'), rows: sceneText ? [{ text: sceneText }] : [] });
         // [概念]（命中候选按优先级取 maxConcepts 条）
         const conceptRows = [];
         const conceptCands = [];
@@ -1107,7 +1151,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         conceptCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of conceptCands.slice(0, maxConcepts)) { if (countUses) markUsed('concepts', c.e); conceptRows.push({ text: c.text }); }
-        cats.push({ head: '[概念]', rows: conceptRows });
+        cats.push({ head: '[概念]', md: mdHeadOf('[概念]'), rows: conceptRows });
 
         // 预算分配 = 全局按优先级择优 —— 每次取「当前各类剩余候选里优先级最高」的一条尝试加入；
         //   大类条数上限已在各类 rows 截取时保证（硬约束）；单条放不下（超剩余预算）则整条跳过不截断。
@@ -1121,10 +1165,12 @@ function buildMemoryBodyForInject(queryText, opts) {
             let part = null;
             for (const p of parts) if (p.head === cat.head) { part = p; break; }
             let inc;
-            if (!part) inc = cat.head.length + 1 + line.length + (parts.length ? 2 : 0);
-            else inc = 1 + line.length;
+            // v2.88.0：标题按 **Markdown 渲染长度**计入预算（`## 名称` + 可选的 `\n> 说明：…`）
+            const mdHead = String((cat && cat.md) || mdHeadOf(cat && cat.head));
+            if (!part) inc = mdCostOf(mdHead) + 1 + mdCostOf(line) + (parts.length ? 2 : 0);
+            else inc = 1 + mdCostOf(line);
             if (used + inc > itemBudget) return false;   // 放不下：整条跳过（不截断；已为约束段预留）
-            if (!part) { part = { head: cat.head, lines: [] }; parts.push(part); }
+            if (!part) { part = { head: cat.head, md: mdHead, lines: [] }; parts.push(part); }
             part.lines.push({ text: line, sort: (cat.rows[cat.ptr] && cat.rows[cat.ptr].sort) || null });   // v1.175：带排序键（仅用于显示重排）
             used += inc;
             // v1.165：记录本轮真正注入的条目（约束段据此逐条点名；未注入的走聚合计数）
@@ -1177,7 +1223,8 @@ function buildMemoryBodyForInject(queryText, opts) {
                 });
             } catch (e) { }
         }
-        const bodyText = parts.map(p => `${p.head}\n${p.lines.map(l => (l && l.text != null ? l.text : String(l))).join('\n')}`).join('\n\n');
+        // v2.88.0：正文 = Markdown 小节（`## 名称` + 可选 `> 说明：…`） + 条目的 `- ` 列表，小节之间空行分隔
+        const bodyText = parts.map(p => `${p.md || mdHeadOf(p.head)}\n${p.lines.map(l => (l && l.text != null ? l.text : String(l))).join('\n')}`).join('\n\n');
         // v1.169：诊断模式（「约束自查」面板用）—— 返回结构化结果，而不是拼接后的字符串
         const capSet = { memories: maxMemories, plans: maxPlans, suspense: maxSuspense, parallels: maxParallelsInj };
         const diagOf = (cText, clipped, totalText) => ({
@@ -1198,11 +1245,14 @@ function buildMemoryBodyForInject(queryText, opts) {
         if (constraintOn) { try { constraintText = buildInjectConstraints({ injected: injectedIds }); } catch (e) { constraintText = ''; } }
         // 预算钳制：约束段不得把总体积推过预算（极端情况整行丢弃，绝不切半句）
         let clipped = false;
-        const room = budget - bodyText.length - 2;
+        const room = budget - mdCostOf(bodyText) - 2;      // v2.88.0：按内容长度计（与条目预算同口径）
         if (constraintText && room < 80) { constraintText = ''; clipped = true; }
-        else if (constraintText.length > room) {
-            const cut = constraintText.slice(0, Math.max(0, room)).replace(/\n[^\n]*$/, '');
-            constraintText = cut.length >= 40 ? cut : '';
+        else if (mdCostOf(constraintText) > room) {
+            // 逐行丢弃尾部（保留段头与更重要的前段），不切半句
+            const lines = String(constraintText).split('\n');
+            while (lines.length > 1 && mdCostOf(lines.join('\n')) > room) lines.pop();
+            const cut = lines.join('\n');
+            constraintText = mdCostOf(cut) >= 40 ? cut : '';
             clipped = true;
         }
         if (!constraintText) {

@@ -87,7 +87,7 @@ A('P2 并行不改变注入闸门语义：两次并发都按开关推送，注�
     const before = pushStats().pushes;
     await Promise.all([runRecallNow({}), runRecallNow({})]);
     const after = pushStats();
-    return after.pushes - before === 1 && readInject().indexOf('【FTT记忆注入】') === 0
+    return after.pushes - before === 1 && readInject().indexOf('# FTT 记忆注入') === 0
         && after.lastChars > 0 && after.lastLayer === 'js';
 })(), J({ pushes: pushStats().pushes, chars: readInject().length }));
 
@@ -181,7 +181,7 @@ await (async () => {
     const st = interceptorStats();
     A('E1 发送前提取好：拦截器 await 结束时注入已写好（非空、含结构头），且**永不调用 abort**',
         st.calls === 1 && st.lastPush && st.lastPush.ok === true && st.injectedLength > 0
-        && readInject().indexOf('【FTT记忆注入】') === 0 && aborted === 0 && st.lastPush.ms >= 0 && Date.now() - t0 >= 0,
+        && readInject().indexOf('# FTT 记忆注入') === 0 && aborted === 0 && st.lastPush.ms >= 0 && Date.now() - t0 >= 0,
         J({ push: st.lastPush, chars: st.injectedLength }));
 })();
 
