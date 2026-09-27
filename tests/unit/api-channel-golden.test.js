@@ -12,7 +12,7 @@
 //   P 组：预设动作 14 步（配置演进 + toast→note 映射 + presetName/presetSelect 不落 cfg）；
 //   U 组：API 子页 V1 同款分节/标签/placeholder/按钮/结果 span + 「按用途渠道」原位说明 + 不放假控件；
 //   Q 组：V1 怪癖台账（25 条）与 V2 的对齐/偏离裁决。
-// 与 V1 的必要偏离（本文件**断言其差异**，登记于 docs/P10a-API页与按用途渠道对齐.md §4）：
+// 与 V1 的必要偏离（本文件**断言其差异**，登记于 docs/history/P10a-API页与按用途渠道对齐.md §4）：
 //   ① 三通道（host/profile/direct）取代 V1 的「自建直连 + 代理预设名」；
 //   ② V1 缺陷 #3（本批修正）：V1 `settingsApplyAll` 的 `else if (!key.startsWith('api'))` 兜底把
 //      `apiTemperature/apiMaxTokens/apiTopP` 一并排除 → V1 这三个控件**永远写不进 cfg**（死控件，q23 有实测证据）；

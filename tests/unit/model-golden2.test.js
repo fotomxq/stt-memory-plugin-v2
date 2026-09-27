@@ -1,6 +1,6 @@
 // ============================================================
 // 单元测试 · core/model 批次 2（角色档案 / 年龄 / 货币 / 情节分段）与 V1 黄金样本一致
-// 黄金样本：tests/fixtures/v1-golden-model2.json（V1 源码切片产出；生成口径见 docs/P1-内核平移.md §3）
+// 黄金样本：tests/fixtures/v1-golden-model2.json（V1 源码切片产出；生成口径见 docs/history/P1-内核平移.md §3）
 // 口径：**严格相等**（JSON.stringify 逐字符比较，键顺序一致）。
 // ============================================================
 import { readFileSync } from 'node:fs';

@@ -9,7 +9,7 @@
 //   · `dimensionRowsHtml` 24565（各维度分组下拉 `data-ftt-dim-preset`）；`parallelApiPreset` 25816
 //   · `modelSelect` 回填 model 输入 26224
 //
-// V2 形态（与 V1 的差异逐条登记于 `docs/P10a-API页与按用途渠道对齐.md`）：
+// V2 形态（与 V1 的差异逐条登记于 `docs/history/P10a-API页与按用途渠道对齐.md`）：
 //   ① V1「API 设定」= 自建直连（地址/Key/模型/代理预设）；V2 改为**三通道**（`cfg.apiChannel`）：
 //      `host`（跟随酒馆当前连接，默认）/ `profile`（酒馆连接配置）/ `direct`（自建连接，V1 等价）。
 //      「代理预设」由 `profile` 通道的「连接配置」等价承载（酒馆连接配置自身带代理与预设）。

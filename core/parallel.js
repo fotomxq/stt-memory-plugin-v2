@@ -28,7 +28,7 @@
 //   · 文本裁剪 → `core/model/scalars.js#dimCap / mergeTags`；哈希 → `core/util.js#hashText`；
 //   · AI 调用 / 互斥 → `core/ai-hooks.js#aiCallText / aiBusy`；通知 → `core/model/runtime.js#notifyHooks`。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8x-B8-7平行推演与转正.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8x-B8-7平行推演与转正.md）：
 //   ① ESM 化 + 视图注入（`state` / `cfg` / `saveState` / `dbgLog` / `warn` / `notifyHooks` / `timerHooks` /
 //      `getLastMessageId` / `getStoryNow` 全部来自 `core/model/runtime.js`；V1 是模块内全局）；
 //   ② 楼层取文：V1 直接调宿主 `collectFloorLinesInRange(start, end, {})` → V2 改经**注入钩子**

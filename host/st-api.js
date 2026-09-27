@@ -1,7 +1,7 @@
 // ============================================================
 // host/st-api.js —— 宿主适配层唯一入口：SillyTavern 上下文访问与能力探测
 // 规则：只有 host/ adapters/ ui/ index.js 允许触达宿主；core/ 严禁引用本文件。
-// 事实源：docs/P0-探针报告.md（getContext 172 键 / setExtensionPrompt 签名 / 更新端点）
+// 事实源：docs/history/P0-探针报告.md（getContext 172 键 / setExtensionPrompt 签名 / 更新端点）
 // ============================================================
 
 import { hashText } from '../core/util.js';

@@ -22,7 +22,7 @@
 //   · 关联层维护与重挂 → `core/rel-maint.js#relRepairMaint` / `core/entries.js#retargetRelRefs`；
 //   · 计划「了结」入库 → `core/ingest.js#mergeDelta`；统一报告 → `core/repair.js#repairReport`。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8v-B8-6c-4状态与计划悬念修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8v-B8-6c-4状态与计划悬念修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks）；
 //   ② AI 调用改走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`newTaskStart`/`renderPanel` 未移植

@@ -17,7 +17,7 @@
 //   · V2 把 V1 写在 `handleAction` case 里的**状态迁移**抽成本模块的可导出函数（`relJump` / `relGoto` /
 //     `relClearFilter`），面板只施加导航副作用（切页 / 切子标签 / 设搜索词 / 重绘）——行为序与 V1 逐行一致，
 //     并以 `tests/fixtures/v1-golden-rel-nav.json` 的真实 V1 动作序 oracle 断言。
-//   · **V2 收窄（已在 docs/P8-功能对齐总表.md §6 记录）**：V1 的「维度筛选」（`data-ftt-relfilter="dim"`）在 V2
+//   · **V2 收窄（已在 docs/history/P8-功能对齐总表.md §6 记录）**：V1 的「维度筛选」（`data-ftt-relfilter="dim"`）在 V2
 //     语义下不适用 —— V2 的关系表按**分页**隔离维度（`ui/panel.js#REL_TABDS`，一页只显示一个维度），
 //     故 `relFilterState().dim` 仅保留字段（供 V1 口径对照与诊断），**不参与过滤**；`relClearFilter` 实际清空
 //     「角色筛选 + 跳转定位 + 选角色态」。

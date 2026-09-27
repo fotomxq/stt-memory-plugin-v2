@@ -9,7 +9,7 @@
 // 行为（与 V1 一致）：点击标签切页、✕ 关闭、点击遮罩关闭、Esc 关闭；分页状态与搜索词留在模块内。
 // 渲染与动作分离：panelHtml() / panelAction() / bindOverlay()，无 querySelectorAll 的环境可直接调动作（可完整测）。
 // 分页内容分批对齐 V1：本批（B1）= 总览（时钟/在场/已处理与未摘要楼层）+ 各维度列表（V1 样式）+ 设置（沿用 V2 表单）；
-//   后续批次逐页补齐 V1 的编辑器、关系表、注入自查、提示词页、快照/同步、高级域等（见 docs/P8-功能对齐总表.md）。
+//   后续批次逐页补齐 V1 的编辑器、关系表、注入自查、提示词页、快照/同步、高级域等（见 docs/history/P8-功能对齐总表.md）。
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
 import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/model/runtime.js';
@@ -177,7 +177,7 @@ function dataKindOf(kind) { return kind === 'states' ? 'currentStates' : String(
 // 注（**与 V1 的一处有意偏离**）：V1 的状态页把墓碑写进 `deleted.states`，而它的维度表 `ATOM_DIM_KEYS` 只认
 //   `currentStates` —— 即 V1 的状态删除墓碑**不会被自己的跨端合并/清扫读到**（删了可能在别端复活）。
 //   V2 统一用规范维度键（states → currentStates）写入与读取，使删除墓碑真正生效；UI 标签/分页 id 仍与 V1 一致。
-//   登记于 docs/P8c-B2条目操作.md「有意偏离」。
+//   登记于 docs/history/P8c-B2条目操作.md「有意偏离」。
 
 /** 每页筛选态（V1 `pageFilter(kind)` = { field, sort, extra }；缺省 = 全部字段 / 默认排序 / 全部） */
 const LIST_FILTER_DEFAULT = Object.freeze({ field: 'all', sort: 'default', extra: 'all' });

@@ -11,7 +11,7 @@
 //   · 解析 `j.data[].{index, embedding}`（按 index 归位，缺项即「返回不完整」）；
 //   · 失败逐传输尝试（V1：direct → 宿主 `/proxy/<endpoint>`）；成功写调试日志 `kind='向量'`。
 //
-// V2 适配（与 V1 的差异逐条登记于 `docs/P10v-向量层与提取页对齐.md`）：
+// V2 适配（与 V1 的差异逐条登记于 `docs/history/P10v-向量层与提取页对齐.md`）：
 //   ① 「代理预设」在 V2 = **API 分组**（`cfg.apiPresets[name]`，含 apiUrl/apiKey/model）。
 //      V1 的 TavernHelper 预设名（`getPreset`）在原生扩展里拿不到 —— 故 V2 用自家分组作等价物；
 //      分组缺失/不含地址时**如实回报原因**，不静默失败。

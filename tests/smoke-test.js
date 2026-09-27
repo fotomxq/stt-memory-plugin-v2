@@ -26,7 +26,7 @@ function commit(name, cond, extra) {
 //   1) 同步条件：立即计数 —— 既有同步调用点行为与时序完全不变；
 //   2) thenable 条件（异步小节）：内部 `await` 后再计数，**调用点必须写 `await assert(...)`**。
 // 历史缺陷：调用点把 async IIFE 的 Promise 直接当条件传入且未 await → Promise 恒真 → 小节永远 ✅（假绿），
-// 且副作用与后续小节并发交错（实测 W3 期间 generateRaw 被并发调用 6 次）。详见 docs/B9-测试完整性待修.md。
+// 且副作用与后续小节并发交错（实测 W3 期间 generateRaw 被并发调用 6 次）。详见 docs/history/B9-测试完整性待修.md。
 // 永久防呆（写法对齐 tests/harness/st-mock.js#makeReporter）：thenable 条件的调用点若没有 await
 // （返回值未被 `.then` 消费），直接判失败并提示「请 await」——防止缺陷回归。
 function assert(name, cond, extra) {
@@ -1301,7 +1301,7 @@ host.ctx.generateRaw = async () => {
 
 // 历史：本节（及套件内其余 44 处）曾把 async IIFE 的 **Promise** 直接传给 `assert` 且未 `await` —— Promise 恒真 → 断言空转（假绿）。
 //   B9 测试完整性专项已把断言器改为可 await，并加入「thenable 条件未被 await 则直接判失败」的永久防呆；全部调用点已补 `await assert(...)`。
-//   本节由此暴露的失败已按实现真实语义修好（提示读 state.note；deleted=移除总数 2，与 V1 黄金样本一致）。详见 docs/B9-测试完整性待修.md。
+//   本节由此暴露的失败已按实现真实语义修好（提示读 state.note；deleted=移除总数 2，与 V1 黄金样本一致）。详见 docs/history/B9-测试完整性待修.md。
 await assert('W3 点击「🔧 修复记忆」端到端：机械去重/关系维护 → 聚类选组 → AI 合并+删除落库 → 关联重挂 + 墓碑 + 复检口径，提示如实回报', (async () => {
     const st = rtMod.state;
     st.memories = [

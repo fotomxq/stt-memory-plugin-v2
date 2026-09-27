@@ -26,7 +26,7 @@
 //   · 状态记录联动清除（删角色）→ `core/entries.js#sweepStatesForRemovedSnapshots`；墓碑 → `core/merge.js#tombMany`；
 //   · 正文投喂 → `core/ai-hooks.js#aiFeedText`（V1 `buildFeedFloorText` 的 V2 等价物）。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8u-B8-6c-3物品与角色修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8u-B8-6c-3物品与角色修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks/getStoryNow）；
 //   ② AI 调用走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`abortQuiet`/`abortRequested`/`newTaskStart`/`renderPanel`

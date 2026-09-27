@@ -19,7 +19,7 @@
 // 本批（B8-7 内核部分）只交付**内核**：全部函数从本模块 export 且导入时零副作用。
 //   **FTT 入口（`rumorEvolve` / `rumorAdvance` / `clearRumors` 动作）与面板接线待共享文件空闲后由队长另行安排。**
 //
-// 适配（与 V1 的差异，逐条见 docs/P8t-B8-7传言演化引擎.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8t-B8-7传言演化引擎.md）：
 //   ① ESM 化 + 视图注入：`state` / `cfg` / `saveState` / `dbgLog` / `getStoryNow` / `getLastMessageId` /
 //      `notifyHooks` / `timerHooks` 全部来自 `core/model/runtime.js`（V1 是模块内全局）；
 //   ② 弹窗：V1 `notify(kind, {title,text})` / `toast(msg, type)` → 本文件局部 `notify(kind, title, text)` /

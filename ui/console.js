@@ -57,7 +57,7 @@ export function entryMatches(e, q) {
     if (!needle) return true;
     try {
         // 搜索字段覆盖各维度的主要文本（V1 各维度搜索项的超集：状态看 field/value、物品看 desc/location、
-        //   角色看 origin/history、货币看 note 等 —— 见 docs/P8c-B2条目操作.md「搜索口径」）
+        //   角色看 origin/history、货币看 note 等 —— 见 docs/history/P8c-B2条目操作.md「搜索口径」）
         const hay = [e.id, e.title, e.name, e.content, e.text, e.subject, e.owner, e.who,
             e.field, e.value, e.desc, e.note, e.location, e.origin, e.history, e.speechStyle,
             (Array.isArray(e.tags) ? e.tags.join(' ') : ''), (Array.isArray(e.keywords) ? e.keywords.join(' ') : ''),

@@ -12,7 +12,7 @@
 //   ① 取文件路径：V1 直接按「相对路径」`fetch('FTT-memory-changelog.json')`（iframe 内相对**父页** base 解析）；
 //      V2 是原生扩展（无 iframe），规范路径是**扩展目录的 HTTP 挂载路径**
 //      `/scripts/extensions/<扩展目录>/FTT-memory-changelog.json`（`host/paths.js#extensionFolder()` 运行时推导，
-//      与 `renderExtensionTemplateAsync`/扩展静态资源的挂载根一致，见 docs/P0-探针报告.md §1、
+//      与 `renderExtensionTemplateAsync`/扩展静态资源的挂载根一致，见 docs/history/P0-探针报告.md §1、
 //      `core/constants.js#EXTENSION_FOLDER` 注释）。因此 V2 的候选顺序 = **扩展目录绝对路径优先**，
 //      再保留 V1 同款的两条相对路径（相对**页面**解析，个别部署可能有效）作为兜底。
 //   ② 不移植 V1 的 iframe 父页 base 兜底（`window.parent.location` / `D.location` 解析绝对地址）——

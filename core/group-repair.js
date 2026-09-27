@@ -18,7 +18,7 @@
 //   与「无高相关组 → 零 AI」保持不变（概念域无 `defectsAlways`，客观缺陷条目只在存在相关组时才附带送修）。
 //   物品 / 悬念两域的**应用层**（applyItemMergeGroups / runSuspenseRepair 等）属后续批次；本批只交付它们的 spec。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8s-B8-6c-2概念与场景修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8s-B8-6c-2概念与场景修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks）；
 //   ② AI 调用改走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ 提示词模板取 `cfg.promptTemplates.*`，兜底 `defaultCfg.promptTemplates.*`（V1 同源）；

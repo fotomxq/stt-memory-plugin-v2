@@ -9,7 +9,7 @@
 //   `suspenseMergeExact` / `buildPlanSuspRepairPrompt` / `applyPlanSuspMerge` / `applySuspenseMergeGroups` /
 //   `runPlanSuspRepair`；另含 V2 编排与接线：`aiBusy` 互斥、空库、AI 非法 JSON、面板 `plans` 分页按钮与动作、
 //   `FTT.*` 调试入口与无 hook 降级。
-// ⚠️ 与 V1 一致的既有缺陷（如实固化，见 docs/P8v-B8-6c-4状态与计划悬念修复.md）：
+// ⚠️ 与 V1 一致的既有缺陷（如实固化，见 docs/history/P8v-B8-6c-4状态与计划悬念修复.md）：
 //   提示词合同里的中文键「合并」不在 `CN_KEY_MAP` → `runPlanSuspRepair` 里计划合并分支在真实 AI 回包下不命中
 //   （I7 专门固化该现象；`applyPlanSuspMerge` 直接用英文 `merge` 键时功能正常，见 I6）。
 // ============================================================

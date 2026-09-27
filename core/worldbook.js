@@ -14,9 +14,9 @@
 //   ④ `worldbookTotalBytes` / `worldbookFormatBytes` / `worldbookMemoryTotal` —— 体积上限判定与同步日志；
 //   ⑤ `WORLDBOOK_META`                  —— V1 `storageMeta.worldbook` 元数据（label/short/...）。
 //   宿主通道（TH 世界书 API 调用、8s 防抖写入调度）在 `host/worldbook.js` + `adapters/worldbook.js`；
-//   面板动作 `worldbookRefresh` 与 `FTT.*` 入口**待接线**（见 docs/P8y-B8-7世界书单向镜像.md §4）。
+//   面板动作 `worldbookRefresh` 与 `FTT.*` 入口**待接线**（见 docs/history/P8y-B8-7世界书单向镜像.md §4）。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8y-B8-7世界书单向镜像.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8y-B8-7世界书单向镜像.md）：
 //   ① ESM 化：`cfg` / `state` 取注入视图（`core/model/runtime.js`），`scopeId()` 取 `core/state.js`
 //      —— V1 直接读全局 `cfg` / `state` 与 `getCurrentCharacterId()`；`activeAtoms()` 取 `core/merge.js`（V1 同源）；
 //   ② `legacyEntryName()` 的角色名取 `identityView.characterName`（宿主注入）；V1 调 TH `getCurrentCharacterName()`。

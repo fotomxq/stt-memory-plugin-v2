@@ -9,7 +9,7 @@
 //     · 平行交织 `'[平行事件·交织]'`（13124）/ 平行推进 `'平行事件推进'`（13941）
 //   · 预设动作 `presetSave`/`presetLoad`/`presetDelete` 约 27373~27407；`collectApiBlock` 约 24712
 //
-// V2 适配（**本批的核心设计**，与 V1 的形态差异逐条登记于 `docs/P10a-API页与按用途渠道对齐.md`）：
+// V2 适配（**本批的核心设计**，与 V1 的形态差异逐条登记于 `docs/history/P10a-API页与按用途渠道对齐.md`）：
 //   ① V1 的「API 设定」= 自建 OpenAI 兼容连接（apiType/apiUrl/apiKey/model/proxyPreset）**直连**；
 //      V2 有**三种通道**（`cfg.apiChannel`）：
 //        · `host`   —— 跟随酒馆当前连接（走宿主 `generateRaw`，即 V2 既有行为，**默认**）；
