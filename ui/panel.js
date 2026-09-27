@@ -1013,8 +1013,8 @@ function statesBody() {
             const id = String(e.id || '');
             const box = multi ? ('<input type="checkbox" data-ftt-select="states" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
             return '<div class="ftt-item ftt-inline">' + box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>'
-                + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '">✏️</button>'
-                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '">🗑</button></div>';
+                + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '" title="编辑这条状态记录">✏️</button>'
+                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '" title="删除这条状态记录">🗑</button></div>';
         }).join('\n');
         return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + groups.get(subj).length + ')</span>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="addStateFor" data-ftt-subject="' + attr(subj) + '">➕ 添加</button>'
@@ -1135,7 +1135,7 @@ export function panelModalInnerHtml() {
         + '<span class="ftt-title">📖 FTT记忆组件 ' + esc(VERSION) + (nameTxt ? ' · ' + esc(nameTxt) : '') + '</span>'
         + busyNote
         + '<span class="ftt-stat" title="全部类目记忆条目之和">总记忆数 ' + totalMemory() + '</span>'
-        + '<button class="ftt-close" data-ftt-action="close">✕</button></div>';
+        + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）">✕</button></div>';
     const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
         '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '">' + esc(l) + '</a>').join('') + '</div>';
     const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">' + panelBodyHtml(t) + '</div>').join('\n');

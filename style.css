@@ -102,8 +102,19 @@
        平板（701~1024px）96vw；手机（≤700px）整屏铺满（见下方媒体查询）。
    · 上限可选档位见 `ui/panel.js#PANEL_WIDTH_OPTIONS`（960 / 1120 / 1280 / 1440 / 1600 / 铺满）；
      「铺满」把变量置为 `100vw`（等价于只留 32px 边距）。 */
-#ftt-panel { --ftt-panel-max-w: 1280px; }
-#ftt-panel .ftt-modal { margin: auto; width: min(var(--ftt-panel-max-w), calc(100vw - 32px)); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: #1a1d24; color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+/* v2.89.0（D9 U10）：颜色收敛为变量 —— 危险 / 成功 / 面板底色 / 边框。
+   取值与替换前的硬编码**完全一致**（视觉零变化），此后整体调色只需改这里。 */
+#ftt-panel {
+  --ftt-panel-max-w: 1280px;
+  --ftt-panel-bg: #1a1d24;        /* 面板底色 */
+  --ftt-panel-head-bg: #22262f;   /* 顶栏底色 */
+  --ftt-border: #3a4048;          /* 分隔线 / 弱边框 */
+  --ftt-border-strong: #4a4f5c;   /* 控件边框 */
+  --ftt-danger: var(--ftt-danger);          /* 危险色（删除 / 失败） */
+  --ftt-success: var(--ftt-success);         /* 成功色 */
+  --ftt-accent: #e0b06a;          /* 强调色（焦点 / 高亮），与既有取色一致 */
+}
+#ftt-panel .ftt-modal { margin: auto; width: min(var(--ftt-panel-max-w), calc(100vw - 32px)); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: var(--ftt-panel-bg); color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
 /* 移动端适配 —— dvh 动态视口避免地址栏/键盘导致高度溢出；窄屏全屏布局确保可操作 */
 @media (max-width: 700px) {
   #ftt-panel { align-items: stretch; justify-content: center; }
@@ -140,7 +151,7 @@
 #ftt-panel .ftt-dbg-data, #ftt-panel .ftt-wb-entries, #ftt-panel .ftt-editor, #ftt-panel .ftt-pre-box { max-width: 100%; overflow-x: auto; }
 #ftt-panel .ftt-item-main { min-width: 0; }
 
-#ftt-panel .ftt-modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #3a4048; background: #22262f; }
+#ftt-panel .ftt-modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--ftt-border); background: var(--ftt-panel-head-bg); }
 #ftt-panel .ftt-modal-head .ftt-title { font-weight: 600; font-size: 14px; flex: 1; color: #f0ece6; }
 #ftt-panel .ftt-close { cursor: pointer; border: none; background: transparent; color: #b8b3ac; font-size: 18px; }
 #ftt-panel .ftt-close:hover { color: #fff; }
@@ -152,7 +163,7 @@
 #ftt-panel .ftt-tab.ftt-on { background: #2c313c; color: #ffffff; font-weight: 600; }
 #ftt-panel .ftt-body { padding: 12px 14px; overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.6; color: #e8e4df; }
 #ftt-panel .ftt-body h4 { margin: 8px 0 4px; color: #e0b06a; font-size: 13px; }
-#ftt-panel .ftt-item { padding: 6px 0; border-bottom: 1px dashed #3a4048; display: flex; gap: 8px; align-items: flex-start; }
+#ftt-panel .ftt-item { padding: 6px 0; border-bottom: 1px dashed var(--ftt-border); display: flex; gap: 8px; align-items: flex-start; }
 /* 角色段落展示 —— 超 3 行省略号 */
 #ftt-panel .ftt-snap-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 #ftt-panel .ftt-item-main { flex: 1; min-width: 0; }
@@ -164,8 +175,8 @@
 #ftt-panel .ftt-empty { color: #8a857d; font-style: italic; padding: 8px 0; }
 #ftt-panel .ftt-field { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 #ftt-panel .ftt-field label { width: 170px; color: #c8c3bc; flex-shrink: 0; font-size: 12px; font-weight: 500; }
-#ftt-panel .ftt-field input[type=text], #ftt-panel .ftt-field input[type=password], #ftt-panel .ftt-field select, #ftt-panel .ftt-field textarea, #ftt-panel .ftt-field input[type=number] { flex: 1; background: #101318; color: #f0ece6; border: 1px solid #4a4f5c; border-radius: 5px; padding: 5px 8px; font-size: 12px; }
-#ftt-panel .ftt-field input:focus, #ftt-panel .ftt-field select:focus, #ftt-panel .ftt-field textarea:focus { border-color: #e0b06a; outline: none; }
+#ftt-panel .ftt-field input[type=text], #ftt-panel .ftt-field input[type=password], #ftt-panel .ftt-field select, #ftt-panel .ftt-field textarea, #ftt-panel .ftt-field input[type=number] { flex: 1; background: #101318; color: #f0ece6; border: 1px solid var(--ftt-border-strong); border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+#ftt-panel .ftt-field input:focus, #ftt-panel .ftt-field select:focus, #ftt-panel .ftt-field textarea:focus { border-color: var(--ftt-accent); outline: none; }
 #ftt-panel .ftt-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: 0 0 auto; }
 #ftt-panel .ftt-switch input { opacity: 0; width: 0; height: 0; }
 #ftt-panel .ftt-switch .ftt-slider { position: absolute; cursor: pointer; inset: 0; background: #2a2e36; border: 1px solid #5a6070; border-radius: 24px; transition: .25s; }

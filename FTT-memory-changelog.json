@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.88.0",
+  "version": "2.89.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.89.0",
+      "date": "2026-09-27",
+      "title": "按 UI 设计规范（D9 U1–U14）落地第一批：S0 检查脚本 + S1 公共件与样式变量",
+      "points": [
+        "① U13（S0）新增 UI 规范检查：scripts/check-ui-spec.js 静态扫描 C1–C11（按钮 type③ / 裸加粗 / 元信息中文冒号 /空态覆盖 /…",
+        "② U10（S1）颜色收敛为 CSS 变量：ftt-panel-bg / --ftt-panel-head-bg / --ftt-border / --ftt-border-st…",
+        "③ U8（S1）纯图标按钮补 title：ui/console.js（删除）、ui/panel.js（编辑 / 删除 / 关闭）、ui/rel-table.js（删除关系行）共 …"
+      ]
+    },
     {
       "version": "2.88.0",
       "date": "2026-09-27",
