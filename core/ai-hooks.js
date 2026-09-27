@@ -14,15 +14,30 @@ let hooks = {
 };
 /** 注入钩子（合并式；返回值即当前生效钩子，可用于「快照后再恢复」） */
 export function setAiHooks(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
+// v2.90.0（用户要求）：管线状态 —— 流式摘要 / token 计数 / 预估倒计时
+import { beginPipeline, endPipeline, addStreamChunk, summarizeResponseKeys, setPipelinePhase, setPipelineKeys } from './pipeline.js';
 /** 当前钩子（只读快照） */
 export function aiHooks() { return Object.assign({}, hooks); }
 /** 调用 AI 并归一为纯文本（失败/异常 → 空串） */
 export async function aiCallText(messages, label) {
+    // v2.90.0：AI 调用统一进「管线状态」—— 记录 prompt 字符数（token 估算）、阶段、响应结构摘要与耗时（预估倒计时样本）
+    const chars = (() => {
+        try {
+            const list = Array.isArray(messages) ? messages : [];
+            return list.reduce((n, m) => n + String((m && (m.content !== undefined ? m.content : m.text)) || '').length, 0);
+        } catch (e) { return 0; }
+    })();
+    try { beginPipeline(String(label || '默认'), { chars: chars, phase: '请求 AI' }); } catch (e) { /* 忽略 */ }
     try {
-        const r = await hooks.callAi(messages, { label });
-        if (r && typeof r === 'object') return r.ok === false ? '' : String(r.text == null ? '' : r.text);
-        return String(r == null ? '' : r);
-    } catch (e) { return ''; }
+        const r = await hooks.callAi(messages, { label: label, onToken: (chunk) => { try { addStreamChunk(chunk); } catch (e) { /* 忽略 */ } } });
+        const text = (r && typeof r === 'object') ? (r.ok === false ? '' : String(r.text == null ? '' : r.text)) : String(r == null ? '' : r);
+        if (text) { try { addStreamChunk(text); setPipelineKeys(summarizeResponseKeys(text)); setPipelinePhase('解析响应', '响应 ' + text.length + ' 字'); } catch (e) { /* 忽略 */ } }
+        try { endPipeline(!!text); } catch (e) { /* 忽略 */ }
+        return text;
+    } catch (e) {
+        try { endPipeline(false); } catch (e2) { /* 忽略 */ }
+        return '';
+    }
 }
 /** 取投喂文本（异常 → 空串） */
 export function aiFeedText(maxFloors) {
