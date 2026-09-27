@@ -17,6 +17,9 @@
 // ============================================================
 import { cfg, state } from '../core/model/runtime.js';
 import { clockAutoExtractOnce, clockExtractState } from '../core/clock-extract.js';
+import { clockManualState } from '../core/clock-patrol.js';
+import { atomContentHash } from '../core/model/hash.js';
+import { hashText } from '../core/util.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 
 const str = (v) => String(v == null ? '' : v).trim();
@@ -82,6 +85,76 @@ export function withBasics(messages, calib) {
         list[at] = Object.assign({}, list[at], { content: pre + '\n\n' + String((list[at] && list[at].content) || '') });
         return list;
     } catch (e) { return Array.isArray(messages) ? messages.slice() : []; }
+}
+
+/**
+ * 情节容器签名（v2.81.0）—— 判定「本轮分析是否改动了情节」。
+ * 口径：`条目数 + hash(排序后的 "id|内容哈希")`。**新增 / 更新 / 删除**都会改变签名；
+ *   只读、O(n)（n 受 `cfg.maxAtoms` 约束），不落盘、不入哈希。
+ * @returns {string} 签名（异常时返回空串 → 调用方按「无基线」跳过）
+ */
+export function atomsSignature() {
+    try {
+        const list = Array.isArray(state.atoms) ? state.atoms : [];
+        const parts = [];
+        for (const a of list) {
+            if (!a || typeof a !== 'object') continue;
+            parts.push(String(a.id || '') + '|' + atomContentHash('atoms', a));
+        }
+        if (!parts.length) return '';                 // 无情节 → 无签名（调用方按「无基线」跳过，不空跑解析）
+        parts.sort();
+        return parts.length + '|' + hashText(parts.join('\u0001'));
+    } catch (e) { return ''; }
+}
+
+/**
+ * **分析记忆之后**的同步（v2.81.0，用户要求）：
+ *   「日期、时间、地点、在场角色，在每次分析记忆后，如果情节发生更新，则按最新的一条更新相关记录。」
+ *
+ * 触发：调用方在 `mergeDelta` **之前**取 `atomsSignature()`，落库成功后把它传进来；
+ *   签名未变（情节没动）→ **完全不碰时钟**（不解析、不落盘、不写日志）。
+ * 来源：复用内核 `clockAutoExtractOnce()` —— 与「提取前校对」同一口径（**唯一可信来源 = 最新一条带日期的非总结情节**）。
+ * 与提取前校对的**唯一差别（有意为之）**：**不传 `text`**。用户要求「按最新的一条更新相关记录」，
+ *   故在场角色取自**最新情节的涉及角色**（来源标记 `plot-atom`），而不是再回读原始楼层正文（`latest-ai`）。
+ * 开关：内核自会尊重 `cfg.clockExtractEnabled`（关闭即不改动）；手工锁定时钟（`clockManualLock` 默认开）
+ *   仍优先，日期/时间/地点不被覆盖，在场角色照旧同步 —— 均为既有口径，本函数不额外加规则。
+ * @param {string} sigBefore 分析前的情节签名（`atomsSignature()`）
+ * @returns {{ok:boolean, changed:boolean, skipped:string, note:string, before:object|null, clock:object|null}}
+ */
+export function recalibrateAfterExtract(sigBefore) {
+    const out = { ok: false, changed: false, skipped: '', note: '', before: null, clock: null };
+    try {
+        if (!cfg || cfg.enabled === false) { out.skipped = 'disabled'; out.note = '组件未启用'; return out; }
+        if (cfg.clockExtractEnabled === false) { out.skipped = 'auto-off'; out.note = '「消息后自动同步时钟」已关闭 → 分析后不同步'; return out; }
+        if (typeof sigBefore !== 'string' || !sigBefore) { out.skipped = 'no-baseline'; out.note = '无情节基线 → 跳过'; return out; }
+        const sigNow = atomsSignature();
+        // 当前签名为空（无情节 / atoms 容器异常）同样按「无变化」处理：不解析、不落盘
+        if (!sigNow || sigNow === sigBefore) { out.skipped = 'atoms-unchanged'; return out; }
+        out.before = clockSnapshot();
+        out.changed = clockAutoExtractOnce() === true;      // 不传 text：在场角色按「最新情节」判定
+        out.clock = clockSnapshot();
+        out.ok = true;
+        const brief = [out.clock.date, out.clock.time, out.clock.location].filter(Boolean).join(' ');
+        // 手工锁定判定与内核同源：`clockManualState()` 返回 `{..., lock}`（`cfg.clockManualLock` 默认锁定）
+        const locked = (() => { try { const m = clockManualState(); return !!(m && m.lock); } catch (e) { return false; } })();
+        if (locked) {
+            // 手工锁定时钟（默认）：日期/时间/地点**不写入** state.state（既有口径），但「在场角色」照旧按最新情节同步
+            out.note = '情节已更新；手工锁定时钟 → 日期/时间/地点保持不变（在场角色已按最新情节同步）';
+        } else if (out.changed) {
+            out.note = '情节已更新 → 已按最新情节同步' + (brief ? '：' + brief : '');
+        } else {
+            out.note = '情节已更新，但日期/时间/地点与在场角色均无变化' + (brief ? '（' + brief + '）' : '');
+        }
+        // 仅在真的执行了同步时写日志（情节没动 / 关掉开关都不刷日志，避免噪声）
+        try {
+            debugLogPush('校对', {
+                action: '分析后同步', changed: out.changed,
+                date: out.clock.date, time: out.clock.time, location: out.clock.location,
+                present: out.clock.present,
+            });
+        } catch (e) { /* 忽略 */ }
+    } catch (e) { out.skipped = 'error'; out.note = '同步失败（已忽略）'; }
+    return out;
 }
 
 /** 只读诊断（设置页/总览/测试） */
