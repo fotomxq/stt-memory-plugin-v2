@@ -38,6 +38,8 @@ import {
 import { parallelExpired, importancePct } from '../core/recall.js';
 // v2.90.0（用户要求）：管线状态补「流式摘要 + token 计数 + 预估倒计时」
 import { pipelineSuffix, pipelineSummaryText, snapshot as pipelineSnapshot } from '../core/pipeline.js';
+// v2.92.0（用户要求）：**需人工确认的冲突**在总览也要提示（不只设定里）
+import { listConflicts, pendingConflictCount, clearConflicts } from '../core/conflicts.js';
 import { notifyError } from '../core/model/runtime.js';   // v2.87.0：错误要有可见提示，不只写日志
 // v2.84.0（用户要求）：存储上限 = 总上限 × 各大类占比（滚动条拖动，其余按比例补齐到 100%）
 // v2.85.0（用户要求）：滚动条**拖动中实时联动** + 保底高于上限时**自动下移**
