@@ -3515,7 +3515,7 @@ await assert('AQ2 维度开关经**真实 change 委托**生效（V2 附加设�
 })(), '');
 
 // ---------- AR 调试包导出 / 确认框 ACL 安全 / 入参透传回归（v2.41.0） ----------
-await assert('AR1 调试包导出：面板「📦 导出调试包」产出可复制文本（含版本/环境/一键诊断/**全部日志**与「异常」类），并渲染文本框；`FTT.debugLogExport()` 同源', (async () => {
+await assert('AR1 调试包导出：面板「⬇ 导出调试包」（v2.82.0 起位于「📋 日志」区块顶部）产出可复制文本（含版本/环境/一键诊断/**全部日志**与「异常」类），并渲染文本框；`FTT.debugLogExport()` 同源', (async () => {
     const DL = await import('../core/debug-log.js');
     const AD = await import('../adapters/debug-log.js');
     const RT = await import('../core/model/runtime.js');
@@ -3525,7 +3525,11 @@ await assert('AR1 调试包导出：面板「📦 导出调试包」产出可复
     await entry.popupAction('tab', { tab: 'settings' });
     await entry.popupAction('settingsSub', { sub: 'debug' });
     const page = String(panelBodyHtml('settings') || '');
-    const hasBtn = page.indexOf('data-ftt-action="dbgExport"') >= 0 && page.indexOf('📦 导出调试包') >= 0;
+    const hasBtn = page.indexOf('data-ftt-action="dbgExport"') >= 0 && page.indexOf('data-ftt-action="dbgExportLog"') >= 0
+        && page.indexOf('⬇ 导出调试包') >= 0 && page.indexOf('⬇ 导出日志') >= 0
+        // v2.82.0（用户要求「日志的按钮全部调整到最上面」）：两枚导出按钮 + 清空日志都在日志条目之前
+        && page.indexOf('data-ftt-action="dbgClear"') > page.indexOf('data-ftt-action="dbgExportLog"')
+        && page.indexOf('class="ftt-dbg-item"') > page.indexOf('data-ftt-action="dbgClear"');
     const r = await entry.popupAction('dbgExport', {});
     const after = String(panelBodyHtml('settings') || '');
     const bundle = globalThis.FTT.debugLogExport();
@@ -3535,6 +3539,61 @@ await assert('AR1 调试包导出：面板「📦 导出调试包」产出可复
         && JSON.stringify(bundle.errors).indexOf('not allowed by ACL') >= 0
         && String(txt).indexOf('ftt-memory-v2-debug') >= 0;
     return hasBtn && r.ok === true && Number(r.chars) > 200 && after.indexOf('data-ftt-debugexport') >= 0 && bundleOk;
+})(), '');
+
+await assert('BE1 v2.82.0 日志导出**真的落文件**（修复用户报告的「无法正常导出 log 文件」）：真实点击「⬇ 导出日志」下载 .log、「⬇ 导出调试包」下载 .json；日志区块按钮全在最上面', (async () => {
+    const saveCreate = doc.createElement;
+    const saveURL = globalThis.URL;
+    const saveBlob = globalThis.Blob;
+    const clicks = [];
+    const urls = [];
+    try {
+        globalThis.URL = { createObjectURL: () => { const u = 'blob:smoke-dbg/' + (urls.length + 1); urls.push(u); return u; }, revokeObjectURL: () => undefined };
+        globalThis.Blob = function Blob(parts, opt) { this.parts = parts; this.type = (opt || {}).type || ''; };
+        doc.createElement = (tag) => {
+            const el = {
+                tagName: String(tag).toUpperCase(), style: {}, attrs: {},
+                set href(v) { this.attrs.href = v; }, get href() { return this.attrs.href; },
+                set download(v) { this.attrs.download = v; }, get download() { return this.attrs.download; },
+                set rel(v) { this.attrs.rel = v; },
+                click() { clicks.push(this); },
+                remove() { this.removed = true; },
+                dataset: {}, listeners: {},
+            };
+            return el;
+        };
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const el = doc.getElementById('ftt-panel');
+        const click = (el && el.listeners && el.listeners.click) || [];
+        const fire = (dataset) => {
+            const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+            click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+            return new Promise((r) => setTimeout(r, 30));
+        };
+        // ① 导出日志（.log）
+        await fire({ fttAction: 'dbgExportLog' });
+        const logAnchor = clicks.filter((x) => x.tagName === 'A').slice(-1)[0];
+        const noteLog = String((panelState() || {}).note || '');
+        const logOk = !!logAnchor && /^FTT调试日志_.*\.log$/.test(String(logAnchor.download || ''))
+            && String(logAnchor.href || '').indexOf('blob:') === 0
+            && noteLog.indexOf('已下载文件') >= 0 && noteLog.indexOf('FTT调试日志_') >= 0;
+        // ② 导出调试包（.json）
+        await fire({ fttAction: 'dbgExport' });
+        const pkgAnchor = clicks.filter((x) => x.tagName === 'A').slice(-1)[0];
+        const notePkg = String((panelState() || {}).note || '');
+        const pkgOk = !!pkgAnchor && /^FTT调试包_.*\.json$/.test(String(pkgAnchor.download || ''))
+            && String(pkgAnchor.href || '').indexOf('blob:') === 0
+            && notePkg.indexOf('已下载文件') >= 0 && notePkg.indexOf('FTT调试包_') >= 0
+            && pkgAnchor !== logAnchor;
+        // ③ 导出结果文本框（兜底）仍在页面上
+        const after = String(panelBodyHtml('settings') || '');
+        return logOk && pkgOk && urls.length >= 2 && after.indexOf('data-ftt-debugexport') >= 0;
+    } finally {
+        doc.createElement = saveCreate;
+        if (saveURL === undefined) delete globalThis.URL; else globalThis.URL = saveURL;
+        if (saveBlob === undefined) delete globalThis.Blob; else globalThis.Blob = saveBlob;
+    }
 })(), '');
 
 await assert('AR2 确认框 ACL 安全（用户报告的那条错误）：桥接型 confirm 返回的 Promise **被 await 而不是当成已确认**；拒绝/ACL 失败 → 按取消且不产生未处理拒绝；Tauri 宿主跳过原生 confirm', (async () => {
