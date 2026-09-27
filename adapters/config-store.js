@@ -9,6 +9,7 @@ import { cfg } from '../core/model/runtime.js';
 import { defaultCfg } from '../core/config.js';
 import { migratePromptTemplates, migrateArmorPreset } from '../core/prompt-migrate.js';
 import { getSettings, saveSettings } from './settings.js';
+import { clampStoreFloors } from '../core/ingest.js';   // v2.85.0：保底被动下移（上限权威）
 
 let lastLoad = null;
 /** 最近一次载入/迁移摘要（诊断） */
@@ -78,11 +79,17 @@ export function loadKernelCfg(opts) {
         merged.promptTemplates = migratePromptTemplates(merged.promptTemplates);
         promptMigrate = { changed: before !== stableStringify(merged.promptTemplates), armor: mergeArmor, info: promptMigrateStatsSafe() };
     } catch (e) { /* 迁移失败不阻塞载入 */ }
-    const changed = stableStringify(saved) !== stableStringify(merged);
+    const changedOld = stableStringify(saved) !== stableStringify(merged);
     store.cfg = merged;
     applyKernelCfg(merged);
+    // v2.85.0（用户要求）：「保底数据被动联动」的**启动自愈** —— 历史存档里若存在「某维保底 > 该维有效上限」，
+    //   按当前占比把保底**下移**到上限之下（只降不升），并把结果写回存档；否则打开设定页会看到自相矛盾的数字。
+    let floorsMoved = [];
+    try { floorsMoved = clampStoreFloors(); } catch (e) { /* 自愈失败不阻塞载入 */ }
+    if (floorsMoved.length) { try { store.cfg = deepClone(cfg) || {}; } catch (e) { /* 忽略 */ } }
+    const changed = changedOld || floorsMoved.length > 0;
     if (changed && o.persist !== false) { try { saveSettings(); } catch (e) { /* 忽略 */ } }
-    const out = { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length, prompt: promptMigrate };
+    const out = { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length, prompt: promptMigrate, floorsMoved: floorsMoved };
     lastLoad = out;
     return out;
 }
