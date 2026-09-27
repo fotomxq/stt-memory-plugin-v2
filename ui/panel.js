@@ -373,6 +373,26 @@ function syncPipelineTick() {
     } catch (e) { return false; }
 }
 
+/**
+ * v2.92.0（用户要求）：「发生冲突需手动确认的，除了在设定中展示外，还需在**总览页面提示**」。
+ * 总览「⚠️ 待确认」横幅（无待确认项 → 空串）：摘要一行 + 「去处理」（跳设定→存储）与「已确认」（只清提示，不动数据）。
+ * 抽成独立导出函数，便于单测（总览渲染依赖较多钩子）。
+ */
+export function conflictBannerHtml() {
+    try {
+        const cnt = pendingConflictCount();
+        if (cnt <= 0) return '';
+        const first = listConflicts()[0] || {};
+        return '<div class="ftt-item ftt-item--info ftt-inline" data-ftt-conflict-banner>'
+            + '<b class="ftt-pipe-title">⚠️ 待确认</b> <span class="ftt-muted" style="flex:1 1 auto;min-width:0">'
+            + esc(String(first.detail || first.kind || '').slice(0, 80)) + (cnt > 1 ? ('　（共 ' + cnt + ' 项）') : '')
+            + '</span>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="goStorageConflicts" title="去「设定 → 存储」查看完整清单">去处理</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="resolveConflicts" title="全部标记为已确认（只清提示，不动数据）">已确认</button>'
+            + '</div>';
+    } catch (e) { return ''; }
+}
+
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];

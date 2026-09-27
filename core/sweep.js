@@ -94,6 +94,17 @@ function mergeTombMaps(a, b) {
     const out = {};
     const push = (m) => { if (!m || typeof m !== 'object') return; for (const k of Object.keys(m)) { const v = Number(m[k]) || 0; if (!out[k] || v > out[k]) out[k] = v; } };
     push(a); push(b);
+    // v2.92.0（`docs/D10` Q3 裁决）：墓碑账本**上限 + 过期回收** —— 每维保留**最新 500 条**、丢弃**早于 90 天**的墓碑。
+    //   目的：账本不再无限增长（旧账本反复参与合并会扩大误伤面、增大存档体积）；近期账本仍完整保留防复活能力。
+    const TOMB_CAP = 500, TOMB_TTL_MS = 90 * 24 * 3600 * 1000;
+    const now = Date.now();
+    const keys = Object.keys(out);
+    if (keys.length > TOMB_CAP) {
+        keys.sort((x, y) => (Number(out[y]) || 0) - (Number(out[x]) || 0));
+        for (const k of keys.slice(TOMB_CAP)) delete out[k];
+    }
+    // 只对可信墙钟（> 1e12，与 entryWallMs 同口径）做过期判定：合成/相对时间戳不参与，避免误删
+    for (const k of Object.keys(out)) { const t = Number(out[k]) || 0; if (t > 1e12 && (now - t) > TOMB_TTL_MS) delete out[k]; }
     return out;
 }
 // 整棵墓碑树合并（{dim:{key:ts}}）—— 整体采纳对端信封时用于「墓碑并集」

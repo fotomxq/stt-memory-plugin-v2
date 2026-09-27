@@ -41,6 +41,9 @@ import {
     SYNC_LOG_MAX, syncLogMerge, syncLogPushRecord, syncLogStat, syncLogShortHash, syncLogSource,
 } from '../core/sync-log.js';
 import { migrateState } from '../core/migrate.js';
+// v2.92.0（`docs/D10` Q10 裁决）：合并自检的「需人工确认项」登记（设定 + 总览同时展示）
+import { noteConflict } from '../core/conflicts.js';
+import { debugLogPush } from './debug-log.js';
 import { ensureAtomHashes } from '../core/merge.js';
 import { mergeTombTrees, applyTombstonesToState } from '../core/sweep.js';
 import { hashFloorText } from '../host/floors.js';
@@ -636,9 +639,20 @@ export function applyRemoteMergeToState(remoteEnv) {
             state.updatedAt = Math.max(Number(state.updatedAt) || 0, Number(remoteEnv.payload.updatedAt) || 0);
             return { mode: 'same', diff: diffStat, snaps: (state.snapStore || []).length, snapChanged: (state.snapStore || []).length !== before };
         }
+        // v2.92.0（`docs/D10` Q10）：合并后做**并集自检**（条数不应减少）并登记需人工确认项
+        const beforeLocalAtoms = (state.atoms || []).length;
+        const beforeRemoteAtoms = (rem && Array.isArray(rem.atoms)) ? rem.atoms.length : 0;
         const merged = mergeDataObjects(state, rem, { hashFloor: floorHashResolver });
         setKernelState(merged.data);
         state.snapStore = mergeSnapshotStores(state.snapStore || [], rem.snapStore || []);
+        try {
+            const st = (merged && merged.stat) || {};
+            const after = (state.atoms || []).length;
+            const unionMin = Math.max(beforeLocalAtoms, beforeRemoteAtoms);
+            if (Number(st.conflict) > 0) noteConflict({ kind: '跨端合并冲突', detail: '本地与远端同 id 不同内容 ' + Number(st.conflict) + ' 条（已按时间取新，必要时人工核对）', count: Number(st.conflict) });
+            if (after < unionMin) noteConflict({ kind: '并集自检异常', detail: '合并后情节 ' + after + ' 条 < 合并前较大者 ' + unionMin + ' 条（可能被裁剪或墓碑过滤，请导出两份核对）' });
+            try { debugLogPush('同步', { action: '合并自检', atomsBeforeLocal: beforeLocalAtoms, atomsBeforeRemote: beforeRemoteAtoms, atomsAfter: after, conflict: Number(st.conflict) || 0, unionMin: unionMin }); } catch (e) { /* 忽略 */ }
+        } catch (e) { /* 自检失败不影响合并 */ }
         return { mode: 'merge', stat: merged.stat, diff: diffStat, snaps: (state.snapStore || []).length };
     } catch (e) { warn('远端合并应用失败', e); return null; }
 }

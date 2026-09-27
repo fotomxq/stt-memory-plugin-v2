@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.91.0",
+  "version": "2.92.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.92.0",
+      "date": "2026-09-27",
+      "title": "墓碑账本收敛（Q3）+ 同步自检与「待确认」总览提示（Q10）",
+      "points": [
+        "① Q3 墓碑账本上限 + 过期回收：（core/sweep.js#mergeTombMaps）：每维保留最新 500 条、丢弃可信墙钟早于 90 天的墓碑（只对 > 1e12 …",
+        "② Q10 同步自检 + 需人工确认项：（新 core/conflicts.js + adapters/sync.js）：跨端合并后① 冲突计数（stat.conflict > …",
+        "③ 新增（用户要求）总览提示：总览顶部 ⚠️ 待确认 横幅（第一项摘要 + 共 N 项 + 「去处理」跳「设定 → 存储」+「已确认」只清提示）；"
+      ]
+    },
     {
       "version": "2.91.0",
       "date": "2026-09-27",
