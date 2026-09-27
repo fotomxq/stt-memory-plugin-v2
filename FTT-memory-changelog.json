@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.90.0",
+  "version": "2.91.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.91.0",
+      "date": "2026-09-27",
+      "title": "跨端同步「情节丢失」止血（内容墓碑加严）+ TauriTavern/存储简化设计交底",
+      "points": [
+        "① 止血修复（内容墓碑加严）：core/sweep.js#applyDeletedToArray 的内容墓碑判据原为deadByHash = !!th && (wall === …",
+        "② 设计交底：新增 docs/D10-TauriTavern兼容与存储简化设计稿.md（v0.1，待裁决）——现状核实（存储同时存在 5 条通道 + TauriTavern 原生…",
+        "③ 测试：新增 tests/unit/tombstone-safety.test.js（4 项：无墙钟不被内容墓碑删 / 有墙钟且早于墓碑仍删 /有墙钟且晚于墓碑保留并作废墓碑 …"
+      ]
+    },
     {
       "version": "2.90.0",
       "date": "2026-09-27",

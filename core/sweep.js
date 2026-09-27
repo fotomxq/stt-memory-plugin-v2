@@ -144,7 +144,12 @@ function applyDeletedToArray(dim, arr, delA, delB, delHA, delHB, learnH) {
         const th = h ? mergedH[h] : 0;
         const wall = entryWallMs(it);
         const deadById = !!t && (wall === 0 || t >= wall);
-        const deadByHash = !!th && (wall === 0 || th >= wall);
+        // v2.91.0（用户报告「跨端同步后情节等数据总是丢失」）——**内容墓碑的删除判据加严**：
+        //   原口径与 id 墓碑一致（`wall === 0` 也删）→ 只要某条与任一内容墓碑同内容，且该条**没有墙钟时间**
+        //   （跨端同步进来 / 旧存档 / 由瘦身或对端写入而缺 `updatedAt`），就会被**静默删除**。
+        //   现改为：内容墓碑**只删「有明确墙钟且不晚于墓碑」的条目**；墙钟未知的条目**只能由 id 墓碑删除**。
+        //   代价：极少数「同内容换 id 复活且无墙钟」的条目会漏挡（属**保守**方向 —— 宁可多留，不可误删）。
+        const deadByHash = !!th && wall > 0 && th >= wall;
         if (deadById || deadByHash) {
             // 已删除：跳过；并把内容哈希补记进 hash 墓碑（供后续对端“换 id 复活”时继续挡住）。
             // 注意：墓碑本身必须保留（随信封持久化），否则对端下次合并又会被并集复活。
