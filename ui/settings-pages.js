@@ -217,7 +217,30 @@ export const SETTINGS_CONTROLS = {
         { "key": "dimCharLimits.scenes", "label": "场景描述上限", "type": "text" },
         { "key": "dimCharLimits.concepts", "label": "概念内容上限", "type": "text" },
         { "key": "dimCharLimits.parallels", "label": "平行事件(推演)上限", "type": "text" },
+        {
+            "key": "relLinkEnabled",
+            "label": "启用通用知情关联层（谁知道 / 谁相关）",
+            "type": "checkbox"
+        },
+        {
+            "key": "relLinkMax",
+            "label": "单条目关联行上限（含锚行）",
+            "type": "text"
+        },
+        {
+            "key": "relOrphanAction",
+            "label": "孤儿关联处置",
+            "type": "select",
+            "options": [
+                { "v": "keep", "label": "保留并提示（默认，不臆造关联）" },
+                { "v": "clean", "label": "自动清理（目标条目已不存在）" },
+                { "v": "public", "label": "清理 + 无关联条目转公开" }
+            ]
+        },
     ],
+    // v2.83.0（用户要求「开发之前设计的原子层之上的关联层」）：关联层的**设置入口**此前完全缺失 ——
+    //   内核键 `relLinkEnabled` / `relLinkMax` / `relOrphanAction` 存在但无处可改，而界面读的是配置里
+    //   不存在的 `relLayerEnabled`（D1 缺口 G1）；三项现落在「分析记忆」页。
     "safety": [],
     "extract": [
         {
@@ -1100,6 +1123,8 @@ export function analyzePageHtml(controls) {
     };
     const capKeys = Object.keys(DIM_CAP_LABELS).map((k) => 'dimCharLimits.' + k);
     const caps = capKeys.map(row).filter(Boolean).join('\n');
+    // v2.83.0：关联层（谁知道 / 谁相关）—— 通用知情关联层的总开关与维护口径
+    const links = ['relLinkEnabled', 'relLinkMax', 'relOrphanAction'].map(row).filter(Boolean).join('\n');
     const rest = list.filter((c) => !used[String(c.key)]).map((c) => settingsControlHtml(c));
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
@@ -1126,6 +1151,12 @@ export function analyzePageHtml(controls) {
         (money
             ? '<div class="ftt-section"><div class="ftt-sec-title">货币记录</div>' + money
             + shortHintHtml('决定「分析记忆」时是否抽取货币、是否按正文出现的角色动态识别归属。')
+            + '</div>'
+            : ''),
+        (links
+            ? '<div class="ftt-section"><div class="ftt-sec-title">关联层（谁知道 / 谁相关）</div>' + links
+            + shortHintHtml('关联层记录每条记忆 / 计划 / 悬念 / 平行事件的知情者与关联条目；关闭后不再读写关联行。')
+            + hintDetailsHtml('说明', '<div>' + esc('关联行上限按条目计（含锚行）；孤儿关联 = 目标条目已不存在的行。处置口径：「保留并提示」只统计不改动（历史数据不臆造关联）、「自动清理」删除孤儿行（留墓碑，跨端不复活）、「清理 + 转公开」在清理后给没有任何关联的条目补一条公开锚行。关联层的派生视图（谁依赖我 / 引用了谁）在「设定 → 约束」页。') + '</div>')
             + '</div>'
             : ''),
         (caps

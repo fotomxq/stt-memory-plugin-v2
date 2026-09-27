@@ -21,6 +21,9 @@ import {
     REL_DIMS, relStats, relByWho, relFilterState, relPickingOf, relPickPanelHtml, relDimLabelOf, howLabel,
 } from './rel-table.js';
 import { injectCheckPanelHtml } from './inject-check.js';
+// v2.83.0（用户要求「开发之前设计的原子层之上的关联层」）：关联层**派生视图**（只读）—— 谁依赖我 / 我引用了谁
+import { relationSnapshot, relationQueryRefs, dependents, relationsOf } from '../core/relations.js';
+import { REL_TYPES, relTypeLabel } from '../core/model/relation.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
@@ -29,6 +32,13 @@ const attr = esc;
  * 当前维度（页内状态）。缺省「记忆」；非法值一律回落第一项（与 V1 的 `activeMemSub` 归一同一口径）。
  * 状态由本模块持有（与 `ui/rel-table.js` 持有筛选态同构），面板只经 `setConstraintDim()` 读写。
  */
+/** v2.83.0：关联层查询词（页内状态；结果在渲染时按最新数据现算，不缓存、不落库） */
+let linkQuery = '';
+/** 设置关联层查询词（面板动作 `linkQuery` 调用；返回归一后的值） */
+export function setLinkQuery(q) { linkQuery = String(q == null ? '' : q).slice(0, 80); return linkQuery; }
+/** 关联层查询词（诊断/测试） */
+export function linkQueryState() { return linkQuery; }
+
 let constraintDim = REL_DIMS[0];
 /** 当前维度（诊断/测试） */
 export function constraintDimState() { return constraintDim; }
@@ -138,11 +148,61 @@ export function constraintPageHtml() {
         '<div class="ftt-rel-overview">' + relOverviewHtml(dim) + '</div>',
         '</div>',
     ].join('\n');
+    const layer = [
+        '<div class="ftt-section" data-ftt-section="relation-layer">',
+        '<div class="ftt-sec-title">🔗 关联层 <span class="ftt-muted">派生视图：谁依赖我 · 我引用了谁</span></div>',
+        relationLayerHtml(),
+        '</div>',
+    ].join('\n');
     const check = [
         '<div class="ftt-section" data-ftt-section="constraint-check">',
         '<div class="ftt-sec-title">🧷 约束自查 <span class="ftt-muted">本轮注入了什么 / 为什么别的没进去</span></div>',
         injectCheckPanelHtml(),
         '</div>',
     ].join('\n');
-    return rel + '\n' + check;
+    return rel + '\n' + layer + '\n' + check;
+}
+
+/**
+ * 「🔗 关联层」区块（v2.83.0，只读派生视图）：
+ *   ① 统计：边合计 + 按类型 + 死链 + 是否截断 + 关联层开关状态；
+ *   ② 查询：输入**条目坐标**（`atoms:a1`）或**标题关键字** → 列出该端点的「谁依赖我（反向）」与「我引用了谁（正向）」。
+ * 数据来自 `core/relations.js` 的机械派生（零 AI、确定性、只读；不落库、不改任何 state）。
+ */
+export function relationLayerHtml() {
+    let snap = { edges: [], stats: { total: 0, byType: {}, dangling: 0, truncated: false, linksOff: false } };
+    try { snap = relationSnapshot(); } catch (e) { /* 派生失败 → 空视图 */ }
+    const st = snap.stats || {};
+    const typeBits = Object.keys(REL_TYPES)
+        .filter((t) => Number((st.byType || {})[t]) > 0)
+        .map((t) => relTypeLabel(t) + ' ' + Number(st.byType[t]));
+    const rows = [];
+    rows.push('<div class="ftt-hint">边合计 <b>' + Number(st.total || 0) + '</b>'
+        + (typeBits.length ? ('（' + esc(typeBits.join(' · ')) + '）') : '')
+        + ' · 死链 ' + Number(st.dangling || 0) + ' · 来源：机械派生（只读）'
+        + (snap.truncated ? ' · ⚠️ 已达上限截断' : '') + '</div>');
+    if (snap.linksOff) rows.push('<div class="ftt-hint">通用知情关联层已关闭（设定 → 分析记忆 → 关联层）→ <b>未投影「谁知道」边</b>；其它引用仍照常派生。</div>');
+    rows.push('<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-linkq="1" value="' + attr(linkQuery) + '" placeholder="条目坐标（如 atoms:a1）或标题关键字（回车）">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="linkQuery" data-q="' + attr(linkQuery) + '">🔎 查询</button>'
+        + (linkQuery ? '<button class="ftt-btn ftt-sm" data-ftt-action="linkQuery" data-q="">✕ 清空</button>' : '')
+        + '</div>');
+    if (!linkQuery) {
+        rows.push('<div class="ftt-muted">输入条目坐标或标题关键字，查看它的关联边（正反两向）。</div>');
+        return rows.join('\n');
+    }
+    const cands = (() => { try { return relationQueryRefs(linkQuery); } catch (e) { return []; } })();
+    if (!cands.length) {
+        rows.push('<div class="ftt-muted">未命中任何条目（可试试 atoms:情节id 形式，或换一个标题关键字）。</div>');
+        return rows.join('\n');
+    }
+    for (const c of cands) {
+        const inn = (() => { try { return dependents(c.ref, { edges: snap.edges }); } catch (e) { return []; } })();
+        const out = (() => { try { return relationsOf(c.ref, { edges: snap.edges }); } catch (e) { return []; } })();
+        rows.push('<div class="ftt-item"><div class="ftt-item-main"><b>' + esc(c.dimLabel) + '「' + esc(c.title) + '」</b> <span class="ftt-muted">' + esc(c.coord) + '</span>'
+            + '<div class="ftt-hint">反向（谁依赖我）' + inn.length + ' · 正向（我引用了谁）' + out.length + '</div>'
+            + inn.map((e) => '<div class="ftt-muted">← ' + esc(relTypeLabel(e.type)) + ' 来自 ' + esc(e.fromDimLabel || '角色') + '「' + esc(e.fromLabel || '') + '」' + (e.how ? ('（' + esc(e.how) + '）') : '') + '</div>').join('')
+            + out.map((e) => '<div class="ftt-muted">→ ' + esc(relTypeLabel(e.type)) + ' 指向 ' + esc(e.toDimLabel || '角色') + '「' + esc(e.toLabel || '') + '」' + (e.how ? ('（' + esc(e.how) + '）') : '') + '</div>').join('')
+            + '</div></div>');
+    }
+    return rows.join('\n');
 }

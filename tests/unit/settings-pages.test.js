@@ -39,8 +39,9 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.51.0 时钟改版：基础页删除 10 个废弃时钟设定 → 总数 183 → 173、base 21 → 11
     // v2.76.0：12 个非召回控件（货币记录开关 + 各大类单条字数上限）由「提取记忆」迁到「分析记忆」→ analyze 5→17、extract 34→22（总数不变）
     // v2.78.0：「重要性计算」两项（importanceBase / importancePerUse）属**召回打分** → base 11→9、extract 22→24（总数不变）
-    // v2.80.0：「约束」页**无配置控件**（正文 = 四维关系表 + 约束自查，由 ui/constraint-page.js 渲染）→ 总数仍 173
-    return info.totalControls === 173 && m.base === 9 && m.feed === 37 && m.analyze === 17 && m.extract === 24
+    // v2.80.0：「约束」页**无配置控件**（正文 = 四维关系表 + 约束自查，由 ui/constraint-page.js 渲染）
+    // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 总数 173 → 176、analyze 17 → 20
+    return info.totalControls === 176 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 24
         && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 26 && m.debug === 5;
 })(), settingsPagesInfo());
 
@@ -110,7 +111,9 @@ R.assert('P2d v2.76.0：「各大类单条字数上限」10 个控件归入**分
         ['dimCharLimits.concepts', '概念内容上限'], ['dimCharLimits.parallels', '平行事件(推演)上限'],
     ];
     const ex = SETTINGS_CONTROLS.analyze.map((c) => [String(c.key), String(c.label)]);
-    const tail = ex.slice(ex.length - want.length);
+    // v2.83.0：关联层三项（relLinkEnabled / relLinkMax / relOrphanAction）排在 dimCharLimits 之后 → 取它们之前的那一段
+    const relN = ex.filter((c) => /^rel/.test(String(c[0]))).length;
+    const tail = ex.slice(ex.length - relN - want.length, ex.length - relN);
     // 点路径读写 + 内核真的用它做硬截断（long → 截到新上限）
     const before = readControl('dimCharLimits.atoms');
     applySettingsControl('dimCharLimits.atoms', 30);
@@ -120,7 +123,7 @@ R.assert('P2d v2.76.0：「各大类单条字数上限」10 个控件归入**分
     applySettingsControl('dimCharLimits.atoms', before);
     return J(tail) === J(want) && Number(after) === 30 && capped.length === 30
         && Number(readControl('dimCharLimits.atoms')) === Number(before);
-})(), () => SETTINGS_CONTROLS.analyze.slice(-10).map((c) => c.key));
+})(), () => SETTINGS_CONTROLS.analyze.slice(-13).map((c) => c.key));
 
 R.assert('P3 控件键均可解析：普通键在 defaultCfg 内、点路径键（storage.* / dimCharLimits.*）逐层在 defaultCfg 内（提取零漏配）', (() => {
     const bad = [];

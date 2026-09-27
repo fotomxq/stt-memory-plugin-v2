@@ -61,7 +61,7 @@ const A = async (name, fn, detailFn) => {
 /** 复位：与 oracle 同一场景（快照 / 记忆 / 计划 / 悬念 / 平行 + 一条库内关联） */
 function boot() {
     Object.assign(cfg, clone(defaultCfg));
-    cfg.relLayerEnabled = true;
+    cfg.relLinkEnabled = true;
     setScopeKey('角色甲');
     setLastMessageId(5);
     setKernelState(Object.assign(emptyState(), {
@@ -144,9 +144,9 @@ await A('R5 `relPickAppendRow` 三态：成功 / `dup`（同角色 · trim 同�
     const wantMem = (steps[2].rowsAfter || []).map((r) => r.who + '/' + r.how);
     const wantPar = (steps[5].rowsAfter || []).map((r) => r.who + '/' + r.how);
     // 关联层关闭 → 容器不可用（V2 适配语义）
-    cfg.relLayerEnabled = false;
+    cfg.relLinkEnabled = false;
     const off = relPickAppendRow('memories', RID_M, '角色丙');
-    cfg.relLayerEnabled = true;
+    cfg.relLinkEnabled = true;
     bad.push(off);
     relDiscard('memories', RID_M); relDiscard('parallels', RID_P);
     return J(out) === J(want) && J(rowsMem) === J(wantMem) && J(rowsPar) === J(wantPar)
@@ -455,10 +455,10 @@ await A('V6 v2.80.0 页内维度切换（`constraintDim`）重置跳转定位与
     const v1Step = G.actionFlow.steps.filter((x) => x.name.indexOf('子标签点击') === 0)[0];
     const v1Ok = J(v1Step.filter) === J({ dim: 'memories', who: '', jump: null });
     // V1 oracle 该步 who 为 ''（此前 relJump 已清）；此处 V2 显式验证「who 保留、jump/pick 清」——比 V1 更强的同向断言
-    cfg.relLayerEnabled = false;
+    cfg.relLinkEnabled = false;
     const off = relPickAppendRow('memories', 'm1', '角色丙');
     const offPanel = await panelAction('relPickAdd', { kind: 'memories', id: 'm1', name: '角色丙' });
-    cfg.relLayerEnabled = true;
+    cfg.relLinkEnabled = true;
     return r.ok === true && s.who === '角色甲' && s.jump === null && relPickState() === null
         && v1Ok && off === false && offPanel.ok === false
         && String((offPanel.state || {}).note) === G.pickAdd.containerMissing.toasts[0].text;

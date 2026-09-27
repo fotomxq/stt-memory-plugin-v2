@@ -42,10 +42,11 @@ const HTML = settingsPageHtml('analyze');
 const secTitles = (h) => Array.from(String(h).matchAll(/<div class="ftt-sec-title">([^<]*)<\/div>/g)).map((m) => m[1]);
 const cfgKeys = (h) => Array.from(String(h).matchAll(/data-ftt-cfg="([^"]+)"/g)).map((m) => m[1]);
 const at = (h, s) => String(h).indexOf(s);
+// v2.83.0：关联层（谁知道 / 谁相关）三项控件落在本页 → 第 6 节（在「货币记录」之后、「各大类单条字数上限」之前）
 const TITLES = ['维度分组（总开关）', '各维度独立子开关与分组（独立分组时生效）', '分析范围', '情节分段总结（情节页「🧩 分段总结」）',
-    '货币记录', '各大类单条字数上限'];
+    '货币记录', '关联层（谁知道 / 谁相关）', '各大类单条字数上限'];
 
-A('A1 六节结构：维度分组 → 各维度子开关 → 分析范围 → 情节分段总结 → 货币记录 → 各大类单条字数上限', (() => {
+A('A1 七节结构：维度分组 → 各维度子开关 → 分析范围 → 情节分段总结 → 货币记录 → 关联层 → 各大类单条字数上限', (() => {
     const idx = TITLES.map((t) => at(HTML, t));
     return J(secTitles(HTML)) === J(TITLES) && idx.every((v) => v >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]);
 })(), J(secTitles(HTML)));
@@ -64,12 +65,12 @@ A('A2 最底部一组已归位：「分析范围」只含分段读取楼层数�
         && cfgKeys(HTML.slice(iSeg, at(HTML, '货币记录'))).join(',') === 'plotSegmentBatchAtoms,plotSegmentProtectManual,plotSegmentIncremental,plotSegmentTextLimit';
 })(), J({ scope: cfgKeys(HTML.slice(at(HTML, '分析范围'), at(HTML, TITLES[3]))) }));
 
-A('A3 控件一个不少：17 个控件 + 代理键 `dimensionSeparate` = 18，且各出现一次', (() => {
+A('A3 控件一个不少：20 个控件 + 代理键 `dimensionSeparate` = 21，且各出现一次（v2.83.0 关联层 +3）', (() => {
     const need = SETTINGS_CONTROLS.analyze.map((c) => String(c.key));
     const got = cfgKeys(HTML);
     const miss = need.filter((k) => got.indexOf(k) < 0);
     const dup = need.filter((k) => got.filter((x) => x === k).length !== 1);
-    return need.length === 17 && miss.length === 0 && dup.length === 0 && got.length === 18
+    return need.length === 20 && miss.length === 0 && dup.length === 0 && got.length === 21
         && got.indexOf('dimensionSeparate') === 0;
 })(), J({ need: SETTINGS_CONTROLS.analyze.length, got: cfgKeys(HTML).length }));
 
@@ -78,9 +79,9 @@ A('A4 两节各一句短提示（≤90 字、无历史版本字样）；长解�
     const re = /<div class="ftt-muted" data-ftt-short-hint>([\s\S]*?)<\/div>/g;
     let m;
     while ((m = re.exec(HTML)) !== null) hints.push(String(m[1]).replace(/<[^>]+>/g, '').trim());
-    return hints.length === 4 && hints.every((t) => t.length > 0 && t.length <= 90)
+    return hints.length === 5 && hints.every((t) => t.length > 0 && t.length <= 90)
         && hints[0].indexOf('默认 10') > 0 && hints[1].indexOf('不注入') > 0
-        && hints[2].indexOf('货币') > 0 && hints[3].indexOf('硬截断') > 0
+        && hints[2].indexOf('货币') > 0 && hints[3].indexOf('关联层') >= 0 && hints[4].indexOf('硬截断') > 0
         && hints.every((t) => t.indexOf('V1') < 0)
         && HTML.indexOf('<details') > 0 && HTML.indexOf('ftt-hint-body') > 0
         && HTML.indexOf('**') < 0;
@@ -122,7 +123,7 @@ A('A8 控件表仍是 V1 原标签（渲染层未改文案）：5 项标签逐�
 A('A9 节容器完整：四个 `.ftt-section` 都闭合，且每节内至少一个控件或内容块', (() => {
     const opens = (HTML.match(/<div class="ftt-section">/g) || []).length;
     const closes = (HTML.match(/<\/div>\n?<div class="ftt-section">|<\/div>$/g) || []).length;
-    return opens === 6 && closes >= 5 && secTitles(HTML).length === 6
+    return opens === 7 && closes >= 6 && secTitles(HTML).length === 7
         && HTML.indexOf('ftt-section"><div class="ftt-sec-title">分析范围') > 0;
 })(), '见断言');
 
@@ -140,7 +141,7 @@ A('A10 v2.76.0 归纳：货币记录与「各大类单条字数上限」两组�
     return moved.every((k) => an.indexOf(k) >= 0 && ex.indexOf(k) < 0)
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms')
         && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 24
-        && SETTINGS_CONTROLS.analyze.length === 17;
+        && SETTINGS_CONTROLS.analyze.length === 20;      // v2.83.0：关联层 +3
 })(), J({ analyze: SETTINGS_CONTROLS.analyze.length, extract: SETTINGS_CONTROLS.extract.length }));
 
 R.done();
