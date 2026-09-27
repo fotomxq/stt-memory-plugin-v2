@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.89.0",
+  "version": "2.90.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.90.0",
+      "date": "2026-09-27",
+      "title": "管线状态：流式摘要 + token 计数 + 预估倒计时",
+      "points": [
+        "① 流式摘要（不泄漏内容）：（新 core/pipeline.js#summarizeResponseKeys）：只从 AI 响应提取顶层键名（如 情节 / 记忆库），过滤 新增…",
+        "② token 计数：ceil(字符数 / 4) 估算，prompt 与响应分别计，状态行显示 🪙 1.2k tok（千分位缩写）。",
+        "③ 预估倒计时：状态行显示 预计剩 8s；按处理行为标签（批量摘要 / 单楼分析 / 自动修复 / 推演 / 传言演化 / 向量检索 /弱化NSFW / 时钟巡检 / 情节总结）…"
+      ]
+    },
     {
       "version": "2.89.0",
       "date": "2026-09-27",

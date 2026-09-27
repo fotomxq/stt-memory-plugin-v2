@@ -36,6 +36,8 @@ import {
     runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
 } from '../core/parallel.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
+// v2.90.0（用户要求）：管线状态补「流式摘要 + token 计数 + 预估倒计时」
+import { pipelineSuffix, pipelineSummaryText, snapshot as pipelineSnapshot } from '../core/pipeline.js';
 import { notifyError } from '../core/model/runtime.js';   // v2.87.0：错误要有可见提示，不只写日志
 // v2.84.0（用户要求）：存储上限 = 总上限 × 各大类占比（滚动条拖动，其余按比例补齐到 100%）
 // v2.85.0（用户要求）：滚动条**拖动中实时联动** + 保底高于上限时**自动下移**
@@ -308,10 +310,18 @@ export function pipelineStatusText(now) {
         if (busy && Number(bp.since) > 0) busySince = Number(bp.since);                     // 批次给出真实起点 → 采用
         if (!busy) busySince = 0;
         const sec = busySince ? Math.max(0, Math.floor((at - busySince) / 1000)) : 0;
+        // v2.90.0：token 计数 + 预估倒计时（按最近几次同类型处理行为耗时；首次用内置默认）
+        const ps = (() => { try { return pipelineSnapshot() || {}; } catch (e) { return {}; } })();
+        const suffix = (() => { try { return pipelineSuffix() || ''; } catch (e) { return ''; } })();
+        const sum = (() => { try { return pipelineSummaryText() || ''; } catch (e) { return ''; } })();
+        const label = String(ps.label || '');
         const txt = busy
-            ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range + (sec ? (' · 已用时 ' + sec + 's') : '') + (bp.aborted ? ' · 已请求中断' : ''))
+            ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range
+                + (label ? (' · ' + label) : '')
+                + (sec ? (' · 已用时 ' + sec + 's') : '') + (suffix ? (' · ' + suffix) : '')
+                + (sum ? (' · ' + sum) : '') + (bp.aborted ? ' · 已请求中断' : ''))
             : '空闲';
-        return { busy: busy, sec: sec, txt: txt };
+        return { busy: busy, sec: sec, txt: txt, tokens: Number(ps.tokens) || 0, remain: Number(ps.remain) || 0 };
     } catch (e) { return { busy: false, sec: 0, txt: '空闲' }; }
 }
 

@@ -8,7 +8,9 @@ import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
 import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight, readInject } from './host/inject.js';
-import { getSettings } from './adapters/settings.js';
+import { getSettings, setSetting } from './adapters/settings.js';
+// v2.90.0（用户要求）：管线状态的历史耗时（预估倒计时样本）落 ST 扩展设置 —— 不进数据模型 → DATA_VERSION 不变
+import { setPipelineHooks } from './core/pipeline.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
@@ -1144,6 +1146,11 @@ export async function openPanelPopup(tab) {
     try {
         setPopupHooks(popupHooks());
         setPanelHooks2(panelRuntimeHooks());   // v2.40.0：面板所需的**全部**钩子（此前只用 popupHooks() → 导出/导入等缺接）
+        // v2.90.0：管线状态的历史耗时读写（ST 扩展设置里的 `pipelineEta`：每个处理行为保留最近 5 次）
+        setPipelineHooks({
+            getHistory: () => { try { return getSettings().pipelineEta || {}; } catch (e) { return {}; } },
+            saveHistory: (h) => { try { setSetting('pipelineEta', h && typeof h === 'object' ? h : {}); } catch (e) { /* 忽略 */ } },
+        });
         setDebugPageHooks({
             dump: () => debugDumpSnapshot(),
             meta: () => ({
