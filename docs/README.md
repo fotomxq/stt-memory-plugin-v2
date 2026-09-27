@@ -1,6 +1,6 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.6 ｜ 日期：2026-09-27 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.7 ｜ 日期：2026-09-27 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
 > 维护规则见 `开发守则.md` §2；本次结构整理方案见 `docs/D3-文档架构设计稿.md`。
 
 ---
@@ -63,13 +63,13 @@ docs/
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
 | 内核配置键数 | `core/config.js#defaultCfg` | 216 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
-| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 173 |
+| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 176 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 104 文件 / 1598 断言 |
-| 冒烟规模 | `tests/smoke-test.js` | 170 项 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 105 文件 / 1617 断言 |
+| 冒烟规模 | `tests/smoke-test.js` | 171 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 89 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 90 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

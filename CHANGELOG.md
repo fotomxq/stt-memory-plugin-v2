@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.83.0（2026-09-27）· 关联层（原子层之上的边层）：派生视图 + 反向索引
+
+**用户要求**：「开发之前设计的原子层之上的关联层。」
+
+**① 边模型**（新 `core/model/relation.js`，逐条对齐 `D2` §3 / `D5` §3）：统一原子引用 `AtomRef`（`{dim,id}`，非法即 `null`，
+不臆造）· **10 类关系词表**（`knows` / `knows-not` / `derived-from` / `member-of` / `owns` / `located-at` / `mirrors` /
+`caused` / `before` / `co-occur`，含方向性与「是否派生」标记）· **稳定 id**（对称边按端点排序 → 同一关系无论谁写都同 id，
+不再 A↔B 双写；有向边方向不同即不同边）· `normRelation` 归一（词表校验 + 来源权威权重 `manual>ai>mech>inferred`）。
+
+**② 派生视图 + 反向索引**（新 `core/relations.js`）：遍历 13 个原子维度与 `links`，把**散落的私有引用字段机械派生**为
+统一的有类型边 —— `links` 非锚行 → `knows`/`knows-not`（带 `how`/公开标记/剧情日期）；锚行 → `member-of`/`derived-from`；
+平行来源与转正、计划/悬念的结构化引用、分段总结、情节总结、传言谱系、传言↔平行（对称 `mirrors`）、归属（`owner`）、
+地点（与场景**精确**匹配，`inferred`）、场景层级（路径解析）各自成边。接口：`deriveRelations()` / `dependents()`（谁依赖我）/
+`relationsOf()`（我引用了谁）/ `relationSnapshot()`（含按类型统计与死链）/ `relationQueryRefs()`（坐标或关键字）。
+
+**③ 口径**：**只读**（派生不改任何 state，单测逐字节断言）· **确定性**（无随机、输出全序，两端可比）· **有界**（默认 2000 条边，
+截断如实标记）· 自环拒收 · 死链可见 · **零数据模型变更**（无新容器、`DATA_VERSION` 仍为 1、无迁移）—— 即 `D2` §3.5 的「阶段 1」。
+
+**④ 修掉 D1 缺口 G1**：`ui/rel-table.js#relLayerOn` 此前读 `cfg.relLayerEnabled`（**配置里不存在的键**）→ 界面永远认为层开着；
+现统一到内核真实键 `cfg.relLinkEnabled`；并**补齐此前完全缺失的设置入口** —— 设定 → 分析记忆新增「关联层（谁知道 / 谁相关）」
+三项控件（启用 / 单条目关联行上限 / 孤儿关联处置），配置控件数 173 → **176**。
+
+**⑤ 可见可查**：设定 → 约束新增「🔗 关联层」区块（统计 + 建边类型 + 死链 + 开关状态 + 查询：输入 `atoms:a1` 坐标或标题关键字，
+列出**正反两向**边）；`FTT.*` 新增 6 个只读入口（`relations` / `relationStats` / `dependents` / `relationsOf` / `relationQuery` / `relationLayerOn`）。
+
+**门禁**：新增 `tests/unit/relation-layer.test.js`（19 项：边模型 · 逐来源派生 · 不派生因果类 · 开关口径 · 确定性 · 上限截断 ·
+反向索引双向 · 端点标签 · 快照统计与死链 · 查询解析 · 设定入口与开关统一）+ 冒烟 `BF1`（`FTT.*` 六入口 + 页面区块 + 真实动作查询）。
+受影响测试同步：`settings-pages`（176 / analyze 20）· `settings-capacity` C7 · `importance-placement` A1 · `constraint-page` A2 ·
+`analyze-grouping`（七节 / 21 键 / 5 条提示）· `rel-nav-golden`（开关键统一）。单元 **105 文件 / 1617 断言**，冒烟 **171 项**。
+详见 `docs/history/P10av-关联层派生视图与反向索引.md`；`docs/02-数据架构.md` §4、`docs/04-应用架构.md` §2.2 与 `docs/D2` 已回填。
+
 ## v2.82.0（2026-09-27）· 日志导出真的落文件（.log / .json）+ 日志按钮全部归位到顶部
 
 **用户要求**：「1. 设定-调试-日志的按钮全部调整到最上面；2. 日志的导出功能有问题，无法正常导出 log 文件，请修复。」

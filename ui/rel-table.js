@@ -50,8 +50,10 @@ const HOW_ORDER = ['author', 'involved', 'participant', 'witness', 'join', 'inve
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
 
-/** 关系层是否启用（V1：设定 → 分析记忆 → 关联层总开关） */
-export function relLayerOn() { try { return cfg.relLayerEnabled !== false; } catch (e) { return true; } }
+/** 关系层是否启用（V1：设定 → 分析记忆 → 关联层总开关）
+ *  v2.83.0 修复（D1 缺口 G1）：此前读的是 `cfg.relLayerEnabled` —— **配置里并不存在该键**（内核用 `relLinkEnabled`），
+ *  于是界面永远认为「关联层开着」；现统一到内核真实键，并在设定页为该键补上真正的入口。 */
+export function relLayerOn() { try { return cfg.relLinkEnabled !== false; } catch (e) { return true; } }
 /** 中文方式名（诊断/摘要用） */
 export function howLabel(how) { return HOW_CN[String(how || 'unspecified')] || String(how || '知情'); }
 /** 维度中文名 */
@@ -125,7 +127,7 @@ export function relTableHtml(dim, refId, opts) {
     const rows = relRowsOf(d, r);
     const body = 'data-ftt-rel-body="' + attr(d + '|' + r) + '"';
     if (!on) {
-        return '<div class="ftt-empty">通用知情关联层已关闭（设定 → 分析记忆 → 关联层总开关 `relLayerEnabled`）：不再读写关联行。</div>';
+        return '<div class="ftt-empty">通用知情关联层已关闭（设定 → 分析记忆 → 关联层：启用通用知情关联层）：不再读写关联行。</div>';
     }
     const head = '<tr><th>角色</th><th>知情方式</th><th>公共</th><th>来源</th><th>日期</th><th>备注</th><th></th></tr>';
     const picking = relPickingOf(d, r, isEd);

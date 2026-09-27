@@ -3596,6 +3596,45 @@ await assert('BE1 v2.82.0 日志导出**真的落文件**（修复用户报告�
     }
 })(), '');
 
+await assert('BF1 v2.83.0 关联层（原子层之上的边层）：`FTT.relations()/dependents()/relationsOf()/relationStats()` 可用；设定 → 约束「🔗 关联层」区块渲染统计并可用真实动作查询；设定 → 分析记忆 提供关关联层开关', (async () => {
+    const RTF = await import('../core/model/runtime.js');
+    const keep = { atoms: RTF.state.atoms, memories: RTF.state.memories, links: RTF.state.links, snapshots: RTF.state.snapshots, plans: RTF.state.plans, scenes: RTF.state.scenes };
+    try {
+        RTF.state.atoms = [{ id: 'bf-a1', text: '甲角色在码头交货。', date: '1919-11-01', locations: ['码头'], entities: ['甲角色'], validity: 'active' }];
+        RTF.state.memories = [{ id: 'bf-m1', owner: '甲角色', title: '码头见闻', content: '甲角色在码头看到木箱。', date: '1919-11-01' }];
+        RTF.state.snapshots = [{ id: 'bf-s1', name: '甲角色' }];
+        RTF.state.scenes = [{ id: 'bf-sc1', name: '码头', pathArr: ['码头'], pathStr: '码头' }];
+        RTF.state.links = [{ id: 'bf-l1', dim: 'memories', refId: 'bf-m1', who: '甲角色', how: 'participant', at: '1919-11-01' }];
+        RTF.state.plans = [{ id: 'bf-p1', content: '清点货单', status: 'open', atomRefs: ['bf-a1'] }];
+        const F = globalThis.FTT;
+        const snap = F.relations();
+        const deps = F.dependents('atoms', 'bf-a1');        // 谁依赖我：plans 引用 + 记忆锚行来源 …
+        const out = F.relationsOf('memories', 'bf-m1');     // 我引用了谁 / 谁知道我
+        const stats = F.relationStats();
+        const apiOk = !!snap && Array.isArray(snap.edges) && snap.edges.length >= 3
+            && deps.length >= 1 && out.length >= 1 && Number(stats.total) >= 3 && F.relationLayerOn() === true;
+        // 页面：设定 → 约束 的「🔗 关联层」区块 + 真实查询动作
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'constraint' });
+        const page = String(panelBodyHtml('settings') || '');
+        const hasBlock = page.indexOf('data-ftt-section="relation-layer"') >= 0 && page.indexOf('🔗 关联层') >= 0
+            && page.indexOf('data-ftt-linkq="1"') >= 0 && page.indexOf('data-ftt-action="linkQuery"') >= 0;
+        const q = await entry.popupAction('linkQuery', { q: 'atoms:bf-a1' });
+        const after = String(panelBodyHtml('settings') || '');
+        const queried = q.ok === true && after.indexOf('atoms:bf-a1') >= 0 && after.indexOf('谁依赖我') >= 0;
+        // 设定 → 分析记忆：关联层三项控件（开关此前完全无入口）
+        await entry.popupAction('settingsSub', { sub: 'analyze' });
+        const an = String(panelBodyHtml('settings') || '');
+        const hasSwitch = an.indexOf('data-ftt-cfg="relLinkEnabled"') >= 0
+            && an.indexOf('data-ftt-cfg="relOrphanAction"') >= 0 && an.indexOf('关联层（谁知道 / 谁相关）') >= 0;
+        return apiOk && hasBlock && queried && hasSwitch;
+    } finally {
+        RTF.state.atoms = keep.atoms; RTF.state.memories = keep.memories; RTF.state.links = keep.links;
+        RTF.state.snapshots = keep.snapshots; RTF.state.plans = keep.plans; RTF.state.scenes = keep.scenes;
+        try { await entry.popupAction('linkQuery', { q: '' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 await assert('AR2 确认框 ACL 安全（用户报告的那条错误）：桥接型 confirm 返回的 Promise **被 await 而不是当成已确认**；拒绝/ACL 失败 → 按取消且不产生未处理拒绝；Tauri 宿主跳过原生 confirm', (async () => {
     const H = entry.panelRuntimeHooks();
     const savedPopup = host.ctx.callGenericPopup;

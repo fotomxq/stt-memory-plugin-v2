@@ -74,7 +74,7 @@ import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relByWho, relRowsOf, REL_TAB_OF, relDimLabelOf, relFilterState, setRelFilter, relClearFilter, relPickState, setRelPick, relKnownNames, relPickAppendRow, relJump, relGoto, setRelPickQuery } from './rel-table.js';
 import { injectCheckAction } from './inject-check.js';
 // v2.80.0（用户要求：关系表 / 约束自查 收进设定页）：「设定 → 约束」子页正文 + 页内维度态
-import { constraintPageHtml, constraintDimState, setConstraintDim } from './constraint-page.js';
+import { constraintPageHtml, constraintDimState, setConstraintDim, setLinkQuery } from './constraint-page.js';
 import { atomIsHidden } from '../core/merge.js';
 
 export const PANEL_ID = 'ftt-panel';
@@ -1670,6 +1670,13 @@ export async function panelAction(action, payload) {
         } else if (a === 'check-update') {
             if (typeof hooks.checkUpdate === 'function') { setNote('检查更新…'); await hooks.checkUpdate(); setNote('检查完成'); }
             else setNote('更新入口未就绪');
+        } else if (a === 'linkQuery') {
+            // v2.83.0：关联层派生视图的查询（设定 → 约束 → 🔗 关联层）；只写页内查询词，结果渲染时现算
+            const q = setLinkQuery(String(p.q == null ? '' : p.q));
+            ps.tab = 'settings';
+            ps.settingsSub = 'constraint';
+            setNote(q ? ('关联层查询：' + q.slice(0, 30)) : '已清空关联层查询');
+            result = Object.assign(result, { ok: true, q: q });
         } else if (a === 'constraintDim') {
             // v2.80.0：关系表已收进「设定 → 约束」→ 维度改为**页内切换**（`data-ftt-cdim`）。
             //   与 V1 子标签点击同口径：切维度只重置「跳转定位 + 选角色态」，**不清角色筛选**
@@ -2358,6 +2365,7 @@ export function bindOverlay() {
                     return;
                 }
                 if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
+                if (tg.dataset.fttLinkq !== undefined) { void panelAction('linkQuery', { q: tg.value }); return; }
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);

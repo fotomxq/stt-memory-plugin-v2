@@ -110,11 +110,11 @@ A('C6 分析记忆页对应分节与短提示：货币记录（记录口径）+ 
         && h.indexOf('决定「分析记忆」时是否抽取货币') > 0 && h.indexOf('入库时的硬截断') > 0;
 })(), '见断言');
 
-A('C7 总量口径不变：控件总数仍 173（纯搬运），各页数量为 base 9 / analyze 17 / extract 24（v2.78.0 重要性计算迁入）', (() => {
+A('C7 总量口径：v2.78.0 纯搬运后为 173；v2.83.0 关联层 +3 → 176（base 9 / analyze 20 / extract 24）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 173 && m.analyze === 17 && m.extract === 24 && m.base === 9 && m.feed === 37;
+    return info.totalControls === 176 && m.analyze === 20 && m.extract === 24 && m.base === 9 && m.feed === 37;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 
 A('C8 兜底口径同步：清空 `cfg.storeMaxAtoms` 后仍按**新兜底**（1200）裁剪，不回落到旧上限', (() => {

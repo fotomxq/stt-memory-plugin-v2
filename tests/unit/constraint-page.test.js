@@ -80,11 +80,11 @@ await A('A1 设定新增「约束」子页：位置在「平行」之后、「�
         && labels[ids.indexOf('constraint')] === '约束';
 })(), J(SETTINGS_TABS.map((t) => t.id + ':' + t.label)));
 
-await A('A2 约束页**无配置控件**（正文由 ui/constraint-page.js 渲染，不走控件表）；总控件数仍 173', (() => {
+await A('A2 约束页**无配置控件**（正文由 ui/constraint-page.js 渲染，不走控件表）；总控件数 176（v2.83.0 关联层 +3）', (() => {
     const info = settingsPagesInfo();
     const page = info.pages.filter((p) => p.id === 'constraint')[0] || {};
     return Array.isArray(SETTINGS_CONTROLS.constraint) && SETTINGS_CONTROLS.constraint.length === 0
-        && page.controls === 0 && info.totalControls === 173
+        && page.controls === 0 && info.totalControls === 176
         && String(settingsPageHtml('constraint')) === '';      // 不渲染「（本页为动作页…）」兜底空态
 })(), () => settingsPagesInfo().pages.filter((p) => p.id === 'constraint'));
 

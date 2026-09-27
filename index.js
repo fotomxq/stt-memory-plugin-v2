@@ -29,6 +29,8 @@ import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
+// v2.83.0（用户要求「开发之前设计的原子层之上的关联层」）：关联层派生视图 + 反向索引（只读）
+import { relationSnapshot, relationStats, dependents, relationsOf, relationQueryRefs, relationLayerOn } from './core/relations.js';
 // v2.41.0：调试包导出（面板「📦 导出调试包」与 FTT.debugLogExport 共用同一实现）
 import { setDebugHooks as setDebugPageHooks, buildDebugExport } from './ui/debug.js';
 // v2.42.0：交互/宿主/命令追踪（FTT 入口包装 + 诊断入口）
@@ -758,6 +760,13 @@ function bootstrapDiagnostics() {
             traceStoreSave: (l) => traceStoreSave(l),
             traceStoreClear: () => traceStoreClear(),
             traceSite: () => traceSite(),
+            // v2.83.0：关联层（派生视图 + 反向索引）—— 「谁依赖我」「我引用了谁」「按坐标/关键字查」
+            relations: (opts) => { try { return relationSnapshot(opts || {}); } catch (e) { return { edges: [], stats: {}, error: String((e && e.message) || e) }; } },
+            relationStats: () => { try { return relationStats(); } catch (e) { return {}; } },
+            relationLayerOn: () => { try { return relationLayerOn(); } catch (e) { return false; } },
+            dependents: (dim, id) => { try { return dependents({ dim: String(dim || ''), id: String(id || '') }); } catch (e) { return []; } },
+            relationsOf: (dim, id) => { try { return relationsOf({ dim: String(dim || ''), id: String(id || '') }); } catch (e) { return []; } },
+            relationQuery: (q, opts) => { try { return relationQueryRefs(q, opts || {}); } catch (e) { return []; } },
             // v2.41.0：调试包导出（面板「📦 导出调试包」同一实现）
             debugLogExport: () => { try { return buildDebugExport(); } catch (e) { return null; } },
             debugLogExportText: () => { try { return JSON.stringify(buildDebugExport(), null, 1); } catch (e) { return ''; } },
