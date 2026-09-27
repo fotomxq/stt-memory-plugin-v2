@@ -234,7 +234,7 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
  *   ① AI 通道 = 注入钩子（`o.ai` 注入点 / 宿主 `rawGenerate`）；**v2.35.0 起** `cfg.dimensionPresets[维度]`
  *      （按维度选 API 分组）**已实现**：每组按 `resolveApiTarget({purpose:'dim',dimension})` 解析出 target
  *      并随 `args.target` 传给宿主（P9d 当年的「不适用」判定已被推翻 —— 酒馆向扩展暴露了
- *      `ConnectionManagerRequestService` 官方通道，见 `docs/P10a-API页与按用途渠道对齐.md`）；
+ *      `ConnectionManagerRequestService` 官方通道，见 `docs/history/P10a-API页与按用途渠道对齐.md`）；
  *   ② V1 的 `abortTick()` / `newTaskStart()` / `pipeUpdate()` 未移植（V2 无任务中断标志与管线状态 UI）；
  *   ③ 形参 `silent` 在 V1 函数体内**从未被引用**（v1.206 原样），V2 直接不设该参数。
  * @param {string} floorText 楼层（或段）正文

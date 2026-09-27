@@ -6,7 +6,7 @@
 // 分层职责：本文件只负责**宿主 API 交互**（谁提供 API、怎么调、失败怎么降级），词条构建与识别在
 //   `core/worldbook.js`（纯函数），8s 防抖调度与保存流水线接线在 `adapters/worldbook.js`。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8y-B8-7世界书单向镜像.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8y-B8-7世界书单向镜像.md）：
 //   ① ESM 化 + 宿主函数解析改走 `host/st-api.js#worldbookApi()`（V1 内联 `thApi(name) || getFn(name)`）；
 //      解析口径**逐项对齐**：`test`/`read` 用「thApi → getFn」链，`write`/`remove` 只用 thApi（V1 原样）；
 //   ② `this.isFttEntry` / `this.buildWorldbookEntries` → 直接调 `core/worldbook.js` 同名导出（无 `this` 依赖）；

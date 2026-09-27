@@ -13,7 +13,7 @@
 //   V 组（V2 编排/接线）：投喂页接线（扫描节 + 真实键文本域）/ 面板 `rxScanTags` 读宿主楼层并渲染候选 /
 //     `rxAddTag` 落库 + 文本域可见 / `rxScanClear` 清空与**结果跨重渲染保留** / 文本域 change 委托整表排重 /
 //     宿主楼层接线（改 ctx.chat 立即反映）。
-// 与 V1 的**必要偏离**（本文件断言其差异，登记于 docs/P9b-B9投喂标签与货币追踪.md）：
+// 与 V1 的**必要偏离**（本文件断言其差异，登记于 docs/history/P9b-B9投喂标签与货币追踪.md）：
 //   ① 设定页文本域的 `data-ftt-cfg` 用 V2 规范键 `feedRegexWhitelist`/`feedRegexBlacklist`
 //      （V1 用别名 `rx_whitelist`/`rx_blacklist` + `settingsApplyAll` 映射）；排重改在面板 change 委托内完成。
 //   ② V1 `notify(title, text)` 的 V2 等价：`feedScanAction()` 返回 `title`/`text`（逐字）并由面板组一行 note。

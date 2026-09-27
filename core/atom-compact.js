@@ -20,7 +20,7 @@
 //   · 存储保底 → `core/ingest.js#storeMinFor`；字段裁剪 → `core/model/scalars.js#dimCap`；
 //   · AI 调用 → `core/ai-hooks.js#aiCallText`；互斥 → `aiBusy()`；提示（toast）→ `notifyHooks.toast`。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8w-B8-7情节总结与分段总结.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8w-B8-7情节总结与分段总结.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/warn/notifyHooks/timerHooks）；
 //   ② `pipelineOccupied()` → 宿主互斥钩子 `core/ai-hooks.js#aiBusy()`（V2 无 `busy.summary/compact/repair` 全局忙位）；
 //   ③ V1 的 `newTaskStart/abortTick/abortQuiet/pipeStart/pipeUpdate/pipeEnd/renderPanel` 未移植

@@ -7,7 +7,7 @@
 // V2 接线：`adapters/store.js#saveStateNow()` 第 ⑧ 步调用 `scheduleWorldbookSync()`
 //   （`cfg.storage.worldbook === false` → **零行为**：不排定时器、不触任何宿主 API）。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8y-B8-7世界书单向镜像.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8y-B8-7世界书单向镜像.md）：
 //   ① 延迟调度改经 `timerHooks`（V1 用全局 `setTimeout`）—— 宿主未注入时默认 no-op（测试/无宿主环境不后台跑）；
 //   ② 异步写入由 `void` 触发（V1 的 timer 回调本身即 async）；成功/失败结论记录在 `worldbookSyncState()`；
 //   ③ V1 的 `dbgLog('对账', {...})` 日志字段逐字保留（`entries` 取 `worldbookMemoryTotal()`）；

@@ -30,7 +30,7 @@
 //   · 状态固定模板条数钳制 `applyStateBounds` 在 V2 **已有等价实现**（`core/ingest.js#applyStateBounds`，
 //     与 V1 v1.101 逐字一致）——本批不重复移植，仅在单测里与 V1 oracle 逐字段对齐自证。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8v-B8-6c-4状态与计划悬念修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8v-B8-6c-4状态与计划悬念修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks）；
 //   ② AI 调用改走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`newTaskStart`/`renderPanel` 未移植

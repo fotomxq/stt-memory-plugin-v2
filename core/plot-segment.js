@@ -19,7 +19,7 @@
 //   · 剧情时间排序 → `core/recall.js#atomTimeAsc`；日期解析 → `core/clock.js#storyDateMsFromStr`；
 //   · AI 调用 → `core/ai-hooks.js#aiCallText`；互斥 → `aiBusy()`；提示 → `notifyHooks.toast`。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8w-B8-7情节总结与分段总结.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8w-B8-7情节总结与分段总结.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/warn/notifyHooks）；
 //   ② `busy.repair` 与 `busy.summary || busy.compact || weaveBusy || advanceBusy || syncOcc()` 两处忙位判据
 //      → 统一走宿主互斥钩子 `aiBusy()`（与 `core/repair.js#runRepair` 同一写法）；

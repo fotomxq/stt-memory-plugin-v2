@@ -2,7 +2,7 @@
 // host/chat.js —— 聊天读取与内核注入接线（P2）
 // 职责：把 ST 上下文的聊天数据接进内核的注入钩子（core/model/runtime.js 的 setChatHooks /
 //   setScopeKey / setLastMessageId / setKernelState），使逐字移植的 V1 内核代码无需改写即可运行。
-// 事实源：docs/P0-探针报告.md（getContext 键位：chat / characters / characterId / name1 / name2）。
+// 事实源：docs/history/P0-探针报告.md（getContext 键位：chat / characters / characterId / name1 / name2）。
 // ============================================================
 import { getCtx } from './st-api.js';
 import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages } from '../core/model/runtime.js';

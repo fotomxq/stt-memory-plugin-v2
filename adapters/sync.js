@@ -7,7 +7,7 @@
 //   ④ `scheduleStorageSync`（保存后镜像，流量门控：楼层哈希差异 + 镜像推送签名）+ 清单命中零大文件下载；
 //   ⑤ 同步日志（最近 30 条，本机环形 + 服务端交叉并集合并）；
 //   ⑥ `storageVerify`（校验并修复）与 `storageStatusInfo`（UI 状态行）。
-// 适配（与 V1 的差别，均在 docs/P8i-B7-2跨端同步.md 记录）：
+// 适配（与 V1 的差别，均在 docs/history/P8i-B7-2跨端同步.md 记录）：
 //   · V1 有「统一存储抽象 + 多后端（localStorage/IndexedDB/存档变量/文件/世界书/楼层）」，V2 为
 //     「本机缓冲（localStorage/IndexedDB）+ 服务端记忆文件」两型；故「跨端后端」判定收敛为**记忆文件**；
 //   · 文件名沿用 V2 前缀 `ftt2-`；**默认明文 `.json`**（V1 主文件默认 gzip）—— 见下方 B9-d 说明；

@@ -17,7 +17,7 @@
 //      V2 复用既有 `core/ingest.js#scenesUnionMergeAll`），杜绝「纽约 / 纽约市」两套相似分支；
 //   ⑤ 通知里的「节点 X → Y」用的是**并集前的** `r.list.length`（V1 原生怪癖，原样保留）。
 //
-// 适配（与 V1 的差异，逐条见 docs/P8s-B8-6c-2概念与场景修复.md）：
+// 适配（与 V1 的差异，逐条见 docs/history/P8s-B8-6c-2概念与场景修复.md）：
 //   ① ESM 化 + 视图注入（state/cfg/saveState/dbgLog/notifyHooks）；
 //   ② AI 走注入钩子 `core/ai-hooks.js#aiCallText`（V1 `callChatCompletion` 不移植）；互斥走 `aiBusy()`；
 //   ③ V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`/`newTaskStart`/`renderPanel` 未移植

@@ -1,6 +1,6 @@
 // ============================================================
 // adapters/user-file.js —— 服务端用户目录文件通道（大体积权威数据）
-// 事实源：docs/P0-探针报告.md（§1 探针 4：V1 生产已验证 `/api/files/upload` / `/api/files/delete`）
+// 事实源：docs/history/P0-探针报告.md（§1 探针 4：V1 生产已验证 `/api/files/upload` / `/api/files/delete`）
 // 约定：文件名 `ftt2-state-<slug>.json`（V2 自有前缀，与 V1 的 `ftt-state-*` 并存不冲突，便于导入器读取 V1 文件）；
 //   内容默认为 UTF-8 JSON 文本；开启 `cfg.storage.stateFileGzip` 时写 `.json.gz`（先 gzip 再 base64，见
 //   `uploadStateFileGz`；V1 `SLIM_EXT_GZ`(~5448) 同名口径）。**读取一律按内容魔数识别** gzip 与明文
