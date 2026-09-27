@@ -21,6 +21,8 @@ import {
 import { storageEnvelope } from '../core/envelope.js';
 import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
+// v2.92.0（用户要求）：需人工确认项 —— 设定 → 存储 展示同一份清单（总览亦有醒目提示）
+import { listConflicts, pendingConflictCount, clearConflicts } from '../core/conflicts.js';
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
 import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
@@ -169,7 +171,20 @@ export function storagePageHtml(controls) {
         'storage.worldbook', 'storage.worldbookName', 'storage.worldbookMode', 'storage.worldbookScanDepth', 'storage.worldbookPosition',
         'storage.worldbookDepth', 'storage.worldbookPreventRecursion', 'storage.worldbookProbability', 'storage.worldbookSticky',
         'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes'].indexOf(String(c.key)) < 0);
+    // v2.92.0：待人工确认项（跨端合并冲突 / 并集自检异常）—— 有才显示，附「全部已确认」按钮
+    const conflictSection = (() => {
+        try {
+            const n = pendingConflictCount();
+            if (n <= 0) return '<div class="ftt-hint" data-ftt-conflicts>无待确认项（跨端合并冲突与并集自检均正常）</div>';
+            const rows = listConflicts().slice(0, 6).map((x) => '<div class="ftt-muted">· ' + esc(String(x.kind || '')) + '：' + esc(String(x.detail || '').slice(0, 110)) + '（×' + Math.max(1, Number(x.count) || 1) + '）</div>').join('');
+            return '<div class="ftt-section" data-ftt-conflicts><div class="ftt-sec-title">⚠️ 待确认（共 ' + n + ' 项）</div>'
+                + '<div class="ftt-muted">这些是**需人工核对**的情况（合并冲突 / 并集自检异常），已按「并集 + 按时间取新」处理，**不会自动改数据**。</div>'
+                + rows
+                + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="resolveConflicts" title="全部标记为已确认（只清提示，不动数据）">✅ 全部已确认</button></div></div>';
+        } catch (e) { return ''; }
+    })();
     return [
+        conflictSection,
         '<div class="ftt-section"><div class="ftt-sec-title">记忆文件（服务端 · 核心基准）</div>',
         '<div class="ftt-muted">记忆数据存在服务端的独立文件里（文件名 ' + mono('ftt2-state-<角色>.json') + '）。</div>',
         '<div class="ftt-muted ftt-my-1" data-ftt-state-file-status>' + stateFileStatusHtml() + '</div>',
