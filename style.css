@@ -651,3 +651,50 @@ body.ftt-no-effects #toast-container *::before {
   .ftt-v2-settings .ftt-v2-row { flex-wrap: wrap; }
   .ftt-v2-settings .ftt-v2-row input[type="text"] { width: 100%; min-width: 0; }
 }
+
+/* ============================================================
+   v2.84.0：设定里的「滚动条」控件（比例 / 阈值 / 概率 / 占比 / 存储总上限）
+   用户要求：「设定中所有针对百分比的 UI 交互，统一为可交互滚动条拖动，注意提示对应的默认值位置」。
+   · 轨道上那道**浅色刻度 = 该控件默认值的位置**（`--ftt-range-def`，由渲染层写成百分比）；
+   · 右侧 `output` 是实时读数（拖动时由面板 input 委托刷新，松手 change 才写回配置）；
+   · 轨道/滑块配色沿用面板既有变量，不改动其它控件。
+   ============================================================ */
+#ftt-panel .ftt-field-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#ftt-panel .ftt-field-range > label { flex: 0 0 auto; min-width: 132px; }
+#ftt-panel .ftt-field-range input[type="range"] {
+  flex: 1 1 140px; min-width: 110px; height: 18px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+/* 轨道：底色 + 默认值位置的一道浅色刻度 */
+#ftt-panel .ftt-field-range input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 3px;
+  background:
+    linear-gradient(to right,
+      transparent calc(var(--ftt-range-def, 50%) - 1px),
+      var(--ftt-accent) calc(var(--ftt-range-def, 50%) - 1px),
+      var(--ftt-accent) calc(var(--ftt-range-def, 50%) + 1px),
+      transparent calc(var(--ftt-range-def, 50%) + 1px)),
+    var(--ftt-bg-4);
+  border: 1px solid var(--ftt-line-2);
+}
+#ftt-panel .ftt-field-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 13px; margin-top: -6px;
+  border-radius: 50%; background: var(--ftt-accent); border: 1px solid var(--ftt-line-2);
+  box-shadow: var(--ftt-shadow-sm); transition: transform .08s ease;
+}
+#ftt-panel .ftt-field-range input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
+#ftt-panel .ftt-field-range input[type="range"]::-moz-range-track {
+  height: 4px; border-radius: 3px; background: var(--ftt-bg-4); border: 1px solid var(--ftt-line-2);
+}
+#ftt-panel .ftt-field-range input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; background: var(--ftt-accent); border: 1px solid var(--ftt-line-2);
+}
+#ftt-panel .ftt-range-out {
+  flex: 0 0 auto; min-width: 84px; text-align: right; font-size: 12px;
+  color: var(--ftt-text-1); font-variant-numeric: tabular-nums;
+}
+#ftt-panel .ftt-range-def { flex: 0 0 auto; font-size: 11px; }
+@media (max-width: 700px) {
+  #ftt-panel .ftt-field-range > label { min-width: 100%; }
+  #ftt-panel .ftt-range-out { min-width: 70px; }
+}

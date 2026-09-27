@@ -40,9 +40,11 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.76.0：12 个非召回控件（货币记录开关 + 各大类单条字数上限）由「提取记忆」迁到「分析记忆」→ analyze 5→17、extract 34→22（总数不变）
     // v2.78.0：「重要性计算」两项（importanceBase / importancePerUse）属**召回打分** → base 11→9、extract 22→24（总数不变）
     // v2.80.0：「约束」页**无配置控件**（正文 = 四维关系表 + 约束自查，由 ui/constraint-page.js 渲染）
-    // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 总数 173 → 176、analyze 17 → 20
-    return info.totalControls === 176 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 24
-        && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 26 && m.debug === 5;
+    // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 173 → 176
+    // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 删 5 个逐维上限（forget）+1 总上限、删 1 个逐维上限（rumors）
+    //   → 总数 176 → 171、forget 28 → 24、rumors 14 → 13
+    return info.totalControls === 171 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 24
+        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 26 && m.debug === 5;
 })(), settingsPagesInfo());
 
 R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {

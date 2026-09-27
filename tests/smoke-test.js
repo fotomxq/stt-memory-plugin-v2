@@ -1005,13 +1005,52 @@ host.ctx.generateRaw = origGen2;
 
 let S3_DBG = null;
 // ---------- S 遗忘域（B8-5：状态衰退 / 记忆遗忘 / 通用遗忘清扫） ----------
-await assert('S1 遗忘设定页：V1 五分节 + 3 个开关 + 只读诊断行（条数/上限/保底/冷却）', (async () => {
+await assert('S1 遗忘设定页：四分节（存储节改「总上限 + 各大类占比」）+ 3 个开关 + 只读诊断行（条数/上限/保底/冷却）+ v2.84.0 占比滚动条', (async () => {
     const r = await entry.popupAction('settingsSub', { sub: 'forget' });
     const html = String(r.html || '');
     return html.indexOf('状态记录衰退（只按剧情日期）') >= 0 && html.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
-        && html.indexOf('存储保底 / 上限') >= 0 && html.indexOf('通用遗忘清扫（概念 / 场景 / 名册 / 计划 / 悬念 / 角色档案）') >= 0
+        && html.indexOf('存储总上限与各大类占比') >= 0 && html.indexOf('通用遗忘清扫（概念 / 场景 / 名册 / 计划 / 悬念 / 角色档案）') >= 0
         && html.indexOf('data-ftt-cfg="stateDecayEnabled"') >= 0 && html.indexOf('data-ftt-cfg="memoryForgetEnabled"') >= 0
-        && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0;
+        && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0
+        // v2.84.0（用户要求）：总上限滑块 + 10 条占比滚动条（含默认刻度）+ 旧的逐维上限不再暴露
+        && html.indexOf('data-ftt-cfg="storeTotalMax"') >= 0 && (html.match(/data-ftt-share=/g) || []).length === 10
+        && html.indexOf('--ftt-range-def:') >= 0 && html.indexOf('data-ftt-cfg="storeMaxAtoms"') < 0;
+})(), '');
+
+await assert('BS1 v2.84.0 存储上限与百分比滚动条：遗忘页渲染「总上限滑块 + 10 条占比滚动条」；真实拖动（change）→ 占比写入配置且其余按比例补齐到 100%；拖动中（input）→ 读数实时刷新', (async () => {
+    const RTB = await import('../core/model/runtime.js');
+    const { defaultCfg: DCFG } = await import('../core/config.js');
+    const keepShares = JSON.parse(JSON.stringify(RTB.cfg.storeShare || {}));
+    const el = doc.getElementById('ftt-panel');
+    try {
+        Object.assign(RTB.cfg, JSON.parse(JSON.stringify(DCFG)));
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'forget' });
+        const page = String(panelBodyHtml('settings') || '');
+        const totalOk = page.indexOf('data-ftt-cfg="storeTotalMax"') >= 0 && page.indexOf('type="range"') >= 0;
+        const rows = (page.match(/data-ftt-share="([a-z]+)"/g) || []).length;
+        // ① 真实 change（松手提交）：把「情节」拖到 40%
+        const changes = (el && el.listeners && el.listeners.change) || [];
+        const fire = (type, tg) => { const l = (el && el.listeners && el.listeners[type]) || []; l.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } })); };
+        fire('change', { dataset: { fttShare: 'atoms' }, value: '40', type: 'range' });
+        await new Promise((r) => setTimeout(r, 10));
+        const sh = RTB.cfg.storeShare || {};
+        const sum = Object.values(sh).reduce((n, v) => n + Number(v || 0), 0);
+        const note = String((panelState() || {}).note || '');
+        // ② 真实 input（拖动中）：读数实时刷新（不写配置）
+        let outText = null;
+        const out = { textContent: '23' };
+        const box = { querySelector: () => out };
+        fire('input', { dataset: { fttCfg: 'conceptRepairSim' }, value: '0.72', type: 'range', closest: () => box, max: '0.95' });
+        outText = out.textContent;
+        const page2 = String(panelBodyHtml('settings') || '');
+        return totalOk && rows === 10 && Number(sh.atoms) === 40 && sum === 100
+            && note.indexOf('已调整「情节」占比为 40%') >= 0
+            && outText === '0.72'
+            && page2.indexOf('合计 <b>100%</b>') >= 0;
+    } finally {
+        RTB.cfg.storeShare = keepShares;
+    }
 })(), '');
 
 await assert('S2 记忆遗忘：低重要度旧记忆被移除并留下 id 墓碑（跨端不复活）；无剧情时钟时不清理', (async () => {

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.83.0",
+  "version": "2.84.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.84.0",
+      "date": "2026-09-27",
+      "title": "存储上限改「总上限 3000 条 × 各大类占比」+ 百分比控件统一滚动条",
+      "points": [
+        "① 上限口径：逐维绝对条数 → 总上限 × 占比：（core/config.js + core/ingest.js）：新增 storeTotalMax（合计上限，默认 3000 …",
+        "② 占比滚动条 + 动态配平：（core/ingest.js#setStoreShare + ui/forget.js#storeShareSectionHtml）：设定 → 遗…",
+        "③ 设定中所有百分比交互统一为滚动条：（ui/settings-pages.js#RANGE_SPECS + rangeControlHtml，共 30 项）：相似度 / 相关性…"
+      ]
+    },
     {
       "version": "2.83.0",
       "date": "2026-09-27",

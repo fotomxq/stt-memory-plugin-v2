@@ -49,18 +49,24 @@ const RUMOR_CHAIN_KINDS = ['起源', '传播', '发酵', '消退', '异变', '�
 
 // 兜底上限 = `core/config.js#defaultCfg` 的默认值（v2.76.0 整体上调：句表内合计 5600，
 //   承载 2000-3000 条原子数据的任意分布；用户可在 设定 → 遗忘 → 存储保底与上限 自行调整）
+// v2.84.0：第 5 位 = 该维在**存储总上限**里的**默认占比**（%，整数，合计恒为 100）。
+//   默认占比取自旧逐维上限的相对权重（1200/800/400/500/700/400/300/300/300/300）四舍五入后配平到 100。
 const STORE_LIMITS = {
-    atoms:     ['storeMinAtoms', 'storeMaxAtoms', 1200, '情节'],
-    memories:  ['storeMinMemories', 'storeMaxMemories', 800, '记忆'],
-    snapshots: ['storeMinSnapshots', 'storeMaxSnapshots', 400, '角色档案'],
-    items:     ['storeMinItems', 'storeMaxItems', 500, '物品'],
-    concepts:  ['storeMinConcepts', 'storeMaxConcepts', 700, '概念'],
-    scenes:    ['storeMinScenes', 'storeMaxScenes', 400, '场景'],
-    plans:     ['storeMinPlans', 'storeMaxPlans', 300, '计划'],
-    suspense:  ['storeMinSuspense', 'storeMaxSuspense', 300, '悬念'],
-    npcs:      ['storeMinNpcs', 'storeMaxNpcs', 300, '名册'],
-    rumors:    ['storeMinRumors', 'storeMaxRumors', 300, '传言'],   // v1.192：传言（存储上限；传言另有自己的时间衰退清扫）
+    atoms:     ['storeMinAtoms', 'storeMaxAtoms', 1200, '情节', 23],
+    memories:  ['storeMinMemories', 'storeMaxMemories', 800, '记忆', 15],
+    snapshots: ['storeMinSnapshots', 'storeMaxSnapshots', 400, '角色档案', 8],
+    items:     ['storeMinItems', 'storeMaxItems', 500, '物品', 9],
+    concepts:  ['storeMinConcepts', 'storeMaxConcepts', 700, '概念', 13],
+    scenes:    ['storeMinScenes', 'storeMaxScenes', 400, '场景', 8],
+    plans:     ['storeMinPlans', 'storeMaxPlans', 300, '计划', 6],
+    suspense:  ['storeMinSuspense', 'storeMaxSuspense', 300, '悬念', 6],
+    npcs:      ['storeMinNpcs', 'storeMaxNpcs', 300, '名册', 6],
+    rumors:    ['storeMinRumors', 'storeMaxRumors', 300, '传言', 6],   // v1.192：传言（存储上限；传言另有自己的时间衰退清扫）
 };
+/** 存储总上限默认值（条）：涵盖**所有原子数据**的合计 */
+const STORE_TOTAL_MAX_DEFAULT = 3000;
+/** 参与「存储总上限」分配的维度键（顺序 = 表顺序） */
+const STORE_SHARE_DIMS = Object.keys(STORE_LIMITS);
 
 const DIM_CAP_KEYS = Object.keys(STORE_LIMITS).map(dim => [dim, STORE_LIMITS[dim][3]]);
 
@@ -1441,9 +1447,105 @@ function storeMinFor(dim) {
 }
 // 有效上限 = max(配置上限, 保底) —— 保证任何裁剪都不会跌破保底
 
+/**
+ * 某维的**默认占比**（%，表内第 5 位；未知维度 0）
+ */
+function storeShareDefault(dim) { try { const e = STORE_LIMITS[dim]; return e ? Number(e[4]) || 0 : 0; } catch (e) { return 0; } }
+
+/**
+ * 读取 + 归一「各大类占比」：四舍五入到整数、**强制合计恰好 100**（余数归给当前最大项），
+ *   非法/缺失一律回落默认占比。返回 `{dim: 整数百分比}`（键顺序 = 表顺序）。
+ */
+function normStoreShares(raw) {
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const out = {};
+    let sum = 0;
+    for (const dim of STORE_SHARE_DIMS) {
+        const v = Number(src[dim]);
+        const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : storeShareDefault(dim);
+        out[dim] = pct;
+        sum += pct;
+    }
+    // 合计不为 100 → 差额补给「最大项」（并列取表顺序靠前者），保证四舍五入后仍然恰好 100
+    if (sum !== 100) {
+        let best = STORE_SHARE_DIMS[0], bestV = -1;
+        for (const dim of STORE_SHARE_DIMS) { if (out[dim] > bestV) { bestV = out[dim]; best = dim; } }
+        out[best] = Math.max(0, Math.min(100, out[best] + (100 - sum)));
+    }
+    return out;
+}
+
+/** 存储总上限（条）：缺省/非法 → 默认 3000 */
+function storeTotalMax() {
+    try {
+        const v = Number(cfg && cfg.storeTotalMax);
+        return Number.isFinite(v) && v > 0 ? Math.floor(v) : STORE_TOTAL_MAX_DEFAULT;
+    } catch (e) { return STORE_TOTAL_MAX_DEFAULT; }
+}
+/** 某维当前占比（%，已归一 → 合计恒为 100） */
+function storeShareOf(dim) { try { return normStoreShares(cfg && cfg.storeShare)[dim] || 0; } catch (e) { return 0; } }
+
+/**
+ * 拖动某一维占比 → **其余维度按比例补齐**到 100（四舍五入 + 余数给最大项），返回归一后的完整占比表。
+ * 规则（用户要求「动态确保满足 100%」）：
+ *   · 被拖动的维度取用户值（0-100 整数）；
+ *   · 其余维度按**原占比比例**缩放到 `100 - 该值`；
+ *   · 全部四舍五入后若合计不为 100，差额补给「除被拖动项外的最大项」（都补不动则补被拖动项）。
+ */
+function setStoreShare(dim, value) {
+    const d = String(dim || '');
+    if (STORE_SHARE_DIMS.indexOf(d) < 0) return normStoreShares(cfg && cfg.storeShare);
+    const cur = normStoreShares(cfg && cfg.storeShare);
+    const target = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    const others = STORE_SHARE_DIMS.filter((x) => x !== d);
+    const restSum = others.reduce((n, x) => n + cur[x], 0);
+    const room = 100 - target;
+    const next = {};
+    next[d] = target;
+    if (!others.length) return normStoreShares(next);
+    for (const x of others) {
+        next[x] = restSum > 0
+            ? Math.round((cur[x] / restSum) * room)          // 按原比例缩放 + 四舍五入
+            : Math.round(room / others.length);              // 原本全 0 → 均分
+    }
+    let sum = STORE_SHARE_DIMS.reduce((n, x) => n + next[x], 0);
+    if (sum !== 100) {
+        let best = null, bestV = -1;
+        for (const x of others) { if (next[x] > bestV) { bestV = next[x]; best = x; } }
+        if (!best) best = d;
+        next[best] = Math.max(0, next[best] + (100 - sum));
+    }
+    return normStoreShares(next);
+}
+
+/** 各维**有效上限**（条）：四舍五入(总上限 × 占比/100)，且不低于保底 —— UI 与诊断共用 */
+function storeEffectiveCaps() {
+    try {
+        const total = storeTotalMax();
+        const shares = normStoreShares(cfg && cfg.storeShare);
+        const out = { total: total, shares: shares, caps: {}, sum: 0 };
+        for (const dim of STORE_SHARE_DIMS) {
+            const cap = Math.max(1, Math.max(storeMinFor(dim), Math.round(total * (shares[dim] || 0) / 100)));
+            out.caps[dim] = cap;
+            out.sum += cap;
+        }
+        return out;
+    } catch (e) { return { total: STORE_TOTAL_MAX_DEFAULT, shares: {}, caps: {}, sum: 0 }; }
+}
+
+/**
+ * 某维的**有效存储上限**（v2.84.0 改口径）：
+ *   · 新口径（默认）：`四舍五入(storeTotalMax × storeShare[dim] / 100)`，且不低于保底；
+ *   · 兼容口径：未配置 `storeTotalMax` 时回落旧的逐维 `storeMax*`（老存档/未迁移配置行为不变）。
+ */
 function storeCapFor(dim) {
     try {
         const e = STORE_LIMITS[dim];
+        const total = Number(cfg && cfg.storeTotalMax);
+        if (Number.isFinite(total) && total > 0) {
+            const cap = Math.round(total * (storeShareOf(dim) / 100));
+            return Math.max(1, Math.max(cap, storeMinFor(dim)));
+        }
         const v = Number(cfg && e && cfg[e[1]]);
         const cap = Number.isFinite(v) && v > 0 ? Math.floor(v) : (e ? e[2] : 0);
         return Math.max(1, Math.max(cap, storeMinFor(dim)));
@@ -1529,6 +1631,9 @@ export {
     mergeDelta, scheduleStateDecay, runStateDecay,
     storeMinFor, storeCapFor, enforceDimCaps, repairClampNum, memoryImportance, calcTimeDecay,
     STORE_LIMITS, DIM_CAP_KEYS,
+    // v2.84.0：存储总上限 + 各大类占比（设定 → 遗忘 的滚动条 UI 与诊断共用）
+    storeTotalMax, storeShareOf, storeShareDefault, normStoreShares, setStoreShare, storeEffectiveCaps,
+    STORE_TOTAL_MAX_DEFAULT, STORE_SHARE_DIMS,
     // B8-6：修复管线共用助手（同一套文本规范化/相似度，避免重复实现）
     repairNormText, repairKeyText, repairBigrams, repairSimilarity,
     scenesUnionMergeAll, statesSubjectUnionMerge,

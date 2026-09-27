@@ -35,7 +35,9 @@ import {
 import {
     runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
 } from '../core/parallel.js';
-import { parallelExpired, importancePct } from '../core/recall.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
+import { parallelExpired, importancePct } from '../core/recall.js';
+// v2.84.0（用户要求）：存储上限 = 总上限 × 各大类占比（滚动条拖动，其余按比例补齐到 100%）
+import { setStoreShare, STORE_LIMITS } from '../core/ingest.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
 import { sortPlotSegments } from '../core/model/segment.js';
 import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
@@ -70,6 +72,7 @@ import {
 } from '../core/model/money.js';
 import { resetState as kernelResetState } from '../adapters/store.js';
 import { getSettings, setSetting, panelWidthCssValue } from '../adapters/settings.js';
+import { saveKernelCfg } from '../adapters/config-store.js';
 import { dimsCheckboxHtml } from './settings-panel.js';
 import { relTableHtml, relAction, relByWho, relRowsOf, REL_TAB_OF, relDimLabelOf, relFilterState, setRelFilter, relClearFilter, relPickState, setRelPick, relKnownNames, relPickAppendRow, relJump, relGoto, setRelPickQuery } from './rel-table.js';
 import { injectCheckAction } from './inject-check.js';
@@ -1670,6 +1673,18 @@ export async function panelAction(action, payload) {
         } else if (a === 'check-update') {
             if (typeof hooks.checkUpdate === 'function') { setNote('检查更新…'); await hooks.checkUpdate(); setNote('检查完成'); }
             else setNote('更新入口未就绪');
+        } else if (a === 'storeShare') {
+            // v2.84.0：存储占比滚动条（设定 → 遗忘）—— 被拖动项权威，其余按原比例补齐到 100%
+            const dim = String(p.dim == null ? '' : p.dim);
+            const next = (() => { try { return setStoreShare(dim, Number(p.value) || 0); } catch (e) { return null; } })();
+            if (!next) { setNote('未知维度：' + dim); result = { ok: false, reason: 'bad-dim' }; }
+            else {
+                try { cfg.storeShare = Object.assign({}, next); } catch (e) { /* 忽略 */ }
+                try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+                const label = String((STORE_LIMITS[dim] || [])[3] || dim);
+                setNote('已调整「' + label + '」占比为 ' + Math.round(Number(p.value) || 0) + '%，其余按比例补齐（合计 100%）');
+                result = Object.assign(result, { ok: true, dim: dim, shares: next });
+            }
         } else if (a === 'linkQuery') {
             // v2.83.0：关联层派生视图的查询（设定 → 约束 → 🔗 关联层）；只写页内查询词，结果渲染时现算
             const q = setLinkQuery(String(p.q == null ? '' : p.q));
@@ -2341,6 +2356,24 @@ export function bindOverlay() {
             });
         });
         if (typeof el.addEventListener === 'function') {
+            // v2.84.0：滚动条拖动时**实时刷新读数**（写配置与重绘留到 change/松手，避免拖动过程抖动与频繁落盘）
+            el.addEventListener('input', (e) => {
+                try {
+                    const tg = e && e.target;
+                    if (!tg || !tg.dataset || String(tg.type) !== 'range') return;
+                    const ds2 = tg.dataset || {};
+                    if (ds2.fttShare === undefined && ds2.fttCfg === undefined) return;
+                    const box = (tg.closest && tg.closest('.ftt-field-range')) || el;
+                    const sel = (ds2.fttShare !== undefined)
+                        ? ('[data-ftt-share-out="' + ds2.fttShare + '"]')
+                        : ('[data-ftt-range-out="' + ds2.fttCfg + '"]');
+                    const out = (box && typeof box.querySelector === 'function') ? box.querySelector(sel) : null;
+                    if (!out) return;
+                    const num = Number(tg.value);
+                    const isPct = String(ds2.fttCfg || '') === 'storage.worldbookProbability';
+                    out.textContent = isPct ? (Math.round(num) + '%') : String(Math.round(num * 1000) / 1000);
+                } catch (err) { /* 读数刷新失败不影响拖动 */ }
+            });
             el.addEventListener('change', (e) => {
                 const tg = e && e.target;
                 if (!tg || !tg.dataset) return;
@@ -2366,6 +2399,7 @@ export function bindOverlay() {
                 }
                 if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
                 if (tg.dataset.fttLinkq !== undefined) { void panelAction('linkQuery', { q: tg.value }); return; }
+                if (tg.dataset.fttShare !== undefined) { void panelAction('storeShare', { dim: tg.dataset.fttShare, value: tg.value }); return; }
                 if (tg.dataset.fttV2 !== undefined) {
                     const k = String(tg.dataset.fttV2);
                     const raw = (tg.type === 'checkbox') ? !!tg.checked : String(tg.value == null ? '' : tg.value);

@@ -44,7 +44,7 @@ A('A1 两项已从「基础」页控件表移除、增入「提取记忆」页�
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     return IMP_KEYS.every((k) => base.indexOf(k) < 0 && ex.indexOf(k) >= 0)
-        && info.totalControls === 176 && m.base === 9 && m.extract === 24;   // v2.83.0：关联层 +3 → 176
+        && info.totalControls === 171 && m.base === 9 && m.extract === 24;   // v2.84.0：存储上限改口径 −5 → 171
 })(), J({ base: keysOf('base'), extractCount: keysOf('extract').length, total: settingsPagesInfo().totalControls }));
 
 A('A2 键名与标签**逐字不变**（V1 文案；只换页面，不改语义）', (() => {

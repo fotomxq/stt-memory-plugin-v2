@@ -429,15 +429,15 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
-            "key": "storeMinAtoms",
-            "label": "情节保底",
-            "hint": "默认 100：自动机制不会清到该条数以下",
+            "key": "storeTotalMax",
+            "label": "存储总上限（所有原子数据合计）",
+            "hint": "默认 3000 条：情节 / 记忆 / 角色档案 / 物品 / 概念 / 场景 / 计划 / 悬念 / 名册 / 传言 的**合计**上限",
             "type": "text"
         },
         {
-            "key": "storeMaxAtoms",
-            "label": "情节上限",
-            "hint": "默认 400：常规裁剪目标",
+            "key": "storeMinAtoms",
+            "label": "情节保底",
+            "hint": "默认 100：自动机制不会清到该条数以下",
             "type": "text"
         },
         {
@@ -447,21 +447,9 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
-            "key": "storeMaxMemories",
-            "label": "记忆上限",
-            "hint": "默认 600",
-            "type": "text"
-        },
-        {
             "key": "storeMinSnapshots",
             "label": "角色档案保底",
             "hint": "默认 100",
-            "type": "text"
-        },
-        {
-            "key": "storeMaxSnapshots",
-            "label": "角色档案上限",
-            "hint": "默认 300",
             "type": "text"
         },
         {
@@ -471,21 +459,9 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
-            "key": "storeMaxItems",
-            "label": "物品上限",
-            "hint": "默认 400",
-            "type": "text"
-        },
-        {
             "key": "storeMinConcepts",
             "label": "概念保底",
             "hint": "默认 200",
-            "type": "text"
-        },
-        {
-            "key": "storeMaxConcepts",
-            "label": "概念上限",
-            "hint": "默认 600",
             "type": "text"
         },
         {
@@ -615,12 +591,6 @@ export const SETTINGS_CONTROLS = {
             "key": "storeMinRumors",
             "label": "存储保底",
             "hint": "默认 0 = 无硬保底",
-            "type": "text"
-        },
-        {
-            "key": "storeMaxRumors",
-            "label": "存储上限",
-            "hint": "默认 200",
             "type": "text"
         },
     
@@ -886,7 +856,7 @@ export const SETTINGS_CONTROLS = {
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
 import { clamp } from '../core/util.js';
-import { CN_KEY_MAP } from '../core/config.js';
+import { CN_KEY_MAP, defaultCfg } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { worldbookNames } from '../host/worldbook.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
@@ -968,6 +938,106 @@ export function applySettingsControl(key, raw) {
 }
 
 /** 单个控件 HTML（V1 同款字段/开关结构：`.ftt-field` / `.ftt-switch` / `.ftt-slider` / `data-ftt-cfg`） */
+/**
+ * v2.84.0（用户要求）：「设定中所有针对百分比的 UI 交互，统一为可交互滚动条拖动」。
+ *   本表 = 需要渲染成**滚动条**的控件键 → `{ min, max, step, unit? }`（单位为空时按比例显示为小数）。
+ *   说明：
+ *   · 只登记「比例 / 阈值 / 概率 / 相似度 / 占比」这类 0-1（或 0-100%）语义的键；
+ *     **条数、年限、楼层数等计数类控件保持数字输入**（拖不准，反而不便精确填写）。
+ *   · 滚动条上的**浅色刻度 = 该项默认值的位置**（`--ftt-range-def`），右侧同时给出「默认 X」文字提示。
+ */
+export const RANGE_SPECS = Object.freeze({
+    // 相似度 / 相关性阈值
+    repairTagSimHigh: { min: 0.05, max: 0.95, step: 0.01 },
+    repairTagSimLow: { min: 0, max: 0.9, step: 0.01 },
+    conceptRepairSim: { min: 0.1, max: 0.95, step: 0.01 },
+    memoryRepairSim: { min: 0.1, max: 0.95, step: 0.01 },
+    suspenseRepairSim: { min: 0.1, max: 0.95, step: 0.01 },
+    itemRepairSim: { min: 0.1, max: 0.95, step: 0.01 },
+    stateRepairMatchSim: { min: 0, max: 1, step: 0.01 },
+    vectorMinScore: { min: 0, max: 1, step: 0.01 },
+    rumorParallelLinkSim: { min: 0, max: 1, step: 0.01 },
+    // 比例 / 占比
+    repairSampleRatio: { min: 0.02, max: 1, step: 0.01 },
+    itemLowUsesRatio: { min: 0, max: 1, step: 0.01 },
+    atomsRecentRatio: { min: 0, max: 1, step: 0.01 },
+    lowUseForgetRatio: { min: 0, max: 1, step: 0.01 },
+    lowUseForgetProtectImportance: { min: 0, max: 1, step: 0.01 },
+    atomCompactTarget: { min: 0, max: 1, step: 0.05 },
+    atomCompactRatio: { min: 0, max: 1, step: 0.01 },
+    // 触发比例 / 阈值
+    stateDecayRatio: { min: 0, max: 1, step: 0.01 },
+    stateDecayCutoff: { min: 0, max: 1, step: 0.01 },
+    memoryForgetRatio: { min: 0, max: 1, step: 0.01 },
+    memoryForgetCutoff: { min: 0, max: 1, step: 0.01 },
+    parallelDecayRatio: { min: 0, max: 1, step: 0.01 },
+    parallelDecayCutoff: { min: 0, max: 1, step: 0.01 },
+    rumorDecayRatio: { min: 0, max: 1, step: 0.01 },
+    rumorDecayCutoff: { min: 0, max: 1, step: 0.01 },
+    // 概率
+    rumorFissionChance: { min: 0, max: 1, step: 0.01 },
+    rumorParallelLinkChance: { min: 0, max: 1, step: 0.01 },
+    // 重要性（0-1 / 0-0.5）
+    importanceBase: { min: 0, max: 1, step: 0.01 },
+    importancePerUse: { min: 0, max: 0.5, step: 0.01 },
+    // 百分比刻度（0-100）
+    'storage.worldbookProbability': { min: 0, max: 100, step: 1, unit: '%' },
+    // 存储总上限（条）：计数但适合拖动粗调，右侧仍有精确读数
+    storeTotalMax: { min: 300, max: 20000, step: 100, unit: '条' },
+});
+
+/** 读取某项的**默认值**（`defaultCfg`，支持 `storage.` / 点路径）；缺失 → null */
+export function controlDefault(key) {
+    try {
+        const path = String(key || '').split('.');
+        let cur = defaultCfg;
+        for (const p of path) { if (cur == null || typeof cur !== 'object') return null; cur = cur[p]; }
+        return (cur === undefined) ? null : cur;
+    } catch (e) { return null; }
+}
+/** 比例显示（去掉多余尾零；整数不带小数点） */
+function fmtRatio(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '';
+    return String(Math.round(n * 1000) / 1000);
+}
+/** 默认值在滚动条上的位置（0-100%） */
+function defPosOf(def, spec) {
+    try {
+        if (!Number.isFinite(Number(def))) return null;
+        const p = ((Number(def) - spec.min) / (spec.max - spec.min)) * 100;
+        return Math.max(0, Math.min(100, Math.round(p * 10) / 10));
+    } catch (e) { return null; }
+}
+
+/**
+ * 滚动条控件 HTML（比例类统一形态）：`label + range + 实时读数 + 默认值提示`。
+ * 拖动时由面板的 `input` 委托实时刷新读数；`change`（松手）才写回配置并落盘。
+ * @param {object} c 控件定义（需在 `RANGE_SPECS` 内）
+ * @param {object} spec `{min,max,step,unit?}`
+ */
+export function rangeControlHtml(c, spec) {
+    const key = String(c.key || '');
+    const label = String(c.label || cnLabel(key));
+    const hint = String(c.hint || '');
+    const tip = hint ? (' title="' + esc(hint) + '"') : '';
+    const mark = hint ? (' <span class="ftt-hint-mark"' + tip + '>ⓘ</span>') : '';
+    const raw = readControl(key);
+    const def = controlDefault(key);
+    const num = Number(raw);
+    const cur = Number.isFinite(num) ? num : (Number.isFinite(Number(def)) ? Number(def) : spec.min);
+    const pos = defPosOf(def, spec);
+    const unit = String(spec.unit || '');
+    const show = (v) => (unit === '%' ? (fmtRatio(v) + '%') : fmtRatio(v));
+    return '<div class="ftt-field ftt-field-range"' + tip + '><label>' + esc(label) + mark + '</label>'
+        + '<input type="range" data-ftt-cfg="' + esc(key) + '" min="' + attr2(spec.min) + '" max="' + attr2(spec.max) + '" step="' + attr2(spec.step) + '"'
+        + ' value="' + attr2(cur) + '"' + (pos === null ? '' : (' style="--ftt-range-def:' + pos + '%"')) + tip + '>'
+        + '<output class="ftt-range-out" data-ftt-range-out="' + esc(key) + '">' + esc(show(cur)) + '</output>'
+        + '<span class="ftt-muted ftt-range-def">默认 ' + esc(show(def === null ? spec.min : def))
+        + (pos === null ? '' : '（滚动条上的浅色刻度）') + '</span></div>';
+}
+const attr2 = (v) => String(v == null ? '' : v).replace(/"/g, '&quot;');
+
 export function settingsControlHtml(c) {
     const key = String(c.key || '');
     const label = String(c.label || cnLabel(key));
@@ -1002,6 +1072,8 @@ export function settingsControlHtml(c) {
     if (type === 'textarea') {
         return '<div class="ftt-field ftt-field-col"><label' + tip + '>' + esc(label) + mark + '</label><textarea data-ftt-cfg="' + esc(key) + '"' + tip + ' rows="4">' + esc(v == null ? '' : v) + '</textarea></div>';
     }
+    // v2.84.0：比例 / 阈值 / 概率 / 占比 → 统一滚动条（含默认值刻度与文字提示）
+    if (type === 'text' && RANGE_SPECS[key]) return rangeControlHtml(c, RANGE_SPECS[key]);
     const missing = (v === undefined);
     return '<div class="ftt-field"><label' + tip + '>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + mark + '</label>'
         + '<input type="' + (type === 'number' ? 'number' : 'text') + '" data-ftt-cfg="' + esc(key) + '"' + tip + ' value="' + esc(v == null ? '' : v) + '"></div>';

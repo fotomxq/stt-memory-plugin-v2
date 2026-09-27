@@ -22,7 +22,7 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { SETTINGS_CONTROLS, settingsPageHtml, settingsPagesInfo } from '../../ui/settings-pages.js';
 import { dimCap } from '../../core/model/scalars.js';
-import { enforceDimCaps, STORE_LIMITS } from '../../core/ingest.js';
+import { enforceDimCaps, storeCapFor, STORE_LIMITS, STORE_TOTAL_MAX_DEFAULT } from '../../core/ingest.js';
 
 const R = makeReporter('settings-capacity v2.76.0 上限提高与设定归位');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -65,11 +65,13 @@ A('C2 存储上限整体提高：合计 5600（此前 3700），任何单类都�
         && Number(defaultCfg.storeMinAtoms) === 100 && Number(defaultCfg.storeMinMemories) === 200;
 })(), J({ 存储合计: STORE_KEYS.reduce((n, k) => n + Number(defaultCfg[k]), 0) }));
 
-A('C3 上限仍可由用户改（设定项在册）且真实生效：改小 → 入库硬截断随之收紧；改大 → 候选上限放宽', (() => {
+A('C3 上限仍可由用户改（设定项在册）且真实生效：改小 → 入库硬截断随之收紧；存储总上限/占比也在册（v2.84.0 口径）', (() => {
     const injKeys = SETTINGS_CONTROLS.extract.map((c) => String(c.key));
     const storeKeys = SETTINGS_CONTROLS.forget.map((c) => String(c.key));
     const upOk = ['maxAtoms', 'maxMemories', 'charBudget'].every((k) => injKeys.indexOf(k) >= 0)
-        && ['storeMaxAtoms', 'storeMaxMemories'].every((k) => storeKeys.indexOf(k) >= 0);
+        // v2.84.0（用户要求）：逐维 storeMax* 由「总上限 + 占比滚动条」取代 → 在册的是 storeTotalMax + 保底
+        && storeKeys.indexOf('storeTotalMax') >= 0 && storeKeys.indexOf('storeMinAtoms') >= 0
+        && storeKeys.indexOf('storeMaxAtoms') < 0;
     const long = '甲'.repeat(80);
     const keep = cfg.dimCharLimits.atoms;
     cfg.dimCharLimits.atoms = 30;
@@ -110,28 +112,35 @@ A('C6 分析记忆页对应分节与短提示：货币记录（记录口径）+ 
         && h.indexOf('决定「分析记忆」时是否抽取货币') > 0 && h.indexOf('入库时的硬截断') > 0;
 })(), '见断言');
 
-A('C7 总量口径：v2.78.0 纯搬运后为 173；v2.83.0 关联层 +3 → 176（base 9 / analyze 20 / extract 24）', (() => {
+A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5（base 9 / analyze 20 / extract 24 / forget 24 / rumors 13）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 176 && m.analyze === 20 && m.extract === 24 && m.base === 9 && m.feed === 37;
+    return info.totalControls === 171 && m.analyze === 20 && m.extract === 24 && m.base === 9 && m.feed === 37
+        && m.forget === 24 && m.rumors === 13;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 
-A('C8 兜底口径同步：清空 `cfg.storeMaxAtoms` 后仍按**新兜底**（1200）裁剪，不回落到旧上限', (() => {
+A('C8 兜底口径（v2.84.0）：默认配置走**新口径**（总上限 3000 → 情节 3000×23% = 690）；把总上限置 0 或删掉该键则走旧的逐维 `storeMax*` 兼容口径（老存档 / V1 黄金样本可用）', (() => {
     const st = emptyState();
     const many = [];
     for (let i = 0; i < 1300; i++) many.push({ id: 'a' + i, text: '第' + i + '条情节正文足够长。', date: '1919-11-01', floorStart: 0, floorEnd: 0, tags: [], importance: 0.2, uses: 0 });
     st.atoms = many;
     setKernelState(st);
-    const keep = cfg.storeMaxAtoms;
-    let cut = 0;
+    const keep = { total: cfg.storeTotalMax, shares: cfg.storeShare, max: cfg.storeMaxAtoms };
+    let cut = 0, legacyZero = null, legacyMissing = null;
     try {
-        delete cfg.storeMaxAtoms;                 // 走 STORE_LIMITS 的兜底值
+        cfg.storeTotalMax = 3000;
+        cfg.storeShare = JSON.parse(JSON.stringify(defaultCfg.storeShare));
         const r = enforceDimCaps();
         cut = Number((r && r.cut) || 0);
-    } finally { cfg.storeMaxAtoms = keep; }
-    return cut === 100 && (state.atoms || []).length === 1200
-        && J(STORE_LIMITS.atoms.slice(2)) === J([1200, '情节']);
+        cfg.storeTotalMax = 0; cfg.storeMaxAtoms = 1200;          // 显式 0 → 旧口径
+        legacyZero = storeCapFor('atoms');
+        delete cfg.storeTotalMax;                                  // 缺键（未迁移的老配置）→ 旧口径
+        legacyMissing = storeCapFor('atoms');
+    } finally { cfg.storeTotalMax = keep.total; cfg.storeShare = keep.shares; cfg.storeMaxAtoms = keep.max; }
+    return cut === 610 && (state.atoms || []).length === 690
+        && legacyZero === 1200 && legacyMissing === 1200
+        && STORE_TOTAL_MAX_DEFAULT === 3000 && J(STORE_LIMITS.atoms.slice(2, 5)) === J([1200, '情节', 23]);
 })(), J({ atoms: (state.atoms || []).length }));
 
 R.done();
