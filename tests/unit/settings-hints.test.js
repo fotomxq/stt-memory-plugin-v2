@@ -39,7 +39,7 @@ const shortHints = (h) => (h.match(/<div class="ftt-muted" data-ftt-short-hint>(
 A('S1 三页仍渲染（设定页容器 + 各自分节）；遗忘四分节标题与关键控件、传言/平行全部控件都在', (() => {
     const f = htmlOf('forget'), r = htmlOf('rumors'), p = htmlOf('parallels');
     return f.indexOf('状态记录衰退（只按剧情日期）') >= 0 && f.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
-        && f.indexOf('存储保底 / 上限') >= 0 && f.indexOf('通用遗忘清扫') >= 0
+        && f.indexOf('存储总上限与各大类占比') >= 0 && f.indexOf('通用遗忘清扫') >= 0
         && f.indexOf('data-ftt-cfg="stateDecayEnabled"') >= 0 && f.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0
         && SETTINGS_CONTROLS.rumors.every((c) => r.indexOf('data-ftt-cfg="' + c.key + '"') >= 0)
         && SETTINGS_CONTROLS.parallels.every((c) => p.indexOf('data-ftt-cfg="' + c.key + '"') >= 0)

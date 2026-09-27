@@ -45,6 +45,11 @@ let floorNow = 10;
 function boot(stateLike, cfgPatch) {
     Object.assign(cfg, clone(defaultCfg));
     if (cfgPatch) Object.assign(cfg, clone(cfgPatch));
+    // v2.84.0（**有意偏离 V1**）：存储上限默认口径改为「总上限 3000 × 各大类占比」；
+    //   本文件的黄金样本是**真实 V1 逐维 `storeMax*`** 录制的 → 显式把总上限置 0，
+    //   让 `storeCapFor()` 走「兼容口径（读 storeMax*）」，从而继续逐字校验 V1 的遗忘算法。
+    //   新口径的行为由 `tests/unit/store-cap.test.js` 覆盖。
+    cfg.storeTotalMax = 0;
     setScopeKey('甲');
     setLastMessageId(floorNow);
     setKernelState(Object.assign(emptyState(), clone(stateLike || {})));
@@ -226,14 +231,17 @@ await A('P4 forgetRunAll：一次跑齐 状态衰退 / 记忆遗忘 / 通用清�
         && r.sweep.swept >= 1 && typeof r.decay.removed === 'number' && typeof r.forget.removed === 'number';
 }, '');
 
-R.assert('U1 遗忘设定页：V1 五分节 + 3 个开关 + 28 个控件 + 只读诊断行（当前条数/上限/保底/冷却）', (() => {
+R.assert('U1 遗忘设定页：V1 四分节（存储节改名并新增占比滚动条）+ 3 个开关 + 24 个控件 + 只读诊断行（当前条数/上限/保底/冷却）', (() => {
     boot(G.inputs.memScenario, MEM_CFG);
     const html = settingsPageHtml('forget');
     return html.indexOf('状态记录衰退（只按剧情日期）') >= 0 && html.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
-        && html.indexOf('存储保底 / 上限') >= 0 && html.indexOf('通用遗忘清扫（概念 / 场景 / 名册 / 计划 / 悬念 / 角色档案）') >= 0
+        && html.indexOf('存储总上限与各大类占比') >= 0 && html.indexOf('通用遗忘清扫（概念 / 场景 / 名册 / 计划 / 悬念 / 角色档案）') >= 0
         && html.indexOf('data-ftt-cfg="stateDecayEnabled"') >= 0 && html.indexOf('data-ftt-cfg="memoryForgetEnabled"') >= 0
         && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0
-        && SETTINGS_CONTROLS.forget.length === 28;
+        // v2.84.0：5 个逐维上限控件（storeMaxAtoms…Concepts）被「总上限 + 占比滚动条」取代 → 28 → 24
+        && html.indexOf('data-ftt-cfg="storeTotalMax"') >= 0 && html.indexOf('data-ftt-share="atoms"') >= 0
+        && html.indexOf('data-ftt-cfg="storeMaxAtoms"') < 0
+        && SETTINGS_CONTROLS.forget.length === 24;
 })(), '');
 
 await A('U2 面板接线：切到遗忘子页渲染该页（不再平铺），FTT 遗忘入口在 index 中导出', async () => {

@@ -84,7 +84,7 @@ await A('A2 约束页**无配置控件**（正文由 ui/constraint-page.js 渲�
     const info = settingsPagesInfo();
     const page = info.pages.filter((p) => p.id === 'constraint')[0] || {};
     return Array.isArray(SETTINGS_CONTROLS.constraint) && SETTINGS_CONTROLS.constraint.length === 0
-        && page.controls === 0 && info.totalControls === 176
+        && page.controls === 0 && info.totalControls === 171
         && String(settingsPageHtml('constraint')) === '';      // 不渲染「（本页为动作页…）」兜底空态
 })(), () => settingsPagesInfo().pages.filter((p) => p.id === 'constraint'));
 

@@ -756,7 +756,14 @@ const defaultCfg = {
     maxNpcs: 80,                  // v1.143：名册条数上限（此前无名册上限，靠提示词约束）
     // v1.147：**存储保底/上限**（与上面「注入条数上限」区分）—— 防止清理/情节总结/遗忘把库存打到过低：
     //   保底 = 任何自动清理都不得跌破；上限 = 常规裁剪到该值（上限取 max(上限, 保底)）
-    storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100
+    // v2.84.0（用户要求）：「存储上限」改为**总上限 + 各大类占比** ——
+    //   · `storeTotalMax`：**所有原子数据的合计上限**（默认 3000 条），不再逐维填绝对条数；
+    //   · `storeShare`：各大类占该总上限的**百分比**（整数、合计恒为 100，由 UI 滚动条动态维持）；
+    //     某维有效上限 = 四舍五入(总上限 × 占比 / 100)，且不低于该维保底（`storeMin*`）。
+    //   · 旧的逐维 `storeMax*` 键**保留兼容**（仅在 `storeTotalMax` 缺失时作为回落口径），设定页不再暴露。
+    storeTotalMax: 3000,             // 所有原子数据合计上限（条）
+    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 8, plans: 6, suspense: 6, npcs: 6, rumors: 6 },
+    storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100（上限见 storeTotalMax × storeShare.atoms）
     storeMinMemories: 200, storeMaxMemories: 800,    // 记忆：保底 200
     storeMinSnapshots: 100, storeMaxSnapshots: 400,  // 角色档案：保底 100
     storeMinItems: 150, storeMaxItems: 500,          // 物品：保底 150

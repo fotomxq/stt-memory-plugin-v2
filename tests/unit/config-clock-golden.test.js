@@ -26,6 +26,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
     // V2 专有键（V1 无）：界面形态 3 项 + API 三通道 2 项（v2.35.0 起；`''` = 未显式选择，按旧数据迁移推断）
     const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'apiChannel', 'apiProfileId',
+        // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
+        'storeTotalMax', 'storeShare',
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
         'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose'];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip'];
