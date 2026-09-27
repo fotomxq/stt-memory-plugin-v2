@@ -122,7 +122,9 @@ function boot(stateLike, cfgPatch) {
     return state;
 }
 const promptView = (p) => (p === null || p === undefined ? null : p.map(m => ({ role: m.role, content: m.content })));
-const toastsView = () => clone(toasts);
+// v2.87.0（有意偏离登记）：内核 `warn(...)` 现在**额外**发一条用户可见异常提示（文案前缀 `⚠️ `，kind=error）——
+//   V1 没有这条通道，故 V1 逐项比对时把它过滤掉；该通道本身由 `tests/unit/error-notify.test.js` 专门校验。
+const toastsView = () => clone(toasts).filter((t) => { const msg = Array.isArray(t) ? t[1] : ((t && (t.msg || t.text)) || ''); return String(msg).indexOf('⚠️ ') !== 0; });
 const toastsExpected = (v1) => v1.map(t => [String(t.kind || ''), String(t.msg || '')]);
 const dropModel = (o) => { const c = clone(o); delete c.model; return c; };
 const tombs = (dim) => Object.keys(((state.deleted || {})[dim]) || {}).sort();

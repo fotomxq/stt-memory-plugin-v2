@@ -244,4 +244,56 @@ A('C6 区间口径：内核 lastMessageId 落后（新楼刚入聊天、宿主�
         '见断言');
 }
 
+// ============================================================
+// E 组（v2.87.0 修复）：**聊天未就绪时不得清空「已处理楼层」台账**
+// 用户报告：「总览的未摘要每次更新或重启后，都会提示大量早期楼层，该问题在之前版本已经存在。」
+// 根因：插件启动/更新的时刻聊天可能尚未同步（`ctx.chat` 为空 / 消息无正文）→ `hashFloorText()` 全为空，
+//   而旧口径「无正文 → 丢弃该标记」会把**整本台账**清空并盖上当前版本签名；聊天同步后台账已丢失，
+//   只剩「已有记忆数据」兜底 → 早期楼层（数据早被上限裁剪）成片变回未摘要，且随下一次保存永久落盘。
+// 本批：`host/floors.js#chatReadyForFloors()` 守卫三条维护路径（迁移 / 漂移防呆 / 归位对账）+ 扫描直接返回空。
+// ============================================================
+{
+    const chatOf = (n) => { const a = []; for (let i = 0; i < n; i++) a.push({ is_user: i % 2 === 0, role: i % 2 === 0 ? 'user' : 'assistant', mes: '第' + i + '楼：角色甲在仓库清点货物并记下账目。' }); return a; };
+    const marksOf = (n) => { const a = []; for (let i = 1; i <= n; i++) a.push({ f: i, h: 'old' + i }); return a; };
+    const stWithMarks = (n) => { const st = emptyState(); st.processedFloors = marksOf(n); st.processedVer = 'v1.100:old'; st.lastKnownFloor = n; return st; };
+    /** 换一份聊天上下文（模拟「插件刚启动、聊天还没同步」vs「聊天已同步」） */
+    const useChat = (chat, lastId) => { installGlobalHost(makeHost({ chat }), doc); setLastMessageId(lastId); };
+
+    // E1 未就绪：扫描直接返回空、`chatReady:false`，**台账一条不少**（旧行为会清成 0）
+    setKernelState(stWithMarks(30)); useChat([], -1);
+    const scanCold = scanPendingFloors();
+    A('E1 聊天未就绪：扫描返回空 + `chatReady:false`/`skipped.chatNotReady`，**台账 30 条原样保留**（旧行为：清空为 0）',
+        scanCold.floors.length === 0 && scanCold.chatReady === false && scanCold.skipped.chatNotReady === 1
+        && state.processedFloors.length === 30 && (state.processedVer || '') === 'v1.100:old',
+        J({ floors: scanCold.floors, marks: state.processedFloors.length, ver: state.processedVer }));
+
+    // E2 未就绪：三条维护路径都**延后**（不丢标记、不盖新签名）
+    const m1 = migrateProcessedFloorsV170();
+    const m2 = processedDriftGuard(false, true);
+    const m3 = reconcileProcessedFloors(false);
+    A('E2 未就绪：迁移 / 漂移防呆 / 归位对账一律 `skipped:chat-not-ready`，台账与版本签名均不变',
+        m1.skipped === 'chat-not-ready' && m2.skipped === 'chat-not-ready' && m3.skipped === 'chat-not-ready'
+        && state.processedFloors.length === 30 && (state.processedVer || '') === 'v1.100:old',
+        J({ m1: m1, m2: m2, m3: m3, marks: state.processedFloors.length }));
+
+    // E3 就绪后：同一份台账被正常刷新（哈希变新、条数不丢），早期楼层**不会**冒出来
+    setKernelState(stWithMarks(30)); useChat(chatOf(31), 30);
+    const scanWarm = scanPendingFloors();
+    const refreshed = (state.processedFloors || []).every((x) => String(x.h || '') !== '' && String(x.h).indexOf('old') !== 0);
+    A('E3 聊天就绪后：台账被正常刷新（哈希全部更新、30 条不丢）→ 未摘要为空（不再成片冒早期楼层）',
+        refreshed && state.processedFloors.length === 30 && scanWarm.floors.length === 0 && scanWarm.chatReady !== false,
+        J({ floors: scanWarm.floors, marks: state.processedFloors.length, skipped: scanWarm.skipped }));
+
+    // E4 回归：未就绪 → 就绪 的完整重启序列后，台账仍是 30 条（修复前后差异就在这一步）
+    setKernelState(stWithMarks(30)); useChat([], -1);
+    scanPendingFloors(); scanPendingFloors();                       // 启动期多次渲染
+    migrateProcessedFloorsV170(); reconcileProcessedFloors(false);
+    const survived = state.processedFloors.length;
+    useChat(chatOf(31), 30);
+    const scanAfter = scanPendingFloors();
+    A('E4 重启序列（未就绪多次渲染 → 就绪）后：台账 30 条存活、未摘要为空',
+        survived === 30 && state.processedFloors.length === 30 && scanAfter.floors.length === 0,
+        J({ survived: survived, marks: state.processedFloors.length, floors: scanAfter.floors }));
+}
+
 R.done();

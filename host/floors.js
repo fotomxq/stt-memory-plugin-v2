@@ -7,7 +7,7 @@
 // ============================================================
 import { hashText } from '../core/util.js';
 import { applyFeedRegex } from '../core/prompt.js';
-import { state, cfg, saveState, log, warn, getLastMessageId } from '../core/model/runtime.js';
+import { state, cfg, saveState, log, warn, notifyError, getLastMessageId } from '../core/model/runtime.js';
 import { floorCoverage } from '../core/floor-cover.js';
 import { getCtx } from './st-api.js';
 // v2.44.0（用户报告）：取文**保留 HTML**、在「过滤之后、交给 AI 之前」才剔标签 —— 顺序不可颠倒：
@@ -165,6 +165,34 @@ export function isFloorProcessed(i) {
     } catch (e) { return false; }
 }
 
+/**
+ * **聊天是否已就绪**（v2.87.0 修复「重启/更新后大量早期楼层冒出来」的关键守卫）。
+ * 用户报告：「总览的未摘要每次更新或重启后，都会提示大量早期楼层，该问题在之前版本已经存在。」
+ * 根因：插件启动/更新的时刻**聊天可能尚未同步进宿主 ctx**（`getCtx().chat` 为空或消息还没有正文）。
+ *   此时 `hashFloorText()` 一律返回 `''`，而 `migrateProcessedFloorsV170()` 的口径是「无正文 → 丢弃该标记」
+ *   → **整本台账被清空**并写入当前版本签名；等聊天同步完成后，台账已丢失，只剩「已有记忆数据」覆盖兜底，
+ *   于是**早期楼层**（数据早被上限裁剪掉的那批）成片变回「未摘要」，且会随下一次保存永久落盘。
+ * 判据（廉价、只读）：聊天为空 → 未就绪；否则取首/中/尾三楼采样，**全部拿不到正文** → 未就绪。
+ * @returns {{ready:boolean, reason:string, total:number}}
+ */
+export function chatReadyForFloors() {
+    try {
+        const ctx = getCtx();
+        const chat = (ctx && Array.isArray(ctx.chat)) ? ctx.chat : [];
+        const total = chat.length;
+        if (total <= 0) return { ready: false, reason: 'no-chat', total: total };
+        const probes = [0, Math.floor((total - 1) / 2), total - 1];
+        let ok = 0;
+        for (const i of probes) {
+            const m = chat[i];
+            if (!m) continue;
+            if (String(floorStableText(m) || m.mes || '').trim()) ok++;
+        }
+        if (ok === 0) return { ready: false, reason: 'no-text', total: total };
+        return { ready: true, reason: '', total: total };
+    } catch (e) { return { ready: false, reason: 'error', total: 0 }; }
+}
+
 /** 台账归位刷新（V1 v1.170/v1.174 口径：签名不符时把已知楼层按当前算法重算哈希） */
 export function migrateProcessedFloorsV170() {
     try {
@@ -173,6 +201,14 @@ export function migrateProcessedFloorsV170() {
         if ((state.processedVer || '') === processedVerTag()) return { migrated: 0, skipped: 'current' };
         const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
         if (!pf.length) { state.processedVer = processedVerTag(); return { refreshed: 0, migrated: 0 }; }
+        // v2.87.0：聊天未就绪时**绝不动台账**（否则「无正文 → 丢弃标记」会把整本台账清空，见 chatReadyForFloors）
+        const ready = chatReadyForFloors();
+        if (!ready.ready) {
+            try { log('摘要', { action: '已处理楼层迁移延后（聊天未就绪）', reason: ready.reason, marks: pf.length }); } catch (e) { /* 忽略 */ }
+            // v2.87.0：不再「什么都没反应」——给一次**节流**的用户提示（同文案 60s 内只弹一次）
+            try { notifyError('聊天尚未就绪，已处理楼层台账暂未刷新（不影响已分析记录）'); } catch (e) { /* 忽略 */ }
+            return { refreshed: 0, migrated: 0, skipped: 'chat-not-ready' };
+        }
         const lastId = Number(getLastMessageId());
         let refreshed = 0, dropped = 0;
         const next = [];
@@ -237,6 +273,8 @@ export function processedDriftGuard(notify, force) {
     try {
         const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
         if (pf.length < 10) return { skipped: 'too-few' };
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { skipped: 'chat-not-ready' };      // v2.87.0：聊天未就绪 → 不判定漂移、不动台账
         const lastId = Number(getLastMessageId());
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
         const known = Number(state.lastKnownFloor);
@@ -298,6 +336,9 @@ export function reconcileProcessedFloors(notify) {
     try {
         const pf = state.processedFloors || [];
         if (!pf.length) return { kept: 0, dropped: 0 };
+        // v2.87.0：聊天未就绪 → 不归位、不丢标记（**先于**版本判定，保证重启期的原因一致可诊断）
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { kept: pf.length, skipped: 'chat-not-ready' };
         if ((state.processedVer || '') !== processedVerTag()) return { skipped: 'pre-upgrade' };   // 升级期由 isFloorProcessed 逐楼刷新
         const lastId = Number(getLastMessageId());
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
@@ -354,9 +395,15 @@ export function scanPendingFloors(opts) {
     const end = Number.isFinite(Number(o.endFloor)) ? Number(o.endFloor) : tail;
     const lastIdStale = Number.isFinite(lastId) && lastId >= 0 && lastId !== tail;
     const startFloor = Math.max(0, Number(o.startFloor) || 0);
-    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0 };
+    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0, chatNotReady: 0 };
     const out = [];
     try {
+        // v2.87.0：聊天未就绪（插件刚启动 / 更新后尚未同步）→ **不做任何台账维护**，并如实标记，避免误判大批楼层。
+        const ready = chatReadyForFloors();
+        if (!ready.ready) {
+            skipped.chatNotReady = 1;
+            return { floors: [], startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, skipped: skipped, chatReady: false, chatReason: ready.reason };
+        }
         if (o.maintain !== false) {
             try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ }
             try { processedDriftGuard(false); } catch (e) { /* 忽略 */ }
