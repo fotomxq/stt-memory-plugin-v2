@@ -191,7 +191,7 @@ function memoriesRow(m, now) {
     const tags = tagsLine(m.tags);
     const relSum = '<div class="ftt-note ftt-note-info">'
         + (people.length ? ('关联 ' + people.length + '：' + esc(relSummaryLine('memories', m.id, 6))) : '未记录知情者（按归属者保守回退）')
-        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="memories" data-id="' + esc(m.id) + '" title="在「记忆 → 关系表」里查看 / 新建这条记忆的知情关联">🔗 关联' + (people.length ? ('（' + people.length + '）') : '') + '</span></div>';
+        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="memories" data-id="' + esc(m.id) + '" title="在「设定 → 约束 → 关系表」里查看 / 新建这条记忆的知情关联">🔗 关联' + (people.length ? ('（' + people.length + '）') : '') + '</span></div>';
     const devs = people.filter((x) => String(x.view || '').trim()).slice(0, 3)
         .map((x) => String(x.who || '').replace(/^.*·/, '') + ' ' + esc(cut(x.view, 24)));
     const devLine = devs.length ? ('<div class="ftt-note ftt-note-warn">差异：' + devs.join(' · ') + '</div>') : '';
@@ -346,7 +346,7 @@ function planSuspRow(kind, p, now) {
     const phBadge = ph ? ('<span class="ftt-badge ftt-ml-2 ' + (ph === 'blocked' ? 'ftt-badge--blocked' : 'ftt-badge--abandoned') + '">' + esc(planPhaseLabel(ph)) + (p.statusNote ? ('·' + esc(cut(p.statusNote, 20))) : '') + '</span>') : '';
     const known = relNoteText(kind, p.id, isSusp ? '未记录知情者（按当事人保守回退）' : '未记录知情者（按策划者保守回退）');
     const relLine = '<div class="ftt-note ftt-note-info">' + esc(known)
-        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="' + esc(kind) + '" data-id="' + esc(p.id) + '" title="在「记忆 → 关系表」里编辑这条' + (isSusp ? '悬念' : '计划') + '的知情者">🔗 关联</span></div>';
+        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="' + esc(kind) + '" data-id="' + esc(p.id) + '" title="在「设定 → 约束 → 关系表」里编辑这条' + (isSusp ? '悬念' : '计划') + '的知情者">🔗 关联</span></div>';
     const prog = Number(p.progress);
     const progTxt = (!isSusp && Number.isFinite(prog) && prog > 0)
         ? ('<div class="ftt-meta">进度 ' + Math.max(0, Math.min(100, Math.round(prog))) + '%'
@@ -397,7 +397,7 @@ function parallelsRow(p, now) {
     const line7 = tagsLine(p.tags);
     const relWho = relNoteText('parallels', p.id, '仅幕后（角色不知情）');
     const line8 = '<div class="ftt-note ftt-note-info">' + esc(relWho) + (p.promotedTo ? ' · 已转正为情节' : '')
-        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="parallels" data-id="' + esc(p.id) + '" title="在关系表里编辑相关角色">🔗 关联</span>'
+        + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="parallels" data-id="' + esc(p.id) + '" title="在「设定 → 约束 → 关系表」里编辑平行事件的相关角色">🔗 关联</span>'
         + (p.promotedTo ? '' : (' <span class="ftt-rel-jump" data-ftt-action="promoteParallel" data-id="' + esc(p.id) + '" title="转正为情节（需确认，原条不再注入）">⬆ 转正为情节</span>')) + '</div>';
     const srcN = arr(p.sourceRefs).length, preN = arr(p.previews).length;
     const line9 = (srcN || preN || p.constraintNote)
@@ -408,10 +408,17 @@ function parallelsRow(p, now) {
     return line1 + line2 + line3 + line4 + line5 + line6 + line7 + line8 + line9;
 }
 
-/** V1 `statesHtml()` 24008~24013 的单行（状态页在面板侧按主体分组渲染） */
+/** V1 `statesHtml()` 24008~24013 的单行（状态页在面板侧按主体分组渲染）
+ *  v2.80.0（用户要求：「状态大类列表不应该总是显示『：』，请去掉该符号」）：
+ *    V1/V2 此前恒输出 `<b>字段</b>：值` —— 冒号**无条件**出现，值为空时留下一个拖尾冒号。
+ *    现在**取消冒号**，改为「字段 值」空格分隔；字段或值**为空时只输出有内容的一侧**
+ *    （无字段 → 只显示值；无值 → 只显示字段），两种残缺数据都不再产出孤立标点。 */
 export function stateRowMainHtml(s) {
     const up = s.updatedAt ? (' · 更新 ' + esc(s.updatedAt) + (s.updatedAtTime ? (' ' + esc(s.updatedAtTime)) : '')) : '';
-    return '<b>' + esc(s.field) + '</b>：' + esc(s.value)
+    const field = String((s && s.field) == null ? '' : s.field);
+    const value = String((s && s.value) == null ? '' : s.value);
+    const head = field ? ('<b>' + esc(field) + '</b>' + (value ? ' ' : '')) : '';
+    return head + esc(value)
         + '<div class="ftt-meta">调用' + (s.uses || 0) + '次' + up + '</div>';
 }
 

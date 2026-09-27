@@ -1,6 +1,6 @@
 # P9a · B9-b 关系表「双向定位跳转」+「👥 选角色」选择器
 
-> 文档版本：v1.0 ｜ 日期：2026-09-26 ｜ 状态：生效（待发版）
+> 文档版本：v1.1 ｜ 日期：2026-09-26 ｜ 状态：生效（v2.80.0 起「关系表落在设定 → 约束」，见文末 §9）
 > 参照物：**V1 `src/FTT记忆组件-v1.206.js`**（唯一引用/文案对照文件；V1 仓库只读）
 > 关联：`ui/rel-table.js`（扩展）、`ui/panel.js`（接线）、`index.js` / `devtools.js`（`FTT.*` 入口）、
 > `tests/fixtures/v1-golden-rel-nav.json`（真实 V1 oracle）、`tests/unit/rel-nav-golden.test.js`、`tests/smoke-test.js`（AF1–AF3）、
@@ -129,3 +129,21 @@
 - 投喂标签分析 `rxScanTags` / `rxAddTag` / `rxScanClear`；货币追踪 `curTrack*`；同步源选择 `syncPickLocal` / `syncPickRemote`；
   条目瘦身与 gzip（`.json.gz`）；`promptPreview`（模板预览）。
 - 本批未发版、未提交（按批次纪律：不 commit / tag / push），由队长决定提交与发版时点。
+
+---
+
+## 9. v2.80.0 变更：关系表落点由列表页子标签移入「设定 → 约束」（用户要求）
+
+> 用户要求原文：「记忆大类的关系表、关系约束放入设定-约束标签中。」
+> 完整登记见 `docs/P10ar-状态去冒号与设定约束页.md`；本节只记**对本文件口径的影响**。
+
+| 本文件原口径 | v2.80.0 起 |
+| --- | --- |
+| `relJump` 的导航副作用 = 切到**条目所在列表页** + 该页子标签置 `rel`（`ps.relSub[dim]='rel'`） | 切到 **设定页** + `ps.settingsSub='constraint'` + `constraintDim = 该条目维度`（`ui/constraint-page.js#setConstraintDim`） |
+| 子标签切换动作 `msub`（`data-ftt-msub`）重置定位/选择器态 | 页内维度切换动作 `constraintDim`（`data-ftt-cdim`），状态迁移语义不变（清定位 + 清选择器，**不清角色筛选**） |
+| 「V1 原生怪癖（原样保留）：`relGoto` 不重置当前子标签 → 搜索词只在切回列表后可见」 | **怪癖随结构消失**：列表页已无子标签，`relGoto` 的搜索词立即可见（`ui/rel-table.js#relGoto` 文件头已同步） |
+| `relEdit` 只需把子标签置回 `list` | `relEdit` 需**切回该条目的列表页**（`REL_TAB_OF`）并打开编辑器 —— 关联小表随编辑器渲染 |
+| 条目行 title：「在『记忆 → 关系表』里…」 | 「在『设定 → 约束 → 关系表』里…」 |
+
+`ui/rel-table.js` 的**状态迁移函数本身**（`relJump` / `relGoto` / `relClearFilter` / `relPick*` / `relPickAppendRow`）**签名与语义未变**，
+`tests/fixtures/v1-golden-rel-nav.json` 的真实 V1 oracle 逐项比对全部保留；仅面板侧的**导航落点**与子标签动作更名。

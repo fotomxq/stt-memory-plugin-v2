@@ -64,7 +64,7 @@ const DEV_PATTERNS = [
     { re: /内核 (配置|键)/, why: '内部术语' },
 ];
 
-/** 渲染所有页面（面板 13 分页 + 设定 14 子页，均走真实渲染路径） */
+/** 渲染所有页面（面板 13 分页 + 设定 15 子页〔v2.80.0 起含「约束」〕，均走真实渲染路径） */
 async function collectPages() {
     const pages = [];
     panel.openPanel('overview');
@@ -83,7 +83,7 @@ async function collectPages() {
 }
 
 const pages = await collectPages();
-A('P0 体检覆盖面：面板 13 分页 + 设定 14 子页全部渲染成功（不是抽样）', pages.length === 27
+A('P0 体检覆盖面：面板 13 分页 + 设定 15 子页（v2.80.0 起含「约束」）全部渲染成功（不是抽样）', pages.length === 28
     && pages.every((p) => String(p[1]).length > 100), J(pages.map((p) => p[0])));
 
 // ---- D 组：开发 / 历史内容 ----

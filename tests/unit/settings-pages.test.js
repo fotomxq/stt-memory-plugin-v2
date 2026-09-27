@@ -1,5 +1,5 @@
 // ============================================================
-// 单元测试 · B4 设定 14 组子页（V1 对齐）
+// 单元测试 · B4 设定子页（V1 的 14 组 + v2.80.0 新增「约束」＝ 15 组）
 // 口径：页顺序/标签与 V1 `subTabs` 一致；控件表由 V1 源码自动提取（105 项），键必须能在配置里找到；
 //   渲染为 V1 同款结构（`.ftt-field` / `.ftt-switch` / `data-ftt-cfg`）；写回内核 cfg 并持久化 ST 配置。
 // ============================================================
@@ -24,8 +24,10 @@ const un = installGlobalHost(host, doc);
 Object.assign(cfg, JSON.parse(JSON.stringify(defaultCfg)));
 setKernelState(emptyState());
 
-R.assert('P1 子页与 V1 同名同序（14 组）', (() => {
-    const want = ['base:基础', 'feed:投喂范围', 'api:API', 'analyze:分析记忆', 'safety:内容弱化', 'extract:提取记忆', 'forget:遗忘', 'rumors:传言', 'parallels:平行', 'prompts:提示词', 'storage:存储', 'debug:调试', 'data:数据管理', 'about:关于'];
+R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户要求：关系表 / 约束自查 收进设定页，插在「平行」之后）', (() => {
+    // v2.80.0（用户要求：「记忆大类的关系表、关系约束放入设定-约束标签中」）→ 新增 { id:'constraint', label:'约束' }
+    //   位置：紧接「平行」之后（关系层四维的最后一项）、「提示词」之前；V1 的 14 组相对顺序与标签未动。
+    const want = ['base:基础', 'feed:投喂范围', 'api:API', 'analyze:分析记忆', 'safety:内容弱化', 'extract:提取记忆', 'forget:遗忘', 'rumors:传言', 'parallels:平行', 'constraint:约束', 'prompts:提示词', 'storage:存储', 'debug:调试', 'data:数据管理', 'about:关于'];
     const got = SETTINGS_TABS.map((t) => t.id + ':' + t.label);
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
@@ -37,9 +39,18 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.51.0 时钟改版：基础页删除 10 个废弃时钟设定 → 总数 183 → 173、base 21 → 11
     // v2.76.0：12 个非召回控件（货币记录开关 + 各大类单条字数上限）由「提取记忆」迁到「分析记忆」→ analyze 5→17、extract 34→22（总数不变）
     // v2.78.0：「重要性计算」两项（importanceBase / importancePerUse）属**召回打分** → base 11→9、extract 22→24（总数不变）
+    // v2.80.0：「约束」页**无配置控件**（正文 = 四维关系表 + 约束自查，由 ui/constraint-page.js 渲染）→ 总数仍 173
     return info.totalControls === 173 && m.base === 9 && m.feed === 37 && m.analyze === 17 && m.extract === 24
-        && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.prompts === 6 && m.storage === 26 && m.debug === 5;   // v2.42.0：调试页 +4（级别/交互/宿主/详细）
+        && m.forget === 28 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 26 && m.debug === 5;
 })(), settingsPagesInfo());
+
+R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {
+    const info = settingsPagesInfo();
+    const page = info.pages.filter((p) => p.id === 'constraint')[0] || {};
+    const html = String(settingsPageHtml('constraint') || '');
+    return page.controls === 0 && html === ''                       // 控件表为空且不渲染兜底空态（正文由面板注入）
+        && Array.isArray(SETTINGS_CONTROLS.constraint) && SETTINGS_CONTROLS.constraint.length === 0;
+})(), () => settingsPagesInfo().pages.filter((p) => p.id === 'constraint'));
 
 R.assert('P2b 存储页控件与 V1 手写页逐一对应：墓碑天数 / 原生通道 / 世界书 8 项 / 流量门控（顶层键 syncTrafficGuard）', (() => {
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));

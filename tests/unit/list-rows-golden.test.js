@@ -119,16 +119,31 @@ A('R1 oracle 自证：V1 的行里确有各维度**自有字段**（不是一句
 })(), J(Object.keys(G.dims)));
 
 // ---------- V 组：逐维度逐条目比对 ----------
+// v2.80.0（用户要求：「状态大类列表不应该总是显示『：』，请去掉该符号」）—— **有意偏离 V1**：
+//   V1 的状态行是 `<b>字段</b>：值`（冒号无条件出现），V2 改为「字段 值」空格分隔。
+//   故断言时对 states 一维按同一规则归一 oracle（把 `：值` 记号的前导冒号去掉），其余维度仍逐字比对。
+const normalizeStateOracle = (tokens) => (Array.isArray(tokens) ? tokens : [])
+    .map((t) => (String(t).charAt(0) === '：' ? String(t).slice(1) : String(t)))
+    .filter((t) => t !== '');
 const plan = [['atoms', 'a1'], ['atoms', 'a2'], ['atoms', 'a3'], ['memories', 'm1'], ['memories', 'm2'],
     ['snapshots', 's1'], ['items', 'i1'], ['items', 'i2'], ['currencies', 'c1'], ['rumors', 'r1'],
     ['plans', 'p1'], ['suspense', 'x1'], ['concepts', 'cc1'], ['parallels', 'pa1'], ['states', 'st1']];
 const diffs = [];
 for (const [dim, id] of plan) {
-    const want = G.dims[dim][id];
+    const want = dim === 'states' ? normalizeStateOracle(G.dims[dim][id]) : G.dims[dim][id];
     const got = rowTokens(pageOf(dim), id);
     if (J(got) !== J(want)) diffs.push({ dim, id, got, want });
 }
-A('V1 行正文**逐维度逐条目**与 V1 oracle 一致（字段集合 + 先后顺序；现实墙钟归一）', diffs.length === 0, J(diffs.slice(0, 3)));
+A('V1 行正文**逐维度逐条目**与 V1 oracle 一致（字段集合 + 先后顺序；现实墙钟归一；states 一维按 v2.80.0「取消冒号」有意偏离归一）', diffs.length === 0, J(diffs.slice(0, 3)));
+
+A('V2 v2.80.0 状态行取消冒号（用户要求）：oracle 里的 `：值` 记号在 V2 输出中不再出现，且字段与值仍各就各位', (() => {
+    const html = String(pageOf('states') || '');
+    const tokens = rowTokens(html, 'st1');
+    const oracle = G.dims.states.st1;
+    return tokens.indexOf('：' + String(oracle[1]).replace(/^：/, '')) < 0      // 不再有「：值」这一记号
+        && tokens.indexOf('体力') >= 0 && tokens.indexOf('疲惫') >= 0           // 字段与值都还在
+        && tokens.join(' ').indexOf('：') < 0;                                  // 整行不含冒号
+})(), J(rowTokens(pageOf('states'), 'st1')));
 
 A('V2 各维度行**都含自有字段**（不是摘要兜底）：抽查每维至少一个特征串', (() => {
     const h = (dim) => String(pageOf(dim) || '');
