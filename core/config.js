@@ -901,6 +901,10 @@ const defaultCfg = {
     vectorTimeoutMs: 15000,
     summaryFloors: 30,
     summaryChunkSize: 10,   // v1.32：分段读取楼层数（每次分析不是全量，分段排队处理）
+    // v2.86.0（`docs/D7`）：重要度改为「窗口调用占比」（每次提取后重算最近 N 条；逐维独立、状态按主体分组）
+    impRecalcEnabled: true,      // 是否启用重要度重算（关闭则保留历史值）
+    impWindowRadius: 10,         // 窗口半径（前后各 R 条，含自身 → 窗口 2R+1 条）
+    impRecalcCount: 20,          // 每次重算「最近 N 条」（第 N 条同样按真实 ±R 邻居算；更旧的冻结）
     importanceBase: 0.12,
     importancePerUse: 0.06,
     feedFloors: 2,
@@ -941,7 +945,7 @@ const defaultCfg = {
     lowUseForgetMinFloors: 300,     // v1.153：0→300（**默认缓慢处理旧数据**：只动 ≥300 楼未再出现的极旧条目）
     lowUseForgetMaxDelete: 1,       // v1.153：3→1（每维度每轮最多清扫 1 条：缓慢滴灌）
     lowUseForgetEveryFloors: 40,    // v1.153：清扫间隔（楼层）—— 距上次清扫不足该值则整项跳过（0=不限制）
-    lowUseForgetProtectImportance: 0.7, // v1.153：0.6→0.7（更多条目受重要度保护）
+    lowUseForgetProtectImportance: 0.2, // v2.86.0：0.7→0.2 —— 重要度已改为「窗口调用占比」（均匀分布均值≈1/21≈4.8%），0.2≈4 倍平均，与旧「0.7 属高重要度」的筛除力度同量级（`docs/D7` §4.9 C1）
     // v1.142：物品修复（物品页专用）—— 标签/名称相关性聚类 → 打包交 AI 判断融合 + 低调用固定规则清理
     itemRepairSim: 0.45,            // 物品相关度阈值（相关度 = max(标签组 Jaccard, 名称相似度) ≥ 该值成组）
     itemRepairMaxClusters: 3,       // 每次最多核对的物品组数（轮询推进）

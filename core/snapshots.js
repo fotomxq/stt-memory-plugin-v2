@@ -12,7 +12,8 @@
 import { state, cfg, log, warn, saveState, notifyHooks, timerHooks } from './model/runtime.js';
 import { ATOM_DIM_KEYS } from './constants.js';
 import { eachAtom, collectAtomHashes, ensureAtomHashes } from './merge.js';
-import { atomContentHash } from './model/hash.js';
+// v2.86.0（`docs/D8` R1=B）：快照差异 / 指纹 = **变更哈希**（与 V1 快照文件口径一致，语义不变）
+import { atomChangeHash } from './model/hash.js';
 import { storageHash } from './envelope.js';
 import { entryIndexInit, tombstoneSweepPause, tombstoneSweepResume } from './sweep.js';
 
@@ -52,7 +53,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     // 删除动作账本：每个快照记录「自上一快照以来被删除的原子」{id: {h, cat}} —— 只存哈希不存原文（便于汇总与还原剔除）。
     // 快照指纹 state.snapFp：上一快照时刻全部原子 id → {h, cat}；删除 = 指纹有、当前无（两次快照间只记一次）。
     function snapFpFromCurrent() {
-        const cur = collectAtomHashes();
+        const cur = collectAtomHashes('change');
         const fp = {};
         for (const id of cur.order) fp[id] = { h: cur.map[id].h, cat: cur.map[id].cat };
         return fp;
@@ -120,7 +121,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     function snapshotCreateFull() {
         try {
             ensureAtomHashes();
-            const { map, agg } = collectAtomHashes();
+            const { map, agg } = collectAtomHashes('change');
             if (!Object.keys(map).length) return null;
             const atoms = {};
             const atomsHashes = {};
@@ -141,7 +142,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
             const last = snaps[snaps.length - 1] || null;
             const known = {};
             for (const s of snaps) { if (s && s.atomsHashes) { for (const id in s.atomsHashes) known[id] = s.atomsHashes[id]; } }
-            const cur = collectAtomHashes();
+            const cur = collectAtomHashes('change');
             const changedIds = [];
             for (const id of cur.order) {
                 if (!(id in known) || known[id] !== cur.map[id].h) changedIds.push(id);
@@ -179,7 +180,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
             ensureAtomHashes();
             const known = {};
             for (const s of snaps) if (s && s.atomsHashes) for (const id in s.atomsHashes) known[id] = s.atomsHashes[id];
-            const cur = collectAtomHashes();
+            const cur = collectAtomHashes('change');
             const uncovered = cur.order.filter(id => !(id in known));
             if (!snaps.length) return snapshotCreateFull();
             if (uncovered.length) return snapshotCreateIncr();

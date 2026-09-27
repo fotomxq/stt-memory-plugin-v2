@@ -229,7 +229,7 @@ A('G2 滚动条元数据与标签口径一致：min < max、step > 0、默认值
     });
     const wb = RANGE_SPECS['storage.worldbookProbability'];
     return bad.length === 0 && wb.min === 0 && wb.max === 100 && wb.unit === '%'
-        && RANGE_SPECS.importancePerUse.max === 0.5;
+        && RANGE_SPECS.lowUseForgetProtectImportance.max === 1;   // v2.86.0：旧 importancePerUse 下线，新增清扫保护阈值（比例类滚动条）
 })(), () => RANGE_SPECS);
 
 A('G3 计数类控件**不被误改**：条数 / 年限 / 楼层数仍是数字输入（拖动条不适合精确填写）', (() => {

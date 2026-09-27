@@ -140,7 +140,7 @@ A('A10 v2.76.0 归纳：货币记录与「各大类单条字数上限」两组�
     // v2.78.0：「重要性计算」迁到提取记忆页（属召回打分）→ extract 22→24（analyze 不变）
     return moved.every((k) => an.indexOf(k) >= 0 && ex.indexOf(k) < 0)
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms')
-        && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 24
+        && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 25
         && SETTINGS_CONTROLS.analyze.length === 20;      // v2.83.0：关联层 +3
 })(), J({ analyze: SETTINGS_CONTROLS.analyze.length, extract: SETTINGS_CONTROLS.extract.length }));
 

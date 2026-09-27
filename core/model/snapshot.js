@@ -592,6 +592,69 @@ function foldSnapshotFlat(e) {
     return out;
 }
 
+/**
+ * v2.86.0（`docs/D8` §4.4 用户裁决）：角色档案的**内容副本** —— 把全部结构化字段按**固定顺序**确定性拼成一份文本，
+ * 写入原子层的「内容」槽（`content`），供**内容哈希（身份指纹）**与通用检索使用。
+ *   · 结构化字段仍是**唯一权威**（展示 / 注入 / 向量照旧读字段）；副本只单向派生，**不反向回写**；
+ *   · 顺序固定、集合类（标签 / 特质 / 关系）**先排序** → 跨端同内容必得同哈希（D8 R3）；
+ *   · 字段扩展不受影响：新字段只需登记进本函数即自动参与哈希衔接（D8 R13 也含 `extra` 具名槽）；
+ *   · 上限取该维 `dimCharLimits.snapshots`（D8 R14，默认 600）。
+ */
+function snapshotContentCopy(s) {
+    try {
+        const seg = [];
+        const list = (v) => (Array.isArray(v) ? v.filter((x) => x !== undefined && x !== null && String(x) !== '') : []);
+        const sorted = (v) => list(v).map((x) => String(x)).sort();
+        const id = s.identity || {};
+        const idParts = [];
+        if (id.gender) idParts.push('性别:' + id.gender);
+        if (id.birthDate) idParts.push('出生:' + id.birthDate);
+        if (id.age !== undefined && id.age !== null && id.age !== '') idParts.push('年龄:' + id.age);
+        if (id.species) idParts.push('物种:' + id.species);
+        if (id.occupation) idParts.push('职业:' + id.occupation);
+        if (id.title) idParts.push('称号:' + id.title);
+        if (id.family) idParts.push('家族:' + id.family);
+        if (id.deceased !== undefined) idParts.push('已去世:' + (id.deceased ? '是' : '否'));
+        if (idParts.length) seg.push('身份：' + idParts.join('，'));
+        if (s.appearance) seg.push('外貌：' + s.appearance);
+        const p = s.personality || {};
+        const pParts = [];
+        if (sorted(p.traits).length) pParts.push('特质:' + sorted(p.traits).join('、'));
+        if (sorted(p.quirks).length) pParts.push('癖好:' + sorted(p.quirks).join('、'));
+        if (sorted(p.values).length) pParts.push('价值观:' + sorted(p.values).join('、'));
+        if (p.speechStyle) pParts.push('说话风格:' + p.speechStyle);
+        if (pParts.length) seg.push('性格：' + pParts.join('，'));
+        const b = s.background || {};
+        const bParts = [];
+        if (b.origin) bParts.push('出身:' + b.origin);
+        if (b.history) bParts.push('经历:' + b.history);
+        if (bParts.length) seg.push('背景：' + bParts.join('，'));
+        const rels = (Array.isArray(s.relationships) ? s.relationships : [])
+            .map((r) => ({ name: String((r && r.name) || ''), relation: String((r && r.relation) || ''), attitude: String((r && r.attitude) || '') }))
+            .filter((r) => r.name)
+            .sort((a, b2) => (a.name < b2.name ? -1 : (a.name > b2.name ? 1 : 0)));
+        if (rels.length) seg.push('关系：' + rels.map((r) => r.name + '(' + [r.relation, r.attitude].filter(Boolean).join('/') + ')').join('、'));
+        const so = s.social || {};
+        const soParts = [];
+        if (so.relationToUser) soParts.push('与主角:' + so.relationToUser);
+        if (so.attitudeToUser) soParts.push('态度:' + so.attitudeToUser);
+        if (soParts.length) seg.push('社会：' + soParts.join('，'));
+        const fu = s.future || {};
+        const fuParts = [];
+        if (sorted(fu.todos).length) fuParts.push('待办:' + sorted(fu.todos).join('、'));
+        if (sorted(fu.commitments).length) fuParts.push('承诺:' + sorted(fu.commitments).join('、'));
+        if (fuParts.length) seg.push('未来：' + fuParts.join('，'));
+        if (sorted(s.tags).length) seg.push('标签：' + sorted(s.tags).join('、'));
+        // 具名扩展槽（R13）：按名称排序后并入，保证扩展字段变更同样影响身份指纹
+        const extras = (Array.isArray(s.extra) ? s.extra : [])
+            .filter((x) => x && x.name)
+            .map((x) => ({ name: String(x.name), value: x.value }))
+            .sort((a, b2) => (a.name < b2.name ? -1 : (a.name > b2.name ? 1 : 0)));
+        if (extras.length) seg.push('扩展：' + extras.map((x) => x.name + '=' + String(x.value === undefined || x.value === null ? '' : x.value)).join('，'));
+        return dimCap('snapshots', seg.join('；'));
+    } catch (e) { return ''; }
+}
+
 function normalizeSnapshot(e0) {
     const e = foldSnapshotFlat(e0);
     const name = normText(e?.name, 40);
@@ -616,7 +679,7 @@ function normalizeSnapshot(e0) {
         family: normText(src?.family || '', 60),
     };
     if (deceased !== undefined) identity.deceased = deceased;
-    return {
+    const out = {
         id: String(e?.id || `snapshot_${hashText(name.toLowerCase())}`),
         name,
         identity,
@@ -652,9 +715,13 @@ function normalizeSnapshot(e0) {
         // 原子层：标准化字段 + 可扩展插槽
         category: 'snapshots',
         title: name,
-        content: normText(e?.background?.history || '', 300),
+        content: '',                       // v2.86.0：由 `snapshotContentCopy(out)` 统一生成（D8 §4.4）
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
-        extra: makeExtra({ gender: src?.gender, occupation: src?.occupation, species: src?.species, traits: src?.traits }),        };
+        extra: makeExtra({ gender: src?.gender, occupation: src?.occupation, species: src?.species, traits: src?.traits }),
+    };
+    // v2.86.0（D8 §4.4）：内容副本 = 全部结构化字段的确定性拼接（字段仍是权威，副本只供哈希 / 检索）
+    out.content = snapshotContentCopy(out);
+    return out;
 }
 // ==================== v1.181：货币大类（归属 + 币种 + 额度 + 收支流水） ====================
 // 用户要求：① 记当前主角持有的货币（多主角支持；其他角色必须明确指定）；② 支持任意币种（贝壳 / 银元 / 美元…）；

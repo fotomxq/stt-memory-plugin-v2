@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.85.0",
+  "version": "2.86.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.86.0",
+      "date": "2026-09-27",
+      "title": "双指纹（身份 / 变更）+ 角色档案内容副本 + 重要度改「窗口调用占比」",
+      "points": [
+        "① 双指纹：（core/model/hashfields.js 新 + core/model/hash.js）：新增身份指纹 atomIdentityHash（i2: 前缀 +4…",
+        "② 角色档案内容副本：（core/model/snapshot.js）：角色名 → 原子层标题（已有）；其余结构化字段在每次归一化时按固定顺序确定性拼成副本写入 content（…",
+        "③ 瘦身白名单同源派生：（core/slim.js）：SLIM_HASHED_FIELDS 由 hashfields.js 派生（变更字段 ∪ 身份字段），注释改写为真实语义 —…"
+      ]
+    },
     {
       "version": "2.85.0",
       "date": "2026-09-27",

@@ -21,8 +21,8 @@ docs/
 ├── D4-原子关系层联动设计稿.md  # 设计层（一处变动 → 跨大类迭代）
 ├── D5-关系层优先级与悖论防护设计稿.md  # 设计层（谁说了算：锚定模型 · 裁决链 · 悖论检测 · 单调性）
 ├── D6-维度提升阶梯设计稿.md            # 设计层（人工把衍生提升为情节：通用契约 · 三级阶梯 · 开放 9 维度，裁决已定 v0.2）
-├── D7-重要度动态计算设计稿.md          # 设计层（重要度 = 调用次数窗口占比 · 最近 20 条重算 · 出窗冻结 · 逐维独立不跨维比较，裁决全部已定 v0.5）
-├── D8-内容哈希与瘦身白名单设计稿.md    # 设计层（哈希 4 基本槽 + 标签/类型/状态 · 角色档案内容副本 · 白名单=技术消歧表 · R1 指纹用法 A/B/C 待定，§6 详解 v0.4）
+├── D7-重要度动态计算设计稿.md          # 设计层（重要度 = 调用次数窗口占比 · 最近 20 条重算 · 出窗冻结 · 逐维独立，**已落地 v2.86.0** v0.5）
+├── D8-内容哈希与瘦身白名单设计稿.md    # 设计层（双指纹 R1=B · 角色档案内容副本 · 白名单=技术消歧表，**已落地 v2.86.0** v0.4）
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
@@ -60,20 +60,20 @@ docs/
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v2.85.0） |
+| 口径 | 权威来源 | 当前值（v2.86.0） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `2.85.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `2.86.0` |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
-| 内核配置键数 | `core/config.js#defaultCfg` | 218 |
+| 内核配置键数 | `core/config.js#defaultCfg` | 221 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
-| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 171 |
+| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 172 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 106 文件 / 1642 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 109 文件 / 1675 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 173 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 92 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 93 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

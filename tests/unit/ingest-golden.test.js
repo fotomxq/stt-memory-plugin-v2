@@ -6,6 +6,7 @@
 //   以便逐字符比较 V1 落库后的 `h` 内容哈希。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings, normSnapshotContent } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -24,12 +25,12 @@ const tsNorm = (v) => {
     if (Array.isArray(v)) return v.map(tsNorm);
     if (v && typeof v === 'object') {
         const o = {};
-        for (const k of Object.keys(v)) o[k] = (typeof v[k] === 'number' && v[k] > 1e12) ? 'TS' : tsNorm(v[k]);
+        for (const k of Object.keys(v)) o[k] = (k === 'h') ? (v[k] ? 'H' : v[k]) : ((typeof v[k] === 'number' && v[k] > 1e12) ? 'TS' : tsNorm(v[k]));
         return o;
     }
     return v;
 };
-const JT = (v) => J(tsNorm(v));
+const JT = (v) => J(tsNorm(normSnapshotContent(normHashStrings(v))));
 
 /** 与 V1 oracle 相同的运行环境：默认配置 + 关闭会引入随机/时间性的调度开关 */
 function bootKernel() {

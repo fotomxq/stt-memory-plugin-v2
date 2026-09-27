@@ -4,6 +4,9 @@
 // 口径：**严格相等**（JSON.stringify 逐字符比较，键顺序一致）。
 // ============================================================
 import { readFileSync } from 'node:fs';
+// v2.86.0：角色档案 `content` 语义变更（`docs/D8` §4.4 内容副本）→ 比较前归一（有意偏离登记）
+import { normSnapshotContent } from '../harness/hash-norm.js';
+
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -16,7 +19,7 @@ import { atomContentHash } from '../../core/model/hash.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-model2.json'), 'utf8'));
 const R = makeReporter('model-golden2 V1 移植保真度（批次 2）');
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normSnapshotContent(v));
 /**
  * 时间戳归一：情节分段（以及任何带 createdAt/updatedAt 的产物）会写入 `Date.now()`，
  * 跨进程无法逐字符相等 —— 比较前统一抹平为 0（**这两个字段是墙钟，不属于移植口径**）。

@@ -7,7 +7,9 @@
 // ============================================================
 import { hashText, normalizeList } from './util.js';
 import { state, saveState } from './model/runtime.js';
-import { atomContentHash } from './model/hash.js';
+// v2.86.0（`docs/D8` R1=B 双指纹）：**身份哈希**用于去重 / 墓碑 / 复活防护；
+//   **变更哈希**仍供快照差异与情节签名使用（见 `core/snapshots.js` / `host/preflight.js`）。
+import { atomContentHash, atomIdentityHash } from './model/hash.js';
 import { storageHash } from './model/scalars.js';
 import { ATOM_DIM_KEYS } from './constants.js';
 
@@ -62,20 +64,29 @@ function ensureAtomHashes() {
     try {
         let changed = false;
         eachAtom((cat, it) => {
-            const h = atomContentHash(cat, it);
+            const h = atomIdentityHash(cat, it);         // v2.86.0：`it.h` = **身份哈希**（去重 / 墓碑 / 复活防护）
             if (h && it.h !== h) { it.h = h; changed = true; }
         });
         return changed;
     } catch (e) { return false; }
 }
-// 收集当前全部原子的 {id: {h, cat, item}} 与聚合 hash
-
-function collectAtomHashes() {
+/**
+ * 收集当前全部原子的 `{id: {h, cat, item}}` 与聚合 hash。
+ * v2.86.0（`docs/D8` R1=B）：`mode` 决定用哪种指纹 ——
+ *   · `'identity'`（默认）：身份哈希（去重 / 墓碑 / 索引）；
+ *   · `'change'`：变更哈希（快照差异 / 聚合指纹用；与 V1 口径一致，保证快照文件语义不变）。
+ */
+function collectAtomHashes(mode) {
+    const useChange = String(mode || '') === 'change';
     const map = {};
     const order = [];
     eachAtom((cat, it) => {
         const id = String(it.id || '');
-        if (id) { map[id] = { h: it.h || atomContentHash(cat, it), cat, it }; order.push(id); }
+        if (id) {
+            const h = useChange ? atomContentHash(cat, it) : (it.h || atomIdentityHash(cat, it));
+            map[id] = { h: h, cat, it };
+            order.push(id);
+        }
     });
     order.sort();
     const agg = storageHash(order.map(id => `${id}:${map[id].h || ''}`).join('|'));
@@ -124,7 +135,7 @@ function tombEntry(dim, entry, ts) {
     try {
         if (!entry || typeof entry !== 'object') return;
         if (entry.id !== undefined && entry.id !== null) tombSet(dim, entry.id, ts);
-        tombSetH(dim, atomContentHash(dim, entry), ts);
+        tombSetH(dim, atomIdentityHash(dim, entry), ts);   // v2.86.0：内容墓碑 = **身份哈希**（D8 §7）
     } catch (e) { }
 }
 

@@ -24,6 +24,7 @@
 // 确定性：固定剧情日期 2020-06-01 + 固定 seed；时间戳字段一律经投影剔除；全量结果**连跑两次逐字节一致**。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -47,7 +48,7 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-rumor-evolve.json'), 'utf8'));
 const R = makeReporter('rumor-evolve-golden B8-7 传言演化引擎（V1 对齐）');
-const J = (v) => JSON.stringify(v === undefined ? null : v);
+const J = (v) => JSON.stringify(normHashStrings(normHashes(v === undefined ? null : v)));
 const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 const A = async (name, fn, detail) => {
     let cond = false, extra = detail;

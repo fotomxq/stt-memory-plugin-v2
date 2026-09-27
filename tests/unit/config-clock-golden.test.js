@@ -26,6 +26,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
     // V2 专有键（V1 无）：界面形态 3 项 + API 三通道 2 项（v2.35.0 起；`''` = 未显式选择，按旧数据迁移推断）
     const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'apiChannel', 'apiProfileId',
+        // v2.86.0（`docs/D7` v0.5）：重要度改「窗口调用占比」→ 三个 V2 专有参数（V1 只有 importanceBase/importancePerUse，键保留兼容）
+        'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount',
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
@@ -42,9 +44,11 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'maxScenes', 'maxConcepts', 'maxNpcs', 'maxParallels', 'maxParallelsInj', 'maxCurrencies', 'maxRumors',
         'storeMaxAtoms', 'storeMaxMemories', 'storeMaxSnapshots', 'storeMaxItems', 'storeMaxConcepts', 'storeMaxScenes',
         'storeMaxPlans', 'storeMaxSuspense', 'storeMaxNpcs', 'storeMaxRumors', 'storeMaxCurrencies'];
+    // v2.86.0（`docs/D7` §4.9 C1）：「重要度」值域改为窗口占比（典型 0-30%）→ 清扫保护阈值 0.7 → 0.2（≈4 倍窗口均值）
+    const DEVIATED_KEYS = ['lowUseForgetProtectImportance'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
-        && RAISED_CAP_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));
+        && RAISED_CAP_KEYS.indexOf(k) < 0 && DEVIATED_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));
     const stillThere = REMOVED_V1_KEYS.filter((k) => k in defaultCfg);
     const v1s = v1.storage || {}, cur = defaultCfg.storage || {};
     const storageDiff = Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k]));
@@ -52,7 +56,10 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     const extra = Object.keys(defaultCfg).filter((k) => !(k in v1));
     // 白名单内的键必须**确实**与 V1 不同（防白名单被滥用成「随便改」）
     const raised = RAISED_CAP_KEYS.filter((k) => (k in v1) && Number(defaultCfg[k]) > Number(v1[k]));
+    // 偏离白名单内的键必须**确实**与 V1 不同（防白名单滥用）
+    const deviated = DEVIATED_KEYS.filter((k) => (k in v1) && J(defaultCfg[k]) !== J(v1[k]));
     return Object.keys(v1).length === 217 && diff.length === 0 && stillThere.length === 0
+        && deviated.length === DEVIATED_KEYS.length
         && raised.length === RAISED_CAP_KEYS.length
         && extra.every((k) => V2_ONLY.indexOf(k) >= 0) && extra.length === V2_ONLY.length
         && storageDiff.length === 0 && J(storageExtra.slice().sort()) === J(V2_STORAGE_ONLY.slice().sort())

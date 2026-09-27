@@ -4013,7 +4013,8 @@ await assert('AW1 v2.47.0 大类列表内容与顺序：情节行含 V1 的类�
     try {
         RT3.state.state = Object.assign({}, saveState0, { date: '1919-11-25', location: '城市甲·码头' });
         RT3.state.atoms = [
-            { id: 'aw-a1', title: '码头交货', text: '甲把铜箱交给乙。', type: '主线', date: '1919-11-20', floorStart: 3, floorEnd: 5, uses: 2, tags: ['码头'], validity: 'active', locations: ['城市甲·码头'] },
+            // v2.86.0：展示的「重要度」已统一为**存储值**（窗口占比）→ 样例显式给出 0.24（旧口径由 uses 现算，已退役）
+            { id: 'aw-a1', title: '码头交货', text: '甲把铜箱交给乙。', type: '主线', date: '1919-11-20', floorStart: 3, floorEnd: 5, uses: 2, importance: 0.24, tags: ['码头'], validity: 'active', locations: ['城市甲·码头'] },
         ];
         RT3.state.scenes = [
             { id: 'aw-sc1', name: '码头', pathArr: ['城市甲', '码头'], desc: '水汽很重。', tags: ['水边'], uses: 2, pathStr: '城市甲>码头' },

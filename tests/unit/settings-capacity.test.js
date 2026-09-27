@@ -89,17 +89,18 @@ A('C4 归位：货币记录与「各大类单条字数上限」都在分析记�
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms');
 })(), J({ analyze: settingsPageHtml('analyze').length, extract: settingsPageHtml('extract').length }));
 
-A('C5 提取记忆页只剩召回相关：三层 + 检索参数 + 注入预算 + 召回上限 + 重要性计算 + 关键词过滤（24 项，无 dimCharLimits./货币记录）', (() => {
+A('C5 提取记忆页只剩召回相关：三层 + 检索参数 + 注入预算 + 召回上限 + 重要性计算（窗口参数 3 项）+ 关键词过滤（25 项，无 dimCharLimits./货币记录）', (() => {
     const list = SETTINGS_CONTROLS.extract.map((c) => String(c.key));
     // v2.78.0：「重要性计算」两项也归本页（召回打分 —— 调用次数在召回命中时累加）
     const recallOk = ['useVector', 'vectorTopN', 'vectorMinScore', 'vectorTimeoutMs', 'jsExtractEnabled', 'useKeywordFlow',
-        'charBudget', 'importanceBase', 'importancePerUse', 'keywordFilterByContext'].every((k) => list.indexOf(k) >= 0)
+        // v2.86.0：重要度改「窗口调用占比」→ 旧的 importanceBase/importancePerUse 下线，代之以三个窗口参数
+        'charBudget', 'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount', 'keywordFilterByContext'].every((k) => list.indexOf(k) >= 0)
         // `maxNpcs` / `maxRumors` 分别在其它页（名册与传言），不在本页
         && INJ_KEYS.filter((k) => k !== 'maxNpcs' && k !== 'maxRumors').concat(['atomsRecentRatio', 'stateMinPerSubject', 'stateMaxPerSubject']).every((k) => list.indexOf(k) >= 0);
     const h = settingsPageHtml('extract');
-    return list.length === 24 && recallOk
+    return list.length === 25 && recallOk
         && h.indexOf('注入预算') > 0 && h.indexOf('召回上限（各大类注入条数）') > 0
-        && h.indexOf('重要性计算（调用次数驱动）') > 0
+        && h.indexOf('重要性计算（窗口调用占比）') > 0
         && h.indexOf('dimCharLimits.') < 0 && h.indexOf('data-ftt-cfg="currencyEnabled"') < 0;
 })(), J(SETTINGS_CONTROLS.extract.map((c) => c.key)));
 
@@ -112,11 +113,11 @@ A('C6 分析记忆页对应分节与短提示：货币记录（记录口径）+ 
         && h.indexOf('决定「分析记忆」时是否抽取货币') > 0 && h.indexOf('入库时的硬截断') > 0;
 })(), '见断言');
 
-A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5（base 9 / analyze 20 / extract 24 / forget 24 / rumors 13）', (() => {
+A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5 → 171 → v2.86.0 重要度口径改 +1（base 9 / analyze 20 / extract 25 / forget 24 / rumors 13）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 171 && m.analyze === 20 && m.extract === 24 && m.base === 9 && m.feed === 37
+    return info.totalControls === 172 && m.analyze === 20 && m.extract === 25 && m.base === 9 && m.feed === 37
         && m.forget === 24 && m.rumors === 13;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 

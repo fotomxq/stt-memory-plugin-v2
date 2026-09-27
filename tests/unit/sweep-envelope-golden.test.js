@@ -4,6 +4,7 @@
 // 口径：严格相等（JSON.stringify）；墓碑时间戳（墙钟）比较前归一。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings, normSnapshotContent } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -15,18 +16,18 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-sweep-envelope.json'), 'utf8'));
 const R = makeReporter('sweep-envelope-golden V1 移植保真度（批次 7）');
 const I = G.inputs;
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normHashStrings(v === undefined ? null : v));
 const clone = (v) => JSON.parse(J(v));
 const tsNorm = (v) => {
     if (Array.isArray(v)) return v.map(tsNorm);
     if (v && typeof v === 'object') {
         const o = {};
-        for (const k of Object.keys(v)) o[k] = (typeof v[k] === 'number' && v[k] > 1e12) ? 'TS' : tsNorm(v[k]);
+        for (const k of Object.keys(v)) o[k] = (k === 'h') ? (v[k] ? 'H' : v[k]) : ((typeof v[k] === 'number' && v[k] > 1e12) ? 'TS' : tsNorm(v[k]));
         return o;
     }
     return v;
 };
-const JT = (v) => J(tsNorm(v));
+const JT = (v) => J(tsNorm(normSnapshotContent(normHashes(normHashStrings(v)))));
 const fresh = () => ({
     atoms: clone(I.ATOMS), currentStates: [], snapshots: [], memories: clone(I.MEMS), items: [], plans: [], suspense: [], scenes: [],
     concepts: [], parallels: [], npcs: [], links: [], currencies: [], plotSegments: [], rumors: [], deleted: {}, deletedH: {}, vars: {}, stats: {},

@@ -9,7 +9,8 @@
 import { clockDateParts, clockDateTrim } from './clock.js';
 import { VERSION } from './constants.js';
 import { ensureAtomHashes } from './merge.js';
-import { atomContentHash } from './model/hash.js';
+// v2.86.0（`docs/D8` R1=B）：同内容去重 = **身份哈希**（认身份）
+import { atomIdentityHash } from './model/hash.js';
 import { normalizeRelLink } from './model/rel.js';
 import { rumorId } from './model/rumor.js';
 import { cfg, state } from './model/runtime.js';
@@ -33,7 +34,7 @@ function contentDedupeArray(cat, arr) {
         const byH = new Map();          // h -> out 下标（保留首次出现位置）
         for (const it of arr) {
             if (!it || typeof it !== 'object') { out.push(it); continue; }
-            const h = atomContentHash(cat, it);
+            const h = atomIdentityHash(cat, it);
             if (!h) { out.push(it); continue; }
             const i = byH.get(h);
             if (i === undefined) { byH.set(h, out.length); out.push(JSON.parse(JSON.stringify(it))); continue; }

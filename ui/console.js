@@ -13,7 +13,8 @@ import { DIMENSIONS } from '../core/constants.js';
 import { state, cfg, getLastMessageId } from '../core/model/runtime.js';
 import { upsertEntry, deleteEntry } from '../core/entries.js';
 import { relLinksOf } from '../core/model/rel.js';
-import { atomContentHash } from '../core/model/hash.js';
+// v2.86.0（`docs/D8` R1=B）：控制台显示**身份指纹**（认身份用）
+import { atomIdentityHash } from '../core/model/hash.js';
 import { readInject } from '../host/inject.js';
 import { saveStateNow } from '../adapters/store.js';
 
@@ -113,7 +114,7 @@ export function consoleEntry(kind, id) {
     let rels = [];
     try { rels = relLinksOf(kind, id) || []; } catch (x) { rels = []; }
     let hash = '';
-    try { hash = atomContentHash(kind, e) || ''; } catch (x) { hash = ''; }
+    try { hash = atomIdentityHash(kind, e) || ''; } catch (x) { hash = ''; }
     return { kind, id: String(e.id || ''), item: JSON.parse(JSON.stringify(e)), rels, hash };
 }
 
