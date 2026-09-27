@@ -13,6 +13,7 @@
 //   面板 `states` 分页按钮与动作、`FTT.*` 调试入口与无 hook 降级。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
@@ -34,7 +35,7 @@ import { installDevtools, uninstallDevtools } from '../../devtools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-state-repair.json'), 'utf8'));
 const R = makeReporter('state-repair-golden B8-6c-4 状态记录修复（V1 对齐）');
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normHashStrings(normHashes(v)));
 const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 
 const doc = makeDocument(['ftt-panel']);

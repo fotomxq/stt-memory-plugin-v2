@@ -7,6 +7,7 @@
 //   另含 V2 编排与接线：runRepairMech（前→后计数 + 报告 + 修复日志）、频率/上限闸门、`repair` 动作（第 2/3 段如实说明）。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
@@ -23,7 +24,7 @@ import { panelAction, panelBodyHtml, openPanel, setPanelHooks2, panelState } fro
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-repair.json'), 'utf8'));
 const R = makeReporter('repair-golden B8-6a 修复管线第 1 段（V1 对齐）');
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normHashStrings(normHashes(v)));
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 const doc = makeDocument(['ftt-panel']);

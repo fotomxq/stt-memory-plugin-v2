@@ -77,6 +77,9 @@ function rowTokens(html, id) {
         .replace(/<[^>]*>/g, ' ')
         .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
         .replace(/现实更新\s+[^·]+/g, '现实更新 <WALL>')
+        // v2.86.0（`docs/D7` §4.8 Q5 方案 A：展示口径统一为**存储的重要度**）—— V1 的「重要度 = base + uses × per」
+        //   已退役，故行内百分比归一为占位符（数值口径由 `tests/unit/importance-window.test.js` 专门校验）
+        .replace(/重要度\d+%/g, '重要度<N>%')
         .replace(/\s+/g, ' ').trim();
     return text ? text.split(' ').filter(Boolean) : [];
 }
@@ -130,7 +133,9 @@ const plan = [['atoms', 'a1'], ['atoms', 'a2'], ['atoms', 'a3'], ['memories', 'm
     ['plans', 'p1'], ['suspense', 'x1'], ['concepts', 'cc1'], ['parallels', 'pa1'], ['states', 'st1']];
 const diffs = [];
 for (const [dim, id] of plan) {
-    const want = dim === 'states' ? normalizeStateOracle(G.dims[dim][id]) : G.dims[dim][id];
+    // v2.86.0：重要度展示口径改为**存储值**（窗口占比）→ oracle 里的 V1 百分比同步归一（有意偏离，见 `docs/D7` §4.8）
+    const impNorm = (t) => String(t).replace(/重要度\d+%/g, '重要度<N>%');
+    const want = (dim === 'states' ? normalizeStateOracle(G.dims[dim][id]) : G.dims[dim][id]).map(impNorm);
     const got = rowTokens(pageOf(dim), id);
     if (J(got) !== J(want)) diffs.push({ dim, id, got, want });
 }

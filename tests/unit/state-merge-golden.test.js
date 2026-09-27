@@ -4,6 +4,7 @@
 // 口径：严格相等（JSON.stringify）；墓碑时间戳为墙钟，比较前抹平。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -16,7 +17,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-state-merge.json'), 'utf8'));
 const R = makeReporter('state-merge-golden V1 移植保真度（批次 3）');
 const I = G.inputs;
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normHashStrings(v === undefined ? null : v));
 const stripTs = (v) => {
     if (Array.isArray(v)) return v.map(stripTs);
     if (v && typeof v === 'object') {
@@ -26,7 +27,7 @@ const stripTs = (v) => {
     }
     return v;
 };
-const JT = (v) => J(stripTs(v));
+const JT = (v) => J(normHashStrings(normHashes(stripTs(v))));
 const st = () => {
     const s = { atoms: [], memories: [], links: [], deleted: {}, deletedH: {}, state: {} };
     setKernelState(s);

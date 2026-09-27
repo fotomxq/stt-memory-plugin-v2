@@ -5,6 +5,14 @@
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
 import { storageHash } from './scalars.js';
+import { IDENTITY_FIELDS, IDENTITY_SLOTS, IDENTITY_HASH_PREFIX, hashPrefixOf } from './hashfields.js';
+
+/**
+ * 变更哈希（= 既有 `atomContentHash`，**行为零改动**）：用于**看变化** —— 增量快照差异、情节签名。
+ * 逐维自定义字段表（V1 口径）；`docs/D8` R1 裁决 = B（两个指纹），本函数即「变更指纹」。
+ */
+function atomChangeHash(cat, a) { return atomContentHash(cat, a); }
+
 
 function atomContentHash(cat, a) {
     try {
@@ -71,3 +79,73 @@ function atomContentHash(cat, a) {
 //   floorStart/End 并区间、uses 累计；应用于 ①载入/迁移时清理本端历史重复 ②跨端合并后收敛两端。
 
 export { atomContentHash };
+
+// ==================== 身份哈希（v2.86.0；`docs/D8` R1=B 的「认人」侧） ====================
+// 依据 `docs/D8` §4：**4 基本槽 + 3 扩展槽**（标题 / 日期 / 内容 / 地点·如有 / 标签 / 类型 / 状态·如有）。
+//   · 用途：跨端同内容去重、载入去重、**内容墓碑**（删除不复活）、复活防护、控制台显示；
+//   · 与变更哈希**互补**：身份要「迟钝」（细节改动不该变成新条目），变更要「敏感」（改动必须被发现）；
+//   · 集合类字段（标签等）**先排序再拼**（R3）→ 跨端同内容必得同哈希；
+//   · 带口径**前缀** `i2:`（R19）：跨端遇异口径一律按「不同前缀 → 跳过内容去重」处理；
+//   · 字段名登记在 `core/model/hashfields.js#IDENTITY_FIELDS`（单一事实源），本函数负责取值与变换。
+
+/** 具名变换：把一个或多个源字段折算成某个槽位的字符串（键 = `IDENTITY_FIELDS` 里的名字） */
+const ID_TRANSFORMS = {
+    // 计划 / 悬念：内容槽并入步骤 / 线索文本（D8 R7）
+    stepsText: (a) => (Array.isArray(a.steps) ? a.steps : []).map((x) => String((x && x.text) || '') + (x && x.done ? '✓' : '')).join('|'),
+    cluesText: (a) => (Array.isArray(a.clues) ? a.clues : []).map((x) => String((x && x.text) || '')).join('|'),
+    // 分段总结：逐条剧情线（有序）
+    linesText: (a) => (Array.isArray(a.lines) ? a.lines : []).map((x) => String((x && x.label) || '') + '：' + String((x && x.text) || '')).join('|'),
+};
+
+/** 集合类字段（先排序再拼，R3）：这些字段按「集合」语义参与身份哈希 */
+const ID_SET_FIELDS = { tags: true, locations: true, pathArr: true, entities: true, characters: true, participants: true };
+
+/** 槽位取值：单值 → 字符串；数组 → 集合排序或按序拼接（D8 §4.1「沿用现归一化：缺失 ≡ ''/[]」） */
+function idSlotValue(name, a) {
+    const S = (v) => (v === undefined || v === null ? '' : String(v));
+    if (ID_TRANSFORMS[name]) { try { return S(ID_TRANSFORMS[name](a || {})); } catch (e) { return ''; } }
+    const v = a ? a[name] : undefined;
+    if (Array.isArray(v)) {
+        const list = v.map((x) => (x && typeof x === 'object' ? S(x.name || x.text || x.who || '') : S(x))).filter((x) => x !== '');
+        return (ID_SET_FIELDS[name] ? list.slice().sort() : list).join('|');
+    }
+    if (v && typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return ''; } }
+    return S(v);
+}
+
+/**
+ * **身份哈希**（`i2:` 前缀 + 键序固定的槽位表）：
+ *   · 未登记的维度（如货币）→ `''`：不参与身份判定（沿用「无分支 → ''」口径）；
+ *   · 四槽位 + 三扩展槽**全空** → 仍返回哈希（空内容也有身份），与变更哈希的 `''` 语义区分开。
+ */
+function atomIdentityHash(cat, a) {
+    try {
+        if (!a || typeof a !== 'object') return '';
+        const spec = IDENTITY_FIELDS[cat];
+        if (!spec) return '';
+        // 空表（如货币，D8 R11「暂不纳入」）→ 不参与身份判定
+        if (!IDENTITY_SLOTS.some((sl) => Array.isArray(spec[sl]) && spec[sl].length)) return '';
+        // 关联层（D8 R11）为例外：引用型无四槽语义 → 直接复用变更哈希的字段集（前缀区分口径）
+        if (cat === 'links') {
+            const raw = atomContentHash(cat, a);
+            return raw ? (IDENTITY_HASH_PREFIX + raw) : '';
+        }
+        // 兼容**未归一化的历史数据**（V1 导入 / 旧存档 / 旧版对端载荷）：角色档案的内容副本尚未生成时，
+        //   身份指纹退化为「变更指纹」（仍带 `i2:` 前缀），避免「同名但字段不同的两条档案」被误判为同一条。
+        if (cat === 'snapshots' && idSlotValue('content', a) === '') {
+            const raw = atomContentHash(cat, a);
+            return raw ? (IDENTITY_HASH_PREFIX + 'legacy:' + raw) : '';
+        }
+        const o = {};
+        for (const slot of IDENTITY_SLOTS) {
+            const names = spec[slot];
+            if (!names || !names.length) continue;
+            const parts = [];
+            for (const n of names) { const v = idSlotValue(n, a); if (v !== '') parts.push(n + '=' + v); }
+            if (parts.length) o[slot] = parts.join('&');
+        }
+        return IDENTITY_HASH_PREFIX + storageHash(o);
+    } catch (e) { return ''; }
+}
+
+export { atomIdentityHash, atomChangeHash, hashPrefixOf, IDENTITY_HASH_PREFIX };

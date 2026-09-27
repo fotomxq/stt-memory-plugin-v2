@@ -9,7 +9,8 @@
 
 import { ATOM_DIM_KEYS } from './constants.js';
 import { tombSet, tombSetH } from './merge.js';
-import { atomContentHash } from './model/hash.js';
+// v2.86.0（`docs/D8` R1=B）：墓碑索引 / 复活防护 = **身份哈希**
+import { atomIdentityHash } from './model/hash.js';
 import { state } from './model/runtime.js';
 let entryIndexPrev = null;
 
@@ -29,7 +30,7 @@ function entryIndexBuild(refreshHashes) {
         for (const it of (state[cat] || [])) {
             if (!it || typeof it !== 'object') continue;
             let h = '';
-            try { h = atomContentHash(cat, it); } catch (e) { h = ''; }
+            try { h = atomIdentityHash(cat, it); } catch (e) { h = ''; }
             if (refreshHashes !== false && h && it.h !== h) it.h = h;
             if (it.id !== undefined && it.id !== null) m[String(it.id)] = h;
         }
@@ -139,7 +140,7 @@ function applyDeletedToArray(dim, arr, delA, delB, delHA, delHB, learnH) {
         if (!it || it.id === undefined || it.id === null) { out.push(it); continue; }
         const idKey = String(it.id);
         const t = merged[idKey];
-        const h = atomContentHash(dim, it);
+        const h = atomIdentityHash(dim, it);
         const th = h ? mergedH[h] : 0;
         const wall = entryWallMs(it);
         const deadById = !!t && (wall === 0 || t >= wall);

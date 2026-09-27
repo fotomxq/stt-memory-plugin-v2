@@ -24,28 +24,22 @@
 // 一致性由 tests/unit/slim-gzip-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { ATOM_DIM_KEYS } from './constants.js';
+import { HASH_FIELDS, slimWhitelistOf } from './model/hashfields.js';   // v2.86.0：白名单由哈希字段表派生（D8 R16）
 import { snapIndexFrom } from './cross-sync.js';
 
-/** 各维度参与内容哈希的字段（瘦身时**绝不删除**，同义字段保留的是这些）—— V1 原表逐字 */
-export const SLIM_HASHED_FIELDS = {
-    atoms: ['text', 'title', 'date', 'time', 'type', 'entities', 'locations', 'tags'],
-    currentStates: ['subject', 'field', 'value', 'status'],
-    snapshots: ['name', 'identity', 'appearance', 'personality', 'background', 'relationships', 'social', 'future'],
-    memories: ['owner', 'date', 'title', 'content', 'memCategory', 'tags'],
-    items: ['name', 'qty', 'desc', 'location', 'carried', 'tags'],
-    plans: ['content', 'tags', 'status', 'planner', 'participants', 'steps', 'prereq', 'blockers', 'progress', 'history', 'phase', 'statusNote'],
-    suspense: ['content', 'tags', 'status', 'clues', 'resolveCondition', 'level', 'history', 'phase', 'statusNote'],
-    scenes: ['name', 'pathArr', 'desc'],
-    concepts: ['name', 'content', 'source', 'date', 'tags'],
-    parallels: ['title', 'text', 'date', 'gua', 'causalLine', 'characters', 'location', 'goalOdds', 'tags', 'promotedTo'],
-    // 通用知情关联层（引用类字段不进哈希，但必须参与瘦身白名单/保留判断）
-    links: ['dim', 'refId', 'who', 'how', 'from', 'at', 'view', 'deviation', 'note', 'kind', 'public'],
-    // 情节分段总结（时间范围 + 逐条剧情线参与哈希；raw/atomIds/manual 不进）
-    plotSegments: ['header', 'start', 'end', 'lines'],
-    // 传言（主体 / 说法 / 客观性 / 阶段与发酵度 / 传播者 / 载体 / 传导链路 / 谱系 / 联动引用参与哈希）
-    rumors: ['subject', 'content', 'objectivity', 'stage', 'ferment', 'carriers', 'media', 'chain', 'source', 'tags', 'parallelRefs', 'pending', 'lineage'],
-};
-
+/**
+ * 各维度「哈希字段」（**由 `core/model/hashfields.js` 派生**；v2.86.0 起不再手写第二张表 —— `docs/D8` R16/R17）。
+ * 语义（**核对后的真实定位**，见 `docs/D8` §5.1）：
+ *   · 它是「**同义字段消歧表**」的 keeper 优先级表 —— 只回答「两个字段说的是同一件事时存哪一个」；
+ *   · **不是**「保留字段清单」：非空字段一律保存（本表不参与「删不删」的判断）；
+ *   · 空值 / 默认值是无条件丢弃的（`isSlimDefault`），与本表无关；
+ *   · 集合 = **变更哈希字段 ∪ 身份哈希字段**（D8 D-S4）→ 无论哪种口径，keeper 都落在哈希字段内（R3 更稳）。
+ */
+export const SLIM_HASHED_FIELDS = (() => {
+    const out = {};
+    for (const cat of Object.keys(HASH_FIELDS)) out[cat] = slimWhitelistOf(cat);
+    return out;
+})();
 /** 同义字段组（组内只保留「哈希字段」那一份；仅当值完全一致时丢弃其它）—— V1 原表逐字 */
 export const SLIM_SYNONYM_GROUPS = {
     atoms: [['text', 'content']],

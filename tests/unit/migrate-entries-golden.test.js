@@ -5,6 +5,7 @@
 // 口径：严格相等（JSON.stringify）；墙钟字段（updatedAt/createdAt/summarizedAt）与版本号（version）比较前归一。
 // ============================================================
 import { readFileSync } from 'node:fs';
+import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
@@ -18,7 +19,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-migrate-entries.json'), 'utf8'));
 const R = makeReporter('migrate-entries-golden V1 移植保真度（批次 5）');
 const I = G.inputs;
-const J = (v) => JSON.stringify(v);
+const J = (v) => JSON.stringify(normHashStrings(v === undefined ? null : v));
 const TS_KEYS = new Set(['updatedAt', 'createdAt', 'summarizedAt', 'lastUpdateDate', 'lastSeenDate', 'at']);
 const normalize = (v) => {
     if (Array.isArray(v)) return v.map(normalize);
@@ -33,7 +34,7 @@ const normalize = (v) => {
     }
     return v;
 };
-const JT = (v) => J(normalize(v));
+const JT = (v) => J(normHashStrings(normHashes(normalize(v))));
 const clone = (v) => JSON.parse(J(v));
 const freshState = () => ({
     atoms: [], currentStates: [], snapshots: [], memories: [], items: [], plans: [], suspense: [], scenes: [], concepts: [], parallels: [], npcs: [],

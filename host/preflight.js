@@ -19,6 +19,8 @@ import { cfg, state } from '../core/model/runtime.js';
 import { clockAutoExtractOnce, clockExtractState } from '../core/clock-extract.js';
 import { clockManualState } from '../core/clock-patrol.js';
 import { atomContentHash } from '../core/model/hash.js';
+// v2.86.0（`docs/D7` §4.5）：每次提取落库后重算重要度（窗口调用占比）
+import { recalcImportanceAfterExtract } from '../core/importance.js';
 import { hashText } from '../core/util.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 
@@ -122,9 +124,12 @@ export function atomsSignature() {
  * @returns {{ok:boolean, changed:boolean, skipped:string, note:string, before:object|null, clock:object|null}}
  */
 export function recalibrateAfterExtract(sigBefore) {
-    const out = { ok: false, changed: false, skipped: '', note: '', before: null, clock: null };
+    const out = { ok: false, changed: false, skipped: '', note: '', before: null, clock: null, imp: null };
     try {
         if (!cfg || cfg.enabled === false) { out.skipped = 'disabled'; out.note = '组件未启用'; return out; }
+        // v2.86.0（`docs/D7` §4.5）：**每次提取记忆落库后**重算重要度（窗口调用占比）。
+        //   与时钟开关无关（重要度与时钟是两件事），故放在这里、先于任何时钟分支；逐维独立、幂等。
+        try { out.imp = recalcImportanceAfterExtract(); } catch (e) { out.imp = null; }
         if (cfg.clockExtractEnabled === false) { out.skipped = 'auto-off'; out.note = '「消息后自动同步时钟」已关闭 → 分析后不同步'; return out; }
         if (typeof sigBefore !== 'string' || !sigBefore) { out.skipped = 'no-baseline'; out.note = '无情节基线 → 跳过'; return out; }
         const sigNow = atomsSignature();

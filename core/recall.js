@@ -586,6 +586,9 @@ function recallEntryScore(e, ctx) {
         }
         // 其它因素（在日期近度之后比较）：关键词命中度 / 重要度 / 调用次数
         const hits = Math.min(3, recallHits(e, q)) * 0.35;
+        // v2.86.0：权重**暂保持 0.15**（`docs/D7` §4.9 C3 的 0.15→1.6 需与「旧数据重要度迁移重算」同批发布，
+        //   否则在仍是 V1 语义值（≈0.5）的数据上会把重要度项放大约 10 倍、改变注入择优 → 破坏 V1 注入保真。
+        //   登记为待办：迁移重算落地后同批改为 1.6（批次档 `P10az` §未做）。）
         const imp = recallImportance(e) * 0.15;
         const usesB = Math.min(1, (Number(e.uses) || 0) / 8) * 0.05;
         return Number((base + hits + imp + usesB).toFixed(4));
@@ -1445,8 +1448,9 @@ function vectorInjectionLines(ranked) {
 // 记忆行（关联感知；有差异 → 按角色分行）
 
 /**
- * 重要度（V1 `calcImportance` / `importancePct` 逐字）：`clamp(base + uses × per, 0, 1)`，百分比四舍五入。
- * 列表行展示「调用N次 · 重要度M%」依赖它（v2.47.0 补齐）。
+ * 重要度展示口径（v2.86.0 改；`docs/D7` §4.8 Q5 方案 A「单轨替换」）：
+ *   · `importancePct(item)` = **存储的重要度**（窗口调用占比，0–1）× 100 四舍五入 —— 与遗忘 / 淘汰 / 打分**同源**；
+ *   · `calcImportance(item)` 保留为 V1 兼容函数（`base + uses × per`），**不再用于展示**（也不参与任何判定）。
  */
 function calcImportance(item) {
     const uses = Number(item && item.uses) || 0;
@@ -1454,7 +1458,9 @@ function calcImportance(item) {
     const per = Number(cfg.importancePerUse) || 0.06;
     return clamp(base + uses * per, 0, 1);
 }
-function importancePct(item) { return Math.round(calcImportance(item) * 100); }
+function importancePct(item) {
+    try { return Math.round(Math.max(0, Math.min(1, Number(item && item.importance) || 0)) * 100); } catch (e) { return 0; }
+}
 
 export { calcImportance, importancePct, latestTrustedPlot, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
 

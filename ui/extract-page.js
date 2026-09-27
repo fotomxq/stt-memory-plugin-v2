@@ -26,8 +26,8 @@ const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</
 
 /** 本页各层的控件键（其余键归「召回参数」） */
 const LAYER_KEYS = ['useVector', 'vectorTopN', 'vectorMinScore', 'vectorTimeoutMs', 'jsExtractEnabled', 'useKeywordFlow'];
-/** 重要性计算键（v2.78.0：属**召回打分**，从「基础」页迁来 → 单独分节，不进「其它召回行为」） */
-const IMP_KEYS = ['importanceBase', 'importancePerUse'];
+/** 重要度窗口参数（v2.86.0：`docs/D7` 改口径 —— 旧的 `importanceBase`/`importancePerUse` 已下线） */
+const IMP_KEYS = ['impRecalcEnabled', 'impWindowRadius', 'impRecalcCount'];   // v2.86.0：窗口参数取代旧的 base/perUse 两项
 
 /** 分组下拉（V1 `apiBlockHtml` 的「代理预设名」在 V2 的等价物：本插件 API 分组） */
 function presetSelect(key, cur) {
@@ -215,7 +215,7 @@ export function extractPageHtml(controls, renderControl) {
         //   公式与 V1 同口径（`core/recall.js#calcImportance`）：重要度 = 初始值 + 调用次数 × 每次增量，
         //   其中「调用次数」在条目被召回命中时累加（`markUsed`），随后参与排序与遗忘判定。
         (imp.length
-            ? '<div class="ftt-section"><div class="ftt-sec-title">重要性计算（调用次数驱动）</div>'
+            ? '<div class="ftt-section"><div class="ftt-sec-title">重要性计算（窗口调用占比）</div>'
             + imp.map((c) => settingsControlHtml(c)).join('\n')
             + shortHintHtml('重要度 = 初始值 + 调用次数 × 每次增量；被召回命中一次即累加一次。')
             + hintDetailsHtml('说明', '<div>' + esc('结果夹取在 0-1：初始值 0-1、每次增量 0-0.5。重要度参与召回排序（列表行的「重要度M%」也读它），并被遗忘机制用作保护阈值参考。') + '</div>')

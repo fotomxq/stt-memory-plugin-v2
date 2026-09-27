@@ -348,14 +348,21 @@ export const SETTINGS_CONTROLS = {
             "label": "平行事件(注入)上限（默认 8）",
             "type": "text"
         },
+        // v2.86.0（`docs/D7` §4.8 Q5 方案 A / §4.10 R25）：重要度改「窗口调用占比」——
+        //   旧两项（初始重要性 / 每次调用增量）**下线**，由下列窗口参数取代（计数类 → 数字输入，不进 RANGE_SPECS）。
         {
-            "key": "importanceBase",
-            "label": "初始重要性(0次调用)",
+            "key": "impRecalcEnabled",
+            "label": "启用重要度重算（每次提取后按调用占比重算最近 N 条）",
+            "type": "checkbox"
+        },
+        {
+            "key": "impWindowRadius",
+            "label": "窗口半径 R（前后各 R 条，含自身 → 窗口 2R+1 条；默认 10）",
             "type": "text"
         },
         {
-            "key": "importancePerUse",
-            "label": "每次调用增量",
+            "key": "impRecalcCount",
+            "label": "重算条数 N（最近 N 条每次重算，更旧的固定；默认 20）",
             "type": "text"
         },
         {
@@ -978,8 +985,9 @@ export const RANGE_SPECS = Object.freeze({
     rumorFissionChance: { min: 0, max: 1, step: 0.01 },
     rumorParallelLinkChance: { min: 0, max: 1, step: 0.01 },
     // 重要性（0-1 / 0-0.5）
-    importanceBase: { min: 0, max: 1, step: 0.01 },
-    importancePerUse: { min: 0, max: 0.5, step: 0.01 },
+    // v2.86.0：`importanceBase` / `importancePerUse` 两项随「重要度改口径」下线；
+    //   新增「清扫保护阈值」——占比类比例，按 D7 §4.10 用滚动条（默认 0.2 = 约 4 倍窗口均值）。
+    lowUseForgetProtectImportance: { min: 0, max: 1, step: 0.01 },
     // 百分比刻度（0-100）
     'storage.worldbookProbability': { min: 0, max: 100, step: 1, unit: '%' },
     // 存储总上限（条）：计数但适合拖动粗调，右侧仍有精确读数
