@@ -3999,6 +3999,37 @@ await assert('BB2 v2.80.0「设定 → 约束」端到端：子页存在且渲�
     }
 })(), '');
 
+await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**复用同一 `.ftt-modal` 节点**（覆盖层不再整树替换 → CSS 入场动画不重放），且内容确实换了', (async () => {
+    const el = doc.getElementById('ftt-panel');
+    const stats = { panel: 0, modal: 0 };
+    let modal = null;
+    const makeModal = () => ({
+        _h: '',
+        get innerHTML() { return this._h; },
+        set innerHTML(v) { this._h = String(v); stats.modal += 1; },
+    });
+    let html = String(el.html || '');
+    Object.defineProperty(el, 'innerHTML', {
+        configurable: true,
+        get() { return html; },
+        set(v) { html = String(v); stats.panel += 1; modal = /class="ftt-modal"/.test(html) ? makeModal() : null; },
+    });
+    const origQS = el.querySelector;
+    el.querySelector = (sel) => (sel === '.ftt-modal' ? modal : (typeof origQS === 'function' ? origQS.call(el, sel) : null));
+    await entry.popupAction('tab', { tab: 'overview' });          // 首次：整树替换 → 建立模态
+    const first = el.querySelector('.ftt-modal');
+    const firstHtml = String(first.innerHTML);                    // 先快照：此后 first/second 是同一对象
+    const panelWrites0 = stats.panel;
+    await entry.popupAction('tab', { tab: 'atoms' });             // 之后：应复用模态节点
+    const second = el.querySelector('.ftt-modal');
+    const reused = second === first && stats.panel === panelWrites0 && stats.modal === 1;
+    const contentSwitched = String(second.innerHTML).indexOf('data-ftt-body="atoms"') >= 0
+        && firstHtml !== String(second.innerHTML);
+    await entry.popupAction('tab', { tab: 'overview' });
+    const third = el.querySelector('.ftt-modal');
+    return !!first && reused && contentSwitched && third === first && stats.modal === 2;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

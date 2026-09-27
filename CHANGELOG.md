@@ -3,6 +3,34 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v2.80.1（2026-09-27）· 点击按钮不再「闪一下」（面板重渲染复用模态节点）
+
+**用户要求**：「每次点击按钮，插件页面会闪一下，请修复该问题。」
+
+**根因**：`ui/panel.js#panelAction()` 在**每个动作结束**都调 `renderPanel()`（`:2163`），而 `renderPanel()` 此前是
+**整树替换** `#ftt-panel` 的 `innerHTML`（`:1252`）→ 字符串里的 `<div class="ftt-modal">…</div>` 被**销毁重建** →
+CSS 入场动画 `#ftt-panel .ftt-modal { animation: fttModalIn .22s … both }`（`style.css:404`，关键帧自
+`opacity:0; translateY(10px) scale(.985)` 开始，`style.css:395`）**每次点击都从头重放** ——
+那 220ms 的淡入 + 下移就是用户看到的「闪一下」，点得越快越明显。
+
+**修法**：
+① `panelHtml()` 拆出 `panelModalInnerHtml()`（返回模态**内部** HTML）；`panelHtml()` 仍返回完整浮层 HTML
+（外部接口与既有测试口径**逐字节不变**）；
+② 新增 `existingModalNode(el)`：取当前浮层里**已存在且可写**的 `.ftt-modal`（严格判定，伪节点/缺失一律返回 `null`）；
+③ `renderPanel()` 优先**复用该节点**、只写 `modal.innerHTML` → 节点不重建 → **入场动画不重放**；
+④ 内部 HTML 只渲染一次（`ensureButtonTypes` 后供两条路径共用），不再重复渲染 13 个分页；
+⑤ 回落路径保持原样（首次打开 / 关闭后再打开 / 无 DOM 或伪节点 → 整树替换）。
+
+**刻意保留**：打开面板、以及关闭后再打开的**入场动画照旧播放**（动效只应出现在打开时）；「点击不跳顶」的
+滚动恢复（`applyPanelScroll` + `scheduleScrollRestore`）在复用路径下依旧执行；面板宽度 CSS 变量下发与
+按钮 `type="button"` 的双保险（字符串层 + DOM 层）不变。**未引入 DOM diff**：保持「字符串渲染 + 单点写入」架构。
+
+**门禁**：新增 `tests/unit/panel-rerender.test.js`（11 项：节点同一性 / 覆盖层不再整树替换 / 两条路径内容一致 /
+`panelHtml()` 口径不变 / **连续 6 次真实动作后模态仍是同一节点** / 切页内容确实更新 / 关闭后再打开回到整树替换 /
+无模态与伪节点安全回落 / 复用路径滚动恢复仍生效 / CSS 因果链自证）；新增冒烟 `BC1`（真实动作两次 → 模态复用、
+覆盖层只替换一次、内容确实切换）。单元 **103 文件 / 1576 断言**，冒烟 **168 项**。详见
+`docs/history/P10as-点击不再闪一下.md`；渲染机制现状已同步 `docs/04-应用架构.md` §4。
+
 ## v2.80.0（2026-09-27）· 状态大类去掉「：」+ 关系表/约束自查收进「设定 → 约束」
 
 **用户要求**：「状态大类列表不应该总是显示『：』，请去掉该符号。」「记忆大类的关系表、关系约束放入设定-约束标签中。」

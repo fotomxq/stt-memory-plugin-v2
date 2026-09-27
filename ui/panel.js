@@ -1108,8 +1108,14 @@ export function panelBodyHtml(tab) {
     } catch (e) { return '<div class="ftt-empty">渲染失败：' + esc(String((e && e.message) || e)) + '</div>'; }
 }
 
-/** 整个浮层 HTML（与 V1 同名同层级；V1 样式挂在 #ftt-panel 上） */
-export function panelHtml() {
+/**
+ * `.ftt-modal` 的**内部** HTML（标题栏 + 标签条 + 各分页正文）。
+ * v2.80.1（用户报告「每次点击按钮，插件页面会闪一下」）：
+ *   重渲染只替换**模态内部**、复用既有 `.ftt-modal` 节点 —— 否则节点被重建会让入场动画
+ *   `fttModalIn`（`style.css#ftt-panel .ftt-modal`）**每次点击重放**（220ms 淡入 + 下移 = 用户看到的「闪」）。
+ *   `panelHtml()` 仍返回**完整**浮层 HTML（测试与外部接口口径不变）。
+ */
+export function panelModalInnerHtml() {
     const active = PANEL_TABS.some((x) => x[0] === ps.tab) ? ps.tab : 'overview';
     const nameTxt = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
     const bp = (ps.busy && typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : null;
@@ -1124,7 +1130,12 @@ export function panelHtml() {
     const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
         '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '">' + esc(l) + '</a>').join('') + '</div>';
     const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">' + panelBodyHtml(t) + '</div>').join('\n');
-    return '<div class="ftt-modal">' + head + tabs + bodies + '</div>';
+    return head + tabs + bodies;
+}
+
+/** 整个浮层 HTML（与 V1 同名同层级；V1 样式挂在 #ftt-panel 上） */
+export function panelHtml() {
+    return '<div class="ftt-modal">' + panelModalInnerHtml() + '</div>';
 }
 
 /** 找到（或创建）浮层元素：优先 body，退到任意扩展容器（桩 DOM 无 body 时也能工作） */
@@ -1227,6 +1238,21 @@ export function applyPanelScroll(el, st) {
     } catch (e) { return false; }
 }
 
+/**
+ * 取当前浮层里**已存在**的 `.ftt-modal` 节点（v2.80.1 修复「点击按钮闪一下」的关键）。
+ * 判定严格：必须是元素、必须能写 `innerHTML`（桩 DOM 的伪节点不能写 → 回落整树替换）。
+ * @returns {object|null}
+ */
+function existingModalNode(el) {
+    try {
+        if (!el || typeof el.querySelector !== 'function') return null;
+        const node = el.querySelector('.ftt-modal');
+        if (!node || typeof node !== 'object') return null;
+        if (typeof node.innerHTML !== 'string') return null;
+        return node;
+    } catch (e) { return null; }
+}
+
 /** 布局落定后再补一次（字体/图片/异步内容改变高度时，同步恢复会被浏览器重置） */
 function scheduleScrollRestore(el, st) {
     try {
@@ -1244,9 +1270,25 @@ export function renderPanel() {
     // ① 重渲染**前**记录滚动位置（V1 同款；活动标签内容区，不是第一个 .ftt-body）
     const scroll = panelScrollState(el);
     // ② 字符串层补 `type="button"`（防止 form 内按钮提交导致跳顶）
+    // 只渲染一次：模态内部 HTML 复用给两条路径（复用节点 / 整树替换），避免重复渲染 13 个分页
+    const innerHtml = ensureButtonTypes(panelModalInnerHtml());
     const html = ensureButtonTypes(panelHtml());
     applyPanelWidth(el);
     if (!el) return html;
+    // v2.80.1（用户报告「每次点击按钮，页面闪一下」）：**复用既有 `.ftt-modal` 节点**，
+    //   只替换其内部 —— 节点不被重建，CSS 入场动画（`fttModalIn`）就不会每次点击重放。
+    //   仅在「已有模态节点」时走该路径；首次打开 / 关闭后再打开 / 桩 DOM 一律回落整树替换，
+    //   于是「打开面板的入场动画」仍然保留（这正是动效该出现的地方）。
+    const modal = existingModalNode(el);
+    if (modal) {
+        try {
+            modal.innerHTML = innerHtml;
+            hardenButtonTypes(el);
+            applyPanelScroll(el, scroll);      // ③ 渲染后同步恢复
+            scheduleScrollRestore(el, scroll); // ④ 布局落定后再补一次
+            return finish(html);
+        } catch (e) { /* 落回整树替换 */ }
+    }
     try {
         if (typeof el.innerHTML === 'string') {
             el.innerHTML = html;

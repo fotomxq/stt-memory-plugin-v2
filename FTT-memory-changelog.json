@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.80.0",
+  "version": "2.80.1",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.80.1",
+      "date": "2026-09-27",
+      "title": "点击按钮不再「闪一下」（面板重渲染复用模态节点）",
+      "points": [
+        "根因：ui/panel.js#panelAction() 在每个动作结束都调 renderPanel()（:2163），而 renderPanel() 此前是",
+        "整树替换：ftt-panel 的 innerHTML（:1252）→ 字符串里的 <div class=\"ftt-modal\">…</div> 被销毁重建 →CSS 入场动画 #…",
+        "修法：① panelHtml() 拆出 panelModalInnerHtml()（返回模态内部 HTML）；panelHtml() 仍返回完整浮层 HTML（外部接口与既有测试…"
+      ]
+    },
     {
       "version": "2.80.0",
       "date": "2026-09-27",
