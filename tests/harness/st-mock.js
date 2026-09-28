@@ -4,6 +4,30 @@
 // ============================================================
 import { HOST_EVENTS } from '../../core/constants.js';
 
+// ============================================================
+// 测试环境冻结 · 默认 locale（v3.0.5）
+// ------------------------------------------------------------
+// 背景：黄金样本 `tests/fixtures/v1-golden-*.json` 由**真实 V1 插件 v1.206** 录制生成，
+//   录制机的默认 locale 是 `en`；而 V1/V2 的若干排序用的是**裸** `String#localeCompare`
+//   （不传 locales），其行为随宿主默认 locale 变化，汉字尤甚：
+//     ['甲','乙','丙'].sort((a,b)=>a.localeCompare(b))
+//       en（录制机口径，等同码点序）→ 丙,乙,甲
+//       zh-CN（中文 Windows）      → 丙,甲,乙（拼音序）
+//   于是同一份 oracle 在不同语言的机器上会得到不同结果，且 Windows 上 `LANG` / `LC_ALL`
+//   **无法**覆盖 Node 的默认 locale（实测三组取值均仍为 zh-CN），只能从进程内冻结。
+// 做法：仅在本**测试进程**内，把「未显式传 locales」的 `localeCompare` 冻结到录制机口径，
+//   使黄金样本的逐值比对在任何宿主上都可复现，且不削弱断言强度（仍是与 V1 逐值一致）。
+// 边界：**不改生产代码、不改黄金样本**；显式传了 locales 的调用原样透传，因此生产行为与
+//   真实用户所见顺序完全不受影响；本冻结只在 tests/ 内生效，不进入发布物运行时路径。
+// ============================================================
+const ORACLE_LOCALE = 'en';
+const __rawLocaleCompare = String.prototype.localeCompare;
+String.prototype.localeCompare = function (that, locales, options) {
+    return (locales === undefined || locales === null)
+        ? __rawLocaleCompare.call(this, that, ORACLE_LOCALE, options)
+        : __rawLocaleCompare.call(this, that, locales, options);
+};
+
 /** 最小 DOM 元素桩 */
 function makeEl(id) {
     const el = {

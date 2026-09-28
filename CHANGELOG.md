@@ -3,6 +3,44 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.0.5（2026-09-28）· 跨平台可移植性修复（绝对路径 / 默认 locale / 行尾）
+
+**用户要求**（原话）：「三项一起修，按发版轮次走 v3.0.5」—— 修在中文 Windows 全新克隆上暴露的三处可移植性缺陷。
+
+本版**不改任何产品行为**（`core/` `host/` `adapters/` `ui/` 的运行时逻辑零改动），只修「同一份仓库换一台机器就跑不出同一结果」的三处问题：
+
+**① `tombstone-safety` 测试的绝对路径导入 → 相对导入（真缺陷）**
+`tests/unit/tombstone-safety.test.js` 的 6 行 import 写死为 `/home/ubuntu/st/ftt-memory-v2/...`，
+使该文件在任何其它路径下都无法加载（`ERR_MODULE_NOT_FOUND`），且在单测汇总里恒为失败 ——
+即「单元测试永远不可能全绿」。其余 121 个测试文件一律相对导入，本版改为与全仓一致的
+`../harness/` 与 `../../core/` 相对导入。
+
+**② 黄金样本比对的默认 locale 依赖 → 测试进程内冻结（可移植性）**
+`core/model/money.js#knownCharacterNames`、`ui/panel.js#statesHtml`、`ui/scene-tree.js` 等处的排序用的是
+**裸** `String#localeCompare`（不传 locales，V1 原样），其汉字顺序随宿主默认 locale 变化：
+
+```text
+['甲','乙','丙'].sort((a,b)=>a.localeCompare(b))
+  en（= oracle 录制机口径，等同码点序）→ 丙,乙,甲
+  zh-CN（中文 Windows）               → 丙,甲,乙（拼音序）
+```
+
+于是同一份 oracle 在中文机器上得到不同结果，`cur-track-golden`(R2/R6/R7) · `model-golden2`(M6) ·
+`state-align`(P2/P3) 共 **6 项断言**失败；且 Windows 上 `LANG` / `LC_ALL` **无法**覆盖 Node 默认
+locale（实测三组取值均仍为 `zh-CN`）。本版在 `tests/harness/st-mock.js`（唯一的宿主桩，三个受影响
+测试文件都经它启动）内，把**未显式传 locales** 的 `localeCompare` 冻结到录制机口径；显式传参一律
+透传，**生产行为与 54 份黄金样本均不变**，断言强度不削弱（仍是与 V1 逐值一致）。
+
+**③ 行尾统一 LF：新增 `.gitattributes`**
+`scripts/check-changelog-json.js` 对 `FTT-memory-changelog.json` 做**逐字节**比对。Windows 下
+`core.autocrlf=true` 会把该文件检出成 CRLF，于是门禁在一份**内容完全正确**的全新克隆上开箱失败
+（实测 `git diff --numstat` 为空 = 内容零差异，却报「清单与 CHANGELOG.md 不同步」）。本版新增
+`.gitattributes`（`* text=auto eol=lf`）把行尾钉死为 LF —— 本仓库「源码即发布物」，行尾属发布物的一部分。
+
+**验证**：单元 **122 文件 / 1849 断言**（0 失败）· 冒烟 **187 项** · 内核纯净度 / 标识符 / 词条 /
+文档规范 / 版本清单 / UI 规范 0 违规 · 版本四处 == `3.0.5` · 归档复跑（改名目录）全绿。
+详见 `docs/history/P10bq-跨平台可移植性修复.md`。
+
 ## v3.0.4（2026-09-28）· 跨端同步分歧新增「🔀 合并差异」选项
 
 **用户要求**（原话）：「新版本，设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」

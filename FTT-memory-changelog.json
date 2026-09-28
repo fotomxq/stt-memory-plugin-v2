@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.5",
+      "date": "2026-09-28",
+      "title": "跨平台可移植性修复（绝对路径 / 默认 locale / 行尾）",
+      "points": [
+        "① tombstone-safety 测试的绝对路径导入 → 相对导入（真缺陷）：tests/unit/tombstone-safety.test.js 的 6 行 import…",
+        "② 黄金样本比对的默认 locale 依赖 → 测试进程内冻结（可移植性）：core/model/money.js#knownCharacterNames、ui/panel.js…",
+        "③ 行尾统一 LF：新增 .gitattributes：scripts/check-changelog-json.js 对 FTT-memory-changelog.json 做…"
+      ]
+    },
     {
       "version": "3.0.4",
       "date": "2026-09-28",

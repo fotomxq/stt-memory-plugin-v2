@@ -1,9 +1,9 @@
-import { makeReporter, makeHost, makeDocument, installGlobalHost } from '/home/ubuntu/st/ftt-memory-v2/tests/harness/st-mock.js';
-import { cfg, state, setKernelState, setScopeKey, setPersistHooks } from '/home/ubuntu/st/ftt-memory-v2/core/model/runtime.js';
-import { defaultCfg } from '/home/ubuntu/st/ftt-memory-v2/core/config.js';
-import { emptyState } from '/home/ubuntu/st/ftt-memory-v2/core/state.js';
-import { applyDeletedToArray } from '/home/ubuntu/st/ftt-memory-v2/core/sweep.js';
-import { atomIdentityHash } from '/home/ubuntu/st/ftt-memory-v2/core/model/hash.js';
+import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
+import { cfg, state, setKernelState, setScopeKey, setPersistHooks } from '../../core/model/runtime.js';
+import { defaultCfg } from '../../core/config.js';
+import { emptyState } from '../../core/state.js';
+import { applyDeletedToArray } from '../../core/sweep.js';
+import { atomIdentityHash } from '../../core/model/hash.js';
 // 墙钟口径：`entryWallMs` 只认 > 1e12 的 `updatedAt`（毫秒墙钟）
 const T = Date.now();
 const R = makeReporter('tombstone-safety v2.91.0 内容墓碑保守判据');
