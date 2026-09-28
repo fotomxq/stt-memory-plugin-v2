@@ -79,7 +79,7 @@ R.assert('H2 文本提取 extractClockFromText：9 例（正则/带已存年份/
     }
     return bad.slice(0, 3);
 })());
-R.assert('H3（v2.51.0 改版）统一解析 resolveStoryClock：**只取最新情节**的 date/time/location；正文/其它类别一律不参与', (() => {
+R.assert('H3（v2.51.0 改版 + v2.98.0 逐字段）统一解析 resolveStoryClock：**只取情节**且 date/time/location **各自取最新的有值那条**；正文/其它类别一律不参与', (() => {
     const cases = [
         { tag: 'plot-wins', atoms: [
             { id: 'p1', text: '剧情正文里写着 1919年12月31日 23:59。', date: '1919-11-30', time: '08:52', location: '凉州卫-钟鼓楼', floorStart: 5, floorEnd: 5, uses: 1, tags: [] },
@@ -93,6 +93,19 @@ R.assert('H3（v2.51.0 改版）统一解析 resolveStoryClock：**只取最新�
             { id: 's1', text: '情节总结条。', date: '2035-01-01', floorStart: 30, floorEnd: 30, uses: 0, tags: [], mergedSummary: { by: 'auto', sourceCount: 1 } },
             { id: 'p2', text: '可用情节。', date: '1919-11-22', floorStart: 10, floorEnd: 10, uses: 0, tags: [] },
         ], want: { date: '1919-11-22', time: '', location: '' } },
+        // v2.98.0（用户报告「获取时间，没有从最新情节自动抓取数据」）：**逐字段**取「最新的、该字段有值」的情节。
+        //   修复前只挑一条（且要求带日期）→ 最新情节缺日期时整条被跳过，时间仍是旧情节的。
+        { tag: 'per-field-time-from-newest', atoms: [
+            { id: 'p1', text: '旧。', date: '1919-11-20', time: '08:00', floorStart: 1, floorEnd: 1, uses: 0, tags: [] },
+            { id: 'p2', text: '新（只有时间，没写日期）。', date: '', time: '深夜', locations: ['酒馆'], floorStart: 2, floorEnd: 2, uses: 0, tags: [] },
+        ], want: { date: '1919-11-20', time: '深夜', location: '酒馆' } },
+        { tag: 'per-field-no-date-anywhere', atoms: [
+            { id: 'p2', text: '最新但没有日期。', date: '', time: '深夜', locations: ['酒馆'], floorStart: 2, floorEnd: 2, uses: 0, tags: [] },
+        ], want: { date: '', time: '深夜', location: '酒馆' } },
+        { tag: 'per-field-manual-no-floor', atoms: [
+            { id: 'p1', text: '提取所得。', date: '1919-11-20', time: '08:00', floorStart: 20, floorEnd: 20, uses: 0, tags: [] },
+            { id: 'p2', text: '手动新增（无楼层信息）。', date: '1919-11-29', time: '深夜', locations: ['酒馆'], floorStart: 0, floorEnd: 0, uses: 0, tags: [] },
+        ], want: { date: '1919-11-29', time: '深夜', location: '酒馆' } },
     ];
     const bad = [];
     for (const c of cases) {

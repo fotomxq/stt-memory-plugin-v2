@@ -18,7 +18,7 @@ import {
     clockAddDays, clockMatchNotInline, clockNormBcText, clockYearOf, clockAnomalyJumpYears, clockDateAnomaly,
     CLOCK_DATE_SCAN, CLOCK_DAY_PARTS,
 } from './clock.js';
-import { latestPlotByFloor, latestTrustedPlot, atomLatestDated, matchPresentNames } from './recall.js';
+import { latestPlotByFloor, latestTrustedPlot, trustedPlotList, atomLatestDated, matchPresentNames } from './recall.js';
 import { clockManualRaw } from './clock-patrol.js';
 import { stampSnapshotsSeen } from './model/snapshot.js';
 import { scheduleStateDecay } from './ingest.js';
@@ -66,10 +66,16 @@ function latestSceneLocation() {
 /** 兜底参考：原子数据「最新存在日期」的节点（仅供总览展示，不写入） */
 function storyClockReference() {
     // v2.51.0：参考值同样**只来自最新情节**（此前扫全部原子数据的最新日期 → 新设计下不可信）
+    // v2.98.0：与 `resolveStoryClock` 同一口径 —— **逐字段**取「最新的、该字段有值」的那条，两处不再互相矛盾
+    //   （修复前会出现「灰字显示『参考最近情节：深夜』，但时间字段却没被采用」的自相矛盾现象）
     try {
-        const p = latestTrustedPlot({});
-        if (!p) return { date: '', time: '', location: '' };
-        return { date: p.date || '', time: p.time || '', location: p.location || '' };
+        const list = trustedPlotList();
+        const first = (get) => { for (const it of list) { const v = get(it); if (v) return v; } return ''; };
+        return {
+            date: first((it) => it.date),
+            time: first((it) => it.time),
+            location: first((it) => it.location),
+        };
     } catch (e) { return { date: '', time: '', location: '' }; }
 }
 
@@ -324,41 +330,54 @@ function resolveStoryClock(opts) {
             clockTracePick(trace, 'time', { value: out.time, from: out.source.time || (out.time ? 'prev' : ''), why: manual.time ? '手工值直接采用；锁定中' : '手工未给时间 → 沿用已有值' });
             clockTracePick(trace, 'location', { value: out.location, from: out.source.location || (out.location ? 'prev' : ''), why: manual.location ? '手工值直接采用；锁定中' : '手工未给地点 → 沿用已有值' });
             clockTraceDegrade(trace, { degraded: false, reason: '', detail: '手工锁定：跳过情节取值' });
-            const pres0 = resolvePresentNames(String(o.text != null ? o.text : ''), latestTrustedPlot());
+            const pres0 = resolvePresentNames(String(o.text != null ? o.text : ''), trustedPlotList()[0] || null);
             out.source.present = pres0.source;
             out.present = pres0.list;
             clockTraceFinish(trace);
             return out;
         }
-        // ── ① 唯一来源：最新（带日期的）非总结情节 ──
-        const plot = latestTrustedPlot({ needDate: true });
-        clockTraceChain(trace, '① 取值：最新一条「情节」（排除情节总结 / 已总结隐藏 / 无效情节；它类数据一律不参与）');
-        if (!plot || !plot.node) {
+        // ── ① 唯一来源：情节；**逐字段**取「最新的、该字段有值」的那一条 ──
+        //   v2.98.0 修复（用户报告「获取时间，没有从最新情节自动抓取数据」）：原实现只挑**一条**节点
+        //   （且要求它带日期）并由它提供全部三项 —— 最新情节只有「时间」没「日期」时整条被跳过，
+        //   时钟退回次新旧情节的 date+time+location；一条带日期的情节都没有时更是**完全取不到**（时间/地点也没有）。
+        //   现在：筛选与排序不变（最新在前），但 date / time / location **各自**向前找第一条有值的（仍只在情节内）。
+        const list = trustedPlotList();
+        clockTraceChain(trace, '① 取值：情节列表（最新在前；排除情节总结 / 已总结隐藏 / 无效情节；它类数据一律不参与）→ 逐字段取值');
+        if (!list.length) {
             out.present = null;
             clockTraceNote(trace, '没有任何可用情节 → **不改动时钟**（不清空、不从其它数据类别取值）');
             clockTracePick(trace, 'date', { value: '', from: '', why: '无可用情节（时钟保持原值：' + (prev.date || '（空）') + '）' });
             clockTraceFinish(trace);
             return out;
         }
-        const node = plot.node;
-        const d = clockDateValid(node.date) ? String(node.date).slice(0, 10) : '';
-        const t = String(node.time || '').slice(0, 20);
-        const locs = Array.isArray(node.locations) ? node.locations.filter(Boolean) : [];
-        const loc = String(node.location || locs[0] || '').slice(0, 60);
+        /** 逐字段取第一条有值的（列表已最新在前） */
+        const pickField = (get) => {
+            for (const it of list) { const v = get(it); if (v) return { value: v, node: it.node, floor: Number(it.node.floorEnd) || Number(it.node.floorStart) || 0 }; }
+            return null;
+        };
+        const dp = pickField((it) => it.date);
+        const tp = pickField((it) => it.time);
+        const lp = pickField((it) => it.location);
+        const d = dp ? dp.value : '';
+        const t = tp ? tp.value : '';
+        const loc = lp ? lp.value : '';
         out.date = d;
         out.time = t;
         out.location = loc;
         out.source.date = d ? 'plot' : '';
-        out.source.time = (t && d) ? 'plot' : '';
-        out.source.location = (loc && d) ? 'plot' : '';
+        out.source.time = t ? 'plot' : '';
+        out.source.location = loc ? 'plot' : '';
+        const showNode = (p) => (p ? ('「' + String(p.node.title || p.node.text || p.node.id || '').slice(0, 24) + '」（第 ' + p.floor + ' 楼）') : '');
+        // 保留字段「第 N 天」：仍记到**提供日期的那条情节**上（无日期可取时退到最新一条）
+        const node = (dp && dp.node) || list[0].node;
         out.plotId = String(node.id || '');
         out.plotFloor = Number(node.floorEnd) || Number(node.floorStart) || 0;
         out.textMode = 'plot-only';
-        clockTracePick(trace, 'date', { value: d, from: 'plot', why: '最新情节「' + String(node.title || node.text || node.id || '').slice(0, 24) + '」（第 ' + (Number(node.floorEnd) || 0) + ' 楼）的日期字段' });
-        clockTracePick(trace, 'time', { value: t, from: out.source.time, why: t ? '同一情节节点的时间字段' : '该情节没有时间字段 → 时间保持原值' });
-        clockTracePick(trace, 'location', { value: loc, from: out.source.location, why: loc ? '同一情节节点的地点字段（或 locations[0]）' : '该情节没有地点字段 → 地点保持原值' });
-        // 在场角色：只用该情节的涉及角色（正文不再参与）
-        const pres = resolvePresentNames('', plot);
+        clockTracePick(trace, 'date', { value: d, from: 'plot', why: d ? ('情节内最新一条带日期的节点' + showNode(dp)) : '情节都没有日期 → 日期保持原值' });
+        clockTracePick(trace, 'time', { value: t, from: out.source.time, why: t ? ('情节内最新一条带时间的节点' + showNode(tp) + (dp && tp && dp.node !== tp.node ? '（与日期不是同一条：日期取自更早那条）' : '')) : '情节都没有时间字段 → 时间保持原值' });
+        clockTracePick(trace, 'location', { value: loc, from: out.source.location, why: loc ? ('情节内最新一条带地点的节点' + showNode(lp)) : '情节都没有地点字段 → 地点保持原值' });
+        // 在场角色：按**最新一条情节**的涉及角色（正文不再参与；该条无角色 → 沿用旧名单）
+        const pres = resolvePresentNames('', list[0]);
         out.source.present = pres.source;
         out.present = pres.list;
         clockTracePick(trace, 'present', { value: (pres.list || []).join('、'), from: pres.source, why: pres.source === 'plot-atom' ? '最新情节的涉及角色' : '本轮无点名 → 沿用旧名单（不清空）' });
