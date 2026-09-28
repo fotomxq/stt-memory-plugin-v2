@@ -30,7 +30,7 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，92 份）
+└── history/                  # 历史批次层（只读留痕，112 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
@@ -65,23 +65,24 @@ docs/
 | 要查「数据怎么在设备间同步」 | `03-技术架构` §9（现状 + 缺陷 + 目标口径）→ `D11`（方案与裁决）→ `D10`（取证与止血） |
 | 要删楼层 / 核对楼层骤减 | `D12`（影响核对 · 重映射兜底 · 内置删除操作）→ `03-技术架构` §9 → `04-应用架构` 数据管理页 |
 | 要加页面 / 组件 / 改交互 | `D9`（页面骨架 · 组件规格 · 交互契约 · **设计原则 U1–U14** · 检查清单）→ `04-应用架构` §2/§4 |
+| 要挂进本机真实宿主调试 | `tests/local/README.md`（本地调试层用法）→ `开发守则.md` §6（可用范围与边界）→ `05-开发指南` §3 |
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v3.0.5） |
+| 口径 | 权威来源 | 当前值（v3.0.6） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.0.5` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.0.6` |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
 | 内核配置键数 | `core/config.js#defaultCfg` | 221 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 122 文件 / 1849 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 123 文件 / 1883 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 187 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 111 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 112 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

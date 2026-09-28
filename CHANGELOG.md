@@ -3,6 +3,43 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.0.6（2026-09-28）· 本地调试：真实宿主自检、调试启动器与隐私门禁
+
+**用户要求**（原话）：「本地安装有TauriTavern，请核对路径，想办法进入调试模式，构建单独的本地化单元测试目录及文件。开发守则新增，当本地进行开发时，可使用本地调试。注意不要泄漏本地隐私信息，其次请勿修改插件之外的数据信息。」
+
+本版新增 `tests/local/`（**本地调试层**），把「把插件挂进本机真实宿主调试」变成有路径核对、有调试入口、
+有隐私护栏的常规能力。**不改任何产品运行时行为**（`core/` `host/` `adapters/` `ui/` 零改动）。
+
+**① 本地环境自检：`npm run local`（新增，只读，不属发布门禁）**
+逐项核对本机宿主现状：宿主与扩展目录发现（**运行时解析，入库文件零机器路径**）、插件是否已安装、
+开发仓库与宿主部署的**版本一致性**、`git` 元数据（**直读 `.git/HEAD` 与 `.git/config`**，不调用 `git` 命令，
+避免 `safe.directory` 之类的全局配置改动与属主不一致报错）、发布物**逐文件 sha256 漂移比对**、
+宿主启用状态（抽取 `settings.json` 的 `disabledExtensions`）、词条落地、插件用户数据的只读统计、
+宿主调试开关现状。输出**默认脱敏**（主目录 → `%APPDATA%` / `~`），`--show-paths` 才打全路径。
+另有 `--json` / `--save`（报告落 `tests/local/out/`，已 gitignore）/ `--strict`，以及
+`--deploy --yes` 把发布物同步进宿主扩展目录（**只写不删、永不触碰部署副本的 `.git`**）。
+
+**② 调试模式：三条通道 + `tests/local/launch-debug.cmd`（新增）**
+①宿主日志（`logs/tauritavern.log.*`，随包 `config.yaml` 已是 DEBUG 级）；
+②插件自带调试面（`window.FTT` / `/ftt` / 调试页 / 导出调试包）；
+③前端 console 捕获与 DevTools —— `tauritavern-settings.json` 的 `dev.frontend_console_capture` 与
+内置 DevTools（exe 已验证编入 `devtools` 支持），并新增 `launch-debug.cmd` 以
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<端口>` 启动（可选注入代理）。
+**宿主开关一律不代改**（见 ③），CDP 是否生效如实登记为**待实测**（wry 会自设 browser arguments）。
+
+**③ 隐私与边界：新增 `scripts/check-local-leak.js` 门禁 + 硬性边界**
+本地调试天然要接触本机路径，而本仓库是公开仓库。新增门禁把「不泄漏本地隐私」从口头约定变成**会失败**的检查：
+扫描工作区文本文件，按两条**机器无关**判据命中 —— 通用用户主目录路径
+（`C:\Users\<name>` / `/home/<name>` / `/Users/<name>`，占位符形态如 `<name>` / `%USERNAME%` / `username` 一律豁免）
+与当前机器主机名（≥5 字符）。门禁自身**不回显命中内容**（只给规则名 + 打码片段），避免成为泄漏渠道。
+同时定死边界：宿主配置（`config.yaml` / `settings.json` / `tauritavern-settings.json`）与插件用户数据
+（`_tauritavern/extension-store/**`）**一律只读**；写操作只可能在 `--deploy --yes` 的插件发布物与本目录 `out/`。
+
+**验证**：单元 **123 文件 / 1883 断言**（新增 `local-harness` 34 项：平台目录解析 / 宿主发现 /
+只读读取 / 漂移与部署计划 / 隐私门禁两向断言）· 冒烟 **187 项** · 全门禁 0 违规 · 本地自检在本机
+真实 TauriTavern 上实测通过（自动探测到宿主、部署版本 3.0.4 与开发版本差异如实报出、漂移 18 项、
+启用中、词条 54×2 一致、插件数据只读统计正常）。详见 `docs/history/P10br-本地调试与本地环境自检.md`。
+
 ## v3.0.5（2026-09-28）· 跨平台可移植性修复（绝对路径 / 默认 locale / 行尾）
 
 **用户要求**（原话）：「三项一起修，按发版轮次走 v3.0.5」—— 修在中文 Windows 全新克隆上暴露的三处可移植性缺陷。
