@@ -8,6 +8,10 @@
 //   · `cfg.storage.tauriNative` = auto（默认）/ on（强制）/ off（始终用文件通道）；
 //   · `cfg.storage.tauriMirror` = 原生模式下额外镜像写一份酒馆文件；
 //   · 原生写失败 → **自动回退**文件通道（绝不丢数据）；写/读按 key 记住命中后端（避免反复探测）。
+// v3.0.11（真机「刷新后已分析楼层成片变回未摘要」）：**记路由不再等于钉死** ——
+//   ①启动早期「宿主已识别但原生 API 未就位」时短暂等待一次，绝不把「还没就绪」当成「原生没有数据」；
+//   ②缓存为文件通道而原生当前可用时视为降级残留 → 重新优先原生，且复核探测**绕开未命中抑制**（`force`）；
+//   ③只有原生确实可用时的一次真实未命中才允许把文件通道路由记下来。
 // 运行：node tests/unit/file-transport.test.js
 // ============================================================
 import { makeReporter, makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '../harness/st-mock.js';
@@ -192,11 +196,27 @@ const urls = () => calls.map((c) => c.url);
             const r = await fileTransportReadAuto('ftt2-state-legacy.json');
             return r.ok === true && r.backend === 'st-files' && urls().indexOf('/user/files/ftt2-state-legacy.json') >= 0;
         });
-        await A('B2 命中过文件通道后，同键再读优先文件通道（原生探测次数不增）', async () => {
-            const before = h.calls.tryGet;
-            calls.length = 0;
+        await A('B2 v3.0.11：陈旧文件路由不再钉死 —— 原生补上同键后，同键再读立刻改用原生（真机「刷新后回退未摘要」修复点）', async () => {
+            const r1 = await fileTransportReadAuto('ftt2-state-legacy.json');
+            if (!(r1.ok === true && r1.backend === 'st-files')) return false;
+            // 直写宿主桩（**绕过插件写入路径**，因此不会清掉上一步探测留下的 30s 未命中抑制）：
+            //   模拟「原生里刚有了新值，但本会话早先探测过一次未命中」
+            h.kv.set('ftt2-files/main/ftt2-state-legacy.json',
+                { k: 'b64', v: Buffer.from('{"v":1,"from":"native-new"}', 'utf8').toString('base64') });
+            const r2 = await fileTransportReadAuto('ftt2-state-legacy.json');
+            return r2.ok === true && r2.backend === 'tt-native' && r2.text === '{"v":1,"from":"native-new"}';
+        });
+        await A('B2 复核原生后：陈旧文件写入的新值不会再被原生旧值遮蔽（反向后仍读原生）', async () => {
             const r = await fileTransportReadAuto('ftt2-state-legacy.json');
-            return r.ok === true && r.backend === 'st-files' && h.calls.tryGet === before && urls().length === 1;
+            return r.ok === true && r.backend === 'tt-native' && r.text.indexOf('native-new') > 0;
+        });
+        await A('B2 陈旧路由复核只多一次**宿主内探测**；文件通道命中语义不变（原生真的没有该键时仍返回文件内容）', async () => {
+            await fileTransportUploadText('ftt2-state-legacy2.json', '{"v":1}');     // 原生有 → 不算
+            h.kv.delete('ftt2-files/main/ftt2-state-legacy2.json');
+            h.blobs.delete('ftt2-files/main/ftt2-state-legacy2.json');
+            files.set('ftt2-state-legacy2.json', '{"v":1,"from":"files2"}');
+            const r = await fileTransportReadAuto('ftt2-state-legacy2.json');
+            return r.ok === true && r.backend === 'st-files' && r.text === '{"v":1,"from":"files2"}';
         });
         await A('B2 原生已接管且文件通道 404 → 本会话停用回退（不再无谓探测）', async () => {
             const r1 = await fileTransportReadAuto('ftt2-state-ghost.json');
@@ -300,6 +320,57 @@ const urls = () => calls.map((c) => c.url);
             const html = storagePageHtml(SETTINGS_CONTROLS.storage);
             return html.indexOf('data-ftt-tt-channel') > 0 && html.indexOf('存储通道') > 0
                 && html.indexOf('storage.tauriNative') < 0 && html.indexOf('storage.tauriMirror') < 0;
+        });
+    }
+
+    console.log('\n[B6] v3.0.11：启动早期就绪等待（真机「刷新后已分析楼层成片变回未摘要」的根因）');
+    {
+        // 真机时序：扩展 `init()` 里的 `await loadMemoryState()` 早于 TauriTavern 注入
+        // `window.__TAURITAVERN__` —— 这一刻只有运行特征可见（`__TAURI_INTERNALS__` 等）。
+        // 旧实现把「还没就位」当成「原生里没有数据」→ 退回读酒馆用户目录里的陈旧副本。
+        boot(null);
+        globalThis.window.__TAURI_INTERNALS__ = {};
+        const h = makeTtHost();
+        h.kv.set('ftt2-files/main/ftt2-state-boot.json',
+            { k: 'b64', v: Buffer.from('{"v":1,"from":"native-boot"}', 'utf8').toString('base64') });
+        files.set('ftt2-state-boot.json', '{"v":1,"from":"files-stale"}');
+        setTimeout(() => { try { globalThis.window.__TAURITAVERN__ = h.abi; } catch (e) { /* 忽略 */ } }, 120);
+        await A('B6 宿主已识别但原生 API 未就位 → 短暂等待，就位后返回**原生**内容（绝不读陈旧副本）', async () => {
+            const r = await fileTransportReadAuto('ftt2-state-boot.json');
+            return r.ok === true && r.backend === 'tt-native' && r.text === '{"v":1,"from":"native-boot"}';
+        });
+        await A('B6 就位后不再进等待循环（第二次读取即时返回，装配时序不受影响）', async () => {
+            const t0 = Date.now();
+            const r = await fileTransportReadAuto('ftt2-state-boot.json');
+            return r.ok === true && r.backend === 'tt-native' && (Date.now() - t0) < 60;
+        });
+
+        // 上限：宿主特征在、原生始终不就位 → 到点即回退（绝不无限阻塞），且只等一次
+        boot(null);
+        globalThis.window.__TAURI_INTERNALS__ = {};
+        files.set('ftt2-state-boot2.json', '{"v":1,"from":"files-only"}');
+        await A('B6 原生始终不就位 → 上限内回退文件通道（不丢数据、不抛错）', async () => {
+            const t0 = Date.now();
+            const r = await fileTransportReadAuto('ftt2-state-boot2.json');
+            const cost = Date.now() - t0;
+            return r.ok === true && r.backend === 'st-files' && r.text === '{"v":1,"from":"files-only"}'
+                && cost >= 1200 && cost < 4000;
+        });
+        await A('B6 等待只发生一次：超时后同会话再读不再等待', async () => {
+            const t0 = Date.now();
+            const r = await fileTransportReadAuto('ftt2-state-boot2.json');
+            return r.ok === true && (Date.now() - t0) < 80;
+        });
+        delete globalThis.window.__TAURI_INTERNALS__;
+
+        // 酒馆原生（无任何宿主特征）→ 零等待、零行为变化（用户硬要求：非 TauriTavern 不崩、不变）
+        boot(null);
+        files.set('ftt2-state-st.json', '{"v":1,"from":"st"}');
+        await A('B6 非 TauriTavern 宿主 → 零等待（就绪等待不介入酒馆原生路径）', async () => {
+            const t0 = Date.now();
+            const r = await fileTransportReadAuto('ftt2-state-st.json');
+            return r.ok === true && r.backend === undefined && r.text === '{"v":1,"from":"st"}'
+                && fileTransportBackend() === 'st-files' && (Date.now() - t0) < 50;
         });
     }
 

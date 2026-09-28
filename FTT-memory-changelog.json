@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.10",
-  "updatedAt": "2026-09-28",
-  "generatedAt": "2026-09-28",
+  "version": "3.0.11",
+  "updatedAt": "2026-09-29",
+  "generatedAt": "2026-09-29",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.11",
+      "date": "2026-09-29",
+      "title": "修「刷新/重载后已分析楼层变回未摘要」（读侧钉死 + 载入被旧副本遮蔽）",
+      "points": [
+        "① 现网取证（v3.0.10 运行中，只读调试桥实测）：ftt.loadDiag → 内存 marks = 13；而同一条「与载入同源」的读取 file 返回",
+        "② 根因（读侧四处同源缺陷，逐条修）：1. 路由钉死（adapters/file-transport.js#readAutoRouted）：任何一次文件通道命中都会把该 key …",
+        "③ 载入择优（index.js#loadMemoryState）：旧口径是「第一个有货的就用」——本机缓冲（localStorage）一旦非空就直接采用，从不比较 updated…"
+      ]
+    },
     {
       "version": "3.0.10",
       "date": "2026-09-28",

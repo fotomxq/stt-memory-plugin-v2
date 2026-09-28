@@ -78,11 +78,11 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 124 文件 / 1942 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 125 文件 / 1967 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 187 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 116 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 117 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

@@ -22,7 +22,7 @@ import {
 import {
     TT_LEGACY_NS, ttDetected, ttNativeActive, ttNativeOn, tauriNativeSetting, ttMirrorToFiles,
     ttPutBytes, ttGetBytes, ttDelete as ttDeleteNative, ttAnnounceSwitch, ttListKeys, ttListBlobKeys,
-    ttDropCaches, ttTextBytes, ttBytesToTextAuto, ttKeyOf, ttChannelInfo,
+    ttDropCaches, ttTextBytes, ttBytesToTextAuto, ttKeyOf, ttChannelInfo, ttEnsureReady,
 } from './tt-store.js';
 import { gzipToBytes, isGzipBytes } from './gzip.js';
 
@@ -31,6 +31,15 @@ let stFilesOff = false;
 let stFilesFailReason = '';
 let lastWrite = { backend: '', mirror: false, bytes: 0, at: 0, error: '' };
 const readRoute = Object.create(null);          // key → 上次命中的后端
+
+/**
+ * v3.0.11：启动早期「原生 API 尚未就位」的等待上限（毫秒）。
+ * 只针对**已识别为 TauriTavern** 的宿主，且本会话只等一次（见 `awaitNativeOnce`）。
+ */
+export const TT_READY_WAIT_MS = 1500;
+/** 本会话是否已做过启动早期就绪等待 */
+let readyWaited = false;
+const sleepMs = (ms) => new Promise((res) => { try { setTimeout(res, ms); } catch (e) { res(); } });
 
 /** 当前应当使用的后端（原生优先；`cfg.storage.tauriNative` = on/off 可强制） */
 export function fileTransportBackend() {
@@ -63,6 +72,7 @@ function markStFilesDown(reason) {
 export function resetFileTransportSession() {
     stFilesOff = false;
     stFilesFailReason = '';
+    readyWaited = false;
     for (const k of Object.keys(readRoute)) delete readRoute[k];
     ttDropCaches();
     return true;
@@ -97,18 +107,59 @@ function bookkeep(p, fn) {
     return p;
 }
 
+/**
+ * v3.0.11（真机根因 · 第三处）：启动早期就绪等待。
+ *
+ * 酒馆扩展的 `init()`（`await loadMemoryState()`）可能**早于** TauriTavern 注入
+ * `window.__TAURITAVERN__` —— 那一刻只有运行特征可见（`__TAURI_INTERNALS__` 等），
+ * `api.extension.store` 还没到位。旧实现把这一刻直接判为「原生里没有数据」，
+ * 于是退回读**酒馆用户目录里那份陈旧副本**（实测：202674B / v2.75.0 / 11 条台账，
+ * 而原生里是 340912B / v3.0.10 / 更多条目），并且（旧版）顺手把路由钉死成酒馆文件通道
+ * → 整个会话再也读不到原生里的最新状态。表现为「**刷新后已分析楼层成片变回未摘要**」。
+ *
+ * 修法：识别到宿主（`ttNativeOn()`）但原生 API 尚未就位时，**短暂等待一次**；
+ * 就位后照常走原生优先读取，仍不就位则照旧回退（绝不阻塞启动）。
+ * · 非 TauriTavern 宿主 → `ttNativeOn()` 为假 → 零等待、零行为变化（酒馆原生兼容）；
+ * · 原生已可用 / 本会话已等过 → 直接返回，不进微任务循环（装配时序不变）。
+ * @returns {Promise<boolean>} 是否在等待后变成可用
+ */
+async function awaitNativeOnce() {
+    if (readyWaited) return ttNativeActive();
+    if (!ttNativeOn() || ttNativeActive()) return ttNativeActive();
+    readyWaited = true;
+    const deadline = Date.now() + TT_READY_WAIT_MS;
+    for (;;) {
+        await ttEnsureReady(200);
+        if (ttNativeActive()) return true;
+        if (Date.now() >= deadline) return false;
+        await sleepMs(60);
+    }
+}
+
 async function readAutoRouted(name) {
     const key = String(name || '');
+    // v3.0.11（第三处）：宿主已识别但原生 API 尚未就位 → 短暂等待一次再决定读哪一份
+    //   （只在本会话首次读取时可能等待；非 TauriTavern 宿主零等待）。
+    if (!readyWaited && !ttNativeActive()) await awaitNativeOnce();
     const order = [];
     const route = readRoute[key];
-    if (route) order.push(route);
+    // v3.0.11（真机根因）：路由缓存**只在首选后端当时可用时才可信**。
+    //   此前任何一次 st-files 命中都会把路由钉死成 'st-files' 并**排在最前**，
+    //   于是「原生启动早期尚未就绪 → 回退读酒馆用户目录的陈旧副本」这个降级结果被永久缓存，
+    //   此后即使原生已就绪也仍然先读陈旧副本并直接返回 —— 永远读不到原生里的最新状态。
+    //   修法：当缓存是 st-files 而原生**当前可用**时，视为降级残留 → 不采用该缓存（重新优先原生）。
+    const stickyFallback = (route === 'st-files' && ttNativeActive());
+    if (route && !stickyFallback) order.push(route);
     if (order.indexOf('tt-native') < 0) order.push('tt-native');
     if (order.indexOf('st-files') < 0 && stFilesAllowed() && tauriNativeSetting() !== 'off') order.push('st-files');
     let firstError = '';
     for (const id of order) {
         if (id === 'tt-native') {
             if (!ttNativeActive()) continue;
-            const got = await ttGetBytes(name, { force: false });
+            // v3.0.11：被判定为「降级残留」而跳过旧路由时，本次原生探测必须**绕开未命中抑制**
+            //   （`tt-store` 有 30s 的同键 miss 抑制）——否则「启动早期探测过一次未命中」会让
+            //   原生里其实已经存在的新值在 30s 内仍被判为未命中，去钉住失效、继续读陈旧副本。
+            const got = await ttGetBytes(name, { force: stickyFallback === true });
             if (got && got.found) {
                 const dec = await ttBytesToTextAuto(got.bytes);
                 if (dec && dec.ok) {
@@ -124,7 +175,9 @@ async function readAutoRouted(name) {
         }
         const r = await readStateFileAuto(name);
         if (r && r.ok) {
-            readRoute[key] = 'st-files';
+            // v3.0.11：**只在首选后端确实可用时**才把 st-files 记为路由（那说明原生真的没有这个键）；
+            //   原生未就绪时的降级命中不缓存，避免把这一刻的降级固化（见上方 stickyFallback 注释）。
+            if (ttNativeActive()) readRoute[key] = 'st-files';
             return Object.assign({ backend: 'st-files' }, r);
         }
         const status = Number((r && r.status) || 0);

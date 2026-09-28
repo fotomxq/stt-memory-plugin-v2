@@ -251,6 +251,28 @@ export function extraForStatus() {
 }
 
 /**
+ * 载入择优（v3.0.11，纯函数，便于单测）：在「本机缓冲」与「服务端文件」之间取较新的一份。
+ * 规则：两者都有时按 `updatedAt` 取大；**相等（含都为 0）时以服务端文件为准**（权威大对象）；
+ *   只有一个时用那个。返回选中的 state 与来源标签，供 `loadMemoryState` 接线与调试留痕。
+ * @param {object|null} localSt 本机缓冲 state
+ * @param {object|null} fileSt 服务端文件 state
+ * @returns {{st:object|null, via:'local'|'file'|'new', atLocal:number, atFile:number, reason:string}}
+ */
+export function pickNewerState(localSt, fileSt) {
+    const atOf = (s) => Number((s && s.updatedAt) || 0);
+    const atLocal = atOf(localSt), atFile = atOf(fileSt);
+    const hasL = !!(localSt && typeof localSt === 'object');
+    const hasF = !!(fileSt && typeof fileSt === 'object');
+    if (hasL && hasF) {
+        if (atFile >= atLocal) return { st: fileSt, via: 'file', atLocal: atLocal, atFile: atFile, reason: atFile > atLocal ? 'file-newer' : 'tie-file' };
+        return { st: localSt, via: 'local', atLocal: atLocal, atFile: atFile, reason: 'local-newer' };
+    }
+    if (hasL) return { st: localSt, via: 'local', atLocal: atLocal, atFile: atFile, reason: 'only-local' };
+    if (hasF) return { st: fileSt, via: 'file', atLocal: atLocal, atFile: atFile, reason: 'only-file' };
+    return { st: null, via: 'new', atLocal: atLocal, atFile: atFile, reason: 'none' };
+}
+
+/**
  * 载入记忆容器（P2）：聊天注入视图接线 → 持久化钩子接线 → 本机缓冲 → 服务端文件 → 迁移 → 注入内核。
  * 顺序与 V1 一致；任一步失败都降级（最差回落到空容器），绝不抛出。
  * @returns {Promise<{via:string, scope:string}>} via = local | file | new
@@ -260,8 +282,20 @@ export async function loadMemoryState() {
     let st = null;
     try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 聊天视图缺失不阻塞 */ }
     try { wirePersistHooks(); } catch (e) { /* 忽略 */ }
-    try { st = loadFromLocalStorage(); if (st) via = 'local'; } catch (e) { st = null; }
-    if (!st) { try { st = await loadFromServerFile(); if (st) via = 'file'; } catch (e) { st = null; } }
+    // v3.0.11（真机根因）：**两个源都读，按 `updatedAt` 择优**，不再「第一个有货就用」。
+    //   此前本机缓冲（localStorage）一旦存在就直接采用 —— 即使它是一份很旧的副本
+    //   （实测：v2.84.0、台账 0 条，但信封哈希自洽所以顺利通过校验）→ 更新得多的服务端文件
+    //   被它永久遮蔽，表现为「每次刷新后已分析楼层成片变回未摘要」。
+    //   旧副本的数据不会被丢：启动对账仍会按既有合并口径并入（`crossComputeInfo` / `applyRemoteMergeToState`）。
+    let localSt = null, fileSt = null;
+    try { localSt = loadFromLocalStorage(); } catch (e) { localSt = null; }
+    try { fileSt = await loadFromServerFile(); } catch (e) { fileSt = null; }
+    const pick = pickNewerState(localSt, fileSt);
+    st = pick.st;
+    via = pick.via;
+    if (localSt || fileSt) {
+        try { debugLogPush('对账', { action: '载入择优（本机缓冲 vs 服务端文件）', localAt: pick.atLocal, fileAt: pick.atFile, picked: pick.via, reason: pick.reason }); } catch (e) { /* 忽略 */ }
+    }
     if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
     try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
