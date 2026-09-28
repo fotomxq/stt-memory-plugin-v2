@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.9",
+  "version": "3.0.10",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.10",
+      "date": "2026-09-28",
+      "title": "调试桥加「载入链路诊断」（锁定台账丢失环节）",
+      "points": [
+        "① 诊断结论（v3.0.9 数据，已排除哈希不稳）：ftt.floorDiag(2) → 页面侧 hashStable = 1hzkdfp，与聊天文件、与台账里存的值三方完全一致…",
+        "② 新增只读诊断 ftt.loadDiag：（ui/debug.js）—— 把四处并排读出来：内存台账（marks/ver/lastKnownFloor/tag）· 本机缓冲（l…"
+      ]
+    },
     {
       "version": "3.0.9",
       "date": "2026-09-28",

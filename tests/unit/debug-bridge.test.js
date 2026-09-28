@@ -22,7 +22,7 @@ import { emptyState } from '../../core/state.js';
 import { DIMENSIONS } from '../../core/constants.js';
 import { hashFloorText, processedVerTag } from '../../host/floors.js';
 
-const R = makeReporter('debug-bridge v3.0.9 本地调试桥（跨宿主 / 只读 / 可调目标主机 / 台账诊断）');
+const R = makeReporter('debug-bridge v3.0.10 本地调试桥（跨宿主 / 只读 / 台账与载入链路诊断）');
 const A = (n, c, e) => R.assert(n, !!c, e);
 
 const doc = makeDocument([]);
@@ -130,7 +130,7 @@ function useTauriTavern(withDev = true) {
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary', 'ftt.debugLogStats', 'ftt.debugPageInfo',
-                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.memorySample', 'ftt.memoryShape',
+                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.loadDiag', 'ftt.memorySample', 'ftt.memoryShape',
                 'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.probe', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
                 'host.backendLogsTail', 'host.consoleCaptureGet', 'host.frontendLogsList',
                 'host.llmLogsIndex', 'host.llmLogsKeep', 'host.llmLogsPreview', 'host.llmLogsRaw',
@@ -375,6 +375,16 @@ function useTauriTavern(withDev = true) {
         const pfOnly = await call('ftt.pendingFloors');
         A('F10 pendingFloors 与 pendingScan 的清单同源一致',
             pfOnly.ok === true && Array.isArray(pfOnly.result) && JSON.stringify(pfOnly.result) === JSON.stringify(scan.result.floors), pfOnly);
+
+        // v3.0.10：载入链路诊断（内存 / 本机缓冲 / 服务端文件 / 调试日志）
+        const ld = await call('ftt.loadDiag');
+        A('F11 loadDiag 给出内存台账 + 本机缓冲 + 服务端文件 + 台账日志四处（只读）',
+            ld.ok === true && !!ld.result.memory && typeof ld.result.memory.marks === 'number'
+            && !!ld.result.localBuffer && Object.prototype.hasOwnProperty.call(ld.result, 'file')
+            && Array.isArray(ld.result.ledgerLog), ld);
+
+        A('F12 loadDiag 也不改动台账（内存标记数前后一致）',
+            ld.result.memory.marks === state.processedFloors.length, { got: ld.result.memory.marks, now: state.processedFloors.length });
     }
 
     try { unHost(); } catch (e) { /* 忽略 */ }

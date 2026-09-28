@@ -47,6 +47,11 @@ import {
     hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag,
 } from '../host/floors.js';
 import { floorCoverage } from '../core/floor-cover.js';
+// v3.0.10：载入链路诊断（内存 / 本机缓冲 / 服务端文件 / 调试日志 四处并排对比）
+import { scopeId } from '../core/state.js';
+import { stateFileName } from '../adapters/user-file.js';
+import { fileTransportReadAuto } from '../adapters/file-transport.js';
+import { storageHash } from '../core/envelope.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -481,6 +486,11 @@ export function buildBridgeMethods() {
     /** 单楼诊断：这一楼为什么被判为未摘要（逐项给出页面侧实际算出的值） */
     T['ftt.floorDiag'] = safe((p) => floorDiag(Number(p.i)));
 
+    // —— 载入链路诊断（v3.0.10，**只读**）——
+    //   把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」四处并排读出来，
+    //   用于回答「为什么重载后内存台账是空的」。只做 getItem 与只读读取，不写任何存储。
+    T['ftt.loadDiag'] = safe(() => loadDiag());
+
     // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
     T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
     T['host.consoleCaptureGet'] = needDev('console 捕获开关', 'frontendLogs', 'getConsoleCaptureEnabled');
@@ -537,6 +547,86 @@ function floorDiag(i) {
         covered: cov,
         wouldBePending: !(m.is_user || m.is_hidden || !analyzable.length || processed || coveredSkip),
     };
+}
+
+/**
+ * 从信封文本里读出「台账三件套」（只读；解析失败给原因）。
+ * 同时校验信封哈希是否自洽 —— 「哈希不符 → 载入被拒 → 回落空状态」是本次排查的重点嫌疑。
+ */
+function ledgerOfEnvelopeText(text) {
+    try {
+        const env = JSON.parse(String(text || ''));
+        const d = (env && env.payload && env.payload.data) ? env.payload.data : env;
+        if (!d || typeof d !== 'object') return { parsed: false };
+        const pf = Array.isArray(d.processedFloors) ? d.processedFloors : null;
+        return {
+            parsed: true,
+            marks: pf ? pf.length : null,
+            floors: pf ? pf.map((x) => Number(x && x.f)).filter(Number.isFinite).slice(0, 40) : null,
+            ver: String(d.processedVer || ''),
+            lastKnownFloor: (d.lastKnownFloor === undefined ? null : Number(d.lastKnownFloor)),
+            scope: String(d.scope || ''),
+            version: String(d.version || ''),
+            hashOk: (() => { try { return !env.hash || env.hash === storageHash(env.payload); } catch (e) { return null; } })(),
+        };
+    } catch (e) { return { parsed: false, error: String((e && e.message) || e) }; }
+}
+
+/** 台账相关调试日志（只取动作与计数，不含聊天正文） */
+function ledgerLogEntries(limit) {
+    try {
+        const RX = /迁移|归位|漂移|对账|收缩|台账|标记|未摘要|待分析/;
+        const pick = (e) => { try { return typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return null; } };
+        return debugLogList()
+            .filter((e) => RX.test(String((e && e.kind) || '') + String((pick(e) && pick(e).action) || '')))
+            .slice(0, Number(limit) > 0 ? Number(limit) : 40)
+            .map((e) => {
+                const d = pick(e) || {};
+                const nums = {};
+                for (const k of Object.keys(d)) if (typeof d[k] === 'number') nums[k] = d[k];
+                return { at: Number(e.at) || 0, kind: String(e.kind || ''), action: String(d.action || ''), nums: nums, reason: String(d.reason || '') };
+            });
+    } catch (e) { return []; }
+}
+
+/**
+ * 载入链路诊断（**只读**）：把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」并排读出来。
+ * 只做 `getItem` 与只读读取；不写任何存储、不触发任何台账维护。
+ */
+async function loadDiag() {
+    const scope = String(scopeId());
+    const key = 'ftt2_state_' + scope;
+    const out = {
+        scope: scope,
+        localBufferKey: key,
+        memory: {
+            marks: Array.isArray(state.processedFloors) ? state.processedFloors.length : null,
+            ver: String(state.processedVer || ''),
+            lastKnownFloor: (state.lastKnownFloor === undefined ? null : Number(state.lastKnownFloor)),
+            tag: processedVerTag(),
+        },
+    };
+    // ① 本机缓冲（localStorage；只 getItem）
+    try {
+        const ls = globalThis.localStorage;
+        if (!ls) out.localBuffer = { available: false };
+        else {
+            const raw = ls.getItem(key);
+            out.localBuffer = raw
+                ? Object.assign({ available: true, present: true, bytes: raw.length }, ledgerOfEnvelopeText(raw))
+                : { available: true, present: false };
+        }
+    } catch (e) { out.localBuffer = { available: false, error: String((e && e.message) || e) }; }
+    // ② 服务端文件（与载入同一条只读读取）
+    try {
+        const r = await fileTransportReadAuto(stateFileName(scope));
+        out.file = (r && r.ok)
+            ? Object.assign({ ok: true, bytes: String(r.text || '').length }, ledgerOfEnvelopeText(r.text))
+            : { ok: false, error: String((r && r.error) || 'no-file') };
+    } catch (e) { out.file = { ok: false, error: String((e && e.message) || e) }; }
+    // ③ 台账相关调试日志（回答「谁在什么时候把台账弄没了」）
+    out.ledgerLog = ledgerLogEntries(40);
+    return out;
 }
 
 /**
