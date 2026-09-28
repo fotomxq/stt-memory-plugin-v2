@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.94.0",
+  "version": "2.95.0",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.95.0",
+      "date": "2026-09-28",
+      "title": "修复「管线状态」：倒计时 / 流文字展示 / token 计数从未真正生效",
+      "points": [
+        "① 摘要管线本身：从未进入管线状态（这是「没生效」的主因）：v2.90.0 把接入点定在core/ai-hooks.js#aiCallText 并声明它是「全部 AI 调用唯一出…",
+        "② 面板只认「批次忙位」：pipelineStatusText() 与 500ms 心跳都以 hooks.busy()（= extractBusy()）为闸门，于是单路 AI（弱…",
+        "③ 「流文字展示」是假的：非流式通道把整段响应当成「流式 1 块」上报，且没有真实分块。→ 新增 noteResponseText()（整段响应只记字符数、不计块）与 addSt…"
+      ]
+    },
     {
       "version": "2.94.0",
       "date": "2026-09-28",

@@ -10,6 +10,7 @@
 //   · 好历史持久化由宿主注入（`setPipelineHooks`，本项目落 ST 扩展设置，不进数据模型 → `DATA_VERSION` 不变）；
 //   · 纯内核：无 DOM / 无宿主 / 无定时器（定时刷新由 UI 的 500ms 心跳负责）。
 // ============================================================
+import { extractJsonObject } from './util.js';
 
 /** 最近耗时样本条数（每个行为各保留最近 N 次） */
 export const ETA_SAMPLES = 5;
@@ -87,39 +88,81 @@ export function recordPipelineRun(label, ms) {
 }
 
 // ==================== 当前管线（运行中状态） ====================
-/** @type {{label:string, startedAt:number, promptChars:number, respChars:number, phase:string, note:string, streamChunks:number, keys:string[]}|null} */
-let cur = null;
+// v2.95.0 修复（用户报告「倒计时、流文字展示等都没有生效」）：**支持并发** ——
+//   摘要「独立分组」会并行发起最多 10 个请求（`host/extract.js#runSummarySeparate`），
+//   旧实现只有一个 `cur` 槽 → 后开始的请求把前一个覆盖掉，先结束的又把还在跑的那个清空，
+//   于是状态行时有时无。现在用**按 id 的活跃表**：快照把并发运行**聚合**成一条读数。
+/** @typedef {{id:number, label:string, startedAt:number, promptChars:number, respChars:number,
+ *             streamChars:number, streamChunks:number, phase:string, note:string, keys:string[]}} Run */
+/** @type {Run[]} 活跃运行表（按开始时间升序） */
+let runs = [];
+let runSeq = 0;
+/** 最近一次**已结束**的运行摘要（只读诊断：面板/调试页可直接展示「上次做了什么、花了多久、识别到哪些键」） */
+let last = null;
+
+/** 取运行（缺 id → 最近开始的那个） */
+function runOf(id) {
+    if (id === undefined || id === null || id === '') return runs.length ? runs[runs.length - 1] : null;
+    const n = Number(id);
+    return runs.filter((r) => r.id === n)[0] || null;
+}
 
 /**
  * 开始一次处理行为。
  * @param {string} label 行为标签（决定 ETA 用哪组历史）
  * @param {{chars?:number, phase?:string}} [opts] `chars` = 发送给 AI 的字符数（用于 token 估算）
+ * @returns {object} 快照（含本次运行的 `runId`，并发调用方应把它透传给 `addStreamChunk`/`endPipeline`）
  */
 export function beginPipeline(label, opts) {
     const o = opts || {};
-    cur = {
+    runs.push({
+        id: ++runSeq,
         label: String(label || '默认'),
         startedAt: Number(hooks.now()) || Date.now(),
         promptChars: Math.max(0, Number(o.chars) || 0),
-        respChars: 0, phase: String(o.phase || '准备'),
-        note: '', streamChunks: 0, keys: [],
-    };
+        respChars: 0, streamChars: 0, streamChunks: 0,
+        phase: String(o.phase || '准备'), note: '', keys: [],
+    });
     return snapshot();
 }
 
-/** 流式增量（宿主若能回调分块 → 累计字符数与块数；不保存内容） */
-export function addStreamChunk(text) {
-    if (!cur) return snapshot();
+/**
+ * **真实的流式分块**（宿主逐块回调时用）：累计字符数与块数。
+ * 注意：非流式通道把整段响应一次给出时**不要**走这里 —— 用 `noteResponseText()`，
+ *   否则状态行会把「一次性响应」谎报成「流式 1 块」（v2.95.0 修复）。
+ */
+export function addStreamChunk(text, opts) {
+    const o = opts || {};
+    const r = runOf(o.id);
     const n = String(text == null ? '' : text).length;
-    if (n > 0) { cur.respChars += n; cur.streamChunks += 1; }
+    if (!r || n <= 0) return snapshot();
+    r.respChars += n;
+    if (o.final === true) return snapshot();      // 兼容旧调用：整段响应不计块
+    r.streamChunks += 1;
+    r.streamChars += n;
+    return snapshot();
+}
+
+/**
+ * **整段响应**（非流式通道）：只刷新响应字符数（幂等取大值），**不计流式块**。
+ * 有流式分块已到达时（`respChars` 已 ≥ 文本长度）不重复累加。
+ */
+export function noteResponseText(text, opts) {
+    const o = opts || {};
+    const r = runOf(o.id);
+    if (!r) return snapshot();
+    const n = String(text == null ? '' : text).length;
+    if (n > r.respChars) r.respChars = n;
     return snapshot();
 }
 
 /** 阶段推进（如「等待响应」/「解析 JSON」/「落库」）；`note` 只写结构摘要，**不得写正文** */
-export function setPipelinePhase(phase, note) {
-    if (!cur) return snapshot();
-    if (phase) cur.phase = String(phase);
-    if (note !== undefined) cur.note = String(note || '').slice(0, 60);
+export function setPipelinePhase(phase, note, opts) {
+    const o = opts || {};
+    const r = runOf(o.id);
+    if (!r) return snapshot();
+    if (phase !== undefined && phase !== null) r.phase = String(phase || '');   // 传空串 = 清掉阶段
+    if (note !== undefined) r.note = String(note || '').slice(0, 60);
     return snapshot();
 }
 
@@ -130,56 +173,100 @@ export function setPipelinePhase(phase, note) {
 export function summarizeResponseKeys(text) {
     try {
         const s = String(text || '');
+        // v2.95.0：**优先真正解析 JSON → 只取顶层键**（旧实现用正则扫 `"key":`，会把二级/三级键
+        //   一起捞出来 —— 例如 `{"atoms":{"add":[{"title":…}]}}` 会显示成「atoms / add / title / text / date」，
+        //   既吵闹又泄漏内部结构）。解析失败（流式中 / 响应被截断）再回退到正则扫描。
+        const NOISE = /^(add|update|del|delete|remove|list|items?|title|text|content|desc|date|time|name|id|key|value|type|note|reason|新增|更新|删除|变更|说明|标题|内容|正文|原因|备注)$/i;
         const keys = [];
+        const push = (k) => {
+            const kk = String(k == null ? '' : k).slice(0, 12);
+            if (!kk || NOISE.test(kk) || keys.indexOf(kk) >= 0) return;
+            if (keys.length < 6) keys.push(kk);
+        };
+        let parsed = null;
+        try { parsed = extractJsonObject(s); } catch (e) { parsed = null; }
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.keys(parsed).forEach(push);
+            if (keys.length) return keys;
+        }
+        // 回退：扫描形如 `"键":` 的片段（同样过滤二级键）
         const re = /"([^"\\]{1,12})"\s*:/g;
         let m;
         while ((m = re.exec(s)) !== null) {
-            const k = m[1];
-            if (/^(新增|更新|删除|变更|说明|标题|内容|正文|原因|备注)$/.test(k)) continue;   // 过滤二级键
-            if (keys.indexOf(k) < 0) keys.push(k);
+            push(m[1]);
             if (keys.length >= 6) break;
         }
         return keys;
     } catch (e) { return []; }
 }
 
-/** 结束时记录耗时（`ok=false` 也记录：失败往往更快，分开看更准 —— 这里统一入样本） */
-export function endPipeline(ok) {
+/**
+ * 结束一次运行（并记录耗时供下次预估）。
+ * 缺 `id` 时结束**最近开始**的那次（单运行场景与旧行为完全一致）。
+ * @param {boolean} ok
+ * @param {number} [id] `beginPipeline` 返回的 `runId`（并发时必须显式给出）
+ */
+export function endPipeline(ok, id) {
     const s = snapshot();
-    if (!cur) return s;
-    const ms = Math.max(0, (Number(hooks.now()) || Date.now()) - cur.startedAt);
-    try { recordPipelineRun(cur.label, ms); } catch (e) { /* 忽略 */ }
-    cur = null;
+    const r = runOf(id);
+    if (!r) return s;
+    const ms = Math.max(0, (Number(hooks.now()) || Date.now()) - r.startedAt);
+    try { recordPipelineRun(r.label, ms); } catch (e) { /* 忽略 */ }
+    last = {
+        label: r.label, ms: ms, ok: ok !== false, at: Date.now(),
+        keys: r.keys.slice(), phase: r.phase, note: r.note,
+        promptChars: r.promptChars, respChars: r.respChars,
+        chunks: r.streamChunks, streamChars: r.streamChars,
+        promptTokens: estTokens(r.promptChars), respTokens: estTokens(r.respChars),
+    };
+    runs = runs.filter((x) => x.id !== r.id);
     return Object.assign(s, { ms: ms, ok: ok !== false });
 }
 
-/** 当前状态快照（无运行中管线 → `{busy:false}`） */
+/** 当前状态快照（无运行中管线 → `{busy:false}`）；并发时**聚合**为一条读数 */
 export function snapshot() {
-    if (!cur) return { busy: false };
+    if (!runs.length) return { busy: false };
     const now = Number(hooks.now()) || Date.now();
-    const elapsed = Math.max(0, now - cur.startedAt);
-    const eta = etaMs(cur.label);
-    const tokens = estTokens(cur.promptChars + cur.respChars);
+    const oldest = runs.reduce((a, b) => (a.startedAt <= b.startedAt ? a : b));
+    const newest = runs[runs.length - 1];
+    const elapsed = Math.max(0, now - oldest.startedAt);
+    const label = oldest.label;                     // ETA 以**最早开始**的那次为准（它决定何时全部结束）
+    const eta = etaMs(label);
+    let promptChars = 0, respChars = 0, streamChars = 0, chunks = 0, tokens = 0;
+    for (const r of runs) {
+        promptChars += r.promptChars;
+        respChars += r.respChars;
+        streamChars += r.streamChars;
+        chunks += r.streamChunks;
+        tokens += estTokens(r.promptChars + r.respChars);
+    }
     return {
-        busy: true, label: cur.label, elapsed: elapsed, eta: eta,
+        busy: true, runId: newest.id, runs: runs.length, labels: runs.map((r) => r.label),
+        label: label, elapsed: elapsed, eta: eta,
         remain: Math.max(0, eta - elapsed), over: elapsed > eta,
-        promptTokens: estTokens(cur.promptChars), respTokens: estTokens(cur.respChars),
-        tokens: tokens, respChars: cur.respChars, chunks: cur.streamChunks,
-        phase: cur.phase, note: cur.note, keys: cur.keys.slice(),
-        hasHistory: etaHasHistory(cur.label),
+        promptTokens: estTokens(promptChars), respTokens: estTokens(respChars),
+        tokens: tokens, promptChars: promptChars, respChars: respChars,
+        chunks: chunks, streamChars: streamChars, streaming: chunks > 0,
+        // 阶段/结构摘要取**最近更新**的那次（它代表「当前正在做什么」）
+        phase: newest.phase, note: newest.note, keys: newest.keys.slice(),
+        hasHistory: runs.some((r) => etaHasHistory(r.label)),
     };
 }
 
 /** 把结构摘要写入当前管线（供 UI 在响应到达后显示「识别到 情节 / 记忆库」） */
-export function setPipelineKeys(keys) {
-    if (!cur) return snapshot();
-    cur.keys = Array.isArray(keys) ? keys.slice(0, 6).map((x) => String(x).slice(0, 12)) : [];
+export function setPipelineKeys(keys, opts) {
+    const o = opts || {};
+    const r = runOf(o.id);
+    if (!r) return snapshot();
+    r.keys = Array.isArray(keys) ? keys.slice(0, 6).map((x) => String(x).slice(0, 12)) : [];
     return snapshot();
 }
 
 /**
  * 状态行后缀（UI 与测试共用）：
- * `· ⏱ 12s · 🪙 1.2k tok · 预计剩 8s`（超时改为「已超预估」）；无历史时倒计时标注「默认」。
+ * `· ⏱ 12s · 🪙 1.2k tok · 预计剩 8s · 流式 9 块 / 1.1k 字`；超时改为「已超预估」。
+ * v2.95.0：`流式 N 块` **只在真的收到分块时**出现（不再把整段响应谎报成 1 块）；
+ *   并发运行追加 `并发 N 路`。
  */
 export function pipelineSuffix() {
     const s = snapshot();
@@ -187,17 +274,23 @@ export function pipelineSuffix() {
     const parts = ['⏱ ' + Math.floor(s.elapsed / 1000) + 's'];
     if (s.tokens > 0) parts.push('🪙 ' + fmtTokens(s.tokens) + ' tok');
     parts.push(s.over ? ('已超预估 ' + fmtSec(s.remain === 0 ? s.elapsed - s.eta : 0)) : ('预计剩 ' + fmtSec(s.remain) + (s.hasHistory ? '' : '（默认）')));
-    if (s.chunks > 0) parts.push('流式 ' + s.chunks + ' 块');
+    if (s.chunks > 0) parts.push('流式 ' + s.chunks + ' 块 / ' + fmtTokens(s.streamChars) + ' 字');
+    if (s.runs > 1) parts.push('并发 ' + s.runs + ' 路');
     return parts.join(' · ');
 }
 
-/** 结构摘要文本（无内容）：识别到的顶层键 / 当前阶段 */
+/** 结构摘要文本（无内容）：识别到的顶层键 / 当前阶段；等待响应时给一句可感知的进行态 */
 export function pipelineSummaryText() {
     const s = snapshot();
     if (!s.busy) return '';
     if (s.keys.length) return '识别到 ' + s.keys.join(' / ');
-    return s.note ? s.note : (s.phase ? ('阶段：' + s.phase) : '');
+    if (s.note) return s.note;
+    if (s.phase) return '阶段：' + s.phase;
+    return s.streaming ? '接收中' : '等待响应';
 }
 
+/** 最近一次已结束运行的摘要（无 → `null`）；供只读诊断使用，**不含任何正文** */
+export function lastPipelineInfo() { return last ? Object.assign({}, last, { keys: last.keys.slice() }) : null; }
+
 /** 复位（测试与中断用） */
-export function resetPipeline() { cur = null; return true; }
+export function resetPipeline() { runs = []; last = null; return true; }

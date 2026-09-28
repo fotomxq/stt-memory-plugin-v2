@@ -304,23 +304,36 @@ function totalMemory() {
 export function pipelineStatusText(now) {
     const at = Number(now) || Date.now();
     try {
-        const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+        const batchBusy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
         const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
         const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
         const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
-        if (busy && !busySince) busySince = Number(bp.since) > 0 ? Number(bp.since) : at;   // 首次观察到忙位
-        if (busy && Number(bp.since) > 0) busySince = Number(bp.since);                     // 批次给出真实起点 → 采用
-        if (!busy) busySince = 0;
-        const sec = busySince ? Math.max(0, Math.floor((at - busySince) / 1000)) : 0;
-        // v2.90.0：token 计数 + 预估倒计时（按最近几次同类型处理行为耗时；首次用内置默认）
+        // v2.95.0 修复（用户报告「倒计时 / 流文字展示都没生效」）：忙位判定此前**只看批次**
+        //   （`hooks.busy()` = `extractBusy()`），于是单路 AI（弱化NSFW / 自动修复 / 推演 / 时钟 / 情节总结…）
+        //   全程显示「空闲」，token / 倒计时 / 结构摘要根本没有出场机会。现在**忙位 = 批次忙 或 管线忙**。
         const ps = (() => { try { return pipelineSnapshot() || {}; } catch (e) { return {}; } })();
+        const pipeBusy = !!ps.busy;
+        const busy = batchBusy || pipeBusy;
+        if (batchBusy && !busySince) busySince = Number(bp.since) > 0 ? Number(bp.since) : at;   // 首次观察到忙位
+        if (batchBusy && Number(bp.since) > 0) busySince = Number(bp.since);                     // 批次给出真实起点 → 采用
+        if (!batchBusy) busySince = 0;
+        // 「已用时」：批次忙 → 批次读秒（既有口径）；仅管线忙 → 用管线自己的运行时长
+        const sec = batchBusy
+            ? (busySince ? Math.max(0, Math.floor((at - busySince) / 1000)) : 0)
+            : (pipeBusy ? Math.max(0, Math.floor((Number(ps.elapsed) || 0) / 1000)) : 0);
+        // v2.90.0：token 计数 + 预估倒计时（按最近几次同类型处理行为耗时；首次用内置默认）
         const suffix = (() => { try { return pipelineSuffix() || ''; } catch (e) { return ''; } })();
         const sum = (() => { try { return pipelineSummaryText() || ''; } catch (e) { return ''; } })();
         const label = String(ps.label || '');
+        const head = batchBusy
+            ? '正在分析记忆（AI 摘要）'
+            : (pipeBusy ? ('正在处理：' + (label || 'AI 任务')) : '');
         const txt = busy
-            ? ('正在分析记忆（AI 摘要）' + (total ? (' · 分段 ' + done + '/' + total) : '') + range
-                + (label ? (' · ' + label) : '')
-                + (sec ? (' · 已用时 ' + sec + 's') : '') + (suffix ? (' · ' + suffix) : '')
+            ? (head + (batchBusy && total ? (' · 分段 ' + done + '/' + total) : '') + (batchBusy ? range : '')
+                + (batchBusy && label ? (' · ' + label) : '')
+                // 批次忙：批次读秒 + 管线读数并存（两者含义不同）；仅管线忙：读秒即管线读数，避免重复显示
+                + ((batchBusy || !pipeBusy) ? (' · 已用时 ' + sec + 's') : '')
+                + (suffix ? (' · ' + suffix) : '')
                 + (sum ? (' · ' + sum) : '') + (bp.aborted ? ' · 已请求中断' : ''))
             : '空闲';
         return { busy: busy, sec: sec, txt: txt, tokens: Number(ps.tokens) || 0, remain: Number(ps.remain) || 0 };
@@ -354,10 +367,15 @@ function stopPipelineTick() {
 function pipelineRowPresent() {
     try { const doc = globalThis.document; return !!(doc && doc.querySelector && doc.querySelector('[data-ftt-pipeline-label]')); } catch (e) { return false; }
 }
+/** 管线是否在跑（v2.95.0：单路 AI 任务也算忙；异常 → false） */
+function pipelineBusy() {
+    try { return !!(pipelineSnapshot() || {}).busy; } catch (e) { return false; }
+}
 /** 按「忙位 + 面板开着 + 停在总览页」启停计时器（每次渲染/动作后调用） */
 function syncPipelineTick() {
     try {
-        const busy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+        // v2.95.0：忙位 = 批次忙 **或** 管线忙（否则单路 AI 期间根本不会启动心跳 → 读秒/倒计时不刷新）
+        const busy = (typeof hooks.busy === 'function' ? !!hooks.busy() : false) || pipelineBusy();
         const onOverview = String(ps.tab) === 'overview';
         // 离开总览 / 面板关闭 → 立即停表，别留一个「只在下次回调里才自停」的定时器
         if (!busy || !ps.open || !onOverview) { stopPipelineTick(); return false; }
@@ -366,7 +384,7 @@ function syncPipelineTick() {
             try {
                 // 面板已关/切页 → 停；那一行不在 DOM（拿不到节点）→ 停；否则只更新那一行文本
                 // （V1 v1.85 500ms 心跳；**不重绘**，避免打断输入与滚动）
-                if (!ps.open || String(ps.tab) !== 'overview' || !(typeof hooks.busy === 'function' ? hooks.busy() : false)) { stopPipelineTick(); return; }
+                if (!ps.open || String(ps.tab) !== 'overview' || (!(typeof hooks.busy === 'function' ? hooks.busy() : false) && !pipelineBusy())) { stopPipelineTick(); return; }
                 if (!pipelineRowPresent() || !updatePipelineStatusDom()) stopPipelineTick();
             } catch (e) { stopPipelineTick(); }
         }, 500) : null;

@@ -124,7 +124,7 @@ function withTimeout(timeoutMs) {
  * `temperature`/`topP` 经 `overridePayload` 覆盖（酒馆官方扩展 API 支持的按次覆盖）；
  * `maxTokens` 为 `sendRequest` 的独立形参。
  */
-export async function sendViaProfile({ profileId, systemPrompt, prompt, maxTokens, temperature, topP } = {}) {
+export async function sendViaProfile({ profileId, systemPrompt, prompt, maxTokens, temperature, topP, onToken } = {}) {
     const svc = connectionService();
     if (!svc) return { ok: false, error: '酒馆连接配置服务不可用（请在酒馆扩展里启用「连接管理」）' };
     const id = str(profileId);
@@ -137,10 +137,38 @@ export async function sendViaProfile({ profileId, systemPrompt, prompt, maxToken
     if (String(topP) !== '' && Number.isFinite(Number(topP))) override.top_p = Number(topP);
     const mt = Number(maxTokens);
     const maxOut = Number.isFinite(mt) && mt > 0 ? mt : undefined;
-    try {
+    const streaming = typeof onToken === 'function';
+
+    /** 非流式（也用作流式失败后的回落）：酒馆官方 `sendRequest` 的一次性返回 */
+    const once = async () => {
         const data = await svc.sendRequest(id, messages, maxOut, { stream: false, extractData: true, includePreset: true, includeInstruct: true }, override);
         const text = data && typeof data === 'object' ? String(data.content == null ? '' : data.content) : String(data == null ? '' : data);
-        return { ok: true, text, via: 'profile', profileId: id };
+        return { ok: true, text, via: 'profile', profileId: id, streamed: false };
+    };
+
+    // v2.95.0（用户要求「流文字展示」）：走酒馆**官方**流式通道 —— `custom.stream = true` 时
+    //   `sendRequest` 返回一个**函数**，调用它得到异步生成器，逐块产出 `{ text, state }`；
+    //   其中 `text` 是**累计文本**（不是增量，见 ST `connection-manager/index.js` 的 `/profile-genstream`），
+    //   故这里按「与已收文本的差集」切成增量回调给 `onToken`（管线状态只累计字符数，不保存内容）。
+    //   ⚠️ 任一环节不支持/失败 → **静默回落**一次性请求（对调用方完全透明，不影响结果）。
+    if (streaming) {
+        try {
+            const r = await svc.sendRequest(id, messages, maxOut, { stream: true, extractData: true, includePreset: true, includeInstruct: true }, override);
+            if (typeof r === 'function') {
+                let acc = '';
+                const gen = r();
+                for await (const chunk of gen) {
+                    const cur = (chunk && typeof chunk === 'object') ? String(chunk.text == null ? '' : chunk.text) : String(chunk == null ? '' : chunk);
+                    if (cur.length > acc.length) { const delta = cur.slice(acc.length); acc = cur; try { onToken(delta); } catch (e) { /* 回调失败不影响生成 */ } }
+                }
+                if (acc) return { ok: true, text: acc, via: 'profile', profileId: id, streamed: true };
+                // 生成器没吐出任何内容 → 交给一次性路径再试（部分后端不支持流式时会静默空返回）
+            }
+            // eslint-disable-next-line no-empty
+        } catch (e) { /* 流式失败 → 回落非流式 */ }
+    }
+    try {
+        return await once();
     } catch (e) {
         const cause = e && e.cause ? String((e.cause && e.cause.message) || e.cause) : '';
         const msg = String((e && e.message) || e);
@@ -183,7 +211,7 @@ export async function sendDirect({ apiUrl, apiKey, model, systemPrompt, prompt, 
 }
 
 /** 按 target 发送（host 通道不在此处理，由 `host/generation.js#rawGenerate` 走 `generateRaw`） */
-export async function sendWithTarget(target, { systemPrompt, prompt } = {}) {
+export async function sendWithTarget(target, { systemPrompt, prompt, onToken } = {}) {
     const t = target || {};
     const use = targetUsable(t);
     if (!use.ok) return { ok: false, error: use.error };
@@ -191,6 +219,7 @@ export async function sendWithTarget(target, { systemPrompt, prompt } = {}) {
         return await sendViaProfile({
             profileId: t.profileId, systemPrompt, prompt,
             maxTokens: t.maxTokens, temperature: t.temperature, topP: t.topP,
+            onToken: onToken,          // v2.95.0：官方流式通道逐块回调（非流式/失败自动回落）
         });
     }
     if (t.channel === 'direct') {

@@ -198,7 +198,8 @@ function mainApiSectionHtml() {
         '<div class="ftt-field"><label>选择模型</label><select data-ftt-model-select="main">' + modelOpts + '</select></div>',
         '<div class="ftt-muted">通道：<b>跟随酒馆当前连接</b>（默认）· <b>酒馆连接配置</b>（用「连接管理」里的一条）· <b>自建连接</b>（插件直连，受 CORS 限制）。</div>',
         hintDetailsHtml('通道差异说明',
-            '<div>' + esc('max_tokens 三个通道都生效；temperature / top_p 在「酒馆连接配置」与「自建连接」通道生效，在「跟随酒馆当前连接」通道无法覆盖（宿主接口没有该参数）。') + '</div>'),
+            '<div>' + esc('max_tokens 三个通道都生效；temperature / top_p 在「酒馆连接配置」与「自建连接」通道生效，在「跟随酒馆当前连接」通道无法覆盖（宿主接口没有该参数）。') + '</div>'
+            + '<div>' + esc('v2.95.0：只有「酒馆连接配置」通道支持逐块流式（总览「管线状态」会显示「流式 N 块」）；跟随酒馆当前连接与自建连接都是一次性返回，管线状态仍会给 token 计数与预估倒计时。') + '</div>'),
         '</div>',
     ].join('\n');
 }

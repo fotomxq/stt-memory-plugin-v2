@@ -25,10 +25,12 @@ function ctxHas(name) {
  *   `temperature` / `top_p` 在 `generateRaw` 签名里**没有**对应形参（`public/script.js:4109`），
  *   该通道下**不生效**（UI 已如实标注）。
  */
-export async function rawGenerate({ systemPrompt, prompt, prefill, jsonSchema, target } = {}) {
+export async function rawGenerate({ systemPrompt, prompt, prefill, jsonSchema, target, onToken } = {}) {
     const t = target && typeof target === 'object' ? target : null;
     if (t && (t.channel === 'profile' || t.channel === 'direct')) {
-        const r = await sendWithTarget(t, { systemPrompt, prompt });
+        // v2.95.0：`onToken` 透传给「连接配置」通道 → 走酒馆**官方流式**（`custom.stream=true` 的生成器）；
+        //   direct（自建连接）与 host（`generateRaw`）暂不支持逐块回调 —— 两者都只做一次性返回。
+        const r = await sendWithTarget(t, { systemPrompt, prompt, onToken: onToken });
         return r.ok ? { ok: true, text: String(r.text == null ? '' : r.text), via: t.channel } : { ok: false, error: String(r.error || 'api-error') };
     }
     const ctx = getCtx();

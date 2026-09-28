@@ -4413,6 +4413,72 @@ await assert('BH1 v2.94.0（docs/D9 **U4** / 检查项 C7）危险动作真实�
 })(), '');
 
 
+// ---------- BI 管线状态：倒计时 / 流文字展示（v2.95.0 修复端到端） ----------
+// 用户报告：「管线状态之前要求追加的倒计时、流文字展示等，都没有生效。请核对并修复。」
+// 根因：摘要管线（host/extract.js）直连 rawGenerate，绕过了 v2.90.0 唯一的管线接入点（core/ai-hooks.js）；
+//   且面板只认「批次忙位」→ 单路 AI 期间写「空闲」。本小节在**真实摘要调用**期间读那一行来锁死修复。
+await assert('BI1 真实分段摘要（走宿主 generateRaw）**在途期间**表现管线状态：标签「批量摘要」+ prompt token + 预估倒计时 + 阶段 + 结构摘要「识别到 …」；结束即入 ETA 样本（倒计时从此有实测依据）', (async () => {
+    const EX = await import('../host/extract.js');
+    const PL = await import('../core/pipeline.js');
+    const savedGen = host.ctx.generateRaw;
+    const keepChat = host.ctx.chat.slice();
+    let during = null;
+    try {
+        host.ctx.chat.push({ is_user: false, mes: '甲把铜箱搬上船，账册留在码头。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        host.ctx.generateRaw = async () => {
+            if (!during) during = { text: fttPanelMod.pipelineStatusText(Date.now()), snap: PL.snapshot() };
+            await new Promise((r) => setTimeout(r, 30));        // 让本次耗时 > 0（0ms 样本按口径不入账）
+            return JSON.stringify({ atoms: { add: [{ title: '搬箱', text: '甲把铜箱搬上船（正文足够长）。', date: '1919-11-29' }] } });
+        };
+        const fid = host.ctx.chat.length - 1;
+        const r = await EX.analyzeSegment(fid, fid, {});
+        const li = PL.lastPipelineInfo();
+        const hist = (host.ctx.extensionSettings[MODULE_NAME] || {}).pipelineEta || {};
+        const txt = String((during && during.text && during.text.txt) || '');
+        const snap = (during && during.snap) || {};
+        const allOk = r.ok === true
+            && snap.busy === true && snap.label === '批量摘要' && snap.promptTokens > 0 && snap.tokens > 0
+            && snap.phase.indexOf('请求 AI（第 ' + fid + '-' + fid + ' 楼）') === 0
+            // 直接调 `analyzeSegment` 时批次忙位为 false → 走 v2.95.0 新增的「管线忙」分支（正是本次修复点）
+            && during.text.busy === true && txt.indexOf('批量摘要') >= 0
+            && txt.indexOf('🪙') > 0 && txt.indexOf('预计剩') > 0 && txt.indexOf('⏱') > 0
+            && txt.indexOf('阶段：请求 AI（第 ' + fid + '-' + fid + ' 楼）') > 0
+            && !!li && li.label === '批量摘要' && li.keys.length > 0
+            && Array.isArray(hist['批量摘要']) && hist['批量摘要'].length >= 1;     // 样本真的落进 ST 扩展设置
+        return allOk;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.generateRaw = savedGen;
+    }
+})(), '');
+
+await assert('BI2 单路 AI（批次空闲）也让那一行活起来：状态行显示「正在处理：<行为>」而不是「空闲」，并据此启停 500ms 心跳（面板回到总览即开表、管线结束即停表）', (async () => {
+    const PL = await import('../core/pipeline.js');
+    try {
+        // 批次空闲 + 管线忙碌 → 总览页渲染后心跳必须开起来
+        await entry.popupAction('tab', { tab: 'overview' });
+        const p1 = (PL.beginPipeline('弱化NSFW', { chars: 8000 }) || {}).runId;
+        PL.addStreamChunk('a'.repeat(2000), { id: p1 });
+        await entry.popupAction('refresh', {});
+        const tickOn = fttPanelMod.pipelineTickState().running === true;
+        const st = fttPanelMod.pipelineStatusText(Date.now());
+        const okBusy = st.busy === true && st.txt.indexOf('正在处理：弱化NSFW') >= 0
+            && st.txt.indexOf('🪙') > 0 && st.txt.indexOf('预计剩') > 0 && st.txt.indexOf('流式 1 块') > 0;
+        // 管线结束 → 再渲染即停表，并回到「空闲」
+        PL.endPipeline(true, p1);
+        await entry.popupAction('refresh', {});
+        const tickOff = fttPanelMod.pipelineTickState().running === false;
+        const idle = fttPanelMod.pipelineStatusText(Date.now());
+        return tickOn && okBusy && tickOff && idle.busy === false && idle.txt === '空闲';
+    } finally {
+        try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
