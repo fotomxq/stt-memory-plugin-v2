@@ -201,9 +201,39 @@ export async function removeServerFile() {
  * 给内核接线持久化钩子：内核里任何 `saveState()` / `saveCfg()` 调用都会落到本模块。
  * @returns {object} 接线摘要
  */
+/**
+ * v3.0.3（用户要求）：「每次被动提取记忆及原子数据发生变化，后应该触发保存到服务器的操作。」
+ *
+ * `scheduleSave` 是**防抖**保存（800ms 内多次变更合并成一次）；本函数是**立即**保存（含服务端文件），
+ * 用于「数据刚变 → 马上写服务端」的确定性语义。纪律：
+ *   · **并发合并**：已有 flush 在途时不再叠加，只记一个「还有变更」的标记，在途结束后**补跑一次**；
+ *   · 失败不抛（与保存流水线同口径），错误进 `lastSave.error` 与调试日志。
+ * @param {string} [reason]
+ * @returns {Promise<object>} 保存结果（与 `saveStateNow` 同形）
+ */
+let flushInFlight = null;
+let flushPendingReason = '';
+export function flushStateNow(reason) {
+    const why = String(reason || 'flush');
+    if (flushInFlight) { flushPendingReason = why; return flushInFlight; }
+    flushInFlight = Promise.resolve()
+        .then(() => saveStateNow({ reason: why }))
+        .catch((e) => ({ ok: false, error: String((e && e.message) || e), via: '', bytes: 0 }))
+        .then((r) => {
+            flushInFlight = null;
+            const again = flushPendingReason;
+            flushPendingReason = '';
+            if (again) void flushStateNow(again);
+            return r;
+        });
+    return flushInFlight;
+}
+
 export function wirePersistHooks() {
     setPersistHooks({
         saveState: () => { void saveStateNow({ reason: 'kernel' }); return true; },
+        // v3.0.3（用户要求）：内核「数据变化 → 立刻写服务端」的落地点（并发自动合并，见 flushStateNow）
+        persistNow: (reason) => { void flushStateNow(reason || 'kernel'); return true; },
         saveCfg: () => saveKernelCfg(),
         log: (m, e) => { if (e !== undefined) kernelLog(m, e); },
         // v2.87.0 修复：此前是 `() => undefined` —— 内核所有 `warn(...)` 被静默丢弃（用户报告「什么都没反应」）。

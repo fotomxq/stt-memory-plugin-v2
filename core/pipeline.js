@@ -339,7 +339,17 @@ export function snapshot() {
     const oldest = runs.reduce((a, b) => (a.startedAt <= b.startedAt ? a : b));
     const newest = runs[runs.length - 1];
     const elapsed = Math.max(0, now - oldest.startedAt);
-    const label = oldest.label;                     // ETA 以**最早开始**的那次为准（它决定何时全部结束）
+    // v3.0.3：**代表运行**用于「聚合读数」的 label / ETA / 阶段（并发时给出**最有信息量**的那一条）：
+    //   ① 有 AI 运行 → 取**最新开始的 AI 运行**（管线的主线就是 AI 请求；后台保存/同步只是伴随动作，
+    //      若用「最早开始」会在 AI 请求期间把标题写成「保存记忆文件」—— 用户看到的就是「提示串台」）；
+    //   ② 没有 AI 运行 → 取最新开始的那一次（同步 / 存储 / 任务）。
+    //   注意：`elapsed` 仍是**最早开始**到现在（= 本轮「忙」了多久），列表逐条读数不受影响。
+    const rep = (() => {
+        const aiRuns = runs.filter((r) => r.kind === 'ai');
+        if (aiRuns.length) return aiRuns[aiRuns.length - 1];
+        return newest;
+    })();
+    const label = rep.label;
     const eta = etaMs(label);
     let promptChars = 0, respChars = 0, streamChars = 0, chunks = 0, tokens = 0;
     for (const r of runs) {
@@ -356,8 +366,8 @@ export function snapshot() {
         promptTokens: estTokens(promptChars), respTokens: estTokens(respChars),
         tokens: tokens, promptChars: promptChars, respChars: respChars,
         chunks: chunks, streamChars: streamChars, streaming: chunks > 0,
-        // 阶段/结构摘要取**最近更新**的那次（它代表「当前正在做什么」）
-        phase: newest.phase, note: newest.note, keys: newest.keys.slice(),
+        // 阶段/结构摘要与 label 同源（代表运行）——避免「标题说批量摘要、阶段说写入存储」的串台
+        phase: rep.phase, note: rep.note, keys: rep.keys.slice(),
         hasHistory: runs.some((r) => etaHasHistory(r.label)),
     };
 }

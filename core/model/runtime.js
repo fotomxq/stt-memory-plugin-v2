@@ -69,7 +69,7 @@ export const timerHooks = { set: () => 0, clear: () => undefined };
 export function setTimerHooks(next) { Object.assign(timerHooks, next || {}); return timerHooks; }
 
 /** 持久化钩子（内核不直接落盘；由 host 层注入 real 实现） */
-let persistHooks = { saveCfg: () => true, saveState: () => true, log: null, warn: null };
+let persistHooks = { saveCfg: () => true, saveState: () => true, persistNow: () => false, log: null, warn: null };
 /** 注入持久化钩子（host 启动时调用） */
 export function setPersistHooks(next) {
     persistHooks = Object.assign({}, persistHooks, next || {});
@@ -182,6 +182,16 @@ export function resetWarnThrottle() { warnSeen = Object.create(null); warnShown 
 /** 同上：`saveState()` */
 export function saveState() {
     try { return persistHooks.saveState(); } catch (e) { return false; }
+}
+/**
+ * v3.0.3（用户要求）：「每次被动提取记忆及原子数据发生变化，后应该触发保存到服务器的操作。」
+ *   `saveState()` 走的是**防抖**落盘（800ms 后合并写）；本钩子要求宿主**立刻**落一次（含服务端文件），
+ *   用于「数据刚变 → 马上写服务端」的确定性语义（并发调用由宿主的 flush 合并，不会叠加写）。
+ * @param {string} [reason] 落盘原因（进保存记录 / 调试日志）
+ * @returns {Promise<object>|object} 宿主实现（内核不 await，避免把同步调用点变成异步）
+ */
+export function persistNow(reason) {
+    try { return persistHooks.persistNow(String(reason || '')); } catch (e) { return false; }
 }
 
 /** 代码版本（透出给内核使用；与 manifest.json 一致） */

@@ -220,6 +220,8 @@ export function storagePageHtml(controls) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">状态与操作</div>',
         divergenceBannerHtml(),
+        // v3.0.3（用户要求）：「如果发现本地与服务端不一致，自动下载合并」—— 说明当前口径（无需人工选择）
+        '<div class="ftt-muted ftt-hint" data-ftt-auto-merge>不一致时<b>自动下载并合并</b>，再推回服务端；无需人工选择。</div>',
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageStatusRefresh" title="读取服务端真值并与本端合并">🔄 刷新状态（取服务端最新并合并）</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="storageSync" title="双向同步并写入服务端（含备份与快照）">🔄 立即同步（含备份）</button>',

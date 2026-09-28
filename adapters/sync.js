@@ -676,6 +676,15 @@ let crossPending = null;                     // { env, info, at } —— V1 同�
 export function crossPendingGet() { return crossPending; }
 /** 清空「待选对端」—— V1 `crossPendingClear` */
 export function crossPendingClear() { crossPending = null; return true; }
+/**
+ * v3.0.3：**自动路径已不再产生待选** —— 用户要求「如果发现本地与服务端不一致，自动下载合并」，
+ *   故「保存后镜像」遇到分歧时改为**自动下载 + 原子合并**（见 `runStorageSyncInner`），不再暂存等用户选择。
+ * 本导出保留两种用途：
+ *   ① 复原**旧版本会话遗留**的待选（若上一版已暂存，升级后仍可人工处置）；
+ *   ② 「保留本地 / 采用对端」两个动作与横幅渲染的回归测试注入。
+ * UI 只在**确实存在待选**时才显示横幅与两个按钮 —— 新装/正常运行时不会出现。
+ */
+export function crossPendingSet(env, info) { crossPending = (env && info) ? { env: env, info: info, at: Date.now() } : null; return crossPending; }
 /** 是否需要同步日志留痕 / 置为待选（仅保留**更新**的那一份对端信封，V1 `crossPending.env.payload.updatedAt >= env.payload.updatedAt`） */
 function crossPendingStash(env, info) {
     try {
@@ -1173,14 +1182,26 @@ async function runStorageSyncInner(force) {
             if (metaStateSkipOk(mm)) metaSkip = true;
         } catch (e) { /* 忽略 */ }
         if (!metaSkip) {
-            // 远端有变化时先拉取；**分歧**（两端各有独有/冲突且无端是超集）→ 暂存待选（V1 `crossPullPolicy` ~7386），
-            // 其余情况仍按 V1 原样原子合并（超集由 mergeDataObjects 的「更新方胜」收敛）。
+            // v3.0.3（用户要求）：「如果发现本地与服务端不一致，**自动下载合并**。」
+            //   此前**分歧**（两端各有独有/冲突且无端是超集）会**暂存待用户选择**（V1 `crossPullPolicy` ~7386）；
+            //   现在一律**自动下载 + 原子合并**（`applyRemoteMergeToState` = 并集 + 更新方胜 + 墓碑生效），
+            //   再把合并结果推回服务端 —— 用户无需任何操作。已自动合并的分歧**留一条低噪声记录**
+            //   （人工确认项 + 同步日志），便于事后核对，但**不阻塞**流程。
             try {
                 const rem = await crossFindRemoteEnv();
                 if (rem) {
                     const info = crossComputeInfo(state, rem.payload.data, rem.payload.updatedAt);
-                    if (info && info.mode === 'divergence') divergence = stashDivergence(rem, info);
-                    else applyRemoteMergeToState(rem);
+                    const merged = applyRemoteMergeToState(rem);
+                    if (info && info.mode === 'divergence') {
+                        divergence = { mode: 'divergence', auto: true, info: info, merged: merged };
+                        try {
+                            noteConflict({
+                                kind: '跨端分歧（已自动合并）',
+                                detail: '本地与对端各有独有/冲突 → 已自动下载并集合并（本地 ' + Number(info.localN || 0) + ' 条 / 对端 ' + Number(info.remoteN || 0) + ' 条，冲突 ' + Number((info.diff && info.diff.conflict) || 0) + ' 条按时间取新），并已推回服务端',
+                                count: 1,
+                            });
+                        } catch (e) { /* 忽略 */ }
+                    }
                 }
             } catch (e) { /* 忽略 */ }
         }
@@ -1189,13 +1210,13 @@ async function runStorageSyncInner(force) {
         const st = syncLogStat(state);
         const lh = dataAggHash(state);
         syncLogPush({
-            action: '保存后镜像', mode: metaSkip ? '推送(清单命中)' : (divergence ? '推送(分歧待选)' : '拉取合并后推送'), changed: !metaSkip, ms: Date.now() - t0,
+            action: '保存后镜像', mode: metaSkip ? '推送(清单命中)' : (divergence ? '推送(分歧已自动合并)' : '拉取合并后推送'), changed: !metaSkip, ms: Date.now() - t0,
             localN: st.n, localBytes: st.bytes, remoteN: st.n, remoteBytes: st.bytes, afterN: st.n, afterBytes: st.bytes,
             localHash: lh, remoteHash: '', afterHash: lh,
-            note: metaSkip ? '清单未变化 → 跳过远端下载，仅推送本端内容（流量保护）' : (divergence ? '两端分歧 → 已暂存待选（未静默合并），本端内容仍按保存流水线推送' : '读取远端并原子合并后推送（删除墓碑生效）'),
+            note: metaSkip ? '清单未变化 → 跳过远端下载，仅推送本端内容（流量保护）' : (divergence ? '两端分歧 → **已自动下载并原子合并**（并集 + 时间取新 + 墓碑生效），合并结果已推回服务端' : '读取远端并原子合并后推送（删除墓碑生效）'),
         });
         syncGateMark(gate.fp);
-        return { ok: w.ok, total: w.total, mode: metaSkip ? 'push-only' : 'pull-merge-push', divergence: divergence ? divergence.mode : '' };
+        return { ok: w.ok, total: w.total, mode: metaSkip ? 'push-only' : 'pull-merge-push', divergence: divergence ? (divergence.auto ? 'auto-merged' : divergence.mode) : '' };
     } catch (e) {
         warn('保存后镜像失败', e);
         return { error: String((e && e.message) || e).slice(0, 120) };

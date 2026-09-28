@@ -186,7 +186,7 @@ import {
     syncLogList, syncLogClear, syncLogServerMerge, syncLogServerStatus, syncLogPush, syncLocalSource,
     storageStatusInfo, resetSyncState, syncInfo, fileCacheDropAll,
     // B9-d：条目瘦身 / gzip / 跨端分歧处置（V1 `__FTT` 同名能力）
-    slimFileEnvelope, slimGzipInfo, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
+    slimFileEnvelope, slimGzipInfo, crossPendingGet, crossPendingSet, crossPendingClear, applyRemoteReplaceState,
     adoptRemoteEnvelope, crossComputeInfo, crossPendingView,
     runStorageSync, storageEnvValid,
 } from './adapters/sync.js';
@@ -659,6 +659,9 @@ function bootstrapDiagnostics() {
             crossComputeInfo: (localData, remoteData, remoteTs) => crossComputeInfo(localData, remoteData, remoteTs),
             crossPendingGet: () => crossPendingGet(),
             crossPendingView: () => crossPendingView(),
+            // v3.0.3：自动路径已改为「不一致 → 自动下载合并」，不再产生待选；本入口供**旧版本遗留待选**的
+            //   人工处置与回归测试注入（UI 仅在确实存在待选时显示横幅与两个按钮）。
+            crossPendingSet: (env, info) => crossPendingSet(env, info),
             crossPendingClear: () => crossPendingClear(),
             applyRemoteReplaceState: (env) => applyRemoteReplaceState(env),
             adoptRemoteEnvelope: (env) => adoptRemoteEnvelope(env),

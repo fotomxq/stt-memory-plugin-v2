@@ -4,7 +4,12 @@
 //   tests/fixtures/v1-golden-sync-pick.json
 //   （`crossComputeInfo` / 自动对账分歧暂存 / 分歧横幅 / `syncPickLocal` / `syncPickRemote` /
 //     同步日志留痕 / `applyRemoteReplaceState` / `adoptRemoteEnvelope`）
-// 覆盖：R1–R7 V1 逐项比对；V1–V4 V2 编排与接线（自动同步不静默合并 + 横幅渲染 + 面板动作 + FTT 入口）。
+// v3.0.3 改判（用户要求「如果发现本地与服务端不一致，自动下载合并」）：
+//   **自动路径不再暂存待选** —— 「保存后镜像」遇分歧改为**自动下载 + 原子合并**（并集 + 时间取新 + 墓碑生效），
+//   合并结果随即推回服务端；已自动合并的分歧只留一条低噪声记录（人工确认项 + 同步日志），不阻塞流程。
+//   因此：R2/R3 改判为「自动合并 / 幂等」，V2 改判为「不再分歧待选」，R5–R7 与 V1 改为**显式注入待选**后
+//   继续逐字比对（横幅与两个处置动作的代码仍在，供旧版本遗留待选与回归测试使用）。
+// 覆盖：R1–R7 V1 逐项比对（R2/R3 已按 v3.0.3 改判登记）；V1–V4 V2 编排与接线（自动合并 + 横幅渲染 + 面板动作 + FTT 入口）。
 // 与 V1 的动作来源差异（如实记录）：V1 的自动对账入口是 `crossPullPolicy`（同步日志 action 取触发源标签），
 //   V2 无该函数，等价入口是 `adapters/sync.js#runStorageSync`（「保存后镜像」）→ 日志 action 为 `保存后镜像`；
 //   比对时**只比 mode/note/changed/条数**（action 属触发源标签，非处置语义）。
@@ -23,7 +28,7 @@ import { storageEnvelope, storageHash } from '../../core/envelope.js';
 import { setAiHooks } from '../../core/ai-hooks.js';
 import {
     setSyncStorageHooks, stateFileName, bakFileName, stateFileReadAny, stateFileWrite, crossComputeInfo, crossPendingGet,
-    crossPendingView, crossPendingClear, applyRemoteReplaceState, adoptRemoteEnvelope, runStorageSync,
+    crossPendingView, crossPendingClear, crossPendingSet, applyRemoteReplaceState, adoptRemoteEnvelope, runStorageSync,
     syncLogList, syncLogClear, resetSyncState, resetRemoteMarks, fileCacheDropAll, fileCacheStats,
 } from '../../adapters/sync.js';
 import { runAutoSummary } from '../../host/extract.js';
@@ -112,6 +117,12 @@ function putRemote(data, ts) {
     files.set(bakFileName(), bytes);
     return env;
 }
+/** v3.0.3：显式注入一份「待选对端」（自动路径已不再产生待选；这里用于横幅/两个处置动作的回归） */
+function seedPending() {
+    const env = putRemote();
+    fileCacheDropAll();
+    return crossPendingSet(env, crossComputeInfo(state, env.payload.data, env.payload.updatedAt));
+}
 const stateView = () => ({
     atomIds: (state.atoms || []).map((x) => x.id).sort(),
     stateValues: (state.currentStates || []).map((x) => x.id + '=' + x.value).sort(),
@@ -142,45 +153,50 @@ R.assert('R1 crossComputeInfo 分歧判定与 V1 逐字一致（divergence + onl
         && localSup.mode === G.computeControls.localSuperset && same.mode === G.computeControls.same;
 })(), (() => crossComputeInfo(state, clone(REMOTE_DATA), REMOTE_DATA.updatedAt))());
 
-await A('R2 自动同步遇分歧：暂存待选（不静默合并）+ 同步日志 mode/note/条数与 V1 一致 + 本端数据未被改动', async () => {
+// # 有意偏差（v3.0.3，用户要求「自动下载合并」）：V1 遇分歧**暂存待选、不静默合并**；
+//   本版改为**自动下载 + 原子合并**（并集 + 按时间取新 + 墓碑生效），合并结果随即推回服务端 —— 用户无需操作。
+//   黄金样本本身不改；此处按新口径断言「自动合并」的语义与留痕。
+await A('R2（v3.0.3 改判）自动同步遇分歧 → **自动下载合并**：不再产生待选；本端独有（L1/x1）保留 + 对端独有（R1）并入 + 冲突按时间取新；日志 mode=推送(分歧已自动合并) 且留一条人工确认项', async () => {
     boot();
     const before = stateView();
     const r = await runStorageSync(true);
     const logs = logsProj();
-    const div = logs.filter((x) => x.mode === '分歧待选择')[0];
-    const gd = G.divergence.logs[0];
-    return crossPendingGet() !== null
-        && pendingProj() !== null
-        && pendingProj().localN === G.divergence.pendingAfterPull.localN && pendingProj().remoteN === G.divergence.pendingAfterPull.remoteN
-        && pendingProj().onlyLocal === G.divergence.pendingAfterPull.onlyLocal && pendingProj().onlyRemote === G.divergence.pendingAfterPull.onlyRemote
-        && pendingProj().conflict === G.divergence.pendingAfterPull.conflict
-        && !!div && div.changed === gd.changed && div.localN === gd.localN && div.remoteN === gd.remoteN
-        && div.afterN === gd.afterN && div.note === gd.note
-        && J(stateView()) === J(before)                    // 不静默合并：本端 L1/x1=70 未被对端覆盖
-        && String(r.mode || '').indexOf('pull-merge-push') >= 0 && r.divergence === 'divergence';
-}, (() => ({ pending: pendingProj(), logs: logsProj() }))());
+    const div = logs.filter((x) => String(x.mode).indexOf('分歧已自动合并') >= 0)[0];
+    const after = stateView();
+    const conflicts = (() => { try { return require === undefined ? null : null; } catch (e) { return null; } })();
+    void conflicts; void before;
+    return crossPendingGet() === null && pendingProj() === null
+        && !!div && div.changed === true
+        && div.note.indexOf('已自动下载并原子合并') >= 0
+        && String(r.mode || '').indexOf('pull-merge-push') >= 0 && r.divergence === 'auto-merged'
+        // 并集：本端 L1 与对端 R1 都在；冲突项 x1 按时间取新（对端 1700000003000 更新 → 40）
+        && after.atomIds.indexOf('L1') >= 0 && after.atomIds.indexOf('R1') >= 0
+        && after.stateValues.indexOf('x1=40') >= 0;
+}, (() => ({ pending: pendingProj(), logs: logsProj(), state: stateView() }))());
 
-await A('R3 已有更新待选时不重复暂存（V1 只保留最新一份对端信封，mode=`分歧(已暂存较新待选)`）', async () => {
+await A('R3（v3.0.3 改判）自动合并是**幂等**的：首轮合并后两端一致 → 再对账不再产生分歧、不再重复合并、也不留待选', async () => {
     boot();
     await runStorageSync(true);
-    const p1 = crossPendingGet();
+    const after1 = stateView();
     syncLogClear();
-    // 同一份对端再对账一次（updatedAt 相同 → 不覆盖）：重放远端文件（上一轮已把本端推送覆盖过去）
-    putRemote();
+    // 把同一份「已合并后的本端」放回远端（模拟对端已收到推送）→ 下一轮应判定一致
+    const env = storageEnvelope(Object.assign({}, state, clone(REMOTE_DATA)));
+    env.ts = 1700000005000; env.payload.updatedAt = 1700000005000;
+    env.hash = storageHash(env.payload);
+    const bytes = new Uint8Array(Buffer.from(JSON.stringify(env), 'utf8'));
+    files.set(stateFileName(), bytes); files.set(bakFileName(), bytes);
     fileCacheDropAll();
     await runStorageSync(true);
-    const p2 = crossPendingGet();
     const logs = logsProj();
-    const dup = logs.filter((x) => x.mode === '分歧(已暂存较新待选)')[0];
-    return !!p1 && !!p2 && Number(p2.env.payload.updatedAt) === Number(p1.env.payload.updatedAt)
-        && Number(p2.info.localN) === Number(p1.info.localN)
-        && !!dup && dup.note === '已有更新的分歧待选，未重复暂存' && dup.changed === false
-        && String(G.meta.notes.join('')).indexOf('分歧(已暂存较新待选)') >= 0;
+    return crossPendingGet() === null
+        && J(stateView()) === J(after1)                                  // 幂等：数据不再变动
+        && !logs.some((x) => String(x.mode).indexOf('分歧') >= 0)         // 不再产生分歧处置/待选
+        && !logs.some((x) => x.mode === '分歧(已暂存较新待选)');
 }, (() => logsProj()));
 
-await A('R5 分歧横幅渲染（异步暂存后）：与 V1 黄金逐字一致（标题/统计归一形态/按钮 class·文案/无 title）', async () => {
+await A('R5 分歧横幅渲染（v3.0.3：显式注入待选后）：与 V1 黄金逐字一致（标题/统计归一形态/按钮 class·文案/无 title）', async () => {
     boot();
-    await runStorageSync(true);
+    seedPending();
     const html = String(divergenceBannerHtml());
     const gb = G.divergence.banner;
     const grab = (re) => { const m = html.match(re); return m ? m[1] : null; };
@@ -200,9 +216,9 @@ await A('R5 分歧横幅渲染（异步暂存后）：与 V1 黄金逐字一致�
         && rb.cls === gb.remoteBtn.cls && rb.text === gb.remoteBtn.text && rb.hasTitleAttr === false && gb.remoteBtn.hasTitleAttr === false;
 }, (() => ({ golden: G.divergence.banner, v2: divergenceBannerHtml() }))());
 
-await A('R6 syncPickLocal「保留本端（覆盖对端）」：清空待选 + 写服务端文件 + 留痕 `分歧选择/保留本端(覆盖对端)` + 提示，与 V1 逐项一致，本端数据保留', async () => {
+await A('R6 syncPickLocal「保留本端（覆盖对端）」（v3.0.3：显式注入待选后）：清空待选 + 写服务端文件 + 留痕 `分歧选择/保留本端(覆盖对端)` + 提示，与 V1 逐项一致，本端数据保留', async () => {
     boot();
-    await runStorageSync(true);
+    seedPending();
     syncLogClear();
     toasts = [];
     const before = stateView();
@@ -221,7 +237,7 @@ await A('R6 syncPickLocal「保留本端（覆盖对端）」：清空待选 + �
 
 await A('R7 syncPickRemote「采用对端（整体替换）」：清空待选 + `applyRemoteReplaceState` 整体替换 + 留痕 `采用对端(整体替换)` + 提示，与 V1 逐项一致', async () => {
     boot();
-    await runStorageSync(true);
+    seedPending();
     syncLogClear();
     toasts = [];
     const r = await syncAction('syncPickRemote', {});
@@ -289,13 +305,13 @@ await A('R10 长任务在途（提取进行中）→「整体替换」降级为�
 // ============================================================
 // V 组：V2 编排与接线
 // ============================================================
-await A('V1 面板接线：`syncPickLocal`/`syncPickRemote` 进入 `SYNC_ACTIONS`（8 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页仅在有待选时渲染横幅', async () => {
+await A('V1 面板接线（v3.0.3：显式注入待选后）：`syncPickLocal`/`syncPickRemote` 进入 `SYNC_ACTIONS`（8 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页**仅在有待选时**渲染横幅', async () => {
     boot();
     openPanel('settings'); setPanelHooks2({});
     await panelAction('settingsSub', { sub: 'storage' });
     const page0 = String(panelBodyHtml('settings') || '');
     const pageModules = storagePageHtml(SETTINGS_CONTROLS.storage);
-    await runStorageSync(true);
+    seedPending();
     const page1 = String(panelBodyHtml('settings') || '');
     const r1 = await panelAction('syncPickLocal', {});
     const note = String(panelState().note || '');
@@ -307,26 +323,25 @@ await A('V1 面板接线：`syncPickLocal`/`syncPickRemote` 进入 `SYNC_ACTIONS
         && r1.ok === true && r1.action === 'syncPickLocal' && note.indexOf('已保留本地版本') >= 0;
 }, (() => ({ note: panelState().note }))());
 
-await A('V2 自动同步不静默合并（V2 编排差异）：分歧时 `runStorageSync` 返回 divergence 且提示已发；重新对账可再次暂存（选择后可继续收敛）', async () => {
+await A('V2（v3.0.3 改判）自动同步**自动下载合并**（V2 编排口径）：分歧时 `runStorageSync` 返回 `auto-merged`、**无待选**、**无「请选择版本」提示**；合并已落库并推回服务端', async () => {
     boot();
     toasts = [];
     const r1 = await runStorageSync(true);
     const t1 = toasts.slice();
-    await syncAction('syncPickLocal', {});
-    // 「保留本端」后把对端改成更新的超集 → 下一次自动对账应走合并（不再分歧）
+    // 对端再出现更新的超集（含新条目）→ 下一次自动对账应继续**自动合并**（不需要任何人工选择）
     const sup = Object.assign({}, clone(REMOTE_DATA), { atoms: REMOTE_DATA.atoms.concat(LOCAL.atoms, [{ id: 'R2', text: '对端新增补充', title: '补充', date: '1936-12-08', tags: [], uses: 1, floorStart: 0, floorEnd: 2 }]), updatedAt: 1700000004000 });
     putRemote(sup, 1700000004000);
     fileCacheDropAll();
     syncLogClear();
     const r2 = await runStorageSync(true);
     const logs = logsProj();
-    return r1.divergence === 'divergence' && t1.length === 1 && t1[0][0] === 'warning'
-        && t1[0][1].indexOf('跨端记忆存在分歧') >= 0
+    return r1.divergence === 'auto-merged' && t1.length === 0
         && crossPendingGet() === null
-        && String(r2.divergence || '') === ''
         && !logs.some((x) => x.mode === '分歧待选择')
-        && (state.atoms || []).some((x) => x.id === 'R2');
-}, (() => ({ r1: 'divergence', logs: logsProj(), toasts }))());
+        && (state.atoms || []).some((x) => x.id === 'R2')
+        && (state.atoms || []).some((x) => x.id === 'L1')
+        && logs.some((x) => String(x.mode).indexOf('拉取合并后推送') >= 0 || String(x.mode).indexOf('分歧已自动合并') >= 0);
+}, (() => ({ r1: 'auto-merged', logs: logsProj(), toasts }))());
 
 R.assert('V3 FTT 入口齐备（V1 `__FTT` 同名能力）：crossComputeInfo / crossPendingGet / crossPendingView / crossPendingClear / applyRemoteReplaceState / adoptRemoteEnvelope', (() => {
     boot();

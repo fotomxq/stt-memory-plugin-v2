@@ -15,7 +15,7 @@ import { normalizeAtom } from './model/atom.js';
 import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory, normalizeNpc, normalizeParallel, normalizePlan, normalizeScene, normalizeSuspense } from './model/dims.js';
 import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney } from './model/money.js';
 import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildId, rumorStageByFerment, rumorSubjectKey } from './model/rumor.js';
-import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, state, timerHooks, warn } from './model/runtime.js';
+import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, persistNow, state, timerHooks, warn } from './model/runtime.js';
 import { mergeTags, scenePathArr } from './model/scalars.js';
 import { normalizeSnapshot, refreshAllSnapshotAges, snapshotBodySig, stampNowForState, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
 import { injectNameCore, parallelExpired } from './recall.js';
@@ -451,6 +451,10 @@ function mergeDelta(delta0, floorRange) {
         // v1.143：各分类条数上限 JS 兜底（概念/场景/物品/计划/悬念/名册此前只有提示词约束）
         try { enforceDimCaps(); } catch (e) { }
         saveState();
+        // v3.0.3（用户要求）：「每次被动提取记忆及原子数据发生变化，后应该触发保存到服务器的操作。」
+        //   `mergeDelta` 是**所有**原子数据变更的唯一漏斗（被动提取 / 推演 / 修复 / 导入…都经它落库），
+        //   故在防抖保存之后**再触发一次立即落盘**（宿主 `flushStateNow` → 含服务端文件；并发自动合并）。
+        try { persistNow('原子数据变更'); } catch (e) { /* 忽略 */ }
         // v1.23：返回统计（新增条数 / 总条数），兼容布尔判断（truthy）
         const afterTotal = totalMemoryCount();
         const added = Math.max(0, afterTotal - beforeTotal);

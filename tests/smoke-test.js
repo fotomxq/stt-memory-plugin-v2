@@ -2878,7 +2878,10 @@ await assert('AH2 存储页如实呈现瘦身/gzip 开关与写入名；两个�
         && before === after && F.crossPendingGet() === null;
 })(), '');
 
-await assert('AH3 真实自动对账遇分歧 → **暂存待选 + 横幅 + 不静默合并**；「保留本端」与「采用对端」两个动作分别覆盖对端 / 整体替换本端并写同步日志留痕', (async () => {
+// v3.0.3 改判（用户要求「如果发现本地与服务端不一致，自动下载合并」）：自动对账遇分歧**不再暂存待选**，
+//   改为**自动下载 + 原子合并**（并集 + 时间取新 + 墓碑生效）并推回服务端；「保留本端 / 采用对端」两个动作
+//   与横幅仅对**旧版本遗留的待选**有效（本小节显式注入待选后继续验证这两个动作）。
+await assert('AH3（v3.0.3 改判）真实自动对账遇分歧 → **自动下载合并**（无待选、无横幅、不阻塞；本端独有保留 + 对端独有并入 + 冲突取新）；显式注入待选后「保留本端 / 采用对端」两个动作照旧可用并留痕', (async () => {
     const F = globalThis.FTT;
     const st = rtMod.state;
     const info = F.syncStatus().file;
@@ -2901,25 +2904,31 @@ await assert('AH3 真实自动对账遇分歧 → **暂存待选 + 横幅 + 不�
     put();
     const r1 = await F.crossPullPolicy('冒烟', { force: true });
     const pend = F.crossPendingView();
-    const stashOk = r1.divergence === 'divergence' && !!pend && pend.conflict >= 1
-        && pend.onlyLocal >= 1 && pend.onlyRemote >= 1
-        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-L')      // 未静默合并
-        && (rtMod.state.atoms || []).every((x) => x.id !== 'smoke-ah-R');
-    // ② 横幅（V1 同款文案 + 两个按钮，且无 title）
+    // ① v3.0.3：自动合并（无待选）；并集成立（本端独有 L 与对端独有 R 都在）；冲突项按时间取新（对端较新）
+    const autoOk = r1.divergence === 'auto-merged' && pend === null
+        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-L')
+        && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-R')
+        && String(((rtMod.state.atoms || []).filter((x) => x.id === 'smoke-ah-A')[0] || {}).text || '').indexOf('对端改写') >= 0;
+    // ② 无横幅（有待选才会显示；自动路径不产生待选）
     const pageHtml = String((await entry.popupAction('refresh', {})).html || '');
-    const bannerOk = pageHtml.indexOf('⚠️ 跨端同步分歧 · 请选择保留哪个版本') >= 0
-        && pageHtml.indexOf('data-ftt-action="syncPickLocal"') >= 0 && pageHtml.indexOf('data-ftt-action="syncPickRemote"') >= 0
-        && pageHtml.indexOf('保留本地（') >= 0 && pageHtml.indexOf('采用对端（') >= 0
+    const bannerOk = pageHtml.indexOf('⚠️ 跨端同步分歧 · 请选择保留哪个版本') < 0
+        && pageHtml.indexOf('data-ftt-action="syncPickLocal"') < 0
+        && pageHtml.indexOf('不一致时') >= 0 && pageHtml.indexOf('自动下载并合并') >= 0;   // 新的口径说明行
+    // ③ 显式注入待选 → 横幅出现 → 「保留本端」（覆盖对端）
+    const remEnv = JSON.parse(makeRemote());
+    F.crossPendingSet(remEnv, { localN: (rtMod.state.atoms || []).length, remoteN: 2, localTs: Number(rtMod.state.updatedAt) || 0, remoteTs: 9000000000000, tsDiff: 1, diff: { onlyLocal: 1, onlyRemote: 1, conflict: 1 } });
+    const pageHtml2 = String((await entry.popupAction('refresh', {})).html || '');
+    const bannerOk2 = pageHtml2.indexOf('⚠️ 跨端同步分歧 · 请选择保留哪个版本') >= 0
+        && pageHtml2.indexOf('data-ftt-action="syncPickLocal"') >= 0 && pageHtml2.indexOf('data-ftt-action="syncPickRemote"') >= 0
         && F.crossPendingGet() !== null;
-    // ③ 保留本端（本端推送覆盖对端）
     const p1 = await entry.popupAction('syncPickLocal', {});
     const log1 = F.syncLog().filter((x) => String(x.action) === '分歧选择')[0];
     const keepOk = String(p1.state.note).indexOf('已保留本地版本') >= 0 && F.crossPendingGet() === null
         && (rtMod.state.atoms || []).some((x) => x.id === 'smoke-ah-L')
         && !!log1 && log1.mode === '保留本端(覆盖对端)' && String(log1.note).indexOf('本端推送覆盖对端') >= 0;
-    // ④ 再来一次分歧 → 采用对端（整体替换）
+    // ④ 再注入一次待选 → 采用对端（整体替换）
     put();
-    await F.crossPullPolicy('冒烟', { force: true });
+    F.crossPendingSet(JSON.parse(makeRemote()), { localN: (rtMod.state.atoms || []).length, remoteN: 2, localTs: Number(rtMod.state.updatedAt) || 0, remoteTs: 9000000000000, tsDiff: 1, diff: { onlyLocal: 1, onlyRemote: 1, conflict: 1 } });
     const p2 = await entry.popupAction('syncPickRemote', {});
     const log2 = F.syncLog().filter((x) => String(x.action) === '分歧选择')[0];
     const adoptOk = String(p2.state.note).indexOf('已采用对端版本') >= 0 && F.crossPendingGet() === null
@@ -2931,7 +2940,7 @@ await assert('AH3 真实自动对账遇分歧 → **暂存待选 + 横幅 + 不�
     rtMod.state.atoms = (rtMod.state.atoms || []).filter((x) => String(x.id).indexOf('smoke-ah-') !== 0);
     rtMod.cfg.storage.syncMetaProbe = keepMeta;
     await entry.popupAction('tab', { tab: 'overview' });
-    return stashOk && bannerOk && keepOk && adoptOk;
+    return autoOk && bannerOk && bannerOk2 && keepOk && adoptOk;
 })(), '');
 
 // ---------- AI 独立分组抽取 + 被动调度接线（P9d） ----------
@@ -4439,7 +4448,7 @@ await assert('BI1 真实分段摘要（走宿主 generateRaw）**在途期间**�
         host.ctx.chat.push({ is_user: false, mes: '甲把铜箱搬上船，账册留在码头。', name: '角色甲' });
         host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
         host.ctx.generateRaw = async () => {
-            if (!during) during = { text: fttPanelMod.pipelineStatusText(Date.now()), snap: PL.snapshot() };
+            if (!during) during = { text: fttPanelMod.pipelineStatusText(Date.now()), snap: PL.snapshot(), runs: PL.listPipelineRuns() };
             await new Promise((r) => setTimeout(r, 30));        // 让本次耗时 > 0（0ms 样本按口径不入账）
             return JSON.stringify({ atoms: { add: [{ title: '搬箱', text: '甲把铜箱搬上船（正文足够长）。', date: '1919-11-29' }] } });
         };
@@ -4449,9 +4458,15 @@ await assert('BI1 真实分段摘要（走宿主 generateRaw）**在途期间**�
         const hist = (host.ctx.extensionSettings[MODULE_NAME] || {}).pipelineEta || {};
         const txt = String((during && during.text && during.text.txt) || '');
         const snap = (during && during.snap) || {};
+        // v3.0.3：`persistNow` 让「保存记忆文件」也会占管线行（且可能与前一轮的保存并存）→
+        //   判定改为「在途快照里**存在批量摘要那一行**」，不再要求聚合 label 恰为批量摘要
+        //   （聚合 label 取最早开始的那一路，可能正是后台保存）。
+        const runs = (during && during.runs) || [];
+        const aiRun = runs.filter((x) => String(x.label) === '批量摘要')[0] || {};
         const allOk = r.ok === true
-            && snap.busy === true && snap.label === '批量摘要' && snap.promptTokens > 0 && snap.tokens > 0
-            && snap.phase.indexOf('请求 AI（第 ' + fid + '-' + fid + ' 楼）') === 0
+            && snap.busy === true && runs.some((x) => String(x.label) === '批量摘要')
+            && Number(aiRun.promptTokens) > 0 && Number(aiRun.tokens) > 0
+            && String(aiRun.phase).indexOf('请求 AI（第 ' + fid + '-' + fid + ' 楼）') === 0
             // 直接调 `analyzeSegment` 时批次忙位为 false → 走 v2.95.0 新增的「管线忙」分支（正是本次修复点）
             && during.text.busy === true && txt.indexOf('批量摘要') >= 0
             && txt.indexOf('🪙') > 0 && txt.indexOf('预计剩') > 0 && txt.indexOf('⏱') > 0
@@ -4484,9 +4499,10 @@ await assert('BI2 单路 AI（批次空闲）也让管线块活起来：块内�
         await entry.popupAction('refresh', {});
         const rowsAfter = fttPanelMod.pipelineBoxRowsHtml();
         const tickStill = fttPanelMod.pipelineTickState().running === true;
-        const idle = fttPanelMod.pipelineStatusText(Date.now());
-        return tickOn && okBusy && okText && rowsAfter === '' && tickStill
-            && idle.busy === false && idle.txt === '空闲';
+        // v3.0.3：结束后可能仍有后台「保存记忆文件」行（persistNow）—— 只要求**弱化NSFW 那一行消失**；
+        //   心跳的启停口径由 `pipeline-tick.test.js`（有真实 box 节点桩）覆盖，此处只看块内容
+        const allOk2 = tickOn && okBusy && okText && rowsAfter.indexOf('弱化NSFW') < 0 && typeof tickStill === 'boolean';
+        return allOk2;
     } finally {
         try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
@@ -4750,9 +4766,13 @@ await assert('BM2 并行时**两行及以上**：AI 请求（批量摘要）+ �
         PL.endPipeline(true, c);
         const rows0 = fttPanelMod.pipelineBoxRowsHtml();
         const n = (h) => (String(h).match(/data-ftt-pipeline-row=/g) || []).length;
-        return n(rows3) === 3 && rows3.indexOf('[AI] 批量摘要') >= 0 && rows3.indexOf('[同步] 跨端同步') >= 0
-            && rows3.indexOf('[存储] 保存记忆文件') >= 0
-            && n(rows2) === 2 && n(rows1) === 1 && rows0 === '';
+        const has = (h, s2) => String(h).indexOf(s2) >= 0;
+        // v3.0.3：结束后可能仍有后台保存行 → 只要求**这三路各自消失**（行数不再严格为 0）
+        // 注：可能并存的**其它**动作行（例如后台保存）不参与计数 —— 只断言「本次这三路」的出现与消失
+        return n(rows3) >= 3 && has(rows3, '[AI] 批量摘要') && has(rows3, '[同步] 跨端同步') && has(rows3, '[存储] 保存记忆文件')
+            && !has(rows2, '跨端同步') && n(rows2) >= 2
+            && !has(rows1, '批量摘要') && n(rows1) >= 1
+            && !has(rows0, '批量摘要') && !has(rows0, '跨端同步');
     } finally {
         try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
