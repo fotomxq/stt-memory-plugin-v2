@@ -325,14 +325,20 @@ A('F2 按钮 title 给出**预检**（将删层数 / 受影响条数）；宿主
     return okTitle && dis;
 })(), '');
 
-A('F3 删楼分节与「删除数据（不可恢复）」**分块呈现**（删的是聊天楼层，不是插件记忆）', (() => {
+A('F3 v2.96.0 顺序调整（用户要求「危险操作放到最后」）：危险区横幅 → 删楼 → 删数据，三块**都在页面末尾**（安全分块之后），且删楼与删数据**分块呈现**', (() => {
     bootHost({ floors: 20 });
     bootState();
     bootHooks();
     const h = String(settingsPageHtml('data', '') || '');
+    const i0 = h.indexOf('data-ftt-danger-zone');
     const i1 = h.indexOf('✂️ 删除聊天楼层');
-    const i2 = h.indexOf('⚠️ 删除数据（不可恢复）');
-    return i1 > 0 && i2 > i1 && h.indexOf('插件已提取的记忆<b>不会</b>随之丢失') > 0;
+    const i2 = h.indexOf('🗑 删除数据（不可恢复）');
+    const safe = h.indexOf('🗂 本地缓冲');
+    return i0 > 0 && i1 > i0 && i2 > i1 && safe > 0 && i0 > safe
+        && h.indexOf('插件已提取的记忆<b>不会</b>随之丢失') > 0
+        && h.indexOf('以下两块都会写入不可逆的改动') > 0
+        // 「不可恢复」的那个按钮在页面最末（危险区按「可回滚的在前」排序）
+        && h.indexOf('data-ftt-action="reset"') > i2;
 })(), '');
 
 
