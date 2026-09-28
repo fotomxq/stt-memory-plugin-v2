@@ -4,6 +4,9 @@
 //   同步日志（最近 30 条：本地 → 对端 → 同步后 的条数与大小 + 处置 + 本端源头）。
 // B9-d 追加：**跨端分歧待选横幅**（V1 `renderStorageStatus` 尾部 `ftt-warn-box`(~26490)）+ 两个 V1 同名动作
 //   `syncPickLocal`(~26862「保留本端（覆盖对端）」)/ `syncPickRemote`(~26882「采用对端（整体替换）」)。
+// v3.0.4（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」→ 横幅第三项
+//   `syncPickMerge`（下载对端 → 并集 + 去重 + 冲突按时间取新 + 墓碑生效 → 写回服务端；两端数据都不丢，
+//   故不进危险动作清单、无需二次确认）；另见 v3.0.3 起「自动路径已改为一律自动合并」。
 // 说明：V1 的「存储治理（统一抽象·只读）」依赖其多后端抽象，V2 为「本机缓冲 + 文件通道」两型 →
 //   以只读说明行呈现；「宿主原生存储」自 v2.77.0 起为**真实实现**（`adapters/tt-store.js` 官方契约 +
 //   `adapters/file-transport.js` 后端路由）→ 存储页恢复该分区与通道状态行。
@@ -16,6 +19,7 @@ import {
     storageStatusInfo, stateFileStatus, syncLogServerStatus, syncLogList, syncLogClear,
     syncLogServerMerge, storageVerify, crossSyncManual, refreshFromServer, syncLocalSource,
     noteSyncReport, syncToast, crossPendingView, crossPendingGet, crossPendingClear, applyRemoteReplaceState,
+    applyRemoteMergeToState,
     storageWriteAll, slimGzipInfo, syncLogPush,
 } from '../adapters/sync.js';
 import { storageEnvelope } from '../core/envelope.js';
@@ -114,7 +118,13 @@ export function divergenceBannerHtml() {
             + '<div class="ftt-row ftt-mt-2">'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="syncPickLocal">保留本地（' + p.localN + ' 条）</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="syncPickRemote">采用对端（' + p.remoteN + ' 条）</button>'
-            + '</div></div>';
+            // v3.0.4（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」
+            //   即：**下载对端 → 并集合并 + 去重 + 冲突按时间取新 + 墓碑生效**，两端数据都不丢；合并结果写回服务端。
+            //   口径说明：两个覆盖型选择会**丢弃**另一方的差异（故需二次确认）；本选项**不丢数据** → 无需确认。
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="syncPickMerge" title="下载对端后并集合并去重 —— 两端数据都不丢（推荐）">🔀 合并差异（下载对端后去重合并）</button>'
+            + '</div>'
+            + '<div class="ftt-muted ftt-hint">合并差异 = 下载对端 → 并集去重（同 id 按时间取新，删除墓碑生效）→ 写回服务端；两端数据都不丢。</div>'
+            + '</div>';
         return s;
     } catch (e) { return ''; }
 }
@@ -291,11 +301,13 @@ export async function syncAction(action, payload) {
             if (r.mode !== 'blocked' && r.mode !== 'busy') syncToast(r.mode === 'none' ? 'info' : 'success', note, '');
             return { ok: r.mode !== 'error' && r.mode !== 'blocked' && r.mode !== 'busy', action: a, note, detail: r };
         }
-        if (a === 'syncPickLocal' || a === 'syncPickRemote') {
-            // 分歧选择（V1 `syncPickLocal`(~26862) / `syncPickRemote`(~26882)）：
+        if (a === 'syncPickLocal' || a === 'syncPickRemote' || a === 'syncPickMerge') {
+            // 分歧选择（V1 `syncPickLocal`(~26862) / `syncPickRemote`(~26882)；v3.0.4 增 `syncPickMerge`）：
             //   · 先取出并**立即清空**待选（V1 原样：无论成功与否都不再重复处置同一份待选）；
             //   · 保留本端 = 本端推送覆盖对端（`storageWriteAll`）；采用对端 = `applyRemoteReplaceState` 整体替换后再写回；
-            //   · 两者都写同步日志留痕（action='分歧选择'，V1 文案逐字）。
+            //   · **合并差异（v3.0.4，用户要求）**：下载对端 → `applyRemoteMergeToState`（并集 + 去重 + 同 id 按时间取新 +
+            //     墓碑生效）→ 写回服务端；两端数据都不丢，故**不进危险动作清单**（无需二次确认）。
+            //   · 三者都写同步日志留痕（action='分歧选择'，V1 文案逐字）。
             const pend = crossPendingView();
             const pendEnv = (() => { try { const raw = crossPendingGet(); return raw && raw.env ? raw.env : null; } catch (e) { return null; } })();
             crossPendingClear();
@@ -309,6 +321,26 @@ export async function syncAction(action, payload) {
                 } catch (e2) { /* 忽略 */ }
                 syncToast('success', '已保留本地版本', '本端将覆盖对端');
                 return { ok: true, action: a, note: '已保留本地版本 —— 本端将覆盖对端', detail: { pending: pend } };
+            }
+            if (a === 'syncPickMerge') {
+                // v3.0.4（用户要求）：「将**对端下载后合并去重**」——与另两个处置动作同口径：无待选时如实报「未找到待选对端」
+                //   （不拿本端信封自合并假装成功）；有待选则**下载对端 + 并集去重 + 冲突按时间取新 + 墓碑生效**，再写回。
+                const r = pendEnv ? applyRemoteMergeToState(pendEnv) : null;
+                const st2 = (r && r.mode === 'merge' && r.stat) ? r.stat : {};
+                await storageWriteAll(storageEnvelope(state));
+                try {
+                    const st = syncLogStat(state);
+                    syncLogPush({
+                        action: '分歧选择', mode: r ? '合并差异(下载对端去重合并)' : '未找到待选对端',
+                        changed: !!(r && r.mode !== 'same'), ms: Date.now() - t0,
+                        localN: (pend ? pend.localN : st.n), localBytes: st.bytes, remoteN: (pend ? pend.remoteN : 0), remoteBytes: 0,
+                        afterN: st.n, afterBytes: st.bytes, localHash: dataAggHash(state), remoteHash: (pend ? pend.remoteHash : ''), afterHash: dataAggHash(state),
+                        note: r ? '用户选择合并差异：已下载对端并**并集去重**（同 id 按时间取新，删除墓碑生效）后写回服务端（对端新增 ' + Number(st2.added || 0) + ' · 冲突远端胜 ' + Number(st2.conflictWinRemote || 0) + ' / 本地胜 ' + Number(st2.conflictWinLocal || 0) + '）' : '待选对端缺失，未改动本端数据',
+                    });
+                } catch (e2) { /* 忽略 */ }
+                const noteM = r ? ('已合并差异 —— 对端已下载并去重（对端新增 ' + Number(st2.added || 0) + ' · 冲突 ' + (Number(st2.conflictWinRemote || 0) + Number(st2.conflictWinLocal || 0)) + ' 条按时间取新）') : '未找到待选对端（未改动本端）';
+                syncToast(r ? 'success' : 'warning', r ? '已合并差异' : '未找到待选对端', r ? '两端数据都不丢，合并结果已写回服务端' : '本端数据未被改动');
+                return { ok: !!r, action: a, note: noteM, detail: { merged: r, pending: pend } };
             }
             const ok = pendEnv ? applyRemoteReplaceState(pendEnv) : false;
             await storageWriteAll(storageEnvelope(state));
@@ -374,7 +406,7 @@ export async function syncAction(action, payload) {
 }
 
 /** 存储/同步动作名判定（供面板分发；保持 V1 动作名逐字一致） */
-export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote']);
+export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote', 'syncPickMerge']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }

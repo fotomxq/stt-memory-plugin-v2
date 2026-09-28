@@ -9,7 +9,10 @@
 //   合并结果随即推回服务端；已自动合并的分歧只留一条低噪声记录（人工确认项 + 同步日志），不阻塞流程。
 //   因此：R2/R3 改判为「自动合并 / 幂等」，V2 改判为「不再分歧待选」，R5–R7 与 V1 改为**显式注入待选**后
 //   继续逐字比对（横幅与两个处置动作的代码仍在，供旧版本遗留待选与回归测试使用）。
-// 覆盖：R1–R7 V1 逐项比对（R2/R3 已按 v3.0.3 改判登记）；V1–V4 V2 编排与接线（自动合并 + 横幅渲染 + 面板动作 + FTT 入口）。
+// v3.0.4 增项（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」→
+//   横幅第三项 `syncPickMerge`（下载对端 → 并集去重 → 写回服务端；两端都不丢）由 R11 锁定（含待选场景），
+//   R12 锁定「无待选用本端口径不假装成功」；`SYNC_ACTIONS` 由 8 项 → 9 项。
+// 覆盖：R1–R7 V1 逐项比对（R2/R3 已按 v3.0.3 改判登记）；R11/R12 v3.0.4 合并差异；V1–V4 V2 编排与接线（自动合并 + 横幅渲染 + 面板动作 + FTT 入口）。
 // 与 V1 的动作来源差异（如实记录）：V1 的自动对账入口是 `crossPullPolicy`（同步日志 action 取触发源标签），
 //   V2 无该函数，等价入口是 `adapters/sync.js#runStorageSync`（「保存后镜像」）→ 日志 action 为 `保存后镜像`；
 //   比对时**只比 mode/note/changed/条数**（action 属触发源标签，非处置语义）。
@@ -302,10 +305,54 @@ await A('R10 长任务在途（提取进行中）→「整体替换」降级为�
         && merged.stateValues.indexOf('x1=40') >= 0;
 }, (() => ({ ret: 'merge', state: stateView() }))());
 
+// v3.0.4（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」
+//   横幅原有「保留本地（覆盖对端）/ 采用对端（整体替换）」都会**丢弃**另一方的差异；
+//   新增第三项「🔀 合并差异」= **下载对端 → 并集 + 去重 + 冲突按时间取新 + 墓碑生效**→ 写回服务端，两端都不丢。
+await A('R11（v3.0.4 新增）分歧横幅第三项「🔀 合并差异（下载对端后去重合并）」：按钮在横幅内且写明不丢数据；点击 → 对端已下载并**并集去重**（本端 L1 与对端 R1 并存、冲突 x1 按时间取新）、清空待选、写回服务端、留痕 `分歧选择/合并差异(下载对端去重合并)` + 成功提示', async () => {
+    boot();
+    seedPending();
+    syncLogClear();
+    toasts = [];
+    const banner = String(divergenceBannerHtml());
+    const before = stateView();
+    const r = await syncAction('syncPickMerge', {});
+    const logs = logsProj();
+    const after = stateView();
+    return banner.indexOf('data-ftt-action="syncPickMerge"') >= 0
+        && banner.indexOf('🔀 合并差异') >= 0 && banner.indexOf('下载对端') >= 0
+        && SYNC_ACTIONS.length === 9 && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0
+        && r.ok === true && r.action === 'syncPickMerge'
+        && crossPendingGet() === null && pendingProj() === null
+        && logs.length === 1 && logs[0].action === '分歧选择' && logs[0].mode === '合并差异(下载对端去重合并)'
+        && logs[0].changed === true && logs[0].note.indexOf('并集去重') >= 0
+        && toasts.length === 1 && toasts[0][0] === 'success' && toasts[0][1].indexOf('已合并差异') >= 0
+        && String(r.note).indexOf('已合并差异') >= 0
+        // 去重合并语义：两端独有都保留（本端 L1 / 对端 R1），冲突按时间取新（对端 1700000003000 → 40）
+        && before.atomIds.indexOf('R1') < 0
+        && after.atomIds.indexOf('L1') >= 0 && after.atomIds.indexOf('R1') >= 0
+        && after.stateValues.indexOf('x1=40') >= 0
+        && files.has(stateFileName());
+}, (() => ({ logs: logsProj(), toasts, state: stateView() }))());
+
+await A('R12（v3.0.4）无待选时点「合并差异」：与另两个处置动作同口径 —— 留痕 `未找到待选对端`（changed=false）+ 警示提示 + **不改动本端数据**（不拿本端信封自合并假装成功）', async () => {
+    boot();
+    crossPendingClear();
+    syncLogClear();
+    toasts = [];
+    const before = stateView();
+    const r = await syncAction('syncPickMerge', {});
+    const logs = logsProj();
+    return r.ok === false && r.action === 'syncPickMerge'
+        && J(stateView()) === J(before)
+        && logs.length === 1 && logs[0].action === '分歧选择' && logs[0].mode === '未找到待选对端'
+        && logs[0].changed === false && logs[0].note.indexOf('未改动本端数据') >= 0
+        && toasts.length === 1 && toasts[0][0] === 'warning';
+}, (() => ({ logs: logsProj(), toasts, state: stateView() }))());
+
 // ============================================================
 // V 组：V2 编排与接线
 // ============================================================
-await A('V1 面板接线（v3.0.3：显式注入待选后）：`syncPickLocal`/`syncPickRemote` 进入 `SYNC_ACTIONS`（8 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页**仅在有待选时**渲染横幅', async () => {
+await A('V1 面板接线（v3.0.3 / v3.0.4：显式注入待选后）：`syncPickLocal`/`syncPickRemote`/`syncPickMerge` 进入 `SYNC_ACTIONS`（9 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页**仅在有待选时**渲染横幅', async () => {
     boot();
     openPanel('settings'); setPanelHooks2({});
     await panelAction('settingsSub', { sub: 'storage' });
@@ -315,10 +362,12 @@ await A('V1 面板接线（v3.0.3：显式注入待选后）：`syncPickLocal`/`
     const page1 = String(panelBodyHtml('settings') || '');
     const r1 = await panelAction('syncPickLocal', {});
     const note = String(panelState().note || '');
-    return SYNC_ACTIONS.length === 8 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
+    return SYNC_ACTIONS.length === 9 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
+        && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0
         && pageModules.indexOf('data-ftt-action="syncPickLocal"') < 0
         && page0.indexOf('data-ftt-action="syncPickLocal"') < 0
         && page1.indexOf('data-ftt-action="syncPickLocal"') >= 0 && page1.indexOf('data-ftt-action="syncPickRemote"') >= 0
+        && page1.indexOf('data-ftt-action="syncPickMerge"') >= 0
         && page1.indexOf('⚠️ 跨端同步分歧 · 请选择保留哪个版本') >= 0
         && r1.ok === true && r1.action === 'syncPickLocal' && note.indexOf('已保留本地版本') >= 0;
 }, (() => ({ note: panelState().note }))());

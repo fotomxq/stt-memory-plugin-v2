@@ -150,6 +150,25 @@ A('B1 危险动作清单**覆盖全部会不可逆清空/覆盖用户数据**的
     return missing.length === 0 && tooShort.length === 0;
 })(), '');
 
+// v3.0.4（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」
+//   口径：**覆盖型**两项（保留本端 / 采用对端）会丢弃另一方的差异 → 需二次确认（仍在清单内）；
+//   新增的「🔀 合并差异」是**并集去重**，不丢任何一方的数据 → **不进**危险动作清单（点了直接执行）。
+A('B1b v3.0.4：`syncPickMerge`（下载对端并集去重，两端都不丢）**不在**危险动作清单内；覆盖型两项仍在（仍会丢弃对方差异 → 仍要二次确认）', (async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const src = readFileSync(join(ROOT, 'ui', 'panel.js'), 'utf8');
+    const block = src.slice(src.indexOf('const DANGER_ACTION_PROMPTS = {'), src.indexOf('async function confirmDialog'));
+    const uiSrc = readFileSync(join(ROOT, 'ui', 'sync.js'), 'utf8');
+    return block.indexOf("'syncPickMerge'") < 0
+        && block.indexOf("'syncPickLocal'") >= 0 && block.indexOf("'syncPickRemote'") >= 0
+        && DANGER_ACTIONS.indexOf('syncPickMerge') < 0 && DANGER_ACTIONS.length === 24
+        // 动作确实存在且**不经** confirmDialog（在分歧处置分支内联、无确认调用）
+        && uiSrc.indexOf("a === 'syncPickMerge'") >= 0
+        && uiSrc.indexOf('applyRemoteMergeToState') >= 0;
+})(), '');
+
 A('B2 真实点击「🧹 清理传言」：确认框取消 → **零副作用**（传言一条不少）；确认 → 才清空并留删除墓碑', (async () => {
     const st = boot({
         rumors: [{ id: 'ru1', subject: '传闻甲', content: '码头有人交易军械。', stage: 'active', tags: [], carriers: [], uses: 0 }],
