@@ -149,7 +149,9 @@ node tests/local/bridge.mjs --host 0.0.0.0
 **台账诊断（v3.0.9，只读零副作用）**：`ftt.ledger`（台账标记 + 版本签名一致性）· `ftt.chatReady`（聊天就绪判定）·
 `ftt.pendingScan`（未摘要清单 + 逐项跳过计数：user/hidden/missing/noText/processed/covered/chatNotReady）·
 `ftt.pendingFloors`（清单）· `ftt.floorDiag(i)`（单楼逐项判据：swipes/mes 长度、`hashStable`/`hashMes`、
-台账标记值与是否同哈希、签名一致性、是否被覆盖、最终是否进未摘要）。
+台账标记值与是否同哈希、签名一致性、是否被覆盖、最终是否进未摘要）·
+`ftt.loadDiag()`（**载入链路四处并排**：内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志，
+含信封哈希是否自洽）。
 它们一律走 `maintain:false` 与纯比较 —— **不触发任何台账维护写入**（该不变量由单测 F8 锁定）。
 
 **协议**（WebSocket 文本帧，JSON）：
