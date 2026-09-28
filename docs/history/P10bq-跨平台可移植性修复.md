@@ -29,7 +29,7 @@
 ```text
 Error [ERR_MODULE_NOT_FOUND]: Cannot find module
   'D:\home\ubuntu\st\ftt-memory-v2\tests\harness\st-mock.js'
-  imported from D:\dsh\stn\stt-memory-plugin-v2\tests\unit\tombstone-safety.test.js
+  imported from <本机仓库根>\tests\unit\tombstone-safety.test.js
 ```
 
 `/home/ubuntu/st/ftt-memory-v2/...` 是 POSIX 绝对路径，在 Windows 上被解析为「当前盘符下的
