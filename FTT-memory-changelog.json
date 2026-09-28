@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.92.0",
+  "version": "2.93.0",
   "updatedAt": "2026-09-27",
   "generatedAt": "2026-09-27",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.93.0",
+      "date": "2026-09-27",
+      "title": "楼层骤减处理（补上「断裂检测」）+ 删楼感知",
+      "points": [
+        "① 补上 V1 遗留但缺失的「断裂检测」：（host/floors.js#handleFloorShrink）：getLastMessageId() < lastKnownFlo…",
+        "② 台账强制哈希归位：（Q3）：绕过 20s 节流与 mass-mismatch 守卫（收缩时整体失配属预期）→ 幸存楼层按内容哈希归位、被删楼层的标记丢弃，刷新版本签名。",
+        "③ 只改编号、不删数据：（Q1）：逐维（DIMENSIONS 全量 + 状态 + 分段总结）修正「超过当前末楼」的区间 →置未知区间 0/0 + floorStale: true…"
+      ]
+    },
     {
       "version": "2.92.0",
       "date": "2026-09-27",
