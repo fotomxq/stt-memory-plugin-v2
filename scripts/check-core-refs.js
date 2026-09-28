@@ -99,7 +99,9 @@ function declared(code) {
     for (const m of code.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     for (const m of code.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     // for 循环声明（含数组/对象解构）：for (const [k, v] of …) / for (let i = 0; …)
-    for (const m of code.matchAll(/\bfor\s*\(\s*(?:const|let|var)\s+(\[[^\]]*\]|\{[^}]*\}|[A-Za-z_$][\w$]*)/g)) addParams(names, m[1]);
+    // v2.95.0：同时识别 `for await (const chunk of gen)`（宿主流式响应的异步迭代）——
+    //   此前 `await` 让正则失配 → `chunk` 被误报为「未定义标识符」，挡住一切异步迭代写法。
+    for (const m of code.matchAll(/\bfor\s*(?:await\s*)?\(\s*(?:const|let|var)\s+(\[[^\]]*\]|\{[^}]*\}|[A-Za-z_$][\w$]*)/g)) addParams(names, m[1]);
     // 对象字面量简写方法 / getter / setter：行首 `name(params) {`
     for (const m of code.matchAll(/^[ \t]*(?:async\s+)?(?:get\s+|set\s+|\*\s*)?([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/gm)) names.add(m[1]);
     // 同一行内的方法简写（对象字面量里 `{ add() { … }, remove() { … } }`；类方法亦然）：

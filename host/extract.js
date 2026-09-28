@@ -32,6 +32,11 @@ import {
 } from './floors.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { cleanText } from '../core/html-text.js';
+// v2.95.0 修复（用户报告「管线状态的倒计时 / 流文字展示都没生效」）：**摘要管线本身**从未进入管线状态 ——
+//   本文件的三处 AI 调用原本直连 `rawGenerate`，绕过了 `core/ai-hooks.js#aiCallText`（v2.90.0 唯一的接入点），
+//   于是用户真正在看的「批量摘要 / 单楼分析」永远没有 token 计数、预估倒计时、阶段与结构摘要。
+//   现在统一经 `genTracked()` 记账（并发安全：每路各持自己的 runId）。
+import { beginPipeline, endPipeline, addStreamChunk, noteResponseText, setPipelinePhase, setPipelineKeys, summarizeResponseKeys } from '../core/pipeline.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
@@ -144,6 +149,53 @@ export function promptToGenerateArgs(messages) {
     return { systemPrompt: sys, prompt: rest || sys };
 }
 
+/**
+ * v2.95.0：**把一次摘要 AI 调用纳入「管线状态」**（token / 预估倒计时 / 阶段 / 结构摘要）。
+ *
+ * 背景（用户报告「倒计时、流文字展示都没有生效」）：摘要管线（本文件）原本直连 `rawGenerate`，
+ *   而 v2.90.0 的管线状态只挂在 `core/ai-hooks.js#aiCallText` 上 —— 用户真正盯着看的「批量摘要 / 单楼分析」
+ *   因此**从不进入**管线状态（token=0、无倒计时、无阶段、无结构摘要）。
+ *
+ * 口径：
+ *   · prompt token 按 `systemPrompt + prompt` 字符数估；响应到达后按文本长度对齐（`noteResponseText`）；
+ *   · **只有宿主逐块回调**（`onToken`）才算「流式块」——非流式通道整段返回时**不谎报**成「流式 1 块」；
+ *   · 并发（独立分组 `Promise.all`）下每路各持自己的 `runId`，快照聚合为一条读数；
+ *   · 结束即记录本次耗时 → 该行为的**预估倒计时**从此有真实样本（首次仍用内置默认表）。
+ * @param {Function} gen 生成函数（`rawGenerate` 或测试注入的 `o.ai`）
+ * @param {object} args 生成入参（`generateRaw` 形状）
+ * @param {string} label 行为标签（批量摘要 / 单楼分析 …：决定 ETA 用哪组历史）
+ * @param {string} phase 初始阶段文案
+ * @param {string} [callLabel] 传给生成函数的**调用标签**（V1 口径，如 `摘要[情节]`；宿主按它判定用途）。
+ *   与 `label` 分开：`label` 只决定 ETA 归组，`callLabel` 才是调用方原本透传的第二参 —— 混用会让
+ *   「按标签分流」的宿主/测试（如 `separate-dim-golden` 的失败模拟）全部走错分支。
+ */
+async function genTracked(gen, args, label, phase, callLabel) {
+    const a = args || {};
+    const chars = String(a.systemPrompt || '').length + String(a.prompt || '').length;
+    let runId;
+    try { runId = (beginPipeline(label, { chars: chars, phase: phase || '请求 AI' }) || {}).runId; } catch (e) { /* 忽略 */ }
+    const args2 = Object.assign({}, a, {
+        onToken: (chunk) => { try { addStreamChunk(chunk, { id: runId }); } catch (e) { /* 忽略 */ } },
+    });
+    let resp;
+    try {
+        resp = await gen(args2, callLabel === undefined ? label : callLabel);
+    } catch (e) {
+        try { endPipeline(false, runId); } catch (e2) { /* 忽略 */ }
+        throw e;                                  // 保持原语义：调用方各自兜住异常
+    }
+    try {
+        const text = String((resp && resp.text) || '');
+        if (text) {
+            noteResponseText(text, { id: runId });
+            setPipelineKeys(summarizeResponseKeys(text), { id: runId });
+            setPipelinePhase('解析响应', '响应 ' + text.length + ' 字', { id: runId });
+        }
+        endPipeline(!!(resp && resp.ok !== false) && !!text, runId);
+    } catch (e) { /* 记账失败不影响主流程 */ }
+    return resp;
+}
+
 // ==================== 独立分组（V1 `runSummarySeparate`，v1.206 14785~14837） ====================
 /**
  * 摘要维度键（**逐字取自 V1 `DIMENSIONS`**，v1.206 1135）——即 `buildSummaryPrompt` 的维度模板键 + `mergeDelta` 的增量键。
@@ -211,7 +263,7 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'dim', dimension: groupDim }) });
         // 第二参 label 与 V1 `callChatCompletion(prompt, override, label, 'analysis')` 的标签同源（宿主按它判定用途；
         //   本组的**连接**已由上面的 `target` 决定，label 只作留痕）
-        const resp = await gen(args, label);
+        const resp = await genTracked(gen, args, '批量摘要', '请求 AI（维度 ' + (DIM_LABELS[groupDim] || groupDim) + '）', label);
         if (!resp || resp.ok === false) return { dim: groupDim, ok: false, error: String((resp && resp.error) || 'ai-error').slice(0, 80), label };
         const delta = extractJsonObject(resp.text);
         if (!delta) return { dim: groupDim, ok: false, error: 'AI 未返回有效 JSON', label };
@@ -285,7 +337,7 @@ export async function analyzeFloor(floorId, opts) {
         const messages = withBasics(await buildSummaryPrompt(text, dims), calib);
         // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
-        const resp = await gen(args);
+        const resp = await genTracked(gen, args, '单楼分析', '请求 AI（第 ' + Number(floorId) + ' 楼）');
         if (!resp || resp.ok === false) {
             extractState.fail += 1; extractState.lastReason = 'ai-error';
             return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '' };
@@ -402,7 +454,7 @@ export async function analyzeSegment(start, end, opts) {
         const messages = withBasics(await buildSummaryPrompt(text, dims), calib);
         // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
-        const resp = await gen(args);
+        const resp = await genTracked(gen, args, '批量摘要', '请求 AI（第 ' + s0 + '-' + e0 + ' 楼）');
         if (!resp || resp.ok === false) return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
         const delta = extractJsonObject(resp.text);
         if (!delta) {

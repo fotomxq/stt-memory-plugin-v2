@@ -1170,10 +1170,7 @@ export async function openPanelPopup(tab) {
             get: () => { try { return getSettings().syncConflicts || []; } catch (e) { return []; } },
             save: (list) => { try { setSetting('syncConflicts', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
         });
-        setPipelineHooks({
-            getHistory: () => { try { return getSettings().pipelineEta || {}; } catch (e) { return {}; } },
-            saveHistory: (h) => { try { setSetting('pipelineEta', h && typeof h === 'object' ? h : {}); } catch (e) { /* 忽略 */ } },
-        });
+        wirePipelineHooks();
         setDebugPageHooks({
             dump: () => debugDumpSnapshot(),
             meta: () => ({
@@ -1261,6 +1258,22 @@ function setDimensionEnabled(kind, on) {
         try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
         return { ok: true, kind: k, on: !!on };
     } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+
+/**
+ * v2.95.0（`docs/history/P10bc` ⑤ 的加固）：**管线状态的历史样本读写接线**。
+ * 为什么必须与装配同批（而不是只在 `openPanelPopup` 里）：预估倒计时的样本由**任何** AI 任务产生，
+ *   与「面板是否开过」无关；只在开面板时接线会让「第一次运行的样本」永久丢失，倒计时一直停在「（默认）」。
+ */
+let pipelineWired = false;
+function wirePipelineHooks() {
+    if (pipelineWired) return true;
+    pipelineWired = true;
+    setPipelineHooks({
+        getHistory: () => { try { return getSettings().pipelineEta || {}; } catch (e) { return {}; } },
+        saveHistory: (h) => { try { setSetting('pipelineEta', (h && typeof h === 'object') ? h : {}); } catch (e) { /* 忽略 */ } },
+    });
+    return true;
 }
 
 /**
@@ -1475,6 +1488,10 @@ function installHostBridges() {
     setParallelTextHooks({
         floorLinesInRange: (start, end) => { try { return collectFloorLinesInRange(Number(start) || 0, Number(end) || 0); } catch (e) { return []; } },
     });
+    // v2.95.0 修复（用户报告「管线状态的倒计时 / 流文字展示都没生效」）：
+    //   ① 历史读写的接线此前**只在打开面板时**发生（`openPanelPopup`）→ 未开过面板就永远读不到/写不进样本；
+    //   ② `pipelineEta` 一度不在 `DEFAULT_SETTINGS`（v2.94.0 已修），落盘静默失败。现在与其它内核钩子同批装配。
+    wirePipelineHooks();
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages, opts) => {
