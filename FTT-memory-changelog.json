@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.11",
+  "version": "3.0.12",
   "updatedAt": "2026-09-29",
   "generatedAt": "2026-09-29",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.12",
+      "date": "2026-09-29",
+      "title": "修「向量 API 相关配置全不可用」（API 分组不参与解析 + 区块模型写错键）",
+      "points": [
+        "① 三个同族缺陷（都在「向量区块按 API 分组配置」这条链路上）：1. 分组完全不参与解析（ui/api-page.js#domBlockTarget）：区块的「API 地址」…",
+        "② 修法：domBlockTarget → domBlockValues：只读屏幕上的四个输入值（地址 / Key / 模型 / 分组名），不做判定；- blockTarget(…",
+        "③ 附带修复：冒烟 BL1 自足化（与本版功能无关，但必须说清）：排查过程中 BL1（平行事件「更新」保留卦象）出现恒红。归因结论：与本版改动无关 ——在未改动的 v3.0.11…"
+      ]
+    },
     {
       "version": "3.0.11",
       "date": "2026-09-29",

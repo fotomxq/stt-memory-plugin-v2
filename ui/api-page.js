@@ -76,13 +76,15 @@ function domValue(key) {
 }
 
 /**
- * 读「屏幕上」某个向量区块的当前连接（V1 `collectApiBlock(pfx)` 的 V2 等价物）。
+ * 读「屏幕上」某个向量区块的四个输入值（V1 `collectApiBlock(pfx)` 的 V2 等价物）。
  * 为什么需要它（v2.79.0 修正）：区块里的输入是**即时写回**（change 事件），但用户「刚打完字就点测试」时
  *   该事件可能还没派发 —— 此时若只读 `cfg`，测的就是上一次保存的旧值（看起来像「设定没生效/串了」）。
- *   与 V1 一致：点按钮时按**当前输入框的值**解析目标；读不到 DOM（测试/无宿主）→ 返回 null 由调用方回落 cfg。
- * @returns {{ok:boolean,url:string,key:string,model:string,preset:string,from:string,error?:string,apiUrl:string,apiKey:string}|null}
+ *   与 V1 一致：点按钮时按**当前输入框的值**解析目标。
+ * v3.0.12（用户报告「API 分组看到的是主线 API 的模型清单，获取模型无效」）：本函数**只取值、不判定**
+ *   —— 此前它在这里就判「地址为空 → 失败」，把「用 API 分组配置」这条正规路子直接判死（见 `blockTarget`）。
+ * @returns {{url:string,key:string,model:string,preset:string}|null} 页面上没有该区块 → null（回落 cfg）
  */
-function domBlockTarget(pfx) {
+function domBlockValues(pfx) {
     const pre = pfx === 'emb' ? 'embedding' : (pfx === 'rerank' ? 'rerank' : '');
     if (!pre) return null;
     try {
@@ -94,21 +96,46 @@ function domBlockTarget(pfx) {
         };
         const probe = doc.querySelector('[data-ftt-cfg="' + pre + 'Url"]');
         if (!probe) return null;                                   // 页面上没有该区块 → 回落 cfg
-        const url = pick(pre + 'Url').replace(/\/+$/, '');
-        const key = pick(pre + 'Key');
-        const model = pick(pre + 'Model');
-        const preset = pick(pre + 'ProxyPreset');
-        const label = pre === 'rerank' ? 'Rerank' : 'Embedding';
-        const base = { url: url, key: key, model: model, preset: preset, from: 'dom', apiUrl: url, apiKey: key };
-        if (!url) return Object.assign(base, { ok: false, error: label + ' API 未配置（缺少地址）' });
-        if (!model) return Object.assign(base, { ok: false, error: label + ' API 未配置模型' });
-        return Object.assign(base, { ok: true });
+        return { url: pick(pre + 'Url').replace(/\/+$/, ''), key: pick(pre + 'Key'), model: pick(pre + 'Model'), preset: pick(pre + 'ProxyPreset') };
     } catch (e) { return null; }
 }
 
-/** 区块的有效连接（DOM 优先，其次 cfg 的 `vectorTarget`） */
-function blockTarget(pfx, kind) {
-    return domBlockTarget(pfx) || vectorTarget(kind);
+/**
+ * 区块的有效连接（**屏幕值优先**，其余由 `vectorTarget` 解析 —— 自填地址 或 **API 分组**）。
+ *
+ * v3.0.12 修复（用户报告：「API 分组看到的是主线 API 的模型清单，📦 获取模型无效」）：
+ *   此前写法是 `domBlockTarget(pfx) || vectorTarget(kind)`，而 `domBlockTarget` 在「屏幕上地址为空」时
+ *   返回的是**带 ok:false 的真值对象** → `||` 被短路 → 唯一会解析「使用 API 分组」的 `vectorTarget()`
+ *   **永不执行**。于是**用分组配置的向量 API 全不可用**（🧪 测试 恒报「未配置（缺少地址）」、
+ *   📦 获取模型 恒失败），而页面下方的摘要行（读 `vectorLayerInfo()` → `vectorTarget()`）却显示
+ *   「当前生效：<分组模型> ← 分组「x」」—— 自相矛盾，正是用户看到的现象。
+ *   现改为**逐字段合并**：屏幕上填了就用屏幕值，没填的字段（含地址）由分组补齐。
+ *
+ * @param {'emb'|'rerank'} pfx
+ * @param {'embedding'|'rerank'} kind
+ * @param {{requireModel?:boolean}} [opts] `requireModel:false` 用于「📦 获取模型」——
+ *   它正是**用来选模型**的前置动作（`fetchModels` 只需要地址 + Key），
+ *   旧实现要求「先填模型才肯拉模型」，自相矛盾（用户报告的「获取模型无效」）。
+ */
+function blockTarget(pfx, kind, opts) {
+    const o = opts || {};
+    const requireModel = o.requireModel !== false;
+    const label = kind === 'rerank' ? 'Rerank' : 'Embedding';
+    const base = (() => { try { return vectorTarget(kind) || {}; } catch (e) { return {}; } })();
+    const dom = domBlockValues(pfx);
+    const url = String((dom && dom.url) || base.url || '').replace(/\/+$/, '');
+    const key = String((dom && dom.key) || base.key || '');
+    const model = String((dom && dom.model) || base.model || '');
+    const preset = String((dom && dom.preset) || base.preset || '');
+    // 来源标注：屏幕上填了地址算「自填」，否则沿用 `vectorTarget` 的判定（inline=cfg 自填 / preset=分组）
+    const from = (dom && dom.url) ? 'dom' : String(base.from || '');
+    const out = { url: url, key: key, model: model, preset: preset, from: from, apiUrl: url, apiKey: key };
+    if (!url) {
+        // 如实说明「是缺地址、还是分组里没地址」（V1 `getPreset` 口径的 V2 等价物）
+        return Object.assign(out, { ok: false, error: label + ' API 未配置（缺少地址' + (preset ? '，且分组「' + preset + '」不含地址' : '') + '）' });
+    }
+    if (requireModel && !model) return Object.assign(out, { ok: false, model: '', error: label + ' API 未配置模型' });
+    return Object.assign(out, { ok: true });
 }
 
 /** 持久化（内核只改内存，落盘由 UI 层负责 —— 与 settings-pages 同口径） */
@@ -361,7 +388,8 @@ export async function apiAction(action, p) {
         if (pfx === 'emb' || pfx === 'rerank') {
             const kind = pfx === 'emb' ? 'embedding' : 'rerank';
             const label = kind === 'embedding' ? 'Embedding' : 'Rerank';
-            const t = blockTarget(pfx, kind);
+            // v3.0.12：`requireModel:false` —— 「📦 获取模型」是**选模型的前置**，不该要求先填模型
+            const t = blockTarget(pfx, kind, { requireModel: false });
             if (!t.ok) {
                 setBlockModelList(pfx, { models: [], error: t.error });
                 apiHooks.rerender();

@@ -2976,9 +2976,17 @@ export function bindOverlay() {
                     return;
                 }
                 if (tg.dataset.fttModelSelect !== undefined) {
-                    // v2.35.0：「选择模型」下拉（V1 26224 回填的是模型**输入框的 DOM**；V2 即时写回 cfg.model）
-                    applySettingsControl('model', String(tg.value == null ? '' : tg.value));
-                    setNote('已选择模型 ' + String(tg.value == null ? '' : tg.value));
+                    // v2.35.0：V1 26224 是把选中值回填「模型输入框的 DOM」；V2 即时写回。
+                    // v3.0.12 修复（用户报告「API 分组看到的是主线 API 的模型清单」）：
+                    //   本分支此前**写死主 API 的模型键 `cfg.model`**。而 v2.79.0 起 Embedding / Rerank
+                    //   区块各有自己的「选择模型」下拉（`data-ftt-cfg="embeddingModel"` / `"rerankModel"`）——
+                    //   于是从区块下拉里选模型会**静默改写主 API 的模型**，而区块自己的模型键始终为空
+                    //   → 区块恒报「未配置模型」，🧪 测试 恒失败（看起来像「向量 API 配置全不可用」）。
+                    //   现改为写回**该控件自己的键**；无 `data-ftt-cfg` 的旧下拉（主 API）仍回落 `model`。
+                    const mKey = String(tg.dataset.fttCfg || 'model');
+                    const mVal = String(tg.value == null ? '' : tg.value);
+                    applySettingsControl(mKey, mVal);
+                    setNote('已选择模型 ' + mVal + (mKey === 'model' ? '' : ('（已写入 ' + mKey + '）')));
                     renderPanel();
                     return;
                 }

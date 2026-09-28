@@ -3248,6 +3248,22 @@ await assert('AK2 按用途渠道真实生效：平行/维度分组解析 + 维�
         && parOk && f2 && modelSet === 'm2' && indexOk;
 })(), '');
 
+await assert('AK2b v3.0.12 区块「选择模型」下拉写回**本区块的模型键**（此前写死主 API 的 cfg.model，导致向量 API 配了也不生效）', (async () => {
+    const { cfg } = await import('../core/model/runtime.js');
+    const el = doc.getElementById('ftt-panel');
+    const fire = (dataset, value) => { const l = (el && el.listeners && el.listeners.change) || []; l.forEach((fn) => fn({ target: { dataset, value, type: 'select-one' } })); return l.length > 0; };
+    const saved = { emb: cfg.embeddingModel, rr: cfg.rerankModel, model: cfg.model };
+    cfg.embeddingModel = ''; cfg.rerankModel = ''; cfg.model = 'main-keep';
+    const fEmb = fire({ fttModelSelect: 'emb', fttCfg: 'embeddingModel' }, 'emb-picked');
+    await new Promise((r) => setTimeout(r, 0));
+    const fRr = fire({ fttModelSelect: 'rerank', fttCfg: 'rerankModel' }, 'rr-picked');
+    await new Promise((r) => setTimeout(r, 0));
+    const ok = fEmb && fRr && cfg.embeddingModel === 'emb-picked' && cfg.rerankModel === 'rr-picked' && cfg.model === 'main-keep';
+    cfg.embeddingModel = saved.emb; cfg.rerankModel = saved.rr; cfg.model = saved.model;
+    await entry.popupAction('refresh', {});
+    return ok;
+})(), '');
+
 await assert('AK3 API 三通道端到端：direct 直连（端点/鉴权/参数）+ profile 经酒馆连接配置 + host 经 responseLength 覆盖 max_tokens', (async () => {
     const AC = await import('../core/api-channel.js');
     const HP = await import('../host/api-channel.js');
@@ -4637,8 +4653,14 @@ await assert('BL1 平行事件「更新」不再清空卦象等字段（端到�
     const ING = await import('../core/ingest.js');
     const rt = await import('../core/model/runtime.js');
     const keep = JSON.parse(JSON.stringify(rt.state.parallels || []));
+    // BL1 自足化（v3.0.12）：`customKeywords()` 的候选词**只来自库里既有条目的 tags**（`jsExtractKeywords`）
+    //   或「设想里出现过的库内片段」（`ideaCorpusTerms(corpusText())`）—— 此前本断言**依赖前序断言残留的库数据**，
+    //   残留内容一变（例如前序改过 atoms）就恒红，且与本次改动无关（未改动的 v3.0.11 树上同样红）。
+    //   现自备一条带「码头」标签的情节，断言只依赖自己写入的数据。
+    const keepAtoms = JSON.parse(JSON.stringify(rt.state.atoms || []));
     try {
         rt.state.parallels = [];
+        rt.state.atoms = [{ id: 'bl1-a1', title: '码头', text: '船只在码头被毁。', date: '1919-11-01', validity: 'active', tags: ['码头'], keywords: ['码头'] }];
         ING.mergeDelta({ 平行事件: { 新增: [{ 标题: '冒烟暗流', 正文: '船只被毁一事在码头传开。', 卦象: '山水蒙——局中待启', 因果线: '源起：船只被毁→议论→幕后', 涉及角色姓名: ['甲'], 发生地点: '码头区', 标签: ['暗流'] }] } }, { start: 1, end: 1 });
         ING.mergeDelta({ 平行事件: { 更新: [{ 标题: '冒烟暗流', 正文: '议论升级为戒备。' }] } }, { start: 2, end: 2 });
         const p = (rt.state.parallels || [])[0] || {};
@@ -4647,7 +4669,7 @@ await assert('BL1 平行事件「更新」不再清空卦象等字段（端到�
         return p.gua === '山水蒙——局中待启' && p.causalLine === '源起：船只被毁→议论→幕后'
             && J(p.characters) === J(['甲']) && p.location === '码头区' && p.text === '议论升级为戒备。'
             && kws.indexOf('码头') >= 0;
-    } finally { rt.state.parallels = keep; }
+    } finally { rt.state.parallels = keep; rt.state.atoms = keepAtoms; }
 })(), '');
 
 await assert('BL2 危险动作真实点击需二次确认：取消「🧹 清理传言」→ 传言一条不少；确认 → 清空并留删除墓碑（其他同类动作同表覆盖）', (async () => {
