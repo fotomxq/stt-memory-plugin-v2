@@ -17,7 +17,7 @@
 import { escHtml } from '../core/util.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
 import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear } from '../core/clock-trace.js';
-import { VERSION } from '../core/constants.js';
+import { VERSION, DIMENSIONS } from '../core/constants.js';
 // v2.42.0：交互/宿主调用/命令/错误时间线（opId 关联、站点 file:line、错误上下文窗口）
 import { traceList, traceStats, traceTimelineText, traceContext, traceClear, traceSiteText, TRACE_CATS } from '../core/trace.js';
 import { getCtx } from '../host/st-api.js';
@@ -37,7 +37,8 @@ import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters
 // v3.0.7：本地调试桥（**跨宿主**：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不报错）
 import {
     bridgeStart, bridgeStop, bridgeState, bridgeSupported, bridgeHost, bridgeMethodNames,
-    setBridgeMethods, setBridgePort, bridgePort, BRIDGE_DEFAULT_PORT, BRIDGE_PROTOCOL,
+    setBridgeMethods, setBridgePort, bridgePort, setBridgeHost, bridgeTarget, isLoopbackHost,
+    BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST, BRIDGE_PROTOCOL,
 } from '../adapters/debug-bridge.js';
 import { ttAbi } from '../adapters/tt-store.js';
 
@@ -468,11 +469,17 @@ export function buildBridgeMethods() {
     return T;
 }
 
-/** 记忆容器形状（只读；只回条数/类型，不回正文） */
+/**
+ * 记忆容器形状（只读；只回条数/类型，不回正文）。
+ * v3.0.8 修复：维度名**从 `DIMENSIONS` 派生**（单一来源）—— 此前手写列表把
+ *   `currentStates` 写成 `states`、把名册写成 `roster`，两项在真机恒返回 null。
+ *   另补 `npcs`（名册：确实是运行时容器，但不在 `DIMENSIONS` 的 14 项里）与 `vars` / `deleted`。
+ */
 function memoryShape() {
-    const dims = ['atoms', 'states', 'snapshots', 'memories', 'items', 'currencies', 'rumors', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'roster', 'plotSegments', 'vars', 'deleted'];
+    const keys = DIMENSIONS.map((d) => d.kind);
+    const extra = ['npcs', 'vars', 'deleted'];
     const out = {};
-    for (const k of dims) {
+    for (const k of keys.concat(extra)) {
         try {
             const v = state[k];
             out[k] = Array.isArray(v) ? v.length : ((v && typeof v === 'object') ? Object.keys(v).length : (v === undefined ? null : typeof v));
@@ -529,23 +536,26 @@ export function debugBridgeSectionHtml() {
         ? ('TauriTavern' + (host.abiVersion === null ? '' : ('（ABI v' + host.abiVersion + '）')) + (host.devApi ? ' · api.dev 可用' : ' · api.dev 不可用'))
         : '酒馆原生（浏览器）';
     const connLabel = !st.supported ? '传输不可用'
-        : (!st.running ? '已关闭' : (st.connected ? ('已连接 127.0.0.1:' + st.port) : ('未连接（重试中，端口 ' + st.port + '）')));
+        : (!st.running ? '已关闭' : (st.connected ? ('已连接 ' + st.targetHost + ':' + st.port) : ('未连接（重试中，' + st.targetHost + ':' + st.port + '）')));
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">🔌 调试桥 <span class="ftt-muted">本地调试 · 只读</span></div>',
         '<div class="ftt-row"><span class="ftt-muted">宿主：' + esc(hostLabel) + '</span></div>',
         '<div class="ftt-row"><span class="ftt-muted">状态：' + esc(connLabel) + ' · 已登记 ' + st.methodCount + ' 个只读方法</span></div>',
-        '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-bridge-port value="' + esc(String(bridgePort())) + '" placeholder="调试端口（1-65535）">'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="bridgePortSet" title="只改内存中的端口；刷新后回到默认值">保存端口</button>'
+        '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-bridge-host value="' + esc(String(bridgeTarget())) + '" placeholder="目标主机（默认 ' + esc(BRIDGE_DEFAULT_HOST) + '）">'
+            + '<input class="ftt-input" type="text" data-ftt-bridge-port value="' + esc(String(bridgePort())) + '" placeholder="端口">'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="bridgeTargetSet" title="只改内存中的目标；刷新后回到默认值">保存目标</button>'
             + '<button class="ftt-btn ftt-sm' + (st.running ? ' ftt-err' : '') + '" data-ftt-action="bridgeToggle">' + (st.running ? '⏹ 关闭调试桥' : '▶ 开启调试桥') + '</button></div>',
         '<div class="ftt-hint">只读白名单 · 默认关闭、刷新即关 · 不含清空/删除类动作</div>',
         (!st.supported ? '<div class="ftt-hint">本环境不支持 WebSocket，调试桥无法启用（其余功能不受影响）</div>'
             : (!st.tauriTavern ? '<div class="ftt-hint">酒馆原生：宿主日志类方法不可用，调用只回原因、不报错</div>' : '')),
+        (!st.loopback ? '<div class="ftt-hint">⚠ 目标不是本机：只读调试面将对局域网开放，同网设备可读</div>' : ''),
         hintDetailsHtml('调试桥说明',
-            '<div>' + esc('本机调试工具监听一个本地端口，插件主动拨出连接过去（页面本身无法监听端口，所以方向相反）。协议 v' + BRIDGE_PROTOCOL + '，默认端口 ' + BRIDGE_DEFAULT_PORT + '。') + '</div>'
+            '<div>' + esc('本机调试工具监听一个本地端口，插件主动拨出连接过去（页面本身无法监听端口，所以方向相反）。协议 v' + BRIDGE_PROTOCOL + '，默认 ' + BRIDGE_DEFAULT_HOST + ':' + BRIDGE_DEFAULT_PORT + '。') + '</div>'
             + '<div>' + esc('只派发白名单内的只读方法（插件快照 / 调试日志统计 / 记忆条数与取样 / 文件通道状态等）；清空、删除、修复、导出落盘这类改动型动作一律不登记。') + '</div>'
             + '<div>' + esc(st.tauriTavern
                 ? '宿主为 TauriTavern：额外提供宿主日志类方法（前端日志、后端日志、LLM 请求留档），走官方 window.__TAURITAVERN__.api.dev，只读取不设置。'
                 : '宿主为酒馆原生（浏览器）：传输与插件只读方法照常可用；宿主日志类方法依赖 TauriTavern，调用它们只会返回原因。') + '</div>'
+            + '<div>' + esc('目标主机默认只连本机。要调试手机等其它设备，把目标改为运行调试工具那台机器的局域网地址（如 192.168.x.x），并在那台机器上让桥接服务监听局域网；此时同网设备都能读到这些只读数据。') + '</div>'
             + '<div>' + esc('参考用法见仓库 tests/local/README.md（本机调试工具与其协议）。') + '</div>'),
         (st.lastCall ? ('<div class="ftt-muted">最近调用：' + esc(st.lastCall.method) + ' · ' + Number(st.lastCall.ms) + 'ms · ' + (st.lastCall.ok ? '成功' : '失败') + '</div>') : ''),
         (st.lastError ? ('<div class="ftt-hint">最近错误：' + esc(st.lastError) + '</div>') : ''),
@@ -647,26 +657,29 @@ export function clockTraceSectionHtml() {
  * @returns {{ok:boolean, action:string, note:string, cleared?:number}}
  */
 export async function debugAction(action, payload) {   // v2.41.0：改为 async（导出调试包需要 await 剪贴板）
-    // v3.0.7：调试桥开关 / 端口（跨宿主：酒馆原生与 TauriTavern 都能用）
+    // v3.0.7：调试桥开关 / 目标（跨宿主：酒馆原生与 TauriTavern 都能用）
     if (String(action) === 'bridgeToggle') {
         installDebugBridge();
         if (bridgeState().running) {
             const stopped = bridgeStop();
             return { ok: true, action: 'bridgeToggle', note: '已关闭调试桥', bridge: stopped };
         }
-        // 开启前先采纳输入框里的端口（非法则沿用当前值并如实说明）
-        const domPort = readBridgePortInput();
-        let portNote = '';
-        if (domPort !== null) portNote = setBridgePort(domPort) ? ('，端口 ' + bridgePort()) : ('，端口非法已沿用 ' + bridgePort());
+        const t = applyBridgeTargetInput();          // 开启前先采纳输入框里的目标
         const r = bridgeStart();
         if (!r.ok) return { ok: false, action: 'bridgeToggle', note: '调试桥开启失败：' + String(r.reason || '未知原因'), bridge: r.state };
-        return { ok: true, action: 'bridgeToggle', note: '调试桥已开启' + portNote + '（本机工具连 ws://127.0.0.1:' + bridgePort() + '）', bridge: r.state };
+        return {
+            ok: true, action: 'bridgeToggle',
+            note: '调试桥已开启' + (t.note ? '（' + t.note + '）' : '') + '：' + bridgeTarget() + ':' + bridgePort()
+                + (isLoopbackHost(bridgeTarget()) ? '' : ' · ⚠ 目标非本机，只读面已对局域网开放'),
+            bridge: r.state,
+        };
     }
-    if (String(action) === 'bridgePortSet') {
-        const v = readBridgePortInput();
-        if (v === null) return { ok: false, action: 'bridgePortSet', note: '未读到端口输入框' };
-        if (!setBridgePort(v)) return { ok: false, action: 'bridgePortSet', note: '端口非法（需 1-65535 的整数）：' + String(v) };
-        return { ok: true, action: 'bridgePortSet', note: '调试端口已设为 ' + bridgePort() + '（仅内存，刷新后回默认）', bridge: bridgeState() };
+    // v3.0.8：保存调试目标（主机 + 端口）。`bridgePortSet` 保留为别名，避免旧页面残留按钮失效。
+    if (String(action) === 'bridgeTargetSet' || String(action) === 'bridgePortSet') {
+        const a = String(action);
+        const t = applyBridgeTargetInput();
+        if (!t.ok) return { ok: false, action: a, note: '调试目标未生效：' + t.note, bridge: bridgeState() };
+        return { ok: true, action: a, note: '调试目标已设为 ' + bridgeTarget() + ':' + bridgePort() + '（仅内存，刷新后回默认）', bridge: bridgeState() };
     }
     // v2.42.0：时间线类别过滤 / 清空
     if (String(action) === 'dbgTraceFilter') {
@@ -703,19 +716,37 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear', 'bridgeToggle', 'bridgePortSet']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）；v3.0.7 + 调试桥
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear', 'bridgeToggle', 'bridgeTargetSet', 'bridgePortSet']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）；v3.0.7 + 调试桥；v3.0.8 + 调试目标（bridgePortSet 保留为别名）
 
-/** 读调试桥端口输入框（无 DOM / 无输入框 / 非法内容 → null；**不抛**） */
-function readBridgePortInput() {
+/** 读某个 `data-ftt-*` 输入框的值（无 DOM / 无输入框 / 空值 → null；**不抛**） */
+function readInput(attr) {
     try {
         const doc = globalThis.document;
-        const el = (doc && doc.querySelector) ? doc.querySelector('[data-ftt-bridge-port]') : null;
+        const el = (doc && doc.querySelector) ? doc.querySelector('[' + attr + ']') : null;
         if (!el) return null;
         const raw = String(el.value == null ? '' : el.value).trim();
-        if (!raw) return null;
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : null;
+        return raw ? raw : null;
     } catch (e) { return null; }
+}
+
+/**
+ * 采纳调试页输入框里的「目标主机 + 端口」。缺省（读不到输入框）则不改动任何值；
+ * 非法值**沿用旧值**并在 note 里如实说明（`ok:false`）—— 不抛。
+ */
+function applyBridgeTargetInput() {
+    const parts = [];
+    let ok = true;
+    const h = readInput('data-ftt-bridge-host');
+    if (h !== null) {
+        if (setBridgeHost(h)) parts.push('主机 ' + bridgeTarget());
+        else { ok = false; parts.push('主机非法（沿用 ' + bridgeTarget() + '）'); }
+    }
+    const p = readInput('data-ftt-bridge-port');
+    if (p !== null) {
+        if (setBridgePort(Number(p))) parts.push('端口 ' + bridgePort());
+        else { ok = false; parts.push('端口非法（沿用 ' + bridgePort() + '）'); }
+    }
+    return { ok, note: parts.join(' · ') };
 }
 
 /** 调试页只读诊断（测试/排障用） */

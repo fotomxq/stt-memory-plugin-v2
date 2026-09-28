@@ -116,7 +116,17 @@ node tests/local/bridge.mjs            # 监听 127.0.0.1:8791，进入交互
 node tests/local/bridge.mjs --call sys.info          # 一次性调用
 node tests/local/bridge.mjs --selftest               # 自检（内置假插件，无需真实宿主）
 npm run local:bridge:selftest                        # 同上
+
+# 调试**手机等其它设备**上的 TauriTavern（v3.0.8）：
+#   ① 调试机监听局域网：node tests/local/bridge.mjs --host 0.0.0.0
+#   ② 手机端插件「调试 → 🔌 调试桥」把「目标主机」填**调试机的局域网地址**（如 192.168.x.x），端口一致
+#   ③ 手机与调试机需在同一局域网；手机连上后本端会打印握手信息
+node tests/local/bridge.mjs --host 0.0.0.0
 ```
+
+> ⚠ **局域网模式的安全代价**：调试桥**只读但无鉴权**。默认只监听回环；一旦 `--host 0.0.0.0`
+> 且插件目标改为局域网地址，**同网任何设备都能读到**这些只读数据（记忆条数与取样、调试日志统计、
+> 宿主日志与 LLM 请求留档）。请在可信网络下临时使用，用完即停；长期开放应先补令牌鉴权。
 
 **为什么端口在本机工具这边**：WebView 页面无法监听端口，TauriTavern 也没有 http-server 类 Tauri
 插件，所以「插件自己暴露端口」做不到。这里端口由 `bridge.mjs` 监听、插件**拨出**连接 —— 数据面等价。
@@ -129,8 +139,9 @@ npm run local:bridge:selftest                        # 同上
 | `host.*`（前端/后端日志、LLM 请求留档） | ⛔ 逐方法返回 `available:false`，**不报错** | ✅（走官方 `api.dev`，只读不设置） |
 
 **安全边界**：只派发白名单内的**只读**方法（清空/删除/修复/导出落盘一律不登记）；开关**默认关闭且
-不持久化**（刷新即关）；取样默认只回字段名与长度，要正文须显式 `values:true`；只监听回环地址。
-**本版未加鉴权** —— 因此刻意保持只读；若今后要开放写操作，须先补令牌。
+不持久化**（刷新即关）；取样默认只回字段名与长度，要正文须显式 `values:true`；**默认只连本机**
+（目标主机默认 `127.0.0.1`，要调手机端才显式改为局域网地址）。**本版未加鉴权** —— 因此刻意保持只读；
+若今后要开放写操作或长期监听局域网，须先补令牌。
 
 **协议**（WebSocket 文本帧，JSON）：
 
@@ -172,7 +183,7 @@ npm run local:bridge:selftest                        # 同上
 | --- | --- | --- |
 | `host.js` | ✅ | 宿主发现与逐项只读读取、漂移比对、部署计划（纯逻辑，可单测） |
 | `run.js` | ✅ | 自检入口（`npm run local`） |
-| `bridge.mjs` | ✅ | 调试桥服务：零依赖 WebSocket 服务端 + 交互/一次性调用 + `--selftest` |
+| `bridge.mjs` | ✅ | 调试桥服务：零依赖 WebSocket 服务端 + 交互/一次性调用 + `--selftest` + `--host`（默认回环） |
 | `launch-debug.cmd` | ✅ | 带 CDP / 代理启动 TauriTavern |
 | `local.config.example.json` | ✅ | 实参模板（占位符） |
 | `local.config.json` | ❌ | 本地实参（含本机路径，gitignore） |
@@ -187,3 +198,5 @@ npm run local:bridge:selftest                        # 同上
 4. **调试桥未在真实宿主上跑通过一次完整会话**（v3.0.7）：插件侧逻辑（40 项单测，含模拟 TauriTavern）
    与工具侧传输（`--selftest`）都已验证；真实宿主里的端到端需用户在插件「调试 → 🔌 调试桥」开启一次。
    另：若 SillyTavern 以 HTTPS 提供，页面连 `ws://127.0.0.1` 会被混合内容策略拦截。
+   **v3.0.8 更新**：本地 TauriTavern 上**已端到端跑通**（见 `docs/history/P10bt`）；但**手机端未实测**
+   —— 调试机当时无法访问用户给出的手机地址。局域网模式无鉴权，属用户已知取舍。

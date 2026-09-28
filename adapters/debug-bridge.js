@@ -13,6 +13,8 @@
 //     没有就返回 `{ available:false, reason }`，**绝不抛错**、绝不在加载期触碰宿主全局；
 //   · 不支持 `WebSocket` 的极端环境（老 WebView / 无浏览器的单测）→ `bridgeStart()` 返回
 //     明确原因，UI 照常渲染，不抛。
+//   · 目标主机默认**回环**（只连本机）；v3.0.8 起可改为局域网地址，用于调试**手机端**的
+//     TauriTavern —— 该用法会把只读调试面暴露在局域网，UI 会显著提示，故默认绝不放开。
 //
 // 安全约定：
 //   · **只读**：只派发显式登记的方法（白名单）；未登记一律拒绝。
@@ -27,6 +29,8 @@ import { ttDetected, ttAbi } from './tt-store.js';
 export const BRIDGE_PROTOCOL = 1;
 /** 默认端口（与 `tests/local/bridge.mjs` 的默认值一致；端口只存内存，不落配置） */
 export const BRIDGE_DEFAULT_PORT = 8791;
+/** 默认目标主机（**回环**：只连本机；v3.0.8 起可改为局域网地址以调试手机端） */
+export const BRIDGE_DEFAULT_HOST = '127.0.0.1';
 /** 断线重连间隔 */
 export const BRIDGE_RETRY_MS = 3000;
 /** 未登记方法一律拒绝；此列表仅用于报错文案与单测断言 */
@@ -37,6 +41,7 @@ let methods = Object.create(null);   // 白名单：name -> fn(params) => any
 let socket = null;
 let running = false;
 let port = BRIDGE_DEFAULT_PORT;
+let target = BRIDGE_DEFAULT_HOST;
 let retryTimer = null;
 let connSeq = 0;
 const stats = { calls: 0, errors: 0, denied: 0, byMethod: Object.create(null) };
@@ -112,6 +117,29 @@ export function setBridgePort(p) {
 
 export function bridgePort() { return port; }
 
+/** 目标主机（回环 = 只连本机） */
+export function bridgeTarget() { return target; }
+
+/** 该主机是否回环（非回环意味着把只读调试面暴露在局域网上，UI 会提示） */
+export function isLoopbackHost(h) {
+    const s = String(h == null ? '' : h).trim().toLowerCase();
+    return s === '127.0.0.1' || s === 'localhost' || s === '::1' || s === '[::1]';
+}
+
+/**
+ * 设置目标主机（默认 `127.0.0.1`）。
+ * 只接受主机名 / IPv4 / 方括号 IPv6 —— 拒绝带协议、路径、空格或引号的输入，
+ * 以免拼出意料之外的 URL。非法值返回 false 且**不改动**。
+ */
+export function setBridgeHost(h) {
+    const s = String(h == null ? '' : h).trim();
+    if (!s || s.length > 253) return false;
+    const ok = /^[A-Za-z0-9._-]+$/.test(s) || /^\[[0-9A-Fa-f:.]+\]$/.test(s);
+    if (!ok) return false;
+    target = s;
+    return true;
+}
+
 /** 只读状态快照（供 UI 与外部工具读取；不含任何函数引用） */
 export function bridgeState() {
     const host = bridgeHost();
@@ -119,6 +147,10 @@ export function bridgeState() {
         supported: bridgeSupported(),
         running,
         connected: !!(socket && socket.readyState === 1),
+        // 注意：`host` 这个键在既有契约里表示**宿主类型**（vanilla / tauritavern），
+        // 目标主机另用 `targetHost` —— v3.0.8 初版曾键名撞车导致目标主机读不到。
+        targetHost: target,
+        loopback: isLoopbackHost(target),
         port,
         protocol: BRIDGE_PROTOCOL,
         version: VERSION,
@@ -216,7 +248,7 @@ function scheduleRetry() {
 function open() {
     const C = wsCtor();
     if (!running || !C) return;
-    const url = 'ws://127.0.0.1:' + port;
+    const url = 'ws://' + target + ':' + port;
     let ws;
     try { ws = new C(url); } catch (e) {
         lastError = '无法创建 WebSocket：' + String((e && e.message) || e);
@@ -233,7 +265,7 @@ function open() {
             send(helloPayload());
         };
         ws.onmessage = (ev) => { void handleMessage(ev); };
-        ws.onerror = () => { if (seq === connSeq) lastError = '连接错误（端口 ' + port + '）'; };
+        ws.onerror = () => { if (seq === connSeq) lastError = '连接错误（' + target + ':' + port + '）'; };
         ws.onclose = () => {
             if (seq !== connSeq) return;
             socket = null;
