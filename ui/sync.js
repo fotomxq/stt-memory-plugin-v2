@@ -26,6 +26,8 @@ import { listConflicts, pendingConflictCount, clearConflicts } from '../core/con
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
 import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
+// v2.94.0（`docs/D12` §3.4 / 阶段 S3）：楼层校准只读诊断 + 「重新校准楼层」幂等动作
+import { floorCalibrateStatus } from '../host/floor-trim.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 const pad2 = (x) => String(x).padStart(2, '0');
@@ -212,6 +214,10 @@ export function storagePageHtml(controls) {
         + '<span class="ftt-muted">只写世界书、不读回；记忆变更后自动重建。</span></div>',
         '<div class="ftt-muted">写入需要酒馆的世界书接口；宿主不支持时会提示，且不影响记忆数据。</div></div>',
 
+        // v2.94.0（`docs/D12` §3.4 / 阶段 S3）：楼层校准 —— 只读诊断（最近一次收缩时间 / 影响条数）+
+        //   「重新校准楼层」幂等动作（用于「用户在酒馆里自己删了楼」或跨端合并后编号可疑的兜底）。
+        floorCalibrateSectionHtml(),
+
         '<div class="ftt-section"><div class="ftt-sec-title">状态与操作</div>',
         divergenceBannerHtml(),
         '<div class="ftt-row">',
@@ -232,6 +238,31 @@ export function storagePageHtml(controls) {
 
         (other.length ? ('<div class="ftt-section"><div class="ftt-sec-title">其它</div>' + other.map((c) => settingsControlHtml(c)).join('\n') + '</div>') : ''),
     ].join('\n');
+}
+
+/**
+ * v2.94.0（`docs/D12` §3.4 / 阶段 S3）——**楼层校准分节**（设定 → 存储）。
+ * 用户会**主动删楼**（酒馆对高楼层支持差）→ 楼层编号失去一致性时必须能自查、能手动兜底：
+ *   · 只读诊断：当前楼层数 / 台账标记数 / 最近一次收缩时间 / 已标记「楼层信息失效」的条目数；
+ *   · 「🔄 重新校准楼层」（幂等）：按当前聊天现实重跑一次收缩处理（哈希归位台账 + 超出当前末楼的区间
+ *     降级为「未知区间」+ 收紧基线）。**只改编号，绝不删除任何条目**。
+ */
+function floorCalibrateSectionHtml() {
+    let st = null;
+    try { st = floorCalibrateStatus(); } catch (e) { st = null; }
+    if (!st) return '';
+    const when = (() => {
+        if (!st.at) return '尚未发生楼层收缩';
+        try { return new Date(Number(st.at)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(st.at); }
+    })();
+    const staleTxt = (st.stale > 0)
+        ? ('<b>' + st.stale + '</b> 条条目的楼层信息已失效（显示为「未知区间」，数据仍在）')
+        : '没有条目的楼层信息失效';
+    return '<div class="ftt-section" data-ftt-floor-calibrate><div class="ftt-sec-title">🧱 楼层校准</div>'
+        + '<div class="ftt-muted">你在酒馆里删除楼层后，记忆数据<b>不会丢</b>，但记忆里的「第几楼」会失准，可在此自查并一键重算。</div>'
+        + '<div class="ftt-muted ftt-my-1">当前 ' + Number(st.floors) + ' 层 · 已分析标记 ' + Number(st.marks) + ' 条 · 最近一次收缩：' + escHtml(when) + ' · ' + staleTxt + '</div>'
+        + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="floorRecalibrate" title="按当前聊天重新校准楼层编号（幂等；只改编号，不删除任何条目）">🔄 重新校准楼层</button>'
+        + '<span class="ftt-muted">只改编号，条目一条不删。</span></div></div>';
 }
 
 /**

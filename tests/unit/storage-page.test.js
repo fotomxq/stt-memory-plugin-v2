@@ -92,15 +92,12 @@ A('N3 提示层无内部术语：墓碑 / 哈希 / 魔数 / 支持压缩 / slug 
     return hit.length === 0;
 })(), J({ hints: hintTexts(page()) }));
 
-A('N4 v2.77.0：宿主原生存储通道已实现 → 开关恢复展示（后端选择 + 镜像），且与状态行同节', (() => {
+A('N4 v2.94.0（D11 §3.4）：原生通道开关**已剔除**（改为内置行为），但通道状态行仍在（用户可只读核对当前通道）', (() => {
     const h = page();
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
-    const native = SETTINGS_CONTROLS.storage.filter((c) => c.key === 'storage.tauriNative')[0];
-    const mirror = SETTINGS_CONTROLS.storage.filter((c) => c.key === 'storage.tauriMirror')[0];
     return h.indexOf('data-ftt-tt-channel') >= 0 && h.indexOf('存储通道（自动识别宿主）') >= 0
-        && h.indexOf('storage.tauriNative') >= 0 && h.indexOf('storage.tauriMirror') >= 0
-        && keys.indexOf('storage.tauriNative') >= 0 && keys.indexOf('storage.tauriMirror') >= 0
-        && !!native && settingsControlHtml(native).indexOf('<select') >= 0 && !!mirror;
+        && keys.indexOf('storage.tauriNative') < 0 && keys.indexOf('storage.tauriMirror') < 0
+        && h.indexOf('storage.tauriNative') < 0 && h.indexOf('storage.tauriMirror') < 0;
 })(), '见断言');
 
 A('N5 文件名里的尖括号只转义一次（旧版把 &lt;slug&gt; 再转义成 &amp;lt;slug&amp;gt;，页面显示成 &lt;slug&gt;）', (() => {
@@ -115,13 +112,14 @@ A('N6 提示不罗嗦：每条提示 ≤ 70 字（状态行与同步日志行不
 })(), J(hintTexts(page()).map((t) => t.length)));
 
 // ---- L 组：控制项标签去术语（用户看得懂） ----
-A('L1 控制项标签去术语但语义不变：删除墓碑 → 已删除条目的保留天数；哈希校验 → 数据完整性；镜像 → 同步到服务端', (() => {
+A('L1 v2.94.0（D11 §3.4/§3.5）：存储页只留「纯偏好」世界书参数 12 项，会致数据不一致的开关全部剔除并写死内置逻辑', (() => {
+    const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
     const labels = SETTINGS_CONTROLS.storage.map((c) => String(c.label));
-    return labels.indexOf('已删除条目的保留天数') >= 0 && labels.indexOf('载入时校验数据完整性') >= 0
-        && labels.indexOf('保存时同步到服务端') >= 0 && labels.indexOf('同步前先比对清单（省流量·推荐开启）') >= 0
-        && labels.indexOf('仅变化时同步（省流量·推荐开启）') >= 0 && labels.indexOf('同时写回存档变量（兼容旧格式）') >= 0
-        && labels.indexOf('删除墓碑保留（天）') < 0 && labels.indexOf('载入时哈希校验') < 0
-        && labels.indexOf('保存时同步镜像') < 0 && labels.indexOf('楼层哈希差异门控（省流量·推荐开启）') < 0;
+    const goneKeys = ['deletedKeepDays', 'verifyOnLoad', 'syncOnSave', 'settingsMirror', 'syncMetaProbe', 'syncTrafficGuard'];
+    const goneLabels = ['已删除条目的保留天数', '载入时校验数据完整性', '保存时同步到服务端', '同步前先比对清单（省流量·推荐开启）', '仅变化时同步（省流量·推荐开启）', '删除墓碑保留（天）', '楼层哈希差异门控（省流量·推荐开启）'];
+    return keys.length === 12 && keys.every((k) => k.indexOf('storage.worldbook') === 0)
+        && goneKeys.every((k) => keys.indexOf('storage.' + k) < 0)
+        && goneLabels.every((l) => labels.indexOf(l) < 0);
 })(), '见断言');
 
 // ---- B 组：状态行仍给出关键事实（不是被删空） ----

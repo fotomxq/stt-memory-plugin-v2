@@ -4247,6 +4247,172 @@ await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**�
     return !!first && reused && contentSwitched && third === first && stats.modal === 2;
 })(), '');
 
+// ---------- BG 设定 → 数据管理「✂️ 删除聊天楼层」（v2.94.0 / docs/D12 v0.2 §4 S4） ----------
+// 用户约定：「在设定-数据管理 中约定楼层删除的三个按钮（保留最近 6 / 10 / 12 层）」+
+//   「**用官方 API 实现，不然其他插件也会异常**」→ 本小节用桩宿主跑**真实删除流程**：
+//   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ 逐个 `ctx.deleteMessage` → 精确编号校准。
+await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官方 API 真删聊天楼层（20→10，`MESSAGE_DELETED` 每次触发）、删前自动明文备份落盘、删后记忆一条不少且编号校准、面板给出摘要', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepMeta = host.ctx.chatMetadata;
+    try {
+        // ① 20 层聊天 + 三条带楼层区间的情节（全删段 / 跨越删除线 / 幸存段）
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 20; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼正文', name: i % 2 === 0 ? 'User' : '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        host.ctx.deletedMessages = [];
+        RT.state.atoms = [
+            { id: 'bg-a0', text: '早期情节', floorStart: 1, floorEnd: 3, tags: [], keywords: [] },
+            { id: 'bg-a1', text: '跨越情节', floorStart: 0, floorEnd: 15, tags: [], keywords: [] },
+            { id: 'bg-a2', text: '幸存情节', floorStart: 16, floorEnd: 18, tags: [], keywords: [] },
+        ];
+        RT.state.processedFloors = [];
+        RT.state.lastKnownFloor = 19;
+        // ② 面板审计：设定 → 数据管理页有三档按钮 + 只读诊断行
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        const dh = String((await entry.popupAction('refresh', {})).html || '');
+        const uiOk = dh.indexOf('✂️ 删除聊天楼层（减小聊天体积）') >= 0
+            && dh.indexOf('data-ftt-action="floorTrim" data-ftt-keep="6"') >= 0
+            && dh.indexOf('data-ftt-action="floorTrim" data-ftt-keep="10"') >= 0
+            && dh.indexOf('data-ftt-action="floorTrim" data-ftt-keep="12"') >= 0
+            && dh.indexOf('>保留最近 10 层</button>') >= 0
+            && dh.indexOf('只读诊断：当前 20 层') >= 0
+            && dh.indexOf('将删除 10 层') >= 0;                  // 按钮 title 内的**预检**结论
+        // ③ 真实动作（确认框由桩宿主 `callGenericPopup` 返回 1 = 确认）
+        const beforeFiles = new Set(srvFiles.keys());
+        const r = await entry.popupAction('floorTrim', { keep: 10 });
+        const note = String(((r.state || {}).note) || '');
+        // ④ 聊天真的短了 + 官方方法副作用可观测（每次删除都触发 MESSAGE_DELETED / 落盘计数）
+        const delOk = host.ctx.chat.length === 10 && (host.ctx.deletedMessages || []).length === 10
+            && (host.ctx.deletedMessages || [])[0] === 9 && (host.ctx.deletedMessages || [])[9] === 0
+            && (host.ctx.saveMetadataCount || 0) >= 10;
+        // ⑤ 备份**真的落到了用户目录文件**（前缀不与主文件冲突；内容 = 导出信封）
+        const backupNames = Array.from(srvFiles.keys()).filter((k) => String(k).indexOf('ftt2-floor-backup-') === 0 && !beforeFiles.has(k));
+        const backupOk = backupNames.length === 1
+            && String(srvFiles.get(backupNames[0]) || '').indexOf('ftt-memory-v2-export') >= 0;
+        // ⑥ 记忆一条不少；编号按**实际删除量**校准（全删段/跨越段 → 未知区间；幸存段前移）
+        const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        const dataOk = RT.state.atoms.length === 3
+            && g('bg-a0').floorStart === 0 && g('bg-a0').floorEnd === 0 && g('bg-a0').floorStale === true
+            && g('bg-a1').floorStart === 0 && g('bg-a1').floorEnd === 5 && g('bg-a1').floorStale === true   // 15-10
+            && g('bg-a2').floorStart === 6 && g('bg-a2').floorEnd === 8 && g('bg-a2').floorStale === undefined
+            && RT.state.lastKnownFloor === 9;
+        // ⑦ 面板摘要讲清「删了几层 / 记忆保留多少 / 备份文件名」
+        const noteOk = String(r.note || note).indexOf('已删除 10 层') >= 0
+            && String(r.note || note).indexOf('保留最近 10 层') >= 0
+            && String(r.note || note).indexOf('备份') >= 0;
+        // ⑧ 人工确认项（低噪声：一类一条，含备份与「记忆保留 N 条」）
+        const CF = await import('../core/conflicts.js');
+        const conf = CF.listConflicts().filter((x) => String(x.kind) === '删楼')[0];
+        const confOk = !!conf && String(conf.detail).indexOf('备份') >= 0 && String(conf.detail).indexOf('记忆保留') >= 0;
+        await entry.popupAction('tab', { tab: 'overview' });
+        return uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.chatMetadata = keepMeta;
+        RT.state.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('BG2 设定 → 存储「🧱 楼层校准」（v2.94.0 / docs/D12 §3.4 S3）：只读诊断行 + 真实点击「🔄 重新校准楼层」——无收缩幂等短路；人为删楼后按当前聊天重算且**记忆一条不删**', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    try {
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 20; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼正文', name: i % 2 === 0 ? 'User' : '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RT.state.atoms = [
+            { id: 'bg2-a0', text: '旧情节', floorStart: 12, floorEnd: 14, tags: [], keywords: [] },
+            { id: 'bg2-a1', text: '未知区间', floorStart: 0, floorEnd: 0, tags: [], keywords: [] },
+        ];
+        RT.state.processedFloors = [];
+        RT.state.lastKnownFloor = 19;
+        // ① 面板审计：设定 → 存储页出现分节 + 按钮 + 只读诊断行
+        await entry.popupAction('tab', { tab: 'settings' });
+        const pg = await entry.popupAction('settingsSub', { sub: 'storage' });
+        const h = String(pg.html || '');
+        const uiOk = h.indexOf('data-ftt-floor-calibrate') >= 0 && h.indexOf('🧱 楼层校准') >= 0
+            && h.indexOf('data-ftt-action="floorRecalibrate"') >= 0
+            && h.indexOf('只改编号，条目一条不删') >= 0 && h.indexOf('当前 20 层') >= 0;
+        // ② 无收缩 → 幂等短路（如实回报，不动数据）
+        const a = await entry.popupAction('floorRecalibrate', {});
+        const noteA = String(((a.state || {}).note) || '');
+        const skipOk = a.ok === true && a.skipped === 'no-shrink' && noteA.indexOf('无需校准') >= 0;
+        // ③ 人为「在酒馆里自己删了楼」：聊天只剩 6 层，基线仍停在 19 → 真实重算
+        const snapBefore = JSON.stringify(RT.state.atoms);
+        host.ctx.chat.length = 6;
+        const b = await entry.popupAction('floorRecalibrate', {});
+        const noteB = String(((b.state || {}).note) || '');
+        const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        const dataOk = RT.state.atoms.length === 2                                  // **一条不删**
+            && g('bg2-a0').floorStart === 0 && g('bg2-a0').floorEnd === 0 && g('bg2-a0').floorStale === true
+            && g('bg2-a1').floorStart === 0 && g('bg2-a1').floorEnd === 0 && g('bg2-a1').floorStale === undefined
+            && RT.state.lastKnownFloor === 5
+            && snapBefore.indexOf('bg2-a0') >= 0;
+        const noteOk = b.ok === true && b.lastId === 5 && noteB.indexOf('记忆一条未删') >= 0;
+        // ④ 幂等：同样状态再点一次，条目不再变化
+        const after = JSON.stringify(RT.state.atoms);
+        const c = await entry.popupAction('floorRecalibrate', {});
+        const idemOk = c.ok === true && JSON.stringify(RT.state.atoms) === after;
+        await entry.popupAction('tab', { tab: 'overview' });
+        return uiOk && skipOk && dataOk && noteOk && idemOk;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        RT.state.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+await assert('BH1 v2.94.0（docs/D9 **U4** / 检查项 C7）危险动作真实点击**必须二次确认**：取消 → 零副作用（条目一条不少）；确认 → 才执行删除；程序化调用（命令 / devtools）不经该闸', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepPopup = host.ctx.callGenericPopup;
+    try {
+        await entry.popupAction('tab', { tab: 'atoms' });
+        RT.state.atoms = [{ id: 'bh-a1', text: '待删情节正文甲足够长。', tags: [], keywords: [] }];
+        await entry.popupAction('refresh', {});
+        const el = doc.getElementById('ftt-panel');
+        const bound = !!el && el.__fttBound === true;
+        const fire = (dataset) => {
+            const l = (el && el.listeners && el.listeners.click) || [];
+            l.forEach((fn) => fn({ target: { dataset } }));
+            return l.length > 0;
+        };
+        // ① 取消（宿主确认框返回 0 = POPUP_RESULT.NEGATIVE）→ 不做任何改动
+        host.ctx.callGenericPopup = () => Promise.resolve(0);
+        const f1 = fire({ fttAction: 'delete', kind: 'atoms', id: 'bh-a1' });
+        await new Promise((r) => setTimeout(r, 5));
+        const afterCancel = (RT.state.atoms || []).length;
+        // ② 确认（返回 1 = POPUP_RESULT.AFFIRMATIVE）→ 才真的删（留墓碑）
+        host.ctx.callGenericPopup = () => Promise.resolve(1);
+        const f2 = fire({ fttAction: 'delete', kind: 'atoms', id: 'bh-a1' });
+        await new Promise((r) => setTimeout(r, 5));
+        const afterOk = (RT.state.atoms || []).length;
+        // ③ 程序化路径（命令 / devtools）不经点击闸：同一动作直接调用仍生效
+        RT.state.atoms = [{ id: 'bh-b1', text: '程序化删除的情节正文足够长。', tags: [], keywords: [] }];
+        const r3 = await entry.popupAction('delete', { kind: 'atoms', id: 'bh-b1' });
+        const afterDirect = (RT.state.atoms || []).length;
+        await entry.popupAction('tab', { tab: 'overview' });
+        return bound && f1 && f2 && afterCancel === 1 && afterOk === 0 && afterDirect === 0 && r3.ok === true;
+    } finally {
+        host.ctx.callGenericPopup = keepPopup;
+        RT.state.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

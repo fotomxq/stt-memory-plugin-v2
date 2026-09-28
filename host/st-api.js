@@ -195,6 +195,9 @@ export function probeCapabilities() {
         chat: !!(ctx && Array.isArray(ctx.chat)),
         characters: !!(ctx && Array.isArray(ctx.characters)),
         characterId: !!(ctx && ctx.characterId !== undefined && ctx.characterId !== null),
+        // v2.94.0（`docs/D12` §4）：官方删楼接口（设定 → 数据管理「删除到最近 N 层」依赖它；
+        //   缺失时该操作降级为「明确提示不支持」（D12 Q6），**不静默失败**）
+        deleteMessage: !!(ctx && typeof ctx.deleteMessage === 'function'),
         // 世界书
         loadWorldInfo: !!(ctx && typeof ctx.loadWorldInfo === 'function'),
         saveWorldInfo: !!(ctx && typeof ctx.saveWorldInfo === 'function'),

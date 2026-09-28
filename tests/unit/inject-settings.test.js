@@ -67,5 +67,27 @@ R.assert('S11 无宿主时配置函数安全降级', (() => {
     return s.enabled === DEFAULT_SETTINGS.enabled && saved === false && injected.ok === false && String(injected.reason).indexOf('missing') >= 0;
 })(), '');
 
+// v2.94.0 修复回归：三个「运行时账本」键此前**不在 DEFAULT_SETTINGS**，而 `setSetting` 拒绝未知键 →
+//   写人工确认项 / 管线耗时样本 / 删楼账本的调用**静默失败**（只活在内存里，重开面板即清空）。
+R.assert('S11 v2.94.0 回归：运行时账本键（syncConflicts / pipelineEta / floorTrimLog）在册且**真的能落盘**', (() => {
+    const known = ['syncConflicts', 'pipelineEta', 'floorTrimLog'].map((k) => Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, k));
+    const w1 = setSetting('syncConflicts', [{ id: 'x', kind: '删楼' }]);
+    const w2 = setSetting('pipelineEta', { 摘要: [1200, 900] });
+    const w3 = setSetting('floorTrimLog', { slot: 1, items: [{ keep: 10 }] });
+    const s = getSettings();
+    return known.every(Boolean) && w1 === true && w2 === true && w3 === true
+        && Array.isArray(s.syncConflicts) && s.syncConflicts.length === 1 && s.syncConflicts[0].kind === '删楼'
+        && s.pipelineEta && s.pipelineEta['摘要'].length === 2
+        && s.floorTrimLog && s.floorTrimLog.slot === 1;
+})(), () => JSON.stringify({ s: getSettings().syncConflicts, e: getSettings().pipelineEta, t: getSettings().floorTrimLog }));
+
+R.assert('S12 v2.94.0 回归：对象/数组默认值**深拷贝**（不与冻结的 DEFAULT_SETTINGS 共享引用 → 首次写入不抛错）', (() => {
+    delete host.ctx.extensionSettings[MODULE_NAME].syncConflicts;
+    const a = getSettings().syncConflicts;
+    a.push({ id: 'y' });                                   // 若共享冻结引用，这里会抛 TypeError（ESM 严格模式）
+    const b = setSetting('syncConflicts', a) && getSettings().syncConflicts.length === 1;
+    return b === true && DEFAULT_SETTINGS.syncConflicts.length === 0;
+})(), '');
+
 resetContextProvider();
 R.done();

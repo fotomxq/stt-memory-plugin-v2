@@ -122,7 +122,26 @@ export function makeHost(opts) {
         substituteParams: (s) => String(s == null ? '' : s),
         // v2.35.0：酒馆「连接配置」服务桩（扩展通道 API）——默认无可用连接，测试可整体替换
         ConnectionManagerRequestService: { sendRequest: async () => '', getSupportedProfiles: () => [] },
+        // v2.94.0（`docs/D12` §4）：**官方删楼接口**桩 —— 还原 ST `deleteMessage` 的可观测副作用：
+        //   从 `chat` 摘除 + 通知 `MESSAGE_DELETED`（其它扩展据此感知删除）。ST 还会 `saveChatDebounced()`，
+        //   故这里也记一笔 `saveMetadataCount`，让「删除已落盘」在测试里可断言。
+        //   传入 `opts.noDeleteMessage` 可移除该方法（验证 D12 Q6「宿主不支持 → 明确提示、不静默失败」）。
+        deleteMessage: async (id) => {
+            const i = Number(id);
+            if (!Number.isFinite(i) || i < 0 || i >= ctx.chat.length) return;
+            ctx.chat.splice(i, 1);
+            ctx.deletedMessages = (ctx.deletedMessages || []).concat([i]);
+            ctx.saveMetadataCount = (ctx.saveMetadataCount || 0) + 1;
+            eventSource.emit(eventTypes.MESSAGE_DELETED, ctx.chat.length);
+        },
+        deleteLastMessage: async () => {
+            if (!ctx.chat.length) return;
+            ctx.chat.length = ctx.chat.length - 1;
+            ctx.saveMetadataCount = (ctx.saveMetadataCount || 0) + 1;
+            eventSource.emit(eventTypes.MESSAGE_DELETED, ctx.chat.length);
+        },
     };
+    if (o.noDeleteMessage) { delete ctx.deleteMessage; delete ctx.deleteLastMessage; }
     if (o.noEventSource) delete ctx.eventSource; else ctx.eventSource = eventSource;
     ctx.eventTypes = o.noEventSource ? undefined : eventTypes;
     if (o.noInject) { delete ctx.setExtensionPrompt; delete ctx.extensionPrompts; }

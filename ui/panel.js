@@ -1399,6 +1399,26 @@ function setNote(text) { ps.note = String(text == null ? '' : text); return ps.n
  *   ③ **都没有 → 返回 false（取消）** —— 与 V1「`D.confirm` 不是函数时 `ok=false` 直接 break」同口径，
  *      保证「转正需确认」在无对话框环境下不会被绕过。
  */
+/**
+ * v2.94.0（`docs/D9-UI统一规范设计稿.md` **U4** / 检查项 **C7**）——**危险动作二次确认清单**（固定，逐条对应 U4）：
+ *   删除条目 / 清空（日志 · 本地缓冲 · 过滤词条库）/ 导入覆盖 / 恢复快照 / 清空注入。
+ * 键 = `data-ftt-action`，值 = 确认文案（讲清「删什么 + 能不能恢复 + 有无备份」）。
+ * 只作用于**用户真实点击**路径（见点击委托的最前面那道闸）；取消 → 直接 return，零副作用。
+ */
+const DANGER_ACTION_PROMPTS = {
+    'delete': '删除这一条记忆？\n\n删除会留下记录，跨端同步时不会把它复活；但本机该条内容将不再注入。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
+    'bulkDelete': '删除勾选的全部记忆条目？\n\n删除会留下记录（跨端不复活），但本机这些内容将不再注入。此操作不可撤销，建议先备份。',
+    'dbgClear': '清空调试日志？\n\n只清除本机的调试与交互日志，**不影响任何记忆数据**。',
+    'dbgTraceClear': '清空交互与宿主调用时间线？\n\n只清除本机的追踪记录，**不影响任何记忆数据**。',
+    'syncLogClear': '清空同步日志？\n\n只清除本角色的对账 / 同步记录（含服务端那份），**不影响记忆数据**。',
+    'nsfwKwReset': '清空 NSFW 词条库？\n\n将恢复为内置默认词条，你自行添加的词条会全部丢失。此操作不可撤销。',
+    'importStateApply': '导入并合并这份存档？\n\n合并规则：相同跳过、新条目插入、变更以文件为准，**不会删除**本地已有记忆。',
+    'snapRestore': '恢复到这个快照？\n\n当前记忆会被快照内容替换（快照之后的新增与修改将丢失）。恢复前建议先「⬇ 导出 JSON 文件」备份。',
+    'clearPlotSegments': '清空全部分段总结？\n\n分段总结只归档、不注入，清空后无法找回。此操作不可撤销。',
+    'clear-inject': '清空当前注入内容？\n\n只清除这次注入给 AI 的正文，**不影响任何记忆数据**（下次提取会重新生成）。',
+    'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；之后可能重复摘要已处理过的楼层。',
+};
+
 async function confirmDialog(text, title) {
     // v2.41.0：**异步安全** —— 宿主确认框可能是 Promise（酒馆 `callGenericPopup`、或把 `window.confirm` 桥接到
     //   宿主命令的实现）。此前 `!!hooks.confirm(...)` 把 **Promise 当"已确认"**（恒为真），且宿主拒绝时会变成
@@ -1685,6 +1705,68 @@ export async function panelAction(action, payload) {
                 setNote(r && r.ok
                     ? ('已清空当前角色的 FTT 记忆（' + Number((r.cleared && r.cleared.total) || 0) + ' 条已清除 · 落盘 ' + String(r.via || '未落盘') + '）')
                     : ('清空失败：' + String((r && r.error) || '未知')));
+                result = Object.assign(result, r || { ok: false }, { action: a });
+            }
+        } else if (a === 'floorTrim') {
+            // v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）：设定 → 数据管理「✂️ 删除聊天楼层」三档
+            //   （保留最近 6 / 10 / 12 层）。纪律：
+            //     ① **官方 API**（`ctx.deleteMessage`）—— 由宿主层执行，别的插件同样收到 `MESSAGE_DELETED` 事件；
+            //     ② 预检先行（只读）→ 二次确认（D9 U4）→ 自动备份 → 删除 → 精确编号校准；
+            //     ③ 宿主不支持 → **提示不支持并说明**（D12 Q6：不静默失败），按钮侧已 disabled。
+            const keep = Number(p.keep) || 0;
+            const pre = (typeof hooks.floorTrimPrecheck === 'function') ? hooks.floorTrimPrecheck(keep) : null;
+            if (!pre) {
+                setNote('删楼入口未就绪');
+                result = Object.assign(result, { ok: false, action: a, reason: 'no-hook' });
+            } else if (pre.supported === false || pre.unsupported) {
+                setNote('当前宿主不提供官方删除楼层接口，无法执行（记忆未改动）');
+                result = Object.assign(result, { ok: false, action: a, reason: String(pre.reason || 'unsupported-host') });
+            } else if (!pre.ok) {
+                setNote('无需删除：' + String(pre.summary || pre.reason || '当前楼层数已不超过该档'));
+                result = Object.assign(result, { ok: false, action: a, reason: String(pre.reason || 'precheck') });
+            } else {
+                // 二次确认：把**预检结论**摆在最前面（用户先看清「删几层 / 影响几条 / 有没有没提取的楼」）
+                const warnLine = (Number(pre.unextracted) > 0)
+                    ? ('\n⚠️ 其中 ' + Number(pre.unextracted) + ' 层<b>尚未提取</b>，删除后将无法再补提（插件数据不会丢）。\n')
+                    : '';
+                const go = await confirmDialog(
+                    '将删除<b>聊天</b>中较早的楼层（不是插件记忆）。\n\n'
+                    + String(pre.summary || '') + '\n' + warnLine
+                    + '\n删除前会自动生成一份明文备份；删除后插件会把记忆里的楼层编号一并校准（<b>记忆条目一条都不会删</b>）。\n\n是否继续？',
+                    'FTT 删除聊天楼层'
+                );
+                if (!go) {
+                    setNote('已取消删楼（聊天与记忆均未改动）');
+                    result = Object.assign(result, { ok: false, action: a, reason: 'cancelled' });
+                } else {
+                    setNote('删除中…（先备份，再逐层删除并校准编号）');
+                    const r = (typeof hooks.floorTrim === 'function') ? await hooks.floorTrim(keep) : { ok: false, reason: 'no-hook' };
+                    if (r && r.ok) {
+                        setNote('已删除 ' + Number(r.deleted) + ' 层，保留最近 ' + keep + ' 层 · 记忆保留 ' + Number((r.remap && r.remap.shifted) || 0) + ' 条已校准'
+                            + (r.backup && r.backup.name ? (' · 备份 ' + r.backup.name) : ''));
+                    } else if (r && r.partial) {
+                        setNote('删楼未完成：已删 ' + Number(r.deleted) + '/' + Number(r.requested) + ' 层后中止（编号已按实际删除量校准，记忆未丢）');
+                    } else {
+                        const why = { 'backup-failed': '备份失败，已中止（未删除任何楼层）', 'backup-unavailable': '备份不可用，已中止（未删除任何楼层）', 'unsupported-host': '宿主不支持删除楼层' }[String(r && r.reason)] || String((r && r.reason) || '未知');
+                        setNote('删楼未执行：' + why);
+                    }
+                    result = Object.assign(result, r || { ok: false }, { action: a });
+                }
+            }
+        } else if (a === 'floorRecalibrate') {
+            // v2.94.0（`docs/D12` §3.4 / 阶段 S3）：设定 → 存储「🔄 重新校准楼层」（**幂等**手动兜底）
+            //   用于「用户在酒馆里自己删了楼」或跨端合并后编号可疑；**只改编号，绝不删除条目**。
+            if (typeof hooks.floorRecalibrate !== 'function') {
+                setNote('楼层校准入口未就绪');
+                result = Object.assign(result, { ok: false, action: a, reason: 'no-hook' });
+            } else {
+                const r = await hooks.floorRecalibrate();
+                const n = Number((r && r.staleEntries) || 0);
+                setNote(r && r.ok
+                    ? (r.skipped === 'no-shrink'
+                        ? ('楼层已是最新：当前 ' + (Number(r.lastId) + 1) + ' 层，无需校准' + (Number(r.stale) ? ('（已有 ' + Number(r.stale) + ' 条楼层信息失效）') : ''))
+                        : ('楼层已按当前聊天重算：当前 ' + (Number(r.lastId) + 1) + ' 层 · 标记失效 ' + n + ' 条 · 记忆一条未删'))
+                    : ('校准未完成：' + String((r && r.skipped) || '未知')));
                 result = Object.assign(result, r || { ok: false }, { action: a });
             }
         } else if (a === 'summaryFloor') {
@@ -2370,7 +2452,7 @@ export function bindOverlay() {
     if (!el) return false;
     if (typeof el.addEventListener === 'function' && !el.__fttBound) {
         el.__fttBound = true;
-        el.addEventListener('click', (e) => {
+        el.addEventListener('click', async (e) => {
             const tg = e && e.target;
             // v2.42.0：先记一条**原始交互**（点到了什么、携带哪些 data-ftt-* 属性、当前页）——
             //   即使动作分发层判为未知/异常，也能看到用户到底点了什么（此前完全没有这条线索）。
@@ -2417,6 +2499,15 @@ export function bindOverlay() {
                 ? tg : ((tg && tg.closest) ? tg.closest('[data-ftt-action]') : null);
             const ds = (actEl && actEl.dataset) ? actEl.dataset : (tg && tg.dataset ? tg.dataset : {});
             const act = String(ds.fttAction || '');
+            // ── v2.94.0（D9 **U4**）：**危险动作必须二次确认**（清单固定，见 `DANGER_ACTION_PROMPTS`）──
+            //   放在**所有分支之前**：确认被取消时直接返回（**取消不产生任何副作用**）。
+            //   确认框统一走 `confirmDialog`（宿主 hooks.confirm → 酒馆 callGenericPopup → 原生 confirm →
+            //   无对话框能力即按「取消」，与 V1 的 confirm 口径一致）。
+            //   注意：这里只拦**用户真实点击**；程序化调用 `panelAction()`（命令 / devtools / 测试）不受影响。
+            if (DANGER_ACTION_PROMPTS[act]) {
+                const go = await confirmDialog(DANGER_ACTION_PROMPTS[act], 'FTT 危险操作确认');
+                if (!go) return;
+            }
             if (!act) {
                 // ── 修复（v2.34.0）：「属性型」控件没有 `data-ftt-action`，此前被下面的 `!act → return` 直接吞掉，
                 //    导致**设定子标签 / 情节子标签（情节列表·分段总结）点击无效**。
@@ -2492,6 +2583,8 @@ export function bindOverlay() {
                 apiPfx: ds.fttApiPfx || '',
                 apiKind: ds.fttApiKind || '',
                 layer: ds.fttLayer || '',
+                // v2.94.0：数据管理「✂️ 删除聊天楼层」三档的保留层数（`data-ftt-keep="6|10|12"`）
+                keep: (ds.fttKeep !== undefined) ? ds.fttKeep : '',
             });
         });
         if (typeof el.addEventListener === 'function') {

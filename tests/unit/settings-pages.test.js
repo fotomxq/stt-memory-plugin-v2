@@ -43,8 +43,8 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 173 → 176
     // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 删 5 个逐维上限（forget）+1 总上限、删 1 个逐维上限（rumors）
     //   → 总数 176 → 171、forget 28 → 24、rumors 14 → 13
-    return info.totalControls === 172 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 25
-        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 26 && m.debug === 5;
+    return info.totalControls === 158 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 25
+        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 12 && m.debug === 5;
 })(), settingsPagesInfo());
 
 R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {
@@ -55,14 +55,17 @@ R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPag
         && Array.isArray(SETTINGS_CONTROLS.constraint) && SETTINGS_CONTROLS.constraint.length === 0;
 })(), () => settingsPagesInfo().pages.filter((p) => p.id === 'constraint'));
 
-R.assert('P2b 存储页控件与 V1 手写页逐一对应：墓碑天数 / 原生通道 / 世界书 8 项 / 流量门控（顶层键 syncTrafficGuard）', (() => {
+R.assert('P2b v2.94.0（D11 §3.4/§3.5）存储页只留世界书 12 项：同步/存储开关已剔除（不再出现 deletedKeepDays / tauriNative / syncTrafficGuard）', (() => {
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
-    const want = ['storage.deletedKeepDays', 'storage.tauriNative', 'storage.worldbookName', 'storage.worldbookMode',
+    const want = ['storage.worldbookName', 'storage.worldbookMode',
         'storage.worldbookScanDepth', 'storage.worldbookPosition', 'storage.worldbookDepth', 'storage.worldbookProbability',
-        'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes', 'syncTrafficGuard'];
-    return want.every((k) => keys.indexOf(k) >= 0)
-        && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('<select') >= 0
-        && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.tauriNative')).indexOf('自动（检测到 TauriTavern 即切换）') >= 0;
+        'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes'];
+    const gone = ['storage.deletedKeepDays', 'storage.tauriNative', 'storage.tauriMirror', 'storage.syncOnSave',
+        'storage.verifyOnLoad', 'storage.settingsMirror', 'storage.syncMetaProbe', 'storage.syncTrafficGuard',
+        'storage.stateFile', 'storage.snapshotFile', 'storage.syncLogServer', 'syncTrafficGuard'];
+    return keys.length === 12 && want.every((k) => keys.indexOf(k) >= 0)
+        && gone.every((k) => keys.indexOf(k) < 0)
+        && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.worldbookMode')).indexOf('<select') >= 0;
 })(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));
 
 R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签按 V1 原样、顺序与 V1 源码一致', (() => {
@@ -160,7 +163,8 @@ R.assert('P4 渲染：开关页用 .ftt-switch + 「已开启/已关闭」；文
     return sb.indexOf('class="ftt-switch"') >= 0 && sb.indexOf('data-ftt-cfg="' + boolCtl.key + '"') >= 0
         && (sb.indexOf('已开启') >= 0 || sb.indexOf('已关闭') >= 0)
         && st.indexOf('<input type="text"') >= 0 && st.indexOf('value="') >= 0
-        && page.indexOf('data-ftt-cfg="storage.stateFile"') >= 0
+        && page.indexOf('data-ftt-cfg="storage.worldbookScanDepth"') >= 0
+        && page.indexOf('data-ftt-cfg="storage.stateFile"') < 0
         && panelBodyHtml('settings').indexOf('ftt-settings-subtabs') >= 0;
 })(), '');
 
