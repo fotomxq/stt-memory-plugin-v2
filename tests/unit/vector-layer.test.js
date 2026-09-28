@@ -12,6 +12,8 @@
 // 覆盖：V 向量纯逻辑（余弦/均值/候选库/打分）｜C 缓存（内存回退 + 键结构）｜E embedding/rerank 请求与降级
 //   ｜F 三层流程编排（命中即返回 + 降级）｜U 提取页 UI（三层结构 / Embedding / Rerank / 检索参数 / kw·mem 分组 / 测试按钮）
 //   ｜A 面板动作（apiTest(emb/rerank) / testLayer / vectorCacheClear）。
+// v3.0.12（用户报告「向量 API 相关配置全不可用 / 获取模型无效」）：A10–A14 锁定**按 API 分组配置**的向量区块
+//   ——「🧪 测试 / 📦 获取模型」必须走分组地址（`vectorTarget` 的分组解析），且拉模型不得要求先填模型。
 // 运行：node tests/unit/vector-layer.test.js
 // ============================================================
 import { makeReporter, makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '../harness/st-mock.js';
@@ -357,6 +359,53 @@ await (async () => {
         A('A9 `apiTest`（Embedding 区块）：以屏幕上当前输入值为准（DOM 优先，回落 cfg）',
             t3.ok === true && String(t3.note).indexOf('可用') >= 0 && fetchCalls.indexOf('https://typed.example.com/v1/embeddings') >= 0,
             J({ note: t3.note, calls: fetchCalls.slice(-2) }));
+
+        // ---- v3.0.12：向量区块**按「使用 API 分组」配置**时，🧪 测试 / 📦 获取模型 必须走分组地址 ----
+        //   真机现象（用户报告）：「API 分组看到的是主线 API 的模型清单，获取模型无效。」
+        //   根因（`ui/api-page.js`）：`domBlockTarget()` 见屏幕上地址为空 → 直接 `ok:false`；
+        //     `blockTarget = domBlockTarget(pfx) || vectorTarget(kind)` 的 `||` 被**真值对象**短路
+        //     → 唯一会解析分组的 `vectorTarget(kind)` 永不执行 → 分组配置下两个按钮全废。
+        //   且它要求「先填模型」才肯拉模型 —— 而「📦 获取模型」正是用来**选模型**的前置（自相矛盾）。
+        resetApiPageState();
+        const savedEmb = { url: cfg.embeddingUrl, key: cfg.embeddingKey, model: cfg.embeddingModel, preset: cfg.embeddingProxyPreset, presets: cfg.apiPresets };
+        cfg.apiPresets = { 'emb-group': { apiUrl: 'https://group.example.com/v1', apiKey: 'g-1', model: 'emb-g' } };
+        cfg.embeddingUrl = ''; cfg.embeddingKey = ''; cfg.embeddingModel = ''; cfg.embeddingProxyPreset = 'emb-group';
+        // 真机同款：区块的输入框在页面上（地址留空），分组下拉已选中分组
+        const embDom = { embeddingUrl: '', embeddingKey: '', embeddingModel: '', embeddingProxyPreset: 'emb-group' };
+        const withDom = async (map, fn) => {
+            const prev = globalThis.document;
+            globalThis.document = { querySelector: (sel) => { const k = String(sel).replace(/^\[data-ftt-cfg="|"\]$/g, ''); return (k in map) ? { value: map[k] } : null; } };
+            try { return await fn(); } finally { globalThis.document = prev; }
+        };
+        const f1 = await withDom(embDom, () => apiAction('apiModels', { apiPfx: 'emb' }));
+        A('A10 「使用 API 分组」配置（地址留空）时：📦 获取模型 走**分组地址**并回填本区块（不再报「缺少地址」）',
+            f1.ok === true && f1.count === 2 && blockModelList('emb').models.length === 2
+            && fetchCalls.indexOf('https://group.example.com/v1/models') >= 0,
+            J({ note: f1.note, calls: fetchCalls.slice(-2) }));
+        const f2 = await withDom(embDom, () => apiAction('apiTest', { apiPfx: 'emb', kind: 'embedding' }));
+        A('A11 同上：🧪 测试 也走分组（真发请求到分组地址，不再误报「未配置（缺少地址）」）',
+            f2.ok === true && String(f2.note).indexOf('可用') >= 0
+            && fetchCalls.indexOf('https://group.example.com/v1/embeddings') >= 0,
+            J({ note: f2.note, calls: fetchCalls.slice(-2) }));
+        cfg.embeddingProxyPreset = 'missing-group';
+        const f3 = await withDom({ embeddingUrl: '', embeddingKey: '', embeddingModel: '', embeddingProxyPreset: 'missing-group' },
+            () => apiAction('apiModels', { apiPfx: 'emb' }));
+        A('A12 分组不含地址 → 如实报错（含分组名），不假装拉到模型',
+            f3.ok === false && String(f3.note).indexOf('missing-group') >= 0 && blockModelList('emb').models.length === 0,
+            J({ note: f3.note, block: blockModelList('emb') }));
+        cfg.embeddingProxyPreset = 'emb-group';
+        const f4 = await withDom({ embeddingUrl: 'https://screen.example.com/v1', embeddingKey: 'k2', embeddingModel: '', embeddingProxyPreset: 'emb-group' },
+            () => apiAction('apiModels', { apiPfx: 'emb' }));
+        A('A13 屏幕地址优先于分组（用户刚改完、change 事件尚未派发时按屏幕值走）',
+            f4.ok === true && fetchCalls.indexOf('https://screen.example.com/v1/models') >= 0,
+            J({ note: f4.note, calls: fetchCalls.slice(-2) }));
+        const f5 = await withDom({ embeddingUrl: 'https://only-url.example.com/v1', embeddingKey: 'k3', embeddingModel: '', embeddingProxyPreset: '' },
+            () => apiAction('apiModels', { apiPfx: 'emb' }));
+        A('A14 「📦 获取模型」不再要求先填模型（地址有、模型留空也能拉清单 —— 这正是选模型的前置；`fetchModels` 只需地址+Key）',
+            f5.ok === true && f5.count === 2 && fetchCalls.indexOf('https://only-url.example.com/v1/models') >= 0,
+            J({ note: f5.note, calls: fetchCalls.slice(-2) }));
+        Object.assign(cfg, { embeddingUrl: savedEmb.url, embeddingKey: savedEmb.key, embeddingModel: savedEmb.model, embeddingProxyPreset: savedEmb.preset, apiPresets: savedEmb.presets });
+        resetApiPageState();
     } finally { un(); }
 })();
 
