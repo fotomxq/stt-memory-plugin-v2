@@ -145,7 +145,7 @@ function presetSectionHtml() {
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm" data-ftt-action="presetSave" title="把当前「API 设定」存成一个分组（同名覆盖）">💾 保存当前设定为分组</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="presetLoad" title="把选中分组的连接写回「API 设定」并设为当前激活">📂 加载选中分组</button>',
-        '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="presetDelete" title="删除选中分组（不弹确认，与 V1 一致）">🗑 删除选中分组</button>',
+        '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="presetDelete" title="删除选中分组（需二次确认）">🗑 删除选中分组</button>',
         '</div>',
         '<div class="ftt-field"><label>已存分组</label><select data-ftt-cfg="presetSelect">' + opts + '</select></div>',
         '<div class="ftt-muted">API 分组 = 一组完整<b>连接</b>设定（通道 / 连接配置 / 地址 / Key / 模型），主 API 与「提取记忆」共用。当前激活：' + esc(sum.activePreset || '主配置（未用分组）') + '。</div>',

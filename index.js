@@ -129,6 +129,7 @@ import {
 import {
     setParallelTextHooks, weaveEnabled, weavePassiveDue, weaveInputSig, matchParallelsByKeywords,
     scheduleParallelWeave, runParallelWeave, advanceContextSeed, buildAdvanceContext, buildAdvancePrompt,
+    runParallelCustom,   // v2.99.0（用户要求）：自定义平行世界推演（输入一段话 → AI 单独推演）
     applyAdvanceUpdate, runParallelAdvance, promoteParallelEvent, prunePromotedParallels,
     setParallelLastKeywords, parallelLastKeywords, jsExtractKeywords,
 } from './core/parallel.js';
@@ -938,6 +939,8 @@ function bootstrapDiagnostics() {
             matchParallelsByKeywords: (keywords) => matchParallelsByKeywords(keywords),
             scheduleParallelWeave: (fr, keywords) => scheduleParallelWeave(fr, keywords),
             runParallelWeave: (fr, opts) => runParallelWeave(fr, opts || {}),
+            // v2.99.0：自定义平行推演（面板「🧪 自定义推演」→ 产物与常规推演完全同构）
+            runParallelCustom: (idea, opts) => runParallelCustom(idea, opts || {}),
             advanceContextSeed: (p) => advanceContextSeed(p),
             buildAdvanceContext: (targets) => buildAdvanceContext(targets),
             buildAdvancePrompt: (targets, memText) => buildAdvancePrompt(targets, memText),
@@ -1232,6 +1235,8 @@ export function panelRuntimeHooks() {
         batchProgress: batchProgress,          // 忙位进度（「分析中 x/y 段」）
         busy: () => { try { return !!extractBusy(); } catch (e) { return false; } },   // v2.52.0：总览「管线状态」行 + 中断按钮的条件展示
         lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：总览「📤 最后一次提取」组件
+        // v2.99.0（用户要求「可添加新平行世界」）：面板「🧪 自定义推演」的运行入口
+        parallelCustom: (idea) => runParallelCustom(String(idea == null ? '' : idea), {}),
         clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
         // v2.94.0（D12 §4 / §8-E）：数据管理「删除到最近 N 层」三档（官方 API + 备份 + 精确编号校准）

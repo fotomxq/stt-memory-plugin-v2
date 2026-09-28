@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.98.0",
+  "version": "2.99.0",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.99.0",
+      "date": "2026-09-28",
+      "title": "平行世界三项：卦象等字段不再被清空 + 清理类动作二次确认 + 自定义平行世界推演",
+      "points": [
+        "① 平行世界「卦象等」设计与修复：（core/ingest.js + ui/list-rows.js）- 根因（V1 同源缺陷）：平行事件的「更新」用 state.paralle…",
+        "② 危险动作二次确认扩面：（ui/panel.js + scripts/check-ui-spec.js）- 用户点名的「🧹 清理传言」以及其它同类高危动作此前完全没有确认（部…",
+        "③ 自定义平行世界（输入一段话 → AI 单独推演）：（core/parallel.js + ui/panel.js）- 平行页新增 「🧪 自定义推演（新增平行世界）」：展开输…"
+      ]
+    },
     {
       "version": "2.98.0",
       "date": "2026-09-28",

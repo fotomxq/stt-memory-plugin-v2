@@ -34,6 +34,7 @@ import {
 } from '../core/plot-segment.js';
 import {
     runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
+    runParallelCustom,   // v2.99.0：自定义平行世界推演（输入一段话 → AI 单独推演）
 } from '../core/parallel.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
 // v2.90.0（用户要求）：管线状态补「流式摘要 + token 计数 + 预估倒计时」
@@ -567,8 +568,8 @@ const REL_TABDS = { memories: 'memories', plans: 'plans', suspense: 'suspense', 
 function clearPSButtons() {
     const hasPlans = Array.isArray(state.plans) && state.plans.length > 0;
     const hasSusp = Array.isArray(state.suspense) && state.suspense.length > 0;
-    return (hasPlans ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearPlans" title="清空全部计划（不弹确认）">🧹 清理计划</button>' : '')
-        + (hasSusp ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearSuspense" title="清空全部悬念（不弹确认）">🧹 清理悬念</button>' : '');
+    return (hasPlans ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearPlans" title="清空全部计划（需二次确认；留删除墓碑）">🧹 清理计划</button>' : '')
+        + (hasSusp ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearSuspense" title="清空全部悬念（需二次确认；留删除墓碑）">🧹 清理悬念</button>' : '');
 }
 
 /**
@@ -660,8 +661,42 @@ function plotSegmentsBodyHtml() {
  * 平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 `topBar` 逐字：
  *   文案 / title / 旁注与 V1 一致；V2 用 `data-ftt-action` + `data-id` 约定）。
  */
+/** v2.99.0：自定义平行推演面板是否展开（模块态，随面板重绘保留） */
+let customWeaveOpen = false;
+/** v2.99.0：自定义推演是否在途（防连点；长耗时 AI 动作） */
+let customWeaveBusy = false;
+export function parallelCustomState() { return { open: customWeaveOpen, busy: customWeaveBusy }; }
+
+/**
+ * v2.99.0（用户要求）——**自定义平行世界**入口 + 输入区。
+ * 「输入一段话交给 AI 单独去平行推演」：不读楼层正文、不受「推演世界」开关与去重影响；
+ *   关键词命中的既有原子数据自动作为衔接/去重/客观性校验上下文；产物与常规推演**完全同构**。
+ * 提示词显式允许**完全客观 / 非主角视角**（并禁止把事件牵引向主角），见 `core/parallel.js#buildCustomWeavePrompt`。
+ */
+function parallelCustomBar() {
+    const btn = customWeaveBusy
+        ? '<button class="ftt-btn ftt-sm ftt-loading" type="button" disabled title="AI 推演中…">🧪 自定义推演（推演中…）</button>'
+        : '<button class="ftt-btn ftt-sm" data-ftt-action="parallelCustomOpen" title="输入一段设想，交 AI 单独推演一条新的平行世界（不读楼层正文；自动带上关键词关联的既有数据）">🧪 自定义推演（新增平行世界）</button>';
+    const rows = ['<div class="ftt-row" style="margin:4px 0">' + btn
+        + '<span class="ftt-muted">输入一段话 → AI 单独平行推演，并可带上关键词关联的既有数据；'
+        + '完全客观或非主角视角的设想同样支持（不会强行牵引到主角）。</span></div>'];
+    if (customWeaveOpen) {
+        rows.push('<div class="ftt-editor"><div class="ftt-editor-title">🧪 自定义平行推演</div>'
+            + '<div class="ftt-muted ftt-w-full">写下这段设想要推演什么（可以是纯客观事件、幕后势力动向、与主角无关的世界线；'
+            + '主角可完全不出场）。AI 会按「以卦象为纲、以因果为线」的口径推演，产出与普通平行事件完全一致。'
+            + '设想里出现、且在既有记忆里存在的词，会用来匹配相关的情节 / 记忆 / 状态 / 计划 / 悬念 / 传言 / 角色 / 场景 / 物品，作为衔接与去重依据。</div>'
+            + '<div class="ftt-field ftt-field-col"><label>设想要推演的内容</label>'
+            + '<textarea data-ftt-custom-weave="1" rows="5" placeholder="例如：与此同时，北方的盐商行会因河运中断而暗中改走陆路，镖局与地方衙门的态度开始分化……"></textarea></div>'
+            + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="parallelCustomRun">🚀 交由 AI 推演</button>'
+            + '<button class="ftt-btn" data-ftt-action="parallelCustomCancel">取消</button></div></div>');
+    }
+    return rows.join('\n');
+}
+
+/** 平行页顶部工具栏（V1「🚀 全部推进」条 + v2.99.0 自定义推演入口） */
 function parallelTopBar() {
-    return '<div class="ftt-row" style="margin:4px 0"><button class="ftt-btn ftt-sm" data-ftt-action="parallelAdvanceAll" title="全部平行事件交 AI 逐一推进">🚀 全部推进</button><span class="ftt-muted">记忆数据随推进一并交给 AI 作背景与种子；事件可能只是世界背景/间接相关，不会强行牵引到主角。</span></div>';
+    return '<div class="ftt-row" style="margin:4px 0"><button class="ftt-btn ftt-sm" data-ftt-action="parallelAdvanceAll" title="全部平行事件交 AI 逐一推进">🚀 全部推进</button><span class="ftt-muted">记忆数据随推进一并交给 AI 作背景与种子；事件可能只是世界背景/间接相关，不会强行牵引到主角。</span></div>'
+        + parallelCustomBar();
 }
 
 /** 平行事件行的「相关角色（角色不知情）」摘要（V1 `relSummaryLine('parallels', id, 6)` 的 V2 等价） */
@@ -1458,6 +1493,21 @@ const DANGER_ACTION_PROMPTS = {
     'importStateApply': '导入并合并这份存档？\n\n合并规则：相同跳过、新条目插入、变更以文件为准，**不会删除**本地已有记忆。',
     'snapRestore': '恢复到这个快照？\n\n当前记忆会被快照内容替换（快照之后的新增与修改将丢失）。恢复前建议先「⬇ 导出 JSON 文件」备份。',
     'clearPlotSegments': '清空全部分段总结？\n\n分段总结只归档、不注入，清空后无法找回。此操作不可撤销。',
+    // ── v2.99.0（用户要求「传言的清理按钮需二次确认，其他类似高危操作均需二次确认」）──
+    //   下列动作此前**没有任何确认**（部分 title 甚至写着「不弹确认」，沿袭 V1）；它们都会**不可逆地清空/覆盖用户数据**。
+    'clearRumors': '清空全部传言？\n\n所有传言（含传播者 / 载体 / 裂变谱系）将被删除并留下删除墓碑（跨端同步时不会复活）。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
+    'clearPlans': '清空全部计划？\n\n所有计划（含进度 / 步骤 / 阻碍 / 历史）将被删除并留下删除墓碑。此操作不可撤销，建议先备份。',
+    'clearSuspense': '清空全部悬念？\n\n所有悬念（含线索 / 揭晓条件 / 历史）将被删除并留下删除墓碑。此操作不可撤销，建议先备份。',
+    'delStateGroup': '删除该角色的全部状态记录？\n\n该角色下的所有状态字段都会被删除并留下墓碑。此操作不可撤销。',
+    'snapshotClear': '清空全部快照？\n\n快照链是自动备份，清空后**无法再回滚到任何历史时刻**（记忆本体不受影响）。此操作不可撤销。',
+    'snapDelete': '删除这个快照？\n\n删除后无法再用它回滚（记忆本体不受影响）。此操作不可撤销。',
+    'nsfwRuleReset': '恢复内置默认转化库？\n\n你自定义的固定规则**全部丢失**，只保留内置标准库。此操作不可撤销。',
+    'promptResetAll': '全部恢复默认提示词？\n\n你对**所有**提示词模板的修改都会丢失。此操作不可撤销。',
+    'promptGroupReset': '本组恢复默认提示词？\n\n你对**本组**提示词模板的修改都会丢失。此操作不可撤销。',
+    'promptResetOne': '恢复这条提示词的默认内容？\n\n你对这条模板的修改会丢失。此操作不可撤销。',
+    'presetDelete': '删除选中的 API 分组？\n\n该分组（连接配置 / 地址 / Key / 模型 / 参数）会被删除，引用它的维度将回落到主配置。此操作不可撤销。',
+    'syncPickLocal': '用**本端**版本覆盖对端？\n\n两端分歧将按本端内容强行统一，**对端的差异会被丢弃**。此操作不可撤销，建议先备份。',
+    'syncPickRemote': '用**对端**版本覆盖本端？\n\n本端当前记忆会被对端内容替换，**本端的差异会被丢弃**。此操作不可撤销，建议先备份。',
     'clear-inject': '清空当前注入内容？\n\n只清除这次注入给 AI 的正文，**不影响任何记忆数据**（下次提取会重新生成）。',
     'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；之后可能重复摘要已处理过的楼层。',
 };
@@ -1638,6 +1688,58 @@ export async function panelAction(action, payload) {
             else msg = '🚀 平行事件推进完成：更新 ' + Number(r.updated || 0) + '/' + Number(r.target || 0) + ' 条 · AI 调用 ' + Number(r.aiCalls || 0) + ' 次 · 发送 ' + Number(r.sentChars || 0) + ' 字 · 用时 ' + Number(r.ms || 0) + 'ms';
             setNote(msg);
             result = Object.assign(result, { ok: !(r && r.error), action: a, parallelAdvance: r });
+        }
+        else if (a === 'parallelCustomOpen') {
+            customWeaveOpen = true;
+            setNote('自定义推演：写下设想后点「🚀 交由 AI 推演」');
+        }
+        else if (a === 'parallelCustomCancel') {
+            customWeaveOpen = false;
+            setNote('已取消自定义推演');
+        }
+        else if (a === 'parallelCustomRun') {
+            // v2.99.0（用户要求）：输入一段话 → AI **单独**平行推演 → 落库为**普通平行事件**（同一条 mergeDelta 路径）。
+            //   即时反馈与防连点同单楼分析（v2.96.0）：立刻写提示 + 重绘 + 通知 + 在途禁用。
+            const ta = (() => {
+                if (p.text !== undefined) return String(p.text);
+                try { const doc = globalThis.document; const el = doc && doc.querySelector ? doc.querySelector('[data-ftt-custom-weave]') : null; return el ? String(el.value == null ? '' : el.value) : ''; } catch (e) { return ''; }
+            })();
+            const idea = String(ta || '').trim();
+            if (idea.length < 4) {
+                setNote('自定义推演：请先写下要推演的内容（至少 4 个字）');
+                result = Object.assign(result, { ok: false, action: a, reason: 'idea-too-short' });
+            } else if (customWeaveBusy) {
+                setNote('自定义推演正在进行中，请等本次 AI 返回后再试');
+                result = Object.assign(result, { ok: false, action: a, reason: 'busy' });
+            } else {
+                customWeaveBusy = true;
+                setNote('自定义推演中…（AI 正在按你的设想推演，结果会作为一条普通平行事件落库）');
+                renderPanel();                                    // 立刻可见（不等 AI）
+                try { panelNotify('info', '自定义推演：开始推演…'); } catch (e) { /* 忽略 */ }
+                let r = null;
+                try {
+                    r = (typeof hooks.parallelCustom === 'function')
+                        ? await hooks.parallelCustom(idea)
+                        : await runParallelCustom(idea, {});
+                } finally {
+                    customWeaveBusy = false;
+                    customWeaveOpen = true;                           // 保留输入区，便于连续追加设想
+                }
+                const err = String((r && r.error) || '');
+                if (r && r.ok && r.skipped === 'empty') {
+                    setNote('自定义推演：这段设想没有可推演的点（未新增平行事件）');
+                    try { panelNotify('warning', '自定义推演：没有可推演的点'); } catch (e) { /* 忽略 */ }
+                } else if (r && r.ok) {
+                    setNote('自定义推演完成：新增 ' + Number(r.added || 0) + ' / 更新 ' + Number(r.updated || 0)
+                        + '（平行事件共 ' + Number((state.parallels || []).length) + ' 条 · 关联数据 ' + Number(r.seed || 0) + ' 条）');
+                    try { panelNotify('success', '自定义推演完成：新增 ' + Number(r.added || 0) + ' 条平行事件'); } catch (e) { /* 忽略 */ }
+                } else {
+                    const why = { 'busy': '摘要 / 情节总结 / 推演 / 修复进行中，请稍候再试', 'idea-too-short': '内容太短（至少 4 个字）' }[err] || err || '未知';
+                    setNote('自定义推演未完成：' + why);
+                    try { panelNotify('warning', '自定义推演未完成：' + why); } catch (e) { /* 忽略 */ }
+                }
+                result = Object.assign(result, r || { ok: false }, { action: a });
+            }
         }
         else if (a === 'parallelWeaveNow') {
             // V1 `case 'parallelWeaveNow'`：**先判 `cfg.parallelWeaveEnabled`**（V1 原样：缺失即视为未开启）

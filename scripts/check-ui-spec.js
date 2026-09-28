@@ -106,16 +106,34 @@ const hit = (id, file, line, msg) => hits.push({ id, file, line, msg });
     const SRC = {};
     for (const f of uiFiles) SRC[f] = lines(read(f));
     const panel = read('ui/panel.js');
+    // v2.99.0（用户要求「传言的清理按钮需二次确认，其他类似高危操作均需二次确认」）：把**所有会不可逆
+    //   清空 / 覆盖用户数据**的动作都纳入本表 —— 此前只有 9 项，传言的「🧹 清理传言」以及计划 / 悬念 / 快照 /
+    //   状态组 / 提示词 / API 分组 / 同步分歧选择等**都没有确认**（部分 title 还写着「不弹确认」）。
     const map = {
         '删除条目': 'delete',
+        '批量删除': 'bulkDelete',
         '清空调试日志': 'dbgClear',
+        '清空调试时间线': 'dbgTraceClear',
         '清空同步日志': 'syncLogClear',
         '清空 NSFW 词条库': 'nsfwKwReset',
+        '恢复内置 NSFW 规则库': 'nsfwRuleReset',
         '导入覆盖': 'importStateApply',
         '恢复快照': 'snapRestore',
+        '删除快照': 'snapDelete',
+        '清空快照链': 'snapshotClear',
         '清空注入': 'clear-inject',
         '清空已处理楼层台账': 'clearFloors',
         '清空情节分段': 'clearPlotSegments',
+        '清空传言': 'clearRumors',
+        '清空计划': 'clearPlans',
+        '清空悬念': 'clearSuspense',
+        '删除角色状态组': 'delStateGroup',
+        '恢复默认提示词': 'promptResetAll',
+        '恢复本组默认提示词': 'promptGroupReset',
+        '恢复单条默认提示词': 'promptResetOne',
+        '删除 API 分组': 'presetDelete',
+        '同步分歧-保留本地': 'syncPickLocal',
+        '同步分歧-采用对端': 'syncPickRemote',
     };
     const missing = [];
     const noConfirm = [];

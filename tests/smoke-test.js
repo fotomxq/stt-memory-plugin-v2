@@ -1577,8 +1577,9 @@ await assert('Z1 「🧹 清理计划 / 🧹 清理悬念」：各自库非空�
     const r2 = await entry.popupAction('clearSuspense', {});
     const tombs = Object.keys((st.deleted || {}).plans || {}).concat(Object.keys((st.deleted || {}).suspense || {}));
     const html0 = String((await entry.popupAction('tab', { tab: 'plans' })).html || '');
-    return html1.indexOf('data-ftt-action="clearPlans"') >= 0 && html1.indexOf('🧹 清理计划') >= 0 && html1.indexOf('title="清空全部计划（不弹确认）"') >= 0
-        && html1.indexOf('data-ftt-action="clearSuspense"') >= 0 && html1.indexOf('🧹 清理悬念') >= 0 && html1.indexOf('title="清空全部悬念（不弹确认）"') >= 0
+    // v2.99.0：title 由「不弹确认」改为「需二次确认」（用户要求：这类清理必须二次确认）
+    return html1.indexOf('data-ftt-action="clearPlans"') >= 0 && html1.indexOf('🧹 清理计划') >= 0 && html1.indexOf('title="清空全部计划（需二次确认；留删除墓碑）"') >= 0
+        && html1.indexOf('data-ftt-action="clearSuspense"') >= 0 && html1.indexOf('🧹 清理悬念') >= 0 && html1.indexOf('title="清空全部悬念（需二次确认；留删除墓碑）"') >= 0
         && r1.ok === true && r1.cleared === 1 && String((r1.state || {}).note).indexOf('已清理 1 条计划') >= 0 && (st.plans || []).length === 0
         && r2.ok === true && r2.cleared === 1 && String((r2.state || {}).note).indexOf('已清理 1 条悬念') >= 0 && (st.suspense || []).length === 0
         && tombs.indexOf('smoke-zc-p1') >= 0 && tombs.indexOf('smoke-zc-u1') >= 0
@@ -4589,6 +4590,93 @@ await assert('BK1 端到端：最新情节只写「时间/地点」不写「日�
     } finally {
         RT.state.atoms = keepAtoms;
         RT.state.state = keepState;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+// ---------- BL 平行世界三项（v2.99.0：卦象保留 / 危险动作确认 / 自定义推演） ----------
+await assert('BL1 平行事件「更新」不再清空卦象等字段（端到端：新增带卦象 → 只给标题正文的「更新」→ 卦象/因果线/涉及角色/发生地点全部保留，且与常规条目同构）', (async () => {
+    const PAR = await import('../core/parallel.js');
+    const ING = await import('../core/ingest.js');
+    const rt = await import('../core/model/runtime.js');
+    const keep = JSON.parse(JSON.stringify(rt.state.parallels || []));
+    try {
+        rt.state.parallels = [];
+        ING.mergeDelta({ 平行事件: { 新增: [{ 标题: '冒烟暗流', 正文: '船只被毁一事在码头传开。', 卦象: '山水蒙——局中待启', 因果线: '源起：船只被毁→议论→幕后', 涉及角色姓名: ['甲'], 发生地点: '码头区', 标签: ['暗流'] }] } }, { start: 1, end: 1 });
+        ING.mergeDelta({ 平行事件: { 更新: [{ 标题: '冒烟暗流', 正文: '议论升级为戒备。' }] } }, { start: 2, end: 2 });
+        const p = (rt.state.parallels || [])[0] || {};
+        // 「自定义推演」的关键词取词：设想里在库中出现过的片段会被系统识别为关联关键词
+        const kws = PAR.customKeywords('甲在码头听说，船只被毁之后的议论升级为戒备。');
+        return p.gua === '山水蒙——局中待启' && p.causalLine === '源起：船只被毁→议论→幕后'
+            && J(p.characters) === J(['甲']) && p.location === '码头区' && p.text === '议论升级为戒备。'
+            && kws.indexOf('码头') >= 0;
+    } finally { rt.state.parallels = keep; }
+})(), '');
+
+await assert('BL2 危险动作真实点击需二次确认：取消「🧹 清理传言」→ 传言一条不少；确认 → 清空并留删除墓碑（其他同类动作同表覆盖）', (async () => {
+    const rt = await import('../core/model/runtime.js');
+    const keepR = JSON.parse(JSON.stringify(rt.state.rumors || []));
+    const keepD = JSON.parse(JSON.stringify(rt.state.deleted || {}));
+    const keepPopup = host.ctx.callGenericPopup;
+    try {
+        rt.state.rumors = [{ id: 'bl-ru1', subject: '码头传闻', content: '码头有人交易军械。', stage: 'active', tags: [], carriers: [], uses: 0 }];
+        rt.state.deleted = {};
+        await entry.popupAction('tab', { tab: 'rumors' });
+        const el = doc.getElementById('ftt-panel');
+        const fire = (dataset) => ((el.listeners || {}).click || []).forEach((fn) => fn({ target: { dataset: dataset, closest: () => null }, preventDefault() { }, stopPropagation() { } }));
+        host.ctx.callGenericPopup = () => Promise.resolve(0);          // 取消
+        fire({ fttAction: 'clearRumors' });
+        await new Promise((r) => setTimeout(r, 15));
+        const afterCancel = (rt.state.rumors || []).length;
+        host.ctx.callGenericPopup = () => Promise.resolve(1);          // 确认
+        fire({ fttAction: 'clearRumors' });
+        await new Promise((r) => setTimeout(r, 25));
+        const afterOk = (rt.state.rumors || []).length;
+        const tombs = Object.keys((rt.state.deleted || {}).rumors || {}).length;
+        await entry.popupAction('tab', { tab: 'overview' });
+        return afterCancel === 1 && afterOk === 0 && tombs >= 1;
+    } finally {
+        host.ctx.callGenericPopup = keepPopup;
+        rt.state.rumors = keepR;
+        rt.state.deleted = keepD;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义推演」→ 输入一段设想 → AI 单独推演 → **作为普通平行事件落库**并在列表出现（同构：卦象/因果线/标签/目标可能性齐备），关键词关联的既有数据进了提示词', (async () => {
+    const rt = await import('../core/model/runtime.js');
+    const EX = await import('../host/extract.js');
+    const keepPars = JSON.parse(JSON.stringify(rt.state.parallels || []));
+    const keepAtoms = JSON.parse(JSON.stringify(rt.state.atoms || []));
+    const savedGen = host.ctx.generateRaw;
+    const prompts = [];
+    try {
+        rt.state.parallels = [];
+        rt.state.atoms = [{ id: 'bl-a1', text: '河运中断，盐商行会受损。', title: '河运中断', date: '1919-11-20', floorStart: 1, floorEnd: 1, validity: 'active', tags: [] }];
+        host.ctx.generateRaw = async (args) => {
+            prompts.push(String((args && args.systemPrompt) || '') + '\n' + String((args && args.prompt) || ''));
+            return JSON.stringify({ 平行事件: { 新增: [{ 标题: '盐商改走陆路', 正文: '行会暗中联络镖局改走陆路，地方衙门态度分化。', 类型: '势力动向', 因果线: '来自用户设想：河运中断→盐商改道→衙门分化', 卦象: '巽——渗透影响', 演化目标可能性: [{ 目标: '陆路垄断', 可能性: 55 }], 标签: ['盐商', '镖局'] }] } });
+        };
+        await entry.popupAction('tab', { tab: 'parallels' });
+        const open = await entry.popupAction('parallelCustomOpen', {});
+        const opened = String(open.html || '').indexOf('data-ftt-custom-weave="1"') >= 0;
+        const r = await entry.popupAction('parallelCustomRun', { text: '北方盐商行会因河运中断而暗中改走陆路，镖局与衙门态度分化。' });
+        const p = (rt.state.parallels || [])[0] || {};
+        const listHtml = String((await entry.popupAction('refresh', {})).html || '');
+        const prompt = prompts.join('\n');
+        const allOk = opened && r.ok === true && Number(r.added) === 1
+            && p.title === '盐商改走陆路' && p.gua === '巽——渗透影响'
+            && p.causalLine.indexOf('来自用户设想') === 0 && J(p.tags) === J(['盐商', '镖局'])
+            && listHtml.indexOf('盐商改走陆路') >= 0 && listHtml.indexOf('巽——渗透影响') >= 0
+            && prompt.indexOf('客观事件') >= 0 && prompt.indexOf('牵引向主角') >= 0
+            && prompt.indexOf('盐商') >= 0;      // 关键词关联的既有数据进了提示词
+        if (!allOk) console.log('BL3-DEBUG ' + JSON.stringify({ opened: opened, r: { ok: r.ok, added: r.added, seed: r.seed, err: r.error }, p: { t: p.title, gua: p.gua, causal: p.causalLine, tags: p.tags }, hasList: listHtml.indexOf('盐商改走陆路') >= 0, promptOk: prompt.indexOf('客观事件') >= 0 }));
+        return allOk;
+    } finally {
+        host.ctx.generateRaw = savedGen;
+        rt.state.parallels = keepPars;
+        rt.state.atoms = keepAtoms;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');

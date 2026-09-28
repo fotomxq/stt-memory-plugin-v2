@@ -391,13 +391,40 @@ function mergeDelta(delta0, floorRange) {
             }
         }
         for (const p of delta.parallels?.update || []) {
+            // v2.99.0 修复（用户报告「平行世界的卦象等设计需修复」）：
+            //   原实现（**V1 同源缺陷**）用 `state.parallels[i] = n` **整条替换** —— 只保留 id/uses/updatedAt/goalOdds，
+            //   其余字段全部以「AI 本次给了什么」为准。而推演/推进提示词里 卦象 / 因果线 / 涉及角色 / 发生地点 /
+            //   来源 / 预演 / 约束 都是**可选**字段（「可同步更新 …」）→ AI 的常规「更新」只给标题+正文时，
+            //   **卦象与因果线会被清空**（用户看到的就是「卦象没了」）。
+            //   现在改为**逐字段合并**（与 atoms / items / currencies 的更新口径一致）：本次没给的字段**保留旧值**；
+            //   集合类字段（标签）走 `mergeTags`，目标可能性「本次给了才覆盖」，重要度「本次没给才沿用」。
             const n = normalizeParallel(p);
             if (!n) continue;
             const i = state.parallels.findIndex(x => x.id === n.id || (p && p.title && x.title === String(p.title)));
             if (i < 0) { if (n.id) state.parallels.push(n); continue; }
             const prev = state.parallels[i];
+            const has = (v) => !(v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length));
+            const raw = p || {};
             n.id = prev.id; n.uses = prev.uses || 0; n.updatedAt = Date.now();
-            if (Array.isArray(prev.goalOdds) && (!Array.isArray(n.goalOdds) || !n.goalOdds.length)) n.goalOdds = prev.goalOdds;
+            // —— 文本/标量字段：本次为空则沿用旧值 ——
+            if (!has(n.title) && has(prev.title)) n.title = prev.title;
+            if (!has(n.text) && has(prev.text)) n.text = prev.text;
+            if (!has(n.type) && has(prev.type)) n.type = prev.type;
+            if (!has(n.date) && has(prev.date)) n.date = prev.date;
+            if (!has(n.time) && has(prev.time)) n.time = prev.time;
+            if (!has(n.gua) && has(prev.gua)) n.gua = prev.gua;
+            if (!has(n.causalLine) && has(prev.causalLine)) n.causalLine = prev.causalLine;
+            if (!has(n.location) && has(prev.location)) n.location = prev.location;
+            // —— 集合字段 ——
+            if (!has(n.characters) && has(prev.characters)) n.characters = (prev.characters || []).slice();
+            if (!has(n.goalOdds) && has(prev.goalOdds)) n.goalOdds = (prev.goalOdds || []).map((g) => Object.assign({}, g));
+            n.tags = mergeTags(prev.tags || [], n.tags || []);
+            // —— 关联/派生字段：AI 从不产出，必须原样保留（否则来源/预演/约束/转正标记会被清空）——
+            for (const k of ['sourceRefs', 'previews', 'constraintNote', 'planRef', 'suspenseRef', 'promotedTo', 'promotedAt']) {
+                if (!has(n[k]) && has(prev[k])) n[k] = Array.isArray(prev[k]) ? prev[k].slice() : prev[k];
+            }
+            // —— 重要度：AI 本次没给（原始入参无该键）→ 沿用旧值（避免被 normalizeParallel 的默认 0.5 冲掉）——
+            if (raw.importance === undefined && raw['重要度'] === undefined && prev.importance !== undefined) n.importance = prev.importance;
             state.parallels[i] = n;
         }
         for (const id of delta.parallels?.remove || []) { try { dropRelLinks('parallels', [id]); } catch (e) { } state.parallels = (state.parallels || []).filter(x => x.id !== id && x.title !== id); }
