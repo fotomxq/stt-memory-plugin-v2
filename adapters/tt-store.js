@@ -470,7 +470,10 @@ export async function ttGetBytes(name, opts) {
     const order = (known === 'blob') ? [tryBlob, tryKv] : [tryKv, tryBlob];
     for (const step of order) {
         const hit = await step();
-        if (hit) return hit;
+        // v3.0.11：**读到即清未命中抑制**。此前成功读取不清 miss 记录，于是「先探测未命中（30s 抑制）
+        //   → 期间原生里其实已有新值 → 下一次读被抑制判为未命中 → 回退读酒馆用户目录的陈旧副本」
+        //   会造成同键反复读到旧数据（真机「刷新后已分析楼层成片变回未摘要」的放大器）。
+        if (hit) { missClear(ns, key); return hit; }
     }
     missMark(ns, key);
     return { found: false };
