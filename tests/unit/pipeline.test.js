@@ -254,6 +254,27 @@ A('F5 并发（独立分组）**聚合为一条读数**：多路同时跑互不�
     return okAgg && snapshot().busy === false;
 })(), () => snapshot());
 
+A('F5b v3.0.3 并发聚合读数选**代表运行**：AI 运行在跑时，聚合 label/阶段取**最新一路 AI**（后台保存不会把标题串成「保存记忆文件」）；没有 AI 运行才取最新一路', (() => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}) });       // 只走「管线忙」分支（E 组口径）
+    // ① 后台「保存记忆文件」（io，先生效）+ 随后开始的 AI 运行 → 聚合读数应指向 AI
+    const io = (beginPipeline('保存记忆文件', { chars: 100, kind: 'io' }) || {}).runId;
+    const ai = (beginPipeline('批量摘要', { chars: 4000, kind: 'ai' }) || {}).runId;
+    setPipelinePhase('请求 AI（第 13-13 楼）', { id: ai });
+    const s1 = snapshot();
+    const t1 = pipelineStatusText(Date.now());
+    const okAi = s1.busy === true && s1.runs === 2 && s1.label === '批量摘要'
+        && s1.phase === '请求 AI（第 13-13 楼）'
+        && String(t1.txt).indexOf('正在处理：批量摘要') === 0;
+    endPipeline(true, ai); endPipeline(true, io);
+    // ② 只剩后台任务 → 取最新开始的那一路（这里只有同步一路）
+    const sy = (beginPipeline('跨端同步', { chars: 10, kind: 'sync' }) || {}).runId;
+    const s2 = snapshot();
+    const okIo = s2.label === '跨端同步' && s2.labels.length === 1;
+    endPipeline(true, sy);
+    return okAi && okIo && snapshot().busy === false;
+})(), () => snapshot());
+
 A('F6 面板状态行**不再只看批次忙位**：单路 AI（批次空闲）时也显示「正在处理：<行为>」+ token + 倒计时，并启动 500ms 心跳', (() => {
     boot();
     setPanelHooks2({ busy: () => false, batchProgress: () => ({}) });     // 批次**空闲**

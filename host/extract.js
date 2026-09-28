@@ -37,6 +37,8 @@ import { cleanText } from '../core/html-text.js';
 //   于是用户真正在看的「批量摘要 / 单楼分析」永远没有 token 计数、预估倒计时、阶段与结构摘要。
 //   现在统一经 `genTracked()` 记账（并发安全：每路各持自己的 runId）。
 import { beginPipeline, endPipeline, addStreamChunk, noteResponseText, setPipelinePhase, setPipelineKeys, summarizeResponseKeys } from '../core/pipeline.js';
+// v3.0.3（用户要求）：「每次被动提取记忆…应该触发保存到服务器的操作」—— 提取结束后**立即**落一次服务端
+import { persistNow } from '../core/model/runtime.js';
 
 const extractState = {
     runs: 0, ok: 0, fail: 0, lastAt: 0, lastFloor: -1, lastReason: '', lastAdded: 0, lastMs: 0, lastDims: [], busy: false,
@@ -276,6 +278,8 @@ async function runSeparateGroup(groupDim, dims, floorText, floorRange, gen, o) {
         if (ok) {
             try { postCalib = recalibrateAfterExtract(atomSig); } catch (e) { /* 忽略 */ }
             try { scheduleParallelWeave(floorRange, jsExtractKeywords(floorText)); } catch (e) { /* 忽略 */ }
+            // v3.0.3：独立分组的每一组落库后立即写服务端
+            try { persistNow('提取记忆（分组）'); } catch (e) { /* 忽略 */ }
         }
         return { dim: groupDim, ok, label, postCalib };
     } catch (e) {
@@ -359,6 +363,8 @@ export async function analyzeFloor(floorId, opts) {
         // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
         const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
         recordProcessedFloors(Number(floorId), Number(floorId));
+        // v3.0.3：单楼（也是**被动自动提取**走的路径）落库后立即写服务端（台账 / 重要度 / 时钟一并落盘）
+        try { persistNow('提取记忆（单楼）'); } catch (e) { /* 忽略 */ }
         const ms = Date.now() - t0;
         extractState.ok += 1;
         extractState.lastReason = '';
@@ -464,6 +470,8 @@ export async function analyzeSegment(start, end, opts) {
         const atomSig = atomsSignature();      // v2.81.0：分析前的情节基线
         const mr = mergeDelta(delta, { start: s0, end: e0 });
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
+        // v3.0.3：分段（批量摘要）落库后立即写服务端
+        if (mr && mr.ok) { try { persistNow('提取记忆（分段）'); } catch (e) { /* 忽略 */ } }
         if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
         // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
         const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
