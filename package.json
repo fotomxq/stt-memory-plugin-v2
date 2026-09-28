@@ -1,6 +1,6 @@
 {
   "name": "ftt-memory-v2",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "private": true,
   "type": "module",
   "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",
@@ -12,6 +12,8 @@
     "test": "node tests/unit/run.js",
     "smoke": "node tests/smoke-test.js",
     "local": "node tests/local/run.js",
+    "local:bridge": "node tests/local/bridge.mjs",
+    "local:bridge:selftest": "node tests/local/bridge.mjs --selftest",
     "local:leak": "node scripts/check-local-leak.js",
     "gate": "node scripts/check-core-purity.js && node scripts/check-core-refs.js && node scripts/check-i18n.js && node scripts/check-version-sync.js && node scripts/check-docs.js && node scripts/check-local-leak.js && node scripts/check-changelog-json.js && node scripts/check-ui-spec.js && node tests/unit/run.js && node tests/smoke-test.js",
     "ui-spec": "node scripts/check-ui-spec.js",
