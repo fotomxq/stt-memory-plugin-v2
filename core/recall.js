@@ -1357,6 +1357,57 @@ function scheduleUseFlush() {
 // 取字段值（对象路径）
 
 /**
+ * v2.98.0（用户报告「获取时间，没有从最新情节自动抓取数据」）——**可信情节列表（最新在前）**。
+ *
+ * 为什么需要它：`resolveStoryClock` 原实现用 `latestTrustedPlot({ needDate: true })` **只挑一条**节点，
+ *   并由这一条同时提供 date / time / location。于是当**最新情节只有「时间」没有「日期」**时（AI 很常见的输出：
+ *   给了「时间：深夜」却没写「日期」），整条最新情节被跳过 → 时钟退回**次新那条带日期的旧情节**的
+ *   date+time+location —— 结果就是用户看到的「时间没有从最新情节抓取」；若一条带日期的情节都没有，
+ *   则**完全取不到**（连时间/地点也拿不到，总览只能灰字显示「参考最近情节」）。
+ *
+ * 本函数把「可信情节」的**筛选与排序**抽成一份列表（最新在前），供上层**逐字段**取值：
+ *   筛选：排除 已失效 / 已总结隐藏（`hidden`/`summarizedBy`）/ 情节总结条（`mergedSummary`）；
+ *   排序：楼层（floorEnd→floorStart）降序 → 剧情时间降序 → id 降序。
+ * @returns {Array<{dim:string,node:object,date:string,time:string,location:string}>}
+ */
+function trustedPlotList() {
+    try {
+        const list = (state.atoms || []).filter((a) => a && a.validity !== 'inactive'
+            && !(a.hidden === true) && !String(a.summarizedBy || '').trim() && !a.mergedSummary);
+        if (!list.length) return [];
+        const floorOf = (a) => Math.max(Number(a.floorEnd) || 0, Number(a.floorStart) || 0);
+        // v2.98.0：排序**只在「两边都有楼层信息」时**以楼层为准（原口径不变）；
+        //   一旦有一方**没有楼层信息**（手动新增/编辑的情节、导入的旧数据、被删楼标记为未知区间的情节…），
+        //   楼层给不出位置 → 改用**剧情日期**判谁更新（都无日期时才回落到「有位置的在前」）。
+        //   为什么必须这样：手动新增的情节没有 floor（=0）会被排到最后 → 它的日期/时间**永远取不到**。
+        const dateOf = (a) => (clockDateValid(a.date) ? String(a.date).slice(0, 10) : '');
+        const sorted = list.slice().sort((a, b) => {
+            const af = floorOf(a), bf = floorOf(b);
+            const aKnown = af > 0, bKnown = bf > 0;
+            if (aKnown && bKnown) {
+                return (bf - af)
+                    || (atomTimeDesc(a, b))
+                    || String(b.id || '').localeCompare(String(a.id || ''));
+            }
+            const ad = dateOf(a), bd = dateOf(b);
+            if (ad && bd && ad !== bd) return bd.localeCompare(ad);          // 剧情日期新的在前
+            if (aKnown !== bKnown) return aKnown ? -1 : 1;                  // 无可比日期 → 有位置的在前
+            return (atomTimeDesc(a, b)) || String(b.id || '').localeCompare(String(a.id || ''));
+        });
+        return sorted.map((a) => {
+            const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
+            return {
+                dim: 'atoms', node: a,
+                date: clockDateValid(a.date) ? String(a.date).slice(0, 10) : '',
+                time: String(a.time || '').slice(0, 20),
+                location: String(a.location || locs[0] || '').slice(0, 60),
+            };
+        });
+    } catch (e) { return []; }
+}
+
+/**
+ * **唯一可信的时钟来源**：最新一条「情节」（v2.51.0 用户要求「时钟改版：只从情节最新的一条获取」）。/**
  * **唯一可信的时钟来源**：最新一条「情节」（v2.51.0 用户要求「时钟改版：只从情节最新的一条获取」）。
  * 排除项（都不可信/不是剧情当下）：
  *   · `hidden === true` 或 `summarizedBy`（已总结隐藏的原情节）；
@@ -1370,22 +1421,11 @@ function scheduleUseFlush() {
 function latestTrustedPlot(opts) {
     try {
         const o = opts || {};
-        const list = (state.atoms || []).filter((a) => a && a.validity !== 'inactive'
-            && !(a.hidden === true) && !String(a.summarizedBy || '').trim() && !a.mergedSummary);
-        if (!list.length) return null;
-        const floorOf = (a) => Math.max(Number(a.floorEnd) || 0, Number(a.floorStart) || 0);
-        const sorted = list.slice().sort((a, b) => (floorOf(b) - floorOf(a))
-            || (atomTimeDesc(a, b))
-            || String(b.id || '').localeCompare(String(a.id || '')));
-        for (const a of sorted) {
-            const d = clockDateValid(a.date) ? String(a.date).slice(0, 10) : '';
-            if (o.needDate && !d) continue;
-            const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
-            return {
-                dim: 'atoms', node: a, date: d,
-                time: String(a.time || '').slice(0, 20),
-                location: String(a.location || locs[0] || '').slice(0, 60),
-            };
+        const sorted = trustedPlotList();
+        if (!sorted.length) return null;
+        for (const it of sorted) {
+            if (o.needDate && !it.date) continue;
+            return it;
         }
         return null;
     } catch (e) { return null; }
@@ -1512,7 +1552,7 @@ function importancePct(item) {
     try { return Math.round(Math.max(0, Math.min(1, Number(item && item.importance) || 0)) * 100); } catch (e) { return 0; }
 }
 
-export { calcImportance, importancePct, latestTrustedPlot, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
+export { calcImportance, importancePct, latestTrustedPlot, trustedPlotList, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {

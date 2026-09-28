@@ -4553,6 +4553,47 @@ await assert('BJ1 真实点击总览「第N楼」→ **同步**进入分析中�
 })(), '');
 
 
+// ---------- BK 剧情时钟：从最新情节自动抓取（v2.98.0 修复逐字段取值） ----------
+// 用户报告：「获取时间，没有从最新情节自动抓取数据。」
+await assert('BK1 端到端：最新情节只写「时间/地点」不写「日期」时，**时间与地点仍按最新情节落盘**（修复前整条被跳过 → 时间停在旧情节；一条带日期的情节都没有时更是完全取不到）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CE = await import('../core/clock-extract.js');
+    const CLK = await import('../ui/clock.js');
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepState = JSON.parse(JSON.stringify(RT.state.state || {}));
+    try {
+        // ① 旧情节（带日期+时间+地点） + 最新情节（只有时间+地点）
+        RT.state.atoms = [
+            { id: 'bk-old', text: '甲在码头卸货。', title: '卸货', date: '1919-11-20', time: '08:00', locations: ['码头'], floorStart: 1, floorEnd: 1, validity: 'active', tags: [] },
+            { id: 'bk-new', text: '夜里甲躲进酒馆避雨。', title: '避雨', date: '', time: '深夜', locations: ['酒馆'], floorStart: 2, floorEnd: 2, validity: 'active', tags: [] },
+        ];
+        RT.state.state.date = ''; RT.state.state.time = ''; RT.state.state.location = '';
+        const r1 = CE.resolveStoryClock({});
+        const changed1 = CE.clockAutoExtractOnce();
+        const html1 = String(CLK.clockSectionHtml() || '');
+        // 第二阶段会重写 state → 先把第一阶段结果快照下来再继续
+        const s1 = { date: RT.state.state.date, time: RT.state.state.time, location: RT.state.state.location };
+        // ② 一条带日期的情节都没有：时间/地点仍必须取到
+        RT.state.atoms = [
+            { id: 'bk-only', text: '只有时间的楼。', title: '只有时间', date: '', time: '傍晚', locations: ['钟鼓楼'], floorStart: 3, floorEnd: 3, validity: 'active', tags: [] },
+        ];
+        RT.state.state.date = ''; RT.state.state.time = ''; RT.state.state.location = '';
+        const r2 = CE.resolveStoryClock({});
+        const changed2 = CE.clockAutoExtractOnce();
+        const allOk = r1.date === '1919-11-20' && r1.time === '深夜' && r1.location === '酒馆'
+            && changed1 === true && s1.time === '深夜' && s1.location === '酒馆'
+            && html1.indexOf('⏱ 时间：深夜') >= 0 && html1.indexOf('参考最近情节') < 0
+            && r2.date === '' && r2.time === '傍晚' && r2.location === '钟鼓楼'
+            && changed2 === true && RT.state.state.time === '傍晚';
+        return allOk;
+    } finally {
+        RT.state.atoms = keepAtoms;
+        RT.state.state = keepState;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
