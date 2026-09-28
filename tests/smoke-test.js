@@ -2299,14 +2299,22 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
         await entry.popupAction('snapCreate', {});     // 先建一份快照，确保「统计 + 折叠明细」都有内容
         const h = String((await entry.popupAction('refresh', {})).html || '');
         const at = (s) => h.indexOf(s);
-        // ① 分块与顺序 + 危险动作隔离 + 粘贴框与其按钮相邻
+        // ① 分块与顺序（v2.96.0 用户要求「危险操作放到最后」：导出 → 导入 → 快照链 → 本地缓冲 → **危险区**）
+        //    + 危险动作隔离 + 粘贴框与其按钮相邻
+        const dangerFrom = at('data-ftt-danger-zone');
+        const dangerTail = h.slice(dangerFrom);
         const layoutOk = at('📤 导出备份') >= 0 && at('📥 导入存档（合并）') > at('📤 导出备份')
-            && at('⚠️ 删除数据（不可恢复）') > at('📥 导入存档（合并）')
-            && at('🧬 快照链') > at('⚠️ 删除数据（不可恢复）') && at('🗂 本地缓冲') > at('🧬 快照链')
+            && at('🧬 快照链') > at('📥 导入存档（合并）') && at('🗂 本地缓冲') > at('🧬 快照链')
+            && dangerFrom > at('🗂 本地缓冲')
+            && at('✂️ 删除聊天楼层') > dangerFrom && at('🗑 删除数据（不可恢复）') > at('✂️ 删除聊天楼层')
+            && at('data-ftt-action="reset"') > at('🗑 删除数据（不可恢复）')
             && at('data-ftt-import="1"') < at('data-ftt-action="importStateApply"')
             && h.slice(at('data-ftt-import="1"'), at('data-ftt-action="importStateApply"')).indexOf('本地缓冲') < 0
-            && h.slice(at('⚠️ 删除数据（不可恢复）'), at('🧬 快照链')).indexOf('exportState') < 0
-            && h.indexOf('不会删除') >= 0 && h.indexOf('不可恢复') >= 0;
+            // 危险区里不再夹任何安全动作（导出 / 导入 / 临时快照）
+            && dangerTail.indexOf('exportState') < 0 && dangerTail.indexOf('importStateOpen') < 0
+            && dangerTail.indexOf('importStateApply') < 0 && dangerTail.indexOf('data-ftt-import=') < 0
+            && h.indexOf('不会删除') >= 0 && h.indexOf('不可恢复') >= 0
+            && h.indexOf('以下两块都会写入不可逆的改动') >= 0;
         // ② 快照：统计行在明处、明细折叠（默认无 open）
         const snapOk = at('data-ftt-snap-stat') >= 0 && h.indexOf('可还原原子 ') >= 0 && h.indexOf('删除台账 ') >= 0
             && at('data-ftt-snap-details') > at('data-ftt-snap-stat')

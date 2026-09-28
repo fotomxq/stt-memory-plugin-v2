@@ -1442,11 +1442,26 @@ function floorTrimPrecheckCache(keep, floors) {
  *
  * v2.54.0 数据管理页重排（用户报告：「下面的导入和导出 UI 设计有问题，请完善」＋
  *   「提示信息过于罗嗦，完全没告清楚用户这是什么、使用有什么后果」）：
- *   ① 按**用途分块**：📤 导出备份 / 📥 导入存档（合并）/ ⚠️ 删除数据（不可恢复）/ 🧬 快照链 / 🗂 本地缓冲；
- *   ② 导出与导入不再和「清空」类按钮挤在同一行（危险动作隔离，各自带后果说明）；
+ *   ① 按**用途分块**；② 导出与导入不再和「清空」类按钮挤在同一行（危险动作隔离，各自带后果说明）；
  *   ③ 粘贴导入的文本框与它的「导入」按钮**紧挨在一起**（旧布局把按钮甩到缓冲分节之后）；
  *   ④ 每条提示只讲两件事：这是做什么的 + 做了会怎样（不写实现细节）。
+ *
+ * v2.96.0 顺序调整（用户要求）：「设定-数据管理，危险操作放到最后，顺序调整。」
+ *   → 新顺序：📤 导出备份 → 📥 导入存档（合并）→ 🧬 快照链（自动备份）→ 🗂 本地缓冲
+ *             → **⚠️ 危险操作区**（✂️ 删除聊天楼层 → 🗑 删除数据（不可恢复））
+ *   口径：**安全/常规在前、不可逆在后**；危险区以一条警示横幅开场，且**越不可逆的越靠后**
+ *   （删楼会自动备份 + 可用导出的 JSON 还原 → 放在删数据之前；「清空当前角色记忆」永远在页面最末）。
  */
+/**
+ * v2.96.0（用户要求「危险操作放到最后，顺序调整」）——**危险操作区开场横幅**。
+ * 复用公共件 `.ftt-item--warn`（D9 §4 归属表内，无新增 CSS/类）：先把「不可逆 + 先备份」讲清楚，
+ * 再把两块危险动作排在页面**最末**（顺序：可回滚的删楼 → 不可恢复的删数据）。
+ */
+const DANGER_ZONE_BANNER = '<div class="ftt-item ftt-item--warn ftt-inline" data-ftt-danger-zone>'
+    + '<b class="ftt-pipe-title">⚠️ 危险操作（不可恢复）</b>'
+    + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">以下两块都会写入不可逆的改动：'
+    + '删聊天楼层会自动生成明文备份（可用导出的 JSON 还原）；删除插件数据则无法恢复 —— 建议先「📤 导出备份」。</span></div>';
+
 function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
@@ -1462,10 +1477,20 @@ function pageExtraHtml(pid) {
             + '<textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
             '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateApply" title="导入上方文本框中的 JSON（合并规则同上）">⬆ 导入粘贴内容</button></div>',
             '</div>',
-            // ③ 删楼（v2.94.0；与「删除数据」分开：删的是**聊天楼层**，不是插件记忆 —— 用户约定落在这里）
+            // ③ 快照链（只统计 + 动作，明细折叠在「高级」里）—— 安全（自动备份）
+            '<div class="ftt-section"><div class="ftt-sec-title">🧬 快照链（自动备份）</div>', snapshotSectionHtml(), '</div>',
+            // ④ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来）—— 只动本机缓存，不碰记忆
+            '<div class="ftt-section">', bufferSectionHtml(), '</div>',
+
+            // ── v2.96.0（用户要求「危险操作放到最后」）：**危险操作区**永远在页面末尾 ──
+            //   开场横幅复用公共件 `.ftt-item--warn`（D9 §4 归属表内，无新增 CSS），把「不可逆」先讲清楚；
+            //   区内顺序 = **可回滚的在前**（删楼会自动明文备份，且能用导出的 JSON 还原）→
+            //                 **不可恢复的在后**（🗑 清空当前角色记忆是页面最后一个按钮）。
+            DANGER_ZONE_BANNER,
+            // ⑤ 删楼（v2.94.0；与「删除数据」分开：删的是**聊天楼层**，不是插件记忆 —— 用户约定落在这里）
             floorTrimSectionHtml(),
-            // ④ 危险动作单独成块
-            '<div class="ftt-section"><div class="ftt-sec-title">⚠️ 删除数据（不可恢复）</div>',
+            // ⑥ 删除插件数据（不可恢复）
+            '<div class="ftt-section"><div class="ftt-sec-title">🗑 删除数据（不可恢复）</div>',
             '<div class="ftt-hint">下面两项都会永久删除本地记录，<b>删除前建议先「⬇ 导出 JSON 文件」备份</b>。</div>',
             '<div class="ftt-row">',
             '<button class="ftt-btn" data-ftt-action="clearFloors" title="只清「已处理楼层」的计数，不删除任何记忆条目">🧹 清除已处理楼层记录</button>',
@@ -1477,10 +1502,6 @@ function pageExtraHtml(pid) {
             '<div class="ftt-hint ftt-mb-0">· 清除已处理楼层记录：只重置「哪些楼层已摘要」，记忆条目一条不删；</div>',
             '<div class="ftt-hint">· 清空当前角色记忆：删除该角色的全部记忆条目，其它角色不受影响。</div>',
             '</div>',
-            // ④ 快照链（只统计 + 动作，明细折叠在「高级」里）
-            '<div class="ftt-section"><div class="ftt-sec-title">🧬 快照链（自动备份）</div>', snapshotSectionHtml(), '</div>',
-            // ⑤ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来）
-            '<div class="ftt-section">', bufferSectionHtml(), '</div>',
         ].join('\n');
     }
     if (pid === 'about') {

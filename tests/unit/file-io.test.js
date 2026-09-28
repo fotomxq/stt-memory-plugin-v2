@@ -262,7 +262,7 @@ A('I3 文本框兜底路径仍可用：`importStateApply` 读 `[data-ftt-import]
     return r.ok === true && got === '{"state":{}}' && String(panelState().note || '').indexOf('新增 2 条') >= 0;
 })(), '');
 
-A('I4 数据管理页导出/导入 UI（v2.54.0 重排）：按用途分块、危险动作隔离、粘贴框与其按钮相邻、提示说明「这是什么 / 有什么后果」', (async () => {
+A('I4 数据管理页导出/导入 UI（v2.54.0 重排 + v2.96.0 顺序调整「危险操作放到最后」）：按用途分块、危险动作隔离并**全部排在页面末尾**、粘贴框与其按钮相邻、提示说明「这是什么 / 有什么后果」', (async () => {
     boot();
     openPanel('settings');
     await panelAction('settingsSub', { sub: 'data' });
@@ -270,19 +270,27 @@ A('I4 数据管理页导出/导入 UI（v2.54.0 重排）：按用途分块、�
     const at = (s) => html.indexOf(s);
     const seg = (a, b) => html.slice(at(a), at(b));
     const linkGroup = seg('data-ftt-import="1"', 'data-ftt-action="importStateApply"');
-    const danger = seg('⚠️ 删除数据（不可恢复）', '🧬 快照链（自动备份）');
+    // 危险区（横幅 → 删楼 → 删数据）：一直到页面结束，中间不再夹安全分块
+    const danger = html.slice(at('data-ftt-danger-zone'));
     return at('📤 导出备份') >= 0 && at('data-ftt-action="exportState"') >= 0 && at('⬇ 导出 JSON 文件') >= 0
         && at('📥 导入存档（合并）') >= 0 && at('data-ftt-action="importStateOpen"') >= 0 && at('⬆ 选择文件导入') >= 0
         && at('data-ftt-import="1"') >= 0 && at('data-ftt-action="importStateApply"') >= 0 && at('⬆ 导入粘贴内容') >= 0
         // 粘贴框与它的导入按钮之间不再插别的分节（旧版把按钮甩到「本地缓冲」之后）
         && at('data-ftt-import="1"') < at('data-ftt-action="importStateApply"')
         && linkGroup.indexOf('ftt-sec-title') < 0 && linkGroup.indexOf('本地缓冲') < 0
-        // 危险动作单独成块、排在导入之后，且不与导出/导入同块
-        && at('⚠️ 删除数据（不可恢复）') > at('📥 导入存档（合并）')
-        && at('data-ftt-action="reset"') > at('⚠️ 删除数据（不可恢复）')
+        // v2.96.0：安全/常规分块在前（导出 → 导入 → 快照链 → 本地缓冲），危险区整体在**最后**
+        && at('🧬 快照链（自动备份）') > at('📥 导入存档（合并）')
+        && at('🗂 本地缓冲') > at('🧬 快照链（自动备份）')
+        && at('data-ftt-danger-zone') > at('🗂 本地缓冲')
+        && at('✂️ 删除聊天楼层') > at('data-ftt-danger-zone')
+        && at('🗑 删除数据（不可恢复）') > at('✂️ 删除聊天楼层')
+        && at('data-ftt-action="reset"') > at('🗑 删除数据（不可恢复）')
+        // 危险区里不出现安全动作（导出/导入按钮不与危险动作同块）
         && danger.indexOf('exportState') < 0 && danger.indexOf('importStateOpen') < 0
+        && danger.indexOf('importStateApply') < 0 && danger.indexOf('data-ftt-import="1"') < 0
         // 提示讲清后果
         && html.indexOf('不会删除') >= 0 && html.indexOf('不可恢复') >= 0
+        && html.indexOf('以下两块都会写入不可逆的改动') >= 0
         && html.indexOf('只重置「哪些楼层已摘要」') >= 0;
 })(), '');
 
