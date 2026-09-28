@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.7",
+  "version": "3.0.8",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.8",
+      "date": "2026-09-28",
+      "title": "调试桥真机核对：修维度名 + 目标主机可配（支持调试手机端）",
+      "points": [
+        "① 真机核对结论：调试桥在真实 TauriTavern 上已跑通：桥接服务一起，插件约 3 秒自动拨入（失败每 3 秒重试）；宿主识别为 TauriTavern（ABI v1，a…",
+        "② 修复 ftt.memoryShape 的维度名（真机才暴露的真缺陷）：states → currentStates（状态记录）、roster → npcs（名册）：前者原名在…",
+        "③ 调试目标可配：支持调试手机端（默认仍只连本机）：adapters/debug-bridge.js 新增目标主机（setBridgeHost / bridgeTarget / …"
+      ]
+    },
     {
       "version": "3.0.7",
       "date": "2026-09-28",

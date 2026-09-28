@@ -1,22 +1,27 @@
 // ============================================================
-// 单元测试 · 本地调试桥（v3.0.7）
+// 单元测试 · 本地调试桥（v3.0.8）
 //   `adapters/debug-bridge.js` + `ui/debug.js` 的桥接装配
 //
 // 重点覆盖用户硬要求：
 //   ① **跨宿主**：酒馆原生（浏览器）与 TauriTavern 都能用；
 //   ② **非 TauriTavern 不崩溃**：宿主类方法只降级返回，不抛错；
 //   ③ **只读**：只派发白名单方法，改动型动作一律拒绝。
+//   v3.0.8：目标主机可配（默认回环）+ 真机 bug 回归（memoryShape 维度名）
 // ============================================================
 import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harness/st-mock.js';
 import {
     bridgeDispatch, bridgeState, bridgeStats, bridgeResetStats, bridgeSupported, bridgeHost,
     bridgeMethodNames, setBridgeMethods, setBridgePort, bridgePort, bridgeStart, bridgeStop,
-    bridgeResetProbe, BRIDGE_PROTOCOL, BRIDGE_DEFAULT_PORT,
+    bridgeResetProbe, setBridgeHost, bridgeTarget, isLoopbackHost, BRIDGE_PROTOCOL,
+    BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST,
 } from '../../adapters/debug-bridge.js';
 import { ttResetSession } from '../../adapters/tt-store.js';
 import { buildBridgeMethods, installDebugBridge, debugBridgeInstalled, debugBridgeSectionHtml, DEBUG_ACTIONS } from '../../ui/debug.js';
+import { state, setKernelState } from '../../core/model/runtime.js';
+import { emptyState } from '../../core/state.js';
+import { DIMENSIONS } from '../../core/constants.js';
 
-const R = makeReporter('debug-bridge v3.0.7 本地调试桥（跨宿主 / 只读 / 非 TauriTavern 不崩）');
+const R = makeReporter('debug-bridge v3.0.8 本地调试桥（跨宿主 / 只读 / 非 TauriTavern 不崩 / 可调目标主机）');
 const A = (n, c, e) => R.assert(n, !!c, e);
 
 const doc = makeDocument([]);
@@ -69,6 +74,31 @@ function useTauriTavern(withDev = true) {
             setBridgePort(8791) === true && bridgePort() === 8791
             && setBridgePort(0) === false && setBridgePort(65536) === false && setBridgePort('abc') === false && setBridgePort(1.5) === false
             && bridgePort() === 8791);
+
+        // v3.0.8：目标主机（默认回环；可改为局域网地址以调试手机端）
+        A('A3 目标主机默认回环，且 isLoopbackHost 判定正确',
+            BRIDGE_DEFAULT_HOST === '127.0.0.1' && bridgeTarget() === BRIDGE_DEFAULT_HOST
+            && isLoopbackHost('127.0.0.1') && isLoopbackHost('localhost') && isLoopbackHost('::1')
+            && !isLoopbackHost('192.168.1.50') && !isLoopbackHost('example.local'));
+
+        A('A4 setBridgeHost 接受主机名/IPv4/方括号 IPv6，拒绝带协议或路径的输入（非法值不改动）', (() => {
+            const okCases = ['192.168.1.50', 'my-host.local', '[::1]', 'localhost'];
+            const badCases = ['http://x', 'a/b', 'a b', '"x"', '', null, 'a'.repeat(300)];
+            const okAll = okCases.every((h) => { const r = setBridgeHost(h); return r === true && bridgeTarget() === h; });
+            setBridgeHost('10.0.0.9');
+            const badAll = badCases.every((h) => setBridgeHost(h) === false);
+            return okAll && badAll && bridgeTarget() === '10.0.0.9';
+        })(), { target: bridgeTarget() });
+
+        A('A5 bridgeState 暴露目标主机与是否回环（供 UI 提示与外部工具识别）', (() => {
+            setBridgeHost('127.0.0.1');
+            const s1 = bridgeState();
+            setBridgeHost('192.168.1.50');
+            const s2 = bridgeState();
+            const r = s1.targetHost === '127.0.0.1' && s1.loopback === true && s2.targetHost === '192.168.1.50' && s2.loopback === false;
+            setBridgeHost('127.0.0.1');
+            return r;
+        })(), bridgeState());
     }
 
     console.log('\n[B] 只读白名单与派发语义');
@@ -113,6 +143,24 @@ function useTauriTavern(withDev = true) {
             { names, forbidden: FORBIDDEN });
         A('B8 插件调试导出里的改动型动作确实存在但**未**被登记（对照）',
             DEBUG_ACTIONS.indexOf('dbgClear') >= 0 && names.indexOf('ftt.dbgClear') < 0 && names.indexOf('dbgClear') < 0);
+
+        // v3.0.8 回归：真机上发现 memoryShape 的维度名写错（states/roster）导致两项恒为 null
+        setBridgeMethods(buildBridgeMethods());
+        setKernelState(emptyState());
+        state.currentStates = [{ id: 's1' }, { id: 's2' }, { id: 's3' }];
+        state.npcs = [{ id: 'n1' }];
+        state.atoms = [{ id: 'a1' }];
+        const shape = (await bridgeDispatch({ id: 'shape', method: 'ftt.memoryShape' })).result;
+        A('B9 memoryShape 键集从 DIMENSIONS 派生（+ npcs/vars/deleted），且**不含**写错的 states / roster',
+            DIMENSIONS.every((d) => Object.prototype.hasOwnProperty.call(shape, d.kind))
+            && ['npcs', 'vars', 'deleted'].every((k) => Object.prototype.hasOwnProperty.call(shape, k))
+            && !Object.prototype.hasOwnProperty.call(shape, 'states')
+            && !Object.prototype.hasOwnProperty.call(shape, 'roster'),
+            Object.keys(shape));
+
+        A('B10 memoryShape 对真实容器返回条数（currentStates / npcs 不再为 null）',
+            shape.currentStates === 3 && shape.npcs === 1 && shape.atoms === 1,
+            { currentStates: shape.currentStates, npcs: shape.npcs, atoms: shape.atoms });
     }
 
     console.log('\n[C] 跨宿主兼容（核心要求）');
@@ -190,13 +238,27 @@ function useTauriTavern(withDev = true) {
         A('D1 installDebugBridge 幂等且登记了白名单方法', r1.ok === true && r1.methods === r2.methods && r1.methods >= 20 && debugBridgeInstalled() === true, r1);
 
         const html = debugBridgeSectionHtml();
-        A('D2 调试桥区块渲染出开关 / 端口输入 / 状态与只读说明',
+        A('D2 调试桥区块渲染出开关 / 目标输入 / 状态与只读说明',
             html.indexOf('🔌 调试桥') >= 0 && html.indexOf('data-ftt-action="bridgeToggle"') >= 0
-            && html.indexOf('data-ftt-bridge-port') >= 0 && html.indexOf('data-ftt-action="bridgePortSet"') >= 0
+            && html.indexOf('data-ftt-bridge-port') >= 0 && html.indexOf('data-ftt-action="bridgeTargetSet"') >= 0
             && html.indexOf('只读') >= 0, html.slice(0, 240));
 
         A('D3 调试桥动作已登记进 DEBUG_ACTIONS（经面板分发可达）',
-            DEBUG_ACTIONS.indexOf('bridgeToggle') >= 0 && DEBUG_ACTIONS.indexOf('bridgePortSet') >= 0, DEBUG_ACTIONS.slice());
+            DEBUG_ACTIONS.indexOf('bridgeToggle') >= 0 && DEBUG_ACTIONS.indexOf('bridgeTargetSet') >= 0
+            && DEBUG_ACTIONS.indexOf('bridgePortSet') >= 0, DEBUG_ACTIONS.slice());
+
+        A('D6 区块含目标主机输入与保存目标按钮（v3.0.8）',
+            html.indexOf('data-ftt-bridge-host') >= 0 && html.indexOf('data-ftt-action="bridgeTargetSet"') >= 0
+            && html.indexOf('data-ftt-bridge-port') >= 0, html.slice(0, 320));
+
+        A('D7 目标为本机时不显示局域网告警；改为局域网地址后显示告警（只读面暴露提示）', (() => {
+            setBridgeHost('127.0.0.1');
+            const loop = debugBridgeSectionHtml();
+            setBridgeHost('192.168.1.50');
+            const lan = debugBridgeSectionHtml();
+            setBridgeHost('127.0.0.1');
+            return loop.indexOf('对局域网开放') < 0 && lan.indexOf('对局域网开放') >= 0;
+        })());
 
         // 酒馆原生下区块必须如实说明「host.* 不可用但不报错」
         const vanillaHtml = debugBridgeSectionHtml();

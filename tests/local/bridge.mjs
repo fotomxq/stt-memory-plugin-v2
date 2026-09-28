@@ -14,11 +14,16 @@
 //   只覆盖调试桥需要的能力（text / close / ping / pong；客户端帧带掩码）。
 //
 // 用法：
-//   node tests/local/bridge.mjs                     # 监听 8791，进入交互
+//   node tests/local/bridge.mjs                     # 监听 127.0.0.1:8791，进入交互
 //   node tests/local/bridge.mjs --port 8792
+//   node tests/local/bridge.mjs --host 0.0.0.0      # 监听局域网（**手机等其它设备可连**，见下方安全提示）
 //   node tests/local/bridge.mjs --selftest          # 自检：内置假插件验证握手与调用
 //   node tests/local/bridge.mjs --call sys.info     # 一次性调用（等插件连上来）
 //   node tests/local/bridge.mjs --list              # 只打印用法
+//
+// ⚠ 安全：调试桥**只读但无鉴权**。默认只监听回环；一旦 `--host 0.0.0.0`，同一局域网内任何
+//   设备都能读到你这些只读数据（记忆条数/取样、调试日志统计、宿主 LLM 请求留档等）。
+//   仅在可信网络下临时使用，用完即停。
 //
 // 交互命令：
 //   ls                          列出插件登记的白名单方法
@@ -41,10 +46,12 @@ const arg = (name, dflt = null) => {
     return (next === undefined || next.startsWith('--')) ? true : next;
 };
 const PORT = Number(arg('port', 8791));
-const HOST = '127.0.0.1';
+/** 监听地址：默认只监听回环（最安全）。`--host 0.0.0.0` 可让**手机等其它设备**连过来。 */
+const HOST = String(arg('host', '127.0.0.1'));
 const ONESHOT = arg('call', null);
 const LISTONLY = !!arg('list', false);
 const SELFTEST = !!arg('selftest', false);
+const IS_LOOPBACK = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
 
 const log = (...a) => console.log(...a);
 const stamp = () => new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -193,7 +200,8 @@ function call(method, params = {}, timeoutMs = 30000) {
 
 async function waitForClient(ms = 60000) {
     if (clients.size) return true;
-    log('[bridge] 等待插件连入 127.0.0.1:' + PORT + ' …（插件「调试 → 🔌 调试桥」点「▶ 开启调试桥」）');
+    log('[bridge] 等待插件连入 ' + HOST + ':' + PORT + ' …（插件「调试 → 🔌 调试桥」点「▶ 开启调试桥」'
+        + (IS_LOOPBACK ? '' : '，且目标主机需填本机局域网地址') + '）');
     const t0 = Date.now();
     while (Date.now() - t0 < ms) {
         await new Promise((r) => setTimeout(r, 300));
@@ -207,11 +215,12 @@ async function waitForClient(ms = 60000) {
 // ------------------------------------------------------------
 async function selftest() {
     const port = Number(arg('port', 8799));
+    const clientHost = IS_LOOPBACK ? HOST : '127.0.0.1';   // 监听 0.0.0.0 时自检仍走回环
     log('===== 调试桥自检（无需真实宿主）=====');
     const srv = server.listen(port, HOST, async () => {
         let ws = null;
         try {
-            ws = new WebSocket('ws://' + HOST + ':' + port);
+            ws = new WebSocket('ws://' + clientHost + ':' + port);
             await new Promise((res, rej) => {
                 ws.addEventListener('open', res, { once: true });
                 ws.addEventListener('error', () => rej(new Error('客户端连接失败')), { once: true });
@@ -265,6 +274,12 @@ if (SELFTEST) {
         log('===== FTT记忆组件 V2 · 本地调试桥 =====');
         log('  监听：ws://' + HOST + ':' + PORT);
         log('  说明：插件开启「🔌 调试桥」后会主动连过来（页面无法监听端口，故方向相反）。');
+        if (!IS_LOOPBACK) {
+            log('');
+            log('  ⚠ 已监听非回环地址：同一局域网内任何设备都能连上并读取这些**只读**数据');
+            log('    （记忆条数/取样、调试日志统计、宿主日志与 LLM 请求留档）。本服务无鉴权，');
+            log('    请在可信网络下临时使用，用完即停。插件侧「目标主机」填本机局域网地址。');
+        }
 
         if (LISTONLY) { log('\n  命令：ls · hello · call <method> [json] · quit'); return; }
 

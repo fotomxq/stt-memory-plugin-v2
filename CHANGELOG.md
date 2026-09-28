@@ -3,6 +3,31 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.0.8（2026-09-28）· 调试桥真机核对：修维度名 + 目标主机可配（支持调试手机端）
+
+**用户要求**（原话）：「我已经开启了两个端的调试端口，分别是192.168.71.54:8791、本地的8791。重点核对本地，远程的另外一个在手机上。请检查调试是否可行。」
+
+**① 真机核对结论：调试桥在真实 TauriTavern 上已跑通**
+桥接服务一起，插件约 **3 秒**自动拨入（失败每 3 秒重试）；宿主识别为 **TauriTavern（ABI v1，api.dev 可用）**；
+插件读取面（`ftt.debugLogStats` 135 条 / 8 类、`ftt.memoryShape` 真实条数）与宿主专属层
+（`host.consoleCaptureGet` / `host.llmLogsKeep` / `host.llmLogsIndex` 5 条真实请求）**均正常**。
+
+**② 修复 `ftt.memoryShape` 的维度名（真机才暴露的真缺陷）**
+`states` → **`currentStates`**（状态记录）、`roster` → **`npcs`**（名册）：前者原名在容器上根本不存在，
+两项在真机上恒为 `null`。改法不只手改两个字符串 —— 维度列表现为**从 `core/constants.js#DIMENSIONS` 派生**
+（单一来源），再补 `npcs` / `vars` / `deleted` 三个运行时容器，避免今后再漂移。
+
+**③ 调试目标可配：支持调试手机端（默认仍只连本机）**
+`adapters/debug-bridge.js` 新增目标主机（`setBridgeHost` / `bridgeTarget` / `isLoopbackHost`，默认 `127.0.0.1`，
+拒绝带协议/路径的非法输入）；调试页把「仅端口」扩为「**目标主机 + 端口**」，动作 `bridgePortSet` →
+**`bridgeTargetSet`**（旧名保留为别名，避免旧页面残留按钮失效）；目标非回环时页面显著提示
+「只读调试面将对局域网开放」；`tests/local/bridge.mjs` 新增 `--host`（默认仍只监听回环），
+非回环时启动即打印安全提示（本服务**只读但无鉴权**）。
+
+**验证**：单元 **124 文件 / 1930 断言**（`debug-bridge` 40 → **47 项**：新增目标主机校验与状态暴露、
+UI 局域网告警，以及把真机 bug 固化的 B9/B10 回归）· 冒烟 **187 项** · 全门禁 0 违规 ·
+桥接自检通过 · 并在**真实 TauriTavern 上端到端核对通过**。详见 `docs/history/P10bt-调试桥真机核对与目标主机.md`。
+
 ## v3.0.7（2026-09-28）· 本地调试桥：跨宿主只读调试端口
 
 **用户要求**（原话）：「我建议在插件调试页面，增加一个开启按钮，开启后暴露一个本地端口，内置好相关API方法，从而实现调试功能。」
