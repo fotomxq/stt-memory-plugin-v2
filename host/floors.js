@@ -10,6 +10,7 @@ import { applyFeedRegex } from '../core/prompt.js';
 import { state, cfg, saveState, log, warn, notifyError, getLastMessageId } from '../core/model/runtime.js';
 import { floorCoverage } from '../core/floor-cover.js';
 import { getCtx } from './st-api.js';
+import { DIMENSIONS } from '../core/constants.js';   // v2.93.0：楼层收缩时逐维修正陈旧区间
 // v2.44.0（用户报告）：取文**保留 HTML**、在「过滤之后、交给 AI 之前」才剔标签 —— 顺序不可颠倒：
 //   投喂白名单是**按标签名提取 `<content>…</content>`**（`core/prompt.js#applyFeedRegex`），
 //   若在过滤前就把标签删掉，白/黑名单会永远匹配不到（v2.44.0 首版即为该缺陷，见 docs/P10j）。
@@ -376,6 +377,82 @@ export function reconcileProcessedFloors(notify) {
 }
 
 /**
+ * v2.93.0（`docs/D12` v0.2 裁决）——**楼层收缩处理**（补上 V1 遗留但缺失的「断裂检测」）。
+ * 背景：用户会**主动删楼**以减小聊天体积（酒馆对高楼层支持差）→ 这是**常态**操作，必须低噪声且**不丢数据**。
+ * 口径（逐条对应 D12）：
+ *   · 判据（Q2）：`getLastMessageId() < lastKnownFloor - 容忍` 且**聊天已就绪**（复用 `chatReadyForFloors`）；
+ *   · 台账（Q3）：**强制跑一次哈希归位**（绕过 20s 节流与 `mass-mismatch` 守卫 —— 此时整体失配是**预期**）；
+ *   · 编号（Q1）：条目的 `floorStart/floorEnd` 与分段总结 `start/end` 若已超过当前末楼 → **只改编号**：
+ *     置「未知区间」(`0/0`) 并打 `floorStale: true`（**绝不删除条目**）；
+ *   · 基线（Q9）：`lastKnownFloor` **收紧**为当前末楼；
+ *   · 低噪声（D12 §8-A）：登记一条**按类型合并计数**的人工确认项 + 调试日志；
+ *   · 幂等：无收缩、或聊天未就绪 → 直接返回（不动作）。
+ * @param {{force?:boolean, silent?:boolean}} [opts]
+ * @returns {{ok:boolean, skipped?:string, removedFloors?:number, staleEntries?:number, dims?:object, marks?:number, lastId?:number}}
+ */
+export function handleFloorShrink(opts) {
+    const o = opts || {};
+    try {
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { ok: true, skipped: 'chat-not-ready' };
+        const total = ready.total;
+        const lastId = total - 1;
+        const known = Number(state.lastKnownFloor);
+        const TOL = 5;
+        const shrunk = Number.isFinite(known) && known >= 0 && lastId < known - TOL;
+        if (!shrunk && !o.force) return { ok: true, skipped: 'no-shrink', lastId: lastId };
+        // ① 台账：强制哈希归位（收缩时整体失配属预期，故绕过 mass-mismatch 守卫）
+        let marks = 0;
+        try {
+            const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
+            const keep = [];
+            for (let f = 0; f <= lastId; f++) {
+                const h = hashFloorText(f);
+                if (!h) continue;
+                if (pf.some((x) => String((x && x.h) || '') === h)) keep.push({ f: f, h: h });
+            }
+            state.processedFloors = keep;
+            state.processedVer = processedVerTag();
+            marks = keep.length;
+        } catch (e) { /* 归位失败不阻塞后续 */ }
+        // ② 编号重映射：超出当前末楼的区间 → 未知区间 + floorStale（只改编号，不删条目）
+        const dims = {};
+        let staleEntries = 0;
+        const fix = (dim, arr, fields) => {
+            let n = 0;
+            for (const it of (Array.isArray(arr) ? arr : [])) {
+                if (!it || typeof it !== 'object') continue;
+                const a = Number(it[fields[0]]), b = Number(it[fields[1]]);
+                const bad = (Number.isFinite(a) && a > lastId && a > 0) || (Number.isFinite(b) && b > lastId && b > 0);
+                if (!bad) continue;
+                try { it[fields[0]] = 0; it[fields[1]] = 0; it.floorStale = true; n++; } catch (e) { /* 单项失败不影响其余 */ }
+            }
+            if (n) { dims[dim] = n; staleEntries += n; }
+            return n;
+        };
+        for (const d of DIMENSIONS) fix(d.kind, state[d.kind], ['floorStart', 'floorEnd']);
+        try { for (const x of (state.currentStates || [])) { const fe = Number(x && x.floorEnd); if (Number.isFinite(fe) && fe > lastId && fe > 0) { x.floorStart = 0; x.floorEnd = 0; x.floorStale = true; staleEntries++; dims.currentStates = (dims.currentStates || 0) + 1; } } } catch (e) { /* 忽略 */ }
+        try { fix('plotSegments', (state.plotSegments || []).map((g) => Object.assign(g, { start: g.start, end: g.end })), ['start', 'end']); } catch (e) { /* 忽略 */ }
+        // ③ 基线收紧（Q9）
+        try { state.lastKnownFloor = lastId; state.floorShrinkAt = Date.now(); } catch (e) { /* 忽略 */ }
+        const removedFloors = Math.max(0, (Number.isFinite(known) ? known : lastId) - lastId);
+        // ④ 低噪声记账：合并计数 + 调试日志（D12 §8-A：常态操作，不刷屏）
+        try {
+            if (typeof onFloorShrink === 'function') onFloorShrink({ removedFloors: removedFloors, staleEntries: staleEntries, marks: marks, lastId: lastId });
+        } catch (e) { /* 忽略 */ }
+        try { log('楼层', { action: '楼层收缩处理', removedFloors: removedFloors, lastId: lastId, staleEntries: staleEntries, marks: marks }); } catch (e) { /* 忽略 */ }
+        try { saveState(); } catch (e) { /* 忽略 */ }
+        return { ok: true, removedFloors: removedFloors, staleEntries: staleEntries, dims: dims, marks: marks, lastId: lastId };
+    } catch (e) {
+        try { warn('楼层收缩处理失败', e); } catch (e2) { /* 忽略 */ }
+        return { ok: false, skipped: 'error' };
+    }
+}
+/** 收缩回调（宿主注入；用于登记人工确认项 —— 内核不直接依赖 UI/冲突模块） */
+let onFloorShrink = null;
+export function setFloorShrinkHook(fn) { onFloorShrink = (typeof fn === 'function') ? fn : null; return true; }
+
+/**
  * 未摘要楼层扫描（清单 + 跳过计数，供界面/诊断/命令共用；执行侧与列表**同源**，V1 v1.174 纪律）。
  * 跳过项：非 AI 楼（含用户楼）/ 隐藏楼 / 无可分析正文（占位楼、投喂白黑名单过滤）/ 台账已处理 /
  *   已有记忆数据（`covered`）。
@@ -405,6 +482,8 @@ export function scanPendingFloors(opts) {
             return { floors: [], startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, skipped: skipped, chatReady: false, chatReason: ready.reason };
         }
         if (o.maintain !== false) {
+            // v2.93.0（`docs/D12`）：**先处理楼层骤减**（用户会主动删楼减体积）—— 幂等，无收缩即短路返回
+            try { handleFloorShrink(); } catch (e) { /* 忽略 */ }
             try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ }
             try { processedDriftGuard(false); } catch (e) { /* 忽略 */ }
             const now = Date.now();

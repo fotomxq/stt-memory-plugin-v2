@@ -13,6 +13,8 @@ import { getSettings, setSetting } from './adapters/settings.js';
 import { setPipelineHooks } from './core/pipeline.js';
 // v2.92.0（用户要求）：需人工确认项（跨端冲突/自检异常）—— 设定 + 总览同时展示，落 ST 扩展设置
 import { setConflictHooks } from './core/conflicts.js';
+import { setFloorShrinkHook } from './host/floors.js';
+import { noteConflict } from './core/conflicts.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
@@ -1149,6 +1151,16 @@ export async function openPanelPopup(tab) {
         setPopupHooks(popupHooks());
         setPanelHooks2(panelRuntimeHooks());   // v2.40.0：面板所需的**全部**钩子（此前只用 popupHooks() → 导出/导入等缺接）
         // v2.90.0：管线状态的历史耗时读写（ST 扩展设置里的 `pipelineEta`：每个处理行为保留最近 5 次）
+        // v2.93.0（`docs/D12` v0.2 §8-A）：**删楼是常态** —— 收缩结果按类型**合并计数**登记一条人工确认项（低噪声，不刷屏）
+        setFloorShrinkHook((info) => {
+            try {
+                noteConflict({
+                    kind: '楼层收缩', scope: 'floors',
+                    detail: '聊天已减小 ' + Number(info.removedFloors || 0) + ' 层（现 ' + (Number(info.lastId) + 1) + ' 层）；台账已按内容归位 ' + Number(info.marks || 0) + ' 条，' + Number(info.staleEntries || 0) + ' 条条目的楼层信息已标记失效（记忆数据保留）',
+                    count: 1,
+                });
+            } catch (e) { /* 忽略 */ }
+        });
         setConflictHooks({
             get: () => { try { return getSettings().syncConflicts || []; } catch (e) { return []; } },
             save: (list) => { try { setSetting('syncConflicts', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
