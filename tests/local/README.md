@@ -112,8 +112,11 @@ node tests/local/bridge.mjs            # 监听 127.0.0.1:8791，进入交互
 #   bridge> ls                          # 列出插件登记的白名单方法
 #   bridge> call ftt.memoryShape        # 各维度记忆条数
 #   bridge> call host.llmLogsIndex      # 最近几次 LLM 请求（TauriTavern 专属）
+#   bridge> call ftt.pendingScan        # 未摘要清单 + 逐项跳过计数（台账诊断，只读零副作用）
+#   bridge> call ftt.floorDiag {"i":2}  # 单楼诊断：这一楼「为什么」被判为未摘要
 
 node tests/local/bridge.mjs --call sys.info          # 一次性调用
+node tests/local/bridge.mjs --call ftt.memorySample --params-file params.json   # 传参（免 shell 引号问题）
 node tests/local/bridge.mjs --selftest               # 自检（内置假插件，无需真实宿主）
 npm run local:bridge:selftest                        # 同上
 
@@ -142,6 +145,12 @@ node tests/local/bridge.mjs --host 0.0.0.0
 不持久化**（刷新即关）；取样默认只回字段名与长度，要正文须显式 `values:true`；**默认只连本机**
 （目标主机默认 `127.0.0.1`，要调手机端才显式改为局域网地址）。**本版未加鉴权** —— 因此刻意保持只读；
 若今后要开放写操作或长期监听局域网，须先补令牌。
+
+**台账诊断（v3.0.9，只读零副作用）**：`ftt.ledger`（台账标记 + 版本签名一致性）· `ftt.chatReady`（聊天就绪判定）·
+`ftt.pendingScan`（未摘要清单 + 逐项跳过计数：user/hidden/missing/noText/processed/covered/chatNotReady）·
+`ftt.pendingFloors`（清单）· `ftt.floorDiag(i)`（单楼逐项判据：swipes/mes 长度、`hashStable`/`hashMes`、
+台账标记值与是否同哈希、签名一致性、是否被覆盖、最终是否进未摘要）。
+它们一律走 `maintain:false` 与纯比较 —— **不触发任何台账维护写入**（该不变量由单测 F8 锁定）。
 
 **协议**（WebSocket 文本帧，JSON）：
 

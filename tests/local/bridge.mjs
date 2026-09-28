@@ -34,6 +34,7 @@
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const args = process.argv.slice(2);
@@ -49,6 +50,19 @@ const PORT = Number(arg('port', 8791));
 /** 监听地址：默认只监听回环（最安全）。`--host 0.0.0.0` 可让**手机等其它设备**连过来。 */
 const HOST = String(arg('host', '127.0.0.1'));
 const ONESHOT = arg('call', null);
+/**
+ * 一次性调用的参数：优先 `--params-file <json文件>`（**推荐**：免去 shell 引号地狱），
+ * 其次 `--params '<json>'`。
+ */
+const PARAMS = (() => {
+    const file = arg('params-file', null);
+    if (typeof file === 'string' && file.trim()) {
+        try { return JSON.parse(readFileSync(file, 'utf8')); } catch (e) { console.error('[bridge] --params-file 读取/解析失败：' + String((e && e.message) || e)); process.exit(2); }
+    }
+    const p = arg('params', null);
+    if (typeof p !== 'string' || !p.trim()) return {};
+    try { return JSON.parse(p); } catch (e) { console.error('[bridge] --params 不是合法 JSON：' + String((e && e.message) || e)); process.exit(2); }
+})();
 const LISTONLY = !!arg('list', false);
 const SELFTEST = !!arg('selftest', false);
 const IS_LOOPBACK = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
@@ -287,7 +301,7 @@ if (SELFTEST) {
             const ok = await waitForClient(60000);
             if (!ok) { log('\n[bridge] ❌ 超时：没有插件连入。'); process.exit(2); }
             await new Promise((r) => setTimeout(r, 300));
-            const res = await call(String(ONESHOT));
+            const res = await call(String(ONESHOT), PARAMS);
             log('\n' + JSON.stringify(res, null, 2));
             process.exit(res && res.ok ? 0 : 1);
         }

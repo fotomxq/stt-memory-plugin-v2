@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.8",
+  "version": "3.0.9",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.9",
+      "date": "2026-09-28",
+      "title": "调试桥加台账诊断（定位「刷新后已分析楼层变回未摘要」）",
+      "points": [
+        "① 调试桥新增 5 个只读诊断方法：（ui/debug.js，全部 maintain:false + 纯比较，零副作用）ftt.ledger（台账标记 + 版本签名一致性）· f…",
+        "② 桥接工具补 --params / --params-file：（tests/local/bridge.mjs）：一次性调用可传参，--params-file 用于绕开 she…",
+        "③ 已完成的取证（供后续修复）：离线用仓库自己的 hashText 复算聊天文件，确认台账 11 条标记（含 70、179–199）指向的内容已不在聊天文件中，只有 2、4 两条…"
+      ]
+    },
     {
       "version": "3.0.8",
       "date": "2026-09-28",

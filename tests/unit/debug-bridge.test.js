@@ -17,11 +17,12 @@ import {
 } from '../../adapters/debug-bridge.js';
 import { ttResetSession } from '../../adapters/tt-store.js';
 import { buildBridgeMethods, installDebugBridge, debugBridgeInstalled, debugBridgeSectionHtml, DEBUG_ACTIONS } from '../../ui/debug.js';
-import { state, setKernelState } from '../../core/model/runtime.js';
+import { state, setKernelState, setLastMessageId } from '../../core/model/runtime.js';
 import { emptyState } from '../../core/state.js';
 import { DIMENSIONS } from '../../core/constants.js';
+import { hashFloorText, processedVerTag } from '../../host/floors.js';
 
-const R = makeReporter('debug-bridge v3.0.8 本地调试桥（跨宿主 / 只读 / 非 TauriTavern 不崩 / 可调目标主机）');
+const R = makeReporter('debug-bridge v3.0.9 本地调试桥（跨宿主 / 只读 / 可调目标主机 / 台账诊断）');
 const A = (n, c, e) => R.assert(n, !!c, e);
 
 const doc = makeDocument([]);
@@ -128,8 +129,9 @@ function useTauriTavern(withDev = true) {
         setBridgeMethods(T);
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
-                'ftt.chatMeta', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary', 'ftt.debugLogStats', 'ftt.debugPageInfo',
-                'ftt.fileTransport', 'ftt.memorySample', 'ftt.memoryShape', 'ftt.probe', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
+                'ftt.chatMeta', 'ftt.chatReady', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary', 'ftt.debugLogStats', 'ftt.debugPageInfo',
+                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.memorySample', 'ftt.memoryShape',
+                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.probe', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
                 'host.backendLogsTail', 'host.consoleCaptureGet', 'host.frontendLogsList',
                 'host.llmLogsIndex', 'host.llmLogsKeep', 'host.llmLogsPreview', 'host.llmLogsRaw',
                 'sys.bridgeState', 'sys.host', 'sys.info', 'sys.methods',
@@ -290,6 +292,89 @@ function useTauriTavern(withDev = true) {
         const st = bridgeState();
         try { bridgeStop(); } catch (e) { /* 忽略 */ }
         A('E4 start 幂等且不抛（连不上也不影响插件主流程）', started && started.threw === undefined && typeof st.running === 'boolean', { started, running: st.running });
+    }
+
+    console.log('\n[F] 台账 / 未摘要清单的只读诊断（v3.0.9）');
+    {
+        // 合成聊天：偶数楼 AI（有 swipes），奇数楼用户 —— 与真实聊天同构
+        const mkChat = (n) => {
+            const arr = [];
+            for (let i = 0; i < n; i++) {
+                const isUser = i % 2 === 1;
+                const text = '第' + i + '楼：' + (isUser ? '角色甲问了一句。' : '角色乙在仓库清点货物，记下账目与数目。');
+                arr.push(isUser
+                    ? { is_user: true, mes: text, swipes: null }
+                    : { is_user: false, role: 'assistant', mes: text, swipes: [text] });
+            }
+            return arr;
+        };
+        installGlobalHost(makeHost({ chat: mkChat(10) }), doc);
+        setBridgeMethods(buildBridgeMethods());
+        setKernelState(emptyState());
+        setLastMessageId(9);
+
+        const h2 = hashFloorText(2);
+        state.processedFloors = [{ f: 2, h: h2 }, { f: 200, h: 'stale-out-of-range' }];
+        state.processedVer = processedVerTag();
+        state.lastKnownFloor = 9;
+
+        /** 走调试桥派发（与外部工具同路径） */
+        const call = (m, p) => bridgeDispatch({ id: m, method: m, params: p || {} });
+
+        const ledger = await call('ftt.ledger');
+        A('F1 FTT.ledger 回传台账标记 + 签名一致性（只读）',
+            ledger.ok === true && ledger.result.marks.length === 2 && ledger.result.marks[0].f === 2
+            && ledger.result.marks[0].h === h2 && ledger.result.verMatches === true && ledger.result.stats.marks === 2, ledger);
+
+        const ready = await call('ftt.chatReady');
+        A('F2 FTT.chatReady 回传就绪判定与总楼层',
+            ready.ok === true && ready.result.ready === true && ready.result.total === 10, ready);
+
+        const d2 = await call('ftt.floorDiag', { i: 2 });
+        A('F3 已登记且哈希一致的楼 → processed / 不进未摘要',
+            d2.ok === true && d2.result.markSameHash === true && d2.result.processed === true && d2.result.wouldBePending === false, d2);
+
+        const d4 = await call('ftt.floorDiag', { i: 4 });
+        A('F4 无标记的 AI 楼 → 未摘要（且如实给出各项判据）',
+            d4.ok === true && d4.result.markPresent === false && d4.result.processed === false
+            && d4.result.wouldBePending === true && d4.result.analyzableLen > 0 && d4.result.hashStable !== '', d4);
+
+        const d3 = await call('ftt.floorDiag', { i: 3 });
+        A('F5 用户楼 → 即使无标记也不列为未摘要（isUser 判据）',
+            d3.ok === true && d3.result.isUser === true && d3.result.wouldBePending === false, d3);
+
+        const keepMarks = state.processedFloors;
+        state.processedFloors = [{ f: 2, h: 'deadbeef' }];
+        const dBad = await call('ftt.floorDiag', { i: 2 });
+        state.processedFloors = keepMarks;
+        A('F6 标记哈希与当前正文不符 → processed=false（内容变更需重分析）',
+            dBad.result.markPresent === true && dBad.result.markSameHash === false
+            && dBad.result.processed === false && dBad.result.wouldBePending === true, dBad);
+
+        const dOut = await call('ftt.floorDiag', { i: 999 });
+        A('F7 越界/不存在的楼 → 降级返回而不抛',
+            dOut.ok === true && dOut.result.available === false && typeof dOut.result.reason === 'string', dOut);
+
+        // ★ 核心不变量：诊断只读 —— 不得触发任何台账维护（migrate/drift/reconcile/shrink）
+        const snapBefore = JSON.stringify({ pf: state.processedFloors, ver: state.processedVer, lk: state.lastKnownFloor });
+        const scan = await call('ftt.pendingScan');
+        await call('ftt.ledger');
+        await call('ftt.pendingFloors');
+        await call('ftt.floorDiag', { i: 2 });
+        await call('ftt.floorDiag', { i: 4 });
+        await call('ftt.floorDiag', { i: 999 });
+        const snapAfter = JSON.stringify({ pf: state.processedFloors, ver: state.processedVer, lk: state.lastKnownFloor });
+        A('F8 诊断**零副作用**：不改动台账，越界悬空标记原样保留',
+            snapBefore === snapAfter && state.processedFloors.some((x) => x.h === 'stale-out-of-range') && scan.ok === true, snapAfter);
+
+        A('F9 pendingScan 给出跳过计数与清单（processed=1 · user=5，2/3 不列入）',
+            scan.ok === true && scan.result.skipped.processed === 1 && scan.result.skipped.user === 5
+            && scan.result.floors.indexOf(2) < 0 && scan.result.floors.indexOf(3) < 0
+            && scan.result.floors.indexOf(4) >= 0 && scan.result.floors.indexOf(0) >= 0, scan);
+
+        const pfOnly = await call('ftt.pendingFloors');
+        A('F10 pendingFloors 与 pendingScan 的清单同源一致',
+            pfOnly.ok === true && Array.isArray(pfOnly.result) && JSON.stringify(pfOnly.result) === JSON.stringify(scan.result.floors), pfOnly);
     }
 
     try { unHost(); } catch (e) { /* 忽略 */ }
