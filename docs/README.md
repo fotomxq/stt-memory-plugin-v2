@@ -68,20 +68,20 @@ docs/
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v3.0.3） |
+| 口径 | 权威来源 | 当前值（v3.0.4） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.0.3` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.0.4` |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
 | 内核配置键数 | `core/config.js#defaultCfg` | 221 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 122 文件 / 1846 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 122 文件 / 1849 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 187 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 109 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 110 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

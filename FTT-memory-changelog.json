@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.4",
+      "date": "2026-09-28",
+      "title": "跨端同步分歧新增「🔀 合并差异」选项",
+      "points": [
+        "验证：单元 122 文件 / 1849 断言（新增 sync-pick-golden R11/R12 · parallel-design B1b）· 冒烟 187 项（AH3 增…"
+      ]
+    },
     {
       "version": "3.0.3",
       "date": "2026-09-28",

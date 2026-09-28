@@ -2881,7 +2881,7 @@ await assert('AH2 存储页如实呈现瘦身/gzip 开关与写入名；两个�
 // v3.0.3 改判（用户要求「如果发现本地与服务端不一致，自动下载合并」）：自动对账遇分歧**不再暂存待选**，
 //   改为**自动下载 + 原子合并**（并集 + 时间取新 + 墓碑生效）并推回服务端；「保留本端 / 采用对端」两个动作
 //   与横幅仅对**旧版本遗留的待选**有效（本小节显式注入待选后继续验证这两个动作）。
-await assert('AH3（v3.0.3 改判）真实自动对账遇分歧 → **自动下载合并**（无待选、无横幅、不阻塞；本端独有保留 + 对端独有并入 + 冲突取新）；显式注入待选后「保留本端 / 采用对端」两个动作照旧可用并留痕', (async () => {
+await assert('AH3（v3.0.3 改判 / v3.0.4 增项）真实自动对账遇分歧 → **自动下载合并**（无待选、无横幅、不阻塞；本端独有保留 + 对端独有并入 + 冲突取新）；显式注入待选后「保留本端 / 采用对端 / 🔀 合并差异」三个动作照旧可用并留痕', (async () => {
     const F = globalThis.FTT;
     const st = rtMod.state;
     const info = F.syncStatus().file;
@@ -2936,11 +2936,25 @@ await assert('AH3（v3.0.3 改判）真实自动对账遇分歧 → **自动下�
         && (rtMod.state.atoms || []).every((x) => x.id !== 'smoke-ah-L')
         && Number(rtMod.state.updatedAt) === 9000000000000
         && !!log2 && log2.mode === '采用对端(整体替换)' && String(log2.note).indexOf('本端已替换为对端数据') >= 0;
+    // ⑤ v3.0.4（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」
+    //   再造一次分歧（本端独有 L2 + 对端独有 R，无端是超集）→ 横幅应出现第三项 → 点击 = 下载对端并集去重（两端都不丢）
+    rtMod.state.atoms = (rtMod.state.atoms || []).concat([{ id: 'smoke-ah-L2', text: 'AH 本端独有情节二', title: 'AH 本端独有二', date: '1936-12-08', tags: ['AH'], uses: 1, floorStart: 0, floorEnd: 1 }]);
+    put();
+    F.crossPendingSet(JSON.parse(makeRemote()), { localN: (rtMod.state.atoms || []).length, remoteN: 2, localTs: Number(rtMod.state.updatedAt) || 0, remoteTs: 9000000000000, tsDiff: 1, diff: { onlyLocal: 1, onlyRemote: 1, conflict: 1 } });
+    const pageHtml3 = String((await entry.popupAction('refresh', {})).html || '');
+    const mergeBtnOk = pageHtml3.indexOf('data-ftt-action="syncPickMerge"') >= 0
+        && pageHtml3.indexOf('🔀 合并差异') >= 0 && pageHtml3.indexOf('下载对端') >= 0;
+    const p3 = await entry.popupAction('syncPickMerge', {});
+    const log3 = F.syncLog().filter((x) => String(x.action) === '分歧选择')[0];
+    const ids3 = (rtMod.state.atoms || []).map((x) => String(x.id));
+    const mergeOk = mergeBtnOk && String(p3.state.note).indexOf('已合并差异') >= 0 && F.crossPendingGet() === null
+        && ids3.indexOf('smoke-ah-L2') >= 0 && ids3.indexOf('smoke-ah-R') >= 0     // 去重合并：两端独有都保留
+        && !!log3 && log3.mode === '合并差异(下载对端去重合并)' && String(log3.note).indexOf('并集去重') >= 0;
     // 复位：移除造出来的对端条目 + 恢复清单开关，避免影响后续小节
     rtMod.state.atoms = (rtMod.state.atoms || []).filter((x) => String(x.id).indexOf('smoke-ah-') !== 0);
     rtMod.cfg.storage.syncMetaProbe = keepMeta;
     await entry.popupAction('tab', { tab: 'overview' });
-    return autoOk && bannerOk && bannerOk2 && keepOk && adoptOk;
+    return autoOk && bannerOk && bannerOk2 && keepOk && adoptOk && mergeOk;
 })(), '');
 
 // ---------- AI 独立分组抽取 + 被动调度接线（P9d） ----------
