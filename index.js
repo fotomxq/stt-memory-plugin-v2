@@ -43,7 +43,7 @@ import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/de
 // v2.83.0（用户要求「开发之前设计的原子层之上的关联层」）：关联层派生视图 + 反向索引（只读）
 import { relationSnapshot, relationStats, dependents, relationsOf, relationQueryRefs, relationLayerOn } from './core/relations.js';
 // v2.41.0：调试包导出（面板「📦 导出调试包」与 FTT.debugLogExport 共用同一实现）
-import { setDebugHooks as setDebugPageHooks, buildDebugExport } from './ui/debug.js';
+import { setDebugHooks as setDebugPageHooks, buildDebugExport, installDebugBridge } from './ui/debug.js';
 // v2.42.0：交互/宿主/命令追踪（FTT 入口包装 + 诊断入口）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceList, traceTimelineText, traceStats, traceContext, traceClear } from './core/trace.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
@@ -609,6 +609,8 @@ function bootstrapDiagnostics() {
     try {
         if (!runtime.macros) runtime.macros = registerMacros(extraForStatus);
     } catch (e) { runtime.macros = false; }
+    // v3.0.7：装配本地调试桥（**只登记只读方法，不自动连接**；非 TauriTavern 只降级不报错）
+    try { installDebugBridge(); } catch (e) { /* 调试桥装配失败不影响主流程 */ }
     try {
         installDevtools(Object.assign({
             // v2.46.0：启动自动检查的排期（供 `FTT.snapshot()/FTT.update()` 与调试包回答「为什么还没检查」）

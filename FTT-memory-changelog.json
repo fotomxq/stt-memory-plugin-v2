@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.7",
+      "date": "2026-09-28",
+      "title": "本地调试桥：跨宿主只读调试端口",
+      "points": [
+        "① 插件内置调试桥（adapters/debug-bridge.js + 调试页新区块）：调试页新增「🔌 调试桥」：开关 + 端口（默认 8791）+ 宿主/连接状态 + 最近…",
+        "② 跨宿主：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不崩：传输层只依赖浏览器 WebSocket —— 两种宿主都有；宿主日志那层依赖 Ta…",
+        "③ 零依赖参考桥接服务与协议（tests/local/bridge.mjs）：Node 自带 WebSocket 客户端但没有服务端，而本仓库「源码即发布物、无运行时依赖」→ 自…"
+      ]
+    },
     {
       "version": "3.0.6",
       "date": "2026-09-28",

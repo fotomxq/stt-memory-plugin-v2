@@ -101,6 +101,45 @@ tests\local\launch-debug.cmd 9222
 > 若 9222 不响应，改用 5.3 第二条的内置 DevTools。另：TauriTavern 是单实例，**必须先完全退出
 > （含托盘图标）**再跑本脚本。
 
+### 5.4 调试桥（v3.0.7）：在真实宿主里跑只读探针
+
+前三条是「看」，这条是「调」—— 让本机工具通过一个本地端口，调用**插件内置好的只读 API**，
+从而在真实宿主页面里做实际数据测试。
+
+```powershell
+node tests/local/bridge.mjs            # 监听 127.0.0.1:8791，进入交互
+# 然后在插件「调试 → 🔌 调试桥」点「▶ 开启调试桥」，插件会主动连过来
+#   bridge> ls                          # 列出插件登记的白名单方法
+#   bridge> call ftt.memoryShape        # 各维度记忆条数
+#   bridge> call host.llmLogsIndex      # 最近几次 LLM 请求（TauriTavern 专属）
+
+node tests/local/bridge.mjs --call sys.info          # 一次性调用
+node tests/local/bridge.mjs --selftest               # 自检（内置假插件，无需真实宿主）
+npm run local:bridge:selftest                        # 同上
+```
+
+**为什么端口在本机工具这边**：WebView 页面无法监听端口，TauriTavern 也没有 http-server 类 Tauri
+插件，所以「插件自己暴露端口」做不到。这里端口由 `bridge.mjs` 监听、插件**拨出**连接 —— 数据面等价。
+
+**跨宿主**（硬要求）：
+
+| 层 | 酒馆原生（浏览器） | TauriTavern |
+| --- | --- | --- |
+| 传输 + 插件只读方法 | ✅ | ✅ |
+| `host.*`（前端/后端日志、LLM 请求留档） | ⛔ 逐方法返回 `available:false`，**不报错** | ✅（走官方 `api.dev`，只读不设置） |
+
+**安全边界**：只派发白名单内的**只读**方法（清空/删除/修复/导出落盘一律不登记）；开关**默认关闭且
+不持久化**（刷新即关）；取样默认只回字段名与长度，要正文须显式 `values:true`；只监听回环地址。
+**本版未加鉴权** —— 因此刻意保持只读；若今后要开放写操作，须先补令牌。
+
+**协议**（WebSocket 文本帧，JSON）：
+
+```text
+插件 → 工具   {type:'hello', protocol, plugin:{…}, host:{kind,tauriTavern,abiVersion,devApi}, methods:[…]}
+工具 → 插件   {id, method, params}
+插件 → 工具   {id, ok:true, result}  |  {id, ok:false, error:{code, message}}
+```
+
 ## 6. 部署（`--deploy`）
 
 把开发仓库的发布物同步进宿主扩展目录，用于「改完立刻在真实宿主里看效果」。
@@ -133,10 +172,11 @@ tests\local\launch-debug.cmd 9222
 | --- | --- | --- |
 | `host.js` | ✅ | 宿主发现与逐项只读读取、漂移比对、部署计划（纯逻辑，可单测） |
 | `run.js` | ✅ | 自检入口（`npm run local`） |
+| `bridge.mjs` | ✅ | 调试桥服务：零依赖 WebSocket 服务端 + 交互/一次性调用 + `--selftest` |
 | `launch-debug.cmd` | ✅ | 带 CDP / 代理启动 TauriTavern |
 | `local.config.example.json` | ✅ | 实参模板（占位符） |
 | `local.config.json` | ❌ | 本地实参（含本机路径，gitignore） |
-| `out/` | ❌ | 自检报告产物（gitignore） |
+| `out/` | ❌ | 自检报告与一次性探针脚本产物（gitignore） |
 
 ## 9. 未验证事项（如实登记）
 
@@ -144,3 +184,6 @@ tests\local\launch-debug.cmd 9222
 2. **`dev.frontend_console_capture = true` 的具体落盘位置与格式**：本工具只读该开关，未开启实测。
 3. **`--deploy` 未在真实宿主上执行过**：其**计划逻辑**（`planDeploy`）有单元测试覆盖，但
    「写进宿主扩展目录后宿主能否正常加载」未经本机实测 —— 首次使用请先自行备份该扩展目录。
+4. **调试桥未在真实宿主上跑通过一次完整会话**（v3.0.7）：插件侧逻辑（40 项单测，含模拟 TauriTavern）
+   与工具侧传输（`--selftest`）都已验证；真实宿主里的端到端需用户在插件「调试 → 🔌 调试桥」开启一次。
+   另：若 SillyTavern 以 HTTPS 提供，页面连 `ws://127.0.0.1` 会被混合内容策略拦截。

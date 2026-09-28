@@ -26,12 +26,20 @@ import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 // v2.77.0：文件通道（宿主原生存储 / 酒馆用户目录文件）现状 —— 排障时先看这一项
 import { fileTransportStatus } from '../adapters/file-transport.js';
 import { settingsControlHtml } from './settings-pages.js';
+// v3.0.7：长说明统一进折叠块（页面可见提示 ≤90 字，由 ui-wording 门禁约束）
+import { hintDetailsHtml } from './hints.js';
 // v2.82.0（用户报告「日志的导出功能有问题，无法正常导出 log 文件」）：导出必须**真的落文件** ——
 //   复用「⬇ 导出记忆 JSON」同一条下载实现（Blob + `<a download>`），而不是只塞剪贴板/文本框。
 import { downloadTextFile } from './file-io.js';
 // v2.94.0（`docs/D11` v0.3 §3.2 阶段 S1 / `docs/D12` v0.2 S4b）：`chatMetadata` 主载体**只读**差异报告
 import { state } from '../core/model/runtime.js';
 import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters/chat-meta.js';
+// v3.0.7：本地调试桥（**跨宿主**：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不报错）
+import {
+    bridgeStart, bridgeStop, bridgeState, bridgeSupported, bridgeHost, bridgeMethodNames,
+    setBridgeMethods, setBridgePort, bridgePort, BRIDGE_DEFAULT_PORT, BRIDGE_PROTOCOL,
+} from '../adapters/debug-bridge.js';
+import { ttAbi } from '../adapters/tt-store.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -374,6 +382,177 @@ export function chatMetaSectionHtml() {
     ].join('\n');
 }
 
+// ============================================================
+// 🔌 调试桥（v3.0.7）—— 跨宿主本地调试
+//
+// 用途：让本机调试工具（`tests/local/bridge.mjs`）通过一个本地端口，调用**插件内置好的只读 API**，
+//   从而在**真实宿主页面**里做实际数据测试 —— 而不是用无头浏览器模拟（模拟不出真实宿主）。
+//
+// 跨宿主（硬要求）：
+//   · 传输层只依赖浏览器 `WebSocket` → **酒馆原生与 TauriTavern 都可用**；
+//   · `host.*` 那层依赖 TauriTavern 的 `window.__TAURITAVERN__.api.dev`（官方规范化调试 ABI），
+//     非 TauriTavern 时返回 `{available:false, reason}` —— **只降级，不报错**；
+//   · 开关**默认关闭且不持久化**（每次加载回到关闭态），并只派发白名单内的只读方法。
+// ============================================================
+
+/** 允许经调试桥派发的**只读**方法白名单（在此追加即扩展；切勿登记改动型动作） */
+export function buildBridgeMethods() {
+    const T = Object.create(null);
+
+    /** 需要插件调试导出（window.FTT）的只读方法；缺失时降级返回而非抛错 */
+    const needFtt = (fn) => async (params) => {
+        let F = null;
+        try { F = (typeof window !== 'undefined' && window.FTT) ? window.FTT : null; } catch (e) { F = null; }
+        if (!F) return { available: false, reason: 'window.FTT 不可用（插件调试导出未安装）' };
+        try { return await fn(F, params || {}); } catch (e) { return { available: false, reason: String((e && e.message) || e) }; }
+    };
+    /** 本地只读诊断；任何异常都收敛成 available:false */
+    const safe = (fn) => async (params) => {
+        try { return await fn(params || {}); } catch (e) { return { available: false, reason: String((e && e.message) || e) }; }
+    };
+    /** TauriTavern 专属：`api.dev` 缺失或该版本没有该方法 → 降级 */
+    const needDev = (what, sub, method) => async (params) => {
+        let dev = null;
+        try { const abi = ttAbi(); dev = (abi && abi.api && abi.api.dev) ? abi.api.dev : null; } catch (e) { dev = null; }
+        if (!dev) return { available: false, reason: '当前宿主不是 TauriTavern：' + what + ' 不可用（酒馆原生下本方法只降级，不报错）' };
+        const holder = sub ? dev[sub] : dev;
+        const fn = holder && holder[method];
+        if (typeof fn !== 'function') return { available: false, reason: '该 TauriTavern 版本未提供 ' + (sub ? sub + '.' : '') + method + '()' };
+        try { return await fn.call(holder, params || {}); } catch (e) { return { available: false, reason: String((e && e.message) || e) }; }
+    };
+
+    // —— 自省 ——
+    T['sys.info'] = async () => ({
+        protocol: BRIDGE_PROTOCOL,
+        plugin: { name: 'FTT记忆组件 V2', version: VERSION },
+        host: bridgeHost(),
+        bridge: bridgeState(),
+        methods: bridgeMethodNames(),
+        note: '只读调试桥；默认关闭、刷新即关',
+    });
+    T['sys.methods'] = async () => bridgeMethodNames();
+    T['sys.host'] = async () => bridgeHost();
+    T['sys.bridgeState'] = async () => bridgeState();
+
+    // —— 插件只读导出 ——
+    T['ftt.snapshot'] = needFtt((F) => F.snapshot());
+    T['ftt.probe'] = needFtt((F) => F.probe());
+    //   `ftt.stateSize`：只回导出文本的字节数（**不回正文**）—— 正名以避免看起来像「导出/写盘」动作
+    T['ftt.stateSize'] = needFtt((F) => {
+        const t = String(F.exportState() || '');
+        return { available: true, bytes: t.length };
+    });
+    T['ftt.debugLogStats'] = safe(() => debugLogStats());
+    T['ftt.debugPageInfo'] = safe(() => debugPageInfo());
+    T['ftt.traceStats'] = safe(() => traceStats());
+    T['ftt.clockTraceInfo'] = safe(() => clockTraceInfo());
+    T['ftt.clockTraceSummary'] = safe(() => clockTraceSummary());
+    T['ftt.fileTransport'] = safe(() => fileTransportStatus());
+    T['ftt.chatMeta'] = safe(() => chatMetaDiffReport());
+
+    // —— 记忆真实数据（**只读**）——
+    //   `ftt.memoryShape`：各维度条数（不含正文）
+    T['ftt.memoryShape'] = safe(() => memoryShape());
+    //   `ftt.memorySample`：按维度取样；**默认只回字段名与长度**，显式 { values:true } 才回传正文
+    T['ftt.memorySample'] = safe((p) => memorySample(p.dim, p.limit, p.values === true));
+
+    // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
+    T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
+    T['host.consoleCaptureGet'] = needDev('console 捕获开关', 'frontendLogs', 'getConsoleCaptureEnabled');
+    T['host.backendLogsTail'] = needDev('后端日志', 'backendLogs', 'tail');
+    T['host.llmLogsIndex'] = needDev('LLM 请求日志索引', 'llmApiLogs', 'index');
+    T['host.llmLogsPreview'] = needDev('LLM 请求日志预览', 'llmApiLogs', 'getPreview');
+    T['host.llmLogsRaw'] = needDev('LLM 请求日志原文', 'llmApiLogs', 'getRaw');
+    T['host.llmLogsKeep'] = needDev('LLM 日志保留数', 'llmApiLogs', 'getKeep');
+
+    return T;
+}
+
+/** 记忆容器形状（只读；只回条数/类型，不回正文） */
+function memoryShape() {
+    const dims = ['atoms', 'states', 'snapshots', 'memories', 'items', 'currencies', 'rumors', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'roster', 'plotSegments', 'vars', 'deleted'];
+    const out = {};
+    for (const k of dims) {
+        try {
+            const v = state[k];
+            out[k] = Array.isArray(v) ? v.length : ((v && typeof v === 'object') ? Object.keys(v).length : (v === undefined ? null : typeof v));
+        } catch (e) { out[k] = null; }
+    }
+    return out;
+}
+
+/**
+ * 按维度取样（只读）。
+ * **默认只回字段名与值长度**（shape），显式传 `values:true` 才回传截断后的真实值 —— 避免调试桥
+ * 在默认情况下把聊天/记忆正文经端口外送。
+ */
+function memorySample(dim, limit, wantValues) {
+    const k = String(dim || '');
+    if (!k) return { available: false, reason: '缺少 dim 参数' };
+    let arr = null;
+    try { arr = state[k]; } catch (e) { arr = null; }
+    if (!Array.isArray(arr)) return { available: false, reason: '维度不存在或不是数组：' + k, dim: k };
+    const n = Math.max(1, Math.min(Number(limit) || 3, 20));
+    const rows = arr.slice(0, n).map((it) => {
+        const o = (it && typeof it === 'object') ? it : { value: it };
+        const shape = {};
+        for (const f of Object.keys(o)) {
+            const v = o[f];
+            shape[f] = Array.isArray(v) ? ('array(' + v.length + ')') : (typeof v === 'string' ? v.length : typeof v);
+        }
+        return wantValues ? { _shape: shape, _values: o } : shape;
+    });
+    return { available: true, dim: k, total: arr.length, returned: rows.length, values: !!wantValues, rows };
+}
+
+let bridgeInstalled = false;
+
+/**
+ * 装配调试桥（幂等）：登记只读方法表。**不自动开启连接** —— 连接必须由用户在调试页显式开启。
+ * @returns {{ok:boolean, methods:number, state:object}}
+ */
+export function installDebugBridge() {
+    let n = 0;
+    try { n = setBridgeMethods(buildBridgeMethods()); bridgeInstalled = true; } catch (e) { n = 0; }
+    return { ok: bridgeInstalled, methods: n, state: bridgeState() };
+}
+
+/** 是否已装配（只读诊断） */
+export function debugBridgeInstalled() { return bridgeInstalled; }
+
+/** 「🔌 调试桥」区块（只读渲染；开关默认关） */
+export function debugBridgeSectionHtml() {
+    if (!bridgeInstalled) installDebugBridge();
+    const st = bridgeState();
+    const host = bridgeHost();
+    const hostLabel = host.tauriTavern
+        ? ('TauriTavern' + (host.abiVersion === null ? '' : ('（ABI v' + host.abiVersion + '）')) + (host.devApi ? ' · api.dev 可用' : ' · api.dev 不可用'))
+        : '酒馆原生（浏览器）';
+    const connLabel = !st.supported ? '传输不可用'
+        : (!st.running ? '已关闭' : (st.connected ? ('已连接 127.0.0.1:' + st.port) : ('未连接（重试中，端口 ' + st.port + '）')));
+    return [
+        '<div class="ftt-section"><div class="ftt-sec-title">🔌 调试桥 <span class="ftt-muted">本地调试 · 只读</span></div>',
+        '<div class="ftt-row"><span class="ftt-muted">宿主：' + esc(hostLabel) + '</span></div>',
+        '<div class="ftt-row"><span class="ftt-muted">状态：' + esc(connLabel) + ' · 已登记 ' + st.methodCount + ' 个只读方法</span></div>',
+        '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-bridge-port value="' + esc(String(bridgePort())) + '" placeholder="调试端口（1-65535）">'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="bridgePortSet" title="只改内存中的端口；刷新后回到默认值">保存端口</button>'
+            + '<button class="ftt-btn ftt-sm' + (st.running ? ' ftt-err' : '') + '" data-ftt-action="bridgeToggle">' + (st.running ? '⏹ 关闭调试桥' : '▶ 开启调试桥') + '</button></div>',
+        '<div class="ftt-hint">只读白名单 · 默认关闭、刷新即关 · 不含清空/删除类动作</div>',
+        (!st.supported ? '<div class="ftt-hint">本环境不支持 WebSocket，调试桥无法启用（其余功能不受影响）</div>'
+            : (!st.tauriTavern ? '<div class="ftt-hint">酒馆原生：宿主日志类方法不可用，调用只回原因、不报错</div>' : '')),
+        hintDetailsHtml('调试桥说明',
+            '<div>' + esc('本机调试工具监听一个本地端口，插件主动拨出连接过去（页面本身无法监听端口，所以方向相反）。协议 v' + BRIDGE_PROTOCOL + '，默认端口 ' + BRIDGE_DEFAULT_PORT + '。') + '</div>'
+            + '<div>' + esc('只派发白名单内的只读方法（插件快照 / 调试日志统计 / 记忆条数与取样 / 文件通道状态等）；清空、删除、修复、导出落盘这类改动型动作一律不登记。') + '</div>'
+            + '<div>' + esc(st.tauriTavern
+                ? '宿主为 TauriTavern：额外提供宿主日志类方法（前端日志、后端日志、LLM 请求留档），走官方 window.__TAURITAVERN__.api.dev，只读取不设置。'
+                : '宿主为酒馆原生（浏览器）：传输与插件只读方法照常可用；宿主日志类方法依赖 TauriTavern，调用它们只会返回原因。') + '</div>'
+            + '<div>' + esc('参考用法见仓库 tests/local/README.md（本机调试工具与其协议）。') + '</div>'),
+        (st.lastCall ? ('<div class="ftt-muted">最近调用：' + esc(st.lastCall.method) + ' · ' + Number(st.lastCall.ms) + 'ms · ' + (st.lastCall.ok ? '成功' : '失败') + '</div>') : ''),
+        (st.lastError ? ('<div class="ftt-hint">最近错误：' + esc(st.lastError) + '</div>') : ''),
+        '</div>',
+    ].join('\n');
+}
+
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
@@ -415,6 +594,8 @@ export function debugPageHtml(controls) {
         '<div class="ftt-section"><div class="ftt-sec-title">📎 chatMetadata 主载体（只读差异报告）</div>',
         chatMetaSectionHtml(),
         '</div>',
+        // ⑦ 调试桥（v3.0.7）：跨宿主本地调试（酒馆原生 + TauriTavern）
+        debugBridgeSectionHtml(),
     ].join('\n');
 }
 
@@ -466,6 +647,27 @@ export function clockTraceSectionHtml() {
  * @returns {{ok:boolean, action:string, note:string, cleared?:number}}
  */
 export async function debugAction(action, payload) {   // v2.41.0：改为 async（导出调试包需要 await 剪贴板）
+    // v3.0.7：调试桥开关 / 端口（跨宿主：酒馆原生与 TauriTavern 都能用）
+    if (String(action) === 'bridgeToggle') {
+        installDebugBridge();
+        if (bridgeState().running) {
+            const stopped = bridgeStop();
+            return { ok: true, action: 'bridgeToggle', note: '已关闭调试桥', bridge: stopped };
+        }
+        // 开启前先采纳输入框里的端口（非法则沿用当前值并如实说明）
+        const domPort = readBridgePortInput();
+        let portNote = '';
+        if (domPort !== null) portNote = setBridgePort(domPort) ? ('，端口 ' + bridgePort()) : ('，端口非法已沿用 ' + bridgePort());
+        const r = bridgeStart();
+        if (!r.ok) return { ok: false, action: 'bridgeToggle', note: '调试桥开启失败：' + String(r.reason || '未知原因'), bridge: r.state };
+        return { ok: true, action: 'bridgeToggle', note: '调试桥已开启' + portNote + '（本机工具连 ws://127.0.0.1:' + bridgePort() + '）', bridge: r.state };
+    }
+    if (String(action) === 'bridgePortSet') {
+        const v = readBridgePortInput();
+        if (v === null) return { ok: false, action: 'bridgePortSet', note: '未读到端口输入框' };
+        if (!setBridgePort(v)) return { ok: false, action: 'bridgePortSet', note: '端口非法（需 1-65535 的整数）：' + String(v) };
+        return { ok: true, action: 'bridgePortSet', note: '调试端口已设为 ' + bridgePort() + '（仅内存，刷新后回默认）', bridge: bridgeState() };
+    }
     // v2.42.0：时间线类别过滤 / 清空
     if (String(action) === 'dbgTraceFilter') {
         traceFilter = TRACE_CATS.indexOf(String(payload && payload.kind)) >= 0 ? String(payload.kind) : '';
@@ -501,7 +703,20 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear', 'bridgeToggle', 'bridgePortSet']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）；v3.0.7 + 调试桥
+
+/** 读调试桥端口输入框（无 DOM / 无输入框 / 非法内容 → null；**不抛**） */
+function readBridgePortInput() {
+    try {
+        const doc = globalThis.document;
+        const el = (doc && doc.querySelector) ? doc.querySelector('[data-ftt-bridge-port]') : null;
+        if (!el) return null;
+        const raw = String(el.value == null ? '' : el.value).trim();
+        if (!raw) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+    } catch (e) { return null; }
+}
 
 /** 调试页只读诊断（测试/排障用） */
 export function debugPageInfo() {
