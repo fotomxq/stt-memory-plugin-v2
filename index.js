@@ -1242,6 +1242,9 @@ export function panelRuntimeHooks() {
         floorRecalibrate: () => { try { return floorRecalibrate(); } catch (e) { return { ok: false, skipped: 'error' }; } },
         dimToggle: (kind, on) => setDimensionEnabled(kind, on),
         confirm: (text, title) => hostConfirm(text, title),
+        // v2.96.0：面板动作的用户可见通知（V1 `notify()` 等价物）—— 单楼分析这类长耗时动作**开始时与结束时**
+        //   都弹一条，用户不必盯着总览底部那行小字才知道「点了有没有生效」
+        notify: (kind, text) => { try { notifyHooks.toast(String(text || ''), String(kind || 'info')); return true; } catch (e) { return false; } },
         // v2.65.0：显示界面开关 —— 改开关立即重建/移除对应的入口按钮；抽屉卡片开关立即挂载/卸载
         syncEntries: (locations) => syncEntriesNow(locations),
         showDrawer: (on) => applyDrawerVisibility(on),
@@ -1518,7 +1521,10 @@ function installHostBridges() {
             try {
                 const t = globalThis.toastr;
                 if (!t) return;
-                const fn = kind === 'error' ? t.error : (kind === 'warning' ? t.warning : t.info);
+                // v2.96.0：补上 `success`（V1 `notify('success', …)` 的等价物；此前一律落到 info）
+                const fn = kind === 'error' ? t.error
+                    : (kind === 'warning' ? t.warning
+                        : (kind === 'success' ? (t.success || t.info) : t.info));
                 if (typeof fn === 'function') fn.call(t, String(text == null ? '' : text));
             } catch (e) { /* 静默 */ }
         },
