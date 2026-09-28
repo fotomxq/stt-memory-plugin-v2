@@ -1,0 +1,11 @@
+# 统一换行为 LF（v3.0.5）
+#
+# 为什么必须显式声明：
+#   `FTT-memory-changelog.json` 由 `scripts/check-changelog-json.js` 做**逐字节**比对
+#   （比对对象是生成器当场算出的文本）。若 Windows 上 `core.autocrlf=true` 把它检出成
+#   CRLF，则门禁在一份**内容完全正确**的全新克隆上开箱失败 —— 实测 `git diff --numstat`
+#   为空（内容零差异）却报「清单与 CHANGELOG.md 不同步」。
+#   本仓库的发布物是源码本身（无构建），行尾属于发布物的一部分，因此统一钉死为 LF。
+#
+# 参考：`开发守则.md` §3.2（发布前必做 · 归档自足性复跑）
+* text=auto eol=lf
