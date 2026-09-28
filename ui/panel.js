@@ -170,6 +170,11 @@ function apiRerenderIfVisible() {
 }
 try { setApiPageHooks({ rerender: apiRerenderIfVisible }); } catch (e) { /* 钩子注入失败不影响面板 */ }
 
+/** v3.0.2：批次（⚡ 立即 AI 摘要）是否在途（= `hooks.busy()`；与单楼分析共用同一条分析管线的忙位） */
+function batchBusyNow() {
+    try { return (typeof hooks.busy === 'function') ? !!hooks.busy() : false; } catch (e) { return false; }
+}
+
 /** v2.96.0：**正在分析中的单楼**（防连点；V1 `busy.summary` 的等价物） */
 const singleFloorBusy = new Set();
 
@@ -371,21 +376,35 @@ export function pipelineStatusText(now) {
 export function pipelineBoxRowsHtml() {
     try {
         const runs = (() => { try { return listPipelineRuns(); } catch (e) { return []; } })();
-        if (!runs.length) return '';
-        // v3.0.0：批次进度**只在批次真的在跑**时挂到第一行（否则单路 AI 也会被挂上「分段 1/1」这类噪声）
+        // v3.0.2（用户报告「管线状态也应该有提示，但现在没有」）：**批次（⚡ 立即 AI 摘要）本身**也要占一行 ——
+        //   一次批量分析里「AI 调用」只占其中一部分时间（还有段切分 / 落库 / 快照 / 校正），
+        //   旧实现只渲染 AI 运行 → 两次 AI 调用之间**整块消失**（用户看到的就是「点了没有管线提示」）。
         const batchOn = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
         const bp = batchOn && (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
         const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
         const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
         const seg = total ? (' · 分段 ' + done + '/' + total) : '';
         const aborted = bp.aborted ? ' · 已请求中断' : '';
-        // 批次进度挂在**批量摘要那一行**上（不是「第一行」—— 第一行可能是后起的其它动作）
-        const batchIdx = runs.findIndex((r) => String(r.label) === '批量摘要');
-        return runs.map((r, i) => {
+        const rows = [];
+        if (batchOn) {
+            const since = Number(bp.since) > 0 ? Number(bp.since) : 0;
+            const sec = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : 0;
+            const list = String((bp.range && bp.range.start !== undefined) ? ('第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '');
+            const batchText = '[AI] AI 摘要（批量）' + (total ? (' · 分段 ' + done + '/' + total) : '') + (list ? (' · ' + list) : '')
+                + (sec ? (' · 已用时 ' + sec + 's') : '') + aborted;
+            rows.push('<div class="ftt-pipe-line" data-ftt-pipeline-row="batch" title="AI：批量摘要（未摘要楼层分段分析，与「第 N 楼」同一条分析管线）">'
+                + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(batchText) + '</span></div>');
+        }
+        // 批次进度只挂在**批量摘要那一行**上（不是「第一行」—— 第一行可能是后起的其它动作）；
+        //   批次行已单独列出时，AI 调用行不再重复批次进度。
+        const batchIdx = batchOn ? -1 : runs.findIndex((r) => String(r.label) === '批量摘要');
+        for (let i = 0; i < runs.length; i++) {
+            const r = runs[i];
             const extra = (i === batchIdx && (seg || range)) ? (seg + range) : '';
-            return '<div class="ftt-pipe-line" data-ftt-pipeline-row="' + r.id + '" title="' + attr(String(r.kindLabel) + '：' + String(r.label)) + '">'
-                + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(r.text + extra + (i === batchIdx ? aborted : '')) + '</span></div>';
-        }).join('');
+            rows.push('<div class="ftt-pipe-line" data-ftt-pipeline-row="' + r.id + '" title="' + attr(String(r.kindLabel) + '：' + String(r.label)) + '">'
+                + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(r.text + extra + (i === batchIdx ? aborted : '')) + '</span></div>');
+        }
+        return rows.join('');
     } catch (e) { return ''; }
 }
 
@@ -481,12 +500,12 @@ function overviewBody() {
     // 先跑一次文本计算：它同时维护「忙位起点」`busySince`（空闲即清零，v2.63.0 口径），
     //   然后「✖ 中断」只对**批次**（`hooks.busy()` = extractBusy）出现 —— 单路 AI 没有分段中断入口。
     try { pipelineStatusText(); } catch (e) { /* 忽略 */ }
-    const batchBusyNow = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+    const batchBusy = batchBusyNow();
     const pipeRows = (() => { try { return pipelineBoxRowsHtml(); } catch (e) { return ''; } })();
     lines.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-pipeline-box-wrap' + (pipeRows ? '' : ' style="display:none"') + '>'
         + '<b class="ftt-pipe-title">🧵 管线状态</b>'
         + '<div data-ftt-pipeline-box style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px"' + (pipeRows ? '' : ' hidden') + '>' + pipeRows + '</div>'
-        + (batchBusyNow ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
+        + (batchBusy ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
         + '</div>');
     // ④ 注入概览（一句话）
     const audit = injectAudit({ rows: false });
@@ -542,8 +561,24 @@ function overviewBody() {
     // ⑤ 工具行（v2.52.0：移出「清除已处理记录」—— 该动作属 设定 → 数据管理；提示合并为一句话）
     const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
     const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页）">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
+    // v3.0.2（用户要求：「立即 AI 摘要是分析记忆动作，应该与点击单个未分析楼层**联动**做提示」）：
+    //   「⚡ 立即 AI 摘要」与「第 N 楼」是**同一个分析动作的两个入口**（都走 `genTracked` → 同一条 AI 管线），
+    //   因此它们的**按钮态与提示必须联动**：任一入口在途时，另一个入口同帧禁用并写明原因（点下去会被拒，
+    //   提前说清楚而不是等用户点了才提示）。渲染驱动（不靠点击时叠 class，紧跟的重绘会把它换掉）。
+    const summaryBusy = batchBusy;                        // 批次（立即 AI 摘要）在途
+    const oneFloorBusy = singleFloorBusy.size > 0;
+    const summaryBtnTitle = summaryBusy
+        ? '正在批量分析未摘要楼层（分段批量摘要进行中）—— 完成后可再次点击'
+        : (oneFloorBusy ? ('正在分析第 ' + Array.from(singleFloorBusy).sort((a, b) => a - b).join('、') + ' 楼（会占用同一条 AI 管线）—— 等本次完成后再点')
+            : '把全部未摘要楼层分段交给 AI 分析并落库（与「第 N 楼」是同一条分析管线的两个入口）');
+    const summaryBtn = '<button class="ftt-btn ftt-primary' + (summaryBusy ? ' ftt-loading' : '') + '" type="button"'
+        + ' data-ftt-action="summary" id="ftt-summary-btn"'
+        + ((summaryBusy || oneFloorBusy) ? ' disabled' : '')
+        + ' title="' + attr(summaryBtnTitle) + '">'
+        + (summaryBusy ? ('⚡ 分析中…' + (() => { const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {}; const t = Number(bp.segTotal) || 0, d = Number(bp.segDone) || 0; return t ? ('（分段 ' + d + '/' + t + '）') : ''; })()) : '⚡ 立即 AI 摘要')
+        + '</button>';
     lines.push('<div class="ftt-row">'
-        + '<button class="ftt-btn ftt-primary" data-ftt-action="summary" id="ftt-summary-btn">⚡ 立即 AI 摘要</button>'
+        + summaryBtn
         + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订">🛠 自动修复</button>'
         + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn" title="按向量 / JS 抽取召回相关记忆并刷新注入（零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 提取记忆</button>'
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
@@ -566,10 +601,17 @@ function overviewBody() {
         lines.push('<div class="ftt-item ftt-item--warn ftt-item--col"><b class="ftt-pend-title">⏳ 未摘要 ' + pending.length + ' 楼（可点击单楼分析）</b><div class="ftt-pend-list">'
             + pending.slice(0, 40).map((f) => {
                 const loading = singleFloorBusy.has(Number(f));
-                return '<button class="ftt-btn ftt-sm ftt-floor-btn' + (loading ? ' ftt-loading' : '') + '"'
+                // v3.0.2 联动：**批量摘要（⚡ 立即 AI 摘要）在途**时，这些楼按钮同样禁用并写明原因
+                //   （它们与批量摘要是同一条分析管线；点下去只会被拒，提前说明清楚）。
+                const blockedByBatch = batchBusy && !loading;
+                const dis = loading || blockedByBatch;
+                const title = loading
+                    ? '分析中…（等本次 AI 返回；结果会写回记忆并刷新本页）'
+                    : (blockedByBatch ? '「⚡ 立即 AI 摘要」正在批量分析未摘要楼层 —— 等本次完成后再单独分析该楼' : '单独分析该楼层');
+                return '<button class="ftt-btn ftt-sm ftt-floor-btn' + (loading ? ' ftt-loading' : '') + '" type="button"'
                     + ' data-ftt-action="summaryFloor" data-ftt-floor="' + attr(f) + '"'
-                    + (loading ? ' disabled' : '')
-                    + ' title="' + (loading ? '分析中…（等本次 AI 返回；结果会写回记忆并刷新本页）' : '单独分析该楼层') + '">第' + esc(f) + '楼</button>';
+                    + (dis ? ' disabled' : '')
+                    + ' title="' + attr(title) + '">第' + esc(f) + '楼</button>';
             }).join(' ')
             + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
     }
@@ -1845,15 +1887,35 @@ export async function panelAction(action, payload) {
                 return Object.assign(result, { html: panelHtml(), state: panelState() });
             }
             // V1「⚡ 立即 AI 摘要」：分段批量（cfg.summaryChunkSize 楼/段）
+            // v3.0.2（用户要求：「立即 AI 摘要是分析记忆动作，应该与点击单个未分析楼层**联动**做提示」）：
+            //   两个入口是**同一条分析管线**（都走 `genTracked` → `core/pipeline.js`），因此提示、通知、
+            //   管线行、按钮禁用态**全部联动**：
+            //     ① 点下去**同帧**写提示（含待分析楼层数）+ 立即重绘（「⚡ 立即 AI 摘要」转圈禁用、楼按钮整体禁用）；
+            //     ② 弹「开始分析」通知；完成后弹结果通知（与单楼分析同一套 `hooks.notify` 通道）；
+            //     ③ 管线块里**批次本身占一行**（v3.0.2 修复「点了没有管线提示」——旧实现只渲染 AI 调用行，
+            //        两次调用之间（段切分 / 落库 / 校正）整块消失）。
             if (typeof hooks.autoSummary !== 'function') { setNote('批量摘要入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
-            setNote('分析中…（分段批量摘要）');
-            ps.busy = true;
-            renderPanel();
+            if (batchBusyNow()) { setNote('AI 摘要已在分析中（分段批量摘要进行中），请等本次完成'); return done({ ok: false, reason: 'busy' }); }
+            if (singleFloorBusy.size) {
+                setNote('正在分析第 ' + Array.from(singleFloorBusy).sort((a, b) => a - b).join('、') + ' 楼（同一条分析管线）—— 等本次完成后再批量摘要');
+                return done({ ok: false, reason: 'busy', floors: Array.from(singleFloorBusy) });
+            }
+            const pendN = (() => { try { return (typeof hooks.pending === 'function') ? (hooks.pending({}) || []).length : 0; } catch (e) { return 0; } })();
+            setNote('AI 摘要分析中…（' + (pendN ? (pendN + ' 个未摘要楼层 · ') : '') + '分段批量摘要，与「第 N 楼」同一条分析管线）');
+            ps.busy = true;                                  // 兼容旧文本口径（真实忙位由 extractBusy 给出）
+            renderPanel();                                   // ① 立刻可见（按钮转圈 + 两个入口禁用 + 管线行出现）
+            try { panelNotify('info', 'AI 摘要：开始分析' + (pendN ? (' ' + pendN + ' 个未摘要楼层') : '未摘要楼层') + '…'); } catch (e) { /* 忽略 */ }
             const r = await hooks.autoSummary({ silent: false });
             ps.busy = false;
-            setNote(r && r.ok
+            const okAll = !!(r && r.ok);
+            setNote(okAll
                 ? ('摘要完成：' + r.segments + ' 段 · 读取楼层 ' + r.floors + ' · 新增 ' + r.added + ' 条' + (r.aborted ? '（中断：剩余 ' + r.aborted + ' 段未分析）' : ''))
                 : ('未完成：' + String((r && r.reason) || '未知') + (r && r.failed ? '（失败 ' + r.failed + ' 段）' : '')));
+            try {
+                panelNotify(okAll ? 'success' : 'warning', okAll
+                    ? ('AI 摘要完成：' + Number(r.segments || 0) + ' 段 · 新增 ' + Number(r.added || 0) + ' 条' + (r.aborted ? ('（已中断：剩 ' + r.aborted + ' 段）') : ''))
+                    : ('AI 摘要未完成：' + String((r && r.reason) || '未知')));
+            } catch (e) { /* 忽略 */ }
         } else if (a === 'extractNow') {
             // v2.74.0（用户要求）：「提取记忆」= **发送前召回**（向量 → JS 抽取 → AI 分析，前两层零 AI 为主）——
             //   **不占分析管道**、可与摘要等长任务并行；结果按开关（`提取记忆`页各层 + 注入开关）写入提示词注入。

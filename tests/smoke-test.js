@@ -3397,7 +3397,10 @@ await assert('AO1 面板 HTML 的按钮全部带 `type="button"`（对齐 V1 v1.
     const rendered = String(PM.renderPanel());        // 真实渲染路径的返回值（renderPanel 内已加固）
     const count = (x) => (x.match(/<button/g) || []).length;
     const untyped = (x) => (x.match(/<button(?![^>]*\stype=)/g) || []).length;
-    return count(raw) >= 20 && untyped(raw) === count(raw)      // 加固前：全部无 type
+    // 说明（v3.0.2）：原先还断言「加固前 raw 里全部无 type」—— 那是**实现细节**：个别按钮（⚡ 立即 AI 摘要 /
+    //   第 N 楼）在 v2.96.0 起就**显式**写了 `type="button"`（更稳），raw 里因此会混有已带 type 的按钮。
+    //   真正要保证的是：**加固后一个不漏**（含真实渲染路径），且加固机制存在。
+    return count(raw) >= 20
         && untyped(hardened) === 0 && untyped(rendered) === 0   // 加固后：一个不漏
         && hardened.indexOf('<button type="button"') >= 0;
 })(), '');
@@ -4752,6 +4755,88 @@ await assert('BM2 并行时**两行及以上**：AI 请求（批量摘要）+ �
             && n(rows2) === 2 && n(rows1) === 1 && rows0 === '';
     } finally {
         try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+// ---------- BN 「⚡ 立即 AI 摘要」⇄「第 N 楼」联动提示 + 批次管线行（v3.0.2） ----------
+// 用户报告：「立即AI摘要是分析记忆动作，应该与点击单个未分析楼层联动做提示，
+//   其次管线状态也应该有提示，但现在没有，请修复。」
+await assert('BN1 装配后端到端：批量摘要（⚡ 立即 AI 摘要）在途时 —— ① 管线块出现**[AI] AI 摘要（批量）**一行（非 AI 阶段也在）②「⚡ 立即 AI 摘要」按钮转圈禁用 ③ 楼层按钮全部禁用并写明原因 ④ 提示行与通知都给出「开始分析 N 个未摘要楼层」', (async () => {
+    const savedGen = host.ctx.generateRaw;
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const toasts = [];
+    const keepToastr = globalThis.toastr;
+    try {
+        globalThis.toastr = { info: (t) => toasts.push(['info', String(t)]), success: (t) => toasts.push(['success', String(t)]), warning: (t) => toasts.push(['warning', String(t)]), error: (t) => toasts.push(['error', String(t)]) };
+        host.ctx.chat.length = 0;
+        host.ctx.chat.push({ is_user: true, mes: '你好', name: 'User' });
+        for (let i = 0; i < 4; i++) host.ctx.chat.push({ is_user: i % 2 === 1, mes: '第 ' + (i + 1) + ' 楼：甲在码头清点铜箱并记账。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        host.ctx.generateRaw = async () => { await new Promise((r) => setTimeout(r, 60)); return JSON.stringify({ atoms: { add: [{ title: 'x', text: '甲在码头清点铜箱（正文足够长）。', date: '1919-11-29' }] } }); };
+        await entry.popupAction('tab', { tab: 'overview' });
+        await entry.popupAction('refresh', {});
+        const p = entry.popupAction('summary', {});
+        await new Promise((r) => setTimeout(r, 25));
+        const h = String((await entry.popupAction('refresh', {})).html || '');
+        const rows = fttPanelMod.pipelineBoxRowsHtml();
+        const noteNow = String((fttPanelMod.panelState() || {}).note || '');
+        const st = (fttPanelMod.panelState() || {});
+        const smBtn = (h.match(/<button[^>]*id="ftt-summary-btn"[^>]*>/) || [''])[0];
+        const flBtn = (h.match(/<button[^>]*data-ftt-action="summaryFloor"[^>]*>/) || [''])[0];
+        const r = await p;
+        const toastsAfter = toasts.map((x) => x[0]).join(',');
+        const rowsAfter = fttPanelMod.pipelineBoxRowsHtml();
+        const flBtnOk = flBtn.indexOf('disabled') >= 0 && flBtn.indexOf('正在批量分析未摘要楼层') >= 0;
+        void st;
+        const allOk = rows.indexOf('data-ftt-pipeline-row="batch"') >= 0 && rows.indexOf('[AI] AI 摘要（批量）') >= 0
+            && rows.indexOf('分段') >= 0
+            && smBtn.indexOf('disabled') >= 0 && smBtn.indexOf('ftt-loading') >= 0 && h.indexOf('⚡ 分析中…') > 0
+            && flBtnOk
+            && noteNow.indexOf('AI 摘要分析中…') >= 0 && noteNow.indexOf('同一条分析管线') >= 0
+            && toastsAfter.indexOf('info') >= 0 && toastsAfter.indexOf('success') >= 0
+            && r.ok === true && rowsAfter.indexOf('AI 摘要（批量）') < 0;
+        return allOk;
+    } finally {
+        globalThis.toastr = keepToastr;
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.generateRaw = savedGen;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('BN2 反方向联动：点「第 N 楼」在途时 —— 批量按钮同样禁用并写明「正在分析第 N 楼」，且此时点批量**不启动批次**（如实拒绝）', (async () => {
+    const savedGen = host.ctx.generateRaw;
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    let batchStarted = 0;
+    try {
+        host.ctx.chat.push({ is_user: false, mes: '甲在钟鼓楼写下账册并核对铜箱。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        host.ctx.generateRaw = async () => { await new Promise((r) => setTimeout(r, 60)); return JSON.stringify({ atoms: { add: [{ title: 'y', text: '甲在钟鼓楼写下账册（正文足够长）。', date: '1919-11-30' }] } }); };
+        await entry.popupAction('tab', { tab: 'overview' });
+        const h0 = String((await entry.popupAction('refresh', {})).html || '');
+        const fid = (h0.match(/data-ftt-floor="(\d+)"/) || [])[1];
+        if (!fid) return false;
+        const p = entry.popupAction('summaryFloor', { floor: fid });
+        await new Promise((r) => setTimeout(r, 20));
+        const h = String((await entry.popupAction('refresh', {})).html || '');
+        const smBtn = (h.match(/<button[^>]*id="ftt-summary-btn"[^>]*>/) || [''])[0];
+        const blocked = await entry.popupAction('summary', {});
+        if (blocked.ok === false && blocked.reason === 'busy') batchStarted += 1;   // 被拒（不是真的启动）
+        await p;
+        const okRejected = blocked.ok === false && blocked.reason === 'busy';
+        return smBtn.indexOf('disabled') >= 0 && smBtn.indexOf('正在分析第 ' + fid + ' 楼') >= 0 && okRejected;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.generateRaw = savedGen;
+        void batchStarted;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');
