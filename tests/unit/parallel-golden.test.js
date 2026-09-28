@@ -303,7 +303,23 @@ await A('R2 runParallelWeave 成功：新增 1 / 更新 1 / 删除 1（提示词
         };
         const exp = Object.assign({}, dropModel(G.weaveRun.success));
         exp.toasts = toastsExpected(G.weaveRun.success.toasts);
-        ok = deq(mine, exp);
+        // ── # 有意偏差（v2.99.0，用户报告「平行世界的卦象等设计需修复」）────────────────────────────
+        //   V1 的平行事件「更新」是**整条替换**（`state.parallels[i] = n`）：AI 本次没给的字段会被清空 ——
+        //   黄金样本里 `par2`（远方的战争）因此把种子里已有的 类型/日期/卦象/涉及角色/发生地点/标签 全部丢掉了。
+        //   而推演/推进提示词里 卦象 / 因果线 / 涉及角色 / 发生地点 都是**可选**字段 → 现实中每次「更新」
+        //   都会把卦象与因果线抹掉。v2.99.0 改为**逐字段合并**（未提供即保留旧值，与 atoms / items 同口径）。
+        //   本处按新口径修正期望值（**黄金样本本身不改**），并在其后显式断言「保留」行为。
+        const keep = seedParallels().filter((x) => x.id === 'par2')[0];
+        const p2 = exp.parallels.filter((x) => x.id === 'par2')[0];
+        Object.assign(p2, {
+            type: keep.type, date: keep.date, gua: keep.gua,
+            characters: keep.characters.slice(), location: keep.location, tags: keep.tags.slice(),
+        });
+        const mineP2 = mine.parallels.filter((x) => x.id === 'par2')[0] || {};
+        const preservedOk = mineP2.gua === '离' && mineP2.causalLine === '边境冲突 → 商路中断 → 粮价上涨'
+            && mineP2.type === '背景' && mineP2.date === '1919-11-20'
+            && J(mineP2.characters) === J(['角色乙']) && mineP2.location === '城外' && J(mineP2.tags) === J(['战争']);
+        ok = deq(mine, exp) && preservedOk;
     });
     return ok;
 }, '');

@@ -382,7 +382,15 @@ function parallelsRow(p, now) {
             decayNote = expired ? '💀 已衰退待清理' : ('⏳ 新鲜度 ' + Math.round((1 - sc) * 100) + '%');
         }
     } catch (e) { /* 忽略 */ }
-    const line1 = '<b>' + esc(p.title || p.text) + '</b>' + (p.gua ? (' <span class="ftt-badge ftt-badge--suspense">☯ ' + esc(p.gua) + '</span>') : '');
+    // v2.99.0（用户报告「平行世界的卦象等设计需修复」）：
+    //   ① 卦象徽标**限宽 40 字**（字段规格「卦名+一句象断，≤40字」；旧数据/长输出会把徽标撑成两三行），
+    //      完整值挂在 `title` 上可悬浮查看；
+    //   ② 因果线**不再重复「源起：」前缀** —— 提示词要求 AI 把因果线写成「源起：…→…→…」，
+    //      旧渲染固定加前缀 → 页面恒显示「⚡ 源起：源起：船只被毁→…」（V1 同源缺陷）。
+    const guaFull = String(p.gua || '');
+    const guaShow = guaFull.length > 40 ? (guaFull.slice(0, 40) + '…') : guaFull;
+    const line1 = '<b>' + esc(p.title || p.text) + '</b>' + (guaFull
+        ? (' <span class="ftt-badge ftt-badge--suspense" title="卦象：' + esc(guaFull) + '">☯ ' + esc(guaShow) + '</span>') : '');
     const segs = [];
     const when = p.date ? (p.date + relTag(p.date, now) + (p.time && !/^\d{4}/.test(String(p.time)) ? ' ' + p.time : '')) : (p.time || '');
     if (when) segs.push('📅 ' + esc(when));
@@ -390,7 +398,9 @@ function parallelsRow(p, now) {
     if (arr(p.characters).length) segs.push('角色:' + esc(p.characters.join('、')));
     const line2 = segs.length ? ('<div class="ftt-desc">' + segs.join(' · ') + '</div>') : '';
     const line3 = p.text ? ('<div class="ftt-text">' + esc(p.text) + '</div>') : '';
-    const line4 = p.causalLine ? ('<div class="ftt-desc">⚡ 源起：' + esc(p.causalLine) + '</div>') : '';
+    const causal = String(p.causalLine || '');
+    const causalLabelled = /^\s*(源起|因果线|因果)\s*[：:]/.test(causal);
+    const line4 = causal ? ('<div class="ftt-desc">⚡ ' + esc(causalLabelled ? causal : ('源起：' + causal)) + '</div>') : '';
     const line5 = arr(p.goalOdds).length ? ('<div class="ftt-tags">🎯 目标：' + p.goalOdds.map((g) => esc(g.target) + ' ' + (Number(g.likelihood) || 0) + '%').join('；') + '</div>') : '';
     const updated = p.updatedAt ? (' · 现实更新 ' + new Date(Number(p.updatedAt)).toLocaleString()) : '';
     const line6 = '<div class="ftt-meta">' + esc(p.type || '') + ' · 调用' + (p.uses || 0) + '次 · 重要度' + importancePct(p) + '%' + esc(updated) + ' · ' + esc(decayNote) + '</div>';

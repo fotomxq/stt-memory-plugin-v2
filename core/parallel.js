@@ -574,3 +574,197 @@ export function prunePromotedParallels() {
 }
 
 // 全部函数均以 `export function` 就地导出（无集中导出块，避免与 V1 命名对照时遗漏）。
+
+// ==================== v2.99.0 自定义平行世界（用户要求） ====================
+//
+// 用户要求（原话）：「可添加新平行世界，即输入一段话交给 ai 单独去平行推演，配套关键词涉及到的原子数据，
+//   但因为可能涵盖完全客观或非主角视角的内容，需自行兼容支持。添加后和普通平行世界完全没区别。」
+//
+// 与「🧭 推演世界」的区别：
+//   · 推演世界 = 以**最近楼层正文**为输入自动推演（可能被去重、可能被开关关闭）；
+//   · **自定义推演** = 以**用户输入的一段设想**为唯一输入，**不读楼层正文**、不受推演开关与去重影响，
+//     并自动带上「设想关键词命中」的既有原子数据作为衔接/去重/客观性校验的上下文；
+//   · 产物走**同一条 `mergeDelta` 落库路径** → 与常规推演产物**完全同构**（同样的字段、同样的列表行、同样的推进/转正/衰退）。
+//
+// 视角兼容（用户明确要求）：设想可能是**完全客观**的事件（自然/社会/势力/环境层面的客观因果），
+//   也可能是**非主角视角**（其它角色 / 组织 / 地区的内部动向，主角完全不出场）——
+//   提示词显式允许并**禁止**把事件牵引向主角，也不要求主角出场或知情。
+
+/** 自定义推演的上下文取数上限（关键词命中才收，避免噪声） */
+const CUSTOM_SEED_CAP = 16;
+/** 设想片段取词上限 */
+const CUSTOM_TERM_CAP = 12;
+
+/**
+ * 从**设想本身**取候选词：切出 2~6 字片段，只保留**在既有数据里真实出现过**的（最长优先）。
+ * 为什么需要它：`jsExtractKeywords()`（V1 逐字移植）只认**已登记的特征词**（条目标签 / 关键词 / 角色名 / 场景名…），
+ *   用户随口写的一段设想常常一个新标签都没有 → 拿不到任何关联数据。这里按「片段在既有文本里出现过」取词，
+ *   精度可控（不出现的片段一律丢弃），从而让「关键词涉及到的原子数据」在常规写法下也能命中。
+ * @param {string} idea 用户设想
+ * @param {string} corpus 既有数据的正文拼接（只用于 `includes` 判定）
+ * @returns {string[]} 最多 `CUSTOM_TERM_CAP` 个候选词
+ */
+export function ideaCorpusTerms(idea, corpus) {
+    try {
+        const text = String(idea || '');
+        const hay = String(corpus || '');
+        if (!text || !hay) return [];
+        const terms = [];
+        const segs = text.split(/[\s，。、；：！？…（）()\[\]【】"'“”‘’·—\-+,.;:!?/\\|]+/).filter((x) => x.length >= 2);
+        for (const seg of segs) {
+            for (let len = Math.min(6, seg.length); len >= 2; len--) {
+                for (let i = 0; i + len <= seg.length; i++) {
+                    const w = seg.slice(i, i + len);
+                    if (hay.indexOf(w) >= 0 && terms.indexOf(w) < 0) {
+                        terms.push(w);
+                        if (terms.length >= CUSTOM_TERM_CAP) return terms;
+                    }
+                }
+            }
+        }
+        return terms;
+    } catch (e) { return []; }
+}
+
+/** 既有数据正文拼接（供 `ideaCorpusTerms` 判定「这个词在库里出现过」；只取较短片段，限制总长） */
+function corpusText() {
+    try {
+        const parts = [];
+        const push = (arr, pick, n) => { (arr || []).slice(0, 60).forEach((x) => { const v = pick(x); if (v) parts.push(String(v).slice(0, 160)); }); void n; };
+        push(activeAtoms(), (a) => (a.title || '') + ' ' + (a.text || ''));
+        push(state.memories, (m) => (m.title || '') + ' ' + (m.content || ''));
+        push(state.currentStates, (s) => (s.subject || '') + ' ' + (s.field || '') + ' ' + (s.value || ''));
+        push(state.plans, (p) => (p.content || ''));
+        push(state.suspense, (s) => (s.content || ''));
+        push(state.rumors, (r) => (r.subject || '') + ' ' + (r.content || ''));
+        push(state.snapshots, (s) => (s.name || ''));
+        push(state.scenes, (s) => (s.name || s.pathStr || ''));
+        push(state.items, (i) => (i.name || '') + ' ' + (i.desc || ''));
+        return parts.join('\n').slice(0, 60000);
+    } catch (e) { return ''; }
+}
+
+/** 自定义推演的关键词 = 既有特征词（`jsExtractKeywords`）∪ 设想里在库中出现过的片段 */
+export function customKeywords(idea) {
+    try {
+        const a = (() => { try { return jsExtractKeywords(String(idea || '')); } catch (e) { return []; } })();
+        const b = ideaCorpusTerms(String(idea || ''), corpusText());
+        const out = a.slice();
+        for (const w of b) if (out.indexOf(w) < 0) out.push(w);
+        return out.slice(0, 14);
+    } catch (e) { return []; }
+}
+
+/**
+ * 设想关键词 → 命中的既有数据行（供衔接 / 去重 / 客观性校验）。
+ * 命中口径：条目的正文字段包含任一关键词（≥2 字），或关键词包含条目字段（互为子串）。
+ * @param {string[]} keywords
+ * @returns {string[]} 形如 `[情节] …` 的行（最多 `CUSTOM_SEED_CAP` 条）
+ */
+export function customSeedLines(keywords) {
+    try {
+        const kws = (keywords || []).map((k) => String(k || '').toLowerCase()).filter((k) => k.length >= 2);
+        const lines = [];
+        const hit = (hay) => {
+            const h = String(hay || '').toLowerCase();
+            if (!h) return false;
+            return kws.some((k) => h.includes(k) || k.includes(h));
+        };
+        const add = (label, arr, pick, n) => {
+            (arr || []).slice(0, 60).forEach((x) => {
+                const v = pick(x);
+                if (v && hit(v)) { lines.push('[' + label + '] ' + String(v).slice(0, 160)); }
+            });
+            void n;
+        };
+        if (kws.length) {
+            add('情节', activeAtoms(), (a) => (a.text || a.title || ''), 8);
+            add('记忆', state.memories, (m) => ((m.title || '') + ' ' + (m.content || '')), 6);
+            add('状态', state.currentStates, (s) => (s.subject && s.field ? s.subject + '·' + s.field + '：' + s.value : ''), 4);
+            add('计划', state.plans, (p) => (p.content || ''), 3);
+            add('悬念', state.suspense, (s) => (s.content || ''), 3);
+            add('传言', state.rumors, (r) => ((r.subject || '') + ' ' + (r.content || '')), 3);
+            add('角色', state.snapshots, (s) => (s.name || ''), 4);
+            add('场景', state.scenes, (s) => (s.name || s.pathStr || ''), 3);
+            add('物品', state.items, (i) => ((i.name || '') + ' ' + (i.desc || '')), 3);
+            add('既有平行', state.parallels, (p) => ((p.title || '') + ' ' + (p.gua || '') + ' ' + (p.causalLine || '')), 3);
+        }
+        return lines.slice(0, CUSTOM_SEED_CAP);
+    } catch (e) { return []; }
+}
+
+/**
+ * 自定义推演提示词（导出便于单测逐项核对）。
+ * @param {string} idea 用户设想
+ * @param {string[]} seedLines 关键词命中的既有数据行
+ * @returns {Array<{role:string,content:string}>}
+ */
+export function buildCustomWeavePrompt(idea, seedLines) {
+    const pt = cfg.promptTemplates || defaultCfg.promptTemplates;
+    const sys = [
+        pt.general || '',
+        '以下是交织管线（平行事件推演）专用指令（八卦为纲、因果为线）：',
+        pt.parallels || ((defaultCfg.promptTemplates || {}).parallels) || '',
+    ].join('\n\n');
+    const storyNow = (() => { try { return String(getStoryNow() || ''); } catch (e) { return ''; } })();
+    const user = [
+        '【本次输入 = 用户自定义的平行世界设想（自定义推演）】',
+        '用户给出了一段设想；请**只按这段设想推演**，不要受"最近正文"限制。',
+        '视角与客观性（必须遵守）：',
+        '1. 主体与视角以**用户设想**为准：可以完全是**客观事件**（自然 / 社会 / 势力 / 环境层面的客观因果），',
+        '   也可以是**与主角无关的第三方视角**（其它角色 / 组织 / 地区的内部动向）；主角**可以完全不出场、不知情**。',
+        '2. **禁止**为了让剧情"更好看"把事件牵引向主角：不得让主角出场、参与、知情或受影响，',
+        '   除非用户设想里**明确写到了**主角。主角不在场时，「角色一律不知情」的既有口径照旧。',
+        '3. 因果必须可追溯：每条事件的因果线要写明它的因 —— 来自用户设想，或来自下方"关键词关联数据"里的既有事实；',
+        '   若用户设想本身包含既有人物/地点/势力，请沿用其既有写法与设定，不要改名或改关系。',
+        '4. 若用户设想是一个与既有事实无关联的**纯设定/世界线前提**，照常接受，并在因果线里注明「来自用户设想」。',
+        '5. 字段口径与常规平行推演**完全一致**：标题 / 正文 / 类型 / 日期 / 因果线 / 卦象 / 涉及角色姓名 /',
+        '   发生地点 / 演化目标可能性 / 标签 / 重要度（卦象仍按第 1 步定卦、第 2 步推因果）。',
+        '6. 输出**只用「新增」**：除非用户设想明确要求深化某条既有平行事件（下方关联数据里给了它），那才用「更新」。',
+        storyNow ? ('【当前剧情日期】' + storyNow + '（设想里没写日期时，用它作为条目的日期）') : '（当前无剧情日期：设想没写日期时，日期可留空）',
+        '用户设想：\n' + String(idea || ''),
+        '关键词关联数据（供衔接、去重与客观性校验；没有则为空）：\n' + ((seedLines && seedLines.length) ? seedLines.join('\n') : '（无）'),
+        '输出规则：只输出一个 JSON 对象（键为「平行事件」：{"新增":[…]}"），不要解释；没有任何可推演的点则输出 {"平行事件": {}}。',
+    ].join('\n\n');
+    return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+}
+
+/**
+ * **自定义平行世界推演**（用户输入一段话 → AI 单独推演 → 落库为普通平行事件）。
+ * @param {string} idea 用户设想（≥4 字）
+ * @param {{aiText?:string, keywords?:string[]}} [opts] `aiText` 注入生成结果（测试用）
+ * @returns {Promise<object>} `{ok, added?, updated?, keywords?, seed?, skipped?, error?}`
+ */
+export async function runParallelCustom(idea, opts) {
+    const o = opts || {};
+    const text = String(idea == null ? '' : idea).trim();
+    if (text.length < 4) return { ok: false, error: 'idea-too-short' };
+    try {
+        if (aiBusy()) return { ok: false, error: 'busy' };
+        const keywords = (Array.isArray(o.keywords) && o.keywords.length)
+            ? o.keywords.map((k) => String(k))
+            : (() => { try { return customKeywords(text); } catch (e) { return []; } })();
+        const seed = customSeedLines(keywords);
+        const prompt = buildCustomWeavePrompt(text, seed);
+        const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '[平行事件·自定义]'));
+        const delta = extractJsonObject(resp);
+        if (!delta || !delta['平行事件']) return { ok: false, error: 'AI 未返回有效 JSON', keywords, seed: seed.length };
+        const pc = delta['平行事件'] || {};
+        const addN = Array.isArray(pc['新增']) ? pc['新增'].length : 0;
+        const updN = Array.isArray(pc['更新']) ? pc['更新'].length : 0;
+        if (!addN && !updN) {
+            notify('weave', '自定义推演完成', '这段设想没有可推演的点（未新增平行事件）');
+            return { ok: true, skipped: 'empty', added: 0, updated: 0, keywords, seed: seed.length };
+        }
+        const before = (state.parallels || []).length;
+        const merged = mergeDelta({ 平行事件: pc }, { start: getLastMessageId(), end: getLastMessageId() });
+        const after = (state.parallels || []).length;
+        try { rumorMarkParallelChange(getLastMessageId()); } catch (e) { /* 忽略 */ }
+        notify('success', '自定义推演完成', `新增 ${addN} / 更新 ${updN}（平行事件共 ${after} 条 · 关联数据 ${seed.length} 条）`);
+        try { dbgLog('发送记忆', { action: '自定义平行推演完成', chars: text.length, keywords: keywords.slice(0, 8), seed: seed.length, add: addN, update: updN, before, after }); } catch (e) { /* 忽略 */ }
+        return { ok: true, added: addN, updated: updN, keywords, seed: seed.length, merged };
+    } catch (e) {
+        warn('自定义平行推演异常', e);
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+}
