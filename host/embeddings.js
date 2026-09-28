@@ -20,6 +20,8 @@
 //   ③ 不抛异常：返回 `{ok, vectors|error, ...}`；调用方（`host/vector-recall.js`）据此降级。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
+// v3.0.0（用户要求「所有 AI 请求…都应该在管线出现提示信息」）：向量 / 精排请求也进管线状态
+import { trackPipeline } from '../core/pipeline.js';
 import { apiPresetGet } from '../core/api-channel.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 import { embeddingsEndpoint, rerankEndpoint, DIRECT_TIMEOUT_MS } from './api-channel.js';
@@ -108,6 +110,8 @@ export async function requestEmbeddings(texts) {
     if (cfg.useVector !== true) return { ok: false, vectors: [], error: '向量检索未启用' };
     const t = vectorTarget('embedding');
     if (!t.ok) return { ok: false, vectors: [], error: t.error };
+    // v3.0.0：向量请求同样在管线状态出现（并行/单路都显示；字符数按输入文本量估算 token）
+    return await trackPipeline('向量检索（embedding）', { kind: 'ai', chars: inputs.join('').length, phase: '请求 embedding' }, async (ctl) => {
     const r = await fetchJson(embeddingsEndpoint(t.url), { model: t.model, input: inputs }, t.key);
     if (!r.ok) {
         logVec({ action: 'embedding', ok: false, model: t.model, inputs: inputs.length, from: t.from, error: String(r.error).slice(0, 120) });
@@ -128,7 +132,9 @@ export async function requestEmbeddings(texts) {
         return { ok: false, vectors: [], error: 'Embedding 返回不完整（' + missing + '/' + inputs.length + ' 条缺失）' };
     }
     logVec({ action: 'embedding', ok: true, model: t.model, inputs: inputs.length, dims: out[0].length, from: t.from });
+    ctl.phase('解析向量', inputs.length + ' 条');
     return { ok: true, vectors: out, model: t.model, from: t.from, dims: out[0].length };
+    });
 }
 
 /**
@@ -145,6 +151,8 @@ export async function requestRerank(query, documents, topN) {
     const t = vectorTarget('rerank');
     if (!t.ok) return { ok: false, order: [], scores: [], error: t.error };
     const n = Math.max(1, Number(topN) || docs.length);
+    // v3.0.0：精排请求同样进管线状态
+    return await trackPipeline('精排（rerank）', { kind: 'ai', chars: docs.join('').length, phase: '请求 rerank' }, async (ctl) => {
     const r = await fetchJson(rerankEndpoint(t.url), { model: t.model, query: str(query), documents: docs, top_n: n }, t.key);
     if (!r.ok) {
         logVec({ action: 'rerank', ok: false, model: t.model, docs: docs.length, error: String(r.error).slice(0, 120) });
@@ -157,5 +165,7 @@ export async function requestRerank(query, documents, topN) {
     })).filter((x) => x.index >= 0 && x.index < docs.length).sort((a, b) => b.score - a.score);
     if (!scored.length) return { ok: false, order: [], scores: [], error: 'Rerank 返回为空或格式不可识别' };
     logVec({ action: 'rerank', ok: true, model: t.model, docs: docs.length, top: scored.length });
+    ctl.phase('解析排序', scored.length + ' 条');
     return { ok: true, order: scored.map((x) => x.index), scores: scored.map((x) => x.score) };
+    });
 }

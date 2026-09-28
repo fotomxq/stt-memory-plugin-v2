@@ -18,6 +18,8 @@ import { cfg, state, timerHooks, warn, dbgLog } from '../core/model/runtime.js';
 import { storageEnvelope } from '../core/envelope.js';
 import { worldbookMemoryTotal } from '../core/worldbook.js';
 import { worldbookProvider } from '../host/worldbook.js';
+// v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：世界书镜像纳入管线状态
+import { trackPipeline } from '../core/pipeline.js';
 
 /** V1 常量：原子数据调整后合并触发的延迟（避免频繁全量重建词条） */
 const WORLDBOOK_SYNC_DELAY = 8000;
@@ -77,6 +79,10 @@ async function worldbookSyncFlush() {
  */
 async function worldbookSyncNow() {
     if (!worldbookSyncEnabled()) return { skipped: 'disabled' };
+    // v3.0.0（用户要求）：世界书单向镜像也是「各类动作」之一 → 进管线状态
+    return await trackPipeline('世界书镜像（单向写入）', { kind: 'sync', phase: '重建词条', join: true }, () => worldbookSyncNowInner());
+}
+async function worldbookSyncNowInner() {
     return worldbookSyncFlush();
 }
 

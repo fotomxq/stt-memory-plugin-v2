@@ -18,6 +18,8 @@
 // 约定：所有函数**不抛异常**，返回统一结果对象；缺能力/缺配置时明确回报原因（绝不静默假装成功）。
 // ============================================================
 import { getCtx } from './st-api.js';
+// v3.0.0（用户要求「所有 AI 请求…都应该在管线出现提示信息」）：连通性测试 / 获取模型也进管线
+import { trackPipeline } from '../core/pipeline.js';
 
 /** 直连请求超时（毫秒）：V1 无超时（靠用户中断），V2 加兜底避免界面挂死 */
 export const DIRECT_TIMEOUT_MS = 120000;
@@ -239,6 +241,10 @@ export async function sendWithTarget(target, { systemPrompt, prompt, onToken } =
  * 返回 `{ok:true,ms,kind}` 或 `{ok:false,error}`（错误文案与 V1 同源：未配置地址/模型、`HTTP <code>: <body>`）。
  */
 export async function probeTarget(target, kind, timeoutMs) {
+    // v3.0.0：用户点「🧪 测试」也是一次真实请求 → 进管线状态（失败也如实收尾）
+    return await trackPipeline('连通性测试（' + String(kind || 'chat') + '）', { kind: 'ai', phase: '请求端点' }, () => probeTargetInner(target, kind, timeoutMs));
+}
+async function probeTargetInner(target, kind, timeoutMs) {
     const t = target || {};
     const k = str(kind) || 'chat';
     if (t.channel === 'profile') {
@@ -295,6 +301,10 @@ export async function probeTarget(target, kind, timeoutMs) {
 
 /** 获取模型列表（V1 `fetchModels(override)` 逐条等价：端点、鉴权、`data`/`models` 两形态解析与报错文案） */
 export async function fetchModels(target) {
+    // v3.0.0：用户点「📦 获取模型」也是一次真实请求
+    return await trackPipeline('获取模型列表', { kind: 'ai', phase: '请求 /models' }, () => fetchModelsInner(target));
+}
+async function fetchModelsInner(target) {
     const t = target || {};
     if (t.channel === 'host') return { ok: false, error: '当前通道为「跟随酒馆当前连接」，模型由酒馆连接面板决定；请改用「酒馆连接配置」或「自建连接」' };
     if (t.channel === 'profile') return { ok: false, error: '「酒馆连接配置」通道的模型由该连接配置决定（请在酒馆「连接」面板的模型下拉里选择）' };
