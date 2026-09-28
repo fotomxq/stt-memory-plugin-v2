@@ -296,10 +296,10 @@ const urls = () => calls.map((c) => c.url);
                 && !!s.channel && s.channel.ns === 'ftt2-files' && s.channel.table === 'main'
                 && typeof s.routes === 'number' && !!s.lastWrite;
         });
-        await A('B5 存储页含通道状态行与两个通道开关（此前被整段隐去）', () => {
+        await A('B5 v2.94.0（D11 §3.4）：存储页保留**通道状态行**，但同步/存储开关已全部剔除（只留世界书）', () => {
             const html = storagePageHtml(SETTINGS_CONTROLS.storage);
             return html.indexOf('data-ftt-tt-channel') > 0 && html.indexOf('存储通道') > 0
-                && html.indexOf('storage.tauriNative') > 0 && html.indexOf('storage.tauriMirror') > 0;
+                && html.indexOf('storage.tauriNative') < 0 && html.indexOf('storage.tauriMirror') < 0;
         });
     }
 

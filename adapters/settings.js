@@ -33,6 +33,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // v2.36.0：面板最大宽度（px；0 = 铺满不设上限）—— 手机端由 CSS 媒体查询恒铺满，此值只作用于 ≥1025px 的桌面与平板区间；
     //   为什么放在 extensionSettings 而不是内核 cfg：这是**界面偏好**（与更新检查/入口开关同类），不属于记忆内核配置。
     panelMaxWidth: 1280,
+    // ── v2.94.0 修复：下面三个「运行时账本」此前**不在 DEFAULT_SETTINGS 里**，而 `setSetting` 只接受
+    //   已知键（未知键 `return false` 且不写）→ 写它们的调用全部**静默失败**：
+    //   人工确认项（v2.92.0）/ 管线耗时样本（v2.90.0）/ 删楼账本（v2.94.0）只活在内存里，重开面板即清空。
+    //   三者都是「运行账本」而非记忆数据，故继续留在 extensionSettings（`DATA_VERSION` 不变）。
+    syncConflicts: [],      // v2.92.0：待人工确认项（设定 → 存储 / 总览横幅）
+    pipelineEta: {},        // v2.90.0：每个处理行为最近 5 次耗时（预估倒计时样本）
+    floorTrimLog: {},       // v2.94.0（`docs/D12` §4）：删楼账本（只留最近 3 条 + 上次备份槽位）
     // 迁移
     migratedFrom: '',
 });
@@ -53,7 +60,13 @@ export function getSettings() {
     if (!store) return Object.assign({}, DEFAULT_SETTINGS);
     let changed = false;
     for (const k of Object.keys(DEFAULT_SETTINGS)) {
-        if (!Object.prototype.hasOwnProperty.call(store, k)) { store[k] = DEFAULT_SETTINGS[k]; changed = true; }
+        if (!Object.prototype.hasOwnProperty.call(store, k)) {
+            // 对象/数组默认值**深拷贝**：否则 `store[k]` 与冻结的 `DEFAULT_SETTINGS[k]` 共享同一引用，
+            //   账本类配置（syncConflicts/pipelineEta/floorTrimLog）在首次写入时会对冻结对象做副作用并抛错。
+            const dv = DEFAULT_SETTINGS[k];
+            store[k] = (dv && typeof dv === 'object') ? JSON.parse(JSON.stringify(dv)) : dv;
+            changed = true;
+        }
     }
     if (store.version !== VERSION) { store.version = VERSION; changed = true; }
     if (changed) saveSettings();

@@ -29,6 +29,9 @@ import { settingsControlHtml } from './settings-pages.js';
 // v2.82.0（用户报告「日志的导出功能有问题，无法正常导出 log 文件」）：导出必须**真的落文件** ——
 //   复用「⬇ 导出记忆 JSON」同一条下载实现（Blob + `<a download>`），而不是只塞剪贴板/文本框。
 import { downloadTextFile } from './file-io.js';
+// v2.94.0（`docs/D11` v0.3 §3.2 阶段 S1 / `docs/D12` v0.2 S4b）：`chatMetadata` 主载体**只读**差异报告
+import { state } from '../core/model/runtime.js';
+import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters/chat-meta.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -178,6 +181,8 @@ export function buildDebugExport() {
         stats: debugLogStats(),
         logs: debugLogList(),
         // v2.42.0：交互/宿主/命令/内核/AI/异常统一时间线（结构化 + 人读文本）
+        // v2.94.0（D11 S1 / D12 S4b）：主载体只读差异报告（人读文本；不含记忆正文）
+        chatMeta: (() => { try { return chatMetaDiffText(state); } catch (e) { return String((e && e.message) || e); } })(),
         traceStats: traceStats(),
         trace: traceList({ limit: 300 }),
         timeline: traceTimelineText(300),
@@ -333,6 +338,42 @@ export function traceSectionHtml(cat) {
 /** 调试页正文（v2.55.0 精简：只留「看审计日志 / 导出日志」，删除开发与历史说明）
  * @param {Array} controls `SETTINGS_CONTROLS.debug`（本页唯一控件 `debugEnabled`）
  */
+/**
+ * 「📎 chatMetadata 主载体（只读差异报告）」区块（v2.94.0，`docs/D11` v0.3 §5 S1 / `docs/D12` v0.2 S4b）。
+ *
+ * 用户裁决（`docs/D12` §8-C）：「载体必须比消息活得久 —— 记忆数据主载体是 `chatMetadata`（随聊天存活），
+ *   不得把消息 `extra` 作为唯一载体（删楼会连带删掉）。」
+ * 本阶段**只读不写**：把 chatMetadata 里那份数据与当前生效状态做**逐项差异**（各维条数 / 体积 / 时间先后），
+ * 给出可执行结论。宿主不提供 chatMetadata 时如实标注「已降级」，**不报错、不改任何数据**。
+ */
+export function chatMetaSectionHtml() {
+    let d = null;
+    try { d = chatMetaDiffReport(state); } catch (e) { d = null; }
+    if (!d) return '<div class="ftt-muted">无法读取 chatMetadata（已降级，不影响记忆数据）。</div>';
+    const verdictLabel = {
+        unsupported: '⚪ 宿主不支持（已降级）',
+        empty: '⚪ 两边都没有本插件的记忆',
+        'live-only': '🟡 仅文件通道有数据',
+        'meta-only': '🟠 仅 chatMetadata 有数据',
+        same: '✅ 两边一致',
+        'meta-newer': '🟠 chatMetadata 较新',
+        'live-newer': '🟡 当前状态较新',
+    }[String(d.verdict)] || d.verdict;
+    const dims = Object.keys(d.dims || {});
+    const dimRows = dims.length
+        ? ('<div class="ftt-muted">' + dims.map((k) => escHtml(k + '：chatMetadata ' + d.dims[k].meta + ' / 当前 ' + d.dims[k].live + '（差 ' + d.dims[k].delta + '）')).join('<br>') + '</div>')
+        : '';
+    return [
+        '<div class="ftt-muted">记忆数据应当<b>随聊天走</b>：聊天被酒馆同步 / 备份时，chatMetadata 一起走，删楼也不会丢记忆。</div>',
+        '<div class="ftt-hint" data-ftt-chat-meta>命名空间 <span class="ftt-mono-sm">' + escHtml(CHAT_META_KEY) + '</span> · ' + escHtml(verdictLabel) + '<br>'
+        + 'chatMetadata：' + (d.present ? (d.meta.total + ' 条 · ' + d.meta.bytes + ' 字节') : '（无本插件数据）')
+        + ' · 当前状态：' + d.live.total + ' 条 · ' + d.live.bytes + ' 字节</div>',
+        '<div class="ftt-muted">' + escHtml(d.text) + '</div>',
+        dimRows,
+        '<div class="ftt-hint">本阶段<b>只读</b>：不改 chatMetadata、也不改当前数据；写路径（主通道切换）属后续阶段。</div>',
+    ].join('\n');
+}
+
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
@@ -369,6 +410,10 @@ export function debugPageHtml(controls) {
         // ⑤ 时钟取值追踪（时钟链路的审计视图）
         '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪</div>',
         clockTraceSectionHtml(),
+        '</div>',
+        // ⑥ chatMetadata 主载体（只读差异报告；S1 只读不写）
+        '<div class="ftt-section"><div class="ftt-sec-title">📎 chatMetadata 主载体（只读差异报告）</div>',
+        chatMetaSectionHtml(),
         '</div>',
     ].join('\n');
 }

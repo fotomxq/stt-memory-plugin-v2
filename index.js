@@ -15,6 +15,11 @@ import { setPipelineHooks } from './core/pipeline.js';
 import { setConflictHooks } from './core/conflicts.js';
 import { setFloorShrinkHook } from './host/floors.js';
 import { noteConflict } from './core/conflicts.js';
+// v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）：「设定 → 数据管理」删除到最近 6/10/12 层 ——
+//   一律走**酒馆官方 API**（`getContext().deleteMessage`），删前自动明文备份（3 槽轮转），删后精确校准楼层编号。
+import { setFloorTrimHooks, floorTrimStatus, floorTrimPrecheck, floorTrimApply, floorRecalibrate } from './host/floor-trim.js';
+import { writeFloorBackup } from './adapters/floor-backup.js';
+import { notifyHooks } from './core/model/runtime.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
@@ -1232,6 +1237,12 @@ export function panelRuntimeHooks() {
         lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：总览「📤 最后一次提取」组件
         clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
+        // v2.94.0（D12 §4 / §8-E）：数据管理「删除到最近 N 层」三档（官方 API + 备份 + 精确编号校准）
+        floorTrimStatus: () => { try { return floorTrimStatus(); } catch (e) { return null; } },
+        floorTrimPrecheck: (keep) => { try { return floorTrimPrecheck(keep); } catch (e) { return { ok: false, reason: 'error' }; } },
+        floorTrim: (keep) => runFloorTrim(keep),
+        // v2.94.0（D12 §3.4 / 阶段 S3）：设定 → 存储「🔄 重新校准楼层」（幂等手动兜底）
+        floorRecalibrate: () => { try { return floorRecalibrate(); } catch (e) { return { ok: false, skipped: 'error' }; } },
         dimToggle: (kind, on) => setDimensionEnabled(kind, on),
         confirm: (text, title) => hostConfirm(text, title),
         // v2.65.0：显示界面开关 —— 改开关立即重建/移除对应的入口按钮；抽屉卡片开关立即挂载/卸载
@@ -1250,6 +1261,36 @@ function setDimensionEnabled(kind, on) {
         try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
         return { ok: true, kind: k, on: !!on };
     } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+
+/**
+ * v2.94.0（`docs/D12` v0.2 §4 / §8-E）——**删楼动作**（设定 → 数据管理 三档按钮的唯一入口）。
+ * 用户要求「用官方 API 实现，不然其他插件也会异常」→ 删除只在 `host/floor-trim.js` 内经
+ * `getContext().deleteMessage(id)` 逐个执行（官方方法自带 `MESSAGE_DELETED` 事件 + `saveChatDebounced`）。
+ * 本函数只负责**接线**（明文导出 / 3 槽轮转备份 / 账本落 ST 扩展设置 / 人工确认项 / 通知），
+ * 业务判定与执行全在宿主层，便于单测与冒烟用桩宿主验证真实删除流程。
+ */
+async function runFloorTrim(keep) {
+    wireFloorTrimHooks();
+    try { return await floorTrimApply({ keep: Number(keep) || 0 }); } catch (e) {
+        return { ok: false, reason: 'error', error: String((e && e.message) || e) };
+    }
+}
+
+/** 删楼钩子只接一次（幂等；账本落 ST 扩展设置 `floorTrimLog` —— 不进数据模型 → DATA_VERSION 不变） */
+let floorTrimWired = false;
+function wireFloorTrimHooks() {
+    if (floorTrimWired) return true;
+    floorTrimWired = true;
+    setFloorTrimHooks({
+        exportJson: () => exportStateJson(),
+        writeBackup: (scope, slot, text) => writeFloorBackup(scope, slot, text),
+        getLog: () => { try { return getSettings().floorTrimLog || null; } catch (e) { return null; } },
+        saveLog: (v) => { try { setSetting('floorTrimLog', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
+        noteConflict: (item) => { try { noteConflict(item); } catch (e) { /* 忽略 */ } },
+        notify: (kind, text) => { try { notifyHooks.toast(String(text || ''), String(kind || 'info')); } catch (e) { /* 忽略 */ } },
+    });
+    return true;
 }
 
 /**

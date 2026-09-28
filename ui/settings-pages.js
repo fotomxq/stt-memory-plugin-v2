@@ -683,86 +683,19 @@ export const SETTINGS_CONTROLS = {
     
     ],
     "storage": [
-        {
-            "key": "storage.stateFile",
-            "label": "记忆数据独立文件（强烈建议开启）",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.stateFileBak",
-            "label": "「立即同步」同时上传备份文件",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.snapshotFile",
-            "label": "快照存独立文件",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.settingsMirror",
-            "label": "同时写回存档变量（兼容旧格式）",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.tauriMirror",
-            "label": "原生模式下同时镜像写酒馆文件",
-            "type": "checkbox"
-        },
+,
         {
             "key": "storage.worldbook",
             "label": "世界书存储（可选）",
             "type": "checkbox"
         },
+,
         {
             "key": "storage.worldbookPreventRecursion",
             "label": "词条不可递归",
             "type": "checkbox"
         },
-        {
-            "key": "storage.verifyOnLoad",
-            "label": "载入时校验数据完整性",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.syncOnSave",
-            "label": "保存时同步到服务端",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.crossPullOnActivity",
-            "label": "聊天活动后自动拉取对端",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.crossPullOnVisible",
-            "label": "页面回到可见时自动拉取对端",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.syncMetaProbe",
-            "label": "同步前先比对清单（省流量·推荐开启）",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.syncLogServer",
-            "label": "日志存到服务端（双端可见·推荐开启）",
-            "type": "checkbox"
-        },
-        {
-            "key": "storage.deletedKeepDays",
-            "label": "已删除条目的保留天数",
-            "type": "text"
-        },
-        {
-            "key": "storage.tauriNative",
-            "label": "原生存储通道",
-            "type": "select",
-            "options": [
-                { "v": "auto", "label": "自动（检测到 TauriTavern 即切换）" },
-                { "v": "on", "label": "强制开启（TauriTavern 原生存储）" },
-                { "v": "off", "label": "关闭（始终用酒馆用户目录文件）" }
-            ]
-        },
+,
         {
             "key": "storage.worldbookName",
             "label": "选择世界书",
@@ -770,6 +703,7 @@ export const SETTINGS_CONTROLS = {
             "optionsFrom": "worldbookNames",
             "options": [ { "v": "", "label": "（选择世界书）" } ]
         },
+,
         {
             "key": "storage.worldbookMode",
             "label": "调取方式",
@@ -780,11 +714,13 @@ export const SETTINGS_CONTROLS = {
                 { "v": "vectorized", "label": "向量触发（vectorized）" }
             ]
         },
+,
         {
             "key": "storage.worldbookScanDepth",
             "label": "触发楼层（扫描深度）",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookPosition",
             "label": "插入位置",
@@ -798,42 +734,43 @@ export const SETTINGS_CONTROLS = {
                 { "v": "outlet", "label": "outlet" }
             ]
         },
+,
         {
             "key": "storage.worldbookDepth",
             "label": "插入深度（层）",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookProbability",
             "label": "激活概率(%)",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookSticky",
             "label": "黏性(条,可空)",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookCooldown",
             "label": "冷却(条,可空)",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookDelay",
             "label": "延迟(楼,可空)",
             "type": "text"
         },
+,
         {
             "key": "storage.worldbookMaxBytes",
             "label": "词条内容上限(字节)",
             "type": "text"
-        },
-        {
-            "key": "syncTrafficGuard",
-            "label": "仅变化时同步（省流量·推荐开启）",
-            "type": "checkbox"
         }
-    ],
+        ],
     "debug": [
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled；本组为 V2 附加，调试页可见可关）
         { "key": "debugLevel", "label": "记录级别（error/warn/info/debug/trace）", "type": "text" },
@@ -849,6 +786,24 @@ export const SETTINGS_CONTROLS = {
     "data": [],
     "about": []
 };
+// v2.94.0（`docs/D11` §3.4）：同步/存储开关已剔除，只保留世界书；此处**按键去重**兜底，
+//   防止后续编辑残留重复项（每页每个 key 只保留**首个**定义）。
+try {
+    for (const page of Object.keys(SETTINGS_CONTROLS)) {
+        const list = SETTINGS_CONTROLS[page];
+        if (!Array.isArray(list)) continue;
+        const seen = new Set();
+        SETTINGS_CONTROLS[page] = list.filter((c) => {
+            const k = c && c.key !== undefined ? String(c.key) : '';
+            if (!k) return false;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        });
+    }
+} catch (e) { /* 去重失败不影响其余功能 */ }
+const SETTINGS_CONTROLS_DEDUPED = true;
+
 
 // ============================================================
 // ui/settings-pages.js —— V1 设定 **14 组子页**（结构与控件表由 V1 源码自动提取，保证同名同序同键）
@@ -881,6 +836,8 @@ import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
 import { ENTRY_LOCATIONS, ENTRY_LABELS, ENTRY_DEFAULTS, FORCED_ENTRIES } from './entries.js';
 // v2.35.0（B10-a）：API 子页（三通道 + API 分组预设 + 按用途渠道）
 import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
+// v2.94.0（`docs/D12` v0.2 §8-E，用户约定）：「设定 → 数据管理」删除到最近 6/10/12 层 —— 只读诊断行取自宿主层
+import { floorTrimStatus, floorTrimPrecheck, FLOOR_TRIM_PRESETS } from '../host/floor-trim.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -1420,6 +1377,67 @@ export function settingsPageHtml(pageId, extrasHtml) {
 }
 
 /**
+ * v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）——**「✂️ 删除聊天楼层」分节**（设定 → 数据管理）。
+ * 用户原话：「在设定-数据管理 中约定楼层删除的三个按钮，确保插件可感知该操作」+「用官方 API 实现，
+ *   不然其他插件也会异常」。
+ * 呈现口径：
+ *   · 三档**固定**为保留最近 6 / 10 / 12 层（`core/floor-trim.js#FLOOR_TRIM_PRESETS`，不给自定义 N）；
+ *   · 每档按钮的 `title` 给出**预检**（当前层数 / 将删层数 / 受影响条目 / 其中未提取层数）——
+ *     预检是只读的，不点按钮也能看到将要发生什么；
+ *   · 只读诊断行：当前 N 层 · 插件 M 条 · 上次删楼时间（保留层数 / 备份文件名）；
+ *   · 宿主**无官方删楼 API**（`getContext().deleteMessage` 缺失）→ 按钮禁用并写明原因（D12 Q6：不静默失败）。
+ */
+function floorTrimSectionHtml() {
+    let st = null;
+    try { st = floorTrimStatus(); } catch (e) { st = null; }
+    const supported = !!(st && st.supported);
+    const floors = Number((st && st.floors) || 0);
+    const entries = Number((st && st.entries) || 0);
+    const last = (st && st.last) || null;
+    const when = (() => {
+        try { return new Date(Number((last && last.at) || 0)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(Number((last && last.at) || 0)); }
+    })();
+    const diag = '只读诊断：当前 ' + floors + ' 层 · 插件 ' + entries + ' 条'
+        + (last ? (' · 上次删楼 ' + esc(when) + '（保留 ' + Number(last.keep) + ' 层 · 备份 ' + esc(String(last.backup || '未生成')) + '）')
+            : ' · 尚未删楼');
+    const pre = (keep) => floorTrimPrecheckCache(keep, floors);
+    const rows = FLOOR_TRIM_PRESETS.map((keep) => {
+        const dis = supported ? '' : ' disabled';
+        const title = supported
+            ? ('保留最近 ' + keep + ' 层后删除更早的楼层（' + pre(keep) + '）')
+            : ('当前宿主不提供官方删除楼层接口，无法执行（' + esc(String((st && st.reason) || '')) + '）');
+        return '<button class="ftt-btn ftt-err" type="button" data-ftt-action="floorTrim" data-ftt-keep="' + keep + '"'
+            + dis + ' title="' + esc(title) + '">保留最近 ' + keep + ' 层</button>';
+    }).join('');
+    return [
+        '<div class="ftt-section"><div class="ftt-sec-title">✂️ 删除聊天楼层（减小聊天体积）</div>',
+        '<div class="ftt-hint">酒馆对高楼层支持较差时，可以直接在这里删掉<b>更早的聊天楼层</b>。'
+        + '插件已提取的记忆<b>不会</b>随之丢失：删除前自动生成一份明文备份，删除后把记忆里的楼层编号一并校准。</div>',
+        '<div class="ftt-row">' + rows + '</div>',
+        '<div class="ftt-hint ftt-mb-0">' + diag + '</div>',
+        '</div>',
+    ].join('\n');
+}
+
+/** 预检缓存（同一屏渲染内三档各算一次；只读、无副作用，缓存只为少算几遍哈希） */
+let trimPreCache = { floors: -1, map: {} };
+function floorTrimPrecheckCache(keep, floors) {
+    if (trimPreCache.floors !== floors) trimPreCache = { floors: floors, map: {} };
+    if (trimPreCache.map[keep] !== undefined) return trimPreCache.map[keep];
+    let txt = '';
+    try {
+        const p = floorTrimPrecheck(keep);
+        const pl = (p && p.plan) || {};
+        txt = pl.ok
+            ? ('当前 ' + pl.total + ' 层；将删除 ' + pl.removeCount + ' 层；受影响记忆 ' + Number((pl.affected && pl.affected.total) || 0) + ' 条'
+                + (Number(p.unextracted) > 0 ? ('；其中 ' + Number(p.unextracted) + ' 层尚未提取') : ''))
+            : (String((p && p.summary) || '') || '当前无需删除');
+    } catch (e) { txt = ''; }
+    trimPreCache.map[keep] = txt;
+    return txt;
+}
+
+/**
  * 页内动作块（只实现内核已就绪的：数据管理导出/导入/清台账/清空当前角色记忆；其余明确标注）
  *
  * v2.54.0 数据管理页重排（用户报告：「下面的导入和导出 UI 设计有问题，请完善」＋
@@ -1433,8 +1451,7 @@ function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
             // ① 导出
-            '<div class="ftt-section"><div class="ftt-sec-title">📤 导出备份</div>',
-            '<div class="ftt-hint">把当前角色的全部记忆导出成 JSON 文件并下载到本机（同时复制到剪贴板），可用于备份或迁移到同一角色的其它设备。</div>',
+            '<div class="ftt-section"><div class="ftt-sec-title">📤 导出备份</div>',            '<div class="ftt-hint">把当前角色的全部记忆导出成 JSON 文件并下载到本机（同时复制到剪贴板），可用于备份或迁移到同一角色的其它设备。</div>',
             '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="exportState" title="导出当前角色全部记忆为 JSON 文件（触发浏览器下载）">⬇ 导出 JSON 文件</button></div>',
             '</div>',
             // ② 导入（文件 + 粘贴两条路，各自与说明和按钮成组）
@@ -1445,7 +1462,9 @@ function pageExtraHtml(pid) {
             + '<textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
             '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateApply" title="导入上方文本框中的 JSON（合并规则同上）">⬆ 导入粘贴内容</button></div>',
             '</div>',
-            // ③ 危险动作单独成块
+            // ③ 删楼（v2.94.0；与「删除数据」分开：删的是**聊天楼层**，不是插件记忆 —— 用户约定落在这里）
+            floorTrimSectionHtml(),
+            // ④ 危险动作单独成块
             '<div class="ftt-section"><div class="ftt-sec-title">⚠️ 删除数据（不可恢复）</div>',
             '<div class="ftt-hint">下面两项都会永久删除本地记录，<b>删除前建议先「⬇ 导出 JSON 文件」备份</b>。</div>',
             '<div class="ftt-row">',
