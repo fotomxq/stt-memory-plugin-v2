@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.95.0",
+  "version": "2.96.0",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "2.96.0",
+      "date": "2026-09-28",
+      "title": "修复「总览的可点击单楼分析，点击没任何反应」",
+      "points": [
+        "① 长耗时动作：没有任何即时反馈（主因）：点「第N楼」要等一次 AI 生成（通常数秒到数十秒），而 V2 的提示行只在动作结束后的那次重绘里才出现 —— 这几十秒内界面上什么都不…",
+        "② panelAction() 的十余处「前置条件早退」绕过了函数末尾的 renderPanel()：return { ok:false, reason:'no-hook' } …"
+      ]
+    },
     {
       "version": "2.95.0",
       "date": "2026-09-28",

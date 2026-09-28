@@ -165,6 +165,22 @@ function apiRerenderIfVisible() {
 }
 try { setApiPageHooks({ rerender: apiRerenderIfVisible }); } catch (e) { /* 钩子注入失败不影响面板 */ }
 
+/** v2.96.0：**正在分析中的单楼**（防连点；V1 `busy.summary` 的等价物） */
+const singleFloorBusy = new Set();
+
+/**
+ * v2.96.0：面板动作的**用户可见通知**（V1 `notify()` 等价物）。
+ * 走宿主钩子 `hooks.notify(kind, text)`（index.js 接到 toastr）；未接线时静默 —— 提示行仍会显示。
+ */
+function panelNotify(kind, text) {
+    try {
+        if (typeof hooks.notify === 'function') return hooks.notify(String(kind || 'info'), String(text || ''));
+    } catch (e) { /* 忽略 */ }
+    return false;
+}
+/** 单楼分析在途清单（测试/诊断） */
+export function singleFloorBusyState() { return Array.from(singleFloorBusy).sort((a, b) => a - b); }
+
 /** 注入动作钩子（index.js：提取 / 清单 / 更新 / 清空注入） */
 export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
 /** 面板状态（诊断/测试） */
@@ -497,8 +513,17 @@ function overviewBody() {
     //   此处再补一句被跳过的覆盖数，便于用户核对跳过机制确实生效。
     const pending = (typeof hooks.pending === 'function') ? (hooks.pending({}) || []) : [];
     if (pending.length) {
+        // v2.96.0（用户报告「点击没任何反应」）：**正在分析中的楼层**由渲染决定「分析中」态 ——
+        //   点击委托给节点叠的 `.ftt-loading` 会被紧随其后的那次重绘换掉，故真正的持续态必须来自状态：
+        //   这里按 `singleFloorBusy` 渲染成禁用 + 转圈的按钮（V1 `updateFloorAnimDom()` 的同口径做法）。
         lines.push('<div class="ftt-item ftt-item--warn ftt-item--col"><b class="ftt-pend-title">⏳ 未摘要 ' + pending.length + ' 楼（可点击单楼分析）</b><div class="ftt-pend-list">'
-            + pending.slice(0, 40).map((f) => '<button class="ftt-btn ftt-sm ftt-floor-btn" data-ftt-action="summaryFloor" data-ftt-floor="' + attr(f) + '" title="单独分析该楼层">第' + esc(f) + '楼</button>').join(' ')
+            + pending.slice(0, 40).map((f) => {
+                const loading = singleFloorBusy.has(Number(f));
+                return '<button class="ftt-btn ftt-sm ftt-floor-btn' + (loading ? ' ftt-loading' : '') + '"'
+                    + ' data-ftt-action="summaryFloor" data-ftt-floor="' + attr(f) + '"'
+                    + (loading ? ' disabled' : '')
+                    + ' title="' + (loading ? '分析中…（等本次 AI 返回；结果会写回记忆并刷新本页）' : '单独分析该楼层') + '">第' + esc(f) + '楼</button>';
+            }).join(' ')
             + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
     }
     const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
@@ -1471,6 +1496,8 @@ export async function panelAction(action, payload) {
     const traceT0 = Date.now();
     const a = String(action || '');
     let result = { ok: true, action: a };
+    // v2.96.0：所有返回路径（含前置条件早退）都经统一收尾 → 界面一定被重绘、提示一定可见
+    const done = (extra) => finalizePanelAction(Object.assign(result, extra || {}), traceOp, traceT0, a, p);
     try {
         if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; }   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
         else if (a === 'close') { closePanel(); }
@@ -1670,7 +1697,7 @@ export async function panelAction(action, payload) {
                 return Object.assign(result, { html: panelHtml(), state: panelState() });
             }
             // V1「⚡ 立即 AI 摘要」：分段批量（cfg.summaryChunkSize 楼/段）
-            if (typeof hooks.autoSummary !== 'function') { setNote('批量摘要入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.autoSummary !== 'function') { setNote('批量摘要入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
             setNote('分析中…（分段批量摘要）');
             ps.busy = true;
             renderPanel();
@@ -1700,7 +1727,7 @@ export async function panelAction(action, payload) {
                     : (r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('未完成：' + String((r && r.reason) || '未知'))));
             } else {
                 setNote('提取入口未就绪');
-                return { ok: false, reason: 'no-hook' };
+                return done({ ok: false, reason: 'no-hook' });
             }
         } else if (a === 'abortAnalysis' || a === 'abort') {
             const r = (typeof hooks.abort === 'function') ? hooks.abort() : { ok: false };
@@ -1788,10 +1815,30 @@ export async function panelAction(action, payload) {
                 result = Object.assign(result, r || { ok: false }, { action: a });
             }
         } else if (a === 'summaryFloor') {
+            // v2.96.0 修复（用户报告「总览的可点击单楼分析，点击没任何反应」）：
+            //   ① **立刻**给出可见反馈（此前 `setNote` 只在动作结束时才随重绘出现，AI 一慢就像点了没反应）：
+            //      写入提示后**马上渲染一次**（点击的按钮此刻已带上 `.ftt-loading` 转圈态，见点击委托）；
+            //   ② **防重复点击 / 防与批次撞车**（V1 `pipelineOccupied()` + `busy.summary` 的等价物）——
+            //      此前可无限连点，会并发发出多条单楼分析；
+            //   ③ 结果除提示行外**再弹一条通知**（V1 用 `notify` 弹「分析完成 / 无可分析内容」，V2 之前只有那行小字）。
             const floor = Number(p.floor);
-            if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return { ok: false, reason: 'no-hook' }; }
-            setNote('分析第 ' + floor + ' 楼…');
-            const r = await hooks.extract({ floor });
+            if (typeof hooks.extract !== 'function') { setNote('提取入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
+            if (!Number.isFinite(floor) || floor < 0) { setNote('无效楼层：' + String(p.floor)); return done({ ok: false, reason: 'bad-floor' }); }
+            const batchBusy = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+            if (batchBusy || singleFloorBusy.has(floor)) {
+                setNote('第 ' + floor + ' 楼已在分析中（或批量摘要正在运行），请等本次完成后再点');
+                return done({ ok: false, reason: 'busy', floor: floor });
+            }
+            singleFloorBusy.add(floor);
+            setNote('正在分析第 ' + floor + ' 楼…（AI 生成中，结果会写回记忆并刷新本页）');
+            renderPanel();                                   // ① 立刻可见（不等 AI）
+            try { panelNotify('info', '第 ' + floor + ' 楼：开始分析…'); } catch (e) { /* 忽略 */ }
+            let r = null;
+            try {
+                r = await hooks.extract({ floor });
+            } finally {
+                singleFloorBusy.delete(floor);
+            }
             // 兼容两种返回形态：单楼结果 {ok, added, total} 与批量结果 {ok, results:[{floor,added,…}]}
             let added = r && r.added, total = r && r.total, ok = !!(r && r.ok);
             if (r && Array.isArray(r.results)) {
@@ -1799,10 +1846,18 @@ export async function panelAction(action, payload) {
                 ok = !!(hit && hit.ok);
                 added = hit ? hit.added : 0;
             }
+            const why = String((r && (r.reason || r.error)) || '未知');
             setNote(ok ? ('第 ' + floor + ' 楼：新增 ' + (Number(added) || 0) + ' 条' + (total === undefined ? '' : '（共 ' + total + '）'))
-                : ('第 ' + floor + ' 楼未完成：' + String((r && r.reason) || '未知')));
+                : ('第 ' + floor + ' 楼未完成：' + why));
+            // ③ 结果可见（成功/失败都给）：与 V1 的 notify 同口径；无可分析内容给可操作的解释
+            try {
+                if (ok) panelNotify('success', '第 ' + floor + ' 楼分析完成：本次提取 ' + (Number(added) || 0) + ' 条');
+                else if (why === 'empty-floor') panelNotify('warning', '第 ' + floor + ' 楼在当前刷次下没有可分析正文（或已被投喂白/黑名单过滤），已从「未摘要」列表移除');
+                else panelNotify('warning', '第 ' + floor + ' 楼未完成：' + why);
+            } catch (e) { /* 忽略 */ }
+            result = Object.assign(result, { ok: !!ok, floor: floor, added: Number(added) || 0 });
         } else if (a === 'inject') {
-            if (typeof hooks.inject !== 'function') { setNote('注入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.inject !== 'function') { setNote('注入入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
             const r = await hooks.inject();
             setNote(r && r.ok ? ('已注入 ' + r.chars + ' 字') : ('注入失败：' + String((r && r.reason) || '未知')));
         } else if (a === 'clear-inject') {
@@ -2261,7 +2316,7 @@ export async function panelAction(action, payload) {
             ps.settingsSub = SETTINGS_TABS.some((t) => t.id === id) ? id : ps.settingsSub;
         }
         else if (a === 'exportState') {
-            if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
             const text = String((await hooks.exportState()) || '');
             ps.exportText = text;
             // ① **真实下载文件**（V1 `export` 动作同款：Blob + `<a download>`）
@@ -2283,14 +2338,14 @@ export async function panelAction(action, payload) {
         }
         else if (a === 'importStateOpen') {
             // **真实选择存档文件**（V1 `import` 动作同款：`<input type=file>` → 读取 → 增量合并）
-            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
-            if (!fileIoCapabilities().pick) { setNote('当前宿主不支持文件选择器 —— 请把 JSON 内容粘贴到文本框，再点「⬆ 导入粘贴内容」'); return { ok: false, reason: 'no-picker' }; }
+            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
+            if (!fileIoCapabilities().pick) { setNote('当前宿主不支持文件选择器 —— 请把 JSON 内容粘贴到文本框，再点「⬆ 导入粘贴内容」'); return done({ ok: false, reason: 'no-picker' }); }
             setNote('请选择要导入的 JSON 存档文件…');
             const picked = await pickTextFile({ accept: '.json,application/json' });
             if (!picked.ok) {
                 const why = picked.reason === 'cancelled' ? '已取消选择文件' : ('未取到文件（' + picked.reason + '）');
                 setNote(why + ' —— 也可把 JSON 内容粘贴到文本框，再点「⬆ 导入粘贴内容」');
-                return { ok: false, reason: picked.reason || 'no-file' };
+                return done({ ok: false, reason: picked.reason || 'no-file' });
             }
             const r = await hooks.importState(picked.text);
             setNote(r && r.ok
@@ -2299,7 +2354,7 @@ export async function panelAction(action, payload) {
             result = Object.assign(result, r || {}, { fileName: picked.name, fileSize: picked.size });
         }
         else if (a === 'importV1Dry' || a === 'importV1Apply') {
-            if (typeof hooks.importV1 !== 'function') { setNote('旧版导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.importV1 !== 'function') { setNote('旧版导入入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
             const apply = a === 'importV1Apply';
             setNote(apply ? '导入并写入…' : '读取 V1 数据…');
             const r = await hooks.importV1({ apply });
@@ -2312,10 +2367,10 @@ export async function panelAction(action, payload) {
             setNote('维度 ' + String(p.kind || '') + (p.on ? ' 已启用' : ' 已停用'));
         }
         else if (a === 'importStateApply') {
-            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return { ok: false, reason: 'no-hook' }; }
+            if (typeof hooks.importState !== 'function') { setNote('导入入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
             const el = (() => { try { const doc = globalThis.document; return doc && doc.querySelector ? doc.querySelector('[data-ftt-import]') : null; } catch (e) { return null; } })();
             const text = String(p.text != null ? p.text : (el ? el.value : ''));
-            if (!text.trim()) { setNote('导入失败：文本框是空的 —— 请先粘贴导出的 JSON 内容'); return { ok: false, reason: 'empty' }; }
+            if (!text.trim()) { setNote('导入失败：文本框是空的 —— 请先粘贴导出的 JSON 内容'); return done({ ok: false, reason: 'empty' }); }
             const r = await hooks.importState(text);
             setNote(r && r.ok
                 ? ('已导入并合并：新增 ' + (r.added || 0) + ' 条（相同的跳过 / 变更覆盖，未删除本地记忆）')
@@ -2333,6 +2388,24 @@ export async function panelAction(action, payload) {
         //   用户主动触发的动作异常 → **强制**弹一次可见提示（不受每会话上限约束）
         try { notifyError('操作失败：' + result.error, { force: true }); } catch (err) { /* 忽略 */ }
     }
+    return finalizePanelAction(result, traceOp, traceT0, a, p);
+}
+
+/**
+ * v2.96.0（用户报告：「总览的可点击单楼分析，点击没任何反应」）——**统一收尾**（渲染 + 提示 + 交互留痕）。
+ *
+ * 为什么必须抽出来：`panelAction()` 内部有十余处「前置条件不满足」的**早退**（`return { ok:false, reason:'no-hook' }`），
+ *   它们绕过了函数末尾的 `renderPanel()` —— 于是刚 `setNote('…入口未就绪')` 写下的提示**永远不会出现在界面上**，
+ *   用户看到的就是「点了没任何反应」。现在所有返回路径（含早退与异常）都经过本函数，界面一定更新。
+ *
+ * @param {object} result 动作结果（会被就地补上 `html` / `state`）
+ * @param {object} traceOp `traceOpStart()` 的句柄
+ * @param {number} traceT0 起始时刻
+ * @param {string} action 动作名
+ * @param {object} params 入参
+ */
+function finalizePanelAction(result, traceOp, traceT0, action, params) {
+    const p = params || {};
     // v2.87.0：动作**被拒绝**（ok:false，例如未知动作 / 前置条件缺失）也要可见 —— 走节流（同文案 60s 一次）
     try {
         if (result && result.ok === false) {
@@ -2522,6 +2595,18 @@ export function bindOverlay() {
             //   确认框统一走 `confirmDialog`（宿主 hooks.confirm → 酒馆 callGenericPopup → 原生 confirm →
             //   无对话框能力即按「取消」，与 V1 的 confirm 口径一致）。
             //   注意：这里只拦**用户真实点击**；程序化调用 `panelAction()`（命令 / devtools / 测试）不受影响。
+            // v2.96.0（用户报告「总览的可点击单楼分析，点击没任何反应」）：单楼分析是**长耗时**动作
+            //   （要等一次 AI 生成，通常数秒到数十秒）→ 点击后**立刻**给按钮叠加「分析中」转圈态并禁用
+            //   （V1 v1.38 的 `btn.classList.add('ftt-loading'); btn.disabled = true; btn.title = '分析中…'` 同款；
+            //   样式 `#ftt-panel .ftt-floor-btn.ftt-loading` 早已在 `style.css` 里，V2 一直没接上 → 白留）。
+            //   动作结束时 `finalizePanelAction()` 会重绘，节点被替换即自然复原。
+            if (act === 'summaryFloor' && actEl) {
+                try {
+                    if (actEl.classList && actEl.classList.add) actEl.classList.add('ftt-loading');
+                    actEl.disabled = true;
+                    actEl.title = '分析中…（等本次 AI 返回；结果会写回记忆并刷新本页）';
+                } catch (e) { /* 忽略 */ }
+            }
             if (DANGER_ACTION_PROMPTS[act]) {
                 const go = await confirmDialog(DANGER_ACTION_PROMPTS[act], 'FTT 危险操作确认');
                 if (!go) return;

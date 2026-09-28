@@ -4479,6 +4479,72 @@ await assert('BI2 单路 AI（批次空闲）也让那一行活起来：状态�
 })(), '');
 
 
+// ---------- BJ 总览「可点击单楼分析」（v2.96.0 修复「点击没任何反应」） ----------
+// 用户报告：「总览的可点击单楼分析，点击没任何反应。」
+// 口径（V1 v1.38/v1.81 等价物）：点击后**立刻**给按钮加转圈态、提示行立刻写「正在分析第 N 楼…」、
+//   结束时提示 + 通知都可见；在途期间再点不再重复发起。
+await assert('BJ1 真实点击总览「第N楼」→ **同步**进入分析中态（按钮 .ftt-loading + disabled、「正在分析第 N 楼…」提示同帧可见）；AI 返回后提示写「新增 N 条」并弹出通知；在途期间再点被拒且不重复发起', (async () => {
+    const savedGen = host.ctx.generateRaw;
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const toasts = [];
+    const keepToastr = globalThis.toastr;
+    let aiCalls = 0;
+    try {
+        globalThis.toastr = { info: (t) => toasts.push(['info', String(t)]), success: (t) => toasts.push(['success', String(t)]), warning: (t) => toasts.push(['warning', String(t)]), error: (t) => toasts.push(['error', String(t)]) };
+        host.ctx.chat.length = 0;
+        host.ctx.chat.push({ is_user: true, mes: '你好', name: 'User' });
+        host.ctx.chat.push({ is_user: false, mes: '甲把铜箱搬上船，账册留在码头。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        host.ctx.generateRaw = async () => {
+            aiCalls += 1;
+            await new Promise((r) => setTimeout(r, 40));
+            return JSON.stringify({ atoms: { add: [{ title: '搬箱', text: '甲把铜箱搬上船（正文足够长）。', date: '1919-11-29' }] } });
+        };
+        await entry.popupAction('tab', { tab: 'overview' });
+        await entry.popupAction('refresh', {});
+        const h0 = String((await entry.popupAction('refresh', {})).html || '');
+        const fid = 1;
+        // 说明：只断言「点击后的可感知反馈」；按钮标记本身由 `overview-layout` / `panel` 单测保证，
+        //   此处 `pending` 可能已被前面的小节清空，故不依赖它在场。
+        const hasBtn = h0.indexOf('data-ftt-note') >= 0;
+        const el = doc.getElementById('ftt-panel');
+        const classes = new Set();
+        const btn = {
+            dataset: { fttAction: 'summaryFloor', fttFloor: String(fid) },
+            classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) },
+            disabled: false, title: '', closest: () => null,
+        };
+        const fire = () => ((el.listeners || {}).click || []).forEach((fn) => fn({ target: btn, preventDefault() { }, stopPropagation() { } }));
+        fire();
+        // **同步**断言：还没等 AI 返回
+        const marked = classes.has('ftt-loading') === true && btn.disabled === true && btn.title.indexOf('分析中') >= 0;
+        const noteNow = String((fttPanelMod.panelState() || {}).note || '');
+        // 在途期间再点：应只提示「已在分析中」，不再发起
+        fire();
+        const callsDuring = aiCalls;
+        const noteBusy = String((fttPanelMod.panelState() || {}).note || '');
+        await new Promise((r) => setTimeout(r, 150));
+        const noteDone = String((fttPanelMod.panelState() || {}).note || '');
+        const toastKinds = toasts.map((x) => x[0]).join(',');
+        const allOk = hasBtn && marked
+            && noteNow.indexOf('正在分析第 ' + fid + ' 楼') >= 0
+            && noteBusy.indexOf('已在分析中') >= 0 && callsDuring <= 1
+            && aiCalls === 1
+            && noteDone.indexOf('第 ' + fid + ' 楼：新增') >= 0
+            && toastKinds.indexOf('info') >= 0 && toastKinds.indexOf('success') >= 0;
+        return allOk;
+    } finally {
+        globalThis.toastr = keepToastr;
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.generateRaw = savedGen;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;
