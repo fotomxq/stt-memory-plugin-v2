@@ -24,6 +24,8 @@ import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js'
 import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 import { hydrateStorageData } from '../core/slim.js';
+// v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
+import { trackPipeline } from '../core/pipeline.js';
 import { debugLogPush } from './debug-log.js';   // v2.87.0：内核 warn → 调试日志（kind = 异常）
 
 const SAVE_DEBOUNCE_MS = 800;
@@ -73,6 +75,13 @@ async function localforageLib() {
  */
 export async function saveStateNow(opts) {
     const o = opts || {};
+    const st = kernelState();
+    if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
+    return await trackPipeline('保存记忆文件', { kind: 'io', phase: '写入存储', join: true }, async () => saveStateNowInner(o));
+}
+
+/** 实际保存（v3.0.0：外层 `saveStateNow` 只负责把它纳入管线状态） */
+async function saveStateNowInner(o) {
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
     // ① 索引基线（首次）→ 刷新原子 h + 建当前索引

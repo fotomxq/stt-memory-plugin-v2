@@ -61,6 +61,8 @@ import {
     slimSnapshotStoreForStorage, hydrateSnapshotStore, snapshotIndexFrom,
 } from '../core/slim.js';
 import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes, gzipAvailable } from './gzip.js';
+// v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：同步 / 持久化动作纳入管线状态
+import { trackPipeline } from '../core/pipeline.js';
 
 // ---------- 常量（V1 同名口径） ----------
 const BAK_PREFIX = 'ftt2-bak-';
@@ -964,6 +966,11 @@ function pickN(v, alt, fb) {
  * @returns {Promise<{mode:string, side?:string, info?:object, stat?:object, error?:string}>}
  */
 export async function crossSyncManual() {
+    // v3.0.0（用户要求）：同步类动作也进管线状态（手动触发与保存后自动推送都算）
+    return await trackPipeline('跨端同步（含备份）', { kind: 'sync', phase: '拉取 / 推送对端' }, () => crossSyncManualInner());
+}
+
+async function crossSyncManualInner() {
     const t0 = Date.now();
     if (longTaskBusy()) {
         log('对账：立即同步被拒绝（长任务进行中，避免并发读写）');
@@ -1048,6 +1055,11 @@ export async function crossSyncManual() {
  *   ③ 若本端有变化则落盘并回推；④ 返回对比报告供 UI 展示。
  */
 export async function refreshFromServer() {
+    // v3.0.0（用户要求）：同步类动作也进管线状态（手动触发与保存后自动推送都算）
+    return await trackPipeline('刷新状态（取服务端）', { kind: 'sync', phase: '读取服务端真值' }, () => refreshFromServerInner());
+}
+
+async function refreshFromServerInner() {
     const rep = { at: Date.now(), file: null, bakFallback: false, snap: false, snapPushed: false, merged: null, pushed: false, err: '', blocked: false };
     if (storageSyncRunning) { rep.err = 'busy'; return rep; }
     if (longTaskBusy()) {
@@ -1122,6 +1134,11 @@ export function scheduleStorageSync(force) {
 
 /** 保存后镜像的实际执行（默认导出于测试与调试） */
 export async function runStorageSync(force) {
+    // v3.0.0（用户要求）：同步类动作也进管线状态（手动触发与保存后自动推送都算）
+    return await trackPipeline('保存后对账同步', { kind: 'sync', phase: '推送对端' }, () => runStorageSyncInner(force));
+}
+
+async function runStorageSyncInner(force) {
     if (storageSyncRunning) {
         storageSyncSkipRetries++;
         log('对账：保存后推送延迟（同步在途，避免并发读写远端）', storageSyncSkipRetries);
@@ -1193,6 +1210,11 @@ export async function runStorageSync(force) {
  * @param {boolean} repair 是否执行修复
  */
 export async function storageVerify(repair) {
+    // v3.0.0（用户要求）：同步类动作也进管线状态（手动触发与保存后自动推送都算）
+    return await trackPipeline('校验并修复', { kind: 'sync', phase: '比对两端' }, () => storageVerifyInner(repair));
+}
+
+async function storageVerifyInner(repair) {
     const details = [];
     // ① 本机缓冲
     try {

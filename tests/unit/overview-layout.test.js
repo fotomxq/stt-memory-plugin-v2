@@ -58,8 +58,10 @@ const H = panelBodyHtml('overview');
 A('O1 总览统一容器与顺序：「最后一次提取」在最末端（时钟 → 管线 → 注入 → 工具 → 统计 → 未摘要/已处理 → 最后提取）', (() => {
     const at = (s) => H.indexOf(s);
     return H.indexOf('<div class="ftt-overview">') === 0
-        && at('data-ftt-clock') > 0 && at('data-ftt-pipeline-label') > at('data-ftt-clock')
-        && at('data-ftt-inject') > at('data-ftt-pipeline-label') && at('ftt-summary-btn') > at('data-ftt-inject')
+        // v3.0.0：管线容器由「一行」改为「可隐藏的块」`[data-ftt-pipeline-box-wrap]`（默认 display:none，
+        //   有动作时自动出现）—— 位置口径不变（时钟之后、注入之前）
+        && at('data-ftt-clock') > 0 && at('data-ftt-pipeline-box-wrap') > at('data-ftt-clock')
+        && at('data-ftt-inject') > at('data-ftt-pipeline-box-wrap') && at('ftt-summary-btn') > at('data-ftt-inject')
         && at('📚 共 ') > at('ftt-summary-btn') && at('⏳ 未摘要') > at('📚 共 ')
         && at('✅ 已处理') > at('⏳ 未摘要') && at('data-ftt-last-extract') > at('✅ 已处理')
         // 末端：最后提取之后不再有其它组件（只有 </div> 收尾）

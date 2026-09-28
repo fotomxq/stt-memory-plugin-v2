@@ -4463,24 +4463,27 @@ await assert('BI1 真实分段摘要（走宿主 generateRaw）**在途期间**�
     }
 })(), '');
 
-await assert('BI2 单路 AI（批次空闲）也让那一行活起来：状态行显示「正在处理：<行为>」而不是「空闲」，并据此启停 500ms 心跳（面板回到总览即开表、管线结束即停表）', (async () => {
+await assert('BI2 单路 AI（批次空闲）也让管线块活起来：块内出现该行（「弱化NSFW · token · 预计剩 · 流式块」）并自动显示；v3.0.0 起心跳**常驻总览**（不再随忙位启停），动作结束后块自动隐藏', (async () => {
     const PL = await import('../core/pipeline.js');
     try {
-        // 批次空闲 + 管线忙碌 → 总览页渲染后心跳必须开起来
         await entry.popupAction('tab', { tab: 'overview' });
-        const p1 = (PL.beginPipeline('弱化NSFW', { chars: 8000 }) || {}).runId;
+        const p1 = (PL.beginPipeline('弱化NSFW', { chars: 8000, kind: 'ai' }) || {}).runId;
         PL.addStreamChunk('a'.repeat(2000), { id: p1 });
         await entry.popupAction('refresh', {});
         const tickOn = fttPanelMod.pipelineTickState().running === true;
+        const rows = fttPanelMod.pipelineBoxRowsHtml();
+        const okBusy = rows.indexOf('[AI] 弱化NSFW') >= 0 && rows.indexOf('🪙') > 0
+            && rows.indexOf('预计剩') > 0 && rows.indexOf('流式 1 块') > 0;
         const st = fttPanelMod.pipelineStatusText(Date.now());
-        const okBusy = st.busy === true && st.txt.indexOf('正在处理：弱化NSFW') >= 0
-            && st.txt.indexOf('🪙') > 0 && st.txt.indexOf('预计剩') > 0 && st.txt.indexOf('流式 1 块') > 0;
-        // 管线结束 → 再渲染即停表，并回到「空闲」
+        const okText = st.busy === true && st.txt.indexOf('正在处理：弱化NSFW') >= 0;
+        // 管线结束 → 块内 0 行（隐藏）；心跳按 v3.0.0 口径**继续**跑（面板仍在总览）
         PL.endPipeline(true, p1);
         await entry.popupAction('refresh', {});
-        const tickOff = fttPanelMod.pipelineTickState().running === false;
+        const rowsAfter = fttPanelMod.pipelineBoxRowsHtml();
+        const tickStill = fttPanelMod.pipelineTickState().running === true;
         const idle = fttPanelMod.pipelineStatusText(Date.now());
-        return tickOn && okBusy && tickOff && idle.busy === false && idle.txt === '空闲';
+        return tickOn && okBusy && okText && rowsAfter === '' && tickStill
+            && idle.busy === false && idle.txt === '空闲';
     } finally {
         try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
@@ -4677,6 +4680,78 @@ await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义
         host.ctx.generateRaw = savedGen;
         rt.state.parallels = keepPars;
         rt.state.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+// ---------- BM 管线状态：默认隐藏 / 动作自动出现 / 并行多行（v3.0.0） ----------
+// 用户要求：「1. 所有 AI 请求无论是否存在并行，都应该在管线出现提示信息；
+//   2. 管线状态默认不显示，如果有请求、同步等各类动作时自动出现，且如果有并行时出现两个或两个以上，根据需求展现。」
+await assert('BM1 装配后：空闲时管线块**默认隐藏**（无行 + display:none）；发起真实 AI 请求（单楼分析）期间**自动出现**该行（类别 AI + token + 倒计时）；结束后自动隐藏', (async () => {
+    const EX = await import('../host/extract.js');
+    const PL = await import('../core/pipeline.js');
+    const savedGen = host.ctx.generateRaw;
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    try {
+        host.ctx.chat.push({ is_user: false, mes: '甲把铜箱搬上船，账册留在码头。', name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        await entry.popupAction('tab', { tab: 'overview' });
+        const idleRows = fttPanelMod.pipelineBoxRowsHtml();
+        const idleHtml = String((await entry.popupAction('refresh', {})).html || '');
+        // 真实 AI 请求：`analyzeFloor` → `genTracked` → 管线（此处 AI 桩会先挂一会儿，便于抓在途快照）
+        let during = null;
+        host.ctx.generateRaw = async () => {
+            await new Promise((r) => setTimeout(r, 40));
+            return JSON.stringify({ atoms: { add: [{ title: '搬箱', text: '甲把铜箱搬上船（正文足够长）。', date: '1919-11-29' }] } });
+        };
+        const fid = host.ctx.chat.length - 1;
+        const p = EX.analyzeFloor(fid, {});
+        await new Promise((r) => setTimeout(r, 15));
+        during = { rows: fttPanelMod.pipelineBoxRowsHtml(), runs: PL.listPipelineRuns() };
+        const r = await p;
+        const afterRows = fttPanelMod.pipelineBoxRowsHtml();
+        // 结束后可能仍有其它动作在跑（例如随后的「保存记忆文件」）—— 这里只断言**单楼分析那一行已消失**
+        const allOk = idleRows === '' && idleHtml.indexOf('data-ftt-pipeline-box') > 0
+            && idleHtml.indexOf('data-ftt-pipeline-box-wrap style="display:none"') > 0
+            && r.ok === true
+            && during.rows.indexOf('[AI] 单楼分析') >= 0 && during.rows.indexOf('🪙') > 0 && during.rows.indexOf('预计剩') > 0
+            && during.rows.indexOf('分段') < 0                                  // 单路 AI 不该被挂上批次进度
+            && during.runs.length === 1 && during.runs[0].kind === 'ai'
+            && afterRows.indexOf('单楼分析') < 0;
+        if (!allOk) console.log('BM1-DEBUG ' + JSON.stringify({ idleRows: idleRows, idleHidden: idleHtml.indexOf('data-ftt-pipeline-box-wrap style="display:none"') > 0, rOk: r.ok, during: during, afterRows: afterRows }));
+        return allOk;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.generateRaw = savedGen;
+        try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+await assert('BM2 并行时**两行及以上**：AI 请求（批量摘要）+ 同步（跨端同步）+ 存储（保存）三路同时 → 三行、类别各异；各路结束后行数递减直至隐藏', (async () => {
+    const PL = await import('../core/pipeline.js');
+    await entry.popupAction('tab', { tab: 'overview' });
+    try {
+        const a = (PL.beginPipeline('批量摘要', { chars: 2000, kind: 'ai' }) || {}).runId;
+        const b = (PL.beginPipeline('跨端同步', { kind: 'sync' }) || {}).runId;
+        const c = (PL.beginPipeline('保存记忆文件', { kind: 'io' }) || {}).runId;
+        const rows3 = fttPanelMod.pipelineBoxRowsHtml();
+        PL.endPipeline(true, b);
+        const rows2 = fttPanelMod.pipelineBoxRowsHtml();
+        PL.endPipeline(true, a);
+        const rows1 = fttPanelMod.pipelineBoxRowsHtml();
+        PL.endPipeline(true, c);
+        const rows0 = fttPanelMod.pipelineBoxRowsHtml();
+        const n = (h) => (String(h).match(/data-ftt-pipeline-row=/g) || []).length;
+        return n(rows3) === 3 && rows3.indexOf('[AI] 批量摘要') >= 0 && rows3.indexOf('[同步] 跨端同步') >= 0
+            && rows3.indexOf('[存储] 保存记忆文件') >= 0
+            && n(rows2) === 2 && n(rows1) === 1 && rows0 === '';
+    } finally {
+        try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');

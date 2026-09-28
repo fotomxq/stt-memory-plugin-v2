@@ -8,6 +8,8 @@ import { getCtx, safeCall } from './st-api.js';
 import { cfg as kernelCfg, getStoryNow } from '../core/model/runtime.js';
 import { buildMemoryBodyForInject } from '../core/recall.js';
 import { clockDateLabel } from '../core/clock.js';
+// v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）也是管线动作
+import { beginPipeline, endPipeline, setPipelinePhase } from '../core/pipeline.js';
 
 // 内核视图引用（配置 / 剧情时钟 / 召回函数）—— 延迟取用，允许测试替换
 const runtimeRef = { cfg: kernelCfg, getStoryNow, buildMemoryBodyForInject, extractFlow: null, recentFloorText: null };
@@ -137,6 +139,11 @@ export function injectInFlight() { return !!inFlight; }
 /** 实际的构建与推送（由 `pushMemoryInject` 单飞包装调用） */
 async function buildAndPushInject(o) {
     const t0 = Date.now();
+    // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）进管线状态。
+    //   内部若走向量检索，会**再出现一条「向量检索（embedding）」行** —— 嵌套/并行都看得见。
+    //   登记**直接嵌在本函数内**（不新增 async 层）→ `pushMemoryInject` 的完成时序与观察窗保持逐字不变。
+    let pipeRun = {};
+    try { pipeRun = beginPipeline('提取记忆（召回 + 注入）', { kind: 'task', phase: '召回候选' }) || {}; } catch (e) { pipeRun = {}; }
     try {
         injectStats.builds += 1;
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
@@ -184,6 +191,8 @@ async function buildAndPushInject(o) {
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
         return { ok: false, reason: 'error', chars: 0, count: 0, injected: false, ms: Date.now() - t0 };
+    } finally {
+        try { endPipeline(true, pipeRun.runId); } catch (e2) { /* 忽略 */ }
     }
 }
 

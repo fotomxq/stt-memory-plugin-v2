@@ -87,7 +87,9 @@ R.assert('P1（v2.52.0）总览：剧情时钟三行 + 在场 + **管线状态�
     const h = panelBodyHtml('overview');
     return h.indexOf('📅 日期：1919-11-29') >= 0 && h.indexOf('⏱ 时间：夜') >= 0 && h.indexOf('📍 地点：码头') >= 0
         && h.indexOf('👥 在场角色：甲、乙') >= 0
-        && h.indexOf('🧵 管线状态') >= 0 && h.indexOf('空闲') >= 0      // v2.52.0：管线提示此前缺失
+        // v3.0.0（用户要求）：管线状态**默认不显示** —— 块容器在（带 display:none），但不再常驻一行「空闲」
+        && h.indexOf('🧵 管线状态') >= 0 && h.indexOf('data-ftt-pipeline-box') >= 0
+        && h.indexOf('data-ftt-pipeline-box-wrap style="display:none"') >= 0
         && h.indexOf('🧷 注入') >= 0 && h.indexOf('📚 共 ') >= 0
         && h.indexOf('data-ftt-action="summaryFloor" data-ftt-floor="4"') >= 0
         && h.indexOf('data-ftt-action="summary"') >= 0 && h.indexOf('data-ftt-action="inject"') >= 0

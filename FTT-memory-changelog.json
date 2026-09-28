@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "2.99.0",
+  "version": "3.0.0",
   "updatedAt": "2026-09-28",
   "generatedAt": "2026-09-28",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.0",
+      "date": "2026-09-28",
+      "title": "管线状态：所有请求都进管线 + 默认隐藏 / 有动作自动出现 / 并行一行一条",
+      "points": [
+        "① 覆盖面：把「所有请求 / 各类动作」都纳入管线：此前只有 AI 文本调用进管线（core/ai-hooks.js#aiCallText 与 host/extract.js#g…",
+        "② 展示：默认隐藏 · 自动出现 · 并行一行一条：容器由「常驻一行（空闲时写『空闲』）」改为 [data-ftt-pipeline-box] 块 + 0..N 行（data-f…"
+      ]
+    },
     {
       "version": "2.99.0",
       "date": "2026-09-28",

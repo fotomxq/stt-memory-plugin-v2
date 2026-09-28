@@ -38,7 +38,11 @@ import {
 } from '../core/parallel.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
 // v2.90.0（用户要求）：管线状态补「流式摘要 + token 计数 + 预估倒计时」
-import { pipelineSuffix, pipelineSummaryText, snapshot as pipelineSnapshot } from '../core/pipeline.js';
+import {
+    pipelineSuffix, pipelineSummaryText, snapshot as pipelineSnapshot,
+    // v3.0.0（用户要求）：管线状态「默认不显示 / 有动作自动出现 / 并行一行一条」
+    listPipelineRuns,
+} from '../core/pipeline.js';
 // v2.92.0（用户要求）：**需人工确认的冲突**在总览也要提示（不只设定里）
 import { listConflicts, pendingConflictCount, clearConflicts } from '../core/conflicts.js';
 import { notifyError } from '../core/model/runtime.js';   // v2.87.0：错误要有可见提示，不只写日志
@@ -358,16 +362,49 @@ export function pipelineStatusText(now) {
 }
 
 /**
- * 只更新「管线状态」那一行的文本（V1 `updatePipelineStatusDom()` 同口径：找到就写、内容没变不写）。
- * v2.63.0：属性名与 V1 一致用 `[data-ftt-pipeline-label]`；**不整页重绘**，避免打断输入与滚动。
+ * 「🧵 管线状态」**块内行**（v3.0.0，用户要求）：
+ *   · **默认不显示** —— 没有任何进行中的动作时整块隐藏（不再常驻一行「空闲」）；
+ *   · **有请求 / 同步等各类动作时自动出现**；
+ *   · **并行时一行一条**（两个及以上同时进行 → 两行及以上，按需展现）。
+ * 行文本 = `pipelineRunLine()` +（批量摘要时）批次进度「分段 x/y · 第 N-M 楼」。
  */
-export function updatePipelineStatusDom(now) {
+export function pipelineBoxRowsHtml() {
     try {
-        const doc = globalThis.document;
-        const el = doc && doc.querySelector ? doc.querySelector('[data-ftt-pipeline-label]') : null;
-        if (!el) return false;
-        const st = pipelineStatusText(now);
-        if (el.textContent !== st.txt) el.textContent = st.txt;
+        const runs = (() => { try { return listPipelineRuns(); } catch (e) { return []; } })();
+        if (!runs.length) return '';
+        // v3.0.0：批次进度**只在批次真的在跑**时挂到第一行（否则单路 AI 也会被挂上「分段 1/1」这类噪声）
+        const batchOn = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+        const bp = batchOn && (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
+        const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
+        const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
+        const seg = total ? (' · 分段 ' + done + '/' + total) : '';
+        const aborted = bp.aborted ? ' · 已请求中断' : '';
+        // 批次进度挂在**批量摘要那一行**上（不是「第一行」—— 第一行可能是后起的其它动作）
+        const batchIdx = runs.findIndex((r) => String(r.label) === '批量摘要');
+        return runs.map((r, i) => {
+            const extra = (i === batchIdx && (seg || range)) ? (seg + range) : '';
+            return '<div class="ftt-pipe-line" data-ftt-pipeline-row="' + r.id + '" title="' + attr(String(r.kindLabel) + '：' + String(r.label)) + '">'
+                + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(r.text + extra + (i === batchIdx ? aborted : '')) + '</span></div>';
+        }).join('');
+    } catch (e) { return ''; }
+}
+
+/**
+ * 只更新「管线状态」**块**（V1 `updatePipelineStatusDom()` 同口径：找到就写、内容没变不写）。
+ * v2.63.0：容器属性为 `[data-ftt-pipeline-box]`；**不整页重绘**，避免打断输入与滚动。
+ * v3.0.0：块内改为 **0..N 行**；无进行中动作 → 整块 `display:none`（默认不显示）。
+ * @param {number} [now] 当前时刻（测试可注入）
+ * @param {object} [docOverride] 覆盖 `document`（测试用）
+ */
+export function updatePipelineStatusDom(now, docOverride) {
+    try {
+        const doc = docOverride || globalThis.document;
+        const box = doc && doc.querySelector ? doc.querySelector('[data-ftt-pipeline-box]') : null;
+        if (!box) return false;
+        const rows = pipelineBoxRowsHtml();
+        if (String(box.innerHTML) !== rows) box.innerHTML = rows;
+        const show = rows ? '' : 'none';
+        try { if (box.style && box.style.display !== show) box.style.display = show; } catch (e) { /* 忽略 */ }
         return true;
     } catch (e) { return false; }
 }
@@ -380,9 +417,9 @@ function stopPipelineTick() {
     if (pipelineTimer) { try { clearInterval(pipelineTimer); } catch (e) { /* 忽略 */ } pipelineTimer = null; }
     return true;
 }
-/** 那一行是否在 DOM 里（V1 `pipelineTickStart` 同款前置检查；V2 在首个心跳时复查，见下） */
+/** 那个「管线状态」块是否在 DOM 里（V1 `pipelineTickStart` 同款前置检查；V2 在首个心跳时复查，见下） */
 function pipelineRowPresent() {
-    try { const doc = globalThis.document; return !!(doc && doc.querySelector && doc.querySelector('[data-ftt-pipeline-label]')); } catch (e) { return false; }
+    try { const doc = globalThis.document; return !!(doc && doc.querySelector && doc.querySelector('[data-ftt-pipeline-box]')); } catch (e) { return false; }
 }
 /** 管线是否在跑（v2.95.0：单路 AI 任务也算忙；异常 → false） */
 function pipelineBusy() {
@@ -391,17 +428,18 @@ function pipelineBusy() {
 /** 按「忙位 + 面板开着 + 停在总览页」启停计时器（每次渲染/动作后调用） */
 function syncPipelineTick() {
     try {
-        // v2.95.0：忙位 = 批次忙 **或** 管线忙（否则单路 AI 期间根本不会启动心跳 → 读秒/倒计时不刷新）
-        const busy = (typeof hooks.busy === 'function' ? !!hooks.busy() : false) || pipelineBusy();
+        // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：心跳**不再只在忙位时跑** —— 只要面板开着
+        //   并停在总览就常驻（500ms），这样**后台**开始的动作（自动摘要 / 跨端同步 / 世界书镜像 / 保存…）
+        //   无需等下一次整页重绘就会自动出现；块内 0 行时整块保持隐藏。
         const onOverview = String(ps.tab) === 'overview';
         // 离开总览 / 面板关闭 → 立即停表，别留一个「只在下次回调里才自停」的定时器
-        if (!busy || !ps.open || !onOverview) { stopPipelineTick(); return false; }
+        if (!ps.open || !onOverview) { stopPipelineTick(); return false; }
         if (pipelineTimer) return true;
         const iv = (typeof setInterval === 'function') ? setInterval(() => {
             try {
-                // 面板已关/切页 → 停；那一行不在 DOM（拿不到节点）→ 停；否则只更新那一行文本
-                // （V1 v1.85 500ms 心跳；**不重绘**，避免打断输入与滚动）
-                if (!ps.open || String(ps.tab) !== 'overview' || (!(typeof hooks.busy === 'function' ? hooks.busy() : false) && !pipelineBusy())) { stopPipelineTick(); return; }
+                // 面板已关/切页 → 停；那个块不在 DOM（拿不到节点）→ 停；否则只刷新块内 0..N 行
+                // （V1 v1.85 500ms 心跳；**不重绘整页**，避免打断输入与滚动）
+                if (!ps.open || String(ps.tab) !== 'overview') { stopPipelineTick(); return; }
                 if (!pipelineRowPresent() || !updatePipelineStatusDom()) stopPipelineTick();
             } catch (e) { stopPipelineTick(); }
         }, 500) : null;
@@ -437,10 +475,18 @@ function overviewBody() {
     try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
     // ② 管线状态（v2.52.0 缺失修复 + v2.63.0 动态读秒）——进行中给出任务/进度/读秒；空闲明确写「空闲」
     //   读秒计时器由 `renderPanel()` 在**写入 DOM 之后**启停（此刻那一行才真的存在，见 `syncPipelineTick`）
-    const pipe = pipelineStatusText();
-    lines.push('<div class="ftt-item ftt-item--info ftt-inline"><b class="ftt-pipe-title">🧵 管线状态</b> <span data-ftt-pipeline-label style="flex:1 1 auto;min-width:0" class="ftt-muted">' + esc(pipe.txt) + '</span>'
-        // ③ 「中断」按钮**只在管线进行中出现**（v2.52.0 用户要求：有条件展示，不是始终出现）
-        + (pipe.busy ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
+    //   v3.0.0（用户要求「管线状态默认不显示，有请求/同步等各类动作时自动出现，并行时出现两个或两个以上」）：
+    //   整块**默认隐藏**（`display:none`），块内 0..N 行由 500ms 心跳或本次渲染写入（`pipelineBoxRowsHtml()`）。
+    //   「✖ 中断」按钮仍只在**批次**进行中出现（它只中断批量摘要的分段路径）。
+    // 先跑一次文本计算：它同时维护「忙位起点」`busySince`（空闲即清零，v2.63.0 口径），
+    //   然后「✖ 中断」只对**批次**（`hooks.busy()` = extractBusy）出现 —— 单路 AI 没有分段中断入口。
+    try { pipelineStatusText(); } catch (e) { /* 忽略 */ }
+    const batchBusyNow = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
+    const pipeRows = (() => { try { return pipelineBoxRowsHtml(); } catch (e) { return ''; } })();
+    lines.push('<div class="ftt-item ftt-item--info ftt-inline" data-ftt-pipeline-box-wrap' + (pipeRows ? '' : ' style="display:none"') + '>'
+        + '<b class="ftt-pipe-title">🧵 管线状态</b>'
+        + '<div data-ftt-pipeline-box style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px"' + (pipeRows ? '' : ' hidden') + '>' + pipeRows + '</div>'
+        + (batchBusyNow ? '<button class="ftt-btn ftt-sm" data-ftt-action="abortAnalysis" id="ftt-abort-btn" title="中断当前分析：段与段之间停止（已完成并落盘的部分保留）">✖ 中断</button>' : '')
         + '</div>');
     // ④ 注入概览（一句话）
     const audit = injectAudit({ rows: false });

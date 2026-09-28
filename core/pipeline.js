@@ -115,9 +115,24 @@ function runOf(id) {
  */
 export function beginPipeline(label, opts) {
     const o = opts || {};
+    const key = String(label || '默认');
+    // v3.0.0：`join: true` —— **同标签已在跑**时不再新开一行（嵌套 / 重复触发的同类动作共享一行，避免刷屏）。
+    //   用引用计数：每个 begin 都要有对应的 end，最后一个 end 才真正收尾并记录耗时样本。
+    if (o.join) {
+        const same = runs.filter((r) => r.label === key);
+        if (same.length) {
+            const r = same[same.length - 1];
+            r.refs = Math.max(1, Number(r.refs) || 1) + 1;
+            return snapshot();
+        }
+    }
     runs.push({
         id: ++runSeq,
-        label: String(label || '默认'),
+        refs: 1,
+        label: key,
+        // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：运行**类别**，UI 据此给行首标签
+        //   ai = AI 请求 · sync = 同步 / 存储 · io = 读写文件 · task = 其它长任务
+        kind: String(o.kind || 'task'),
         startedAt: Number(hooks.now()) || Date.now(),
         promptChars: Math.max(0, Number(o.chars) || 0),
         respChars: 0, streamChars: 0, streamChunks: 0,
@@ -210,6 +225,9 @@ export function endPipeline(ok, id) {
     const s = snapshot();
     const r = runOf(id);
     if (!r) return s;
+    // v3.0.0：合流运行按引用计数收尾 —— 还有调用方在跑时**不移除**（避免提前把行撤掉）
+    const refs = Math.max(1, Number(r.refs) || 1);
+    if (refs > 1) { r.refs = refs - 1; return s; }
     const ms = Math.max(0, (Number(hooks.now()) || Date.now()) - r.startedAt);
     try { recordPipelineRun(r.label, ms); } catch (e) { /* 忽略 */ }
     last = {
@@ -221,6 +239,97 @@ export function endPipeline(ok, id) {
     };
     runs = runs.filter((x) => x.id !== r.id);
     return Object.assign(s, { ms: ms, ok: ok !== false });
+}
+
+/** 类别标签（UI 行首用；未知类别回落「任务」） */
+export const PIPELINE_KIND_LABEL = Object.freeze({ ai: 'AI', sync: '同步', io: '存储', task: '任务' });
+
+/**
+ * v3.0.0（用户要求「如果有并行时出现两个或两个以上，根据需求展现」）——**逐条**运行快照（最新开始的在前）。
+ * UI 一行一条；聚合读数仍由 `snapshot()` 给出（既有调用点不变）。
+ * @returns {Array<object>} 每条含 `{id, label, kind, kindLabel, elapsed, eta, remain, over, tokens, promptTokens,
+ *   respTokens, respChars, chunks, streamChars, streaming, phase, note, keys, hasHistory, text}`
+ */
+export function listPipelineRuns() {
+    if (!runs.length) return [];
+    const now = Number(hooks.now()) || Date.now();
+    const out = [];
+    for (let i = runs.length - 1; i >= 0; i--) {
+        const r = runs[i];
+        const elapsed = Math.max(0, now - r.startedAt);
+        const eta = etaMs(r.label);
+        const item = {
+            id: r.id, label: r.label, kind: r.kind, kindLabel: PIPELINE_KIND_LABEL[r.kind] || PIPELINE_KIND_LABEL.task,
+            elapsed: elapsed, eta: eta, remain: Math.max(0, eta - elapsed), over: elapsed > eta,
+            tokens: estTokens(r.promptChars + r.respChars),
+            promptTokens: estTokens(r.promptChars), respTokens: estTokens(r.respChars),
+            respChars: r.respChars, chunks: r.streamChunks, streamChars: r.streamChars,
+            streaming: r.streamChunks > 0,
+            phase: r.phase, note: r.note, keys: r.keys.slice(),
+            hasHistory: etaHasHistory(r.label),
+            joined: Math.max(1, Number(r.refs) || 1),
+        };
+        item.text = pipelineRunLine(item);
+        out.push(item);
+    }
+    return out;
+}
+
+/**
+ * 单条运行的**状态行文本**（不含批次进度 —— 那部分由 UI 依据 `batchProgress()` 补充）。
+ * 形如：`[AI] 批量摘要 · ⏱ 12s · 🪙 1.2k tok · 预计剩 8s · 流式 37 块 / 1.9k 字 · 阶段：解析响应`。
+ */
+export function pipelineRunLine(r) {
+    const it = r || {};
+    const parts = ['[' + (it.kindLabel || PIPELINE_KIND_LABEL.task) + '] ' + String(it.label || '任务')];
+    parts.push('⏱ ' + Math.floor((Number(it.elapsed) || 0) / 1000) + 's');
+    if (Number(it.tokens) > 0) parts.push('🪙 ' + fmtTokens(it.tokens) + ' tok');
+    if (it.over) parts.push('已超预估 ' + fmtSec(0));
+    else parts.push('预计剩 ' + fmtSec(it.remain) + (it.hasHistory ? '' : '（默认）'));
+    if (Number(it.chunks) > 0) parts.push('流式 ' + Number(it.chunks) + ' 块 / ' + fmtTokens(it.streamChars) + ' 字');
+    if (Number(it.joined) > 1) parts.push('合并 ' + Number(it.joined) + ' 次');
+    const sum = (() => {
+        if (it.keys && it.keys.length) return '识别到 ' + it.keys.join(' / ');
+        if (it.note) return String(it.note);
+        if (it.phase) return '阶段：' + String(it.phase);
+        return '';
+    })();
+    if (sum) parts.push(sum);
+    return parts.join(' · ');
+}
+
+/** 全部运行的状态行（空数组 = 无进行中的动作 → UI 整块不显示） */
+export function pipelineLines() { return listPipelineRuns().map((r) => r.text); }
+
+/**
+ * v3.0.0：把一段异步动作**纳入管线状态**（自带收尾，异常也如实结束）。
+ * 用法（宿主/适配层一行接线）：
+ * ```js
+ * await trackPipeline('跨端同步', { kind: 'sync' }, async (t) => { t.phase('拉取对端'); … });
+ * ```
+ * @param {string} label 行为标签（决定 ETA 归组与行文本）
+ * @param {{kind?:string, chars?:number, phase?:string}} opts
+ * @param {(ctl:{id:number, phase:(p:string,n?:string)=>void, chunk:(t:string)=>void, respond:(t:string)=>void, keys:(k:string[])=>void}) => Promise<any>} fn
+ * @returns {Promise<any>} `fn` 的返回值
+ */
+export async function trackPipeline(label, opts, fn) {
+    let id;
+    try { id = (beginPipeline(label, opts) || {}).runId; } catch (e) { id = undefined; }
+    const ctl = {
+        id: id,
+        phase: (ph, note) => { try { setPipelinePhase(ph, note, { id: id }); } catch (e) { /* 忽略 */ } },
+        chunk: (t) => { try { addStreamChunk(t, { id: id }); } catch (e) { /* 忽略 */ } },
+        respond: (t) => { try { noteResponseText(t, { id: id }); } catch (e) { /* 忽略 */ } },
+        keys: (k) => { try { setPipelineKeys(k, { id: id }); } catch (e) { /* 忽略 */ } },
+    };
+    try {
+        const r = await fn(ctl);
+        try { endPipeline(true, id); } catch (e) { /* 忽略 */ }
+        return r;
+    } catch (e) {
+        try { endPipeline(false, id); } catch (e2) { /* 忽略 */ }
+        throw e;
+    }
 }
 
 /** 当前状态快照（无运行中管线 → `{busy:false}`）；并发时**聚合**为一条读数 */

@@ -29,7 +29,7 @@ export async function aiCallText(messages, label) {
     })();
     // v2.95.0：取回本轮的 `runId` 并**透传**给每一次增量/阶段/结束调用（并发安全：多路 AI 同时跑也不互相覆盖）
     let runId;
-    try { runId = (beginPipeline(String(label || '默认'), { chars: chars, phase: '请求 AI' }) || {}).runId; } catch (e) { /* 忽略 */ }
+    try { runId = (beginPipeline(String(label || '默认'), { chars: chars, phase: '请求 AI', kind: 'ai' }) || {}).runId; } catch (e) { /* 忽略 */ }
     try {
         const r = await hooks.callAi(messages, { label: label, onToken: (chunk) => { try { addStreamChunk(chunk, { id: runId }); } catch (e) { /* 忽略 */ } } });
         const text = (r && typeof r === 'object') ? (r.ok === false ? '' : String(r.text == null ? '' : r.text)) : String(r == null ? '' : r);

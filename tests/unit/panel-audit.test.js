@@ -174,6 +174,8 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
     const pascal = (a) => a.split('-').map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join('');
     // 渲染/结构标记：由动作重绘、CSS、测试或「用户复制用文本框」使用，**不需要**读者（逐条给理由）
     const MARKERS = {
+        // v3.0.0：管线状态块的**行锚点**（心跳只重写块内 HTML；行 id 供测试与「哪一路」区分，不需读者）
+        'pipeline-row': '管线状态行的运行 id 锚点（v3.0.0：并行时一行一条，心跳整块重写）',
         'asub-body': '情节子标签容器（`atomSub` 动作重绘切显隐）',
         'body': '分页内容容器（面板渲染与滚动恢复用 `.ftt-body[data-ftt-body=…]`）',
         'cur-list': '货币选择器列表容器（重绘即更新）',

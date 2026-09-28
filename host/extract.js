@@ -173,7 +173,7 @@ async function genTracked(gen, args, label, phase, callLabel) {
     const a = args || {};
     const chars = String(a.systemPrompt || '').length + String(a.prompt || '').length;
     let runId;
-    try { runId = (beginPipeline(label, { chars: chars, phase: phase || '请求 AI' }) || {}).runId; } catch (e) { /* 忽略 */ }
+    try { runId = (beginPipeline(label, { chars: chars, phase: phase || '请求 AI', kind: 'ai' }) || {}).runId; } catch (e) { /* 忽略 */ }
     const args2 = Object.assign({}, a, {
         onToken: (chunk) => { try { addStreamChunk(chunk, { id: runId }); } catch (e) { /* 忽略 */ } },
     });
