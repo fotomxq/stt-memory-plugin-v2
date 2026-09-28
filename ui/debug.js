@@ -14,7 +14,7 @@
 //   ③ V1 的 `toast(...)` 在 V2 统一写面板 note（读 `r.state.note`）；`renderPanel()` 由 `ui/panel.js` 收尾统一重绘；
 //   ④ V1 把「最多 300 条」硬编码在文案里；V2 用内核常量 `DEBUG_CAP`（值同为 300）。
 // ============================================================
-import { escHtml } from '../core/util.js';
+import { escHtml, hashText } from '../core/util.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」渲染成只读区块
 import { clockTraceInfo, clockTraceSummary, clockTraceLast, clockTraceClear } from '../core/clock-trace.js';
 import { VERSION, DIMENSIONS } from '../core/constants.js';
@@ -41,6 +41,12 @@ import {
     BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST, BRIDGE_PROTOCOL,
 } from '../adapters/debug-bridge.js';
 import { ttAbi } from '../adapters/tt-store.js';
+// v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
+import {
+    processedStats, scanPendingFloors, listUnprocessedFloors, floorMessage, floorStableText,
+    hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag,
+} from '../host/floors.js';
+import { floorCoverage } from '../core/floor-cover.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -457,6 +463,24 @@ export function buildBridgeMethods() {
     //   `ftt.memorySample`：按维度取样；**默认只回字段名与长度**，显式 { values:true } 才回传正文
     T['ftt.memorySample'] = safe((p) => memorySample(p.dim, p.limit, p.values === true));
 
+    // —— 台账 / 未摘要清单的只读诊断（v3.0.9）——
+    //   全部走 `maintain:false` 与纯函数比较：**不触发任何台账维护写入**（migrate/drift/reconcile/shrink 一律不跑）。
+    T['ftt.ledger'] = safe(() => ({
+        stats: processedStats(),
+        marks: (state.processedFloors || []).map((x) => ({ f: Number(x && typeof x === 'object' ? x.f : x), h: String((x && x.h) || '') })),
+        verMatches: (state.processedVer || '') === processedVerTag(),
+        processedVer: String(state.processedVer || ''),
+        currentVer: processedVerTag(),
+    }));
+    T['ftt.chatReady'] = safe(() => chatReadyForFloors());
+    T['ftt.pendingScan'] = safe(() => {
+        const s = scanPendingFloors({ maintain: false });
+        return { lastId: s.lastId, lastIdStale: s.lastIdStale, endFloor: s.endFloor, covered: s.covered, skipped: s.skipped, count: s.floors.length, floors: s.floors, chatReady: s.chatReady, chatReason: s.chatReason };
+    });
+    T['ftt.pendingFloors'] = safe(() => listUnprocessedFloors({ maintain: false }));
+    /** 单楼诊断：这一楼为什么被判为未摘要（逐项给出页面侧实际算出的值） */
+    T['ftt.floorDiag'] = safe((p) => floorDiag(Number(p.i)));
+
     // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
     T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
     T['host.consoleCaptureGet'] = needDev('console 捕获开关', 'frontendLogs', 'getConsoleCaptureEnabled');
@@ -467,6 +491,52 @@ export function buildBridgeMethods() {
     T['host.llmLogsKeep'] = needDev('LLM 日志保留数', 'llmApiLogs', 'getKeep');
 
     return T;
+}
+
+/**
+ * 单楼诊断（只读，纯比较）：回答「这一楼为什么被判为未摘要」。
+ * 只回长度与哈希（**不回正文**），逐项对齐 `host/floors.js` 的判据，但**不调用** `isFloorProcessed()`
+ *   —— 后者在签名不符时会触发台账迁移写入；诊断必须零副作用。
+ */
+function floorDiag(i) {
+    const n = Number(i);
+    if (!Number.isFinite(n) || n < 0) return { available: false, reason: '楼层号非法：' + String(i) };
+    const m = floorMessage(n);
+    if (!m) return { available: false, reason: '该楼不存在（聊天可能尚未加载完 / 已越界）', i: n };
+    const stable = floorStableText(m);
+    const mes = (typeof m.mes === 'string') ? m.mes : '';
+    const hashStable = hashFloorText(n);
+    const hashMes = mes.trim() ? hashText(mes) : '';
+    const pf = state.processedFloors || [];
+    const mark = pf.find((x) => Number(x && typeof x === 'object' ? x.f : x) === n);
+    const markH = mark ? String((mark && mark.h) || '') : '';
+    const analyzable = String(floorAnalyzableText(n) || '');
+    const cov = (() => { try { return floorCoverage(state).has(n); } catch (e) { return null; } })();
+    const verMatches = (state.processedVer || '') === processedVerTag();
+    const processed = !!(mark && hashStable && (!markH || markH === hashStable));   // 同 isFloorProcessed 判据
+    const coveredSkip = !mark && cov === true;                                     // 覆盖跳过只在「无标记」时生效
+    return {
+        available: true,
+        i: n,
+        isUser: !!m.is_user,
+        isHidden: !!m.is_hidden,
+        swipesCount: Array.isArray(m.swipes) ? m.swipes.length : 0,
+        swipeId: (m.swipe_id === undefined ? null : m.swipe_id),
+        swipes0Len: (Array.isArray(m.swipes) && typeof m.swipes[0] === 'string') ? m.swipes[0].length : null,
+        mesLen: mes.length,
+        stableLen: stable.length,
+        hashStable: String(hashStable || ''),
+        hashMes: String(hashMes || ''),
+        mesEqualsStable: !!(stable && stable === mes),
+        markPresent: !!mark,
+        markH: markH,
+        markSameHash: !!(mark && hashStable && markH === hashStable),
+        verMatches: verMatches,
+        processed: processed,
+        analyzableLen: analyzable.length,
+        covered: cov,
+        wouldBePending: !(m.is_user || m.is_hidden || !analyzable.length || processed || coveredSkip),
+    };
 }
 
 /**
