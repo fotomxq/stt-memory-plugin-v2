@@ -29,6 +29,8 @@ import { rawGenerate, generationAvailability } from './generation.js';
 import {
     floorAnalyzableText, hashFloorText, isFloorProcessed, recordProcessedFloors, listUnprocessedFloors, processedStats,
     collectFloorLinesInRange, clearProcessedFloors, scanPendingFloors,
+    // v3.0.16（用户报告「删楼后无法衔接继续分析」）：区间一律取**活值**末楼号，不用可能过期的内核快照
+    liveLastFloorId,
 } from './floors.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { cleanText } from '../core/html-text.js';
@@ -523,7 +525,11 @@ export async function runAutoSummary(opts) {
     extractState.aborted = 0;
     const t0 = Date.now();
     try {
-        const lastId = (() => { try { return Number(getLastMessageId()); } catch (e) { return -1; } })();
+        // v3.0.16 **根因修复**（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
+        //   此前用内核快照 `getLastMessageId()` 算区间。删楼（官方 `deleteMessage()`，只发 `MESSAGE_DELETED`，
+        //   我们不订阅）之后快照仍是旧值 → `effLast` 指向**已不存在的楼层** → 所有段都是 `missing`
+        //   → 「没有可分析楼层」。改为取宿主**活值**（`ctx.getLastMessageId()` / `chat.length - 1`）。
+        const lastId = (() => { try { return Number(liveLastFloorId()); } catch (e) { return -1; } })();
         if (!Number.isFinite(lastId) || lastId < 0) return { ok: false, reason: 'no-message', made: 0, added: 0, failed: 0, floors: '', segments: 0, aborted: 0 };
         // 跳过最近 2 楼（生成中的半成品楼；V1 `timelySummaryEffLast` 在及时分析下为 0）
         const skip = (cfg && cfg.timelyAnalysis === true) ? 0 : 2;
