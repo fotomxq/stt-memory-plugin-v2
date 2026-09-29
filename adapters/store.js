@@ -81,6 +81,22 @@ async function localforageLib() {
  */
 let lastTouchAt = 0;
 /**
+ * v3.0.18（用户报告「前期修复的存储异常 / 重开应用后存档丢失**再次出现**」）——**内容签名**。
+ *
+ * v3.0.15 的「数据无变化 → 保存短路」只信**内核 `saveState()` 钩子**打的时间戳，等于假设
+ *   「所有会改数据的地方都记得调 `saveState()`」。事实并非如此：例如面板「删除快照」
+ *   （`ui/snapshots.js#snapshotAction` 的 `snapDelete`）直接改 `state.snapStore` 而**不落盘**，
+ *   这类改动在窗口内会被短路掉 → 只活在内存里；此时若重开应用 / 刷新页面，**改动就丢了**
+ *   （用户看到的「存档丢失」）。
+ *
+ * 现在的判据是**内容级**的：只有「当前数据 + 容器时间戳」算出的签名与**上次成功上传的内容**
+ *   **逐字节相同**才跳过 —— 任何改动（不管有没有调 `saveState()`）都逃不过比对，
+ *   于是短路不可能吞掉任何变化；`touchSeq` 只作为「已经知道变了 → 不必再算签名」的**快速路径**。
+ */
+let lastPushSig = '';          // 上次成功上传的**信封哈希**（`storageEnvelope` 已经算过，零额外成本）
+let lastPushScope = '';        // 该次信封的 scope
+let lastPushEnvAt = 0;         // 该次信封的 payload.updatedAt（比对时用它复现同一份载荷）
+/**
  * v3.0.15：**变更序号**（不是时间戳）—— 时间戳只有毫秒精度，同一毫秒内的「数据变更 + 保存」
  *   会被误判成「无变化」而跳过写盘。序号单调递增，`saveStateNowInner` 成功上传后把
  *   `pushedSeq` 对齐到 `touchSeq`，于是「自上次完整上传以来数据是否动过」是**精确**判断。
@@ -116,13 +132,25 @@ let lastEnvelopeSeq = 0;
 /**
  * 本次保存是否可以安全跳过（无任何变化 + 上次完整保存在窗口内 + 未显式要求 force/skipFile=false 之外的动作）。
  */
-function noopSaveOk(o) {
+function noopSaveOk(o, st) {
     try {
         if (o.force === true) return false;
-        if (!lastFullPushAt || !lastTouchAt) return false;
-        if (touchSeq > pushedSeq) return false;                               // 上次完整保存之后又动过数据 → 必须保存
-        return (Date.now() - lastFullPushAt) < noopWindowMs;
+        if (!lastFullPushAt || !lastPushSig) return false;
+        if ((Date.now() - lastFullPushAt) >= noopWindowMs) return false;      // 窗口外一律完整保存（自愈）
+        if (touchSeq > pushedSeq) return false;                               // 快速路径：内核已标记「数据变过」→ 直接保存
+        return pushSigOf(st) === lastPushSig;                                 // ★ 权威判据：与上次上传的内容逐字节比对
     } catch (e) { return false; }
+}
+
+/**
+ * 载荷内容签名：用**上次上传时那份信封的 `scope + payload.updatedAt`** 复现载荷，只把数据换成当前内存数据。
+ * 于是「签名相同」⇔「当前数据与上次上传的内容逐字节相同」（比较的就是同一个哈希函数、同一份键序）。
+ */
+function pushSigOf(st) {
+    try {
+        if (!lastPushSig) return '';
+        return storageHash({ scope: lastPushScope || scopeId(), updatedAt: Number(lastPushEnvAt) || 0, data: st });
+    } catch (e) { return ''; }
 }
 
 /**
@@ -149,7 +177,8 @@ export async function saveStateNow(opts) {
     }
     const touchedBefore = touchSeq;                 // 本次保存开始时已记录到的变更序号
     void touchedBefore;
-    if (noopSaveOk(o)) {
+    const inFlightForced = (o.force === true);      // 本次在途保存是否已「强制完整保存」（供合流补跑判定复用）
+    if (noopSaveOk(o, st)) {
         return { ok: true, via: 'noop', bytes: lastFullPushBytes, error: '', skipped: 'no-change' };
     }
     const mine = trackPipeline('保存记忆文件', { kind: 'io', phase: '写入存储', join: true }, async () => saveStateNowInner(o))
@@ -162,7 +191,15 @@ export async function saveStateNow(opts) {
                 //   · 并发请求同一份数据 → 第一次已经写全，不再重复写；
                 //   · 保存流水线内部的派生写入（②b 快照维护会经 `saveState()` 触发一次嵌套保存）发生在
                 //     **取数之前**，其内容已包含在本次信封里 → 也不再重复写（此前每次建快照都要多写一遍全量信封）。
-                if (again && touchSeq > lastEnvelopeSeq) { try { void saveStateNow(again); } catch (e) { /* 忽略 */ } }
+                // v3.0.18：**内核路径**只在「信封取数之后数据又变了」时补跑（避免保存自身的派生写入造成循环）；
+                //   其它调用方（控制台 / 导入 / 清空 / 事件防抖保存…）一律补跑一次 —— 它们的改动不一定经内核钩子，
+                //   v3.0.15 只看 `touchSeq` 时这类「保存期间到达的改动」会被静默吞掉（数据丢失的另一条路径）。
+                //   · 「同在途的那次已经是强制完整保存」时，一个同样强制（`force`）的合流请求已被满足 → 不再重复写
+                const needAgain = !!again && (
+                    touchSeq > lastEnvelopeSeq
+                    || again.fromKernel !== true && !(again.force === true && inFlightForced)
+                );
+                if (needAgain) { try { void saveStateNow(again); } catch (e) { /* 忽略 */ } }
             }
             return r;
         });
@@ -221,7 +258,18 @@ async function saveStateNowInner(o) {
     }
     lastSave = { at: Date.now(), ok: via.length > 0, via: via.join('+'), bytes, error: '' };
     // v3.0.15：记录「最近一次完整保存」的时刻（供下次「数据无变化 → 直接短路」判断；见 `noopSaveOk`）
-    if (via.indexOf('file') >= 0) { lastFullPushAt = lastSave.at; lastFullPushBytes = bytes; pushedSeq = touchSeq; }
+    if (via.indexOf('file') >= 0) {
+        lastFullPushAt = lastSave.at;
+        lastFullPushBytes = bytes;
+        pushedSeq = touchSeq;
+        // v3.0.18：记下**这次真正上传的内容**（信封哈希 + scope + 信封时间戳）——
+        //   下次据此复现同一份载荷做比对（不用再多算一次哈希）
+        try {
+            lastPushSig = String((envelope && envelope.hash) || '');
+            lastPushScope = String((envelope && envelope.payload && envelope.payload.scope) || '');
+            lastPushEnvAt = Number((envelope && envelope.payload && envelope.payload.updatedAt) || 0);
+        } catch (e) { lastPushSig = ''; }
+    }
     try { saveSettings(); } catch (e) { /* 忽略 */ }
     // ⑦ 保存后镜像（V1 `saveState` 末尾的 scheduleStorageSync）：防抖 3s + 楼层/签名双门控
     //   （`cfg.storage.syncOnSave === false` 时不调度；手动「立即同步」不受此开关影响）
@@ -347,7 +395,7 @@ export function flushStateNow(reason, opts) {
 export function wirePersistHooks() {
     setPersistHooks({
         // v3.0.15：内核 `saveState()` = 「数据已变化」的落盘请求 → 刷新触碰时间戳（决定能否走「无变化」短路）
-        saveState: () => { markDataTouched(); void saveStateNow({ reason: 'kernel' }); return true; },
+        saveState: () => { markDataTouched(); void saveStateNow({ reason: 'kernel', fromKernel: true }); return true; },
         // v3.0.3（用户要求）：内核「数据变化 → 立刻写服务端」的落地点（并发自动合并，见 flushStateNow）
         persistNow: (reason) => { markDataTouched(); void flushStateNow(reason || 'kernel'); return true; },
         saveCfg: () => saveKernelCfg(),
