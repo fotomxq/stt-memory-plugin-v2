@@ -24,6 +24,7 @@ import { state, log, warn, saveState } from '../core/model/runtime.js';
 import { DIMENSIONS } from '../core/constants.js';
 import { planFloorTrim, remapAfterTrim, trimSummaryText, FLOOR_TRIM_PRESETS } from '../core/floor-trim.js';
 import { getCtx } from './st-api.js';
+import { wireKernelChatHooks } from './chat.js';   // v3.0.16：删楼后立刻把「聊天视图 / 末楼快照」刷新为活值
 import { hashFloorText, handleFloorShrink } from './floors.js';
 import { nextFloorBackupSlot } from '../adapters/floor-backup.js';
 
@@ -198,6 +199,21 @@ export async function floorTrimApply(opts) {
 
     // ⑥ 校准：只按**实际删掉的层数**重映射（半途失败也保持编号自洽）
     const remap = remapAfterTrim(state, deleted, chatLen() - 1);
+    // ⑥b v3.0.16（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
+    //   ① **立刻刷新聊天视图**（内核 `getLastMessageId()` 是快照，删完仍是旧值；不同步的话
+    //      依赖快照的下游——批量摘要的区间、时钟窗口、遗忘/修复的末楼基准——都还按旧值算，
+    //      结果是「扫到已不存在的楼层 → 没有可分析楼层」）；
+    //   ② 把「按末楼推进」的基线一起收紧（推演间隔 / 传言轮次不会因删楼而错位）。
+    try { wireKernelChatHooks(); } catch (e) { /* 忽略：刷新失败不影响删除本身 */ }
+    try {
+        const last = Math.max(-1, chatLen() - 1);
+        if (Number(state.weaveLastFloor) > last) state.weaveLastFloor = last;
+        const t = state.rumorTick;
+        if (t && typeof t === 'object') {
+            if (Number(t.lastFloor) > last) t.lastFloor = last;
+            if (Number(t.parallelFloor) > last) t.parallelFloor = last;
+        }
+    } catch (e) { /* 忽略 */ }
     try { saveState(); } catch (e) { /* 忽略 */ }
 
     // ⑦ 记账（低噪声：按类型合并计数；失败不算「删除失败」，删除本身已成立）

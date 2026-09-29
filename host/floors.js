@@ -537,6 +537,30 @@ export function clearProcessedFloors() {
     } catch (e) { return { ok: false, cleared: 0 }; }
 }
 
+/**
+ * v3.0.16（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）——**活值**末楼号。
+ *
+ * 背景：内核的 `getLastMessageId()` 是**聊天同步时的快照**（`host/chat.js#wireKernelChatHooks` 在
+ * 「载入 / 生成结束 / 消息渲染 / 切聊天」时刷新）。内置删楼走官方 `deleteMessage()`（只发 `MESSAGE_DELETED`，
+ * 我们未订阅该事件）→ 删完那一刻快照**仍是被删前的旧值**（例如聊天只剩 10 楼而快照还是 199）。
+ * 凡是用快照算**区间**的地方（最典型：`runAutoSummary` 的 `effLast`）就会扫到已不存在的楼层 →
+ * 全是 `missing` → 「本次没有可分析楼层」→ 用户看到的就是「删楼后新正文无法分析」。
+ *
+ * 本函数按宿主**活值**取末楼号（优先级：宿主 `getContext().getLastMessageId()` → `chat.length - 1`
+ * → 内核快照兜底），供所有「算区间」的宿主侧调用点使用；内核快照仍用于诊断与 V1 对齐。
+ * @returns {number} 末楼号（无聊天 → -1）
+ */
+export function liveLastFloorId() {
+    try {
+        const ctx = getCtx();
+        const fc = (ctx && typeof ctx.getLastMessageId === 'function') ? Number(ctx.getLastMessageId()) : NaN;
+        if (Number.isFinite(fc) && fc >= 0) return Math.floor(fc);
+        const total = (ctx && Array.isArray(ctx.chat)) ? ctx.chat.length : 0;
+        if (total > 0) return total - 1;
+    } catch (e) { /* 落回内核快照 */ }
+    try { const snap = Number(getLastMessageId()); return Number.isFinite(snap) ? snap : -1; } catch (e) { return -1; }
+}
+
 /** 台账统计（诊断用） */
 export function processedStats() {
     try {

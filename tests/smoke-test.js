@@ -4364,8 +4364,30 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         const CF = await import('../core/conflicts.js');
         const conf = CF.listConflicts().filter((x) => String(x.kind) === '删楼')[0];
         const confOk = !!conf && String(conf.detail).indexOf('备份') >= 0 && String(conf.detail).indexOf('记忆保留') >= 0;
+        // ⑨ v3.0.16 根因回归（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
+        //   删楼后继续聊天 → 新增正文仍能被「⚡ 立即 AI 摘要」分析。这里把**内核末楼快照**人为设成
+        //   远大于当前聊天的旧值（模拟官方 deleteMessage 之后、刷新事件还没到的真实窗口）——
+        //   修复前区间按旧值算 → 扫到一堆已不存在的楼层 → 全部 missing → 「没有可分析楼层」。
+        const keepGen2 = host.ctx.generateRaw;
+        let newOk = false;
+        try {
+            host.ctx.generateRaw = async () => JSON.stringify({ 情节: { 新增: [{ 标题: '删楼后新增', 正文: '删楼之后甲又搬来一只新铜箱（正文足够长）。', 日期: '1919-12-03' }] } });
+            host.ctx.chat.push({ is_user: false, mes: '删楼之后的第 1 楼正文。', name: '角色甲' });
+            host.ctx.chat.push({ is_user: false, mes: '删楼之后的第 2 楼正文。', name: '角色甲' });
+            host.ctx.chat.push({ is_user: false, mes: '删楼之后的第 3 楼正文。', name: '角色甲' });
+            RT.setLastMessageId(199);                       // 旧快照（远大于实际聊天长度）
+            const sum = await entry.popupAction('summary', {});
+            const note2 = String(((sum.state || {}).note) || '');
+            const rangeTxt = (note2.match(/读取楼层 (\d+)-(\d+)/) || []);
+            newOk = note2.indexOf('摘要完成：') === 0 && /新增 [1-9]/.test(note2)
+                && (RT.state.atoms || []).some((x) => x.id !== 'bg-a0' && x.id !== 'bg-a1' && x.id !== 'bg-a2' && String(x.title) === '删楼后新增')
+                && Number(rangeTxt[2]) <= host.ctx.chat.length - 1;      // 区间按**活值**取，不越界
+            if (!newOk) console.log('BG1-DEBUG9 ' + JSON.stringify({ note2, rangeTxt, chat: host.ctx.chat.length }));
+        } finally { host.ctx.generateRaw = keepGen2; }
         await entry.popupAction('tab', { tab: 'overview' });
-        return uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk;
+        const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk;
+        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk }));
+        return allOkBg1;
     } finally {
         host.ctx.chat.length = 0;
         for (const m of keepChat) host.ctx.chat.push(m);

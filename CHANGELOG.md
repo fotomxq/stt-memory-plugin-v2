@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.0.16（2026-09-30）· 修「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」
+
+**用户报告**（原话）：「新版本 使用内置删除楼层后，无法衔接继续分析，新增正文无法分析。」
+
+**根因（区间用了过期的末楼快照）**：内核 `getLastMessageId()` 是**聊天同步时的快照**
+（载入 / 生成结束 / 渲染 / 切聊天时刷新），而内置删楼走酒馆官方 `getContext().deleteMessage()`
+——它只发 **`MESSAGE_DELETED`**，我们**没订阅该事件** → 删完那一刻快照**仍是被删前的旧值**。
+`runAutoSummary`（「⚡ 立即 AI 摘要」/ 面板批量）正是用它算区间：
+
+```js
+const lastId = Number(getLastMessageId());      // 删楼后仍是 199，而聊天只剩 10 楼
+const effLast = Math.max(0, lastId - skip);
+let start = Math.max(0, effLast - feedN + 1);   // → 188（远在聊天之外）→ 全部 missing
+```
+
+复现（本仓库直跑真实宿主层，30 楼删到 10 楼后新增 1 楼）：**修复前** floors `18-27` · `made 0`（面板「没有可分析楼层」）；
+**修复后** floors `0-8` · `made 1` · **新增 1 条**。即：数据没坏，是区间指向了**已不存在的楼层**。
+
+**修复**
+- `host/floors.js#liveLastFloorId()`（新增）：**活值**末楼号（宿主 `getContext().getLastMessageId()` →
+  `chat.length - 1` → 内核快照兜底）；`runAutoSummary` 的 `lastId / effLast / pendingIds` 全部改用它
+  （与 `scanPendingFloors`「区间一律按实时聊天长度取」的既有口径对齐）。
+- `host/floor-trim.js` 步骤 ⑥b（新增）：删完**立刻刷新聊天视图**（`wireKernelChatHooks()`，快照=活值，
+  不依赖后续事件），并把「按末楼推进」的基线一起收紧（`weaveLastFloor`、`rumorTick.lastFloor/parallelFloor`）。
+- `skip 最近 2 楼`（关闭「及时分析」时的 V1 语义）保持不变：最新楼层由 `GENERATION_ENDED →
+  autoExtractLatest`（本就走活值扫描）负责。
+
+**验证**：单元 **125 文件 / 1988 断言**（`floor-trim` 新增 F1 删后刷新与基线收紧、F2 根因回归）·
+冒烟 **189 项**（`BG1` 增 ⑨：真实删楼后继续聊天 → 「⚡ 立即 AI 摘要」真实分析出新增条目，且快照被人为置为旧值）·
+UI 规范 0 命中（含 `--strict`）· 版本四处 == `3.0.16`。详见 `docs/history/P10c1-删楼后继续分析修复.md`。
+
 ## v3.0.15（2026-09-29）· 修「上次更新后特别卡顿（尤其正文保存）· 可能直接卡死」
 
 **用户报告**（原话）：「新版本 上次版本更新后特别卡顿，尤其是在正文保存或其他环节，无报错，但可能会直接卡死。请核对并修复。」

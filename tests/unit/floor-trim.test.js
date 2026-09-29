@@ -11,7 +11,7 @@
 //   E 组 —— 失败姿态：备份失败即中止（一层都不删）、半途失败如实报告 partial；
 //   F 组 —— 界面：数据管理页三档按钮 + 只读诊断行（D12 §8.1）。
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
-import { cfg, state, setKernelState, setScopeKey, setPersistHooks } from '../../core/model/runtime.js';
+import { cfg, state, setKernelState, setScopeKey, setPersistHooks, getLastMessageId, setLastMessageId, setTimerHooks } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { planFloorTrim, remapAfterTrim, trimSummaryText, FLOOR_TRIM_PRESETS } from '../../core/floor-trim.js';
@@ -20,6 +20,8 @@ import {
     floorRecalibrate, floorCalibrateStatus, countStaleEntries,
     FLOOR_TRIM_PRESETS as HOST_PRESETS,
 } from '../../host/floor-trim.js';
+import { runAutoSummary } from '../../host/extract.js';
+import { liveLastFloorId } from '../../host/floors.js';
 import { settingsPageHtml } from '../../ui/settings-pages.js';
 import { storagePageHtml } from '../../ui/sync.js';
 
@@ -392,5 +394,46 @@ A('G3 校准状态只读诊断：返回最近一次收缩时间 / 失效条数 /
     const r = floorCalibrateStatus();
     return r.at === 1700000000000 && r.stale === 1 && r.floors === 20 && r.marks === 2 && r.lastKnownFloor === 19;
 })(), () => J(floorCalibrateStatus()));
+
+// ---------- F 组：v3.0.16 删楼后仍能继续分析 ----------
+// 用户报告（原话）：「新版本 使用内置删除楼层后，无法衔接继续分析，新增正文无法分析。」
+// 根因：内置删楼走官方 `deleteMessage()`（只发 `MESSAGE_DELETED`，我们未订阅）→ 内核的
+//   `getLastMessageId()`（聊天同步快照）**仍是删楼前的旧值**；而 `runAutoSummary` 的区间
+//   （`effLast = lastId - 2`）就是用它算的 → 扫到一堆**已不存在**的楼层 → 全部 `missing`
+//   → 「本次没有可分析楼层」→ 用户看到的就是「删楼后新正文无法分析」。
+A('F1 内置删楼后**立刻刷新聊天视图**：内核 `getLastMessageId()` = 新末楼（无需等下一次事件），且「按末楼推进」的基线（推演间隔 / 传言轮次）一并收紧到新末楼', (async () => {
+    const host = bootHost({ floors: 30 });
+    const st = bootState();
+    st.lastKnownFloor = 29;
+    st.weaveLastFloor = 28;
+    st.rumorTick = { round: 3, lastFloor: 29, parallelFloor: 27, runs: 2, lastAt: 0 };
+    setLastMessageId(29);                                   // 删楼前的快照
+    bootHooks();
+    const before = getLastMessageId();
+    const r = await floorTrimApply({ keep: 10, backup: false, _deleteOne: async (id) => { host.ctx.chat.splice(id, 1); } });
+    return r.ok === true && host.ctx.chat.length === 10
+        && before === 29 && getLastMessageId() === 9           // 刷新为活值
+        && liveLastFloorId() === 9
+        && Number(st.lastKnownFloor) === 9
+        && Number(st.weaveLastFloor) === 9 && Number(st.rumorTick.lastFloor) === 9 && Number(st.rumorTick.parallelFloor) === 9;
+})(), () => J({ last: getLastMessageId(), live: liveLastFloorId(), weave: Number(state.weaveLastFloor) }));
+
+A('F2 **根因回归**（用户报告的那条路径）：即使内核末楼快照仍是删楼前的**旧值**（真实竞态），批量摘要也按**活值**算区间 —— 删楼后新增的正文照常被分析（修复前：区间指向已不存在的楼层 → 全部 missing →「没有可分析楼层」）', (async () => {
+    const host = bootHost({ floors: 30 });
+    const st = bootState();
+    st.lastKnownFloor = 29;
+    bootHooks();
+    // 删到只剩 10 楼（用官方 API 语义：从后往前 splice）
+    await floorTrimApply({ keep: 10, backup: false, _deleteOne: async (id) => { host.ctx.chat.splice(id, 1); } });
+    // 之后用户继续聊天：新增一楼（全新正文），并把内核快照**人为变旧**（模拟「还没收到事件刷新」的窗口）
+    host.ctx.chat.push({ is_user: false, mes: '【新】甲在码头发现一只新的铜箱，断口整齐。', name: 'AI' });
+    st.processedFloors = (st.processedFloors || []).filter((x) => Number(x.f) <= 8);
+    setLastMessageId(29);
+    const snapshotBefore = getLastMessageId();
+    const r = await runAutoSummary({ ai: async () => ({ ok: true, text: J({ 情节: { 新增: [{ 标题: '铜箱', 正文: '甲在码头发现一只新的铜箱（正文足够长）。', 日期: '1919-12-02' }] } }) }) });
+    const analyzed = (state.atoms || []).some((a) => a.title === '铜箱');
+    return snapshotBefore === 29 && r.ok === true && Number(r.made) >= 1 && analyzed === true
+        && Number(String(r.floors || '0-0').split('-')[1]) <= host.ctx.chat.length - 1;      // 区间不越界
+})(), () => J({ floors: state.processedFloors && state.processedFloors.length, atoms: (state.atoms || []).map((x) => x.title) }));
 
 R.done();
