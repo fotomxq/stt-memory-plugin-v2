@@ -138,6 +138,11 @@ const ps = {
     showHidden: false,  // 情节页：是否显示「已总结（隐藏）」情节（V1 atomToggleHidden）
     peek: '',           // 情节速览：正在穿透查看的 id（V1 atomPeek）
     atomSub: 'list',    // 情节页子标签：'list'（📜 情节列表）| 'segments'（🧩 分段总结），V1 activeAtomSub
+    // v3.0.13（用户报告「自定义平行推演触发后，没有正确新增平行条目」）：本次刚落库的平行事件 id
+    //   → 该行渲染「🆕 本次新增」标记并在重绘后滚入视野；切页/下次推演即清除。
+    //   用户此前看不到新条目有两个叠加原因：① 缺日期的条目被按剧情日期倒序排到整列表**最后**；
+    //   ② 即使排到了可见位置也没有任何「刚新增的是哪一条」的视觉指示。
+    flash: null,
 };
 const str0 = (v) => String(v == null ? '' : v);
 /** 管线忙位起始时刻（v2.52.0：总览「管线状态」行的读秒） */
@@ -205,6 +210,8 @@ export function panelState() {
         showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub, atomSub: ps.atomSub,
         constraintDim: constraintDimState(), relWho: String(relFilterState().who || ''),
         exportChars: String(ps.exportText || '').length,
+        // v3.0.13：本次「🆕 本次新增」标记的平行事件 id（空数组 = 无标记）
+        flashIds: (ps.flash && Array.isArray(ps.flash.ids)) ? ps.flash.ids.slice() : [],
     };
 }
 /**
@@ -1008,8 +1015,12 @@ function dimBodyList(kind) {
         const ops = (kind === 'parallels')
             ? ('<div class="ftt-item-ops ftt-ops-col">' + opsInner + '</div>')
             : opsInner;
-        return '<div class="ftt-item ftt-inline">' + box
-            + '<span class="ftt-grow">' + listRowMainHtml(kind, e) + relJump + '</span>'
+        // v3.0.13：本次刚推演落库的平行事件 → 行上带定位锚点 + 「🆕 本次新增」标记（重绘后自动滚入视野）
+        const flashed = (kind === 'parallels' && ps.flash && Array.isArray(ps.flash.ids) && ps.flash.ids.indexOf(id) >= 0);
+        const flashAttr = flashed ? (' data-ftt-flash-id="' + attr(id) + '"') : '';
+        const flashBadge = flashed ? '<b class="ftt-ok">🆕 本次新增</b>' : '';
+        return '<div class="ftt-item ftt-inline"' + flashAttr + '>' + box
+            + '<span class="ftt-grow">' + listRowMainHtml(kind, e) + relJump + flashBadge + '</span>'
             + ops
             + '</div>';
     }).join('\n');
@@ -1470,10 +1481,34 @@ function scheduleScrollRestore(el, st) {
 }
 
 /** 渲染（真实 DOM 用 innerHTML 替换；桩 DOM 记录到 el.html） */
+/**
+ * v3.0.13：把「本次新增的平行事件」那一行滚入视野中心（与 `relJump` 同款 rAF + `scrollIntoView`，无 DOM 时静默跳过）。
+ * 只做定位，不改任何数据；标记本身由 `ps.flash` 持有，渲染时给该行加 `data-ftt-flash-id`。
+ */
+function flashScrollIntoView(el) {
+    try {
+        const ids = (ps.flash && Array.isArray(ps.flash.ids)) ? ps.flash.ids : [];
+        if (!ids.length) return;
+        const target = String(ids[0]).replace(/"/g, '');
+        const go = () => {
+            try {
+                const node = (el && typeof el.querySelector === 'function') ? el.querySelector('[data-ftt-flash-id="' + target + '"]') : null;
+                if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'center' });
+            } catch (e) { /* 忽略 */ }
+        };
+        const raf = globalThis.requestAnimationFrame;
+        if (typeof raf === 'function') raf(go); else go();
+    } catch (e) { /* 忽略 */ }
+}
+
 export function renderPanel() {
     const el = overlayEl || ensureOverlay();
     // v2.63.0：DOM 写完后启停「管线状态」读秒计时器（此刻那一行才真的存在；切页/关闭/空闲则停表）
-    const finish = (html) => { try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ } return html; };
+    const finish = (html) => {
+        try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ }
+        try { flashScrollIntoView(el); } catch (e) { /* 定位失败不影响渲染 */ }   // v3.0.13：把「本次新增」条目滚入视野
+        return html;
+    };
     // ① 重渲染**前**记录滚动位置（V1 同款；活动标签内容区，不是第一个 .ftt-body）
     const scroll = panelScrollState(el);
     // ② 字符串层补 `type="button"`（防止 form 内按钮提交导致跳顶）
@@ -1637,7 +1672,7 @@ export async function panelAction(action, payload) {
     // v2.96.0：所有返回路径（含前置条件早退）都经统一收尾 → 界面一定被重绘、提示一定可见
     const done = (extra) => finalizePanelAction(Object.assign(result, extra || {}), traceOp, traceT0, a, p);
     try {
-        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; }   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
+        if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; ps.flash = null; }   // v3.0.13：切页清「本次新增」标记   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
         else if (a === 'close') { closePanel(); }
         else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }
         else if (a === 'edit' || a === 'editEntry') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: p.preset || null }; }
@@ -1818,9 +1853,20 @@ export async function panelAction(action, payload) {
                     setNote('自定义推演：这段设想没有可推演的点（未新增平行事件）');
                     try { panelNotify('warning', '自定义推演：没有可推演的点'); } catch (e) { /* 忽略 */ }
                 } else if (r && r.ok) {
-                    setNote('自定义推演完成：新增 ' + Number(r.added || 0) + ' / 更新 ' + Number(r.updated || 0)
+                    // v3.0.13（用户报告「没有正确新增平行条目」）：① 提示改用**真实落库结果**（r.added/updated/dup 由 state 前后差异算出）；
+                    //   ② 无新增无更新时按 warning 如实说明；③ 新增的条目记进 `ps.flash` → 列表行带「🆕 本次新增」并自动滚入视野。
+                    const addedN = Number(r.added || 0), updN = Number(r.updated || 0), dupN = Number(r.dup || 0);
+                    const ids = Array.isArray(r.newIds) ? r.newIds.slice() : [];
+                    if (ids.length) ps.flash = { ids: ids, at: Date.now() };
+                    setNote('自定义推演完成：新增 ' + addedN + ' / 更新 ' + updN
+                        + (dupN ? '（' + dupN + ' 条与既有内容一致，未重复新增）' : '')
                         + '（平行事件共 ' + Number((state.parallels || []).length) + ' 条 · 关联数据 ' + Number(r.seed || 0) + ' 条）');
-                    try { panelNotify('success', '自定义推演完成：新增 ' + Number(r.added || 0) + ' 条平行事件'); } catch (e) { /* 忽略 */ }
+                    try {
+                        if (addedN || updN) panelNotify('success', '自定义推演完成：新增 ' + addedN + ' / 更新 ' + updN + ' 条平行事件'
+                            + (ids.length ? '（已在列表中标记「🆕 本次新增」）' : ''));
+                        else panelNotify('warning', '自定义推演完成：本次没有产生新的平行条目'
+                            + (dupN ? '（' + dupN + ' 条与既有内容一致）' : ''));
+                    } catch (e) { /* 忽略 */ }
                 } else {
                     const why = { 'busy': '摘要 / 情节总结 / 推演 / 修复进行中，请稍候再试', 'idea-too-short': '内容太短（至少 4 个字）' }[err] || err || '未知';
                     setNote('自定义推演未完成：' + why);

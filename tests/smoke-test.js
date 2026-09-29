@@ -4707,13 +4707,16 @@ await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义
     const EX = await import('../host/extract.js');
     const keepPars = JSON.parse(JSON.stringify(rt.state.parallels || []));
     const keepAtoms = JSON.parse(JSON.stringify(rt.state.atoms || []));
+    const keepDate = String((rt.state.state || {}).date || '');
     const savedGen = host.ctx.generateRaw;
     const prompts = [];
     try {
         rt.state.parallels = [];
         rt.state.atoms = [{ id: 'bl-a1', text: '河运中断，盐商行会受损。', title: '河运中断', date: '1919-11-20', floorStart: 1, floorEnd: 1, validity: 'active', tags: [] }];
+        rt.state.state.date = '1919-11-29';
         host.ctx.generateRaw = async (args) => {
             prompts.push(String((args && args.systemPrompt) || '') + '\n' + String((args && args.prompt) || ''));
+            // v3.0.13：**故意不给日期**（真实模型常省略）→ 应由「当前剧情日期」兜底，保证新条目排得到列表前面
             return JSON.stringify({ 平行事件: { 新增: [{ 标题: '盐商改走陆路', 正文: '行会暗中联络镖局改走陆路，地方衙门态度分化。', 类型: '势力动向', 因果线: '来自用户设想：河运中断→盐商改道→衙门分化', 卦象: '巽——渗透影响', 演化目标可能性: [{ 目标: '陆路垄断', 可能性: 55 }], 标签: ['盐商', '镖局'] }] } });
         };
         await entry.popupAction('tab', { tab: 'parallels' });
@@ -4723,10 +4726,17 @@ await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义
         const p = (rt.state.parallels || [])[0] || {};
         const listHtml = String((await entry.popupAction('refresh', {})).html || '');
         const prompt = prompts.join('\n');
+        // v3.0.13（用户报告「自定义平行推演触发后，没有正确新增平行条目」）：
+        //   ① AI 没给日期 → 用**当前剧情日期**兜底（否则空日期条目被排到整列表最后，看起来「没有新增」）；
+        //   ② 落库后该行带「🆕 本次新增」定位锚点（`data-ftt-flash-id`），面板据此滚入视野；
+        //   ③ 提示/返回值以真实结果为准（`r.added` / `r.newIds`）。
         const allOk = opened && r.ok === true && Number(r.added) === 1
             && p.title === '盐商改走陆路' && p.gua === '巽——渗透影响'
             && p.causalLine.indexOf('来自用户设想') === 0 && J(p.tags) === J(['盐商', '镖局'])
+            && p.date === '1919-11-29'
             && listHtml.indexOf('盐商改走陆路') >= 0 && listHtml.indexOf('巽——渗透影响') >= 0
+            && listHtml.indexOf('🆕 本次新增') >= 0
+            && Array.isArray(r.newIds) && r.newIds.length === 1 && listHtml.indexOf('data-ftt-flash-id="' + r.newIds[0] + '"') >= 0
             && prompt.indexOf('客观事件') >= 0 && prompt.indexOf('牵引向主角') >= 0
             && prompt.indexOf('盐商') >= 0;      // 关键词关联的既有数据进了提示词
         if (!allOk) console.log('BL3-DEBUG ' + JSON.stringify({ opened: opened, r: { ok: r.ok, added: r.added, seed: r.seed, err: r.error }, p: { t: p.title, gua: p.gua, causal: p.causalLine, tags: p.tags }, hasList: listHtml.indexOf('盐商改走陆路') >= 0, promptOk: prompt.indexOf('客观事件') >= 0 }));
@@ -4735,6 +4745,7 @@ await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义
         host.ctx.generateRaw = savedGen;
         rt.state.parallels = keepPars;
         rt.state.atoms = keepAtoms;
+        rt.state.state.date = keepDate;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');

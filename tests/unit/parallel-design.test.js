@@ -297,6 +297,49 @@ A('C6 AI 若返回「更新」（设想明确深化既有线）也能正常应�
         && p.gua === '山水蒙——局中待启，需循迹问源' && (state.parallels || []).length === 1;
 })(), '');
 
+// ---------- C7–C9：v3.0.13（用户报告「自定义平行推演触发后，没有正确新增平行条目」） ----------
+A('C7 缺日期的「新增」用**当前剧情日期**兜底（与 `mergeDelta` 对情节的既有口径一致）：AI 省略日期时条目日期 = 剧情当天，不再因空日期被 `sortRecentByStoryDate` 排到整列表最后（看起来「没有新增」）；AI 给了日期则不覆盖', (async () => {
+    const st = boot({});
+    st.state.date = '1919-12-01';
+    const r1 = await runParallelCustom('推演一条全新的世界线：北方盐商改道。', { aiText: J({ 平行事件: { 新增: [{ 标题: '盐商改道', 正文: '行会联络镖局改走陆路。' }] } }) });
+    const p1r = (state.parallels || [])[0] || {};
+    const r2 = await runParallelCustom('再推一条：河运彻底断绝。', { aiText: J({ 平行事件: { 新增: [{ 标题: '河运断绝', 正文: '河道淤塞，商路转移。', 日期: '1920-01-15' }] } }) });
+    const p2r = (state.parallels || []).filter((x) => x.title === '河运断绝')[0] || {};
+    return r1.ok === true && r1.added === 1 && p1r.date === '1919-12-01'
+        && r2.ok === true && p2r.date === '1920-01-15';
+})(), () => J((state.parallels || []).map((x) => [x.title, x.date])));
+
+A('C8 返回形态**容错归一**：`{"平行事件":[…]}`（数组）/ `{"新增":[…]}`（少一层包装）/ `{"平行事件":{"新增":{"0":{…}}}}`（对象表）/ 英文键 `add` / 字符串条目 / `{"平行事件":{"标题":…,"正文":…}}`（单条）—— 六种真实偏差都能落库新增（此前一律被当成「没有可推演的点」）', (async () => {
+    const shapes = [
+        { 平行事件: [{ 标题: '形态A', 正文: '形态A的正文。' }] },
+        { 新增: [{ 标题: '形态B', 正文: '形态B的正文。' }] },
+        { 平行事件: { 新增: { 0: { 标题: '形态C', 正文: '形态C的正文。' } } } },
+        { 平行事件: { add: [{ title: '形态D', text: '形态D的正文。' }] } },
+        { 平行事件: { 新增: ['形态E'] } },
+        { 平行事件: { 标题: '形态F', 正文: '形态F的正文。' } },
+    ];
+    const out = [];
+    for (const sh of shapes) {
+        boot({});
+        const r = await runParallelCustom('这一条设想足够长，用于测试返回形态容错。', { aiText: J(sh) });
+        out.push([r.ok === true && r.added === 1, (state.parallels || []).length, (state.parallels || [])[0] && (state.parallels || [])[0].title]);
+    }
+    return out.every((x) => x[0] === true && x[1] === 1) && out.map((x) => x[2]).join(',') === '形态A,形态B,形态C,形态D,形态E,形态F';
+})(), '');
+
+A('C9 提示与返回值以**真实落库结果**为准：AI 要求新增但内容与既有条目完全一致（同哈希 id）→ added=0 / dup=1（如实告知「未重复新增」，不再谎报「新增 1」）；真正的新条目 added=1 且回报 newIds', (async () => {
+    boot({});
+    const idea = '推演一条与既有内容完全一致的设想线。';
+    const reply = { 平行事件: { 新增: [{ 标题: '重复线', 正文: '重复线的正文足够长。', 因果线: '来自用户设想：重复' }] } };
+    const r1 = await runParallelCustom(idea, { aiText: J(reply) });
+    const r2 = await runParallelCustom(idea, { aiText: J(reply) });          // 同一设想、同一返回 → 同 id → 并入既有
+    const r3 = await runParallelCustom(idea, { aiText: J({ 平行事件: { 新增: [{ 标题: '新线', 正文: '新线的正文足够长。' }] } }) });
+    return r1.ok === true && r1.added === 1 && r1.dup === 0 && r1.newIds.length === 1
+        && r2.ok === true && r2.added === 0 && r2.updated === 1 && r2.dup === 1 && r2.newIds.length === 0
+        && (state.parallels || []).length === 2
+        && r3.ok === true && r3.added === 1 && r3.newIds.length === 1;
+})(), () => J({ n: (state.parallels || []).length, last: (state.parallels || []).map((x) => x.title) }));
+
 // ---------- D 组：平行页交互（入口 / 展开 / 在途 / 落库） ----------
 A('D1 平行页顶部有自定义推演入口；点击展开输入区（不含 AI 调用），取消即收起', (async () => {
     boot({ parallels: SEED_PAR() });
@@ -353,5 +396,27 @@ A('D3 空内容直接拒绝（不调用 AI、不发通知）', (async () => {
     return r.ok === false && r.reason === 'idea-too-short'
         && String(r.state.note || '').indexOf('至少 4 个字') >= 0 && calls.length === 0;
 })(), '');
+
+A('D4 v3.0.13 端到端（用户报告的那条路径）：缺日期的设想落库后 —— ① 提示按**真实结果**写「新增 1」② 平行页该行带 `data-ftt-flash-id` 定位锚点 + 「🆕 本次新增」标记 ③ `panelState().flashIds` 报出该 id（重绘后据此滚入视野）④ 切页即清标记', (async () => {
+    // ① 直接走真实内核（AI 结果经 `aiText` 注入）：缺日期 → 用当前剧情日期兜底，并回报真实新增与 newIds
+    const st = boot({ parallels: [] });
+    st.state.date = '1919-12-05';
+    const reply = J({ 平行事件: { 新增: [{ 标题: '设想产物', 正文: '设想产物的正文足够长。' }] } });
+    const rCli = await runParallelCustom('北方的盐商行会因河运中断而改走陆路。', { aiText: reply });
+    const dateOk = ((state.parallels || [])[0] || {}).date === '1919-12-05';
+    // ② 面板动作（钩子转调同一条内核路径）→ 标记 + 提示
+    boot({ parallels: [] });
+    state.state.date = '1919-12-05';
+    openPanel('parallels');
+    setPanelHooks2({ pending: () => [], parallelCustom: async () => runParallelCustom('北方的盐商行会因河运中断而改走陆路。', { aiText: reply }) });
+    const r = await panelAction('parallelCustomRun', { text: '北方的盐商行会因河运中断而改走陆路。' });
+    const html = String(r.html || '');
+    const ids = panelState().flashIds;
+    const okMark = ids.length === 1 && html.indexOf('data-ftt-flash-id="' + ids[0] + '"') >= 0 && html.indexOf('🆕 本次新增') >= 0;
+    await panelAction('tab', { tab: 'overview' });
+    return rCli.ok === true && rCli.added === 1 && rCli.newIds.length === 1 && dateOk
+        && String(r.state.note || '').indexOf('自定义推演完成：新增 1') >= 0
+        && okMark && panelState().flashIds.length === 0;
+})(), () => J({ flash: panelState().flashIds, note: panelState().note, parallels: (state.parallels || []).map((x) => [x.title, x.date]) }));
 
 R.done();
