@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.16",
+  "version": "3.0.17",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.17",
+      "date": "2026-09-30",
+      "title": "导出 / 备份文件名带日期和时间",
+      "points": [
+        "验证：单元 125 文件 / 1990 断言（core-util 新增 U14 时间戳格式 · floor-trim 新增 G1 备份命名与轮转 ·file-io E1 断言改为…"
+      ]
+    },
     {
       "version": "3.0.16",
       "date": "2026-09-30",

@@ -36,6 +36,32 @@ export function oneLine(s, max) {
     return (max && t.length > max) ? t.slice(0, max) : t;
 }
 
+/**
+ * v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）——**文件名时间戳**。
+ *   形如 `2026-09-30_14-05-22`：本地时间；用 `-`/`_` 而不是 `:`（Windows / 安卓 / 各类网盘都不接受冒号）。
+ * @param {Date|number} [now] 时间（缺省当前）
+ * @returns {string}
+ */
+export function fileStamp(now) {
+    try {
+        const d = (now instanceof Date) ? now : new Date(Number(now) || Date.now());
+        const p = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
+    } catch (e) { return 'unknown-time'; }
+}
+
+/**
+ * 紧凑时间戳（备份文件名用）：`20260930-140522`（无 `:`，短且可直接排序）。
+ * @param {Date|number} [now]
+ */
+export function fileStampCompact(now) {
+    try {
+        const d = (now instanceof Date) ? now : new Date(Number(now) || Date.now());
+        const p = (n) => String(n).padStart(2, '0');
+        return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    } catch (e) { return 'unknown'; }
+}
+
 /** 数值夹取（与 V1 一致：`Math.max(min, Math.min(max, v))`，不做 NaN 兜底） */
 export function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));

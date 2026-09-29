@@ -12,6 +12,7 @@
 //   后续批次逐页补齐 V1 的编辑器、关系表、注入自查、提示词页、快照/同步、高级域等（见 docs/history/P8-功能对齐总表.md）。
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
+import { fileStamp } from '../core/util.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
 import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/model/runtime.js';
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
@@ -147,14 +148,18 @@ const ps = {
 const str0 = (v) => String(v == null ? '' : v);
 /** 管线忙位起始时刻（v2.52.0：总览「管线状态」行的读秒） */
 let busySince = 0;
-/** 默认导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；无哈希时退化为 `FTT记忆.json`） */
+/**
+ * 默认导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；无哈希时退化为 `FTT记忆.json`）。
+ * v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）：追加 `_日期_时间`（本地时间、无冒号），
+ *   与宿主钩子 `exportFileName`（index.js）同口径 —— 多次导出不互相覆盖。
+ */
 function defaultExportFileName() {
     try {
         const scope = String(getScopeKey() || '');
-        if (!scope) return 'FTT记忆.json';
+        if (!scope) return 'FTT记忆_' + fileStamp() + '.json';
         // 与 V1 同用 djb2→base36 短哈希（core/util.js#hashText），保证两端文件名口径一致
         const h = (() => { let x = 5381; for (let i = 0; i < scope.length; i += 1) { x = ((x << 5) + x) ^ scope.charCodeAt(i); } return (x >>> 0).toString(36); })();
-        return 'FTT记忆_' + h + '.json';
+        return 'FTT记忆_' + h + '_' + fileStamp() + '.json';
     } catch (e) { return 'FTT记忆.json'; }
 }
 let overlayEl = null;

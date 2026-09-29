@@ -22,6 +22,7 @@ import {
 } from '../../host/floor-trim.js';
 import { runAutoSummary } from '../../host/extract.js';
 import { liveLastFloorId } from '../../host/floors.js';
+import { floorBackupName, writeFloorBackup, nextFloorBackupSlot, FLOOR_BACKUP_PREFIX, FLOOR_BACKUP_SLOTS } from '../../adapters/floor-backup.js';
 import { settingsPageHtml } from '../../ui/settings-pages.js';
 import { storagePageHtml } from '../../ui/sync.js';
 
@@ -435,5 +436,29 @@ A('F2 **根因回归**（用户报告的那条路径）：即使内核末楼快�
     return snapshotBefore === 29 && r.ok === true && Number(r.made) >= 1 && analyzed === true
         && Number(String(r.floors || '0-0').split('-')[1]) <= host.ctx.chat.length - 1;      // 区间不越界
 })(), () => J({ floors: state.processedFloors && state.processedFloors.length, atoms: (state.atoms || []).map((x) => x.title) }));
+
+// ---------- G 组：v3.0.17 备份文件名带日期时间（用户要求「导出 json 备份，文件名必须带日期和时间」）----------
+A('G1 删楼备份文件名**带日期时间**（`ftt2-floor-backup-<角色>-s<槽位>-YYYYMMDD-HHmmss.json`）：三个槽位各自成文件、可直接按名排序；写成功后**删掉该槽位的上一份**（「3 份轮转」上限不变）', (async () => {
+    const at = new Date(2026, 8, 30, 14, 5, 22);
+    const n0 = floorBackupName('char:abc', 0, at);
+    const n1 = floorBackupName('char:abc', 1, at);
+    const n2 = floorBackupName('char:abc', 2, at);
+    const nameOk = n0 === FLOOR_BACKUP_PREFIX + 'abc-s1-20260930-140522.json'
+        && /^ftt2-floor-backup-abc-s3-\d{8}-\d{6}\.json$/.test(n2)
+        && n0 !== n1 && n1 !== n2 && n0.indexOf(':') < 0;
+    // 假宿主：上传成功、删除记为「已删除」
+    const prevFetch = globalThis.fetch;
+    const deleted = [];
+    globalThis.fetch = async (url, opts) => {
+        if (String(url) === '/api/files/delete') { try { deleted.push(String(JSON.parse((opts && opts.body) || '{}').path || '')); } catch (e) { /* 忽略 */ } return { status: 200, text: 'ok' }; }
+        return { status: 200, text: 'ok' };
+    };
+    const oldName = FLOOR_BACKUP_PREFIX + 'abc-s1-20200101-000000.json';
+    const w = await writeFloorBackup('char:abc', 0, '{"x":1}', { at: at, prevName: oldName });
+    globalThis.fetch = prevFetch;
+    return nameOk && w.ok === true && w.name === n0 && w.replaced === oldName
+        && deleted.length === 1 && String(deleted[0]).indexOf(oldName) >= 0
+        && FLOOR_BACKUP_SLOTS === 3 && nextFloorBackupSlot(2) === 0 && nextFloorBackupSlot(-1) === 0;
+})(), () => J({ name: floorBackupName('char:abc', 0, new Date(2026, 8, 30, 14, 5, 22)) }));
 
 R.done();

@@ -99,6 +99,12 @@ const uninstallFetch = installGlobalFetch((url, opts) => {
         srvFiles.set(String(body.name), text);
         return { status: 200, text: 'ok' };
     }
+    if (url === '/api/files/delete') {                 // v3.0.17：备份轮转要删掉同槽位的上一份
+        let body = null; try { body = JSON.parse((opts && opts.body) || '{}'); } catch (e) { body = null; }
+        const p = String((body && body.path) || '').replace(/^\/user\/files\//, '');
+        if (p) srvFiles.delete(p);
+        return { status: 200, text: 'ok' };
+    }
     if (url.indexOf('/user/files/') === 0) {
         const name = decodeURIComponent(url.slice('/user/files/'.length));
         if (v1FileName && name === v1FileName) return { status: 200, text: v1FileText };
@@ -4126,7 +4132,7 @@ await assert('AX1 v2.48.0「剧情第 N 天不允许注入」：真实注入通�
     }
 })(), '');
 
-await assert('AY1 v2.49.0 导出/导入文件机制：真实点击「⬇ 导出 JSON」**触发浏览器下载**（blob:<a download="FTT记忆_<hash>.json">）；「⬆ 导入 JSON（合并）」**弹出文件选择器**并读取存档完成合并', (async () => {
+await assert('AY1 v2.49.0/v3.0.17 导出/导入文件机制：真实点击「⬇ 导出 JSON」**触发浏览器下载**（blob:<a download="FTT记忆_<hash>_<日期>_<时间>.json">，v3.0.17 起名字必须带日期时间）；「⬆ 导入 JSON（合并）」**弹出文件选择器**并读取存档完成合并', (async () => {
     const PE = await import('../ui/panel.js');
     const saveCreate = doc.createElement;
     const saveURL = globalThis.URL;
@@ -4162,7 +4168,8 @@ await assert('AY1 v2.49.0 导出/导入文件机制：真实点击「⬇ 导出 
         await fire({ fttAction: 'exportState' });
         const anchor = clicks.filter((x) => x.tagName === 'A')[0];
         const noteExport = String((panelState() || {}).note || '');
-        const downloadOk = !!anchor && /^FTT记忆_.*\.json$/.test(String(anchor.download || ''))
+        // v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）：`FTT记忆_<hash>_YYYY-MM-DD_HH-mm-ss.json`
+        const downloadOk = !!anchor && /^FTT记忆_[a-z0-9]+_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(String(anchor.download || ''))
             && String(anchor.href || '').indexOf('blob:') === 0 && urls.length === 1
             && noteExport.indexOf('已下载文件 FTT记忆_') >= 0;
         // ② 文件选择器桩：点击即注入一个存档文件
@@ -4348,6 +4355,7 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         // ⑤ 备份**真的落到了用户目录文件**（前缀不与主文件冲突；内容 = 导出信封）
         const backupNames = Array.from(srvFiles.keys()).filter((k) => String(k).indexOf('ftt2-floor-backup-') === 0 && !beforeFiles.has(k));
         const backupOk = backupNames.length === 1
+            && /^ftt2-floor-backup-.+-s[123]-\d{8}-\d{6}\.json$/.test(String(backupNames[0]))   // v3.0.17：名字必须带日期时间
             && String(srvFiles.get(backupNames[0]) || '').indexOf('ftt-memory-v2-export') >= 0;
         // ⑥ 记忆一条不少；编号按**实际删除量**校准（全删段/跨越段 → 未知区间；幸存段前移）
         const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
@@ -4384,9 +4392,20 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
                 && Number(rangeTxt[2]) <= host.ctx.chat.length - 1;      // 区间按**活值**取，不越界
             if (!newOk) console.log('BG1-DEBUG9 ' + JSON.stringify({ note2, rangeTxt, chat: host.ctx.chat.length }));
         } finally { host.ctx.generateRaw = keepGen2; }
+        // ⑩ v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）：同槽位再备份一次 →
+        //   新文件带**新的**时间戳，且该槽位上一份被删除（文档承诺的「3 份轮转」上限不变）。
+        let rotateOk = false;
+        try {
+            const FB = await import('../adapters/floor-backup.js');
+            const slug = String(backupNames[0]).replace('ftt2-floor-backup-', '').replace(/-s[123]-\d{8}-\d{6}\.json$/, '');
+            const prevBackup = String(backupNames[0]);
+            const rw = await FB.writeFloorBackup('char:' + slug, 0, '{"format":"ftt-memory-v2-export","state":{}}', { prevName: prevBackup, at: new Date(2026, 8, 30, 15, 6, 7) });
+            rotateOk = rw.ok === true && rw.name !== prevBackup && String(rw.name).indexOf('-s1-20260930-150607.json') > 0
+                && rw.replaced === prevBackup && !srvFiles.has(prevBackup) && srvFiles.has(String(rw.name));
+        } catch (e) { rotateOk = false; }
         await entry.popupAction('tab', { tab: 'overview' });
-        const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk;
-        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk }));
+        const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk && rotateOk;
+        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk, rotateOk }));
         return allOkBg1;
     } finally {
         host.ctx.chat.length = 0;
