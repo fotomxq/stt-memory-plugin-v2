@@ -1493,7 +1493,7 @@ function pageExtraHtml(pid) {
             '<div class="ftt-section"><div class="ftt-sec-title">🗑 删除数据（不可恢复）</div>',
             '<div class="ftt-hint">下面两项都会永久删除本地记录，<b>删除前建议先「⬇ 导出 JSON 文件」备份</b>。</div>',
             '<div class="ftt-row">',
-            '<button class="ftt-btn" data-ftt-action="clearFloors" title="只清「已处理楼层」的计数，不删除任何记忆条目">🧹 清除已处理楼层记录</button>',
+            '<button class="ftt-btn" data-ftt-action="clearFloors" title="只清「已处理楼层」的计数，不删除任何记忆条目；清除后总览重新列出第 0 层之后的所有待分析楼层">🧹 清除已处理楼层记录</button>',
             // B9-a：V1 数据管理页第 4 个按钮（`data-ftt-action="reset"`，文案逐字「🗑 清空当前角色记忆」）。
             //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
             //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。
