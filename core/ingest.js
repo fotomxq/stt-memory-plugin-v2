@@ -473,8 +473,12 @@ function mergeDelta(delta0, floorRange) {
                 }
             }
             const st = state || {};
+            // v3.0.15（用户报告「上次更新后特别卡顿」）：**不再为了记一个长度而整库序列化**。
+            //   原实现 `chars: JSON.stringify(state).length` 在每次增量合并时把整份容器（大用户 600KB+）
+            //   序列化一遍（实测 7~60ms，纯调试用途、每次提取都要付），改为按已落库的字节数近似
+            //   （`dims` 已给出各维条数，足以定位规模）。
             dbgLog('摘要', {
-                action: '增量合并', added, total: afterTotal, chars: JSON.stringify(state).length,
+                action: '增量合并', added, total: afterTotal, chars: -1,
                 dims: { atoms: (st.atoms || []).length, memories: (st.memories || []).length, states: (st.currentStates || []).length, snapshots: (st.snapshots || []).length, items: (st.items || []).length, plans: (st.plans || []).length, suspense: (st.suspense || []).length, scenes: (st.scenes || []).length, concepts: (st.concepts || []).length },
                 changed: dimAct,
                 excerpt: dbgExcerpt(JSON.stringify({ date: st.state && st.state.date, location: st.state && st.state.location }), 160),

@@ -130,7 +130,7 @@ export function consoleSave(kind, id, patch) {
         if (raw.importance !== undefined && raw.importance !== '') raw.importance = Number(raw.importance);
         const ok = upsertEntry(kind, raw);
         if (!ok) { cs.note = '保存失败：必要字段缺失（如记忆需正文、情节需 ≥8 字正文）'; return { ok: false, reason: 'normalize-empty' }; }
-        void saveStateNow({ reason: 'console-save' });
+        void saveStateNow({ reason: 'console-save', force: true });      // v3.0.15：控制台直接改写数据 → 不走「无变化」短路
         cs.note = '已保存 ' + dimLabel(kind) + ' · ' + String(id);
         cs.open = null;
         return { ok: true, id: String(id) };
@@ -145,7 +145,7 @@ export function consoleDelete(kind, id) {
     try {
         const ok = deleteEntry(kind, id);
         if (!ok) { cs.note = '删除失败：未找到条目'; return { ok: false, reason: 'not-found' }; }
-        void saveStateNow({ reason: 'console-delete' });
+        void saveStateNow({ reason: 'console-delete', force: true });  // v3.0.15：同上
         cs.note = '已删除 ' + dimLabel(kind) + ' · ' + String(id) + '（已留墓碑，跨端不会复活）';
         if (cs.open && String(cs.open.id) === String(id)) cs.open = null;
         return { ok: true };

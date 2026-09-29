@@ -487,7 +487,7 @@ export async function runV1Import(opts) {
         current: kernelState,
         apply: apply ? async (merged) => {
             attachKernelState(merged);
-            await saveStateNow({ reason: 'import-v1' });
+            await saveStateNow({ reason: 'import-v1', force: true });     // v3.0.15：导入是直接写入 → 不走「无变化」短路
         } : null,
     });
     const t = (res.report && res.report.totals) || { v1Entries: 0, add: 0, exist: 0, conflict: 0 };
@@ -528,7 +528,7 @@ export async function importStateJson(text) {
         const before = DIMENSIONS.reduce((n, d) => n + ((kernelState && Array.isArray(kernelState[d.kind])) ? kernelState[d.kind].length : 0), 0);
         const { merged } = mergeV1IntoCurrent(kernelState, incoming);
         attachKernelState(merged);
-        await saveStateNow({ reason: 'import-json' });
+        await saveStateNow({ reason: 'import-json', force: true }); // v3.0.15：同上
         const after = DIMENSIONS.reduce((n, d) => n + ((merged && Array.isArray(merged[d.kind])) ? merged[d.kind].length : 0), 0);
         return { ok: true, added: Math.max(0, after - before) };
     } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }

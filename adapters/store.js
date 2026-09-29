@@ -13,7 +13,7 @@ import { getCtx } from '../host/st-api.js';
 import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
-import { entryIndexBuild, entryIndexInit, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume } from '../core/sweep.js';
+import { entryIndexBuild, entryIndexInit, primeAtomIndex, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume } from '../core/sweep.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
 import { snapshotCreateFull, scheduleSnapshotIncr } from '../core/snapshots.js';
 import { collectAtomHashes } from '../core/merge.js';
@@ -69,15 +69,106 @@ async function localforageLib() {
 }
 
 /**
+ * v3.0.15（用户报告「上次更新后特别卡顿，尤其正文保存，可能直接卡死」）——**数据触碰时间戳**。
+ *   内核任何「数据发生变化」的落盘请求（`saveState()` / `persistNow()`）都会刷新它；
+ *   `lastFullPushAt` 是最近一次**真的写了服务端文件**的时刻。
+ *   于是「自上次完整上传以来数据没有任何变化」的保存（事件驱动的空保存是常态：每次生成结束都会存一次）
+ *   可以**跳过全部重活**（索引 / 墓碑扫 / 信封 / base64 / 上传 / 镜像排期）——
+ *   这些产物全都由数据派生，数据没变就没有任何东西需要重算。
+ *   安全性：① 任何数据变更都会经 `markDataTouched()` 刷新时间戳；
+ *   ② 窗口 `SAVE_NOOP_WINDOW_MS`（60s）之外一律做完整保存（万一某条变更路径漏了标记，最多 60s 后自愈）；
+ *   ③ 清空 / 导入 / 控制台编辑 / 快照还原等**直接写入**的路径显式 `force`（永不跳过）。
+ */
+let lastTouchAt = 0;
+/**
+ * v3.0.15：**变更序号**（不是时间戳）—— 时间戳只有毫秒精度，同一毫秒内的「数据变更 + 保存」
+ *   会被误判成「无变化」而跳过写盘。序号单调递增，`saveStateNowInner` 成功上传后把
+ *   `pushedSeq` 对齐到 `touchSeq`，于是「自上次完整上传以来数据是否动过」是**精确**判断。
+ */
+let touchSeq = 0;
+let pushedSeq = 0;
+/** 标记「数据已变化」（内核 `saveState()` / `persistNow()` 与直接写入路径调用） */
+export function markDataTouched() { touchSeq += 1; lastTouchAt = Date.now(); return touchSeq; }
+/** 最近一次**完整**上传（含服务端文件）的时刻与体积 */
+let lastFullPushAt = 0;
+let lastFullPushBytes = 0;
+/** 空保存跳过的窗口（毫秒）；窗口外一律完整保存（自愈） */
+export const SAVE_NOOP_WINDOW_MS = 60000;
+/** 窗口可注入（单测用小值验证「窗口外一定完整保存」；生产恒用 `SAVE_NOOP_WINDOW_MS`） */
+let noopWindowMs = SAVE_NOOP_WINDOW_MS;
+export function setSaveNoopWindowMs(ms) { noopWindowMs = Math.max(0, Number(ms) || 0); return noopWindowMs; }
+/**
+ * v3.0.14/v3.0.15：**「多久算卡死」的统一阈值**（保存层与立即保存层共用同一旋钮）。
+ *   一次保存/一次立即保存超过它仍未返回即视为卡死（宿主或服务端挂住），
+ *   此时**不再复用那个永不 settle 的 Promise**，而是断开引用、重开一次（旧结果被忽略）。
+ */
+export const FLUSH_STUCK_MS = 60000;
+/** 看门狗阈值可注入（单测用小值验证卡死路径；生产恒用 `FLUSH_STUCK_MS`） */
+let flushStuckMs = FLUSH_STUCK_MS;
+export function setFlushStuckMs(ms) { flushStuckMs = Math.max(1, Number(ms) || FLUSH_STUCK_MS); return flushStuckMs; }
+/** 保存合流（在途保存共享同一 Promise；期间到达的请求在其结束后**补跑一次**） */
+let saveInFlight = null;
+let saveInFlightAt = 0;
+let savePendingOpts = null;
+/** 本次保存流水线**取到数据**时的变更序号（见 `saveStateNowInner` 步骤③） */
+let lastEnvelopeSeq = 0;
+
+/**
+ * 本次保存是否可以安全跳过（无任何变化 + 上次完整保存在窗口内 + 未显式要求 force/skipFile=false 之外的动作）。
+ */
+function noopSaveOk(o) {
+    try {
+        if (o.force === true) return false;
+        if (!lastFullPushAt || !lastTouchAt) return false;
+        if (touchSeq > pushedSeq) return false;                               // 上次完整保存之后又动过数据 → 必须保存
+        return (Date.now() - lastFullPushAt) < noopWindowMs;
+    } catch (e) { return false; }
+}
+
+/**
  * 立即保存（V1 `saveState()` 的 V2 实现）。
- * @param {object} [opts] reason / skipFile（不写服务端文件）/ sync（同步返回）
- * @returns {Promise<object>} { ok, via, bytes, error }
+ * @param {object} [opts] reason / skipFile（不写服务端文件）/ force（跳过「无变化」短路）
+ * @returns {Promise<object>} { ok, via, bytes, error, skipped? }
  */
 export async function saveStateNow(opts) {
     const o = opts || {};
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
-    return await trackPipeline('保存记忆文件', { kind: 'io', phase: '写入存储', join: true }, async () => saveStateNowInner(o));
+    // v3.0.15：**合流** —— 同一时刻只允许一次完整保存（此前并发触发会各写一遍：1.3MB 信封 ×N，
+    //   每次都阻塞主线程数百毫秒，正是用户看到的「特别卡顿 / 卡死」）。期间到达的请求在结束后补跑一次。
+    if (saveInFlight) {
+        // v3.0.15：**卡死也要能重开** —— 否则一次挂住的保存在这里把后续所有保存永久堵死（同 flush 层的教训）
+        const stuck = (Date.now() - saveInFlightAt) > flushStuckMs;
+        if (!stuck) {
+            savePendingOpts = Object.assign({}, savePendingOpts || {}, o);
+            return saveInFlight;
+        }
+        try { kernelWarn('上一次保存超过 ' + Math.round(flushStuckMs / 1000) + 's 未返回（疑似卡死）→ 重新开一次；上一次的结果将被忽略'); } catch (e) { /* 忽略 */ }
+        saveInFlight = null;
+        savePendingOpts = null;
+    }
+    const touchedBefore = touchSeq;                 // 本次保存开始时已记录到的变更序号
+    void touchedBefore;
+    if (noopSaveOk(o)) {
+        return { ok: true, via: 'noop', bytes: lastFullPushBytes, error: '', skipped: 'no-change' };
+    }
+    const mine = trackPipeline('保存记忆文件', { kind: 'io', phase: '写入存储', join: true }, async () => saveStateNowInner(o))
+        .then((r) => {
+            if (saveInFlight === mine) {
+                saveInFlight = null;
+                const again = savePendingOpts;
+                savePendingOpts = null;
+                // v3.0.15：**只在「信封取数之后」数据又变了**时才补跑。
+                //   · 并发请求同一份数据 → 第一次已经写全，不再重复写；
+                //   · 保存流水线内部的派生写入（②b 快照维护会经 `saveState()` 触发一次嵌套保存）发生在
+                //     **取数之前**，其内容已包含在本次信封里 → 也不再重复写（此前每次建快照都要多写一遍全量信封）。
+                if (again && touchSeq > lastEnvelopeSeq) { try { void saveStateNow(again); } catch (e) { /* 忽略 */ } }
+            }
+            return r;
+        });
+    saveInFlight = mine;
+    saveInFlightAt = Date.now();
+    return mine;
 }
 
 /** 实际保存（v3.0.0：外层 `saveStateNow` 只负责把它纳入管线状态） */
@@ -85,9 +176,11 @@ async function saveStateNowInner(o) {
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
     // ① 索引基线（首次）→ 刷新原子 h + 建当前索引
+    //   v3.0.15：建好的索引**交给墓碑扫复用**（`primeAtomIndex`）—— 此前 `atomIndexCur` 从没被赋值，
+    //   同一份数据每次保存被完整哈希**两遍**（2000 条情节实测各 ~38ms），纯浪费。
     try {
         if (!indexReady) { entryIndexInit(); indexReady = true; }
-        entryIndexBuild(true);
+        try { primeAtomIndex(entryIndexBuild(true)); } catch (e) { entryIndexBuild(true); }
     } catch (e) { kernelWarn('保存：刷新原子哈希失败', e); }
     // ② 删除自动留痕（先于写库：墓碑随本次信封一起持久化）
     try { tombstoneSweep(); } catch (e) { kernelWarn('保存：删除留痕失败', e); }
@@ -98,6 +191,8 @@ async function saveStateNowInner(o) {
     try {
         st.updatedAt = Date.now();
         envelope = storageEnvelope(st);
+        // v3.0.15：记下「本次信封取到的是哪个变更序号」——之后（更晚）的变更才需要补跑一次保存
+        lastEnvelopeSeq = touchSeq;
     } catch (e) { return { ok: false, error: '信封组装失败：' + String((e && e.message) || e) }; }
     const text = JSON.stringify(envelope);
     const bytes = text.length;
@@ -125,6 +220,8 @@ async function saveStateNowInner(o) {
         } catch (e) { /* 忽略 */ }
     }
     lastSave = { at: Date.now(), ok: via.length > 0, via: via.join('+'), bytes, error: '' };
+    // v3.0.15：记录「最近一次完整保存」的时刻（供下次「数据无变化 → 直接短路」判断；见 `noopSaveOk`）
+    if (via.indexOf('file') >= 0) { lastFullPushAt = lastSave.at; lastFullPushBytes = bytes; pushedSeq = touchSeq; }
     try { saveSettings(); } catch (e) { /* 忽略 */ }
     // ⑦ 保存后镜像（V1 `saveState` 末尾的 scheduleStorageSync）：防抖 3s + 楼层/签名双门控
     //   （`cfg.storage.syncOnSave === false` 时不调度；手动「立即同步」不受此开关影响）
@@ -219,11 +316,8 @@ let flushPendingReason = '';
  *   此时不再让后续 flush 继续复用那个永不 settle 的 Promise（v3.0.3 的合流语义在「挂住」时会
  *   把所有后续立即保存**永久堵死**，用户看到的就是「保存记忆文件」一直不结束）。
  */
-export const FLUSH_STUCK_MS = 60000;
-/** 看门狗阈值可注入（单测用小值验证卡死路径；生产恒用 `FLUSH_STUCK_MS`） */
-let flushStuckMs = FLUSH_STUCK_MS;
-export function setFlushStuckMs(ms) { flushStuckMs = Math.max(1, Number(ms) || FLUSH_STUCK_MS); return flushStuckMs; }
-export function flushStateNow(reason) {
+export function flushStateNow(reason, opts) {
+    const o = opts || {};
     const why = String(reason || 'flush');
     const stuck = !!(flushInFlight && (Date.now() - flushInFlightAt) > flushStuckMs);
     if (flushInFlight && !stuck) { flushPendingReason = why; return flushInFlight; }
@@ -234,14 +328,14 @@ export function flushStateNow(reason) {
         flushPendingReason = '';
     }
     const mine = Promise.resolve()
-        .then(() => saveStateNow({ reason: why }))
+        .then(() => saveStateNow(Object.assign({}, o, { reason: why })))
         .catch((e) => ({ ok: false, error: String((e && e.message) || e), via: '', bytes: 0 }))
         .then((r) => {
             if (flushInFlight === mine) {            // 只由**当前**在途的那次收尾（卡死的旧 Promise 到此不再影响状态）
                 flushInFlight = null;
                 const again = flushPendingReason;
                 flushPendingReason = '';
-                if (again) void flushStateNow(again);
+                if (again) void flushStateNow(again, o);
             }
             return r;
         });
@@ -252,9 +346,10 @@ export function flushStateNow(reason) {
 
 export function wirePersistHooks() {
     setPersistHooks({
-        saveState: () => { void saveStateNow({ reason: 'kernel' }); return true; },
+        // v3.0.15：内核 `saveState()` = 「数据已变化」的落盘请求 → 刷新触碰时间戳（决定能否走「无变化」短路）
+        saveState: () => { markDataTouched(); void saveStateNow({ reason: 'kernel' }); return true; },
         // v3.0.3（用户要求）：内核「数据变化 → 立刻写服务端」的落地点（并发自动合并，见 flushStateNow）
-        persistNow: (reason) => { void flushStateNow(reason || 'kernel'); return true; },
+        persistNow: (reason) => { markDataTouched(); void flushStateNow(reason || 'kernel'); return true; },
         saveCfg: () => saveKernelCfg(),
         log: (m, e) => { if (e !== undefined) kernelLog(m, e); },
         // v2.87.0 修复：此前是 `() => undefined` —— 内核所有 `warn(...)` 被静默丢弃（用户报告「什么都没反应」）。
@@ -315,7 +410,7 @@ export async function resetState() {
     let saved = null;
     try {
         setKernelState(emptyState());            // V1：state = emptyState()
-        saved = await saveStateNow({ reason: 'reset' });
+        saved = await saveStateNow({ reason: 'reset', force: true });        // v3.0.15：清空是直接写入 → 永不走「无变化」短路
         // V1 `saveState()` 收尾会 materialize `state.snapStore = state.snapStore || []`（无原子也执行，紧接 `saveStateRaw` 之后）；
         //   此处同款，使**复位后的内存态键集**与 V1 一致（黄金样本 tests/fixtures/v1-golden-reset.json#afterKeys 为 29 键）。
         if (state && !Array.isArray(state.snapStore)) state.snapStore = [];
