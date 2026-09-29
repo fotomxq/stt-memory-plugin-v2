@@ -36,12 +36,16 @@ const fp = (snaps) => (snaps || []).map((s) => ({
     deleted: Object.keys(s.deleted || {}).sort(),
 })).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'root' ? -1 : 1));
 
+/** v3.0.18：内核 saveState() 调用计数 */
+let saveCount = 0;
 function boot(extra) {
     Object.assign(cfg, clone(defaultCfg));
     setScopeKey('甲');
     setLastMessageId(3);
     setKernelState(Object.assign(emptyState(), { atoms: clone(G.atomsInput), snapStore: [] }, extra || {}));
-    setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
+    // v3.0.18：统计内核 `saveState()` 调用次数 —— 用于断言「删除快照必须立即落盘」（此前只改内存）
+    saveCount = 0;
+    setPersistHooks({ saveState: () => { saveCount += 1; return true; }, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     entryIndexInit();
 }
 
@@ -111,7 +115,7 @@ R.assert('S5 整理：创建过程**自带整理**（链长不超上限、根唯
 })(), (() => { try { const st2 = snapshotStats(); return { total: st2.total, root: st2.root }; } catch (e) { return String(e.message); } })());
 
 // ---------- 清空与删除 ----------
-R.assert('S6 清空/删除快照：只动快照链与指纹，**不删除记忆条目**；删除单个快照后统计递减', (() => {
+R.assert('S6 清空/删除快照：只动快照链与指纹，**不删除记忆条目**；删除单个快照后统计递减；v3.0.18：**删除单个快照也必须立即落盘**（此前只改内存 → 重开应用后删掉的快照又回来）', (() => {
     boot();
     snapshotCreateFull();
     state.atoms.push(clone(G.added));
@@ -119,11 +123,13 @@ R.assert('S6 清空/删除快照：只动快照链与指纹，**不删除记忆�
     snapshotCreateIncr();
     const n0 = snapshotStats().total;
     const atoms0 = state.atoms.length;
+    const savesBeforeDel = saveCount;
     const del = snapshotAction('snapDelete', { id: state.snapStore[0].id });
+    const delSaved = saveCount > savesBeforeDel;
     const n1 = snapshotStats().total;
     const clear = snapshotAction('snapshotClear', {});
     const st2 = snapshotStats();
-    return n0 === 2 && del.ok === true && n1 === 1 && clear.ok === true
+    return n0 === 2 && del.ok === true && delSaved === true && n1 === 1 && clear.ok === true
         && st2.total === 0 && state.atoms.length === atoms0 && mainOk(state);
 })(), (() => { try { return snapshotStats(); } catch (e) { return String(e.message); } })());
 

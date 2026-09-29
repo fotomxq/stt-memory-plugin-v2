@@ -8,7 +8,7 @@
 //   逐条明细（🔍 查看 / ↩ 还原 / 🗑 删除）收进默认折叠的「🔧 高级」details，统计与明细同源（都从 `state.snapStore` 现算）。
 // 口径：内核快照函数逐字移植（core/snapshots.js），本模块只做渲染与动作转发（可在无 DOM 环境完整测）。
 // ============================================================
-import { state } from '../core/model/runtime.js';
+import { state, saveState } from '../core/model/runtime.js';   // v3.0.18：删快照后立即落盘（不再只改内存）
 import { snapshotCreateFull, snapshotConsolidate, snapshotRestore, snapshotClear, snapshotStats, SNAP_CAP } from '../core/snapshots.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -140,7 +140,14 @@ export function snapshotAction(action, payload) {
             const arr = snaps();
             const hit = arr.filter((s) => s && String(s.id) === id)[0];
             if (!hit) result = { ok: false, action: a, reason: 'not-found' };
-            else { state.snapStore = arr.filter((s) => s && String(s.id) !== id); result = { ok: true, action: a, deleted: id }; }
+            else {
+                state.snapStore = arr.filter((s) => s && String(s.id) !== id);
+                // v3.0.18（用户报告「重开应用后存档丢失」）：**删除快照必须立即落盘** ——
+                //   此前只改了内存里的 `snapStore`，要等下一次保存才写库；若期间重开应用/刷新，删除就被回滚了
+                //   （表现为「删掉的快照又回来了」）。同文件其它动作（clear/create/consolidate/restore）本来就落盘。
+                try { saveState(); } catch (e) { /* 忽略：落盘失败不改变本次动作结果 */ }
+                result = { ok: true, action: a, deleted: id };
+            }
         } else if (a === 'snapshotInspect') {
             // 查看快照内容（V1 同名动作；V1 用 `alert()`，V2 改为行内展开/再点收起）
             const id = String(p.id || p.snapId || '');

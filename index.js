@@ -36,7 +36,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState } from './adapters/store.js';
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow } from './adapters/store.js';   // v3.0.18：+flushStateNow（退出/切后台前落盘）
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
@@ -1592,6 +1592,7 @@ export function saveStateNowQuiet(reason) {
 export function teardown() {
     try { if (runtime.bind && typeof runtime.bind.unbind === 'function') runtime.bind.unbind(); } catch (e) { /* noop */ }
     try { unbindAppLifecycle(); } catch (e) { /* noop */ }
+    try { unbindExitFlush(); } catch (e) { /* noop */ }
     runtime.bind = { bound: [], missing: [] };
     try { clearInject(); } catch (e) { /* noop */ }
     try { unmountSettingsPanel(); } catch (e) { /* noop */ }
@@ -1643,6 +1644,38 @@ function bindDocumentReady() {
     } catch (e) { return false; }
 }
 
+/**
+ * v3.0.18（用户报告「重开应用后存档丢失」）——**退出/切后台前落一次盘**。
+ *
+ * 背景：保存是 **800ms 防抖**（`scheduleSave`）+ 落盘后镜像 3s 防抖；若用户在这段窗口内
+ *   关闭/刷新页面或把应用切到后台被系统杀掉，那段「只差几百毫秒就写下去」的改动就丢了。
+ * 做法：`visibilitychange`（hidden）/`pagehide`/`beforeunload` 各触发一次**立即落盘**
+ *   （`flushStateNow` → 同步写本机缓冲 + 服务端文件；无变化时按内容签名短路，不浪费流量）。
+ *   只看不改数据、失败静默；`teardown()` 解绑。
+ */
+const exitFlushOffs = [];
+function bindExitFlush() {
+    try {
+        const doc = globalThis.document;
+        const win = globalThis.window;
+        const fire = (why) => { try { void flushStateNow(why); } catch (e) { /* 忽略 */ } };
+        if (doc && typeof doc.addEventListener === 'function') {
+            const onVis = () => { try { if (doc.visibilityState === 'hidden') fire('应用切到后台'); } catch (e) { /* 忽略 */ } };
+            doc.addEventListener('visibilitychange', onVis);
+            exitFlushOffs.push(() => { try { doc.removeEventListener('visibilitychange', onVis); } catch (e) { /* noop */ } });
+        }
+        if (win && typeof win.addEventListener === 'function') {
+            const onHide = () => fire('应用关闭/离开页面');
+            win.addEventListener('pagehide', onHide);
+            exitFlushOffs.push(() => { try { win.removeEventListener('pagehide', onHide); } catch (e) { /* noop */ } });
+            win.addEventListener('beforeunload', onHide);
+            exitFlushOffs.push(() => { try { win.removeEventListener('beforeunload', onHide); } catch (e) { /* noop */ } });
+        }
+        return exitFlushOffs.length > 0;
+    } catch (e) { return false; }
+}
+function unbindExitFlush() { while (exitFlushOffs.length) { try { exitFlushOffs.pop()(); } catch (e) { /* noop */ } } }
+
 export async function onInstall() { /* P6：初始化数据容器与版本标记 */ }
 export async function onUpdate() { /* P6：按 DATA_VERSION 跑数据迁移 */ }
 export async function onDelete() { teardown(); }
@@ -1680,6 +1713,7 @@ function unbindAppLifecycle() {
     while (appOffs.length) { try { appOffs.pop()(); } catch (e) { /* noop */ } }
 }
 bindAppLifecycle();
+try { bindExitFlush(); } catch (e) { /* 忽略：不影响启动 */ }
 
 // 3) 可见性探针：多触发 + 有限轮询 —— 宿主事件缺失/时机不符时仍会装配并挂载面板
 bindDocumentReady();
