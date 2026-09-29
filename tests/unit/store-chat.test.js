@@ -1,5 +1,8 @@
 // ============================================================
 // 单元测试 · P2 宿主层（host/chat.js 聊天接线 + adapters/store.js 保存流水线 + adapters/user-file.js 文件通道）
+// v3.0.15 增补（用户报告「上次更新后特别卡顿，尤其正文保存，可能直接卡死」）：
+//   S9/S10 保存与文件请求的两层看门狗 · S11 base64 分块（编码逐字节一致）· S12「数据无变化」保存短路 ·
+//   S13 并发保存合流 · S14 索引交接后墓碑留痕照常。
 // 重点：保存流水线必须复刻 V1 `saveState()` 顺序（刷新原子 h → 删除自动留痕 → 写库）——
 //   批次 5 的黄金样本已证明「内容哈希墓碑由该流水线写入」。本文件全部断言均为 await 后的真实条件
 //   （不使用「Promise && true」这类恒真写法）。
@@ -10,9 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, installGlobalFetch } from '../harness/st-mock.js';
 import { setContextProvider } from '../../host/st-api.js';
 import { wireKernelChatHooks, kernelChatMessages, latestAiMessageText, currentLastMessageId, currentStableCharKey, attachKernelState, kernelChatDebug } from '../../host/chat.js';
-import { saveStateNow, scheduleSave, cancelScheduledSave, loadFromLocalStorage, loadFromServerFile, wirePersistHooks, setStorageHooks, setSaveDebounce, storeStatus, lastSaveInfo, resetState, primeStateIndex, flushStateNow, setFlushStuckMs, FLUSH_STUCK_MS } from '../../adapters/store.js';
+import { saveStateNow, scheduleSave, cancelScheduledSave, loadFromLocalStorage, loadFromServerFile, wirePersistHooks, setStorageHooks, setSaveDebounce, storeStatus, lastSaveInfo, resetState, primeStateIndex, flushStateNow, setFlushStuckMs, FLUSH_STUCK_MS, markDataTouched, setSaveNoopWindowMs, SAVE_NOOP_WINDOW_MS } from '../../adapters/store.js';
 import { slugify, stateFileName, textToBase64, base64ToText, uploadStateFile, deleteStateFile } from '../../adapters/user-file.js';
-import { setKernelState, getScopeKey, setPersistHooks, kernelState } from '../../core/model/runtime.js';
+import { cfg, setKernelState, getScopeKey, setPersistHooks, kernelState } from '../../core/model/runtime.js';
 import { scopeId, emptyState } from '../../core/state.js';
 import { panelAction, panelState, panelBodyHtml } from '../../ui/panel.js';
 
@@ -335,26 +338,149 @@ const localKey = () => 'ftt2_state_' + scopeId();
             && okUp.ok === true && sawSignal === true,
             { hung, elapsed, sawSignal });
 
-        // ③ 立即保存的卡死看门狗：阈值内合流（同一 Promise）、超阈值**重开一次**（旧 Promise 不再堵死后续保存）
-        const prevFetch2 = globalThis.fetch;
-        globalThis.fetch = () => new Promise(() => { });                 // 保存的服务端文件写入挂住（本地已写）
+        // ③ 保存 / 立即保存的卡死看门狗：阈值内合流（同一 Promise）、超阈值**重开一次**
+        //   v3.0.15：这里改用 **IndexedDB 步骤**制造「确定性的卡死」（不依赖 fetch —— 原生文件通道可能绕过 fetch，
+        //   会让「挂住」变得不确定；`localforage.setItem` 永不 resolve 则保存必然停在步骤⑤）。
+        const prevLibs = host.ctx.libs;
         const warns = [];
         setPersistHooks({ warn: (m) => warns.push(String(m)) });
+        host.ctx.libs = { localforage: { setItem: () => new Promise(() => { }) } };   // 保存永远卡住
         setFlushStuckMs(30);
-        const p1 = flushStateNow('测试卡死');
-        const p2 = flushStateNow('测试卡死');                             // 阈值内 → 合流（同一个 Promise）
+        const p1 = flushStateNow('测试卡死', { force: true });            // force：v3.0.15 起「数据无变化」会短路，本项要测**真实保存**
+        const p2 = flushStateNow('测试卡死', { force: true });             // 阈值内 → 合流（同一个 Promise）
         const coalesced = p1 === p2;
         await new Promise((r) => setTimeout(r, 60));                      // 超过阈值 → 视为卡死
-        const p3 = flushStateNow('测试卡死');
+        host.ctx.libs = { localforage: { setItem: async () => true } };   // 恢复：证明「重开的这一次」真的能落盘
+        const p3 = flushStateNow('测试卡死', { force: true });
         const reopened = p3 !== p1;
+        // 新开的这次应立刻落盘成功（不再被卡死的旧 Promise 堵住）；两层看门狗各留一条告警。
+        // 注意：**必须在等待之后**才把阈值还原 —— 保存层的判卡死发生在微任务里，
+        //   提前还原（阈值回 60s）会让它误判「还没卡死」而去合流那个永不 settle 的旧保存。
+        const done3 = await Promise.race([p3, new Promise((r) => setTimeout(() => r({ ok: false, error: 'still-stuck' }), 2000))]);
         setFlushStuckMs(FLUSH_STUCK_MS);
-        globalThis.fetch = prevFetch2;
-        // 新开的这次立刻落盘成功（不再被卡死的旧 Promise 堵住）
-        const done3 = await Promise.race([p3, new Promise((r) => setTimeout(() => r({ ok: false, error: 'still-stuck' }), 1500))]);
-        R.assert('S10 v3.0.14 立即保存看门狗：阈值内两次 flush 合流为一个 Promise；超过阈值即判卡死 → 重开一次并落盘成功（旧 Promise 的后续 resolve 不再回写状态）、留一条告警',
+        host.ctx.libs = prevLibs;
+        R.assert('S10 v3.0.14/v3.0.15 保存看门狗：阈值内两次 flush 合流为一个 Promise；超过阈值即判卡死 → **保存层与立即保存层都重开**（不再被永不 settle 的 Promise 堵死），新开的一次落盘成功，且各留一条「疑似卡死」告警',
             coalesced === true && reopened === true && !!done3 && done3.ok === true
-            && warns.some((m) => m.indexOf('疑似卡死') >= 0),
+            && warns.some((m) => m.indexOf('立即保存超过') >= 0 && m.indexOf('疑似卡死') >= 0)
+            && warns.some((m) => m.indexOf('上一次保存超过') >= 0 && m.indexOf('疑似卡死') >= 0),
             { coalesced, reopened, done3, warns });
+    }
+
+    // ---------------- S11–S13：v3.0.15「上次更新后特别卡顿（尤其正文保存）」的性能修复 ----------------
+    // 用户报告（原话）：「新版本 上次版本更新后特别卡顿，尤其是在正文保存或其他环节，无报错，但可能会直接卡死。」
+    //   实测（2000 情节容器 = 1.3MB 信封）：一次保存的**同步**耗时里 base64 编码 151ms（旧逐字节拼接）、
+    //   全量索引建了两遍各 ~38ms、`storageHash` 66ms 等 —— 每次事件驱动的保存都会阻塞主线程数百毫秒。
+    {
+        // ① base64：新实现（分块 / Buffer）必须与旧实现（逐字节拼接）**逐字节一致**
+        const samples = ['', 'ascii', '中文·多字节字符与 emoji 🐋 混排', 'x'.repeat(200000)];
+        const oldB64 = (str) => {
+            const b = new TextEncoder().encode(String(str));
+            let bin = '';
+            for (const x of b) bin += String.fromCharCode(x);
+            return btoa(bin);
+        };
+        const same = samples.every((x) => {
+            const a1 = textToBase64(x);
+            const a2 = oldB64(x);
+            try { if (typeof Buffer === 'function') { const b3 = Buffer.from(String(x), 'utf8').toString('base64'); return a1 === a2 && b3 === a2; } } catch (e) { /* 无 Buffer */ }
+            return a1 === a2;
+        });
+        R.assert('S11 v3.0.15 base64 编码改**分块 fromCharCode**（旧实现逐字节拼接，1.3MB 实测 151ms → 16ms）：空串 / ASCII / 多字节与 emoji / 200KB 长文本的编码结果与旧实现**逐字节一致**（含 Buffer 环境）',
+            same === true && textToBase64('中文') === oldB64('中文'), { ok: same });
+
+        // ② 「数据无变化 → 保存短路」：事件驱动的空保存（每次生成结束都会触发一次）不再做任何重活
+        const st12 = freshState();
+        attachKernelState(st12);
+        const keepSyncOnSave = !!(cfg.storage && cfg.storage.syncOnSave);
+        if (cfg.storage) cfg.storage.syncOnSave = false;               // 关掉「保存后镜像」：镜像内的 saveState 会再写一次容器，计数无法隔离
+        const sName12 = stateFileName(scopeId());
+        let up12 = 0;
+        const un12 = installGlobalFetch((url, opts) => {
+            try { const b = JSON.parse((opts && opts.body) || '{}'); if (String(b.name) === sName12) up12++; } catch (e) { /* 忽略 */ }
+            return { status: 200, text: 'ok' };
+        });
+        markDataTouched();
+        const full1 = await saveStateNow({ reason: 'S12-首次' });
+        const at1 = Number((lastSaveInfo() || {}).at);
+        const u1 = up12;
+        const noop = await saveStateNow({ reason: 'S12-无变化' });
+        const u2 = up12;
+        const atNoop = Number((lastSaveInfo() || {}).at);
+        markDataTouched();                                             // 数据又动了 → 必须真保存
+        const full2 = await saveStateNow({ reason: 'S12-有变化' });
+        const u3 = up12;
+        markDataTouched();
+        setSaveNoopWindowMs(0);                                        // 窗口=0 → 一律完整保存（自愈路径）
+        const full3 = await saveStateNow({ reason: 'S12-窗口外' });
+        setSaveNoopWindowMs(SAVE_NOOP_WINDOW_MS);
+        markDataTouched();
+        const forced = await saveStateNow({ reason: 'S12-force', force: true });
+        const u4 = up12;
+        un12();
+        if (cfg.storage) cfg.storage.syncOnSave = keepSyncOnSave;
+        R.assert('S12 v3.0.15「数据无变化」的保存**走短路**（`skipped:no-change`：不再算索引 / 建信封 / base64 / 上传，主记忆文件一次都不写）：首次与「有变化」时真写；`force` 与窗口外一律完整保存',
+            full1.ok === true && u1 >= 1 && full1.via.indexOf('file') >= 0 && at1 > 0
+            && noop.ok === true && noop.skipped === 'no-change' && u2 === u1 && atNoop === at1
+            && full2.ok === true && u3 > u1                          // 数据动过 → 真写
+            && full3.ok === true && u4 > u3                          // 窗口外 → 真写
+            && forced.ok === true && forced.via !== 'noop',
+            { full1, noop, full2, full3, forced, uploads: [u1, u2, u3, u4], at1, atNoop });
+
+        // ③ 并发保存**合流**：同一时刻只开**一行**「保存记忆文件」，也只做一次完整保存
+        const st13 = freshState();
+        attachKernelState(st13);
+        const keepSyncOnSave13 = !!(cfg.storage && cfg.storage.syncOnSave);
+        if (cfg.storage) cfg.storage.syncOnSave = false;
+        const PL13 = await import('../../core/pipeline.js');
+        // S10 故意留下一个**卡死的保存行**（同标签）—— 若不清空，新保存会与它合流（join 同标签），
+        //   行数增量就观察不到了。这里先清空运行表（只影响读数，不影响在途 Promise）。
+        PL13.resetPipeline();
+        const saveRows = () => PL13.listPipelineRuns().filter((r) => r.label === '保存记忆文件').length;
+        let midTouch = false;                                          // 保存**期间**再改数据 → 结束后必须补跑一次
+        const sName13 = stateFileName(scopeId());
+        let up13 = 0;
+        const un13 = installGlobalFetch((url, opts) => {
+            try { const b = JSON.parse((opts && opts.body) || '{}'); if (String(b.name) === sName13) { up13++; if (midTouch) markDataTouched(); } } catch (e) { /* 忽略 */ }
+            return { status: 200, text: 'ok' };
+        });
+        markDataTouched();
+        const q1 = saveStateNow({ reason: 'S13-A', force: true });
+        const n1 = saveRows();                                         // 第一路 → 1 行
+        const q2 = saveStateNow({ reason: 'S13-B', force: true });
+        const n2 = saveRows();                                         // 第二路**合流** → 仍是 1 行（不再开新行、不再写一遍）
+        const r1 = await q1, r2 = await q2;
+        await new Promise((r) => setTimeout(r, 400));                   // 等流水线内部的派生保存（②b 快照维护）收尾
+        const n3 = saveRows();                                          // 收尾后 0 行
+        const joined = up13;                                            // 并发两路 → 合流后只写 1 次（派生补跑至多再 1 次）
+        midTouch = true;
+        markDataTouched();
+        const q3 = saveStateNow({ reason: 'S13-C', force: true });
+        const q4 = saveStateNow({ reason: 'S13-D', force: true });      // 保存期间数据又变 → 结束后补跑一次
+        const r3 = await q3, r4 = await q4;
+        await new Promise((r) => setTimeout(r, 80));
+        const rerunUploads = up13 - joined;
+        un13();
+        if (cfg.storage) cfg.storage.syncOnSave = keepSyncOnSave13;
+        midTouch = false;
+        R.assert('S13 v3.0.15 并发保存**合流**：两次并发 `saveStateNow` 只开一行「保存记忆文件」、只写一次主记忆文件（两个调用方拿到同一结果），收尾后该行消失；若保存**期间**数据又变了，结束后补跑一次（不丢最后一次变更）',
+            n1 === 1 && n2 === 1 && n3 === 0 && joined >= 1 && joined <= 2
+            && r1.ok === true && r1.via.indexOf('file') >= 0 && J(r1) === J(r2) && J(r3) === J(r4)
+            && rerunUploads === 2,
+            { n1, n2, n3, joined, rerunUploads });
+
+        // ④ P4：索引交接后**墓碑仍照常留痕**（删条目 → 保存 → 写进 deleted 账本）
+        const st14 = freshState();
+        attachKernelState(st14);
+        primeStateIndex();                                             // 基线 = 当前三条
+        const keep = st14.atoms.slice();
+        st14.atoms = st14.atoms.filter((x) => x.id !== 'a2');           // 删一条
+        markDataTouched();
+        await saveStateNow({ reason: 'S14-删除', force: true });
+        const tomb = !!((st14.deleted || {}).atoms && (st14.deleted.atoms.a2 || (st14.deletedH || {}).atoms));
+        st14.atoms = keep;
+        primeStateIndex();
+        R.assert('S14 v3.0.15 保存流水线把「刚建好的索引」交给墓碑扫复用（不再全量哈希两遍）后，**删除留痕照常工作**：删掉一条情节 → 保存 → `deleted.atoms` 出现该 id 墓碑',
+            tomb === true, { deleted: st14.deleted });
     }
 
     setContextProvider(null);

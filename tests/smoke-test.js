@@ -4842,8 +4842,10 @@ await assert('BM3 v3.0.14 修复「保存记忆文件显示 2.6 万秒」：AI �
     await entry.popupAction('tab', { tab: 'overview' });
     try {
         const ai = (PL.beginPipeline('批量摘要', { chars: 2000, kind: 'ai' }) || {}).runId;
-        const s1 = ST.saveStateNow({ reason: '冒烟A' });            // 新开「保存记忆文件」行
-        const s2 = ST.saveStateNow({ reason: '冒烟B' });            // 并发第二次 → 合流（修复前这里拿到的是 AI 行的 id）
+        // v3.0.15：`force` 是必须的 —— 「自上次完整保存以来数据没动过」的保存会走短路（连行都不开），
+        //   本项要验证的是**真保存的合流与收尾**（合流语义本身没变）。
+        const s1 = ST.saveStateNow({ reason: '冒烟A', force: true });   // 新开「保存记忆文件」行
+        const s2 = ST.saveStateNow({ reason: '冒烟B', force: true });   // 并发第二次 → 合流（修复前这里拿到的是 AI 行的 id）
         const during = fttPanelMod.pipelineBoxRowsHtml();
         await Promise.all([s1, s2]);
         await new Promise((r) => setTimeout(r, 30));

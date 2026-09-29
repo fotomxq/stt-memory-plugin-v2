@@ -41,6 +41,16 @@ function entryIndexBuild(refreshHashes) {
 
 function entryIndexInit() { try { entryIndexPrev = entryIndexBuild(true); } catch (e) { entryIndexPrev = null; } }
 
+/**
+ * v3.0.15：把**已建好的当前索引**交给下一次 `tombstoneSweep()` 复用。
+ *   背景：`adapters/store.js` 的保存流水线先 `entryIndexBuild(true)`（全量哈希一遍）再 `tombstoneSweep()`，
+ *   而后者内部 `atomIndexCur || entryIndexBuild(true)` —— `atomIndexCur` 从没有被赋过值，于是**同一份数据
+ *   每次保存被完整哈希两遍**（2000 条情节实测 ~38ms/遍，纯浪费）。这里补上「交接」这一步：
+ *   保存流水线把刚建好的索引交进来，扫墓碑时直接用同一份（语义完全等价：两次构建之间没有任何数据变更）。
+ * @param {object} idx `entryIndexBuild()` 的返回值
+ */
+function primeAtomIndex(idx) { atomIndexCur = (idx && typeof idx === 'object') ? idx : null; return atomIndexCur; }
+
 function tombstoneSweepPause() { tombstoneSweepSuppress++; }
 
 function tombstoneSweepResume() { if (tombstoneSweepSuppress > 0) tombstoneSweepSuppress--; }
@@ -174,4 +184,4 @@ function applyDeletedToArray(dim, arr, delA, delB, delHA, delHB, learnH) {
     return { arr: out, del: merged, delH: mergedH };
 }
 
-export { entryIndexBuild, entryIndexInit, entryIndexPrev, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume, tombstoneSweepSuppress, applyTombstonesToState, applyDeletedToArray, deletedByDim, deletedHByDim, entryWallMs, mergeTombMaps, mergeTombTrees, atomIndexCur };
+export { entryIndexBuild, entryIndexInit, entryIndexPrev, primeAtomIndex, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume, tombstoneSweepSuppress, applyTombstonesToState, applyDeletedToArray, deletedByDim, deletedHByDim, entryWallMs, mergeTombMaps, mergeTombTrees, atomIndexCur };
