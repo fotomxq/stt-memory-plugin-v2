@@ -1351,7 +1351,9 @@ function wireFloorTrimHooks() {
     floorTrimWired = true;
     setFloorTrimHooks({
         exportJson: () => exportStateJson(),
-        writeBackup: (scope, slot, text) => writeFloorBackup(scope, slot, text),
+        // v3.0.19：**第 4 个参数必须透传** —— 备份名带时间戳后靠它把「该槽位的上一份」删掉（3 份轮转）；
+        //   此前这里只传 3 个参数 → 生产环境里轮转删除从不执行（备份无限累积）。
+        writeBackup: (scope, slot, text, opts) => writeFloorBackup(scope, slot, text, opts),
         getLog: () => { try { return getSettings().floorTrimLog || null; } catch (e) { return null; } },
         saveLog: (v) => { try { setSetting('floorTrimLog', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
         noteConflict: (item) => { try { noteConflict(item); } catch (e) { /* 忽略 */ } },

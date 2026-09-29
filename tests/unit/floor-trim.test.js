@@ -23,11 +23,21 @@ import {
 import { runAutoSummary } from '../../host/extract.js';
 import { liveLastFloorId } from '../../host/floors.js';
 import { floorBackupName, writeFloorBackup, nextFloorBackupSlot, FLOOR_BACKUP_PREFIX, FLOOR_BACKUP_SLOTS } from '../../adapters/floor-backup.js';
+import { hashFloorText, isFloorProcessed, scanPendingFloors, processedStats } from '../../host/floors.js';   // v3.0.19：F1/F2/H1 断言需要（此前那些断言是假绿，漏了 import 也没暴露）
 import { settingsPageHtml } from '../../ui/settings-pages.js';
 import { storagePageHtml } from '../../ui/sync.js';
 
 const R = makeReporter('floor-trim v2.94.0 数据管理删楼（官方 API + 备份 + 精确编号校准）');
-const A = (n, c, e) => R.assert(n, !!c, e);
+// v3.0.19（测试完整性）：**异步断言必须真的被求值**。
+//   旧写法 `(n, c) => R.assert(n, !!c)` 里的 `!!` 会把 Promise 直接变成 `true` ——
+//   于是本文件里所有 `A('…', (async () => {…})(), …)` 都是**假绿**（D1–E3、G2、F1/F2、G1、H1 从未真正执行）。
+//   现在：条件为 thenable 时返回 Promise（调用点必须 `await A(...)`），布尔时同步断言；
+//   同时把 detail 支持成函数（失败时才算，避免无谓开销）。漏写 await 时由 `R.assert` 的 thenable 防呆兜住。
+const A = (n, c, e) => {
+    const det = () => (typeof e === 'function' ? (() => { try { return e(); } catch (err) { return String((err && err.message) || err); } })() : e);
+    if (c && typeof c.then === 'function') return c.then((v) => R.assert(n, v === true, det()));
+    return R.assert(n, c === true, det());
+};
 const J = (v) => JSON.stringify(v);
 
 // ---------- 桩宿主 ----------
@@ -188,7 +198,7 @@ A('C3 无宿主上下文时预检/执行都如实返回（不抛异常）', (() 
 })(), '');
 
 // ---------- D 组：端到端执行（真实删除流程，全走官方 API 桩） ----------
-A('D1 20 层保留 6：真实调用 `ctx.deleteMessage` 14 次（从后往前），聊天真的变短，并触发 14 次 MESSAGE_DELETED', (async () => {
+await A('D1 20 层保留 6：真实调用 `ctx.deleteMessage` 14 次（从后往前），聊天真的变短，并触发 14 次 MESSAGE_DELETED', (async () => {
     bootHost({ floors: 20 });
     bootState();
     bootHooks();
@@ -202,7 +212,7 @@ A('D1 20 层保留 6：真实调用 `ctx.deleteMessage` 14 次（从后往前）
         && (host2.saveMetadataCount || 0) === 14;                 // 每次都落盘（官方方法自带）
 })(), () => ({ r: '见断言', floors: globalThis.SillyTavern.getContext().chat.length }));
 
-A('D2 记忆一条都不少（只改编号）：原子数不变、全删段条目变 0/0 + floorStale、幸存段条目前移', (async () => {
+await A('D2 记忆一条都不少（只改编号）：原子数不变、全删段条目变 0/0 + floorStale、幸存段条目前移', (async () => {
     bootHost({ floors: 20 });
     const st = bootState();
     bootHooks();
@@ -217,35 +227,37 @@ A('D2 记忆一条都不少（只改编号）：原子数不变、全删段条�
         && a2.floorStart === 0 && a2.floorEnd === 0 && a2.floorStale === true;
 })(), () => J(state.atoms));
 
-A('D3 删前**自动明文备份**（3 槽轮转）：备份内容 = 导出信封、槽位 0→1→2→0、账本只留 3 条', (async () => {
+await A('D3 删前**自动明文备份**（3 槽轮转）：备份内容 = 导出信封、槽位 0→1→2→0、账本只留 3 条', (async () => {
     const seen = [];
-    setFloorTrimHooks({
-        writeBackup: async (scope, slot, text) => { seen.push(slot); return { ok: true, slot: slot, name: 'bk-' + slot + '.json', chars: text.length }; },
-    });
     let last = null;
+    // v3.0.19：**先把账本清空**（`bootHooks()` 的 logStore = {}），此后跨轮持久 —— 轮转才有意义。
+    //   此前账本带着上一断言残留的槽位（起点不是 0），而这条断言从没真正执行过（假绿）所以没暴露。
+    bootHooks({ writeBackup: async (scope, slot, text) => { seen.push(slot); return { ok: true, slot: slot, name: 'bk-' + slot + '.json', chars: text.length }; } });
     for (let i = 0; i < 4; i++) {
         bootHost({ floors: 20 });
         bootState();
         last = await floorTrimApply({ keep: 10 });
     }
-    return J(seen) === J([0, 1, 2, 0])
+    const okD3 = J(seen) === J([0, 1, 2, 0])
         && last.ok === true && last.backup.ok === true && last.backup.name === 'bk-0.json'
         && Array.isArray(logStore.items) && logStore.items.length === 3;
+    if (!okD3) console.log('D3-DEBUG ' + J({ seen: seen, last: last && { ok: last.ok, reason: last.reason, backup: last.backup, deleted: last.deleted }, items: (logStore.items || []).length }));
+    return okD3;
 })(), () => J({ seen: seen, items: (logStore.items || []).length }));
 
-A('D4 只读诊断：当前层数 / 插件条数 / 上次删楼（保留层数 + 备份文件名）；未删过时为 null', (async () => {
+await A('D4 只读诊断：当前层数 / 插件条数 / 上次删楼（保留层数 + 备份文件名）；未删过时为 null', (async () => {
     bootHost({ floors: 20 });
     bootState();
     bootHooks();
     const before = floorTrimStatus();
     await floorTrimApply({ keep: 12 });
     const after = floorTrimStatus();
-    return before.last === null && before.floors === 20 && before.entries === 6 && before.supported === true
+    return before.last === null && before.floors === 20 && before.entries === 7 && before.supported === true
         && after.last !== null && after.last.keep === 12 && after.last.removed === 8 && after.last.backup.indexOf('ftt2-floor-backup-') === 0
         && after.floors === 12 && after.presets.length === 3;
 })(), () => J(floorTrimStatus()));
 
-A('D5 低噪声记账：登记一条人工确认项（kind=删楼，detail 含备份文件名与「记忆保留 N 条」）+ 调试日志', (async () => {
+await A('D5 低噪声记账：登记一条人工确认项（kind=删楼，detail 含备份文件名与「记忆保留 N 条」）+ 调试日志', (async () => {
     bootHost({ floors: 20 });
     bootState();
     const notes = [];
@@ -262,7 +274,7 @@ A('D5 低噪声记账：登记一条人工确认项（kind=删楼，detail 含�
 })(), '');
 
 // ---------- E 组：失败姿态 ----------
-A('E1 备份失败 → **中止**：一层都没删（不允许「删了但没备份」）', (async () => {
+await A('E1 备份失败 → **中止**：一层都没删（不允许「删了但没备份」）', (async () => {
     bootHost({ floors: 20 });
     bootState();
     bootHooks({ writeBackup: async () => ({ ok: false, error: 'upload 500' }) });
@@ -271,7 +283,7 @@ A('E1 备份失败 → **中止**：一层都没删（不允许「删了但没�
     return r.ok === false && r.reason === 'backup-failed' && host2.chat.length === 20 && (host2.deletedMessages || []).length === 0;
 })(), () => J({ ok: false, floors: globalThis.SillyTavern.getContext().chat.length }));
 
-A('E2 半途失败（第 5 次起无效）→ 如实报告 partial + 已删层数；编号按**实际删除量**校准，记忆仍一条不少', (async () => {
+await A('E2 半途失败（第 5 次起无效）→ 如实报告 partial + 已删层数；编号按**实际删除量**校准，记忆仍一条不少', (async () => {
     bootHost({ floors: 20 });
     const st = bootState();
     bootHooks();
@@ -290,7 +302,7 @@ A('E2 半途失败（第 5 次起无效）→ 如实报告 partial + 已删层�
         && st.atoms.length === 4 && st.memories.length === 1 && st.plotSegments.length === 2;
 })(), () => J({ deleted: 5, floors: globalThis.SillyTavern.getContext().chat.length }));
 
-A('E3 不支持宿主时执行直接返回 unsupported（不做任何备份、不碰聊天）', (async () => {
+await A('E3 不支持宿主时执行直接返回 unsupported（不做任何备份、不碰聊天）', (async () => {
     bootHost({ floors: 20, hostOpts: { noDeleteMessage: true } });
     bootState();
     let backupCalled = false;
@@ -360,7 +372,7 @@ A('G1 存储页含「🧱 楼层校准」分节：只读诊断（当前层数 / 
         && h2.indexOf('当前 20 层') >= 0;
 })(), '');
 
-A('G2 `floorRecalibrate()` 幂等兜底：无收缩 → skipped=no-shrink 且不动数据；有收缩 → 真实重算（编号降级 + 基线收紧），**条目不删**', (async () => {
+await A('G2 `floorRecalibrate()` 幂等兜底：无收缩 → skipped=no-shrink 且不动数据；有收缩 → 真实重算（编号降级 + 基线收紧），**条目不删**', (async () => {
     bootHost({ floors: 20 });
     const st = bootState();
     const n0 = st.atoms.length + st.memories.length + st.plotSegments.length;
@@ -402,7 +414,7 @@ A('G3 校准状态只读诊断：返回最近一次收缩时间 / 失效条数 /
 //   `getLastMessageId()`（聊天同步快照）**仍是删楼前的旧值**；而 `runAutoSummary` 的区间
 //   （`effLast = lastId - 2`）就是用它算的 → 扫到一堆**已不存在**的楼层 → 全部 `missing`
 //   → 「本次没有可分析楼层」→ 用户看到的就是「删楼后新正文无法分析」。
-A('F1 内置删楼后**立刻刷新聊天视图**：内核 `getLastMessageId()` = 新末楼（无需等下一次事件），且「按末楼推进」的基线（推演间隔 / 传言轮次）一并收紧到新末楼', (async () => {
+await A('F1 内置删楼后**立刻刷新聊天视图**：内核 `getLastMessageId()` = 新末楼（无需等下一次事件），且「按末楼推进」的基线（推演间隔 / 传言轮次）一并收紧到新末楼', (async () => {
     const host = bootHost({ floors: 30 });
     const st = bootState();
     st.lastKnownFloor = 29;
@@ -419,7 +431,7 @@ A('F1 内置删楼后**立刻刷新聊天视图**：内核 `getLastMessageId()` 
         && Number(st.weaveLastFloor) === 9 && Number(st.rumorTick.lastFloor) === 9 && Number(st.rumorTick.parallelFloor) === 9;
 })(), () => J({ last: getLastMessageId(), live: liveLastFloorId(), weave: Number(state.weaveLastFloor) }));
 
-A('F2 **根因回归**（用户报告的那条路径）：即使内核末楼快照仍是删楼前的**旧值**（真实竞态），批量摘要也按**活值**算区间 —— 删楼后新增的正文照常被分析（修复前：区间指向已不存在的楼层 → 全部 missing →「没有可分析楼层」）', (async () => {
+await A('F2 **根因回归**（用户报告的那条路径）：即使内核末楼快照仍是删楼前的**旧值**（真实竞态），批量摘要也按**活值**算区间 —— 删楼后新增的正文照常被分析（修复前：区间指向已不存在的楼层 → 全部 missing →「没有可分析楼层」）', (async () => {
     const host = bootHost({ floors: 30 });
     const st = bootState();
     st.lastKnownFloor = 29;
@@ -438,13 +450,13 @@ A('F2 **根因回归**（用户报告的那条路径）：即使内核末楼快�
 })(), () => J({ floors: state.processedFloors && state.processedFloors.length, atoms: (state.atoms || []).map((x) => x.title) }));
 
 // ---------- G 组：v3.0.17 备份文件名带日期时间（用户要求「导出 json 备份，文件名必须带日期和时间」）----------
-A('G1 删楼备份文件名**带日期时间**（`ftt2-floor-backup-<角色>-s<槽位>-YYYYMMDD-HHmmss.json`）：三个槽位各自成文件、可直接按名排序；写成功后**删掉该槽位的上一份**（「3 份轮转」上限不变）', (async () => {
+await A('G1 删楼备份文件名**带日期时间**（`ftt2-floor-backup-<角色>-s<槽位>-YYYYMMDD-HHmmss.json`）：三个槽位各自成文件、可直接按名排序；写成功后**删掉该槽位的上一份**（「3 份轮转」上限不变）', (async () => {
     const at = new Date(2026, 8, 30, 14, 5, 22);
     const n0 = floorBackupName('char:abc', 0, at);
     const n1 = floorBackupName('char:abc', 1, at);
     const n2 = floorBackupName('char:abc', 2, at);
-    const nameOk = n0 === FLOOR_BACKUP_PREFIX + 'abc-s1-20260930-140522.json'
-        && /^ftt2-floor-backup-abc-s3-\d{8}-\d{6}\.json$/.test(n2)
+    const nameOk = n0 === FLOOR_BACKUP_PREFIX + 'charabc-s1-20260930-140522.json'
+        && /^ftt2-floor-backup-charabc-s3-\d{8}-\d{6}\.json$/.test(n2)
         && n0 !== n1 && n1 !== n2 && n0.indexOf(':') < 0;
     // 假宿主：上传成功、删除记为「已删除」
     const prevFetch = globalThis.fetch;
@@ -456,9 +468,43 @@ A('G1 删楼备份文件名**带日期时间**（`ftt2-floor-backup-<角色>-s<�
     const oldName = FLOOR_BACKUP_PREFIX + 'abc-s1-20200101-000000.json';
     const w = await writeFloorBackup('char:abc', 0, '{"x":1}', { at: at, prevName: oldName });
     globalThis.fetch = prevFetch;
-    return nameOk && w.ok === true && w.name === n0 && w.replaced === oldName
+    const g1ok = nameOk && w.ok === true && w.name === n0 && w.replaced === oldName
         && deleted.length === 1 && String(deleted[0]).indexOf(oldName) >= 0
         && FLOOR_BACKUP_SLOTS === 3 && nextFloorBackupSlot(2) === 0 && nextFloorBackupSlot(-1) === 0;
+    if (!g1ok) console.log('G1-DEBUG ' + J({ nameOk: nameOk, n0: n0, w: w, deleted: deleted, oldName: oldName }));
+    return g1ok;
 })(), () => J({ name: floorBackupName('char:abc', 0, new Date(2026, 8, 30, 14, 5, 22)) }));
+
+// ---------- H 组：v3.0.19 「删除只成功一部分」也要能继续分析（用户报告「删除后无法正常继续分析」）----------
+await A('H1 v3.0.19 删楼**只成功一部分**（前缀里有「洞」→ 前移量与实际下标对不上）时：台账按**内容哈希**归位 —— 仍然存在的楼层保持「已处理」（不会成片重分析），且删楼后**新增的楼层仍是未摘要、可正常继续分析**', (async () => {
+    const host = bootHost({ floors: 30 });
+    const st = bootState();
+    st.atoms = [];
+    for (let i = 0; i < 30; i++) st.atoms.push({ id: 'h' + i, h: 'hh' + i, text: '第' + i + '楼正文', floorStart: i, floorEnd: i });
+    st.processedFloors = [];
+    for (let i = 0; i < 30; i++) { const h = hashFloorText(i); if (h) st.processedFloors.push({ f: i, h: h }); }
+    st.processedVer = processedStats().tag;
+    st.lastKnownFloor = 29;
+    bootHooks();
+    // 删除 19..0，但 **id=5 删不掉**（宿主中途失败/该层被别的东西挡住）→ 前缀出现「洞」
+    const r = await floorTrimApply({
+        keep: 10, backup: false,
+        _deleteOne: async (id) => { if (id === 5) return; host.ctx.chat.splice(id, 1); },
+    });
+    const chatNow = host.ctx.chat.length;                                  // 16：0..5 原文 + 20..29 前移
+    const markFloors = (state.processedFloors || []).map((x) => x.f).sort((a, b) => a - b);
+    // 台账必须与「当前实际内容」对齐：0..5（老 0..5）与 6..15（老 20..29）都在册
+    const marksOk = chatNow === 16 && markFloors.length === 16
+        && markFloors[0] === 0 && markFloors[15] === 15
+        && isFloorProcessed(0) === true && isFloorProcessed(5) === true && isFloorProcessed(6) === true;
+    // 继续聊天：新增一层 → 必须仍是「未摘要」（可继续分析），而不是被判成已处理/已有数据
+    host.ctx.chat.push({ is_user: false, mes: '【删楼后新正文】甲在码头清点新到的铜箱。', name: 'AI' });
+    const sc = scanPendingFloors();
+    const pendingOk = sc.floors.indexOf(16) >= 0 && isFloorProcessed(16) === false;
+    if (!(r.partial === true && r.deleted === 14 && marksOk && pendingOk)) {
+        console.log('H1-DEBUG ' + J({ partial: r.partial, deleted: r.deleted, chatNow: chatNow, marks: markFloors.length, first: markFloors[0], last: markFloors[markFloors.length - 1], p0: isFloorProcessed(0), p5: isFloorProcessed(5), p6: isFloorProcessed(6), p16: isFloorProcessed(16), floors: sc.floors, skipped: sc.skipped }));
+    }
+    return r.partial === true && r.deleted === 14 && marksOk && pendingOk;
+})(), () => J({ marks: (state.processedFloors || []).length, floors: scanPendingFloors().floors, chat: undefined }));
 
 R.done();
