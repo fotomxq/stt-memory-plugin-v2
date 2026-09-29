@@ -1637,7 +1637,7 @@ const DANGER_ACTION_PROMPTS = {
     'syncPickLocal': '用**本端**版本覆盖对端？\n\n两端分歧将按本端内容强行统一，**对端的差异会被丢弃**。此操作不可撤销，建议先备份。',
     'syncPickRemote': '用**对端**版本覆盖本端？\n\n本端当前记忆会被对端内容替换，**本端的差异会被丢弃**。此操作不可撤销，建议先备份。',
     'clear-inject': '清空当前注入内容？\n\n只清除这次注入给 AI 的正文，**不影响任何记忆数据**（下次提取会重新生成）。',
-    'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；之后可能重复摘要已处理过的楼层。',
+    'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；清除后总览会重新列出**第 0 层之后的所有待分析楼层**（便于整段重做），再次分析后它们会照常从清单消失。',
 };
 
 async function confirmDialog(text, title) {
@@ -1994,8 +1994,15 @@ export async function panelAction(action, payload) {
             const r = (typeof hooks.abort === 'function') ? hooks.abort() : { ok: false };
             setNote(r && r.busy ? '已请求中断：当前段完成后停止' : '当前没有正在运行的分析任务');
         } else if (a === 'clearFloors') {
+            // v3.0.20（用户要求）：「清除已处理楼层记录」必须**真的把已分析统计归零**，并让总览**重新列出
+            //   第 0 层之后的所有待分析楼层** → 清空后立即读一次待分析清单，把条数如实写进提示（用户一眼可核对）。
             const r = (typeof hooks.clearFloors === 'function') ? hooks.clearFloors() : { ok: false };
-            setNote(r && r.ok ? ('已清空已处理楼层记录（' + (r.cleared || 0) + ' 个）') : '清空失败');
+            const pendN = (() => { try { return (typeof hooks.pending === 'function') ? (hooks.pending({}) || []).length : 0; } catch (e) { return 0; } })();
+            setNote(r && r.ok
+                ? ('已清空已处理楼层记录（' + (r.cleared || 0) + ' 个）· 待分析 ' + pendN + ' 楼已重现（若此前有记忆数据的楼层未出现，可再点「🧱 楼层校准 → 重新校准楼层」）')
+                : '清空失败');
+            // v3.0.20：把结果并入动作返回值（含 `cleared` / `coverUpTo` 与清空后的待分析条数），供面板/测试/命令如实核对
+            result = Object.assign(result, r || {}, { action: a, pending: pendN, ok: !!(r && r.ok) });
         } else if (a === 'reset') {
             // V1 `case 'reset'`（数据管理页「🗑 清空当前角色记忆」）：确认文案**逐字一致**
             //   （V1 原文：`confirm('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。')` → `resetState()` → `toast('已清空','info')`）。

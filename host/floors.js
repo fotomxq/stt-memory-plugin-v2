@@ -508,6 +508,14 @@ export function scanPendingFloors(opts) {
         }
         const cov = floorCoverage(state);
         const skipCovered = (o.ignoreCovered !== true);
+        // v3.0.20：用户显式「清除已处理楼层记录」→ 该楼号及之前不再按「已有记忆数据」跳过（见 clearProcessedFloors）
+        const coverResetUpTo = (() => {
+            try {
+                const c = state.coverReset;
+                const n = Number(c && c.upTo);
+                return Number.isFinite(n) ? n : -1;
+            } catch (e) { return -1; }
+        })();
         for (let i = startFloor; i <= end; i++) {
             const m = floorMessage(i);
             if (!m) { skipped.missing++; continue; }
@@ -520,7 +528,8 @@ export function scanPendingFloors(opts) {
             const mark = processedMarkOf(i);
             if (mark && isFloorProcessed(i)) { skipped.processed++; continue; }
             const contentChanged = !!mark;
-            if (!contentChanged && skipCovered && cov.has(i)) { skipped.covered++; continue; }   // v2.64.0：该楼已有记忆数据，无需分析
+            // v2.64.0：该楼已有记忆数据 → 无需分析；v3.0.20：显式清空过的区间除外（用户要求「重新看到全部待分析楼层」）
+            if (!contentChanged && skipCovered && i > coverResetUpTo && cov.has(i)) { skipped.covered++; continue; }
             out.push(i);
         }
         return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, skipped: skipped };
@@ -549,8 +558,20 @@ export function clearProcessedFloors() {
         state.processedFloors = [];
         state.lastKnownFloor = -1;
         state.processedVer = processedVerTag();
+        /**
+         * v3.0.20（用户要求）：「清除已处理楼层记录」必须**真的能把已分析统计归零**，
+         *   并让总览**重新列出第 0 层之后的所有待分析楼层**。
+         *
+         * 关键：台账清空后，逐楼跳过还有第二条判据 ——「该楼已有记忆数据」（`core/floor-cover.js`，v2.64.0 按用户要求新增）。
+         *   分析过的楼层本来就有情节数据 → 台账清空后它们**仍然**被这条判据跳过，于是总览看上去「清了没变化」
+         *   （用户报告的就是这个）。V1 的 `clearFloors` 只有台账判据，故清空即全部重现 —— 这里补回该语义：
+         *   记下**清空时的末楼号**，该楼号及之前的楼层不再按「已有记忆数据」跳过；再往后的新楼层按常规判据。
+         *   重新分析后台账会重新记上这些楼层 → 它们照常从清单里消失（不会一直堆着）。
+         */
+        const upTo = (() => { try { return Number(liveLastFloorId()); } catch (e) { return -1; } })();
+        state.coverReset = { at: Date.now(), upTo: Number.isFinite(upTo) ? upTo : -1 };
         saveState();
-        return { ok: true, cleared: before };
+        return { ok: true, cleared: before, coverUpTo: state.coverReset.upTo };
     } catch (e) { return { ok: false, cleared: 0 }; }
 }
 
@@ -581,6 +602,11 @@ export function liveLastFloorId() {
 /** 台账统计（诊断用） */
 export function processedStats() {
     try {
-        return { ver: state.processedVer || '', tag: processedVerTag(), marks: (state.processedFloors || []).length, lastKnownFloor: Number(state.lastKnownFloor) || -1 };
+        return {
+            ver: state.processedVer || '', tag: processedVerTag(), marks: (state.processedFloors || []).length,
+            lastKnownFloor: Number(state.lastKnownFloor) || -1,
+            // v3.0.20：「清除已处理楼层记录」时记下的覆盖失效末楼号（-1 = 未清空过 / 已恢复常规判据）
+            coverResetUpTo: (() => { try { const n = Number(state.coverReset && state.coverReset.upTo); return Number.isFinite(n) ? n : -1; } catch (e) { return -1; } })(),
+        };
     } catch (e) { return { ver: '', tag: processedVerTag(), marks: 0, lastKnownFloor: -1 }; }
 }

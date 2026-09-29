@@ -4417,6 +4417,71 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
     }
 })(), '');
 
+// v3.0.20（用户报告）：「设定-数据存储-清除已处理楼层记录，该功能异常，应该直接将已分析楼层统计归零，
+//   确保可以在总览中重新看到第0层之后的所有待分析楼层。」
+//   根因：台账清空后还有第二条跳过判据「该楼已有记忆数据」（v2.64.0 新增）——分析过的楼层本来就有数据，
+//   于是「清了没变化」（V1 的 clearFloors 只有台账判据，故清空即全部重现）。
+await assert('BG3 v3.0.20 真实点击「🧹 清除已处理楼层记录」：已处理统计归零（含面板读数），总览**重新列出第 0 层之后的所有待分析楼层**（此前被「已有记忆数据」全部跳过 → 清了没变化）；再次分析后它们照常从清单消失', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const FL = await import('../host/floors.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast2 = host.ctx.getLastMessageId;
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepMarks = JSON.parse(JSON.stringify(RT.state.processedFloors || []));
+    const keepVer = RT.state.processedVer;
+    const keepCoverReset = RT.state.coverReset;
+    try {
+        // ① 12 层聊天（6 个 AI 楼）+ 全部已分析：台账 12 条 + 情节覆盖 0..11
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 12; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账。', name: i % 2 === 0 ? 'User' : '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RT.state.atoms = [];
+        for (let i = 0; i < 12; i += 2) RT.state.atoms.push({ id: 'bg3-a' + i, title: '情节' + i, text: '第' + i + '楼情节（正文足够长）。', floorStart: i, floorEnd: i + 1, tags: [], updatedAt: Date.now() - i * 1000 });
+        RT.state.processedFloors = host.ctx.chat.map((m, i) => ({ f: i, h: FL.hashFloorText(i) }));
+        RT.state.processedVer = FL.processedVerTag();
+        RT.state.lastKnownFloor = 11;
+        // ② 清空前：总览没有待分析楼层（台账在册）
+        await entry.popupAction('tab', { tab: 'overview' });
+        const beforeHtml = String((await entry.popupAction('refresh', {})).html || '');
+        const beforePend = FL.scanPendingFloors({ maintain: false });
+        // ③ 设定 → 数据管理 真实点击「🧹 清除已处理楼层记录」
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        const pageHtml = String((await entry.popupAction('refresh', {})).html || '');
+        const btnOk = pageHtml.indexOf('data-ftt-action="clearFloors"') >= 0;
+        const r = await entry.popupAction('clearFloors', {});
+        const note = String(((r.state || {}).note) || '');
+        // ④ 清空后：统计归零 + 6 个 AI 楼全部重现（总览渲染里能看到楼层按钮）
+        const stats = FL.processedStats();
+        const afterPend = FL.scanPendingFloors({ maintain: false });
+        await entry.popupAction('tab', { tab: 'overview' });
+        const afterHtml = String((await entry.popupAction('refresh', {})).html || '');
+        const pendButtons = (afterHtml.match(/data-ftt-action="summaryFloor"/g) || []).length;
+        // ⑤ 再次分析（记台账）→ 它们照常从清单消失
+        FL.recordProcessedFloors(0, 11);
+        const refilled = FL.scanPendingFloors({ maintain: false });
+        const ok = btnOk && beforePend.floors.length === 0
+            && r.ok === true && Number(r.cleared) === 12 && Number(r.pending) === 6
+            && stats.marks === 0 && stats.coverResetUpTo === 11
+            && J(afterPend.floors) === J([1, 3, 5, 7, 9, 11])
+            && pendButtons >= 6
+            && refilled.floors.length === 0
+            && note.indexOf('已清空已处理楼层记录') === 0;
+        if (!ok) console.log('BG3-DEBUG ' + JSON.stringify({ btnOk, before: beforePend.floors, r: { ok: r.ok, note: note.slice(0, 80) }, stats, after: afterPend.floors, pendButtons, refilled: refilled.floors, beforeHasPend: beforeHtml.indexOf('未摘要') >= 0 }));
+        return ok;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast2;
+        RT.state.atoms = keepAtoms;
+        RT.state.processedFloors = keepMarks;
+        RT.state.processedVer = keepVer;
+        if (keepCoverReset === undefined) delete RT.state.coverReset; else RT.state.coverReset = keepCoverReset;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 await assert('BG2 设定 → 存储「🧱 楼层校准」（v2.94.0 / docs/D12 §3.4 S3）：只读诊断行 + 真实点击「🔄 重新校准楼层」——无收缩幂等短路；人为删楼后按当前聊天重算且**记忆一条不删**', (async () => {
     const RT = await import('../core/model/runtime.js');
     const keepChat = host.ctx.chat.slice();

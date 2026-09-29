@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.19",
+  "version": "3.0.20",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.20",
+      "date": "2026-09-30",
+      "title": "修「清除已处理楼层记录」：统计真归零 + 总览重现全部待分析楼层",
+      "points": [
+        "用户报告：（原话）：「设定-数据存储-清除已处理楼层记录，该功能异常，应该直接将已分析楼层统计归零，确保可以在总览中重新看到第0层之后的所有待分析楼层。」",
+        "根因：清空动作只清了 processedFloors（台账），但待分析清单还有第二条跳过判据 ——「该楼已有记忆数据」（core/floor-cover.js，v2.64.0 按…",
+        "修复：host/floors.js：清空时记下清空时的末楼号（state.coverReset = {at, upTo}，随状态落盘）；scanPendingFloors 对 i…"
+      ]
+    },
     {
       "version": "3.0.19",
       "date": "2026-09-30",

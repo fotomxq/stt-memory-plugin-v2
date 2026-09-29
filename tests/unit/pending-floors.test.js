@@ -26,6 +26,8 @@ import { floorCoverage, meaningfulFloorRange, floorRanges } from '../../core/flo
 import {
     listUnprocessedFloors, scanPendingFloors, processedDriftGuard, reconcileProcessedFloors,
     migrateProcessedFloorsV170, processedVerTag, hashFloorText,
+    // v3.0.20：用户要求「清除已处理楼层记录」后总览重新列出第 0 层之后的所有待分析楼层
+    clearProcessedFloors, recordProcessedFloors, processedStats,
 } from '../../host/floors.js';
 import { analyzeFloors, extractSummary } from '../../host/extract.js';
 import { panelBodyHtml, setPanelHooks2 } from '../../ui/panel.js';
@@ -295,5 +297,63 @@ A('C6 区间口径：内核 lastMessageId 落后（新楼刚入聊天、宿主�
         survived === 30 && state.processedFloors.length === 30 && scanAfter.floors.length === 0,
         J({ survived: survived, marks: state.processedFloors.length, floors: scanAfter.floors }));
 }
+
+// ==================== F 组：v3.0.20 「清除已处理楼层记录」（用户要求） ====================
+// 用户报告（原话）：「设定-数据存储-清除已处理楼层记录，该功能异常，应该直接将已分析楼层统计归零，
+//   确保可以在总览中重新看到第0层之后的所有待分析楼层。」
+// 根因：台账清空后，逐楼跳过还有第二条判据「该楼已有记忆数据」（v2.64.0 按用户要求新增）——
+//   分析过的楼层本来就有情节数据，于是台账清了、清单却还是空的（用户看到的「清了没变化」）。
+//   V1 的 `clearFloors` 只有台账判据，故清空即全部重现；这里补回该语义（清空时的末楼号及之前不再按覆盖跳过）。
+A('F1 清除已处理楼层记录：台账归零 + 统计归零，且**该楼号及之前不再按「已有记忆数据」跳过** → 总览重新列出第 0 层之后的所有待分析楼层（AI 楼）', (() => {
+    const chat = [];
+    for (let i = 0; i < 12; i++) chat.push({ is_user: i % 2 === 0, role: i % 2 === 0 ? 'user' : 'assistant', mes: '第' + i + '楼：角色甲在仓库清点货物并记下账目。' });
+    const st = emptyState();
+    st.atoms = [];
+    for (let i = 0; i < 12; i += 2) st.atoms.push({ id: 'f' + i, title: '情节' + i, text: '第' + i + '楼情节。', floorStart: i, floorEnd: i + 1, tags: [] });
+    // 注意：本文件前面的小节会 `installGlobalHost(makeHost(...))` 换宿主 → 这里同样**装一个新宿主**再断，
+    //   不能改旧的 `host.ctx`（`getCtx()` 已经不是它了）。
+    installGlobalHost(makeHost({ chat: chat }), doc);
+    boot(st);
+    setLastMessageId(11);
+    st.processedFloors = chat.map((_, i) => ({ f: i, h: hashFloorText(i) }));
+    st.processedVer = processedVerTag();
+    st.lastKnownFloor = 11;
+    const before = scanPendingFloors();
+    const r = clearProcessedFloors();
+    const after = scanPendingFloors({ maintain: false });
+    const stats = processedStats();
+    // 重新分析（记录台账）后，这些楼层照常从清单消失 —— 既有「已处理」语义不受影响
+    recordProcessedFloors(0, 11);
+    const refilled = scanPendingFloors({ maintain: false });
+    // 清空前：台账在册 → 6 个 AI 楼按「已处理」跳过（届时「已有记忆数据」判据还没轮到）
+    return before.floors.length === 0 && Number(before.skipped.processed) === 6 && Number(before.skipped.covered) === 0
+        && r.ok === true && r.cleared === 12 && r.coverUpTo === 11
+        && stats.marks === 0 && stats.coverResetUpTo === 11                        // 统计归零（含覆盖失效标记）
+        // 清空后：6 个 AI 楼**全部重现**（既无台账，也不再按「已有记忆数据」跳过）
+        && J(after.floors) === J([1, 3, 5, 7, 9, 11]) && Number(after.skipped.covered) === 0
+        && Number(after.skipped.processed) === 0
+        && J(refilled.floors) === J([]) && Number(refilled.skipped.processed) === 6;   // 台账重新记上 → 不再列出
+})(), () => J({ marks: processedStats().marks, coverResetUpTo: processedStats().coverResetUpTo, floors: scanPendingFloors({ maintain: false }).floors }));
+
+A('F2 覆盖失效只在**清空时的末楼号及之前**生效：之后新增的楼层（及其「已有记忆数据」）仍按常规判据跳过 —— 既满足「重新看到全部待分析楼层」，又保住 v2.64.0 的覆盖跳过语义', (() => {
+    const chat = [];
+    for (let i = 0; i < 10; i++) chat.push({ is_user: i % 2 === 0, role: i % 2 === 0 ? 'user' : 'assistant', mes: '第' + i + '楼：角色甲在仓库清点货物。' });
+    const st = emptyState();
+    installGlobalHost(makeHost({ chat: chat }), doc);
+    boot(st);
+    setLastMessageId(9);
+    st.processedFloors = chat.map((_, i) => ({ f: i, h: hashFloorText(i) }));
+    st.processedVer = processedVerTag();
+    st.lastKnownFloor = 9;
+    clearProcessedFloors();                                    // coverUpTo = 9
+    // 之后又聊了两层（10/11），其中第 11 楼已有情节数据（覆盖）→ 应被常规判据跳过
+    const ctx = host.ctx; void ctx;   // 仅说明：宿主已换成上面那个新桩
+    const now = (globalThis.SillyTavern && typeof globalThis.SillyTavern.getContext === 'function') ? globalThis.SillyTavern.getContext() : null;
+    now.chat.push({ is_user: false, role: 'assistant', mes: '第10楼：新正文。' });
+    now.chat.push({ is_user: false, role: 'assistant', mes: '第11楼：新正文。' });
+    st.atoms.push({ id: 'fx', title: '新情节', text: '第11楼情节。', floorStart: 11, floorEnd: 11, tags: [] });
+    const sc = scanPendingFloors({ maintain: false });
+    return J(sc.floors) === J([1, 3, 5, 7, 9, 10]) && Number(sc.skipped.covered) === 1;
+})(), () => J(scanPendingFloors({ maintain: false }).skipped));
 
 R.done();
