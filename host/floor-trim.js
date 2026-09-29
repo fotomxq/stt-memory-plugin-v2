@@ -175,8 +175,15 @@ export async function floorTrimApply(opts) {
         let text = '';
         try { text = (typeof hooks.exportJson === 'function') ? String(hooks.exportJson() || '') : ''; } catch (e) { text = ''; }
         if (!text) return { ok: false, reason: 'backup-unavailable', summary: pre.summary };
+        // v3.0.17：把该槽位**上一份备份的文件名**一并交给写入方 —— 写完新文件（名字带日期时间）后删旧文件，
+        //   于是「3 份轮转」的上限不变，而每份备份都自带时间戳。
+        const prevName = (() => { try { return String(((lg && lg.names) || {})[String(slot)] || ''); } catch (e) { return ''; } })();
         let wr = null;
-        try { wr = (typeof hooks.writeBackup === 'function') ? await hooks.writeBackup(String(state.scope || ''), slot, text) : null; } catch (e) { wr = { ok: false, error: String((e && e.message) || e) }; }
+        try {
+            wr = (typeof hooks.writeBackup === 'function')
+                ? await hooks.writeBackup(String(state.scope || ''), slot, text, { prevName: prevName })
+                : null;
+        } catch (e) { wr = { ok: false, error: String((e && e.message) || e) }; }
         if (!wr || !wr.ok) {
             return { ok: false, reason: 'backup-failed', backup: wr || null, error: String((wr && wr.error) || ''), summary: pre.summary };
         }
@@ -229,7 +236,10 @@ export async function floorTrimApply(opts) {
     };
     const lg = readLog();
     const items = (Array.isArray(lg && lg.items) ? lg.items : []).concat([rec]).slice(-3);   // 账本也只留 3 条
-    writeLog({ slot: backup.ok ? backup.slot : (Number(lg && lg.slot) || -1), items: items });
+    // v3.0.17：记住**每个槽位当前的文件名**（备份名带时间戳后不再是固定名）——下一次写同槽位时据此删旧
+    const names = Object.assign({}, (lg && lg.names) || {});
+    if (backup.ok && backup.name) names[String(backup.slot)] = String(backup.name);
+    writeLog({ slot: backup.ok ? backup.slot : (Number(lg && lg.slot) || -1), items: items, names: names });
     try {
         if (typeof hooks.noteConflict === 'function') {
             hooks.noteConflict({

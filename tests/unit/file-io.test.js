@@ -176,8 +176,9 @@ await (async () => {
         const a = env.log.clicked[0];
         const st = panelState();
         const html = String(panelBodyHtml('settings') || '');
-        A('E1 点「⬇ 导出 JSON」→ **真实触发下载**（blob + `<a download="FTT记忆_<hash>.json">`），文本框同时有内容',
-            env.log.clicked.length === 1 && !!a && /^FTT记忆_.*\.json$/.test(String(a.download || ''))
+        // v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）：名字形如 `FTT记忆_<hash>_2026-09-30_14-05-22.json`
+        A('E1 点「⬇ 导出 JSON」→ **真实触发下载**（blob + `<a download="FTT记忆_<hash>_<日期>_<时间>.json">`），文本框同时有内容',
+            env.log.clicked.length === 1 && !!a && /^FTT记忆_[a-z0-9]+_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/.test(String(a.download || ''))
             && String(a.href || '').indexOf('blob:') === 0
             && String(st.note || '').indexOf('已下载文件 FTT记忆_') >= 0
             && html.indexOf('data-ftt-export') >= 0 && Number(st.exportChars) > 10,

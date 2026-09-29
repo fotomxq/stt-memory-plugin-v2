@@ -2,7 +2,7 @@
 // 单元测试 · core/util（纯内核，零宿主依赖）
 // ============================================================
 import { makeReporter } from '../harness/st-mock.js';
-import { hashText, escHtml, normText, oneLine, clamp, normalizeList, cmpDateStr, extractJsonObject, emptyState } from '../../core/util.js';
+import { hashText, escHtml, normText, oneLine, clamp, normalizeList, cmpDateStr, extractJsonObject, emptyState, fileStamp, fileStampCompact } from '../../core/util.js';
 import { DIMENSIONS, STATE_KEYS, PROMPT_POSITION, PROMPT_ROLE, EXTENSION_FOLDER, HOST_EVENTS } from '../../core/constants.js';
 
 const R = makeReporter('core-util 纯内核工具');
@@ -32,5 +32,15 @@ R.assert('U10 emptyState 覆盖 14 类容器 + dataVersion', (() => {
 R.assert('U11 常量：维度 14 类且 kind 唯一', DIMENSIONS.length === 14 && new Set(DIMENSIONS.map(d => d.kind)).size === 14, DIMENSIONS.length);
 R.assert('U12 常量：注入枚举与 ST 源码一致', PROMPT_POSITION.IN_PROMPT === 0 && PROMPT_POSITION.IN_CHAT === 1 && PROMPT_POSITION.BEFORE_PROMPT === 2 && PROMPT_ROLE.SYSTEM === 0 && PROMPT_ROLE.USER === 1 && PROMPT_ROLE.ASSISTANT === 2, '');
 R.assert('U13 常量：扩展目录名与九事件清单', EXTENSION_FOLDER === 'third-party/ftt-memory-v2' && HOST_EVENTS.length === 9 && HOST_EVENTS.indexOf('GENERATION_ENDED') >= 0, HOST_EVENTS.length);
+
+// ---------- v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）----------
+R.assert('U14 文件名时间戳：`fileStamp` = `YYYY-MM-DD_HH-mm-ss`（本地时间、个位补零、**不含冒号**——Windows/安卓/网盘都安全）；`fileStampCompact` = `YYYYMMDD-HHmmss`（备份名用，可直接排序）；非法入参不抛',
+    fileStamp(new Date(2026, 8, 30, 14, 5, 22)) === '2026-09-30_14-05-22'
+    && fileStamp(new Date(2026, 0, 2, 3, 4, 5)) === '2026-01-02_03-04-05'
+    && fileStampCompact(new Date(2026, 8, 30, 14, 5, 22)) === '20260930-140522'
+    && /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(fileStamp())
+    && fileStamp('not-a-date').indexOf('-') > 0 && fileStampCompact('x').length > 0
+    && fileStamp(new Date(2026, 8, 30, 14, 5, 22)).indexOf(':') < 0,
+    { stamped: fileStamp(new Date(2026, 8, 30, 14, 5, 22)), compact: fileStampCompact(new Date(2026, 8, 30, 14, 5, 22)) });
 
 R.done();

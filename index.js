@@ -69,7 +69,7 @@ import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
 import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef } from './core/model/runtime.js';
-import { hashText } from './core/util.js';
+import { hashText, fileStamp } from './core/util.js';
 import {
     clockManualState, setClockManual, clearClockManual,
     clockPatrolAnchorInfo, clockPatrolScan,
@@ -1267,7 +1267,12 @@ export function panelRuntimeHooks() {
         exportState: exportStateJson,
         importState: importStateJson,
         // v2.49.0：导出文件名（V1 `export` 动作：`FTT记忆_<角色哈希>.json`；`hashText` 与 V1 同算法）
-        exportFileName: () => { try { return 'FTT记忆_' + hashText(String(getScopeKey() || 'scope')) + '.json'; } catch (e) { return 'FTT记忆.json'; } },
+        // v3.0.17（用户要求「导出 json 备份，文件名必须带日期和时间」）：追加 `_日期_时间`
+        //   （`2026-09-30_14-05-22`，本地时间、无冒号）—— 同一角色多次导出不再互相覆盖，事后也能一眼看出备份时间。
+        exportFileName: () => {
+            try { return 'FTT记忆_' + hashText(String(getScopeKey() || 'scope')) + '_' + fileStamp() + '.json'; }
+            catch (e) { try { return 'FTT记忆_' + fileStamp() + '.json'; } catch (e2) { return 'FTT记忆.json'; } }
+        },
         importV1: runV1Import,
         autoSummary: runSummaryBatch,          // 总览「批量摘要」
         abort: abortExtraction,                // 总览「中断」
