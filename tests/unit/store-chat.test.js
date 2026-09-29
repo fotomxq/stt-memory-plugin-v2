@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, installGlobalFetch } from '../harness/st-mock.js';
 import { setContextProvider } from '../../host/st-api.js';
 import { wireKernelChatHooks, kernelChatMessages, latestAiMessageText, currentLastMessageId, currentStableCharKey, attachKernelState, kernelChatDebug } from '../../host/chat.js';
-import { saveStateNow, scheduleSave, cancelScheduledSave, loadFromLocalStorage, loadFromServerFile, wirePersistHooks, setStorageHooks, setSaveDebounce, storeStatus, lastSaveInfo, resetState, primeStateIndex } from '../../adapters/store.js';
+import { saveStateNow, scheduleSave, cancelScheduledSave, loadFromLocalStorage, loadFromServerFile, wirePersistHooks, setStorageHooks, setSaveDebounce, storeStatus, lastSaveInfo, resetState, primeStateIndex, flushStateNow, setFlushStuckMs, FLUSH_STUCK_MS } from '../../adapters/store.js';
 import { slugify, stateFileName, textToBase64, base64ToText, uploadStateFile, deleteStateFile } from '../../adapters/user-file.js';
 import { setKernelState, getScopeKey, setPersistHooks, kernelState } from '../../core/model/runtime.js';
 import { scopeId, emptyState } from '../../core/state.js';
@@ -307,6 +307,54 @@ const localKey = () => 'ftt2_state_' + scopeId();
         }
         if (realConfirm !== undefined) globalThis.confirm = realConfirm;
         unFetch();
+    }
+
+    // ---------------- S9/S10：v3.0.14「保存记忆文件执行超长时间（管线状态 2.6 万秒）」的宿主侧看门狗 ----------------
+    // 用户报告（原话）：「新版本 保存记忆文件，会执行超长时间，我这边在管线状态观测到2.6万秒的提示。请修复太异常。」
+    //   根因在 `core/pipeline.js`（合流 runId，见 pipeline.test.js 的 G1）；此处锁定**宿主侧两条防线**：
+    //   服务端文件请求超时（挂住的 fetch 不再让保存永不结束）+ 立即保存的卡死看门狗（不再被堵死）。
+    {
+        const st9 = freshState();
+        attachKernelState(st9);
+        // ① 服务端文件请求：**永不 settle 的 fetch** + 小超时 → 如实 'timeout(…ms)'，不再永久挂着
+        const prevFetch = globalThis.fetch;
+        globalThis.fetch = (url, opts) => new Promise((res, rej) => {
+            const sig = opts && opts.signal;
+            if (sig && typeof sig.addEventListener === 'function') sig.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+        });
+        const t0 = Date.now();
+        const hung = await uploadStateFile('ftt2-state-x.json', '{"a":1}', { timeoutMs: 30 });
+        const elapsed = Date.now() - t0;
+        // ② 正常返回时**确实带了 AbortSignal**（超时机制真的接在请求上）
+        let sawSignal = false;
+        globalThis.fetch = (url, opts) => { sawSignal = !!(opts && opts.signal && typeof opts.signal.addEventListener === 'function'); return Promise.resolve({ status: 200, text: 'ok' }); };
+        const okUp = await uploadStateFile('ftt2-state-x.json', '{"a":1}');
+        globalThis.fetch = prevFetch;
+        R.assert('S9 v3.0.14 服务端文件请求带超时：fetch 永不返回 → `{ok:false, error:"timeout(30ms)"}`（且立即结束，不再让「保存记忆文件」永不完成）；正常请求带 AbortSignal',
+            hung.ok === false && String(hung.error).indexOf('timeout(30ms)') === 0 && elapsed < 2000
+            && okUp.ok === true && sawSignal === true,
+            { hung, elapsed, sawSignal });
+
+        // ③ 立即保存的卡死看门狗：阈值内合流（同一 Promise）、超阈值**重开一次**（旧 Promise 不再堵死后续保存）
+        const prevFetch2 = globalThis.fetch;
+        globalThis.fetch = () => new Promise(() => { });                 // 保存的服务端文件写入挂住（本地已写）
+        const warns = [];
+        setPersistHooks({ warn: (m) => warns.push(String(m)) });
+        setFlushStuckMs(30);
+        const p1 = flushStateNow('测试卡死');
+        const p2 = flushStateNow('测试卡死');                             // 阈值内 → 合流（同一个 Promise）
+        const coalesced = p1 === p2;
+        await new Promise((r) => setTimeout(r, 60));                      // 超过阈值 → 视为卡死
+        const p3 = flushStateNow('测试卡死');
+        const reopened = p3 !== p1;
+        setFlushStuckMs(FLUSH_STUCK_MS);
+        globalThis.fetch = prevFetch2;
+        // 新开的这次立刻落盘成功（不再被卡死的旧 Promise 堵住）
+        const done3 = await Promise.race([p3, new Promise((r) => setTimeout(() => r({ ok: false, error: 'still-stuck' }), 1500))]);
+        R.assert('S10 v3.0.14 立即保存看门狗：阈值内两次 flush 合流为一个 Promise；超过阈值即判卡死 → 重开一次并落盘成功（旧 Promise 的后续 resolve 不再回写状态）、留一条告警',
+            coalesced === true && reopened === true && !!done3 && done3.ok === true
+            && warns.some((m) => m.indexOf('疑似卡死') >= 0),
+            { coalesced, reopened, done3, warns });
     }
 
     setContextProvider(null);

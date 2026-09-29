@@ -15,6 +15,19 @@ import { extractJsonObject } from './util.js';
 /** 最近耗时样本条数（每个行为各保留最近 N 次） */
 export const ETA_SAMPLES = 5;
 
+/**
+ * v3.0.14（用户报告「保存记忆文件会执行超长时间，管线状态看到 2.6 万秒」）——**卡死运行的兜底收尾阈值**。
+ * 一次运行超过该时长仍未被 `endPipeline` 收尾，即视为**泄漏 / 卡死**：由 `reapStaleRuns()` 就地撤下，
+ *   **不记 ETA 样本**（绝不让 7 小时污染「预计剩」），并在调试日志留一条可追溯的记录。
+ * 15 分钟：远大于任何正常动作（含最慢的 AI 生成），又远小于用户看到的那种「数万秒」。
+ */
+export const PIPELINE_STALE_MS = 15 * 60 * 1000;
+/**
+ * v3.0.14：**耗时样本的合理上限**（超过即不记入 ETA 历史）。
+ *   「预计剩」= 同标签历史均值；若把卡死的 2.6 万秒记进去，之后每次保存都会显示「预计剩 7 小时」。
+ */
+export const PIPELINE_SAMPLE_MAX_MS = 15 * 60 * 1000;
+
 /** 各处理行为的**潜在默认耗时**（ms；首次运行没有历史时用它做倒计时） */
 export const PIPELINE_DEFAULTS = Object.freeze({
     '情节总结': 6000,
@@ -34,6 +47,8 @@ let hooks = {
     getHistory: () => ({}),      // () => { [label]: number[] }（宿主注入，读持久化历史）
     saveHistory: () => undefined, // (h) => void
     now: () => Date.now(),
+    // v3.0.14：诊断留痕（宿主注入 → 调试日志）；默认 no-op，内核保持零宿主依赖
+    log: () => undefined,        // (msg, detail) => void
 };
 export function setPipelineHooks(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
 export function pipelineHooks() { return Object.assign({}, hooks); }
@@ -79,6 +94,12 @@ export function recordPipelineRun(label, ms) {
     const key = String(label || '');
     const v = Math.round(Number(ms) || 0);
     if (!key || !(v > 0)) return history();
+    // v3.0.14：**异常大的样本不入账** —— 卡死/挂起的运行（如 2.6 万秒的「保存记忆文件」）会把
+    //   同标签的「预计剩」永久拉成数小时，且样本表只有 5 格，一次污染就顶掉全部正常样本。
+    if (v > PIPELINE_SAMPLE_MAX_MS) {
+        try { hooks.log('管线状态：忽略异常耗时样本', { label: key, ms: v, max: PIPELINE_SAMPLE_MAX_MS }); } catch (e) { /* 忽略 */ }
+        return history();
+    }
     const h = Object.assign({}, history());
     const arr = (h[key] || []).slice(-(ETA_SAMPLES - 1));
     arr.push(v);
@@ -123,7 +144,13 @@ export function beginPipeline(label, opts) {
         if (same.length) {
             const r = same[same.length - 1];
             r.refs = Math.max(1, Number(r.refs) || 1) + 1;
-            return snapshot();
+            // v3.0.14 **根因修复**（用户报告「保存记忆文件会执行超长时间，管线状态 2.6 万秒」）：
+            //   合流时必须回传**被合流那一行的 id**。此前直接返回聚合 `snapshot()`，而它的 `runId` 是
+            //   「最新开始的那一行」—— 并发时（保存 + AI 请求 + 同步同时进行是常态）那是**别的行**：
+            //   · `trackPipeline` 收尾时把**别的运行**结束掉；
+            //   · 真正被合流的这一行引用计数永远减不到 0 → **永久留在运行表里**，UI 上的「已用时」
+            //     无上限增长（用户看到的 2.6 万秒 ≈ 7.2 小时就是这么来的）。
+            return Object.assign(snapshot(), { runId: r.id });
         }
     }
     runs.push({
@@ -245,12 +272,42 @@ export function endPipeline(ok, id) {
 export const PIPELINE_KIND_LABEL = Object.freeze({ ai: 'AI', sync: '同步', io: '存储', task: '任务' });
 
 /**
+ * v3.0.14：把**卡死 / 泄漏**的运行就地撤下（存活超过 `PIPELINE_STALE_MS`）。
+ *   为什么要有这一层：运行表是「begin 一行、end 一行」配对的引用计数模型，任何一处少配对（异常路径、
+ *   第三方钩子、宿主中途换页）都会让那一行**永久生效**——UI 上的「已用时」就会无上限增长
+ *   （用户实测到 2.6 万秒）。根因已修（见 `beginPipeline` 的 `join` 分支），这里再给一层**兜底**：
+ *   超时即撤下，**不记 ETA 样本**（绝不让一次卡死把「预计剩」永久拉成数小时），只在调试日志留痕。
+ *   纯内核：不加定时器，只在读取快照（`snapshot()` / `listPipelineRuns()`）时顺手清理。
+ * @returns {number} 本次收尾的行数
+ */
+export function reapStaleRuns() {
+    if (!runs.length) return 0;
+    const now = Number(hooks.now()) || Date.now();
+    const stale = runs.filter((r) => (now - r.startedAt) > PIPELINE_STALE_MS);
+    if (!stale.length) return 0;
+    runs = runs.filter((r) => stale.indexOf(r) < 0);
+    for (const r of stale) {
+        try { hooks.log('管线状态：运行超时收尾（疑似泄漏，未计入预计耗时样本）', { label: r.label, kind: r.kind, ms: now - r.startedAt, phase: r.phase }); } catch (e) { /* 忽略 */ }
+    }
+    const r0 = stale[stale.length - 1];
+    last = {
+        label: r0.label, ms: Math.max(0, now - r0.startedAt), ok: false, at: Date.now(), stale: true,
+        keys: r0.keys.slice(), phase: r0.phase, note: '超时收尾（未计入预计耗时样本）',
+        promptChars: r0.promptChars, respChars: r0.respChars,
+        chunks: r0.streamChunks, streamChars: r0.streamChars,
+        promptTokens: estTokens(r0.promptChars), respTokens: estTokens(r0.respChars),
+    };
+    return stale.length;
+}
+
+/**
  * v3.0.0（用户要求「如果有并行时出现两个或两个以上，根据需求展现」）——**逐条**运行快照（最新开始的在前）。
  * UI 一行一条；聚合读数仍由 `snapshot()` 给出（既有调用点不变）。
  * @returns {Array<object>} 每条含 `{id, label, kind, kindLabel, elapsed, eta, remain, over, tokens, promptTokens,
  *   respTokens, respChars, chunks, streamChars, streaming, phase, note, keys, hasHistory, text}`
  */
 export function listPipelineRuns() {
+    reapStaleRuns();
     if (!runs.length) return [];
     const now = Number(hooks.now()) || Date.now();
     const out = [];
@@ -334,6 +391,7 @@ export async function trackPipeline(label, opts, fn) {
 
 /** 当前状态快照（无运行中管线 → `{busy:false}`）；并发时**聚合**为一条读数 */
 export function snapshot() {
+    reapStaleRuns();
     if (!runs.length) return { busy: false };
     const now = Number(hooks.now()) || Date.now();
     const oldest = runs.reduce((a, b) => (a.startedAt <= b.startedAt ? a : b));

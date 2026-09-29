@@ -30,6 +30,43 @@ export function stateFileName(scope) {
     return FILE_PREFIX + slugify(scope) + FILE_EXT;
 }
 
+/**
+ * v3.0.14（用户报告「保存记忆文件会执行超长时间，管线状态看到 2.6 万秒」）——**服务端文件请求的超时**。
+ *   此前所有 `/api/files/*` 与 `/user/files/*` 的 `fetch` 都**没有超时**：宿主/服务端一处挂住
+ *   （网络半开、反向代理不返回、ST 进程忙），这个 Promise 就永远不 settle →
+ *   「保存记忆文件」那一行永远不结束、UI 的「已用时」无上限增长。现在统一带看门狗。
+ */
+export const USER_FILE_TIMEOUT_MS = 30000;
+
+/** 超时的**有效值**（调用方可经 `opts.timeoutMs` 覆盖；下限 1ms 便于单测） */
+function effTimeout(timeoutMs) { return Math.max(1, Number(timeoutMs) || USER_FILE_TIMEOUT_MS); }
+
+/** 带超时的 fetch（无 `AbortController` 的环境退化为普通 fetch，绝不因为缺能力而抛错） */
+async function fetchWithTimeout(url, opts, timeoutMs) {
+    const ms = effTimeout(timeoutMs);
+    const AC = globalThis.AbortController;
+    if (typeof AC !== 'function' || typeof globalThis.fetch !== 'function') return await globalThis.fetch(url, opts);
+    const ac = new AC();
+    let aborted = false;
+    const timer = setTimeout(() => { aborted = true; try { ac.abort(); } catch (e) { /* 忽略 */ } }, ms);
+    try {
+        return await globalThis.fetch(url, Object.assign({}, opts || {}, { signal: ac.signal }));
+    } catch (e) {
+        if (aborted) { const err = new Error('timeout(' + ms + 'ms)'); err.name = 'TimeoutError'; throw err; }
+        throw e;
+    } finally {
+        try { clearTimeout(timer); } catch (e) { /* 忽略 */ }
+    }
+}
+/** 统一的请求异常文案（超时给可读原因，其余沿用宿主消息） */
+function fetchErrText(e) {
+    if (String((e && e.name) || '') === 'TimeoutError') return String(e.message || ('timeout(' + USER_FILE_TIMEOUT_MS + 'ms)'));
+    const name = String((e && e.name) || '');
+    const msg = String((e && e.message) || e || '');
+    if (name === 'AbortError' || /abort/i.test(msg)) return 'timeout(' + USER_FILE_TIMEOUT_MS + 'ms)';
+    return msg;
+}
+
 function requestHeaders() {
     const ctx = getCtx();
     try { if (ctx && typeof ctx.getRequestHeaders === 'function') return ctx.getRequestHeaders(); } catch (e) { /* 忽略 */ }
@@ -65,48 +102,56 @@ export function base64ToText(b64) {
     } catch (e) { return ''; }
 }
 
-/** 写入服务端文件（POST /api/files/upload {name, data(base64)}） */
-export async function uploadStateFile(name, text) {
+/**
+ * 写入服务端文件（POST /api/files/upload {name, data(base64)}）
+ * @param {string} name 文件名
+ * @param {string} text 文件内容（明文）
+ * @param {{timeoutMs?:number}} [opts] v3.0.14：超时覆盖（缺省 `USER_FILE_TIMEOUT_MS`；单测用小值验证超时路径）
+ */
+export async function uploadStateFile(name, text, opts) {
+    const o = opts || {};
     const data = textToBase64(text);
     if (!data) return { ok: false, error: 'base64 编码不可用' };
     try {
-        const res = await globalThis.fetch('/api/files/upload', {
+        const res = await fetchWithTimeout('/api/files/upload', {
             method: 'POST',
             headers: requestHeaders(),
             body: JSON.stringify({ name: String(name), data }),
-        });
+        }, o.timeoutMs);
         const status = Number(res && res.status) || 0;
         return { ok: status >= 200 && status < 300, status };
     } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
+        return { ok: false, error: fetchErrText(e) };          // v3.0.14：超时 → 'timeout(30000ms)'（不再永远挂着）
     }
 }
 
-/** 读取服务端文件（GET /api/files/…；失败返回 ok:false） */
-export async function readStateFile(name) {
+/** 读取服务端文件（GET /api/files/…；失败返回 ok:false）；`opts.timeoutMs` 同 `uploadStateFile` */
+export async function readStateFile(name, opts) {
+    const o = opts || {};
     try {
-        const res = await globalThis.fetch('/user/files/' + encodeURIComponent(String(name)), { method: 'GET', headers: requestHeaders() });
+        const res = await fetchWithTimeout('/user/files/' + encodeURIComponent(String(name)), { method: 'GET', headers: requestHeaders() }, o.timeoutMs);
         const status = Number(res && res.status) || 0;
         if (status < 200 || status >= 300) return { ok: false, status };
         const text = await res.text();
         return { ok: true, text: String(text == null ? '' : text) };
     } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
+        return { ok: false, error: fetchErrText(e) };
     }
 }
 
-/** 删除服务端文件（POST /api/files/delete {path}） */
-export async function deleteStateFile(name) {
+/** 删除服务端文件（POST /api/files/delete {path}）；`opts.timeoutMs` 同 `uploadStateFile` */
+export async function deleteStateFile(name, opts) {
+    const o = opts || {};
     try {
-        const res = await globalThis.fetch('/api/files/delete', {
+        const res = await fetchWithTimeout('/api/files/delete', {
             method: 'POST',
             headers: requestHeaders(),
             body: JSON.stringify({ path: '/user/files/' + String(name) }),
-        });
+        }, o.timeoutMs);
         const status = Number(res && res.status) || 0;
         return { ok: status >= 200 && status < 300, status };
     } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
+        return { ok: false, error: fetchErrText(e) };
     }
 }
 
@@ -137,9 +182,10 @@ export async function readStateFileBytes(name) {
  *   以保证默认（gzip 关）时的微任务步数与 B7-2 的 `readStateFile` 完全一致（不改变既有装配时序）。
  * @returns {Promise<{ok:boolean, text:string, gz:boolean, status?:number, error?:string}>}
  */
-export async function readStateFileAuto(name) {
+export async function readStateFileAuto(name, opts) {
+    const o = opts || {};
     try {
-        const res = await globalThis.fetch('/user/files/' + encodeURIComponent(String(name)), { method: 'GET', headers: requestHeaders() });
+        const res = await fetchWithTimeout('/user/files/' + encodeURIComponent(String(name)), { method: 'GET', headers: requestHeaders() }, o.timeoutMs);
         const status = Number(res && res.status) || 0;
         if (status < 200 || status >= 300) return { ok: false, text: '', gz: false, status };
         let bytes = null;
@@ -158,7 +204,7 @@ export async function readStateFileAuto(name) {
         if (!dec.ok) return { ok: false, text: '', gz: true, status, error: dec.reason };
         return { ok: true, text: dec.text, gz: true, status };
     } catch (e) {
-        return { ok: false, text: '', gz: false, error: String((e && e.message) || e) };
+        return { ok: false, text: '', gz: false, error: fetchErrText(e) };
     }
 }
 
