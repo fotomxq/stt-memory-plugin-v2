@@ -392,6 +392,21 @@ export function reconcileProcessedFloors(notify) {
  */
 export function handleFloorShrink(opts) {
     const o = opts || {};
+    /**
+     * v3.0.19：**额外的「历史已处理哈希」**（调用方传入）。
+     *   用途：内置删楼先做了「按 M 整体前移」的重映射，若删除**只成功了一部分**（前缀里有「洞」），
+     *   前移量与实际下标会对不上，部分**仍然存在**的楼层其标记会被重映射丢掉（`f < M` 直接丢弃）。
+     *   把**重映射之前**的全部标记哈希传进来，据此按内容把台账归位 —— 于是那些楼层仍是「已处理」，
+     *   不会在删楼后被当成未摘要而**成片重分析**（用户报告「删除后无法正常继续分析」的另一面）。
+     * @type {Iterable<string>|undefined}
+     */
+    const extraHashes = (() => {
+        try {
+            const e = o.extraHashes;
+            if (!e) return [];
+            return Array.from(e).map((x) => String(x || '')).filter(Boolean);
+        } catch (e) { return []; }
+    })();
     try {
         const ready = chatReadyForFloors();
         if (!ready.ready) return { ok: true, skipped: 'chat-not-ready' };
@@ -405,11 +420,13 @@ export function handleFloorShrink(opts) {
         let marks = 0;
         try {
             const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
+            const hist = new Set(extraHashes);                          // v3.0.19：历史已处理哈希（含重映射前被丢掉的）
+            for (const x of pf) { const h = String((x && x.h) || ''); if (h) hist.add(h); }
             const keep = [];
             for (let f = 0; f <= lastId; f++) {
                 const h = hashFloorText(f);
                 if (!h) continue;
-                if (pf.some((x) => String((x && x.h) || '') === h)) keep.push({ f: f, h: h });
+                if (hist.has(h)) keep.push({ f: f, h: h });
             }
             state.processedFloors = keep;
             state.processedVer = processedVerTag();

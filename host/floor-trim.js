@@ -205,6 +205,12 @@ export async function floorTrimApply(opts) {
     }
 
     // ⑥ 校准：只按**实际删掉的层数**重映射（半途失败也保持编号自洽）
+    //   v3.0.19：先记下**重映射之前**的全部台账哈希 —— 下面按内容归位时要用它把「仍然存在但被前移丢掉的」
+    //   楼层标记找回来（删除只成功一部分时，前移量与实际下标会有偏差）。
+    const preMarkHashes = (() => {
+        try { return (Array.isArray(state.processedFloors) ? state.processedFloors : []).map((x) => String((x && x.h) || '')).filter(Boolean); }
+        catch (e) { return []; }
+    })();
     const remap = remapAfterTrim(state, deleted, chatLen() - 1);
     // ⑥b v3.0.16（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
     //   ① **立刻刷新聊天视图**（内核 `getLastMessageId()` 是快照，删完仍是旧值；不同步的话
@@ -212,6 +218,13 @@ export async function floorTrimApply(opts) {
     //      结果是「扫到已不存在的楼层 → 没有可分析楼层」）；
     //   ② 把「按末楼推进」的基线一起收紧（推演间隔 / 传言轮次不会因删楼而错位）。
     try { wireKernelChatHooks(); } catch (e) { /* 忽略：刷新失败不影响删除本身 */ }
+    // ⑥c v3.0.19（用户报告「删除后无法正常继续分析」）：**再跑一次「楼层收缩处理」（force）** ——
+    //   ⑥ 的「按 M 整体前移」只在「删除的是**连续前 M 层**」时成立；一旦删除**只成功了一部分**
+    //   （宿主中途失败、中间某层没删掉 → 前缀里出现「洞」），前移量就对不上实际下标，
+    //   台账/条目的楼层号会**挪错位置** —— 新楼层可能被错误地判成「已处理」或「已有记忆数据」，
+    //   于是「删楼后新正文无法分析」。这里按**内容哈希**把台账归位（`handleFloorShrink` 的既有能力：
+    //   逐楼算哈希、命中历史已处理哈希的才保留），并把越界区间降级为未知区间 —— 幂等、只改编号不删条目。
+    try { handleFloorShrink({ force: true, extraHashes: preMarkHashes }); } catch (e) { /* 忽略：不影响删除本身 */ }
     try {
         const last = Math.max(-1, chatLen() - 1);
         if (Number(state.weaveLastFloor) > last) state.weaveLastFloor = last;
