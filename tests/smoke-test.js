@@ -126,6 +126,11 @@ const doc = makeDocument(['extensions_settings2', 'extensions_settings', 'rm_ext
 const uninstall = installGlobalHost(host, doc);
 const entry = await import('../index.js');
 
+// v3.0.14：加载期探针本身是**异步**的（`init()` 内多段 await）。此前它恰好在 `import` 完成的同一轮微任务里
+//   跑完，断言才能同步读到 `ready:true`；服务端文件请求加上超时看门狗后（多两次 await）这一"恰好"不再成立。
+//   这里让出一个**宏任务**（0ms 定时器）再断言 —— 语义不变（仍未发 APP_READY，仍是"加载期即完成装配"），
+//   只去掉对微任务轮次的隐含依赖（真正的装配结果由紧随其后的 B2/B2b 继续锁定）。
+await new Promise((r) => setTimeout(r, 0));
 const before = entry.runtimeState();
 assert('B1 加载期探针即完成装配（无需 APP_READY；V1 同构浮层优先、抽屉卡片默认关）', (() => {
     const b = entry.extraForStatus().bootstrap;
@@ -4820,6 +4825,39 @@ await assert('BM2 并行时**两行及以上**：AI 请求（批量摘要）+ �
             && !has(rows2, '跨端同步') && n(rows2) >= 2
             && !has(rows1, '批量摘要') && n(rows1) >= 1
             && !has(rows0, '批量摘要') && !has(rows0, '跨端同步');
+    } finally {
+        try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+// v3.0.14（用户报告「保存记忆文件会执行超长时间，管线状态观测到 2.6 万秒」）：
+//   根因 = `beginPipeline(..., {join:true})` 合流分支返回**聚合快照**（runId = 最新开始的那一行）。
+//   并发时（保存 + AI 请求同时进行是常态）那是**别的行** → 收尾把别的行结束掉，被合流的「保存记忆文件」
+//   引用计数永远减不到 0 → **永久留在运行表里**，UI「已用时」无上限增长。
+await assert('BM3 v3.0.14 修复「保存记忆文件显示 2.6 万秒」：AI 请求在途时两次**并发真实保存**（第二路合流到第一路）→ 两路都收尾后「保存记忆文件」那一行**必须消失**（修复前永久残留、已用时无限增长）；AI 行不受影响', (async () => {
+    const PL = await import('../core/pipeline.js');
+    const ST = await import('../adapters/store.js');
+    await entry.popupAction('tab', { tab: 'overview' });
+    try {
+        const ai = (PL.beginPipeline('批量摘要', { chars: 2000, kind: 'ai' }) || {}).runId;
+        const s1 = ST.saveStateNow({ reason: '冒烟A' });            // 新开「保存记忆文件」行
+        const s2 = ST.saveStateNow({ reason: '冒烟B' });            // 并发第二次 → 合流（修复前这里拿到的是 AI 行的 id）
+        const during = fttPanelMod.pipelineBoxRowsHtml();
+        await Promise.all([s1, s2]);
+        await new Promise((r) => setTimeout(r, 30));
+        const after = fttPanelMod.pipelineBoxRowsHtml();
+        const aiStillThere = after.indexOf('[AI] 批量摘要') >= 0;    // AI 行不该被误杀
+        PL.endPipeline(true, ai);
+        await new Promise((r) => setTimeout(r, 10));
+        const after2 = fttPanelMod.pipelineBoxRowsHtml();
+        const ok = during.indexOf('[存储] 保存记忆文件') >= 0
+            && after.indexOf('保存记忆文件') < 0
+            && aiStillThere === true
+            && after2.indexOf('保存记忆文件') < 0;
+        if (!ok) console.log('BM3-DEBUG ' + JSON.stringify({ during: String(during).slice(0, 200), after: String(after).slice(0, 200), after2: String(after2).slice(0, 200) }));
+        return ok;
     } finally {
         try { PL.resetPipeline(); } catch (e) { /* 忽略 */ }
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }

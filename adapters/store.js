@@ -212,21 +212,42 @@ export async function removeServerFile() {
  * @returns {Promise<object>} 保存结果（与 `saveStateNow` 同形）
  */
 let flushInFlight = null;
+let flushInFlightAt = 0;
 let flushPendingReason = '';
+/**
+ * v3.0.14：**立即保存的看门狗**。一次 flush 超过该时长仍未返回即视为**卡死**（宿主/服务端挂住），
+ *   此时不再让后续 flush 继续复用那个永不 settle 的 Promise（v3.0.3 的合流语义在「挂住」时会
+ *   把所有后续立即保存**永久堵死**，用户看到的就是「保存记忆文件」一直不结束）。
+ */
+export const FLUSH_STUCK_MS = 60000;
+/** 看门狗阈值可注入（单测用小值验证卡死路径；生产恒用 `FLUSH_STUCK_MS`） */
+let flushStuckMs = FLUSH_STUCK_MS;
+export function setFlushStuckMs(ms) { flushStuckMs = Math.max(1, Number(ms) || FLUSH_STUCK_MS); return flushStuckMs; }
 export function flushStateNow(reason) {
     const why = String(reason || 'flush');
-    if (flushInFlight) { flushPendingReason = why; return flushInFlight; }
-    flushInFlight = Promise.resolve()
+    const stuck = !!(flushInFlight && (Date.now() - flushInFlightAt) > flushStuckMs);
+    if (flushInFlight && !stuck) { flushPendingReason = why; return flushInFlight; }
+    if (stuck) {
+        // 卡死：断开引用（旧 Promise 之后 resolve 也不会再回写本模块状态）→ 本次重新开一次保存
+        try { kernelWarn('立即保存超过 ' + Math.round(flushStuckMs / 1000) + 's 未返回（疑似卡死）→ 重开一次；上一次的结果将被忽略'); } catch (e) { /* 忽略 */ }
+        flushInFlight = null;
+        flushPendingReason = '';
+    }
+    const mine = Promise.resolve()
         .then(() => saveStateNow({ reason: why }))
         .catch((e) => ({ ok: false, error: String((e && e.message) || e), via: '', bytes: 0 }))
         .then((r) => {
-            flushInFlight = null;
-            const again = flushPendingReason;
-            flushPendingReason = '';
-            if (again) void flushStateNow(again);
+            if (flushInFlight === mine) {            // 只由**当前**在途的那次收尾（卡死的旧 Promise 到此不再影响状态）
+                flushInFlight = null;
+                const again = flushPendingReason;
+                flushPendingReason = '';
+                if (again) void flushStateNow(again);
+            }
             return r;
         });
-    return flushInFlight;
+    flushInFlight = mine;
+    flushInFlightAt = Date.now();
+    return mine;
 }
 
 export function wirePersistHooks() {

@@ -1319,6 +1319,8 @@ function wirePipelineHooks() {
     setPipelineHooks({
         getHistory: () => { try { return getSettings().pipelineEta || {}; } catch (e) { return {}; } },
         saveHistory: (h) => { try { setSetting('pipelineEta', (h && typeof h === 'object') ? h : {}); } catch (e) { /* 忽略 */ } },
+        // v3.0.14：管线异常留痕（超时收尾 / 异常大的耗时样本不入账）→ 调试日志，便于事后核对
+        log: (msg, detail) => { try { debugLogPush('管线', Object.assign({ action: String(msg || '') }, detail || {})); } catch (e) { /* 忽略 */ } },
     });
     return true;
 }

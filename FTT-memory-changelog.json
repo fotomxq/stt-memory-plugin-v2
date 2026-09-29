@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.13",
+  "version": "3.0.14",
   "updatedAt": "2026-09-29",
   "generatedAt": "2026-09-29",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.14",
+      "date": "2026-09-29",
+      "title": "修「保存记忆文件」显示 2.6 万秒（管线运行泄漏 + 宿主看门狗）",
+      "points": [
+        "① 根因（管线运行泄漏）：beginPipeline(..., {join:true}) 的合流分支返回的是聚合快照，其 runId = 「最新开始的那一行」——并发时那是别的行…",
+        "② 兜底：卡死运行超时收尾：（core/pipeline.js#reapStaleRuns，PIPELINE_STALE_MS = 15min）任何原因造成的泄漏运行，读取快照时…",
+        "③ 样本上限：（PIPELINE_SAMPLE_MAX_MS = 15min）：异常大的耗时不入 ETA 历史（每标签只有 5 格样本，一次 7 小时会把「预计剩」永久拉成数小时…"
+      ]
+    },
     {
       "version": "3.0.13",
       "date": "2026-09-29",

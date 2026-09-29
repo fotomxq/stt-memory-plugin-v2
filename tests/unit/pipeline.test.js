@@ -15,7 +15,7 @@ import {
     estTokens, fmtTokens, fmtSec, etaMs, etaHasHistory, recordPipelineRun, ETA_SAMPLES,
     beginPipeline, endPipeline, addStreamChunk, setPipelinePhase, setPipelineKeys, setPipelineHooks,
     summarizeResponseKeys, snapshot, pipelineSuffix, pipelineSummaryText, resetPipeline, PIPELINE_DEFAULTS,
-    noteResponseText, lastPipelineInfo,
+    noteResponseText, lastPipelineInfo, listPipelineRuns, PIPELINE_STALE_MS, PIPELINE_SAMPLE_MAX_MS,
 } from '../../core/pipeline.js';
 import { setLastMessageId } from '../../core/model/runtime.js';
 import { entryIndexInit, entryIndexBuild } from '../../core/sweep.js';
@@ -356,6 +356,68 @@ A('F8 酒馆**官方流式通道**（连接配置）：`custom.stream=true` 返�
             && r3.ok === true && r3.text === '错误回落'
             && calls[0] === true;
     } finally { installGlobalHost(makeHost({ chat: [] }), doc); }
+})(), '');
+
+// ==================== G 组：v3.0.14 修复「保存记忆文件」显示 2.6 万秒 ====================
+// 用户报告（原话）：「新版本 保存记忆文件，会执行超长时间，我这边在管线状态观测到2.6万秒的提示。请修复太异常。」
+// 根因（本组 G1 逐项锁定）：`beginPipeline(..., {join:true})` 合流分支返回的是**聚合快照**，
+//   其 `runId` = 「最新开始的那一行」；并发时（保存 + AI 请求同时进行是常态）那是**别的行** →
+//   `trackPipeline` 收尾时把别的行结束掉，被合流的「保存记忆文件」引用计数永远减不到 0 → 永久留在运行表里。
+A('G1 【根因】**合流运行时必须回传被合流那一行的 `runId`**：保存 + AI 并发下，两次「保存记忆文件」都合流到同一行、各自收尾后该行消失（AI 行不受影响）；修复前第二次合流拿到的是 AI 行的 id → 结束掉 AI 行、保存行永久残留（用户看到的 2.6 万秒）', (async () => {
+    boot();
+    const t = { join: true, kind: 'io', phase: '写入存储' };
+    const a = (beginPipeline('保存记忆文件', t) || {}).runId;
+    const b = (beginPipeline('批量摘要', { kind: 'ai', chars: 4000 }) || {}).runId;
+    const c = (beginPipeline('保存记忆文件', t) || {}).runId;            // 合流
+    const wrongBefore = c === b;                                          // 修复前：等于 AI 行的 id
+    endPipeline(true, a);
+    endPipeline(true, c);
+    const left = listPipelineRuns().map((x) => x.label);
+    endPipeline(true, b);
+    // 合流的引用计数：两次 begin 共享一行，两次 end 后必须消失（既不留下、也不误杀 AI 行）
+    return wrongBefore === false && a === c && a !== b
+        && left.length === 1 && left[0] === '批量摘要'
+        && listPipelineRuns().length === 0;
+})(), () => J(listPipelineRuns()));
+
+A('G2 【兜底】卡死 / 泄漏的运行**超时自动撤下**（`PIPELINE_STALE_MS = 15min`）：不记 ETA 样本（绝不让 7 小时污染「预计剩」）、快照不再 busy、调试日志留痕；未超时的正常运行照旧', (async () => {
+    boot();
+    let nowAt = 1000000;
+    setPipelineHooks({ getHistory: () => hist, saveHistory: (h) => { hist = h; }, now: () => nowAt, log: () => undefined });
+    const logs = [];
+    setPipelineHooks({ log: (m, d) => logs.push([String(m), d && d.label, d && d.ms]) });
+    const id = (beginPipeline('保存记忆文件', { kind: 'io' }) || {}).runId;      // 忘掉 endPipeline（模拟泄漏）
+    nowAt += 60 * 1000;
+    const fresh = snapshot();                                             // 1 分钟：未超时 → 仍在外，busy=true
+    nowAt += 16 * 60 * 1000;
+    const gone = snapshot();                                              // 17 分钟：超时 → 撤下
+    const histAfter = (hist['保存记忆文件'] || []).length;
+    const rowsAfter = listPipelineRuns().length;
+    endPipeline(true, id);                                                // 迟到的收尾：不得抛、不得记样本
+    return fresh.busy === true && fresh.label === '保存记忆文件'
+        && gone.busy === false && histAfter === 0 && rowsAfter === 0
+        && logs.length === 1 && logs[0][0].indexOf('超时收尾') >= 0 && logs[0][1] === '保存记忆文件'
+        && (hist['保存记忆文件'] || []).length === 0
+        && lastPipelineInfo() && lastPipelineInfo().stale === true;
+})(), () => J({ busy: snapshot().busy, hist: hist['保存记忆文件'] || [] }));
+
+A('G3 异常大的耗时**不入 ETA 样本**：> `PIPELINE_SAMPLE_MAX_MS`（15min）时忽略并留痕（否则「预计剩」会被一次卡死永久拉成数小时）；正常耗时照常入账', (() => {
+    boot();
+    recordPipelineRun('保存记忆文件', 26000 * 1000);                       // 用户实测的那个 2.6 万秒
+    const afterHuge = (hist['保存记忆文件'] || []).length;
+    recordPipelineRun('保存记忆文件', 1200);
+    recordPipelineRun('保存记忆文件', 900);
+    const arr = hist['保存记忆文件'] || [];
+    const eta = etaMs('保存记忆文件');
+    return afterHuge === 0 && J(arr) === J([1200, 900]) && eta === 1050;
+})(), () => J(hist));
+
+A('G4 宿主两条看门狗常量齐备且取值合理：`adapters/store.js#FLUSH_STUCK_MS`（立即保存卡死阈值）与 `adapters/user-file.js#USER_FILE_TIMEOUT_MS`（服务端文件请求超时）—— 动态行为由 store-chat 的 S9/S10 覆盖', (async () => {
+    const ST = await import('../../adapters/store.js');
+    const UF = await import('../../adapters/user-file.js');
+    return typeof ST.flushStateNow === 'function' && typeof ST.setFlushStuckMs === 'function'
+        && ST.FLUSH_STUCK_MS === 60000
+        && UF.USER_FILE_TIMEOUT_MS === 30000;
 })(), '');
 
 R.done();
