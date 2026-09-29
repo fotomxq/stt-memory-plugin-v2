@@ -730,10 +730,98 @@ export function buildCustomWeavePrompt(idea, seedLines) {
 }
 
 /**
+ * v3.0.13（用户报告「自定义平行推演触发后，没有正确新增平行条目」）——把 AI 返回的「平行事件」增量
+ *   **容错归一**为 `{新增, 更新, 删除}`。真实模型并不总是严格照契约返回，此前只认
+ *   `{"平行事件":{"新增":[…]}}` 这一种形态：返回**数组**（`{"平行事件":[…]}`）、少一层包装
+ *   （`{"新增":[…]}`）、用英文键（`add`）、条目直接写成一个对象、或把条目写成字符串时，
+ *   一律被当成「没有可推演的点」——用户看到的就是「推演完成但什么都没新增」。
+ * 归一只是把**已有内容**换个形态取出来，不改变任何字段口径（仍走同一条 `mergeDelta` 归一化）。
+ * @param {*} raw AI 返回里的「平行事件」节点（或整个 JSON）
+ * @returns {{'新增'?:Array,'更新'?:Array,'删除'?:Array}}
+ */
+export function coerceParallelDelta(raw) {
+    const out = {};
+    const LIST_KEYS = {
+        '新增': ['新增', 'add', 'new', '新增条目', '新增的'],
+        '更新': ['更新', 'update', '更新条目'],
+        '删除': ['删除', 'remove', 'del', 'delete', '删除条目'],
+    };
+    const asList = (v) => {
+        if (v === null || v === undefined) return [];
+        const arr = Array.isArray(v) ? v : (typeof v === 'object' ? Object.keys(v).map((k) => v[k]) : (String(v).trim() ? [v] : []));
+        return arr.filter((x) => x !== null && x !== undefined)
+            .map((x) => (typeof x === 'string' ? { 标题: x } : x))
+            .filter((x) => x && typeof x === 'object');
+    };
+    const put = (slot, v) => { const l = asList(v); if (l.length) out[slot] = (out[slot] || []).concat(l); };
+    const ENTRY_KEYS = ['标题', 'title', '正文', 'text', '内容', 'content', 'desc', '因果线', '卦象'];
+    const walk = (node, depth) => {
+        if (node === null || node === undefined || depth > 2) return;
+        if (Array.isArray(node)) { put('新增', node); return; }          // {"平行事件":[{…}]}
+        if (typeof node !== 'object') { if (String(node).trim()) put('新增', [String(node)]); return; }
+        let found = false;
+        for (const k of Object.keys(node)) {
+            const key = String(k);
+            const isEntryKey = ENTRY_KEYS.indexOf(key) >= 0;
+            const slot = Object.keys(LIST_KEYS).filter((s) => LIST_KEYS[s].indexOf(key) >= 0)[0] || '';
+            if (slot) { put(slot, node[k]); found = true; continue; }
+            if (!isEntryKey && (key === '平行事件' || key === 'parallels' || key === 'parallel')) { walk(node[k], depth + 1); found = true; }
+        }
+        // 直接把**一条条目**放在「平行事件」下（`{"平行事件":{"标题":…,"正文":…}}`）→ 视为新增
+        const looksLikeEntry = ENTRY_KEYS.some((k) => node[k] !== undefined && node[k] !== null && String(node[k]).trim() !== '');
+        if (looksLikeEntry && !found && !(out['新增'] || []).length) put('新增', [node]);
+    };
+    walk(raw, 0);
+    return out;
+}
+
+/**
+ * v3.0.13：「新增」条目缺日期时用**当前剧情日期**兜底。
+ *   为什么必须补：`mergeDelta` 对**情节**本来就有这个兜底（`if (!n.date) n.date = 剧情当天`），
+ *   而平行事件没有 → AI 省略「日期」（提示词里日期是可选/易被省略项）时条目的 `date` 留空，
+ *   列表按剧情日期倒序（`sortRecentByStoryDate`）→ **刚推演出来的条目被排到整列表最后**，
+ *   用户看到的正是「推演完了但列表里没有新增」。
+ *   只补「没给日期」的新增条目；已给日期/更新条目一律不动。
+ * @param {Array} list AI 的「新增」数组
+ * @param {string} storyNow 当前剧情时间（`getStoryNow()`）
+ */
+function fillCustomAddDates(list, storyNow) {
+    try {
+        const m = String(storyNow || '').match(/^\d{4}-\d{2}-\d{2}/);
+        const ymd = m ? m[0] : '';
+        if (!ymd) return list;
+        return (list || []).map((x) => {
+            if (!x || typeof x !== 'object') return x;
+            const given = [x['日期'], x.date].some((v) => v !== undefined && v !== null && String(v).trim() !== '');
+            return given ? x : Object.assign({}, x, { 日期: ymd });
+        });
+    } catch (e) { return list; }
+}
+
+/**
+ * v3.0.13：按**落库语义**统计真实结果（而不是复述「AI 说要新增几条」）。
+ *   用户报告的核心正是「提示说新增了，但列表里没有」——所以必须以 `state.parallels` 的**前后差异**为准：
+ *   · `added`   = 落库后新出现的 id 条数（真正新增的行）
+ *   · `updated` = 前后都存在、但内容变了的条数
+ *   · `dup`     = AI 要求「新增」却没产生新行的条数（与既有条目内容一致 → 被并入同一条）
+ */
+function countCustomOutcome(beforeList, afterList, aiAdd) {
+    const before = new Map((beforeList || []).map((x) => [String((x && x.id) || ''), x]));
+    let added = 0, updated = 0;
+    for (const x of (afterList || [])) {
+        const id = String((x && x.id) || '');
+        if (!before.has(id)) { added += 1; continue; }
+        try { if (JSON.stringify(before.get(id)) !== JSON.stringify(x)) updated += 1; } catch (e) { /* 忽略 */ }
+    }
+    const reqAdd = Array.isArray(aiAdd) ? aiAdd.length : 0;
+    return { added: added, updated: updated, dup: Math.max(0, reqAdd - added) };
+}
+
+/**
  * **自定义平行世界推演**（用户输入一段话 → AI 单独推演 → 落库为普通平行事件）。
  * @param {string} idea 用户设想（≥4 字）
  * @param {{aiText?:string, keywords?:string[]}} [opts] `aiText` 注入生成结果（测试用）
- * @returns {Promise<object>} `{ok, added?, updated?, keywords?, seed?, skipped?, error?}`
+ * @returns {Promise<object>} `{ok, added?, updated?, dup?, newIds?, keywords?, seed?, skipped?, error?}`
  */
 export async function runParallelCustom(idea, opts) {
     const o = opts || {};
@@ -748,21 +836,41 @@ export async function runParallelCustom(idea, opts) {
         const prompt = buildCustomWeavePrompt(text, seed);
         const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '[平行事件·自定义]'));
         const delta = extractJsonObject(resp);
-        if (!delta || !delta['平行事件']) return { ok: false, error: 'AI 未返回有效 JSON', keywords, seed: seed.length };
-        const pc = delta['平行事件'] || {};
-        const addN = Array.isArray(pc['新增']) ? pc['新增'].length : 0;
+        // v3.0.13：**多形态取用** —— 允许「没有 平行事件 外层键、直接给 新增/更新」的返回（真实模型常见偏差）
+        const loose = !!(delta && (delta['新增'] || delta['更新'] || delta['删除'] || delta.add || delta.update));
+        const raw = delta ? (delta['平行事件'] !== undefined ? delta['平行事件'] : (delta.parallels !== undefined ? delta.parallels : (loose ? delta : null))) : null;
+        if (!delta || raw === null) return { ok: false, error: 'AI 未返回有效 JSON', keywords, seed: seed.length };
+        // v3.0.13：**容错归一**（数组 / 少一层包装 / 英文键 / 单条对象 / 字符串条目都不再被当成「没有可推演的点」）
+        const pc = coerceParallelDelta(raw);
+        const reqAdd = Array.isArray(pc['新增']) ? pc['新增'].length : 0;
         const updN = Array.isArray(pc['更新']) ? pc['更新'].length : 0;
-        if (!addN && !updN) {
+        const delN = Array.isArray(pc['删除']) ? pc['删除'].length : 0;
+        if (!reqAdd && !updN && !delN) {
             notify('weave', '自定义推演完成', '这段设想没有可推演的点（未新增平行事件）');
             return { ok: true, skipped: 'empty', added: 0, updated: 0, keywords, seed: seed.length };
         }
-        const before = (state.parallels || []).length;
+        // v3.0.13：缺日期的「新增」用当前剧情日期兜底（否则新条目会因空日期排到列表最后 → 看起来「没有新增」）
+        try { pc['新增'] = fillCustomAddDates(pc['新增'], String(getStoryNow() || '')); } catch (e) { /* 忽略 */ }
+        const beforeList = (state.parallels || []).slice();
+        const beforeIds = new Set(beforeList.map((x) => String((x && x.id) || '')));
         const merged = mergeDelta({ 平行事件: pc }, { start: getLastMessageId(), end: getLastMessageId() });
-        const after = (state.parallels || []).length;
+        // v3.0.13：**落库失败不再谎报成功**（`mergeDelta` 异常时返回 false；此前照样提示「新增 1」）
+        if (!merged || merged.ok !== true) {
+            try { dbgLog('发送记忆', { action: '自定义平行推演落库失败', chars: text.length, add: reqAdd, update: updN }); } catch (e) { /* 忽略 */ }
+            notify('warning', '自定义推演未落库', '增量合并未成功（详见调试日志「发送记忆」）');
+            return { ok: false, error: 'merge-failed', keywords, seed: seed.length };
+        }
+        const afterList = state.parallels || [];
+        const after = afterList.length;
+        const outcome = countCustomOutcome(beforeList, afterList, pc['新增']);
+        const newIds = afterList.filter((x) => !beforeIds.has(String((x && x.id) || ''))).map((x) => String((x && x.id) || '')).filter(Boolean);
         try { rumorMarkParallelChange(getLastMessageId()); } catch (e) { /* 忽略 */ }
-        notify('success', '自定义推演完成', `新增 ${addN} / 更新 ${updN}（平行事件共 ${after} 条 · 关联数据 ${seed.length} 条）`);
-        try { dbgLog('发送记忆', { action: '自定义平行推演完成', chars: text.length, keywords: keywords.slice(0, 8), seed: seed.length, add: addN, update: updN, before, after }); } catch (e) { /* 忽略 */ }
-        return { ok: true, added: addN, updated: updN, keywords, seed: seed.length, merged };
+        // v3.0.13：提示以**真实落库结果**为准（`dup` = AI 要求新增却被并入既有条目的条数）
+        const summary = `新增 ${outcome.added} / 更新 ${outcome.updated}` + (outcome.dup ? `（另有 ${outcome.dup} 条与既有条目内容一致，未重复新增）` : '') + (delN ? ` / 删除 ${delN}` : '') + `（平行事件共 ${after} 条 · 关联数据 ${seed.length} 条）`;
+        if (!outcome.added && !outcome.updated) notify('weave', '自定义推演完成', '本次没有产生新的平行条目（' + summary + '）');
+        else notify('success', '自定义推演完成', summary);
+        try { dbgLog('发送记忆', { action: '自定义平行推演完成', chars: text.length, keywords: keywords.slice(0, 8), seed: seed.length, reqAdd, update: updN, add: outcome.added, dup: outcome.dup, before: beforeList.length, after, newIds: newIds.slice(0, 6), respChars: resp.length }); } catch (e) { /* 忽略 */ }
+        return { ok: true, added: outcome.added, updated: outcome.updated, dup: outcome.dup, requested: { add: reqAdd, update: updN }, newIds, keywords, seed: seed.length, before: beforeList.length, after, merged };
     } catch (e) {
         warn('自定义平行推演异常', e);
         return { ok: false, error: String((e && e.message) || e) };
