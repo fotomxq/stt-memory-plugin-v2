@@ -333,7 +333,12 @@ async function saveStateNowInner(o) {
         //   分片的时间戳 = **本次信封的时间戳**（同一批写入归属同一次），载入侧据此判断「谁更新」
         //   注：`force` **不**透传给分片 —— 分片靠**内容哈希**判断要不要重传，内容没变的片一个字节都不发
         //   （`force` 只用于「必须写主文件（提交点）」的语义：清空 / 导入 / 退出前落盘）。
-        try { await writeStateShards(st, { at: Number(envelope && envelope.payload && envelope.payload.updatedAt) || 0 }); } catch (e) { /* 分片失败不影响主文件写入 */ }
+        try {
+            await writeStateShards(st, {
+                force: o.shardsForce === true,      // v3.0.22：「对齐所有存储」时强制重传全部片（确保分片与内存完全一致）
+                at: Number(envelope && envelope.payload && envelope.payload.updatedAt) || 0,
+            });
+        } catch (e) { /* 分片失败不影响主文件写入 */ }
     }
     if (o.skipFile !== true) {
         try {
