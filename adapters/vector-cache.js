@@ -12,10 +12,50 @@
 export const VEC_DB = 'FTTMemoryVectorCache';
 export const VEC_STORE = 'embeddings';
 
-/** 内存回退（无 IndexedDB 时使用；进程内有效） */
+/**
+ * 内存缓存（无 IndexedDB 时是唯一载体；有 IndexedDB 时是**读加速层**）。
+ *
+ * v3.1.0（`docs/D13` R2，Q4 建议默认值）：**加容量上限 + LRU 淘汰**。
+ *   此前 `mem` 只增不减（`vecCachePutMany` 无脑 `set`）且**从不清空** —— 实测 2400 条 × 1024 维 ≈ **19MB**；
+ *   按存储上限 3000 条目约 24MB，3072 维模型更大，长会话内存居高不下。
+ *   现在：超过 `VEC_CACHE_MAX_ENTRIES` 或 `VEC_CACHE_MAX_BYTES`（先到者为准）就按 **LRU** 淘汰内存副本；
+ *   被淘汰的向量**仍在 IndexedDB**（若可用）→ 下次读取命中持久层，**不会重新嵌入**（不增加 API 费用）。
+ */
 const mem = new Map();
 /** 最近一次降级原因（诊断用） */
 let lastFallback = '';
+/** 内存缓存条目上限（Q4 默认：2000 条） */
+export const VEC_CACHE_MAX_ENTRIES = 2000;
+/** 内存缓存体积上限（Q4 默认：32MB；按 `维度 × 8 字节` 估算 + 每条约 64 字节开销） */
+export const VEC_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+let capEntries = VEC_CACHE_MAX_ENTRIES;
+let capBytes = VEC_CACHE_MAX_BYTES;
+/** 淘汰计数（诊断 / 测试） */
+let evicted = 0;
+/** 覆盖上限（测试用；0 = 用默认） */
+export function setVectorCacheCaps(opts) {
+    const o = opts || {};
+    if (Number(o.entries) > 0) capEntries = Number(o.entries);
+    if (Number(o.bytes) > 0) capBytes = Number(o.bytes);
+    return { entries: capEntries, bytes: capBytes };
+}
+/** 单条向量的估算字节数（float64 数组 + 对象开销） */
+function vecBytes(v) { try { return 64 + (Array.isArray(v) ? v.length * 8 : 0); } catch (e) { return 64; } }
+/** 内存缓存当前估算体积 */
+function memBytes() { let n = 0; try { for (const v of mem.values()) n += vecBytes(v); } catch (e) { /* 忽略 */ } return n; }
+/** LRU：命中即置为最新（Map 保持插入序） */
+function touch(k) { try { if (mem.has(k)) { const v = mem.get(k); mem.delete(k); mem.set(k, v); } } catch (e) { /* 忽略 */ } }
+/** 超限即从**最旧**开始淘汰（只淘汰内存副本，持久层不动） */
+function evictIfNeeded() {
+    try {
+        while (mem.size > capEntries || memBytes() > capBytes) {
+            const oldest = mem.keys().next();
+            if (oldest.done) break;
+            mem.delete(oldest.value);
+            evicted += 1;
+        }
+    } catch (e) { /* 忽略 */ }
+}
 
 const str = (v) => String(v == null ? '' : v).trim();
 
@@ -49,7 +89,7 @@ export function openVectorDb() {
 export async function vecCacheGetMany(keys) {
     const list = (Array.isArray(keys) ? keys : []).map(str).filter(Boolean);
     if (!list.length) return new Map();
-    if (!idb()) { lastFallback = 'no-indexeddb'; const m = new Map(); list.forEach((k) => { if (mem.has(k)) m.set(k, mem.get(k)); }); return m; }
+    if (!idb()) { lastFallback = 'no-indexeddb'; const m = new Map(); list.forEach((k) => { if (mem.has(k)) { m.set(k, mem.get(k)); touch(k); } }); return m; }
     try {
         const db = await openVectorDb();
         const out = await new Promise((resolve, reject) => {
@@ -60,7 +100,15 @@ export async function vecCacheGetMany(keys) {
                 let left = list.length;
                 for (const k of list) {
                     const r = store.get(k);
-                    r.onsuccess = () => { const v = r.result && r.result.vector; if (Array.isArray(v) && v.length) got.set(k, v); if (--left === 0) resolve(got); };
+                    r.onsuccess = () => {
+                        const v = r.result && r.result.vector;
+                        if (Array.isArray(v) && v.length) {
+                            got.set(k, v);
+                            // v3.1.0：持久层命中 → 回填内存 LRU（下次免 IO；超限时淘汰最旧）
+                            if (!mem.has(k)) { mem.set(k, v); evictIfNeeded(); } else touch(k);
+                        }
+                        if (--left === 0) resolve(got);
+                    };
                     r.onerror = () => reject(r.error || new Error('向量读取失败'));
                 }
             } catch (e) { reject(e); }
@@ -83,6 +131,7 @@ export async function vecCachePutMany(entries) {
     const list = (Array.isArray(entries) ? entries : []).filter((e) => e && str(e.key) && Array.isArray(e.vector) && e.vector.length);
     if (!list.length) return false;
     list.forEach((e) => mem.set(str(e.key), e.vector));
+    evictIfNeeded();                                    // v3.1.0：写入后按 LRU 上限收敛内存副本
     if (!idb()) { lastFallback = 'no-indexeddb'; return false; }
     try {
         const db = await openVectorDb();
@@ -158,8 +207,12 @@ export async function vectorCacheClear() {
 
 /** 缓存统计（设置页/诊断：内存条数 + 是否有 IndexedDB + 最近降级原因） */
 export function vectorCacheStats() {
-    return { memory: mem.size, indexedDb: !!idb(), fallback: lastFallback };
+    return {
+        memory: mem.size, indexedDb: !!idb(), fallback: lastFallback,
+        // v3.1.0（`docs/D13` R2）：容量与淘汰可观测（设置页「提取记忆 → 向量层」与调试包同源）
+        bytes: memBytes(), maxEntries: capEntries, maxBytes: capBytes, evicted: evicted,
+    };
 }
 
-/** 测试用：复位内存回退与降级原因 */
-export function resetVectorCacheState() { mem.clear(); lastFallback = ''; return true; }
+/** 测试用 / 退出清理：复位内存缓存与降级原因（v3.1.0：`teardown()` 也会调用，避免会话残留） */
+export function resetVectorCacheState() { mem.clear(); lastFallback = ''; evicted = 0; return true; }

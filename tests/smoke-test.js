@@ -1017,6 +1017,8 @@ host.ctx.generateRaw = origGen2;
 let S3_DBG = null;
 // ---------- S 遗忘域（B8-5：状态衰退 / 记忆遗忘 / 通用遗忘清扫） ----------
 await assert('S1 遗忘设定页：四分节（存储节改「总上限 + 各大类占比」）+ 3 个开关 + 只读诊断行（条数/上限/保底/冷却）+ v2.84.0 占比滚动条', (async () => {
+    // v3.1.0：面板只构建**当前分页** → 查设定页必须先切到「设定」分页
+    await entry.popupAction('tab', { tab: 'settings' });
     const r = await entry.popupAction('settingsSub', { sub: 'forget' });
     const html = String(r.html || '');
     return html.indexOf('状态记录衰退（只按剧情日期）') >= 0 && html.indexOf('记忆遗忘机制（只按剧情日期）') >= 0
@@ -1568,6 +1570,7 @@ await assert('Y2 面板「🧪 立即演化」/「🧹 清理传言」可达：�
 })(), '');
 
 await assert('Y3 设定「存储 → 世界书」：V1 同款「📚 刷新世界书列表」按钮 + worldbookRefresh 动作可达（无酒馆世界书接口时如实告警，不伪造列表）', (async () => {
+    await entry.popupAction('tab', { tab: 'settings' });      // v3.1.0：只构建当前分页
     const page = await entry.popupAction('settingsSub', { sub: 'storage' });
     const sHtml = String((page && page.html) || '');
     const hasBtn = sHtml.indexOf('data-ftt-action="worldbookRefresh"') >= 0 && sHtml.indexOf('📚 刷新世界书列表') >= 0;
@@ -1906,6 +1909,7 @@ await assert('AC1 情节总结 + 分段总结接线齐备：FTT.* 入口（25 �
         { id: 'smoke-ac-a3', title: 'A3', text: '丙在城外等待。', date: '1919-11-29', validity: 'active', tags: ['丙'], floorStart: 3, floorEnd: 3 },
     ];
     st.plotSegments = [];
+    await entry.popupAction('tab', { tab: 'settings' });      // v3.1.0：只构建当前分页
     await entry.popupAction('settingsSub', { sub: 'prompts' });
     let h = String((await entry.popupAction('refresh', {})).html || '');
     const setOk = h.indexOf('data-ftt-action="atomCompactNow"') >= 0
@@ -2185,6 +2189,7 @@ await assert('AE1 调试页：V1 同款控件与日志查看器（计数/类别�
         F.dbgLog('对账', { action: '常规镜像写入', bytes: 825 });
         const stats = F.debugLogStats();
         const stored = ls.getItem('SPreset_FTTMemoryDebug');
+        await entry.popupAction('tab', { tab: 'settings' });      // v3.1.0：只构建当前分页
         await entry.popupAction('settingsSub', { sub: 'debug' });
         let h = String((await entry.popupAction('refresh', {})).html || '');
         const pageOk = h.indexOf('data-ftt-settings-page="debug"') >= 0 && h.indexOf('data-ftt-cfg="debugEnabled"') >= 0
@@ -2257,6 +2262,7 @@ await assert('AE2 关于页 v2.53.0：版本清单**优先取代码库 raw json*
             && st.status === 'ok' && st.from === REPO_RAW && !!cacheRaw
             && F.aboutSortDesc(F.aboutData().changelog).map((e) => e.version).join(',') === '1.0.0,0.9.0';
         // ③ 页面渲染（停在「关于」子页）：言简意赅 —— 无开发/历史块、无清缓存按钮
+        await entry.popupAction('tab', { tab: 'settings' });      // v3.1.0：只构建当前分页
         await entry.popupAction('settingsSub', { sub: 'about' });
         const h = String((await entry.popupAction('refresh', {})).html || '');
         const htmlOk = h.indexOf('data-ftt-settings-page="about"') >= 0
@@ -2511,6 +2517,7 @@ await assert('AE3 数据管理 `reset`：按钮与 V1 逐字一致；确认文�
     st.memories = [{ id: 'smoke-ae-m1', title: '木箱', content: '甲记得木箱断口整齐。' }];
     st.deleted = {}; st.deletedH = {};
     // ① 数据管理页按钮（文案与 V1 逐字一致）
+    await entry.popupAction('tab', { tab: 'settings' });      // v3.1.0：只构建当前分页
     await entry.popupAction('settingsSub', { sub: 'data' });
     const h = String((await entry.popupAction('refresh', {})).html || '');
     const btnOk = h.indexOf('data-ftt-action="reset"') >= 0 && h.indexOf('>🗑 清空当前角色记忆</button>') >= 0
@@ -3444,7 +3451,8 @@ await assert('AN2（v2.51.0 改版）无情节/无改动时不写提取日志（
 // ---------- AO 点击不跳顶（v2.38.0：滚动保持 + 按钮 type + 点击入口防默认） ----------
 await assert('AO1 面板 HTML 的按钮全部带 `type="button"`（对齐 V1 v1.206 26525：无 type 的按钮在 form 内是 submit → 跳顶/刷新）', (() => {
     const PM = fttPanelMod;
-    const raw = String(PM.panelHtml());
+    // v3.1.0：默认只构建当前分页 → 本断言要求**全部 13 页**都过一遍 `type="button"` 加固
+    const raw = String(PM.panelHtml({ all: true }));
     const hardened = String(PM.ensureButtonTypes(raw));
     const rendered = String(PM.renderPanel());        // 真实渲染路径的返回值（renderPanel 内已加固）
     const count = (x) => (x.match(/<button/g) || []).length;
@@ -4469,6 +4477,110 @@ await assert('BG4 v3.0.22 总览「💾 保存（对齐所有存储）」真实�
 })(), '');
 
 
+// v3.1.0（用户要求）：「按建议改善性能。」—— 依据 `docs/D13` 的分阶段方案（S0 观测 · S1 渲染 · S2 常驻 · S3 配额）
+await assert('BH7 v3.1.0 渲染成本（`docs/D13` S1/S0）：真实切页时**只构建当前分页**（其它页只留占位容器）·**一次动作只构建一遍**（旧实现 3 遍）· 角色页下钻索引化后规模守卫（200 档案 × 400 记忆 × 2000 关联行 ≤ 500ms，旧实现 ≈ 1970ms）· 渲染观测可读（`FTT.renderStats()`）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const P = await import('../ui/panel.js');
+    const keepState = JSON.parse(JSON.stringify(RT.state || {}));
+    const keepTab = P.panelState().tab;
+    try {
+        // ---------- ① 只构建当前分页 ----------
+        await entry.popupAction('tab', { tab: 'overview' });
+        const ov = String(P.panelModalInnerHtml());
+        const onlyActive = ov.indexOf('📖 FTT记忆组件') >= 0 && ov.indexOf('data-ftt-body="overview"') >= 0
+            && (ov.match(/data-ftt-body="/g) || []).length === 13            // 13 个容器恒在
+            && ov.indexOf('data-ftt-settings-page=') < 0;                    // 但设定页正文不在
+        const all = String(P.panelModalInnerHtml({ all: true }));
+        const allBuilt = all.length > ov.length && all.indexOf('data-ftt-settings-page=') >= 0;
+
+        // ---------- ② 一次动作 = 一次构建 ----------
+        const b0 = P.panelRenderStats().builds;
+        await entry.popupAction('refresh', {});
+        const b1 = P.panelRenderStats().builds;
+
+        // ---------- ③ 角色页规模守卫（真实切页 + 索引化下钻） ----------
+        RT.state.atoms = (RT.state.atoms || []).slice(0, 300);
+        RT.state.memories = Array.from({ length: 400 }, (_, i) => ({ id: 'bh7-m' + i, owner: '甲', title: '记忆' + i, content: '甲记得第 ' + i + ' 件事（正文足够长）。', date: '1919-11-01', updatedAt: 1000 + i }));
+        RT.state.plans = Array.from({ length: 180 }, (_, i) => ({ id: 'bh7-pl' + i, title: '计划' + i, content: '送信', status: 'open', updatedAt: 1000 + i }));
+        RT.state.suspense = Array.from({ length: 180 }, (_, i) => ({ id: 'bh7-su' + i, title: '悬念' + i, content: '谁在跟踪', status: 'open', updatedAt: 1000 + i }));
+        RT.state.snapshots = Array.from({ length: 200 }, (_, i) => ({ id: 'bh7-s' + i, name: '角色' + i, identity: { occupation: '商人', birthDate: '1890-01-01' }, background: '档案正文（足够长）'.repeat(20), uses: 1, updatedAt: 1000 + i }));
+        RT.state.links = [];
+        for (let i = 0; i < 2000; i++) RT.state.links.push({ id: 'bh7-L' + i, dim: 'memories', refId: 'bh7-m' + (i % 400), who: '角色' + (i % 200), how: 'witness' });
+        P.panelBodyHtml('snapshots');                                        // 预热
+        const t0 = performance.now();
+        const r = await entry.popupAction('tab', { tab: 'snapshots' });
+        const ms = performance.now() - t0;
+        const html = String(r.html || '');
+        const drillOk = html.indexOf('🧠 已知') >= 0 && html.indexOf('角色0') >= 0;
+        const guardOk = ms <= 500;
+
+        // ---------- ④ 渲染观测可读 ----------
+        const stats = P.panelRenderStats();
+        const statsOk = globalThis.FTT && typeof globalThis.FTT.renderStats === 'function'
+            && Number(globalThis.FTT.renderStats().renders) === Number(stats.renders) && stats.builds > 0
+            && stats.lastTab === 'snapshots' && stats.lastBytes > 0;
+
+        const ok = onlyActive && allBuilt && (b1 - b0) === 1 && drillOk && guardOk && statsOk;
+        if (!ok) console.log('BH7-DEBUG ' + JSON.stringify({ onlyActive, allBuilt, builds: b1 - b0, drillOk, ms: Math.round(ms), guardOk, statsOk }));
+        return ok;
+    } finally {
+        try { RT.setKernelState(keepState); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: keepTab || 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+// v3.1.0（`docs/D13` S2/S3）：容量上限与配额兜底
+await assert('BH8 v3.1.0 容量与配额（`docs/D13` S2/S3）：向量缓存内存副本有 LRU 上限（`FTT.vectorCache()` 可读 evicted/bytes/maxEntries）· 本机缓冲超预算时**如实跳过并可读原因**（服务端文件照写，旧内容不被清空）· 调试日志单条上限降到 2000 字符', (async () => {
+    const VC = await import('../adapters/vector-cache.js');
+    const DL = await import('../core/debug-log.js');
+    const ST = await import('../adapters/store.js');
+    const keepCaps = { entries: 2000, bytes: 32 * 1024 * 1024 };
+    const keepBudget = 0;
+    try {
+        // ① 向量缓存 LRU（把上限压到 2 条，写 3 条 → 至少淘汰 1 条）
+        VC.resetVectorCacheState();
+        globalThis.FTT.vectorCacheCaps({ entries: 2 });
+        await VC.vecCachePutMany([{ key: 'bh8-a', vector: [1, 2, 3] }, { key: 'bh8-b', vector: [4, 5, 6] }, { key: 'bh8-c', vector: [7, 8, 9] }]);
+        const vs = globalThis.FTT.vectorCache();
+        const lruOk = vs.maxEntries === 2 && vs.memory === 2 && vs.evicted >= 1 && typeof vs.bytes === 'number'
+            && globalThis.FTT.vectorCache().evicted === vs.evicted;
+        globalThis.FTT.vectorCacheCaps(keepCaps);
+        VC.resetVectorCacheState();
+
+        // ② 本机缓冲预算：把预算压到当前信封之下 → 跳过写入但服务端文件照写
+        await entry.popupAction('tab', { tab: 'overview' });
+        await ST.saveStateNow({ reason: 'bh8-base', force: true });
+        const chars = ST.localBufferState().chars;
+        const localKey = 'ftt2_state_' + (await import('../core/state.js')).scopeId();
+        const beforeRaw = globalThis.localStorage.getItem(localKey);
+        ST.setLocalBufferMaxChars(Math.max(100, chars - 100));
+        await ST.saveStateNow({ reason: 'bh8-over', force: true });
+        const lb = ST.localBufferState();
+        const budgetOk = lb.ok === false && lb.skipped === 'over-budget' && lb.chars > lb.budget
+            && globalThis.localStorage.getItem(localKey) === beforeRaw
+            && !!globalThis.FTT.localBuffer() && globalThis.FTT.localBuffer().skipped === 'over-budget'
+            && !!(ST.storeStatus().localBuffer);
+        ST.setLocalBufferMaxChars(keepBudget);
+        await ST.saveStateNow({ reason: 'bh8-restore', force: true });
+        const restoredOk = ST.localBufferState().ok === true;
+
+        // ③ 调试日志单条上限（有意偏离 V1：6000 → 2000）
+        DL.debugLogClear();
+        DL.debugLogPush('限额', { big: 'x'.repeat(5000) });
+        const l = DL.debugLogList()[0] || { data: '' };
+        const capOk = DL.DEBUG_DATA_MAX === 2000 && String(l.data).length === 2000;
+
+        const ok = lruOk && budgetOk && restoredOk && capOk;
+        if (!ok) console.log('BH8-DEBUG ' + JSON.stringify({ lruOk, vs, budgetOk, lb, restoredOk, capOk, max: DL.DEBUG_DATA_MAX }));
+        return ok;
+    } finally {
+        ST.setLocalBufferMaxChars(keepBudget);
+        VC.resetVectorCacheState();
+        VC.setVectorCacheCaps(keepCaps);
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // v3.0.23（用户报告）：「初次激活插件读取的数据还是没有对齐，请核对是否存在bug。」
 //   核对出的三个真实成因（都在**载入路径**，不是保存路径）：
 //   ① 保存流水线一直写 IndexedDB（本机内存库），**载入从没读过它**；
@@ -4557,9 +4669,11 @@ await assert('BH6 v3.0.23 读取台账真的进日志与界面：每一次服务
     await entry.popupAction('tab', { tab: 'settings' });
     await entry.popupAction('settingsSub', { sub: 'debug' });
     const dbgHtml = String((await entry.popupAction('refresh', {})).html || '');
-    const blockOk = dbgHtml.indexOf('📥 读取台账') >= 0 && dbgHtml.indexOf('共 ' + stats.totalReads + ' 次读取') >= 0;
+    // 注意：调试页自身会做**只读诊断读**（`loadDiag` 走文件通道）→ 渲染后台账会再多几条，
+    //   故这里用「区块在 + 有统计行」与「读数只增不减」判定，不写死条数。
+    const blockOk = dbgHtml.indexOf('📥 读取台账') >= 0 && /共 \d+ 次读取/.test(dbgHtml);
     const ft = globalThis.FTT && typeof globalThis.FTT.reads === 'function' ? globalThis.FTT.reads({ limit: 5 }) : null;
-    const ftOk = !!ft && !!ft.stats && ft.stats.totalReads === stats.totalReads && ft.lines.length === Math.min(5, all.length);
+    const ftOk = !!ft && !!ft.stats && ft.stats.totalReads >= stats.totalReads && ft.lines.length === Math.min(5, all.length);
     // 清空台账（只清内存缓冲）
     const cl = await entry.popupAction('readLedgerClear', {});
     const clearedOk = cl.ok === true && RL.readLedgerStats().totalReads === 0;

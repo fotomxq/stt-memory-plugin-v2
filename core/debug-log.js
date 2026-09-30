@@ -20,7 +20,11 @@ const DEBUG_CAP = 300;
 /** V1 `DEBUG_KEY`：localStorage 键（由宿主适配层使用） */
 const DEBUG_KEY = 'SPreset_FTTMemoryDebug';
 /** V1：单条 `data` 序列化后截断长度 */
-const DEBUG_DATA_MAX = 6000;
+// v3.1.0（`docs/D13` R1/Q6）：单条上限 6000 → **2000** 字符。
+//   理由：300 条 × 6000 = **1.8M 字符**本身就吃掉本机缓冲配额（5MB UTF-16 ≈ 2.62M 字符）的大半，
+//   与状态信封叠加必然越界 → 本机缓冲静默停更。降到 2000 后上限 0.6M 字符，排障所需的关键字段
+//   （动作 / 目标 / 耗时 / 原因）都在前 2000 字符内，长正文截断不影响定位问题。
+const DEBUG_DATA_MAX = 2000;
 
 /** 内存环形缓冲（**最新在前**，与 V1 v1.49 语义一致） */
 let debugLogs = [];

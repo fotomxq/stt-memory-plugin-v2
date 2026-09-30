@@ -259,4 +259,51 @@ function logRelMaint(label, m) {
     } catch (e) { return false; }
 }
 
-export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint };
+/**
+ * v3.1.0（`docs/D13` R2「未封顶清单」，Q7 建议默认值）：**关联层容量上限**。
+ *
+ * 背景：`state.links` 只按「引用目标是否还存在」清理（`sweepOrphanRelLinks`），**没有条数上限** ——
+ *   条目 × 涉及角色 的关系行会持续累积（内存与每次载入/保存的体积都随之增长）。
+ * 口径（与 Q7 一致）：上限 = `max(200, 现存条目数 × 2)`；超出时**先淘汰孤儿行**（目标条目已不存在），
+ *   再按**行序最旧者优先**淘汰（links 行没有独立时间戳，「最久未用」不可计算，故用插入序；
+ *   淘汰只影响关联视图，不改动任何条目数据，且被淘汰行**写删除墓碑**以免跨端复活）。
+ *   幂等：不超限时零改动、零分配。
+ * @param {object} [st] 目标状态（缺省内核 state）
+ * @param {{max?:number, dryRun?:boolean}} [opts]
+ * @returns {{ok:boolean, before:number, after:number, max:number, dropped:number, orphans:number, changed:boolean}}
+ */
+function capRelLinks(st, opts) {
+    const o = opts || {};
+    const out = { ok: true, before: 0, after: 0, max: 0, dropped: 0, orphans: 0, changed: false };
+    try {
+        const src = st || state || {};
+        const links = Array.isArray(src.links) ? src.links : [];
+        out.before = links.length;
+        const dims = REL_LINK_DIMS;
+        let count = 0;
+        for (const dim of dims) count += Array.isArray(src[dim]) ? src[dim].length : 0;
+        const cap = Number(o.max) > 0 ? Number(o.max) : Math.max(200, count * 2);
+        out.max = cap;
+        if (links.length <= cap) { out.after = links.length; return out; }
+        // ① 引用目标已不存在 → 直接淘汰
+        const exists = (dim, refId) => ((src[dim] || [])).some((x) => x && String(x.id) === String(refId));
+        const keep = [], drop = [];
+        for (const r of links) {
+            if (!r) { drop.push(r); continue; }
+            if (!exists(String(r.dim), String(r.refId))) { drop.push(r); out.orphans += 1; continue; }
+            keep.push(r);
+        }
+        // ② 仍超限 → 从**最旧**（数组前部）开始淘汰，保留最近的 cap 行
+        if (keep.length > cap) { const cut = keep.length - cap; drop.push(...keep.splice(0, cut)); }
+        out.after = keep.length;
+        out.dropped = drop.length;
+        if (!drop.length) return out;
+        if (o.dryRun === true) { out.changed = false; return out; }
+        src.links = keep;
+        try { tombEntries('links', drop.filter((x) => x && x.id)); } catch (e) { /* 墓碑失败不影响裁剪 */ }
+        out.changed = true;
+        return out;
+    } catch (e) { out.ok = false; return out; }
+}
+
+export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint, capRelLinks };

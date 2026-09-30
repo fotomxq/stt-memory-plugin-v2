@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.23",
+  "version": "3.1.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.1.0",
+      "date": "2026-09-30",
+      "title": "按 docs/D13 建议改善性能：只渲染当前分页 + 关联索引化 + 容量上限与配额兜底",
+      "points": [
+        "改动前后实测：（同一台机器、同一脚本、真实面板路径 panelAction；热身后中位数）| 形状 | 指标 | 旧（v3.0.23） | 新（v3.1.0） | 倍数 || -…",
+        "S1 渲染成本（收益最大）：只构建当前分页：panelModalInnerHtml() 不再把 13 页全构一遍（非当前页只留同 id 占位容器）；{ all: true } /…",
+        "S2 常驻内存封顶：向量缓存 LRU（docs/D13 R2/Q4）：adapters/vector-cache.js 的内存副本加上限"
+      ]
+    },
     {
       "version": "3.0.23",
       "date": "2026-09-30",

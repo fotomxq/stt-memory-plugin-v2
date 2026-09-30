@@ -170,7 +170,11 @@ export function extractPageHtml(controls, renderControl) {
 
         '<div class="ftt-section"><div class="ftt-sec-title">检索参数</div>',
         rows(['vectorTopN', 'vectorMinScore', 'vectorTimeoutMs']),
-        '<div class="ftt-muted" data-ftt-vector-cache>向量缓存：内存 ' + cache.memory + ' 条 · IndexedDB ' + (cache.indexedDb ? '可用' : '不可用（退化为内存缓存）')
+        // v3.1.0（`docs/D13` R2/Q4）：内存副本有 LRU 上限 → 一并显示容量与淘汰数（可自查内存占用）
+        '<div class="ftt-muted" data-ftt-vector-cache>向量缓存：内存 ' + cache.memory + (cache.maxEntries ? ('/' + cache.maxEntries) : '') + ' 条'
+            + (cache.bytes ? ('（约 ' + Math.round(Number(cache.bytes) / 1048576 * 10) / 10 + 'MB）') : '')
+            + (cache.evicted ? (' · 已淘汰 ' + cache.evicted + ' 条') : '')
+            + ' · IndexedDB ' + (cache.indexedDb ? '可用' : '不可用（退化为内存缓存）')
         + (cache.fallback ? (' · 最近降级：' + esc(cache.fallback)) : '') + '</div>',
         '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="vectorCacheClear" title="清空本机向量缓存（下次召回会重新请求 embedding）">🧹 清空向量缓存</button>'
         + '<span class="ftt-muted">缓存键为「类别:id」；无 IndexedDB 时退化为内存缓存。</span></div>',

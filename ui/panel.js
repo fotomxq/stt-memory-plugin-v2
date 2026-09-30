@@ -55,7 +55,7 @@ import {
 } from '../core/ingest.js';   // v2.62.0：状态页排序「重要度」（V1 `pageSortItems` 同源）
 import { shareFloorText, shareSumHtml } from './forget.js';
 import { sortPlotSegments } from '../core/model/segment.js';
-import { snapshotBirthAnomaly } from '../core/model/snapshot.js';
+import { snapshotBirthAnomaly, storyAnchorDate } from '../core/model/snapshot.js';   // v3.1.0：+storyAnchorDate（渲染期锚点）
 import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumorTickState } from '../core/rumor-evolve.js';
 import { tombMany } from '../core/merge.js';
 // v2.64.0：楼层覆盖统计（「未摘要」跳过「已有记忆数据的楼层」，此处显示覆盖数，便于核对跳过机制）
@@ -78,7 +78,7 @@ import { scenesTreeHtml } from './scene-tree.js';
 import { downloadTextFile, pickTextFile, fileIoCapabilities } from './file-io.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
-import { listRowMainHtml, stateRowMainHtml, listStatusFilter } from './list-rows.js';
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
@@ -683,7 +683,11 @@ function clearPSButtons() {
  */
 function characterRepairButton() {
     let anomCount = 0;
-    try { anomCount = (state.snapshots || []).filter((x) => snapshotBirthAnomaly(x)).length; } catch (e) { /* 忽略 */ }
+    // v3.1.0（性能）：锚点只算一次（无剧情时钟时它要扫全部情节与记忆）；此前每行档案各算一次
+    try {
+        const anchor = (() => { try { return storyAnchorDate() || null; } catch (e) { return null; } })();
+        anomCount = (state.snapshots || []).filter((x) => snapshotBirthAnomaly(x, anchor)).length;
+    } catch (e) { /* 忽略 */ }
     return '<button class="ftt-btn ftt-sm" data-ftt-action="characterRepair" title="出生日期倒挂者优先，其余按字数最薄弱 3 条">🔧 修复角色'
         + (anomCount ? '（⚠️' + anomCount + ' 优先）' : '') + '</button>';
 }
@@ -1005,6 +1009,9 @@ function dimBodyList(kind) {
     const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
     if (!list.length) return curTop + toolbar + curPick + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
+    //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
+    const rowCtx = (() => { try { return buildRowCtx(); } catch (e) { return null; } })();
     const rows = list.map((e) => {
         const id = String(e.id || '');
         // v2.47.0（用户报告）：行正文按 **V1 各维度行渲染器**的字段集合与顺序输出（见 ui/list-rows.js）。
@@ -1034,7 +1041,7 @@ function dimBodyList(kind) {
         const flashAttr = flashed ? (' data-ftt-flash-id="' + attr(id) + '"') : '';
         const flashBadge = flashed ? '<b class="ftt-ok">🆕 本次新增</b>' : '';
         return '<div class="ftt-item ftt-inline"' + flashAttr + '>' + box
-            + '<span class="ftt-grow">' + listRowMainHtml(kind, e) + relJump + flashBadge + '</span>'
+            + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + '</span>'
             + ops
             + '</div>';
     }).join('\n');
@@ -1347,8 +1354,20 @@ export function panelBodyHtml(tab) {
  *   `fttModalIn`（`style.css#ftt-panel .ftt-modal`）**每次点击重放**（220ms 淡入 + 下移 = 用户看到的「闪」）。
  *   `panelHtml()` 仍返回**完整**浮层 HTML（测试与外部接口口径不变）。
  */
-export function panelModalInnerHtml() {
-    const active = PANEL_TABS.some((x) => x[0] === ps.tab) ? ps.tab : 'overview';
+/**
+ * v3.1.0（性能，docs/D13 S1）：**只构建当前分页的正文**。
+ *
+ * 背景（实测）：旧实现每次渲染都用 `PANEL_TABS.map(... panelBodyHtml(t))` 把**全部 13 页**都构一遍串
+ *   （含不显示的页），且 `renderPanel()` 内部构建两遍、`finalizePanelAction` 再构建一遍 ——
+ *   满载形状一次动作 308–343ms、极端形状 523ms，而其中绝大部分是用户**看不到的页**。
+ * 现在：非当前页只放一个**同 id 的占位容器**（切页时该页才会被构建），当前页照旧完整构建
+ *   （`panelBodyHtml(tab)` 对外仍逐页可用，测试与调试口径不变）。
+ */
+export function panelModalInnerHtml(opts) {
+    const o = opts || {};
+    const want = String(o.tab || ps.tab || '');
+    const active = PANEL_TABS.some((x) => x[0] === want) ? want : 'overview';
+    const all = o.all === true;      // `{ all: true }` = 兼容口径（构建全部 13 页；调试 / 外部接口 / 测试用）
     const nameTxt = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
     const bp = (ps.busy && typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : null;
     const busyNote = ps.busy
@@ -1361,13 +1380,14 @@ export function panelModalInnerHtml() {
         + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）">✕</button></div>';
     const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
         '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '">' + esc(l) + '</a>').join('') + '</div>';
-    const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">' + panelBodyHtml(t) + '</div>').join('\n');
+    const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">'
+        + ((all || t === active) ? panelBodyHtml(t) : '') + '</div>').join('\n');
     return head + tabs + bodies;
 }
 
 /** 整个浮层 HTML（与 V1 同名同层级；V1 样式挂在 #ftt-panel 上） */
-export function panelHtml() {
-    return '<div class="ftt-modal">' + panelModalInnerHtml() + '</div>';
+export function panelHtml(opts) {
+    return '<div class="ftt-modal">' + panelModalInnerHtml(opts) + '</div>';
 }
 
 /** 找到（或创建）浮层元素：优先 body，退到任意扩展容器（桩 DOM 无 body 时也能工作） */
@@ -1515,20 +1535,53 @@ function flashScrollIntoView(el) {
     } catch (e) { /* 忽略 */ }
 }
 
+/**
+ * v3.1.0（性能，docs/D13 S0）：**渲染观测**（面板打开 / 每次动作都会更新）。
+ *   `builds` = 累计「全页 HTML 构建次数」（旧实现一次渲染 2 次、一次动作 3 次；现在恒为 1）；
+ *   `lastMs / maxMs / lastBytes / slow` 供调试页与 `FTT.renderStats()` 回答「界面卡在哪一次渲染」。
+ */
+export const PANEL_RENDER_SLOW_MS = 120;
+let renderStats = { renders: 0, builds: 0, lastMs: 0, maxMs: 0, lastBytes: 0, slow: 0, lastTab: '', at: 0 };
+/** 渲染观测快照（只读） */
+export function panelRenderStats() { return Object.assign({}, renderStats); }
+/** 清空渲染观测（测试用） */
+export function resetPanelRenderStats() { renderStats = { renders: 0, builds: 0, lastMs: 0, maxMs: 0, lastBytes: 0, slow: 0, lastTab: '', at: 0 }; return true; }
+/** 最近一次渲染出来的完整浮层 HTML（动作返回值复用，避免再构建一遍） */
+let lastRenderedHtml = '';
+export function panelHtmlBuilt() { return lastRenderedHtml; }
+
 export function renderPanel() {
+    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     const el = overlayEl || ensureOverlay();
     // v2.63.0：DOM 写完后启停「管线状态」读秒计时器（此刻那一行才真的存在；切页/关闭/空闲则停表）
     const finish = (html) => {
         try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ }
         try { flashScrollIntoView(el); } catch (e) { /* 定位失败不影响渲染 */ }   // v3.0.13：把「本次新增」条目滚入视野
+        // v3.1.0：渲染观测（慢渲染另推一条留痕；失败静默）
+        try {
+            const ms = Math.max(0, ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0);
+            renderStats.renders += 1;
+            renderStats.builds += 1;
+            renderStats.lastMs = Math.round(ms);
+            renderStats.lastBytes = String(html || '').length;
+            renderStats.lastTab = String(ps.tab || '');
+            renderStats.at = Date.now();
+            if (ms > renderStats.maxMs) renderStats.maxMs = Math.round(ms);
+            if (ms >= PANEL_RENDER_SLOW_MS) {
+                renderStats.slow += 1;
+                try { if (typeof hooks.onSlowRender === 'function') hooks.onSlowRender({ tab: renderStats.lastTab, ms: renderStats.lastMs, bytes: renderStats.lastBytes, builds: renderStats.builds }); } catch (e2) { /* 忽略 */ }
+            }
+        } catch (e2) { /* 观测失败不影响渲染 */ }
         return html;
     };
     // ① 重渲染**前**记录滚动位置（V1 同款；活动标签内容区，不是第一个 .ftt-body）
     const scroll = panelScrollState(el);
     // ② 字符串层补 `type="button"`（防止 form 内按钮提交导致跳顶）
-    // 只渲染一次：模态内部 HTML 复用给两条路径（复用节点 / 整树替换），避免重复渲染 13 个分页
+    // v3.1.0：**一次渲染只构建一遍**（旧实现构建两遍：`panelModalInnerHtml` + `panelHtml`），
+    //   并把结果缓存给 `panelHtmlBuilt()`，供动作返回值复用（旧实现在 `finalizePanelAction` 里再构建第三遍）。
     const innerHtml = ensureButtonTypes(panelModalInnerHtml());
-    const html = ensureButtonTypes(panelHtml());
+    const html = '<div class="ftt-modal">' + innerHtml + '</div>';
+    lastRenderedHtml = html;
     applyPanelWidth(el);
     if (!el) return html;
     // v2.80.1（用户报告「每次点击按钮，页面闪一下」）：**复用既有 `.ftt-modal` 节点**，
@@ -2720,7 +2773,8 @@ function finalizePanelAction(result, traceOp, traceT0, action, params) {
         }
     } catch (err) { /* 忽略 */ }
     renderPanel();
-    const out = Object.assign(result, { html: panelHtml(), state: panelState() });
+    // v3.1.0（性能）：复用 `renderPanel()` 刚刚构建的 HTML（旧实现此处会**再构建一遍全部 13 页**）
+    const out = Object.assign(result, { html: panelHtmlBuilt() || panelHtml(), state: panelState() });
     // v2.42.0：交互完成事件（动作 / 入参摘要 / 结果 / 耗时 / 站点 / opId）—— 这是「所有用户交互」的主时间线
     try {
         const ended = traceOpEnd(traceOp, out);
