@@ -25,6 +25,10 @@ import {
     ttDropCaches, ttTextBytes, ttBytesToTextAuto, ttKeyOf, ttChannelInfo, ttEnsureReady,
 } from './tt-store.js';
 import { gzipToBytes, isGzipBytes } from './gzip.js';
+// v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
+//   文件通道是**所有服务端读取的唯一入口**（主文件 / 清单 / 分片 / 快照 / 对端文件 / 删楼备份）——
+//   在这里记一笔最底层的事实：读了哪个文件、走哪个后端、多少字节、多久、成没成。
+import { readLedgerRecord } from '../core/read-ledger.js';
 
 /** 本会话内酒馆文件通道是否已被判定不可用（原生模式下探测失败即停止无谓重试） */
 let stFilesOff = false;
@@ -40,6 +44,34 @@ export const TT_READY_WAIT_MS = 1500;
 /** 本会话是否已做过启动早期就绪等待 */
 let readyWaited = false;
 const sleepMs = (ms) => new Promise((res) => { try { setTimeout(res, ms); } catch (e) { res(); } });
+
+/**
+ * v3.0.23：把一次文件通道读取记进读取台账（**不改变返回的 Promise**，只在它落定后记账）。
+ *   `role` 由调用方给（主文件 / 分片 / 清单 / 对端文件 / 备份），便于「按语义」筛选；
+ *   体积优先取真实字节数（原生通道给出 `bytes`），文本通道退化为字符数。
+ */
+function ledgerFileRead(name, src, startedAt, r, role) {
+    try {
+        const ok = !!(r && r.ok);
+        const bytes = Number((r && r.bytes) || 0) || Number((r && r.text) ? String(r.text).length : 0);
+        readLedgerRecord({
+            action: ok ? '通道读取' : '通道读取失败',
+            src: String(src || 'file'),
+            target: String(name || ''),
+            at: Number(startedAt) || Date.now(),
+            ms: Math.max(0, Date.now() - (Number(startedAt) || Date.now())),
+            ok: ok, miss: !ok && !(r && r.error),
+            bytes: bytes,
+            hash: '',
+            reason: ok ? '' : String((r && r.error) || 'miss'),
+            extra: {
+                backend: String((r && r.backend) || fileTransportBackend()),
+                role: String(role || ''), gz: !!(r && r.gz),
+            },
+        });
+    } catch (e) { /* 台账失败绝不影响读取 */ }
+}
+
 
 /** 当前应当使用的后端（原生优先；`cfg.storage.tauriNative` = on/off 可强制） */
 export function fileTransportBackend() {
@@ -89,16 +121,25 @@ export function fileTransportDropCaches() {
  * 读取（按**内容魔数**识别 gzip / 明文）—— 与 `adapters/user-file.js#readStateFileAuto` 同返回形状。
  * @returns {Promise<{ok:boolean, text:string, gz:boolean, backend:string, status?:number, error?:string}>}
  */
-export function fileTransportReadAuto(name) {
+export function fileTransportReadAuto(name, opts) {
     // **零额外微任务层**：无宿主 / 关闭时直接返回既有实现的同一 Promise ——
     //   启动装配（loadMemoryState → loadFromServerFile）的微任务步数与旧实现完全一致
     //   （`adapters/user-file.js` 文件头对此有明确口径；B7-2 与冒烟 B1 都依赖装配时序）。
+    //   v3.0.23：记账同样**只挂 `.then`**（`bookkeep` 返回原 Promise）→ 时序口径不变。
+    const o = opts || {};
+    const t0 = Date.now();
+    const key = String(name || '');
+    const src = String(o.src || 'file');
+    const role = String(o.role || '');
     if (!ttNativeOn()) {
         const p = readStateFileAuto(name);
-        bookkeep(p, (r) => { if (r && r.ok) readRoute[String(name || '')] = 'st-files'; });
-        return p;
+        return bookkeep(p, (r) => {
+            if (r && r.ok) readRoute[key] = 'st-files';
+            ledgerFileRead(key, src, t0, r, role);
+        });
     }
-    return readAutoRouted(name);
+    const p = readAutoRouted(name);
+    return bookkeep(p, (r) => ledgerFileRead(key, src, t0, r, role));
 }
 
 /** 书签：不改变返回的 Promise，只在其落定后记账（失败静默） */
@@ -204,8 +245,12 @@ async function readAutoRouted(name) {
  */
 export function fileTransportReadBytes(name, opts) {
     const o = opts || {};
-    if (!ttNativeOn()) return readStateFileBytes(name);            // 同上：无宿主零额外微任务层
-    return readBytesRouted(name, o);
+    const t0 = Date.now();
+    const key = String(name || '');
+    const src = String(o.src || 'file');
+    const role = String(o.role || '');
+    if (!ttNativeOn()) return bookkeep(readStateFileBytes(name), (r) => ledgerFileRead(key, src, t0, r, role));   // 同上：无宿主零额外微任务层
+    return bookkeep(readBytesRouted(name, o), (r) => ledgerFileRead(key, src, t0, r, role));
 }
 
 async function readBytesRouted(name, o) {

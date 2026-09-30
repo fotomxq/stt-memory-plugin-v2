@@ -129,6 +129,12 @@ export function installDevtools(hooks) {
             storageEnvelope: (data) => (hooks && typeof hooks.storageEnvelope === 'function' ? hooks.storageEnvelope(data) : null),
             storageHash: (payload) => (hooks && typeof hooks.storageHash === 'function' ? hooks.storageHash(payload) : ''),
             storageEnvValid: (env) => (hooks && typeof hooks.storageEnvValid === 'function' ? hooks.storageEnvValid(env) : false),
+            // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
+            //   读取台账（只看，不改；每一次读取的来源 / 耗时 / 体积 / 条数 / 结果）
+            reads: (opts) => (hooks && typeof hooks.reads === 'function' ? hooks.reads(opts || {}) : null),
+            readsText: (limit) => (hooks && typeof hooks.readsText === 'function' ? hooks.readsText(limit) : ''),
+            readsClear: () => (hooks && typeof hooks.readsClear === 'function' ? hooks.readsClear() : false),
+            loadInfo: () => (hooks && typeof hooks.loadInfo === 'function' ? hooks.loadInfo() : null),
             // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
             clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),
             clockTrace: (stage) => (hooks && typeof hooks.clockTrace === 'function' ? hooks.clockTrace(stage) : null),

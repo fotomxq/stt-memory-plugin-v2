@@ -226,8 +226,19 @@ export function setModelOptions(patch) {
 }
 
 /** 注入当前 state（宿主在载入/切换角色/合并后调用；传 null 表示未就绪） */
+/**
+ * v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」里的**竞态**成因）：内核状态的**注入序号**。
+ *   载入是「读各层 → 合并 → 注入」的异步过程；期间任何**别的**注入（导入 JSON / V1 导入 / 清空记忆 /
+ *   跨端合并）都会把状态换成更新的那一份。旧实现里载入**无条件覆盖** → 后完成的载入会把刚导入的数据
+ *   清成空（时序稍变就复现：实测 `init` 的载入落在用户导入之后 → 刚导入的条目被清空）。
+ *   现在载入在注入前比对序号：**期间有人动过状态就不覆盖**（那一份更新），并如实回报 `superseded`。
+ */
+let stateSeq = 0;
+export function kernelStateSeq() { return stateSeq; }
+
 export function setKernelState(next) {
     state = next || null;
+    stateSeq += 1;
     return state;
 }
 
