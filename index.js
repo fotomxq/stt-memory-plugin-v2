@@ -14,6 +14,7 @@ import { setPipelineHooks } from './core/pipeline.js';
 // v2.92.0（用户要求）：需人工确认项（跨端冲突/自检异常）—— 设定 + 总览同时展示，落 ST 扩展设置
 import { setConflictHooks } from './core/conflicts.js';
 import { setFloorShrinkHook } from './host/floors.js';
+import { mergeDataObjects, mergeSnapshotStores } from './core/cross-sync.js';   // v3.0.21：载入并集（服务端文件为基底 + 本机缓冲补充）
 import { noteConflict } from './core/conflicts.js';
 // v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）：「设定 → 数据管理」删除到最近 6/10/12 层 ——
 //   一律走**酒馆官方 API**（`getContext().deleteMessage`），删前自动明文备份（3 槽轮转），删后精确校准楼层编号。
@@ -36,7 +37,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow } from './adapters/store.js';   // v3.0.18：+flushStateNow（退出/切后台前落盘）
+import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline } from './adapters/store.js';   // v3.0.18：+flushStateNow（退出/切后台前落盘）
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
@@ -258,6 +259,25 @@ export function extraForStatus() {
  * @param {object|null} fileSt 服务端文件 state
  * @returns {{st:object|null, via:'local'|'file'|'new', atLocal:number, atFile:number, reason:string}}
  */
+/**
+ * v3.0.21：把「服务端文件」与「本机缓冲」**并集**成一份载入态（文件为基底）。
+ *   同名条目按时间取新（`mergeDataObjects` 既有口径）、删除墓碑生效；快照链按并集重建；
+ *   `updatedAt` 取两者较大的那个（后续保存继续推进）。
+ * @param {object} fileSt 服务端文件状态（基底）
+ * @param {object} localSt 本机缓冲状态（只作补充）
+ */
+export function mergeLoadedSources(fileSt, localSt) {
+    try {
+        const m = mergeDataObjects(fileSt, localSt, {
+            hashFloor: (i) => { try { return hashFloorText(Number(i)); } catch (e) { return ''; } },
+        });
+        const out = (m && m.data) ? m.data : fileSt;
+        try { out.snapStore = mergeSnapshotStores((fileSt && fileSt.snapStore) || [], (localSt && localSt.snapStore) || []); } catch (e) { /* 忽略 */ }
+        out.updatedAt = Math.max(Number(fileSt && fileSt.updatedAt) || 0, Number(localSt && localSt.updatedAt) || 0);
+        return out;
+    } catch (e) { return fileSt; }
+}
+
 export function pickNewerState(localSt, fileSt) {
     const atOf = (s) => Number((s && s.updatedAt) || 0);
     const atLocal = atOf(localSt), atFile = atOf(fileSt);
@@ -290,14 +310,31 @@ export async function loadMemoryState() {
     let localSt = null, fileSt = null;
     try { localSt = loadFromLocalStorage(); } catch (e) { localSt = null; }
     try { fileSt = await loadFromServerFile(); } catch (e) { fileSt = null; }
-    const pick = pickNewerState(localSt, fileSt);
-    st = pick.st;
-    via = pick.via;
+    // v3.0.21（用户要求：「修复存储异常，当退出应用后，插件的数据大量回滚。之前发现是内存问题，
+    //   建议一劳永逸，第一次启动不用内存或本地数据。」）——**载入口径改为「服务端文件为基底 + 本机缓冲只作并集补充」**：
+    //   · 服务端文件是权威、且由「保存流水线 + 分片」共同保证最新 → **永远拿它做基底**；
+    //   · 本机缓冲**不再整体采用**（旧口径按 `updatedAt` 二选一：一旦本机缓冲时间戳更"新"却是残缺/陈旧数据，
+    //     就会把服务端的好数据整体覆盖 → 用户看到的「大量回滚」）。现在它只贡献**并集**：
+    //     同名条目按时间取新、墓碑生效（`mergeDataObjects` 的既有口径）→ 既不回滚、也不丢未上传的本地改动。
+    const pick = pickNewerState(localSt, fileSt);            // 仍保留：作为**诊断**（谁的时间戳更新）
+    if (fileSt && localSt) {
+        st = mergeLoadedSources(fileSt, localSt);
+        via = 'file';
+    } else if (fileSt) { st = fileSt; via = 'file'; }
+    else if (localSt) { st = localSt; via = 'local'; }
+    else { st = null; via = 'new'; }
     if (localSt || fileSt) {
-        try { debugLogPush('对账', { action: '载入择优（本机缓冲 vs 服务端文件）', localAt: pick.atLocal, fileAt: pick.atFile, picked: pick.via, reason: pick.reason }); } catch (e) { /* 忽略 */ }
+        try {
+            debugLogPush('对账', {
+                action: fileSt && localSt ? '载入：以服务端文件为基底 + 本机缓冲并集并入' : '载入（单源）',
+                localAt: pick.atLocal, fileAt: pick.atFile, picked: via, newerSide: pick.via, reason: pick.reason,
+            });
+        } catch (e) { /* 忽略 */ }
     }
     if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
+    // v3.0.21：登记「异常缩水」守卫的基线（载入态即基线；此后任何无墓碑的大规模缩水都会被拦下）
+    try { primeShrinkBaseline(st); } catch (e) { /* 忽略 */ }
     try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     // B8-7-b：历史存档清理（V1 启动同款）——旧版「转正」只写 `promotedTo` 软标记，按 v1.196 规则移除该死条目
     //   （仅当被转正的情节仍存在；情节已删则保留原平行记录）。
@@ -1660,7 +1697,8 @@ function bindExitFlush() {
     try {
         const doc = globalThis.document;
         const win = globalThis.window;
-        const fire = (why) => { try { void flushStateNow(why); } catch (e) { /* 忽略 */ } };
+        // 退出/切后台是**最后一次**写主文件的机会 → 强制完整落盘（`force` 绕开「无变化短路」）
+        const fire = (why) => { try { void flushStateNow(why, { force: true }); } catch (e) { /* 忽略 */ } };
         if (doc && typeof doc.addEventListener === 'function') {
             const onVis = () => { try { if (doc.visibilityState === 'hidden') fire('应用切到后台'); } catch (e) { /* 忽略 */ } };
             doc.addEventListener('visibilitychange', onVis);

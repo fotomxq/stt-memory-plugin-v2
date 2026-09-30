@@ -2349,7 +2349,9 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
         // ④ 清理入口真实生效：清空简报后旧的持久简报消失（动作自身至多留 1 条）
         await entry.popupAction('dbgTraceClear', {});
         const left = TR.traceStoreLoad();
-        const clearOk = left.every((x) => x && x.id !== 'smoke-trace-1') && left.length <= 1
+        // v3.0.21：载入会读一次**分片清单**（`adapters/shards.js`，1 次只读请求）→ 简报里多一条 `getRequestHeaders`
+        //   宿主调用（同一键只记一条）；语义不变：**旧的测试条目必须消失**、简报仍是极小规模。
+        const clearOk = left.every((x) => x && x.id !== 'smoke-trace-1') && left.length <= 2
             && BM.bufferStats().trace.count === left.length;
         // ⑤ 恢复
         DL.debugLogClear();
@@ -4868,6 +4870,9 @@ await assert('BL3 自定义平行世界端到端：平行页点「🧪 自定义
 await assert('BM1 装配后：空闲时管线块**默认隐藏**（无行 + display:none）；发起真实 AI 请求（单楼分析）期间**自动出现**该行（类别 AI + token + 倒计时）；结束后自动隐藏', (async () => {
     const EX = await import('../host/extract.js');
     const PL = await import('../core/pipeline.js');
+    // v3.0.21：保存现在还会写「分片 + 清单」（多几次本地文件请求）→ 采样「空闲」前先等管线**排空**，
+    //   否则上一小节的「保存记忆文件」行可能仍在途（那是真实在途，不是泄漏）。
+    for (let i = 0; i < 60 && PL.listPipelineRuns().length; i++) await new Promise((r) => setTimeout(r, 25));
     const savedGen = host.ctx.generateRaw;
     const keepChat = host.ctx.chat.slice();
     const keepLast = host.ctx.getLastMessageId;

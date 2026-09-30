@@ -85,7 +85,8 @@ R.assert('E0 装配就绪（宿主 + 内核状态 + 退出落盘监听已挂上�
     R.assert('E3 应用切到后台（`visibilitychange` → hidden）→ **立即落盘**：防抖窗口里的改动当场写盘（本机缓冲 + 服务端文件），不再等 800ms/3s 防抖',
         up1 > up0, { up0, up1 });
 
-    // 关闭/离开页面同样触发；且**无变化时不重复上传**（内容签名短路）
+    // 关闭/离开页面同样触发：**退出前的落盘是「强制完整保存」**（最后一次写主文件的机会）——
+    //   无变化时只补写主文件（提交点）1 次，**分片一个都不重传**（它们靠内容哈希判定）；有变化时当场写盘。
     const up2 = uploads;
     fire(dl.win, 'pagehide');
     await sleep(60);
@@ -94,8 +95,10 @@ R.assert('E0 装配就绪（宿主 + 内核状态 + 退出落盘监听已挂上�
     fire(dl.win, 'beforeunload');
     await sleep(60);
     const up4 = uploads;
-    R.assert('E4 `pagehide` / `beforeunload` 同样落盘：无变化时按内容签名短路（不浪费流量），有变化时当场写盘',
-        up3 === up2 && up4 > up3, { up2, up3, up4 });
+    const okE4 = up3 === up2 + 1 && up4 > up3;
+    if (!okE4) console.log('E4-DEBUG ' + JSON.stringify({ up2: up2, up3: up3, up4: up4 }));
+    R.assert('E4 `pagehide` / `beforeunload` 同样落盘：无变化时只补写主文件（提交点）1 次、分片不重传（增量）；有变化时当场写盘',
+        okE4, { up2, up3, up4 });
 }
 
 // ③ teardown 解绑（解绑后不再触发落盘）

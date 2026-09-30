@@ -19,7 +19,7 @@ import { setStorageHooks } from '../../adapters/store.js';
 import { stateFileName } from '../../adapters/user-file.js';
 import { setKernelState, setScopeKey, kernelState } from '../../core/model/runtime.js';
 import { emptyState, scopeId } from '../../core/state.js';
-import { pickNewerState, loadMemoryState } from '../../index.js';
+import { pickNewerState, loadMemoryState, mergeLoadedSources } from '../../index.js';
 
 const R = makeReporter('load-pick v3.0.11 载入择优（本机缓冲 vs 服务端文件）');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -120,15 +120,30 @@ const unFetch = installGlobalFetch(async (url) => {
         })());
     }
 
-    // ---------------- C 反向：本机缓冲更新时以它为准 ----------------
-    console.log('\n[C1] loadMemoryState 接线：本机缓冲更新（未同步的本地改动）→ 以本机缓冲为准');
+    // ---------------- C 反向（v3.0.21 改判）：本机缓冲更新时**不再整体采用** ----------------
+    // # 有意偏差（v3.0.21，用户要求「第一次启动不用内存或本地数据…… 一劳永逸修『退出应用后大量回滚』」）：
+    //   旧口径：本机缓冲 `updatedAt` 更新 → **整体采用本机缓冲**（`via:'local'`）。
+    //     隐患：本机缓冲若是一份**残缺/陈旧**状态（内存问题、聊天未就绪、作用域竞态），
+    //     它会把服务端的好数据**整体覆盖** —— 这正是用户报告的「退出应用后数据大量回滚」。
+    //   新口径：**服务端文件永远是基底**；本机缓冲只作**并集补充**（同名按时间取新 + 墓碑生效）
+    //     → 既不回滚（文件的数据不会丢），也不丢「尚未成功上传」的本机改动（并集进来）。
+    console.log('\n[C1] loadMemoryState 接线：本机缓冲更新 → 服务端文件仍是基底 + 本机独有数据并集并入');
     {
-        localRaw = envelope(mkSt(3000, 5, 'fresh-local'));
-        fileBody = envelope(mkSt(2000, 12, 'older-file'));
+        const localState = mkSt(3000, 5, 'fresh-local');
+        localState.atoms = [{ id: 'local-only', title: '本机独有', text: '本机独有条目（尚未上传成功）。', tags: [] }];
+        localRaw = envelope(localState);
+        const fileState = mkSt(2000, 12, 'older-file');
+        fileState.atoms = [{ id: 'file-only', title: '文件独有', text: '文件独有条目（服务端权威）。', tags: [] }];
+        fileBody = envelope(fileState);
         const r = await loadMemoryState();
-        A('C1 择优来源 = 本机缓冲', r.via === 'local', J(r));
-        A('C1 内核态取到本机缓冲的 5 条台账（不拿旧文件覆盖较新的本地改动）',
-            kernelState().processedFloors.length === 5, 'marks=' + kernelState().processedFloors.length);
+        const ids = (kernelState().atoms || []).map((x) => x.id).sort();
+        A('C1（v3.0.21 改判）来源 = 服务端文件（**本机缓冲不再整体覆盖**）', r.via === 'file', J(r));
+        A('C1 文件的数据一条不丢 + 本机独有的改动并集进来（local-only / file-only 都在）',
+            ids.indexOf('file-only') >= 0 && ids.indexOf('local-only') >= 0, 'ids=' + J(ids));
+        A('C1 台账并集：文件的 12 条标记不被本机缓冲的 5 条挤掉（旧口径会整体替换成 5 条）',
+            kernelState().processedFloors.length === 12, 'marks=' + kernelState().processedFloors.length);
+        A('C1 诊断仍给出「谁的时间戳更新」（便于排查），但不再据此整体取舍',
+            (() => { const p = pickNewerState(localState, fileState); return p.via === 'local' && p.reason === 'local-newer'; })());
     }
 
     // ---------------- D 双源都空 → 空容器起步（不抛错、不崩） ----------------
