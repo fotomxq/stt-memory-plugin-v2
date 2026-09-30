@@ -190,7 +190,10 @@ import {
     slimFileEnvelope, slimGzipInfo, crossPendingGet, crossPendingSet, crossPendingClear, applyRemoteReplaceState,
     adoptRemoteEnvelope, crossComputeInfo, crossPendingView,
     runStorageSync, storageEnvValid,
+    // v3.0.22（用户要求「总览新增保存按钮…全部对齐数据」）：快照文件 / 清单文件的即时推送
+    snapshotFilePushNow, metaFilePushNow,
 } from './adapters/sync.js';
+import { saveSettings } from './adapters/settings.js';
 import {
     slimEntryForStorage, hydrateSlimEntry, slimDataForStorage, hydrateStorageData,
     snapshotIndexFrom, slimSnapshotStoreForStorage, hydrateSnapshotStore,
@@ -891,6 +894,8 @@ function bootstrapDiagnostics() {
             worldbookLegacyEntryName: () => worldbookLegacyEntryName(),
             worldbookTotalBytes: (e) => worldbookTotalBytes(e),
             worldbookMemoryTotal: () => worldbookMemoryTotal(),
+            // v3.0.22（用户要求）：总览「💾 保存（对齐所有存储）」同源入口（命令 / devtools / 测试共用）
+            saveAll: (o2) => runSaveAll(o2 || {}),
             worldbookSync: () => scheduleWorldbookSync(),
             worldbookSyncNow: () => worldbookSyncNow(),
             worldbookSyncState: () => worldbookSyncState(),
@@ -1275,6 +1280,8 @@ function popupHooks() {
     return {
         extract: runExtract,
         pending: pendingFloors,
+        // v3.0.22（用户要求）：总览「💾 保存（对齐所有存储）」
+        saveAll: (o2) => runSaveAll(o2 || {}),
         extractStatus: extractSummary,
         lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：最后一次提取记录（总览组件同源）
         lastPreflight: () => { try { return lastPreflightInfo(); } catch (e) { return null; } },   // v2.61.0：提取前校对结果
@@ -1374,6 +1381,81 @@ function wirePipelineHooks() {
  * 本函数只负责**接线**（明文导出 / 3 槽轮转备份 / 账本落 ST 扩展设置 / 人工确认项 / 通知），
  * 业务判定与执行全在宿主层，便于单测与冒烟用桩宿主验证真实删除流程。
  */
+/**
+ * v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储，包括内存、浏览器本地变量、服务端等，全部对齐数据。」
+ *
+ * 把**当前内存数据**依次写到**每一层已开启的存储**，并逐层回报结果（面板提示 / 调试日志 / 人工确认项都不写，
+ * 这是一次正常的保存动作）：
+ *
+ * | 层 | 落点 | 开关 / 跳过条件 |
+ * | --- | --- | --- |
+ * | 本机缓冲（浏览器本地变量） | `localStorage` 键 `ftt2_state_<scope>` | 始终 |
+ * | IndexedDB 缓冲 | `localforage` 可用时 | 不可用即跳过 |
+ * | 服务端记忆文件（完整信封） | `/api/files/upload` `ftt2-state-<scope>.json` | `storage.stateFile` |
+ * | 服务端**分片**（v3.0.21） | `ftt2-shard-*`（本次 `force` 全量重传 → 与内存完全一致） | `storage.stateFile` |
+ * | 快照文件 | `snapshotFilePushNow()` | `storage.snapshotFile` 且快照链非空 |
+ * | 清单文件（对账用） | `metaFilePushNow()` | `storage.syncMetaProbe` 等既有门控 |
+ * | 世界书镜像 | `worldbookSyncNow()` | `storage.worldbook` |
+ * | 跨端镜像（对端合并 + 推回） | `runStorageSync(true)` | `storage.syncOnSave` |
+ * | 配置（ST 扩展设置） | `saveSettings()` | 始终 |
+ *
+ * @param {{silent?:boolean}} [opts]
+ * @returns {Promise<{ok:boolean, at:number, layers:object, failed:string[], skipped:string[]}>}
+ */
+export async function runSaveAll(opts) {
+    const o = opts || {};
+    const out = { ok: true, at: Date.now(), layers: {}, failed: [], skipped: [] };
+    const mark = (name, r) => {
+        const rec = Object.assign({ at: Date.now() }, r || {});
+        out.layers[name] = rec;
+        if (rec.skipped) out.skipped.push(name);
+        else if (rec.ok === false) { out.failed.push(name); out.ok = false; }
+        return rec;
+    };
+    // ① 本机缓冲 + IndexedDB + 服务端文件 + 分片（同一条保存流水线；`force` 绕开「无变化短路」，
+    //    `shardsForce` 让分片**全量重传** —— 「对齐」的语义就是每一层都与内存逐字节一致）
+    try {
+        const r = await flushStateNow('手动保存（对齐所有存储）', { force: true, shardsForce: true });
+        mark('state', { ok: !!(r && r.ok !== false), via: String((r && r.via) || ''), bytes: Number((r && r.bytes) || 0), error: String((r && r.error) || '') });
+    } catch (e) { mark('state', { ok: false, error: String((e && e.message) || e) }); }
+    // ② 快照文件（快照链非空且开关开启时）
+    try {
+        const st = kernelState || {};                       // 注意：`kernelState` 是**状态对象**（`state as kernelState`），不是函数
+        if (!((st && st.snapStore) || []).length) mark('snapshot', { skipped: 'no-snapshots' });
+        else { const sp = await snapshotFilePushNow(); mark('snapshot', { ok: !!(sp && sp.ok !== false), bytes: Number((sp && sp.bytes) || 0), error: String((sp && sp.error) || '') }); }
+    } catch (e) { mark('snapshot', { ok: false, error: String((e && e.message) || e) }); }
+    // ③ 清单文件（对账用；内部有开关与签名门控）
+    try {
+        const st = kernelState || {};
+        const env = storageEnvelope(st);
+        await metaFilePushNow(env, String((env && env.hash) || ''));
+        mark('meta', { ok: true });
+    } catch (e) { mark('meta', { skipped: String((e && e.message) || 'meta-off') }); }
+    // ④ 世界书镜像（开关关闭即跳过）
+    try {
+        const w = await worldbookSyncNow();
+        if (w && (w.skipped || w.reason)) mark('worldbook', { skipped: String(w.skipped || w.reason || 'off') });
+        else mark('worldbook', { ok: w ? w.ok !== false : true, entries: Number((w && w.entries) || 0) });
+    } catch (e) { mark('worldbook', { skipped: String((e && e.message) || 'worldbook-error') }); }
+    // ⑤ 跨端镜像：对端拉取 + 原子合并 + 推回（`force` 绕开门控）
+    try {
+        const m = await runStorageSync(true);
+        if (m && (m.skipped || m.error)) mark('mirror', { skipped: String(m.skipped || m.error) });
+        else mark('mirror', { ok: m ? m.ok !== false : true, mode: String((m && m.mode) || ''), total: Number((m && m.total) || 0) });
+    } catch (e) { mark('mirror', { ok: false, error: String((e && e.message) || e) }); }
+    // ⑥ 配置（ST 扩展设置）
+    try { saveSettings(); mark('settings', { ok: true }); } catch (e) { mark('settings', { ok: false, error: String((e && e.message) || e) }); }
+    try {
+        debugLogPush('存储', {
+            action: '手动保存（对齐所有存储）', ok: out.ok,
+            state: out.layers.state && out.layers.state.via, bytes: out.layers.state && out.layers.state.bytes,
+            failed: out.failed, skipped: out.skipped,
+        });
+    } catch (e) { /* 忽略 */ }
+    if (!o.silent) { try { notifyHooks.toast(out.ok ? '已对齐所有存储' : '部分存储对齐失败', out.ok ? 'info' : 'warning'); } catch (e) { /* 忽略 */ } }
+    return out;
+}
+
 async function runFloorTrim(keep) {
     wireFloorTrimHooks();
     try { return await floorTrimApply({ keep: Number(keep) || 0 }); } catch (e) {

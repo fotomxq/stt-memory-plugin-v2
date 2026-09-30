@@ -3598,7 +3598,7 @@ await assert('AQ1 面板真实动作路径：导出 → 渲染导出文本框；
     let ok = false;
     try {
         const hooks = entry.panelRuntimeHooks();
-        const needTypes = ['exportState', 'importState', 'importV1', 'autoSummary', 'abort', 'batchProgress', 'clearFloors', 'resetState', 'dimToggle', 'confirm', 'inject']
+        const needTypes = ['exportState', 'importState', 'importV1', 'autoSummary', 'abort', 'batchProgress', 'clearFloors', 'resetState', 'dimToggle', 'confirm', 'inject', 'saveAll']
             .every((k) => typeof hooks[k] === 'function');
         rtMod.setKernelState(Object.assign(rtMod.emptyState ? rtMod.emptyState() : {}, {}));
         Object.assign(rtMod.state, {
@@ -4423,6 +4423,52 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
 //   确保可以在总览中重新看到第0层之后的所有待分析楼层。」
 //   根因：台账清空后还有第二条跳过判据「该楼已有记忆数据」（v2.64.0 新增）——分析过的楼层本来就有数据，
 //   于是「清了没变化」（V1 的 clearFloors 只有台账判据，故清空即全部重现）。
+// v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储，包括内存、浏览器本地变量、服务端等，全部对齐数据。」
+await assert('BG4 v3.0.22 总览「💾 保存（对齐所有存储）」真实点击：把当前内存数据写到**每一层已开启的存储**并逐层回报 —— 本机缓冲（localStorage）+ 服务端记忆文件 + **分片**（本次全量重传）+ 清单；未开启的层（快照/世界书）如实跳过；提示行列出各层结果', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const SH = await import('../adapters/shards.js');
+    const CS = await import('../core/state.js');
+    const keepSync = !!(rtMod.cfg.storage && rtMod.cfg.storage.syncOnSave);
+    const scope = CS.scopeId();                     // 与生产同源（`stateFileName(scopeId())` / `shardName(scopeId())`）
+    try {
+        rtMod.cfg.storage.syncOnSave = false;                       // 隔离：本小节只看「保存流水线 + 分片」（跨端镜像另测）
+        await entry.popupAction('tab', { tab: 'overview' });
+        const html = String((await entry.popupAction('refresh', {})).html || '');
+        const btnOk = html.indexOf('data-ftt-action="saveAll"') >= 0 && html.indexOf('💾 保存（对齐所有存储）') >= 0;
+        // 让内存里有一条可辨识的数据（确保「对齐」写的是当前内存）
+        RT.state.atoms = (RT.state.atoms || []).concat([{ id: 'bg4-a', title: '对齐标记', text: '这条数据用于验证保存按钮（正文足够长）。', date: '1919-12-09', tags: [], updatedAt: Date.now() }]);
+        const beforeFiles = new Set(srvFiles.keys());
+        const r = await entry.popupAction('saveAll', {});
+        const note = String(((r.state || {}).note) || '');
+        const layers = r.layers || {};
+        // ① 本机缓冲（浏览器本地变量）真的写了，且带上了那条数据
+        const localKey = 'ftt2_state_' + scope;
+        const localRaw = (() => { try { return globalThis.localStorage ? globalThis.localStorage.getItem(localKey) : null; } catch (e) { return null; } })();
+        const localOk = String(layers.state && layers.state.via || '').indexOf('localStorage') >= 0;
+        // ② 服务端主文件 + 分片 + 清单都落了盘（分片本次 force 全量重传）
+        const newFiles = Array.from(srvFiles.keys()).filter((k) => !beforeFiles.has(k));
+        const mainOk = String(layers.state && layers.state.via || '').indexOf('file') >= 0;
+        const shardNames = Array.from(srvFiles.keys()).filter((k) => String(k).indexOf('ftt2-shard-') === 0 && String(k).indexOf('-manifest') < 0);
+        const shardOk = shardNames.length >= 14 && srvFiles.has(SH.shardManifestName(scope))
+            && srvFiles.has(SH.shardName(scope, 'atoms'));
+        const atomsShard = JSON.parse(srvFiles.get(SH.shardName(scope, 'atoms')) || '{}');
+        const atomsOk = ((atomsShard.payload || []).some((x) => x.id === 'bg4-a')) === true;
+        // ③ 未开启的层如实跳过；提示行逐层可读
+        // 未开启的层如实跳过（世界书本小节关闭 → `disabled`），且出现在 `skipped` 列表里
+        const skipOk = !!(layers.worldbook && layers.worldbook.skipped) && (r.skipped || []).indexOf('worldbook') >= 0
+            && (layers.snapshot && (layers.snapshot.ok === true || !!layers.snapshot.skipped));
+        const noteOk = note.indexOf('已对齐所有存储') === 0 && note.indexOf('本机缓冲✓') >= 0 && note.indexOf('服务端✓') >= 0;
+        const ok = btnOk && r.ok === true && localOk && mainOk && shardOk && atomsOk && skipOk && noteOk;
+        if (!ok) console.log('BG4-DEBUG ' + JSON.stringify({ btnOk, r: { ok: r.ok, failed: r.failed, skipped: r.skipped, layers: r.layers }, note: note.slice(0, 160), newFiles: newFiles.slice(0, 6), shards: shardNames.length, localOk, mainOk, shardOk, atomsOk, skipOk, noteOk, localRaw: localRaw ? localRaw.length : 0, scope: scope, file: 'ftt2-state-' + scope }));
+        return ok;
+    } finally {
+        if (rtMod.cfg.storage) rtMod.cfg.storage.syncOnSave = keepSync;
+        RT.state.atoms = (RT.state.atoms || []).filter((x) => x.id !== 'bg4-a');
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 await assert('BG3 v3.0.20 真实点击「🧹 清除已处理楼层记录」：已处理统计归零（含面板读数），总览**重新列出第 0 层之后的所有待分析楼层**（此前被「已有记忆数据」全部跳过 → 清了没变化）；再次分析后它们照常从清单消失', (async () => {
     const RT = await import('../core/model/runtime.js');
     const FL = await import('../host/floors.js');

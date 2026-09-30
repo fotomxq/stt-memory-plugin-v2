@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.0.21",
+  "version": "3.0.22",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.0.22",
+      "date": "2026-09-30",
+      "title": "总览新增「💾 保存（对齐所有存储）」：一次点击把内存数据对齐到每一层已开启的存储",
+      "points": [
+        "逐层对齐（index.js#runSaveAll）：| 层 | 动作 | 说明 || --- | --- | --- || ① 状态（本机缓冲 + IndexedDB + 服务端…",
+        "界面（ui/panel.js）：总览 ⑤ 工具行新增 💾 保存（对齐所有存储）（data-ftt-action=\"saveAll\"）。点击同帧进入忙态（按钮转圈 + 禁用 + …",
+        "验证：单元 128 文件 / 2015 断言（新增 tests/unit/save-all.test.js 5 项：S0 入口齐备 ·A1 逐层写入并回报（本机缓冲 + 服务端文…"
+      ]
+    },
     {
       "version": "3.0.21",
       "date": "2026-09-30",

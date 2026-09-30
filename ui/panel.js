@@ -596,6 +596,11 @@ function overviewBody() {
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
         + nsfwBtn
         + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
+        // v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储，包括内存、浏览器本地变量、服务端等，全部对齐数据。」
+        + '<button class="ftt-btn' + (saveAllBusy ? ' ftt-loading' : '') + '" type="button"'
+        + ' data-ftt-action="saveAll" id="ftt-saveall-btn"' + (saveAllBusy ? ' disabled' : '')
+        + ' title="把当前内存数据写到所有已开启的存储并逐层回报：本机缓冲（浏览器本地变量）+ IndexedDB + 服务端记忆文件 + 分片 + 快照与清单文件 + 世界书镜像 + 跨端镜像（按开关）">'
+        + (saveAllBusy ? '💾 对齐中…' : '💾 保存（对齐所有存储）') + '</button>'
         + '</div>');
     // ⑥ 类目统计（一行胶囊）
     const sum = consoleSummary();
@@ -762,6 +767,10 @@ function plotSegmentsBodyHtml() {
  *   文案 / title / 旁注与 V1 一致；V2 用 `data-ftt-action` + `data-id` 约定）。
  */
 /** v2.99.0：自定义平行推演面板是否展开（模块态，随面板重绘保留） */
+// v3.0.22（用户要求）：「💾 保存（对齐所有存储）」在途忙位（防连点 + 渲染驱动禁用态）
+let saveAllBusy = false;
+/** 该忙位（面板/测试只读） */
+export function saveAllState() { return { busy: saveAllBusy }; }
 let customWeaveOpen = false;
 /** v2.99.0：自定义推演是否在途（防连点；长耗时 AI 动作） */
 let customWeaveBusy = false;
@@ -1989,6 +1998,35 @@ export async function panelAction(action, payload) {
             } else {
                 setNote('提取入口未就绪');
                 return done({ ok: false, reason: 'no-hook' });
+            }
+        } else if (a === 'saveAll') {
+            // v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储…全部对齐数据。」
+            //   立即进入忙态并重绘（按钮转圈禁用），完成后按**逐层结果**写提示与通知。
+            if (typeof hooks.saveAll !== 'function') {
+                setNote('保存入口未就绪');
+                result = Object.assign(result, { ok: false, action: a, reason: 'no-hook' });
+            } else if (saveAllBusy) {
+                setNote('正在对齐所有存储，请稍候…');
+                result = Object.assign(result, { ok: false, action: a, reason: 'busy' });
+            } else {
+                saveAllBusy = true;
+                setNote('正在对齐所有存储…（本机缓冲 / IndexedDB / 服务端文件 / 分片 / 快照与清单 / 世界书 / 跨端镜像）');
+                renderPanel();
+                let r = null;
+                try { r = await hooks.saveAll({}); } finally { saveAllBusy = false; }
+                const layers = (r && r.layers) || {};
+                const bits = [];
+                if (layers.state) bits.push('本机缓冲' + (String(layers.state.via || '').indexOf('localStorage') >= 0 ? '✓' : '—')
+                    + '/服务端' + (String(layers.state.via || '').indexOf('file') >= 0 ? '✓ ' + Math.round((Number(layers.state.bytes) || 0) / 1024) + 'KB' : '—'));
+                if (layers.snapshot) bits.push('快照' + (layers.snapshot.skipped ? ('（' + layers.snapshot.skipped + '）') : (layers.snapshot.ok ? '✓' : '✗')));
+                if (layers.meta) bits.push('清单' + (layers.meta.skipped ? ('（' + layers.meta.skipped + '）') : '✓'));
+                if (layers.worldbook) bits.push('世界书' + (layers.worldbook.skipped ? ('（' + layers.worldbook.skipped + '）') : '✓'));
+                if (layers.mirror) bits.push('跨端镜像' + (layers.mirror.skipped ? ('（' + layers.mirror.skipped + '）') : '✓'));
+                if (layers.settings) bits.push('配置✓');
+                const failed = (r && r.failed) || [];
+                setNote((r && r.ok ? '已对齐所有存储：' : '部分存储对齐失败（' + (failed.join('、') || '未知') + '）：') + bits.join(' · '));
+                try { panelNotify(r && r.ok ? 'success' : 'warning', r && r.ok ? '已对齐所有存储' : ('部分存储对齐失败：' + (failed.join('、') || '未知'))); } catch (e) { /* 忽略 */ }
+                result = Object.assign(result, r || { ok: false }, { action: a });
             }
         } else if (a === 'abortAnalysis' || a === 'abort') {
             const r = (typeof hooks.abort === 'function') ? hooks.abort() : { ok: false };
