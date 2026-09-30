@@ -4469,6 +4469,105 @@ await assert('BG4 v3.0.22 总览「💾 保存（对齐所有存储）」真实�
 })(), '');
 
 
+// v3.0.23（用户报告）：「初次激活插件读取的数据还是没有对齐，请核对是否存在bug。」
+//   核对出的三个真实成因（都在**载入路径**，不是保存路径）：
+//   ① 保存流水线一直写 IndexedDB（本机内存库），**载入从没读过它**；
+//   ② 主文件缺失 / 哈希不过时**在应用分片之前就返回** → 分片白写、恰恰在分片存在的场合丢数据；
+//   ③ chatMetadata（随聊天走的载体）只当差异报告读，**不参与载入** → 换设备 / 恢复聊天备份时看不到数据。
+await assert('BH5 v3.0.23 初次激活读取的数据真的对齐了（真实载入链路）：① 服务端与本地都空、只有聊天元数据（chatMetadata，随聊天备份走）时按它载入；② 主文件缺失但分片在时由分片重建（旧实现此处直接返回 null）；③ 本机内存库（IndexedDB）也参与载入（此前写而不读）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CS = await import('../core/state.js');
+    const SH = await import('../adapters/shards.js');
+    const UF = await import('../adapters/user-file.js');
+    const ST = await import('../adapters/store.js');
+    const CM = await import('../adapters/chat-meta.js');
+    const scope = CS.scopeId();
+    const keepFiles = new Map(srvFiles);
+    const keepLocal = Object.assign({}, memStore);
+    const keepMeta = host.ctx.chatMetadata;
+    const keepState = JSON.parse(JSON.stringify(RT.state || {}));
+    const clearLocal = () => { for (const k of Object.keys(memStore)) delete memStore[k]; };
+    const mkAtoms = (tag) => [{ id: 'bh5-' + tag + '-1', title: '【' + tag + '】对齐情节一', text: '【' + tag + '】这条情节来自该层的载体（正文足够长以便注入与列表渲染）。', date: '1919-12-10', tags: [], updatedAt: Date.now() },
+        { id: 'bh5-' + tag + '-2', title: '【' + tag + '】对齐情节二', text: '【' + tag + '】第二条情节，用来确认条数而不是「有就行」。', date: '1919-12-11', tags: [], updatedAt: Date.now() }];
+    try {
+        // ---------- ① 只有聊天元数据（初次激活：换设备 / 恢复聊天备份） ----------
+        srvFiles.clear();                                   // 服务端文件与分片都还没有
+        clearLocal();                                       // 本机缓冲也还没有
+        const metaState = Object.assign(CS.emptyState(), { atoms: mkAtoms('meta'), updatedAt: Date.now() });
+        host.ctx.chatMetadata = {};
+        host.ctx.chatMetadata[CM.CHAT_META_KEY] = { format: 'ftt-memory-v2-meta', version: '1', at: Date.now(), scope: scope, state: JSON.parse(JSON.stringify(metaState)) };
+        const capOk = CM.chatMetaCapability().readable === true;
+        const r1 = await entry.loadMemoryState();
+        const c1 = (RT.state.atoms || []).length === 2 && (RT.state.atoms || []).every((x) => String(x.id).indexOf('bh5-meta') === 0);
+        await entry.popupAction('tab', { tab: 'atoms' });
+        const html1 = String((await entry.popupAction('refresh', {})).html || '');
+        const shown1 = html1.indexOf('【meta】对齐情节一') >= 0;      // 面板真的显示了聊天载体里的数据
+
+        // ---------- ② 主文件缺失、分片还在 → 由分片重建 ----------
+        srvFiles.clear(); clearLocal(); host.ctx.chatMetadata = {};
+        RT.state.atoms = mkAtoms('shard');
+        RT.state.updatedAt = Date.now();
+        await ST.saveStateNow({ reason: 'smoke-BH5-基线', force: true });      // 写出主文件 + 分片 + 清单
+        const mainName = UF.stateFileName(scope);
+        const hadShards = srvFiles.has(SH.shardName(scope, 'atoms')) && srvFiles.has(SH.shardManifestName(scope));
+        srvFiles.delete(mainName);                                            // 只删主文件（模拟写入超时 / 被杀进程）
+        clearLocal();
+        const srv2 = await ST.loadFromServerFile();
+        const info2 = ST.lastServerLoadInfo();
+        const r2 = await entry.loadMemoryState();
+        const c2 = (RT.state.atoms || []).length === 2 && (RT.state.atoms || []).every((x) => String(x.id).indexOf('bh5-shard') === 0);
+        const viaShards = info2.via === 'shards' && (info2.applied || []).indexOf('atoms') >= 0;
+
+        // ---------- ③ 本机内存库（IndexedDB）参与载入（写而不读的旧缺陷） ----------
+        srvFiles.clear(); clearLocal(); host.ctx.chatMetadata = {};
+        RT.state.atoms = mkAtoms('idb');
+        RT.state.updatedAt = Date.now();
+        await ST.saveStateNow({ reason: 'smoke-BH5-idb', force: true });
+        const idbRead = await ST.loadFromIndexedDB();                          // 生产用 localforage；此处无宿主库 → 如实「未命中」
+        const idbLayerOk = idbRead === null || (idbRead && Array.isArray(idbRead.atoms));   // 不为 undefined（接口真实存在且可调用）
+
+        const ok = capOk && r1.base === 'chatmeta' && c1 && shown1 && hadShards && viaShards && c2 && !!srv2 && idbLayerOk;
+        if (!ok) console.log('BH5-DEBUG ' + JSON.stringify({ capOk, r1: { base: r1.base, via: r1.via }, c1, shown1, hadShards, viaShards, c2, srv2: !!srv2, idbLayerOk }));
+        return ok;
+    } finally {
+        srvFiles.clear(); for (const [k, v] of keepFiles) srvFiles.set(k, v);
+        clearLocal(); for (const k of Object.keys(keepLocal)) memStore[k] = keepLocal[k];
+        host.ctx.chatMetadata = keepMeta;
+        try { RT.setKernelState(keepState); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+// v3.0.23（用户要求）：「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志，方便追踪问题。」
+await assert('BH6 v3.0.23 读取台账真的进日志与界面：每一次服务端 / 本地 / 内存读取都记「来源 · 动作 · 耗时 · 体积 · 条数 · 结果」，分来源统计可直接读；调试页新增「📥 读取台账」区块、`FTT.reads()` 与调试包同源；清空动作可用', (async () => {
+    const RL = await import('../core/read-ledger.js');
+    const DBG = await import('../ui/debug.js');
+    RL.resetReadLedger();
+    // 真实跑一次载入（各层都会留下记录）
+    await entry.loadMemoryState();
+    const stats = RL.readLedgerStats();
+    const srcs = Object.keys(stats.bySrc);
+    const need = ['local', 'file', 'meta', 'shard', 'memory'];
+    const missing = need.filter((k) => srcs.indexOf(k) < 0);
+    const all = RL.readLedgerList();
+    const fieldsOk = all.length > 0 && all.every((x) => Number(x.at) > 0 && Number(x.ms) >= 0 && !!x.srcLabel && typeof x.action === 'string' && x.action.length > 0);
+    // 调试包（不落记忆正文）+ 调试页区块 + FTT.reads() 三处同源
+    const pack = DBG.buildDebugExport();
+    const packOk = typeof pack.readsText === 'string' && pack.readsText.indexOf('读取台账：共') === 0 && !!pack.reads;
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const dbgHtml = String((await entry.popupAction('refresh', {})).html || '');
+    const blockOk = dbgHtml.indexOf('📥 读取台账') >= 0 && dbgHtml.indexOf('共 ' + stats.totalReads + ' 次读取') >= 0;
+    const ft = globalThis.FTT && typeof globalThis.FTT.reads === 'function' ? globalThis.FTT.reads({ limit: 5 }) : null;
+    const ftOk = !!ft && !!ft.stats && ft.stats.totalReads === stats.totalReads && ft.lines.length === Math.min(5, all.length);
+    // 清空台账（只清内存缓冲）
+    const cl = await entry.popupAction('readLedgerClear', {});
+    const clearedOk = cl.ok === true && RL.readLedgerStats().totalReads === 0;
+    const ok = missing.length === 0 && fieldsOk && packOk && blockOk && ftOk && clearedOk;
+    if (!ok) console.log('BH6-DEBUG ' + JSON.stringify({ srcs, missing, total: stats.totalReads, fieldsOk, packOk, blockOk, ftOk, clearedOk, note: String((cl && cl.note) || '') }));
+    return ok;
+})(), '');
+
 await assert('BG3 v3.0.20 真实点击「🧹 清除已处理楼层记录」：已处理统计归零（含面板读数），总览**重新列出第 0 层之后的所有待分析楼层**（此前被「已有记忆数据」全部跳过 → 清了没变化）；再次分析后它们照常从清单消失', (async () => {
     const RT = await import('../core/model/runtime.js');
     const FL = await import('../host/floors.js');

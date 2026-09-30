@@ -23,12 +23,15 @@ import { stateFileName } from './user-file.js';
 import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
 // v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
-import { writeStateShards, applyNewerShards, META_SHARD, SHARD_DIMS } from './shards.js';
+import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 import { hydrateStorageData } from '../core/slim.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
 import { trackPipeline } from '../core/pipeline.js';
 import { debugLogPush } from './debug-log.js';   // v2.87.0：内核 warn → 调试日志（kind = 异常）
+// v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志，方便追踪问题」）
+//   —— 载入路径的每一次读取都进**读取台账**（`core/read-ledger.js`），并逐层回报「读到什么 / 多久 / 多少条」。
+import { readLedgerBegin, readLedgerEnd, readLedgerRecord, readLedgerStats } from '../core/read-ledger.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -399,50 +402,175 @@ export function cancelScheduledSave() {
  * @returns {object|null} state 或 null
  */
 export function loadFromLocalStorage() {
+    const tok = readLedgerBegin('读本机缓冲', 'local', { target: 'ftt2_state_' + scopeId() });
     try {
         const key = 'ftt2_state_' + scopeId();
         const raw = storageHooks.getItem(key);
-        if (!raw) return null;
+        if (!raw) { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-local-buffer', note: '本机缓冲为空（首次使用或已清理）' }); return null; }
         const env = JSON.parse(raw);
-        if (!env || !env.payload) return null;
+        if (!env || !env.payload) { readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: String(raw).length }); kernelWarn('载入：本机缓冲信封不完整 → 丢弃', ''); return null; }
         const h = storageHash(env.payload);
-        if (env.hash && env.hash !== h) { kernelWarn('载入：本机缓冲哈希不一致 → 丢弃', ''); return null; }
-        return env.payload.data || null;
-    } catch (e) { return null; }
+        if (env.hash && env.hash !== h) {
+            readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: String(raw).length, hash: h, note: '信封哈希不一致 → 丢弃本机缓冲' });
+            kernelWarn('载入：本机缓冲哈希不一致 → 丢弃', '');
+            return null;
+        }
+        const st = env.payload.data || null;
+        readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: countsOf(st).total, hash: h, note: '信封校验通过' });
+        return st;
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return null;
+    }
 }
+
+/**
+ * v3.0.23（用户报告「初次激活插件读取的数据还是**没有对齐**」）——**本机内存库（IndexedDB）读取**。
+ *
+ * 这是个**真实的读写不对称 bug**：保存流水线从 v2.x 起就写 IndexedDB（`localforage.setItem`，第 ⑤ 步），
+ *   但**载入路径从来没有读过它** —— 本机有两层缓冲（localStorage / IndexedDB），却只读了一层。
+ *   于是「浏览器本地变量被清掉（清缓存 / 隐私模式 / 换了存储分区）而 IndexedDB 还在」时，
+ *   数据看起来整个丢了，正是用户说的「初次激活读取的数据没有对齐」。
+ * 口径与 `loadFromLocalStorage` **完全一致**（同一信封、同一哈希校验、损坏即丢弃），只是换了一层存储。
+ * @returns {Promise<object|null>} state 或 null
+ */
+export async function loadFromIndexedDB() {
+    const tok = readLedgerBegin('读本机内存库', 'idb', { target: 'ftt2_state_' + scopeId() });
+    try {
+        const lf = await localforageLib();
+        if (!lf || typeof lf.getItem !== 'function') { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-indexeddb', note: '宿主未提供 localforage → 本层不可用' }); return null; }
+        const env = await lf.getItem('ftt2_state_' + scopeId());
+        if (!env) { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-idb-buffer' }); return null; }
+        let bytes = 0;
+        try { bytes = JSON.stringify(env).length; } catch (e) { bytes = 0; }
+        if (!env.payload) { readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: bytes }); return null; }
+        const h = storageHash(env.payload);
+        if (env.hash && env.hash !== h) {
+            readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: bytes, hash: h });
+            kernelWarn('载入：本机内存库哈希不一致 → 丢弃', '');
+            return null;
+        }
+        const st = env.payload.data || null;
+        readLedgerEnd(tok, { ok: true, bytes: bytes, items: countsOf(st).total, hash: h, note: '信封校验通过' });
+        return st;
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return null;
+    }
+}
+
+/**
+ * v3.0.23：**主文件不可用时的分片重建**（用户报告「初次激活读取的数据还是没有对齐」的第二个成因）。
+ *
+ * v3.0.21 把「按维度分片」定为**实时通道**、主文件只是**提交点** —— 但只要主文件缺失 / 损坏 /
+ *   哈希不过，旧实现就 `return null`（**在 `applyNewerShards` 之前**），于是**恰恰在分片存在的场合**
+ *   一片都不读：分片白写了，用户看到「数据没了」。
+ * 现在：主文件拿不到就以 `mainAt = 0` 应用全部分片（每片仍逐片校验内容哈希），能拼出多少算多少；
+ *   一片都没有才算未命中。纯附加：主文件正常时本函数根本不会被调用。
+ * @param {string} reason 主文件为何不可用（写进台账与日志）
+ * @returns {Promise<{st:object|null, applied:string[], at:number}>}
+ */
+async function loadStateFromShards(reason) {
+    const out = { st: null, applied: [], at: 0 };
+    const tok = readLedgerBegin('读分片重建状态', 'shard', { target: shardManifestName(scopeId()), note: String(reason || '') });
+    try {
+        const st = emptyState();
+        const ap = await applyNewerShards(st, 0, { slug: scopeId() });
+        out.applied = (ap && ap.applied) || [];
+        out.at = Number((ap && ap.at) || 0);
+        if (!out.applied.length) { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-shards', note: '主文件不可用且没有可用分片' }); return out; }
+        out.st = st;
+        readLedgerEnd(tok, {
+            ok: true, items: countsOf(st).total,
+            extra: { applied: out.applied, at: out.at },
+            note: '主文件不可用 → 由 ' + out.applied.length + ' 个分片重建（' + out.applied.join(',') + '）',
+        });
+        return out;
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return out;
+    }
+}
+
+/** 最近一次服务端载入的结论（诊断 / 台账；`via` = file | shards | none） */
+let lastServerLoad = { at: 0, via: 'none', ok: false, bytes: 0, mainAt: 0, applied: [], reason: '', reasonText: '' };
+export function lastServerLoadInfo() { return Object.assign({}, lastServerLoad, { applied: (lastServerLoad.applied || []).slice() }); }
 
 /** 服务端文件载入（返回 state 或 null） */
 export async function loadFromServerFile() {
     // B9-d：`stateFileGzip` 关闭（默认）时**仅读规范明文名** —— 与 B7-2 的请求序列/时序逐字节一致（零额外请求）；
     //   开启时先试 `.json.gz` 再回退明文（V1 的候选顺序）。读取按**内容魔数**解压（`readStateFileAuto`）。
-    let r = await fileTransportReadAuto(stateFileName(scopeId()));
-    if ((!r || !r.ok) && stateFileGzipOn()) r = await fileTransportReadAuto(stateFileGzName());
-    if (!r || !r.ok) return null;
+    let r = await fileTransportReadAuto(stateFileName(scopeId()), { src: 'file', role: '主文件' });
+    if ((!r || !r.ok) && stateFileGzipOn()) r = await fileTransportReadAuto(stateFileGzName(), { src: 'file', role: '主文件(gz)' });
+    if (!r || !r.ok) {
+        // v3.0.23：**主文件缺失 → 仍有分片可用**（见 `loadStateFromShards`）
+        const sr = await loadStateFromShards('main-file-missing');
+        lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: 0, mainAt: 0, applied: sr.applied, reason: String((r && r.error) || 'miss'), reasonText: sr.st ? '主文件不可用 → 分片重建' : '主文件与分片都不可用' };
+        try { debugLogPush('对账', { action: '载入：主文件不可用' + (sr.st ? ('，已用 ' + sr.applied.length + ' 个分片重建') : '，分片也没有'), reason: lastServerLoad.reason, applied: sr.applied }); } catch (e) { /* 忽略 */ }
+        return sr.st;
+    }
+    const tok = readLedgerBegin('解析主文件', 'file', { target: stateFileName(scopeId()) });
     try {
         const env = JSON.parse(r.text);
         if (env && env.payload) {
             const h = storageHash(env.payload);
-            if (env.hash && env.hash !== h) return null;
+            if (env.hash && env.hash !== h) {
+                readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: String(r.text).length, hash: h, note: '主文件信封哈希不一致 → 改用分片' });
+                const sr = await loadStateFromShards('main-file-hash-mismatch');
+                lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: String(r.text).length, mainAt: 0, applied: sr.applied, reason: 'hash-mismatch', reasonText: sr.st ? '主文件哈希不一致 → 分片重建' : '主文件哈希不一致且无可用分片' };
+                try { kernelWarn('载入：服务端主文件哈希不一致 → 已丢弃，改用分片', ''); } catch (e) { /* 忽略 */ }
+                return sr.st;
+            }
             // B9-d：瘦身还原（写盘前剥掉的同义字段/空值由核心兜底；此处补回显示层字段）
             try { hydrateStorageData(env.payload.data); } catch (e) { /* 忽略 */ }
             const st = env.payload.data || null;
+            const mainAt = Number(env.payload.updatedAt) || 0;
+            let applied = [];
             // v3.0.21（用户要求「一劳永逸」修「退出应用后大量回滚」）：
             //   主文件是**提交点**，但它可能**滞后于分片**（写入超时 / 进程被杀 / 切后台）——
             //   载入时把「比主文件更新」的分片应用回来（每片带内容哈希校验），于是那些改动不再丢。
             if (st) {
                 try {
-                    const ap = await applyNewerShards(st, Number(env.payload.updatedAt) || 0);
-                    if (ap && ap.applied && ap.applied.length) {
-                        try { debugLogPush('对账', { action: '载入：应用更新的分片（主文件滞后）', dims: ap.applied, shardAt: ap.at, mainAt: Number(env.payload.updatedAt) || 0 }); } catch (e) { /* 忽略 */ }
+                    const ap = await applyNewerShards(st, mainAt);
+                    applied = (ap && ap.applied) || [];
+                    if (applied.length) {
+                        readLedgerRecord({
+                            action: '应用更新的分片', src: 'shard', target: shardManifestName(scopeId()),
+                            ok: true, items: countsOf(st).total, ms: 0,
+                            extra: { applied: applied, mainAt: mainAt },
+                            note: '主文件滞后 → 用 ' + applied.length + ' 个更新的分片覆盖对应维度',
+                        });
+                        try { debugLogPush('对账', { action: '载入：应用更新的分片（主文件滞后）', dims: applied, shardAt: ap.at, mainAt: mainAt }); } catch (e) { /* 忽略 */ }
                     }
                 } catch (e) { /* 分片不可用不影响主文件载入 */ }
                 // 载入来源即「异常缩水」守卫的基线：避免把「本来就只有这么多条」误判成缩水
                 try { primeShrinkBaseline(st); } catch (e) { /* 忽略 */ }
             }
+            readLedgerEnd(tok, {
+                ok: !!st, bytes: String(r.text).length, items: countsOf(st).total, hash: h,
+                miss: !st,
+                extra: { applied: applied, mainAt: mainAt, backend: String((r && r.backend) || '') },
+                note: '信封校验通过（主文件时间 ' + mainAt + '）',
+            });
+            if (!st) {
+                // 信封在、数据体不在（异常写入）→ 仍按「分片可用就重建」处理，不把用户的数据判成没有
+                const sr = await loadStateFromShards('main-file-empty-data');
+                lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: String(r.text).length, mainAt: mainAt, applied: sr.applied, reason: 'empty-data', reasonText: sr.st ? '主文件无数据体 → 分片重建' : '主文件无数据体且无分片' };
+                return sr.st;
+            }
+            lastServerLoad = { at: Date.now(), via: 'file', ok: true, bytes: String(r.text).length, mainAt: mainAt, applied: applied, reason: '', reasonText: '主文件正常' };
             return st;
         }
-        return env || null;
-    } catch (e) { return null; }
+        readLedgerEnd(tok, { ok: false, reason: 'no-payload', bytes: String(r.text).length, note: '信封缺 payload → 改用分片' });
+        const sr = await loadStateFromShards('main-file-no-payload');
+        lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: String(r.text).length, mainAt: 0, applied: sr.applied, reason: 'no-payload', reasonText: sr.st ? '主文件无 payload → 分片重建' : '主文件无 payload 且无分片' };
+        return sr.st;
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e), bytes: String((r && r.text) || '').length, note: '主文件解析失败 → 改用分片' });
+        const sr = await loadStateFromShards('main-file-parse-error');
+        lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: 0, mainAt: 0, applied: sr.applied, reason: String((e && e.message) || e), reasonText: sr.st ? '主文件解析失败 → 分片重建' : '主文件解析失败且无分片' };
+        return sr.st;
+    }
 }
 
 /** 删除服务端文件（数据管理用） */
@@ -588,5 +716,10 @@ export function primeStateIndex() {
 
 /** 存储接线状态（调试用） */
 export function storeStatus() {
-    return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady };
+    // v3.0.23：把「读取台账」与「最近一次服务端载入结论」并入存储诊断（调试页 / 调试包 / FTT.storeStatus 同源）
+    let reads = null;
+    try { reads = readLedgerStats(); } catch (e) { reads = null; }
+    let serverLoad = null;
+    try { serverLoad = lastServerLoadInfo(); } catch (e) { serverLoad = null; }
+    return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady, reads: reads, serverLoad: serverLoad };
 }

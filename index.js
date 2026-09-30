@@ -3,7 +3,7 @@
 // 分层：ui/ ─► host/ ─► adapters/ ─► core/（core 严禁反向依赖，见 scripts/check-core-purity.js）
 // P0 范围：可安装骨架 + 能力探测 + 设置面板 + 事件绑定 + 生成前钩子（空实现） + 调试导出
 // ============================================================
-import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS } from './core/constants.js';
+import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS, ATOM_DIM_KEYS } from './core/constants.js';   // v3.0.23：+ATOM_DIM_KEYS（载入记账的逐维条数）
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
@@ -37,7 +37,11 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromServerFile, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline } from './adapters/store.js';   // v3.0.18：+flushStateNow（退出/切后台前落盘）
+import { wirePersistHooks, loadFromLocalStorage, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline } from './adapters/store.js';   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）
+// v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
+import { chatMetaLoadState } from './adapters/chat-meta.js';
+// v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
+import { setReadLedgerHooks, readLedgerRecord, readLedgerStats, readLedgerList, readLedgerLines, readLedgerSummaryText, resetReadLedger, READ_LEDGER_CAP } from './core/read-ledger.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
 import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
@@ -69,7 +73,7 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState } from './core/migrate.js';
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq } from './core/model/runtime.js';
 import { hashText, fileStamp } from './core/util.js';
 import {
     clockManualState, setClockManual, clearClockManual,
@@ -303,49 +307,154 @@ export function pickNewerState(localSt, fileSt) {
 export async function loadMemoryState() {
     let via = 'new';
     let st = null;
+    // v3.0.23：载入是异步的；期间若有人（导入 / 清空 / 跨端合并）注入了更新的状态，**本次不再覆盖**
+    const gen0 = (() => { try { return kernelStateSeq(); } catch (e) { return -1; } })();
     try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 聊天视图缺失不阻塞 */ }
     try { wirePersistHooks(); } catch (e) { /* 忽略 */ }
-    // v3.0.11（真机根因）：**两个源都读，按 `updatedAt` 择优**，不再「第一个有货就用」。
-    //   此前本机缓冲（localStorage）一旦存在就直接采用 —— 即使它是一份很旧的副本
-    //   （实测：v2.84.0、台账 0 条，但信封哈希自洽所以顺利通过校验）→ 更新得多的服务端文件
-    //   被它永久遮蔽，表现为「每次刷新后已分析楼层成片变回未摘要」。
-    //   旧副本的数据不会被丢：启动对账仍会按既有合并口径并入（`crossComputeInfo` / `applyRemoteMergeToState`）。
-    let localSt = null, fileSt = null;
-    try { localSt = loadFromLocalStorage(); } catch (e) { localSt = null; }
-    try { fileSt = await loadFromServerFile(); } catch (e) { fileSt = null; }
-    // v3.0.21（用户要求：「修复存储异常，当退出应用后，插件的数据大量回滚。之前发现是内存问题，
-    //   建议一劳永逸，第一次启动不用内存或本地数据。」）——**载入口径改为「服务端文件为基底 + 本机缓冲只作并集补充」**：
-    //   · 服务端文件是权威、且由「保存流水线 + 分片」共同保证最新 → **永远拿它做基底**；
-    //   · 本机缓冲**不再整体采用**（旧口径按 `updatedAt` 二选一：一旦本机缓冲时间戳更"新"却是残缺/陈旧数据，
-    //     就会把服务端的好数据整体覆盖 → 用户看到的「大量回滚」）。现在它只贡献**并集**：
-    //     同名条目按时间取新、墓碑生效（`mergeDataObjects` 的既有口径）→ 既不回滚、也不丢未上传的本地改动。
-    const pick = pickNewerState(localSt, fileSt);            // 仍保留：作为**诊断**（谁的时间戳更新）
-    if (fileSt && localSt) {
-        st = mergeLoadedSources(fileSt, localSt);
-        via = 'file';
-    } else if (fileSt) { st = fileSt; via = 'file'; }
-    else if (localSt) { st = localSt; via = 'local'; }
-    else { st = null; via = 'new'; }
-    if (localSt || fileSt) {
+    const scopeKey = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
+    // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：作用域未就绪时读到的其实是 `default` 作用域
+    //   （= 另一个角色的文件）—— 这本身就是「没对齐」。此时照常载入（不阻塞启动），但如实记账并回报
+    //   `scopeEmpty: true`，由 `init()` 安排**一次**延迟重载（作用域就绪后自动纠正）。
+    if (!scopeKey) {
         try {
-            debugLogPush('对账', {
-                action: fileSt && localSt ? '载入：以服务端文件为基底 + 本机缓冲并集并入' : '载入（单源）',
-                localAt: pick.atLocal, fileAt: pick.atFile, picked: via, newerSide: pick.via, reason: pick.reason,
-            });
+            readLedgerRecord({ action: '作用域未就绪', src: 'memory', ok: true, miss: true, reason: 'scope-key-empty', note: '角色稳定键尚未就绪 → 本次按 default 作用域读取，稍后会自动重载一次' });
+            debugLogPush('对账', { action: '载入：作用域未就绪（角色键为空）', note: '按 default 作用域读取，init 将延迟重载一次' });
         } catch (e) { /* 忽略 */ }
     }
+    // v3.0.11（真机根因）：**两个源都读，按 `updatedAt` 择优**，不再「第一个有货就用」。
+    // v3.0.21（用户要求「一劳永逸」）：载入口径 = **服务端文件为基底 + 本机缓冲只作并集补充**。
+    // v3.0.23（用户报告「初次激活读取的数据还是没有对齐」）：把**每一层**都读进来 —— 服务端主文件 / 分片 /
+    //   本机缓冲（localStorage）/ **本机内存库（IndexedDB）** / **聊天元数据（chatMetadata，随聊天走）**；
+    //   基底取「服务端文件（含分片重建）」，其余各层只贡献**并集**（同名按时间取新、墓碑生效），
+    //   且**绝不整体覆盖**基底 —— 于是「换设备 / 清缓存 / 恢复聊天备份 / 初次激活」都能自动对齐。
+    const layers = { local: null, idb: null, file: null, chatmeta: null };
+    try { layers.local = loadFromLocalStorage(); } catch (e) { layers.local = null; }
+    try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
+    try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
+    const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
+    layers.chatmeta = (cm && cm.state) || null;
+    const pick = pickNewerState(layers.local, layers.file);            // 保留：作为**诊断**（谁的时间戳更新）
+    const chosen = alignLoadedLayers(layers);
+    st = chosen.st; via = chosen.via;
+    // 逐层记账 + 差异报告（哪一层被采用为基底、哪几层并集进来、各贡献了多少条）
+    try {
+        debugLogPush('对账', {
+            action: st ? ('载入：以' + chosen.baseLabel + '为基底 + ' + (chosen.unioned.length ? (chosen.unioned.join(' / ') + ' 并集并入') : '无并集')) : '载入（无任何数据源）',
+            localAt: pick.atLocal, fileAt: pick.atFile, picked: via, newerSide: pick.via, reason: pick.reason,
+            base: chosen.base, baseAt: chosen.baseAt, unioned: chosen.unioned, skipped: chosen.skipped,
+            contributed: chosen.contributed, chatMetaAt: Number((cm && cm.at) || 0), chatMetaTotal: Number((cm && cm.total) || 0),
+            serverVia: (() => { try { return lastServerLoadInfo().via; } catch (e) { return ''; } })(),
+            scopeKey: scopeKey ? '(已就绪)' : '(空)',
+        });
+    } catch (e) { /* 忽略 */ }
     if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
     // v3.0.21：登记「异常缩水」守卫的基线（载入态即基线；此后任何无墓碑的大规模缩水都会被拦下）
     try { primeShrinkBaseline(st); } catch (e) { /* 忽略 */ }
-    try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    const genNow = (() => { try { return kernelStateSeq(); } catch (e) { return gen0; } })();
+    const superseded = genNow !== gen0;
+    if (superseded) {
+        // 读盘期间状态已被别的动作换成更新的一份（导入 / 清空 / 跨端合并）→ 保留那一份，不覆盖
+        try {
+            readLedgerRecord({ action: '载入被更新的内存态让位', src: 'memory', ok: true, miss: true, reason: 'state-superseded', extra: { gen0: gen0, genNow: genNow }, note: '读盘期间内存状态已被其它动作更新 → 本次载入不覆盖' });
+            debugLogPush('对账', { action: '载入：内存状态已被其它动作更新 → 本次不覆盖（避免把新数据清回去）', gen0: gen0, genNow: genNow });
+        } catch (e) { /* 忽略 */ }
+        via = 'superseded';
+    } else {
+        try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    }
+    // 内存层记账：注入后内存里到底是什么（条数 / 字段数 / 各维条数）——载入链路的最后一环
+    try {
+        const counts = dimCountsOf(st);
+        readLedgerRecord({
+            action: '注入内存态', src: 'memory', ok: true, items: counts.total, fields: Object.keys(st || {}).length,
+            extra: { via: via, dims: counts.dims },
+            note: '载入完成（来源 ' + via + '）：内存现有 ' + counts.total + ' 条原子数据',
+        });
+    } catch (e) { /* 忽略 */ }
     // B8-7-b：历史存档清理（V1 启动同款）——旧版「转正」只写 `promotedTo` 软标记，按 v1.196 规则移除该死条目
     //   （仅当被转正的情节仍存在；情节已删则保留原平行记录）。
     try { prunePromotedParallels(); } catch (e) { /* 软标记清理失败不影响载入 */ }
     try { setLastMessageId(runtime.chat.lastMessageId); } catch (e) { /* 忽略 */ }
     try { primeStateIndex(); } catch (e) { /* 索引基线失败不影响载入 */ }
-    try { runtime.store = Object.assign({ via }, storeStatus()); } catch (e) { runtime.store = { via }; }
-    return { via, scope: runtime.store.scope || '' };
+    try { runtime.store = Object.assign({ via, layers: chosen.report }, storeStatus()); } catch (e) { runtime.store = { via }; }
+    return { via, scope: runtime.store.scope || '', base: chosen.base, baseAt: chosen.baseAt, unioned: chosen.unioned, skipped: chosen.skipped, contributed: chosen.contributed, layers: chosen.report, scopeKey: scopeKey, scopeEmpty: !scopeKey, superseded: superseded };
+}
+
+/** 逐维条数（载入记账用；与 `store.js#countsOf` 同口径但不引入适配层依赖） */
+function dimCountsOf(st) {
+    const dims = {};
+    let total = 0;
+    try {
+        for (const d of ATOM_DIM_KEYS) { const n = Array.isArray(st && st[d]) ? st[d].length : 0; dims[d] = n; total += n; }
+        const c = Array.isArray(st && st.currencies) ? st.currencies.length : 0;
+        dims.currencies = c; total += c;
+    } catch (e) { /* 忽略 */ }
+    return { total: total, dims: dims };
+}
+
+/**
+ * v3.0.23：**载入分层对齐**（纯函数，便于单测）——「初次激活读取的数据还是没有对齐」的修复主体。
+ *
+ * 输入 = 各层读到的 state（已各自校验）：`{local, idb, file, chatmeta}`；输出 = 最终载入的 state + 取证报告。
+ *
+ * 口径（承接 v3.0.21「服务端文件为基底」）：
+ *   ① **基底**：服务端文件（`file`，其内部可能已用分片重建）优先；没有才在（聊天元数据 / 内存库 / 本机缓冲）
+ *      里取 `updatedAt` 最新的一层（**初次激活**就是这条路径：文件还没有，但聊天里 / 内存库里可能已经有）。
+ *   ② **并集**：本机缓冲与内存库**始终**并集（它们由保存流水线同步写入，清空/导入也一样写 → 不会复活旧数据）；
+ *      聊天元数据**只在比基底更新时**才并集（它不由 V2 写入，无条件并集会让「清空记忆」被旧副本复活）。
+ *   ③ **绝不整体覆盖**：并集走 `mergeDataObjects`（同名按时间取新 + 墓碑生效 + 快照链并集 + 已处理楼层并集）。
+ * @param {{local?:object|null, idb?:object|null, file?:object|null, chatmeta?:object|null}} layers
+ * @returns {{st:object|null, via:string, base:string, baseAt:number, unioned:string[], skipped:Array<{src:string,reason:string}>,
+ *            contributed:object, report:object, baseLabel:string}}
+ */
+export function alignLoadedLayers(layers) {
+    const L = layers || {};
+    const atOf = (s) => Number((s && s.updatedAt) || 0);
+    const has = (s) => !!(s && typeof s === 'object');
+    const skipped = [];
+    let base = '', st = null, baseAt = 0;
+    if (has(L.file)) { base = 'file'; st = L.file; baseAt = atOf(L.file); }
+    else {
+        // 初次激活（服务端还没有数据）：在本地三层里取最新的一份当基底（顺序即同分优先：本机缓冲 → 内存库 → 聊天元数据）
+        const order = [['local', L.local], ['idb', L.idb], ['chatmeta', L.chatmeta]].filter((x) => has(x[1]));
+        if (order.length) {
+            let best = order[0];
+            for (const x of order) if (atOf(x[1]) > atOf(best[1])) best = x;
+            base = best[0]; st = best[1]; baseAt = atOf(best[1]);
+        }
+    }
+    const contributed = {};
+    const unioned = [];
+    if (st) {
+        const news = [];
+        if (base !== 'local' && has(L.local)) news.push(['local', L.local]);
+        if (base !== 'idb' && has(L.idb)) news.push(['idb', L.idb]);
+        if (base !== 'chatmeta' && has(L.chatmeta)) {
+            // 聊天元数据不由 V2 写入 → 只有**确实更新**时才并集（否则「清空记忆」会被它复活）
+            if (atOf(L.chatmeta) > baseAt) news.push(['chatmeta', L.chatmeta]);
+            else skipped.push({ src: 'chatmeta', reason: 'not-newer', at: atOf(L.chatmeta), baseAt: baseAt });
+        }
+        if (base !== 'file' && has(L.file)) news.push(['file', L.file]);
+        for (const [name, src] of news) {
+            const before = dimCountsOf(st).total;
+            const merged = (() => { try { return mergeLoadedSources(st, src); } catch (e) { return st; } })();
+            st = merged || st;
+            const after = dimCountsOf(st).total;
+            contributed[name] = after - before;
+            unioned.push(name);
+        }
+    }
+    for (const [name, src] of [['local', L.local], ['idb', L.idb], ['file', L.file], ['chatmeta', L.chatmeta]]) {
+        if (!has(src) && name !== 'file') skipped.push({ src: name, reason: 'absent' });
+    }
+    const via = st ? (base || 'new') : 'new';
+    const baseLabel = base === 'file' ? '服务端文件' : (base === 'local' ? '本机缓冲' : (base === 'idb' ? '本机内存库' : (base === 'chatmeta' ? '聊天元数据' : '（无）')));
+    const report = {};
+    for (const [name, src] of [['local', L.local], ['idb', L.idb], ['file', L.file], ['chatmeta', L.chatmeta]]) {
+        report[name] = has(src) ? { at: atOf(src), total: dimCountsOf(src).total, used: (name === base) || (unioned.indexOf(name) >= 0), contributed: Number(contributed[name]) || 0 } : { at: 0, total: 0, used: false, contributed: 0 };
+    }
+    return { st: st, via: via, base: base, baseAt: baseAt, unioned: unioned, skipped: skipped, contributed: contributed, report: report, baseLabel: baseLabel };
 }
 
 /** 初始化（幂等；任何一步失败都不影响其余步骤与宿主） */
@@ -357,6 +466,21 @@ export async function init() {
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
     // B9-a：调试日志接线（内核环形缓冲 ⇄ localStorage；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
     try { runtime.debug = wireDebugLog(); } catch (e) { runtime.debug = { persistent: false, synced: 0 }; }
+    // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
+    //   读取台账 → 调试日志（`kind='读取'`）+ 交互时间线（`kernel/read`）。台账本身是纯内核，
+    //   出口（日志/时间线）由这里注入 —— 内核零宿主依赖。
+    try {
+        setReadLedgerHooks({
+            log: (rec) => {
+                try { debugLogPush('读取', { action: rec.action, src: rec.srcLabel, target: rec.target, ok: rec.ok, miss: rec.miss, ms: rec.ms, bytes: rec.bytes, items: rec.items, fields: rec.fields, hash: rec.hash, reason: rec.reason, note: rec.note, extra: rec.extra }); } catch (e) { /* 忽略 */ }
+                try {
+                    if (rec.ok !== false || rec.ms >= 150) {
+                        traceEvent({ cat: 'kernel', kind: 'read-' + rec.src, level: 'debug', detail: { action: rec.action, target: rec.target, ok: rec.ok, miss: rec.miss, ms: rec.ms, bytes: rec.bytes, items: rec.items, reason: rec.reason } });
+                    }
+                } catch (e) { /* 忽略 */ }
+            },
+        });
+    } catch (e) { /* 忽略 */ }
     // v2.34.0（强化调试）：安装全局异常捕捉 —— 未捕获错误 / 未处理 Promise 拒绝自动写入调试日志（`kind='异常'`）
     try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; }
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
@@ -381,7 +505,14 @@ export async function init() {
     //   全部失败时由可见性探针启用悬浮兜底（`reason='fallback'`）
     try { syncEntriesNow(); } catch (e) { /* 入口安装失败不影响功能 */ }
     try { setPopupHooks(popupHooks()); } catch (e) { /* 忽略 */ }
-    try { await loadMemoryState(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    try {
+        const loaded = await loadMemoryState();
+        // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：角色稳定键未就绪时那次读取按 `default`
+        //   作用域进行（等于读了别的角色的文件）→ **延迟重载一次**（作用域就绪后自动纠正，绝不重复叠加：
+        //   重载会重新走「基底 + 并集」，且只在 `scopeEmpty` 时安排）。
+        if (loaded && loaded.scopeEmpty) scheduleScopeReload();
+        else runtime.scopeReload = { scheduled: false, delayMs: 0 };
+    } catch (e) { runtime.lastError = String((e && e.message) || e); }
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
     //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
     try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
@@ -491,6 +622,45 @@ function waitStartupUpdateDelay(ms, opts) {
             } catch (e) { /* 忽略 */ }
         }
     });
+}
+
+/**
+ * v3.0.23：作用域未就绪时的**一次性延迟重载**（用户报告「初次激活插件读取的数据还是没有对齐」）。
+ *   初次激活 / 宿主早期加载时，角色稳定键可能还是空的 → 这一次读的是 `default` 作用域（等于读了别人的文件）。
+ *   这里安排**一次** 1.5s 后的重载（经内核 `timerHooks`，宿主可替换 → 测试可断言；`teardown` 会撤销）。
+ * @returns {{scheduled:boolean, delayMs:number}}
+ */
+export const SCOPE_RELOAD_DELAY_MS = 1500;
+let scopeReloadPending = null;
+export function scheduleScopeReload(ms) {
+    const delay = Math.max(0, Number(ms) || SCOPE_RELOAD_DELAY_MS);
+    try { cancelScopeReload(); } catch (e) { /* 忽略 */ }
+    const ticket = { id: 0, fallback: 0, done: false };
+    scopeReloadPending = ticket;
+    const fire = () => {
+        if (ticket.done) return;
+        ticket.done = true;
+        if (scopeReloadPending === ticket) scopeReloadPending = null;
+        try { void loadMemoryState().catch(() => { }); } catch (e) { /* 忽略 */ }
+    };
+    try { ticket.id = timerHooks.set(fire, delay) || 0; } catch (e) { /* 落到兜底定时器 */ }
+    if (typeof setTimeout === 'function') { try { ticket.fallback = setTimeout(fire, delay + 500); } catch (e) { /* 忽略 */ } }
+    runtime.scopeReload = { scheduled: true, delayMs: delay, at: Date.now() };
+    try { debugLogPush('对账', { action: '载入：作用域未就绪 → 已安排一次延迟重载', delayMs: delay }); } catch (e) { /* 忽略 */ }
+    return { scheduled: true, delayMs: delay };
+}
+
+/** 取消待执行的作用域重载（teardown / 新调度时调用；幂等） */
+export function cancelScopeReload() {
+    try {
+        const t = scopeReloadPending;
+        if (!t) return false;
+        scopeReloadPending = null;
+        t.done = true;
+        if (t.id) { try { timerHooks.clear(t.id); } catch (e) { /* 忽略 */ } }
+        if (t.fallback) { try { clearTimeout(t.fallback); } catch (e) { /* 忽略 */ } }
+        return true;
+    } catch (e) { return false; }
 }
 
 /** 取消待执行的启动更新检查（teardown / 新调度时调用；幂等） */
@@ -755,6 +925,11 @@ function bootstrapDiagnostics() {
             clockTraceAll: () => ({ resolve: clockTraceList('resolve').map(clockTraceInfo), patrol: clockTraceList('patrol').map(clockTraceInfo), 'regex-ai': clockTraceList('regex-ai').map(clockTraceInfo), 'time-repair': clockTraceList('time-repair').map(clockTraceInfo) }),
             clockTraceSummary: (stage) => clockTraceSummary(stage ? clockTraceLast(stage) : clockTraceLast()),
             clockTraceClear: () => clockTraceClear(),
+            // v3.0.23：读取台账（面板/调试台同源；只读 + 可清零）
+            reads: (o2) => ({ stats: readLedgerStats(), lines: readLedgerLines(Number((o2 && o2.limit) || 20)) }),
+            readsText: (limit) => readLedgerSummaryText(Number(limit) || 30),
+            readsClear: () => resetReadLedger(),
+            loadInfo: () => (() => { try { return { server: lastServerLoadInfo(), store: storeStatus(), ledger: readLedgerStats() }; } catch (e) { return null; } })(),
             clockSrcLabel: (k) => clockSrcLabel(k),
             clockSrcLabels: () => clockSrcKeys().map((k) => ({ key: k, label: clockSrcLabel(k) })),
             clockAnchor: () => clockPatrolAnchorInfo(),
@@ -1728,6 +1903,7 @@ export function teardown() {
     try { cancelForgetTimers(); } catch (e) { /* noop */ }
     try { cancelRepairTimers(); } catch (e) { /* noop */ }
     try { cancelStartupUpdateDelay(); } catch (e) { /* noop */ }   // v2.46.0：撤销待执行的启动更新检查
+    try { cancelScopeReload(); } catch (e) { /* noop */ }   // v3.0.23：撤销待执行的作用域延迟重载
     runtime.ready = false;
     return true;
 }

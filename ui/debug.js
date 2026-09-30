@@ -52,6 +52,8 @@ import { scopeId } from '../core/state.js';
 import { stateFileName } from '../adapters/user-file.js';
 import { fileTransportReadAuto } from '../adapters/file-transport.js';
 import { storageHash } from '../core/envelope.js';
+// v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账区块
+import { readLedgerStats, readLedgerLines, readLedgerSummaryText, resetReadLedger, READ_SRC_LABEL } from '../core/read-ledger.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -206,6 +208,10 @@ export function buildDebugExport() {
         traceStats: traceStats(),
         trace: traceList({ limit: 300 }),
         timeline: traceTimelineText(300),
+        // v3.0.23（用户要求「任何…读取…都要详细记录统计、时间等信息到日志」）：
+        //   读取台账（人读文本 + 结构化统计；含服务端/本地/内存每一次读取的耗时、体积、条数与结果）
+        readsText: (() => { try { return readLedgerText(30); } catch (e) { return String((e && e.message) || e); } })(),
+        reads: (() => { try { return readLedgerStats(); } catch (e) { return { error: String((e && e.message) || e) }; } })(),
     };
 }
 
@@ -490,6 +496,9 @@ export function buildBridgeMethods() {
     //   把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」四处并排读出来，
     //   用于回答「为什么重载后内存台账是空的」。只做 getItem 与只读读取，不写任何存储。
     T['ftt.loadDiag'] = safe(() => loadDiag());
+    // v3.0.23（只读）：读取台账（每一次服务端/本地/内存读取的时间、体积、条数、结果）
+    T['ftt.reads'] = safe((p) => ({ stats: readLedgerStats(), lines: readLedgerLines(Number((p && p.limit) || 20)) }));
+    T['ftt.readLedgerText'] = safe(() => readLedgerSummaryText(30));
 
     // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
     T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
@@ -723,6 +732,36 @@ export function debugBridgeSectionHtml() {
     ].join('\n');
 }
 
+/**
+ * v3.0.23：「📥 读取台账（服务端 / 本地 / 内存）」区块（**只读**）。
+ *   回答「这次载入到底读了哪几层、每层读到什么、花了多久、为什么没读到」——
+ *   数据来自 `core/read-ledger.js` 的内存环形缓冲（不落盘，避免日志膨胀）。
+ */
+export function readLedgerSectionHtml(limit) {
+    const st = (() => { try { return readLedgerStats(); } catch (e) { return null; } })();
+    if (!st || !st.totalReads) return '<div class="ftt-muted">本次会话还没有读取记录（载入 / 同步 / 保存时会自动记录）。</div>';
+    const summary = readLedgerSummaryText(limit || 20);
+    const srcRows = Object.keys(st.bySrc).map((k) => {
+        const s = st.bySrc[k];
+        return '<div class="ftt-dim-row"><span class="ftt-dim-name">' + esc(s.label || k) + '</span>'
+            + '<span class="ftt-muted">' + s.n + ' 次 · 失败 ' + s.fail + ' · 未命中 ' + s.miss + ' · 共 ' + s.ms + 'ms · 最慢 ' + s.maxMs + 'ms · ' + s.bytes + ' 字节 · ' + s.items + ' 条</span></div>';
+    }).join('');
+    const lines = readLedgerLines(limit || 20).map((l) => '<div class="ftt-mono">' + esc(l) + '</div>').join('');
+    return '<div class="ftt-hint">共 ' + st.totalReads + ' 次读取 · 成功 ' + st.ok + ' / 失败 ' + st.fail + ' / 未命中 ' + st.miss
+        + ' · 累计 ' + st.totalMs + 'ms · 平均 ' + st.avgMs + 'ms · 累计 ' + st.totalBytes + ' 字节</div>'
+        + (srcRows || '')
+        + '<div class="ftt-dim-row"><span class="ftt-dim-name">最近 ' + Math.min(limit || 20, st.count) + ' 条</span></div>'
+        + (lines || '<div class="ftt-muted">暂无</div>')
+        + '<div class="ftt-muted">来源标签：' + esc(Object.keys(READ_SRC_LABEL).map((k) => READ_SRC_LABEL[k]).join(' / ')) + '</div>'
+        + '<div class="ftt-hint">台账只记<b>体积 / 条数 / 字段名 / 哈希 / 结果</b>，不含任何正文；重新载入或点下方按钮可清零。</div>'
+        + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="readLedgerClear" type="button">🧹 清空读取台账</button></div>';
+}
+
+/** 读取台账人读文本（调试包用；与区块同源，不含正文） */
+export function readLedgerText(limit) {
+    try { return readLedgerSummaryText(limit || 30); } catch (e) { return '读取台账不可用：' + String((e && e.message) || e); }
+}
+
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
@@ -755,6 +794,10 @@ export function debugPageHtml(controls) {
         // ④ 交互与宿主调用时间线
         '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
         traceSectionHtml(traceFilter),
+        '</div>',
+        // ④b v3.0.23：读取台账（服务端 / 本地 / 内存，每一次读取的时间与统计）
+        '<div class="ftt-section"><div class="ftt-sec-title">📥 读取台账 <span class="ftt-muted">服务端 / 本地 / 内存</span></div>',
+        readLedgerSectionHtml(20),
         '</div>',
         // ⑤ 时钟取值追踪（时钟链路的审计视图）
         '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪</div>',
@@ -858,6 +901,11 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
     if (String(action) === 'dbgExportLog') {
         return await exportDebugLog();
     }
+    // v3.0.23：清空读取台账（只清内存缓冲，不动调试日志与时间线）
+    if (String(action) === 'readLedgerClear') {
+        try { resetReadLedger(); } catch (e) { /* 忽略 */ }
+        return { ok: true, action: 'readLedgerClear', note: '已清空读取台账（调试日志与时间线不受影响）' };
+    }
     // v2.37.0：清空时钟取值追踪（只清内存缓冲，不动调试日志）
     if (String(action) === 'clockTraceClear') {
         try { clockTraceClear(); } catch (e) { /* 忽略 */ }
@@ -876,7 +924,7 @@ export async function debugAction(action, payload) {   // v2.41.0：改为 async
 }
 
 /** 调试页动作名判定（供面板分发；与 V1 同名逐字一致） */
-export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear', 'bridgeToggle', 'bridgeTargetSet', 'bridgePortSet']);   // v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）；v3.0.7 + 调试桥；v3.0.8 + 调试目标（bridgePortSet 保留为别名）
+export const DEBUG_ACTIONS = Object.freeze(['dbgClear', 'readLedgerClear', 'clockTraceClear', 'dbgExport', 'dbgExportLog', 'dbgTraceFilter', 'dbgTraceClear', 'bridgeToggle', 'bridgeTargetSet', 'bridgePortSet']);   // v3.0.23 + 读取台账清空；v2.37.0 + 时钟追踪清空；v2.41.0 + 调试包导出；v2.82.0 + 日志导出（.log）；v3.0.7 + 调试桥；v3.0.8 + 调试目标（bridgePortSet 保留为别名）
 
 /** 读某个 `data-ftt-*` 输入框的值（无 DOM / 无输入框 / 空值 → null；**不抛**） */
 function readInput(attr) {

@@ -131,7 +131,7 @@ function useTauriTavern(withDev = true) {
             names.join(',') === [
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary', 'ftt.debugLogStats', 'ftt.debugPageInfo',
                 'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.loadDiag', 'ftt.memorySample', 'ftt.memoryShape',
-                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.probe', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
+                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
                 'host.backendLogsTail', 'host.consoleCaptureGet', 'host.frontendLogsList',
                 'host.llmLogsIndex', 'host.llmLogsKeep', 'host.llmLogsPreview', 'host.llmLogsRaw',
                 'sys.bridgeState', 'sys.host', 'sys.info', 'sys.methods',
@@ -276,7 +276,7 @@ function useTauriTavern(withDev = true) {
         useVanilla();
         for (const name of ['sys.info', 'sys.methods', 'sys.host', 'sys.bridgeState', 'ftt.snapshot', 'ftt.probe', 'ftt.stateSize',
             'ftt.debugLogStats', 'ftt.debugPageInfo', 'ftt.traceStats', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
-            'ftt.fileTransport', 'ftt.chatMeta', 'ftt.memoryShape']) {
+            'ftt.fileTransport', 'ftt.chatMeta', 'ftt.memoryShape', 'ftt.reads']) {
             const r = await bridgeDispatch({ id: name, method: name });
             A('E1 酒馆原生下 ' + name + ' 返回帧且不抛', r && typeof r.ok === 'boolean', r);
         }

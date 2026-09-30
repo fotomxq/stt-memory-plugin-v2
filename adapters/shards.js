@@ -21,6 +21,9 @@ import { scopeId } from '../core/state.js';
 import { state as kernelState } from '../core/model/runtime.js';
 import { fileTransportUploadText, fileTransportReadAuto } from './file-transport.js';
 import { slugify } from './user-file.js';
+// v3.0.23（用户要求「任何…读取…都要详细记录统计、时间等信息到日志」）：分片的每一次读取都进读取台账
+//   （清单 1 次 + 每个需要读的维度片各 1 次），并记下「读了哪几片 / 应用了哪几片」。
+import { readLedgerBegin, readLedgerEnd, readLedgerRecord } from '../core/read-ledger.js';
 
 /** 分片前缀（刻意不与主文件 `ftt2-state-` / 删楼备份 `ftt2-floor-backup-` 冲突） */
 export const SHARD_PREFIX = 'ftt2-shard-';
@@ -110,26 +113,40 @@ export async function writeStateShards(st, opts) {
 
 /** 读分片清单（缺失 / 损坏 → null；1 次请求） */
 export async function readShardManifest(slugOrScope) {
+    const name = shardManifestName(slugOrScope);
+    const tok = readLedgerBegin('读分片清单', 'meta', { target: name });
     try {
-        const r = await fileTransportReadAuto(shardManifestName(slugOrScope));
-        if (!r || !r.ok || !r.text) return null;
+        const r = await fileTransportReadAuto(name, { src: 'meta', role: '分片清单' });
+        if (!r || !r.ok || !r.text) { readLedgerEnd(tok, { ok: true, miss: true, reason: String((r && r.error) || 'no-manifest') }); return null; }
         const m = JSON.parse(r.text);
-        if (!m || typeof m !== 'object' || !m.marks) return null;
+        if (!m || typeof m !== 'object' || !m.marks) { readLedgerEnd(tok, { ok: false, reason: 'bad-manifest', bytes: String(r.text).length }); return null; }
+        const dims = Object.keys(m.marks);
+        readLedgerEnd(tok, { ok: true, bytes: String(r.text).length, fields: dims.length, extra: { dims: dims.slice(0, 20) }, note: '清单含 ' + dims.length + ' 片' });
         return m;
-    } catch (e) { return null; }
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return null;
+    }
 }
 
 /** 读单片的载荷（校验分片内容哈希；不符 → null） */
 export async function readShard(slugOrScope, dim) {
+    const name = shardName(slugOrScope, dim);
+    const tok = readLedgerBegin('读分片', 'shard', { target: name });
     try {
-        const r = await fileTransportReadAuto(shardName(slugOrScope, dim));
-        if (!r || !r.ok || !r.text) return null;
+        const r = await fileTransportReadAuto(name, { src: 'shard', role: '维度分片' });
+        if (!r || !r.ok || !r.text) { readLedgerEnd(tok, { ok: true, miss: true, reason: String((r && r.error) || 'no-shard'), extra: { dim: String(dim) } }); return null; }
         const p = JSON.parse(r.text);
-        if (!p || p.dim !== String(dim)) return null;
+        if (!p || p.dim !== String(dim)) { readLedgerEnd(tok, { ok: false, reason: 'dim-mismatch', bytes: String(r.text).length, extra: { dim: String(dim) } }); return null; }
         const h = hashText(JSON.stringify(p.payload === undefined ? null : p.payload) || '');
-        if (p.hash && h !== p.hash) return null;                      // 内容被截断/损坏 → 忽略
+        if (p.hash && h !== p.hash) { readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: String(r.text).length, hash: h, extra: { dim: String(dim) } }); return null; }   // 内容被截断/损坏 → 忽略
+        const n = Array.isArray(p.payload) ? p.payload.length : Object.keys(p.payload || {}).length;
+        readLedgerEnd(tok, { ok: true, bytes: String(r.text).length, items: n, hash: p.hash || h, extra: { dim: String(dim), at: Number(p.at) || 0 }, note: '片校验通过' });
         return { dim: String(dim), at: Number(p.at) || 0, hash: p.hash || h, payload: p.payload };
-    } catch (e) { return null; }
+    } catch (e) {
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e), extra: { dim: String(dim) } });
+        return null;
+    }
 }
 
 /**
@@ -146,12 +163,16 @@ export async function applyNewerShards(st, mainAt, opts) {
     try {
         if (!st || typeof st !== 'object') return out;
         const m = await readShardManifest(slug);
-        if (!m || !m.marks) return out;
+        if (!m || !m.marks) {
+            try { readLedgerRecord({ action: '分片对账', src: 'shard', target: shardManifestName(slug), ok: true, miss: true, reason: 'no-manifest', note: '没有分片清单 → 本次无分片可应用（主文件时间 ' + base + '）' }); } catch (e) { /* 忽略 */ }
+            return out;
+        }
         out.at = Number(m.at) || 0;
         const base = Number(mainAt) || 0;
         // 需要读的分片：**严格更新**（主文件写入滞后/失败）—— 或时间戳相同但该维度内容与清单记录不一致
         //   （同一毫秒内先写分片再写主文件、而主文件那次没写成的边界情形）。
-        const dims = Object.keys(m.marks).filter((d) => {
+        const allDims = Object.keys(m.marks);
+        const dims = allDims.filter((d) => {
             const mk = m.marks[d] || {};
             const mat = Number(mk.at) || 0;
             if (mat > base) return true;
@@ -169,6 +190,15 @@ export async function applyNewerShards(st, mainAt, opts) {
             }
             out.applied.push(dim);
         }
+        // v3.0.23：把「清单里有多少片 / 读了哪几片 / 应用了哪几片」记成一条（载入路径可追踪）
+        try {
+            readLedgerRecord({
+                action: '分片对账', src: 'shard', target: shardManifestName(slug),
+                ok: true, items: out.applied.length, ms: 0,
+                extra: { marks: allDims.length, need: dims.length, applied: out.applied, skipped: out.skipped, mainAt: base, shardAt: out.at },
+                note: '清单 ' + allDims.length + ' 片 · 需读 ' + dims.length + ' 片 · 应用 ' + out.applied.length + ' 片（主文件时间 ' + base + '）',
+            });
+        } catch (e) { /* 忽略 */ }
         return out;
     } catch (e) { return out; }
 }
