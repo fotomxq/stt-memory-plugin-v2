@@ -22,6 +22,8 @@ import { stateFileName } from './user-file.js';
 // v2.77.0：文件通道统一走 `adapters/file-transport.js`（宿主原生存储 / 酒馆用户目录文件自动切换）
 import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
+// v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
+import { writeStateShards, applyNewerShards, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 import { hydrateStorageData } from '../core/slim.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
@@ -154,6 +156,64 @@ function pushSigOf(st) {
 }
 
 /**
+ * v3.0.21：**条目数统计**（原子维度 + 货币；用于「异常缩水」守卫）
+ * @param {object} st 状态
+ * @returns {{total:number, dims:object}}
+ */
+function countsOf(st) {
+    const dims = {};
+    let total = 0;
+    try {
+        for (const d of SHARD_DIMS) {
+            const n = Array.isArray(st && st[d]) ? st[d].length : 0;
+            dims[d] = n;
+            total += n;
+        }
+    } catch (e) { /* 忽略 */ }
+    return { total: total, dims: dims };
+}
+
+/** 上一次**成功写入**（或载入来源）的条目数基线 */
+let lastPushCounts = null;
+/** 是否已记录基线（载入来源也算，避免首次保存就误判） */
+export function primeShrinkBaseline(st) { try { lastPushCounts = countsOf(st); return lastPushCounts; } catch (e) { return null; } }
+
+/**
+ * 「异常缩水」判定：本次要写的状态相比基线丢了 `dropped` 条，而本次**新增的删除墓碑**只有 `tombstoned` 条，
+ *   且 `dropped - tombstoned` 超过容差（比例 ≥ 30% 且至少 20 条）→ 判为异常（疑似读到残缺状态），**拒绝写覆盖**。
+ * 说明：用户显式删除会写墓碑（`deleted/deletedH`）→ 不会被拦；清空 / 导入 / 手动同步走 `force`。
+ * @param {object} st 待写状态
+ */
+function shrinkGuardCheck(st) {
+    try {
+        const now = countsOf(st);
+        if (!lastPushCounts || !Number.isFinite(Number(lastPushCounts.total))) return { blocked: false, detail: null };
+        const before = Number(lastPushCounts.total) || 0;
+        const after = Number(now.total) || 0;
+        const dropped = Math.max(0, before - after);
+        const tombstoned = (() => {
+            try {
+                let n = 0;
+                for (const d of SHARD_DIMS) {
+                    const a = (st && st.deleted && st.deleted[d]) || {};
+                    const b = (st && st.deletedH && st.deletedH[d]) || {};
+                    n += Object.keys(a).length + Object.keys(b).length;
+                }
+                const prev = (lastPushCounts && lastPushCounts.tombs) || 0;
+                return Math.max(0, n - prev);
+            } catch (e) { return 0; }
+        })();
+        const unexplained = dropped - tombstoned;
+        const ratio = before > 0 ? (dropped / before) : 0;
+        const blocked = before >= 30 && unexplained >= 20 && ratio >= 0.3;
+        return {
+            blocked: blocked, before: before, after: after, dropped: dropped, tombstoned: tombstoned, ratio: ratio,
+            detail: { before: before, after: after, dropped: dropped, tombstoned: tombstoned, ratio: Math.round(ratio * 100) / 100 },
+        };
+    } catch (e) { return { blocked: false, detail: null }; }
+}
+
+/**
  * 立即保存（V1 `saveState()` 的 V2 实现）。
  * @param {object} [opts] reason / skipFile（不写服务端文件）/ force（跳过「无变化」短路）
  * @returns {Promise<object>} { ok, via, bytes, error, skipped? }
@@ -212,6 +272,26 @@ export async function saveStateNow(opts) {
 async function saveStateNowInner(o) {
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
+    // ⑤b v3.0.21（用户要求「修复存储异常，当退出应用后，插件的数据大量回滚…建议一劳永逸」）——
+    //   **无墓碑的大规模缩水 → 拒绝写盘覆盖**。
+    //   回滚的真实成因：内存里偶然拿到一份**残缺状态**（聊天未就绪 / 作用域切换 / 载入竞态）时，
+    //   后续保存会把这份残缺状态**覆盖**到本机缓冲与服务端文件上，于是「一退出应用数据就大量回滚」。
+    //   判据与「楼层骤缩」同源：本次条目数与**上一次成功写入**（或载入来源）比较，
+    //   丢掉的条目数**明显超过**本次新增的删除墓碑数（说明不是用户显式删除）→ 判为异常，**本次一律不写**，
+    //   只留调试日志与告警；用户明确的操作（清空记忆 / 导入 / 手动同步）走 `force` 不受限。
+    //   ⚠️ 必须放在**② 删除留痕之前**：`tombstoneSweep()` 会把本次消失的条目自动记成墓碑，
+    //   若放在它之后，「残缺状态」看上去就与「用户显式删除」一模一样（守卫会失效）。
+    if (o.force !== true) {
+        try {
+            const guard = shrinkGuardCheck(st);
+            if (guard.blocked) {
+                lastSave = { at: Date.now(), ok: false, via: '', bytes: 0, error: 'shrink-guard' };
+                try { kernelWarn('保存被拦下：条目数异常缩水（疑似读到残缺状态）→ **未覆盖**本机缓冲与服务端数据', guard.detail); } catch (e) { /* 忽略 */ }
+                try { debugLogPush('异常', { action: '保存拦截（异常缩水）', before: guard.before, after: guard.after, dropped: guard.dropped, tombstoned: guard.tombstoned }); } catch (e) { /* 忽略 */ }
+                return { ok: false, via: '', bytes: 0, error: 'shrink-guard', blocked: true, guard: guard };
+            }
+        } catch (e) { /* 守卫失败不阻塞保存（保守方向：照常写） */ }
+    }
     // ① 索引基线（首次）→ 刷新原子 h + 建当前索引
     //   v3.0.15：建好的索引**交给墓碑扫复用**（`primeAtomIndex`）—— 此前 `atomIndexCur` 从没被赋值，
     //   同一份数据每次保存被完整哈希**两遍**（2000 条情节实测各 ~38ms），纯浪费。
@@ -247,7 +327,14 @@ async function saveStateNowInner(o) {
             via.push('indexedDB');
         }
     } catch (e) { /* 忽略 */ }
-    // ⑥ 服务端文件（大体积权威数据）
+    // ⑥ 服务端文件（大体积权威数据）—— v3.0.21：**先写变化过的分片**（每片单独成文件），再写主文件（提交点）。
+    //   主文件写入滞后/失败时，分片仍持有最新内容 → 下次载入会把「比主文件新」的分片应用回来，不再回滚。
+    if (o.skipFile !== true) {
+        //   分片的时间戳 = **本次信封的时间戳**（同一批写入归属同一次），载入侧据此判断「谁更新」
+        //   注：`force` **不**透传给分片 —— 分片靠**内容哈希**判断要不要重传，内容没变的片一个字节都不发
+        //   （`force` 只用于「必须写主文件（提交点）」的语义：清空 / 导入 / 退出前落盘）。
+        try { await writeStateShards(st, { at: Number(envelope && envelope.payload && envelope.payload.updatedAt) || 0 }); } catch (e) { /* 分片失败不影响主文件写入 */ }
+    }
     if (o.skipFile !== true) {
         try {
             // B9-d：与 `adapters/sync.js#stateFileWrite` 同源的内容写入（瘦身/gzip 开关关闭时行为与 B7-2 一致）
@@ -262,6 +349,8 @@ async function saveStateNowInner(o) {
         lastFullPushAt = lastSave.at;
         lastFullPushBytes = bytes;
         pushedSeq = touchSeq;
+        // v3.0.21：记下本次成功写入的条目数 —— 下一次保存的「异常缩水」守卫以它为基线
+        try { lastPushCounts = countsOf(st); } catch (e) { lastPushCounts = null; }
         // v3.0.18：记下**这次真正上传的内容**（信封哈希 + scope + 信封时间戳）——
         //   下次据此复现同一份载荷做比对（不用再多算一次哈希）
         try {
@@ -331,7 +420,21 @@ export async function loadFromServerFile() {
             if (env.hash && env.hash !== h) return null;
             // B9-d：瘦身还原（写盘前剥掉的同义字段/空值由核心兜底；此处补回显示层字段）
             try { hydrateStorageData(env.payload.data); } catch (e) { /* 忽略 */ }
-            return env.payload.data || null;
+            const st = env.payload.data || null;
+            // v3.0.21（用户要求「一劳永逸」修「退出应用后大量回滚」）：
+            //   主文件是**提交点**，但它可能**滞后于分片**（写入超时 / 进程被杀 / 切后台）——
+            //   载入时把「比主文件更新」的分片应用回来（每片带内容哈希校验），于是那些改动不再丢。
+            if (st) {
+                try {
+                    const ap = await applyNewerShards(st, Number(env.payload.updatedAt) || 0);
+                    if (ap && ap.applied && ap.applied.length) {
+                        try { debugLogPush('对账', { action: '载入：应用更新的分片（主文件滞后）', dims: ap.applied, shardAt: ap.at, mainAt: Number(env.payload.updatedAt) || 0 }); } catch (e) { /* 忽略 */ }
+                    }
+                } catch (e) { /* 分片不可用不影响主文件载入 */ }
+                // 载入来源即「异常缩水」守卫的基线：避免把「本来就只有这么多条」误判成缩水
+                try { primeShrinkBaseline(st); } catch (e) { /* 忽略 */ }
+            }
+            return st;
         }
         return env || null;
     } catch (e) { return null; }
