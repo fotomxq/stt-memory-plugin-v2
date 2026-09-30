@@ -113,7 +113,12 @@ function stampSnapshotsSeen(names) {
 // v1.164：出生日期合理性 —— 剧情日期之后出生的日期一律视为**未来时间**（修复管道据此拒写），
 //   唯一例外：正文/档案明确该角色来自未来（未来人、穿越、时空、来自 2XXX 年等）—— 此时出生日期本就晚于当前剧情时间。
 
-function ageAnchorDate() {
+function ageAnchorDate(anchor) {
+    // v3.1.0（性能，docs/D13 R3）：允许调用方把**渲染期算好的锚点**传进来 —— 该函数在无剧情时钟时会
+    //   `filter + sort` 全部情节与记忆（O(N log N)），而角色页每行都会调用它（200 行 × 1200 条实测 ≈ 200ms）。
+    //   `anchor === null` = 调用方已确认「没有锚点」（跳过重算）；`undefined` = 未提供 → 按原逻辑计算。
+    if (anchor === null) return '';
+    if (typeof anchor === 'string' && anchor) return clockDateTrim(anchor);
     try {
         const direct = clockDateTrim(getStoryNow());
         if (/^\d{4}/.test(direct)) return direct;
@@ -127,15 +132,15 @@ function ageAnchorDate() {
     return '';
 }
 
-function snapshotStoryAnchor() { return ageAnchorDate(); }
+function snapshotStoryAnchor(anchor) { return ageAnchorDate(anchor); }
 // 是否「未来出生」：出生日期晚于剧情日期（无剧情日期时不判定 → 不拦）
 //   v1.176：支持部分精度（年 / 年-月），按「当年/当月 1 日」保守比较
 
-function birthDateInFuture(dateStr) {
+function birthDateInFuture(dateStr, anchor) {
     try {
         const b = parseBirthDateParts(dateStr);
         if (!b) return false;
-        const a = parseBirthDateParts(snapshotStoryAnchor());
+        const a = parseBirthDateParts(snapshotStoryAnchor(anchor));
         if (!a) return false;
         const key = (p) => p.y * 10000 + p.m * 100 + p.d;
         return key(b) > key(a);
@@ -160,7 +165,7 @@ function snapshotFutureOrigin(s) {
 //     overage      按剧情锚点算出的年龄 > 120 岁（与剧情时间线明显冲突）
 //     bad-format   出生日期字段非空但不是 YYYY-MM-DD（脏数据，无法参与任何日期比较）
 
-function snapshotBirthAnomaly(s) {
+function snapshotBirthAnomaly(s, anchor) {
     try {
         if (!s || typeof s !== 'object') return '';
         const raw = String((s.identity && s.identity.birthDate) || '').trim();
@@ -179,7 +184,7 @@ function snapshotBirthAnomaly(s) {
             (Array.isArray(s.tags) ? s.tags.join(' ') : '')].join(' ');
         const traveler = SNAP_FUTURE_ORIGIN_RE.test(originBlob);
         if (!traveler) {
-            if (birthDateInFuture(bd)) return 'future';
+            if (birthDateInFuture(bd, anchor)) return 'future';
             if (parts.precision === 'day') {
                 const bdIso = clockDateStr(parts.y, parts.m, parts.d);   // v1.193：负年份同样规范（-0221-01-02）
                 for (const d of [s.lastSeenDate, s.lastUpdateDate]) {
@@ -188,8 +193,8 @@ function snapshotBirthAnomaly(s) {
                 }
             }
         }
-        const anchor = ageAnchorDate();
-        const ageTxt = calcAge(bd, anchor);
+        const anchorD = ageAnchorDate(anchor);
+        const ageTxt = calcAge(bd, anchorD);
         const age = ageTxt === '' ? NaN : Number(ageTxt);
         // v1.193：**公元前出生（年份为负）不判「超过 120 岁」** —— 跨公元前后的长寿角色（如公元 1919 年的剧情里
         //   出生于公元前 221 年）是用户明确要求支持的写法，年龄上千岁属预期；倒挂（after-record / future）仍照常判定。
@@ -200,7 +205,7 @@ function snapshotBirthAnomaly(s) {
             //   ② **非现实纪元**：`age > 120` 是现实人类寿命的经验值；剧情锚点年份 < 1000（如 0191 年这种自设纪元、
             //      或故事从 0001-01-01 起算的编年）时该阈值不适用 —— 190 岁是设定而非数据错误。
             //   真正的**倒挂**（出生晚于剧情 / 晚于记录日期 / 格式非法）不受影响，照常判定。
-            if (!snapshotLongLived(s) && !snapshotLowEpochCalendar(anchor)) return 'overage';
+            if (!snapshotLongLived(s) && !snapshotLowEpochCalendar(anchorD)) return 'overage';
         }
         return '';
     } catch (e) { return ''; }
@@ -380,7 +385,7 @@ function snapshotAgeIsLocked(s) {
     } catch (e) { return false; }
 }
 
-function snapshotAgeInfo(s) {
+function snapshotAgeInfo(s, anchor) {
     const out = { age: '', birth: '', anchor: '', basis: 'none', precision: '', locked: false };
     try {
         if (!s || typeof s !== 'object') return out;
@@ -397,20 +402,20 @@ function snapshotAgeInfo(s) {
                 return out;
             }
             // 锁定但没落盘值（历史数据 / 刚标记）→ 只读地补算一次，写入由 syncSnapshotAge 负责
-            const anchorL = ageAnchorDate();
+            const anchorL = ageAnchorDate(anchor);
             out.anchor = anchorL;
             const derivedL = calcAge(out.birth, anchorL);
             if (derivedL) { out.age = derivedL; out.basis = 'locked-capture'; }
             return out;
         }
-        const anchor = ageAnchorDate();
-        out.anchor = anchor;
-        const derived = calcAge(out.birth, anchor);
+        const anchorD2 = ageAnchorDate(anchor);
+        out.anchor = anchorD2;
+        const derived = calcAge(out.birth, anchorD2);
         if (derived) {
             out.age = derived;
             let now = '';
             try { now = clockDateTrim(getStoryNow()); } catch (e) { }
-            out.basis = (anchor && now && clockDateTrim(anchor) === clockDateTrim(now)) ? 'story' : 'timeline';
+            out.basis = (anchorD2 && now && clockDateTrim(anchorD2) === clockDateTrim(now)) ? 'story' : 'timeline';
             return out;
         }
         // 无剧情锚点：只在存档值**合理**（0–120）时沿用，避免把历史上被现实年份污染的 1xx 岁带出来
@@ -421,14 +426,14 @@ function snapshotAgeInfo(s) {
     } catch (e) { return out; }
 }
 
-function snapshotAge(s) { return snapshotAgeInfo(s).age; }
+function snapshotAge(s, anchor) { return snapshotAgeInfo(s, anchor).age; }
 // 年龄来源文案（列表行 / 编辑器只读行共用）：如「按剧情日期 1919-11-29」/「按最近记录日期 1919-10-01」/「存档值 · 缺剧情日期」
 //   v1.176：出生日期只有年 / 年-月时追加「按出生年（月）估算」，让「估算值」与「精确值」在界面上一眼可辨。
 //   v1.205：已去世 → 「已去世 · 年龄锁定（死亡时 X 岁）」，不再显示「按剧情日期」（它与当前剧情日期无关了）。
 
-function snapshotAgeBasisText(s) {
+function snapshotAgeBasisText(s, anchor) {
     try {
-        const info = snapshotAgeInfo(s);
+        const info = snapshotAgeInfo(s, anchor);
         if (!info.age) return info.locked ? '已去世 · 年龄锁定（缺死亡时年龄）' : '';
         const est = info.precision === 'year' ? ' · 按出生年估算' : (info.precision === 'month' ? ' · 按出生年月估算' : '');
         if (info.basis === 'locked') return `已去世 · 年龄锁定（${info.age} 岁）${est}`;

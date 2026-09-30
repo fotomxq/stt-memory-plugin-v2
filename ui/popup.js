@@ -17,7 +17,8 @@ export async function openPopup(tab) { return openPanel(tab); }
 /** 关闭 */
 export function closePopup() { return closePanel(); }
 /** 完整 HTML（V1 面板 HTML） */
-export function popupHtml(tab) { void tab; return panelHtml(); }
+// v3.1.0（性能）：面板只构建**当前分页**（`docs/D13` S1）；此处按传入分页构建（不再忽略 tab 参数）
+export function popupHtml(tab) { return panelHtml(tab ? { tab: String(tab) } : {}); }
 /** 指定分页内容 HTML */
 export function popupBodyHtml(tab) { return panelBodyHtml(tab); }
 /** 分页清单（V1 的 13 个） */

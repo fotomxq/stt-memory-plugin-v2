@@ -57,7 +57,69 @@ function normalizeRelLink(raw, dimHint) {
 function relSummaryLine(dim, refId, maxN) {
     try {
         const d = String(dim || ''), r = String(refId || '');
-        const rows = relLinksOf(d, r);
+        return relSummaryOfRows(d, relLinksOf(d, r), maxN);
+    } catch (e) { return ''; }
+}
+
+/**
+ * v3.1.0（性能）：**关联行索引 + 索引版只读视图**。
+ *
+ * 背景（`docs/D13` R3 实测）：`relLinksOf()` 每次调用都 `filter` 全量 `state.links`，而
+ *   `ui/list-rows.js#characterDrillHtml` 对**每一行角色档案**都要遍历全部记忆/计划/悬念并逐条调用它
+ *   → O(档案 ×(记忆+计划+悬念)×关联行)：200 档案 × 400 记忆 × 2000 关联行实测 **1530ms**、× 800/4000 → **6029ms**。
+ *
+ * 这里提供「一次遍历建索引 → 每行 O(命中数)」的等价实现（**排序与措辞与原实现逐字一致**，
+ *   `tests/unit/rel-index.test.js` 用原实现做参照逐行比对）。索引是**每次渲染现建**的普通对象，
+ *   不做跨渲染缓存 —— 避免「links 被就地修改 → 索引过期」这类隐患。
+ */
+function relWhoKey(name) { return String(name == null ? '' : name).replace(/[\s·・.．]/g, '').toLowerCase(); }
+
+/** 关联行索引：`{ byRef: Map('dim|refId' → rows[]), byWho: Map(归一化角色名 → [{dim, refId, how, who, rank}]) }` */
+function relLinkIndex(st) {
+    const src = (st || state) || {};
+    const idx = { n: 0, byRef: new Map(), byWho: new Map() };
+    try {
+        for (const l of (Array.isArray(src.links) ? src.links : [])) {
+            if (!l) continue;
+            idx.n += 1;
+            const dim = String(l.dim == null ? '' : l.dim), refId = String(l.refId == null ? '' : l.refId);
+            if (!dim || !refId) continue;
+            const key = dim + '|' + refId;
+            const bucket = idx.byRef.get(key);
+            if (bucket) bucket.push(l); else idx.byRef.set(key, [l]);
+            const who = relWhoKey(l.who);
+            if (who) {
+                const wb = idx.byWho.get(who);
+                const row = { dim: dim, refId: refId, who: String(l.who || ''), how: String(l.how || ''), rank: REL_LINK_HOW_RANK[l.how] || 0 };
+                if (wb) wb.push(row); else idx.byWho.set(who, [row]);
+            }
+        }
+    } catch (e) { /* 索引失败 → 调用方回落原实现 */ }
+    return idx;
+}
+
+/** 索引版 `relLinksOf`：与 `relLinksOf` 同一排序（可靠度降序 → 角色字典序） */
+function relLinksOfIndexed(idx, dim, refId) {
+    try {
+        if (!idx || !idx.byRef) return relLinksOf(dim, refId);
+        const list = (idx.byRef.get(String(dim || '') + '|' + String(refId || '')) || []).slice();
+        list.sort((a, b) => {
+            const ra = REL_LINK_HOW_RANK[a.how] || 0, rb = REL_LINK_HOW_RANK[b.how] || 0;
+            if (ra !== rb) return rb - ra;
+            return String(a.who || '').localeCompare(String(b.who || ''));
+        });
+        return list;
+    } catch (e) { return []; }
+}
+
+/** 索引版 `relSummaryLine` */
+function relSummaryLineIndexed(idx, dim, refId, maxN) {
+    try { return relSummaryOfRows(String(dim || ''), relLinksOfIndexed(idx, dim, refId), maxN); } catch (e) { return ''; }
+}
+
+/** 关联摘要的**共用措辞**（原实现与索引版共用，保证逐字一致） */
+function relSummaryOfRows(d, rows, maxN) {
+    try {
         const anchor = rows.find(x => !x.who) || null;
         const people = rows.filter(x => x.who);
         const n = Math.max(1, Number(maxN) || 6);
@@ -292,6 +354,8 @@ const SNAP_GROUP_MAP = {
 // B8-6b+ 关联维护：以下常量/助手供 `core/rel-maint.js`（修复管道零 AI 步骤）复用
 export {
     normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats, relHowLabelOf,
+    // v3.1.0：关联行索引（渲染热路径用；纯函数、无跨渲染缓存）
+    relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey,
     REL_LINK_KINDS, REL_LINK_DIMS, REL_LINK_HOW_RANK,
     relLinkId, relLinkHow, relLinkDeviation,
 };

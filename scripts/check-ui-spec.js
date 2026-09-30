@@ -32,7 +32,11 @@ const hit = (id, file, line, msg) => hits.push({ id, file, line, msg });
     const hasEnsure = /export function ensureButtonTypes/.test(panel);
     const applied = (panel.match(/ensureButtonTypes\(/g) || []).length;
     const hardened = /function hardenButtonTypes/.test(panel);
-    if (!hasEnsure || applied < 3) hit('C1', 'ui/panel.js', 0, `集中补 type 机制不完整（ensureButtonTypes=${hasEnsure}，调用 ${applied} 处；应覆盖面板 HTML 与模态 HTML）`);
+    // v3.1.0（`docs/history/P10c9`）：面板渲染改为**单一构建路径**（一次渲染只构建一遍，返回值的 HTML 复用同一次结果）——
+    //   原先「面板 HTML + 模态 HTML」两条路径各调一次已不存在，故判据改为：机制存在 + **≥1 处实际应用**
+    //   + 该应用覆盖模态内部构建（`panelModalInnerHtml()` / `panelHtml(`）+ DOM 层兜底存在。
+    const coversModal = /ensureButtonTypes\(\s*(panelModalInnerHtml|panelHtml)\(/.test(panel);
+    if (!hasEnsure || applied < 2 || !coversModal) hit('C1', 'ui/panel.js', 0, `集中补 type 机制不完整（ensureButtonTypes=${hasEnsure}，调用 ${applied} 处，覆盖模态=${coversModal}；应覆盖模态内部构建 + DOM 兜底）`);
     if (!hardened) hit('C1', 'ui/panel.js', 0, '缺 DOM 层兜底 hardenButtonTypes');
     // 面板渲染路径 = 从 panel.js 出发的**传递依赖闭包**（这些模块的 HTML 都会被 ensureButtonTypes 处理）
     const imported = new Set();

@@ -32,6 +32,8 @@ import { debugLogPush } from './debug-log.js';   // v2.87.0：内核 warn → �
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志，方便追踪问题」）
 //   —— 载入路径的每一次读取都进**读取台账**（`core/read-ledger.js`），并逐层回报「读到什么 / 多久 / 多少条」。
 import { readLedgerBegin, readLedgerEnd, readLedgerRecord, readLedgerStats } from '../core/read-ledger.js';
+// v3.1.0（`docs/D13` R2/Q7）：关联层容量上限（保存流水线收尾处执行）
+import { capRelLinks } from '../core/rel-maint.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 let saveTimer = null;
@@ -118,6 +120,24 @@ export const SAVE_NOOP_WINDOW_MS = 60000;
 /** 窗口可注入（单测用小值验证「窗口外一定完整保存」；生产恒用 `SAVE_NOOP_WINDOW_MS`） */
 let noopWindowMs = SAVE_NOOP_WINDOW_MS;
 export function setSaveNoopWindowMs(ms) { noopWindowMs = Math.max(0, Number(ms) || 0); return noopWindowMs; }
+
+/**
+ * v3.1.0（`docs/D13` R1/Q5）：**本机缓冲（localStorage）的字符预算**。
+ *
+ * 实测（D13 §3.1/§3.5）：极端形状（4040 条）状态信封 = **2.64M 字符**，而 5MB 按 UTF-16 折算 ≈ **2,621,440 字符**
+ *   —— 单键就压线；再叠加调试日志（上限 0.6M 字符，见 Q6）必然越界。越界时 `setItem` 抛错被 `catch` 吞掉，
+ *   用户看不到任何提示（表现为「本机缓冲层静默停更」）。
+ * 现在：**写入前先按字符数判预算**，超预算直接跳过本机缓冲（仍写 IndexedDB + 服务端文件），
+ *   并把「跳过 / 写入失败」如实记进调试日志与 `localBufferState()`，供面板与调试包读取。
+ * 预算默认 1.8M 字符（≈3.4MB UTF-16），给调试日志 / 追踪尾部 / 其它扩展留出余量。
+ */
+export const LOCAL_BUFFER_MAX_CHARS = 1800000;
+let localBufferMaxChars = LOCAL_BUFFER_MAX_CHARS;
+/** 覆盖预算（测试用；0 = 用默认） */
+export function setLocalBufferMaxChars(n) { localBufferMaxChars = Math.max(0, Number(n) || 0); return localBufferMaxChars; }
+/** 最近一次本机缓冲写入结论（诊断 / 面板 / 调试包） */
+let localBuffer = { at: 0, ok: false, skipped: 'never-written', chars: 0, budget: LOCAL_BUFFER_MAX_CHARS, reason: '' };
+export function localBufferState() { return Object.assign({}, localBuffer); }
 /**
  * v3.0.14/v3.0.15：**「多久算卡死」的统一阈值**（保存层与立即保存层共用同一旋钮）。
  *   一次保存/一次立即保存超过它仍未返回即视为卡死（宿主或服务端挂住），
@@ -133,6 +153,8 @@ let saveInFlightAt = 0;
 let savePendingOpts = null;
 /** 本次保存流水线**取到数据**时的变更序号（见 `saveStateNowInner` 步骤③） */
 let lastEnvelopeSeq = 0;
+/** v3.1.0：最近一次关联层裁剪（诊断；`changed=false` 时保留上一次记录） */
+let lastRelCap = { at: 0, before: 0, after: 0, max: 0, dropped: 0, orphans: 0, changed: false };
 
 /**
  * 本次保存是否可以安全跳过（无任何变化 + 上次完整保存在窗口内 + 未显式要求 force/skipFile=false 之外的动作）。
@@ -304,6 +326,15 @@ async function saveStateNowInner(o) {
     } catch (e) { kernelWarn('保存：刷新原子哈希失败', e); }
     // ② 删除自动留痕（先于写库：墓碑随本次信封一起持久化）
     try { tombstoneSweep(); } catch (e) { kernelWarn('保存：删除留痕失败', e); }
+    // ②c v3.1.0（`docs/D13` R2/Q7）：**关联层容量上限**（上限 = max(200, 条目数×2)；超出先删孤儿、再淘汰最旧行）。
+    //   放在墓碑扫之后：本次真正消失的条目已留痕，孤儿判定与新墓碑一致；幂等（不超限零改动）。
+    try {
+        const capRes = capRelLinks(st, {});
+        if (capRes && capRes.changed) {
+            lastRelCap = Object.assign({ at: Date.now() }, capRes);
+            try { debugLogPush('存储', { action: '关联层超上限 → 已裁剪', before: capRes.before, after: capRes.after, max: capRes.max, dropped: capRes.dropped, orphans: capRes.orphans }); } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* 裁剪失败不影响保存 */ }
     // ②b 快照链维护（V1 `saveState()` 收尾口径）：无原子跳过 / 无快照建根 / 否则调度增量（timerHooks 防抖）
     try { maintainSnapshots(); } catch (e) { kernelWarn('保存：快照维护失败', e); }
     // ③ 组装信封
@@ -317,10 +348,25 @@ async function saveStateNowInner(o) {
     const text = JSON.stringify(envelope);
     const bytes = text.length;
     const via = [];
-    // ④ 本机缓冲（localStorage 信封）
+    // ④ 本机缓冲（localStorage 信封）—— v3.1.0：**写入前按字符预算判定**（超预算如实跳过并留痕，不再静默失败）
     try {
         const key = 'ftt2_state_' + scopeId();
-        if (storageHooks.setItem(key, text)) via.push('localStorage');
+        const budget = localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS;
+        if (budget > 0 && text.length > budget) {
+            localBuffer = { at: Date.now(), ok: false, skipped: 'over-budget', chars: text.length, budget: budget, reason: '信封超过本机缓冲预算' };
+            try { kernelWarn('保存：本机缓冲超预算 → 本次跳过（服务端文件与 IndexedDB 不受影响）', { chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
+            try { debugLogPush('存储', { action: '本机缓冲超预算 → 跳过写入', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, miss: true, bytes: text.length, reason: 'over-budget', extra: { budget: budget }, note: '超过字符预算 → 跳过（服务端文件与 IndexedDB 不受影响）' }); } catch (e) { /* 忽略 */ }
+        } else if (storageHooks.setItem(key, text)) {
+            via.push('localStorage');
+            localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '' };
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget } }); } catch (e) { /* 忽略 */ }
+        } else {
+            localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '宿主拒绝写入（常见原因：配额不足）' };
+            try { kernelWarn('保存：本机缓冲写入被拒（配额不足？）→ 已记台账；服务端文件与 IndexedDB 不受影响', { chars: text.length }); } catch (e) { /* 忽略 */ }
+            try { debugLogPush('存储', { action: '本机缓冲写入失败', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: text.length, reason: 'write-failed' }); } catch (e) { /* 忽略 */ }
+        }
     } catch (e) { /* 忽略 */ }
     // ⑤ IndexedDB 缓冲（可用时）
     try {
@@ -721,5 +767,9 @@ export function storeStatus() {
     try { reads = readLedgerStats(); } catch (e) { reads = null; }
     let serverLoad = null;
     try { serverLoad = lastServerLoadInfo(); } catch (e) { serverLoad = null; }
-    return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady, reads: reads, serverLoad: serverLoad };
+    let local = null;
+    try { local = localBufferState(); } catch (e) { local = null; }
+    let relCap = null;
+    try { relCap = Object.assign({}, lastRelCap); } catch (e) { relCap = null; }
+    return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady, reads: reads, serverLoad: serverLoad, localBuffer: local, relCap: relCap };
 }

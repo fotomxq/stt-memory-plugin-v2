@@ -82,10 +82,16 @@ Object.assign(cfg, clone(defaultCfg));
 setKernelState(emptyState());
 
 // ---------------- D0 常量与键名（与 V1 同值） ----------------
-await A('D0 常量同值：DEBUG_KEY 与 V1 逐字一致；上限 300；`data` 序列化上限 6000', () => {
+// v3.1.0：**有意偏离 V1**（登记于 `docs/history/P10c9`）——
+//   V1（黄金样本 `G.truncate.object.len`）对象序列化上限 = 6000 字符；V2 自 v3.1.0 起改为 **2000**。
+//   原因：300 条 × 6000 = 1.8M 字符会吃掉本机缓冲配额（5MB UTF-16 ≈ 2.62M 字符）的大半，
+//   与状态信封叠加必然越界 → localStorage 写入被拒且（旧实现）静默（`docs/D13` R1/Q6）。
+//   保真度口径：**只改上限数值**，截断方式（对象 JSON 截断 / 字符串原样不截断）与 V1 完全一致。
+const V1_DEBUG_DATA_MAX = 6000;
+await A('D0 常量同值：DEBUG_KEY 与 V1 逐字一致；上限 300；`data` 序列化上限**有意偏离 V1**（6000 → 2000，见 P10c9）', () => {
     return DEBUG_KEY === G.meta.debugKey && G.meta.debugKey === 'SPreset_FTTMemoryDebug'
         && DEBUG_CAP === 300 && G.cap.n === 300 && G.cap.storedN === 300
-        && DEBUG_DATA_MAX === 6000 && G.truncate.object.len === 6000;
+        && DEBUG_DATA_MAX === 2000 && G.truncate.object.len === V1_DEBUG_DATA_MAX;
 }, { key: DEBUG_KEY, cap: DEBUG_CAP, max: DEBUG_DATA_MAX });
 
 // ---------------- D1 重启后从持久层读取（V1 `dbgLoadFromStorage`） ----------------
@@ -114,16 +120,18 @@ await A('D2 基础归一：字符串原样 / 对象 JSON / null / 数字 / 数�
 }, (() => { try { return { got: listProj(), want: G.basic.list }; } catch (e) { return String(e.message); } })());
 
 // ---------------- D3 截断：对象 JSON 截断 6000；字符串原样不截断 ----------------
-await A('D3 截断口径：对象 JSON 截断 6000（首尾逐字符一致）；字符串**不截断**（V1 原样 7000）', () => {
+await A('D3 截断口径（有意偏离的**边界**）：对象 JSON 截断到新上限 2000（首尾逐字符一致，方式与 V1 相同）；字符串**不截断**（V1 原样 7000，V2 一致）', () => {
     installLS();
     resetAll(null);
     debugLogPush('长对象', { big: 'x'.repeat(7000) });
     const o = debugLogList()[0];
+    const fullObj = JSON.stringify({ big: 'x'.repeat(7000) });     // 与 push 内部同源序列化
     debugLogPush('长字符串', 'y'.repeat(7000));
     const s = debugLogList()[0];
-    return o.data.length === G.truncate.object.len
-        && o.data.slice(0, 40) === G.truncate.object.head && o.data.slice(-20) === G.truncate.object.tail
-        && s.data.length === G.truncate.string.len && s.data.length === 7000;
+    return o.data.length === DEBUG_DATA_MAX                          // ★ 有意偏离：新上限 2000（V1 为 `G.truncate.object.len` = 6000）
+        && o.data === fullObj.slice(0, DEBUG_DATA_MAX)               // 截断方式与 V1 完全一致（取前缀）
+        && o.data.slice(0, 40) === G.truncate.object.head            // 头部与 V1 黄金样本逐字符一致
+        && s.data.length === G.truncate.string.len && s.data.length === 7000   // 字符串不截断（与 V1 一致）
 }, (() => { try { return { obj: debugLogList()[1].data.length, str: debugLogList()[0].data.length }; } catch (e) { return String(e.message); } })());
 
 // ---------------- D4 V1 原生行为：`data=undefined` 不记录（V2 记录空串 —— 已知偏差） ----------------

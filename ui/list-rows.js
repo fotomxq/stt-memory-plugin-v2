@@ -31,8 +31,8 @@ import { escHtml } from '../core/util.js';
 import { atomTitle, normPhase } from '../core/model/scalars.js';
 import { atomIsHidden } from '../core/merge.js';
 import { formatMoney, defaultCurrencyOwner, isTrackedCurrencyOwner } from '../core/model/money.js';
-import { relLinksOf, relSummaryLine, relHowLabelOf } from '../core/model/rel.js';
-import { snapshotAge, snapshotAgeBasisText, snapshotAppearanceText, snapshotBirthAnomaly, snapshotBirthAnomalyShort } from '../core/model/snapshot.js';
+import { relLinksOf, relSummaryLine, relHowLabelOf, relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey } from '../core/model/rel.js';
+import { snapshotAge, snapshotAgeBasisText, snapshotAppearanceText, snapshotBirthAnomaly, snapshotBirthAnomalyShort, storyAnchorDate } from '../core/model/snapshot.js';   // v3.1.0：+storyAnchorDate（渲染期锚点，一次算好复用）
 import { importancePct, planPhaseLabel, parallelExpired, parallelDecayScore, relTag } from '../core/recall.js';
 
 const esc = (v) => escHtml(String(v == null ? '' : v));
@@ -58,27 +58,91 @@ function whenLine(item, now, unknownText) {
     return '📅 ' + esc(d) + relTag(d, now) + esc(withTime);
 }
 /** 关联行（V1 `relSummaryLine` + 🔗 入口；入口按钮由面板侧提供，这里只出文本） */
-function relNoteText(kind, id, fallback) {
+function relNoteText(kind, id, fallback, ctx) {
     let known = '';
-    try { known = relSummaryLine(kind, id, 6) || ''; } catch (e) { known = ''; }
+    try { known = ctx ? (relSummaryLineIndexed(ctx.rel, kind, id, 6) || '') : (relSummaryLine(kind, id, 6) || ''); } catch (e) { known = ''; }
     return known ? known : fallback;
+}
+
+/**
+ * v3.1.0（性能，`docs/D13` R3）：**渲染期上下文**（每次渲染现建一次，不跨渲染缓存）。
+ *   · `rel`：关联行索引（`core/model/rel.js#relLinkIndex`）—— 把「每行全量扫 links」变成一次建索引；
+ *   · `entries`：`dim → Map(id → {it, order})`（角色页下钻按 id 取条目，避免每行遍历整个维度）；
+ *   · 不传 ctx 的实现路径**保持原样**（原 `relLinksOf` / 全量遍历），便于对照与回退。
+ */
+export function buildRowCtx() {
+    const ctx = { rel: null, entries: {}, anchor: null };
+    try { ctx.rel = relLinkIndex(state); } catch (e) { ctx.rel = null; }
+    // v3.1.0（性能）：**剧情锚点一次算好** —— 无剧情时钟时它要 `filter + sort` 全部情节与记忆，
+    //   而角色页每行（年龄 / 出生异常）都会用到它；`null` 表示「已算过且为空」（下游据此跳过重算）。
+    try { ctx.anchor = storyAnchorDate() || null; } catch (e) { ctx.anchor = null; }
+    for (const dim of ['memories', 'plans', 'suspense']) {
+        const m = new Map();
+        try {
+            const list = Array.isArray(state[dim]) ? state[dim] : [];
+            for (let i = 0; i < list.length; i++) { const it = list[i]; if (it && it.id) m.set(String(it.id), { it: it, order: i }); }
+        } catch (e) { /* 忽略 */ }
+        ctx.entries[dim] = m;
+    }
+    return ctx;
+}
+
+/** 某维某条目的关联行（有索引走索引；无索引回落原实现） */
+function linksOf(ctx, dim, id) {
+    try { return ctx ? relLinksOfIndexed(ctx.rel, dim, id) : relLinksOf(dim, id); } catch (e) { return []; }
 }
 
 // ============================================================
 // 「下钻」块（V1 `relCharacterDrillHtml` 25108~25133 / `relConceptRefHtml` 25141~25154）
 // ============================================================
 /** 角色页下钻：已知记忆 / 参与计划 / 在查悬念（只读聚合，按知情方式计数 + 前若干标题） */
-export function characterDrillHtml(name) {
+export function characterDrillHtml(name, ctx) {
     try {
-        const key = String(name || '').replace(/[\s·・.．]/g, '').toLowerCase();
+        const key = relWhoKey(name);
         if (!key) return '';
+        if (ctx && ctx.rel && ctx.entries) {
+            // v3.1.0（性能）：走索引 —— 只遍历「该角色命中的关联行」，不再逐行扫全库
+            const hits = ctx.rel.byWho.get(key) || [];
+            const picks = {};
+            for (const h of hits) {
+                const bucket = ctx.entries[h.dim];
+                if (!bucket) continue;                       // 只关心 memories / plans / suspense（与旧实现同一维度集合）
+                const e = bucket.get(h.refId);
+                if (!e) continue;                            // 目标条目不存在 → 两侧都忽略
+                const key2 = h.dim + '|' + h.refId;
+                const cur = picks[key2];
+                // 与 `relLinksOf` 的排序同口径：可靠度更高者胜；同可靠度保留先出现者（稳定排序）
+                if (!cur || h.rank > cur.rank) picks[key2] = { dim: h.dim, refId: h.refId, rank: h.rank, how: h.how, order: e.order };
+            }
+            const hit = (dim) => {
+                const out = [];
+                for (const k2 of Object.keys(picks)) {
+                    const pick = picks[k2];
+                    if (pick.dim !== dim) continue;
+                    const e = ctx.entries[dim].get(pick.refId);
+                    if (!e) continue;
+                    out.push({ it: e.it, how: pick.how, order: e.order });
+                }
+                out.sort((a, b) => a.order - b.order);
+                return out;
+            };
+            const mems0 = hit('memories'), plans0 = hit('plans'), susps0 = hit('suspense');
+            if (!mems0.length && !plans0.length && !susps0.length) return '';
+            const c0 = (list) => { const g = {}; for (const x of list) { const l = relHowLabelOf(x.how); g[l] = (g[l] || 0) + 1; } return Object.keys(g).map((k) => k + ' ' + g[k]).join(' · '); };
+            const t0 = (list, n) => list.slice(0, n).map((x) => '《' + cut(x.it.title || x.it.content || x.it.text, 16) + '》').join('');
+            const p0 = [];
+            if (mems0.length) p0.push('🧠 已知 ' + mems0.length + ' 条（' + c0(mems0) + '）' + t0(mems0, 2));
+            if (plans0.length) p0.push('📋 参与计划 ' + plans0.length + '（' + c0(plans0) + '）' + t0(plans0, 1));
+            if (susps0.length) p0.push('🔍 在查/知情悬念 ' + susps0.length + '（' + c0(susps0) + '）' + t0(susps0, 1));
+            return '<div class="ftt-note ftt-note-info">' + esc(p0.join(' · ')) + '</div>';
+        }
         const hit = (dim) => {
             const out = [];
             for (const it of (state[dim] || [])) {
                 if (!it || !it.id) continue;
                 let rows = [];
                 try { rows = relLinksOf(dim, it.id) || []; } catch (e) { rows = []; }
-                const mine = rows.filter((x) => x && x.who && String(x.who).replace(/[\s·・.．]/g, '').toLowerCase() === key);
+                const mine = rows.filter((x) => x && x.who && relWhoKey(x.who) === key);
                 if (!mine.length) continue;
                 out.push({ it: it, how: mine[0].how });
             }
@@ -101,15 +165,14 @@ export function characterDrillHtml(name) {
 }
 
 /** 概念页「← 被记忆引用 N 条：《…》」（V1 `relConceptRefHtml`） */
-export function conceptRefHtml(concept) {
+export function conceptRefHtml(concept, ctx) {
     try {
         const name = String((concept && concept.name) || '').trim();
         if (!name) return '';
         const list = [];
         for (const it of (state.memories || [])) {
             if (!it || !it.id) continue;
-            let rows = [];
-            try { rows = relLinksOf('memories', it.id) || []; } catch (e) { rows = []; }
+            const rows = linksOf(ctx, 'memories', it.id);
             const anchor = rows.find((x) => !x.who) || null;
             if (anchor && String(anchor.conceptRef || '').trim() === name) list.push(it);
         }
@@ -122,9 +185,8 @@ export function conceptRefHtml(concept) {
 // ============================================================
 // 记忆「类型徽标」（V1 `memoriesHtml()`：按关联派生：公开事实 / 事实 / 共同 / 私密）
 // ============================================================
-function memoryBadge(id) {
-    let rows = [];
-    try { rows = relLinksOf('memories', id) || []; } catch (e) { rows = []; }
+function memoryBadge(id, ctx) {
+    const rows = linksOf(ctx, 'memories', id);
     const anchor = rows.find((x) => !x.who) || null;
     const people = rows.filter((x) => x.who);
     if (anchor && anchor.public) return { html: '<span class="ftt-badge ftt-badge--public">公开事实</span>', rows: rows, anchor: anchor, people: people };
@@ -137,20 +199,21 @@ function memoryBadge(id) {
 // ============================================================
 // 各维度行正文（返回 `{ main, tags: [], opsExtra }`；main 放在 V2 行的主体 span 内）
 // ============================================================
-export function listRowMainHtml(kind, e) {
+export function listRowMainHtml(kind, e, ctx) {
     const now = (() => { try { return getStoryNow() || ''; } catch (x) { return ''; } })();
     const k = String(kind || '');
     const item = e || {};
+    const cx = ctx || null;      // v3.1.0：渲染期上下文（关联行索引 / 条目索引）；不传则走原实现
     try {
         if (k === 'atoms') return atomsRow(item, now);
-        if (k === 'memories') return memoriesRow(item, now);
-        if (k === 'snapshots') return snapshotsRow(item);
+        if (k === 'memories') return memoriesRow(item, now, cx);
+        if (k === 'snapshots') return snapshotsRow(item, cx);
         if (k === 'items') return itemsRow(item);
         if (k === 'currencies') return currenciesRow(item);
         if (k === 'rumors') return rumorsRow(item);
-        if (k === 'plans' || k === 'suspense') return planSuspRow(k, item, now);
-        if (k === 'concepts') return conceptsRow(item, now);
-        if (k === 'parallels') return parallelsRow(item, now);
+        if (k === 'plans' || k === 'suspense') return planSuspRow(k, item, now, cx);
+        if (k === 'concepts') return conceptsRow(item, now, cx);
+        if (k === 'parallels') return parallelsRow(item, now, cx);
     } catch (x) { /* 单行渲染失败 → 回落摘要（不影响整页） */ }
     // 兜底（未覆盖的维度）：V1 无对应行渲染器时用摘要 + 调用统计
     const fallback = String(item.title || item.name || item.content || item.text || item.subject || '');
@@ -182,15 +245,15 @@ function atomsRow(a, now) {
 }
 
 /** V1 `memoriesHtml()` 24114~24138 */
-function memoriesRow(m, now) {
-    const b = memoryBadge(m.id);
+function memoriesRow(m, now, ctx) {
+    const b = memoryBadge(m.id, ctx);
     const people = b.people;
     const who = (!people.length && m.owner && m.owner !== '通用') ? ('【' + esc(m.owner) + '】') : '';
     const when = m.date ? ('📅 ' + esc(m.date) + relTag(m.date, now)) : '📅 未知';
     const cat = esc(m.memCategory || m.category || '一般');
     const tags = tagsLine(m.tags);
     const relSum = '<div class="ftt-note ftt-note-info">'
-        + (people.length ? ('关联 ' + people.length + '：' + esc(relSummaryLine('memories', m.id, 6))) : '未记录知情者（按归属者保守回退）')
+        + (people.length ? ('关联 ' + people.length + '：' + esc(ctx ? relSummaryLineIndexed(ctx.rel, 'memories', m.id, 6) : relSummaryLine('memories', m.id, 6))) : '未记录知情者（按归属者保守回退）')
         + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="memories" data-id="' + esc(m.id) + '" title="在「设定 → 约束 → 关系表」里查看 / 新建这条记忆的知情关联">🔗 关联' + (people.length ? ('（' + people.length + '）') : '') + '</span></div>';
     const devs = people.filter((x) => String(x.view || '').trim()).slice(0, 3)
         .map((x) => String(x.who || '').replace(/^.*·/, '') + ' ' + esc(cut(x.view, 24)));
@@ -203,16 +266,17 @@ function memoriesRow(m, now) {
 }
 
 /** V1 `snapshotsHtml()` 24040~24097 */
-function snapshotsRow(s) {
+function snapshotsRow(s, ctx) {
     const parts = [];
     const add = (kk, v) => { const t = String(v == null ? '' : v).trim(); if (t) parts.push(kk + '：' + esc(t)); };
+    const anchor = ctx ? ctx.anchor : undefined;      // v3.1.0：渲染期锚点（null = 已算过为空；undefined = 未提供）
     add('性别', s.identity && s.identity.gender);
     add('出生日期', s.identity && s.identity.birthDate);
     let ageNow = '';
-    try { ageNow = snapshotAge(s) || ''; } catch (e) { ageNow = ''; }
+    try { ageNow = snapshotAge(s, anchor) || ''; } catch (e) { ageNow = ''; }
     if (ageNow) {
         let basis = '';
-        try { basis = snapshotAgeBasisText(s) || ''; } catch (e) { basis = ''; }
+        try { basis = snapshotAgeBasisText(s, anchor) || ''; } catch (e) { basis = ''; }
         parts.push('年龄：' + esc(ageNow) + '岁' + (basis ? ('（' + esc(basis) + '）') : ''));
     } else if (s.identity && s.identity.birthDate) {
         parts.push('年龄：待算（缺剧情日期）');
@@ -237,7 +301,7 @@ function snapshotsRow(s) {
     const deadTag = (s.identity && s.identity.deceased === true) ? '<span class="ftt-badge ftt-badge--abandoned">🪦 已去世</span>' : '';
     let birthTag = '';
     try {
-        const anom = snapshotBirthAnomaly(s);
+        const anom = snapshotBirthAnomaly(s, anchor);
         if (anom) {
             let why = anom;
             try { why = snapshotBirthAnomalyShort(anom) || anom; } catch (e) { why = anom; }
@@ -247,7 +311,7 @@ function snapshotsRow(s) {
     const tags = tagsLine(s.tags);
     const stamp = (icon, label, d, t) => (d ? (icon + ' ' + label + ' ' + esc(d) + (t ? (' ' + esc(t)) : '')) : '');
     const times = [stamp('🕒', '更新', s.lastUpdateDate, s.lastUpdateTime), stamp('👁', '见面', s.lastSeenDate, s.lastSeenTime)].filter(Boolean);
-    const drill = characterDrillHtml(s.name);
+    const drill = characterDrillHtml(s.name, ctx);
     return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + deadTag + birthTag + '</div>'
         + '<div class="ftt-snap-desc">' + body + '</div>' + drill + tags
         + '<div class="ftt-meta">调用' + (s.uses || 0) + '次 · 重要度' + importancePct(s) + '%' + (times.length ? (' · ' + times.join(' · ')) : '') + '</div>';
@@ -331,7 +395,7 @@ function rumorsRow(r) {
 }
 
 /** V1 `plansHtml()` 24300~24362（plans 与 suspense 同一模板，悬念多一行「线索」） */
-function planSuspRow(kind, p, now) {
+function planSuspRow(kind, p, now, ctx) {
     const isSusp = kind === 'suspense';
     const hasTitle = String(p.title || '').trim() && p.title !== p.content;
     const meta = [];
@@ -344,7 +408,7 @@ function planSuspRow(kind, p, now) {
     // V1：`const ph = normPhase(p.phase); ph ? <角标> : ''` —— 无阶段（或非法值）**不出角标**
     const ph = normPhase(p.phase) || '';
     const phBadge = ph ? ('<span class="ftt-badge ftt-ml-2 ' + (ph === 'blocked' ? 'ftt-badge--blocked' : 'ftt-badge--abandoned') + '">' + esc(planPhaseLabel(ph)) + (p.statusNote ? ('·' + esc(cut(p.statusNote, 20))) : '') + '</span>') : '';
-    const known = relNoteText(kind, p.id, isSusp ? '未记录知情者（按当事人保守回退）' : '未记录知情者（按策划者保守回退）');
+    const known = relNoteText(kind, p.id, isSusp ? '未记录知情者（按当事人保守回退）' : '未记录知情者（按策划者保守回退）', ctx);
     const relLine = '<div class="ftt-note ftt-note-info">' + esc(known)
         + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="' + esc(kind) + '" data-id="' + esc(p.id) + '" title="在「设定 → 约束 → 关系表」里编辑这条' + (isSusp ? '悬念' : '计划') + '的知情者">🔗 关联</span></div>';
     const prog = Number(p.progress);
@@ -361,10 +425,10 @@ function planSuspRow(kind, p, now) {
 }
 
 /** V1 `conceptsHtml()` 24529~24535 */
-function conceptsRow(c, now) {
+function conceptsRow(c, now, ctx) {
     const src = c.source ? ('<span class="ftt-sub"> · 来源:' + esc(c.source) + '</span>') : '';
     const when = c.date ? (' 📅 ' + esc(c.date) + relTag(c.date, now)) : '';
-    const refs = conceptRefHtml(c);
+    const refs = conceptRefHtml(c, ctx);
     const tagsInner = arr(c.tags).length ? (' #' + esc(c.tags.join(' #'))) : '';
     return '<div class="ftt-title-row"><b>' + esc(c.name) + '</b>' + src + when + '</div>'
         + (c.content ? ('<div class="ftt-desc">' + esc(c.content) + '</div>') : '')
@@ -373,7 +437,7 @@ function conceptsRow(c, now) {
 }
 
 /** V1 `parallelsHtml()` 24489~24523（九行结构） */
-function parallelsRow(p, now) {
+function parallelsRow(p, now, ctx) {
     let decayNote = '', expired = false;
     try {
         if (cfg.parallelDecayEnabled !== false) {
@@ -405,7 +469,7 @@ function parallelsRow(p, now) {
     const updated = p.updatedAt ? (' · 现实更新 ' + new Date(Number(p.updatedAt)).toLocaleString()) : '';
     const line6 = '<div class="ftt-meta">' + esc(p.type || '') + ' · 调用' + (p.uses || 0) + '次 · 重要度' + importancePct(p) + '%' + esc(updated) + ' · ' + esc(decayNote) + '</div>';
     const line7 = tagsLine(p.tags);
-    const relWho = relNoteText('parallels', p.id, '仅幕后（角色不知情）');
+    const relWho = relNoteText('parallels', p.id, '仅幕后（角色不知情）', ctx);
     const line8 = '<div class="ftt-note ftt-note-info">' + esc(relWho) + (p.promotedTo ? ' · 已转正为情节' : '')
         + ' <span class="ftt-rel-jump" data-ftt-action="relJump" data-kind="parallels" data-id="' + esc(p.id) + '" title="在「设定 → 约束 → 关系表」里编辑平行事件的相关角色">🔗 关联</span>'
         + (p.promotedTo ? '' : (' <span class="ftt-rel-jump" data-ftt-action="promoteParallel" data-id="' + esc(p.id) + '" title="转正为情节（需确认，原条不再注入）">⬆ 转正为情节</span>')) + '</div>';
