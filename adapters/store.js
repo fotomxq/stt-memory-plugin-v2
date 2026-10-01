@@ -45,10 +45,20 @@ export function lastSaveInfo() {
     return Object.assign({}, lastSave);
 }
 
-/** localStorage 兼容钩子（宿主可注入；默认用 globalThis.localStorage） */
+/** localStorage 兼容钩子（宿主可注入；默认用 globalThis.localStorage）；v3.3.0：+`keys()`（缓冲清点需要枚举键） */
 let storageHooks = {
     getItem: (k) => { try { return globalThis.localStorage ? globalThis.localStorage.getItem(k) : null; } catch (e) { return null; } },
     setItem: (k, v) => { try { if (globalThis.localStorage) { globalThis.localStorage.setItem(k, v); return true; } } catch (e) { /* 忽略 */ } return false; },
+    removeItem: (k) => { try { if (globalThis.localStorage) { globalThis.localStorage.removeItem(k); return true; } } catch (e) { /* 忽略 */ } return false; },
+    keys: () => {
+        try {
+            const ls = globalThis.localStorage;
+            if (!ls) return [];
+            const out = [];
+            for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (k != null) out.push(String(k)); }
+            return out;
+        } catch (e) { return []; }
+    },
 };
 /** 注入本机存储（测试/宿主自定义） */
 export function setStorageHooks(next) {
@@ -617,6 +627,167 @@ export async function loadFromServerFile() {
         lastServerLoad = { at: Date.now(), via: sr.st ? 'shards' : 'none', ok: !!sr.st, bytes: 0, mainAt: 0, applied: sr.applied, reason: String((e && e.message) || e), reasonText: sr.st ? '主文件解析失败 → 分片重建' : '主文件解析失败且无分片' };
         return sr.st;
     }
+}
+
+/**
+ * v3.3.0（用户要求）：「设定-数据管理-本地缓冲，请补充其他为本地缓冲的内容……其他缓冲也应该展示，
+ *   同样有对应清理按钮功能。」
+ *
+ * 本段是**本机（浏览器）缓冲的清点与清理单一来源** —— 数据管理页「本地缓冲」分节的每一行数字都来自这里，
+ *   每个分组都有对应清理入口。分组口径（键前缀 → 归属模块）：
+ *
+ * | 分组 | 键前缀 | 归属 |
+ * | --- | --- | --- |
+ * | `state` | `ftt2_state_<scope>` | 本模块（状态信封；每角色一份） |
+ * | `names` | `ftt2_FileSlug_` · `ftt2_ArchiveName_` | `adapters/sync.js`（文件名/归档名解析缓存） |
+ * | `syncMarks` | `ftt2_RemoteStateHash_` · `ftt2_RemoteSnapSig_` · `ftt2_LastPushSig_` · `ftt2_SyncGate_` | `adapters/sync.js`（对账门控标记） |
+ * | `syncLog` | `ftt2_SyncLog_` | `adapters/sync.js`（同步日志，上限 30 条） |
+ * | `v1Legacy` | `SPreset_FTTMemory_char:` / `_FileSlug_` / `_FileNames_` / `_ArchiveName_` / `Config` | V1 遗留（`adapters/import-v1.js` 读；导入源，清理后无法再迁移） |
+ * | `debug` / `trace` / `about` | `SPreset_FTTMemoryDebug` · `SPreset_FTTMemoryTrace` · `fttAboutJson` | 调试日志 / 追踪简报 / 版本清单缓存 |
+ *
+ * 注：向量缓存在 IndexedDB（`FTTMemoryVectorCache`），由 `adapters/vector-cache.js` 自己统计与清空。
+ */
+export const LOCAL_KEY_GROUPS = Object.freeze({
+    state: ['ftt2_state_'],
+    names: ['ftt2_FileSlug_', 'ftt2_ArchiveName_'],
+    syncMarks: ['ftt2_RemoteStateHash_', 'ftt2_RemoteSnapSig_', 'ftt2_LastPushSig_', 'ftt2_SyncGate_'],
+    syncLog: ['ftt2_SyncLog_'],
+    v1Legacy: ['SPreset_FTTMemory_char:', 'SPreset_FTTMemory_FileSlug_', 'SPreset_FTTMemory_FileNames_', 'SPreset_FTTMemory_ArchiveName_', 'SPreset_FTTMemoryConfig'],
+    debug: ['SPreset_FTTMemoryDebug'],
+    trace: ['SPreset_FTTMemoryTrace'],
+    about: ['fttAboutJson'],
+});
+
+/** UTF-8 字节数（无 TextEncoder 时退化为字符数；与数据管理页口径一致） */
+export function localByteLen(v) {
+    const s = String(v == null ? '' : v);
+    try { if (typeof TextEncoder === 'function') return new TextEncoder().encode(s).length; } catch (e) { /* 退化 */ }
+    return s.length;
+}
+
+/** 本机键清点：按分组给出 `{keys:[{key, chars, bytes}], count, bytes, chars}`（**只读**，不写任何东西） */
+export function localKeyStats() {
+    const out = {};
+    for (const g of Object.keys(LOCAL_KEY_GROUPS)) out[g] = { keys: [], count: 0, bytes: 0, chars: 0 };
+    try {
+        const all = (typeof storageHooks.keys === 'function') ? (storageHooks.keys() || []) : [];
+        const scope = scopeId();
+        for (const key of all) {
+            const k = String(key);
+            for (const g of Object.keys(LOCAL_KEY_GROUPS)) {
+                if (!LOCAL_KEY_GROUPS[g].some((p) => k.indexOf(p) === 0)) continue;
+                const raw = (() => { try { return storageHooks.getItem(k); } catch (e) { return null; } })();
+                const chars = String(raw == null ? '' : raw).length;
+                const bytes = localByteLen(raw);
+                const rec = { key: k, chars: chars, bytes: bytes, current: (g === 'state' && k === 'ftt2_state_' + scope) };
+                out[g].keys.push(rec);
+                out[g].count += 1;
+                out[g].bytes += bytes;
+                out[g].chars += chars;
+                break;                              // 一个键只归一个分组（前缀表按优先级排列）
+            }
+        }
+        // `state` 分组：把「当前作用域」与「其它作用域」分开（UI 需要分别展示与清理）
+        const cur = out.state.keys.filter((x) => x.current);
+        const other = out.state.keys.filter((x) => !x.current);
+        out.state.current = { keys: cur, count: cur.length, bytes: cur.reduce((n, x) => n + x.bytes, 0), chars: cur.reduce((n, x) => n + x.chars, 0) };
+        out.state.others = { keys: other, count: other.length, bytes: other.reduce((n, x) => n + x.bytes, 0), chars: other.reduce((n, x) => n + x.chars, 0) };
+    } catch (e) { /* 清点失败 → 保持零值 */ }
+    return out;
+}
+
+/** 删除若干本机键（返回 `{removed, failed}`；失败不抛） */
+export function removeLocalKeys(keys) {
+    const list = (Array.isArray(keys) ? keys : []).map((k) => String(k)).filter(Boolean);
+    let removed = 0; const failed = [];
+    for (const k of list) {
+        const ok = (() => { try { return storageHooks.removeItem(k) !== false; } catch (e) { return false; } })();
+        if (ok) removed += 1; else failed.push(k);
+    }
+    return { removed: removed, failed: failed };
+}
+
+/** IndexedDB（localforage，本机内存库）里的状态副本清点 */
+export async function idbCopyStats() {
+    const out = { available: false, count: 0, bytes: 0, keys: [], current: false };
+    try {
+        const lf = await localforageLib();
+        if (!lf || typeof lf.getItem !== 'function') return out;
+        out.available = true;
+        const keys = (typeof lf.keys === 'function') ? (await lf.keys() || []) : [];
+        for (const k of keys) {
+            const key = String(k);
+            if (key.indexOf('ftt2_state_') !== 0) continue;
+            const v = await lf.getItem(key);
+            let bytes = 0;
+            try { bytes = JSON.stringify(v == null ? null : v).length; } catch (e) { bytes = 0; }
+            out.keys.push({ key: key, bytes: bytes, current: key === 'ftt2_state_' + scopeId() });
+            out.count += 1;
+            out.bytes += bytes;
+        }
+        out.current = out.keys.some((x) => x.current);
+        return out;
+    } catch (e) { return out; }
+}
+
+/** 当前作用域的本机副本清点（localStorage 信封 + IndexedDB 副本） */
+export async function localCopyStats() {
+    const ks = localKeyStats();
+    const cur = ks.state.current;
+    const idb = await idbCopyStats();
+    let envelopeAt = 0, items = 0;
+    try {
+        const raw = storageHooks.getItem('ftt2_state_' + scopeId());
+        if (raw) { const env = JSON.parse(raw); envelopeAt = Number((env && env.payload && env.payload.updatedAt) || 0); items = countsOf((env && env.payload && env.payload.data) || null).total; }
+    } catch (e) { /* 忽略 */ }
+    return {
+        scope: scopeId(),
+        local: { present: cur.count > 0, chars: cur.chars, bytes: cur.bytes, updatedAt: envelopeAt, items: items },
+        idb: { available: idb.available, present: idb.current, bytes: (idb.keys.filter((x) => x.current)[0] || {}).bytes || 0 },
+        others: { count: ks.state.others.count, bytes: ks.state.others.bytes, keys: ks.state.others.keys.map((x) => x.key) },
+        budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
+    };
+}
+
+/**
+ * 清理本机副本（localStorage 信封 / IndexedDB 副本 / 其它角色副本）。
+ * @param {{target?:'local'|'idb'|'both'|'others'}} [opts]
+ *   `local` = 只清当前角色的 localStorage 信封；`idb` = 只清当前角色的 IndexedDB 副本；
+ *   `both`（默认）= 两者都清；`others` = 清**其它角色**的 localStorage 信封（当前角色不动）。
+ *   一律**只动本机**：服务端记忆文件、IndexedDB 之外的持久层都不碰。
+ */
+export async function clearLocalCopy(opts) {
+    const o = opts || {};
+    const target = String(o.target || 'both');
+    const scope = scopeId();
+    const stateKeys = (() => {
+        try {
+            const ls = (typeof storageHooks.keys === 'function') ? (storageHooks.keys() || []) : [];
+            return ls.map(String).filter((k) => k.indexOf('ftt2_state_') === 0);
+        } catch (e) { return []; }
+    })();
+    const curKey = 'ftt2_state_' + scope;
+    let localKeys = [];
+    if (target === 'others') localKeys = stateKeys.filter((k) => k !== curKey);
+    else if (target === 'local' || target === 'both') localKeys = [curKey];
+    const rm = localKeys.length ? removeLocalKeys(localKeys) : { removed: 0, failed: [] };
+    let idbRemoved = 0;
+    if (target === 'idb' || target === 'both') {
+        try {
+            const lf = await localforageLib();
+            if (lf && typeof lf.removeItem === 'function') { try { await lf.removeItem(curKey); idbRemoved += 1; } catch (e) { /* 忽略 */ } }
+        } catch (e) { /* IndexedDB 不可用 → 只清 localStorage */ }
+    }
+    if (target === 'local' || target === 'both' || target === 'others') {
+        localBuffer = {
+            at: Date.now(), ok: false, skipped: 'cleared-by-user', chars: 0,
+            budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
+            reason: target === 'others' ? '用户清除了其它角色的本机副本' : '用户清除了当前角色的本机副本',
+        };
+    }
+    try { debugLogPush('存储', { action: '清理本机副本', target: target, localKeys: rm.removed, idb: idbRemoved }); } catch (e) { /* 忽略 */ }
+    // `cleared` = 本机键删除数（与 `localKeys` 同值；供面板/devtools 统一读一个字段）
+    return { ok: true, target: target, cleared: rm.removed, localKeys: rm.removed, failed: rm.failed, idb: idbRemoved };
 }
 
 /** 删除服务端文件（数据管理用） */

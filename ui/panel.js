@@ -21,6 +21,7 @@ import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_T
 import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.0 折叠说明；v2.60.0 统一富文本（`**x**` → 粗体）
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
+import { refreshLocalCopy } from './buffer-manage.js';   // v3.3.0：清理后刷新本机副本统计
 import { nsfwSoftenState, NSFW_DIM_LABEL } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
@@ -1699,6 +1700,12 @@ const DANGER_ACTION_PROMPTS = {
     'syncPickLocal': '用**本端**版本覆盖对端？\n\n两端分歧将按本端内容强行统一，**对端的差异会被丢弃**。此操作不可撤销，建议先备份。',
     'syncPickRemote': '用**对端**版本覆盖本端？\n\n本端当前记忆会被对端内容替换，**本端的差异会被丢弃**。此操作不可撤销，建议先备份。',
     'clear-inject': '清空当前注入内容？\n\n只清除这次注入给 AI 的正文，**不影响任何记忆数据**（下次提取会重新生成）。',
+    // ── v3.3.0（用户要求「其他缓冲也应该展示，同样有对应清理按钮功能」）──
+    //   「本机数据副本」属**记忆数据的本机副本**：清掉后若从未成功上传过，等于丢弃未上传改动 → 二次确认。
+    'localCopyClear': '清除当前角色在本机的状态副本？\n\n只删本机（浏览器本地变量）这份副本，**服务端记忆文件不受影响**；下次打开会从服务端重新载入。\n若这份改动从没成功上传过，清掉就等于丢弃它 —— 建议先「⬇ 导出 JSON 文件」备份。',
+    'idbCopyClear': '清除当前角色在本机内存库（IndexedDB）里的副本？\n\n只删本机这一份副本，**服务端记忆文件不受影响**。',
+    'localCopyClearOthers': '清除**其它角色**留在本机的状态副本？\n\n只删其它角色的本机副本（当前角色的不动）；每个角色清掉后，下次切到它时会从服务端重新载入。\n若某个角色有未上传的改动，清掉就等于丢弃它。',
+    'v1LegacyClear': '清除 V1 遗留的本机数据（导入源）？\n\n这些是 V1 插件留在本机的旧存档 / 旧命名缓存 / 旧设置，「⬆ 导入 V1」靠它迁移；**清理后无法再从本机迁移 V1 数据**。',
     'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；清除后总览会重新列出**第 0 层之后的所有待分析楼层**（便于整段重做），再次分析后它们会照常从清单消失。',
 };
 
@@ -2373,6 +2380,28 @@ export async function panelAction(action, payload) {
             const rr = relAction(a, p);
             setNote(rr.ok ? ('关系：' + (rr.saved !== undefined ? ('已保存 ' + rr.saved + ' 行 / 新增 ' + (rr.added || 0) + ' · 更新 ' + (rr.updated || 0) + (rr.skipped ? (' · 跳过空行 ' + rr.skipped) : '')) : (rr.cleared !== undefined ? ('已清空 ' + rr.cleared + ' 行') : (rr.swept !== undefined ? ('已清扫孤儿 ' + rr.swept + ' 行') : (rr.cleaned !== undefined ? ('已清理无效关系 ' + rr.cleaned + ' 行' + (rr.cleaned && rr.summary ? ('（' + String(rr.summary).replace(/^清理无效关系 \d+ 行（/, '').replace(/）$/, '') + '）') : '')) : (rr.dropped !== undefined ? ('已清除推定 ' + rr.dropped + ' 行') : ('行数 ' + (rr.rows || 0)))))))) : ('关系操作失败：' + String(rr.reason || '未知')));
             result = Object.assign(result, rr);
+        }
+        // ── v3.3.0（用户要求）：本地缓冲逐项清理（本机副本 / 命名缓存 / 对账标记 / V1 遗留）──
+        else if (a === 'localCopyClear' || a === 'idbCopyClear' || a === 'localCopyClearOthers' || a === 'nameCacheClear' || a === 'syncMarkClear' || a === 'v1LegacyClear') {
+            const target = a === 'idbCopyClear' ? 'idb' : (a === 'localCopyClearOthers' ? 'others' : 'local');
+            const r = await (async () => {
+                try {
+                    if (a === 'nameCacheClear' || a === 'syncMarkClear' || a === 'v1LegacyClear') {
+                        const fn = hooks[a];
+                        return (typeof fn === 'function') ? await fn({}) : { ok: false, reason: 'no-hook' };
+                    }
+                    const fn = hooks.localCopyClear;
+                    return (typeof fn === 'function') ? await fn({ target: target }) : { ok: false, reason: 'no-hook' };
+                } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+            })();
+            const n = Number((r && (r.cleared !== undefined ? r.cleared : r.localKeys)) || 0);
+            const label = a === 'nameCacheClear' ? '命名缓存' : (a === 'syncMarkClear' ? '同步与对账标记' : (a === 'v1LegacyClear' ? 'V1 遗留数据' : (a === 'idbCopyClear' ? '内存库副本' : (a === 'localCopyClearOthers' ? '其它角色的本机副本' : '本机状态副本'))));
+            if (r && r.ok === false) setNote('清理失败：' + String(r.reason || '未知'));
+            else if (a === 'localCopyClear' || a === 'localCopyClearOthers') setNote('已清除' + label + '（' + n + ' 个键）· 服务端记忆文件未动' + (r && r.idb ? ('；同时清了内存库副本 ' + r.idb + ' 份') : ''));
+            else if (a === 'idbCopyClear') setNote('已清除内存库副本（' + n + ' 份）· 服务端记忆文件未动');
+            else setNote('已清除' + label + '（' + n + ' 项）');
+            result = Object.assign(result, r || {}, { action: a });
+            try { await refreshLocalCopy(); } catch (e) { /* 忽略 */ }
         }
         else if (a === 'checkRefresh' || a === 'checkMode') {
             const cr = injectCheckAction(a, { mode: p.mode });

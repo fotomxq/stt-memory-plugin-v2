@@ -1402,6 +1402,75 @@ await assert('V5 v3.2.0 自动修复补充一步「清理无效关系」：真�
     }
 })(), '');
 
+// v3.3.0（用户要求）：「设定-数据管理-本地缓冲，请补充其他为本地缓冲的内容……其他缓冲也应该展示，同样有对应清理按钮功能。」
+await assert('BH9 v3.3.0 数据管理 →「本地缓冲」全量补全 + 逐项清理：页面把**本机数据副本**（状态副本 / 内存库副本 / 其它角色副本）与**缓存与日志**（调试日志 · 追踪简报 · 读取台账 · 时钟追踪 · 向量 · 版本清单 · 命名缓存 · 对账标记 · 同步日志）以及 **V1 遗留**都列出来，每行带真实统计与清理按钮；真实点击「🧹 清除」对本机副本**必须二次确认**（取消 → 零副作用；确认 → 只清本机、服务端文件不动）；缓存类逐项清理生效且互不误伤', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const ST = await import('../adapters/store.js');
+    const CS = await import('../core/state.js');
+    const scope = CS.scopeId();
+    const curKey = 'ftt2_state_' + scope;
+    const keepPopup = host.ctx.callGenericPopup;
+    const keepFiles = new Map(srvFiles);
+    const extraKeys = ['ftt2_state_char:bh9other', 'ftt2_FileSlug_bh9key1', 'ftt2_ArchiveName_bh9key1', 'ftt2_RemoteStateHash_bh9key1', 'ftt2_SyncGate_bh9key1', 'ftt2_SyncLog_bh9key1', 'SPreset_FTTMemory_FileSlug_bh9key1', 'SPreset_FTTMemoryConfig'];
+    const undo = () => { try { host.ctx.callGenericPopup = keepPopup; } catch (e) { /* 忽略 */ } };
+    try {
+        // 造数据：真实保存（写本机两层 + 服务端）+ 其它作用域副本 + 命名/对账/V1 键
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        await ST.saveStateNow({ reason: 'smoke-bh9', force: true });
+        for (const k of extraKeys) memStore[k] = (k === 'ftt2_state_char:bh9other') ? JSON.stringify({ v: 1, scope: 'char:bh9other', payload: { scope: 'char:bh9other', updatedAt: 1, data: { atoms: [] } }, hash: 'z' }) : 'x';
+        // ① 页面把「本机数据副本 + 缓存与日志」都渲染出来，每行都有清理按钮
+        const page = String((await entry.popupAction('refresh', {})).html || '');
+        const rows = ['本机数据副本', '状态副本（浏览器本地变量）', '内存库副本（IndexedDB）', '其它角色的本机副本', '调试日志',
+            '交互追踪简报', '读取台账', '时钟取值追踪', '向量缓存', '版本清单缓存', '命名缓存（文件名 / 归档名）',
+            '同步与对账标记', '同步日志（本机）', 'V1 遗留数据（导入源）'];
+        const missing = rows.filter((x) => page.indexOf(x) < 0);
+        const actions = ['localCopyClear', 'idbCopyClear', 'localCopyClearOthers', 'dbgClear', 'dbgTraceClear', 'readLedgerClear',
+            'clockTraceClear', 'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear', 'v1LegacyClear'];
+        const missingAct = actions.filter((x) => page.indexOf('data-ftt-action="' + x + '"') < 0);
+        // ② 真实点击「状态副本 → 🧹 清除」：无对话框 → 取消（零副作用）
+        const el = doc.getElementById('ftt-panel');
+        const fire = (dataset) => { const l = (el && el.listeners && el.listeners.click) || []; l.forEach((fn) => fn({ target: { dataset } })); return l.length > 0; };
+        delete host.ctx.callGenericPopup;
+        const fired1 = fire({ fttAction: 'localCopyClear' });
+        await new Promise((r) => setTimeout(r, 10));
+        const afterCancel = !!memStore[curKey];
+        // ③ 确认 → 只清本机那一份，服务端文件不动
+        let asked = '';
+        host.ctx.callGenericPopup = async (t) => { asked = String(t); return 1; };
+        const fired2 = fire({ fttAction: 'localCopyClear' });
+        await new Promise((r) => setTimeout(r, 10));
+        const mainName = (await import('../adapters/user-file.js')).stateFileName(scope);
+        const afterOk = !memStore[curKey] && srvFiles.has(mainName);
+        // ④ 其它角色副本 + 缓存类逐项清理（程序化路径，不经点击闸）
+        const rOthers = await entry.popupAction('localCopyClearOthers', {});
+        const rNames = await entry.popupAction('nameCacheClear', {});
+        const rMarks = await entry.popupAction('syncMarkClear', {});
+        const rV1 = await entry.popupAction('v1LegacyClear', {});
+        const cleanOk = Number(rOthers.cleared) >= 1 && !memStore['ftt2_state_char:bh9other']
+            && Number(rNames.cleared) >= 1 && !memStore['ftt2_FileSlug_bh9key1'] && !memStore['ftt2_ArchiveName_bh9key1']
+            && Number(rMarks.cleared) >= 2 && !memStore['ftt2_RemoteStateHash_bh9key1'] && !memStore['ftt2_SyncGate_bh9key1']
+            && Number(rV1.cleared) >= 1 && !memStore['SPreset_FTTMemory_FileSlug_bh9key1']
+            && memStore['ftt2_SyncLog_bh9key1'] === 'x';           // 同步日志不在这两步里 → 不误伤
+        // ⑤ 清理后统计可读（本机副本已无 → 该行按钮禁用/显示「无本机副本」）
+        const page2 = String((await entry.popupAction('refresh', {})).html || '');
+        const statsOk = page2.indexOf('（无本机副本）') >= 0;
+        const F = globalThis.FTT;
+        const apiOk = typeof F.localCopyInfo === 'function' && typeof F.localKeyStats === 'function';
+        const ok = missing.length === 0 && missingAct.length === 0 && fired1 && afterCancel && fired2 && afterOk
+            && asked.indexOf('服务端记忆文件不受影响') >= 0 && cleanOk && statsOk && apiOk;
+        if (!ok) console.log('BH9-DEBUG ' + JSON.stringify({ missing, missingAct, fired1, afterCancel, fired2, afterOk, cleanOk, statsOk, apiOk,
+            counts: { others: rOthers.cleared, names: rNames.cleared, marks: rMarks.cleared, v1: rV1.cleared } }));
+        return ok;
+    } finally {
+        undo();
+        for (const k of extraKeys) { try { delete memStore[k]; } catch (e) { /* 忽略 */ } }
+        srvFiles.clear(); for (const [k, v] of keepFiles) srvFiles.set(k, v);
+        try { await ST.saveStateNow({ reason: 'smoke-bh9-restore', force: true }); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- W 相关组聚类修复 + 记忆修复管道（B8-6c-1：机械去重 → 关系维护 → 聚类选组 → AI → 应用 → 复检） ----------
 assert('W1 FTT 聚类修复入口齐备（groupSpecs / groupSpec / groupRelatedness / groupClusters / groupPick / memoryMergeExact / memoryRepairPrompt / memoryRepairApply / memoryRepair / retargetRelRefs）', (() => {
     const F = globalThis.FTT;

@@ -37,7 +37,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）
+import { wirePersistHooks, loadFromLocalStorage, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -932,6 +932,30 @@ function bootstrapDiagnostics() {
             readsClear: () => resetReadLedger(),
             loadInfo: () => (() => { try { return { server: lastServerLoadInfo(), store: storeStatus(), ledger: readLedgerStats() }; } catch (e) { return null; } })(),
             // v3.1.0（性能观测 / 容量诊断，docs/D13 S0/S2/S3）：面板渲染观测 · 本机缓冲预算 · 向量缓存容量
+            // v3.3.0（用户要求）：数据管理 →「本地缓冲」全面补充（本机副本 / 命名缓存 / 同步标记 / V1 遗留）
+            localCopyInfo: () => (() => { try { return localCopyStats(); } catch (e) { return null; } })(),
+            localKeyStats: () => (() => { try { return localKeyStats(); } catch (e) { return null; } })(),
+            localCopyClear: (o2) => clearLocalCopy(o2 || {}),
+            localCopyClearOthers: () => clearLocalCopy({ target: 'others' }),
+            idbCopyClear: () => clearLocalCopy({ target: 'idb' }),
+            nameCacheClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.names.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理命名缓存', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
+            syncMarkClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.syncMarks.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理同步与对账标记', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
+            v1LegacyClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.v1Legacy.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理 V1 遗留本机数据', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
             renderStats: () => (() => { try { return panelRenderStats(); } catch (e) { return null; } })(),
             localBuffer: () => (() => { try { return localBufferState(); } catch (e) { return null; } })(),
             vectorCache: () => (() => { try { return vectorCacheStats(); } catch (e) { return null; } })(),
@@ -1476,6 +1500,30 @@ function popupHooks() {
             try { debugLogPush('存储', { action: '面板渲染偏慢', tab: String((rec && rec.tab) || ''), ms: Number((rec && rec.ms) || 0), bytes: Number((rec && rec.bytes) || 0), builds: Number((rec && rec.builds) || 0) }); } catch (e) { /* 忽略 */ }
             try { traceEvent({ cat: 'ui', kind: 'slow-render', level: 'info', detail: { tab: String((rec && rec.tab) || ''), ms: Number((rec && rec.ms) || 0), bytes: Number((rec && rec.bytes) || 0) } }); } catch (e) { /* 忽略 */ }
         },
+            // v3.3.0（用户要求）：数据管理 →「本地缓冲」全面补充（本机副本 / 命名缓存 / 同步标记 / V1 遗留）
+            localCopyInfo: () => (() => { try { return localCopyStats(); } catch (e) { return null; } })(),
+            localKeyStats: () => (() => { try { return localKeyStats(); } catch (e) { return null; } })(),
+            localCopyClear: (o2) => clearLocalCopy(o2 || {}),
+            localCopyClearOthers: () => clearLocalCopy({ target: 'others' }),
+            idbCopyClear: () => clearLocalCopy({ target: 'idb' }),
+            nameCacheClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.names.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理命名缓存', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
+            syncMarkClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.syncMarks.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理同步与对账标记', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
+            v1LegacyClear: () => {
+                const ks = localKeyStats();
+                const rm = removeLocalKeys((ks.v1Legacy.keys || []).map((x) => x.key));
+                try { if (rm.removed) debugLogPush('存储', { action: '清理 V1 遗留本机数据', keys: rm.removed }); } catch (e) { /* 忽略 */ }
+                return { ok: true, cleared: rm.removed, failed: rm.failed };
+            },
         extractStatus: extractSummary,
         lastExtract: () => { try { return lastExtractRecord(); } catch (e) { return null; } },   // v2.59.0：最后一次提取记录（总览组件同源）
         lastPreflight: () => { try { return lastPreflightInfo(); } catch (e) { return null; } },   // v2.61.0：提取前校对结果
