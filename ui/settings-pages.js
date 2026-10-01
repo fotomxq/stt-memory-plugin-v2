@@ -830,7 +830,7 @@ import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
 import { aboutHtml as aboutPageHtml } from './about.js';
-import { bufferSectionHtml } from './buffer-manage.js';
+import { bufferSectionHtml, refreshLocalCopy } from './buffer-manage.js';
 import { feedScanSectionHtml, feedTagListSectionsHtml } from './feed-scan.js';
 // v2.65.0：显示界面开关 = V1 同款入口清单（顶栏 / 页面底部 / 悬浮 / 扩展菜单）
 import { ENTRY_LOCATIONS, ENTRY_LABELS, ENTRY_DEFAULTS, FORCED_ENTRIES } from './entries.js';
@@ -1479,8 +1479,10 @@ function pageExtraHtml(pid) {
             '</div>',
             // ③ 快照链（只统计 + 动作，明细折叠在「高级」里）—— 安全（自动备份）
             '<div class="ftt-section"><div class="ftt-sec-title">🧬 快照链（自动备份）</div>', snapshotSectionHtml(), '</div>',
-            // ④ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来）—— 只动本机缓存，不碰记忆
+            // ④ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来；v3.3.0 起补全本机副本 / 命名缓存 / 对账标记 / V1 遗留）
+            //   IndexedDB 副本是异步统计 → 渲染出占位，随后 fire-and-forget 取一次并**就地**更新占位文本
             '<div class="ftt-section">', bufferSectionHtml(), '</div>',
+            (() => { try { void refreshLocalCopy(); } catch (e) { /* 忽略 */ } return ''; })(),
 
             // ── v2.96.0（用户要求「危险操作放到最后」）：**危险操作区**永远在页面末尾 ──
             //   开场横幅复用公共件 `.ftt-item--warn`（D9 §4 归属表内，无新增 CSS），把「不可逆」先讲清楚；

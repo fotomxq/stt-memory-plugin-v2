@@ -105,20 +105,23 @@ A('C4 刷新页面后典型态：内存事件 0 条、持久简报 N 条 → 统
 })(), J({ mem: traceStats().total, persisted: bufferStats().trace.count }));
 
 // ---- E 组：空态 / 禁用 ----
-A('E1 全空：cached=false、计数 0、字节 0；HTML 显示「（无缓存）」且三个清理按钮禁用', (() => {
+A('E1 全空：cached=false、计数 0、字节 0；HTML 显示「（无缓存）」且**每一个**无数据的清理按钮都禁用（v3.3.0 起行数变多，改为逐项断言）', (() => {
     lsMap.clear();
     traceClear();
     aboutClearCache();
     debugLogClear();
     const st = bufferStats();
     const h = bufferSectionHtml();
-    const disabled = (h.match(/disabled/g) || []).length;
+    // v3.3.0：本机数据副本（当前角色无副本）/ 调试日志 / 追踪简报 / 读取台账 / 时钟追踪 / 向量 / 版本清单 /
+    //   命名缓存 / 对账标记 / 同步日志 —— 空态下**全部**禁用（IndexedDB 行异步取数，不在本断言内）
+    const mustDisabled = ['localCopyClear', 'dbgClear', 'dbgTraceClear', 'readLedgerClear', 'clockTraceClear',
+        'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear'];
+    const notDisabled = mustDisabled.filter((a2) => !new RegExp('data-ftt-action="' + a2 + '"[^>]*disabled').test(h));
     return st.any === false && st.totalBytes === 0 && st.versionList.cached === false
         && st.debugLog.count === 0 && st.trace.count === 0
-        && h.indexOf('（无缓存）') >= 0 && disabled === 3
-        && /data-ftt-action="aboutClearCache"[^>]*disabled/.test(h)
-        && /data-ftt-action="dbgClear"[^>]*disabled/.test(h)
-        && /data-ftt-action="dbgTraceClear"[^>]*disabled/.test(h);
+        && h.indexOf('（无缓存）') >= 0 && notDisabled.length === 0
+        && h.indexOf('🧱 本机数据副本') >= 0 && h.indexOf('🧰 缓存与日志') >= 0
+        && h.indexOf('data-ftt-action="localCopyClearOthers"') < 0;      // 没有其它角色副本 → 不显示该行
 })(), bufferSectionHtml());
 
 // ---- H 组：只出统计，不出明细 ----
@@ -135,18 +138,22 @@ A('H1 分节 HTML 只含统计与清理入口：出现条数/上限/字节，不
         && h.indexOf('a.js:1') < 0 && h.indexOf('b.js:2') < 0 && h.indexOf('t2') < 0;
 })(), bufferSectionHtml());
 
-A('H2 文案说明「这是什么 + 清理有什么后果」（本地缓存 / 不影响记忆数据）', (() => {
+A('H2 文案说明「这是什么 + 清理有什么后果」（v3.3.0 口径：本机副本与缓存 / 不影响服务端记忆文件），且不出现实现术语与沿革说明', (() => {
     const h = bufferSectionHtml();
-    return h.indexOf('本地缓存与日志') >= 0 && h.indexOf('不影响记忆数据') >= 0
+    return h.indexOf('插件在') >= 0 && h.indexOf('本机') >= 0 && h.indexOf('不影响服务端记忆文件') >= 0
+        && h.indexOf('🧱 本机数据副本') >= 0 && h.indexOf('🧰 缓存与日志') >= 0
         && h.indexOf('10 分钟') < 0 && h.indexOf('相对路径') < 0 && h.indexOf('localStorage') < 0;
 })(), '见断言');
 
-A('H3 数据管理页含「本地缓冲」分节；行数恒为 3（不随数据增长出明细行）', (() => {
+A('H3 数据管理页含「本地缓冲」分节：v3.3.0 起覆盖「本机数据副本 + 缓存与日志」（每行统计 + 清理按钮），但**行数固定**（不随数据增长出明细行）', (() => {
     seed();
     const h = settingsPageHtml('data', '');
     const rows = (h.match(/class="ftt-muted">(版本清单缓存|调试日志|交互追踪简报)：/g) || []).length;
-    return h.indexOf('🗂 本地缓冲') >= 0 && rows === 3
-        && h.indexOf('共约 ') >= 0;
+    const actions = ['localCopyClear', 'idbCopyClear', 'dbgClear', 'dbgTraceClear', 'readLedgerClear',
+        'clockTraceClear', 'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear'];
+    const missing = actions.filter((a2) => h.indexOf('data-ftt-action="' + a2 + '"') < 0);
+    return h.indexOf('🗂 本地缓冲') >= 0 && rows === 3 && missing.length === 0
+        && h.indexOf('共约 ') >= 0 && h.indexOf('本机数据副本') >= 0;
 })(), '见断言');
 
 // ---- A 组：三个清理动作真实生效（并同步统计）----
