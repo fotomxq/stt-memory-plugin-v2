@@ -140,7 +140,12 @@ export function constraintPageHtml() {
         dimTabsHtml(dim),
         '<div class="ftt-hint">关联 = 这条' + esc(relDimLabelOf(dim)) + '「谁知道 / 谁相关」；未列出的角色一律视为不知情（约束段据此点名）。</div>',
         '<div class="ftt-hint">关联行合计 ' + st.total + '（' + REL_DIMS.map((d) => (relDimLabelOf(d) + ' ' + (st.byDim[d] || 0))).join(' · ') + '）'
-        + ' · 推定 ' + st.inferred + ' · 孤儿 ' + st.orphan + ' · 公共 ' + st.publics + '</div>',
+        + ' · 推定 ' + st.inferred + ' · 孤儿 ' + st.orphan + ' · 无效 ' + Number(st.invalid || 0) + ' · 公共 ' + st.publics + '</div>',
+        // v3.2.0（用户要求）：无效关系可在**自动修复**里自动清理；这里给一个「想立刻清一次」的同源入口
+        '<div class="ftt-toolbar">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="relCleanInvalid" title="清理无效关系：目标条目已不存在的孤儿行 / 非法维度 / 空指向 / 无角色空行 / 幽灵角色行（不在任何已知名册）；被清行留删除墓碑，跨端不会复活；自动修复里已含同一步">'
+        + '🧹 清理无效关系' + (Number(st.invalid || 0) ? ('（' + Number(st.invalid) + '）') : '') + '</button>'
+        + '<span class="ftt-muted">无效 = 孤儿 / 幽灵角色 / 空行 / 非法维度 / 空指向；「🛠 自动修复」会自动清一次</span></div>',
         '<div class="ftt-field"><label>按角色筛选</label><input type="text" data-ftt-rel-who="1" value="' + attr(who) + '" placeholder="角色名（回车）"></div>',
         pickHtml,
         filterHtml,

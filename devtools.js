@@ -131,6 +131,9 @@ export function installDevtools(hooks) {
             storageEnvValid: (env) => (hooks && typeof hooks.storageEnvValid === 'function' ? hooks.storageEnvValid(env) : false),
             // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
             //   读取台账（只看，不改；每一次读取的来源 / 耗时 / 体积 / 条数 / 结果）
+            // v3.2.0：关系表无效关系（只读统计 + 显式清理入口；清理会写墓碑并落盘 → 属「有意为之的写入口」）
+            relInvalidStats: (opts) => (hooks && typeof hooks.relInvalidStats === 'function' ? hooks.relInvalidStats(opts || {}) : null),
+            relCleanInvalid: (opts) => (hooks && typeof hooks.relCleanInvalid === 'function' ? hooks.relCleanInvalid(opts || {}) : { ok: false, reason: 'no-hook' }),
             reads: (opts) => (hooks && typeof hooks.reads === 'function' ? hooks.reads(opts || {}) : null),
             readsText: (limit) => (hooks && typeof hooks.readsText === 'function' ? hooks.readsText(limit) : ''),
             readsClear: () => (hooks && typeof hooks.readsClear === 'function' ? hooks.readsClear() : false),

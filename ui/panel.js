@@ -2371,7 +2371,7 @@ export async function panelAction(action, payload) {
         }
         else if (a.indexOf('rel') === 0 && a !== 'reload') {
             const rr = relAction(a, p);
-            setNote(rr.ok ? ('关系：' + (rr.saved !== undefined ? ('已保存 ' + rr.saved + ' 行 / 新增 ' + (rr.added || 0) + ' · 更新 ' + (rr.updated || 0) + (rr.skipped ? (' · 跳过空行 ' + rr.skipped) : '')) : (rr.cleared !== undefined ? ('已清空 ' + rr.cleared + ' 行') : (rr.swept !== undefined ? ('已清扫孤儿 ' + rr.swept + ' 行') : (rr.dropped !== undefined ? ('已清除推定 ' + rr.dropped + ' 行') : ('行数 ' + (rr.rows || 0))))))) : ('关系操作失败：' + String(rr.reason || '未知')));
+            setNote(rr.ok ? ('关系：' + (rr.saved !== undefined ? ('已保存 ' + rr.saved + ' 行 / 新增 ' + (rr.added || 0) + ' · 更新 ' + (rr.updated || 0) + (rr.skipped ? (' · 跳过空行 ' + rr.skipped) : '')) : (rr.cleared !== undefined ? ('已清空 ' + rr.cleared + ' 行') : (rr.swept !== undefined ? ('已清扫孤儿 ' + rr.swept + ' 行') : (rr.cleaned !== undefined ? ('已清理无效关系 ' + rr.cleaned + ' 行' + (rr.cleaned && rr.summary ? ('（' + String(rr.summary).replace(/^清理无效关系 \d+ 行（/, '').replace(/）$/, '') + '）') : '')) : (rr.dropped !== undefined ? ('已清除推定 ' + rr.dropped + ' 行') : ('行数 ' + (rr.rows || 0)))))))) : ('关系操作失败：' + String(rr.reason || '未知')));
             result = Object.assign(result, rr);
         }
         else if (a === 'checkRefresh' || a === 'checkMode') {

@@ -88,6 +88,7 @@ import {
 } from './core/repair.js';
 import {
     relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, mergeRelMaint, demoteRelLinkOrphans,
+    cleanInvalidRelLinks, relInvalidStats, relInvalidSummary,
 } from './core/rel-maint.js';
 import {
     runRumorEvolve, runRumorEvolveNow, runRumorDecay, clearRumors, rumorTickState, rumorEnabledOn,
@@ -1084,6 +1085,13 @@ function bootstrapDiagnostics() {
             refreshWorldbookNames: () => refreshWorldbookNames(),
             // B8-6b+ 关联层机械维护（零 AI；修复第 1 段收尾 + AI 修订后复检）
             relMaint: (opts) => relRepairMaint(opts || {}),
+            // v3.2.0（用户要求）：关系表「清理无效关系」（与自动修复第 1 段同一步共用核心实现）
+            relInvalidStats: (opts) => relInvalidStats((opts || {}).st),
+            relCleanInvalid: (opts) => {
+                const r = cleanInvalidRelLinks(opts || {});
+                try { if (r && r.changed) saveStateNow({ reason: 'rel-clean-invalid' }); } catch (e) { /* 忽略 */ }
+                return Object.assign({}, r, { summary: relInvalidSummary(r) });
+            },
             relMaintCounts: (m) => relMaintCounts(m),
             relMaintTouched: (m) => relMaintTouched(m),
             relMaintSummary: (m) => relMaintSummary(m),

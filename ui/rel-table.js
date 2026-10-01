@@ -30,6 +30,8 @@ import { relLinksOf } from '../core/model/rel.js';
 import { upsertRelLinks, sweepOrphanRelLinks, dropRelLinks } from '../core/entries.js';
 import { tombEntries } from '../core/merge.js';
 import { snapNameKey } from '../core/util.js';
+// v3.2.0（用户要求）：关系表「清理无效关系」（与自动修复里的同一步共用核心实现）
+import { cleanInvalidRelLinks, relInvalidStats, relInvalidSummary } from '../core/rel-maint.js';
 
 /** 可编辑关系的维度（V1 `REL_LINK_DIMS`：记忆 / 计划 / 悬念 / 平行事件） */
 export const REL_DIMS = Object.freeze(['memories', 'plans', 'suspense', 'parallels']);
@@ -140,6 +142,8 @@ export function relTableHtml(dim, refId, opts) {
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="relSave" data-kind="' + attr(d) + '" data-id="' + attr(r) + '">💾 保存关联</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="relClearEntry" data-kind="' + attr(d) + '" data-id="' + attr(r) + '">🧹 清空该条目关联</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="relSweep">🧽 清扫孤儿关联</button>'
+        // v3.2.0（用户要求）：清理无效关系 —— 自动修复里已有同一步；这里给一个「想立刻清一次」的手动入口
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="relCleanInvalid" title="清理无效关系：目标条目已不存在的孤儿行 / 非法维度 / 空指向 / 无角色空行 / 幽灵角色行（不在任何已知名册）；被清行留删除墓碑，跨端不会复活">🧹 清理无效关系</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="relDropInferred">🚫 清除「推定」关联</button>'
         + '<span class="ftt-muted">' + (relDirty(d, r) ? '（有未保存改动）' : '（已同步）') + '</span>'
         + '</div>'
@@ -166,6 +170,12 @@ export function relAction(action, payload) {
             try { n = sweepOrphanRelLinks() || 0; } catch (e) { n = 0; }
             if (n) { try { saveState(); } catch (e) { /* 忽略 */ } }
             return Object.assign(result, { ok: true, swept: n, html: '' });
+        }
+        // v3.2.0：清理无效关系（与自动修复第 1 段里的同一步**共用核心实现**）
+        if (a === 'relCleanInvalid') {
+            const r = cleanInvalidRelLinks({});
+            if (r && r.removed) { try { saveState(); } catch (e) { /* 忽略 */ } }
+            return Object.assign(result, { ok: !!(r && r.ok), cleaned: Number((r && r.removed) || 0), reasons: (r && r.reasons) || {}, summary: relInvalidSummary(r), html: '' });
         }
         if (a === 'relDropInferred') {
             const arr = Array.isArray(state.links) ? state.links : [];
@@ -238,8 +248,14 @@ export function relStats() {
             if (x.public) publics += 1;
             if (REL_DIMS.includes(d) && !entryExists(d, String(x.refId))) orphan += 1;
         }
-        return { total: arr.length, byDim, inferred, orphan, publics, enabled: relLayerOn() };
-    } catch (e) { return { total: 0, byDim: {}, inferred: 0, orphan: 0, publics: 0, enabled: relLayerOn() }; }
+        // v3.2.0：无效关系（结构无效 + 空行 + 幽灵角色；孤儿已单列）→ 统计行可读，用户能看见「有多少会被自动清理」
+        let invalid = 0;
+        try {
+            const iv = relInvalidStats();
+            invalid = Number(iv.invalid) || 0;
+        } catch (e) { invalid = 0; }
+        return { total: arr.length, byDim, inferred, orphan, publics, invalid, enabled: relLayerOn() };
+    } catch (e) { return { total: 0, byDim: {}, inferred: 0, orphan: 0, publics: 0, invalid: 0, enabled: relLayerOn() }; }
 }
 
 /** 某角色的关联总览（V1 关系表「按角色」筛选）：返回 [{dim, refId, how, title}] */

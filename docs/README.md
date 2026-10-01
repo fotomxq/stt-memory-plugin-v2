@@ -31,7 +31,7 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，130 份）
+└── history/                  # 历史批次层（只读留痕，131 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
@@ -72,20 +72,20 @@ docs/
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v3.1.0） |
+| 口径 | 权威来源 | 当前值（v3.2.0） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.1.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.2.0` |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
 | 内核配置键数 | `core/config.js#defaultCfg` | 221 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 132 文件 / 2041 断言 |
-| 冒烟规模 | `tests/smoke-test.js` | 195 项 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 133 文件 / 2047 断言 |
+| 冒烟规模 | `tests/smoke-test.js` | 196 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 130 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 131 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

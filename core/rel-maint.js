@@ -12,10 +12,11 @@
 //   ③ `relMaintCounts` / `relMaintTouched` / `relMaintSummary` / `logRelMaint`（口径化输出：通知文案 / 调试日志 / 测试断言共用）。
 // 适配：ESM 化 + 注入视图（cfg/state）；提示与日志经 `dbgLog`；条目删除一律走墓碑。
 // ============================================================
-import { state, cfg, dbgLog } from './model/runtime.js';
+import { state, cfg, dbgLog, identityView } from './model/runtime.js';
 import { tombEntries } from './merge.js';
 import { sweepOrphanRelLinks, upsertRelLinks } from './entries.js';
 import { snapFindByName } from './model/snapshot.js';
+import { snapNameKey } from './util.js';
 import {
     REL_LINK_DIMS, REL_LINK_HOW_RANK, relLinkId, relLinkHow, relLinkDeviation, relLinksOf, relOrphanStats,
 } from './model/rel.js';
@@ -306,4 +307,123 @@ function capRelLinks(st, opts) {
     } catch (e) { out.ok = false; return out; }
 }
 
-export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint, capRelLinks };
+/**
+ * v3.2.0（用户要求）：「设定的关系表，需要在自动修复中补充一个步骤，自动清理无效关系。」
+ *
+ * 与既有 `relRepairMaint()` 的分工：那一步是 **V1 逐字移植**的维护（孤儿行 / 去重 / 角色名归一 / 悬空引用 / 非法值归一），
+ *   **不做**「这个角色根本不存在」这类判定。本函数补上这一步 —— 只清**结构上就没有意义**的关联行：
+ *
+ * | 类别 | 判据 | 说明 |
+ * | --- | --- | --- |
+ * | `dangling` | 目标条目不存在（`state[dim]` 里找不到 `refId`） | 等同既有孤儿口径；本步**一并处理**，不依赖调用顺序 |
+ * | `badDim` | `dim` 不在 `REL_LINK_DIMS`（记忆 / 计划 / 悬念 / 平行） | 历史数据 / 导入残留 |
+ * | `badRef` | `refId` 为空 | 无指向的行没有意义 |
+ * | `empty` | 无 `who`，且条目级属性与语义字段**全空**（kind/public/各 ref/refs/how/from/at/view/note 都空） | 纯空行 |
+ * | `ghost` | 有 `who`，但该名字**不在任何已知名册**（角色档案 / 名册 / 主角·玩家名 / 状态主体 / 记忆归属 / 货币归属 / 平行相关角色） | 「幽灵角色」：档案被删、改名残留、AI 幻觉名 —— 关系表里最典型的「无效关系」 |
+ *
+ * 纪律：
+ *   · **写删除墓碑**（`tombEntries('links', …)`）→ 跨端不会复活；
+ *   · **幂等**：没有无效行时零改动、零分配；
+ *   · `dryRun` 只报告不改动（供界面预览 / 诊断）；
+ *   · 名册判定**宽松**（多来源 + `snapFindByName` 模糊匹配）→ 宁可漏删，不可误删人工关联。
+ * @param {{dryRun?:boolean, st?:object}} [opts]
+ * @returns {{ok:boolean, scanned:number, removed:number, kept:number, reasons:object, changed:boolean, details:object}}
+ */
+function cleanInvalidRelLinks(opts) {
+    const o = opts || {};
+    const out = { ok: true, scanned: 0, removed: 0, kept: 0, reasons: { dangling: 0, ghost: 0, empty: 0, badDim: 0, badRef: 0 }, changed: false, details: { rows: [] } };
+    try {
+        // 关联层总开关关闭 = 「不读写关联行」（与 `relRepairMaint` 同口径）→ 不做清理（数据保持原样，重开后由修复再清）
+        if (!o.st && cfg && cfg.relLinkEnabled === false) return out;
+        const src = o.st || state || {};
+        const links = Array.isArray(src.links) ? src.links : [];
+        out.scanned = links.length;
+        if (!links.length) return out;
+        const dims = (REL_LINK_DIMS && REL_LINK_DIMS.length) ? REL_LINK_DIMS : ['memories', 'plans', 'suspense', 'parallels'];
+        const exists = (dim, refId) => ((src[dim] || [])).some((x) => x && String(x.id) === String(refId));
+        const known = relKnownNameSet(src);
+        const nameOk = (who) => {
+            const k = snapNameKey(who);
+            if (!k) return true;                                   // 无 who 的行不由本判据处理
+            if (known.has(k)) return true;
+            try { if (snapFindByName(who)) return true; } catch (e) { /* 忽略 */ }
+            return false;
+        };
+        const hasAnchorData = (r) => !!(r.kind || r.public === true
+            || r.conceptRef || r.atomRef || r.planRef || r.suspenseRef
+            || (Array.isArray(r.memRefs) && r.memRefs.length) || (Array.isArray(r.sourceRefs) && r.sourceRefs.length));
+        const hasSemantics = (r) => !!(r.how || r.from || r.at || r.view || r.note);
+        const keep = [], drop = [];
+        for (const r of links) {
+            if (!r) { drop.push(r); out.reasons.empty += 1; continue; }
+            const dim = String(r.dim == null ? '' : r.dim);
+            const refId = String(r.refId == null ? '' : r.refId);
+            const who = String(r.who == null ? '' : r.who).trim();
+            let why = '';
+            if (!dim || dims.indexOf(dim) < 0) why = 'badDim';
+            else if (!refId) why = 'badRef';
+            else if (!exists(dim, refId)) why = 'dangling';
+            else if (who ? !nameOk(who) : (!hasAnchorData(r) && !hasSemantics(r))) why = who ? 'ghost' : 'empty';
+            if (!why) { keep.push(r); continue; }
+            out.reasons[why] = (out.reasons[why] || 0) + 1;
+            if (out.details.rows.length < 50) out.details.rows.push({ reason: why, dim: dim, refId: refId, who: who });
+            drop.push(r);
+        }
+        out.kept = keep.length;
+        out.removed = drop.length;
+        if (!out.removed) return out;
+        if (o.dryRun === true) return out;                          // 预演：只报告
+        src.links = keep;
+        try { tombEntries('links', drop.filter((x) => x && x.id)); } catch (e) { /* 墓碑失败不影响清理 */ }
+        out.changed = true;
+        return out;
+    } catch (e) { out.ok = false; return out; }
+}
+
+/** 已知名册键集合（幽灵角色判定；多来源 + 归一化，宽松优先） */
+function relKnownNameSet(st) {
+    const src = st || state || {};
+    const set = new Set();
+    const add = (v) => { const k = snapNameKey(v); if (k) set.add(k); };
+    try { for (const s of (src.snapshots || [])) add(s && s.name); } catch (e) { /* 忽略 */ }
+    try { for (const n of (src.npcs || [])) add(n && (n.name || n.title)); } catch (e) { /* 忽略 */ }
+    try { add(src.protagonist && (src.protagonist.name || src.protagonist.subject)); } catch (e) { /* 忽略 */ }
+    try { for (const x of (src.currentStates || [])) { add(x && x.subject); const s2 = String((x && x.subject) || ''); if (s2.indexOf('·') > 0) add(s2.split('·')[0]); } } catch (e) { /* 忽略 */ }
+    try { for (const m of (src.memories || [])) add(m && m.owner); } catch (e) { /* 忽略 */ }
+    try { for (const c of (src.currencies || [])) add(c && c.owner); } catch (e) { /* 忽略 */ }
+    try { for (const p of (src.parallels || [])) for (const who2 of ((p && p.characters) || [])) add(who2); } catch (e) { /* 忽略 */ }
+    // 主角 / 玩家名（宿主身份视图注入；取不到就不加 —— 不臆造）
+    try { add(identityView && identityView.characterName); } catch (e) { /* 忽略 */ }
+    try { add(cfg && cfg.protagonistName); } catch (e) { /* 忽略 */ }
+    return set;
+}
+
+/** 无效关系统计（**只读**；关系表统计行与诊断用） */
+function relInvalidStats(st) {
+    const r = cleanInvalidRelLinks({ dryRun: true, st: st });
+    return { total: r.scanned, invalid: r.removed, reasons: r.reasons, details: r.details };
+}
+
+/** 通知用摘要（只列实际发生的类别） */
+function relInvalidSummary(m) {
+    const r = (m && m.reasons) || {};
+    const parts = [];
+    if (r.dangling) parts.push('孤儿 ' + r.dangling);
+    if (r.ghost) parts.push('幽灵角色 ' + r.ghost);
+    if (r.empty) parts.push('空行 ' + r.empty);
+    if (r.badDim) parts.push('非法维度 ' + r.badDim);
+    if (r.badRef) parts.push('空指向 ' + r.badRef);
+    if (!parts.length) return '';
+    return '清理无效关系 ' + Number(m.removed || 0) + ' 行（' + parts.join(' · ') + '）';
+}
+
+/** 调试日志（明细逐条，便于事后核对清理了哪些行） */
+function logRelInvalid(label, m) {
+    try {
+        if (!m || !m.removed) return false;
+        dbgLog('摘要', { action: String(label || '') + '：清理无效关系', counts: { scanned: m.scanned, removed: m.removed, reasons: m.reasons }, 明细: ((m.details || {}).rows || []).slice(0, 20) });
+        return true;
+    } catch (e) { return false; }
+}
+
+export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint, capRelLinks, cleanInvalidRelLinks, relInvalidStats, relInvalidSummary, logRelInvalid };

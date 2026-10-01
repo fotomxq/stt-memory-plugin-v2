@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.2.0",
+      "date": "2026-09-30",
+      "title": "自动修复补充一步「清理无效关系」（关系表不再留幽灵行）",
+      "points": [
+        "与新步骤的分工：relRepairMaint() 是 V1 逐字移植的关联维护（孤儿行 / 同键去重 / 角色名按档案归一 /悬空引用 / how·偏差非法值归一），它不判断「这…",
+        "纪律：被清行写删除墓碑（tombEntries('links', …)）→ 跨端不会复活；- 幂等：没有无效行时零改动、零分配；dryRun 只报告不改动（供界面预览与诊断）；-…",
+        "接线：core/repair.js#runRepairMech（第 1 段）：关联维护之后执行本步；有清理时 saveState()，并把摘要并入修复提示与调试日志（stage1…"
+      ]
+    },
     {
       "version": "3.1.0",
       "date": "2026-09-30",

@@ -1338,6 +1338,70 @@ assert('V4 FTT 关联维护入口齐备（relMaint / relMaintCounts / relMaintSu
         && !!dm && typeof dm.demoted === 'number';
 })(), '');
 
+// v3.2.0（用户要求）：「设定的关系表，需要在自动修复中补充一个步骤，自动清理无效关系。」
+await assert('V5 v3.2.0 自动修复补充一步「清理无效关系」：真实点击「🛠 自动修复」→ 关系表里的无效行（孤儿 / 幽灵角色 / 纯空行 / 非法维度 / 空指向）被自动清掉且**写墓碑**，有效行一条不动，提示回报「清理无效关系 N 行（…）」；设定 → 约束 关系表统计行显示「无效 N」并提供同源手动按钮（层关闭时不清理）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const keepState = JSON.parse(JSON.stringify(RT.state || {}));
+    const keepCfg = { relLinkEnabled: RT.cfg.relLinkEnabled, relOrphanAction: RT.cfg.relOrphanAction, repairAutoAi: RT.cfg.repairAutoAi, relLayerOn: RT.cfg.relLayerOn };
+    try {
+        const st = RT.state;
+        st.memories = [{ id: 'smoke-riv-m1', owner: '甲', title: '记忆一', content: '甲在码头交接（正文足够长）。', date: '1919-11-01', tags: [], uses: 1, floorStart: 1, floorEnd: 2 }];
+        st.plans = []; st.suspense = []; st.parallels = [];
+        st.snapshots = [{ id: 'smoke-riv-s1', name: '角色甲', identity: {}, updatedAt: 1 }];
+        st.deleted = {}; st.deletedH = {};
+        st.links = [
+            { id: 'smoke-riv-ok', dim: 'memories', refId: 'smoke-riv-m1', who: '角色甲', how: 'witness', updatedAt: 1 },
+            { id: 'smoke-riv-dangling', dim: 'memories', refId: 'smoke-riv-none', who: '角色甲', how: 'witness', updatedAt: 1 },
+            { id: 'smoke-riv-ghost', dim: 'memories', refId: 'smoke-riv-m1', who: '查无此人', how: 'witness', updatedAt: 1 },
+            { id: 'smoke-riv-empty', dim: 'memories', refId: 'smoke-riv-m1', who: '', how: '', updatedAt: 1 },
+            { id: 'smoke-riv-baddim', dim: 'bogus', refId: 'smoke-riv-m1', who: '角色甲', how: 'witness', updatedAt: 1 },
+            { id: 'smoke-riv-badref', dim: 'memories', refId: '', who: '角色甲', how: 'witness', updatedAt: 1 },
+        ];
+        RT.cfg.relLinkEnabled = true;
+        RT.cfg.relLayerOn = true;
+        RT.cfg.relOrphanAction = 'keep';
+        RT.cfg.repairAutoAi = false;                    // 只看机械段（本步在第 1 段）
+        // ① 真实点击「🛠 自动修复」
+        const r = await entry.popupAction('repair', {});
+        const note = String((r.state || {}).note || '');
+        const left = (RT.state.links || []).map((x) => x.id);
+        const tombIds = Object.keys((RT.state.deleted || {}).links || {});
+        const invalidGone = ['smoke-riv-dangling', 'smoke-riv-ghost', 'smoke-riv-empty', 'smoke-riv-baddim', 'smoke-riv-badref'].every((id) => left.indexOf(id) < 0);
+        const validKept = left.length === 1 && left[0] === 'smoke-riv-ok';
+        const noteOk = /清理无效关系 \d+ 行（/.test(note);
+        const tombOk = tombIds.length >= 4;
+        // ② 设定 → 约束 关系表：统计行有「无效 N」，且有同源手动按钮
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'constraint' });
+        const page = String((await entry.popupAction('refresh', {})).html || '');
+        const statsOk = /关联行合计[^<]*无效 0/.test(page) && page.indexOf('data-ftt-action="relCleanInvalid"') >= 0
+            && page.indexOf('🧹 清理无效关系') >= 0;
+        // ③ 手动按钮同源：再塞一条幽灵行 → 真实点击 → 清掉并如实回报
+        RT.state.links.push({ id: 'smoke-riv-ghost2', dim: 'memories', refId: 'smoke-riv-m1', who: '还是查无此人', how: 'told', updatedAt: 1 });
+        const c = await entry.popupAction('relCleanInvalid', {});
+        const cNote = String((c.state || {}).note || '');
+        const manualOk = c.ok === true && Number(c.cleaned) === 1 && cNote.indexOf('已清理无效关系 1 行（幽灵角色 1）') >= 0
+            && (RT.state.links || []).every((x) => x.id !== 'smoke-riv-ghost2');
+        // ④ 关联层关闭 → 不清理（层关闭 = 不读写关联行）
+        RT.state.links.push({ id: 'smoke-riv-ghost3', dim: 'memories', refId: 'smoke-riv-m1', who: '层关闭时的幽灵', how: 'told', updatedAt: 1 });
+        RT.cfg.relLinkEnabled = false;
+        const off = await entry.popupAction('relCleanInvalid', {});
+        const offOk = Number(off.cleaned) === 0 && (RT.state.links || []).some((x) => x.id === 'smoke-riv-ghost3');
+        const F = globalThis.FTT;
+        const apiOk = typeof F.relInvalidStats === 'function' && typeof F.relCleanInvalid === 'function';
+        const ok = invalidGone && validKept && noteOk && tombOk && statsOk && manualOk && offOk && apiOk;
+        if (!ok) console.log('V5-DEBUG ' + JSON.stringify({ invalidGone, validKept, note: note.slice(0, 200), tombOk, statsOk, manualOk, cNote, offOk, apiOk }));
+        return ok;
+    } finally {
+        RT.cfg.relLinkEnabled = keepCfg.relLinkEnabled;
+        RT.cfg.relOrphanAction = keepCfg.relOrphanAction;
+        RT.cfg.repairAutoAi = keepCfg.repairAutoAi;
+        RT.cfg.relLayerOn = keepCfg.relLayerOn;
+        try { RT.setKernelState(keepState); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- W 相关组聚类修复 + 记忆修复管道（B8-6c-1：机械去重 → 关系维护 → 聚类选组 → AI → 应用 → 复检） ----------
 assert('W1 FTT 聚类修复入口齐备（groupSpecs / groupSpec / groupRelatedness / groupClusters / groupPick / memoryMergeExact / memoryRepairPrompt / memoryRepairApply / memoryRepair / retargetRelRefs）', (() => {
     const F = globalThis.FTT;
