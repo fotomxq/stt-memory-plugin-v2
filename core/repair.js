@@ -23,7 +23,7 @@ import {
     runStateDecay, runParallelDecay, applyStateBounds, enforceDimCaps,
 } from './ingest.js';
 import { runMemoryForget, sweepLowUseForget } from './forget.js';
-import { relRepairMaint, relMaintSummary, relMaintCounts, relMaintTouched, logRelMaint, mergeRelMaint } from './rel-maint.js';
+import { relRepairMaint, relMaintSummary, relMaintCounts, relMaintTouched, logRelMaint, mergeRelMaint, cleanInvalidRelLinks, relInvalidSummary, logRelInvalid } from './rel-maint.js';
 import { extractJsonObject } from './util.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 import { PROMPT_TEMPLATES_V2 } from './config.js';
@@ -357,6 +357,21 @@ async function runRepairMech(opts) {
         logRelMaint('立即修复', relMaint);
     } catch (e) { /* 忽略 */ }
     stage1.relMaint = relMaint;
+    // v3.2.0（用户要求）：「设定的关系表，需要在自动修复中补充一个步骤，自动清理无效关系。」
+    //   紧接关联维护之后：清掉**结构上就没有意义**的关联行 —— 目标条目不存在的孤儿行、非法维度 / 空指向、
+    //   无角色的纯空行，以及**幽灵角色行**（`who` 不在任何已知名册：档案被删 / 改名残留 / AI 幻觉名）。
+    //   被清行**写删除墓碑**（跨端不复活），并逐条记调试日志；`relRepairMaint` 的 V1 口径完全不动。
+    let relInvalid = null;
+    try {
+        relInvalid = cleanInvalidRelLinks();
+        if (relInvalid && relInvalid.removed > 0) {
+            try { saveState(); } catch (e) { /* 忽略 */ }
+            const txt = relInvalidSummary(relInvalid);
+            if (txt) stage1.notes.push(txt);
+            logRelInvalid('立即修复', relInvalid);
+        }
+    } catch (e) { /* 忽略 */ }
+    stage1.relInvalid = relInvalid;
     const after = repairTotalCount();
     const swept = Number(sweepRes.swept) || 0;
     const cut = Number(capRes.cut) || 0;
@@ -372,11 +387,16 @@ async function runRepairMech(opts) {
         });
     } catch (e) { /* 忽略 */ }
     try {
-        dbgLog('修复', { action: '第 1 段 机械清理（零 AI）', before, after, merged: stage1.merged, deleted: stage1.deleted, swept, cut, notes: stage1.notes, ms: Date.now() - t0 });
+        dbgLog('修复', {
+            action: '第 1 段 机械清理（零 AI）', before, after, merged: stage1.merged, deleted: stage1.deleted, swept, cut,
+            relInvalid: (relInvalid ? { removed: relInvalid.removed, reasons: relInvalid.reasons } : null),
+            notes: stage1.notes, ms: Date.now() - t0,
+        });
     } catch (e) { /* 忽略 */ }
     if (o.silent !== true) {
+        const relTxt = (relInvalid && relInvalid.removed > 0) ? (' · ' + relInvalidSummary(relInvalid)) : '';
         notify('success', '机械清理完成（零 AI）',
-            `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条；${report}`);
+            `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条${relTxt}；${report}`);
     }
     return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0 };
 }
