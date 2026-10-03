@@ -14,8 +14,14 @@
 //   ② 预检（§4 前置③）：将删除几层 / 删哪一段 / 受影响条目数 / 其中有几层**尚未提取**（§8-D 删前吸收提示）；
 //   ③ 二次确认（D9 U4）：由 UI 侧 `confirmDialog` 完成（本模块不弹窗，便于测试）；
 //   ④ 自动备份（Q5）：**明文 JSON → 用户目录文件，3 槽轮转**；备份失败 → **中止删除**；
-//   ⑤ 删除（§4 执行）：**从后往前**逐个 `await deleteMessage(id)`（早先的下标保持稳定）；
-//      每步核对 `chat.length` 是否真的减少 —— 未减少即**如实中止并报告已删层数**（半途失败不装成功）；
+//   ⑤ 删除（§4 执行；v3.4.0 起**优先酒馆自带命令**）：
+//      v3.4.0（用户要求：「删除聊天楼层的三个按钮，需改进为酒馆自带的命令删除，提高删除效率。
+//        当前可能是逐层删除，非常消耗资源，需修复。」）
+//      **首选** `executeSlashCommandsWithOptions('/cut N')` —— 酒馆自带的截断命令，一次调用删掉整段
+//        （ST 内部自己做 splice + 保存 + 视图刷新），不再「逐层 await」；
+//      **回退** 宿主没有该命令能力 / 命令没生效时，退回逐个 `await deleteMessage(id)`（从后往前，下标稳定），
+//        每步核对 `chat.length` 是否真的减少 —— 未减少即**如实中止并报告已删层数**；
+//      两条路径都如实回报 `via`（`command` / `command+api` / `api`）与耗时，便于核对「到底走的哪条」。
 //   ⑥ 校准（§3.2 + §8-B）：**精确编号重映射**（幸存楼层整体前移 M；被删段内区间 → 未知区间 + `floorStale`）+
 //      台账重排 + `lastKnownFloor` 收紧；**绝不删除任何记忆条目**；
 //   ⑦ 记账（§8-A 低噪声）：人工确认项一条（含备份文件名/槽位与「聊天已减小、记忆保留 N 条」）+ 调试日志。
@@ -29,6 +35,7 @@ import { hashFloorText, handleFloorShrink } from './floors.js';
 import { nextFloorBackupSlot } from '../adapters/floor-backup.js';
 
 export { FLOOR_TRIM_PRESETS };
+// v3.4.0：`runCutCommand` 不导出（内部路径）；能力与结果经 `floorTrimCapability()` / `floorTrimStatus()` / `floorTrimApply()` 暴露
 
 /** 宿主注入的钩子：备份写入 / 明文导出 / 轮转账本读写 / 人工确认项登记 */
 let hooks = {
@@ -78,12 +85,35 @@ function entryCount() {
 export function floorTrimCapability() {
     try {
         const ctx = getCtx();
-        if (!ctx) return { ok: false, supported: false, reason: 'no-host' };
-        if (!Array.isArray(ctx.chat)) return { ok: false, supported: false, reason: 'no-chat' };
-        if (typeof ctx.deleteMessage !== 'function') return { ok: false, supported: false, reason: 'unsupported-host' };
-        return { ok: true, supported: true, reason: '' };
+        if (!ctx) return { ok: false, supported: false, command: false, reason: 'no-host' };
+        if (!Array.isArray(ctx.chat)) return { ok: false, supported: false, command: false, reason: 'no-chat' };
+        // v3.4.0：酒馆自带命令（`/cut`）能力 —— 有它就走「一次调用删整段」，没有才逐层回退
+        const command = (typeof ctx.executeSlashCommandsWithOptions === 'function');
+        if (typeof ctx.deleteMessage !== 'function' && !command) return { ok: false, supported: false, command: command, reason: 'unsupported-host' };
+        return { ok: true, supported: true, command: command, reason: '' };
     } catch (e) {
-        return { ok: false, supported: false, reason: 'error' };
+        return { ok: false, supported: false, command: false, reason: 'error' };
+    }
+}
+
+/**
+ * v3.4.0：**酒馆自带命令删除**（一次调用删掉整段，替代「逐层 await」）。
+ *
+ * 命令口径：ST 的 `/cut N` = 把聊天截断到**前 N 条**（我们保留最近 keep 层 → N = keep）。
+ * 失败/不可用一律返回 `{ok:false}`，由调用方回退到逐层 `deleteMessage`（绝不假装成功）。
+ * @param {object} ctx 宿主上下文
+ * @param {number} keep 截断后应保留的条数（= 保留最近层数）
+ * @param {Function} [runner] 测试注入（签名 `(command) => Promise`）
+ * @returns {Promise<{ok:boolean, command:string, error?:string}>}
+ */
+async function runCutCommand(ctx, keep, runner) {
+    const command = '/cut ' + Math.max(0, Math.floor(Number(keep) || 0));
+    try {
+        if (typeof runner === 'function') { await runner(command); return { ok: true, command: command }; }
+        await ctx.executeSlashCommandsWithOptions(command);
+        return { ok: true, command: command };
+    } catch (e) {
+        return { ok: false, command: command, error: String((e && e.message) || e) };
     }
 }
 
@@ -99,6 +129,8 @@ export function floorTrimCapability() {
     const last = items.length ? items[items.length - 1] : null;
     return {
         supported: cap.supported,
+        command: !!cap.command,                 // v3.4.0：宿主是否支持用酒馆自带命令删（`/cut`）
+        via: cap.supported ? (cap.command ? 'command' : 'api') : 'none',
         reason: cap.reason,
         floors: chatLen(),
         entries: entryCount(),
@@ -108,6 +140,8 @@ export function floorTrimCapability() {
             removed: Number(last.removed) || 0,
             stale: Number(last.stale) || 0,
             backup: String(last.backup || ''),
+            via: String(last.via || ''),
+            ms: Number(last.ms) || 0,
         } : null,
         presets: FLOOR_TRIM_PRESETS.slice(),
     };
@@ -165,7 +199,8 @@ export async function floorTrimApply(opts) {
     const ctx = getCtx();
     const del = (typeof o._deleteOne === 'function') ? o._deleteOne
         : (typeof ctx.deleteMessage === 'function' ? ctx.deleteMessage.bind(ctx) : null);
-    if (!del) return { ok: false, reason: 'unsupported-host', unsupported: true, summary: pre.summary };
+    const canCommand = !!(ctx && typeof ctx.executeSlashCommandsWithOptions === 'function');
+    if (!del && !canCommand) return { ok: false, reason: 'unsupported-host', unsupported: true, summary: pre.summary };
 
     // ④ 自动备份（Q5：3 槽轮转；失败即中止 —— 不允许「删了但没备份」）
     let backup = { ok: false, skipped: true, slot: -1, name: '' };
@@ -190,19 +225,41 @@ export async function floorTrimApply(opts) {
         backup = { ok: true, slot: slot, name: String(wr.name || ''), chars: Number(wr.chars) || 0 };
     }
 
-    // ⑤ 删除：**从后往前**（先删最大下标，早先下标保持稳定），每步核对聊天确实变短
+    // ⑤ 删除（v3.4.0）：**优先酒馆自带命令一次性截断**；没生效才回退「逐层 deleteMessage」
+    const t0 = Date.now();
     const before = chatLen();
     let deleted = 0;
     let failedAt = -1;
-    for (let id = plan.removeCount - 1; id >= 0; id--) {
-        try { await del(id); } catch (e) {
-            failedAt = id;
-            try { warn('删楼失败（已中止）', e); } catch (e2) { /* 忽略 */ }
-            break;
+    let via = 'api';
+    let commandInfo = null;
+    const target = Math.max(0, before - plan.removeCount);          // 截断后应保留的条数
+    if (canCommand || typeof o._runCommand === 'function') {
+        commandInfo = await runCutCommand(ctx, target, o._runCommand);
+        const afterCmd = chatLen();
+        if (commandInfo.ok && afterCmd <= target) {
+            // 命令一次删整段：实际删除量以**聊天真实长度差**为准（不可信则按计划值）
+            deleted = Math.max(0, before - afterCmd);
+            via = 'command';
+        } else {
+            // 命令不可用 / 没生效（宿主不支持、命令被吞、chat 没变短）→ 如实记录并回退
+            try { warn('删楼：酒馆自带命令 /cut 未生效 → 回退逐层删除', commandInfo.error || ('chat ' + afterCmd + ' > ' + target)); } catch (e) { /* 忽略 */ }
+            via = 'command+api';
         }
-        if (chatLen() >= before - deleted) { failedAt = id; break; }   // 该次调用没有真的删掉（DOM 未渲染等）
-        deleted++;
     }
+    if (deleted < plan.removeCount && del) {
+        // 回退路径：仍然是「删最早的若干层」，**从后往前**（先删该段中最大的下标，早先下标保持稳定）；
+        //   若命令路径已删掉一部分，则从「还剩多少要删」的位置继续（`removeCount-1-deleted`）。
+        for (let id = plan.removeCount - 1 - deleted; id >= 0 && deleted < plan.removeCount; id--) {
+            try { await del(id); } catch (e) {
+                failedAt = id;
+                try { warn('删楼失败（已中止）', e); } catch (e2) { /* 忽略 */ }
+                break;
+            }
+            if (chatLen() >= before - deleted) { failedAt = id; break; }   // 该次调用没有真的删掉（DOM 未渲染等）
+            deleted++;
+        }
+    }
+    const deleteMs = Math.max(0, Date.now() - t0);
 
     // ⑥ 校准：只按**实际删掉的层数**重映射（半途失败也保持编号自洽）
     //   v3.0.19：先记下**重映射之前**的全部台账哈希 —— 下面按内容归位时要用它把「仍然存在但被前移丢掉的」
@@ -239,13 +296,16 @@ export async function floorTrimApply(opts) {
     // ⑦ 记账（低噪声：按类型合并计数；失败不算「删除失败」，删除本身已成立）
     const after = chatLen();
     const entries = entryCount();
+    const viaText = (via === 'command') ? '酒馆命令' : (via === 'command+api' ? '命令未生效→逐层回退' : '逐层 API');
     const summary = '聊天已减小：-' + deleted + ' 层（保留最近 ' + plan.keep + ' 层）；记忆保留 ' + entries + ' 条'
         + '；编号已校准 ' + remap.shifted + ' 条、失效 ' + (remap.staled + remap.partial) + ' 条'
+        + '；删除方式 ' + viaText + '（' + deleteMs + 'ms）'
         + (backup.ok ? '；备份 ' + backup.name : '');
     const rec = {
         at: Date.now(), keep: plan.keep, removed: deleted, requested: plan.removeCount,
         stale: remap.staled + remap.partial, shifted: remap.shifted, backup: backup.name,
         floorsBefore: plan.total, floorsAfter: after, entries: entries,
+        via: via, ms: deleteMs,                              // v3.4.0：删除路径与耗时（便于核对效率）
     };
     const lg = readLog();
     const items = (Array.isArray(lg && lg.items) ? lg.items : []).concat([rec]).slice(-3);   // 账本也只留 3 条
@@ -263,19 +323,21 @@ export async function floorTrimApply(opts) {
             });
         }
     } catch (e) { /* 忽略 */ }
-    try { log('楼层', { action: '删楼', keep: plan.keep, deleted: deleted, requested: plan.removeCount, shifted: remap.shifted, stale: rec.stale, backup: backup.name }); } catch (e) { /* 忽略 */ }
+    try { log('楼层', { action: '删楼', keep: plan.keep, deleted: deleted, requested: plan.removeCount, shifted: remap.shifted, stale: rec.stale, backup: backup.name, via: via, ms: deleteMs, command: (commandInfo && commandInfo.command) || '' }); } catch (e) { /* 忽略 */ }
     try { if (typeof hooks.notify === 'function') hooks.notify('info', summary); } catch (e) { /* 忽略 */ }
 
     if (failedAt >= 0 || deleted < plan.removeCount) {
         return {
             ok: false, reason: 'partial', partial: true, unsupported: false,
             deleted: deleted, requested: plan.removeCount, failedAt: failedAt,
+            via: via, ms: deleteMs, command: (commandInfo && commandInfo.command) || '',
             backup: backup, remap: remap, summary: summary,
             precheck: pre,
         };
     }
     return {
         ok: true, deleted: deleted, requested: plan.removeCount,
+        via: via, ms: deleteMs, command: (commandInfo && commandInfo.command) || '',
         backup: backup, remap: remap, summary: summary, precheck: pre,
     };
 }
