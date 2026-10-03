@@ -66,7 +66,7 @@ import {
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, summaryDimsForPrompt, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
-import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText } from './host/floors.js';
+import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
 import { folderInfo } from './host/paths.js';
@@ -1887,7 +1887,14 @@ function installHostBridges() {
         },
     });
     // B8-6：修复域钩子（楼层面板哈希走 host/floors；内核不直读宿主聊天）
-    setRepairHooks({ floorHash: (i) => { try { return hashFloorText(i); } catch (e) { return ''; } } });
+    setRepairHooks({
+        floorHash: (i) => { try { return hashFloorText(i); } catch (e) { return ''; } },
+        // v3.5.0（用户要求）：自动修复的两个追加步骤 ——
+        //   ① 楼层突变识别与修正（最新情节楼层 − 当前末楼 ≥ 9 → 按内容哈希修正已处理记录；只改编号不删条目）
+        //   ② 计划/悬念修复（**与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理**，静默调用）
+        floorJump: () => fixFloorJump(),
+        planSuspRepair: (opts) => runPlanSuspRepair(Object.assign({ silent: true }, opts || {})),
+    });
     // v2.58.0：向量层接线（三层流程 + 最近楼层正文 + 剧情日期）—— 向量/rerank 请求在 host/embeddings.js
     setInjectRuntime({ extractFlow: (text, opts) => runExtractFlow(text, opts) });
     setInjectRuntime({

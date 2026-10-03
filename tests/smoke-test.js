@@ -4457,6 +4457,74 @@ await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**�
 // 用户约定：「在设定-数据管理 中约定楼层删除的三个按钮（保留最近 6 / 10 / 12 层）」+
 //   「**用官方 API 实现，不然其他插件也会异常**」→ 本小节用桩宿主跑**真实删除流程**：
 //   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ 逐个 `ctx.deleteMessage` → 精确编号校准。
+// v3.5.0（用户要求）：
+//   ①「总览的自动修复功能，追加计划悬念修复，该修复与当前计划悬念内的修复一致，只是调用一下处理。」
+//   ②「总览的自动修复功能，增加识别楼层突变……当前楼层与最新情节对应楼层不一致且存在跨度达到 9 层以上，
+//      说明楼层出现大幅手动删减。需修正已处理记录，避免无法正常分析楼层。」
+await assert('BH11 v3.5.0 总览「🛠 自动修复」追加两步（真实点击）：① **计划/悬念修复**（与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理，静默调用）→ 两条同正文悬念被机械去重；② **楼层突变识别**（最新情节在第 100 楼、当前只有第 59 楼 → 相差 41 层 ≥ 9）→ 按内容哈希修正已处理记录并把越界区间降级，提示如实回报两步结论；修正后**新楼层照常进入未摘要清单**（不再「无法正常分析楼层」）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const FL = await import('../host/floors.js');
+    const keepState = JSON.parse(JSON.stringify(RT.state || {}));
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepAutoAi = RT.cfg.repairAutoAi;
+    try {
+        // 60 层聊天（AI 楼为奇数位），最新情节自称到第 100 楼 → 判为大幅手动删减
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 60; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        const st = RT.state;
+        st.atoms = [
+            { id: 'bh11-a1', title: '情节一', text: '甲在码头清点铜箱并记账，铜箱成色与银元兑换比例需与账本核对（正文足够长，避免被判为垃圾条目）。', date: '1919-11-01', floorStart: 0, floorEnd: 1, tags: [], updatedAt: 1 },
+            { id: 'bh11-a2', title: '最新情节', text: '甲在仓库核对账本，发现铜箱少了三成，随即追问搬运工（正文足够长，避免被判为垃圾条目）。', date: '1919-11-02', floorStart: 99, floorEnd: 100, tags: [], updatedAt: 2 },
+        ];
+        st.processedFloors = [{ f: 90, h: FL.hashFloorText(90) }, { f: 3, h: FL.hashFloorText(3) }];
+        st.processedVer = FL.processedVerTag();
+        // 关键：**不**让「末楼收缩哨兵」先行兜住（`lastKnownFloor` 保持未知）——本轮要验证的正是
+        //   「当前楼层与最新情节对应楼层不一致（差 41 层 ≥ 9）」这条**新判据**能识别并修正。
+        st.lastKnownFloor = -1;
+        st.plans = [{ id: 'bh11-p1', title: '送信', content: '把信送到码头。', status: 'open', tags: [], uses: 1, updatedAt: 1 }];
+        st.suspense = [
+            { id: 'bh11-s1', title: '谁在跟踪', content: '有人在码头盯着甲看。', status: 'open', tags: [], uses: 1, updatedAt: 1 },
+            { id: 'bh11-s2', title: '谁在跟踪', content: '有人在码头盯着甲看。', status: 'open', tags: [], uses: 1, updatedAt: 2 },
+        ];
+        st.deleted = {}; st.deletedH = {};
+        RT.cfg.repairAutoAi = true;
+        await entry.popupAction('tab', { tab: 'overview' });
+        host.ctx.callGenericPopup = async () => 1;
+        const r = await entry.popupAction('repair', {});
+        const note = String((r.state || {}).note || '');
+        const rep = r.repair || {};
+        // ① 计划/悬念修复真的跑了：两条同正文悬念最终只剩一条（可能先被第 1 段的机械去重合并，
+        //   故这里断言「同一条处理被调用过 + 结论进了提示」；「同一条处理会做机械去重」由单测 A3 证明）
+        const suspLeft = (RT.state.suspense || []).length;
+        const suspOk = suspLeft === 1 && !!rep.planSusp && rep.planSuspSkipped === '';
+        // ② 楼层突变识别与修正
+        const jump = (rep.stage1 && rep.stage1.floorJump) || null;
+        const marksLeft = (RT.state.processedFloors || []).length;
+        const jumpOk = !!jump && jump.jumped === true && jump.gap === 41 && jump.acted === true
+            && marksLeft === 1 && (RT.state.processedFloors || []).some((x) => Number(x.f) === 3)
+            && Number(RT.state.lastKnownFloor) === 59;
+        // 提示里两步结论都在
+        const noteOk = /计划\/悬念修复：/.test(note) && /楼层突变：最新情节在第 100 楼、当前只有第 59 楼（相差 41 层/.test(note)
+            && note.indexOf('已按内容哈希修正已处理记录') > 0;
+        // ③ 修正后新楼层照常可分析（用户要的「避免无法正常分析楼层」）
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 64; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' });
+        const pend = FL.scanPendingFloors({ maintain: false }).floors;
+        const analyzeOk = pend.indexOf(61) >= 0 && pend.indexOf(63) >= 0;
+        const ok = suspOk && jumpOk && noteOk && analyzeOk;
+        if (!ok) console.log('BH11-DEBUG ' + JSON.stringify({ suspOk, suspLeft, planSusp: rep.planSusp, jumpOk, jump, marksLeft, lastKnownFloor: RT.state.lastKnownFloor, noteOk, analyzeOk, note: note.slice(0, 300) }));
+        return ok;
+    } finally {
+        RT.cfg.repairAutoAi = keepAutoAi;
+        host.ctx.chat.length = 0; for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        try { RT.setKernelState(keepState); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // v3.4.0（用户要求）：「删除聊天楼层的三个按钮，需改进为酒馆自带的命令删除，提高删除效率。
 //   当前可能是逐层删除，非常消耗资源，需修复。」
 await assert('BH10 v3.4.0 三个删楼按钮改走**酒馆自带命令**：真实点击「保留最近 10 层」→ 只调用 **1 次** `executeSlashCommandsWithOptions("/cut 10")`、**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「删除方式 酒馆命令」+ 耗时；宿主不提供命令能力时**如实回退**逐层删除并在提示里说明（两条路径都只删更早的楼层、记忆一条不少、备份照旧）', (async () => {

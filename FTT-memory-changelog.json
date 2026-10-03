@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.5.0",
+      "date": "2026-09-30",
+      "title": "总览「🛠 自动修复」追加两步：计划/悬念修复 + 楼层突变识别",
+      "points": [
+        "① 计划/悬念修复接进自动修复（同一条处理，只是调用一次）：core/plan-repair.js#runPlanSuspRepair 新增 opts.silent（进程内静默位…",
+        "② 楼层突变识别（第 1 段零 AI 的固定步骤）：新增 host/floors.js#fixFloorJump()（+ latestPlotFloor()、FLOOR_JUMP…"
+      ]
+    },
     {
       "version": "3.4.0",
       "date": "2026-09-30",

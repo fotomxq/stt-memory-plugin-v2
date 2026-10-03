@@ -34,9 +34,25 @@ import { PROMPT_TEMPLATES_V2 } from './config.js';
 let repairHooks = {
     /** 楼层稳定正文哈希（V1 `hashFloorText(i)`；宿主接 `host/floors.js`） */
     floorHash: () => '',
+    /**
+     * v3.5.0（用户要求）：「增加识别楼层突变……需修正已处理记录，避免无法正常分析楼层。」
+     * 宿主接 `host/floors.js#fixFloorJump`（判据：最新情节楼层 − 当前末楼 ≥ 9 → 判为大幅手动删减；
+     *   修正 = 按内容哈希归位台账 + 越界区间降级 + 收紧基线；**只改编号，不删条目**）。未接线 → 本步如实跳过。
+     * @type {(() => Promise<object>|object)|null}
+     */
+    floorJump: null,
+    /**
+     * v3.5.0（用户要求）：「总览的自动修复功能，追加计划悬念修复……只是调用一下处理。」
+     * 宿主接 `core/plan-repair.js#runPlanSuspRepair`（**与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理**）；
+     *   自动修复以 `{silent:true}` 调用（提示统一由修复汇总给出）。未接线 → 本步如实跳过。
+     * @type {((opts:object) => Promise<object>)|null}
+     */
+    planSuspRepair: null,
 };
 /** 注入修复域钩子（与 AI 钩子同一套注入风格；宿主在 `index.js` 接线） */
 export function setRepairHooks(next) { repairHooks = Object.assign({}, repairHooks, next || {}); return repairHooks; }
+/** 当前修复域钩子快照（诊断 / 测试用；只读副本） */
+export function repairHookState() { return Object.assign({}, repairHooks); }
 
 // ---------- 维度规格与判定表（V1 原样） ----------
 /** 各维度「正文/名称字段 + 目标字数 + 是否可打标签」（V1 `REPAIR_DIM_SPEC`） */
@@ -372,6 +388,27 @@ async function runRepairMech(opts) {
         }
     } catch (e) { /* 忽略 */ }
     stage1.relInvalid = relInvalid;
+    // ②d v3.5.0（用户要求）：「增加识别楼层突变，常见的主要就是当前楼层与最新情节对应楼层不一致且
+    //   存在跨度达到 9 层以上，说明楼层出现大幅手动删减。需修正已处理记录，避免无法正常分析楼层。」
+    //   判据与修正都在宿主层（`host/floors.js#fixFloorJump`）：按内容哈希归位台账 + 越界区间降级 + 收紧基线；
+    //   **只改编号，绝不删除条目**；幂等（同一对「情节楼层 / 当前末楼」已处理过且无新改动时只报告不写盘）。
+    let floorJump = null;
+    try {
+        const fn = (typeof repairHooks.floorJump === 'function') ? repairHooks.floorJump : null;
+        if (fn) {
+            floorJump = await fn();
+            if (floorJump && floorJump.jumped) {
+                const txt = '楼层突变：最新情节在第 ' + Number(floorJump.plotFloor) + ' 楼、当前只有第 ' + Number(floorJump.lastFloor)
+                    + ' 楼（相差 ' + Number(floorJump.gap) + ' 层，疑为大幅手动删减）→ '
+                    + (floorJump.acted
+                        ? ('已按内容哈希修正已处理记录（台账 ' + Number(floorJump.marks || 0) + ' 条 · 越界区间 ' + Number(floorJump.staleEntries || 0) + ' 条降级）')
+                        : '记录已修正过（本次无新改动）');
+                stage1.notes.push(txt);
+                try { dbgLog('楼层', { action: '楼层突变（自动修复识别）', gap: floorJump.gap, lastFloor: floorJump.lastFloor, plotFloor: floorJump.plotFloor, acted: floorJump.acted, marks: floorJump.marks, stale: floorJump.staleEntries }); } catch (e) { /* 忽略 */ }
+            }
+        }
+    } catch (e) { /* 忽略：突变修正失败不影响修复本身 */ }
+    stage1.floorJump = floorJump;
     const after = repairTotalCount();
     const swept = Number(sweepRes.swept) || 0;
     const cut = Number(capRes.cut) || 0;
@@ -707,8 +744,38 @@ async function runRepair(opts) {
             if (txt && relMaintTouched(relMaint)) stage1.notes.push(txt.replace(/^（关联维护：/, '关联维护：').replace(/）$/, ''));
         } catch (e) { /* 忽略 */ }
     }
+    // ③-c v3.5.0（用户要求）：「总览的自动修复功能，追加计划悬念修复，该修复与当前计划悬念内的修复一致，
+    //   只是调用一下处理。」→ 直接调用**同一条处理**（宿主接线 `core/plan-repair.js#runPlanSuspRepair`），
+    //   静默执行（提示统一由修复汇总给出）；`opts.planSusp === false` 可跳过（测试 / 特殊场景）。
+    //   口径：自动模式与 AI 段同门槛（`cfg.repairAutoAi === false` 时本步也跳过 —— 该开关的语义是「自动修复只做机械清理」）。
+    let planSusp = null;
+    const psSkipWhy = (o.planSusp === false) ? 'disabled'
+        : ((typeof repairHooks.planSuspRepair !== 'function') ? 'no-hook'
+            : ((isAuto && cfg && cfg.repairAutoAi === false) ? 'ai-off' : ''));
+    if (!psSkipWhy) {
+        try {
+            planSusp = await repairHooks.planSuspRepair({ silent: true, cause: String(o.cause || '手动修复') });
+        } catch (e) { planSusp = { made: 0, error: String((e && e.message) || e) }; }
+        try {
+            if (planSusp && !planSusp.error) {
+                const bits = [];
+                if (Number(planSusp.closedP)) bits.push('了结计划 ' + Number(planSusp.closedP));
+                if (Number(planSusp.closedS)) bits.push('揭晓悬念 ' + Number(planSusp.closedS));
+                if (Number(planSusp.mergedP)) bits.push('合并计划 ' + Number(planSusp.mergedP) + ' 组');
+                if (Number(planSusp.mergedS)) bits.push('合并悬念 ' + Number(planSusp.mergedS) + ' 组（-' + Number(planSusp.removedDup || 0) + ' 条）');
+                if (Number(planSusp.revised)) bits.push('修订悬念 ' + Number(planSusp.revised) + ' 条');
+                if (Number(planSusp.deleted)) bits.push('删除无效悬念 ' + Number(planSusp.deleted) + ' 条');
+                if (Number(planSusp.merged)) bits.push('机械去重 ' + Number(planSusp.merged) + ' 条');
+                const txt = '计划/悬念修复：' + (bits.length ? bits.join(' · ') : (planSusp.skipped ? '无需改动' : '无改动'))
+                    + (planSusp.blocked ? '（已有任务在跑，本次跳过）' : '');
+                stage1.notes.push(txt);
+            } else if (planSusp && planSusp.error) {
+                stage1.notes.push('计划/悬念修复：失败（' + String(planSusp.error).slice(0, 60) + '）');
+            }
+        } catch (e) { /* 忽略 */ }
+    }
     const relCounts = relMaintCounts(relMaint);
-    const made = stage1.merged + stage1.deleted + ai.revised + ai.deleted;
+    const made = stage1.merged + stage1.deleted + ai.revised + ai.deleted + (planSusp && !planSusp.error ? Number(planSusp.made) || 0 : 0);
     const ms = Date.now() - t0;
     try {
         repairLogPush({
@@ -729,7 +796,9 @@ async function runRepair(opts) {
     });
     try {
         dbgLog('修复', {
-            action: '数据修复完成（v1.137 三段式 · v1.138 相关性抽查）', auto: isAuto, cause: String(o.cause || '').slice(0, 40),
+            action: '数据修复完成（v1.137 三段式 · v1.138 相关性抽查 · v3.5.0 追加计划悬念修复与楼层突变识别）', auto: isAuto, cause: String(o.cause || '').slice(0, 40),
+            floorJump: (stage1.floorJump ? { jumped: stage1.floorJump.jumped, gap: stage1.floorJump.gap, acted: stage1.floorJump.acted } : null),
+            planSusp: (planSusp ? { made: planSusp.made, skipped: planSusp.skipped, blocked: planSusp.blocked, error: planSusp.error || '' } : (psSkipWhy ? { skipped: psSkipWhy } : null)),
             merged: stage1.merged, deleted: stage1.deleted, revised: ai.revised, aiDeleted: ai.deleted,
             candidates: cands.length, aiUsed: ai.used, aiSkipped: ai.skipped, ms,
             total: pickStat.total || 0, defects: pickStat.defects || 0, corrHigh: pickStat.corrHigh || 0,
@@ -745,7 +814,7 @@ async function runRepair(opts) {
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
             + `；${report}`);
     }
-    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts };
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump };
 }
 /** 提取合并失败后延迟自动修复一次（V1 `scheduleAutoRepairOnMergeFail`；默认 15s，可用 `cfg.repairFailDelaySec` 调） */
 let autoRepairFailTimer = null;
