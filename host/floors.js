@@ -16,6 +16,7 @@ import { DIMENSIONS } from '../core/constants.js';   // v2.93.0：楼层收缩�
 //   若在过滤前就把标签删掉，白/黑名单会永远匹配不到（v2.44.0 首版即为该缺陷，见 docs/P10j）。
 //   另：**楼层哈希仍用原始稳定正文**（`floorStableText`），既有「已处理楼层」台账不会失效。
 import { cleanText } from '../core/html-text.js';
+import { activeAtoms } from '../core/merge.js';   // v3.5.0：楼层突变判定取「可见情节」的最新楼层
 
 /** V1 台账版本与哈希自检签名（签名 = hashText(固定样本)，故与 V1 逐字符同值） */
 export const PROCESSED_VER = 'v1.174';
@@ -465,6 +466,72 @@ export function handleFloorShrink(opts) {
         return { ok: false, skipped: 'error' };
     }
 }
+/**
+ * v3.5.0（用户要求）：「增加识别楼层突变，常见的主要就是当前楼层与最新情节对应楼层不一致且存在跨度达到 9 层以上，
+ *   说明楼层出现大幅手动删减。需修正已处理记录，避免无法正常分析楼层。」
+ */
+export const FLOOR_JUMP_MIN_GAP = 9;
+
+/** 最新情节对应的楼层（可见情节里最大的 `floorEnd`；无情节 → -1） */
+export function latestPlotFloor() {
+    try {
+        const list = (() => { try { return activeAtoms(); } catch (e) { return Array.isArray(state.atoms) ? state.atoms : []; } })();
+        let max = -1;
+        for (const a of list) {
+            const e = Number(a && a.floorEnd), s2 = Number(a && a.floorStart);
+            const v = (Number.isFinite(e) && e > 0) ? e : ((Number.isFinite(s2) && s2 > 0) ? s2 : -1);
+            if (v > max) max = v;
+        }
+        return max;
+    } catch (e) { return -1; }
+}
+
+/**
+ * **楼层突变识别与修正**（自动修复的一个步骤；只改编号与台账，**绝不删除任何条目**）。
+ *
+ * 判据（用户口径）：`最新情节对应楼层 - 当前末楼 ≥ FLOOR_JUMP_MIN_GAP(9)` → 判为「大幅手动删减」。
+ * 动作：复用 `handleFloorShrink({ force: true })` —— 按**内容哈希**把「仍然存在的楼层」保回已处理台账（避免成片重分析），
+ *   把超出当前末楼的区间降级为未知区间（`floorStale`），并收紧 `lastKnownFloor`（此后新楼照常可分析）。
+ * 纪律：**幂等**；同一对 `(plotFloor, lastFloor)` 已处理过且本次无新改动时只报告不再写盘（避免每次自动修复都刷笔记）；
+ *   聊天未就绪时如实跳过（`skipped:'chat-not-ready'`）。
+ * @param {{force?:boolean}} [opts]
+ * @returns {{jumped:boolean, gap:number, lastFloor:number, plotFloor:number, acted:boolean, skipped?:string,
+ *            marks?:number, staleEntries?:number, removedFloors?:number}}
+ */
+export function fixFloorJump(opts) {
+    const o = opts || {};
+    const out = { jumped: false, gap: 0, lastFloor: -1, plotFloor: -1, acted: false };
+    try {
+        const lastFloor = liveLastFloorId();
+        const plotFloor = latestPlotFloor();
+        out.lastFloor = lastFloor;
+        out.plotFloor = plotFloor;
+        if (lastFloor < 0 || plotFloor < 0) { out.skipped = 'no-data'; return out; }
+        const gap = plotFloor - lastFloor;
+        out.gap = gap;
+        if (gap < FLOOR_JUMP_MIN_GAP) { out.skipped = 'no-jump'; return out; }
+        out.jumped = true;
+        // 同一对 (plotFloor,lastFloor) 已处理过 → 只在**确实还有新改动**时再写盘（幂等 + 低噪声）
+        const seen = (() => { try { return state.floorJumpAt || null; } catch (e) { return null; } })();
+        const same = !!(seen && Number(seen.plotFloor) === plotFloor && Number(seen.lastFloor) === lastFloor);
+        const r = handleFloorShrink({ force: true });
+        if (!r || r.ok === false) { out.skipped = String((r && r.skipped) || 'error'); return out; }
+        out.marks = Number(r.marks) || 0;
+        out.staleEntries = Number(r.staleEntries) || 0;
+        out.removedFloors = Number(r.removedFloors) || 0;
+        out.lastId = Number(r.lastId);
+        if (same && !o.force) { out.skipped = 'already-fixed'; out.acted = false; return out; }
+        out.acted = true;
+        try { state.floorJumpAt = { at: Date.now(), gap: gap, plotFloor: plotFloor, lastFloor: lastFloor, marks: out.marks, staleEntries: out.staleEntries }; } catch (e) { /* 忽略 */ }
+        try { saveState(); } catch (e) { /* 忽略 */ }
+        try { log('楼层', { action: '楼层突变识别与修正', gap: gap, lastFloor: lastFloor, plotFloor: plotFloor, marks: out.marks, staleEntries: out.staleEntries, removedFloors: out.removedFloors }); } catch (e) { /* 忽略 */ }
+        return out;
+    } catch (e) {
+        out.skipped = 'error';
+        return out;
+    }
+}
+
 /** 收缩回调（宿主注入；用于登记人工确认项 —— 内核不直接依赖 UI/冲突模块） */
 let onFloorShrink = null;
 export function setFloorShrinkHook(fn) { onFloorShrink = (typeof fn === 'function') ? fn : null; return true; }

@@ -52,8 +52,16 @@ import { GROUP_REPAIR_SPECS, groupPick } from './group-repair.js';
 import { aiCallText, aiBusy, aiFeedText } from './ai-hooks.js';
 import { defaultCfg, normalizeDeltaKeys } from './config.js';
 
+/**
+ * v3.5.0（用户要求）：「总览的自动修复功能，追加计划悬念修复……只是调用一下处理。」
+ *   自动修复会**静默**调用本模块（提示统一由修复自己的汇总给出），故加一个进程内静默位；
+ *   手动入口（「🔧 修复计划/悬念」按钮）不传 `silent`，行为与以前完全一致。
+ */
+let planSuspSilent = false;
+
 /** 用户提示（经宿主钩子；与 core/repair.js / core/group-repair.js 既有写法一致） */
 function notify(kind, title, text) {
+    if (planSuspSilent) return;
     try {
         const msg = [String(title || ''), String(text || '')].filter(Boolean).join(' ');
         if (msg) notifyHooks.toast(msg, String(kind || 'info'));
@@ -318,6 +326,13 @@ function applySuspenseMergeGroups(delta, pick) {
  */
 async function runPlanSuspRepair(opts) {
     const o = opts || {};
+    const prevSilent = planSuspSilent;
+    planSuspSilent = o.silent === true;
+    try { return await runPlanSuspRepairInner(o); } finally { planSuspSilent = prevSilent; }
+}
+
+async function runPlanSuspRepairInner(o0) {
+    const o = o0 || {};
     try {
         const pOpen0 = (state.plans || []).filter(x => x && x.status === 'open');
         const sOpen0 = (state.suspense || []).filter(x => x && x.status === 'open');
