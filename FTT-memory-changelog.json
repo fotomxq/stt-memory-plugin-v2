@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.4.0",
+      "date": "2026-09-30",
+      "title": "删楼改用酒馆自带命令（一次截断，不再逐层删）",
+      "points": [
+        "核对属实：v2.94.0 起「✂️ 删除聊天楼层」的三档按钮（保留最近 6 / 10 / 12 层）走的是host/floor-trim.js#floorTrimApply 第 …",
+        "改法（命令优先 + 逐层回退）：| 路径 | 触发条件 | 动作 || --- | --- | --- || command（首选） | 宿主提供 executeSlashCom…",
+        "效率：（Node 等价复现：deleteMessage 的 splice + updateViewMessageIds 重编号 + 保存调度；N=2000 保留 10）| 路径 …"
+      ]
+    },
     {
       "version": "3.3.0",
       "date": "2026-09-30",

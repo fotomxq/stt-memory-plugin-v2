@@ -2153,10 +2153,14 @@ export async function panelAction(action, payload) {
                     setNote('删除中…（先备份，再逐层删除并校准编号）');
                     const r = (typeof hooks.floorTrim === 'function') ? await hooks.floorTrim(keep) : { ok: false, reason: 'no-hook' };
                     if (r && r.ok) {
+                        // v3.4.0（用户要求「改进为酒馆自带的命令删除」）：提示里**如实说明走的哪条路径**（命令 / 逐层回退）
+                        const viaTxt = (r.via === 'command') ? '酒馆命令' : (r.via === 'command+api' ? '命令未生效→逐层回退' : '逐层 API');
                         setNote('已删除 ' + Number(r.deleted) + ' 层，保留最近 ' + keep + ' 层 · 记忆保留 ' + Number((r.remap && r.remap.shifted) || 0) + ' 条已校准'
+                            + ' · 方式 ' + viaTxt + (r.ms ? ('（' + Number(r.ms) + 'ms）') : '')
                             + (r.backup && r.backup.name ? (' · 备份 ' + r.backup.name) : ''));
                     } else if (r && r.partial) {
-                        setNote('删楼未完成：已删 ' + Number(r.deleted) + '/' + Number(r.requested) + ' 层后中止（编号已按实际删除量校准，记忆未丢）');
+                        setNote('删楼未完成：已删 ' + Number(r.deleted) + '/' + Number(r.requested) + ' 层后中止（编号已按实际删除量校准，记忆未丢）'
+                            + (r.via === 'command+api' ? '；酒馆命令未生效，已逐层回退' : ''));
                     } else {
                         const why = { 'backup-failed': '备份失败，已中止（未删除任何楼层）', 'backup-unavailable': '备份不可用，已中止（未删除任何楼层）', 'unsupported-host': '宿主不支持删除楼层' }[String(r && r.reason)] || String((r && r.reason) || '未知');
                         setNote('删楼未执行：' + why);

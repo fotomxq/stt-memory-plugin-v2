@@ -1397,14 +1397,18 @@ function floorTrimSectionHtml() {
     const when = (() => {
         try { return new Date(Number((last && last.at) || 0)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(Number((last && last.at) || 0)); }
     })();
-    const diag = '只读诊断：当前 ' + floors + ' 层 · 插件 ' + entries + ' 条'
-        + (last ? (' · 上次删楼 ' + esc(when) + '（保留 ' + Number(last.keep) + ' 层 · 备份 ' + esc(String(last.backup || '未生成')) + '）')
+    // v3.4.0（用户要求「改进为酒馆自带的命令删除，提高删除效率」）：诊断行显示**删除方式**（命令 / 逐层回退）
+    const viaText = (st && st.via === 'command') ? '酒馆命令（一次截断）' : ((st && st.via === 'api') ? '逐层删除' : '不可用');
+    const lastVia = (last && last.via) ? (' · 方式 ' + (last.via === 'command' ? '酒馆命令' : (last.via === 'command+api' ? '命令未生效→逐层' : '逐层')) + (last.ms ? (' · ' + Number(last.ms) + 'ms') : '')) : '';
+    const diag = '只读诊断：当前 ' + floors + ' 层 · 插件 ' + entries + ' 条 · 删除方式 ' + viaText
+        + (last ? (' · 上次删楼 ' + esc(when) + '（保留 ' + Number(last.keep) + ' 层 · 备份 ' + esc(String(last.backup || '未生成')) + lastVia + '）')
             : ' · 尚未删楼');
     const pre = (keep) => floorTrimPrecheckCache(keep, floors);
     const rows = FLOOR_TRIM_PRESETS.map((keep) => {
         const dis = supported ? '' : ' disabled';
         const title = supported
-            ? ('保留最近 ' + keep + ' 层后删除更早的楼层（' + pre(keep) + '）')
+            ? ('保留最近 ' + keep + ' 层后删除更早的楼层（' + pre(keep) + '）；删除方式：'
+                + ((st && st.via === 'command') ? '酒馆自带命令 /cut（一次截断整段，快）' : '逐层调用官方 deleteMessage（宿主无命令能力时的回退）'))
             : ('当前宿主不提供官方删除楼层接口，无法执行（' + esc(String((st && st.reason) || '')) + '）');
         return '<button class="ftt-btn ftt-err" type="button" data-ftt-action="floorTrim" data-ftt-keep="' + keep + '"'
             + dis + ' title="' + esc(title) + '">保留最近 ' + keep + ' 层</button>';
@@ -1413,6 +1417,8 @@ function floorTrimSectionHtml() {
         '<div class="ftt-section"><div class="ftt-sec-title">✂️ 删除聊天楼层（减小聊天体积）</div>',
         '<div class="ftt-hint">酒馆对高楼层支持较差时，可以直接在这里删掉<b>更早的聊天楼层</b>。'
         + '插件已提取的记忆<b>不会</b>随之丢失：删除前自动生成一份明文备份，删除后把记忆里的楼层编号一并校准。</div>',
+        '<div class="ftt-hint">删除优先走<b>酒馆自带的截断命令</b>（一次删整段，比逐层删快得多）；'
+        + '宿主不支持该命令时才回退到逐层删除，两种方式都会在提示里如实说明。</div>',
         '<div class="ftt-row">' + rows + '</div>',
         '<div class="ftt-hint ftt-mb-0">' + diag + '</div>',
         '</div>',

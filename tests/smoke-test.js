@@ -4457,6 +4457,66 @@ await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**�
 // 用户约定：「在设定-数据管理 中约定楼层删除的三个按钮（保留最近 6 / 10 / 12 层）」+
 //   「**用官方 API 实现，不然其他插件也会异常**」→ 本小节用桩宿主跑**真实删除流程**：
 //   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ 逐个 `ctx.deleteMessage` → 精确编号校准。
+// v3.4.0（用户要求）：「删除聊天楼层的三个按钮，需改进为酒馆自带的命令删除，提高删除效率。
+//   当前可能是逐层删除，非常消耗资源，需修复。」
+await assert('BH10 v3.4.0 三个删楼按钮改走**酒馆自带命令**：真实点击「保留最近 10 层」→ 只调用 **1 次** `executeSlashCommandsWithOptions("/cut 10")`、**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「删除方式 酒馆命令」+ 耗时；宿主不提供命令能力时**如实回退**逐层删除并在提示里说明（两条路径都只删更早的楼层、记忆一条不少、备份照旧）', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const FH = await import('../host/floor-trim.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepDel = host.ctx.deleteMessage;
+    const keepCmd = host.ctx.executeSlashCommandsWithOptions;
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    try {
+        const mkChat = (n) => { host.ctx.chat.length = 0; for (let i = 0; i < n; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' }); host.ctx.getLastMessageId = () => host.ctx.chat.length - 1; };
+        // ① 命令可用：一次截断，零逐层调用
+        mkChat(40);
+        const rec = { deleteCalls: 0, commands: [] };
+        host.ctx.deleteMessage = async (id) => { rec.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
+        host.ctx.executeSlashCommandsWithOptions = async (cmd) => { rec.commands.push(String(cmd)); const n = Number(String(cmd).split(/\s+/)[1]); if (Number.isFinite(n) && n >= 0 && n < host.ctx.chat.length) host.ctx.chat.splice(n, host.ctx.chat.length - n); return ''; };
+        FH.setFloorTrimHooks({
+            writeBackup: async (scope, slot, text) => ({ ok: true, name: 'ftt2-floor-backup-bh10-s' + (slot + 1) + '-20260930-120000.json', slot: slot, chars: String(text).length }),
+            exportJson: () => '{"format":"ftt-memory-v2-export","state":{}}',
+            getLog: () => null, saveLog: () => true, noteConflict: () => true, notify: () => true,
+        });
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'data' });
+        host.ctx.callGenericPopup = async () => 1;                       // 二次确认 → 确认
+        const r1 = await entry.popupAction('floorTrim', { keep: 10 });
+        const note1 = String((r1.state || {}).note || '');
+        const floors1 = host.ctx.chat.length;                          // 立即取（后面还会再删一轮）
+        const cmdOk = rec.commands.length === 1 && rec.commands[0] === '/cut 10' && rec.deleteCalls === 0
+            && floors1 === 10 && r1.ok === true && r1.via === 'command'
+            && note1.indexOf('方式 酒馆命令') >= 0 && String(r1.summary || '').indexOf('删除方式 酒馆命令') >= 0;
+        // ② 命令不可用：回退逐层，并在提示里说明
+        mkChat(20);
+        delete host.ctx.executeSlashCommandsWithOptions;
+        const rec2 = { deleteCalls: 0 };
+        host.ctx.deleteMessage = async (id) => { rec2.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
+        const r2 = await entry.popupAction('floorTrim', { keep: 6 });
+        const note2 = String((r2.state || {}).note || '');
+        const floors2 = host.ctx.chat.length;
+        const apiOk = r2.ok === true && rec2.deleteCalls === 14 && floors2 === 6
+            && r2.via === 'api' && note2.indexOf('方式 逐层 API') >= 0;
+        // ③ 能力与诊断如实
+        const cap = FH.floorTrimCapability();
+        const st = FH.floorTrimStatus();
+        const statOk2 = cap.command === false && st.via === 'api' && st.last && st.last.via === 'api';
+        // ④ 记忆一条不少
+        const entriesOk = Array.isArray(RT.state.atoms) && (RT.state.atoms.length === (keepAtoms || []).length);
+        const ok = cmdOk && apiOk && statOk2 && entriesOk;
+        if (!ok) console.log('BH10-DEBUG ' + JSON.stringify({ cmdOk, commands: rec.commands, deleteCalls: rec.deleteCalls, floors1, via1: r1.via, note1: note1.slice(0, 200), sum1: String(r1.summary || '').slice(0, 120), apiOk, calls2: rec2.deleteCalls, floors2, via2: r2.via, note2: note2.slice(0, 200), statOk2, entriesOk }));
+        return ok;
+    } finally {
+        host.ctx.chat.length = 0; for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.deleteMessage = keepDel;
+        if (keepCmd === undefined) delete host.ctx.executeSlashCommandsWithOptions; else host.ctx.executeSlashCommandsWithOptions = keepCmd;
+        RT.state.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官方 API 真删聊天楼层（20→10，`MESSAGE_DELETED` 每次触发）、删前自动明文备份落盘、删后记忆一条不少且编号校准、面板给出摘要', (async () => {
     const RT = await import('../core/model/runtime.js');
     const keepChat = host.ctx.chat.slice();
