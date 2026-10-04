@@ -5941,6 +5941,55 @@ await assert('BQ1 v3.15.0 货币修正（端到端）：按钮出计划预览（
     }
 })(), '');
 
+// ---------- BR 本地文件存储模式（v3.16.0） ----------
+// 用户要求（原话）：「本地存储除了当前内存和变量外，增加本地文件存储模式，用于替代变量存储，避免超出限制。
+//   但需用户在设定-存储中约定本地化路径。如果没约定路径，则视为不开启。开启后将取代变量方式。」
+//   本小节走**真实面板与设定页**：约定路径 → 存储页出现模式状态/目录控件/对齐按钮 → 动作可达；
+//   本桩环境无宿主原生存储 → 文件写失败时**回退变量层**（不丢数据）；清空路径 → 恢复「不开启」。
+await assert('BR1 v3.16.0 本地文件存储模式（端到端）：留空 = 不开启；约定路径后存储页给出模式状态 + 目录控件 + 「立即对齐」，动作可达；宿主文件写不可用时**回退变量层**（本机缓冲不丢），清空路径即回到变量模式', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const ST = await import('../adapters/store.js');
+    const LF = await import('../adapters/local-file.js');
+    const keepCfg = JSON.parse(JSON.stringify(RT.cfg.storage || {}));
+    const J2 = (v) => JSON.stringify(v);
+    try {
+        // ① 留空 = 不开启（零行为）
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage, { localFilePath: '' });
+        const offOk = LF.localFileEnable() === false && LF.localFilePath() === '';
+        // ② 约定路径 → 存储页给出模式状态 / 目录控件 / 对齐按钮
+        RT.cfg.storage.localFilePath = 'ftt2-local';
+        await entry.popupAction('tab', { tab: 'settings' });
+        const page = String(((await entry.popupAction('settingsSub', { sub: 'storage' })).html) || '');
+        const pageOk = page.indexOf('data-ftt-local-file-status') > 0 && page.indexOf('本机缓冲模式：') > 0
+            && page.indexOf('data-ftt-cfg="storage.localFilePath"') > 0
+            && page.indexOf('data-ftt-action="localFileAlign"') > 0
+            && page.indexOf('留空 = 不开启') > 0;
+        // ③ 动作可达（对齐两层）：本桩无原生宿主 → 变量层为空 → 如实回报「无需迁移」
+        const a1 = await entry.popupAction('localFileAlign', {});
+        const a2 = await entry.popupAction('localFileStatusRefresh', {});
+        const actOk = a1 && a1.ok !== false && String(a1.note || '').indexOf('本机层') >= 0
+            && a2 && a2.ok === true && String(a2.note || '').indexOf('已开启') > 0;
+        // ④ 真实保存一次：本桩的「酒馆文件通道」可用 → 本机缓冲**落在文件层**（不再写变量层）
+        const saved = await ST.saveStateNow({ force: true });
+        const st = ST.localBufferState();
+        const info = ST.localLayerInfo();
+        const fileOk = saved && saved.ok !== false && st && st.layer === 'local-file'
+            && Number(st.chars) > 100 && LF.localFileStatsGet().writes >= 1 && info.enabled === true;
+        // ⑤ 清空路径 → 回到「不开启」；若文件里还有内容而变量层为空则**自动迁回**（如实回报）
+        RT.cfg.storage.localFilePath = '';
+        const align = await entry.popupAction('localFileAlign', {});
+        const backOk = LF.localFileEnable() === false && align && align.ok !== false
+            && /迁回|未开启/.test(String(align.note || ''));
+        const ok = offOk && pageOk && actOk && fileOk && backOk;
+        if (!ok) console.log('BR1-DEBUG ' + JSON2({ offOk, pageOk, actOk, fileOk, backOk, st: st, a1: a1 && a1.note, a2: a2 && a2.note, align: align && align.note }));
+        return ok;
+        function JSON2(v) { return J2(v); }
+    } finally {
+        RT.cfg.storage = keepCfg;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- BO NSFW 等级留档（v3.8.0） ----------
 // 用户要求（原话）：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
 //   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。

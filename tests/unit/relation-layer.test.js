@@ -256,7 +256,7 @@ A('F1 v2.83.0 设定入口补齐：关联层三项控件落在「分析记忆」
     const analyze = info.pages.filter((p) => p.id === 'analyze')[0] || {};
     const page = settingsPageHtml('analyze');
     return keys.indexOf('relLinkEnabled') >= 0 && keys.indexOf('relLinkMax') >= 0 && keys.indexOf('relOrphanAction') >= 0
-        && info.totalControls === 158 && analyze.controls === 20
+        && info.totalControls === 159 && analyze.controls === 20
         && page.indexOf('关联层（谁知道 / 谁相关）') >= 0
         && page.indexOf('data-ftt-cfg="relLinkEnabled"') >= 0 && page.indexOf('data-ftt-cfg="relOrphanAction"') >= 0
         && page.indexOf('自动清理（目标条目已不存在）') >= 0;             // select 选项

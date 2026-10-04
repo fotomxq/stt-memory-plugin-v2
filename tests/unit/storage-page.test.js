@@ -44,6 +44,7 @@ function hintTexts(html) {
         if (full.indexOf('data-ftt-state-file-status') >= 0) continue;    // 状态行不是提示
         if (full.indexOf('data-ftt-sync-log-status') >= 0) continue;      // 服务端日志状态行
         if (full.indexOf('data-ftt-slim-gzip') >= 0) continue;            // 存储编码状态行（含写入文件名）
+        if (full.indexOf('data-ftt-local-file-status') >= 0) continue;    // v3.16.0：本地文件模式状态行（不是提示）
         out.push(full.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim());
     }
     return out;
@@ -112,12 +113,12 @@ A('N6 提示不罗嗦：每条提示 ≤ 70 字（状态行与同步日志行不
 })(), J(hintTexts(page()).map((t) => t.length)));
 
 // ---- L 组：控制项标签去术语（用户看得懂） ----
-A('L1 v2.94.0（D11 §3.4/§3.5）：存储页只留「纯偏好」世界书参数 12 项，会致数据不一致的开关全部剔除并写死内置逻辑', (() => {
+A('L1 v2.94.0（D11 §3.4/§3.5）：存储页只留「纯偏好」世界书参数 12 项 + v3.16.0 本地文件目录 1 项，会致数据不一致的开关全部剔除并写死内置逻辑', (() => {
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
     const labels = SETTINGS_CONTROLS.storage.map((c) => String(c.label));
     const goneKeys = ['deletedKeepDays', 'verifyOnLoad', 'syncOnSave', 'settingsMirror', 'syncMetaProbe', 'syncTrafficGuard'];
     const goneLabels = ['已删除条目的保留天数', '载入时校验数据完整性', '保存时同步到服务端', '同步前先比对清单（省流量·推荐开启）', '仅变化时同步（省流量·推荐开启）', '删除墓碑保留（天）', '楼层哈希差异门控（省流量·推荐开启）'];
-    return keys.length === 12 && keys.every((k) => k.indexOf('storage.worldbook') === 0)
+    return keys.length === 13 && keys.filter((k) => k !== 'storage.localFilePath').every((k) => k.indexOf('storage.worldbook') === 0)
         && goneKeys.every((k) => keys.indexOf('storage.' + k) < 0)
         && goneLabels.every((l) => labels.indexOf(l) < 0);
 })(), '见断言');

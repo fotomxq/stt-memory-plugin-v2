@@ -132,13 +132,13 @@ export function fileTransportReadAuto(name, opts) {
     const src = String(o.src || 'file');
     const role = String(o.role || '');
     if (!ttNativeOn()) {
-        const p = readStateFileAuto(name);
+        const p = readStateFileAuto(String(o.stName || name));
         return bookkeep(p, (r) => {
             if (r && r.ok) readRoute[key] = 'st-files';
             ledgerFileRead(key, src, t0, r, role);
         });
     }
-    const p = readAutoRouted(name);
+    const p = readAutoRouted(name, o);
     return bookkeep(p, (r) => ledgerFileRead(key, src, t0, r, role));
 }
 
@@ -177,7 +177,8 @@ async function awaitNativeOnce() {
     }
 }
 
-async function readAutoRouted(name) {
+async function readAutoRouted(name, opts) {
+    const o = opts || {};
     const key = String(name || '');
     // v3.0.11（第三处）：宿主已识别但原生 API 尚未就位 → 短暂等待一次再决定读哪一份
     //   （只在本会话首次读取时可能等待；非 TauriTavern 宿主零等待）。
@@ -200,7 +201,7 @@ async function readAutoRouted(name) {
             // v3.0.11：被判定为「降级残留」而跳过旧路由时，本次原生探测必须**绕开未命中抑制**
             //   （`tt-store` 有 30s 的同键 miss 抑制）——否则「启动早期探测过一次未命中」会让
             //   原生里其实已经存在的新值在 30s 内仍被判为未命中，去钉住失效、继续读陈旧副本。
-            const got = await ttGetBytes(name, { force: stickyFallback === true });
+            const got = await ttGetBytes(name, { force: stickyFallback === true, ns: o.ns, table: o.table });
             if (got && got.found) {
                 const dec = await ttBytesToTextAuto(got.bytes);
                 if (dec && dec.ok) {
@@ -214,7 +215,7 @@ async function readAutoRouted(name) {
             if (got && got.error) firstError = firstError || String(got.error);
             continue;
         }
-        const r = await readStateFileAuto(name);
+        const r = await readStateFileAuto(String(o.stName || name));
         if (r && r.ok) {
             // v3.0.11：**只在首选后端确实可用时**才把 st-files 记为路由（那说明原生真的没有这个键）；
             //   原生未就绪时的降级命中不缓存，避免把这一刻的降级固化（见上方 stickyFallback 注释）。
@@ -285,28 +286,30 @@ async function readBytesRouted(name, o) {
  * 写入文本（原生优先；`tauriMirror` 开启时额外镜像写酒馆文件；原生失败自动回退）。
  * @returns {Promise<{ok:boolean, backend:string, mirror?:boolean, status?:number, error?:string}>}
  */
-export function fileTransportUploadText(name, text) {
+export function fileTransportUploadText(name, text, opts) {
+    const o = opts || {};
     const bytes = ttTextBytes(text);
     if (!ttNativeOn()) {
-        const p = uploadStateFile(name, text);                     // 无宿主：同一 Promise，零额外微任务层
+        const p = uploadStateFile(String(o.stName || name), text);   // 无宿主：同一 Promise，零额外微任务层
         bookkeep(p, (r) => {
             lastWrite = { backend: 'st-files', mirror: false, bytes: bytes.length, at: Date.now(), error: (r && r.ok) ? '' : String((r && r.error) || '') };
         });
         return p;
     }
-    return uploadTextRouted(name, text, bytes);
+    return uploadTextRouted(name, text, bytes, o);
 }
 
-async function uploadTextRouted(name, text, bytes) {
+async function uploadTextRouted(name, text, bytes, opts) {
+    const o = opts || {};
     const out = { backend: 'tt-native', mirror: false, bytes: bytes.length };
     if (ttNativeActive()) {
-        const r = await ttPutBytes(name, bytes);
+        const r = await ttPutBytes(name, bytes, o);                 // v3.16.0：透传 ns/table（本地文件模式用自定义命名空间）
         if (r && r.ok) {
             ttAnnounceSwitch();
             out.ok = true;
             out.channel = r.channel;
             if (ttMirrorToFiles()) {
-                const m = await uploadStateFile(name, text);            // 镜像失败不改变主结果（主存储已成功）
+                const m = await uploadStateFile(String(o.stName || name), text);   // 镜像失败不改变主结果（主存储已成功）
                 out.mirror = !!(m && m.ok);
             }
             lastWrite = { backend: 'tt-native', mirror: !!out.mirror, bytes: bytes.length, at: Date.now(), error: '' };
@@ -317,7 +320,7 @@ async function uploadTextRouted(name, text, bytes) {
         out.nativeError = 'not-ready';
     }
     if (!stFilesAllowed()) { out.ok = false; out.error = out.nativeError; lastWrite = { backend: 'tt-native', mirror: false, bytes: bytes.length, at: Date.now(), error: out.error }; return out; }
-    const fb = await uploadStateFile(name, text);                       // ← 回退：绝不因为原生写失败而丢数据
+    const fb = await uploadStateFile(String(o.stName || name), text);   // ← 回退：绝不因为原生写失败而丢数据
     out.backend = 'st-files';
     out.ok = !!(fb && fb.ok);
     out.status = Number((fb && fb.status) || 0);
@@ -358,19 +361,21 @@ async function uploadGzRouted(name, text) {
  * 删除（**两个后端都删**，避免另一通道把已删数据唤醒）。
  * @returns {Promise<{ok:boolean, backend:string, native?:boolean, files?:boolean}>}
  */
-export function fileTransportDelete(name) {
+export function fileTransportDelete(name, opts) {
+    const o = opts || {};
     if (!ttNativeOn()) {
-        const p = deleteStateFile(name);                           // 无宿主：同一 Promise，零额外微任务层
+        const p = deleteStateFile(String(o.stName || name));        // 无宿主：同一 Promise，零额外微任务层
         bookkeep(p, () => { delete readRoute[String(name || '')]; });
         return p;
     }
-    return deleteRouted(name);
+    return deleteRouted(name, o);
 }
 
-async function deleteRouted(name) {
-    const n = ttNativeActive() ? await ttDeleteNative(name) : { ok: false };
+async function deleteRouted(name, opts) {
+    const o = opts || {};
+    const n = ttNativeActive() ? await ttDeleteNative(name, o) : { ok: false };   // v3.16.0：透传 ns/table
     let f = { ok: false };
-    if (stFilesAllowed()) f = await deleteStateFile(name);
+    if (stFilesAllowed()) f = await deleteStateFile(String(o.stName || name));
     delete readRoute[String(name || '')];
     if (!n.ok && !f.ok && ttDetected() && ttNativeActive()) markStFilesDown('delete-fail');
     return { ok: !!(n.ok || f.ok), backend: 'tt-native', native: !!n.ok, files: !!f.ok };
