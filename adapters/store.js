@@ -147,7 +147,40 @@ let localBufferMaxChars = LOCAL_BUFFER_MAX_CHARS;
 export function setLocalBufferMaxChars(n) { localBufferMaxChars = Math.max(0, Number(n) || 0); return localBufferMaxChars; }
 /** 最近一次本机缓冲写入结论（诊断 / 面板 / 调试包） */
 let localBuffer = { at: 0, ok: false, skipped: 'never-written', chars: 0, budget: LOCAL_BUFFER_MAX_CHARS, reason: '' };
-export function localBufferState() { return Object.assign({}, localBuffer); }
+export function localBufferState() { return Object.assign({}, localBuffer, { stats: localBufferStats() }); }
+
+// ============================================================
+// v3.10.4（真机取证 A4）：本机缓冲的**读放大**与**写放大**
+//
+// 实测（只读调试桥）：一次会话里「本机缓冲」被读 19 次、每次 1.05MB（累计 ≈19.9MB），
+//   单次 1–12ms（**233ms 那次是服务端主文件的解析**，不是本层）；而每次状态变化都**全量重写** 1.11MB
+//   （3 分钟内 11 次）。风险：同步全量写造成卡顿；localStorage 配额（5–10MB）被单键长期占住 1.1MB。
+//
+// 本版做的（都**只作用于本层**，且不改变任何读写语义）：
+//   ① **解析缓存**：仍然每次都读原始文本（**真相优先**），文本未变时不再重复 `JSON.parse` + 信封哈希；
+//   ② **等值跳过**：信封与上次写入**逐字节同源**（同哈希 + 同长度）→ localStorage / IndexedDB 都不重写；
+//   ③ 配额守卫沿用 v3.1.0（超字符预算 → 跳过并如实留痕），并把读写计数并入诊断。
+//   ⇒ **刻意不做时间节流**：本机缓冲是「保存后必须立刻可读」的一层（v3.0.23 的读写对齐纪律，
+//     由 `store-chat` 的 S2/S3/S7 断言锁定），按时间推迟写入会让该层短暂落后于内存态，得不偿失。
+//     真机上写入次数由**内容真实变化次数**决定；把它降下来的另一半来自 A5 ——
+//     调试日志此前**每次 push 都整体重写 localStorage**（含 69% 的「读取」噪声），A5 直接砍掉了那部分写放大。
+// ============================================================
+
+let localParseCache = null;           // { key, raw, payload, items }：文本未变 → 复用解析结果
+let localLastSig = '';               // 上次写入的载荷签名（长度 + 信封哈希，避免比较 1MB 字符串）
+const localStats = { reads: 0, parseHits: 0, writes: 0, unchanged: 0, idbWrites: 0, overBudget: 0, failed: 0, lastWriteAt: 0, lastSkipReason: '' };
+/** 本机缓冲读写统计（诊断 / 面板 / 调试包；`localBufferState().stats` 同源） */
+export function localBufferStats() { return Object.assign({}, localStats); }
+
+/**
+ * 让本机缓冲的**解析缓存**立即失效（v3.10.4）。
+ * 本层自己的写入会自动失效；清理本机键等路径同样调用它（缓存**不改变真相语义**，
+ * 因为每次都会重新读原始文本 —— 这里只是让解析结果不跨「已知的改动」复用）。
+ */
+export function invalidateLocalBufferCache() {
+    localParseCache = null;
+    return true;
+}
 /**
  * v3.0.14/v3.0.15：**「多久算卡死」的统一阈值**（保存层与立即保存层共用同一旋钮）。
  *   一次保存/一次立即保存超过它仍未返回即视为卡死（宿主或服务端挂住），
@@ -358,31 +391,45 @@ async function saveStateNowInner(o) {
     const text = JSON.stringify(envelope);
     const bytes = text.length;
     const via = [];
-    // ④ 本机缓冲（localStorage 信封）—— v3.1.0：**写入前按字符预算判定**（超预算如实跳过并留痕，不再静默失败）
+    // ④ 本机缓冲（localStorage 信封）—— v3.1.0：**写入前按字符预算判定**（超预算如实跳过并留痕）
+    //   v3.10.4（A4）：再加一道**等值跳过** —— 与上次写入逐字节同源（同信封哈希 + 同长度）时不重写 1MB。
     try {
         const key = 'ftt2_state_' + scopeId();
         const budget = localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS;
-        if (budget > 0 && text.length > budget) {
+        const sig = String(envelope && envelope.hash ? envelope.hash : '') + ':' + text.length;
+        if (localLastSig !== '' && localLastSig === sig) {
+            localStats.unchanged += 1;
+            localStats.lastSkipReason = 'unchanged';
+            localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过' };
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）' }); } catch (e) { /* 忽略 */ }
+        } else if (budget > 0 && text.length > budget) {
+            localStats.overBudget += 1;
+            localStats.lastSkipReason = 'over-budget';
             localBuffer = { at: Date.now(), ok: false, skipped: 'over-budget', chars: text.length, budget: budget, reason: '信封超过本机缓冲预算' };
             try { kernelWarn('保存：本机缓冲超预算 → 本次跳过（服务端文件与 IndexedDB 不受影响）', { chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
             try { debugLogPush('存储', { action: '本机缓冲超预算 → 跳过写入', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, miss: true, bytes: text.length, reason: 'over-budget', extra: { budget: budget }, note: '超过字符预算 → 跳过（服务端文件与 IndexedDB 不受影响）' }); } catch (e) { /* 忽略 */ }
         } else if (storageHooks.setItem(key, text)) {
             via.push('localStorage');
+            markLocalWritten(sig, text.length);
             localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '' };
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget } }); } catch (e) { /* 忽略 */ }
         } else {
+            localStats.failed += 1;
+            localStats.lastSkipReason = 'write-failed';
             localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '宿主拒绝写入（常见原因：配额不足）' };
             try { kernelWarn('保存：本机缓冲写入被拒（配额不足？）→ 已记台账；服务端文件与 IndexedDB 不受影响', { chars: text.length }); } catch (e) { /* 忽略 */ }
             try { debugLogPush('存储', { action: '本机缓冲写入失败', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: text.length, reason: 'write-failed' }); } catch (e) { /* 忽略 */ }
         }
     } catch (e) { /* 忽略 */ }
-    // ⑤ IndexedDB 缓冲（可用时）
+    // ⑤ IndexedDB 缓冲（可用时）—— **不做等值跳过**：它是异步写、不阻塞主线程，
+    //   且与 localStorage 是两层独立真相（本层写失败后仍需能自愈），耦合跳过会留下「永远补不上」的缺口。
     try {
         const lf = await localforageLib();
         if (lf && typeof lf.setItem === 'function') {
             await lf.setItem('ftt2_state_' + scopeId(), envelope);
+            localStats.idbWrites += 1;
             via.push('indexedDB');
         }
     } catch (e) { /* 忽略 */ }
@@ -461,20 +508,32 @@ export function loadFromLocalStorage() {
     const tok = readLedgerBegin('读本机缓冲', 'local', { target: 'ftt2_state_' + scopeId() });
     try {
         const key = 'ftt2_state_' + scopeId();
+        // v3.10.4（A4）：**仍然每次都读原始文本**（真相优先：外部改动立刻可见），
+        //   文本与上次逐字符相同 → 复用上次的解析结果（省掉 1MB 的 `JSON.parse` + 信封哈希）。
         const raw = storageHooks.getItem(key);
-        if (!raw) { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-local-buffer', note: '本机缓冲为空（首次使用或已清理）' }); return null; }
+        localStats.reads += 1;
+        if (!raw) { localParseCache = null; readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-local-buffer', note: '本机缓冲为空（首次使用或已清理）' }); return null; }
+        const c = localParseCache;
+        if (c && c.key === key && c.raw === raw) {
+            localStats.parseHits += 1;
+            readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: c.items, note: '命中解析缓存（文本未变 → 不重复解析信封）', extra: { parse: 'cached' } });
+            return c.payload;
+        }
         const env = JSON.parse(raw);
-        if (!env || !env.payload) { readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: String(raw).length }); kernelWarn('载入：本机缓冲信封不完整 → 丢弃', ''); return null; }
+        if (!env || !env.payload) { localParseCache = null; readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: String(raw).length }); kernelWarn('载入：本机缓冲信封不完整 → 丢弃', ''); return null; }
         const h = storageHash(env.payload);
         if (env.hash && env.hash !== h) {
+            localParseCache = null;
             readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: String(raw).length, hash: h, note: '信封哈希不一致 → 丢弃本机缓冲' });
             kernelWarn('载入：本机缓冲哈希不一致 → 丢弃', '');
             return null;
         }
         const st = env.payload.data || null;
-        readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: countsOf(st).total, hash: h, note: '信封校验通过' });
+        localParseCache = { key: key, raw: raw, payload: st, items: countsOf(st).total };
+        readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: localParseCache.items, hash: h, note: '信封校验通过' });
         return st;
     } catch (e) {
+        localParseCache = null;
         readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
         return null;
     }
@@ -700,6 +759,8 @@ export function localKeyStats() {
 export function removeLocalKeys(keys) {
     const list = (Array.isArray(keys) ? keys : []).map((k) => String(k)).filter(Boolean);
     let removed = 0; const failed = [];
+    // v3.10.4：删过本机键 → **读取缓存必须失效**（否则「刚清空却仍能读回旧信封」）
+    if (list.length) invalidateLocalBufferCache();
     for (const k of list) {
         const ok = (() => { try { return storageHooks.removeItem(k) !== false; } catch (e) { return false; } })();
         if (ok) removed += 1; else failed.push(k);
@@ -929,6 +990,17 @@ export async function resetState() {
  */
 export function primeStateIndex() {
     try { entryIndexInit(); indexReady = true; return true; } catch (e) { return false; }
+}
+
+/** 存储接线状态（调试用） */
+/** 本层写入记账（写成功后调用）：记签名并让解析缓存失效 */
+function markLocalWritten(sig, chars) {
+    localLastSig = String(sig || '');
+    localParseCache = null;                      // 本层写过 → 解析结果不再复用
+    localStats.writes += 1;
+    localStats.lastWriteAt = Date.now();
+    localBuffer = Object.assign({}, localBuffer, { chars: chars });
+    return true;
 }
 
 /** 存储接线状态（调试用） */
