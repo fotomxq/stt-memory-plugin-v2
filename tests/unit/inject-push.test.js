@@ -212,5 +212,65 @@ await (async () => {
     })(), { lastError: statsThrew.lastError, push: statsThrew.lastPush });
 })();
 
+// ============================================================
+// Q 组（v3.10.3）：`charBudget` = **最终注入体**的硬上限（真机 A2）
+//   真机实测：设定 8000，实际注入 11955（超 49%）—— 原因：框架不计入预算，
+//   而默认「使用说明」模板本身就有 3726 字。本组锁定「最终注入体不超上限」。
+// ============================================================
+await (async () => {
+    const INJ = await import('../../host/inject.js');
+    const saved = { cap: cfg.charBudget, guide: cfg.promptTemplates.injectGuide };
+
+    R.assert('Q1 `injectFrameOverhead`：框架开销可量化，且「含说明」比「不含说明」多出说明长度（+1 分隔符）', (() => {
+        cfg.promptTemplates.injectGuide = '说'.repeat(2000);
+        const fixed = INJ.injectFrameOverhead({ noGuide: true });
+        const all = INJ.injectFrameOverhead({});
+        const diff = all - fixed;
+        return fixed > 100 && diff === 2001 && all > fixed;
+    })(), { fixed: INJ.injectFrameOverhead({ noGuide: true }), all: INJ.injectFrameOverhead({}) });
+
+    R.assert('Q2 `planInjectBudget`：上限够 → 保留说明；上限不够 → **丢弃说明**把预算让给正文；连框架都放不下 → 不注入', (() => {
+        const big = INJ.planInjectBudget(9000, 600, 3000);
+        const mid = INJ.planInjectBudget(2000, 600, 3000);
+        const tiny = INJ.planInjectBudget(500, 600, 3000);
+        return big.ok === true && big.useGuide === true && big.guideDropped === false && big.bodyBudget === 5400
+            && mid.ok === true && mid.useGuide === false && mid.guideDropped === true && mid.bodyBudget === 1400
+            && tiny.ok === false && tiny.bodyBudget === 0 && tiny.reason === 'budget-too-small';
+    })(), { big: INJ.planInjectBudget(9000, 600, 3000), mid: INJ.planInjectBudget(2000, 600, 3000) });
+
+    resetGlobals();
+    setKernelState(richState());
+    setScopeKey('角色甲');
+    cfg.injectCurrentPrompt = true; cfg.timelyAnalysis = false; cfg.injectEnabled = true;
+    cfg.promptTemplates.injectGuide = '说'.repeat(3000);
+    cfg.charBudget = 2000;                    // 说明 3000 + 框架 > 2000 → 必须丢说明
+    const r1 = await pushMemoryInject({});
+    const v1 = readInject();
+    R.assert('Q3 端到端（真机场景）：**最终注入体 ≤ charBudget**；说明让位后记忆正文照常注入',
+        r1.ok === true && r1.injected === true && v1.length > 0 && v1.length <= 2000
+        && r1.guideDropped === true && v1.indexOf('说说说') < 0
+        && (v1.indexOf('## 情节记忆') > 0 || v1.indexOf('## 长期记忆') > 0) && v1.indexOf('记忆结束。') > 0,
+        { chars: v1.length, cap: 2000, overhead: r1.overhead, bodyBudget: r1.bodyBudget });
+
+    resetGlobals();
+    cfg.charBudget = 9000;                    // 够 → 说明保留，总量仍不超
+    const r2 = await pushMemoryInject({});
+    const v2 = readInject();
+    R.assert('Q4 上限足够时：说明保留，最终注入体仍 ≤ charBudget（不再出现「设 8000 注 11955」）',
+        r2.ok === true && r2.injected === true && v2.length <= 9000 && r2.guideDropped === false
+        && v2.indexOf('说说说') > 0 && v2.indexOf('# FTT 记忆注入') === 0,
+        { chars: v2.length, cap: 9000, overhead: r2.overhead });
+
+    resetGlobals();
+    cfg.charBudget = 500;                     // 连框架都放不下 → 如实拒绝，不静默超预算
+    const r3 = await pushMemoryInject({});
+    R.assert('Q5 上限连框架都放不下 → 如实回报 `budget-too-small` 且不注入（绝不静默超预算）',
+        r3.ok === true && r3.reason === 'budget-too-small' && r3.injected === false && r3.chars === 0,
+        { r3: r3 });
+
+    cfg.charBudget = saved.cap;
+    cfg.promptTemplates.injectGuide = saved.guide;
+})();
+
 uninstall();
 R.done();

@@ -124,6 +124,38 @@ A('C2 「原文已移除」的条目**不覆盖任何楼层** → 同一楼号�
         && floorCoverage(state).has(9) === false && meaningfulFloorRange(state.atoms[0]) === null;
 })(), () => ({ floors: scanPendingFloors({ maintain: false, startFloor: 8, endFloor: 11 }).floors }));
 
+// ---------- C 组补充（v3.10.3）：**越界区间不得参与覆盖**（真机 A3/A1） ----------
+A('C3 超出当前聊天末楼的区间**不参与覆盖**：`[1,40]` 在 12 楼聊天里被忽略（旧口径会把 40 楼全盖住）', (() => {
+    boot(chatOf(12), { lastKnownFloor: 11, atoms: [atom('c3_far', 1, 40)], processedFloors: [] });
+    const old = floorCoverage(state);                                  // 旧口径（不设上限）
+    const fixed = floorCoverage(state, { maxFloor: 11 });              // v3.10.3：限定在本聊天范围内
+    const ignoredOk = old.ignored === 0 && old.floors === 40 && old.has(3) === true
+        && fixed.ignored === 1 && fixed.floors === 0 && fixed.has(3) === false && fixed.maxFloor === 11
+        && fixed.ranges.length === 0 && fixed.items === 0;
+    // 同一批数据里**界内**条目照常覆盖（不能把好的一起丢掉）
+    boot(chatOf(12), { lastKnownFloor: 11, atoms: [atom('c3_far', 1, 40), atom('c3_ok', 4, 6)], processedFloors: [] });
+    const mixed = floorCoverage(state, { maxFloor: 11 });
+    return ignoredOk && mixed.ignored === 1 && mixed.floors === 3 && mixed.has(5) === true && mixed.has(7) === false;
+})(), () => ({ old: floorCoverage(state).floors, fixed: floorCoverage(state, { maxFloor: 11 }) }));
+
+A('C4 真机 A1 回归：一条越界 `[1,40]` 不再吞掉未分析楼层 —— 未打台账的楼**照常进待分析清单**', (() => {
+    // 12 楼聊天；只给第 0/2 楼打标记（哈希与当前正文一致）→ 第 4/6/8/10 楼从未分析
+    boot(chatOf(12), {
+        lastKnownFloor: 11,
+        atoms: [atom('c4_far', 1, 40)],                                   // 真机上就是这一条把范围撑到 78 楼
+        processedFloors: [{ f: 0, h: hashFloorText(0) }, { f: 2, h: hashFloorText(2) }],
+    });
+    const s = scanPendingFloors({ maintain: false });
+    const skippedByCover = s.skipped.covered;
+    // 对照：把「越界即忽略」关掉（等价旧口径）→ 这些楼会被判「已有记忆数据」而整批跳过
+    const wide = floorCoverage(state);
+    const wouldBeSkipped = [4, 6, 8, 10].filter((i) => wide.has(i)).length;
+    const listed = [4, 6, 8, 10].every((i) => s.floors.indexOf(i) >= 0);
+    return skippedByCover === 0 && wouldBeSkipped === 4 && listed
+        && s.floors.length === 10                                 // 12 楼减去已打标的 0/2 楼
+        && s.coverIgnored === 1 && s.coverMaxFloor === 11 && s.coverItems === 0;
+})(), () => { const s = scanPendingFloors({ maintain: false }); return { floors: s.floors, skipped: s.skipped, coverIgnored: s.coverIgnored }; });
+
 // ---------- D 组：溯源字段在归一化 / 落库后不丢 ----------
 A('D1 `normalizeAtom` 原样保留 `floorNow*` / `originGone`（不参与内容哈希，重归一化不得冲掉）', (() => {
     const n = normalizeAtom(atom('d1', 3, 4, { floorNowStart: 1, floorNowEnd: 2, originGone: true, originGoneAt: 12345 }), {});

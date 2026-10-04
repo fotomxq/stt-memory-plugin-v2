@@ -10,6 +10,9 @@ import { buildMemoryBodyForInject } from '../core/recall.js';
 import { clockDateLabel } from '../core/clock.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）也是管线动作
 import { beginPipeline, endPipeline, setPipelinePhase } from '../core/pipeline.js';
+import { debugLogPush } from '../adapters/debug-log.js';
+/** 调试日志（关闭调试时不写；失败静默） */
+const dbgLog = (kind, data) => { try { debugLogPush(kind, data); } catch (e) { /* 静默 */ } };
 
 // 内核视图引用（配置 / 剧情时钟 / 召回函数）—— 延迟取用，允许测试替换
 const runtimeRef = { cfg: kernelCfg, getStoryNow, buildMemoryBodyForInject, extractFlow: null, recentFloorText: null };
@@ -62,7 +65,7 @@ export function readInject() {
 
 let injectSeq = 0;
 let lastInjectText = '';
-const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '' };
+const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '', lastOverhead: 0, lastBodyBudget: 0, overBudget: 0 };
 // v2.74.0（用户要求）：「提取记忆…确保可以**并行处理**」——**单飞（single-flight）**：
 //   同一时刻只允许一次「构建 + 推送」，并发调用者**共享同一次结果**（await 同一个 Promise），
 //   既不互相覆盖注入（既有 seq 令牌仍然生效），也不会因为重复构建而重复调用向量 / AI 接口。
@@ -84,9 +87,10 @@ export function injectGateOpen() {
  * @param {string} body 记忆正文（空串 → 返回 ''）
  * @returns {string}
  */
-export function wrapInjectText(body) {
+export function wrapInjectText(body, opts) {
     const b = String(body == null ? '' : body);
     if (!b.trim()) return '';
+    const noGuide = !!(opts && opts.noGuide === true);
     let now = '';
     try { now = runtimeRef.getStoryNow ? String(runtimeRef.getStoryNow() || '') : ''; } catch (e) { now = ''; }
     let dateLabel = now;
@@ -97,7 +101,7 @@ export function wrapInjectText(body) {
     let guide = '';
     try {
         const pt = (runtimeRef.cfg && runtimeRef.cfg.promptTemplates) || {};
-        guide = String(pt.injectGuide || '').trim();
+        guide = noGuide ? '' : String(pt.injectGuide || '').trim();
     } catch (e) { guide = ''; }
     // v2.88.0（用户要求：「提取记忆的注入内容，应改为 markdown 结构」）——
     //   注入体外框同样 Markdown 化；`记忆结束。` 作为结束哨兵**保留**（V1 文案，冒烟断言依赖）。
@@ -109,6 +113,44 @@ export function wrapInjectText(body) {
         guide,
     ].filter(Boolean).join('\n');
     return `${lead}\n\n${b}\n\n记忆结束。`;
+}
+
+/**
+ * 注入框架的固定开销（结构头 + 「使用说明」模板 + 结束哨兵）的字符数。
+ * v3.10.3（真机取证 A2）：`charBudget` 此前**只约束召回条目体**，框架不计入 ——
+ *   默认「使用说明」模板本身就有 3726 字，加上结构头与日期行 ≈ 4300 字，
+ *   于是「设 8000 却实际注入 11955」（超 49%，真机实测）。本函数让预算能把它算进去。
+ * @param {{noGuide?:boolean}} [opts] `noGuide` = 只算「不可省」的部分（结构头 + 哨兵）
+ * @returns {number}
+ */
+export function injectFrameOverhead(opts) {
+    try { return Math.max(0, String(wrapInjectText('\u0000', opts)).length - 1); } catch (e) { return 0; }
+}
+
+/**
+ * 预算分配（纯函数，便于单测）：把 `charBudget`（**最终注入体**的硬上限）分成「框架」与「正文」。
+ *
+ * 规则（保守、可解释）：
+ *   ① 框架**不可省**部分（结构头 + 哨兵）先扣除；
+ *   ② 「使用说明」模板可省：若扣除它之后正文仍放得下 `minBody`，则**保留**说明；
+ *      否则**丢弃说明**把预算让给记忆正文（记忆是载荷、说明是注解），并如实标记 `guideDropped`；
+ *   ③ 连「不可省框架」都放不下 → `ok:false`（不注入），由调用方如实回报原因 —— **绝不静默超预算**。
+ * @param {number} cap 最终注入体上限（`cfg.charBudget`）
+ * @param {number} frameFixed 不可省框架字符数
+ * @param {number} guideLen 「使用说明」模板字符数
+ * @param {number} [minBody] 正文最小可用预算（默认 400）
+ * @returns {{ok:boolean, bodyBudget:number, useGuide:boolean, guideDropped:boolean, frame:number, reason:string}}
+ */
+export function planInjectBudget(cap, frameFixed, guideLen, minBody) {
+    const c = Math.max(0, Number(cap) || 0);
+    const ff = Math.max(0, Number(frameFixed) || 0);
+    const gl = Math.max(0, Number(guideLen) || 0);
+    const min = Math.max(0, Number(minBody == null ? 400 : minBody) || 0);
+    const withGuide = c - ff - gl;
+    if (withGuide >= min) return { ok: true, bodyBudget: withGuide, useGuide: true, guideDropped: false, frame: ff + gl, reason: '' };
+    const withoutGuide = c - ff;
+    if (withoutGuide >= min) return { ok: true, bodyBudget: withoutGuide, useGuide: false, guideDropped: true, frame: ff, reason: 'guide-dropped' };
+    return { ok: false, bodyBudget: 0, useGuide: false, guideDropped: gl > 0, frame: ff, reason: 'budget-too-small' };
 }
 
 /**
@@ -149,6 +191,25 @@ async function buildAndPushInject(o) {
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
         const mySeq = ++injectSeq;
         const cfg = runtimeRef.cfg || {};
+        // v3.10.3（A2）：`charBudget` 是**最终注入体**的硬上限 —— 先扣框架（结构头 + 哨兵），
+        //   再决定是否保留「使用说明」模板，剩下的才是正文预算。此前框架完全不计入，
+        //   真机实测「设 8000 → 注入 11955」（默认说明模板就有 3726 字）。
+        const budget = (() => {
+            try {
+                const frameFixed = injectFrameOverhead({ noGuide: true });
+                const guideLen = Math.max(0, injectFrameOverhead({}) - frameFixed);
+                return planInjectBudget(cfg.charBudget == null ? 8000 : cfg.charBudget, frameFixed, guideLen);
+            } catch (e) { return { ok: true, bodyBudget: Number(cfg.charBudget) || 8000, useGuide: true, guideDropped: false, frame: 0, reason: '' }; }
+        })();
+        injectStats.lastOverhead = budget.frame;
+        injectStats.lastBodyBudget = budget.bodyBudget;
+        if (budget.guideDropped) {
+            try { dbgLog('发送记忆', { action: '预算不足 → 本次注入丢弃「使用说明」模板，把预算让给记忆正文', cap: Number(cfg.charBudget) || 0, frame: budget.frame, bodyBudget: budget.bodyBudget }); } catch (e) { /* 静默 */ }
+        }
+        if (!budget.ok) {
+            injectStats.overBudget += 1;
+            return { ok: true, reason: 'budget-too-small', chars: 0, count: 0, injected: false, overhead: budget.frame, bodyBudget: 0 };
+        }
         let body = '';
         let hitLayer = '';
         // ① 三层流程（仅在启用向量层或 AI 层时进入；否则保持既有同步本地召回路径不变）
@@ -157,7 +218,7 @@ async function buildAndPushInject(o) {
                 const ft = String(o.floorText || (typeof runtimeRef.recentFloorText === 'function' ? (runtimeRef.recentFloorText() || '') : '') || o.queryText || '');
                 const flow = await runtimeRef.extractFlow(ft, {
                     queryText: String(o.queryText || ''),
-                    charBudget: cfg.charBudget,
+                    charBudget: budget.bodyBudget,
                 });
                 if (flow && flow.ok && flow.lines.length) { body = flow.lines.join('\n'); hitLayer = flow.hitLayer || ''; }
             } catch (e) { /* 向量/AI 层失败 → 降级到本地召回 */ }
@@ -165,11 +226,11 @@ async function buildAndPushInject(o) {
         // ② 本地召回（第二层 JS 抽取 / 兜底）
         if (!body && runtimeRef.buildMemoryBodyForInject) {
             body = runtimeRef.buildMemoryBodyForInject(String(o.queryText || ''), {
-                charBudget: cfg.charBudget, maxAtoms: cfg.maxAtoms, maxMemories: cfg.maxMemories,
+                charBudget: budget.bodyBudget, maxAtoms: cfg.maxAtoms, maxMemories: cfg.maxMemories,
                 countUses: true, inject: true,
             });
         }
-        const text = wrapInjectText(body);
+        const text = wrapInjectText(body, { noGuide: budget.useGuide === false });
         if (mySeq !== injectSeq) { injectStats.stale += 1; return { ok: true, reason: 'stale', chars: 0, injected: false }; }
         const ms = Date.now() - t0;
         const count = String(body || '').split('\n').filter((x) => String(x).trim()).length;
@@ -187,7 +248,7 @@ async function buildAndPushInject(o) {
         injectStats.lastMs = ms;
         injectStats.lastLayer = String(hitLayer || (body ? 'js' : ''));
         injectStats.lastHitLayer = hitLayer;
-        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms };
+        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms, overhead: budget.frame, bodyBudget: budget.bodyBudget, guideDropped: budget.guideDropped === true };
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
         return { ok: false, reason: 'error', chars: 0, count: 0, injected: false, ms: Date.now() - t0 };
