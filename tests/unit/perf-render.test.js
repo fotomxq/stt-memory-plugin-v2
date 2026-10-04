@@ -11,7 +11,7 @@
 // ============================================================
 import { makeReporter, makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '../harness/st-mock.js';
 import { setContextProvider } from '../../host/st-api.js';
-import { cfg, state, setKernelState, setScopeKey, setPersistHooks, getStoryNow } from '../../core/model/runtime.js';
+import { cfg, state, setKernelState, setScopeKey, setPersistHooks, getStoryNow, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { buildRowCtx, characterDrillHtml, listRowMainHtml } from '../../ui/list-rows.js';
@@ -63,6 +63,9 @@ function boot(k) {
     const st = k ? mkState(k) : emptyState();
     setKernelState(st);
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
+    // v3.14.0：本文件测的是**渲染成本**（分页构建 / 下钻索引），必须假定数据已就绪；
+    //   `import('../../index.js')` 触发的模块级 `init()` 在桩环境里不会结算 → 闸门会一直拦着正文。
+    setLoadPhase('ready');
     P.resetPanelRenderStats();
     return st;
 }

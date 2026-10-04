@@ -21,13 +21,13 @@ import { noteConflict } from './core/conflicts.js';
 import { setFloorTrimHooks, floorTrimStatus, floorTrimPrecheck, floorTrimApply, floorRecalibrate } from './host/floor-trim.js';
 import { writeFloorBackup } from './adapters/floor-backup.js';
 import { notifyHooks } from './core/model/runtime.js';
-import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo } from './ui/settings-panel.js';
+import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo, setPanelStatus, refreshPanelStatus } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
 import { installFloatingEntry, uninstallFloatingEntry, floatingInfo } from './ui/floating.js';
 // v2.65.0（用户要求「显示界面开关与 V1 对齐 + 扩展菜单入口强制开启且不展示开关」）：入口按钮统一管理
 import { syncEntryButtons, entryButtonsState, uninstallAllEntries, entryEnabled, ENTRY_LOCATIONS, ENTRY_LABELS, FORCED_ENTRIES } from './ui/entries.js';
 import { openPopup, setPopupHooks, popupInfo, popupAction, popupTabs } from './ui/popup.js';
-import { openPanel, closePanel, panelInfo, panelTabs, setPanelHooks2, unmountPanel, panelRenderStats, PANEL_RENDER_SLOW_MS } from './ui/panel.js';   // v3.1.0：+渲染观测
+import { openPanel, closePanel, panelInfo, panelTabs, setPanelHooks2, unmountPanel, panelRenderStats, PANEL_RENDER_SLOW_MS, renderPanel, panelOpen } from './ui/panel.js';   // v3.1.0：+渲染观测   // v3.14.0：+renderPanel/panelOpen（载入完成后自动换掉拦截提示）
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelHooksRef, bindPanelEvents } from './ui/settings-panel.js';
 import { registerSlashCommand, registerMacros } from './ui/commands.js';
 import { installDevtools, uninstallDevtools, buildSnapshot } from './devtools.js';
@@ -73,7 +73,7 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState, lastHealInfo } from './core/migrate.js';   // v3.13.1：+lastHealInfo（载入期自愈留痕）
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq, setLoadPhase, loadGateInfo } from './core/model/runtime.js';
 import { hashText, fileStamp } from './core/util.js';
 import {
     clockManualState, setClockManual, clearClockManual,
@@ -540,6 +540,11 @@ export async function init() {
     //   全部失败时由可见性探针启用悬浮兜底（`reason='fallback'`）
     try { syncEntriesNow(); } catch (e) { /* 入口安装失败不影响功能 */ }
     try { setPopupHooks(popupHooks()); } catch (e) { /* 忽略 */ }
+    // v3.14.0（用户要求「刚加载插件后数据还未完整读取，应有读取拦截提示，避免报错，等加载完成后再展示内容」）：
+    //   入口**先于**载入安装 —— 用户在首屏读取期间点开面板时，闸门让界面只显示「⏳ 正在读取数据…」
+    //   且拒绝一切动作（`ui/panel.js#panelAction`），读完后再自动重绘成真实内容。
+    try { setLoadPhase('loading', { note: '首屏载入：读取本机缓冲 / 服务端文件 / 聊天元数据' }); } catch (e) { /* 忽略 */ }
+    try { setPanelStatus(panelStatusSnapshot()); refreshPanelStatus(); } catch (e) { /* 忽略 */ }
     try {
         const loaded = await loadMemoryState();
         // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：角色稳定键未就绪时那次读取按 `default`
@@ -547,7 +552,21 @@ export async function init() {
         //   重载会重新走「基底 + 并集」，且只在 `scopeEmpty` 时安排）。
         if (loaded && loaded.scopeEmpty) scheduleScopeReload();
         else runtime.scopeReload = { scheduled: false, delayMs: 0 };
-    } catch (e) { runtime.lastError = String((e && e.message) || e); }
+        const g = loadGateInfo();
+        // 注意：自愈摘要来自 `lastHealInfo()`（`loadMemoryState` 内部的作用域变量取不到）
+        const hi = (() => { try { return lastHealInfo(); } catch (e2) { return null; } })();
+        const healTxt = (hi && hi.changed) ? '（并自愈 ' + (hi.ledger + hi.dropped) + ' 条台账标记 / ' + hi.entries + ' 条条目）' : '';
+        const finalCounts = (() => { try { return dimCountsOf(kernelState()).total; } catch (e2) { return 0; } })();
+        setLoadPhase('ready', { via: (loaded && loaded.via) || '', items: finalCounts });
+        try { debugLogPush('载入', { action: '首屏载入完成，解除读取拦截' + healTxt, via: (loaded && loaded.via) || '', items: finalCounts, waitedMs: g.waitedMs }); } catch (e2) { /* 忽略 */ }
+    } catch (e) {
+        runtime.lastError = String((e && e.message) || e);
+        // 失败也**解除拦截**并如实标注：绝不把用户永久挡在门外（面板照常可用，调试页可见原因）
+        setLoadPhase('failed', { error: runtime.lastError, note: '首屏载入失败：已放行界面，请到「设定 → 调试」查看原因' });
+    }
+    // 载入结束/失败后：把已经打开的界面（浮层面板 / 抽屉卡片）从「读取中」换成真实内容
+    try { if (panelOpen()) renderPanel(); } catch (e) { /* 忽略 */ }
+    try { setPanelStatus(panelStatusSnapshot()); refreshPanelStatus(); } catch (e) { /* 忽略 */ }
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
     //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
     try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
@@ -784,7 +803,10 @@ function panelStatusSnapshot() {
     let injectChars = 0, pending = null;
     try { injectChars = readInject().length; } catch (e) { /* 忽略 */ }
     try { pending = pendingFloors({}).length; } catch (e) { /* 忽略 */ }
-    return { scope: (runtime.store && runtime.store.scope) || '', injectChars, pending, extract: extractStats(), store: runtime.store };
+    // v3.14.0：把首屏载入闸门一起带给界面（抽屉卡片据此只显示「读取中」而不是残缺条数）
+    let load = null;
+    try { load = loadGateInfo(); } catch (e) { load = null; }
+    return { scope: (runtime.store && runtime.store.scope) || '', injectChars, pending, extract: extractStats(), store: runtime.store, load: load };
 }
 
 /**
@@ -2047,6 +2069,7 @@ export function teardown() {
     try { cancelRepairTimers(); } catch (e) { /* noop */ }
     try { cancelStartupUpdateDelay(); } catch (e) { /* noop */ }   // v2.46.0：撤销待执行的启动更新检查
     try { cancelScopeReload(); } catch (e) { /* noop */ }   // v3.0.23：撤销待执行的作用域延迟重载
+    try { setLoadPhase('idle'); } catch (e) { /* noop */ }   // v3.14.0：卸载即解除载入闸门（避免把「读取中」留在下一次装配）
     try { resetVectorCacheState(); } catch (e) { /* noop */ }   // v3.1.0：清空向量缓存内存副本（docs/D13 R2）
     runtime.ready = false;
     return true;

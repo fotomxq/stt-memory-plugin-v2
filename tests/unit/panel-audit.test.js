@@ -16,7 +16,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
-import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHooks } from '../../core/model/runtime.js';
+import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHooks, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { DEFAULT_SETTINGS } from '../../adapters/settings.js';
@@ -57,6 +57,9 @@ function boot() {
     }));
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     setPanelHooks2(entry.panelRuntimeHooks());
+    // v3.14.0：本文件逐个构建 13 分页 / 14 设定子页做**动作完整性审计** → 必须假定数据已就绪；
+    //   `import('../../index.js')` 触发的模块级 `init()` 在桩环境里不结算 → 闸门会把每页都换成读取提示。
+    setLoadPhase('ready');
     return state;
 }
 
