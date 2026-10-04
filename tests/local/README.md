@@ -118,6 +118,8 @@ node tests/local/bridge.mjs            # 监听 127.0.0.1:8791，进入交互
 #   bridge> call host.llmLogsIndex      # 最近几次 LLM 请求（TauriTavern 专属）
 #   bridge> call ftt.pendingScan        # 未摘要清单 + 逐项跳过计数（台账诊断，只读零副作用）
 #   bridge> call ftt.floorDiag {"i":2}  # 单楼诊断：这一楼「为什么」被判为未摘要
+#   bridge> call ftt.dataHealth         # v3.11.0 数据体检（只读）：逐条列出脏台账 / 倒置楼层 / 非规范 NSFW / 缺 id 等数据异常
+#   bridge> call ftt.dataHealthText     # 同一份体检的一行摘要（面板「设定 → 调试 → 🩺 数据体检」同源）
 
 node tests/local/bridge.mjs --call sys.info          # 一次性调用
 node tests/local/bridge.mjs --call ftt.memorySample --params-file params.json   # 传参（免 shell 引号问题）
@@ -149,6 +151,10 @@ node tests/local/bridge.mjs --host 0.0.0.0
 不持久化**（刷新即关）；取样默认只回字段名与长度，要正文须显式 `values:true`；**默认只连本机**
 （目标主机默认 `127.0.0.1`，要调手机端才显式改为局域网地址）。**本版未加鉴权** —— 因此刻意保持只读；
 若今后要开放写操作或长期监听局域网，须先补令牌。
+
+**数据体检（v3.11.0，只读零副作用）**：`ftt.dataHealth`（结构化：`ok/level/counts/scanned/findings`，`{cap}` 可限流）与
+`ftt.dataHealthText`（一行摘要）。能确定修好的异常在**载入期自愈**（`core/migrate.js#healthSelfHeal`），端口**不提供写操作**；
+详见 `docs/history/P10c19-数据体检与数据异常自愈.md` 与 `docs/02-数据架构` §5。
 
 **台账诊断（v3.0.9，只读零副作用）**：`ftt.ledger`（台账标记 + 版本签名一致性）· `ftt.chatReady`（聊天就绪判定）·
 `ftt.pendingScan`（未摘要清单 + 逐项跳过计数：user/hidden/missing/noText/processed/covered/chatNotReady）·

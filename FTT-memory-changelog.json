@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.12.0",
-  "updatedAt": "2026-10-04",
-  "generatedAt": "2026-10-04",
+  "version": "3.13.0",
+  "updatedAt": "2026-09-30",
+  "generatedAt": "2026-09-30",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.13.0",
+      "date": "2026-09-30",
+      "title": "数据体检 + 载入期数据异常自愈（基于本地调试端口核对并修复）",
+      "points": [
+        "① 新增只读「数据体检」：（新模块 core/data-health.js#dataHealthReport / dataHealthText）- 逐条列出异常：containe…",
+        "② 核对出的 BUG（本版修复）：① 旧版台账迁移伪造成员：旧 processedFloors 的纯数字转换只判「首个元素不是对象」，混入的 null 被Number(null)…",
+        "③ 载入期自愈（core/migrate.js#healthSelfHeal，随 migrateState，幂等）：脏台账标记 → 丢弃 · 重复标记 → 去重 · lastKn…"
+      ]
+    },
     {
       "version": "3.12.0",
       "date": "2026-10-04",

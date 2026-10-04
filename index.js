@@ -180,6 +180,7 @@ import {
     nsfwLevelOf, nsfwLabelStats, nsfwBackfill, nsfwClassifyItem,
 } from './core/nsfw.js';
 import { promptToGenerateArgs } from './host/extract.js';
+import { dataHealthReport, dataHealthText } from './core/data-health.js';   // v3.11.0：数据体检（只读）
 // v2.58.0：提取记忆三层流程（向量 / JS / AI）与向量层宿主适配（对齐 V1 的 Embedding / Rerank API 设置）
 import { runExtractFlow, testLayer } from './host/extract-flow.js';
 import { vectorRecall, vectorLayerStatus } from './host/vector-recall.js';
@@ -1011,6 +1012,9 @@ function bootstrapDiagnostics() {
             nsfwRuleReset: () => nsfwRuleReset(),
             // v3.8.0：NSFW 等级留档（无 / 弱 / 强）—— 统计 / 补档 / 单条判级（只读诊断用）
             nsfwLabels: (st) => nsfwLabelStats(st || undefined),
+            // v3.11.0：数据体检（只读；本地调试端口 / 控制台核对数据异常）
+            dataHealth: (opts) => dataHealthReport(undefined, opts || {}),
+            dataHealthText: () => dataHealthText(dataHealthReport()),
             nsfwBackfill: (opts) => nsfwBackfill(opts || {}),
             nsfwLevelOf: (it) => nsfwLevelOf(it),
             nsfwClassify: (dim, it) => nsfwClassifyItem(dim, it),

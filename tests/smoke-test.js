@@ -5756,6 +5756,68 @@ await assert('BN2 反方向联动：点「第 N 楼」在途时 —— 批量按
 })(), '');
 
 
+// ---------- BH14 数据体检（v3.11.0） ----------
+// 用户要求（原话）：「基于本地调试端口，核对存在的BUG和数据异常，进行修复。」
+//   本小节走**真实链路**：脏数据 → 插件调试导出 `FTT.dataHealth()` + 调试页「🩺 数据体检」+ **调试桥** `ftt.dataHealth` 三处同源，
+//   再走一次载入期自愈（`migrateState`）→ 体检自动收敛（这正是「修复」的落地方式）。
+await assert('BH14 v3.11.0 数据体检（本地调试端口）：脏数据被逐类列出（脏台账 / 倒置楼层 / 非规范 NSFW / 负数 uses）→ 调试页与调试桥同源 → 载入期自愈后自动收敛，且绝不删条目', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const MG = await import('../core/migrate.js');
+    const DBM = await import('../adapters/debug-bridge.js');
+    const UDBG = await import('../ui/debug.js');
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepMarks = JSON.parse(JSON.stringify(RT.state.processedFloors || []));
+    const keepKnown = RT.state.lastKnownFloor;
+    try {
+        // ① 脏数据：倒置楼层 / 非规范 NSFW / 负数 uses / 缺 id / 脏台账（含 null 与重复）
+        RT.state.atoms = [
+            { id: 'bh14-a1', text: '甲在码头搬运木箱并登记入册。', title: 't1', floorStart: 5, floorEnd: 2, nsfw: 'Strong', uses: -3 },
+            { text: '没有 id 的情节正文足够长。', title: 't2' },
+            { id: 'bh14-a1', text: '重复 id 的情节正文足够长。', title: 't3' },
+        ];
+        RT.state.processedFloors = [3, { f: 'x', h: '' }, null, { f: 3, h: '' }];
+        RT.state.lastKnownFloor = 'x';
+        const before = RT.state.atoms.length;
+        // ② 插件调试导出（`FTT.*`）
+        const h1 = globalThis.FTT.dataHealth();
+        const t1 = globalThis.FTT.dataHealthText();
+        // 注意 `ok` 只表示「有无结构级（error）异常」；脏台账 / 倒置楼层一类是 warn → `ok:true` + `level:'warn'`
+        const exportOk = h1 && h1.ok === true && h1.level === 'warn' && h1.counts['ledger-bad-mark'] === 2 && h1.counts['floor-inverted'] === 1
+            && h1.counts['nsfw-invalid'] === 1 && h1.counts['uses-invalid'] === 1 && h1.counts['entry-no-id'] === 1
+            && h1.counts['entry-dup-id'] === 1 && typeof t1 === 'string' && t1.indexOf('数据体检：') === 0;
+        // ③ 调试页区块（只读）
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const dbg = String(((await entry.popupAction('refresh', {})).html) || '');
+        const pageOk = dbg.indexOf('🩺 数据体检') >= 0 && dbg.indexOf('data-ftt-data-health') >= 0
+            && dbg.indexOf('ledger-bad-mark') > 0;
+        // ④ 调试桥（本地调试端口）：与 `FTT.dataHealth()` 同源
+        DBM.setBridgeMethods(UDBG.buildBridgeMethods());
+        const br = await DBM.bridgeDispatch({ id: 'h', method: 'ftt.dataHealth', params: {} });
+        const brText = await DBM.bridgeDispatch({ id: 'h2', method: 'ftt.dataHealthText', params: {} });
+        const bridgeOk = br.ok === true && br.result && br.result.level === 'warn'
+            && JSON.stringify(br.result.counts) === JSON.stringify(h1.counts)
+            && brText.result === t1;
+        // ⑤ 载入期自愈（与真实载入同一条路径）→ 体检收敛，条目一条不少
+        RT.setKernelState(MG.migrateState(JSON.parse(JSON.stringify(RT.state))));
+        const h2 = globalThis.FTT.dataHealth();
+        const fixedOk = h2.ok === true && !h2.counts['ledger-bad-mark'] && !h2.counts['floor-inverted']
+            && !h2.counts['nsfw-invalid'] && !h2.counts['uses-invalid']
+            && RT.state.atoms.length === before
+            && RT.state.processedFloors.length === 1 && RT.state.processedFloors[0].f === 3
+            && RT.state.lastKnownFloor === -1 && RT.state.atoms[0].nsfw === 'strong' && RT.state.atoms[0].uses === 0;
+        const ok = exportOk && pageOk && bridgeOk && fixedOk;
+        if (!ok) console.log('BH14-DEBUG ' + JSON.stringify({ exportOk, pageOk, bridgeOk, fixedOk, c1: h1 && h1.counts, c2: h2 && h2.counts, brOk: br.ok, br: br.result && br.result.counts, brText: brText.result, marks: RT.state.processedFloors, text: t1 }));
+        return ok;
+    } finally {
+        RT.state.atoms = keepAtoms;
+        RT.state.processedFloors = keepMarks;
+        RT.state.lastKnownFloor = keepKnown;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- BO NSFW 等级留档（v3.8.0） ----------
 // 用户要求（原话）：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
 //   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。

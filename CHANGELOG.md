@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.13.0（2026-09-30）· 数据体检 + 载入期数据异常自愈（基于本地调试端口核对并修复）
+
+**用户要求**（原话）：「基于本地调试端口，核对存在的BUG和数据异常，进行修复。」
+
+**① 新增只读「数据体检」**（新模块 `core/data-health.js#dataHealthReport` / `dataHealthText`）
+- 逐条列出异常：`container-type` · `entry-not-object` · `entry-no-id` · `entry-dup-id` · `floor-inverted` ·
+  `floornow-inverted` · `origin-gone-with-floornow` · `nsfw-invalid` · `uses-invalid` · `importance-out-of-range` ·
+  `field-too-long` · `link-bad-row` · `link-orphan` · `processed-not-array` · `ledger-bad-mark` · `ledger-dup-mark` ·
+  `lastknown-invalid` · `tombstone-bad-ts`；每条带 `code / level / dim / id / field / value / detail`，默认上限 200 条。
+- 出口（三处同源）：**本地调试端口**（调试桥新增只读方法 `ftt.dataHealth` / `ftt.dataHealthText`）、
+  插件调试导出 `FTT.dataHealth()` / `FTT.dataHealthText()`、面板「设定 → 调试 → 🩺 数据体检」（摘要一行 + 折叠明细）；
+  `⬇ 导出调试包` 也带一份摘要。
+
+**② 核对出的 BUG（本版修复）**
+- **① 旧版台账迁移伪造成员**：旧 `processedFloors` 的纯数字转换只判「首个元素不是对象」，混入的 `null` 被
+  `Number(null) = 0` 变成 `{f:0,h:''}` → **凭空多出一条「第 0 楼已处理」**；`{f:'x'}` 一类垃圾被静默丢一半。
+  现该分支整体交给自愈：逐条严格校验（只认非负整数 / 十进制数字串）、非法**丢弃**、裸数字转无哈希在册标记、按 `(楼层,哈希)` 去重。
+- **② 调试试探也用宽松 `Number()`**：`ftt.ledger` 把 `null` 读成第 0 楼、`{f:'x'}` 读成 NaN 却不报 —— 「核对」工具反而**掩盖**异常。
+  现统一严格解析（非法项 `f:null` + `bad:true`，并给出 `badMarks`）。
+- **③ `ftt.memoryShape` 把容器类型当条数**：类型错误的维度会把 `"string"` 填进**计数表**；现只回数字（数组=条数 / 对象=键数 / 缺失=null），
+  类型错误单列 `bad`，异常本体由体检报告。
+- **④ 体检自身漏报**：首次下标为 0 时 `if (seen[id])` 为假 → 重复 id 漏报；`currentStates` 未映射到上限表键 `states` → 状态记录超长漏检；
+  关联层引用行被误报「缺 id」。均已修。
+
+**③ 载入期自愈（`core/migrate.js#healthSelfHeal`，随 `migrateState`，幂等）**
+脏台账标记 → 丢弃 · 重复标记 → 去重 · `lastKnownFloor` 非整数 → `-1` · `nsfw` 非规范（`Strong`/`true`/`4`）→ 规范化或删除 ·
+`uses` 负数 → `0` · `importance` 越界 → 夹到 `0..1` · 来源区间**倒置 → 互换** · `floorNow*` 非法/半对/与「原文已移除」矛盾 → **整对删除**。
+**只报告不擅改**：缺 id / 重复 id / 超长字段 / 墓碑时间戳非法（改与不改都可能误事）。**绝不删条目**（条数与 id 集合逐条一致）。
+
+**验证**：单元 **141 文件 / 2168 断言**（新增 `tests/unit/data-health.test.js` 24 项：11 项逐类检出 + 1 项干净状态零误报 +
+9 项自愈/幂等/不删条目/只报告 + 4 项本地调试端口接线）· 冒烟 **205 项**（新增 `BH14`：脏数据 → 调试导出 + 调试页 + **调试桥** 三处同源
+→ 载入期自愈后收敛）· 调试桥自检 `npm run local:bridge:selftest` 通过 · UI 规范 0 命中（含 `--strict`）· 版本四处 == `3.11.0`。
+详见 `docs/history/P10c19-数据体检与数据异常自愈.md`。
+
 ## v3.12.0（2026-10-04）· NSFW弱化：新增**生僻词**与**重口味**词条（185 条，含逐条转化词）
 
 **用户要求**（原话）：「新版本 / NSFW弱化新增一些生僻词汇，尤其是涉及到重口味的内容。」
