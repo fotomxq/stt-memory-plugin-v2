@@ -27,7 +27,7 @@ setKernelState(emptyState());
 R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户要求：关系表 / 约束自查 收进设定页，插在「平行」之后）', (() => {
     // v2.80.0（用户要求：「记忆大类的关系表、关系约束放入设定-约束标签中」）→ 新增 { id:'constraint', label:'约束' }
     //   位置：紧接「平行」之后（关系层四维的最后一项）、「提示词」之前；V1 的 14 组相对顺序与标签未动。
-    const want = ['base:基础', 'feed:投喂范围', 'api:API', 'analyze:分析记忆', 'safety:内容弱化', 'extract:提取记忆', 'forget:遗忘', 'rumors:传言', 'parallels:平行', 'constraint:约束', 'prompts:提示词', 'storage:存储', 'debug:调试', 'data:数据管理', 'about:关于'];
+    const want = ['base:基础', 'feed:投喂范围', 'api:API', 'analyze:分析记忆', 'safety:NSFW弱化', 'extract:提取记忆', 'forget:遗忘', 'rumors:传言', 'parallels:平行', 'constraint:约束', 'prompts:提示词', 'storage:存储', 'debug:调试', 'data:数据管理', 'about:关于'];
     const got = SETTINGS_TABS.map((t) => t.id + ':' + t.label);
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
