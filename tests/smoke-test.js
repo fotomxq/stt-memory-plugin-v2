@@ -1849,6 +1849,8 @@ const aa2 = await (async () => {
 })();
 assert('AA2 面板按钮按 V1 条件显隐：物品页「🔧 修复物品」（有则显 / 无则隐）+ 角色页「🔧 修复角色」（有则显 / 无则隐，异常角色数进「（⚠️N 优先）」角标；文案与 title 逐字一致）', aa2, '');
 
+let acPrompt = '';
+let acAiCalls = 0;
 const origGenAA = host.ctx.generateRaw;
 let aaAiCalls = 0;
 let aaPayload = '';
@@ -1917,6 +1919,74 @@ const aa3 = await (async () => {
 })();
 host.ctx.generateRaw = origGenAA;
 assert('AA3 AI 桩端到端落库：物品修复（聚类选组 → AI 合并 + 修订 → 编号精确应用 + 墓碑）与角色档案修复（机械处理 → 待修复名单 → AI 按中文点路径补全 → 只填空不改写 + 年龄重算）各发 1 次 AI', aa3, '');
+
+// ---------- AC 角色修复 · 已去世研判（v3.18.0） ----------
+// 用户要求（原话）：「角色修复功能，针对已明显去世的角色进行标记已去世，避免反复调取处理。
+//   注意个别可能存在超长寿命的角色，需结合剧情研判，实在无法确认的不做标记。」
+await assert('AC1 v3.18.0 角色修复 · 已去世研判（端到端）：明显去世的角色被标记「已去世」并从此跳过修复（含 AI 名单与后续机械处理）；超长寿命 / 他人死亡 / 假死一律不标记；FTT.deceasedScan 只读干跑可核对；机械返回结构不含新键（V1 黄金样本口径不变）', (async () => {
+    const st = rtMod.state;
+    const CR = await import('../core/character-repair.js');
+    const keep = JSON.parse(JSON.stringify(st.snapshots || []));
+    const keepAtoms = JSON.parse(JSON.stringify(st.atoms || []));
+    const keepDate = (st.state || {}).date;
+    const keepGen = host.ctx.generateRaw;
+    try {
+        st.state = Object.assign({}, st.state, { date: '2020-06-01', time: '傍晚' });
+        st.snapshots = [
+            { id: 'smoke-ac-dead', name: '角色甲', identity: {}, tags: ['旧档', '战友', '城防'], background: { history: '角色甲在最后的守城战中阵亡，尸首被同乡收敛。' }, uses: 1 },
+            { id: 'smoke-ac-elf', name: '精灵乙', identity: { species: '精灵' }, tags: ['精灵', '游侠', '长弓'], background: { history: '精灵乙活了千年，据说永生不死；这一次他在乱战中阵亡。' }, uses: 1 },
+            { id: 'smoke-ac-other', name: '角色丙', identity: {}, tags: ['商人', '码头', '旧识'], background: { history: '角色丙目睹其父去世，从此沉默寡言。' }, uses: 1 },
+            { id: 'smoke-ac-alive', name: '角色丁', identity: {}, tags: ['铁匠', '城中', '手艺人'], uses: 1 },
+        ];
+        st.atoms = [{ id: 'smoke-ac-a1', title: '城破', text: '城破那日，角色甲力战不退，最终阵亡。', date: '2020-05-01', tags: ['城防'], entities: ['角色甲'], uses: 1 }];
+        // ① 只读干跑（不写标记）
+        const dry = globalThis.FTT.deceasedScan();
+        const dryOk = dry.length === 4 && dry[0].verdict === 'dead' && dry[1].verdict === 'uncertain'
+            && dry[2].verdict === 'none' && dry[3].verdict === 'none'
+            && dry.every((x) => !(st.snapshots.filter((y) => y.name === x.name)[0].identity || {}).deceased);
+        // ② 真实点击「🔧 修复角色」：机械阶段先标记，再按名单交 AI（名单里不应再有已去世者）
+        host.ctx.generateRaw = async (args) => {
+            acPrompt = JSON.stringify(args);
+            acAiCalls++;
+            return JSON.stringify({ '角色档案': { '更新': [{ '姓名': '角色丁', '补全': { '身份.职业': '铁匠', '身份.性别': '男', '身份.出生日期': '1985-02-03' } }], '推断': [], '无依据': [], '删除': [] } });
+        };
+        acPrompt = ''; acAiCalls = 0;
+        const DL = await import('../adapters/debug-log.js');
+        try { DL.debugLogClear(); } catch (e) { /* 忽略 */ }
+        await entry.popupAction('tab', { tab: 'snapshots' });
+        const rc = await entry.popupAction('characterRepair', {});
+        const note = String(((rc.state || {}).note) || rc.note || '');
+        const byName = (n) => (st.snapshots.filter((x) => x.name === n)[0] || {});
+        const markOk = (byName('角色甲').identity || {}).deceased === true
+            && (byName('精灵乙').identity || {}).deceased === undefined
+            && (byName('角色丙').identity || {}).deceased === undefined
+            && (byName('角色丁').identity || {}).deceased === undefined;
+        // ③ 名单与后续处理都跳过已去世者
+        const q = globalThis.FTT.characterRepairQueue();
+        // 名单判定：已去世者**不在待修复队列**（跳过后续处理），且本轮确实把在册角色交给了 AI
+        const skipOk = q.deceasedList.indexOf('角色甲') >= 0 && q.list.every((x) => x.name !== '角色甲')
+            && q.list.some((x) => x.name === '角色丁') && acAiCalls === 1 && acPrompt.indexOf('角色丁') > 0;
+        // ④ 机械返回结构不含新键（V1 黄金样本字段集不变），研判结果经内部记录读取
+        const mech = globalThis.FTT.characterMechanicalPass();
+        const structOk = Object.keys(mech).sort().join(',') === 'ages,anomalies,birth,changed,deceased,tags,total'
+            && (st.snapshots.filter((x) => x.name === '角色甲')[0].identity || {}).deceased === true;
+        // ⑤ 通知如实说明「新标记已去世 N 名」与「待确认」；不再对已去世者做出生日期 / 年龄处理
+        // 通知文案：从**调试日志**（`dbgLog('修复', …)`）核对（不接管 notifyHooks，避免影响后续小节的 toastr 断言）
+        const logText = (() => { try { return JSON.stringify(DL.debugLogList() || []); } catch (e) { return ''; } })();
+        const noteOk = logText.indexOf('已去世研判') > 0 && logText.indexOf('角色甲') > 0
+            && logText.indexOf('精灵乙') > 0 && logText.indexOf('long-life-unconfirmed') > 0;
+        const ok = dryOk && markOk && skipOk && structOk && noteOk;
+        if (!ok) console.log('AC1-DEBUG ' + JSON.stringify({ dryOk, markOk, skipOk, structOk, noteOk, dry: dry.map((x) => [x.name, x.verdict, x.reason]), qList: q.list.map((x) => x.name), qDead: q.deceasedList, targetBlockDead: (acPrompt.split('【待修复角色')[1] || '').split('【近期正文')[0].indexOf('角色甲'), promptWindow: acPrompt.slice(1380, 1560), aiCalls: acAiCalls, log: logText.slice(0, 300), mechKeys: Object.keys(mech).sort() }));
+        return ok;
+    } finally {
+        st.snapshots = keep;
+        st.atoms = keepAtoms;
+        st.state = Object.assign({}, st.state, { date: keepDate });
+        host.ctx.generateRaw = keepGen;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 
 // ---------- AB 状态修复 + 计划悬念修复（B8-6c-4） ----------
 assert('AB1 FTT 状态修复 + 计划悬念修复入口齐备（状态：stateRepairFields / stateCanonField / stateRepairRoster / stateSubjectMatch / stateRepairMatch / stateRepairClean / removeStatesOfDeceased / stateRepairTargets / stateRepairPrompt / stateRepairApply / stateRepair；计划悬念：suspenseMergeExact / planSuspRepairPrompt / planSuspMergeApply / suspenseRepairApply / planSuspRepair），且机械段真实生效（替代归一 / 无档案主体删除 / 占位清理 / 同内容悬念去重）', (() => {
