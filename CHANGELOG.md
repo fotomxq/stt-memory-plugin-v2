@@ -3,6 +3,46 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.16.1（2026-10-05）· 修「情节有最新的，但时钟不更新；点修复也没用」——「最新情节」排序误用**原始楼层**
+
+**用户要求**（原话）：「核对本地调试接口，可看到情节有最新的，但时钟不更新。哪怕点击修复也没用，请核对并修复该问题。」
+
+**① 真机取证（离线复算 + 生产函数）**
+真机存档（`ftt2-state-char1xbib3t.json`，2.07MB）里：
+- 时钟 `state.state` = `{date:"327-03-15", time:"下午", location:"昆仑山>西行三十里深谷>…>地热石洞>外间"}`（**陈旧值**）；
+- 而**真正最新**的情节（按拆楼后的当前位置 `floorNow*`）是「现在 196 楼 · `628-04-28` · 上午 · 平民集市」；
+- 生产选片函数 `core/recall.js#trustedPlotList`（时钟解析与在场解析**共用**的一份顺序）**只按原始楼层 `floorEnd` 排序**
+  → 选中的是一条**原始 508 楼、`originGone:true`（原文已移除）**的旧情节（`327-03-15`、时间/地点为空）。
+  真机数据：**最大 `floorNowEnd = 160`，最大 `floorEnd = 508`** —— 两种尺度混比，旧情节永远排最前。
+- 「🛠 自动修复」第 1 段的剧情时钟步骤走的是**同一条解析**（`repairHooks.clockSync` → `clockAutoExtractOnce({force:true})`）
+  → 所以**点修复也没用**（读到同一条陈旧情节，`changed=false`）。
+
+**② 修法**（`core/recall.js`，三处同一口径）
+| 位置 | 改动 |
+| --- | --- |
+| `trustedPlotList()`（时钟 + 在场共用顺序） | 排序的「楼层」改用**当前位置**：`floorNow*` 优先、缺失才回落原始楼层（与 `core/floor-cover.js#meaningfulFloorRange` 一致）；并新增 **`originGone === true` 降级**（原文已移除不是「剧情当下」，排到活情节之后；**不排除**，全部无原文时仍能取到） |
+| `latestPlotByFloor()`（在场角色的情节来源） | 同上：活情节优先 + 当前位置排序（此前会把陈旧情节当成「最近现场」） |
+| `atomLatestDated()`（快照参考时钟） | 同上：优先活情节、同日期按当前位置比较（旧聊天残留的「未来日期」不再胜出） |
+
+**③ 修后真机复算（同一份存档，跑生产函数）**
+- `resolveStoryClock()` → `{date:"628-04-28", time:"上午", location:"罗马城", present:["李瑶"], plotFloor:200, source:{date/time/location:"plot"}}`；
+- `clockAutoExtractOnce({force:true})`（= 「修复」同一条处理）→ **`changed=true`**，`state.state` 从
+  `327-03-15 / 下午 / 昆仑山…` 写为 **`628-04-28 / 上午 / 罗马城`**，`clockSrc` 全为 `plot`、`degraded:false`、`jumpYears:0`。
+
+**④ 测试**
+- `tests/unit/clock-latest-plot.test.js` 增 **G 组 5 项**：G1 拆楼重编号后按当前位置选片（原始 508 楼 `originGone` 不再压住现在 196 楼）·
+  G2 `originGone` 降级（活情节永远在前）· G3 无 `floorNow*` 时口径**完全不变**（向后兼容）· G4 `latestPlotByFloor` 同口径（含 entities）·
+  G5 `atomLatestDated` 优先活情节；
+- 全量：**145 文件 / 2230 断言** + 冒烟 **208 项** 全绿（既有 15 项时钟断言零改动、无回归）。
+
+**⑤ 未验证项（如实登记）**
+- 本修复的真机表现**待刷新后核对**：当前页面仍运行 **v3.15.1**（端口握手 `sys.info` 可见），v3.16.0 与本版均未加载；
+  刷新后可用 `ftt.clockTraceInfo` / `ftt.clockTraceSummary` 复核取值链（应显示来源 `plot` 且指向当前楼层）；
+- 顺带观察（未改）：`atomLatestDated` 修好了「未来日期」问题，但**跨聊天**的日期混用风险仍在（同一角色多聊天共享 `atoms`）——
+  若后续需要严格隔离，得按聊天作用域给 `atoms` 打标，属独立议题。
+
+详见 `docs/history/P10c32-时钟不更新修复.md`。
+
 ## v3.16.0（2026-10-04）· 本地文件存储模式：约定目录后**取代变量层**，不再受本地化配额限制
 
 **用户要求**（原话）：「本地存储除了当前内存和变量外，增加本地文件存储模式，用于替代变量存储，避免超出限制。

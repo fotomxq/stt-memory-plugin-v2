@@ -1367,7 +1367,16 @@ function scheduleUseFlush() {
  *
  * 本函数把「可信情节」的**筛选与排序**抽成一份列表（最新在前），供上层**逐字段**取值：
  *   筛选：排除 已失效 / 已总结隐藏（`hidden`/`summarizedBy`）/ 情节总结条（`mergedSummary`）；
- *   排序：楼层（floorEnd→floorStart）降序 → 剧情时间降序 → id 降序。
+ *   排序：内置天数（两边都有）→ **原文已移除降级** → **当前位置**（`floorNow*` 优先）→ 剧情时间 → id。
+ *
+ * v3.16.1（用户报告「情节有最新的，但时钟不更新；点修复也没用」）——**两处排序口径修正**：
+ *   ① **改用「当前位置」**：`floorStart/floorEnd` 是**原始楼层**（v3.7.0 起的溯源字段，拆楼后一字不动），
+ *      而拆楼重编号后**当前**位置记在 `floorNowStart/floorNowEnd`。此前排序只看原始楼层 →
+ *      一个原始 508 楼、`originGone:true`（原文已移除）的旧情节会**永远排在**现在 160 楼的最新情节之前，
+ *      于是时钟（与「修复」的同一条解析）始终从那条陈旧情节取值 → 用户看到的「时钟不更新」。
+ *      口径与 `core/floor-cover.js#meaningfulFloorRange` 一致：**有 `floorNow*` 用它，没有才回落到原始楼层**。
+ *   ② **`originGone === true` 降级**：原文已移除的情节不再代表「剧情当下」（位置也不可信）→ 排到活情节之后；
+ *      **不排除**（全部都没原文时仍能取到，保持向后兼容）。
  * @returns {Array<{dim:string,node:object,date:string,time:string,location:string}>}
  */
 function trustedPlotList() {
@@ -1375,7 +1384,15 @@ function trustedPlotList() {
         const list = (state.atoms || []).filter((a) => a && a.validity !== 'inactive'
             && !(a.hidden === true) && !String(a.summarizedBy || '').trim() && !a.mergedSummary);
         if (!list.length) return [];
-        const floorOf = (a) => Math.max(Number(a.floorEnd) || 0, Number(a.floorStart) || 0);
+        /** v3.16.1：**当前位置**（`floorNow*` 优先，缺失才用原始楼层）—— 拆楼后两者不同尺度，不能混比 */
+        const curOf = (a) => {
+            const ns = Number.isInteger(a.floorNowStart) ? a.floorNowStart : (Number(a.floorStart) || 0);
+            const ne = Number.isInteger(a.floorNowEnd) ? a.floorNowEnd : (Number(a.floorEnd) || 0);
+            return Math.max(ns, ne);
+        };
+        /** v3.16.1：原文已移除（0 = 活情节在前，1 = 已移除在后） */
+        const goneOf = (a) => (a && a.originGone === true ? 1 : 0);
+        const floorOf = curOf;
         // v2.98.0：排序**只在「两边都有楼层信息」时**以楼层为准（原口径不变）；
         //   一旦有一方**没有楼层信息**（手动新增/编辑的情节、导入的旧数据、被删楼标记为未知区间的情节…），
         //   楼层给不出位置 → 改用**剧情日期**判谁更新（都无日期时才回落到「有位置的在前」）。
@@ -1390,6 +1407,9 @@ function trustedPlotList() {
         const sorted = list.slice().sort((a, b) => {
             const aday = dayOf(a), bday = dayOf(b);
             if (aday > 0 && bday > 0 && aday !== bday) return bday - aday;   // ★ 内置天数优先（两边都有）
+            // v3.16.1：**原文已移除的降级**（同档内再按当前位置 / 日期 / id 比较）
+            const ag = goneOf(a), bg = goneOf(b);
+            if (ag !== bg) return ag - bg;
             const af = floorOf(a), bf = floorOf(b);
             const aKnown = af > 0, bKnown = bf > 0;
             if (aKnown && bKnown) {
@@ -1443,8 +1463,16 @@ function latestPlotByFloor() {
     try {
         const list = activeAtoms().filter(a => a && a.validity !== 'inactive');   // v1.203：已总结隐藏的不作为「最近情节现场」
         if (!list.length) return null;
-        const sorted = list.slice().sort((a, b) => ((Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0))
-            || ((Number(b.floorStart) || 0) - (Number(a.floorStart) || 0))
+        // v3.16.1：与 `trustedPlotList` 同一口径 —— **当前位置（`floorNow*` 优先）** + **原文已移除降级**
+        //   （此前只看原始楼层：拆楼重编号后会把陈旧情节当成「最近现场」，时钟与在场角色一起被带偏）
+        const curOf = (a) => {
+            const ns = Number.isInteger(a.floorNowStart) ? a.floorNowStart : (Number(a.floorStart) || 0);
+            const ne = Number.isInteger(a.floorNowEnd) ? a.floorNowEnd : (Number(a.floorEnd) || 0);
+            return Math.max(ns, ne);
+        };
+        const goneOf = (a) => (a && a.originGone === true ? 1 : 0);
+        const sorted = list.slice().sort((a, b) => (goneOf(a) - goneOf(b))
+            || (curOf(b) - curOf(a))
             || String(b.date || '').localeCompare(String(a.date || '')));
         for (const a of sorted) {
             const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
@@ -1463,13 +1491,21 @@ function latestPlotByFloor() {
 
 function atomLatestDated() {
     try {
+        // v3.16.1：与 `trustedPlotList` 同一口径 —— **原文已移除的情节降级**（拆楼后它们往往是**旧聊天**的残留，
+        //   其日期可能比当前剧情更晚 → 会把「最近情节日期」参考带成未来日期），且同日期时比较**当前位置**。
+        const goneOf = (x) => (x && x.originGone === true ? 1 : 0);
+        const curOf = (x) => Math.max(
+            Number.isInteger(x && x.floorNowEnd) ? x.floorNowEnd : (Number(x && x.floorEnd) || 0),
+            Number.isInteger(x && x.floorNowStart) ? x.floorNowStart : (Number(x && x.floorStart) || 0));
         const pickDated = (arr, dim) => {
             let best = null;
             for (const x of (arr || [])) {
                 if (!x || !clockDateValid(x.date)) continue;
                 if (dim === 'atoms' && x.validity === 'inactive') continue;
                 const d = String(x.date).slice(0, 10);
-                if (!best || d > best.date || (d === best.date && (Number(x.floorEnd) || 0) > (Number(best.node.floorEnd) || 0))) {
+                if (!best
+                    || goneOf(x) < goneOf(best.node)
+                    || (goneOf(x) === goneOf(best.node) && (d > best.date || (d === best.date && curOf(x) > curOf(best.node))))) {
                     best = { dim, node: x, date: d };
                 }
             }

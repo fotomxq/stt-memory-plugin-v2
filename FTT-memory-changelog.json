@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.16.0",
-  "updatedAt": "2026-10-04",
-  "generatedAt": "2026-10-04",
+  "version": "3.16.1",
+  "updatedAt": "2026-10-05",
+  "generatedAt": "2026-10-05",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.16.1",
+      "date": "2026-10-05",
+      "title": "修「情节有最新的，但时钟不更新；点修复也没用」——「最新情节」排序误用原始楼层",
+      "points": [
+        "① 真机取证（离线复算 + 生产函数）：真机存档（ftt2-state-char1xbib3t.json，2.07MB）里：- 时钟 state.state = {date:\"3…",
+        "② 修法：（core/recall.js，三处同一口径）| 位置 | 改动 || --- | --- || trustedPlotList()（时钟 + 在场共用顺序） | 排序…",
+        "③ 修后真机复算（同一份存档，跑生产函数）：resolveStoryClock() → {date:\"628-04-28\", time:\"上午\", location:\"罗马城\",…"
+      ]
+    },
     {
       "version": "3.16.0",
       "date": "2026-10-04",

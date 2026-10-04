@@ -27,7 +27,7 @@ import { emptyState } from '../../core/state.js';
 import {
     resolveStoryClock, clockAutoExtractOnce, clockExtractState, scheduleClockExtract, setClockTextHooks,
 } from '../../core/clock-extract.js';
-import { trustedPlotList, latestTrustedPlot } from '../../core/recall.js';
+import { trustedPlotList, latestTrustedPlot, latestPlotByFloor, atomLatestDated } from '../../core/recall.js';
 import { clockSectionHtml } from '../../ui/clock.js';
 
 const R = makeReporter('clock-latest-plot v2.98.0 时钟从最新情节逐字段自动抓取');
@@ -180,6 +180,61 @@ A('E3 历史 API 不回退：`latestTrustedPlot({needDate:true})` 仍是「最�
     const anyPlot = latestTrustedPlot({});
     return withDate && withDate.node.id === '旧' && anyPlot && anyPlot.node.id === '新';
 })(), '');
+
+// ---------- G 组：v3.16.1 拆楼重编号后的「最新情节」口径（用户报告「情节有最新的，但时钟不更新；点修复也没用」） ----------
+/** 造一条带「原始楼层 + 当前位置」的情节（拆楼后 floorStart/floorEnd 是原始楼层、floorNow* 是当前位置） */
+const ATOM2 = (id, rawFloor, nowFloor, date, time, loc, extra) => Object.assign({
+    id: id, text: id + ' 的正文足够长。', title: id,
+    date: date || '', time: time || '', locations: loc ? [loc] : [],
+    floorStart: rawFloor || 0, floorEnd: rawFloor || 0,
+    floorNowStart: nowFloor || 0, floorNowEnd: nowFloor || 0,
+    tags: [], uses: 0,
+}, extra || {});
+
+A('G1 **拆楼重编号后按「当前位置」排序**：原始 508 楼且 `originGone`（原文已移除）的旧情节，不再压住现在 196 楼的最新情节', (() => {
+    const stale = ATOM2('旧', 508, 0, '327-03-15', '', '', { originGone: true });
+    const fresh = ATOM2('新', 196, 196, '628-04-28', '上午', '平民集市');
+    boot([stale, fresh]);
+    const list = trustedPlotList();
+    const r = resolveStoryClock({});
+    return list.length === 2 && list[0].node.id === '新'
+        && J(pick(r)) === J({ date: '628-04-28', time: '上午', location: '平民集市' })
+        && r.source.date === 'plot' && r.plotId === '新';
+})(), () => J({ order: trustedPlotList().map((x) => x.node.id), got: pick(resolveStoryClock({})) }));
+
+A('G2 `originGone`（原文已移除）降级：活情节永远排在它前面（即使它的原始楼层/日期更新）', (() => {
+    const gone = ATOM2('已移除', 900, 900, '700-01-01', '深夜', '未来城', { originGone: true });
+    const live = ATOM2('活', 100, 100, '628-01-01', '清晨', '长安城');
+    boot([gone, live]);
+    const list = trustedPlotList();
+    return list[0].node.id === '活' && list[1].node.id === '已移除'
+        && J(pick(resolveStoryClock({}))) === J({ date: '628-01-01', time: '清晨', location: '长安城' });
+})(), () => J(trustedPlotList().map((x) => x.node.id)));
+
+A('G3 无 `floorNow*` 时口径**完全不变**（纯原始楼层比较，向后兼容）', (() => {
+    boot([ATOM('低', 10, '1919-11-20', '08:00', ['码头']), ATOM('高', 20, '1919-11-21', '傍晚', ['酒馆'])]);
+    const list = trustedPlotList();
+    return list[0].node.id === '高' && list[1].node.id === '低'
+        && J(pick(resolveStoryClock({}))) === J({ date: '1919-11-21', time: '傍晚', location: '酒馆' });
+})(), () => J(trustedPlotList().map((x) => x.node.id)));
+
+A('G4 `latestPlotByFloor()`（在场角色来源）同样按当前位置 + 活情节优先，取到的是当前现场', (() => {
+    const stale = ATOM2('旧', 508, 0, '327-03-15', '下午', '昆仑山深处', { originGone: true });
+    const fresh = ATOM2('新', 196, 196, '628-04-28', '上午', '平民集市');
+    fresh.entities = ['李瑶'];
+    boot([stale, fresh]);
+    const p = latestPlotByFloor();
+    return p && p.node.id === '新' && p.date === '628-04-28' && p.time === '上午' && p.location === '平民集市'
+        && J(p.entities) === J(['李瑶']);
+})(), () => J(latestPlotByFloor()));
+
+A('G5 `atomLatestDated()`（快照参考时钟）也优先**活情节**：旧聊天残留的高楼层/未来日期不再胜出', (() => {
+    const staleFuture = ATOM2('旧未来', 900, 900, '628-12-31', '深夜', '旧城', { originGone: true });
+    const live = ATOM2('活', 196, 196, '628-04-28', '上午', '平民集市');
+    boot([staleFuture, live]);
+    const n = atomLatestDated();
+    return n && n.node && n.node.id === '活' && n.date === '628-04-28';
+})(), () => J(atomLatestDated() && atomLatestDated().node && atomLatestDated().node.id));
 
 // ---------- F 组：调度与落盘不回归 ----------
 A('F1 `scheduleClockExtract()` 1.8s 防抖后落盘逐字段结果（消息后自动同步链路可用）', (() => {
