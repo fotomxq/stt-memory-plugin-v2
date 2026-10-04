@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.11.1",
+  "version": "3.11.2",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.11.2",
+      "date": "2026-10-04",
+      "title": "部署通道补一道「可验证的安全出口」（--adopt-untracked）",
+      "points": [
+        "① 新增 --adopt-untracked（保守且：可验证）| 部署副本状态 | 处理 || --- | --- || 已跟踪文件被修改 / 删除 | 一律拒绝（可能是用户改的…",
+        "② 真机部署记录：采纳 3 个逐字节相同的残留后快进 → 宿主副本 v3.11.2，复核 already-aligned。"
+      ]
+    },
     {
       "version": "3.11.1",
       "date": "2026-10-04",
