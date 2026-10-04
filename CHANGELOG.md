@@ -3,6 +3,56 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.15.1（2026-10-04）· 闪退取证 + 原生存储写入**串行化**（消除并发写）
+
+**用户要求**（原话）：「应用突然闪退，大概率是插件引起的，请核对原因并修复问题。」
+
+**① 取证（先定性：崩的不是 JS，是原生进程）**
+
+| 证据源 | 结论 |
+| --- | --- |
+| Windows 事件日志（Application） | **`tauritavern.exe` v2.3.0.0 崩溃两次**：23:15:03 `0xc0000005`（访问违例，偏移 `0x20806f9`）、23:21:51 `0xc0000409`（fastfail/abort，偏移 `0xfedc34`）；两次都有 WER `APPCRASH`/`BEX64` 报告 |
+| 宿主日志 `logs\tauritavern.log.*` | 两次崩溃后都是**应用重新初始化**（15:15:09 / 15:22:01 UTC）；**崩前没有任何错误行** → 原生静默失效（不是宿主抛错，也不是 webview 里的 JS 异常） |
+| 插件调试/同步日志 | 崩溃前 1.3s 恰有一次「保存后镜像 → 分片推送（清单命中，207ms）」；两次崩溃都紧跟在「生成结束 → 保存 → 镜像」之后 |
+| LLM 请求索引 | 5 次生成**严格串行**（36–53s，互不重叠）→ 排除「并发 AI 请求」这条假设 |
+| 磁盘 | C: 剩 188GB / D: 剩 228GB → 排除磁盘写满 |
+| 配置体积 | 宿主 `settings.json` **12.35MB**，但其中 **99.2% 是其它扩展**（`tavern_helper` 5.75MB / `theater_generator` 1.24MB / `SoulLink` 1.05MB …）；**本插件只占 105KB（0.8%）** |
+| WebView2 诊断日志 | `settings_diagnostic.log` 只有 INFO，`PrefStore write completed: success=true` → 排除「偏好写盘失败」 |
+
+**② 定位：插件确实存在**并发写原生存储**（宿主并发安全不在我们控制范围内）**
+`adapters/sync.js#storageWriteAll` 里主文件与快照是 `await` 的，但**分片清单（约 1.4MB）是 fire-and-forget** ——
+于是它经常与「下一次保存的原生写」重叠；一次保存会写主文件 + 备份 + 快照 + 清单（本机实测合计约 7MB），
+而宿主扩展存储是「一个 key 一次文件写」，崩溃前的写入节奏与宿主 `lan_sync` 缓存刷新存在天然竞争面。
+
+**③ 修复（本版）**
+
+| 改动 | 说明 |
+| --- | --- |
+| `adapters/tt-store.js#runSerialized`（新） | 给**所有原生写**（KV 的 put·del、Blob 的 put·del，含 `ttPutBytes` 的 Blob→KV 回退链）加一条 **FIFO 串行队列**：任意时刻**至多一个原生写在飞**；不丢写、不改变先后语义（同键后写仍然后写）；单次失败不阻塞队列。**只包装最底层四个函数**（`ttPutBytes` 内部会调它们，若也包装会自锁） |
+| `adapters/sync.js#storageWriteAll` | 分片清单推送由 fire-and-forget 改为 **`await`** —— `storageWriteAll` 返回即代表本轮原生写全部结束，镜像的 `storageRunning` 守卫真正覆盖到最后一次写 |
+| `adapters/tt-store.js#ttWriteStats`（新） | 诊断出口：`queued/done/failed/pending` + **历史峰值并发**（应为 1）+ 最近一次写的标签/耗时；单次写 ≥3s 记一条 `kind='存储'` 日志（崩溃留痕） |
+| 调试桥 `ftt.writeStats`（新，只读） | 真机核对入口：`bridge> call ftt.writeStats` → 若 `maxInFlight > 1` 说明仍有并发写；崩溃前最后一次原生写是什么、花了多久也在这里 |
+
+**④ 顺带量到的写入量事实（记录，未改）**
+`adapters/shards.js#META_KEYS` 含 `snapStore`（本机 1.2MB 快照链）→ 该内容每次保存会被写**三遍**（主文件 / `ftt2-snap-*` / `meta` 分片），
+`meta` 分片因此有 1.4MB。**本次不动**（它参与「主文件损坏 → 从分片重建」的恢复路径，改动需先审计恢复链路），登记待后续决定。
+
+**⑤ 测试**
+- 新增 `tests/unit/tt-write-queue.test.js` **10 项**：并发三写→宿主侧严格串行且顺序不变 · 混合（KV/Blob put·del）并发仍峰值 1 ·
+  Blob 失败回退 KV 的两次原生写**串行** · 单次失败不阻塞队列且计数如实 · 同键后写胜 · 读不进队列（仍并发） ·
+  `ttDelete` 双删走队列 · 统计可读可重置 · 调试桥 `ftt.writeStats` 与内核同源；
+- `tests/unit/debug-bridge.test.js` 白名单快照式断言同步补上 `ftt.writeStats`（新增方法必须同步该断言）；
+- 全量：**144 文件 / 2214 断言** + 冒烟 **207 项** 全绿。
+
+**⑥ 未验证项（如实登记）**
+- **崩因未 100% 坐实**：证据只能证明「崩在原生进程、且插件此前确有并发写原生存储」，无法证明宿主崩溃一定是并发写引起的
+  （宿主自身或 WebView2 也可能有其它缺陷）。本版消除了插件这一侧唯一的原生并发写路径；**若再闪退**，
+  请刷新后 `bridge> call ftt.writeStats` 保留现场（峰值并发应为 1），并检查 Windows 事件日志的新崩溃偏移；
+- 串行化后的真机表现**未实测**（需用户刷新页面后跑一轮：生成 → 保存 → 镜像，再看 `ftt.writeStats`）；
+- 第 ④ 条的 `snapStore` 三写问题**未改**（需先审计分片恢复链路）。
+
+详见 `docs/history/P10c30-闪退取证与原生写串行化.md`。
+
 ## v3.15.0（2026-10-04）· 货币页「🧹 修正货币」：剔除不该记录的角色 · 修正错乱的单位计价 · 合并冗余
 
 **用户要求**（原话）：「货币增加修正按钮，剔除不应该被记录的角色，以及修正错乱的单位计价和冗余的数据合并问题。」

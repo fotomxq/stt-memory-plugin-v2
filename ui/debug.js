@@ -42,7 +42,7 @@ import {
     setBridgeMethods, setBridgePort, bridgePort, setBridgeHost, bridgeTarget, isLoopbackHost,
     BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST, BRIDGE_PROTOCOL,
 } from '../adapters/debug-bridge.js';
-import { ttAbi } from '../adapters/tt-store.js';
+import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
     processedStats, scanPendingFloors, listUnprocessedFloors, floorMessage, floorStableText,
@@ -515,6 +515,9 @@ export function buildBridgeMethods() {
     //   孤儿关联行 / 非法墓碑时间戳 / 超长字段 …（自愈在载入期 `migrateState`，这里只核对）
     T['ftt.dataHealth'] = safe((p) => dataHealthReport(undefined, { cap: Number((p && p.cap) || 0) || undefined }));
     T['ftt.dataHealthText'] = safe(() => dataHealthText(dataHealthReport()));
+    // v3.15.1（闪退取证）：**原生写队列**诊断 —— 队列计数 / 历史峰值并发（应恒为 1）/ 最近一次原生写的标签与耗时。
+    //   用途：真机核对「是否还有并发写」，以及崩溃前最后一次原生写是什么、花了多久。
+    T['ftt.writeStats'] = safe(() => ttWriteStats());
 
     // —— 载入链路诊断（v3.0.10，**只读**）——
     //   把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」四处并排读出来，

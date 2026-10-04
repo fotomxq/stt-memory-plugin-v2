@@ -222,6 +222,69 @@ function listCacheSet(ns, table, keys) {
 function listCacheDrop(ns, table) { try { delete listCache[String(ns) + '/' + String(table)]; } catch (e) { /* 忽略 */ } }
 function listCacheDropAll() { for (const k of Object.keys(listCache)) delete listCache[k]; }
 
+// ==================== 原生写**串行化**（v3.15.1 · 闪退取证后的加固） ====================
+/**
+ * 背景（用户报告「应用突然闪退」+ 本机取证）：
+ *   Windows 事件日志显示崩的是**原生进程** `tauritavern.exe`（WER：`0xc0000409` fastfail / `0xc0000005` 访问违例，
+ *   两次崩溃后宿主都重新初始化），webview 里的 JS 并没有抛错；宿主日志在崩溃前也没有任何错误行 —— 属**原生静默失效**。
+ *   而本插件此前的写入**确实会并发**：`adapters/sync.js#storageWriteAll` 里主文件与快照是 `await` 的，
+ *   但**分片清单（约 1.4MB）是 fire-and-forget**，于是它常与「下一次保存的原生写」重叠；
+ *   一次保存会写主文件 + 备份 + 快照 + 清单（合计约 7MB），而宿主存储 API 的并发安全**不在本插件控制范围内**。
+ *
+ * 修法：把**所有原生写**（KV 的 put/del 与 Blob 的 put/del，含 `ttPutBytes` 的回退链）串成一条 **FIFO 队列** ——
+ *   · 任意时刻**至多一个**原生写在飞（消除宿主侧并发写）；
+ *   · 不丢任何一次写、不改变先后语义（同键后写仍然后写；删除与写入按调用顺序执行）；
+ *   · 某次写失败**不阻塞**后续写（队列继续，失败如实返回给调用方）。
+ * 注意：**只在最底层包装**（直接调宿主 `setJson/deleteJson/setBlob/deleteBlob` 的那四个函数）——
+ *   若同时包装 `ttPutBytes`（它内部会调 `ttBlobPut`/`ttKvPut`）会形成嵌套等待 → 自锁。
+ *
+ * 诊断：`ttWriteStats()` 给出队列计数、**历史峰值并发**（应当恒为 1）与最近一次写的耗时/标签（崩溃前留痕用）。
+ */
+let writeChain = Promise.resolve();
+let writeSeq = 0;
+const writeStats = { queued: 0, done: 0, failed: 0, inFlight: 0, maxInFlight: 0, last: null, lastSlow: null };
+/** 单次原生写超过该毫秒数 → 记一条 warn（诊断用；不改变行为） */
+const TT_WRITE_SLOW_MS = 3000;
+
+function runSerialized(label, fn) {
+    writeSeq += 1;
+    const id = writeSeq;
+    writeStats.queued += 1;
+    const run = async () => {
+        writeStats.inFlight += 1;
+        if (writeStats.inFlight > writeStats.maxInFlight) writeStats.maxInFlight = writeStats.inFlight;
+        const t0 = Date.now();
+        let out; let ok = false;
+        try { out = await fn(); ok = true; writeStats.done += 1; }
+        catch (e) { writeStats.failed += 1; throw e; }                 // 交回调用方，由其按既有口径处理
+        finally {
+            writeStats.inFlight -= 1;
+            const ms = Date.now() - t0;
+            const rec = { id: id, label: String(label || ''), ms: ms, at: Date.now(), ok: ok };
+            writeStats.last = rec;
+            if (ms >= TT_WRITE_SLOW_MS) {
+                writeStats.lastSlow = rec;
+                try { dbgLog('存储', { action: '原生存储写入偏慢', label: rec.label, ms: ms, at: rec.at }); } catch (e2) { /* 忽略 */ }
+            }
+        }
+        return out;
+    };
+    const p = writeChain.then(run, run);
+    writeChain = p.then(() => undefined, () => undefined);            // 队列不因失败中断
+    return p;
+}
+
+/** 原生写队列统计（只读；诊断 / 崩溃留痕用） */
+export function ttWriteStats() {
+    return Object.assign({}, writeStats, { pending: Math.max(0, writeStats.queued - writeStats.done - writeStats.failed) });
+}
+/** 重置原生写队列统计（测试 / 诊断用；不动队列本身） */
+export function ttWriteStatsReset() {
+    writeStats.queued = 0; writeStats.done = 0; writeStats.failed = 0;
+    writeStats.inFlight = 0; writeStats.maxInFlight = 0; writeStats.last = null; writeStats.lastSlow = null;
+    return true;
+}
+
 // ==================== KV JSON 通道 ====================
 /** 写入 KV JSON（base64 载荷；V1 同款 `{ k:'b64', v, ts }` 形状，便于迁移与人工核对） */
 export async function ttKvPut(name, b64, opts) {
@@ -232,8 +295,11 @@ export async function ttKvPut(name, b64, opts) {
     const table = String(o.table || TT_TABLE);
     const key = ttKeyOf(name);
     try {
-        await ttEnsureReady(o.timeoutMs);
-        await st.setJson({ namespace: ns, table: table, key: key, value: { k: 'b64', v: String(b64 || ''), ts: Date.now() } });
+        // v3.15.1：进串行队列（`ttEnsureReady` 留在队列内 —— 就绪等待也属于这次写的一部分）
+        await runSerialized('kv-put:' + key, async () => {
+            await ttEnsureReady(o.timeoutMs);
+            await st.setJson({ namespace: ns, table: table, key: key, value: { k: 'b64', v: String(b64 || ''), ts: Date.now() } });
+        });
         missClear(ns, key);
         writeChannel[ctxKey(ns, key)] = 'kv';
         stats.writes++; stats.kvWrites++;
@@ -298,8 +364,10 @@ export async function ttKvDel(name, opts) {
     const table = String(o.table || TT_TABLE);
     const key = ttKeyOf(name);
     try {
-        await ttEnsureReady(o.timeoutMs);
-        await st.deleteJson({ namespace: ns, table: table, key: key });
+        await runSerialized('kv-del:' + key, async () => {
+            await ttEnsureReady(o.timeoutMs);
+            await st.deleteJson({ namespace: ns, table: table, key: key });
+        });
         missMark(ns, key);
         delete writeChannel[ctxKey(ns, key)];
         markOk();
@@ -348,8 +416,10 @@ export async function ttBlobPut(name, bytes, opts) {
     try {
         const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
         if (!u8.length) return { ok: false, reason: 'empty' };
-        await ttEnsureReady(o.timeoutMs);
-        await st.setBlob({ namespace: ns, table: table, key: key, data: u8 });
+        await runSerialized('blob-put:' + key, async () => {
+            await ttEnsureReady(o.timeoutMs);
+            await st.setBlob({ namespace: ns, table: table, key: key, data: u8 });
+        });
         missClear(ns, key);
         listCacheDrop(ns, table);
         writeChannel[ctxKey(ns, key)] = 'blob';
@@ -395,8 +465,10 @@ export async function ttBlobDel(name, opts) {
     const table = String(o.table || TT_TABLE);
     const key = ttKeyOf(name);
     try {
-        await ttEnsureReady(o.timeoutMs);
-        await st.deleteBlob({ namespace: ns, table: table, key: key });
+        await runSerialized('blob-del:' + key, async () => {
+            await ttEnsureReady(o.timeoutMs);
+            await st.deleteBlob({ namespace: ns, table: table, key: key });
+        });
         missMark(ns, key);
         listCacheDrop(ns, table);
         delete writeChannel[ctxKey(ns, key)];

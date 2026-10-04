@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.15.0",
+  "version": "3.15.1",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.15.1",
+      "date": "2026-10-04",
+      "title": "闪退取证 + 原生存储写入串行化（消除并发写）",
+      "points": [
+        "① 取证（先定性：崩的不是 JS，是原生进程）：| 证据源 | 结论 || --- | --- || Windows 事件日志（Application） | tauritaver…",
+        "② 定位：插件确实存在：并发写原生存储（宿主并发安全不在我们控制范围内）adapters/sync.js#storageWriteAll 里主文件与快照是 await 的，但分片…",
+        "③ 修复（本版）：| 改动 | 说明 || --- | --- || adapters/tt-store.js#runSerialized（新） | 给所有原生写（KV 的 pu…"
+      ]
+    },
     {
       "version": "3.15.0",
       "date": "2026-10-04",
