@@ -81,7 +81,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 139 文件 / 2113 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 139 文件 / 2114 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 204 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |

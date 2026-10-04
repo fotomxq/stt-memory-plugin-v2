@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.10.1",
+  "version": "3.10.2",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.10.2",
+      "date": "2026-10-04",
+      "title": "修 v3.10.1 的宿主同步工具（真机首跑暴露的两处缺陷）",
+      "points": [
+        "① git 被 dubious ownership 拒绝：宿主仓库属主是登录用户，而运行进程是 SYSTEM；safe.directory 传的是反斜杠路径，git 不认 → f…",
+        "② 更危险的一处：「查不出是否干净」被当成了「干净」：git status 同样被拒后 dirtyCount 落回 null，旧判定把 null 当成「未检查」直接放行 → 一旦…",
+        "③ 顺手：「短听」窗口 2s → 默认 5s（插件侧拨号有重试间隔，窗口太短会误报「未启动」），可用 --bridge-wait <ms> 调整，并在输出里打印实际窗口。"
+      ]
+    },
     {
       "version": "3.10.1",
       "date": "2026-10-04",
