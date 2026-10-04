@@ -684,6 +684,13 @@ export const SETTINGS_CONTROLS = {
     ],
     "storage": [
 ,
+        // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储，避免超出限制…需在设定-存储中约定本地化路径。
+        //   如果没约定路径，则视为不开启」）：**留空 = 不开启**；填写 = 本机缓冲层改走宿主的本地文件。
+        {
+            "key": "storage.localFilePath",
+            "label": "本地文件目录（留空 = 不开启）",
+            "type": "text"
+        },
         {
             "key": "storage.worldbook",
             "label": "世界书存储（可选）",
@@ -826,6 +833,10 @@ import { snapshotSectionHtml } from './snapshots.js';
 import { hintDetailsHtml, paramListHtml, shortHintHtml } from './hints.js';
 import { extractPageHtml } from './extract-page.js';
 import { storagePageHtml } from './sync.js';
+// v3.16.0（用户要求）：本地文件存储模式 —— 路径归一 + 变量层/文件层自动对齐
+import { localFilePathSanitize } from '../adapters/local-file.js';
+import { switchLocalLayer } from '../adapters/store.js';
+import { notifyHooks } from '../core/model/runtime.js';
 import { nsfwPageHtml } from './nsfw.js';
 import { forgetPageHtml } from './forget.js';
 import { debugPageHtml } from './debug.js';
@@ -897,6 +908,23 @@ export function applySettingsControl(key, raw) {
             cfg[k] = raw;
         }
         try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
+        // v3.16.0（用户要求「开启后将取代变量方式」）：本机层模式切换 —— 路径改动后**自动对齐**：
+        //   开启 → 变量层迁进本地文件并清变量键（写→回读校验→才清）；关闭 → 文件内容迁回变量层。
+        //   失败时**什么都不清**（`switchLocalLayer` 内部先写后清），结果异步回填到面板提示行。
+        if (k === 'storage.localFilePath') {
+            const want = String(raw == null ? '' : raw);
+            const prev = String((cfg.storage || {}).localFilePath || '');
+            const norm = (() => { try { return localFilePathSanitize(want); } catch (e) { return ''; } })();
+            if (norm !== want) { cfg.storage.localFilePath = norm; try { saveKernelCfg(); } catch (e) { /* 忽略 */ } }
+            void (async () => {
+                try {
+                    // 传入旧路径：清空配置后仍能按它把文件内容迁回变量层（v3.16.0）
+                    const r = await switchLocalLayer({ previousPath: prev });
+                    try { notifyHooks.toast('本地文件模式：' + String(r.reason || ''), r.ok ? 'info' : 'warning'); } catch (e) { /* 忽略 */ }
+                } catch (e) { /* 忽略 */ }
+            })();
+            return { ok: true, key: k, value: norm, switched: true };
+        }
         return { ok: true, key: k, value: raw };
     } catch (e) { return { ok: false, key: k }; }
 }

@@ -32,7 +32,7 @@ R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户�
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v2.86.0 重要度口径改后 extract 25 / 总 172', (() => {
+R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 159', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
@@ -43,8 +43,8 @@ R.assert('P2 控件表：共 173 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 173 → 176
     // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 删 5 个逐维上限（forget）+1 总上限、删 1 个逐维上限（rumors）
     //   → 总数 176 → 171、forget 28 → 24、rumors 14 → 13
-    return info.totalControls === 158 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 25
-        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 12 && m.debug === 5;
+    return info.totalControls === 159 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 25
+        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 
 R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {
@@ -55,15 +55,16 @@ R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPag
         && Array.isArray(SETTINGS_CONTROLS.constraint) && SETTINGS_CONTROLS.constraint.length === 0;
 })(), () => settingsPagesInfo().pages.filter((p) => p.id === 'constraint'));
 
-R.assert('P2b v2.94.0（D11 §3.4/§3.5）存储页只留世界书 12 项：同步/存储开关已剔除（不再出现 deletedKeepDays / tauriNative / syncTrafficGuard）', (() => {
+R.assert('P2b v2.94.0（D11 §3.4/§3.5）存储页只留世界书 12 项 + v3.16.0 本地文件目录 1 项：同步/存储开关已剔除（不再出现 deletedKeepDays / tauriNative / syncTrafficGuard）', (() => {
     const keys = SETTINGS_CONTROLS.storage.map((c) => String(c.key));
     const want = ['storage.worldbookName', 'storage.worldbookMode',
         'storage.worldbookScanDepth', 'storage.worldbookPosition', 'storage.worldbookDepth', 'storage.worldbookProbability',
-        'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes'];
+        'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes',
+        'storage.localFilePath'];
     const gone = ['storage.deletedKeepDays', 'storage.tauriNative', 'storage.tauriMirror', 'storage.syncOnSave',
         'storage.verifyOnLoad', 'storage.settingsMirror', 'storage.syncMetaProbe', 'storage.syncTrafficGuard',
         'storage.stateFile', 'storage.snapshotFile', 'storage.syncLogServer', 'syncTrafficGuard'];
-    return keys.length === 12 && want.every((k) => keys.indexOf(k) >= 0)
+    return keys.length === 13 && want.every((k) => keys.indexOf(k) >= 0)
         && gone.every((k) => keys.indexOf(k) < 0)
         && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.worldbookMode')).indexOf('<select') >= 0;
 })(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));

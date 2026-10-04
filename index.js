@@ -37,7 +37,9 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）
+import { wirePersistHooks, loadFromLocalStorage, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
+// v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
+import { localFileEnabled } from './adapters/local-file.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -333,6 +335,9 @@ export async function loadMemoryState() {
     //   且**绝不整体覆盖**基底 —— 于是「换设备 / 清缓存 / 恢复聊天备份 / 初次激活」都能自动对齐。
     const layers = { local: null, idb: null, file: null, chatmeta: null };
     try { layers.local = loadFromLocalStorage(); } catch (e) { layers.local = null; }
+    // v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时**本机层以本地文件为真相
+    //   （文件读是异步的 → 只在开启时多这一次 await；关闭时零额外微任务、零行为变化）
+    try { if (localFileEnabled()) { const lf = await loadFromLocalFile(); if (lf) layers.local = lf; } } catch (e) { /* 文件层异常 → 保留变量层结果 */ }
     try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
     try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
     const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();

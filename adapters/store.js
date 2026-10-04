@@ -25,6 +25,8 @@ import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileG
 // v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
 import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
+// v3.16.0（用户要求）：**本地文件存储模式** —— 路径非空时，本机缓冲层改走宿主的本地文件（无 localStorage 配额限制）
+import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFileStatsGet, localFilePath } from './local-file.js';
 import { hydrateStorageData } from '../core/slim.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
 import { trackPipeline } from '../core/pipeline.js';
@@ -395,6 +397,9 @@ async function saveStateNowInner(o) {
     const via = [];
     // ④ 本机缓冲（localStorage 信封）—— v3.1.0：**写入前按字符预算判定**（超预算如实跳过并留痕）
     //   v3.10.4（A4）：再加一道**等值跳过** —— 与上次写入逐字节同源（同信封哈希 + 同长度）时不重写 1MB。
+    //   v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时本层改走本地文件**（无 localStorage 配额限制）。
+    let localViaFile = false;
+    try { localViaFile = localFileEnabled(); } catch (e) { localViaFile = false; }
     try {
         const key = 'ftt2_state_' + scopeId();
         const budget = localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS;
@@ -402,8 +407,27 @@ async function saveStateNowInner(o) {
         if (localLastSig !== '' && localLastSig === sig) {
             localStats.unchanged += 1;
             localStats.lastSkipReason = 'unchanged';
-            localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过' };
-            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）' }); } catch (e) { /* 忽略 */ }
+            localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaFile ? 'local-file' : 'localStorage' };
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）', extra: { layer: localViaFile ? 'local-file' : 'localStorage' } }); } catch (e) { /* 忽略 */ }
+        } else if (localViaFile) {
+            // **本地文件模式**：写到用户约定的路径（宿主的本地文件），**不再写 localStorage**（= 取代变量层）
+            const wr = await localFileWrite(text, scopeId());
+            if (wr && wr.ok) {
+                via.push('local-file');
+                markLocalWritten(sig, text.length);
+                lastPathMemory = String(wr.path || localFilePath());
+                localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-file', backend: String(wr.backend || '') };
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-file', path: String(localFileStatsGet().path || '') } }); } catch (e) { /* 忽略 */ }
+            } else {
+                // 文件写失败 → **回退变量层**（绝不因为新模式故障而丢掉本机缓冲）
+                localStats.failed += 1;
+                localStats.lastSkipReason = 'file-write-failed';
+                const okL = storageHooks.setItem(key, text);
+                if (okL) { via.push('localStorage'); markLocalWritten(sig, text.length); }
+                localBuffer = { at: Date.now(), ok: !!okL, skipped: okL ? '' : 'write-failed', chars: text.length, budget: budget, reason: okL ? '本地文件写失败 → 已回退变量层' : '本地文件与变量层都写失败（配额不足？）', layer: 'localStorage' };
+                try { kernelWarn('保存：本地文件模式写入失败 → 已回退变量层', { path: String(localFileStatsGet().path || ''), error: String((wr && wr.error) || '') }); } catch (e) { /* 忽略 */ }
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: !!okL, bytes: text.length, reason: 'file-write-failed', note: '本地文件模式写失败 → 回退变量层' }); } catch (e) { /* 忽略 */ }
+            }
         } else if (budget > 0 && text.length > budget) {
             localStats.overBudget += 1;
             localStats.lastSkipReason = 'over-budget';
@@ -533,6 +557,129 @@ export function loadFromLocalStorage() {
         const st = env.payload.data || null;
         localParseCache = { key: key, raw: raw, payload: st, items: countsOf(st).total };
         readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: localParseCache.items, hash: h, note: '信封校验通过' });
+        return st;
+    } catch (e) {
+        localParseCache = null;
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return null;
+    }
+}
+
+/** v3.16.0：本地文件模式「上次用过的路径」的内存副本（配置里清空路径后，仍要能按它迁回变量层） */
+let lastPathMemory = '';
+
+/** 本机缓冲层的模式信息（面板 / 调试包用；v3.16.0 本地文件模式） */
+export function localLayerInfo() {
+    let file = null;
+    try { file = localFileStatsGet(); } catch (e) { file = null; }
+    const key = 'ftt2_state_' + scopeId();
+    let localChars = 0;
+    try { localChars = String(storageHooks.getItem(key) || '').length; } catch (e) { localChars = 0; }
+    return {
+        enabled: !!(file && file.enabled), path: String((file && file.path) || ''), name: String((file && file.name) || ''),
+        backend: String((file && file.backend) || ''), fileBytes: Number((file && file.lastBytes) || 0),
+        writes: Number((file && file.writes) || 0), reads: Number((file && file.reads) || 0),
+        failures: Number((file && file.failures) || 0), lastReason: String((file && file.lastReason) || ''),
+        localChars: localChars, budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
+        last: Object.assign({}, localBuffer),
+    };
+}
+
+/**
+ * v3.16.0（用户要求「开启后将取代变量方式」）——**按当前路径约定切换本机层**：
+ *   · 路径非空（开启）：把**变量层**现有信封迁到本地文件（写 → 回读逐字节校验 → 才清变量键），
+ *     迁移成功后变量层不再被写入（`saveStateNowInner` ④ 走文件）；文件已有更新内容时不覆盖变量层数据（以较新者为基底）。
+ *   · 路径为空（关闭）：若变量层为空而文件有内容 → **迁回**变量层（文件保留当备份，不删）。
+ * 全程**先写后清**：任何一步失败都不清数据；返回结构化结果供面板如实展示。
+ * @returns {Promise<{ok:boolean, action:'migrated'|'restored'|'none'|'error', bytes:number, cleared:number, reason:string}>}
+ */
+export async function switchLocalLayer(opts) {
+    const o = opts || {};
+    const key = 'ftt2_state_' + scopeId();
+    // v3.16.0：记住「上次用过的路径」—— 关闭模式后配置里已没有路径，仍要能按它把文件内容迁回变量层。
+    //   来源优先级：调用方给的 `previousPath`（设定页改路径时天然知道旧值）→ 本次会话内存 → 上次落盘的标记 → 配置现值
+    const LAST_KEY = 'ftt2_LastLocalFilePath';
+    const lastPath = (() => {
+        if (o.previousPath) return String(o.previousPath);
+        if (lastPathMemory) return String(lastPathMemory);
+        try { return String(storageHooks.getItem(LAST_KEY) || ''); } catch (e) { return ''; }
+    })();
+    let raw = '';
+    try { raw = String(storageHooks.getItem(key) || ''); } catch (e) { raw = ''; }
+    try {
+        if (localFileEnabled()) {
+            // 变量层没东西可迁 → 什么都不做（文件层照常由保存流水线维护）
+            if (!raw) {
+                lastPathMemory = localFilePath();
+                try { storageHooks.setItem(LAST_KEY, lastPathMemory); } catch (e) { /* 忽略 */ }
+                return { ok: true, action: 'none', bytes: 0, cleared: 0, reason: '变量层为空（无需迁移）' };
+            }
+            const wr = await localFileWrite(raw, scopeId());
+            if (!wr || !wr.ok) return { ok: false, action: 'error', bytes: 0, cleared: 0, reason: '写入本地文件失败：' + String((wr && wr.error) || '') };
+            const rr = await localFileRead(scopeId());
+            if (!rr || !rr.ok || String(rr.text) !== raw) {
+                return { ok: false, action: 'error', bytes: 0, cleared: 0, reason: '回读校验不一致 → 变量层保持不动（不丢数据）' };
+            }
+            // 校验通过 → 清变量键（真金白银地腾出配额）+ 重置写入签名（下一次保存一定写文件）+ 记住路径
+            let cleared = 0;
+            try { cleared = removeLocalKeys([key]).removed || 0; } catch (e) { cleared = 0; }
+            markLocalWritten('', 0);
+            lastPathMemory = localFilePath();
+            try { storageHooks.setItem(LAST_KEY, lastPathMemory); } catch (e) { /* 忽略 */ }
+            try { debugLogPush('存储', { action: '本地文件模式：变量层已迁移并停用', path: String(localFileStatsGet().path || ''), bytes: raw.length, cleared: cleared }); } catch (e) { /* 忽略 */ }
+            return { ok: true, action: 'migrated', bytes: raw.length, cleared: cleared, reason: '已迁移 ' + raw.length + ' 字符到本地文件，并清空变量层（' + cleared + ' 个键）' };
+        }
+        // 关闭模式：变量层为空而文件有内容 → 按**上次路径**迁回（保住这一层，不让用户一关就少一层）
+        const usePath = lastPath || '';
+        if (!raw && usePath) {
+            const fr = await localFileRead(scopeId(), usePath);
+            if (fr && fr.ok && fr.text) {
+                const okL = storageHooks.setItem(key, String(fr.text));
+                if (okL) {
+                    markLocalWritten('', 0);
+                    try { debugLogPush('存储', { action: '本地文件模式：已关闭 → 内容迁回变量层', path: usePath, bytes: String(fr.text).length }); } catch (e) { /* 忽略 */ }
+                    return { ok: true, action: 'restored', bytes: String(fr.text).length, cleared: 0, reason: '已从本地文件（' + usePath + '）迁回变量层（' + String(fr.text).length + ' 字符）' };
+                }
+                return { ok: false, action: 'error', bytes: 0, cleared: 0, reason: '迁回变量层失败（配额不足？）→ 文件保留可用' };
+            }
+        }
+        return { ok: true, action: 'none', bytes: 0, cleared: 0, reason: '本地文件模式未开启' };
+    } catch (e) {
+        return { ok: false, action: 'error', bytes: 0, cleared: 0, reason: String((e && e.message) || e) };
+    }
+}
+
+/**
+ * v3.16.0（用户要求「本地文件存储模式替代变量存储」）——**读本地文件层的状态**（异步）。
+ *
+ * 为什么单独一个函数：`loadFromLocalStorage()` 是**同步**的（载入流水线按同步调用它，微任务时序被既有测试锁定），
+ *   而本地文件读是异步的 → 载入侧只在**路径非空**时多一次 `await`（关闭时零额外微任务、零行为变化）。
+ * 校验口径与变量层**完全一致**：信封完整 + 载荷哈希一致，否则丢弃（交由宿主文件兜底）。
+ * @returns {Promise<object|null>} state 或 null
+ */
+export async function loadFromLocalFile() {
+    const key = 'ftt2_state_' + scopeId();
+    const tok = readLedgerBegin('读本机缓冲（本地文件）', 'local', { target: localFileName(scopeId()), note: '本地文件模式（v3.16.0）' });
+    try {
+        const r = await localFileRead(scopeId());
+        if (!r || !r.ok || !r.text) {
+            readLedgerEnd(tok, { ok: true, miss: true, reason: String((r && r.error) || 'no-local-file'), note: '本地文件未命中 → 回落变量层' });
+            return null;
+        }
+        const raw = String(r.text);
+        localStats.reads += 1;
+        const env = JSON.parse(raw);
+        if (!env || !env.payload) { localParseCache = null; readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: raw.length }); kernelWarn('载入：本地文件信封不完整 → 丢弃', ''); return null; }
+        const h = storageHash(env.payload);
+        if (env.hash && env.hash !== h) {
+            localParseCache = null;
+            readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: raw.length, hash: h, note: '本地文件信封哈希不一致 → 丢弃' });
+            kernelWarn('载入：本地文件信封哈希不一致 → 丢弃', '');
+            return null;
+        }
+        const st = env.payload.data || null;
+        localParseCache = { key: 'file:' + key, raw: raw, payload: st, items: countsOf(st).total };
+        readLedgerEnd(tok, { ok: true, bytes: raw.length, items: localParseCache.items, hash: h, note: '本地文件信封校验通过', extra: { layer: 'local-file', path: String(localFileStatsGet().path || '') } });
         return st;
     } catch (e) {
         localParseCache = null;

@@ -25,11 +25,15 @@ import {
 import { storageEnvelope } from '../core/envelope.js';
 import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
+import { hintDetailsHtml } from './hints.js';   // v3.16.0：本地文件模式的折叠说明
 // v2.92.0（用户要求）：需人工确认项 —— 设定 → 存储 展示同一份清单（总览亦有醒目提示）
 import { listConflicts, pendingConflictCount, clearConflicts } from '../core/conflicts.js';
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
 import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
+// v3.16.0（用户要求）：本地文件存储模式 —— 状态展示 + 「立即对齐本机层」动作
+import { localFileStatsGet } from '../adapters/local-file.js';
+import { localLayerInfo, switchLocalLayer } from '../adapters/store.js';
 // v2.94.0（`docs/D12` §3.4 / 阶段 S3）：楼层校准只读诊断 + 「重新校准楼层」幂等动作
 import { floorCalibrateStatus } from '../host/floor-trim.js';
 
@@ -204,7 +208,10 @@ export function storagePageHtml(controls) {
         '<div class="ftt-muted">删除条目会留下记录并随文件同步，对端不会把已删条目复活。</div></div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">本机缓冲（仅缓冲 · 权威=记忆文件）</div>',
-        '<div class="ftt-muted">本机只做加速读取与离线回退，可随时清除；权威数据是服务端记忆文件。</div></div>',
+        '<div class="ftt-muted">本机只做加速读取与离线回退，可随时清除；权威数据是服务端记忆文件。</div>',
+        // v3.16.0（用户要求「本地存储除了当前内存和变量外，增加本地文件存储模式，用于替代变量存储，避免超出限制。
+        //   但需用户在设定-存储中约定本地化路径。如果没约定路径，则视为不开启。开启后将取代变量方式」）
+        localFileModeHtml(), '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">存储通道（自动识别宿主）</div>',
         storageChannelHtml(),
@@ -279,6 +286,40 @@ function floorCalibrateSectionHtml() {
 }
 
 /**
+ * v3.16.0（用户要求）——**本地文件存储模式**分节（设定 → 存储）。
+ *   · 路径留空 = 不开启（变量层照旧）；填写 = 取代变量方式（本机缓冲写进宿主的本地文件，不受 localStorage 配额限制）。
+ *   · 路径输入框走通用 `data-ftt-cfg="storage.localFilePath"`（改动即落盘 + 自动对齐两层）。
+ */
+function localFileModeHtml() {
+    let info = null;
+    try { info = localLayerInfo(); } catch (e) { info = null; }
+    const on = !!(info && info.enabled);
+    const mode = on ? ('本地文件（' + esc(String(info.path || '')) + '）') : '变量（localStorage）';
+    const stat = '<div class="ftt-muted ftt-my-1" data-ftt-local-file-status><b>本机缓冲模式：' + mode + '</b>'
+        + (on
+            ? (' · 后端 ' + esc(String(info.backend || '—')) + ' · 最近写入 ' + Number(info.fileBytes || 0).toLocaleString() + ' 字符'
+                + (Number(info.failures) ? (' · 失败 ' + Number(info.failures)) : ''))
+            : (' · 变量层 ' + Number((info && info.localChars) || 0).toLocaleString() + ' 字符'))
+        + '</div>';
+    const one = '<div class="ftt-muted">填目录 = 改用本地文件；留空 = 不开启（仍用变量层）。</div>';
+    const desc = (() => { try { return settingsControlHtml({ key: 'storage.localFilePath', label: '本地文件目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
+    const detail = hintDetailsHtml('本地文件模式说明', '<div class="ftt-hint">开启后：本机缓冲改写宿主的<b>本地文件</b>，不再写 localStorage 变量 → '
+        + '不受浏览器本地化配额限制（旧模式信封超过 1.8M 字符会<b>静默停更</b>）。<br>'
+        + '目录只能在<b>宿主数据目录之内</b>（盘符 / 前导斜杠 / <code>..</code> 会被剥离，非法字符转 <code>_</code>）：'
+        + 'TauriTavern → 真实目录 <code>_tauritavern/extension-store/&lt;目录&gt;/</code>；网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<br>'
+        + '开启/关闭时自动对齐两层：变量层内容迁进文件（写 → 回读校验 → 才清变量键）；关闭则把文件内容迁回变量层。'
+        + '迁移<b>先写后清</b>，任何一步失败都不会清掉数据。</div>');
+    const extra = on
+        ? '<div class="ftt-muted">本地文件：读 ' + Number(info.reads || 0) + ' · 写 ' + Number(info.writes || 0) + '</div>'
+        : '';
+    const ops = '<div class="ftt-row">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前路径约定对齐两层：开启时把变量层迁进本地文件并清空变量键（写→回读校验→才清）；关闭时把文件内容迁回变量层">🔁 立即对齐本机层</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
+        + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
+    return stat + one + desc + detail + extra + ops;
+}
+
+/**
  * 存储页动作（V1 同名动作：storageStatusRefresh / storageSync / storageVerify / syncLogRefresh / syncLogClear）
  * @returns {Promise<{ok:boolean, action:string, note:string, detail?:object}>}
  */
@@ -286,6 +327,17 @@ export async function syncAction(action, payload) {
     const a = String(action || '');
     const p = payload || {};
     try {
+        // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐两层（变量 ↔ 本地文件；先写后清）
+        if (a === 'localFileAlign') {
+            const r = await switchLocalLayer();
+            const note = (r.ok ? '本机层对齐完成：' : '本机层对齐未完成：') + String(r.reason || '');
+            try { syncToast(r.ok ? 'success' : 'warning', note, ''); } catch (e) { /* 忽略 */ }
+            return { ok: r.ok !== false, action: a, note: note, detail: r };
+        }
+        if (a === 'localFileStatusRefresh') {
+            const info = (() => { try { return localFileStatsGet(); } catch (e) { return null; } })();
+            return { ok: true, action: a, note: '本地文件模式：' + (info && info.enabled ? ('已开启（' + String(info.path || '') + '）') : '未开启（使用变量层）'), detail: info };
+        }
         if (a === 'storageSync') {
             syncToast('sync', '正在跨端同步…', '读取对端并判定处置方式…（完成后自动写入备份文件）');
             const r = await crossSyncManual();
@@ -407,7 +459,9 @@ export async function syncAction(action, payload) {
 }
 
 /** 存储/同步动作名判定（供面板分发；保持 V1 动作名逐字一致） */
-export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote', 'syncPickMerge']);
+export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote', 'syncPickMerge',
+    // v3.16.0：本地文件模式（对齐两层 / 刷新状态）
+    'localFileAlign', 'localFileStatusRefresh']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }
