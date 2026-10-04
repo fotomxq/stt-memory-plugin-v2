@@ -79,8 +79,46 @@ const NSFW_KEYWORDS_V310 = [
     'blowjob', 'handjob', 'penetrat', 'pussy', 'dildo', 'bondage', 'hentai', 'lewd', 'nude', 'naked',
     'boobs', 'sperm', 'ejaculat', 'sodomy', 'incest', 'orgy', 'fetish', 'molest', 'prostitut', 'aroused', 'horny',
 ];
-/** 生效的内置识别词条库 = V1 的 63 条 + v3.10.0 追加（顺序：V1 在前，追加在后） */
-const NSFW_KEYWORDS = NSFW_KEYWORDS_V1.concat(NSFW_KEYWORDS_V310);
+/**
+ * v3.12.0（用户要求「NSFW弱化新增一些生僻词汇，尤其是涉及到重口味的内容」）：
+ * **再追加**一批 —— 文言/生僻的交合与情事说法、文雅器官代称、束缚调教/强制/失禁/侮辱称呼等**重口味**题材，
+ * 以及起补充作用的生僻英文词（词首通配 + 词界）。
+ * 选词口径：**优先多字词**，主动排除日常语境高频词（如「折磨 / 侮辱 / 操弄 / 狂干 / 折磨」等在普通叙事里
+ * 频繁出现、替换后会造成误伤的词不入选）；仍存在少量跨语境误伤（如「项圈 / 失禁 / 交尾」），
+ * 代价仅是该段文字被弱化，**不丢数据**，已登记在 `docs/history/P10c25-*.md`。
+ */
+const NSFW_KEYWORDS_V312 = [
+    // —— 文言 / 生僻：交合与情事 ——
+    '交欢', '欢好', '云雨', '巫山云雨', '鱼水之欢', '床笫之欢', '枕席之欢', '交颈', '交尾', '狎昵', '狎玩',
+    '狎妓', '嫖宿', '买春', '卖春', '宣淫', '淫猥', '秽乱', '秘戏', '房中术', '野合', '苟合', '私通', '通奸',
+    '偷情', '奸情', '失身', '破瓜', '开苞',
+    // —— 器官与身体（文雅 / 医学代称） ——
+    '阳物', '玉茎', '肉刃', '肉柱', '茎身', '龟首', '阴阜', '会阴', '鼠蹊', '股间', '腿心', '腿缝',
+    '臀缝', '臀瓣', '爱液', '淫液', '淫汁', '蜜液', '精水', '元阳', '阴精', '阳精', '乳晕', '乳沟',
+    // —— 重口味：束缚 / 调教 / 凌辱 ——
+    '绳缚', '绑缚', '捆绑', '镣铐', '项圈', '皮鞭', '鞭打', '滴蜡', '驯养', '驯化', '驯奴', '主奴',
+    '凌辱', '折辱', '羞辱', '屈辱', '作践', '虐待', '施虐', '受虐', '禁锢', '窒息play',
+    // —— 重口味：强制 / 药物 / 禁忌 ——
+    '春药', '媚药', '催情药', '催情', '迷药', '蒙汗药', '灌醉', '胁迫', '要挟', '威逼', '轮暴', '轮虐',
+    '群奸', '兽奸', '奸尸', '恋尸', '群P', '3P', '多P', '触手系', '黄金浴',
+    // —— 重口味：体液失控 ——
+    '失禁', '潮喷', '喷潮', '漏尿',
+    // —— 重口味：侮辱称呼 ——
+    '母狗', '母猪', '肉便器', '肉玩具', '性玩具', '骚逼', '贱婢', '淫娃', '荡娃', '骚蹄子',
+    // —— 重口味：过程粗俗说法 ——
+    '抽送', '顶弄', '撸管', '撸动', '套弄', '口活', '舔阴', '舔穴', '射了', '射进去', '开房', '车震', '勃起',
+    // —— 英文（词首通配 + 词界；短词与普通词一律不用，避免误伤） ——
+    'fellatio', 'cunnilingus', 'anilingus', 'irrumatio', 'coitus', 'concubitus', 'copulat', 'fornicat',
+    'deflower', 'deflorat', 'clitoris', 'clitoral', 'scrotum', 'testicl', 'sodomiz', 'dominatrix',
+    'sadomasochis', 'sadism', 'sadist', 'masochis', 'bukkake', 'gangbang', 'threesome', 'foursome',
+    'voyeur', 'exhibitionis', 'frottage', 'bestiality', 'zoophil', 'necrophil', 'nymphoman',
+    'lascivious', 'lecherous', 'lechery', 'debauchery', 'debauch', 'licentious', 'salacious', 'lubricious',
+    'concupiscen', 'carnal', 'erogenous', 'phallus', 'phallic', 'pudenda', 'perineum', 'orgiastic',
+    'rapist', 'raping', 'raped', 'sexual', 'erection', 'shibari', 'kinbaku', 'chikan', 'nakadashi',
+    'paizuri', 'oppai', 'ecchi', 'ahegao', 'futanari', 'yaoi',
+];
+/** 生效的内置识别词条库 = V1 的 63 条 + v3.10.0 追加 + v3.12.0 追加（顺序：V1 在前，追加在后） */
+const NSFW_KEYWORDS = NSFW_KEYWORDS_V1.concat(NSFW_KEYWORDS_V310).concat(NSFW_KEYWORDS_V312);
 
 /** 内置转化词（与识别词条一一对应；缺转化词的条目自动跳过） */
 const NSFW_REPLACE_PAIRS = {
@@ -127,6 +165,59 @@ const NSFW_REPLACE_PAIRS = {
     'nude': 'unclothed', 'naked': 'unclothed', 'boobs': 'chest', 'sperm': 'fluid', 'ejaculat': 'release',
     'sodomy': 'taboo act', 'incest': 'taboo kinship', 'orgy': 'gathering', 'fetish': 'fixation',
     'molest': 'harass', 'prostitut': 'courtesan', 'aroused': 'stirred', 'horny': 'restless',
+    // ==================== v3.12.0 追加（与 NSFW_KEYWORDS_V312 逐条对应） ====================
+    // —— 文言 / 生僻：交合与情事 ——
+    '交欢': '相拥', '欢好': '亲近', '云雨': '共度良宵', '巫山云雨': '共度良宵', '鱼水之欢': '亲密',
+    '床笫之欢': '亲密', '枕席之欢': '亲密', '交颈': '相拥', '交尾': '相伴', '狎昵': '轻浮亲昵',
+    '狎玩': '轻薄', '狎妓': '寻欢', '嫖宿': '寻欢', '买春': '寻欢', '卖春': '风尘之事', '宣淫': '放纵',
+    '淫猥': '不端', '秽乱': '失序', '秘戏': '私密之事', '房中术': '私密之术', '野合': '私会',
+    '苟合': '私会', '私通': '私会', '通奸': '私会', '偷情': '私会', '奸情': '私情', '失身': '失守',
+    '破瓜': '初次', '开苞': '初次',
+    // —— 器官与身体（文雅 / 医学代称） ——
+    '阳物': '腰腹之间', '玉茎': '腰腹之间', '肉刃': '腰腹之间', '肉柱': '腰腹之间', '茎身': '腰腹之间',
+    '龟首': '私密之处', '阴阜': '私密之处', '会阴': '私密之处', '鼠蹊': '腰腹之间', '股间': '腰腹之间',
+    '腿心': '腰腹之间', '腿缝': '腰腹之间', '臀缝': '腰臀', '臀瓣': '腰臀', '爱液': '湿意',
+    '淫液': '湿意', '淫汁': '湿意', '蜜液': '湿意', '精水': '体液', '元阳': '精气', '阴精': '体液',
+    '阳精': '体液', '乳晕': '胸前', '乳沟': '胸前',
+    // —— 重口味：束缚 / 调教 / 凌辱 ——
+    '绳缚': '受制', '绑缚': '受制', '捆绑': '受制', '镣铐': '束具', '项圈': '束具', '皮鞭': '鞭具',
+    '鞭打': '责打', '滴蜡': '苦痛', '驯养': '驯服', '驯化': '驯服', '驯奴': '受制之人', '主奴': '主从',
+    '凌辱': '欺凌', '折辱': '欺凌', '羞辱': '难堪', '屈辱': '难堪', '作践': '苛待', '虐待': '苛待',
+    '施虐': '苛待', '受虐': '承痛', '禁锢': '受制', '窒息play': '特殊癖好',
+    // —— 重口味：强制 / 药物 / 禁忌 ——
+    '春药': '药石', '媚药': '药石', '催情药': '药石', '催情': '药石', '迷药': '药物', '蒙汗药': '药物',
+    '灌醉': '劝酒', '胁迫': '施压', '要挟': '施压', '威逼': '施压', '轮暴': '施暴', '轮虐': '施暴',
+    '群奸': '施暴', '兽奸': '禁忌之举', '奸尸': '禁忌之举', '恋尸': '禁忌癖好', '群P': '亲密聚会',
+    '3P': '亲密聚会', '多P': '亲密聚会', '触手系': '异物', '黄金浴': '特殊癖好',
+    // —— 重口味：体液失控 ——
+    '失禁': '失守', '潮喷': '失守', '喷潮': '失守', '漏尿': '失守',
+    // —— 重口味：侮辱称呼 ——
+    '母狗': '轻贱之人', '母猪': '轻贱之人', '肉便器': '受制之人', '肉玩具': '受制之人',
+    '性玩具': '受制之人', '骚逼': '放浪之人', '贱婢': '轻贱之人', '淫娃': '放浪之人',
+    '荡娃': '放浪之人', '骚蹄子': '放浪之人',
+    // —— 重口味：过程粗俗说法 ——
+    '抽送': '起伏', '顶弄': '起伏', '撸管': '独自纾解', '撸动': '抚弄', '套弄': '抚弄', '口活': '亲昵',
+    '舔阴': '亲昵', '舔穴': '亲昵', '射了': '释放', '射进去': '结合', '开房': '共处一室',
+    '车震': '共处一室', '勃起': '紧绷',
+    // —— 英文 ——
+    'fellatio': 'oral intimacy', 'cunnilingus': 'oral intimacy', 'anilingus': 'intimate act',
+    'irrumatio': 'oral intimacy', 'coitus': 'intimacy', 'concubitus': 'intimacy', 'copulat': 'intimacy',
+    'fornicat': 'intimacy', 'deflower': 'first intimacy', 'deflorat': 'first intimacy',
+    'clitoris': 'intimate area', 'clitoral': 'intimate', 'scrotum': 'groin', 'testicl': 'groin',
+    'sodomiz': 'taboo act', 'dominatrix': 'restraining figure', 'sadomasochis': 'harsh fixation',
+    'sadism': 'harsh fixation', 'sadist': 'harsh figure', 'masochis': 'enduring fixation',
+    'bukkake': 'gathering', 'gangbang': 'gathering', 'threesome': 'gathering', 'foursome': 'gathering',
+    'voyeur': 'onlooker', 'exhibitionis': 'display fixation', 'frottage': 'pressing intimacy',
+    'bestiality': 'taboo act', 'zoophil': 'taboo fixation', 'necrophil': 'taboo fixation',
+    'nymphoman': 'restless desire', 'lascivious': 'improper', 'lecherous': 'improper',
+    'lechery': 'impropriety', 'debauchery': 'excess', 'debauch': 'excess', 'licentious': 'unrestrained',
+    'salacious': 'improper', 'lubricious': 'improper', 'concupiscen': 'desire', 'carnal': 'bodily',
+    'erogenous': 'sensitive', 'phallus': 'private symbol', 'phallic': 'symbolic', 'pudenda': 'private area',
+    'perineum': 'groin', 'orgiastic': 'gathering', 'rapist': 'assailant', 'raping': 'assault',
+    'raped': 'assaulted', 'sexual': 'intimate', 'erection': 'tension', 'shibari': 'restraint',
+    'kinbaku': 'restraint', 'chikan': 'harassment', 'nakadashi': 'intimacy', 'paizuri': 'chest intimacy',
+    'oppai': 'chest', 'ecchi': 'improper', 'ahegao': 'dazed look', 'futanari': 'ambiguous figure',
+    'yaoi': 'male romance',
 };
 /** 内置标准转化库：逐条对应内置识别词条库（顺序一致；缺转化词自动跳过） */
 const NSFW_RULES = NSFW_KEYWORDS.map(k => ({ from: k, to: NSFW_REPLACE_PAIRS[k] || '' })).filter(r => r.to);
@@ -799,7 +890,7 @@ async function runNsfwSoften(opts) {
 }
 
 export {
-    NSFW_SOFTEN_BATCH, NSFW_TEXT_CAP, NSFW_FIELD_MAP, NSFW_DIM_LABEL, NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310,
+    NSFW_SOFTEN_BATCH, NSFW_TEXT_CAP, NSFW_FIELD_MAP, NSFW_DIM_LABEL, NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_KEYWORDS_V312,
     NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_EN_INNOCENT,
     nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordsSeed, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRulesSeed, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,

@@ -19,7 +19,7 @@ import {
     nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwKeywordHits, nsfwApplyRules, nsfwFixedReplace, nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt,
-    applyNsfwSoftenResult, nsfwSoftenState, nsfwSoftenRuleText, runNsfwSoften, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_REPLACE_PAIRS,
+    applyNsfwSoftenResult, nsfwSoftenState, nsfwSoftenRuleText, runNsfwSoften, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_KEYWORDS_V312, NSFW_REPLACE_PAIRS,
 } from '../../core/nsfw.js';
 import { buildSummaryPrompt } from '../../core/prompt.js';
 import { nsfwPageHtml, nsfwAction, NSFW_ACTIONS } from '../../ui/nsfw.js';
@@ -46,18 +46,21 @@ let aiCalls = 0;
 setAiHooks({ callAi: async () => { aiCalls++; return { ok: true, text: aiText }; }, feedText: () => '', busy: () => false });
 
 /**
- * v3.10.0（用户要求「补充新的词条进去，扩大 NSFW 识别范围」）—— **有意偏离 V1**：
+ * v3.10.0（用户要求「补充新的词条进去，扩大 NSFW 识别范围」）+ v3.12.0（用户要求「新增一些生僻词汇，
+ * 尤其是涉及到重口味的内容」）—— **有意偏离 V1**：
  * 识别词条库与转化库在 V1 的 63 条之后**追加**了新词条（V1 的 63 条原样保留在前、顺序不变）。
- * 因此与 V1 黄金样本的「库规模 / 操作序列计数」比较需按**追加量**归一：计数减去 `V310` 后仍应与 V1 逐字一致。
+ * 因此与 V1 黄金样本的「库规模 / 操作序列计数」比较需按**追加总量**归一：计数减去 `ADD` 后仍应与 V1 逐字一致。
  * 追加词条的**正向**行为（能命中、能转化、逐条有转化词）由 `tests/unit/nsfw-level.test.js` 的 G 组单独锁死。
  */
 const V310 = NSFW_KEYWORDS_V310.length;
+const V312 = NSFW_KEYWORDS_V312.length;
+const ADD = V310 + V312;
 const V1_COUNT = NSFW_KEYWORDS_V1.length;
 const deshift = (v) => {
     if (Array.isArray(v)) return v.map(deshift);
     if (v && typeof v === 'object') {
         const o = {};
-        for (const k of Object.keys(v)) o[k] = (k === 'n' || k === 'keywords' || k === 'rules') ? (Number(v[k]) - V310) : deshift(v[k]);
+        for (const k of Object.keys(v)) o[k] = (k === 'n' || k === 'keywords' || k === 'rules') ? (Number(v[k]) - ADD) : deshift(v[k]);
         return o;
     }
     return v;
@@ -82,24 +85,24 @@ function boot(stateLike) {
 // ============================================================
 // H 组：与 V1 逐项比对
 // ============================================================
-R.assert('H1 库规模与内容（v3.10.0 有意偏离 V1 · 计数已归一）：V1 的 63 条**原样在前**（头 6 / 尾部 6 逐字一致）+ v3.10.0 追加词条（逐条有转化词）、字段表 12 维、单批 12', (() => {
+R.assert('H1 库规模与内容（v3.10.0 + v3.12.0 有意偏离 V1 · 计数已归一）：V1 的 63 条**原样在前**（头 6 / 尾部 6 逐字一致）+ 追加词条（逐条有转化词）、字段表 12 维、单批 12', (() => {
     boot({});
     const kw = nsfwKeywordList(), rl = nsfwRuleList();
     const prefixOk = V1_COUNT === 63
         && J(kw.slice(0, 6)) === J(G.lib.kwHead)                           // V1 头部原样
         && J(kw.slice(V1_COUNT - 6, V1_COUNT)) === J(G.lib.kwTail)         // V1 尾部原样（第 57–63 条）
-        && kw.length === V1_COUNT + V310 && rl.length === kw.length
+        && kw.length === V1_COUNT + ADD && rl.length === kw.length
         && NSFW_KEYWORDS.every((k) => !!NSFW_REPLACE_PAIRS[k])             // 识别 / 转化逐条对应
         && NSFW_RULES.length === NSFW_KEYWORDS.length;
     const norm = {
-        keywords: kw.length - V310, rules: rl.length - V310,
+        keywords: kw.length - ADD, rules: rl.length - ADD,
         kwHead: kw.slice(0, 6), kwTail: kw.slice(V1_COUNT - 6, V1_COUNT),
         ruleHead: rl.slice(0, 3), ruleTail: rl.slice(V1_COUNT - 3, V1_COUNT),
-        exposedKeywords: NSFW_KEYWORDS.length - V310, exposedRules: NSFW_RULES.length - V310,
+        exposedKeywords: NSFW_KEYWORDS.length - ADD, exposedRules: NSFW_RULES.length - ADD,
         exposedFieldMapKeys: Object.keys(NSFW_FIELD_MAP).length, batch: NSFW_SOFTEN_BATCH,
     };
     return prefixOk && J(norm) === J(G.lib) && NSFW_SOFTEN_BATCH === 12;
-})(), (() => { boot({}); return { k: nsfwKeywordList().length, r: nsfwRuleList().length, v1: V1_COUNT, add: V310 }; })());
+})(), (() => { boot({}); return { k: nsfwKeywordList().length, r: nsfwRuleList().length, v1: V1_COUNT, add: ADD, v310: V310, v312: V312 }; })());
 
 R.assert('H2 固定规则替换 nsfwApplyRules：6 组文本（中文 / 英文词形 / 普通词误伤 / 混合 / 无命中）逐字符与 V1 一致', (() => {
     boot({});
@@ -303,7 +306,7 @@ R.assert('U2 设定页接入：safety 子页渲染该页（不再是「待后续
 await A('U3 词条库动作：nsfwKwAdd / nsfwKwSave / nsfwKwDel / nsfwKwReset 改库并回填提示（payload 取值）', async () => {
     boot({});
     cfg.nsfwKeywords = [];
-    // V1 口径：首次编辑会先把内置库物化为自定义列表（V1 63 条 + v3.10.0 追加 → 动态取长度）再增/改/删
+    // V1 口径：首次编辑会先把内置库物化为自定义列表（V1 63 条 + v3.10.0/v3.12.0 追加 → 动态取长度）再增/改/删
     const add = await nsfwAction('nsfwKwAdd', { text: '露骨词甲' });
     const afterAdd = cfg.nsfwKeywords.slice();
     const save = await nsfwAction('nsfwKwSave', { idx: 0, text: '露骨词乙' });
@@ -312,9 +315,9 @@ await A('U3 词条库动作：nsfwKwAdd / nsfwKwSave / nsfwKwDel / nsfwKwReset �
     const afterDel = cfg.nsfwKeywords.slice();
     const reset = await nsfwAction('nsfwKwReset', {});
     return add.ok === true && String(add.note).indexOf('已加入词条库') >= 0
-        && afterAdd.length === V1_COUNT + V310 + 1 && afterAdd[afterAdd.length - 1] === '露骨词甲'
-        && save.ok === true && afterSave.length === V1_COUNT + V310 + 1 && afterSave[0] === '露骨词乙'
-        && del.ok === true && afterDel.length === V1_COUNT + V310 && afterDel.indexOf('露骨词乙') < 0
+        && afterAdd.length === V1_COUNT + ADD + 1 && afterAdd[afterAdd.length - 1] === '露骨词甲'
+        && save.ok === true && afterSave.length === V1_COUNT + ADD + 1 && afterSave[0] === '露骨词乙'
+        && del.ok === true && afterDel.length === V1_COUNT + ADD && afterDel.indexOf('露骨词乙') < 0
         && reset.ok === true && String(reset.note).indexOf('已恢复内置默认词条') >= 0 && cfg.nsfwKeywords.length === 0;
 }, '');
 
