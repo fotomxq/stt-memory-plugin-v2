@@ -15,10 +15,16 @@
 // 一致性由 tests/unit/nsfw-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { cfg, state, saveState, notifyHooks, dbgLog } from './model/runtime.js';
-import { PROMPT_TEMPLATES_V2, normalizeDeltaKeys } from './config.js';
+import { PROMPT_TEMPLATES_V2, normalizeDeltaKeys, KIND_MAP } from './config.js';
 import { extractJsonObject } from './util.js';
 import { atomIsHidden } from './merge.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
+// v3.8.0（用户要求）：**NSFW 等级留档**（无/弱/强）—— 判级 / 打标（只升不降）/ 全库补档
+import {
+    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
+    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelOf, nsfwLevelFromEntry,
+    nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
+} from './nsfw-level.js';
 
 /** 单次提交条数（与其它修复管道同口径：一批一次，余量下次继续） */
 const NSFW_SOFTEN_BATCH = 12;
@@ -76,6 +82,30 @@ const NSFW_EN_INNOCENT = ['cumulative', 'cumulatively', 'cumbersome', 'cumbersom
 const NSFW_EN_INNOCENT_SET = new Set(NSFW_EN_INNOCENT);
 
 // ==================== 识别词条库（v1.197） ====================
+/**
+ * v3.8.0：**维度键 → 真实容器**（修 V1 移植缺陷）。
+ *   `NSFW_FIELD_MAP` 用的是维度键（`states` 代表「状态记录」），而状态容器在 state 上叫 `currentStates` ——
+ *   此前直接 `state[dim]` 取值，`state.states` 恒为 undefined，导致**状态记录整维被扫描/弱化悄悄跳过**
+ *   （V1 同样如此，本版按用户「弱化 NSFW 功能修复」的口径修正 → **有意偏离 V1**，黄金样本已登记）。
+ * @param {string} dim 维度键
+ * @returns {Array}
+ */
+function nsfwDimList(dim) {
+    try {
+        const km = KIND_MAP[String(dim)];
+        const v = km && typeof km.get === 'function' ? km.get() : (state && state[String(dim)]);
+        return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+}
+/** 同上，但作用于**传入的 state 对象**（统计/补档可对任意快照运行） */
+function nsfwDimListOf(st, dim) {
+    try {
+        const d = String(dim);
+        const v = (st && typeof st === 'object') ? st[d === 'states' ? 'currentStates' : d] : null;
+        return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+}
+
 /** 生效词条库：自定义列表非空 → 用它；否则用内置库 */
 function nsfwKeywordList() {
     try {
@@ -400,7 +430,10 @@ function nsfwEntryTitle(dim, it) {
         return s.length > 24 ? s.slice(0, 23) + '…' : s;
     } catch (e) { return ''; }
 }
-/** 固定规则替换落地：按与扫描同一套白名单字段遍历，命中即写回并刷新 `updatedAt`（零 AI） */
+/**
+ * 固定规则替换落地：按与扫描同一套白名单字段遍历，命中即写回并刷新 `updatedAt`（零 AI）。
+ * v3.8.0：**只写文本字段** —— `nsfw` 留档等级**一概不动**（「弱化后标签不变，用于永久性留档」）。
+ */
 function nsfwFixedReplace(opts) {
     const o = opts || {};
     const out = { ok: true, fields: 0, replaced: 0, items: 0, skipped: 0, details: [] };
@@ -408,7 +441,7 @@ function nsfwFixedReplace(opts) {
         const rules = nsfwRuleList();
         if (!rules.length) { out.skipped = 1; return out; }
         for (const dim of Object.keys(NSFW_FIELD_MAP)) {
-            for (const it of ((state && state[dim]) || [])) {
+            for (const it of nsfwDimList(dim)) {
                 if (!it || !it.id) continue;
                 if (dim === 'atoms' && atomIsHidden(it)) continue;   // 已总结隐藏的情节不被机械替换
                 let touched = false;
@@ -441,7 +474,7 @@ function nsfwScan(opts) {
     try {
         for (const dim of dims) {
             if (!NSFW_FIELD_MAP[dim]) continue;
-            for (const it of ((state && state[dim]) || [])) {
+            for (const it of nsfwDimList(dim)) {
                 if (!it || !it.id) continue;
                 if (dim === 'atoms' && atomIsHidden(it)) continue;   // 已总结隐藏的情节不参与扫描
                 scannedItems++;
@@ -449,7 +482,11 @@ function nsfwScan(opts) {
                     scannedFields++;
                     const hits = nsfwKeywordHits(f.text);
                     if (!hits.length) continue;
-                    items.push({ dim, id: String(it.id), path: f.path, text: String(f.text), hits, title: nsfwEntryTitle(dim, it) });
+                    // v3.8.0：**只在已留档时**带上 level —— 未留档的数据保持与 V1 逐字一致的扫描/打包结构（黄金样本口径）
+                    const lv = nsfwLevelOf(it);
+                    const row = { dim, id: String(it.id), path: f.path, text: String(f.text), hits, title: nsfwEntryTitle(dim, it) };
+                    if (lv !== 'none') row.level = lv;
+                    items.push(row);
                     byDim[dim] = (byDim[dim] || 0) + 1;
                 }
             }
@@ -464,6 +501,98 @@ function nsfwSoftenPack(opts) {
     const entries = scan.items.slice(0, NSFW_SOFTEN_BATCH).map((x, i) => Object.assign({ n: i + 1, label: NSFW_DIM_LABEL[x.dim] || x.dim }, x));
     return { entries, total: scan.total, truncated: Math.max(0, scan.total - entries.length), byDim: scan.byDim, scannedItems: scan.scannedItems, scannedFields: scan.scannedFields };
 }
+// ==================== v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档） ====================
+// 用户要求：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
+//   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。
+//   当弱化 NSFW 功能修复后，**NSFW 标签不会改变，用于永久性留档**。」
+// 口径：字段 `nsfw` = `none|weak|strong`（缺省 = 无）；判级依据**写入当时的内容**（AI 显式标注优先，其次按原文）；
+//   打标**只升不降**（`nsfwStampLevel`）：弱化、改写、重归一化、跨端合并都不会把「强」降回「弱/无」。
+//   本模块的弱化路径（`nsfwFixedReplace` / `applyNsfwSoftenResult`）**只写文本字段**，绝不触碰 `nsfw`。
+
+/** 生效的**强级**词库（= 识别词条库；可经 `cfg.nsfwKeywords` 自定义） */
+function nsfwStrongList() { return nsfwKeywordList(); }
+
+/**
+ * 按**条目文本**判级（强 > 弱 > 无）：命中露骨词条 → `strong`；仅有亲密/暗示信号 → `weak`；都没有 → `none`。
+ * @param {string} dim 维度键（字段白名单同 `NSFW_FIELD_MAP`）
+ * @param {object} it 条目
+ * @returns {'none'|'weak'|'strong'}
+ */
+function nsfwClassifyItem(dim, it) {
+    try {
+        if (!it || typeof it !== 'object') return 'none';
+        let weak = false;
+        for (const f of nsfwTextFields(dim, it)) {
+            if (nsfwKeywordHits(f.text).length) return 'strong';
+            if (!weak && nsfwWeakHit(f.text)) weak = true;
+        }
+        return weak ? 'weak' : 'none';
+    } catch (e) { return 'none'; }
+}
+
+/**
+ * 给单条打标（**只升不降**）：取「既有留档 / AI 显式标注 / 按原文判级」三者中的最高级。
+ * @returns {{from:string, to:string, changed:boolean}}
+ */
+function nsfwStampItem(dim, it, aiLevel) {
+    try {
+        const level = nsfwLevelMax(nsfwLevelOf(it), nsfwLevelNorm(aiLevel), nsfwClassifyItem(dim, it));
+        return nsfwStampLevel(it, level);
+    } catch (e) { return { from: 'none', to: 'none', changed: false }; }
+}
+
+/** 给「归一化后的条目」打标：`raw` 为**写入原文**（可带 AI 的 `NSFW` / `露骨程度` 标注键） */
+function nsfwStampEntry(dim, raw, it) { return nsfwStampItem(dim, it, nsfwLevelFromEntry(raw)); }
+
+/**
+ * 等级分布统计（只读；供界面/诊断）。
+ * @param {object} [st] 状态快照（缺省用内核 state）
+ * @returns {{none:number, weak:number, strong:number, total:number, byDim:object}}
+ */
+function nsfwLabelStats(st) {
+    const out = { none: 0, weak: 0, strong: 0, total: 0, byDim: {} };
+    try {
+        for (const dim of Object.keys(NSFW_FIELD_MAP)) {
+            const arr = st ? nsfwDimListOf(st, dim) : nsfwDimList(dim);
+            for (const it of arr) {
+                if (!it || !it.id) continue;
+                const l = nsfwLevelOf(it);
+                out[l === 'strong' ? 'strong' : (l === 'weak' ? 'weak' : 'none')]++;
+                out.total++;
+            }
+        }
+    } catch (e) { /* 忽略 */ }
+    return out;
+}
+
+/**
+ * **全库补档**（幂等、只升不降）：把「写入时没打标」的存量/派生条目标上等级。
+ *   覆盖场景：v3.8.0 之前的老存档、修复/推演/情节总结等派生新建的条目 —— 载入后跑一次即可。
+ * @param {{dims?:string[]}} [opts]
+ * @returns {{scanned:number, stamped:number, weak:number, strong:number, byDim:object}}
+ */
+function nsfwBackfill(opts) {
+    const o = opts || {};
+    const dims = (o.dims && o.dims.length) ? o.dims : Object.keys(NSFW_FIELD_MAP);
+    const out = { scanned: 0, stamped: 0, weak: 0, strong: 0, byDim: {} };
+    try {
+        for (const dim of dims) {
+            if (!NSFW_FIELD_MAP[dim]) continue;
+            for (const it of nsfwDimList(dim)) {
+                if (!it || !it.id) continue;
+                out.scanned++;
+                const r = nsfwStampItem(dim, it);
+                if (!r.changed) continue;
+                out.stamped++;
+                if (r.to === 'strong') out.strong++; else if (r.to === 'weak') out.weak++;
+                out.byDim[dim] = (out.byDim[dim] || 0) + 1;
+            }
+        }
+        if (out.stamped) { try { saveState(); } catch (e) { /* 忽略 */ } }
+    } catch (e) { /* 忽略 */ }
+    return out;
+}
+
 /** 提示词（V1 `buildNsfwSoftenPrompt`） */
 function buildNsfwSoftenPrompt(pack) {
     try {
@@ -471,14 +600,17 @@ function buildNsfwSoftenPrompt(pack) {
         if (!p.entries.length) return null;
         const tpl = String((cfg.promptTemplates && cfg.promptTemplates.nsfwSoften) || (PROMPT_TEMPLATES_V2 && PROMPT_TEMPLATES_V2.nsfwSoften) || '').trim()
             || '把下列条目里的露骨描写改写成柔性、克制、留白的表述（不添加新事实、长度不超过原文）；只输出 JSON。';
-        const lines = p.entries.map(e => `#${e.n} ｜ ${e.label} ｜ 字段：${e.path}${e.title ? ` ｜ 条目：${e.title}` : ''} ｜ 命中：${e.hits.slice(0, 6).join('、')}\n   原文：${String(e.text).slice(0, 600)}`);
+        const lines = p.entries.map(e => `#${e.n} ｜ ${e.label} ｜ 字段：${e.path}${e.title ? ` ｜ 条目：${e.title}` : ''} ｜ 命中：${e.hits.slice(0, 6).join('、')}${e.level && e.level !== 'none' ? ` ｜ 留档等级：${nsfwLevelLabel(e.level)}` : ''}\n   原文：${String(e.text).slice(0, 600)}`);
         return [
             { role: 'system', content: `${tpl}\n只输出 JSON，不要解释，不要复述原文。` },
             { role: 'user', content: `【待弱化清单（本次唯一工作对象，共 ${p.entries.length} 条）】\n${lines.join('\n')}\n\n输出：{"弱化":[{"编号":1,"文本":"改写后的完整文本","说明":"一句话说明改了什么"}],"无法处理":[2]}（按 #编号 引用；文本不得含露骨词汇、长度不超过原文；没有改动的条目放进「无法处理」或省略）。` },
         ];
     } catch (e) { return null; }
 }
-/** 应用结果（强校验：不得仍含露骨关键词、不得膨胀、只写命中字段） */
+/**
+ * 应用结果（强校验：不得仍含露骨关键词、不得膨胀、只写命中字段）。
+ * v3.8.0：与固定替换同口径 —— **不触碰 `nsfw` 留档等级**（弱化只改文本，标签永久留档）。
+ */
 function applyNsfwSoftenResult(pack, delta) {
     const out = { applied: 0, skipped: 0, unchanged: 0, unable: 0, failed: 0, details: [] };
     try {
@@ -495,7 +627,7 @@ function applyNsfwSoftenResult(pack, delta) {
                 const n = Number(String(rawN == null ? '' : rawN).replace(/[^0-9]/g, ''));
                 const e = byN.get(n);
                 if (!e) { out.skipped++; continue; }
-                const it = (state[e.dim] || []).find(x => x && String(x.id) === String(e.id));
+                const it = nsfwDimList(e.dim).find(x => x && String(x.id) === String(e.id));
                 if (!it) { out.skipped++; continue; }
                 const txt = String((raw['文本'] !== undefined) ? raw['文本'] : (raw.text !== undefined ? raw.text : (raw.content || ''))).trim();
                 const note = String((raw['说明'] !== undefined) ? raw['说明'] : (raw.note || '')).replace(/\s+/g, ' ').slice(0, 40);
@@ -523,7 +655,12 @@ function nsfwSoftenEnabledOn() { try { return !!(cfg && cfg.nsfwSoftenEnabled ==
 function nsfwSoftenRuleText() {
     try {
         if (!nsfwSoftenEnabledOn()) return '';
-        return String((cfg.promptTemplates && cfg.promptTemplates.nsfwSoften) || (PROMPT_TEMPLATES_V2 && PROMPT_TEMPLATES_V2.nsfwSoften) || '').trim();
+        const base = String((cfg.promptTemplates && cfg.promptTemplates.nsfwSoften) || (PROMPT_TEMPLATES_V2 && PROMPT_TEMPLATES_V2.nsfwSoften) || '').trim();
+        // v3.8.0：既然弱化会改写正文，就要求 AI **同时标注原文的 NSFW 等级**（留档只升不降，弱化不改标签）
+        const level = '【NSFW 等级标注（每条情节必填）】输出里每条情节追加字段 "NSFW"，取值只有三种：无 / 弱 / 强 ——'
+            + '无 = 与 NSFW 完全无关；弱 = 有部分亲密或暗示但无露骨内容；强 = 完全是露骨内容。'
+            + '该等级按**原文（弱化之前）**判定：本规则只改正文措辞，标签必须记录原始程度，永久留档、此后不再改变。';
+        return [base, level].filter(Boolean).join('\n');
     } catch (e) { return ''; }
 }
 /** 状态摘要（设置页/总览/诊断：只读扫描，零 AI） */
@@ -588,7 +725,7 @@ async function runNsfwSoften(opts) {
         const r = applyNsfwSoftenResult(pack, delta);
         if (r.applied) { try { saveState(); } catch (e) { /* 忽略 */ } }
         const parts = [];
-        if (r.applied) parts.push(`已弱化 ${r.applied} 条`);
+        if (r.applied) parts.push(`已弱化 ${r.applied} 条（NSFW 标签留档不变）`);
         if (r.unchanged) parts.push(`无变化 ${r.unchanged} 条`);
         if (r.unable) parts.push(`AI 无法处理 ${r.unable} 条`);
         if (r.skipped) parts.push(`丢弃不合格 ${r.skipped} 条`);
@@ -596,10 +733,10 @@ async function runNsfwSoften(opts) {
         if (o.silent !== true) {
             notify(parts.length ? (r.applied ? 'success' : 'warning') : 'warning', r.applied ? '弱化 NSFW 完成' : '弱化 NSFW：AI 未给出可用结果',
                 parts.length
-                    ? `${parts.join(' · ')}；${r.details.length ? '例：' + r.details.slice(0, 3).join('；') : ''}${pack.truncated ? ` · 余 ${pack.truncated} 条可再点一次` : ''}`
+                    ? `${parts.join(' · ')}；NSFW 等级标签为「永久留档」：弱化只改措辞、不改标签（原文是「强」的条目仍记为「强」）。${r.details.length ? '例：' + r.details.slice(0, 3).join('；') : ''}${pack.truncated ? ` · 余 ${pack.truncated} 条可再点一次` : ''}`
                     : 'AI 未返回可用的改写文本（结果若仍含露骨词汇会被丢弃）。可重试或先检查提示词模板「内容弱化（NSFW）」。');
         }
-        try { dbgLog('弱化', { action: '弱化 NSFW（v1.195）', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, byDim: pack.byDim, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, ms: Date.now() - t0, fixedBefore: fixedDone ? fixedDone.replaced : 0 }); } catch (e) { /* 忽略 */ }
+        try { dbgLog('弱化', { action: '弱化 NSFW（v1.195）', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, byDim: pack.byDim, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, ms: Date.now() - t0, fixedBefore: fixedDone ? fixedDone.replaced : 0, levels: nsfwLabelStats() }); } catch (e) { /* 忽略 */ }
         return { made: r.applied, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, details: r.details, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
     } catch (e) {
         const fx = null;
@@ -616,4 +753,8 @@ export {
     nsfwGetByPath, nsfwSetByPath, nsfwMirrorKey, nsfwSyncMirror, nsfwMirrorGroup, nsfwTextFields, nsfwEntryTitle,
     nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt, applyNsfwSoftenResult, nsfwSoftenEnabledOn, nsfwSoftenRuleText, nsfwSoftenState,
     runNsfwSoften,
+    // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
+    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
+    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
+    nsfwStrongList, nsfwClassifyItem, nsfwStampItem, nsfwStampEntry, nsfwLabelStats, nsfwBackfill,
 };

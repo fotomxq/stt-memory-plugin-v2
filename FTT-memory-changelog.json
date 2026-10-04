@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.8.0",
+      "date": "2026-09-30",
+      "title": "原子数据新增「NSFW 等级」字段（无 / 弱 / 强 · 永久性留档）",
+      "points": [
+        "① 新字段 nsfw（none / weak / strong）：（新增纯函数模块 core/nsfw-level.js）- 无 = 与 NSFW 完全无关（缺省即无，不写盘，不…",
+        "② 判级 = 写入当时的事实：AI 显式标注（delta 里的 nsfw / NSFW / 露骨程度 / NSFW等级，值认 无/弱/强 · none/weak/strong ·…",
+        "③ 打标位置统一：（新增 core/entry-meta.js#preserveEntryMeta，与 v3.7.0 楼层溯源同一套补齐）：AI 增量落库（mergeDelta …"
+      ]
+    },
     {
       "version": "3.7.0",
       "date": "2026-09-30",

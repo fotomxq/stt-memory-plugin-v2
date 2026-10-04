@@ -5713,6 +5713,87 @@ await assert('BN2 反方向联动：点「第 N 楼」在途时 —— 批量按
 })(), '');
 
 
+// ---------- BO NSFW 等级留档（v3.8.0） ----------
+// 用户要求（原话）：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
+//   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。
+//   当弱化 NSFW 功能修复后，**NSFW 标签不会改变，用于永久性留档**。」
+//   本小节端到端锁死：① 落库即打标（强 / 弱 / 无三级）② 列表行显示徽标 ③ **弱化后标签不变**（固定规则替换与 AI 弱化两条路径）
+//   ④ 状态记录维度参与扫描/替换（修 V1 移植缺陷，有意偏离）⑤ 设定页「📌 NSFW 等级留档」分节 + 「🔖 立即补档」真实点击。
+await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/弱/无）→ 列表行徽标 → **弱化后标签不变**（固定规则 + AI 两条路径）→ 状态记录参与扫描（修 V1 缺陷）→ 设定页分节与「🔖 立即补档」真实点击', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const N = await import('../core/nsfw.js');
+    const IG = await import('../core/ingest.js');
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepStates = JSON.parse(JSON.stringify(RT.state.currentStates || []));
+    const keepGen = host.ctx.generateRaw;
+    const keepAuto = RT.cfg.nsfwReplaceAuto;
+    const keepPopup = host.ctx.callGenericPopup;
+    try {
+        host.ctx.callGenericPopup = () => Promise.resolve(1);          // 危险动作确认（若有）
+        RT.cfg.nsfwKeywords = [];                                     // 用内置词条库（此前的小节可能自定义过）
+        RT.state.atoms = [];
+        RT.state.currentStates = [];
+        RT.state.lastKnownFloor = 0;
+        // ① 落库即打标：露骨 → 强；亲密暗示 → 弱；无关 → 无（不写字段）
+        IG.mergeDelta({ atoms: { add: [
+            { id: 'bo1-strong', 标题: '夜里', 正文: '两人做爱后相拥，她发出呻吟，他解开她的衣扣。', 日期: '1919-11-01' },
+            { id: 'bo1-weak', 标题: '码头告别', 正文: '两人在码头拥抱很久，最后轻轻亲吻，谁都没说话。', 日期: '1919-11-02' },
+            { id: 'bo1-none', 标题: '清点', 正文: '甲在仓库清点编号 3 的铜箱，登记账册后交给乙。', 日期: '1919-11-03' },
+        ] } }, { startFloor: 0, endFloor: 0 });
+        const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        const labelOk = g('bo1-strong').nsfw === 'strong' && g('bo1-weak').nsfw === 'weak'
+            && g('bo1-none').nsfw === undefined && RT.state.atoms.length === 3;
+        // ② 列表行徽标：强 → 「🔞强」、弱 → 「🔞弱」、无 → 无徽标
+        await entry.popupAction('tab', { tab: 'atoms' });
+        const listHtml = String(((await entry.popupAction('refresh', {})).html) || '');
+        const badgeOk = listHtml.indexOf('🔞强') >= 0 && listHtml.indexOf('🔞弱') >= 0
+            && (listHtml.match(/🔞强/g) || []).length === 1;
+        // ③ 固定规则替换（零 AI）真实点击 → 正文被改写，**标签不变**
+        const r1 = await entry.popupAction('nsfwRuleApply', {});
+        const s1 = g('bo1-strong');
+        const fixedOk = r1.ok === true && s1.text.indexOf('做爱') < 0 && s1.text.indexOf('呻吟') < 0
+            && s1.nsfw === 'strong' && r1.note.indexOf('固定规则替换完成') === 0;
+        // ④ AI 弱化路径（真实点击「🌶 弱化NSFW」）：先补一条新的露骨情节，关闭固定规则阶段、桩 AI 返回柔性文本
+        IG.mergeDelta({ atoms: { add: [{ id: 'bo1-ai', 标题: '药铺后院', 正文: '两人在药铺后院做爱，她的呻吟惊动了更夫。', 日期: '1919-11-04' }] } }, { startFloor: 0, endFloor: 0 });
+        const beforeAi = g('bo1-ai').nsfw;
+        RT.cfg.nsfwReplaceAuto = false;
+        host.ctx.generateRaw = async () => JSON.stringify({ 弱化: [{ 编号: 1, 文本: '两人在药铺后院亲近，动静惊动了更夫，谁也没再多说。', 说明: '去掉露骨描写' }] });
+        const soft = await entry.popupAction('nsfwSoften', {});
+        const after = g('bo1-ai');
+        const aiOk = beforeAi === 'strong' && soft.ok === true && Number(soft.detail && soft.detail.applied) >= 1
+            && after.text.indexOf('做爱') < 0 && after.nsfw === 'strong'
+            && String(soft.note || '').indexOf('标签留档不变') >= 0;
+        // ⑤ 状态记录维度参与扫描与替换（V1 因 `state.states` 恒空而整维跳过 → 有意偏离 V1，已登记）
+        RT.state.currentStates = [{ id: 'bo1-st', subject: '角色甲', field: '衣着', value: '赤裸上身', uses: 0, floorStart: 1, floorEnd: 1 }];
+        const scanStates = N.nsfwScan({ dims: ['states'] });
+        const fx2 = N.nsfwFixedReplace({ silent: true });
+        const stOk = scanStates.byDim.states >= 1 && fx2.replaced >= 1
+            && RT.state.currentStates[0].value.indexOf('赤裸') < 0;
+        await entry.popupAction('tab', { tab: 'atoms' });
+        const listHtml2 = String(((await entry.popupAction('refresh', {})).html) || '');
+        const keepBadgeOk = listHtml2.indexOf('🔞强') >= 0;      // 弱化之后，行内仍显示「🔞强」（永久留档）
+        // ⑥ 设定 → 内容弱化页：留档分节 + 真实点击「🔖 立即补档」
+        await entry.popupAction('tab', { tab: 'settings' });
+        const pg = String(((await entry.popupAction('settingsSub', { sub: 'safety' })).html) || '');
+        const pageOk = pg.indexOf('📌 NSFW 等级留档') >= 0 && pg.indexOf('data-ftt-nsfw-label-state') >= 0
+            && pg.indexOf('data-ftt-action="nsfwLabelBackfill"') >= 0 && pg.indexOf('🔖 立即补档') >= 0;
+        const back = await entry.popupAction('nsfwLabelBackfill', {});
+        const backOk = back.ok === true && String(back.note || '').indexOf('只升不降') >= 0
+            && String(back.note || '').indexOf('留档') > 0;
+        const ok = labelOk && badgeOk && fixedOk && aiOk && stOk && keepBadgeOk && pageOk && backOk;
+        if (!ok) console.log('BO1-DEBUG ' + JSON.stringify({ labelOk, badgeOk, fixedOk, aiOk, stOk, keepBadgeOk, pageOk, backOk, atoms: RT.state.atoms.map((x) => ({ id: x.id, nsfw: x.nsfw, text: String(x.text).slice(0, 24) })), note: String(soft.note || '').slice(0, 120), state: RT.state.currentStates[0] }));
+        return ok;
+    } finally {
+        RT.state.atoms = keepAtoms;
+        RT.state.currentStates = keepStates;
+        RT.cfg.nsfwReplaceAuto = keepAuto;
+        host.ctx.generateRaw = keepGen;
+        host.ctx.callGenericPopup = keepPopup;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

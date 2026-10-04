@@ -5,7 +5,7 @@
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
-import { dimCap, atomTitle, mergeTags, makeExtra, clockDateTrim } from './scalars.js';
+import { dimCap, atomTitle, mergeTags, makeExtra, clockDateTrim, nsfwField } from './scalars.js';
 
 function normalizeAtom(e, fallbackFloor) {
     const text = dimCap('atoms', normText(e?.text || e?.content));
@@ -39,11 +39,13 @@ function normalizeAtom(e, fallbackFloor) {
         ...(Number.isInteger(Number(e?.floorNowEnd)) && Number(e.floorNowEnd) >= Number(e.floorNowStart) ? { floorNowEnd: Number(e.floorNowEnd) } : {}),
         ...(e?.floorNowHash ? { floorNowHash: String(e.floorNowHash) } : {}),
         ...(e?.originGone === true ? { originGone: true, originGoneAt: Number(e.originGoneAt) > 0 ? Number(e.originGoneAt) : Date.now() } : {}),
+        // v3.8.0（用户要求）：**NSFW 等级留档**（无/弱/强）—— 只升不降、弱化后不变，见 core/nsfw-level.js
         uses: Number(e?.uses) || 0,
         // 原子层：标准化字段 + 可扩展插槽
         category: 'atoms',
         content: text,
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
+        extra: makeExtra({ type: e?.type, time: e?.time || e?.eventTime, entities: e?.entities, locations: e?.locations, keywords: e?.keywords, validity: e?.validity, permanence: e?.permanence }),        ...nsfwField(e),
         extra: makeExtra({ type: e?.type, time: e?.time || e?.eventTime, entities: e?.entities, locations: e?.locations, keywords: e?.keywords, validity: e?.validity, permanence: e?.permanence }),        };
 }
 

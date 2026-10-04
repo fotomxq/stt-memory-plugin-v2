@@ -72,7 +72,7 @@ docs/
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v3.7.0） |
+| 口径 | 权威来源 | 当前值（v3.8.0） |
 | --- | --- | --- |
 | 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.6.0` |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
@@ -81,11 +81,11 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 32 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 158 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 138 文件 / 2085 断言 |
-| 冒烟规模 | `tests/smoke-test.js` | 201 项 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 139 文件 / 2104 断言 |
+| 冒烟规模 | `tests/smoke-test.js` | 202 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
-| 历史批次档数 | `docs/history/*.md` | 136 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 137 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

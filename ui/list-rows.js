@@ -28,6 +28,7 @@
 // ============================================================
 import { cfg, state, getStoryNow } from '../core/model/runtime.js';
 import { floorPositionLabel } from '../core/floor-cover.js';   // v3.7.0：楼层显示 = 当前位置 / 原文已移除
+import { nsfwLevelOf } from '../core/nsfw.js';                    // v3.8.0：NSFW 等级留档徽标（无/弱/强）
 import { escHtml } from '../core/util.js';
 import { atomTitle, normPhase } from '../core/model/scalars.js';
 import { atomIsHidden } from '../core/merge.js';
@@ -200,25 +201,42 @@ function memoryBadge(id, ctx) {
 // ============================================================
 // 各维度行正文（返回 `{ main, tags: [], opsExtra }`；main 放在 V2 行的主体 span 内）
 // ============================================================
+/**
+ * v3.8.0：**NSFW 等级留档徽标**（无 → 不显示）——「无 / 弱 / 强」三级，按**原文**判定、**弱化后不改变**（永久留档）。
+ * @param {object} it 条目
+ * @returns {string} HTML 片段（可空）
+ */
+export function nsfwBadgeHtml(it) {
+    try {
+        const l = nsfwLevelOf(it);
+        if (l === 'none') return '';
+        const label = (l === 'strong') ? '强' : '弱';
+        const why = (l === 'strong') ? '完全是露骨内容' : '有部分亲密或暗示但无露骨内容';
+        return '<span class="ftt-tags-inline" title="NSFW 等级留档：' + label + '（' + why + '）｜按原文判定，弱化内容不会改变该标签">🔞' + label + '</span> ';
+    } catch (e) { return ''; }
+}
+
 export function listRowMainHtml(kind, e, ctx) {
     const now = (() => { try { return getStoryNow() || ''; } catch (x) { return ''; } })();
     const k = String(kind || '');
     const item = e || {};
     const cx = ctx || null;      // v3.1.0：渲染期上下文（关联行索引 / 条目索引）；不传则走原实现
+    const badge = nsfwBadgeHtml(item);      // v3.8.0：NSFW 等级留档（无 → 空串）
+    const withBadge = (html) => (badge ? badge + html : html);
     try {
-        if (k === 'atoms') return atomsRow(item, now);
-        if (k === 'memories') return memoriesRow(item, now, cx);
-        if (k === 'snapshots') return snapshotsRow(item, cx);
-        if (k === 'items') return itemsRow(item);
-        if (k === 'currencies') return currenciesRow(item);
-        if (k === 'rumors') return rumorsRow(item);
-        if (k === 'plans' || k === 'suspense') return planSuspRow(k, item, now, cx);
-        if (k === 'concepts') return conceptsRow(item, now, cx);
-        if (k === 'parallels') return parallelsRow(item, now, cx);
+        if (k === 'atoms') return withBadge(atomsRow(item, now));
+        if (k === 'memories') return withBadge(memoriesRow(item, now, cx));
+        if (k === 'snapshots') return withBadge(snapshotsRow(item, cx));
+        if (k === 'items') return withBadge(itemsRow(item));
+        if (k === 'currencies') return withBadge(currenciesRow(item));
+        if (k === 'rumors') return withBadge(rumorsRow(item));
+        if (k === 'plans' || k === 'suspense') return withBadge(planSuspRow(k, item, now, cx));
+        if (k === 'concepts') return withBadge(conceptsRow(item, now, cx));
+        if (k === 'parallels') return withBadge(parallelsRow(item, now, cx));
     } catch (x) { /* 单行渲染失败 → 回落摘要（不影响整页） */ }
     // 兜底（未覆盖的维度）：V1 无对应行渲染器时用摘要 + 调用统计
     const fallback = String(item.title || item.name || item.content || item.text || item.subject || '');
-    return '<b>' + esc(cut(fallback, 90)) + '</b>';
+    return withBadge('<b>' + esc(cut(fallback, 90)) + '</b>');
 }
 
 /** V1 `atomsHtml()` 23932~23955 */
@@ -495,7 +513,7 @@ export function stateRowMainHtml(s) {
     const field = String((s && s.field) == null ? '' : s.field);
     const value = String((s && s.value) == null ? '' : s.value);
     const head = field ? ('<b>' + esc(field) + '</b>' + (value ? ' ' : '')) : '';
-    return head + esc(value)
+    return nsfwBadgeHtml(s) + head + esc(value)
         + '<div class="ftt-meta">调用' + (s.uses || 0) + '次' + up + '</div>';
 }
 
