@@ -1008,7 +1008,8 @@ await assert('R6 v3.10.0 词条库扩充端到端：V1 的 63 条原样在前 + 
     const keepAtoms = JSON.parse(JSON.stringify(st.atoms || []));
     try {
         const libOk = NF.NSFW_KEYWORDS_V1.length === 63 && NF.NSFW_KEYWORDS_V310.length >= 70
-            && NF.NSFW_KEYWORDS.length === 63 + NF.NSFW_KEYWORDS_V310.length
+            && NF.NSFW_KEYWORDS_V312.length >= 100
+            && NF.NSFW_KEYWORDS.length === 63 + NF.NSFW_KEYWORDS_V310.length + NF.NSFW_KEYWORDS_V312.length
             && NF.NSFW_RULES.length === NF.NSFW_KEYWORDS.length
             && NF.NSFW_KEYWORDS.every((k) => !!NF.NSFW_REPLACE_PAIRS[k]);
         const js = JSON.stringify(NF.NSFW_KEYWORDS.slice(0, 6));

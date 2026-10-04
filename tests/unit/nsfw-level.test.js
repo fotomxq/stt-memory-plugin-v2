@@ -29,10 +29,10 @@ import {
     nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
     nsfwClassifyItem, nsfwStampItem, nsfwStampEntry, nsfwLabelStats, nsfwBackfill,
     nsfwScan, nsfwFixedReplace, nsfwKeywordList, nsfwRuleList, nsfwApplyRules, nsfwKeywordHits,
-    NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_SOFTEN_BATCH,
+    NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_KEYWORDS_V312, NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_SOFTEN_BATCH,
 } from '../../core/nsfw.js';
 
-const R = makeReporter('nsfw-level v3.8.0–v3.10.0 NSFW 等级留档（无 / 弱 / 强）+ 词条库扩充');
+const R = makeReporter('nsfw-level v3.8.0–v3.12.0 NSFW 等级留档（无 / 弱 / 强）+ 词条库扩充');
 const A = (n, c, e) => R.assert(n, !!c, e);
 const J = (v) => JSON.stringify(v);
 const doc = makeDocument(['ftt-panel']);
@@ -274,15 +274,16 @@ const f3ok = await (async () => {
 })();
 A('F3 手动新增/编辑（upsertEntry）同样打标：新增含亲密信号的记忆 → 弱；改写成露骨正文 → 升为强', f3ok, () => ({ memories: state.memories.map((x) => ({ id: x.id, nsfw: x.nsfw })) }));
 
-// ---------- G 组：v3.10.0 词条库扩充（扩大 NSFW 识别范围） ----------
+// ---------- G 组：v3.10.0 / v3.12.0 词条库扩充（扩大 NSFW 识别范围） ----------
 await A('G1 扩充是**纯追加**：V1 的 63 条原样保留在前（头部 6 条 / 第 57–63 条逐字不变），新增条目一律排在后面', (() => {
     const kw = nsfwKeywordList();
-    return NSFW_KEYWORDS_V1.length === 63 && NSFW_KEYWORDS_V310.length >= 70
-        && kw.length === 63 + NSFW_KEYWORDS_V310.length
+    const append = NSFW_KEYWORDS_V310.concat(NSFW_KEYWORDS_V312);
+    return NSFW_KEYWORDS_V1.length === 63 && NSFW_KEYWORDS_V310.length >= 70 && NSFW_KEYWORDS_V312.length >= 100
+        && kw.length === 63 + append.length
         && J(kw.slice(0, 6)) === J(['做爱', '性交', '性爱', '交合', '交媾', '上床'])
         && J(kw.slice(57, 63)) === J(['semen', 'intercourse', 'masturbat', 'erotic', 'nipple', 'genital'])
-        && kw.slice(63).every((k) => NSFW_KEYWORDS_V310.indexOf(k) >= 0);     // 追加段 = V310 列表
-})(), () => ({ total: nsfwKeywordList().length, v1: NSFW_KEYWORDS_V1.length, v310: NSFW_KEYWORDS_V310.length }));
+        && kw.slice(63).every((k) => append.indexOf(k) >= 0);     // 追加段 = V310 + V312 列表
+})(), () => ({ total: nsfwKeywordList().length, v1: NSFW_KEYWORDS_V1.length, v310: NSFW_KEYWORDS_V310.length, v312: NSFW_KEYWORDS_V312.length }));
 
 await A('G2 识别 / 转化逐条对应且无重复：新增词条**每一条都有转化词**（规则库条数 = 词条库条数），词条不重复', (() => {
     const kw = nsfwKeywordList();
@@ -326,5 +327,40 @@ await A('G5 扩充不影响既有词条的口径：V1 的 63 条替换结果逐�
     ];
     return cases.every(([src, want]) => nsfwApplyRules(src).text === want);
 })(), () => ({ porn: nsfwApplyRules('A porn and explicit scene.').text, sex: nsfwApplyRules('两人做爱后相拥，她发出呻吟。').text }));
+
+// ---------- G6 组：v3.12.0 生僻 / 重口味词条扩充 ----------
+await A('G6 v3.12.0 生僻词条（文言交合 / 文雅器官代称）真的能命中并机械转化，且不误伤普通叙事', (() => {
+    boot();
+    const cn = nsfwApplyRules('两人在帐中交欢，他行房中术，满口淫猥之词。');
+    const hit = nsfwKeywordHits('交欢 房中术 淫猥 玉茎 会阴 爱液');
+    const clean = nsfwKeywordHits('他被人操弄，狂干活到深夜，病痛折磨难忍，言语侮辱不断。');
+    return cn.text === '两人在帐中相拥，他行私密之术，满口不端之词。'
+        && hit.length === 6 && clean.length === 0;      // 高频普通词（操弄/狂干/折磨/侮辱）**不入选**
+})(), () => ({ cn: nsfwApplyRules('两人在帐中交欢，他行房中术，满口淫猥之词。').text, clean: nsfwKeywordHits('他被人操弄，狂干活到深夜，病痛折磨难忍，言语侮辱不断。').length }));
+
+await A('G6b v3.12.0 重口味词条（束缚调教 / 强制 / 失禁 / 侮辱称呼）逐条命中并机械转化', (() => {
+    boot();
+    const bind = nsfwApplyRules('她被绳缚，镣铐加身，只能受虐。');
+    const force = nsfwApplyRules('他胁迫她灌醉后失禁。');
+    const call = nsfwApplyRules('众人骂她母狗、贱婢、骚逼。');
+    const en = nsfwApplyRules('Fellatio with clitoris and scrotum, a sadomasochis scene.');
+    const enHits = nsfwKeywordHits('fellatio clitoris scrotum sadomasochis');
+    return bind.text === '她被受制，束具加身，只能承痛。'
+        && force.text === '他施压她劝酒后失守。'
+        && call.text === '众人骂她轻贱之人、轻贱之人、放浪之人。'
+        && en.text === 'oral intimacy with intimate area and groin, a harsh fixation scene.'
+        && enHits.length === 4;
+})(), () => ({ bind: nsfwApplyRules('她被绳缚，镣铐加身，只能受虐。').text, en: nsfwApplyRules('Fellatio with clitoris and scrotum, a sadomasochis scene.').text }));
+
+await A('G6c v3.12.0 库规模与弱级信号同步：词条库/转化库逐条对应、无重复；新增弱化输出词判为「弱」', (() => {
+    boot();
+    const kw = nsfwKeywordList();
+    const uniq = new Set(kw);
+    return NSFW_KEYWORDS_V312.length >= 100 && kw.length === 63 + NSFW_KEYWORDS_V310.length + NSFW_KEYWORDS_V312.length
+        && uniq.size === kw.length && NSFW_KEYWORDS_V312.every((k) => !!NSFW_REPLACE_PAIRS[k])
+        && NSFW_RULES.length === NSFW_KEYWORDS.length
+        && NSFW_WEAK_SIGNALS.length >= 78 && nsfwWeakHit('受制与束具，只是特殊癖好') === true
+        && nsfwClassifyItem('memories', { id: 'g6', title: '夜', content: '两人共度良宵，只余私会留下的余温。' }) === 'weak';
+})(), () => ({ total: nsfwKeywordList().length, v312: NSFW_KEYWORDS_V312.length, weak: NSFW_WEAK_SIGNALS.length }));
 
 R.done();
