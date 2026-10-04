@@ -4041,19 +4041,25 @@ await assert('AS2 宿主调用入流：经 getCtx() 的调用自动记 方法/�
     const ctx = SA.getCtx();
     const n0 = ctx.saveSettingsCount;
     ctx.saveSettingsDebounced();
-    const sync = TR.traceList({ cat: 'host' })[0];
+    await new Promise((r) => setTimeout(r, 0));      // v3.11.1：追踪记录晚一拍落地时不至于随机变红
+    // v3.11.1：**按 kind 过滤**而不是取 `[0]` —— 前面用例的异步追踪事件可能在 `traceClear()` 之后才落地，
+    //   抢走 `[0]` 会让本断言随机变红（实测 3 次红 1 次）。断言强度不变（仍查 kind/站点/ok/opId）。
+    const pick = (kind, opId) => TR.traceList({ cat: 'host' })
+        .filter((x) => x && x.kind === kind && (opId === undefined || x.opId === opId))[0];
+    const sync = pick('saveSettingsDebounced');
     // opId 关联：op 内发生的宿主调用归属该 op（跨层可回溯「谁调用的」）
     TR.traceClear();
     const op = TR.traceOpStart('ui.smokeCase');
     ctx.saveSettingsDebounced();
-    const inOp = TR.traceList({ cat: 'host' })[0];
+    await new Promise((r) => setTimeout(r, 0));
+    const inOp = pick('saveSettingsDebounced', op.opId);
     TR.traceOpEnd(op, { ok: true });
     // 异步宿主调用：resolve 后追记结果
     TR.traceClear();
     ctx.generateRaw = async () => 'ok-text';
     await ctx.generateRaw({ prompt: 'x' });
     await new Promise((r) => setTimeout(r, 20));
-    const asyncEv = TR.traceList({ cat: 'host' }).filter((x) => x.kind === 'generateRaw')[0];
+    const asyncEv = pick('generateRaw');
     delete ctx.generateRaw;
     return !!sync && sync.cat === 'host' && sync.kind === 'saveSettingsDebounced' && sync.ok === true
         && TR.traceSiteText(sync.site).indexOf('tests/smoke-test.js') === 0

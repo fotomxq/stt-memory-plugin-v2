@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.11.0",
+  "version": "3.11.1",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.11.1",
+      "date": "2026-10-04",
+      "title": "修「分析过却没有台账标记」与「拆楼检测基线错位」",
+      "points": [
+        "① 真机取证（只读调试桥 + 离线复算落盘状态）：聊天已到 49 楼（0–48）；台账 17 条标记、lastKnownFloor = 22；内存/本机缓冲/服务端文件三方一致（…",
+        "② 根因 A：丢弃标记即失忆：reconcileProcessedFloors（哈希归位）与 handleFloorShrink（拆楼归位）都按内容哈希丢弃「对不上的标记」——丢…",
+        "③ 根因 B：拆楼检测基线错位：基线此前只有 lastKnownFloor（= 已分析最大楼）：聊天涨到 49 楼、只分析到 22 楼时基线落后 27 楼，之后删到 29 楼要满…"
+      ]
+    },
     {
       "version": "3.11.0",
       "date": "2026-10-04",

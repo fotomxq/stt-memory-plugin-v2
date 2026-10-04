@@ -54,19 +54,26 @@ setPersistHooks({
 });
 
 // ---------- 结构迁移 ----------
+// v3.11.1：**有意偏离 V1** —— V2 新增两个台账辅助字段（`processedDropped` / `lastChatFloor`，见 core/state.js），
+//   迁移时对老数据补齐。按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再与 V1 黄金逐字符比较，
+//   样本本身一字不改；新字段的存在性与默认值单独断言。
+const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
+const stripV2Ledger = (o) => { const c = clone(o); V2_LEDGER_KEYS.forEach((k) => { delete c[k]; }); return c; };
 R.assert('M1 migrateState 脏数据归一与 V1 逐字符一致（容器/条目清洗 + 版本迁移链）', (() => {
     const d = clone(I.DIRTY);
     setKernelState(d);
     const out = migrateState(d);
     setKernelState(null);
-    return JT(out) === JT(G.migrate.dirty);
+    return JT(stripV2Ledger(out)) === JT(G.migrate.dirty)
+        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor));
 })(), 'dirty');
 R.assert('M2 migrateState 干净数据幂等（不改动、version 保持当前）', (() => {
     const c = clone(I.CLEAN);
     setKernelState(c);
     const out = migrateState(c);
     setKernelState(null);
-    return JT(out) === JT(G.migrate.clean) && out.version === VERSION;
+    return JT(stripV2Ledger(out)) === JT(G.migrate.clean) && out.version === VERSION
+        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor));
 })(), 'clean');
 R.assert('M3 迁移关键点抽查（present 去脏 / items 补空数组 / deleted 补对象 / currentStates 只留有效条目）', (() => {
     const d = clone(I.DIRTY);

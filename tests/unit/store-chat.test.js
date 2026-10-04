@@ -208,7 +208,14 @@ const localKey = () => 'ftt2_state_' + scopeId();
             out.updatedAt = Number(st.updatedAt);
             return out;
         };
-        const norm = (st) => { const c = clone(st); c.version = '<VERSION>'; c.scope = '<SCOPE>'; delete c.updatedAt; return c; };
+        const norm = (st) => {
+            const c = clone(st); c.version = '<VERSION>'; c.scope = '<SCOPE>'; delete c.updatedAt;
+            // v3.11.1：**有意偏离 V1** —— V2 新增两个台账辅助字段（见 core/state.js）。
+            //   按 `开发守则.md` §4：在测试里显式归一后再与 V1 黄金投影深比较（样本本身不改）；
+            //   它们的存在性由下面 S10 单独断言。
+            delete c.processedDropped; delete c.lastChatFloor;
+            return c;
+        };
         // 与 oracle 同款富状态种子（每个容器都有数据 + 双墓碑 + 台账 + 时钟）
         const seed = {
             atoms: [{ id: 'a1', title: '甲', text: '角色甲在码头发现木箱，断口整齐（正文足够长）。', date: '1919-11-29', tags: ['码头'], validity: 'active' }],
@@ -251,7 +258,9 @@ const localKey = () => 'ftt2_state_' + scopeId();
         let ret = null;
         try { ret = await resetState(); } finally { Date.now = realNow; }
         const after = snap(kernelState());
-        const afterKeys = Object.keys(kernelState()).sort();
+        // v3.11.1：V2 专有台账辅助字段（V1 无）—— 比较 V1 黄金键集时显式归一，并单独断言存在性
+        const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
+        const afterKeys = Object.keys(kernelState()).filter((k) => V2_LEDGER_KEYS.indexOf(k) < 0).sort();
 
         R.assert('S8 resetState 前置状态与 oracle 种子逐项一致（计数 / 双墓碑 / 台账 / 时钟 / 游标）',
             J(before) === J(G.before), { before: before, want: G.before });
@@ -262,7 +271,8 @@ const localKey = () => 'ftt2_state_' + scopeId();
             { after: after, want: G.after });
 
         R.assert('S10 resetState 复位后的容器键集与 V1 逐项一致（29 键，含 V1 `saveState()` 收尾 materialize 的 `snapStore`）',
-            J(afterKeys) === J(G.afterKeys) && afterKeys.length === G.afterKeys.length,
+            J(afterKeys) === J(G.afterKeys) && afterKeys.length === G.afterKeys.length
+            && V2_LEDGER_KEYS.every((k) => Object.prototype.hasOwnProperty.call(kernelState(), k)),
             { keys: afterKeys, want: G.afterKeys });
 
         R.assert('S11 resetState 复位后的内存态（version/scope 归一为占位符）与 V1 `emptyState()` 深比较一致',

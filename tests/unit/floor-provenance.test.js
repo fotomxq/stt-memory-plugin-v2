@@ -23,7 +23,7 @@ import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId, setChatHooks } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { handleFloorShrink, hashFloorText, scanPendingFloors } from '../../host/floors.js';
+import { handleFloorShrink, hashFloorText, scanPendingFloors, recordProcessedFloors, shrinkBaseline, processedStats, reconcileProcessedFloors, processedVerTag } from '../../host/floors.js';
 import { normalizeAtom } from '../../core/model/atom.js';
 import { mergeDelta } from '../../core/ingest.js';
 import { remapAfterTrim } from '../../core/floor-trim.js';
@@ -247,5 +247,64 @@ A('G1 `floorPositionLabel`：普通条目与 V1 行正文**逐字一致**（`3-5
     const unknown = floorPositionLabel(atom('g_unknown', 0, 0));
     return plain === '3-5楼' && moved === '4-6楼（原 30-32楼）' && gone === '原文已移除（原 12-14楼）' && unknown === '';
 })(), () => ({ plain: floorPositionLabel(atom('g_plain', 3, 5)), moved: floorPositionLabel(atom('g_moved', 30, 32, { floorNowStart: 4, floorNowEnd: 6 })), gone: floorPositionLabel(atom('g_gone', 12, 14, { originGone: true })) }));
+
+// ---------- I 组（v3.11.1）：标记「丢弃留痕」与覆盖判据联动 ----------
+A('I1 真机回归：台账标记被判「正文已改写」而丢弃后，**覆盖兜底不得再把它当成已分析** —— 该楼必须重新进待分析', (() => {
+    // 真机形态：第 3 楼**自己产出过条目**（所以覆盖集合里有它），但台账标记丢了
+    boot(chatOf(12), { lastKnownFloor: 11, atoms: [atom('i1_cover', 3, 3)], processedVer: processedVerTag() });
+    state.processedFloors = [{ f: 3, h: '旧哈希（与当前正文不符）' }];      // 一个「对不上」的标记
+    reconcileProcessedFloors(true);                                        // 显式触发对账（scan 内部有 20s 节流）
+    const s = scanPendingFloors({ maintain: false });
+    // 对账按哈希归位 → 丢掉那个标记，但**留下旧哈希**；覆盖判据据此认出「正文已改写」→ 不跳过
+    return s.floors.indexOf(3) >= 0 && s.changedFromDropped === 1 && s.droppedMarks === 1
+        && (state.processedDropped || []).length === 1
+        && Number(state.processedDropped[0].f) === 3
+        && !!hashFloorText(3) && state.processedDropped[0].h !== hashFloorText(3);
+})(), () => ({ floors: scanPendingFloors({ maintain: false }).floors, dropped: state.processedDropped, marks: (state.processedFloors || []).length }));
+
+A('I2 保守规则：丢弃留痕的旧哈希**与当前正文相同**（楼层消失又回来、内容没变）→ 覆盖照常生效，不重分析', (() => {
+    boot(chatOf(12), { lastKnownFloor: 11, atoms: [atom('i2_cover', 3, 3)] });
+    state.processedDropped = [{ f: 3, h: hashFloorText(3) }];               // 旧哈希 == 当前哈希
+    const s = scanPendingFloors({ maintain: false });
+    return s.floors.indexOf(3) < 0 && s.changedFromDropped === 0 && s.skipped.covered >= 1;
+})(), () => { const s = scanPendingFloors({ maintain: false }); return { floors: s.floors, skipped: s.skipped }; });
+
+A('I3 重新分析过 → 该楼的丢弃留痕被清掉（不会永远把它当「内容已改写」）', (() => {
+    boot(chatOf(12), { lastKnownFloor: 11, atoms: [atom('i3_cover', 3, 3)] });
+    state.processedDropped = [{ f: 3, h: '旧哈希' }, { f: 5, h: '旧哈希5' }];
+    recordProcessedFloors(3, 3);
+    return (state.processedDropped || []).length === 1 && Number(state.processedDropped[0].f) === 5;
+})(), () => ({ dropped: state.processedDropped }));
+
+// ---------- J 组（v3.11.1）：拆楼检测基线含「最近见到的聊天末楼」 ----------
+A('J1 真机回归：聊天曾涨到 12 楼、只分析到第 3 楼，之后删到 6 楼 —— **必须检测到收缩**（旧基线只看分析进度，会漏判）', (() => {
+    // lastKnownFloor=2（分析进度）· lastChatFloor=11（上次观察到的末楼）→ 删到 6 楼（末楼 5）
+    boot(chatOf(6), { lastKnownFloor: 2, lastChatFloor: 11, atoms: [atom('j1', 8, 9)] });
+    const r = handleFloorShrink({});
+    return r.ok === true && r.skipped !== 'no-shrink'
+        && Number(state.lastChatFloor) === 5;      // v3.11.1：基线**可回落**到新末楼（否则下次收缩会重复判定）
+})(), () => ({ r: handleFloorShrink({}), lastChatFloor: state.lastChatFloor }));
+
+A('J2 对照：没有「上次观察到的末楼」时回落到旧口径（只分析到第 3 楼 → 不判收缩）—— 说明修复确实来自新基线', (() => {
+    boot(chatOf(6), { lastKnownFloor: 2, atoms: [atom('j2', 8, 9)] });        // lastChatFloor 缺省 = -1
+    const r = handleFloorShrink({});
+    return r.skipped === 'no-shrink' && Number(state.lastChatFloor) === 5;     // 观察后基线被建立
+})(), () => ({ r: handleFloorShrink({}), lastChatFloor: state.lastChatFloor }));
+
+A('J3 基线与诊断同源：`shrinkBaseline()` = max(上次观察到的末楼, 已分析最大楼)，`processedStats()` 如实暴露', (() => {
+    boot(chatOf(6), { lastKnownFloor: 2, lastChatFloor: 11 });
+    const st = processedStats();
+    // 取较大值：lastChatFloor=11 胜过 lastKnownFloor=2；两者都是「聊天曾至少有这么长」的证据
+    return shrinkBaseline() === 11 && st.lastChatFloor === 11 && st.shrinkBaseline === 11
+        && st.lastKnownFloor === 2 && typeof st.droppedMarks === 'number'
+        && (() => { state.lastChatFloor = 1; return shrinkBaseline() === 2; })();   // 回落也不低于已分析最大楼
+})(), () => ({ st: processedStats() }));
+
+A('J4 幂等：观察过一次之后，**没有新收缩**就不再触发（基线已落到当前末楼）', (() => {
+    boot(chatOf(20), { lastKnownFloor: 19, lastChatFloor: 19, atoms: [atom('j4', 12, 14)] });
+    const r1 = handleFloorShrink({});
+    const r2 = handleFloorShrink({});
+    return r1.skipped === 'no-shrink' && r2.skipped === 'no-shrink' && Number(state.lastChatFloor) === 19;
+})(), () => ({ r: handleFloorShrink({}), lastChatFloor: state.lastChatFloor }));
 
 R.done();
