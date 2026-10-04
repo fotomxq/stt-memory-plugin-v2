@@ -213,9 +213,10 @@ await (async () => {
 })();
 
 // ============================================================
-// Q 组（v3.10.3）：`charBudget` = **最终注入体**的硬上限（真机 A2）
-//   真机实测：设定 8000，实际注入 11955（超 49%）—— 原因：框架不计入预算，
-//   而默认「使用说明」模板本身就有 3726 字。本组锁定「最终注入体不超上限」。
+// Q 组（v3.10.3 立、v3.11.3 修正）：`charBudget` = **记忆正文 + 结构框架**的硬上限
+//   v3.10.3 处置 A2（设 8000 注 11955）时把**整个框架**都算进预算，其中包括**用户自己写的
+//   「使用说明」模板**（真机 3457 字）→ 召回正文从 8153 字/55 行 掉到 4317 字/30 行（≈ −47%），
+//   用户报告「本地召回异常」。v3.11.3 修正：说明模板**不计入**记忆预算（其长度单独回报）。
 // ============================================================
 await (async () => {
     const INJ = await import('../../host/inject.js');
@@ -229,12 +230,14 @@ await (async () => {
         return fixed > 100 && diff === 2001 && all > fixed;
     })(), { fixed: INJ.injectFrameOverhead({ noGuide: true }), all: INJ.injectFrameOverhead({}) });
 
-    R.assert('Q2 `planInjectBudget`：上限够 → 保留说明；上限不够 → **丢弃说明**把预算让给正文；连框架都放不下 → 不注入', (() => {
+    R.assert('Q2 `planInjectBudget`：`bodyBudget = 上限 − 结构框架`，**说明长度不参与分配**（仅回报）；连框架都放不下 → 不注入', (() => {
         const big = INJ.planInjectBudget(9000, 600, 3000);
         const mid = INJ.planInjectBudget(2000, 600, 3000);
         const tiny = INJ.planInjectBudget(500, 600, 3000);
-        return big.ok === true && big.useGuide === true && big.guideDropped === false && big.bodyBudget === 5400
-            && mid.ok === true && mid.useGuide === false && mid.guideDropped === true && mid.bodyBudget === 1400
+        return big.ok === true && big.bodyBudget === 8400 && big.guide === 3000 && big.frame === 600
+            // 同一个上限下，说明从 3000 变成 8000 也不该改变正文预算（真机回归的核心）
+            && INJ.planInjectBudget(9000, 600, 8000).bodyBudget === 8400
+            && mid.ok === true && mid.bodyBudget === 1400
             && tiny.ok === false && tiny.bodyBudget === 0 && tiny.reason === 'budget-too-small';
     })(), { big: INJ.planInjectBudget(9000, 600, 3000), mid: INJ.planInjectBudget(2000, 600, 3000) });
 
@@ -243,28 +246,30 @@ await (async () => {
     setScopeKey('角色甲');
     cfg.injectCurrentPrompt = true; cfg.timelyAnalysis = false; cfg.injectEnabled = true;
     cfg.promptTemplates.injectGuide = '说'.repeat(3000);
-    cfg.charBudget = 2000;                    // 说明 3000 + 框架 > 2000 → 必须丢说明
+    cfg.charBudget = 2000;                    // 说明 3000 字符 —— **不再挤占记忆预算**
     const r1 = await pushMemoryInject({});
     const v1 = readInject();
-    R.assert('Q3 端到端（真机场景）：**最终注入体 ≤ charBudget**；说明让位后记忆正文照常注入',
-        r1.ok === true && r1.injected === true && v1.length > 0 && v1.length <= 2000
-        && r1.guideDropped === true && v1.indexOf('说说说') < 0
+    R.assert('Q3 真机回归：超长「使用说明」**不再让召回变少**（正文照常注入、说明保留、账目回报说明长度）',
+        r1.ok === true && r1.injected === true && r1.guideDropped === false && r1.guide >= 3000
+        && r1.bodyBudget === 2000 - r1.overhead && r1.bodyBudget > 1000
+        && v1.indexOf('说说说') > 0
         && (v1.indexOf('## 情节记忆') > 0 || v1.indexOf('## 长期记忆') > 0) && v1.indexOf('记忆结束。') > 0,
-        { chars: v1.length, cap: 2000, overhead: r1.overhead, bodyBudget: r1.bodyBudget });
+        { chars: v1.length, cap: 2000, overhead: r1.overhead, guide: r1.guide, bodyBudget: r1.bodyBudget });
 
     resetGlobals();
-    cfg.charBudget = 9000;                    // 够 → 说明保留，总量仍不超
+    cfg.charBudget = 9000;
     const r2 = await pushMemoryInject({});
     const v2 = readInject();
-    R.assert('Q4 上限足够时：说明保留，最终注入体仍 ≤ charBudget（不再出现「设 8000 注 11955」）',
-        r2.ok === true && r2.injected === true && v2.length <= 9000 && r2.guideDropped === false
+    R.assert('Q4 上限足够时：说明保留、正文按「上限 − 结构框架」给足（记忆正文不再被说明吃掉）',
+        r2.ok === true && r2.injected === true && r2.guideDropped === false && r2.guide >= 3000
+        && r2.bodyBudget === 9000 - r2.overhead && r2.bodyBudget > 8000
         && v2.indexOf('说说说') > 0 && v2.indexOf('# FTT 记忆注入') === 0,
-        { chars: v2.length, cap: 9000, overhead: r2.overhead });
+        { chars: v2.length, cap: 9000, overhead: r2.overhead, guide: r2.guide, bodyBudget: r2.bodyBudget });
 
     resetGlobals();
-    cfg.charBudget = 500;                     // 连框架都放不下 → 如实拒绝，不静默超预算
+    cfg.charBudget = 500;                     // 连结构框架都放不下 → 如实拒绝，不静默超预算
     const r3 = await pushMemoryInject({});
-    R.assert('Q5 上限连框架都放不下 → 如实回报 `budget-too-small` 且不注入（绝不静默超预算）',
+    R.assert('Q5 上限连结构框架都放不下 → 如实回报 `budget-too-small` 且不注入',
         r3.ok === true && r3.reason === 'budget-too-small' && r3.injected === false && r3.chars === 0,
         { r3: r3 });
 

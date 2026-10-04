@@ -21,6 +21,8 @@ import { hintDetailsHtml, shortHintHtml } from './hints.js';
 import { vectorLayerInfo } from '../host/embeddings.js';
 import { aiLayerInfo } from '../host/ai-recall.js';
 import { vectorCacheStats } from '../adapters/vector-cache.js';
+// v3.11.3：注入预算账目（预算 / 结构框架 / 使用说明 / 正文预算 / 上次实际注入）——只读实测值
+import { pushStats } from '../host/inject.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -104,8 +106,7 @@ export function setVectorTestResult(pfx, text) { apiResults = Object.assign({}, 
 export function vectorTestResults() { return Object.assign({}, apiResults); }
 function apiResultText(pfx) { return String(apiResults[pfx] || ''); }
 
-/** 单层测试结果 / 预览（V1 `[data-ftt-layer-result]` / `[data-ftt-layer-preview]`） */
-let layerResults = {};
+/** 单层测试结果 / 预览（V1 `[data-ftt-layer-result]` / `[data-ftt-layer-preview]`） */let layerResults = {};
 export function setLayerResult(layer, res) {
     layerResults = Object.assign({}, layerResults, { [String(layer)]: { text: String((res && res.text) || ''), lines: Array.isArray(res && res.lines) ? res.lines : [] } });
     return layerResults;
@@ -119,6 +120,32 @@ function layerResultHtml(layer) {
     return '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="testLayer" data-ftt-layer="' + esc(layer) + '">🧪 测试' + esc(layer === 'vector' ? '向量提取' : (layer === 'js' ? 'JS 抽取' : 'AI 分析')) + '</button>'
         + '<span class="ftt-muted" data-ftt-layer-result="' + esc(layer) + '">' + esc(r.text) + '</span></div>'
         + '<div data-ftt-layer-preview="' + esc(layer) + '">' + prev + '</div>';
+}
+
+/**
+ * v3.11.3：**注入预算账目**（只读一行）—— 把「预算 / 结构框架 / 使用说明 / 正文 / 上次实际注入」摆出来。
+ *   为什么加：v3.10.3 曾把用户自己的「使用说明」模板也算进记忆预算，于是**写长说明 = 静默压低召回量**
+ *   （真机实测召回正文 8153 字/55 行 → 4317 字/30 行），用户只能看到「召回变少了」。
+ *   现在说明不计入预算，且这行让每一段的去向可见（数据来自 `pushStats()` 的实测值）。
+ */
+function budgetLedgerHtml() {
+    let st = {};
+    try { st = pushStats() || {}; } catch (e) { st = {}; }
+    const cap = Number(cfg.charBudget) || 8000;
+    const frame = Number(st.lastOverhead) || 0;
+    const guide = Number(st.lastGuide) || 0;
+    const bodyBudget = Number(st.lastBodyBudget) || Math.max(0, cap - frame);
+    const out = (Number(st.lastChars) || 0);
+    const parts = [
+        '上限 <b>' + cap + '</b> 字',
+        '结构框架 <b>' + frame + '</b>',
+        '使用说明 <b>' + guide + '</b>（不计入）',
+        '正文预算 <b>' + bodyBudget + '</b>',
+    ];
+    if (out) parts.push('上次实际注入 <b>' + out + '</b> 字');
+    if (Number(st.overBudget) > 0) parts.push('<b>超限未注入 ' + st.overBudget + ' 次</b>');
+    return '<div class="ftt-muted" data-ftt-budget-ledger>注入账目：' + parts.join(' · ')
+        + '（正文预算 = 上限 − 结构框架；「使用说明」属你的提示词，不占用该预算）</div>';
 }
 
 /**
@@ -207,7 +234,10 @@ export function extractPageHtml(controls, renderControl) {
         //   注入预算（真正的上限）/ 召回上限（各大类注入条数）/ 其它召回行为。
         '<div class="ftt-section"><div class="ftt-sec-title">注入预算</div>',
         budget.map((c) => settingsControlHtml(c)).join('\n'),
-        shortHintHtml('预算才是注入体的真正上限：按优先级择优填充，单条放不下整条跳过（不截断条目）。'),
+        // v3.11.3（用户报告「本地召回异常」）：把**账目**摆出来 —— v3.10.3 曾把「使用说明」模板也计入预算，
+        //   用户写长说明就会静默压低记忆召回量（真机实测 55 行 → 30 行）。现在说明不计入，且这里逐项显示。
+        budgetLedgerHtml(),
+        shortHintHtml('预算约束<b>记忆正文 + 结构框架</b>：按优先级择优填充，单条放不下整条跳过（不截断条目）；「使用说明」模板是你自己的提示词，不计入该预算。'),
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">召回上限（各大类注入条数）</div>',

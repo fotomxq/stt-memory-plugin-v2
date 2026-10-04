@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.11.2",
+  "version": "3.11.3",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.11.3",
+      "date": "2026-10-04",
+      "title": "修「本地召回异常」：预算是记忆正文的上限，不该把「使用说明」模板算进去",
+      "points": [
+        "① 核对（离线用真实落盘状态跑本地召回，量化对照）：真机 ftt.snapshot：charBudget = 8000、injectGuide = 3457 字、useVecto…",
+        "② 根因（是我在 v3.10.3 修 A2 时引入的回归）：A2 的问题是「设 8000 却注入 11955」。当时把整个框架都算进预算 —— 其中包含",
+        "③ 修法：host/inject.js#planInjectBudget：bodyBudget = 上限 − 结构框架；说明长度不参与分配，只如实回报（frame / guide…"
+      ]
+    },
     {
       "version": "3.11.2",
       "date": "2026-10-04",

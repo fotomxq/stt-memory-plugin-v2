@@ -275,7 +275,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "charBudget",
-            "label": "注入字符预算（硬上限）",
+            "label": "记忆正文预算（不含使用说明模板）",
             "type": "text"
         },
         {

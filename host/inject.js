@@ -65,7 +65,7 @@ export function readInject() {
 
 let injectSeq = 0;
 let lastInjectText = '';
-const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '', lastOverhead: 0, lastBodyBudget: 0, overBudget: 0 };
+const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '', lastOverhead: 0, lastGuide: 0, lastBodyBudget: 0, overBudget: 0 };
 // v2.74.0（用户要求）：「提取记忆…确保可以**并行处理**」——**单飞（single-flight）**：
 //   同一时刻只允许一次「构建 + 推送」，并发调用者**共享同一次结果**（await 同一个 Promise），
 //   既不互相覆盖注入（既有 seq 令牌仍然生效），也不会因为重复构建而重复调用向量 / AI 接口。
@@ -128,29 +128,35 @@ export function injectFrameOverhead(opts) {
 }
 
 /**
- * 预算分配（纯函数，便于单测）：把 `charBudget`（**最终注入体**的硬上限）分成「框架」与「正文」。
+ * 预算分配（纯函数，便于单测）：把 `charBudget`（**记忆正文的硬上限**）分成「结构框架」与「正文」。
  *
- * 规则（保守、可解释）：
- *   ① 框架**不可省**部分（结构头 + 哨兵）先扣除；
- *   ② 「使用说明」模板可省：若扣除它之后正文仍放得下 `minBody`，则**保留**说明；
- *      否则**丢弃说明**把预算让给记忆正文（记忆是载荷、说明是注解），并如实标记 `guideDropped`；
- *   ③ 连「不可省框架」都放不下 → `ok:false`（不注入），由调用方如实回报原因 —— **绝不静默超预算**。
- * @param {number} cap 最终注入体上限（`cfg.charBudget`）
- * @param {number} frameFixed 不可省框架字符数
- * @param {number} guideLen 「使用说明」模板字符数
+ * v3.11.3（用户报告「本地召回异常」——召回内容明显变少）：
+ *   v3.10.3 为了修 A2（设 8000 却注入 11955）把**整个框架**都算进预算，其中包括
+ *   **用户自己在设定里写的「使用说明」模板**（真机 3457 字）—— 于是「记忆能召回多少」取决于
+ *   「说明模板有多长」，真机实测召回正文从 **8153 字/55 行** 掉到 **4317 字/30 行（≈ −47%）**。
+ *   这是把两类东西混在一个预算里：
+ *     ① **结构框架**（`# FTT 记忆注入` + 区块说明行 + 日期行 + `记忆结束。`）≈ 330 字 —— 属本插件的固定开销，
+ *        **应当**计入（用户看不到也管不了）；
+ *     ② **「使用说明」模板** —— 属**用户提示词**，长度由用户在设定里直接控制，**不计入记忆预算**。
+ *   现在：`bodyBudget = cap − 结构框架`；说明模板照常保留（其长度单独回报，便于用户自查）。
+ *   连结构框架都放不下（`cap - frameFixed < minBody`）→ `ok:false`（不注入），由调用方如实回报。
+ * @param {number} cap 记忆正文上限（`cfg.charBudget`）
+ * @param {number} frameFixed **不可省结构框架**字符数（不含使用说明）
+ * @param {number} guideLen 「使用说明」模板字符数（**仅用于回报**，不影响分配）
  * @param {number} [minBody] 正文最小可用预算（默认 400）
- * @returns {{ok:boolean, bodyBudget:number, useGuide:boolean, guideDropped:boolean, frame:number, reason:string}}
+ * @returns {{ok:boolean, bodyBudget:number, useGuide:boolean, guideDropped:boolean, frame:number, guide:number, reason:string}}
  */
 export function planInjectBudget(cap, frameFixed, guideLen, minBody) {
     const c = Math.max(0, Number(cap) || 0);
     const ff = Math.max(0, Number(frameFixed) || 0);
     const gl = Math.max(0, Number(guideLen) || 0);
     const min = Math.max(0, Number(minBody == null ? 400 : minBody) || 0);
-    const withGuide = c - ff - gl;
-    if (withGuide >= min) return { ok: true, bodyBudget: withGuide, useGuide: true, guideDropped: false, frame: ff + gl, reason: '' };
-    const withoutGuide = c - ff;
-    if (withoutGuide >= min) return { ok: true, bodyBudget: withoutGuide, useGuide: false, guideDropped: true, frame: ff, reason: 'guide-dropped' };
-    return { ok: false, bodyBudget: 0, useGuide: false, guideDropped: gl > 0, frame: ff, reason: 'budget-too-small' };
+    const bodyBudget = c - ff;
+    if (bodyBudget >= min) {
+        // 说明模板不再挤占记忆预算（真机回归：召回量恢复）；但如实回报它的长度
+        return { ok: true, bodyBudget: bodyBudget, useGuide: true, guideDropped: false, frame: ff, guide: gl, reason: '' };
+    }
+    return { ok: false, bodyBudget: 0, useGuide: true, guideDropped: false, frame: ff, guide: gl, reason: 'budget-too-small' };
 }
 
 /**
@@ -191,24 +197,23 @@ async function buildAndPushInject(o) {
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
         const mySeq = ++injectSeq;
         const cfg = runtimeRef.cfg || {};
-        // v3.10.3（A2）：`charBudget` 是**最终注入体**的硬上限 —— 先扣框架（结构头 + 哨兵），
-        //   再决定是否保留「使用说明」模板，剩下的才是正文预算。此前框架完全不计入，
-        //   真机实测「设 8000 → 注入 11955」（默认说明模板就有 3726 字）。
+        // v3.10.3（A2）→ v3.11.3 修正：`charBudget` 约束**记忆正文 + 结构框架**；
+        //   **用户自己写的「使用说明」模板不计入**（真机回归：v3.10.3 把 3457 字的说明也算进预算，
+        //   导致召回正文从 8153 字/55 行 掉到 4317 字/30 行 —— 用户报告「本地召回异常」）。
+        //   结构框架（结构头 + 日期行 + 哨兵 ≈330 字）是本插件固定开销，仍然计入。
         const budget = (() => {
             try {
                 const frameFixed = injectFrameOverhead({ noGuide: true });
                 const guideLen = Math.max(0, injectFrameOverhead({}) - frameFixed);
                 return planInjectBudget(cfg.charBudget == null ? 8000 : cfg.charBudget, frameFixed, guideLen);
-            } catch (e) { return { ok: true, bodyBudget: Number(cfg.charBudget) || 8000, useGuide: true, guideDropped: false, frame: 0, reason: '' }; }
+            } catch (e) { return { ok: true, bodyBudget: Number(cfg.charBudget) || 8000, useGuide: true, guideDropped: false, frame: 0, guide: 0, reason: '' }; }
         })();
         injectStats.lastOverhead = budget.frame;
+        injectStats.lastGuide = budget.guide;
         injectStats.lastBodyBudget = budget.bodyBudget;
-        if (budget.guideDropped) {
-            try { dbgLog('发送记忆', { action: '预算不足 → 本次注入丢弃「使用说明」模板，把预算让给记忆正文', cap: Number(cfg.charBudget) || 0, frame: budget.frame, bodyBudget: budget.bodyBudget }); } catch (e) { /* 静默 */ }
-        }
         if (!budget.ok) {
             injectStats.overBudget += 1;
-            return { ok: true, reason: 'budget-too-small', chars: 0, count: 0, injected: false, overhead: budget.frame, bodyBudget: 0 };
+            return { ok: true, reason: 'budget-too-small', chars: 0, count: 0, injected: false, overhead: budget.frame, guide: budget.guide, bodyBudget: 0 };
         }
         let body = '';
         let hitLayer = '';
@@ -230,7 +235,7 @@ async function buildAndPushInject(o) {
                 countUses: true, inject: true,
             });
         }
-        const text = wrapInjectText(body, { noGuide: budget.useGuide === false });
+        const text = wrapInjectText(body);
         if (mySeq !== injectSeq) { injectStats.stale += 1; return { ok: true, reason: 'stale', chars: 0, injected: false }; }
         const ms = Date.now() - t0;
         const count = String(body || '').split('\n').filter((x) => String(x).trim()).length;
@@ -248,7 +253,7 @@ async function buildAndPushInject(o) {
         injectStats.lastMs = ms;
         injectStats.lastLayer = String(hitLayer || (body ? 'js' : ''));
         injectStats.lastHitLayer = hitLayer;
-        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms, overhead: budget.frame, bodyBudget: budget.bodyBudget, guideDropped: budget.guideDropped === true };
+        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms, overhead: budget.frame, guide: budget.guide, bodyBudget: budget.bodyBudget, guideDropped: false };
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
         return { ok: false, reason: 'error', chars: 0, count: 0, injected: false, ms: Date.now() - t0 };

@@ -87,7 +87,7 @@ docs/
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 144 / 144（V1 的 63 条原样在前 + v3.10.0 追加 81 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 71 条 |
-| 历史批次档数 | `docs/history/*.md` | 144 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 145 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。
