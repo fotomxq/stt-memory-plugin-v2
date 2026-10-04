@@ -1894,6 +1894,33 @@ function installHostBridges() {
         //   ② 计划/悬念修复（**与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理**，静默调用）
         floorJump: () => fixFloorJump(),
         planSuspRepair: (opts) => runPlanSuspRepair(Object.assign({ silent: true }, opts || {})),
+        //   ③ v3.6.0（用户要求）：按**最新情节**（内置天数判断）刷新时间 / 地点 / 人物 —— 与 v2.81.0
+        //      「分析后按最新情节同步剧情时钟」同一条处理（`clockAutoExtractOnce({force:true})`，零 AI）
+        clockSync: () => {
+            let changed = false;
+            try { changed = clockAutoExtractOnce({ force: true }) === true; } catch (e) { changed = false; }
+            const res = (() => { try { return clockExtractState(); } catch (e) { return null; } })();
+            const st = (kernelState && kernelState.state) || {};   // `state` 在本文件里以 `kernelState` 别名导入
+            const src = (st && st.clockSrc) || {};
+            return {
+                changed: changed,
+                date: String(st.date || ''), time: String(st.time || ''), location: String(st.location || ''),
+                present: Array.isArray(st.present) ? st.present.slice() : [],
+                storyDay: Number(st.storyDay) || 0,
+                // v3.6.0：被选中那条**情节自身**记录的天数（`storyDay` 预留计数器；时钟的 `state.state.storyDay` 只在
+                //   正文头结构被采用时才写）—— 报告里优先用它显示「第 N 天」，便于用户核对「按天数取到的是哪条」
+                plotStoryDay: (() => {
+                    try {
+                        const id = String((res && res.plotId) || '');
+                        if (!id) return 0;
+                        const node = (kernelState.atoms || []).find((x) => x && String(x.id) === id);
+                        return Number(node && node.storyDay) || 0;
+                    } catch (e) { return 0; }
+                })(),
+                manual: !!(res && res.manual), manualLock: !!(src && src.manualLock),
+                source: (res && res.source) || {}, plotId: String((res && res.plotId) || ''),
+            };
+        },
     });
     // v2.58.0：向量层接线（三层流程 + 最近楼层正文 + 剧情日期）—— 向量/rerank 请求在 host/embeddings.js
     setInjectRuntime({ extractFlow: (text, opts) => runExtractFlow(text, opts) });
