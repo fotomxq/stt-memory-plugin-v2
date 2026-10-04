@@ -5863,6 +5863,84 @@ await assert('BP1 v3.14.0 首屏载入闸门（端到端）：读取未完成时
     return ok;
 })(), '');
 
+// ---------- BQ 货币修正（v3.15.0） ----------
+// 用户要求（原话）：「货币增加修正按钮，剔除不应该被记录的角色，以及修正错乱的单位计价和冗余的数据合并问题。」
+//   本小节走**真实点击路径**：货币页「🧹 修正货币」→ 计划预览（逐条列出）→「✅ 应用修正」→ **危险动作二次确认**
+//   （取消 = 零副作用；确认 = 才落库）→ 剔除 / 合并 / 计价修正生效并留 id 墓碑；程序化调用不经该闸。
+await assert('BQ1 v3.15.0 货币修正（端到端）：按钮出计划预览（不改数据）→ 应用需二次确认（取消零副作用）→ 确认后剔除幽灵角色/未标定角色、归一单位、补齐额度、合并冗余（保留最新额度不累加、留墓碑），且幂等', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CR = await import('../core/currency-repair.js');
+    const keepCur = JSON.parse(JSON.stringify(RT.state.currencies || []));
+    const keepSnap = JSON.parse(JSON.stringify(RT.state.snapshots || []));
+    const keepDel = JSON.parse(JSON.stringify(RT.state.deleted || {}));
+    const keepPopup = host.ctx.callGenericPopup;
+    const keepTracked = (RT.cfg.currencyTrackedRoles || []).slice();
+    const J = (v) => JSON.stringify(v);
+    try {
+        // ① 脏货币：幽灵角色 / 未标定角色 / 币种名写成单位词 / 单位别名 / 额度缺省 / 冗余别名组
+        RT.state.snapshots = [{ id: 'bq-s1', name: '主角甲', tags: ['主角'] }];
+        RT.cfg.currencyTrackedRoles = [];
+        RT.state.currencies = [
+            { id: 'bq-me1', owner: '主角甲', name: '银圆', unit: '银圆', amount: 0, note: '', date: '628-03-20', uses: 1, floorStart: 1, floorEnd: 1, history: [{ date: '628-03-20', delta: 500, note: '收银' }], tags: [] },
+            { id: 'bq-me2', owner: '主角甲', name: '金子', unit: '两', amount: 20, note: '', date: '628-03-20', uses: 2, floorStart: 2, floorEnd: 2, history: [], tags: ['金'] },
+            { id: 'bq-me3', owner: '主角甲', name: '赤金', unit: '两', amount: 10, note: '足色赤金', date: '628-03-24', uses: 3, floorStart: 3, floorEnd: 3, history: [], tags: [] },
+            { id: 'bq-badname', owner: '主角甲', name: '贯', unit: '', amount: -1000, note: '', date: '628-03-24', uses: 0, floorStart: 4, floorEnd: 4, history: [{ date: '628-03-24', delta: -1000, note: '支' }], tags: [] },
+            { id: 'bq-ghost', owner: '路人丙', name: '银元', unit: '枚', amount: 7, note: '', date: '628-03-24', uses: 0, floorStart: 5, floorEnd: 5, history: [], tags: [] },
+        ];
+        RT.state.deleted = {};
+        await entry.popupAction('tab', { tab: 'currencies' });
+        const el = doc.getElementById('ftt-panel');
+        const fire = (dataset) => {
+            const l = (el && el.listeners && el.listeners.click) || [];
+            l.forEach((fn) => fn({ target: { dataset } }));
+            return l.length > 0;
+        };
+        const beforeJson = J(RT.state.currencies);
+        // ② 点「🧹 修正货币」→ 只出预览（零副作用）
+        const f1 = fire({ fttAction: 'currencyRepair' });
+        await new Promise((r) => setTimeout(r, 10));
+        const page1 = String(((await entry.popupAction('refresh', {})).html) || '');
+        const previewOk = f1 && page1.indexOf('data-ftt-cur-repair') >= 0 && page1.indexOf('货币修正计划') >= 0
+            && page1.indexOf('data-ftt-action="currencyRepairApply"') >= 0
+            && page1.indexOf('将剔除的条目') > 0 && page1.indexOf('将合并的冗余条目') > 0
+            && J(RT.state.currencies) === beforeJson;                       // 预览不改数据
+        // ③ 点「✅ 应用修正」→ **取消**（0 = NEGATIVE）→ 零副作用
+        host.ctx.callGenericPopup = () => Promise.resolve(0);
+        const f2 = fire({ fttAction: 'currencyRepairApply' });
+        await new Promise((r) => setTimeout(r, 10));
+        const cancelOk = f2 && J(RT.state.currencies) === beforeJson;
+        // ④ 再点（确认 1 = AFFIRMATIVE）→ 才落库
+        host.ctx.callGenericPopup = () => Promise.resolve(1);
+        // 第一次点已把预览关掉（取消也关）→ 重新出计划再应用（保持真实点击链路）
+        fire({ fttAction: 'currencyRepair' });
+        await new Promise((r) => setTimeout(r, 10));
+        const f3 = fire({ fttAction: 'currencyRepairApply' });
+        await new Promise((r) => setTimeout(r, 20));
+        const after = RT.state.currencies || [];
+        const ids = after.map((x) => x.id).sort();
+        const me1 = after.filter((x) => x.id === 'bq-me1')[0] || {};
+        const me3 = after.filter((x) => x.id === 'bq-me3')[0] || {};
+        const tombs = Object.keys((RT.state.deleted || {}).currencies || {});
+        const applyOk = f3 && J(ids) === J(['bq-me1', 'bq-me3'])
+            && me1.unit === '银元' && me1.amount === 500                        // 单位归一 + 额度补齐
+            && me3.amount === 10 && me3.uses === 5                              // 合并保留最新额度（不累加 30）+ uses 累加
+            && tombs.indexOf('bq-me2') >= 0 && tombs.indexOf('bq-badname') >= 0 && tombs.indexOf('bq-ghost') >= 0;
+        // ⑤ 幂等：再算一次计划应为空
+        const plan2 = CR.currencyRepairPlan();
+        const idemOk = plan2.counts.total === 0 && plan2.counts.drop === 0;
+        const ok = previewOk && cancelOk && applyOk && idemOk;
+        if (!ok) console.log('BQ1-DEBUG ' + JSON.stringify({ previewOk, cancelOk, applyOk, idemOk, ids, me1: { u: me1.unit, a: me1.amount }, me3: { a: me3.amount, u: me3.uses }, tombs, plan2: plan2.counts, page: page1.slice(0, 200) }));
+        return ok;
+    } finally {
+        host.ctx.callGenericPopup = keepPopup;
+        RT.state.currencies = keepCur;
+        RT.state.snapshots = keepSnap;
+        RT.state.deleted = keepDel;
+        RT.cfg.currencyTrackedRoles = keepTracked;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- BO NSFW 等级留档（v3.8.0） ----------
 // 用户要求（原话）：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
 //   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。

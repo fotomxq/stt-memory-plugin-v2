@@ -22,6 +22,7 @@ import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { refreshLocalCopy } from './buffer-manage.js';   // v3.3.0：清理后刷新本机副本统计
+import { currencyRepairPlan, runCurrencyRepair } from '../core/currency-repair.js';   // v3.15.0：货币修正（机械、可预览）
 import { nsfwSoftenState, NSFW_DIM_LABEL, nsfwLabelStats, nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
@@ -911,7 +912,63 @@ function currencyTopHtml() {
 function currencyTrackButtons() {
     const tracked = trackedCurrencyRoles();
     return '<button class="ftt-btn' + (trackPickState() ? ' ftt-primary' : '') + '" data-ftt-action="curTrackPick" title="从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）">👥 指定角色' + (tracked.length ? '（' + tracked.length + '）' : '') + '</button>'
-        + (tracked.length ? '<button class="ftt-btn ftt-err" data-ftt-action="curTrackClear" title="取消全部标定角色">✖ 清空标定</button>' : '');
+        + (tracked.length ? '<button class="ftt-btn ftt-err" data-ftt-action="curTrackClear" title="取消全部标定角色">✖ 清空标定</button>' : '')
+        // v3.15.0（用户要求「货币增加修正按钮，剔除不应该被记录的角色，以及修正错乱的单位计价和冗余的数据合并问题」）
+        + '<button class="ftt-btn ftt-sm' + (currencyRepairOpen ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepair" title="修正货币数据（纯机械、零 AI、可预览）：① 剔除不应该被记录的角色（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）；② 修正错乱的单位计价（单位写法归一、额度缺省用流水净额补齐）；③ 合并冗余条目（同归属同币种的别名合并，如 金子/赤金→黄金）。删除与合并都会留墓碑，跨端不会复活。">🧹 修正货币</button>';
+}
+
+/**
+ * v3.15.0：**货币修正预览面板**（纯机械修正的计划，逐条列出后才允许应用）。
+ * 计划由 `core/currency-repair.js#currencyRepairPlan()` 生成；勾选「未标定角色」会重算计划。
+ */
+function currencyRepairRow(d) {
+    const parts = [];
+    if (d.owner) parts.push(esc(String(d.owner)));
+    if (d.name) parts.push('<b>' + esc(String(d.name)) + '</b>');
+    if (d.unit) parts.push('单位 ' + esc(String(d.unit)));
+    if (d.amount !== undefined && d.amount !== null && d.amount !== 0) parts.push('额度 ' + esc(String(d.amount)));
+    return '<div class="ftt-muted">· ' + parts.join(' · ') + ' — ' + esc(String(d.detail || d.reason || '')) + '</div>';
+}
+function currencyRepairSection(title, arr, cap) {
+    if (!arr || !arr.length) return '';
+    const n = Math.max(1, Number(cap) || 8);
+    return '<div class="ftt-muted ftt-w-full"><b>' + esc(title) + '（' + arr.length + '）</b></div>'
+        + arr.slice(0, n).map(currencyRepairRow).join('')
+        + (arr.length > n ? '<div class="ftt-muted">…还有 ' + (arr.length - n) + ' 条</div>' : '');
+}
+function currencyRepairPanelHtml() {
+    if (!currencyRepairOpen) return '';
+    let plan;
+    try { plan = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); } catch (e) { return '<div class="ftt-empty">修正计划不可用：' + esc(String((e && e.message) || e)) + '</div>'; }
+    const counts = plan.counts || {};
+    const canUntracked = plan.untrackedAvailable === true;
+    const toggle = '<button class="ftt-btn ftt-sm' + (currencyRepairUntracked ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepairToggleUntracked"'
+        + (canUntracked ? '' : ' disabled')
+        + ' title="' + (canUntracked
+            ? '勾选后：既不是默认归属（主角）也没有被「👥 指定角色」标定的角色，其货币一并剔除'
+            : '不可用：默认归属是兜底值「主角」（主角身份未确证）→ 勾选会把全部货币误删，故只报告不剔除') + '">'
+        + (currencyRepairUntracked ? '☑' : '☐') + ' 同时剔除未标定角色的货币</button>';
+    const head = '<div class="ftt-editor-title">🧹 货币修正计划 · 共 ' + (Number(counts.total) || 0) + ' 项'
+        + '（剔除 ' + (Number(counts.drop) || 0) + ' · 合并 ' + (Number(counts.mergeGroups) || 0) + ' 组 · 修正 ' + (Number(counts.fix) || 0) + ' · 只报告 ' + (Number(counts.report) || 0) + '）</div>';
+    const intro = '<div class="ftt-muted ftt-w-full">纯机械修正（<b>零 AI</b>、确定性）：页面逐条列出将删除 / 合并 / 修正的内容，确认后才落库；'
+        + '删除与合并都会留删除墓碑（按条目 id；货币 id 由「归属 + 币种」派生 → 跨端同一条会得到同一 id，不会被复活），条目<b>只减不增</b>。'
+        + '默认归属（主角）判定：<b>' + esc(String(plan.me || '')) + '</b>'
+        + (plan.meConfirmed ? '' : '（兜底值，未确证）') + ' · 名册 ' + (plan.roster || []).length + ' 名 · 标定 ' + (plan.tracked || []).length + ' 名。'
+        + '建议先「⬇ 导出 JSON 文件」备份。</div>';
+    const empty = (Number(counts.total) || 0) === 0;
+    const body = (empty ? '<div class="ftt-empty">未发现需要修正的条目（剔除 / 合并 / 计价修正都是空的）。</div>' : '')
+        + currencyRepairSection('① 将剔除的条目', plan.drop, 10)
+        + currencyRepairSection('② 将合并的冗余条目', (plan.merge || []).map((m) => ({
+            owner: m.owner, name: m.canonical, unit: m.unit, amount: m.amount,
+            detail: m.detail + ' ← ' + m.members.map((x) => x.name + '/' + (x.unit || '—') + '/' + x.amount).join('，'),
+        })), 6)
+        + currencyRepairSection('③ 将修正的计价', plan.fix, 10)
+        + currencyRepairSection('④ 只报告不改（需人工判断）', plan.report, 8);
+    const ops = '<div class="ftt-row">'
+        + (empty ? '' : '<button class="ftt-btn ftt-primary" data-ftt-action="currencyRepairApply" title="按上面的计划落库（会再次弹确认框）">✅ 应用修正</button>')
+        + '<button class="ftt-btn" data-ftt-action="currencyRepairClose">取消</button></div>';
+    return '<div class="ftt-editor" data-ftt-cur-repair>' + head + intro
+        + '<div class="ftt-row">' + toggle + '</div>' + body + ops + '</div>';
 }
 
 /**
@@ -951,6 +1008,12 @@ function currencyPickPanelHtml() {
 function currenciesTopHtml() {
     try { return currencyTopHtml(); } catch (e) { return ''; }
 }
+
+// v3.15.0：货币修正预览的开关与「同时剔除未标定角色」勾选态（模块内状态，同 `customWeaveOpen` 口径）
+let currencyRepairOpen = false;
+let currencyRepairUntracked = false;
+/** 货币修正面板状态（测试 / 调试用） */
+export function currencyRepairState() { return { open: currencyRepairOpen, includeUntracked: currencyRepairUntracked }; }
 
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
@@ -1016,7 +1079,8 @@ function dimBodyList(kind) {
     //   位置：胶囊在工具行之前（V1 `currenciesHtml` 的 head/trackChips），选择器在工具行之后（V1 的 addBtn 之后）
     const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
-    if (!list.length) return curTop + toolbar + curPick + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
+    if (!list.length) return curTop + toolbar + curPick + curRepair + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
     // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
     //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
     const rowCtx = (() => { try { return buildRowCtx(); } catch (e) { return null; } })();
@@ -1055,7 +1119,7 @@ function dimBodyList(kind) {
     }).join('\n');
     // v3.9.0（用户要求）：每个分类列表顶部给出 NSFW 留档汇总（弱 / 强 各有几条），行首逐条标注
     const nsfwLegend = nsfwLegendHtml(list);
-    return curTop + toolbar + curPick + ptb + head + ed + nsfwLegend + peek + rows;
+    return curTop + toolbar + curPick + curRepair + ptb + head + ed + nsfwLegend + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -1748,6 +1812,9 @@ const DANGER_ACTION_PROMPTS = {
     'localCopyClearOthers': '清除**其它角色**留在本机的状态副本？\n\n只删其它角色的本机副本（当前角色的不动）；每个角色清掉后，下次切到它时会从服务端重新载入。\n若某个角色有未上传的改动，清掉就等于丢弃它。',
     'v1LegacyClear': '清除 V1 遗留的本机数据（导入源）？\n\n这些是 V1 插件留在本机的旧存档 / 旧命名缓存 / 旧设置，「⬆ 导入 V1」靠它迁移；**清理后无法再从本机迁移 V1 数据**。',
     'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；清除后总览会重新列出**第 0 层之后的所有待分析楼层**（便于整段重做），再次分析后它们会照常从清单消失。',
+    // ── v3.15.0（用户要求「货币增加修正按钮…」）──
+    //   货币修正是**纯机械**的批量删改：会剔除条目、合并冗余、改写单位/额度 → 属不可逆的批量数据操作，必须二次确认。
+    'currencyRepairApply': '应用货币修正计划？\n\n将按预览里逐条列出的内容执行：① 剔除不应该被记录的角色货币（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）② 合并冗余条目（同归属同币种的别名合并，保留最新额度、不累加）③ 修正计价（单位写法归一、额度缺省用流水净额补齐）。\n\n被剔除与被合并掉的条目都会留删除墓碑（跨端同步不会复活），操作**只减不增**、不可撤销 —— 建议先「⬇ 导出 JSON 文件」备份。',
 };
 
 async function confirmDialog(text, title) {
@@ -2620,6 +2687,35 @@ export async function panelAction(action, payload) {
             }
             setNote('物品修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, itemRepair: r, made: r.made || 0 });
+        }
+        else if (a === 'currencyRepair') {
+            // v3.15.0（用户要求「货币增加修正按钮…」）：**先出计划、后应用** —— 本动作只打开预览面板（零副作用）
+            currencyRepairOpen = true;
+            let n = 0;
+            try { const p0 = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); n = p0.counts.total; } catch (e) { n = 0; }
+            setNote(n ? ('货币修正：已生成计划（' + n + ' 项）—— 核对下方明细后点「✅ 应用修正」') : '货币修正：未发现需要修正的条目');
+            result = Object.assign(result, { ok: true, action: a, planned: n });
+        }
+        else if (a === 'currencyRepairToggleUntracked') {
+            currencyRepairUntracked = !currencyRepairUntracked;
+            let p1 = null;
+            try { p1 = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); } catch (e) { p1 = null; }
+            setNote('货币修正：' + (currencyRepairUntracked ? '已勾选' : '已取消') + '「同时剔除未标定角色的货币」'
+                + (p1 ? ('（计划 ' + p1.counts.total + ' 项：剔除 ' + p1.counts.drop + '）') : '')
+                + (p1 && p1.untrackedAvailable === false ? ' —— 主角身份未确证，此项不可用（已按只报告处理）' : ''));
+            result = Object.assign(result, { ok: true, action: a, includeUntracked: currencyRepairUntracked, untrackedAvailable: p1 ? p1.untrackedAvailable : null });
+        }
+        else if (a === 'currencyRepairClose') { currencyRepairOpen = false; setNote('货币修正：已取消（数据未改动）'); }
+        else if (a === 'currencyRepairApply') {
+            // 真正落库：机械剔除 / 合并 / 修正（删除与合并留墓碑）；确认由危险动作闸（`DANGER_ACTION_PROMPTS`）承担
+            const r = runCurrencyRepair({ includeUntracked: currencyRepairUntracked });
+            currencyRepairOpen = false;
+            currencyRepairUntracked = false;
+            const parts = [r.summary];
+            if (r.changed) parts.push('已留删除墓碑（跨端不会复活）');
+            else parts.push('（无需改动）');
+            setNote('货币修正:' + parts.join('；'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, currencyRepair: r, removed: r.dropped || 0 });
         }
         else if (a === 'characterRepair') {
             // 「🔧 修复角色」（V1 v1.139 角色页专用）：AI 前全局机械处理（出生日期/标签/年龄，零 AI）
