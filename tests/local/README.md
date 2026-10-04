@@ -120,6 +120,7 @@ node tests/local/bridge.mjs            # 监听 127.0.0.1:8791，进入交互
 #   bridge> call ftt.floorDiag {"i":2}  # 单楼诊断：这一楼「为什么」被判为未摘要
 #   bridge> call ftt.dataHealth         # v3.11.0 数据体检（只读）：逐条列出脏台账 / 倒置楼层 / 非规范 NSFW / 缺 id 等数据异常
 #   bridge> call ftt.dataHealthText     # 同一份体检的一行摘要（面板「设定 → 调试 → 🩺 数据体检」同源）
+#   bridge> call ftt.writeStats         # v3.15.1 原生写队列诊断：queued/done/failed/pending、**历史峰值并发**（应为 1）、最近一次写的标签与耗时
 
 node tests/local/bridge.mjs --call sys.info          # 一次性调用
 node tests/local/bridge.mjs --call ftt.memorySample --params-file params.json   # 传参（免 shell 引号问题）

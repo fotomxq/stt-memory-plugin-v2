@@ -771,7 +771,12 @@ export async function storageWriteAll(env, opts) {
     total++;
     const snapRes = snapshotFileEnabled() && ((state && state.snapStore) || []).length ? await snapshotFilePushNow() : { ok: false, reason: 'off' };
     if (snapRes && snapRes.ok) { ok++; wrote.push('snap'); }
-    metaFilePushNow(env, String((env && env.hash) || '')).then(() => { /* 忽略 */ }).catch(() => { /* 忽略 */ });
+    // v3.15.1（闪退取证后的加固）：分片清单**改为 await** —— 此前是 fire-and-forget，常与「下一次保存的原生写」重叠；
+    //   现在它进 `adapters/tt-store.js` 的原生写串行队列并等其完成，`storageWriteAll` 返回即代表本轮原生写全部结束
+    //   （也让镜像的 `storageSyncRunning` 守卫真正覆盖到最后一次写）。
+    total++;
+    const metaRes = await metaFilePushNow(env, String((env && env.hash) || '')).catch(() => ({ ok: false }));
+    if (metaRes && metaRes.ok) { ok++; wrote.push('meta'); }
     // 记录本次推送内容签名 —— 后续同内容保存不再重复写回（流量保护）
     if (ok > 0) mirrorPushMark();
     lastMirror = { at: Date.now(), ok, total, wrote: wrote.join('+'), reason: '' };
