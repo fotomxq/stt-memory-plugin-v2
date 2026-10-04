@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.6.0",
+      "date": "2026-09-30",
+      "title": "自动修复追加「按最新情节刷新时间/地点/人物」（最新情节按内置天数判断）",
+      "points": [
+        "① 「最新情节」改用内置天数判定：（core/recall.js#trustedPlotList）- storyDay 是情节正文头「第 N 天」记录下来的预留天数计数器（rec…",
+        "② 自动修复第 1 段（零 AI）新增「剧情时钟」一步：core/repair.js 的 repairHooks 增 clockSync；index.js 接线到 clockAu…"
+      ]
+    },
     {
       "version": "3.5.0",
       "date": "2026-09-30",

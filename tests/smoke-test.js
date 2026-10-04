@@ -4457,6 +4457,66 @@ await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**�
 // 用户约定：「在设定-数据管理 中约定楼层删除的三个按钮（保留最近 6 / 10 / 12 层）」+
 //   「**用官方 API 实现，不然其他插件也会异常**」→ 本小节用桩宿主跑**真实删除流程**：
 //   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ 逐个 `ctx.deleteMessage` → 精确编号校准。
+// v3.6.0（用户要求）：「总览自动修复功能，追加一个步骤，即根据最新的情节获取最新的时间、地点、人物等信息。
+//   注意最新的情节指根据内置的天数判断。」
+await assert('BH12 v3.6.0 总览「🛠 自动修复」追加「按最新情节刷新时间/地点/人物」（真实点击）：最新情节按**内置天数**判断（第 30 天那条虽然楼层更小，仍胜过第 2 天那条）→ 日期 / 时间 / 地点 / 在场人物都按它写入，提示如实回报「剧情时钟：已按最新情节刷新（第 30 天 · 日期 … · 时间 … · 地点 … · 在场 …）」；手工锁定时如实跳过、不覆盖用户锚点', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const CS = await import('../core/state.js');
+    const keepState = JSON.parse(JSON.stringify(RT.state || {}));
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepPopup = host.ctx.callGenericPopup;
+    const keepLock = RT.cfg.clockManualLock;
+    try {
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 40; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        const st = RT.state;
+        st.state = Object.assign({}, st.state, { date: '1919-01-01', time: '00:00', location: '旧地点', present: ['旧人'] });
+        delete st.state.clockManual;
+        st.snapshots = [{ id: 'bh12-snap', name: '角色甲', identity: {}, updatedAt: 1 }];
+        st.atoms = [
+            { id: 'bh12-day30', title: '第30天', text: '甲在仓库核对账本与银元兑换比例（正文足够长）。', date: '1919-11-10', time: '10:30', location: '仓库', storyDay: 30, floorStart: 1, floorEnd: 2, entities: ['角色甲'], tags: [], updatedAt: 1 },
+            { id: 'bh12-day2', title: '第2天', text: '甲在码头卸货并清点铜箱（正文足够长）。', date: '1919-11-02', time: '08:00', location: '码头', storyDay: 2, floorStart: 35, floorEnd: 36, entities: ['某乙'], tags: [], updatedAt: 2 },
+        ];
+        st.deleted = {}; st.deletedH = {};
+        st.processedFloors = []; st.processedVer = (await import('../host/floors.js')).processedVerTag();
+        st.lastKnownFloor = 39;
+        RT.cfg.clockManualLock = true;                  // 未锁定时才刷新（下面会临时解锁）
+        RT.cfg.clockManualLock = false;
+        await entry.popupAction('tab', { tab: 'overview' });
+        host.ctx.callGenericPopup = async () => 1;
+        const r = await entry.popupAction('repair', {});
+        const note = String((r.state || {}).note || '');
+        const clock = (r.repair && r.repair.stage1 && r.repair.stage1.clockSync) || null;
+        const s2 = RT.state.state || {};
+        const dayOk = !!clock && clock.plotStoryDay === 30 && String(clock.plotId) === 'bh12-day30';
+        const appliedOk = String(s2.date) === '1919-11-10' && String(s2.time) === '10:30' && String(s2.location) === '仓库'
+            && Array.isArray(s2.present) && s2.present.indexOf('角色甲') >= 0
+            && String((s2.clockSrc || {}).present) === 'plot-atom';
+        const noteOk = /剧情时钟：已按最新情节刷新（第 30 天/.test(note) && note.indexOf('地点 仓库') > 0;
+        // ② 手工锁定 → 不覆盖（真实点击一次，锚点保持手工值）
+        //   注：手工改写由「✏️ 手工改写」动作直接写入 `state.state.*`，锁定只保证**自动提取不再覆盖**它。
+        RT.state.state.clockManual = { date: '1919-01-01', time: '00:00', location: '手工锚点', at: 1 };
+        RT.state.state.date = '1919-01-01'; RT.state.state.time = '00:00'; RT.state.state.location = '手工锚点';
+        RT.cfg.clockManualLock = true;
+        const r2 = await entry.popupAction('repair', {});
+        const note2 = String((r2.state || {}).note || '');
+        const lockOk = note2.indexOf('剧情时钟：已跳过（手工锁定') > 0 && String(RT.state.state.location) === '手工锚点'
+            && String(RT.state.state.date) === '1919-01-01';
+        const ok = dayOk && appliedOk && noteOk && lockOk;
+        if (!ok) console.log('BH12-DEBUG ' + JSON.stringify({ dayOk, clock, appliedOk, noteOk, lockOk, note: note.slice(0, 200), note2: note2.slice(0, 200) }));
+        return ok;
+    } finally {
+        RT.cfg.clockManualLock = keepLock;
+        host.ctx.chat.length = 0; for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        host.ctx.callGenericPopup = keepPopup;
+        try { RT.setKernelState(keepState); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // v3.5.0（用户要求）：
 //   ①「总览的自动修复功能，追加计划悬念修复，该修复与当前计划悬念内的修复一致，只是调用一下处理。」
 //   ②「总览的自动修复功能，增加识别楼层突变……当前楼层与最新情节对应楼层不一致且存在跨度达到 9 层以上，

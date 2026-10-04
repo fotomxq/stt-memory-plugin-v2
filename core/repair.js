@@ -42,6 +42,15 @@ let repairHooks = {
      */
     floorJump: null,
     /**
+     * v3.6.0（用户要求）：「总览自动修复功能，追加一个步骤，即根据最新的情节获取最新的时间、地点、人物等信息。
+     *   注意最新的情节指根据内置的天数判断。」
+     * 宿主接 `index.js` 的 `clockAutoExtractOnce({force:true})`（v2.81.0 起的「按最新情节同步剧情时钟」同一条处理：
+     *   手工锁定优先 → 逐字段取最新情节 → 写 `state.state.date/time/location/present/storyDay` + `clockSrc` 可解释来源）；
+     *   **「最新情节」的判定在 `core/recall.js#trustedPlotList`**：两边都有内置天数（`storyDay`）时以天数大者为准。
+     * @type {(() => Promise<object>|object)|null}
+     */
+    clockSync: null,
+    /**
      * v3.5.0（用户要求）：「总览的自动修复功能，追加计划悬念修复……只是调用一下处理。」
      * 宿主接 `core/plan-repair.js#runPlanSuspRepair`（**与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理**）；
      *   自动修复以 `{silent:true}` 调用（提示统一由修复汇总给出）。未接线 → 本步如实跳过。
@@ -409,6 +418,30 @@ async function runRepairMech(opts) {
         }
     } catch (e) { /* 忽略：突变修正失败不影响修复本身 */ }
     stage1.floorJump = floorJump;
+    // ②e v3.6.0（用户要求）：**按最新情节刷新时间 / 地点 / 人物**（零 AI；「最新情节」按内置天数判断）。
+    //   与 v2.81.0「分析后按最新情节同步」调用的是**同一条处理**；手工锁定（`cfg.clockManualLock`）时如实跳过刷新，
+    //   只继续维护「在场」与来源说明。
+    let clockSync = null;
+    try {
+        const fn = (typeof repairHooks.clockSync === 'function') ? repairHooks.clockSync : null;
+        if (fn) {
+            clockSync = await fn();
+            if (clockSync) {
+                const bits = [];
+                const dayShown = Number(clockSync.plotStoryDay) || Number(clockSync.storyDay) || 0;
+                if (dayShown > 0) bits.push('第 ' + dayShown + ' 天');
+                if (clockSync.date) bits.push('日期 ' + String(clockSync.date));
+                if (clockSync.time) bits.push('时间 ' + String(clockSync.time));
+                if (clockSync.location) bits.push('地点 ' + String(clockSync.location));
+                if (Array.isArray(clockSync.present) && clockSync.present.length) bits.push('在场 ' + clockSync.present.slice(0, 6).join('/'));
+                const head = clockSync.manualLock ? '已跳过（手工锁定，不覆盖日期/时间/地点）'
+                    : (clockSync.changed ? '已按最新情节刷新' : '已是最新（本轮无改动）');
+                stage1.notes.push('剧情时钟：' + head + (bits.length ? ('（' + bits.join(' · ') + '）') : ''));
+                try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', changed: !!clockSync.changed, manualLock: !!clockSync.manualLock, storyDay: Number(clockSync.storyDay) || 0, date: clockSync.date, time: clockSync.time, location: clockSync.location, present: clockSync.present, source: clockSync.source, plotId: clockSync.plotId }); } catch (e) { /* 忽略 */ }
+            }
+        }
+    } catch (e) { /* 忽略：时钟刷新失败不影响修复本身 */ }
+    stage1.clockSync = clockSync;
     const after = repairTotalCount();
     const swept = Number(sweepRes.swept) || 0;
     const cut = Number(capRes.cut) || 0;
@@ -798,6 +831,7 @@ async function runRepair(opts) {
         dbgLog('修复', {
             action: '数据修复完成（v1.137 三段式 · v1.138 相关性抽查 · v3.5.0 追加计划悬念修复与楼层突变识别）', auto: isAuto, cause: String(o.cause || '').slice(0, 40),
             floorJump: (stage1.floorJump ? { jumped: stage1.floorJump.jumped, gap: stage1.floorJump.gap, acted: stage1.floorJump.acted } : null),
+            clockSync: (stage1.clockSync ? { changed: !!stage1.clockSync.changed, manualLock: !!stage1.clockSync.manualLock, storyDay: Number(stage1.clockSync.storyDay) || 0 } : null),
             planSusp: (planSusp ? { made: planSusp.made, skipped: planSusp.skipped, blocked: planSusp.blocked, error: planSusp.error || '' } : (psSkipWhy ? { skipped: psSkipWhy } : null)),
             merged: stage1.merged, deleted: stage1.deleted, revised: ai.revised, aiDeleted: ai.deleted,
             candidates: cands.length, aiUsed: ai.used, aiSkipped: ai.skipped, ms,

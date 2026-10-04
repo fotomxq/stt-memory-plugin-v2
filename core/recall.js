@@ -1381,7 +1381,15 @@ function trustedPlotList() {
         //   楼层给不出位置 → 改用**剧情日期**判谁更新（都无日期时才回落到「有位置的在前」）。
         //   为什么必须这样：手动新增的情节没有 floor（=0）会被排到最后 → 它的日期/时间**永远取不到**。
         const dateOf = (a) => (clockDateValid(a.date) ? String(a.date).slice(0, 10) : '');
+        // v3.6.0（用户要求）：「注意最新的情节指根据**内置的天数**判断。」
+        //   `storyDay` = 情节正文头「第 N 天」记录下来的**预留天数计数器**（`recordReservedStoryDay`，只记录不联动）。
+        //   规则：**两边都有天数**（>0）时以天数大者为准（最贴近用户直觉的「谁更新」）；
+        //     任一侧没有天数 → 完全沿用原口径（楼层优先 → 剧情日期 → id），
+        //     避免「新情节还没写天数」被老情节压下去（保守、不倒退）。
+        const dayOf = (a) => Number(a && a.storyDay) || 0;
         const sorted = list.slice().sort((a, b) => {
+            const aday = dayOf(a), bday = dayOf(b);
+            if (aday > 0 && bday > 0 && aday !== bday) return bday - aday;   // ★ 内置天数优先（两边都有）
             const af = floorOf(a), bf = floorOf(b);
             const aKnown = af > 0, bKnown = bf > 0;
             if (aKnown && bKnown) {
