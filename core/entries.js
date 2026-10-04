@@ -8,6 +8,7 @@
 // ============================================================
 
 import { KIND_MAP } from './config.js';
+import { preserveEntryMeta } from './entry-meta.js';   // v3.8.0：手动新增/编辑同样打上 NSFW 等级留档（只升不降）
 import { ATOM_DIM_KEYS } from './constants.js';
 import { releaseMergedSources, tombEntries, tombMany, tombSet } from './merge.js';
 import { normalizeAtom } from './model/atom.js';
@@ -252,6 +253,8 @@ function upsertEntry(kind, raw, opts) {
     const floor = { start: getLastMessageId(), end: getLastMessageId() };
     const n = kindNormalize(kind, raw, floor);
     if (!n) return false;
+    // v3.8.0：手动新增/编辑也走同一套元字段补齐（楼层溯源 + NSFW 等级留档；同 id 既有留档只升不降）
+    preserveEntryMeta(String(kind) === 'currentStates' ? 'states' : String(kind), raw, n);
     // 手动把物品数量设为 0 → 该条目自动删除（不保留空条目）
     if (kind === 'items' && Number(n.qty) === 0) {
         km.set((km.get() || []).filter(x => x.id !== n.id && x.name !== n.name));

@@ -11,8 +11,10 @@ import {
     nsfwSoftenState, nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwFixedReplace, runNsfwSoften, NSFW_DIM_LABEL,
+    nsfwLabelStats, nsfwBackfill, nsfwClassifyItem, nsfwLevelLabel, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS,   // v3.8.0：NSFW 等级留档
 } from '../core/nsfw.js';
 import { settingsControlHtml } from './settings-pages.js';
+import { hintDetailsHtml } from './hints.js';   // v3.8.0：长说明折叠（页面提示 ≤90 字的规范）
 
 const esc = (v) => escHtml(v == null ? '' : v);
 const attr = esc;
@@ -65,7 +67,20 @@ export function nsfwPageHtml() {
   <button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleSave" data-ftt-idx="${i}" title="保存该条规则">💾</button>
   <button class="ftt-btn ftt-sm ftt-err" data-ftt-action="nsfwRuleDel" data-ftt-idx="${i}" title="删除该条规则">🗑</button>
 </div>`).join('');
+    const labs = (() => { try { return nsfwLabelStats(); } catch (e) { return { none: 0, weak: 0, strong: 0, total: 0 }; } })();
     return [
+        // v3.8.0（用户要求）：「NSFW 等级留档」——无/弱/强三级，弱化后不变（永久性留档）
+        '<div class="ftt-section" data-ftt-nsfw-labels><div class="ftt-sec-title">📌 NSFW 等级留档（无 / 弱 / 强）</div>',
+        '<div class="ftt-muted ftt-w-full">每条原子数据带一个 NSFW 等级标签：按<b>原文</b>判定，<b>弱化内容不会改变它</b>（永久性留档）。</div>',
+        hintDetailsHtml('三级口径与补档规则', '<div>' + esc('无 = 与 NSFW 完全无关；弱 = 有部分亲密或暗示但无露骨内容；强 = 完全是露骨内容。'
+            + '标签在数据写入时判定（AI 显式标注优先，其次按原文关键词与亲密/暗示信号），只升不降：'
+            + '已有「强」的条目不会因为正文被弱化而降到「弱」；跨端合并取两侧较高者。'
+            + '老存档与派生条目在载入时自动补档一次，也可在此手动补档。') + '</div>'),
+        '<div class="ftt-row"><span class="ftt-muted" data-ftt-nsfw-label-state>当前留档：共 <b>' + labs.total + '</b> 条 —— 无 <b>' + labs.none + '</b> · 弱 <b>' + labs.weak + '</b> · 强 <b>' + labs.strong + '</b></span>',
+        '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwLabelBackfill" title="按原文重新判级并补齐留档标签（只升不降、幂等；老存档在载入时已自动补档一次）">🔖 立即补档</button></div>',
+        '<div class="ftt-hint ftt-w-full">补档只升不降：已有「强」的条目不会因正文被弱化而降档（弱级信号词 ' + NSFW_WEAK_SIGNALS.length + ' 条内置）。</div>',
+        '</div>',
+
         '<div class="ftt-section"><div class="ftt-sec-title">内容弱化（NSFW）</div>',
         switchRow('nsfwSoftenEnabled', '分析记忆时弱化露骨内容（默认关）', '追加提示词模板「内容弱化（NSFW）」'),
         '<div class="ftt-muted ftt-w-full">开启后：分析记忆时追加「内容弱化（NSFW）」模板，让新记忆不产生露骨描写（剧情与因果照实保留）。</div>',
@@ -140,9 +155,17 @@ export async function nsfwAction(action, payload) {
                 if (r.unchanged) parts.push('无变化 ' + r.unchanged + ' 条');
                 if (r.unable) parts.push('AI 无法处理 ' + r.unable + ' 条');
                 if (r.skipped) parts.push('丢弃不合格 ' + r.skipped + ' 条');
-                note = '弱化 NSFW：' + (parts.length ? parts.join(' · ') : '没有命中露骨关键词') + (r.truncated ? ' · 余 ' + r.truncated + ' 条可再点一次' : '');
+                note = '弱化 NSFW：' + (parts.length ? parts.join(' · ') : '没有命中露骨关键词') + (r.applied ? '（NSFW 标签留档不变）' : '') + (r.truncated ? ' · 余 ' + r.truncated + ' 条可再点一次' : '');
             }
             return { ok: !!(r.applied || r.fixed), action: a, note, detail: r };
+        }
+        if (a === 'nsfwLabelBackfill') {
+            const r = nsfwBackfill({});
+            const labs = (() => { try { return nsfwLabelStats(); } catch (e) { return { none: 0, weak: 0, strong: 0, total: 0 }; } })();
+            const note = 'NSFW 等级留档：扫描 ' + Number(r.scanned || 0) + ' 条 → 新打标 ' + Number(r.stamped || 0) + ' 条（弱 ' + Number(r.weak || 0) + ' · 强 ' + Number(r.strong || 0) + '）；'
+                + '当前共 ' + labs.total + ' 条：无 ' + labs.none + ' · 弱 ' + labs.weak + ' · 强 ' + labs.strong + '（只升不降，弱化不改标签）';
+            toast(r.stamped ? 'success' : 'info', note, '');
+            return { ok: true, action: a, note, detail: r };
         }
         if (a === 'nsfwRuleApply') {
             const r = nsfwFixedReplace({});
@@ -216,4 +239,4 @@ export async function nsfwAction(action, payload) {
 }
 
 /** 内容弱化动作名（供面板分发；与 V1 逐字一致） */
-export const NSFW_ACTIONS = Object.freeze(['nsfwSoften', 'nsfwRuleApply', 'nsfwKwAdd', 'nsfwKwSave', 'nsfwKwDel', 'nsfwKwReset', 'nsfwRuleAdd', 'nsfwRuleSave', 'nsfwRuleDel', 'nsfwRuleReset']);
+export const NSFW_ACTIONS = Object.freeze(['nsfwSoften', 'nsfwLabelBackfill', 'nsfwRuleApply', 'nsfwKwAdd', 'nsfwKwSave', 'nsfwKwDel', 'nsfwKwReset', 'nsfwRuleAdd', 'nsfwRuleSave', 'nsfwRuleDel', 'nsfwRuleReset']);

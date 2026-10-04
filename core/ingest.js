@@ -12,7 +12,7 @@ import { normalizeDeltaKeys } from './config.js';
 import { upsertRelLinks } from './entries.js';
 import { atomIsHidden, capAtomsKeepingHidden, tombEntries, tombMany, tombSet } from './merge.js';
 import { normalizeAtom } from './model/atom.js';
-import { preserveFloorProvenance } from './floor-cover.js';   // v3.7.0：补齐各维度归一化时被丢弃的楼层溯源字段
+import { preserveEntryMeta } from './entry-meta.js';   // v3.7.0 楼层溯源 + v3.8.0 NSFW 等级留档：归一化后统一补齐
 import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory, normalizeNpc, normalizeParallel, normalizePlan, normalizeScene, normalizeSuspense } from './model/dims.js';
 import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney } from './model/money.js';
 import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildId, rumorStageByFerment, rumorSubjectKey } from './model/rumor.js';
@@ -86,8 +86,10 @@ function mergeDelta(delta0, floorRange) {
                 // v1.203：命中的是「已总结隐藏」情节 → 不改写（其内容已并入总结，改动会破坏来源与稳定性）
                 // v3.7.0：**楼层溯源同样是「存档事实」**，不来自 AI 输出 —— 覆盖既有条目时从旧条目继承
                 //   （`floorNowStart/floorNowEnd` / `originGone`），否则每次 AI 更新都会把「原文已移除」标记冲掉。
-                if (i >= 0) { if (!atomIsHidden(state.atoms[i])) { n.uses = state.atoms[i].uses || 0; preserveFloorProvenance(state.atoms[i], n); state.atoms[i] = n; } }
-                else state.atoms.push(n);
+                if (i >= 0) { if (!atomIsHidden(state.atoms[i])) { n.uses = state.atoms[i].uses || 0; preserveEntryMeta('atoms', state.atoms[i], n); state.atoms[i] = n; } }
+                // v3.8.0：**新情节落库即打标**（NSFW 等级留档）—— 与楼层溯源同一套补齐；
+                //   只按「写入当时的原文」判级，此后弱化/改写都不会降档（见 core/nsfw-level.js）
+                else { preserveEntryMeta('atoms', a, n); state.atoms.push(n); }
             }
         }
         // v1.50：情节原子「更新」—— 依据 id/标题/原文定位既有原子，替换为修正版并保留因果日志（原记录→新事实），
@@ -96,11 +98,11 @@ function mergeDelta(delta0, floorRange) {
             const n = normalizeAtom(u, fb);
             if (!n) continue;
             const i = state.atoms.findIndex(x => x.id === n.id || (u && u.id && x.id === String(u.id)) || (u && u.title && x.title === String(u.title)) || (u && u.text && x.text === String(u.text)) || (u && u.title && x.text === String(u.title)));
-            if (i < 0) { if (!n.date) { n.date = (storyNow.match(/^\d{4}-\d{2}-\d{2}/) || [''])[0]; } state.atoms.push(n); continue; }
+            if (i < 0) { if (!n.date) { n.date = (storyNow.match(/^\d{4}-\d{2}-\d{2}/) || [''])[0]; } preserveEntryMeta('atoms', u, n); state.atoms.push(n); continue; }
             const prev = state.atoms[i];
             if (atomIsHidden(prev)) continue;   // v1.203：已总结隐藏情节不接受 AI 更新
             n.id = prev.id; n.uses = prev.uses || 0;
-            preserveFloorProvenance(prev, n);   // v3.7.0：更新既有情节时继承楼层溯源/当前位置/「原文已移除」
+            preserveEntryMeta('atoms', prev, n);   // v3.7.0 楼层溯源 / v3.8.0 NSFW 留档：更新既有情节时从旧条目**继承**（只升不降）
             const prevLog = Array.isArray(prev.log) ? prev.log.slice() : [];
             if (n.text !== prev.text) {
                 prevLog.push({ prev: String(prev.text || '').slice(0, 160), date: prev.date || '', floorStart: prev.floorStart || 0, floorEnd: prev.floorEnd || 0 });
@@ -110,7 +112,7 @@ function mergeDelta(delta0, floorRange) {
         }
         for (const id of delta.atoms?.remove || []) { state.atoms = (state.atoms || []).filter(x => x.id !== id && x.text !== id); }
         for (const s of delta.states?.add || []) {
-            const n = preserveFloorProvenance(s, normalizeCurrentState(s));
+            const n = preserveEntryMeta('states', s, normalizeCurrentState(s));
             if (n) {
                 // v2.39.0：无剧情日期时 `st.date` 为空 → **不写**（绝不用现实墙钟冒充剧情时间）
                 const st = stampNowForState(); if (st.date) { n.updatedAt = n.updatedAt || st.date; n.updatedAtTime = n.updatedAtTime || st.time; }
@@ -119,7 +121,7 @@ function mergeDelta(delta0, floorRange) {
             }
         }
         for (const s of delta.states?.update || []) {
-            const n = preserveFloorProvenance(s, normalizeCurrentState(s));
+            const n = preserveEntryMeta('states', s, normalizeCurrentState(s));
             if (n) {
                 const st = stampNowForState(); if (st.date) { n.updatedAt = st.date; n.updatedAtTime = st.time; }
                 const i = state.currentStates.findIndex(x => x.id === n.id);
@@ -142,7 +144,7 @@ function mergeDelta(delta0, floorRange) {
         try { if (delta.memories && (delta.memories.add || delta.memories.update || delta.memories.remove)) scheduleMemoryForget(); } catch (e) { }
         // v1.101 修复：快照 新增 与 更新 可能同时出现 —— 用 concat 合并处理（旧 `a || b` 在 add 非空时短路丢掉 update）
         for (const s of [].concat(delta.snapshots?.add || [], delta.snapshots?.update || [])) {
-            const n = preserveFloorProvenance(s, normalizeSnapshot(s));
+            const n = preserveEntryMeta('snapshots', s, normalizeSnapshot(s));
             if (n) {
                 const i = state.snapshots.findIndex(x => x.id === n.id || x.name === n.name);
                 if (i >= 0) {
@@ -175,7 +177,7 @@ function mergeDelta(delta0, floorRange) {
             try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { }
         }
         for (const m of delta.memories?.add || []) {
-            const n = preserveFloorProvenance(m, normalizeMemory(m));
+            const n = preserveEntryMeta('memories', m, normalizeMemory(m));
             if (n) {
                 // v1.63：记忆写入/更新即「想起」—— 无日期时自动补剧情日期（遗忘引擎时间轴；AI 自带日期保留）
                 // v1.63 原意是「无日期时自动补**剧情日期**」；v2.39.0 起无剧情日期时**留空**（不再写现实日期）
@@ -189,7 +191,7 @@ function mergeDelta(delta0, floorRange) {
         try { scheduleMemoryForget(); } catch (e) { }
         // v1.104：物品新增/更新统一处理 —— 同名只更新不新增；数量为 0 自动删除
         for (const it of (delta.items?.add || []).concat(delta.items?.update || [])) {
-            const n = preserveFloorProvenance(it, normalizeItem(it));
+            const n = preserveEntryMeta('items', it, normalizeItem(it));
             if (n) {
                 // v1.103：物品落库打时间戳（楼层 + 剧情日期）—— 供同名单修复/多位置时“取最新”
                 const fe0 = Number(fb && fb.end), fs0 = Number(fb && fb.start);
@@ -221,7 +223,7 @@ function mergeDelta(delta0, floorRange) {
         // v1.181：货币大类 —— 同一「归属 + 币种」只维护一条（额度覆盖、收支追加）；归属默认主角
         if (cfg.currencyEnabled !== false) {
             for (const cu of (delta.currencies?.add || []).concat(delta.currencies?.update || [])) {
-                const n = preserveFloorProvenance(cu, normalizeCurrency(cu));
+                const n = preserveEntryMeta('currencies', cu, normalizeCurrency(cu));
                 if (!n) continue;
                 const fe0 = Number(fb && fb.end), fs0 = Number(fb && fb.start);
                 if (Number.isInteger(fe0) && fe0 >= 0) n.floorEnd = Math.max(Number(n.floorEnd) || 0, fe0);
@@ -268,7 +270,7 @@ function mergeDelta(delta0, floorRange) {
             state.items = (state.items || []).filter(x => Number(x.qty) !== 0);
         }
         for (const p of delta.plans?.add || []) {
-            const n = preserveFloorProvenance(p, normalizePlan(p));
+            const n = preserveEntryMeta('plans', p, normalizePlan(p));
             if (n) {
                 if (n.status === 'closed') {
                     // v1.64：收到已完结计划 → 原文删除，只累计统计
@@ -307,7 +309,7 @@ function mergeDelta(delta0, floorRange) {
         }
         for (const id of delta.plans?.remove || []) { try { dropRelLinks('plans', [id]); } catch (e) { } state.plans = (state.plans || []).filter(x => x.id !== id && x.content !== id); }
         for (const s of delta.suspense?.add || []) {
-            const n = preserveFloorProvenance(s, normalizeSuspense(s));
+            const n = preserveEntryMeta('suspense', s, normalizeSuspense(s));
             if (n) {
                 if (n.status === 'closed') {
                     // v1.64：收到已揭晓悬念 → 原文删除，只累计统计
@@ -345,10 +347,10 @@ function mergeDelta(delta0, floorRange) {
             }
         }
         for (const id of delta.suspense?.remove || []) { try { dropRelLinks('suspense', [id]); } catch (e) { } state.suspense = (state.suspense || []).filter(x => x.id !== id && x.content !== id); }
-        for (const n of delta.npcs?.add || []) { const nn = preserveFloorProvenance(n, normalizeNpc(n)); if (nn) { state.npcs = state.npcs || []; const i = state.npcs.findIndex(x => x.id === nn.id); if (i >= 0) state.npcs[i] = nn; else state.npcs.push(nn); } }
+        for (const n of delta.npcs?.add || []) { const nn = preserveEntryMeta('npcs', n, normalizeNpc(n)); if (nn) { state.npcs = state.npcs || []; const i = state.npcs.findIndex(x => x.id === nn.id); if (i >= 0) state.npcs[i] = nn; else state.npcs.push(nn); } }
         for (const id of delta.npcs?.remove || []) { state.npcs = (state.npcs || []).filter(x => x.id !== id && x.name !== id); }
         for (const s of delta.scenes?.add || []) {
-            const n = preserveFloorProvenance(s, normalizeScene(s));
+            const n = preserveEntryMeta('scenes', s, normalizeScene(s));
             if (!n) continue;
             const existing = findSceneNode(n.pathArr);
             if (existing) {
@@ -358,7 +360,7 @@ function mergeDelta(delta0, floorRange) {
             } else state.scenes.push(n);
         }
         for (const s of delta.scenes?.update || []) {
-            const n = preserveFloorProvenance(s, normalizeScene(s));
+            const n = preserveEntryMeta('scenes', s, normalizeScene(s));
             if (!n) continue;
             const existing = findSceneNode(n.pathArr);
             if (existing) { existing.name = n.name || existing.name; if (n.desc) existing.desc = n.desc; }
@@ -381,13 +383,13 @@ function mergeDelta(delta0, floorRange) {
         }
         for (const id of delta.scenes?.remove || []) { state.scenes = (state.scenes || []).filter(x => x.id !== id && x.name !== id); }
         for (const c of delta.concepts?.add || []) {
-            const n = preserveFloorProvenance(c, normalizeConcept(c));
+            const n = preserveEntryMeta('concepts', c, normalizeConcept(c));
             if (n) { const i = state.concepts.findIndex(x => x.id === n.id); if (i >= 0) state.concepts[i] = n; else state.concepts.push(n); }
         }
         for (const id of delta.concepts?.remove || []) { state.concepts = (state.concepts || []).filter(x => x.id !== id && x.name !== id); }
         // v1.58 平行事件（交织管线产物）：新增/更新/删除
         for (const p of delta.parallels?.add || []) {
-            const n = preserveFloorProvenance(p, normalizeParallel(p));
+            const n = preserveEntryMeta('parallels', p, normalizeParallel(p));
             if (n) {
                 n.updatedAt = Date.now();
                 const i = state.parallels.findIndex(x => x.id === n.id);
@@ -402,7 +404,7 @@ function mergeDelta(delta0, floorRange) {
             //   **卦象与因果线会被清空**（用户看到的就是「卦象没了」）。
             //   现在改为**逐字段合并**（与 atoms / items / currencies 的更新口径一致）：本次没给的字段**保留旧值**；
             //   集合类字段（标签）走 `mergeTags`，目标可能性「本次给了才覆盖」，重要度「本次没给才沿用」。
-            const n = preserveFloorProvenance(p, normalizeParallel(p));
+            const n = preserveEntryMeta('parallels', p, normalizeParallel(p));
             if (!n) continue;
             const i = state.parallels.findIndex(x => x.id === n.id || (p && p.title && x.title === String(p.title)));
             if (i < 0) { if (n.id) state.parallels.push(n); continue; }
@@ -690,7 +692,7 @@ function rumorApplyAiDelta(raw, opts) {
     try {
         if (!rumorEnabledOn()) return null;
         const o = opts || {};
-        const n0 = preserveFloorProvenance(raw, normalizeRumor(raw));
+        const n0 = preserveEntryMeta('rumors', raw, normalizeRumor(raw));
         if (!n0) return null;
         const fb = o.floor || {};
         const fe0 = Number(fb.end), fs0 = Number(fb.start);

@@ -5,6 +5,7 @@
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { cfg } from './runtime.js';
+import { nsfwField } from './scalars.js';   // v3.8.0：NSFW 等级留档（无/弱/强）
 import { clockDateTrim, dimCap, splitListText } from './scalars.js';
 import { clockDateParts, clockDateStr, clockDateValid, clockParseDateText, storyDateMsFromStr } from '../clock.js';
 import { defaultCfg } from '../config.js';
@@ -83,7 +84,7 @@ function normalizePlotSegment(e) {
         const atomIds = (Array.isArray(t.atomIds) ? t.atomIds : []).map(x => String(x || '')).filter(Boolean).slice(0, 300);
         const head = header || (rg.start ? (rg.end && rg.end !== rg.start ? `${rg.start} ~ ${rg.end}` : rg.start) : '未标注时间范围');
         const out = {
-            id: String(t.id || plotSegmentId({ header: head, raw: rawText })),
+                        id: String(t.id || plotSegmentId({ header: head, raw: rawText })),
             header: head,
             start: rg.start || rng.start || '',
             end: rg.end || rng.end || '',
@@ -97,6 +98,8 @@ function normalizePlotSegment(e) {
             uses: Number(t.uses) || 0,
             createdAt: Number(t.createdAt) || Date.now(),
             updatedAt: Number(t.updatedAt) || Number(t.createdAt) || Date.now(),
+
+            ...nsfwField(t),
         };
         if (!out.raw) out.raw = plotSegmentsToText([out]);
         return out;

@@ -176,6 +176,8 @@ import {
     runNsfwSoften, nsfwSoftenState, nsfwFixedReplace, nsfwScan, nsfwKeywordHits, nsfwApplyRules,
     nsfwKeywordList, nsfwRuleList, nsfwKeywordAdd, nsfwKeywordDelete, nsfwRuleAdd, nsfwRuleDelete,
     nsfwKeywordReset, nsfwRuleReset,
+    // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
+    nsfwLevelOf, nsfwLabelStats, nsfwBackfill, nsfwClassifyItem,
 } from './core/nsfw.js';
 import { promptToGenerateArgs } from './host/extract.js';
 // v2.58.0：提取记忆三层流程（向量 / JS / AI）与向量层宿主适配（对齐 V1 的 Embedding / Rerank API 设置）
@@ -363,6 +365,17 @@ export async function loadMemoryState() {
         via = 'superseded';
     } else {
         try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+    }
+    // v3.8.0（用户要求）：**NSFW 等级留档补档** —— 老存档（v3.8.0 之前写入的）与派生条目（修复/推演/情节总结新建）
+    //   在载入后补上等级标签（无/弱/强）；**只升不降、幂等**：文本没有命中时不写、已打标的不再改动。
+    //   弱化路径只改文本、不动标签，因此补档不会把「强」降下来（见 `core/nsfw-level.js#nsfwStampLevel`）。
+    if (!superseded) {
+        try {
+            const bf = nsfwBackfill();
+            if (bf.stamped) {
+                try { debugLogPush('弱化', { action: '载入补档：NSFW 等级留档（v3.8.0）', stamped: bf.stamped, weak: bf.weak, strong: bf.strong, byDim: bf.byDim, scanned: bf.scanned }); } catch (e2) { /* 忽略 */ }
+            }
+        } catch (e) { /* 补档失败不影响载入 */ }
     }
     // 内存层记账：注入后内存里到底是什么（条数 / 字段数 / 各维条数）——载入链路的最后一环
     try {
@@ -993,6 +1006,11 @@ function bootstrapDiagnostics() {
             nsfwRuleDelete: (i) => nsfwRuleDelete(i),
             nsfwKeywordReset: () => nsfwKeywordReset(),
             nsfwRuleReset: () => nsfwRuleReset(),
+            // v3.8.0：NSFW 等级留档（无 / 弱 / 强）—— 统计 / 补档 / 单条判级（只读诊断用）
+            nsfwLabels: (st) => nsfwLabelStats(st || undefined),
+            nsfwBackfill: (opts) => nsfwBackfill(opts || {}),
+            nsfwLevelOf: (it) => nsfwLevelOf(it),
+            nsfwClassify: (dim, it) => nsfwClassifyItem(dim, it),
             // B8-5 遗忘域（状态衰退 / 记忆遗忘 / 通用清扫；V1 中为自动行为，这里另给诊断入口）
             forgetState: () => forgetState(),
             forgetRunAll: (opts) => forgetRunAll(opts || {}),

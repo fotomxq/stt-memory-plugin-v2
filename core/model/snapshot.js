@@ -5,7 +5,7 @@
 // ============================================================
 import { clamp, hashText, normText, normalizeList, snapNameKey } from '../util.js';
 import { cfg, state, getStoryNow } from './runtime.js';
-import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText, clockDateTrim } from './scalars.js';
+import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText, clockDateTrim, nsfwField } from './scalars.js';
 import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyDateMsFromStr } from '../clock.js';
 import { atomIsHidden } from '../merge.js';
 import { atomLatestDated } from '../recall.js';
@@ -723,6 +723,8 @@ function normalizeSnapshot(e0) {
         content: '',                       // v2.86.0：由 `snapshotContentCopy(out)` 统一生成（D8 §4.4）
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
         extra: makeExtra({ gender: src?.gender, occupation: src?.occupation, species: src?.species, traits: src?.traits }),
+
+        ...nsfwField(e),
     };
     // v2.86.0（D8 §4.4）：内容副本 = 全部结构化字段的确定性拼接（字段仍是权威，副本只供哈希 / 检索）
     out.content = snapshotContentCopy(out);

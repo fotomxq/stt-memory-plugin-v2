@@ -10,6 +10,7 @@
 // 一致性由 tests/unit/cross-sync-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { ATOM_DIM_KEYS } from './constants.js';
+import { nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0：NSFW 等级留档（跨端合并取高）
 import { atomContentHash } from './model/hash.js';
 import { storageHash } from './envelope.js';
 import { hashText } from './util.js';
@@ -136,7 +137,7 @@ function mergeDataObjects(baseData, remoteData, opts) {
             for (const id of Object.keys(L)) {
                 if (!(id in R)) { merged.push(L[id]); continue; }
                 const hL = atomContentHash(cat, L[id]), hR = atomContentHash(cat, R[id]);
-                if (hL && hL === hR) { merged.push(L[id]); stat.same++; continue; }
+                if (hL && hL === hR) { nsfwMergeLevel(L[id], R[id]); merged.push(L[id]); stat.same++; continue; }   // v3.8.0：留档取高
                 const lw = Number(L[id].updatedAt) || 0, rw = Number(R[id].updatedAt) || 0;
                 const winRemote = rw > lw || (rw === lw && remTs > baseTs);
                 const dimMerger = DIM_ENTRY_MERGERS[cat];
@@ -145,7 +146,10 @@ function mergeDataObjects(baseData, remoteData, opts) {
                     try { custom = dimMerger(copyVal(L[id]), copyVal(R[id]), { winRemote, baseTs, remTs }); } catch (e) { custom = null; }
                     if (custom) { merged.push(custom); if (winRemote) stat.conflictWinRemote++; else stat.conflictWinLocal++; continue; }
                 }
-                merged.push(winRemote ? copyVal(R[id]) : L[id]);       // 本地胜出 → 复用克隆树内对象
+                const winner = winRemote ? copyVal(R[id]) : L[id];
+                // v3.8.0：**NSFW 等级留档只升不降** —— 胜出条目的文本可能被弱化过，另一侧的「强」不能被丢掉
+                nsfwMergeLevel(winner, winRemote ? L[id] : R[id]);
+                merged.push(winner);       // 本地胜出 → 复用克隆树内对象
                 if (winRemote) stat.conflictWinRemote++; else stat.conflictWinLocal++;
             }
             for (const id of Object.keys(R)) { if (id in L) continue; merged.push(copyVal(R[id])); stat.added++; }

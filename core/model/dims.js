@@ -5,7 +5,7 @@
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
-import { splitListText, dimCap, mergeTags, makeExtra, normStrList, normSteps, normHistory, normIdList, normPhase, normClues, scenePathArr, toChineseField, toChineseCategory } from './scalars.js';
+import { splitListText, dimCap, mergeTags, makeExtra, normStrList, normSteps, normHistory, normIdList, normPhase, normClues, scenePathArr, toChineseField, toChineseCategory, nsfwField } from './scalars.js';
 import { cfg } from './runtime.js';
 import { normalizeRelRefList } from './rel.js';
 
@@ -34,6 +34,7 @@ function normalizeCurrentState(e) {
         title: `${subject}·${field}`,
         content: value,
         strength: Math.round(clamp(Number(e?.importance) || 0.6, 0, 1) * 100),
+        extra: makeExtra({ field, status: e?.status, updatedAt: e?.updatedAt, updatedAtTime: e?.updatedAtTime }),        ...nsfwField(e),
         extra: makeExtra({ field, status: e?.status, updatedAt: e?.updatedAt, updatedAtTime: e?.updatedAtTime }),        };
 }
 // 记录状态的最后更新时刻（优先剧情时间，回退现实时间）
@@ -58,6 +59,7 @@ function normalizeMemory(e) {
         title,
         content,
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
+        extra: makeExtra({ owner, category: e?.category, keywords: e?.keywords }),        ...nsfwField(e),
         extra: makeExtra({ owner, category: e?.category, keywords: e?.keywords }),        };
 }
 // 概念（世界客观存在的理念/发现/领悟）
@@ -82,6 +84,7 @@ function normalizeConcept(e) {
         title: name,
         content,
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
+        extra: makeExtra({ source: e?.source || e?.origin, keywords: e?.keywords }),        ...nsfwField(e),
         extra: makeExtra({ source: e?.source || e?.origin, keywords: e?.keywords }),        };
 }
 // ==================== 平行事件（正文之外、八卦推演的潜在事件）====================
@@ -131,6 +134,7 @@ function normalizeParallel(e) {
                 promotedAt: normText(e.promotedAt || '', 40),
                 constraintNote: normText(e.constraintNote || '', 60),
             }),
+        ...nsfwField(e),
         };
     } catch (err) { return null; }
 }
@@ -159,6 +163,7 @@ function normalizeItem(e) {
         title: name,
         content: dimCap('items', normText(e?.desc, 2000)),
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
+        extra: makeExtra({ qty: e?.qty, location: e?.location, carried: e?.carried !== false, keywords: e?.keywords }),        ...nsfwField(e),
         extra: makeExtra({ qty: e?.qty, location: e?.location, carried: e?.carried !== false, keywords: e?.keywords }),        };
 }
 
@@ -207,6 +212,7 @@ function normalizePlan(e) {
             phase: normPhase(e?.phase || e?.['阶段'] || (e?.status !== 'open' && e?.status !== 'closed' && e?.status !== undefined ? e.status : '')),
             statusNote: normText(e?.statusNote || e?.['状态备注'] || e?.['阶段备注'] || '', 60),
         } : {}),
+        extra: makeExtra({ kind: '计划', title: e?.title || '', date: e?.date || '', time: e?.time || '', characters: e?.characters || e?.entities || [], createdTime: e?.createdTime, targetTime: e?.targetTime, status: status0 }),        ...nsfwField(e),
         extra: makeExtra({ kind: '计划', title: e?.title || '', date: e?.date || '', time: e?.time || '', characters: e?.characters || e?.entities || [], createdTime: e?.createdTime, targetTime: e?.targetTime, status: status0 }),        };
 }
 
@@ -250,6 +256,7 @@ function normalizeSuspense(e) {
             phase: normPhase(e?.phase || e?.['阶段'] || (e?.status !== 'open' && e?.status !== 'closed' && e?.status !== undefined ? e.status : '')),
             statusNote: normText(e?.statusNote || e?.['状态备注'] || e?.['阶段备注'] || '', 60),
         } : {}),
+        extra: makeExtra({ kind: '悬念', title: e?.title || '', date: e?.date || '', time: e?.time || '', characters: e?.characters || e?.entities || [], createdTime: e?.createdTime, resolveTime: e?.resolveTime, status: status1 }),        ...nsfwField(e),
         extra: makeExtra({ kind: '悬念', title: e?.title || '', date: e?.date || '', time: e?.time || '', characters: e?.characters || e?.entities || [], createdTime: e?.createdTime, resolveTime: e?.resolveTime, status: status1 }),        };
 }
 
@@ -284,6 +291,7 @@ function normalizeScene(e) {
         title: name,
         content: dimCap('scenes', normText(e?.desc, 2000)),
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
+        extra: makeExtra({ pathStr, floorSeen: e?.floorSeen }),        ...nsfwField(e),
         extra: makeExtra({ pathStr, floorSeen: e?.floorSeen }),        };
 }
 // 场景重复地址并集 —— 同路径（pathStr）多记录合并为一个（描述取更全者、uses/floorSeen 取大），

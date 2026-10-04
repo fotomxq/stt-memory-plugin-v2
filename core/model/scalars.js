@@ -8,6 +8,7 @@ import { normText, normalizeList, clamp, hashText, splitListText } from '../util
 import { DIM_CHAR_LIMITS } from '../constants.js';
 import { cfg } from './runtime.js';
 import { clockYearStr, dateStrCmp } from '../clock.js';
+import { nsfwLevelNorm } from '../nsfw-level.js';   // v3.8.0：NSFW 等级留档（无/弱/强）—— 各维度归一化统一保留字段
 
 // 维度字数硬上限（默认逐字取自 V1 `defaultCfg.dimCharLimits`）
 const defaultCfg = { dimCharLimits: DIM_CHAR_LIMITS };
@@ -238,3 +239,17 @@ export { dimCap };
 export { normalizeTrackedRoles };
 export { SNAP_GROUP_MAP, splitListText };
 export { mergeTags, makeExtra, extraGet, detectValueType, toChineseField, toChineseCategory, atomTitle, STATE_FIELD_CN, MEMORY_CATEGORY_CN, normStrList, normSteps, normHistory, normIdList, normPhase, PLAN_PHASE_CN, normClues, scenePathArr, clockDateTrim, storageHash };
+
+/**
+ * v3.8.0：**NSFW 等级留档字段**（`nsfw` = `none|weak|strong`）—— 归一化时统一保留。
+ *   「无」= **不写字段**（缺省即无：不给每条数据加噪声）；「弱/强」原样带上。
+ *   留档「只升不降」的判定在 `core/nsfw-level.js#nsfwStampLevel`，此处只做**保留**（重归一化不冲掉留档）。
+ * @param {object} e 原始条目
+ * @returns {object} 可直接展开进归一化结果的补丁
+ */
+export function nsfwField(e) {
+    try {
+        const l = nsfwLevelNorm(e && e.nsfw);
+        return l === 'none' ? {} : { nsfw: l };
+    } catch (err) { return {}; }
+}

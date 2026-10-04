@@ -6,6 +6,7 @@
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { cfg } from './runtime.js';
+import { nsfwField } from './scalars.js';   // v3.8.0：NSFW 等级留档（无/弱/强）
 
 function normalizeRumor(e) {
     try {
@@ -22,7 +23,7 @@ function normalizeRumor(e) {
         const id = String(t.id || '').trim() || rumorId({ subject });
         const branchKey = String(t.branchKey || '').trim();
         const out = {
-            id: (branchKey && !String(t.id || '').trim()) ? rumorId({ subject, branchKey }) : id,
+                        id: (branchKey && !String(t.id || '').trim()) ? rumorId({ subject, branchKey }) : id,
             subject,
             content,
             objectivity: normRumorObjectivity(t.objectivity !== undefined ? t.objectivity : t['客观性']),
@@ -47,6 +48,8 @@ function normalizeRumor(e) {
             text: content,
             strength: Number(t.strength) || 0.5,
             extra: Array.isArray(t.extra) ? t.extra : [],
+
+            ...nsfwField(t),
         };
         return out;
     } catch (e) { return null; }

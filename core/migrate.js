@@ -7,6 +7,7 @@
 // ============================================================
 
 import { clockDateParts, clockDateTrim } from './clock.js';
+import { nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0：NSFW 等级留档（去重合并取高）
 import { VERSION } from './constants.js';
 import { ensureAtomHashes } from './merge.js';
 // v2.86.0（`docs/D8` R1=B）：同内容去重 = **身份哈希**（认身份）
@@ -41,6 +42,8 @@ function contentDedupeArray(cat, arr) {
             const ex = out[i];
             const win = contentPickBest(ex, it);
             const merged = JSON.parse(JSON.stringify(win));
+            nsfwMergeLevel(merged, ex);            // v3.8.0：同内容去重 → NSFW 留档取高（「强」不被「弱/无」冲掉）
+            nsfwMergeLevel(merged, it);
             merged.floorStart = Math.min(Number(ex.floorStart) || 0, Number(it.floorStart) || 0) || (Number(win.floorStart) || 0);
             merged.floorEnd = Math.max(Number(ex.floorEnd) || 0, Number(it.floorEnd) || 0);
             merged.uses = (Number(ex.uses) || 0) + (Number(it.uses) || 0);
