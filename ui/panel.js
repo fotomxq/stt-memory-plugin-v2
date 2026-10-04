@@ -22,7 +22,7 @@ import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { refreshLocalCopy } from './buffer-manage.js';   // v3.3.0：清理后刷新本机副本统计
-import { nsfwSoftenState, NSFW_DIM_LABEL, nsfwLabelStats } from '../core/nsfw.js';
+import { nsfwSoftenState, NSFW_DIM_LABEL, nsfwLabelStats, nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
@@ -79,7 +79,7 @@ import { scenesTreeHtml } from './scene-tree.js';
 import { downloadTextFile, pickTextFile, fileIoCapabilities } from './file-io.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
-import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, nsfwLegendHtml } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
@@ -1050,7 +1050,9 @@ function dimBodyList(kind) {
             + ops
             + '</div>';
     }).join('\n');
-    return curTop + toolbar + curPick + ptb + head + ed + peek + rows;
+    // v3.9.0（用户要求）：每个分类列表顶部给出 NSFW 留档汇总（弱 / 强 各有几条），行首逐条标注
+    const nsfwLegend = nsfwLegendHtml(list);
+    return curTop + toolbar + curPick + ptb + head + ed + nsfwLegend + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -1144,8 +1146,20 @@ function editorHtml(kind, id, preset) {
         }
         return '<div class="ftt-field"><label>' + esc(f.label) + '</label><div class="ftt-grow"><input type="' + attr(f.type || 'text') + '" data-ftt-ed="' + attr(f.key) + '" value="' + attr(val) + '"></div></div>';
     }).join('\n');
+    // v3.9.0（用户要求）：「均有标签提示」——编辑器里也给出该条目的 NSFW 等级留档（只读；永久留档，不随弱化改变）
+    const nsfwRow = (() => {
+        try {
+            const it = (!isNew && d) ? d.item : null;
+            const l = it ? nsfwLevelOf(it) : 'none';
+            if (l === 'none') return '';
+            return '<div class="ftt-field"><label>NSFW 等级留档</label><div class="ftt-grow">'
+                + '<span class="ftt-tags-inline ftt-nsfw-tag" data-ftt-nsfw-level="' + l + '">NSFW·' + esc(nsfwLevelLabel(l)) + '</span>'
+                + ' <span class="ftt-muted">' + esc(nsfwLevelHint(l)) + '（永久留档：弱化内容不会改变它）</span></div></div>';
+        } catch (x) { return ''; }
+    })();
     return '<div class="ftt-editor">'
         + '<div class="ftt-editor-title">' + (isNew ? '➕ 新增' : '✏️ 编辑') + ' · ' + esc(kindLabelOf(kind)) + (id ? (' · ' + esc(id) + ' · 内容哈希 ' + esc((d && d.hash) || '')) : '') + '</div>'
+        + nsfwRow
         + rows
         + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="save" data-kind="' + attr(kind) + '" data-id="' + attr(id || '') + '">💾 保存</button>'
         + '<button class="ftt-btn" data-ftt-action="closeEntry" data-kind="' + attr(kind) + '">取消</button></div>'
@@ -1238,7 +1252,7 @@ function statesBody() {
         + repBtn + '</div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
     const head = '<div class="ftt-cat-stat ftt-chip">共 ' + all.length + ' 条状态（有效 ' + all.filter((x) => String((x && x.status) || 'active') !== 'inactive').length + '）· ' + groups.size + ' 个角色组</div>'
-        + filterBar + toolbar + ed;
+        + filterBar + toolbar + ed + nsfwLegendHtml(matched);   // v3.9.0：状态分类的 NSFW 留档汇总
     // 文案与 V1 逐字一致（空库 / 有库但筛选无命中）
     if (!all.length) return head + '<div class="ftt-empty">暂无状态记录。运行「AI 摘要」或点「添加状态」创建。</div>';
     if (!matched.length) return head + '<div class="ftt-empty">无匹配结果（搜索/筛选：' + esc(String(q)) + '）</div>';

@@ -23,7 +23,7 @@ import { normalizeMemory, normalizeCurrentState } from '../../core/model/dims.js
 import { contentDedupeArray } from '../../core/migrate.js';
 import { mergeDataObjects } from '../../core/cross-sync.js';
 import { preserveEntryMeta } from '../../core/entry-meta.js';
-import { nsfwBadgeHtml } from '../../ui/list-rows.js';
+import { nsfwBadgeHtml, nsfwLegendHtml, listRowMainHtml, stateRowMainHtml } from '../../ui/list-rows.js';
 import {
     NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS, nsfwLevelNorm, nsfwLevelMax, nsfwLevelLabel,
     nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
@@ -194,10 +194,38 @@ await A('E2 「强」不会被补档降级：把已弱化的正文重新补档 �
 })(), '见断言');
 
 // ---------- F 组：界面与元字段补齐 ----------
-await A('F1 列表行徽标：强 → 「🔞强」、弱 → 「🔞弱」、无 → 不显示（标题写明「按原文判定，弱化不会改变」）', (() => {
-    const s = nsfwBadgeHtml({ nsfw: 'strong' }), w = nsfwBadgeHtml({ nsfw: 'weak' });
-    return s.indexOf('🔞强') > 0 && s.indexOf('弱化内容不会改变') > 0
-        && w.indexOf('🔞弱') > 0 && nsfwBadgeHtml({}) === '' && nsfwBadgeHtml(null) === '';
+await A('F1 列表行徽标（v3.9.0：写明等级的文字标签）：强 → 「NSFW·强」、弱 → 「NSFW·弱」、无 → 不显示；tooltip 含释义与「弱化不改变」留档口径', (() => {
+    const s2 = nsfwBadgeHtml({ nsfw: 'strong' }), w = nsfwBadgeHtml({ nsfw: 'weak' });
+    return s2.indexOf('NSFW·强') > 0 && s2.indexOf('data-ftt-nsfw-level="strong"') > 0
+        && s2.indexOf('完全是露骨内容') > 0 && s2.indexOf('弱化内容不会改变') > 0
+        && w.indexOf('NSFW·弱') > 0 && w.indexOf('data-ftt-nsfw-level="weak"') > 0
+        && nsfwBadgeHtml({}) === '' && nsfwBadgeHtml(null) === '';
+})(), '见断言');
+
+await A('F1b 分类级留档汇总（`nsfwLegendHtml`）：统计当前列表的弱/强条数；没有已留档条目时返回空串（不占位）', (() => {
+    const g = nsfwLegendHtml([{ nsfw: 'strong' }, { nsfw: 'weak' }, {}, { nsfw: 'weak' }]);
+    return g.indexOf('data-ftt-nsfw-legend') > 0 && g.indexOf('弱 <b>2</b>') > 0 && g.indexOf('强 <b>1</b>') > 0
+        && nsfwLegendHtml([{}, {}]) === '' && nsfwLegendHtml(null) === '';
+})(), '见断言');
+
+await A('F1c 用户点名的各分类**均有**行内标签提示：情节 / 记忆 / 状态（状态行）/ 物品 / 传言 / 计划 / 悬念 / 概念', (() => {
+    const list = [
+        ['atoms', { id: 'x1', text: '两人做爱后相拥。', nsfw: 'strong' }],
+        ['memories', { id: 'x2', title: '夜里', content: '两人亲吻后分别。', nsfw: 'weak' }],
+        ['items', { id: 'x3', name: '同心结', desc: '情人相赠之物。', nsfw: 'weak' }],
+        ['rumors', { id: 'x4', subject: '码头传闻', content: '有人说两人做爱被抓。', nsfw: 'strong' }],
+        ['plans', { id: 'x5', title: '夜里相会', content: '两人计划拥抱告别。', nsfw: 'weak' }],
+        ['suspense', { id: 'x6', title: '是否越界', content: '她是否会亲吻他。', nsfw: 'weak' }],
+        ['concepts', { id: 'x7', name: '禁忌之恋', content: '越界的情感。', nsfw: 'weak' }],
+    ];
+    for (const [kind, it] of list) {
+        const html = listRowMainHtml(kind, it, null);
+        if (html.indexOf('data-ftt-nsfw-level="' + it.nsfw + '"') < 0 || html.indexOf('NSFW·' + (it.nsfw === 'strong' ? '强' : '弱')) < 0) return false;
+    }
+    const st = stateRowMainHtml({ id: 'x8', field: '衣着', value: '赤裸上身', nsfw: 'strong' });
+    const plain = listRowMainHtml('memories', { id: 'x9', title: '码头', content: '甲在仓库清点货物。' }, null);
+    return st.indexOf('data-ftt-nsfw-level="strong"') > 0 && st.indexOf('NSFW·强') > 0
+        && plain.indexOf('data-ftt-nsfw-level') < 0;
 })(), '见断言');
 
 await A('F2 `preserveEntryMeta`（归一化统一补齐）：按原文打标 + 继承同 id 既有留档（只升不降）；楼层溯源同批保留', (() => {

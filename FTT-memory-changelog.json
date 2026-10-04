@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.9.0",
+      "date": "2026-09-30",
+      "title": "各分类均有 NSFW 标签提示（写明等级 + 分类汇总 + 编辑器只读行）",
+      "points": [
+        "① 行内标签由 emoji 徽标改为写明等级的文字标签：（ui/list-rows.js#nsfwBadgeHtml）- 🔞强 → NSFW·强（弱 → NSFW·弱；无 → …",
+        "② 每个分类页顶部增「分类留档汇总」：（ui/list-rows.js#nsfwLegendHtml + 列表页 / 状态页）- NSFW 留档：弱 N · 强 M（按原文判定，…",
+        "③ 条目编辑器增只读「NSFW 等级留档」行：标签 + 释义 + 「永久留档：弱化内容不会改变它」（不提供人工编辑 —— 留档口径是只升不降，允许下调会破坏「永久留档」）。"
+      ]
+    },
     {
       "version": "3.8.0",
       "date": "2026-09-30",

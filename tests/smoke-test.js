@@ -5743,11 +5743,11 @@ await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/�
         const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
         const labelOk = g('bo1-strong').nsfw === 'strong' && g('bo1-weak').nsfw === 'weak'
             && g('bo1-none').nsfw === undefined && RT.state.atoms.length === 3;
-        // ② 列表行徽标：强 → 「🔞强」、弱 → 「🔞弱」、无 → 无徽标
+        // ② 列表行徽标：强 → 「NSFW·强」、弱 → 「NSFW·弱」、无 → 无徽标（v3.9.0 写明等级）
         await entry.popupAction('tab', { tab: 'atoms' });
         const listHtml = String(((await entry.popupAction('refresh', {})).html) || '');
-        const badgeOk = listHtml.indexOf('🔞强') >= 0 && listHtml.indexOf('🔞弱') >= 0
-            && (listHtml.match(/🔞强/g) || []).length === 1;
+        const badgeOk = listHtml.indexOf('NSFW·强') >= 0 && listHtml.indexOf('NSFW·弱') >= 0
+            && (listHtml.match(/NSFW·强/g) || []).length === 1;
         // ③ 固定规则替换（零 AI）真实点击 → 正文被改写，**标签不变**
         const r1 = await entry.popupAction('nsfwRuleApply', {});
         const s1 = g('bo1-strong');
@@ -5771,7 +5771,7 @@ await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/�
             && RT.state.currentStates[0].value.indexOf('赤裸') < 0;
         await entry.popupAction('tab', { tab: 'atoms' });
         const listHtml2 = String(((await entry.popupAction('refresh', {})).html) || '');
-        const keepBadgeOk = listHtml2.indexOf('🔞强') >= 0;      // 弱化之后，行内仍显示「🔞强」（永久留档）
+        const keepBadgeOk = listHtml2.indexOf('NSFW·强') >= 0;      // 弱化之后，行内仍显示「NSFW·强」（永久留档）
         // ⑥ 设定 → 内容弱化页：留档分节 + 真实点击「🔖 立即补档」
         await entry.popupAction('tab', { tab: 'settings' });
         const pg = String(((await entry.popupAction('settingsSub', { sub: 'safety' })).html) || '');
@@ -5789,6 +5789,84 @@ await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/�
         RT.cfg.nsfwReplaceAuto = keepAuto;
         host.ctx.generateRaw = keepGen;
         host.ctx.callGenericPopup = keepPopup;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+// v3.9.0（用户要求）：「NSFW 标签需要在情节、记忆、状态、物品、传言、计划悬念、概念等分类下均有标签提示，
+//   用于告诉用户这个词条是什么级别的内容。」
+//   本小节为**用户点名的每个分类**各放一条留档条目（经 `mergeDelta` 真实落库打标），逐个分类页断言：
+//   ① 行首有写明等级的文字标签（`data-ftt-nsfw-level` + 「NSFW·强 / NSFW·弱」）② 分类顶部有留档汇总
+//   ③ 编辑器里也有只读的留档行（永久留档：弱化不改）。
+await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情节 / 记忆 / 状态 / 物品 / 传言 / 计划悬念 / 概念 逐个分类页断言行首文字标签 + 分类留档汇总 + 编辑器只读留档行', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const IG = await import('../core/ingest.js');
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepMem = JSON.parse(JSON.stringify(RT.state.memories || []));
+    const keepStates = JSON.parse(JSON.stringify(RT.state.currentStates || []));
+    const keepItems = JSON.parse(JSON.stringify(RT.state.items || []));
+    const keepRumors = JSON.parse(JSON.stringify(RT.state.rumors || []));
+    const keepPlans = JSON.parse(JSON.stringify(RT.state.plans || []));
+    const keepSusp = JSON.parse(JSON.stringify(RT.state.suspense || []));
+    const keepConcepts = JSON.parse(JSON.stringify(RT.state.concepts || []));
+    try {
+        RT.cfg.nsfwKeywords = [];
+        RT.state.atoms = []; RT.state.memories = []; RT.state.currentStates = [];
+        RT.state.items = []; RT.state.rumors = []; RT.state.plans = []; RT.state.suspense = []; RT.state.concepts = [];
+        RT.state.lastKnownFloor = 0;
+        // 每个分类一条：情节/传言 → 强（露骨词）；其余 → 弱（亲密/暗示信号）
+        IG.mergeDelta({
+            atoms: { add: [{ id: 'bo2-a', text: '两人做爱后相拥，她发出呻吟，他解开她的衣扣。', title: '夜里', date: '1919-11-01' }] },
+            memories: { add: [{ id: 'bo2-m', title: '码头告别', content: '两人在码头拥抱很久，最后轻轻亲吻。', date: '1919-11-02' }] },
+            states: { add: [{ id: 'bo2-s', subject: '角色甲', field: '衣着', value: '赤裸上身' }] },
+            items: { add: [{ id: 'bo2-i', name: '同心结', desc: '情人相赠之物，两人相拥而眠时常佩。' }] },
+            rumors: { add: [{ id: 'bo2-r', subject: '码头传闻', content: '有人说两人做爱被更夫撞见。' }] },
+            plans: { add: [{ id: 'bo2-p', title: '夜里相会', content: '两人计划夜里相见并拥抱告别。' }] },
+            suspense: { add: [{ id: 'bo2-u', title: '是否越界', content: '她是否会在码头亲吻他。' }] },
+            concepts: { add: [{ id: 'bo2-c', name: '禁忌之恋', content: '越界的情感，两人只能暗中亲近。' }] },
+        }, { startFloor: 0, endFloor: 0 });
+        // 分类 → 期望等级（标签落库即为该级：只升不降）
+        const want = {
+            atoms: 'strong', memories: 'weak', states: 'strong', items: 'weak', rumors: 'strong',
+            plans: 'weak', suspense: 'weak', concepts: 'weak',
+        };
+        const got = {
+            atoms: (RT.state.atoms[0] || {}).nsfw, memories: (RT.state.memories[0] || {}).nsfw,
+            states: (RT.state.currentStates[0] || {}).nsfw, items: (RT.state.items[0] || {}).nsfw,
+            rumors: (RT.state.rumors[0] || {}).nsfw, plans: (RT.state.plans[0] || {}).nsfw,
+            suspense: (RT.state.suspense[0] || {}).nsfw, concepts: (RT.state.concepts[0] || {}).nsfw,
+        };
+        const labelOk = Object.keys(want).every((k) => got[k] === want[k]);
+        // 逐个分类页：行首标签 + 分类汇总
+        const label = { strong: 'NSFW·强', weak: 'NSFW·弱' };
+        const perKind = {};
+        for (const kind of ['atoms', 'memories', 'states', 'items', 'rumors', 'plans', 'concepts']) {
+            await entry.popupAction('tab', { tab: kind });
+            const h = String(((await entry.popupAction('refresh', {})).html) || '');
+            const lv = want[kind];
+            perKind[kind] = h.indexOf('data-ftt-nsfw-level="' + lv + '"') >= 0
+                && h.indexOf(label[lv]) >= 0
+                && h.indexOf('data-ftt-nsfw-legend') >= 0;
+            if (kind === 'plans') {                       // 计划悬念页 = 计划 + 悬念 两块，两行都要带标签
+                perKind[kind] = perKind[kind] && h.indexOf('data-ftt-nsfw-level="weak"') >= 0;
+            }
+        }
+        const pagesOk = Object.keys(perKind).every((k) => perKind[k]);
+        // 编辑器只读留档行（以情节为例）
+        await entry.popupAction('tab', { tab: 'atoms' });
+        await entry.popupAction('edit', { kind: 'atoms', id: 'bo2-a' });
+        const edHtml = String(((await entry.popupAction('refresh', {})).html) || '');
+        const editorOk = edHtml.indexOf('NSFW 等级留档') >= 0 && edHtml.indexOf('NSFW·强') >= 0
+            && edHtml.indexOf('完全是露骨内容') >= 0 && edHtml.indexOf('永久留档') >= 0;
+        await entry.popupAction('closeEntry', { kind: 'atoms' });
+        const ok = labelOk && pagesOk && editorOk;
+        if (!ok) console.log('BO2-DEBUG ' + JSON.stringify({ labelOk, pagesOk, editorOk, got, want, perKind }));
+        return ok;
+    } finally {
+        RT.state.atoms = keepAtoms; RT.state.memories = keepMem; RT.state.currentStates = keepStates;
+        RT.state.items = keepItems; RT.state.rumors = keepRumors; RT.state.plans = keepPlans;
+        RT.state.suspense = keepSusp; RT.state.concepts = keepConcepts;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');

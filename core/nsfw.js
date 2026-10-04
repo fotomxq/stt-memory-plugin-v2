@@ -21,8 +21,8 @@ import { atomIsHidden } from './merge.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 // v3.8.0（用户要求）：**NSFW 等级留档**（无/弱/强）—— 判级 / 打标（只升不降）/ 全库补档
 import {
-    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
-    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelOf, nsfwLevelFromEntry,
+    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_HINTS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
+    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelHint, nsfwLevelOf, nsfwLevelFromEntry,
     nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
 } from './nsfw-level.js';
 
@@ -754,7 +754,7 @@ export {
     nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt, applyNsfwSoftenResult, nsfwSoftenEnabledOn, nsfwSoftenRuleText, nsfwSoftenState,
     runNsfwSoften,
     // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
-    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
-    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
+    NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_HINTS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
+    nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelHint, nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
     nsfwStrongList, nsfwClassifyItem, nsfwStampItem, nsfwStampEntry, nsfwLabelStats, nsfwBackfill,
 };
