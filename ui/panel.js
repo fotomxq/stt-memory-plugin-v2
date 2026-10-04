@@ -61,6 +61,8 @@ import { runRumorEvolveNow, clearRumors, rumorEveryRounds, rumorNeedRounds, rumo
 import { tombMany } from '../core/merge.js';
 // v2.64.0：楼层覆盖统计（「未摘要」跳过「已有记忆数据的楼层」，此处显示覆盖数，便于核对跳过机制）
 import { floorCoverage } from '../core/floor-cover.js';
+// v3.10.3：覆盖统计必须与管线**同一个聊天上限**（越界区间不计入，否则统计与待办清单互相打架）
+import { liveFloorTail } from '../host/floors.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 // v2.42.0：交互/错误追踪（用户交互、处理器结果、耗时与代码站点 —— 「点哪个按钮 → 结果 → 代码位置」一条链）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceCurrentOp } from '../core/trace.js';
@@ -638,7 +640,8 @@ function overviewBody() {
             + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
     }
     const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
-    const covered = (() => { try { return floorCoverage(state).floors; } catch (e) { return 0; } })();
+    // v3.10.3：与管线同口径 —— 覆盖统计也**限定在本聊天范围内**（越界区间不计入，见 core/floor-cover.js）
+    const covered = (() => { try { return floorCoverage(state, { maxFloor: liveFloorTail() }).floors; } catch (e) { return 0; } })();
     lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要')
         + (covered ? (' · 已有记忆数据 ' + covered + ' 楼') : '') + '</div>');
     if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');

@@ -44,7 +44,7 @@ import { ttAbi } from '../adapters/tt-store.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
     processedStats, scanPendingFloors, listUnprocessedFloors, floorMessage, floorStableText,
-    hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag,
+    hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag, liveFloorTail,
 } from '../host/floors.js';
 import { floorCoverage } from '../core/floor-cover.js';
 // v3.0.10：载入链路诊断（内存 / 本机缓冲 / 服务端文件 / 调试日志 四处并排对比）
@@ -530,7 +530,7 @@ function floorDiag(i) {
     const mark = pf.find((x) => Number(x && typeof x === 'object' ? x.f : x) === n);
     const markH = mark ? String((mark && mark.h) || '') : '';
     const analyzable = String(floorAnalyzableText(n) || '');
-    const cov = (() => { try { return floorCoverage(state).has(n); } catch (e) { return null; } })();
+    const cov = (() => { try { return floorCoverage(state, { maxFloor: liveFloorTail() }).has(n); } catch (e) { return null; } })();
     const verMatches = (state.processedVer || '') === processedVerTag();
     const processed = !!(mark && hashStable && (!markH || markH === hashStable));   // 同 isFloorProcessed 判据
     const coveredSkip = !mark && cov === true;                                     // 覆盖跳过只在「无标记」时生效

@@ -153,19 +153,32 @@ export function floorPositionLabel(it) {
 
 /**
  * 全部记忆维度的有效楼层区间（已合并重叠/相邻区间）。
+ *
+ * v3.10.3（真机取证 A3）：新增 `opts.maxFloor` —— **超出当前聊天末楼的区间一律不参与覆盖**。
+ *   真机上曾出现**一个**情节条目的区间为 `[1,77]`（带 `floorNow*`，来自更长的聊天 / 未随删楼归一），
+ *   它与其它段合并成 `[0,77]`（78 楼）→ **把整个聊天全覆盖** → 7 个从未分析的 AI 楼被「已有记忆数据」
+ *   静默跳过，既不出现在未摘要清单、也不会被自动提取处理（真机症状）。
+ *   纪律：**区间指向本聊天不存在的楼层时，它不构成「该楼已有数据」的证据** —— 忽略整段，
+ *   而不是夹取（夹取 `[1,77]→[1,36]` 仍会覆盖全部楼，等于没修）。
  * @param {object} [st] 状态容器（缺省用内核 state）
- * @returns {{ranges:Array<[number,number]>, items:number}} items = 贡献区间的条目数
+ * @param {{maxFloor?:number}} [opts] `maxFloor` = 当前聊天末楼（缺省/非法 = 不设上限，维持旧口径）
+ * @returns {{ranges:Array<[number,number]>, items:number, ignored:number}} items = 贡献区间的条目数；
+ *   ignored = 因越界被忽略的条目数（供诊断，**不要静默**）
  */
-export function floorRanges(st) {
+export function floorRanges(st, opts) {
     const s = st || kernelState;
+    const o = opts || {};
+    const maxFloor = Number.isFinite(Number(o.maxFloor)) ? Number(o.maxFloor) : null;
     const spans = [];
     let items = 0;
+    let ignored = 0;
     try {
         for (const d of DIMENSIONS) {
             const arr = (s && Array.isArray(s[d.kind])) ? s[d.kind] : [];
             for (const it of arr) {
                 const r = meaningfulFloorRange(it);
                 if (!r) continue;
+                if (maxFloor !== null && r[1] > maxFloor) { ignored += 1; continue; }
                 spans.push(r);
                 items += 1;
             }
@@ -178,22 +191,27 @@ export function floorRanges(st) {
         if (last && r[0] <= last[1] + 1) { if (r[1] > last[1]) last[1] = r[1]; continue; }
         ranges.push([r[0], r[1]]);
     }
-    return { ranges: ranges, items: items };
+    return { ranges: ranges, items: items, ignored: ignored };
 }
 
 /**
  * 楼层覆盖集（供「未摘要楼层」跳过与界面统计共用）。
  * @param {object} [st] 状态容器（缺省用内核 state）
- * @returns {{ranges:Array<[number,number]>, floors:number, items:number, has:(i:number)=>boolean}}
+ * @param {{maxFloor?:number}} [opts] 见 `floorRanges`（v3.10.3：越界区间不计入覆盖）
+ * @returns {{ranges:Array<[number,number]>, floors:number, items:number, ignored:number, maxFloor:number|null, has:(i:number)=>boolean}}
  */
-export function floorCoverage(st) {
-    const { ranges, items } = floorRanges(st);
+export function floorCoverage(st, opts) {
+    const o = opts || {};
+    const maxFloor = Number.isFinite(Number(o.maxFloor)) ? Number(o.maxFloor) : null;
+    const { ranges, items, ignored } = floorRanges(st, o);
     let floors = 0;
     for (const r of ranges) floors += (r[1] - r[0] + 1);
     return {
         ranges: ranges,
         floors: floors,
         items: items,
+        ignored: ignored,
+        maxFloor: maxFloor,
         has(i) {
             const n = Number(i);
             if (!Number.isInteger(n) || n < 0) return false;

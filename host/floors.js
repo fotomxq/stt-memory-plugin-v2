@@ -641,7 +641,7 @@ export function scanPendingFloors(opts) {
         const ready = chatReadyForFloors();
         if (!ready.ready) {
             skipped.chatNotReady = 1;
-            return { floors: [], startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, skipped: skipped, chatReady: false, chatReason: ready.reason };
+            return { floors: [], startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, skipped: skipped, chatReady: false, chatReason: ready.reason };
         }
         if (o.maintain !== false) {
             // v2.93.0（`docs/D12`）：**先处理楼层骤减**（用户会主动删楼减体积）—— 幂等，无收缩即短路返回
@@ -651,7 +651,7 @@ export function scanPendingFloors(opts) {
             const now = Date.now();
             if (now - lastReconcileTs > RECONCILE_MS) { lastReconcileTs = now; try { reconcileProcessedFloors(false); } catch (e) { /* 忽略 */ } }
         }
-        const cov = floorCoverage(state);
+        const cov = floorCoverage(state, { maxFloor: end });   // v3.10.3：越界区间不计入覆盖（见 core/floor-cover.js）
         const skipCovered = (o.ignoreCovered !== true);
         // v3.0.20：用户显式「清除已处理楼层记录」→ 该楼号及之前不再按「已有记忆数据」跳过（见 clearProcessedFloors）
         const coverResetUpTo = (() => {
@@ -677,9 +677,23 @@ export function scanPendingFloors(opts) {
             if (!contentChanged && skipCovered && i > coverResetUpTo && cov.has(i)) { skipped.covered++; continue; }
             out.push(i);
         }
-        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, skipped: skipped };
+        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored, coverMaxFloor: end, skipped: skipped };
     } catch (e) { /* 忽略 */ }
-    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, skipped: skipped };
+    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, skipped: skipped };
+}
+
+/**
+ * 当前聊天末尾楼号（实时；无聊天 → -1）。
+ * v3.10.3：把「已有记忆数据覆盖」的判定限制在**本聊天范围内** —— 覆盖集、界面统计、单楼诊断
+ *   三处必须用**同一个**上限，否则诊断与管线会给出不同答案（真机 A3 的症状就是由此放大）。
+ * @returns {number}
+ */
+export function liveFloorTail() {
+    try {
+        const ctx = getCtx();
+        const n = (ctx && Array.isArray(ctx.chat)) ? ctx.chat.length : 0;
+        return n > 0 ? n - 1 : -1;
+    } catch (e) { return -1; }
 }
 
 /**
