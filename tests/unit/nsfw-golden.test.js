@@ -19,7 +19,7 @@ import {
     nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwKeywordHits, nsfwApplyRules, nsfwFixedReplace, nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt,
-    applyNsfwSoftenResult, nsfwSoftenState, nsfwSoftenRuleText, runNsfwSoften,
+    applyNsfwSoftenResult, nsfwSoftenState, nsfwSoftenRuleText, runNsfwSoften, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_REPLACE_PAIRS,
 } from '../../core/nsfw.js';
 import { buildSummaryPrompt } from '../../core/prompt.js';
 import { nsfwPageHtml, nsfwAction, NSFW_ACTIONS } from '../../ui/nsfw.js';
@@ -45,6 +45,24 @@ let aiText = '';
 let aiCalls = 0;
 setAiHooks({ callAi: async () => { aiCalls++; return { ok: true, text: aiText }; }, feedText: () => '', busy: () => false });
 
+/**
+ * v3.10.0（用户要求「补充新的词条进去，扩大 NSFW 识别范围」）—— **有意偏离 V1**：
+ * 识别词条库与转化库在 V1 的 63 条之后**追加**了新词条（V1 的 63 条原样保留在前、顺序不变）。
+ * 因此与 V1 黄金样本的「库规模 / 操作序列计数」比较需按**追加量**归一：计数减去 `V310` 后仍应与 V1 逐字一致。
+ * 追加词条的**正向**行为（能命中、能转化、逐条有转化词）由 `tests/unit/nsfw-level.test.js` 的 G 组单独锁死。
+ */
+const V310 = NSFW_KEYWORDS_V310.length;
+const V1_COUNT = NSFW_KEYWORDS_V1.length;
+const deshift = (v) => {
+    if (Array.isArray(v)) return v.map(deshift);
+    if (v && typeof v === 'object') {
+        const o = {};
+        for (const k of Object.keys(v)) o[k] = (k === 'n' || k === 'keywords' || k === 'rules') ? (Number(v[k]) - V310) : deshift(v[k]);
+        return o;
+    }
+    return v;
+};
+
 const A = async (name, fn, detail) => {
     let cond = false, extra = detail;
     try { cond = await fn(); } catch (e) { cond = false; extra = String((e && e.message) || e); }
@@ -64,17 +82,24 @@ function boot(stateLike) {
 // ============================================================
 // H 组：与 V1 逐项比对
 // ============================================================
-R.assert('H1 库规模与内容：识别词条 63 条 / 转化库 63 条（逐条对应）、字段表 12 维、单批 12 —— 与 V1 一致', (() => {
+R.assert('H1 库规模与内容（v3.10.0 有意偏离 V1 · 计数已归一）：V1 的 63 条**原样在前**（头 6 / 尾部 6 逐字一致）+ v3.10.0 追加词条（逐条有转化词）、字段表 12 维、单批 12', (() => {
     boot({});
-    const lib = {
-        keywords: nsfwKeywordList().length, rules: nsfwRuleList().length,
-        kwHead: nsfwKeywordList().slice(0, 6), kwTail: nsfwKeywordList().slice(-6),
-        ruleHead: nsfwRuleList().slice(0, 3), ruleTail: nsfwRuleList().slice(-3),
-        exposedKeywords: NSFW_KEYWORDS.length, exposedRules: NSFW_RULES.length,
+    const kw = nsfwKeywordList(), rl = nsfwRuleList();
+    const prefixOk = V1_COUNT === 63
+        && J(kw.slice(0, 6)) === J(G.lib.kwHead)                           // V1 头部原样
+        && J(kw.slice(V1_COUNT - 6, V1_COUNT)) === J(G.lib.kwTail)         // V1 尾部原样（第 57–63 条）
+        && kw.length === V1_COUNT + V310 && rl.length === kw.length
+        && NSFW_KEYWORDS.every((k) => !!NSFW_REPLACE_PAIRS[k])             // 识别 / 转化逐条对应
+        && NSFW_RULES.length === NSFW_KEYWORDS.length;
+    const norm = {
+        keywords: kw.length - V310, rules: rl.length - V310,
+        kwHead: kw.slice(0, 6), kwTail: kw.slice(V1_COUNT - 6, V1_COUNT),
+        ruleHead: rl.slice(0, 3), ruleTail: rl.slice(V1_COUNT - 3, V1_COUNT),
+        exposedKeywords: NSFW_KEYWORDS.length - V310, exposedRules: NSFW_RULES.length - V310,
         exposedFieldMapKeys: Object.keys(NSFW_FIELD_MAP).length, batch: NSFW_SOFTEN_BATCH,
     };
-    return J(lib) === J(G.lib) && NSFW_SOFTEN_BATCH === 12;
-})(), (() => { boot({}); return { k: nsfwKeywordList().length, r: nsfwRuleList().length }; })());
+    return prefixOk && J(norm) === J(G.lib) && NSFW_SOFTEN_BATCH === 12;
+})(), (() => { boot({}); return { k: nsfwKeywordList().length, r: nsfwRuleList().length, v1: V1_COUNT, add: V310 }; })());
 
 R.assert('H2 固定规则替换 nsfwApplyRules：6 组文本（中文 / 英文词形 / 普通词误伤 / 混合 / 无命中）逐字符与 V1 一致', (() => {
     boot({});
@@ -108,7 +133,7 @@ R.assert('H5 词条库操作序列（新增/查重/改名/改名冲突/删除/�
     ops.push(['delete', nsfwKeywordDelete(0)]);
     ops.push(['reset', nsfwKeywordReset()]);
     cfg.nsfwKeywords = [];
-    return J(ops) === J(G.kwOps);
+    return J(deshift(ops)) === J(G.kwOps);   // v3.10.0：库扩容 → 计数减去追加量后与 V1 逐字一致
 })(), (() => { boot({}); const ops = []; cfg.nsfwKeywords = []; ops.push(['add', nsfwKeywordAdd('自定义词甲')]); return ops; })());
 
 R.assert('H6 转化库操作序列（新增/查重/改名/删除/恢复内置）5 步结果与 V1 一致', (() => {
@@ -121,7 +146,7 @@ R.assert('H6 转化库操作序列（新增/查重/改名/删除/恢复内置）
     rops.push(['delete', nsfwRuleDelete(0)]);
     rops.push(['reset', nsfwRuleReset()]);
     cfg.nsfwRules = [];
-    return J(rops) === J(G.ruleOps);
+    return J(deshift(rops)) === J(G.ruleOps);   // v3.10.0：同上（有意偏离 V1）
 })(), (() => { boot({}); const rops = []; cfg.nsfwRules = []; rops.push(['add', nsfwRuleAdd('测试词', '替换词')]); return rops; })());
 
 R.assert('H7 扫描 nsfwScan：命中总数/按维度/扫描条目与字段数/逐条（维度·id·路径·命中词）与 V1 一致（隐藏情节被排除）', (() => {
@@ -213,7 +238,7 @@ await A('H14 状态摘要 nsfwSoftenState（与 V1 同为「固定规则替换�
     boot(G.inputs.scenario);
     cfg.nsfwReplaceAuto = true;
     await runNsfwSoften({ silent: true });          // oracle 在同一序列后取该快照
-    return J(nsfwSoftenState()) === J(G.state) && nsfwReplaceAutoOn() === true && G.ruleAutoOff === true;
+    return J(deshift(nsfwSoftenState())) === J(G.state) && nsfwReplaceAutoOn() === true && G.ruleAutoOff === true;   // v3.10.0：keywords/rules 计数归一
 }, (() => { boot(G.inputs.scenario); return nsfwSoftenState(); })());
 
 // ============================================================
@@ -258,10 +283,10 @@ await A('P4 AI 无返回：如实回报 error=no-ai 且不改数据（固定规�
 // ============================================================
 // U 组：设定页与动作接线
 // ============================================================
-R.assert('U1 设定「内容弱化」页：分节（NSFW 等级留档 / 内容弱化 / 固定规则替换 / 转化库 / 识别词条库）+ V1 同名动作按钮齐备（v3.8.0 增「🔖 立即补档」）', (() => {
+R.assert('U1 设定「NSFW弱化」页（v3.10.0 由「内容弱化」改名）：分节（NSFW 等级留档 / NSFW弱化 / 固定规则替换 / 转化库 / 识别词条库）+ V1 同名动作按钮齐备（v3.8.0 增「🔖 立即补档」）', (() => {
     boot(G.inputs.scenario);
     const html = nsfwPageHtml();
-    return html.indexOf('内容弱化（NSFW）') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
+    return html.indexOf('>NSFW弱化</div>') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
         && html.indexOf('转化库（匹配词 → 转化词，可在设定中管理）') >= 0 && html.indexOf('识别词条库（用于匹配需弱化的内容）') >= 0
         && ['nsfwSoften', 'nsfwLabelBackfill', 'nsfwRuleApply', 'nsfwRuleAdd', 'nsfwRuleReset', 'nsfwKwAdd', 'nsfwKwReset', 'nsfwKwSave', 'nsfwKwDel', 'nsfwRuleSave', 'nsfwRuleDel']
             .every((a) => html.indexOf('data-ftt-action="' + a + '"') >= 0)
@@ -271,14 +296,14 @@ R.assert('U1 设定「内容弱化」页：分节（NSFW 等级留档 / 内容�
 R.assert('U2 设定页接入：safety 子页渲染该页（不再是「待后续批次」占位）', (() => {
     boot(G.inputs.scenario);
     const html = settingsPageHtml('safety');
-    return html.indexOf('内容弱化（NSFW）') >= 0 && html.indexOf('data-ftt-action="nsfwSoften"') >= 0
+    return html.indexOf('>NSFW弱化</div>') >= 0 && html.indexOf('data-ftt-action="nsfwSoften"') >= 0
         && html.indexOf('属后续批次') < 0;
 })(), '');
 
 await A('U3 词条库动作：nsfwKwAdd / nsfwKwSave / nsfwKwDel / nsfwKwReset 改库并回填提示（payload 取值）', async () => {
     boot({});
     cfg.nsfwKeywords = [];
-    // V1 口径：首次编辑会先把内置库物化为自定义列表（63 条）再增/改/删
+    // V1 口径：首次编辑会先把内置库物化为自定义列表（V1 63 条 + v3.10.0 追加 → 动态取长度）再增/改/删
     const add = await nsfwAction('nsfwKwAdd', { text: '露骨词甲' });
     const afterAdd = cfg.nsfwKeywords.slice();
     const save = await nsfwAction('nsfwKwSave', { idx: 0, text: '露骨词乙' });
@@ -287,9 +312,9 @@ await A('U3 词条库动作：nsfwKwAdd / nsfwKwSave / nsfwKwDel / nsfwKwReset �
     const afterDel = cfg.nsfwKeywords.slice();
     const reset = await nsfwAction('nsfwKwReset', {});
     return add.ok === true && String(add.note).indexOf('已加入词条库') >= 0
-        && afterAdd.length === 64 && afterAdd[afterAdd.length - 1] === '露骨词甲'
-        && save.ok === true && afterSave.length === 64 && afterSave[0] === '露骨词乙'
-        && del.ok === true && afterDel.length === 63 && afterDel.indexOf('露骨词乙') < 0
+        && afterAdd.length === V1_COUNT + V310 + 1 && afterAdd[afterAdd.length - 1] === '露骨词甲'
+        && save.ok === true && afterSave.length === V1_COUNT + V310 + 1 && afterSave[0] === '露骨词乙'
+        && del.ok === true && afterDel.length === V1_COUNT + V310 && afterDel.indexOf('露骨词乙') < 0
         && reset.ok === true && String(reset.note).indexOf('已恢复内置默认词条') >= 0 && cfg.nsfwKeywords.length === 0;
 }, '');
 

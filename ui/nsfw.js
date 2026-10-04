@@ -1,5 +1,6 @@
 // ============================================================
-// ui/nsfw.js —— **内容弱化（NSFW）设定页与动作**（B8-4；结构与文案对齐 V1 `13-UI-设置与存储开关.js` safety 页）
+// ui/nsfw.js —— **NSFW弱化设定页与动作**（B8-4；结构与文案对齐 V1 `13-UI-设置与存储开关.js` safety 页）
+//   v3.10.0（用户要求）：设定页名由「内容弱化」改为「NSFW弱化」；识别词条库与转化库扩充（扩大识别范围）
 // 覆盖：分析侧开关（`nsfwSoftenEnabled`）/ 固定规则自动开关（`nsfwReplaceAuto`）/ 转化库编辑器（匹配词 → 转化词）/
 //   识别词条库编辑器（增删改 + 恢复内置）/ 状态行（扫描统计 · 命中候选 · 库规模）/ 动作按钮
 //   （`nsfwSoften` 立即弱化、`nsfwRuleApply` 立即固定规则替换、`nsfwKw*` / `nsfwRule*` 增删改恢复）。
@@ -46,7 +47,7 @@ function switchRow(key, label, hint) {
         + '<span style="flex:1"></span><span class="ftt-muted">' + esc(hint || '') + '</span></div>';
 }
 
-/** 内容弱化设定页正文（V1 四节同序） */
+/** NSFW弱化设定页正文（v3.10.0：留档分节 + V1 四节同序） */
 export function nsfwPageHtml() {
     const st = nsfwSoftenState();
     const kwList = nsfwKeywordList();
@@ -81,9 +82,9 @@ export function nsfwPageHtml() {
         '<div class="ftt-hint ftt-w-full">补档只升不降：已有「强」的条目不会因正文被弱化而降档（弱级信号词 ' + NSFW_WEAK_SIGNALS.length + ' 条内置）。</div>',
         '</div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">内容弱化（NSFW）</div>',
-        switchRow('nsfwSoftenEnabled', '分析记忆时弱化露骨内容（默认关）', '追加提示词模板「内容弱化（NSFW）」'),
-        '<div class="ftt-muted ftt-w-full">开启后：分析记忆时追加「内容弱化（NSFW）」模板，让新记忆不产生露骨描写（剧情与因果照实保留）。</div>',
+        '<div class="ftt-section"><div class="ftt-sec-title">NSFW弱化</div>',
+        switchRow('nsfwSoftenEnabled', '分析记忆时弱化露骨内容（默认关）', '追加提示词模板「NSFW弱化」'),
+        '<div class="ftt-muted ftt-w-full">开启后：分析记忆时追加「NSFW弱化」模板，让新记忆不产生露骨描写（剧情与因果照实保留）。</div>',
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="nsfwSoften" title="按词条库扫描已有原子数据并交 AI 逐条弱化（与总览「🌶 弱化NSFW」同一套核心）">🌶 立即弱化（按词条库扫描）</button>',
         '<span class="ftt-muted" data-ftt-nsfw-state>扫描：原子 ' + st.scannedItems + ' 条 / 文本字段 ' + st.scannedFields + ' 个 → 命中 <b>' + st.candidates + '</b> 处（每批最多 ' + st.batch + ' 条，可反复运行）</span></div>',
         '</div>',
@@ -130,7 +131,7 @@ function pickRuleRowFrom(idx, p) { return domValue('[data-ftt-nsfw-rule-from="' 
 function pickRuleRowTo(idx, p) { return domValue('[data-ftt-nsfw-rule-to="' + idx + '"]', p && p.to !== undefined ? p.to : undefined); }
 
 /**
- * 内容弱化动作（V1 同名动作名）
+ * NSFW弱化动作（V1 同名动作名）
  * @returns {Promise<{ok:boolean, action:string, note:string, detail?:object}>}
  */
 export async function nsfwAction(action, payload) {
@@ -230,13 +231,13 @@ export async function nsfwAction(action, payload) {
             toast('success', note, '');
             return { ok: true, action: a, note, detail: r };
         }
-        return { ok: false, action: a, note: '未知内容弱化动作：' + a };
+        return { ok: false, action: a, note: '未知 NSFW弱化动作：' + a };
     } catch (e) {
         const note = String((e && e.message) || e).slice(0, 160);
-        toast('error', '内容弱化动作失败', note);
+        toast('error', 'NSFW弱化动作失败', note);
         return { ok: false, action: a, note, error: note };
     }
 }
 
-/** 内容弱化动作名（供面板分发；与 V1 逐字一致） */
+/** NSFW弱化动作名（供面板分发；动作名与 V1 逐字一致） */
 export const NSFW_ACTIONS = Object.freeze(['nsfwSoften', 'nsfwLabelBackfill', 'nsfwRuleApply', 'nsfwKwAdd', 'nsfwKwSave', 'nsfwKwDel', 'nsfwKwReset', 'nsfwRuleAdd', 'nsfwRuleSave', 'nsfwRuleDel', 'nsfwRuleReset']);

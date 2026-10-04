@@ -40,6 +40,7 @@ export const NSFW_AI_LEVEL_KEYS = Object.freeze(['nsfw', 'NSFW', 'nsfwLevel', 'n
 /**
  * **弱级信号词**（有部分亲密/性暗示，但无露骨直述）—— 内置，不可在界面改（强级词库可由
  * `cfg.nsfwKeywords` 自定义；两库取高，重叠无影响）。
+ * v3.10.0（用户要求「扩大 NSFW 识别范围」）：随识别词条库一并补充（见文末「v3.10.0 追加」）。
  * 其中一部分正是内置转化库的输出词（如「亲近 / 未着寸缕 / 腰腹之间」）——弱化后的文本天然落在「弱」。
  */
 export const NSFW_WEAK_SIGNALS = Object.freeze([
@@ -51,6 +52,8 @@ export const NSFW_WEAK_SIGNALS = Object.freeze([
     '同床', '共度一夜', '同房', '越过界线', '越过了界线', '未着寸缕', '衣衫不整',
     // —— 中文：转化库输出词（弱化后残留） ——
     '胸前的', '腰腹之间', '隐秘之处', '湿意', '放浪', '轻薄',
+    // —— v3.10.0 追加（同样属于「有部分但不露骨」的信号；扩大识别范围） ——
+    '肌肤之亲', '床笫', '情话', '依偎', '耳鬓厮磨', '春心', '挑情', '媚眼', '欲念', '失守',
     // —— 英文（整词匹配，避免 hug→huge 一类误伤） ——
     'kiss', 'kisses', 'kissing', 'hug', 'hugs', 'hugging', 'embrace', 'embraces', 'intimate', 'intimacy',
     'caress', 'caresses', 'fondle', 'fondles', 'sensual', 'suggestive', 'flirt', 'flirts', 'flirting',

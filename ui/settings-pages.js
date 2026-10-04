@@ -18,7 +18,7 @@ export const SETTINGS_TABS = [
     },
     {
         "id": "safety",
-        "label": "内容弱化"
+        "label": "NSFW弱化"
     },
     {
         "id": "extract",
@@ -1345,7 +1345,7 @@ export function settingsPageHtml(pageId, extrasHtml) {
     //   —— 控件为 V1 形态的自定义标记（`data-ftt-api` 在 V2 一律落成 `data-ftt-cfg`，见 ui/api-page.js 头注）
     if (pid === 'api') return apiPageHtml();
     if (pid === 'storage') return storagePageHtml(list);
-    // 内容弱化（NSFW）页：V1 的**手写四节**（内容弱化 / 固定规则替换 / 转化库 / 识别词条库）
+    // NSFW弱化页（v3.10.0 由「内容弱化」改名）：**手写分节**（NSFW 等级留档 / NSFW弱化 / 固定规则替换 / 转化库 / 识别词条库）
     if (pid === 'safety') return nsfwPageHtml();
     // 遗忘页：V1 的**五分节布局**（状态衰退 / 记忆遗忘 / 存储保底上限 / 通用清扫）+ V2 只读诊断行
     if (pid === 'forget') return forgetPageHtml(list);

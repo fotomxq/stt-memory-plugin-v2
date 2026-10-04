@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.9.0",
+  "version": "3.10.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.10.0",
+      "date": "2026-09-30",
+      "title": "设定页改名「NSFW弱化」+ 词条库与转化库扩充（扩大 NSFW 识别范围）",
+      "points": [
+        "① 设定页改名：设定子标签与页内分节标题 内容弱化（NSFW） → NSFW弱化（safety 子页；开关行提示、总览按钮 tooltip、动作异常文案、AI 无返回提示同步改口…",
+        "② 识别词条库 + 转化库扩充：（core/nsfw.js，加法式整理）：- NSFW_KEYWORDS_V1 = V1 v1.197 原始 63 条（逐字保留、顺序不变）；NS…",
+        "③ 黄金样本口径（有意偏离 V1 · 已登记）：库是 V1 逐字移植资产，追加必然改变规模 →nsfw-golden H1 改为「V1 的 63 条原样在前（头 6 条与第 57…"
+      ]
+    },
     {
       "version": "3.9.0",
       "date": "2026-09-30",

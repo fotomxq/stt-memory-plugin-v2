@@ -939,15 +939,15 @@ await assert('Q4 面板动作可达：clockRepair 经动作分发执行并回填
         && CL.CLOCK_ACTIONS.indexOf('clockPatrol') < 0 && r && typeof r.note === 'string';
 })(), '');
 
-// ---------- R 内容弱化（B8-4：词条库 + 固定规则转化库 + AI 弱化） ----------
+// ---------- R NSFW弱化（B8-4：词条库 + 固定规则转化库 + AI 弱化；v3.10.0 页面改名并扩充词条库） ----------
 const origGen2 = host.ctx.generateRaw;
 let aiSoft = '{}';
 host.ctx.generateRaw = async () => aiSoft;
 
-await assert('R1 设定「内容弱化」页：V1 四节 + 词条库/转化库编辑器 + 状态行与动作按钮齐备', (async () => {
+await assert('R1 设定「NSFW弱化」页（v3.10.0 由「内容弱化」改名）：V1 四节 + 词条库/转化库编辑器 + 状态行与动作按钮齐备', (async () => {
     const r = await entry.popupAction('settingsSub', { sub: 'safety' });
     const html = String(r.html || '');
-    return html.indexOf('内容弱化（NSFW）') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
+    return html.indexOf('>NSFW弱化</div>') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
         && html.indexOf('转化库（匹配词 → 转化词，可在设定中管理）') >= 0 && html.indexOf('识别词条库（用于匹配需弱化的内容）') >= 0
         && html.indexOf('data-ftt-action="nsfwSoften"') >= 0 && html.indexOf('data-ftt-action="nsfwRuleApply"') >= 0
         && html.indexOf('data-ftt-nsfw-kw-new') >= 0 && html.indexOf('data-ftt-nsfw-rule-new-from') >= 0
@@ -997,8 +997,44 @@ assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd 
     F.nsfwKeywordReset();
     const st = F.nsfwState();
     const apply = F.nsfwApply('他插入');
-    return add.ok === true && kw1 === kw0 + 1 && del.ok === true && !!st && st.keywords === 63
+    return add.ok === true && kw1 === kw0 + 1 && del.ok === true && !!st && st.keywords === F.nsfwKeywords().length && st.keywords > 63
         && apply.text === '他进入' && Array.isArray(F.nsfwRules()) && typeof F.nsfwScan === 'function' && typeof F.nsfwHits === 'function';
+})(), '');
+
+// v3.10.0（用户要求）：「NSFW弱化的词条转化，补充新的词条进去，扩大 NSFW 识别范围。」
+await assert('R6 v3.10.0 词条库扩充端到端：V1 的 63 条原样在前 + 新增词条（识别/转化逐条对应，库规模同步变大）；设定页显示新规模；新词条真实点击「🔁 立即固定规则替换」被识别并机械转化', (async () => {
+    const NF = await import('../core/nsfw.js');
+    const st = rtMod.state;
+    const keepAtoms = JSON.parse(JSON.stringify(st.atoms || []));
+    try {
+        const libOk = NF.NSFW_KEYWORDS_V1.length === 63 && NF.NSFW_KEYWORDS_V310.length >= 70
+            && NF.NSFW_KEYWORDS.length === 63 + NF.NSFW_KEYWORDS_V310.length
+            && NF.NSFW_RULES.length === NF.NSFW_KEYWORDS.length
+            && NF.NSFW_KEYWORDS.every((k) => !!NF.NSFW_REPLACE_PAIRS[k]);
+        const js = JSON.stringify(NF.NSFW_KEYWORDS.slice(0, 6));
+        const v1PrefixOk = js === JSON.stringify(['做爱', '性交', '性爱', '交合', '交媾', '上床']);
+        // 设定页显示新库规模（词条库与转化库都变大）
+        await entry.popupAction('tab', { tab: 'settings' });
+        const page = String(((await entry.popupAction('settingsSub', { sub: 'safety' })).html) || '');
+        const n = NF.NSFW_KEYWORDS.length;
+        const pageOk = page.indexOf('>NSFW弱化</div>') >= 0
+            && page.indexOf('当前生效 <b>' + n + '</b> 条') >= 0 && page.indexOf('转化库 ' + n + ' 条') >= 0;
+        // 新词条端到端：真实点击固定规则替换
+        st.atoms = st.atoms || [];
+        st.atoms.push({ id: 'smoke-nsfw-v310', text: '她一丝不挂，胸前巨乳晃动，腿间春光外泄。', title: '裸露场面', tags: [], uses: 0, floorStart: 1, floorEnd: 2 });
+        const r = await entry.popupAction('nsfwRuleApply', {});
+        const it = (st.atoms || []).filter((x) => x.id === 'smoke-nsfw-v310')[0] || {};
+        const txt = String(it.text || '');
+        const hitOk = r.ok === true && r.detail && r.detail.replaced >= 4
+            && txt.indexOf('一丝不挂') < 0 && txt.indexOf('巨乳') < 0 && txt.indexOf('春光外泄') < 0
+            && txt.indexOf('未着寸缕') >= 0 && txt.indexOf('胸前') >= 0 && txt.indexOf('失仪') >= 0;
+        const ok = libOk && v1PrefixOk && pageOk && hitOk;
+        if (!ok) console.log('R6-DEBUG ' + JSON.stringify({ libOk, v1PrefixOk, pageOk, hitOk, n, text: txt, replaced: r.detail && r.detail.replaced }));
+        return ok;
+    } finally {
+        st.atoms = keepAtoms;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
 })(), '');
 
 await assert('R5 分析侧开关：开启后总览出现「🌶 弱化NSFW」按钮，且 /ftt 与调试导出可读开关态', (async () => {
@@ -5772,7 +5808,7 @@ await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/�
         await entry.popupAction('tab', { tab: 'atoms' });
         const listHtml2 = String(((await entry.popupAction('refresh', {})).html) || '');
         const keepBadgeOk = listHtml2.indexOf('NSFW·强') >= 0;      // 弱化之后，行内仍显示「NSFW·强」（永久留档）
-        // ⑥ 设定 → 内容弱化页：留档分节 + 真实点击「🔖 立即补档」
+        // ⑥ 设定 → NSFW弱化页：留档分节 + 真实点击「🔖 立即补档」
         await entry.popupAction('tab', { tab: 'settings' });
         const pg = String(((await entry.popupAction('settingsSub', { sub: 'safety' })).html) || '');
         const pageOk = pg.indexOf('📌 NSFW 等级留档') >= 0 && pg.indexOf('data-ftt-nsfw-label-state') >= 0

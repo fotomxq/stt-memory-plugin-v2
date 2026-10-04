@@ -47,13 +47,41 @@ const NSFW_FIELD_MAP = {
 };
 const NSFW_DIM_LABEL = { atoms: '情节', states: '状态记录', snapshots: '角色档案', memories: '长期记忆', items: '物品', plans: '计划', suspense: '悬念', scenes: '场景', concepts: '概念', parallels: '平行事件', rumors: '传言', plotSegments: '情节分段' };
 
-/** 内置识别词条库（中文原样匹配、英文不区分大小写） */
-const NSFW_KEYWORDS = [
+/**
+ * 内置识别词条库 · **V1 v1.197 原始 63 条**（中文原样匹配、英文不区分大小写）。
+ * 逐字保留、顺序不变 —— 黄金样本 `tests/fixtures/v1-golden-nsfw.json` 的 `kwHead` / `kwTail` 以此为基准，
+ * v3.10.0 的扩充一律**追加在后**（见 `NSFW_KEYWORDS_V310`），绝不改动这 63 条。
+ */
+const NSFW_KEYWORDS_V1 = [
     '做爱', '性交', '性爱', '交合', '交媾', '上床', '性行为', '性事', '肉欲', '情欲', '发情', '高潮', '射精', '精液', '阴茎', '阴道', '阴部',
     '下体', '乳头', '乳尖', '乳房', '臀部', '私处', '裸体', '全裸', '赤裸', '呻吟', '娇喘', '抽插', '插入', '口交', '肛交', '自慰', '手淫',
     '强暴', '轮奸', '强奸', '猥亵', '调教', '肉棒', '鸡巴', '屄', '骚穴', '淫水', '淫叫', '淫荡', '淫乱', '泄身', '破处', '初夜',
     'porn', 'nsfw', 'explicit', 'orgasm', 'penis', 'vagina', 'cum', 'semen', 'intercourse', 'masturbat', 'erotic', 'nipple', 'genital',
 ];
+/**
+ * v3.10.0（用户要求「NSFW弱化的词条转化，补充新的词条进去，扩大 NSFW 识别范围」）：
+ * **追加**识别词条（不动 V1 的 63 条）—— 覆盖更细的性行为/器官/状态/贬义称呼与常见英文露骨词。
+ * 与转化库**逐条对应**（`NSFW_RULES` 由两者派生），新增词条的转化词同样遵循「柔性、克制、留白、不猎奇」的口径。
+ */
+const NSFW_KEYWORDS_V310 = [
+    // —— 性行为与状态 ——
+    '性欲', '情色', '色情', '泄欲', '性高潮', '潮吹', '口爆', '内射', '中出', '深喉', '舔弄', '抚弄', '手交', '足交', '乳交', '自渎', '肉偿', '卖淫', '嫖',
+    // —— 器官与身体 ——
+    '性器官', '阳具', '假阳具', '龟头', '阴蒂', '阴唇', '蜜穴', '肉穴', '花穴', '胯下', '腿间',
+    '臀肉', '巨乳', '爆乳', '酥胸', '玉乳', '情趣内衣', '跳蛋', '按摩棒',
+    // —— 裸露与场景 ——
+    '裸露', '一丝不挂', '春光外泄', '裸照', '脱衣', '裸戏', '限制级', '18禁',
+    // —— 强迫与禁忌 ——
+    '迷奸', '诱奸', '性奴', '拘束', '乱伦', '兽交', '群交', '双飞', '调戏',
+    // —— 贬义称呼 ——
+    '骚货', '荡妇', '婊子', '贱货', '妓女',
+    // —— 英文（词首通配 + 词界；短词一律不用，避免误伤普通词） ——
+    'blowjob', 'handjob', 'penetrat', 'pussy', 'dildo', 'bondage', 'hentai', 'lewd', 'nude', 'naked',
+    'boobs', 'sperm', 'ejaculat', 'sodomy', 'incest', 'orgy', 'fetish', 'molest', 'prostitut', 'aroused', 'horny',
+];
+/** 生效的内置识别词条库 = V1 的 63 条 + v3.10.0 追加（顺序：V1 在前，追加在后） */
+const NSFW_KEYWORDS = NSFW_KEYWORDS_V1.concat(NSFW_KEYWORDS_V310);
+
 /** 内置转化词（与识别词条一一对应；缺转化词的条目自动跳过） */
 const NSFW_REPLACE_PAIRS = {
     // —— 行为 ——
@@ -74,6 +102,31 @@ const NSFW_REPLACE_PAIRS = {
     'porn': 'intimate', 'nsfw': 'sensitive', 'explicit': 'suggestive', 'orgasm': 'climax', 'penis': 'groin',
     'vagina': 'intimate area', 'cum': 'release', 'semen': 'fluid', 'intercourse': 'intimacy', 'masturbat': 'self-soothing',
     'erotic': 'romantic', 'nipple': 'chest', 'genital': 'private area',
+    // ==================== v3.10.0 追加（与 NSFW_KEYWORDS_V310 逐条对应） ====================
+    // —— 性行为与状态 ——
+    '性欲': '欲念', '情色': '成人内容', '色情': '成人内容', '泄欲': '纾解', '性高潮': '顶点', '潮吹': '失守',
+    '口爆': '释放', '内射': '结合', '中出': '结合', '深喉': '亲昵', '口交': '亲昵', '舔弄': '亲昵',
+    '抚弄': '轻触', '手交': '亲昵', '足交': '亲昵', '乳交': '亲昵', '自渎': '独自纾解', '肉偿': '交易',
+    '卖淫': '风尘之事', '嫖': '寻欢',
+    // —— 器官与身体 ——
+    '性器官': '私密部位', '阳具': '腰腹之间', '假阳具': '私密玩具', '龟头': '私密之处', '阴蒂': '私密之处',
+    '阴唇': '私密之处', '蜜穴': '隐秘之处', '肉穴': '隐秘之处', '花穴': '隐秘之处', '胯下': '腰腹之间',
+    '腿间': '腰腹之间', '臀肉': '腰臀', '巨乳': '胸前', '爆乳': '胸前', '酥胸': '胸口', '玉乳': '胸口',
+    '情趣内衣': '贴身衣物', '跳蛋': '私密玩具', '按摩棒': '私密玩具',
+    // —— 裸露与场景 ——
+    '裸露': '未着寸缕', '一丝不挂': '未着寸缕', '春光外泄': '失仪', '裸照': '私密照片', '脱衣': '更衣',
+    '裸戏': '亲密戏', '限制级': '成人向', '18禁': '成人向',
+    // —— 强迫与禁忌 ——
+    '迷奸': '强迫', '诱奸': '强迫', '性奴': '受制之人', '拘束': '受制', '乱伦': '禁忌关系',
+    '兽交': '禁忌之举', '群交': '亲密聚会', '双飞': '亲密聚会', '调戏': '轻薄',
+    // —— 贬义称呼 ——
+    '骚货': '放浪之人', '荡妇': '放浪之人', '婊子': '轻贱之人', '贱货': '轻贱之人', '妓女': '风尘女子',
+    // —— 英文 ——
+    'blowjob': 'oral intimacy', 'handjob': 'manual intimacy', 'penetrat': 'intimacy', 'pussy': 'intimate area',
+    'dildo': 'personal device', 'bondage': 'restraint', 'hentai': 'adult animation', 'lewd': 'improper',
+    'nude': 'unclothed', 'naked': 'unclothed', 'boobs': 'chest', 'sperm': 'fluid', 'ejaculat': 'release',
+    'sodomy': 'taboo act', 'incest': 'taboo kinship', 'orgy': 'gathering', 'fetish': 'fixation',
+    'molest': 'harass', 'prostitut': 'courtesan', 'aroused': 'stirred', 'horny': 'restless',
 };
 /** 内置标准转化库：逐条对应内置识别词条库（顺序一致；缺转化词自动跳过） */
 const NSFW_RULES = NSFW_KEYWORDS.map(k => ({ from: k, to: NSFW_REPLACE_PAIRS[k] || '' })).filter(r => r.to);
@@ -734,7 +787,7 @@ async function runNsfwSoften(opts) {
             notify(parts.length ? (r.applied ? 'success' : 'warning') : 'warning', r.applied ? '弱化 NSFW 完成' : '弱化 NSFW：AI 未给出可用结果',
                 parts.length
                     ? `${parts.join(' · ')}；NSFW 等级标签为「永久留档」：弱化只改措辞、不改标签（原文是「强」的条目仍记为「强」）。${r.details.length ? '例：' + r.details.slice(0, 3).join('；') : ''}${pack.truncated ? ` · 余 ${pack.truncated} 条可再点一次` : ''}`
-                    : 'AI 未返回可用的改写文本（结果若仍含露骨词汇会被丢弃）。可重试或先检查提示词模板「内容弱化（NSFW）」。');
+                    : 'AI 未返回可用的改写文本（结果若仍含露骨词汇会被丢弃）。可重试或先检查设定「NSFW弱化」页的提示词模板。');
         }
         try { dbgLog('弱化', { action: '弱化 NSFW（v1.195）', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, byDim: pack.byDim, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, ms: Date.now() - t0, fixedBefore: fixedDone ? fixedDone.replaced : 0, levels: nsfwLabelStats() }); } catch (e) { /* 忽略 */ }
         return { made: r.applied, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, details: r.details, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
@@ -746,7 +799,8 @@ async function runNsfwSoften(opts) {
 }
 
 export {
-    NSFW_SOFTEN_BATCH, NSFW_TEXT_CAP, NSFW_FIELD_MAP, NSFW_DIM_LABEL, NSFW_KEYWORDS, NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_EN_INNOCENT,
+    NSFW_SOFTEN_BATCH, NSFW_TEXT_CAP, NSFW_FIELD_MAP, NSFW_DIM_LABEL, NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310,
+    NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_EN_INNOCENT,
     nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordsSeed, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRulesSeed, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwEnRegex, nsfwEnWordOk, nsfwKeywordProbe, nsfwKeywordHits, nsfwApplyRules, nsfwFixedReplace,

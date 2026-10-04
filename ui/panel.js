@@ -575,7 +575,7 @@ function overviewBody() {
     const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
     // v3.8.0：弱化按钮的提示里带上**留档等级**分布（无/弱/强 · 弱化不改标签，永久性留档）
     const nsfwLabs = (() => { try { return nsfwLabelStats(); } catch (e) { return null; } })();
-    const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「内容弱化」页）'
+    const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「NSFW弱化」页）'
         + '｜NSFW 等级留档：无 ' + (nsfwLabs ? nsfwLabs.none : 0) + ' · 弱 ' + (nsfwLabs ? nsfwLabs.weak : 0) + ' · 强 ' + (nsfwLabs ? nsfwLabs.strong : 0) + '（按原文判定，弱化后不变）'
         + '">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
     // v3.0.2（用户要求：「立即 AI 摘要是分析记忆动作，应该与点击单个未分析楼层**联动**做提示」）：
@@ -2691,7 +2691,7 @@ export async function panelAction(action, payload) {
             setNote(n ? ('已清空 ' + n + ' 个标定角色') : '当前没有标定角色');
         }
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
-            // 内容弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
+            // NSFW弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
             const nr = await nsfwAction(a, p);
             setNote(nr.note || '');
             result = Object.assign(result, nr);

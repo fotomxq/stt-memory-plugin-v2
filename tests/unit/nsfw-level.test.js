@@ -28,10 +28,11 @@ import {
     NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS, nsfwLevelNorm, nsfwLevelMax, nsfwLevelLabel,
     nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
     nsfwClassifyItem, nsfwStampItem, nsfwStampEntry, nsfwLabelStats, nsfwBackfill,
-    nsfwScan, nsfwFixedReplace, nsfwKeywordList,
+    nsfwScan, nsfwFixedReplace, nsfwKeywordList, nsfwRuleList, nsfwApplyRules, nsfwKeywordHits,
+    NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_SOFTEN_BATCH,
 } from '../../core/nsfw.js';
 
-const R = makeReporter('nsfw-level v3.8.0 NSFW 等级留档（无 / 弱 / 强）');
+const R = makeReporter('nsfw-level v3.8.0–v3.10.0 NSFW 等级留档（无 / 弱 / 强）+ 词条库扩充');
 const A = (n, c, e) => R.assert(n, !!c, e);
 const J = (v) => JSON.stringify(v);
 const doc = makeDocument(['ftt-panel']);
@@ -190,7 +191,7 @@ await A('E1 存量补档 `nsfwBackfill`：老数据按原文打标（强 / 弱�
 await A('E2 「强」不会被补档降级：把已弱化的正文重新补档 → 仍是「强」（留档永久）', (() => {
     boot({ atoms: [{ id: 'e4', title: '夜里', text: weak, floorStart: 1, floorEnd: 1, tags: [], nsfw: 'strong' }] });
     const r = nsfwBackfill();
-    return r.stamped === 0 && state.atoms[0].nsfw === 'strong' && nsfwKeywordList().length === 63;
+    return r.stamped === 0 && state.atoms[0].nsfw === 'strong' && nsfwKeywordList().length === NSFW_KEYWORDS.length;
 })(), '见断言');
 
 // ---------- F 组：界面与元字段补齐 ----------
@@ -243,5 +244,58 @@ const f3ok = await (async () => {
     return first === 'weak' && second === 'strong';
 })();
 A('F3 手动新增/编辑（upsertEntry）同样打标：新增含亲密信号的记忆 → 弱；改写成露骨正文 → 升为强', f3ok, () => ({ memories: state.memories.map((x) => ({ id: x.id, nsfw: x.nsfw })) }));
+
+// ---------- G 组：v3.10.0 词条库扩充（扩大 NSFW 识别范围） ----------
+await A('G1 扩充是**纯追加**：V1 的 63 条原样保留在前（头部 6 条 / 第 57–63 条逐字不变），新增条目一律排在后面', (() => {
+    const kw = nsfwKeywordList();
+    return NSFW_KEYWORDS_V1.length === 63 && NSFW_KEYWORDS_V310.length >= 70
+        && kw.length === 63 + NSFW_KEYWORDS_V310.length
+        && J(kw.slice(0, 6)) === J(['做爱', '性交', '性爱', '交合', '交媾', '上床'])
+        && J(kw.slice(57, 63)) === J(['semen', 'intercourse', 'masturbat', 'erotic', 'nipple', 'genital'])
+        && kw.slice(63).every((k) => NSFW_KEYWORDS_V310.indexOf(k) >= 0);     // 追加段 = V310 列表
+})(), () => ({ total: nsfwKeywordList().length, v1: NSFW_KEYWORDS_V1.length, v310: NSFW_KEYWORDS_V310.length }));
+
+await A('G2 识别 / 转化逐条对应且无重复：新增词条**每一条都有转化词**（规则库条数 = 词条库条数），词条不重复', (() => {
+    const kw = nsfwKeywordList();
+    const uniq = new Set(kw);
+    const missing = NSFW_KEYWORDS.filter((k) => !NSFW_REPLACE_PAIRS[k]);
+    return uniq.size === kw.length && missing.length === 0
+        && NSFW_RULES.length === NSFW_KEYWORDS.length
+        && nsfwRuleList().length === nsfwKeywordList().length;
+})(), () => ({ missing: NSFW_KEYWORDS.filter((k) => !NSFW_REPLACE_PAIRS[k]) }));
+
+await A('G3 新增词条真的能**命中并转化**（零 AI 机械替换）：更细的性行为/器官/裸露/贬义称呼 + 英文词都被认出来', (() => {
+    boot();
+    const cn = nsfwApplyRules('她一丝不挂地跪坐，胸前巨乳晃动，腿间春光外泄，他伸手抚弄她的阴唇。');
+    const en = nsfwApplyRules('A lewd nude scene with boobs, a blowjob and semen.');
+    const hitsCn = nsfwKeywordHits('一丝不挂 巨乳 腿间 春光外泄 抚弄 阴唇');
+    const hitsEn = nsfwKeywordHits('lewd nude boobs blowjob semen');
+    return cn.changed === true && cn.text.indexOf('一丝不挂') < 0 && cn.text.indexOf('巨乳') < 0
+        && cn.text.indexOf('未着寸缕') >= 0 && cn.text.indexOf('私密之处') >= 0
+        && en.text.indexOf('lewd') < 0 && en.text.indexOf('nude') < 0 && en.text.indexOf('blowjob') < 0
+        && hitsCn.length === 6 && hitsEn.length === 5 && NSFW_SOFTEN_BATCH === 12;
+})(), () => ({ cn: nsfwApplyRules('她一丝不挂地跪坐，胸前巨乳晃动，腿间春光外泄，他伸手抚弄她的阴唇。'), en: nsfwApplyRules('A lewd nude scene with boobs, a blowjob and semen.') }));
+
+await A('G4 弱级信号词同步扩充（61 → ' + NSFW_WEAK_SIGNALS.length + ' 条）：新增的亲密/暗示措辞判为「弱」而不是「无」', (() => {
+    boot();
+    return NSFW_WEAK_SIGNALS.length >= 70
+        && nsfwWeakHit('两人依偎着说了一夜情话') === true
+        && nsfwWeakHit('耳鬓厮磨许久') === true
+        && nsfwClassifyItem('memories', { id: 'g4', title: '夜里', content: '两人依偎着说了一夜情话。' }) === 'weak'
+        && nsfwClassifyItem('memories', { id: 'g4b', title: '码头', content: plain }) === 'none';
+})(), () => ({ weak: NSFW_WEAK_SIGNALS.length }));
+
+await A('G5 扩充不影响既有词条的口径：V1 的 63 条替换结果逐条不变（抽 6 条逐字符比对）', (() => {
+    boot();
+    const cases = [
+        ['两人做爱后相拥，她发出呻吟。', '两人亲近后相拥，她发出低吟。'],
+        ['A porn and explicit scene.', 'A intimate and suggestive scene.'],
+        ['他赤裸上身。', '他未着衣上身。'],
+        ['她被强暴了。', '她被施暴了。'],
+        ['Full naked and intercourse.', 'Full unclothed and intimacy.'],
+        ['胸口与臀部。', '胸口与腰臀。'],
+    ];
+    return cases.every(([src, want]) => nsfwApplyRules(src).text === want);
+})(), () => ({ porn: nsfwApplyRules('A porn and explicit scene.').text, sex: nsfwApplyRules('两人做爱后相拥，她发出呻吟。').text }));
 
 R.done();
