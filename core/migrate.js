@@ -321,6 +321,9 @@ function migrateState(s) {
         changed = true;
     }
     if (s.lastKnownFloor === undefined) { s.lastKnownFloor = -1; changed = true; }
+    // v3.11.1：新增两个台账辅助字段（老存档补齐；语义见 core/state.js）
+    if (!Array.isArray(s.processedDropped)) { s.processedDropped = []; changed = true; }
+    if (s.lastChatFloor === undefined) { s.lastChatFloor = Number(s.lastKnownFloor) || -1; changed = true; }
     // 已完结计划/已揭晓悬念只留统计 —— 存量 status='closed' 条目迁移为纯计数后原文删除（旧版仅标记不删）
     if ((Array.isArray(s.plans) && s.plans.some(x => x && x.status === 'closed')) || (Array.isArray(s.suspense) && s.suspense.some(x => x && x.status === 'closed'))) {
         s.stats = s.stats || { plansClosed: 0, suspenseResolved: 0 };

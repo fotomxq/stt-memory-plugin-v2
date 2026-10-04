@@ -41,14 +41,20 @@ R.assert('S1 scopeId / stateKey 与 V1 同口径（char:<hash>；存档键前缀
     scopeId() === G.scope.id && stateKey() === G.scope.key, { got: [scopeId(), stateKey()], want: [G.scope.id, G.scope.key] });
 R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账本 + 时钟 + 主角 + 快照链等）', (() => {
     const e = emptyState();
+    // v3.11.1：**有意偏离 V1** —— V2 新增两个台账辅助字段（`processedDropped` / `lastChatFloor`，见 core/state.js）。
+    //   按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再比较，样本本身一字不改；
+    //   同时**单独断言新字段确实存在**（归一 ≠ 删字段）。
+    const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
     const got = {
-        keys: Object.keys(e), scope: e.scope,
+        keys: Object.keys(e).filter(k => V2_LEDGER_KEYS.indexOf(k) < 0), scope: e.scope,
         dims: ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'links', 'currencies', 'plotSegments', 'rumors'].map(k => Array.isArray(e[k]) ? k : k + ':' + typeof e[k]),
         hasDeleted: !!e.deleted, hasDeletedH: !!e.deletedH, vars: e.vars, snapStore: e.snapStore, state: e.state,
     };
     // V1 的 emptyState 写的是当时的 VERSION（切片用桩值），V2 写当前版本 —— 单独断言版本
     const want = JSON.parse(J(G.empty)); delete want.version;
-    return JT(got) === JT(want) && e.version === VERSION;
+    return JT(got) === JT(want) && e.version === VERSION
+        && V2_LEDGER_KEYS.every(k => Object.prototype.hasOwnProperty.call(e, k))
+        && Array.isArray(e.processedDropped) && Number(e.lastChatFloor) === -1;
 })(), Object.keys(emptyState()));
 
 // ---------- 隐藏条目保护 ----------

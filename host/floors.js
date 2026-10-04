@@ -242,9 +242,105 @@ export function recordProcessedFloors(start, end) {
         state.processedVer = processedVerTag();
         const endN = Number(end) || 0;
         if (endN > (Number(state.lastKnownFloor) || -1)) state.lastKnownFloor = endN;
+        // v3.11.1：刚被重新分析的楼层 → 清掉它的「丢弃留痕」（否则覆盖判据会一直以为这楼内容被改写过）
+        try { forgetDroppedMarks(start, end); } catch (e) { /* 忽略 */ }
         saveState();
         return { ok: true, count: state.processedFloors.length };
     } catch (e) { warn('已处理楼层记录失败', e); return { ok: false }; }
+}
+
+// ============================================================
+// v3.11.1（真机取证）：**台账标记丢弃留痕** + **拆楼检测基线**
+//
+// 两个同源缺陷，都会让「已分析过的楼」与「该不该再分析」脱节：
+//   ① **丢弃即失忆**：对账（`reconcileProcessedFloors`）与拆楼归位（`handleFloorShrink`）会按内容哈希
+//      丢弃「对不上的标记」—— 丢弃后**旧哈希不留痕**，于是下游再也分不清「这楼从没分析过」与
+//      「分析过、但正文被改写了」。而「已有记忆数据」覆盖兜底会把后者一并当成已分析 → **永远不再分析**。
+//      真机证据：第 30/32/38/40/42 楼各有**自己产出的 `rumors` 单楼区间条目**（说明分析过），
+//      但台账里没有它们的标记 → 被判「已覆盖」而静默跳过（用户看到的就是「这些楼一直不分析」）。
+//   ② **拆楼基线错位**：`lastKnownFloor` 只在**记录分析结果**时更新，等于「已分析到哪」；而拆楼检测
+//      拿它当「聊天曾经多长」。真机：聊天 49 楼、只分析到 22 楼 → 之后删到 29 楼时 `lastId(28) < known(22)-5`
+//      不成立 → **真实收缩检测不到** → 来源楼层不归位（条目停留在已不存在的楼号上）。
+// 修法：① 丢弃的标记进 `state.processedDropped`（有界、按楼层去重），覆盖判据遇「旧哈希 ≠ 当前哈希」
+//   即视为**正文已改写**，不再跳过；② 新增 `state.lastChatFloor`（最近见到的聊天末楼），基线取两者较大值。
+// ============================================================
+
+/** 丢弃留痕上限（条；按楼层去重后保留最新一批） */
+const PROCESSED_DROPPED_CAP = 600;
+
+/** v3.11.1：把「被丢弃的台账标记」留痕（有界、按楼层去重、新值覆盖） */
+export function rememberDroppedMarks(list) {
+    try {
+        const map = new Map();
+        for (const src of [Array.isArray(state.processedDropped) ? state.processedDropped : [], list || []]) {
+            for (const x of src) {
+                const f = markFloor(x);
+                if (!Number.isFinite(f) || f < 0) continue;
+                map.set(f, { f: f, h: String((x && x.h) || '') });
+            }
+        }
+        const arr = Array.from(map.values()).sort((a, b) => a.f - b.f).slice(-PROCESSED_DROPPED_CAP);
+        state.processedDropped = arr;
+        return arr.length;
+    } catch (e) { return 0; }
+}
+
+/** v3.11.1：重新分析过 [start,end] → 清掉这些楼的丢弃留痕 */
+export function forgetDroppedMarks(start, end) {
+    try {
+        const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
+        if (!arr.length) return 0;
+        const s = Math.max(0, Number(start) || 0), e = Number(end) || 0;
+        const next = arr.filter((x) => { const f = markFloor(x); return !(Number.isFinite(f) && f >= s && f <= e); });
+        const removed = arr.length - next.length;
+        if (removed) state.processedDropped = next;
+        return removed;
+    } catch (e) { return 0; }
+}
+
+/**
+ * v3.11.1：该楼是否有「被丢弃的标记」，且**旧哈希与当前正文不同**（= 正文确实被改写过）。
+ *   旧哈希相同 → 正文没变 → 覆盖兜底照常生效（保守；避免把「楼层暂时消失又回来」误判成改写）。
+ */
+export function droppedContentChanged(i) {
+    try {
+        const arr = state.processedDropped;
+        if (!Array.isArray(arr) || !arr.length) return false;
+        const f = Number(i);
+        let rec = null;
+        for (const x of arr) { if (Number(x && x.f) === f) { rec = x; break; } }
+        if (!rec || !rec.h) return false;
+        const h = hashFloorText(f);
+        return !!h && h !== String(rec.h);
+    } catch (e) { return false; }
+}
+
+/**
+ * v3.11.1：**断裂（拆楼）检测基线** = max(上次观察到的聊天末楼, 已分析最大楼)。
+ *   · 只用 `lastKnownFloor`（旧口径）：它只在**记录分析结果**时更新 —— 聊天涨到 49 楼、只分析到 22 楼时
+ *     基线严重落后，之后删到 29 楼要 `28 < 22-5` 才判收缩 → **真实收缩检测不到** → 来源楼层不归位。
+ *   · 只用 `lastChatFloor`：它在**两次观察之间**聊天先涨后删时也会漏判（smoke BH13 就是这种局面）。
+ *   · 取两者较大值：`lastChatFloor` 反映「上次看到多长」，`lastKnownFloor` 是「聊天至少曾有这么长」的
+ *     硬证据（分析过第 N 楼 ⇒ 当时至少有 N+1 层），两者互补。
+ *   注意 `noteChatFloor` 是 **last-seen（可回落）** —— 若把它做成「见过的最大值」，切到更短的聊天会每次都误判收缩。
+ */
+export function shrinkBaseline() {
+    try {
+        return Math.max(Number(state.lastChatFloor) || -1, Number(state.lastKnownFloor) || -1);
+    } catch (e) { return -1; }
+}
+
+/**
+ * v3.11.1：记下「本次见到的聊天末楼」（拆楼检测基线，**可回落** = last-seen 语义）。
+ *   收缩后必须能降到新末楼，否则下一次收缩会被重复判定。
+ */
+export function noteChatFloor(tail) {
+    try {
+        const n = Number(tail);
+        if (!Number.isFinite(n) || n < -1) return -1;
+        state.lastChatFloor = n;
+        return n;
+    } catch (e) { return -1; }
 }
 
 // ============================================================
@@ -279,7 +375,7 @@ export function processedDriftGuard(notify, force) {
         if (!ready.ready) return { skipped: 'chat-not-ready' };      // v2.87.0：聊天未就绪 → 不判定漂移、不动台账
         const lastId = Number(getLastMessageId());
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
-        const known = Number(state.lastKnownFloor);
+        const known = shrinkBaseline();          // v3.11.1：与拆楼检测同一基线（含最近见到的末楼）
         if (Number.isFinite(known) && known >= 0 && lastId < known - 5) return { skipped: 'floor-shrunk' };   // 真删楼 → 交给断裂检测
         const now = Date.now();
         // 节流：完整判定要逐楼算哈希。节流期内先用**抽样**兜底 —— 末尾 5 个标记全部失配即认定漂移，立刻升级为完整判定
@@ -358,6 +454,11 @@ export function reconcileProcessedFloors(notify) {
             log('摘要', { action: '已处理楼层对账跳过（整体失配）', before: before, wouldDrop: dropped });
             return { kept: before, dropped: 0, skipped: 'mass-mismatch' };
         }
+        // v3.11.1：**丢弃前留痕**（旧哈希进 `processedDropped`）—— 覆盖判据据此识别「正文被改写过」
+        try {
+            const keptFloors = new Set(keep.map((x) => Number(x.f)));
+            rememberDroppedMarks(pf.filter((x) => !keptFloors.has(markFloor(x))));
+        } catch (e) { /* 忽略 */ }
         // v2.64.0（V1 缺陷修复）：V1 只在 `dropped !== 0` 时写回 —— 于是「条数不变、只是楼层号整体挪位」
         //   （顶部插入一条新消息，其余内容整体后移）时**归位结果被丢弃**：标记仍指向旧楼层号，
         //   表现为旧楼层继续「已处理」、新位置反而被列为未摘要（用户报告「不应该分析的会被展示出来」）。
@@ -413,9 +514,10 @@ export function handleFloorShrink(opts) {
         if (!ready.ready) return { ok: true, skipped: 'chat-not-ready' };
         const total = ready.total;
         const lastId = total - 1;
-        const known = Number(state.lastKnownFloor);
+        const known = shrinkBaseline();          // v3.11.1：含「最近见到的聊天末楼」，不再只看分析进度
         const TOL = 5;
         const shrunk = Number.isFinite(known) && known >= 0 && lastId < known - TOL;
+        noteChatFloor(lastId);                    // v3.11.1：无论是否收缩，都刷新「最近见到的末楼」基线
         if (!shrunk && !o.force) return { ok: true, skipped: 'no-shrink', lastId: lastId };
         // ①-0 v3.7.0：**先快照突变前的台账**（`f → h`，f = 突变**前**的楼层号）。第 ① 步会把台账整体重建成
         //   「当前聊天里还能对上的楼层」，之后再也读不到原始楼层号 —— 而「当前位置」正是要靠这份快照才能算出来。
@@ -441,6 +543,11 @@ export function handleFloorShrink(opts) {
             state.processedFloors = keep;
             state.processedVer = processedVerTag();
             marks = keep.length;
+            // v3.11.1：拆楼归位同样**丢弃前留痕**（旧哈希），供覆盖判据识别「正文已改写」
+            try {
+                const keptFloors = new Set(keep.map((x) => Number(x.f)));
+                rememberDroppedMarks(pf.filter((x) => !keptFloors.has(markFloor(x))));
+            } catch (e) { /* 忽略 */ }
         } catch (e) { /* 归位失败不阻塞后续 */ }
         // ② v3.7.0（用户要求）：**来源楼层（floorStart/floorEnd）永不变动**；改为维护「当前位置」与「原文已移除」标记。
         //   · 先按**内容哈希**算出「当前聊天里每个楼层的哈希」与「突变前台账的楼层→哈希」，据此把条目的原始区间
@@ -635,6 +742,7 @@ export function scanPendingFloors(opts) {
     const lastIdStale = Number.isFinite(lastId) && lastId >= 0 && lastId !== tail;
     const startFloor = Math.max(0, Number(o.startFloor) || 0);
     const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0, chatNotReady: 0 };
+    let changedFromDropped = 0;      // v3.11.1：因「正文改写 + 标记已丢」重新入队的楼层数（诊断）
     const out = [];
     try {
         // v2.87.0：聊天未就绪（插件刚启动 / 更新后尚未同步）→ **不做任何台账维护**，并如实标记，避免误判大批楼层。
@@ -672,14 +780,18 @@ export function scanPendingFloors(opts) {
             //      否则编辑过的楼层会被旧数据永久压住）；③ 不在册（台账缺失/迁移丢失/导入未带）才用覆盖判据兜底。
             const mark = processedMarkOf(i);
             if (mark && isFloorProcessed(i)) { skipped.processed++; continue; }
-            const contentChanged = !!mark;
+            // v3.11.1：**正文被改写且标记已丢**（丢弃留痕里旧哈希 ≠ 当前哈希）→ 同样视为内容已变，
+            //   覆盖兜底不得跳过（否则「分析过 → 正文改写 → 标记被对账丢弃」的楼会被永久隐藏）。
+            const droppedChanged = !mark && droppedContentChanged(i);
+            const contentChanged = !!mark || droppedChanged;
+            if (droppedChanged) changedFromDropped += 1;
             // v2.64.0：该楼已有记忆数据 → 无需分析；v3.0.20：显式清空过的区间除外（用户要求「重新看到全部待分析楼层」）
             if (!contentChanged && skipCovered && i > coverResetUpTo && cov.has(i)) { skipped.covered++; continue; }
             out.push(i);
         }
-        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored, coverMaxFloor: end, skipped: skipped };
+        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0), skipped: skipped };
     } catch (e) { /* 忽略 */ }
-    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, skipped: skipped };
+    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0), skipped: skipped };
 }
 
 /**
@@ -764,8 +876,12 @@ export function processedStats() {
         return {
             ver: state.processedVer || '', tag: processedVerTag(), marks: (state.processedFloors || []).length,
             lastKnownFloor: Number(state.lastKnownFloor) || -1,
+            // v3.11.1：拆楼检测基线（含最近见到的聊天末楼）与「丢弃留痕」条数 —— 覆盖判据的可诊断依据
+            lastChatFloor: Number(state.lastChatFloor) || -1,
+            shrinkBaseline: shrinkBaseline(),
+            droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0),
             // v3.0.20：「清除已处理楼层记录」时记下的覆盖失效末楼号（-1 = 未清空过 / 已恢复常规判据）
             coverResetUpTo: (() => { try { const n = Number(state.coverReset && state.coverReset.upTo); return Number.isFinite(n) ? n : -1; } catch (e) { return -1; } })(),
         };
-    } catch (e) { return { ver: '', tag: processedVerTag(), marks: 0, lastKnownFloor: -1 }; }
+    } catch (e) { return { ver: '', tag: processedVerTag(), marks: 0, lastKnownFloor: -1, lastChatFloor: -1, shrinkBaseline: -1, droppedMarks: 0, coverResetUpTo: -1 }; }
 }
