@@ -71,7 +71,7 @@ import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
 import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
-import { migrateState } from './core/migrate.js';
+import { migrateState, lastHealInfo } from './core/migrate.js';   // v3.13.1：+lastHealInfo（载入期自愈留痕）
 import { emptyState } from './core/state.js';
 import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq } from './core/model/runtime.js';
 import { hashText, fileStamp } from './core/util.js';
@@ -180,7 +180,7 @@ import {
     nsfwLevelOf, nsfwLabelStats, nsfwBackfill, nsfwClassifyItem,
 } from './core/nsfw.js';
 import { promptToGenerateArgs } from './host/extract.js';
-import { dataHealthReport, dataHealthText } from './core/data-health.js';   // v3.11.0：数据体检（只读）
+import { dataHealthReport, dataHealthText } from './core/data-health.js';   // v3.13.0：数据体检（只读）
 // v2.58.0：提取记忆三层流程（向量 / JS / AI）与向量层宿主适配（对齐 V1 的 Embedding / Rerank API 设置）
 import { runExtractFlow, testLayer } from './host/extract-flow.js';
 import { vectorRecall, vectorLayerStatus } from './host/vector-recall.js';
@@ -351,7 +351,13 @@ export async function loadMemoryState() {
             scopeKey: scopeKey ? '(已就绪)' : '(空)',
         });
     } catch (e) { /* 忽略 */ }
-    if (st) { try { st = migrateState(st); } catch (e) { /* 迁移失败则按原样使用 */ } }
+    // v3.13.0：载入期数据异常自愈（脏台账 / 非规范 NSFW / 负数 uses / 倒置楼层区间 …）；
+    //   v3.13.1：自愈摘要不再丢弃 —— 有修复就记一条调试日志（与 NSFW 补档同一口径）并在挂载后按需落盘，
+    //   否则「修了什么」既看不到、也可能长期只活在内存里（磁盘仍是脏数据，每次载入重来）。
+    let healInfo = null;
+    if (st) {
+        try { st = migrateState(st); healInfo = lastHealInfo(); } catch (e) { /* 迁移失败则按原样使用 */ }
+    }
     if (!st || typeof st !== 'object') { st = emptyState(); via = 'new'; }
     // v3.0.21：登记「异常缩水」守卫的基线（载入态即基线；此后任何无墓碑的大规模缩水都会被拦下）
     try { primeShrinkBaseline(st); } catch (e) { /* 忽略 */ }
@@ -366,6 +372,17 @@ export async function loadMemoryState() {
         via = 'superseded';
     } else {
         try { attachKernelState(st); } catch (e) { runtime.lastError = String((e && e.message) || e); }
+        // v3.13.1：自愈留痕 + 按需落盘（必须在挂载之后，避免把上一份内存态写回磁盘）
+        if (healInfo && healInfo.changed) {
+            try {
+                debugLogPush('载入', {
+                    action: '载入期数据自愈（脏台账 / 非规范 NSFW / 负数 uses / 倒置或非法楼层区间）',
+                    ledgerFixed: healInfo.ledger, droppedFixed: healInfo.dropped, entriesFixed: healInfo.entries,
+                    note: '自愈在载入期完成（幂等）；本条记录用于核对「这次载入修了什么」',
+                });
+            } catch (e) { /* 忽略 */ }
+            try { scheduleSave('载入期数据自愈'); } catch (e) { /* 忽略 */ }
+        }
     }
     // v3.8.0（用户要求）：**NSFW 等级留档补档** —— 老存档（v3.8.0 之前写入的）与派生条目（修复/推演/情节总结新建）
     //   在载入后补上等级标签（无/弱/强）；**只升不降、幂等**：文本没有命中时不写、已打标的不再改动。
@@ -1012,7 +1029,7 @@ function bootstrapDiagnostics() {
             nsfwRuleReset: () => nsfwRuleReset(),
             // v3.8.0：NSFW 等级留档（无 / 弱 / 强）—— 统计 / 补档 / 单条判级（只读诊断用）
             nsfwLabels: (st) => nsfwLabelStats(st || undefined),
-            // v3.11.0：数据体检（只读；本地调试端口 / 控制台核对数据异常）
+            // v3.13.0：数据体检（只读；本地调试端口 / 控制台核对数据异常）
             dataHealth: (opts) => dataHealthReport(undefined, opts || {}),
             dataHealthText: () => dataHealthText(dataHealthReport()),
             nsfwBackfill: (opts) => nsfwBackfill(opts || {}),

@@ -7,7 +7,7 @@
 // ============================================================
 
 import { clockDateParts, clockDateTrim } from './clock.js';
-import { nsfwLevelNorm, nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0 等级留档；v3.11.0 数据异常自愈（等级规范化）
+import { nsfwLevelNorm, nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0 等级留档；v3.13.0 数据异常自愈（等级规范化）
 import { ATOM_DIM_KEYS, VERSION } from './constants.js';
 import { ensureAtomHashes } from './merge.js';
 // v2.86.0（`docs/D8` R1=B）：同内容去重 = **身份哈希**（认身份）
@@ -148,7 +148,7 @@ function migratePlanSuspV1165(s) {
 /**
  * 台账标记的楼层号解析（**严格**）：只认「非负整数」或「十进制数字字符串」。
  *   `null` / 布尔 / 空串 / 非数字串一律 `NaN` —— 这一点很关键：`Number(null) === 0` 会把垃圾标记
- *   **伪造成「第 0 楼已处理」**（v3.11.0 修的正是这个缺陷）。
+ *   **伪造成「第 0 楼已处理」**（v3.13.0 修的正是这个缺陷）。
  */
 function ledgerFloorNum(v) {
     if (typeof v === 'number') return Number.isInteger(v) ? v : NaN;
@@ -156,12 +156,25 @@ function ledgerFloorNum(v) {
     return NaN;
 }
 
+/** 参与自愈的维度（去重：`ATOM_DIM_KEYS` 已含 `plotSegments`，v3.13.1 修重复扫描） */
+const HEAL_DIMS = (() => {
+    const out = [];
+    for (const d of ATOM_DIM_KEYS.concat(['currencies', 'npcs', 'plotSegments'])) if (out.indexOf(d) < 0) out.push(d);
+    return out;
+})();
+
+/** 上一次载入期自愈的摘要（`index.js` 据此留痕 / 按需落盘；v3.13.1） */
+let lastHeal = null;
+/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number}|null} */
+function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; }
+
 /**
- * v3.11.0（用户要求「基于本地调试端口，核对存在的 BUG 和数据异常，进行修复」）：
+ * v3.13.0（用户要求「基于本地调试端口，核对存在的 BUG 和数据异常，进行修复」）：
  * **数据异常载入期自愈** —— 只修「能从数据本身确定地修好」的那部分，幂等、绝不删条目：
- *   ① 已处理楼层台账：丢弃非法标记（此前会把 `{f:'x'}` / `null` **伪造成 `{f:0,h:''}`**，凭空多出一条「第 0 楼已处理」）、
+ *   ① 已处理楼层台账（主台账 `processedFloors` + v3.11.1 的丢弃留痕 `processedDropped`，**同口径**）：
+ *      丢弃非法标记（此前会把 `{f:'x'}` / `null` **伪造成 `{f:0,h:''}`**，凭空多出一条「第 0 楼已处理」）、
  *      按 `(楼层, 哈希)` 去重；
- *   ② `lastKnownFloor` 非整数 → `-1`（未知；下游一律 `Number.isFinite` 判据，NaN 会被当成「没有收缩」）；
+ *   ② 基线：`lastKnownFloor` 非整数 → `-1`；v3.13.1 补齐 `lastChatFloor` 同口径 + `processedVer` 非字符串 → 删除；
  *   ③ 条目级：NSFW 等级规范化（`Strong`/`true`/`4` → `strong`；无法识别 → 删除字段，缺省即「无」）；
  *   ④ 条目级：`uses` 负数/非数字 → `0`；`importance` 越界 → 夹到 `0..1`（非数字 → `0.5`）；
  *   ⑤ 楼层：来源区间**倒置**（`floorStart > floorEnd`）→ 互换修好（两端都是真实楼层，只是顺序写反）；
@@ -170,55 +183,68 @@ function ledgerFloorNum(v) {
  */
 function healthSelfHeal(s) {
     let changed = false;
+    const stat = { ledger: 0, dropped: 0, entries: 0 };
     try {
-        if (!s || typeof s !== 'object') return false;
-        // ① 台账
-        if (Array.isArray(s.processedFloors)) {
+        if (!s || typeof s !== 'object') { lastHeal = null; return false; }
+        // ① 台账（主 + 丢弃留痕）
+        /** @returns {number} 丢弃 / 去重掉的条数 */
+        const healMarks = (key) => {
+            if (!Array.isArray(s[key])) return 0;
             const seen = Object.create(null); const next = [];
-            for (const x of s.processedFloors) {
+            let dropped = 0;
+            for (const x of s[key]) {
                 const obj = !!x && typeof x === 'object' && !Array.isArray(x);
                 const f = ledgerFloorNum(obj ? x.f : x);
-                if (!Number.isInteger(f) || f < 0) continue;                 // 非法楼层号 → 丢弃（不再伪造 0）
+                if (!Number.isInteger(f) || f < 0) { dropped++; continue; }   // 非法楼层号 → 丢弃（不再伪造 0）
                 const h = obj ? String(x.h || '') : '';                      // V1 兼容：裸数字 = 无哈希的在册标记
-                const key = f + ':' + h;
-                if (seen[key]) continue;                                     // 重复标记 → 丢弃
-                seen[key] = 1;
+                const k = f + ':' + h;
+                if (seen[k]) { dropped++; continue; }                        // 重复标记 → 丢弃
+                seen[k] = 1;
                 next.push({ f: f, h: h });
             }
-            if (JSON.stringify(next) !== JSON.stringify(s.processedFloors)) { s.processedFloors = next; changed = true; }
-        }
-        // ② 基线
+            if (JSON.stringify(next) !== JSON.stringify(s[key])) { s[key] = next; changed = true; }
+            return dropped;
+        };
+        stat.ledger = healMarks('processedFloors');
+        stat.dropped = healMarks('processedDropped');
+        // ② 基线 / 版本标签
         if (s.lastKnownFloor !== undefined && s.lastKnownFloor !== null) {
             const n = Number(s.lastKnownFloor);
             if (!Number.isInteger(n) || n < -1) { s.lastKnownFloor = -1; changed = true; }
         }
+        if (s.lastChatFloor !== undefined && s.lastChatFloor !== null) {
+            const n = Number(s.lastChatFloor);
+            if (!Number.isInteger(n) || n < -1) { s.lastChatFloor = -1; changed = true; }
+        }
+        if (s.processedVer !== undefined && typeof s.processedVer !== 'string') { delete s.processedVer; changed = true; }
         // ③④⑤ 条目级
-        for (const dim of ATOM_DIM_KEYS.concat(['currencies', 'npcs', 'plotSegments'])) {
+        for (const dim of HEAL_DIMS) {
             const arr = s[dim];
             if (!Array.isArray(arr)) continue;
             for (const it of arr) {
                 if (!it || typeof it !== 'object') continue;
+                let fixed = false;                                   // 该条目是否被修过（用于留痕计数）
                 // NSFW 等级
                 if (it.nsfw !== undefined && it.nsfw !== null) {
                     const lv = nsfwLevelNorm(it.nsfw);
-                    if (lv === 'none') { delete it.nsfw; changed = true; }
-                    else if (it.nsfw !== lv) { it.nsfw = lv; changed = true; }
+                    if (lv === 'none') { delete it.nsfw; fixed = true; }
+                    else if (it.nsfw !== lv) { it.nsfw = lv; fixed = true; }
                 }
                 // uses
                 if (it.uses !== undefined && it.uses !== null) {
                     const u = Number(it.uses);
-                    if (!Number.isFinite(u) || u < 0) { it.uses = Math.max(0, Math.floor(Number(u) || 0)); changed = true; }
+                    if (!Number.isFinite(u) || u < 0) { it.uses = Math.max(0, Math.floor(Number(u) || 0)); fixed = true; }
                 }
                 // importance
                 if (it.importance !== undefined && it.importance !== null) {
                     const im = Number(it.importance);
-                    if (!Number.isFinite(im)) { it.importance = 0.5; changed = true; }
-                    else if (im < 0 || im > 1) { it.importance = Math.min(1, Math.max(0, im)); changed = true; }
+                    if (!Number.isFinite(im)) { it.importance = 0.5; fixed = true; }
+                    else if (im < 0 || im > 1) { it.importance = Math.min(1, Math.max(0, im)); fixed = true; }
                 }
                 // 楼层来源区间：倒置 → 互换
                 const fs = Number(it.floorStart), fe = Number(it.floorEnd);
                 if (Number.isInteger(fs) && Number.isInteger(fe) && fs >= 0 && fe >= 0 && fe < fs) {
-                    it.floorStart = fe; it.floorEnd = fs; changed = true;
+                    it.floorStart = fe; it.floorEnd = fs; fixed = true;
                 }
                 // 当前位置：非法 / 倒置 / 半对 / 与「原文已移除」矛盾 → 整对删除
                 const hasNs = it.floorNowStart !== undefined && it.floorNowStart !== null;
@@ -226,11 +252,13 @@ function healthSelfHeal(s) {
                 if (hasNs || hasNe) {
                     const ns = Number(it.floorNowStart), ne = Number(it.floorNowEnd);
                     const bad = !hasNs || !hasNe || !Number.isInteger(ns) || !Number.isInteger(ne) || ns < 0 || ne < ns || it.originGone === true;
-                    if (bad) { delete it.floorNowStart; delete it.floorNowEnd; changed = true; }
+                    if (bad) { delete it.floorNowStart; delete it.floorNowEnd; fixed = true; }
                 }
+                if (fixed) { changed = true; stat.entries++; }
             }
         }
     } catch (e) { /* 自愈失败不阻塞迁移 */ }
+    lastHeal = Object.assign({ changed: changed }, stat);
     return changed;
 }
 
@@ -405,7 +433,7 @@ function migrateState(s) {
     mergeKwHist(s.atoms); mergeKwHist(s.memories); mergeKwHist(s.concepts);
     mergeKwHist(s.plans); mergeKwHist(s.suspense); mergeKwHist(s.scenes); mergeKwHist(s.currentStates);
     // 旧版 processedFloors（纯数字数组）→ 哈希标记对象：**统一交给 healthSelfHeal**（见函数注释）。
-    //   v3.11.0 缺陷修复：此前这里只判「首个元素不是对象」就整体 `Number(f)` 映射，
+    //   v3.13.0 缺陷修复：此前这里只判「首个元素不是对象」就整体 `Number(f)` 映射，
     //   于是混入的 `null` 会被 `Number(null) = 0` 变成 `{f:0,h:''}` —— **凭空多出一条「第 0 楼已处理」**，
     //   而 `{f:'x'}` 一类垃圾被静默丢掉却留下一半结构。现在一律走逐条校验（非法丢弃、裸数字转标记、按 (f,h) 去重）。
     if (s.lastKnownFloor === undefined) { s.lastKnownFloor = -1; changed = true; }
@@ -421,7 +449,8 @@ function migrateState(s) {
         if (sr) { s.suspense = s.suspense.filter(x => !(x && x.status === 'closed')); s.stats.suspenseResolved = Number(s.stats.suspenseResolved || 0) + sr; changed = true; }
     }
     if (changed) s.version = VERSION;
-    // v3.11.0：数据异常自愈（脏台账标记 / 非规范 NSFW / 负数 uses / 倒置与非法楼层区间 …）
+    // v3.13.0：数据异常自愈（脏台账标记 / 非规范 NSFW / 负数 uses / 倒置与非法楼层区间 …）；
+    //   v3.13.1 起补上丢弃留痕台账、lastChatFloor、processedVer，并把摘要经 `lastHealInfo()` 回传给调用方留痕。
     try { if (healthSelfHeal(s)) changed = true; } catch (e) { /* 忽略 */ }
     // 同内容跨端去重（情节 id 含楼层 → 两端/历史可能攒出「同文异 id」重复；载入即收敛，
     //   只保留较新/较全一条并并 floor 区间/uses）
@@ -447,4 +476,4 @@ function migrateState(s) {
 // v1.165：计划 / 悬念 / 平行事件的结构化字段迁移（幂等）——只补空容器与可由既有字段推出的初值，
 //   绝不臆造内容（历史不由正文倒推、线索不凭空生成、来源不自动推断）；总开关关闭时不动。
 
-export { migrateState, migratePlanSuspV1165, migrateRelLinks, contentPickBest, contentDedupeArray, recallDateNum, healthSelfHeal };
+export { migrateState, migratePlanSuspV1165, migrateRelLinks, contentPickBest, contentDedupeArray, recallDateNum, healthSelfHeal, lastHealInfo };
