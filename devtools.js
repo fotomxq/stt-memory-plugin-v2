@@ -10,6 +10,9 @@ import { getSettings } from './adapters/settings.js';
 import { statusText } from './ui/commands.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { updateStatusText, hasUpdate, updateConfig } from './host/update.js';
+// v3.18.0（用户要求）：已去世研判**干跑**（只读）—— 直接在调试导出里实现，无需宿主接线即可核对
+import { snapshotDeathVerdict } from './core/character-repair.js';
+import { state as kernelState } from './core/model/runtime.js';
 
 // v2.46.0：启动更新检查的**排期**信息由宿主侧注入（延迟毫秒/原因/排期时刻）
 let extraHooks = {};
@@ -315,6 +318,18 @@ export function installDevtools(hooks) {
             ensureSnapshotTags: (s) => (hooks && typeof hooks.ensureSnapshotTags === 'function' ? hooks.ensureSnapshotTags(s) : null),
             deriveSnapshotTags: (s, o) => (hooks && typeof hooks.deriveSnapshotTags === 'function' ? hooks.deriveSnapshotTags(s, o) : []),
             characterMechanicalPass: (o) => (hooks && typeof hooks.characterMechanicalPass === 'function' ? hooks.characterMechanicalPass(o) : null),
+            // v3.18.0（用户要求「针对已明显去世的角色进行标记已去世……无法确认的不做标记」）：
+            //   **只读干跑** —— 逐角色给出判级 / 原因 / 证据 / 是否长寿命语境（**不写任何标记**）；
+            //   真正落笔发生在「角色修复」的机械阶段（`markDeceasedByEvidence`）。
+            deceasedScan: (o) => {
+                try {
+                    const list = (kernelState && kernelState.snapshots) || [];
+                    return list.map((s) => {
+                        const v = snapshotDeathVerdict(s, o || {});
+                        return { name: String((s && s.name) || ''), verdict: v.verdict, reason: v.reason, evidence: v.evidence, hits: v.hits, longLife: v.longLife };
+                    });
+                } catch (e) { return []; }
+            },
             correctSnapshotBirthDates: (o) => (hooks && typeof hooks.correctSnapshotBirthDates === 'function' ? hooks.correctSnapshotBirthDates(o) : null),
             // B8-6c-4 状态记录修复（V1 v1.158 匹配 → 机械清理 → AI 整理；v1.205 已去世固定规则）
             stateRepairFields: () => (hooks && typeof hooks.stateRepairFields === 'function' ? hooks.stateRepairFields() : null),

@@ -1237,6 +1237,7 @@ function bootstrapDiagnostics() {
             ensureSnapshotTags: (s) => ensureSnapshotTags(s),
             deriveSnapshotTags: (s, o) => deriveSnapshotTags(s, o),
             characterMechanicalPass: (o) => runCharacterMechanicalPass(o),
+            // 注：只读干跑 `FTT.deceasedScan()` 由 `devtools.js` **直接实现**（不占宿主钩子位；此处不再重复登记）
             correctSnapshotBirthDates: (o) => correctSnapshotBirthDates(o),
             // B8-6c-4 状态记录修复（V1 v1.158 匹配角色 → 机械清理/规范化 → AI 整理；v1.205 已去世固定规则）
             stateRepairFields: () => STATE_REPAIR_FIELDS,

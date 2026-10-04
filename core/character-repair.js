@@ -331,6 +331,194 @@ function snapshotAtomSize(s) {
     return out;
 }
 
+// ==================== v3.18.0：已去世研判（机械，零 AI） ====================
+// 用户要求（原话）：「角色修复功能，针对已明显去世的角色进行标记已去世，避免反复调取处理。
+//   注意个别可能存在超长寿命的角色，需结合剧情研判，实在无法确认的不做标记。」
+// 口径（保守优先，**默认不标记**）：
+//   ① 证据 = 该角色的**档案自身字段** + `characterEvidencePack()` 收集的**相关原子数据**（情节 / 记忆 / 状态 /
+//      物品 / 概念 / 计划 / 悬念 / 平行 / 关联行）；
+//   ② 只有「**本人**在句中被明确判定死亡」才算证据 —— 名字必须出现在死亡词**之前 16 字内**，
+//      且这中间不得出现亲属 / 同伴一类第三方主语（「甲目睹其父去世」不算），也不得是否定 / 幸存 / 假死表述；
+//   ③ **长寿命语境**（长生 / 不死 / 精灵 / 妖族 / 修真 / 神明 / 转世 … 出现在本人档案或相关数据里）→
+//      必须出现**终局**措辞（形神俱灭 / 魂飞魄散 / 彻底死亡 …）才标记，否则判「待确认」；
+//   ④ 判不出（无名字邻接证据 / 只有他人死亡 / 被否定）→ **不标记**，如实回报计数。
+/** 死亡措辞（本人明确死亡的证据；均为多字词，避免「死战」「死士」一类误伤） */
+const DEATH_WORDS = Object.freeze([
+    '已死', '死了', '死去', '死亡', '身亡', '阵亡', '战死', '牺牲', '殒命', '丧命', '命丧', '遇害', '被杀', '被杀害',
+    '惨死', '横死', '暴毙', '病逝', '逝去', '去世', '逝世', '已故', '亡故', '故去', '绝命', '气绝', '香消玉殒', '玉殒',
+    '殉难', '殉职', '就义', '殉情', '长眠', '入土', '遗体', '尸首', '墓前', '坟前', '葬礼', '下葬', '忌日', '薨', '崩逝',
+    '夭折', '早逝', '死于', '死在', '殒身', '命殒',
+]);
+/** 终局措辞（对长寿命 / 特殊生命体也成立：不再有复活与轮回余地） */
+const DEATH_TERMINAL = Object.freeze(['形神俱灭', '神形俱灭', '魂飞魄散', '灰飞烟灭', '挫骨扬灰', '彻底陨落', '彻底死亡', '真正死去', '彻底死去', '再无生机', '道消身殒']);
+/** 长寿命 / 特殊生命体语境（需更强证据，且结合剧情研判） */
+const LONG_LIFE_WORDS = Object.freeze([
+    '长生', '不死', '永生', '不灭', '不死之身', '精灵', '妖族', '半妖', '仙人', '真仙', '仙尊', '修真', '修仙', '修士',
+    '渡劫', '元婴', '化神', '寿元', '千年', '百岁', '神族', '神明', '神祇', '魔神', '龙族', '鬼修', '巫妖', '复活', '转世', '轮回',
+]);
+/** 否定 / 幸存 / 假死（命中即不标记） */
+const DEATH_NEGATE = Object.freeze(['未死', '没死', '没有死', '不会死', '死不了', '死里逃生', '九死一生', '幸免', '假死', '诈死', '未亡', '尚未', '并未', '未曾', '差点', '险些']);
+/** 第三方主语（名字与死亡词之间出现 → 不是本人） */
+const DEATH_THIRD_PARTY = Object.freeze([
+    '父', '母', '爹', '娘', '兄', '弟', '姐', '妹', '妻', '夫', '子', '女', '祖父', '祖母', '外公', '外婆', '师父', '师傅',
+    '朋友', '友人', '同伴', '队友', '属下', '下属', '主人', '家人', '族人', '亲族', '邻居', '路人', '某人',
+]);
+/** 句读切分（逗号**保留在句内** —— 名字与死亡词的邻接判定需要同一句内） */
+function deathSplitSentences(text) {
+    return String(text == null ? '' : text).split(/[。！？!?；;\n\r]+/).map((x) => x.trim()).filter(Boolean);
+}
+/** 该句是否「本人在场 + 死亡措辞」；返回 `{word, own, why}` */
+function deathSentenceJudge(sent, name, longLife) {
+    const s = String(sent || '');
+    const nm = String(name || '');
+    if (!s || !nm) return null;
+    // v3.18.0：**终局措辞也算死亡词**（「形神俱灭 / 魂飞魄散」这类对长生角色成立的终局描写）
+    let word = '', at = -1;
+    for (const w of DEATH_WORDS.concat(DEATH_TERMINAL)) { const i = s.indexOf(w); if (i >= 0 && (at < 0 || i < at)) { word = w; at = i; } }
+    if (!word) return null;
+    const ni = s.indexOf(nm);
+    if (ni < 0) return { word: word, own: false, why: 'name-absent' };
+    if (ni > at) return { word: word, own: false, why: 'name-after' };
+    const between = s.slice(ni + nm.length, at);
+    if (between.length > 16) return { word: word, own: false, why: 'too-far' };
+    if (DEATH_THIRD_PARTY.some((w) => between.indexOf(w) >= 0)) return { word: word, own: false, why: 'third-party' };
+    const around = s.slice(Math.max(0, ni), Math.min(s.length, at + word.length + 8));
+    if (DEATH_NEGATE.some((w) => around.indexOf(w) >= 0)) return { word: word, own: false, why: 'negated' };
+    if (/(未|没|不会|并未|尚未|差点|险些)$/.test(s.slice(0, at))) return { word: word, own: false, why: 'negated' };
+    const terminal = DEATH_TERMINAL.some((w) => around.indexOf(w) >= 0 || s.indexOf(w) >= 0);
+    if (longLife && !terminal) return { word: word, own: false, why: 'long-life-unconfirmed' };
+    return { word: word, own: true, why: terminal ? 'terminal' : '', terminal: terminal };
+}
+
+/** 该角色的死亡证据文本集合（自身档案字段 + 相关原子数据；只读） */
+function snapshotDeathEvidence(s, opts) {
+    const o = opts || {};
+    const name = String((s && s.name) || '').trim();
+    const own = [];
+    const related = [];
+    try {
+        for (const f of SNAP_REPAIR_FIELDS) {
+            if (f.t === 'bool') continue;
+            const v = snapValueText(snapGetByPath(s, f.g));
+            if (v) own.push(v);
+        }
+        for (const r of (Array.isArray(s.relationships) ? s.relationships : [])) {
+            const t = [r && r.name, r && r.relation, r && r.attitude].filter(Boolean).join(' ');
+            if (t) own.push(t);
+        }
+    } catch (e) { /* 忽略 */ }
+    try {
+        const ev = characterEvidencePack(name, { max: Math.max(3, Math.min(30, Number(o.max) || 24)) });
+        for (const line of ev.lines) related.push(String(line).replace(/^\[[^\]]*\]\s*/, ''));
+    } catch (e) { /* 忽略 */ }
+    return { name: name, own: own, related: related };
+}
+
+/**
+ * **单条档案的已去世研判**（机械、只读、零 AI）。
+ * @param {object} s 角色档案（条目对象）
+ * @param {object} [opts] `max`（相关原子数据取样条数）
+ * @returns {{verdict:'dead'|'uncertain'|'none', reason:string, evidence:string, hits:number, longLife:boolean, scanned:number}}
+ */
+function snapshotDeathVerdict(s, opts) {
+    const out = { verdict: 'none', reason: 'no-evidence', evidence: '', hits: 0, longLife: false, scanned: 0 };
+    try {
+        if (!s || typeof s !== 'object' || !s.name) { out.reason = 'no-name'; return out; }
+        // 已标记 → 无需再判（「避免反复调取处理」）
+        if (snapshotAgeIsLocked(s)) { out.reason = 'already-marked'; return out; }
+        const ev = snapshotDeathEvidence(s, opts);
+        const ownBlob = ev.own.join(' ');
+        const allBlob = ownBlob + ' ' + ev.related.join(' ');
+        const longLife = LONG_LIFE_WORDS.some((w) => allBlob.indexOf(w) >= 0);
+        out.longLife = longLife;
+        const sents = [];
+        for (const t of ev.own.concat(ev.related)) for (const x of deathSplitSentences(t)) sents.push(x);
+        out.scanned = sents.length;
+        let deadHit = '';
+        let uncertain = '';
+        let otherHits = 0;
+        let anyDeath = '';
+        for (const sent of sents) {
+            const j = deathSentenceJudge(sent, ev.name, longLife);
+            if (!j) continue;
+            if (!anyDeath) anyDeath = sent.slice(0, 120);
+            if (j.own) { out.hits++; if (!deadHit) deadHit = sent.slice(0, 120); }
+            else if (j.why === 'long-life-unconfirmed') { if (!uncertain) uncertain = sent.slice(0, 120); }
+            else if (j.why === 'third-party' || j.why === 'name-absent') otherHits++;
+        }
+        if (out.hits > 0) {
+            out.verdict = 'dead';
+            out.reason = longLife ? 'explicit-terminal' : 'explicit-death';
+            out.evidence = deadHit;
+        } else if (uncertain || (longLife && anyDeath)) {
+            // 长寿命语境 + 有死亡措辞但**无法确认是本人** → 只报「待确认」，绝不标记（用户口径：无法确认不做标记）
+            out.verdict = 'uncertain';
+            out.reason = 'long-life-unconfirmed';
+            out.evidence = uncertain || anyDeath;
+        } else if (otherHits > 0) {
+            out.reason = 'others-only';
+        }
+    } catch (e) { out.reason = 'error'; }
+    return out;
+}
+
+/**
+ * **批量已去世研判与标记**（机械、零 AI）：把「明显已去世」的角色标记 `身份.已去世 = true`，
+ *   此后由既有固定规则接管 —— 修复名单跳过（`buildCharacterRepairQueue`）、年龄锁定、状态记录清除（`state-repair`）。
+ *   纪律：**只标记、从不取消**（取消请到编辑器取消勾选）；判不出的一律不动。
+ * @param {object} [opts] `max` / `silent`（不写调试日志）
+ * @returns {{scanned:number, marked:number, uncertain:number, skipped:number, markedNames:Array, uncertainDetail:Array, items:Array}}
+ */
+function markDeceasedByEvidence(opts) {
+    const o = opts || {};
+    const stat = { scanned: 0, marked: 0, uncertain: 0, skipped: 0, markedNames: [], uncertainDetail: [], items: [] };
+    try {
+        for (const s of ((state && state.snapshots) || [])) {
+            if (!s || typeof s !== 'object' || !s.name) continue;
+            stat.scanned++;
+            if (snapshotAgeIsLocked(s)) { stat.skipped++; continue; }              // 已标记 → 不再判（避免反复调取）
+            const v = snapshotDeathVerdict(s, o);
+            if (v.verdict === 'dead') {
+                s.identity = s.identity || {};
+                s.identity.deceased = true;
+                stat.marked++;
+                stat.markedNames.push(String(s.name));
+                stat.items.push({ name: String(s.name), verdict: 'dead', reason: v.reason, evidence: v.evidence });
+            } else if (v.verdict === 'uncertain') {
+                stat.uncertain++;
+                stat.uncertainDetail.push({ name: String(s.name), reason: v.reason, evidence: v.evidence });
+            }
+        }
+        if (stat.marked) { try { saveState(); } catch (e) { /* 忽略 */ } }
+        if ((stat.marked || stat.uncertain) && o.silent !== true) {
+            try {
+                dbgLog('修复', {
+                    action: '已去世研判（机械，v3.18.0）', scanned: stat.scanned, marked: stat.marked,
+                    markedNames: stat.markedNames.slice(0, 8), uncertain: stat.uncertain,
+                    uncertainDetail: stat.uncertainDetail.slice(0, 5), skippedAliveOrMarked: stat.skipped,
+                });
+            } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* 忽略 */ }
+    return stat;
+}
+
+/** 一行摘要（通知 / 报告用） */
+function deceasedMarkText(stat) {
+    const st = stat || { marked: 0, uncertain: 0 };
+    if (!st.marked && !st.uncertain) return '';
+    const parts = [];
+    if (st.marked) parts.push(`新标记已去世 ${st.marked} 名（${st.markedNames.slice(0, 6).join('、')}${st.markedNames.length > 6 ? '…' : ''}）`);
+    if (st.uncertain) parts.push(`待确认 ${st.uncertain} 名（超长寿命 / 证据不足，未标记：${st.uncertainDetail.slice(0, 4).map((x) => x.name).join('、')}${st.uncertainDetail.length > 4 ? '…' : ''}）`);
+    return parts.join(' · ');
+}
+
+/** v3.18.0：最近一次机械「已去世研判」结果（供通知书/日志读取；**不进** `runCharacterMechanicalPass` 的返回结构，
+ *  以免改变 V1 逐字黄金样本的字段集） */
+let lastDeathMark = null;
+/** 最近一次已去世研判结果（只读；未跑过为 `null`） */
+function lastDeceasedMark() { return lastDeathMark; }
+
 /**
  * 待修复名单（V1 `buildCharacterRepairQueue`）：分两档 ——
  *   ① **优先档**：出生日期倒挂 / 异常（`snapshotBirthAnomaly` 非空）的角色，**无视字数门限一律入列**，
@@ -542,12 +730,20 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
             } catch (e) { }
             return out.join('\n');
         });
+        // v3.18.0（用户要求「针对已明显去世的角色进行标记已去世……实在无法确认的不做标记」）：
+        //   仅在 `opts.deathGuide` 为真时追加一条**保守判定守则**（默认不追加 → V1 逐字黄金样本不变）。
+        const deathLine = o.deathGuide
+            ? '【已去世判定（保守）】只有当相关原子数据或正文**明确写出该角色本人**已死亡 / 牺牲 / 被杀害 / 阵亡时，才输出 {"身份.已去世":"是"}；'
+                + '**别人（父母 / 同伴 / 属下）的死不算**；**长生 / 不死 / 精灵 / 妖族 / 修真 / 神明等可能超长寿命的角色**，'
+                + '须出现「形神俱灭 / 魂飞魄散 / 彻底死亡」一类**终局**描写才可填；假死 / 复活 / 转世 / 沉睡 / 封印一律不填；'
+                + '**无法确认就不要输出该字段**（该字段只由本插件标记、不会自动取消）。\n\n'
+            : '';
         const strictLine = strict
             ? '【加强轮】上一轮**没有产生任何可落库的字段**（模型空手而归）。本轮请严格按依据优先级逐角色、逐字段补全 —— 哪怕只有相关原子数据里的间接线索，也要给出保守值；每个角色都必须给出「标签」（3-5 个）；再次空手返回视为任务失败。\n\n'
             : '';
         return [
             { role: 'system', content: `${tpl}\n只输出 JSON，不要解释文字。` },
-            { role: 'user', content: `${strictLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomCount ? `，其中 ⚠️ 出生日期异常 ${anomCount} 条已优先` : ''}：出生日期异常者优先，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
+            { role: 'user', content: `${strictLine}${deathLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomCount ? `，其中 ⚠️ 出生日期异常 ${anomCount} 条已优先` : ''}：出生日期异常者优先，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
         ];
     } catch (e) { return [{ role: 'system', content: '补全角色档案的缺失字段，输出「角色档案」的更新。' }, { role: 'user', content: '请输出角色档案补全结果（JSON）。' }]; }
 }
@@ -662,13 +858,16 @@ function runCharacterMechanicalPass(opts) {
         const list = (state && state.snapshots) || [];
         out.total = list.length;
         if (!list.length) return out;
+        // v3.18.0（用户要求）：**先做已去世研判**（机械零 AI）—— 标记后本轮的出生日期校正 / 标签 / 年龄与
+        //   AI 待修复名单都会自动跳过这些角色（「避免反复调取处理」）。
+        try { lastDeathMark = markDeceasedByEvidence(opts); } catch (e) { lastDeathMark = null; }
         try { out.birth = correctSnapshotBirthDates(opts); } catch (e) { }
         // v1.177：关键词（标签）自动补充 —— 用户要求「除了补全信息，关键词也应该自动补充」
         try { out.tags = ensureAllSnapshotTags(); } catch (e) { }
         try { out.ages = refreshAllSnapshotAges(); } catch (e) { }
         // v1.205：已去世角色被跳过的数量（出生日期与年龄都不动）—— 供通知与调试如实说明
         try { out.deceased = (out.birth && out.birth.skippedDeceased) || 0; } catch (e) { out.deceased = 0; }
-        out.changed = !!((out.birth && out.birth.corrected) || (out.tags && out.tags.filled)
+        out.changed = !!((lastDeathMark && lastDeathMark.marked) || (out.birth && out.birth.corrected) || (out.tags && out.tags.filled)
             || (out.ages && (out.ages.fixed || out.ages.cleared)));
         if (out.changed) { try { saveState(); } catch (e) { } }
         try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { }
@@ -685,6 +884,8 @@ function runCharacterMechanicalPass(opts) {
                     ageCleared: out.ages ? out.ages.cleared : 0,
                     ageLocked: out.ages ? (out.ages.locked || 0) : 0,
                     anomalies: out.anomalies,
+                    deathMarked: lastDeathMark ? lastDeathMark.marked : 0,
+                    deathUncertain: lastDeathMark ? lastDeathMark.uncertain : 0,
                 });
             } catch (e) { }
         }
@@ -720,9 +921,12 @@ async function runCharacterRepair(opts) {
         const mech = runCharacterMechanicalPass();
         // v1.205：已去世角色**跳过修复**（年龄锁定，档案不再改写）—— 在结果文案里如实说明
         const deadText = mech.deceased ? `已去世 ${mech.deceased} 名跳过（年龄锁定）；` : '';
+        // v3.18.0：机械已去世研判结果（新标记 / 待确认）—— 进通知与文案
+        const deathStat = lastDeceasedMark();
+        const deathText = (deathStat && (deathStat.marked || deathStat.uncertain)) ? (deceasedMarkText(deathStat) + '；') : '';
         const mechText = (mech.changed
             ? `全局机械处理 ${mech.total} 名：出生日期校正 ${mech.birth ? mech.birth.corrected : 0} 名 · 标签补充 ${mech.tags ? mech.tags.filled : 0} 名 · 年龄刷新 ${mech.ages ? mech.ages.fixed : 0} 名${mech.ages && mech.ages.cleared ? `（清无效值 ${mech.ages.cleared}）` : ''}`
-            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deadText}`;
+            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deathText}${deadText}`;
         const q = buildCharacterRepairQueue();
         if (!q.list.length) {
             notify('success', '角色修复：无需修复', `${mechText}可修复的 ${q.total} 名角色档案有效字数都已达到门限（≥ ${q.minSize} 字）${q.deceasedCount ? ` · 另有 ${q.deceasedCount} 名已去世角色按固定规则跳过（年龄锁定）` : ''}。如需重查更完整的档案，可在 设定 → 自动修复 调低「角色修复字数门限」。`);
@@ -740,7 +944,7 @@ async function runCharacterRepair(opts) {
         const maxAttempts = 2;
         while (attempts < maxAttempts) {
             attempts++;
-            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1 });
+            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1, deathGuide: true });   // v3.18.0：附保守「已去世」判定守则
             const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '角色修复'));
             r = applyCharacterRepairResult(normalizeDeltaKeys(extractJsonObject(resp) || {}), targets);
             if (r.changed || r.removed) break;
@@ -797,4 +1001,8 @@ export {
     snapshotAtomSize, buildCharacterRepairQueue, setSnapshotByPath, characterRepairContext,
     buildCharacterRepairPrompt, applyCharacterRepairResult, correctSnapshotBirthDates, runCharacterMechanicalPass,
     runCharacterRepair,
+    // v3.18.0：已去世研判（机械，零 AI）
+    DEATH_WORDS, DEATH_TERMINAL, LONG_LIFE_WORDS, DEATH_NEGATE, DEATH_THIRD_PARTY,
+    deathSplitSentences, deathSentenceJudge, snapshotDeathEvidence, snapshotDeathVerdict,
+    markDeceasedByEvidence, deceasedMarkText, lastDeceasedMark,
 };
