@@ -16,6 +16,7 @@
 //   · 区间完全在幸存段（`floorStart >= M`）→ 两端同时 `-= M`（**精确**，不留痕）。
 // ============================================================
 import { DIMENSIONS } from './constants.js';
+import { markOriginGone, shiftFloorNow } from './floor-cover.js';   // v3.7.0：来源楼层不动；只打「原文已移除」/ 写当前位置
 
 /** 三档预设（`docs/D12` §8-E：保留最近 6 / 10 / 12 层） */
 export const FLOOR_TRIM_PRESETS = Object.freeze([6, 10, 12]);
@@ -87,7 +88,8 @@ export function planFloorTrim(input) {
 
 /** 「未知区间」降级（不改动其它字段） */
 function stale(o, aKey, bKey) {
-    try { o[aKey] = 0; o[bKey] = 0; o.floorStale = true; } catch (e) { /* 忽略 */ }
+    // v3.7.0（用户要求）：**来源楼层永不变动** → 只打「原文已移除」标记（内容与来源都保留）
+    try { markOriginGone(o, Date.now()); } catch (e) { /* 忽略 */ }
 }
 
 /** 单条目重映射；返回 'skip' | 'stale' | 'partial' | 'shift' */
@@ -100,10 +102,20 @@ function remapPair(o, aKey, bKey, removeCount) {
     if (aa <= 0 && bb <= 0) return 'skip';                 // 已是未知区间 → 幂等
     if (bb < removeCount) { stale(o, aKey, bKey); return 'stale'; }
     if (aa < removeCount) {                                // 跨越删除线：起点已失，终点前移
-        try { o[aKey] = 0; o[bKey] = bb - removeCount; o.floorStale = true; } catch (e) { return 'skip'; }
+        // 跨删除线：起点失（当前位置未知 → 记 0），终点按新位置记；**来源楼层不动**
+        try {
+            o.floorNowStart = 0;
+            o.floorNowEnd = Math.max(0, bb - removeCount);
+        } catch (e) { return 'skip'; }
         return 'partial';
     }
-    try { o[aKey] = aa - removeCount; o[bKey] = bb - removeCount; } catch (e) { return 'skip'; }
+    // v3.7.0：幸存楼层 → 只更新**当前位置**（`floorNow*`），来源楼层原样保留
+    try {
+        const nowA = (aKey === 'floorStart') ? 'floorNowStart' : (aKey === 'start' ? 'floorNowStart' : 'floorNowStart');
+        const nowB = (bKey === 'floorEnd') ? 'floorNowEnd' : (bKey === 'end' ? 'floorNowEnd' : 'floorNowEnd');
+        o[nowA] = Math.max(0, aa - removeCount);
+        o[nowB] = Math.max(o[nowA], bb - removeCount);
+    } catch (e) { return 'skip'; }
     return 'shift';
 }
 

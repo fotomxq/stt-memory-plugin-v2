@@ -126,7 +126,8 @@ A('A5 摘要文案讲清「当前几层 / 保留几层 / 删几层 / 影响几�
 })(), () => trimSummaryText(planFloorTrim({ chatLen: 20, keep: 10, state: state }), { unextracted: 3 }));
 
 // ---------- B 组：删后精确编号重映射（只改编号，绝不删数据） ----------
-A('B1 三种区间分别处理：全删段 → 0/0 + floorStale；跨越 → 起点 0 + 终点前移 + floorStale；未知区间幂等', (() => {
+// v3.7.0（用户要求）：「原始楼层不应该变动……找不到对应楼层哈希值 → 标记原文已移除；新的楼层结合新的位置记录。」
+A('B1 三种区间分别处理（v3.7.0 口径）：**来源楼层原样保留**；全删段 → 打「原文已移除」（`originGone`）；跨越 → 起点记 0 / 终点记新位置；未知区间幂等', (() => {
     bootState();
     const before = state.atoms.length + state.memories.length + state.plotSegments.length;
     const r = remapAfterTrim(state, 14, 5);
@@ -134,14 +135,17 @@ A('B1 三种区间分别处理：全删段 → 0/0 + floorStale；跨越 → 起
     const s0 = state.plotSegments.filter((x) => x.id === 's0')[0];
     const after = state.atoms.length + state.memories.length + state.plotSegments.length;
     return r.ok === true && before === after                                   // **一条都没删**
-        && g('a0').floorStart === 0 && g('a0').floorEnd === 0 && g('a0').floorStale === true
-        && g('a1').floorStart === 0 && g('a1').floorEnd === 1 && g('a1').floorStale === true    // 15-14
-        && g('a3').floorStart === 0 && g('a3').floorEnd === 0 && g('a3').floorStale === undefined   // 已未知 → 不动
-        && s0.start === 0 && s0.end === 0 && s0.floorStale === true
+        // ① 全删段（1..3，M=14）：来源楼层不动 + 原文已移除
+        && g('a0').floorStart === 1 && g('a0').floorEnd === 3 && g('a0').originGone === true && g('a0').floorNowStart === undefined
+        // ② 跨越删除线（0..15）：来源楼层不动；当前位置起点未知（0）、终点 15-14=1
+        && g('a1').floorStart === 0 && g('a1').floorEnd === 15 && g('a1').floorNowStart === 0 && g('a1').floorNowEnd === 1
+        // ③ 未知区间（0/0）→ 幂等不动
+        && g('a3').floorStart === 0 && g('a3').floorEnd === 0 && g('a3').originGone === undefined
+        && s0.start === 0 && s0.end === 2 && s0.originGone === true      // 分段总结：来源区间（0..2）保留，只打原文已移除
         && r.staled >= 3;
 })(), () => J(state.atoms));
 
-A('B2 幸存项精确前移（不留 floorStale）+ 未知区间不动 + 台账重排（丢弃被删段、幸存段前移）+ lastKnownFloor 收紧', (() => {
+A('B2 幸存项写**当前位置**（来源楼层不动）+ 未知区间不动 + 台账重排（丢弃被删段、幸存段前移）+ lastKnownFloor 收紧', (() => {
     bootState();
     // 15 层场景：删 10 层，幸存 [10,19] → 旧 12 变新 2
     const st = state;
@@ -157,9 +161,9 @@ A('B2 幸存项精确前移（不留 floorStale）+ 未知区间不动 + 台账�
     const s = st.atoms.filter((x) => x.id === 's')[0];
     const u = st.atoms.filter((x) => x.id === 'u')[0];
     const d = st.atoms.filter((x) => x.id === 'd')[0];
-    return s.floorStart === 2 && s.floorEnd === 4 && s.floorStale === undefined
-        && u.floorStart === 0 && u.floorEnd === 0 && u.floorStale === undefined
-        && d.floorStale === true
+    return s.floorStart === 12 && s.floorEnd === 14 && s.floorNowStart === 2 && s.floorNowEnd === 4 && s.floorStale === undefined
+        && u.floorStart === 0 && u.floorEnd === 0 && u.floorNowStart === undefined && u.originGone === undefined
+        && d.floorStart === 3 && d.floorEnd === 4 && d.originGone === true
         && st.processedFloors.length === 2 && st.processedFloors[0].f === 0 && st.processedFloors[0].h === 'p10'
         && st.processedFloors[1].f === 5 && st.processedFloors[1].h === 'p15'
         && st.lastKnownFloor === 9 && r.shifted === 1 && r.staled === 1 && Number.isFinite(st.floorShrinkAt);
@@ -212,7 +216,7 @@ await A('D1 20 层保留 6：真实调用 `ctx.deleteMessage` 14 次（从后往
         && (host2.saveMetadataCount || 0) === 14;                 // 每次都落盘（官方方法自带）
 })(), () => ({ r: '见断言', floors: globalThis.SillyTavern.getContext().chat.length }));
 
-await A('D2 记忆一条都不少（只改编号）：原子数不变、全删段条目变 0/0 + floorStale、幸存段条目前移', (async () => {
+await A('D2 记忆一条都不少（只改编号，v3.7.0）：原子数不变、全删段条目「原文已移除」（来源楼层保留）、跨越段按**新位置**记 floorNow*、幸存段条目前移', (async () => {
     bootHost({ floors: 20 });
     const st = bootState();
     bootHooks();
@@ -222,9 +226,11 @@ await A('D2 记忆一条都不少（只改编号）：原子数不变、全删�
     const a0 = st.atoms.filter((x) => x.id === 'a0')[0];
     const a2 = st.atoms.filter((x) => x.id === 'a2')[0];
     return r.ok === true && n0 === n1
-        && a0.floorStart === 0 && a0.floorEnd === 0 && a0.floorStale === true
-        // 旧 12..14 落在被删段（M=14）→ 也降级为未知区间（宁缺毋错，绝不留错号）
-        && a2.floorStart === 0 && a2.floorEnd === 0 && a2.floorStale === true;
+        // v3.7.0：来源楼层**原样保留**；找不到原文的条目打「原文已移除」
+        && a0.floorStart === 1 && a0.floorEnd === 3 && a0.originGone === true
+        // 旧 12..14 **跨越**删除线（M=14）→ 只有原第 14 楼幸存 → 当前位置 = 新第 0 楼（来源 12..14 原样保留）
+        && a2.floorStart === 12 && a2.floorEnd === 14 && a2.originGone === undefined
+        && a2.floorNowStart === 0 && a2.floorNowEnd === 0;
 })(), () => J(state.atoms));
 
 await A('D3 删前**自动明文备份**（3 槽轮转）：备份内容 = 导出信封、槽位 0→1→2→0、账本只留 3 条', (async () => {
@@ -368,7 +374,7 @@ A('G1 存储页含「🧱 楼层校准」分节：只读诊断（当前层数 / 
     return h.indexOf('data-ftt-floor-calibrate') >= 0 && h.indexOf('🧱 楼层校准') >= 0
         && h.indexOf('data-ftt-action="floorRecalibrate"') >= 0 && h.indexOf('只改编号，条目一条不删') >= 0
         && h.indexOf('尚未发生楼层收缩') >= 0
-        && h2.indexOf('最近一次收缩：') >= 0 && h2.indexOf('1</b> 条条目的楼层信息已失效') >= 0
+        && h2.indexOf('最近一次收缩：') >= 0 && h2.indexOf('1</b> 条条目的<b>原文已移除</b>') >= 0   // v3.7.0：文案由「楼层信息已失效/未知区间」改为「原文已移除」
         && h2.indexOf('当前 20 层') >= 0;
 })(), '');
 
@@ -393,10 +399,12 @@ await A('G2 `floorRecalibrate()` 幂等兜底：无收缩 → skipped=no-shrink 
     return a.ok === true && a.skipped === 'no-shrink' && a.lastId === 19
         && b.ok === true && b.lastId === 5 && b.staleEntries >= 1 && st.lastKnownFloor === 5
         && n0 === n1                                                // **条目不删**
-        && a2.floorStart === 0 && a2.floorEnd === 0 && a2.floorStale === true
-        && a3.floorStart === 0 && a3.floorEnd === 0 && a3.floorStale === undefined
+        // v3.7.0：来源楼层保留；超出末楼且找不到原文 → 原文已移除
+        && a2.floorStart === 12 && a2.floorEnd === 14 && a2.originGone === true
+        && a3.floorStart === 0 && a3.floorEnd === 0 && a3.originGone === undefined
         && c.ok === true && J(st.atoms) === after;                   // 幂等
 })(), () => J({ lk: state.lastKnownFloor, stale: countStaleEntries() }));
+// v3.7.0：「原文已移除」计数（只读诊断）—— `countStaleEntries()` 现同时统计 `originGone` 与历史 `floorStale`
 
 A('G3 校准状态只读诊断：返回最近一次收缩时间 / 失效条数 / 当前层数 / 台账标记数', (() => {
     bootHost({ floors: 20 });

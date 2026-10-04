@@ -360,12 +360,16 @@ export async function floorRecalibrate() {
     return Object.assign({ stale: countStaleEntries() }, r || {});
 }
 
-/** 楼层信息已失效的条目数（`floorStale` 标记；只读诊断用） */
+/**
+ * 楼层信息已失效的条目数（只读诊断）。
+ * v3.7.0（用户要求）：**来源楼层不再被清零** → 失效的两种形态是
+ *   ① `originGone`（原文已移除，找不到对应楼层哈希 —— 主流）；② 历史 `floorStale`（当前位置未知，老数据）。
+ */
 export function countStaleEntries() {
     try {
         let n = 0;
         for (const d of DIMENSIONS) {
-            for (const it of (Array.isArray(state[d.kind]) ? state[d.kind] : [])) if (it && it.floorStale) n++;
+            for (const it of (Array.isArray(state[d.kind]) ? state[d.kind] : [])) if (it && (it.originGone === true || it.floorStale === true)) n++;
         }
         return n;
     } catch (e) { return 0; }

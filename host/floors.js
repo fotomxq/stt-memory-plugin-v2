@@ -8,7 +8,7 @@
 import { hashText } from '../core/util.js';
 import { applyFeedRegex } from '../core/prompt.js';
 import { state, cfg, saveState, log, warn, notifyError, getLastMessageId } from '../core/model/runtime.js';
-import { floorCoverage } from '../core/floor-cover.js';
+import { floorCoverage, originFloorRange, markOriginGone, shiftFloorNow } from '../core/floor-cover.js';   // v3.7.0：来源楼层 / 当前位置 / 原文已移除
 import { getCtx } from './st-api.js';
 import { DIMENSIONS } from '../core/constants.js';   // v2.93.0：楼层收缩时逐维修正陈旧区间
 // v2.44.0（用户报告）：取文**保留 HTML**、在「过滤之后、交给 AI 之前」才剔标签 —— 顺序不可颠倒：
@@ -417,6 +417,15 @@ export function handleFloorShrink(opts) {
         const TOL = 5;
         const shrunk = Number.isFinite(known) && known >= 0 && lastId < known - TOL;
         if (!shrunk && !o.force) return { ok: true, skipped: 'no-shrink', lastId: lastId };
+        // ①-0 v3.7.0：**先快照突变前的台账**（`f → h`，f = 突变**前**的楼层号）。第 ① 步会把台账整体重建成
+        //   「当前聊天里还能对上的楼层」，之后再也读不到原始楼层号 —— 而「当前位置」正是要靠这份快照才能算出来。
+        const preLedger = (() => {
+            try {
+                return (Array.isArray(state.processedFloors) ? state.processedFloors : [])
+                    .map((x) => ({ f: Number(x && x.f), h: String((x && x.h) || '') }))
+                    .filter((x) => Number.isFinite(x.f) && x.f >= 0 && !!x.h);
+            } catch (e) { return []; }
+        })();
         // ① 台账：强制哈希归位（收缩时整体失配属预期，故绕过 mass-mismatch 守卫）
         let marks = 0;
         try {
@@ -433,24 +442,89 @@ export function handleFloorShrink(opts) {
             state.processedVer = processedVerTag();
             marks = keep.length;
         } catch (e) { /* 归位失败不阻塞后续 */ }
-        // ② 编号重映射：超出当前末楼的区间 → 未知区间 + floorStale（只改编号，不删条目）
+        // ② v3.7.0（用户要求）：**来源楼层（floorStart/floorEnd）永不变动**；改为维护「当前位置」与「原文已移除」标记。
+        //   · 先按**内容哈希**算出「当前聊天里每个楼层的哈希」与「突变前台账的楼层→哈希」，据此把条目的原始区间
+        //     平移到它现在的位置（哈希在哪个楼层找到 → 那一段就整体前/后移）；
+        //   · 某个原始楼层的哈希在**当前聊天里找不到** → 该楼层原文已移除 → 给条目打 `originGone`（内容与来源楼层都保留）；
+        //   · 完全查不到哈希信息、且原始区间已超出当前末楼 → 同样视为原文已移除（位置根本不存在）。
         const dims = {};
-        let staleEntries = 0;
-        const fix = (dim, arr, fields) => {
-            let n = 0;
-            for (const it of (Array.isArray(arr) ? arr : [])) {
-                if (!it || typeof it !== 'object') continue;
-                const a = Number(it[fields[0]]), b = Number(it[fields[1]]);
-                const bad = (Number.isFinite(a) && a > lastId && a > 0) || (Number.isFinite(b) && b > lastId && b > 0);
-                if (!bad) continue;
-                try { it[fields[0]] = 0; it[fields[1]] = 0; it.floorStale = true; n++; } catch (e) { /* 单项失败不影响其余 */ }
+        let staleEntries = 0;      // v3.7.0 起 = 「原文已移除」条数（字段名保持兼容，报告文案已更新）
+        // 突变前的台账（f → h）与当前聊天的（h → f）
+        const oldHashAt = {};
+        const nowHashAt = {};
+        let nowHashes = 0;
+        try {
+            for (let f = 0; f <= lastId; f++) { const h = hashFloorText(f); if (h) { nowHashAt[h] = f; nowHashes++; } }
+        } catch (e) { /* 忽略 */ }
+        try {
+            // v3.7.0：**突变前的台账是权威**（原始楼层号 → 内容哈希）；重建后的台账只作兜底补空。
+            for (const x of preLedger) oldHashAt[x.f] = x.h;
+            for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
+                const f = Number(x && x.f), h = String((x && x.h) || '');
+                if (Number.isFinite(f) && h && oldHashAt[f] === undefined) oldHashAt[f] = h;
             }
-            if (n) { dims[dim] = n; staleEntries += n; }
-            return n;
+        } catch (e) { /* 忽略 */ }
+        // 重建后的台账：**当前聊天里「内容在册」的楼层 → 该楼内容哈希**（用于给「当前位置」做复核）
+        const ledgerAt = {};
+        try {
+            for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
+                const f = Number(x && x.f), h = String((x && x.h) || '');
+                if (Number.isFinite(f) && h) ledgerAt[f] = h;
+            }
+        } catch (e) { /* 忽略 */ }
+        /** 清除「原文已移除」标记（原文又找到了） */
+        const clearGone = (it) => { try { if (it.originGone === true) { delete it.originGone; delete it.originGoneAt; } } catch (e) { /* 忽略 */ } };
+        /**
+         * 条目位置核算（v3.7.0 用户要求：来源楼层永不变动 / 找不到原文档标「原文已移除」/ 新楼按**新位置**记）：
+         *   ① 原文档（台账里 `floorStart` 那一楼的内容哈希）在当前聊天里找得到 → 写 `floorNow*`（当前位置）+ 记
+         *      `floorNowHash`（当前位置的内容指纹，供下次复核）；原文仍在 → 解除「原文已移除」；
+         *   ② 原文找不到，但条目自己的 `floorNowHash` 在当前聊天里找得到 → 当前位置**整体平移**到该处（同一段内容搬了家）；
+         *   ③ `floorNowHash` 也找不到 → 当前位置的内容**也被移除了** → 转「原文已移除」（不再占用任何楼层）；
+         *   ④ 没有 `floorNowHash`（位置由删楼时的**精确前移**写入，量已知）→ 该楼在册就补记指纹；否则**保守保留**，不臆断；
+         *   ⑤ 查不到任何哈希信息、且原始区间已根本不存在（超出当前末楼）→ 判「原文已移除」。
+         * 纪律：**不删任何条目、不改 `floorStart/floorEnd`**。
+         */
+        const mapEntry = (it) => {
+            try {
+                if (!it || typeof it !== 'object') return 0;
+                const r = originFloorRange(it);
+                if (!r) return 0;
+                const ns0 = Number(it.floorNowStart), ne0 = Number(it.floorNowEnd);
+                const hasNow = Number.isInteger(ns0) && Number.isInteger(ne0) && ns0 >= 0 && ne0 >= ns0;
+                const h = oldHashAt[r[0]] || '';
+                const fn = it.floorNowHash ? String(it.floorNowHash) : '';
+                if (h && nowHashAt[h] !== undefined) {                 // ① 原文仍在 → 按内容哈希定位
+                    shiftFloorNow(it, nowHashAt[h] - r[0]);
+                    it.floorNowHash = h;
+                    clearGone(it);
+                    return 0;
+                }
+                if (fn) {                                             // ②③ 复核「当前位置」还好不好使
+                    if (nowHashAt[fn] !== undefined) {
+                        const q = nowHashAt[fn], span = Math.max(0, ne0 - ns0);
+                        it.floorNowStart = q; it.floorNowEnd = q + span;
+                        clearGone(it);
+                        return 0;
+                    }
+                    markOriginGone(it, Date.now());
+                    return 1;
+                }
+                if (hasNow) {                                         // ④ 精确前移写入的位置：在册则补记指纹，否则保守保留
+                    const mark = ledgerAt[ns0];
+                    if (mark) { it.floorNowHash = mark; clearGone(it); }
+                    return 0;
+                }
+                if (h || r[0] > lastId || r[1] > lastId) { markOriginGone(it, Date.now()); return 1; }   // ⑤
+                return 0;
+            } catch (e) { return 0; }
         };
-        for (const d of DIMENSIONS) fix(d.kind, state[d.kind], ['floorStart', 'floorEnd']);
-        try { for (const x of (state.currentStates || [])) { const fe = Number(x && x.floorEnd); if (Number.isFinite(fe) && fe > lastId && fe > 0) { x.floorStart = 0; x.floorEnd = 0; x.floorStale = true; staleEntries++; dims.currentStates = (dims.currentStates || 0) + 1; } } } catch (e) { /* 忽略 */ }
-        try { fix('plotSegments', (state.plotSegments || []).map((g) => Object.assign(g, { start: g.start, end: g.end })), ['start', 'end']); } catch (e) { /* 忽略 */ }
+        for (const d of DIMENSIONS) {
+            const arr = (state[d.kind] || []);
+            let n = 0;
+            for (const it of arr) n += mapEntry(it);
+            if (n) dims[d.kind] = n;
+            staleEntries += n;
+        }
         // ③ 基线收紧（Q9）
         try { state.lastKnownFloor = lastId; state.floorShrinkAt = Date.now(); } catch (e) { /* 忽略 */ }
         const removedFloors = Math.max(0, (Number.isFinite(known) ? known : lastId) - lastId);
@@ -460,7 +534,11 @@ export function handleFloorShrink(opts) {
         } catch (e) { /* 忽略 */ }
         try { log('楼层', { action: '楼层收缩处理', removedFloors: removedFloors, lastId: lastId, staleEntries: staleEntries, marks: marks }); } catch (e) { /* 忽略 */ }
         try { saveState(); } catch (e) { /* 忽略 */ }
-        return { ok: true, removedFloors: removedFloors, staleEntries: staleEntries, dims: dims, marks: marks, lastId: lastId };
+        return {
+            ok: true, removedFloors: removedFloors, staleEntries: staleEntries, dims: dims, marks: marks, lastId: lastId,
+            originGone: staleEntries,               // v3.7.0：原文已移除的条数（= staleEntries，语义更准确）
+            nowHashes: nowHashes,                   // 当前聊天可用的楼层哈希数（诊断）
+        };
     } catch (e) {
         try { warn('楼层收缩处理失败', e); } catch (e2) { /* 忽略 */ }
         return { ok: false, skipped: 'error' };

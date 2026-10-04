@@ -163,10 +163,10 @@ await (async () => {
     const marksAfter1 = (state.processedFloors || []).length;
     const r2 = fixFloorJump();
     const stillOk = (state.processedFloors || []).length === marksAfter1 && (state.processedFloors || []).some((x) => Number(x.f) === 3);
-    A('B3 修正后**不再重复判定/重复写盘**（低噪声 + 幂等）：第一次判为突变并修正（`acted:true`，台账按内容哈希修正）；越界情节楼层已被降级为未知区间 → 第二次如实 `jumped:false` / `skipped:"no-data"`，台账与 `floorJumpAt` 都不再变动（不会每次自动修复都刷笔记）',
-        r1.jumped === true && r1.acted === true && r1.marks === 1 && r2.jumped === false && r2.skipped === 'no-data'
-        && at1 > 0 && stillOk,
-        J({ r1: { jumped: r1.jumped, acted: r1.acted, marks: r1.marks }, r2: { jumped: r2.jumped, skipped: r2.skipped }, marksAfter1 }));
+    A('B3 修正后**不再重复写盘**（低噪声 + 幂等）：第一次判为突变并修正（`acted:true`，台账按内容哈希修正）；v3.7.0 起**来源楼层不再被清零** → 第二次仍能识别突变，但同一对「情节楼层 / 当前末楼」走 `already-fixed` 短路（**不重复改编号、不重复写盘**）；`force:true` 才强制再算一次',
+        r1.jumped === true && r1.acted === true && r1.marks === 1 && r2.jumped === true && r2.acted === false
+        && r2.skipped === 'already-fixed' && at1 > 0 && stillOk,
+        J({ r1: { jumped: r1.jumped, acted: r1.acted, marks: r1.marks }, r2: { jumped: r2.jumped, acted: r2.acted, skipped: r2.skipped }, marksAfter1 }));
 }
 
 // ==================== C 组：接进自动修复第 1 段 ====================

@@ -4690,10 +4690,13 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
             && String(srvFiles.get(backupNames[0]) || '').indexOf('ftt-memory-v2-export') >= 0;
         // ⑥ 记忆一条不少；编号按**实际删除量**校准（全删段/跨越段 → 未知区间；幸存段前移）
         const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        // v3.7.0（用户要求）：「原子数据来源记录了楼层，**原始楼层不应该变动**……找不到对应楼层哈希值 → **标记原文已移除**；
+        //   同时新的楼层必须**结合新的位置**来记录」→ 断言由「来源楼层置 0/0」改判为「来源楼层原样保留 + 当前位置/原文已移除」。
         const dataOk = RT.state.atoms.length === 3
-            && g('bg-a0').floorStart === 0 && g('bg-a0').floorEnd === 0 && g('bg-a0').floorStale === true
-            && g('bg-a1').floorStart === 0 && g('bg-a1').floorEnd === 5 && g('bg-a1').floorStale === true   // 15-10
-            && g('bg-a2').floorStart === 6 && g('bg-a2').floorEnd === 8 && g('bg-a2').floorStale === undefined
+            && g('bg-a0').floorStart === 1 && g('bg-a0').floorEnd === 3 && g('bg-a0').originGone === true && g('bg-a0').floorStale === undefined
+            && g('bg-a1').floorStart === 0 && g('bg-a1').floorEnd === 15 && g('bg-a1').floorNowStart === 0 && g('bg-a1').floorNowEnd === 5   // 跨越删除线：终点前移 15-10
+            && g('bg-a2').floorStart === 16 && g('bg-a2').floorEnd === 18 && g('bg-a2').floorNowStart === 6 && g('bg-a2').floorNowEnd === 8   // 幸存段整体前移 10
+            && g('bg-a2').originGone === undefined
             && RT.state.lastKnownFloor === 9;
         // ⑦ 面板摘要讲清「删了几层 / 记忆保留多少 / 备份文件名」
         const noteOk = String(r.note || note).indexOf('已删除 10 层') >= 0
@@ -4736,7 +4739,7 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         } catch (e) { rotateOk = false; }
         await entry.popupAction('tab', { tab: 'overview' });
         const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk && rotateOk;
-        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk, rotateOk }));
+        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk, rotateOk, atoms: (RT.state.atoms || []).map((x) => ({ id: x.id, fs: x.floorStart, fe: x.floorEnd, ns: x.floorNowStart, ne: x.floorNowEnd, gone: x.originGone, stale: x.floorStale })) }));
         return allOkBg1;
     } finally {
         host.ctx.chat.length = 0;
@@ -5096,9 +5099,11 @@ await assert('BG2 设定 → 存储「🧱 楼层校准」（v2.94.0 / docs/D12 
         const b = await entry.popupAction('floorRecalibrate', {});
         const noteB = String(((b.state || {}).note) || '');
         const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        // v3.7.0（用户要求）：**原始楼层不应该变动** —— 位置已不存在时只打「原文已移除」，不再把来源楼层清零。
         const dataOk = RT.state.atoms.length === 2                                  // **一条不删**
-            && g('bg2-a0').floorStart === 0 && g('bg2-a0').floorEnd === 0 && g('bg2-a0').floorStale === true
-            && g('bg2-a1').floorStart === 0 && g('bg2-a1').floorEnd === 0 && g('bg2-a1').floorStale === undefined
+            && g('bg2-a0').floorStart === 12 && g('bg2-a0').floorEnd === 14 && g('bg2-a0').originGone === true
+            && g('bg2-a0').floorStale === undefined
+            && g('bg2-a1').floorStart === 0 && g('bg2-a1').floorEnd === 0 && g('bg2-a1').floorStale === undefined && g('bg2-a1').originGone === undefined
             && RT.state.lastKnownFloor === 5
             && snapBefore.indexOf('bg2-a0') >= 0;
         const noteOk = b.ok === true && b.lastId === 5 && noteB.indexOf('记忆一条未删') >= 0;
@@ -5156,6 +5161,74 @@ await assert('BH1 v2.94.0（docs/D9 **U4** / 检查项 C7）危险动作真实�
     }
 })(), '');
 
+
+// v3.7.0（用户要求）：「原子数据来源记录了楼层，**原始楼层不应该变动**。当楼层发生突变后，如找不到对应楼层哈希值，
+//   则**标记原文已移除**处理。同时新的楼层必须**结合新的位置**来记录，修复无法分析、跳过的问题。」
+//   本小节端到端锁死四件事：① 突变后**来源楼层 floorStart/floorEnd 一字不动**；② 按**内容哈希**找得到的条目
+//   → 把当前位置写进 `floorNow*`（「新的楼层必须结合新的位置来记录」）；③ 哈希**找不到**的条目 → 标「原文已移除」，
+//   内容与来源楼层都保留，但**不再占用任何楼层**；④ 因此那些楼层**重新进入待分析清单**（修复「无法分析、跳过」）。
+await assert('BH13 v3.7.0 楼层溯源不可变（端到端）：人为删楼后「🔄 重新校准楼层」→ ① 来源楼层一字不动 ② 哈希找得到的条目按**新位置**记 floorNow*（原 14-15 楼 → 现 8-9 楼）③ 哈希找不到的条目标「原文已移除」并由**待分析清单重新纳入**（修复「无法分析、跳过」）④ 记忆一条不删', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const FL = await import('../host/floors.js');
+    const FC = await import('../core/floor-cover.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const keepPf = JSON.parse(JSON.stringify(RT.state.processedFloors || []));
+    const keepKnown = RT.state.lastKnownFloor;
+    try {
+        // ① 旧局面：20 层聊天 + 两条情节（6-7 楼 / 14-15 楼），台账按当时的正文登记（= 分析过这些楼层）
+        const line = (tag, i) => '【' + tag + '】第' + i + '楼正文：角色甲在仓库清点编号' + i + '的货物，数量与来源都要记录清楚。';
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 20; i++) host.ctx.chat.push({ is_user: false, mes: line('旧', i), name: '角色甲' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RT.setLastMessageId(19);
+        RT.state.atoms = [
+            { id: 'bh13-gone', text: '旧 6-7 楼的情节正文足够长：甲在仓库清点铜箱，来源与数量都记清楚。', floorStart: 6, floorEnd: 7, tags: [], keywords: [] },
+            { id: 'bh13-move', text: '旧 14-15 楼的情节正文足够长：乙在码头交接铜箱，编号与去向都记清楚。', floorStart: 14, floorEnd: 15, tags: [], keywords: [] },
+        ];
+        RT.state.processedFloors = [6, 7, 14, 15].map((f) => ({ f: f, h: FL.hashFloorText(f) })).filter((x) => !!x.h);
+        RT.state.lastKnownFloor = 19;
+        const marked = (RT.state.processedFloors || []).length === 4;
+        // ② 突变：用户在酒馆里自己删掉了第 5–10 层（下标 4..9，共 6 层）→ 后面的正文整体前移 6 层
+        host.ctx.chat.splice(4, 6);
+        RT.setLastMessageId(host.ctx.chat.length - 1);
+        const shrunkOk = host.ctx.chat.length === 14;
+        // ③ 真实点击「🔄 重新校准楼层」（幂等兜底动作；按当前聊天现实重算）
+        const r = await entry.popupAction('floorRecalibrate', {});
+        const g = (id) => (RT.state.atoms || []).filter((x) => x.id === id)[0] || {};
+        const gone = g('bh13-gone'), move = g('bh13-move');
+        // ④ 断言：来源楼层一字不动 / 当前位置写出 / 原文已移除 / 一条不删
+        // 删掉下标 4..9 后，原第 14-15 楼的内容落到**第 8-9 楼**（其后各楼整体前移 6 层）
+        const provOk = gone.floorStart === 6 && gone.floorEnd === 7 && gone.originGone === true && !!gone.originGoneAt
+            && gone.floorStale === undefined && gone.floorNowStart === undefined
+            && move.floorStart === 14 && move.floorEnd === 15 && move.originGone === undefined
+            && move.floorNowStart === 8 && move.floorNowEnd === 9 && !!move.floorNowHash
+            && RT.state.atoms.length === 2;
+        const covOk = FC.floorCoverage(RT.state).has(8) === true && FC.floorCoverage(RT.state).has(9) === true
+            && FC.floorCoverage(RT.state).has(6) === false && FC.floorCoverage(RT.state).has(14) === false
+            && FC.floorPositionLabel(move) === '8-9楼（原 14-15楼）'
+            && FC.floorPositionLabel(gone).indexOf('原文已移除') === 0;
+        // ⑤ 关键回归（用户报告「修复无法分析、跳过的问题」）：第 6-7 楼现在是**别处的正文**（旧 12-13 楼前移而来），
+        //    修复前旧条目仍占着 6-7 楼 → 这两层被判「已有记忆数据」而**永久跳过**；现在回到待分析清单。
+        const scan = FL.scanPendingFloors({ maintain: false, startFloor: 0, endFloor: 13 });
+        const pendOk = scan.floors.indexOf(6) >= 0 && scan.floors.indexOf(7) >= 0
+            && scan.skipped.covered === 0 && Number(RT.state.lastKnownFloor) === 13;
+        const note = String((r.state && r.state.note) || r.note || '');
+        const noteOk = r.ok === true && r.lastId === 13 && r.originGone === 1 && note.indexOf('记忆一条未删') >= 0;
+        const ok = marked && shrunkOk && provOk && covOk && pendOk && noteOk;
+        if (!ok) console.log('BH13-DEBUG ' + JSON.stringify({ marked, shrunkOk, provOk, covOk, pendOk, noteOk, r: { ok: r.ok, lastId: r.lastId, originGone: r.originGone }, gone, move, pending: scan.floors, skipped: scan.skipped }));
+        return ok;
+    } finally {
+        host.ctx.chat.length = 0;
+        for (const m of keepChat) host.ctx.chat.push(m);
+        host.ctx.getLastMessageId = keepLast;
+        RT.state.atoms = keepAtoms;
+        RT.state.processedFloors = keepPf;
+        RT.state.lastKnownFloor = keepKnown;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
 
 // ---------- BI 管线状态：倒计时 / 流文字展示（v2.95.0 修复端到端） ----------
 // 用户报告：「管线状态之前要求追加的倒计时、流文字展示等，都没有生效。请核对并修复。」

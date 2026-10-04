@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "updatedAt": "2026-09-30",
   "generatedAt": "2026-09-30",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.7.0",
+      "date": "2026-09-30",
+      "title": "楼层溯源不可变 + 「原文已移除」+ 新楼按新位置记录（修「无法分析、跳过」）",
+      "points": [
+        "① 来源楼层与当前位置彻底分开：（core/floor-cover.js）- floorStart / floorEnd = 原始来源楼层（溯源），创建后永不变动（此前删楼/突变…",
+        "② 突变识别改以内容哈希为准：（host/floors.js#handleFloorShrink）- 先快照突变前的台账（原始楼层号 → 内容哈希）——它是「原始位置」的唯一权威…",
+        "③ 覆盖判定改用当前位置 → 修「无法分析、跳过」：（core/floor-cover.js#currentFloorRange → meaningfulFloorRange）-…"
+      ]
+    },
     {
       "version": "3.6.0",
       "date": "2026-09-30",

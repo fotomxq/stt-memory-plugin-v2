@@ -256,8 +256,9 @@ export function storagePageHtml(controls) {
  * v2.94.0（`docs/D12` §3.4 / 阶段 S3）——**楼层校准分节**（设定 → 存储）。
  * 用户会**主动删楼**（酒馆对高楼层支持差）→ 楼层编号失去一致性时必须能自查、能手动兜底：
  *   · 只读诊断：当前楼层数 / 台账标记数 / 最近一次收缩时间 / 已标记「楼层信息失效」的条目数；
- *   · 「🔄 重新校准楼层」（幂等）：按当前聊天现实重跑一次收缩处理（哈希归位台账 + 超出当前末楼的区间
- *     降级为「未知区间」+ 收紧基线）。**只改编号，绝不删除任何条目**。
+ *   · 「🔄 重新校准楼层」（幂等）：按当前聊天现实重跑一次收缩处理（哈希归位台账 + 按**内容哈希**把还能对上的条目
+ *     记到**新的位置**（`floorNow*`）+ 找不到原文的条目打「**原文已移除**」+ 收紧基线）。
+ *     v3.7.0（用户要求）：**原始来源楼层永不变动**，记忆条目与文案都**绝不删除**。
  */
 function floorCalibrateSectionHtml() {
     let st = null;
@@ -268,8 +269,8 @@ function floorCalibrateSectionHtml() {
         try { return new Date(Number(st.at)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(st.at); }
     })();
     const staleTxt = (st.stale > 0)
-        ? ('<b>' + st.stale + '</b> 条条目的楼层信息已失效（显示为「未知区间」，数据仍在）')
-        : '没有条目的楼层信息失效';
+        ? ('<b>' + st.stale + '</b> 条条目的<b>原文已移除</b>（来源楼层仍保留可查，数据仍在）')
+        : '没有条目的原文被移除';
     return '<div class="ftt-section" data-ftt-floor-calibrate><div class="ftt-sec-title">🧱 楼层校准</div>'
         + '<div class="ftt-muted">你在酒馆里删除楼层后，记忆数据<b>不会丢</b>，但记忆里的「第几楼」会失准，可在此自查并一键重算。</div>'
         + '<div class="ftt-muted ftt-my-1">当前 ' + Number(st.floors) + ' 层 · 已分析标记 ' + Number(st.marks) + ' 条 · 最近一次收缩：' + escHtml(when) + ' · ' + staleTxt + '</div>'
