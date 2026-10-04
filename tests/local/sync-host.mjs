@@ -18,12 +18,13 @@
 //   · 入库文件不得含本机路径（`scripts/check-local-leak.js` 强制）：路径一律走 `maskPath` 脱敏。
 // ============================================================
 import { execFileSync } from 'node:child_process';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import net from 'node:net';
 import {
-    nodeFs, discoverHost, maskPath, readManifest, readGitHead, readGitRemote, planHostSync,
+    nodeFs, discoverHost, maskPath, readManifest, readGitHead, readGitRemote, planHostSync, sha256,
 } from './host.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -153,14 +154,55 @@ const ports = await probePorts(cdpPort, bridgePort, bridgeWaitMs);
 const localRun = !!(host.st.userRoot || host.tt.appRoot);
 const debugPortUp = ports.cdp || ports.bridge;
 
+// ============================================================
+// v3.11.1：部署副本的「干净」判定分级 + **可验证的采纳通道**
+//
+// 真机遇到的实际局面：部署副本 HEAD 停在旧提交，但工作树里多出 3 个**未跟踪文件**
+//   （都是仓库后续提交里的文档/测试，被 `git reset` 之类的操作留了下来）。
+//   一刀切的「有改动就拒绝」会卡住同步；但直接覆盖又可能踩到用户的真实改动。
+// 判据（保守且**可验证**）：
+//   · 已跟踪文件被**修改/删除** → 一律拒绝（可能是用户改的）；
+//   · 只有**未跟踪文件**：
+//       - 不带 `--adopt-untracked` → 拒绝，并提示该开关；
+//       - 带上开关 → 逐个与**开发仓库 HEAD 的同名文件**做 sha256 比对：
+//           全部逐字节相同 → 安全（它们就是仓库文件，快进后会原样恢复）→ 采纳（先删这几个残留）；
+//           有任何一个不同 → **拒绝**（那是用户的文件，绝不删）。
+// ============================================================
+const ADOPT_UNTRACKED = has('--adopt-untracked');
+const shaOfFile = (p) => {
+    try { return sha256(readFileSync(p)); } catch (e) { return ''; }
+};
+let adoptList = [];
+let untrackedDiffers = [];
+let dirtyNote = '';
+
 // 部署副本是否干净（v3.10.2：**只有 --yes 才需要**；查不出来时传 `null` → 判定为拒绝，绝不放行）
 const dirtyKnown = CONFIRMED && isRepo;
 let dirtyCount = dirtyKnown ? null : undefined;
 let dirtyError = '';
 if (dirtyKnown) {
-    const st = gitTry(deployedDir, ['status', '--porcelain']);
-    if (st.ok) dirtyCount = st.out.split('\n').filter((l) => l.trim()).length;
-    else dirtyError = st.out;
+    // `-c core.quotepath=false`：中文文件名不被八进制转义/加引号，才能正确拼出本地路径比对
+    const st = gitTry(deployedDir, ['-c', 'core.quotepath=false', 'status', '--porcelain']);
+    if (!st.ok) dirtyError = st.out;
+    else {
+        const rows = st.out.split('\n').map((l) => l.trim()).filter(Boolean);
+        // porcelain 格式：`XY<空格>路径` —— 必须跳 3 个字符（两字符状态 + 一个空格），否则路径多一个前导空格读不到文件
+        const untracked = rows.filter((l) => l.startsWith('??')).map((l) => l.slice(3).replace(/^"|"$/g, ''));
+        const tracked = rows.filter((l) => !l.startsWith('??'));
+        if (tracked.length) dirtyCount = tracked.length;                       // 已跟踪被改/删 → 一律拒绝
+        else if (!untracked.length) dirtyCount = 0;
+        else if (!ADOPT_UNTRACKED) { dirtyCount = untracked.length; dirtyNote = '（均为未跟踪文件；如确认它们就是仓库文件，可加 --adopt-untracked 让工具逐字节核验后采纳）'; }
+        else {
+            // 带开关：逐个与开发仓库 HEAD 的同名文件比对 sha256 —— 只采纳**逐字节相同**的残留
+            const bad = untracked.filter((f) => {
+                const a = shaOfFile(join(deployedDir, f));
+                const b = shaOfFile(join(devRoot, f));
+                return !a || !b || a !== b;
+            });
+            if (bad.length) { untrackedDiffers = bad; dirtyCount = bad.length; dirtyNote = '（未跟踪文件与仓库同名文件内容**不同** → 视为用户文件，拒绝）'; }
+            else { adoptList = untracked; dirtyCount = 0; dirtyNote = '（' + untracked.length + ' 个未跟踪文件与仓库逐字节相同 → 可安全采纳）'; }
+        }
+    }
 }
 const gitAvailable = isRepo ? gitTry(deployedDir, ['--version']).ok : false;
 
@@ -184,7 +226,9 @@ console.log('  部署副本                   ：v' + String((extManifest && ext
     + ' · ' + String((extHead && extHead.sha) || '(非 git 检出)').slice(0, 8) + ' · ' + show(deployedDir));
 console.log('  同源 / 干净                ：' + (sameRemote === null ? '—' : (sameRemote ? '同源' : '**异源**'))
     + ' / ' + (dirtyCount === null ? ('**查不出**（' + String(dirtyError || '').slice(0, 80) + '）')
-        : (dirtyCount === undefined ? '未检查（--yes 时检查）' : (dirtyCount === 0 ? '干净' : dirtyCount + ' 处改动'))));
+        : (dirtyCount === undefined ? '未检查（--yes 时检查）' : ((dirtyCount === 0 ? '干净' : dirtyCount + ' 处改动') + dirtyNote))));
+if (adoptList.length) console.log('  可采纳的残留（与仓库逐字节相同）      ：' + adoptList.join(' · '));
+if (untrackedDiffers.length) console.log('  内容不同的未跟踪文件（拒绝删除）      ：' + untrackedDiffers.join(' · '));
 console.log('  判定                       ：' + plan.action + '（' + plan.reason + '）—— ' + plan.note);
 
 if (!CONFIRMED) {
@@ -202,8 +246,17 @@ if (plan.action !== 'ff') {
     process.exit(1);
 }
 
-// ---------- 执行：fetch（从开发仓库直接取对象，无需网络）+ 快进 ----------
+// ---------- 执行：先清掉「与仓库逐字节相同」的未跟踪残留，再 fetch + 快进 ----------
 const branch = String((devHead && devHead.ref) || '').replace(/^refs\/heads\//, '') || 'main';
+if (adoptList.length) {
+    console.log('\n  采纳残留（与仓库同名文件 sha256 相同 → 快进后会原样恢复）：');
+    for (const f of adoptList) {
+        try {
+            rmSync(join(deployedDir, f), { force: true });
+            console.log('    · 已移除 ' + f);
+        } catch (e) { console.log('    · 移除失败 ' + f + '：' + String((e && e.message) || e)); }
+    }
+}
 console.log('\n  同步中：git fetch <开发仓库> ' + branch + ' → merge --ff-only');
 const f = gitTry(deployedDir, ['fetch', String(host.dev.root || DEV_ROOT), branch]);
 if (!f.ok) {
