@@ -216,8 +216,39 @@ export function nsfwBadgeHtml(it) {
         if (l === 'none') return '';
         const label = nsfwLevelLabel(l);
         const tip = 'NSFW 等级留档：' + nsfwLevelHint(l) + '｜按原文判定，弱化内容不会改变该标签（永久留档）';
-        return '<span class="ftt-tags-inline ftt-nsfw-tag" data-ftt-nsfw-level="' + l + '" title="' + escHtml(tip) + '">NSFW·' + label + '</span> ';
+        // v3.11.0：不再自带尾随空格（改为由 `appendBadgeToLastLine` 统一注入末行并补分隔符）
+        return '<span class="ftt-tags-inline ftt-nsfw-tag" data-ftt-nsfw-level="' + l + '" title="' + escHtml(tip) + '">NSFW·' + label + '</span>';
     } catch (e) { return ''; }
+}
+
+/**
+ * v3.11.0（用户要求）：「NSFW 标签放到底部**最后一行**，与楼层信息等混在一起展示」。
+ *
+ * 此前徽标是 `badge + 整行` —— 挤在**行首**，把标题/正文都往后推，视觉上像"这一行是 NSFW 的"，
+ *   与「留档标记」的实际语义（元信息）不符。
+ * 现在把徽标注入该行**最后一个元信息行**（`ftt-meta` 优先；老行没有 meta 时退 `ftt-desc`，
+ *   即情节行那种「📅 日期 · 类型 · 楼层 · 调用 · 重要度」的行），于是它天然与楼层信息同段；
+ *   两者都没有时**补一行**（且绝不退回行首）。
+ * @param {string} html 行 HTML
+ * @param {string} badge 徽标 HTML（空串 = 原样返回）
+ * @returns {string}
+ */
+export function appendBadgeToLastLine(html, badge) {
+    const h = String(html == null ? '' : html);
+    const b = String(badge || '');
+    if (!b || !h) return h;
+    const lastOf = (cls) => {
+        const re = new RegExp('<div class="ftt-' + cls + '"[^>]*>', 'g');
+        let m, last = null;
+        while ((m = re.exec(h))) last = m;
+        return last;
+    };
+    const at = lastOf('meta') || lastOf('desc');
+    if (at) {
+        const pos = at.index + at[0].length;
+        return h.slice(0, pos) + b + ' · ' + h.slice(pos);
+    }
+    return h + '<div class="ftt-meta">' + b + '</div>';
 }
 
 /**
@@ -239,7 +270,7 @@ export function nsfwLegendHtml(items) {
         if (weak) parts.push('弱 <b>' + weak + '</b>');
         if (strong) parts.push('强 <b>' + strong + '</b>');
         return '<div class="ftt-muted" data-ftt-nsfw-legend>NSFW 留档：' + parts.join(' · ')
-            + '（按原文判定，弱化后不变；标记见每条行首）</div>';
+            + '（按原文判定，弱化后不变；标记见每条末行，与楼层等信息同段）</div>';
     } catch (e) { return ''; }
 }
 
@@ -249,7 +280,8 @@ export function listRowMainHtml(kind, e, ctx) {
     const item = e || {};
     const cx = ctx || null;      // v3.1.0：渲染期上下文（关联行索引 / 条目索引）；不传则走原实现
     const badge = nsfwBadgeHtml(item);      // v3.8.0：NSFW 等级留档（无 → 空串）
-    const withBadge = (html) => (badge ? badge + html : html);
+    // v3.11.0：徽标注入**末行**（与楼层信息同段），不再挤在行首
+    const withBadge = (html) => appendBadgeToLastLine(html, badge);
     try {
         if (k === 'atoms') return withBadge(atomsRow(item, now));
         if (k === 'memories') return withBadge(memoriesRow(item, now, cx));
@@ -540,8 +572,9 @@ export function stateRowMainHtml(s) {
     const field = String((s && s.field) == null ? '' : s.field);
     const value = String((s && s.value) == null ? '' : s.value);
     const head = field ? ('<b>' + esc(field) + '</b>' + (value ? ' ' : '')) : '';
-    return nsfwBadgeHtml(s) + head + esc(value)
-        + '<div class="ftt-meta">调用' + (s.uses || 0) + '次' + up + '</div>';
+    // v3.11.0：徽标同样落到**末行**（状态行末行是「调用N次 · 更新…」），不再挤在值前面
+    return appendBadgeToLastLine(head + esc(value)
+        + '<div class="ftt-meta">调用' + (s.uses || 0) + '次' + up + '</div>', nsfwBadgeHtml(s));
 }
 
 /** 该维度在列表里是否只显示「进行中」（V1 `plansHtml` 只列 `status==='open'`） */

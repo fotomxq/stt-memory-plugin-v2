@@ -173,12 +173,14 @@ const localStats = { reads: 0, parseHits: 0, writes: 0, unchanged: 0, idbWrites:
 export function localBufferStats() { return Object.assign({}, localStats); }
 
 /**
- * 让本机缓冲的**解析缓存**立即失效（v3.10.4）。
- * 本层自己的写入会自动失效；清理本机键等路径同样调用它（缓存**不改变真相语义**，
- * 因为每次都会重新读原始文本 —— 这里只是让解析结果不跨「已知的改动」复用）。
+ * 忘记本层已知状态（v3.10.4）：**解析缓存** + **上次写入签名** 一起清掉。
+ * 任何「本层已被外部改动」的路径都必须调用它 —— 否则会出现两类缺口：
+ *   ① 刚清空却仍能读回旧信封（解析缓存残留）；
+ *   ② **清空后同内容保存被「等值跳过」→ 本机缓冲一直不被写回**（签名残留，真机上由 `local-copy` B1 复现）。
  */
 export function invalidateLocalBufferCache() {
     localParseCache = null;
+    localLastSig = '';
     return true;
 }
 /**

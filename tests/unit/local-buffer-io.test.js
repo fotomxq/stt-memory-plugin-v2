@@ -148,11 +148,15 @@ async function boot(opts) {
         return ok;
     })(), () => ({ sets: sets, local: localBufferState() }));
 
-    A('B5 清理本机键 → 解析缓存失效（清空后不得再读回旧信封）', (() => {
+    A('B5 清理本机键 → 解析缓存失效 **且上次写入签名清空**：清空后不得读回旧信封，**连「同内容保存」也必须重新写回**', (async () => {
         const before = loadFromLocalStorage();
         const r = removeLocalKeys([key]);
         const after = loadFromLocalStorage();
-        return !!before && r.removed === 1 && after === null;
+        const s0 = sets;
+        markDataTouched();                                     // 内容未变，只触碰
+        await saveStateNow({ reason: 're-save-after-clear', skipFile: true });
+        // 若签名没被清掉 → 这次会被「等值跳过」→ 本机缓冲永远空着（local-copy B1 曾间歇性复现）
+        return !!before && r.removed === 1 && after === null && sets === s0 + 1 && !!store.get(key);
     })(), '见断言');
 
     // ---------- C 组：A5 镜像准入 ----------
