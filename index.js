@@ -485,6 +485,9 @@ export async function init() {
     //   出口（日志/时间线）由这里注入 —— 内核零宿主依赖。
     try {
         setReadLedgerHooks({
+            // v3.10.4（真机 A5）：**哪些读取值得写进调试日志由内核裁决**（`core/read-ledger.js` 只镜像
+            //   失败 / 未命中 / 慢读）—— 真机上常规成功读取曾占满 69% 的日志环（300 条里 208 条），
+            //   把对账/摘要/修复/异常挤掉。读取台账本身另有独立缓冲（`ftt.reads` / 调试页可全量查看）。
             log: (rec) => {
                 try { debugLogPush('读取', { action: rec.action, src: rec.srcLabel, target: rec.target, ok: rec.ok, miss: rec.miss, ms: rec.ms, bytes: rec.bytes, items: rec.items, fields: rec.fields, hash: rec.hash, reason: rec.reason, note: rec.note, extra: rec.extra }); } catch (e) { /* 忽略 */ }
                 try {

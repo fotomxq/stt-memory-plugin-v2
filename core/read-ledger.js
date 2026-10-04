@@ -165,10 +165,36 @@ export function readLedgerRecord(rec) {
         if (item.ms > s.maxMs) s.maxMs = item.ms;
         totalMs += item.ms;
         totalBytes += item.bytes;
-        if (r.quiet !== true) { try { hooks.log(item); } catch (e) { /* 忽略 */ } }
+        // v3.10.4（A5）：**只把异常/未命中/慢读镜像进调试日志**（策略在核心里，任何宿主都无法把日志环灌满）；
+        //   显式 `mirror: true` 可强制镜像；`quiet: true` 仍然完全不出口。
+        if (r.quiet !== true && (r.mirror === true || readLedgerMirrorWorthy(item))) { try { hooks.log(item); } catch (e) { /* 忽略 */ } }
         return item;
     } catch (e) { return null; }
 }
+
+/**
+ * v3.10.4（真机取证 A5）：**是否值得镜像进「调试日志」**（纯函数）。
+ *
+ * 背景：真机上调试日志环（上限 300 条）被 `kind='读取'` 占了 **208 条（69%）**，
+ *   把「对账 / 摘要 / 修复 / 异常」等真正要留痕的条目冲掉（实测只剩 4 条对账）。
+ *   而**读取台账本身另有独立缓冲**（`READ_LEDGER_CAP`，可经 `ftt.reads` / `ftt.readLedgerText` 全量查看）
+ *   —— 常规成功读取再镜像一份纯属重复。
+ * 口径：只镜像**异常 / 未命中 / 慢读**；其余只留在读取台账里。
+ * @param {object} item 台账条目
+ * @returns {boolean}
+ */
+export function readLedgerMirrorWorthy(item) {
+    try {
+        const it = item || {};
+        if (it.ok === false) return true;                                  // 失败
+        if (it.miss === true) return true;                                 // 未命中（含「按预算跳过写入」这类如实标记）
+        if (num(it.ms) >= READ_LEDGER_MIRROR_SLOW_MS) return true;         // 慢读
+        return false;
+    } catch (e) { return true; }
+}
+
+/** 「值得镜像」的慢读阈值（毫秒） */
+export const READ_LEDGER_MIRROR_SLOW_MS = 100;
 
 /** 台账列表（最新在前；`limit` 缺省全部缓冲） */
 export function readLedgerList(limit) {

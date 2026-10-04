@@ -85,20 +85,26 @@ resetReadLedger();
     resetReadLedger();
     const logged = [];
     setReadLedgerHooks({ now: () => clock, log: (rec) => logged.push(rec) });
+    // v3.10.4（真机 A5）：**常规成功读取不再镜像进调试日志**（真机上它曾占满 69% 的日志环）
     readLedgerRecord({ action: '读主文件', src: 'file', ms: 3, bytes: 10, items: 1 });
+    const afterRoutine = logged.length;
+    // 失败 / 未命中 / 慢读才镜像；`quiet` 可单条静默；`mirror:true` 可强制
+    readLedgerRecord({ action: '读分片', src: 'shard', ms: 2, ok: false, reason: 'HTTP 500' });
     readLedgerRecord({ action: '注入内存态', src: 'memory', ms: 0, items: 9, quiet: true });
+    readLedgerRecord({ action: '读慢文件', src: 'file', ms: 200 });
+    readLedgerRecord({ action: '手工强制', src: 'other', ms: 1, mirror: true });
     const afterGoodHook = logged.length;
     // 宿主日志出口抛错 → 记录仍然进台账（观测设施绝不弄坏主流程）
     setReadLedgerHooks({ log: () => { throw new Error('host log exploded'); } });
-    readLedgerRecord({ action: '读分片', src: 'shard', ms: 2 });
+    readLedgerRecord({ action: '读分片失败', src: 'shard', ms: 2, ok: false, reason: 'boom' });
     const n = readLedgerList().length;
     // 非法入参（null / 非对象）也不抛
     const bad1 = readLedgerEnd(null, {});
     const bad2 = readLedgerRecord({ src: '不存在的来源' });
     setReadLedgerHooks({ log: () => undefined });
-    R.assert('D1 每条读取都推给宿主注入的日志出口（`quiet` 可单条静默）；**出口抛错也不影响台账**（记录照进、调用方不炸），非法入参同样不抛、未知来源回落「其它」',
-        afterGoodHook === 1 && n === 3 && bad1 === null && !!bad2 && bad2.srcLabel === READ_SRC_LABEL.other,
-        J({ afterGoodHook, n, bad1, bad2: bad2 && bad2.src }));
+    R.assert('D1 日志出口只收**异常 / 未命中 / 慢读**（常规成功读取不镜像 —— A5 修复）；`quiet` 可静默、`mirror:true` 可强制；**出口抛错也不影响台账**（记录照进、调用方不炸），非法入参同样不抛、未知来源回落「其它」',
+        afterRoutine === 0 && afterGoodHook === 3 && n === 6 && bad1 === null && !!bad2 && bad2.srcLabel === READ_SRC_LABEL.other,
+        J({ afterRoutine, afterGoodHook, n, bad1, bad2: bad2 && bad2.src }));
 }
 
 // ---------- E 组：人读文本（日志 / 调试包） ----------
