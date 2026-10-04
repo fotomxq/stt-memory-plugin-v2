@@ -5834,6 +5834,35 @@ await assert('BH14 v3.13.0 数据体检（本地调试端口）：脏数据被�
 })(), '');
 
 
+// ---------- BP 首屏载入闸门（v3.14.0） ----------
+// 用户要求（原话）：「刚加载插件后数据还未完整读取，应有读取拦截提示，避免报错，等加载完成后再展示内容。」
+//   走**真实入口**（`entry.popupAction`）：拦在读取期 → 面板只给提示、动作被拒；读完 → 自动换成真实内容。
+await assert('BP1 v3.14.0 首屏载入闸门（端到端）：读取未完成时面板只给「⏳ 正在读取数据…」提示（不显示残缺的「总记忆数」、不渲染任何条目），动作一律拒绝（`reason=loading` 且不触达钩子）；载入结束即自动恢复真实内容', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    // ① 冒烟环境已走完真实 `init()` → 闸门处于 ready（不是被拦状态）
+    const ready = RT.loadGateInfo();
+    const readyOk = ready.phase === 'ready' && ready.blocked === false && ready.finishedAt > 0;
+    // ② 模拟「首屏仍在读取」：真实入口打开面板 → 拦截提示
+    RT.setLoadPhase('loading', { note: 'smoke：模拟首屏读取中' });
+    const r1 = await entry.popupAction('tab', { tab: 'overview' });
+    const html1 = String((r1 && r1.html) || '');
+    const gateOk = html1.indexOf('data-ftt-loading-gate') >= 0 && html1.indexOf('正在读取数据') >= 0
+        && html1.indexOf('暂不展示内容') >= 0 && html1.indexOf('总记忆数') < 0
+        && html1.indexOf('ftt-tabs') > 0;                                   // 标签条仍在（可切页，每页都是提示）
+    // ③ 动作被拒：提取不触达钩子（`ok:false` + `reason:'loading'`）
+    const refused = await entry.popupAction('extract', {});
+    const refuseOk = !!(refused && refused.ok === false && refused.reason === 'loading');
+    // ④ 读完 → 真实内容自动恢复（含「总记忆数」标题栏与条目区，不再有闸门节点）
+    RT.setLoadPhase('ready', { via: 'smoke' });
+    const r2 = await entry.popupAction('refresh', {});
+    const html2 = String((r2 && r2.html) || '');
+    const afterOk = html2.indexOf('data-ftt-loading-gate') < 0 && html2.indexOf('总记忆数') > 0
+        && html2.indexOf('📖 FTT记忆组件') > 0;
+    const ok = readyOk && gateOk && refuseOk && afterOk;
+    if (!ok) console.log('BP1-DEBUG ' + JSON.stringify({ readyOk, gateOk, refuseOk, afterOk, ready: ready, refused: refused, gate: RT.loadGateInfo() }));
+    return ok;
+})(), '');
+
 // ---------- BO NSFW 等级留档（v3.8.0） ----------
 // 用户要求（原话）：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
 //   其中无代表与 NSFW 完全无关、弱代表有部分但没有露骨内容、强代表完全是露骨内容。

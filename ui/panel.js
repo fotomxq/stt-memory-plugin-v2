@@ -13,7 +13,7 @@
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
 import { fileStamp } from '../core/util.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
-import { state, cfg, getScopeKey, getLastMessageId, saveState } from '../core/model/runtime.js';
+import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
@@ -1358,6 +1358,9 @@ function atomCompactSectionHtml() {
 /** 分页内容 *//** 分页内容 *//** 分页内容 */
 export function panelBodyHtml(tab) {
     const t = tab || ps.tab;
+    // v3.14.0（用户要求「刚加载插件后数据还未完整读取，应有读取拦截提示，避免报错，等加载完成后再展示内容」）：
+    //   首屏读取中 → 各分页只给**拦截提示**，绝不渲染「总记忆数 0 / 待分析 0 层」一类残缺视图。
+    if (loadBlocked()) return loadGateHtml();
     try {
         if (t === 'overview') return overviewBody();
         if (t === 'settings') return settingsBody();
@@ -1367,6 +1370,20 @@ export function panelBodyHtml(tab) {
         if (kind) return dimBody(kind);
         return '<div class="ftt-empty">（该分页尚未实现）</div>';
     } catch (e) { return '<div class="ftt-empty">渲染失败：' + esc(String((e && e.message) || e)) + '</div>'; }
+}
+
+/**
+ * v3.14.0：首屏「数据读取中」的**拦截提示**（只读；读完由 `index.js` 自动重绘本面板）。
+ * 刻意不复用任何 `state` 读数 —— 此刻读出来的都是残缺值。
+ */
+export function loadGateHtml() {
+    const g = (() => { try { return loadGateInfo(); } catch (e) { return { waitedMs: 0 }; } })();
+    const secs = Math.max(0, Math.round(Number(g && g.waitedMs || 0) / 1000));
+    return '<div class="ftt-empty" data-ftt-loading-gate>'
+        + '<div>⏳ 正在读取数据…' + (secs >= 1 ? ('（已等待 ' + secs + ' 秒）') : '') + '</div>'
+        + '<div class="ftt-hint">首屏数据尚未读完：<b>暂不展示内容、也不执行任何动作</b>，以免基于不完整数据出错。</div>'
+        + '<div class="ftt-hint">读完后本页会自动刷新；若长时间没有变化，请刷新页面或到「设定 → 调试」查看读取台账。</div>'
+        + '</div>';
 }
 
 /**
@@ -1398,7 +1415,10 @@ export function panelModalInnerHtml(opts) {
     const head = '<div class="ftt-modal-head' + (ps.busy ? ' ftt-head-busy' : '') + '">'
         + '<span class="ftt-title">📖 FTT记忆组件 ' + esc(VERSION) + (nameTxt ? ' · ' + esc(nameTxt) : '') + '</span>'
         + busyNote
-        + '<span class="ftt-stat" title="全部类目记忆条目之和">总记忆数 ' + totalMemory() + '</span>'
+        // v3.14.0：首屏读取中不显示「总记忆数」（此刻必为 0，会误导），改显示读取态
+        + (loadBlocked()
+            ? '<span class="ftt-stat ftt-busy" title="首次载入尚未完成，读完会自动刷新">⏳ 读取中…</span>'
+            : '<span class="ftt-stat" title="全部类目记忆条目之和">总记忆数 ' + totalMemory() + '</span>')
         + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）">✕</button></div>';
     const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
         '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '">' + esc(l) + '</a>').join('') + '</div>';
@@ -1767,6 +1787,13 @@ export async function panelAction(action, payload) {
     // v2.96.0：所有返回路径（含前置条件早退）都经统一收尾 → 界面一定被重绘、提示一定可见
     const done = (extra) => finalizePanelAction(Object.assign(result, extra || {}), traceOp, traceT0, a, p);
     try {
+        // v3.14.0（载入闸门）：首屏数据未读完 → 除「关闭 / 切页」外**一律拒绝**（返回 reason='loading'），
+        //   绝不在残缺状态上跑提取 / 修复 / 保存一类动作；界面保持读取提示，读完后 index.js 自动重绘。
+        if (loadBlocked() && a !== 'close' && a !== 'tab') {
+            setNote('数据仍在读取中，请稍候…');
+            try { panelNotify('info', '数据仍在读取中，请稍候（读完会自动刷新）'); } catch (e) { /* 忽略 */ }
+            return done({ ok: false, reason: 'loading' });
+        }
         if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; ps.flash = null; }   // v3.0.13：切页清「本次新增」标记   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
         else if (a === 'close') { closePanel(); }
         else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }

@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
-import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHooks } from '../../core/model/runtime.js';
+import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHooks, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { panelAction, panelBodyHtml, setPanelHooks2, panelState } from '../../ui/panel.js';
@@ -52,6 +52,9 @@ function boot() {
     setKernelState(emptyState());
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     setPanelHooks2(entry.panelRuntimeHooks());
+    // v3.14.0：本文件只测「面板渲染 / 钩子接线」→ 显式声明首屏载入已结束（否则载入闸门会把正文换成读取提示）。
+    //   本文件 `import('../../index.js')` 会触发模块级 `init()`，其异步载入在此桩环境下不会结算。
+    setLoadPhase('ready');
     return state;
 }
 

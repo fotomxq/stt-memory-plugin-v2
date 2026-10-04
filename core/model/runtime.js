@@ -255,3 +255,80 @@ export function getStoryNow() {
     try { if (state && state.state && state.state.date) return String(state.state.date); } catch (e) { /* 忽略 */ }
     return '';
 }
+
+// ==================== v3.14.0：**载入闸门**（首屏数据读取期间的 UI 拦截） ====================
+/**
+ * 背景（用户要求）：「刚加载插件后数据还未完整读取，应有读取拦截提示，避免报错，等加载完成后再展示内容。」
+ *
+ * 首屏时序：`init()` 先装入口（扩展菜单项 / 浮层兜底），**之后**才 `await loadMemoryState()` ——
+ *   这段时间里内核 state 还是空的（或上一次作用域的残留）。此时若用户点开面板，旧行为会直接渲染
+ *   「总记忆数 0 / 待分析 0 层」一类**残缺视图**，执行动作更是可能基于不完整数据（甚至有写坏存档的风险）。
+ *
+ * 闸门口径（内核零宿主依赖，UI / index 各自读它）：
+ *   · `phase = 'idle'`（默认，**未开始过载入** → 不拦截，保持既有行为与测试兼容）
+ *   · `phase = 'loading'`：首屏载入进行中 → **拦截**：面板只显示读取提示、动作一律拒绝
+ *   · `phase = 'ready'` / `'failed'`：载入结束 → 正常展示（失败也放行，避免把用户永久挡在门外）
+ */
+export const loadGate = { phase: 'idle', startedAt: 0, finishedAt: 0, note: '', error: '', waitedMs: 0, timeout: false };
+/** 载入阶段的合法取值 */
+export const LOAD_PHASES = Object.freeze(['idle', 'loading', 'ready', 'failed']);
+/**
+ * 拦截的**超时兜底**（毫秒）：超过这个时长仍未结束载入 → 自动放行（`phase` 变 `ready` 且 `timeout:true`）。
+ * 理由：宿主某个读取 API 挂起（promise 永不 settle）时，绝不应该把界面**永久**挡在门外 ——
+ * 放行后用户至少能看到已有数据，调试页/读取台账仍可查原因。
+ */
+export const LOAD_GATE_MAX_MS = 20000;
+
+/**
+ * 设置载入阶段（index.js 在载入前后调用；`info` 可带 `{note, error, via, items}`）。
+ * @param {'idle'|'loading'|'ready'|'failed'} phase
+ * @param {{note?:string, error?:string, via?:string, items?:number}} [info]
+ * @returns {object} 闸门快照
+ */
+export function setLoadPhase(phase, info) {
+    const p = LOAD_PHASES.indexOf(String(phase)) >= 0 ? String(phase) : 'idle';
+    const i = info || {};
+    const now = Date.now();
+    loadGate.phase = p;
+    loadGate.timeout = false;
+    if (p === 'loading') { loadGate.startedAt = now; loadGate.finishedAt = 0; loadGate.error = ''; }
+    else if (p === 'ready' || p === 'failed') {
+        loadGate.finishedAt = now;
+        if (p === 'failed') loadGate.error = String(i.error || '');
+    } else { loadGate.startedAt = 0; loadGate.finishedAt = 0; loadGate.error = ''; }
+    loadGate.note = String(i.note || '');
+    loadGate.waitedMs = (loadGate.startedAt && loadGate.finishedAt) ? Math.max(0, loadGate.finishedAt - loadGate.startedAt) : 0;
+    if (i.via !== undefined) loadGate.via = String(i.via || '');
+    if (i.items !== undefined) loadGate.items = Number(i.items) || 0;
+    return loadGateInfo();
+}
+
+/**
+ * 是否处于「首屏读取中」→ UI 应拦截（唯一判据：`phase === 'loading'`，且**未超过超时兜底**）。
+ * 超时（`LOAD_GATE_MAX_MS`）会自动放行一次，`loadGate.timeout = true` 如实留痕。
+ */
+export function loadBlocked() {
+    if (loadGate.phase !== 'loading') return false;
+    const waited = loadGate.startedAt ? (Date.now() - loadGate.startedAt) : 0;
+    if (waited > LOAD_GATE_MAX_MS) {
+        loadGate.phase = 'ready';
+        loadGate.finishedAt = Date.now();
+        loadGate.waitedMs = Math.max(0, loadGate.finishedAt - loadGate.startedAt);
+        loadGate.timeout = true;
+        loadGate.note = '读取超时（>' + LOAD_GATE_MAX_MS + 'ms）：已放行界面，数据可能不完整';
+        return false;
+    }
+    return true;
+}
+
+/** 闸门快照（只读拷贝；UI / 调试页 / 命令用） */
+export function loadGateInfo() {
+    const blocked = loadBlocked();
+    return {
+        phase: loadGate.phase, blocked: blocked,
+        startedAt: loadGate.startedAt, finishedAt: loadGate.finishedAt,
+        waitedMs: blocked && loadGate.startedAt ? Math.max(0, Date.now() - loadGate.startedAt) : loadGate.waitedMs,
+        via: loadGate.via || '', items: Number(loadGate.items) || 0,
+        note: loadGate.note || '', error: loadGate.error || '', timeout: loadGate.timeout === true,
+    };
+}

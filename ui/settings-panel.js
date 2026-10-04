@@ -185,6 +185,11 @@ export function dimsCheckboxHtml() {
  */
 export function statusBlockText() {
     const s = panelStatus || {};
+    // v3.14.0：首屏数据读取中 → 抽屉卡片也只报读取态（此刻的条数/注入字数都是残缺值）
+    if (s.load && s.load.blocked) {
+        return ['版本 ' + VERSION + (s.scope ? ' · 作用域 ' + s.scope : ''),
+            '⏳ 数据读取中…（首屏载入尚未完成：界面暂不展示内容、也不执行动作，读完后自动刷新）'].join('\n');
+    }
     const lines = [
         '版本 ' + VERSION + (s.scope ? ' · 作用域 ' + s.scope : ''),
         '内核配置 ' + Object.keys(cfg || {}).length + ' 键 · 注入预算 ' + (Number(cfg.charBudget) || 0) + ' 字符',

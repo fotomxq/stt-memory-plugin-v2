@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.13.1",
+  "version": "3.14.0",
   "updatedAt": "2026-10-04",
   "generatedAt": "2026-10-04",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.14.0",
+      "date": "2026-10-04",
+      "title": "首屏载入闸门：数据没读完就只给读取提示，读完自动展示",
+      "points": [
+        "① 问题（首屏竞态）：init() 的顺序是「先装入口（扩展菜单项 / 浮层兜底）→ 再 await loadMemoryState()」。于是从「插件可见」到「数据读完」这段窗…",
+        "② 修法：内核闸门 + 三处 UI 同源拦截 + 读完自动换内容：| 位置 | 行为 || --- | --- || core/model/runtime.js#loadGate…",
+        "③ 超时兜底（写测试时发现的真实风险）：闸门若只依赖「载入完成」这一个信号，宿主某个读取 API 挂起（promise 永不 settle）时界面会被永久拦住。故加 LOAD_G…"
+      ]
+    },
     {
       "version": "3.13.1",
       "date": "2026-10-04",
