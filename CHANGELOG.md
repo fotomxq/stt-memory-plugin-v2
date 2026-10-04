@@ -3,6 +3,43 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.13.1（2026-10-04）· 数据体检口径修正：4 处缺陷（重复扫描 / 摘要低估严重度 / 两个台账字段漏检 / 自愈不留痕）
+
+**用户要求**（原话）：「请检查远程拉取的最新版，部署到本地TauriTavern，同时对BUG进行检查。」
+
+**① 核对方式**
+先确认远端与部署副本：远端 `main` = `804bb75`（v3.13.0）且宿主副本已同源同提交（`local:sync` 判定 `already-aligned`，无需替换）；
+再对**真实落盘状态**（`ftt2-state-char1xbib3t.json`，1,862,304 B，version 3.13.0）离线复算体检与自愈，并用**构造数据**逐条复现疑似缺陷。
+真实数据结论：**724 条 / 0 异常**（无脏台账、无重复 id、无孤儿关联、无非法墓碑、无超长字段、无越界 `floorNow`、无内容哈希重复；
+台账 23 条 + 丢弃留痕 6 条全部合法；NSFW 标签全部规范：强 17 / 弱 10）—— 所以本版修的是**代码级口径缺陷**，不是数据损坏。
+
+**② 修了什么（4 处，全部先用构造数据复现再修）**
+
+| # | 缺陷 | 复现（修复前） | 修法 |
+| --- | --- | --- | --- |
+| ① | `core/data-health.js#HEALTH_DIMS` 里 `plotSegments` **重复**（`ATOM_DIM_KEYS` 已含它）→ 该维被扫两遍 | 真机 `scanned.dims=16`（唯一 15）；1 条含 3 处异常的分段 → 明细 **6 条**、counts **翻倍** | 维度列表去重（`HEALTH_DIMS` 与 `HEAL_DIMS`）；`scanned.dims` 回到唯一维度数 15 |
+| ② | `level` 由被 `cap=200` **截断后的 `findings`** 推导 | 205 条 `field-too-long`(info) + 1 条 `ledger-bad-mark`(warn) → 摘要「数据体检：**info**」，而 counts 里明明有 warn（warn 被挤出明细） | 等级改为按**发现到的异常**累计（`add()` 里记最严重级别）→ 与 `counts` 一致，不受截断影响 |
+| ③ | v3.11.1 的丢弃留痕台账 `processedDropped` 与 `lastChatFloor` / `processedVer` **体检与自愈都没覆盖** | 同样的脏标记放 `processedFloors` → 报 `ledger-bad-mark`+`ledger-dup-mark`；放 `processedDropped` → 「未发现异常」，且 `healthSelfHeal` 跑完**一字未动**（`lastChatFloor` 仍是 `"NaN"`） | 体检：`checkMarks()` 对两个台账**同口径**校验 + 新增 `lastchatfloor-invalid` / `processedver-invalid`；自愈：留痕台账同口径丢弃/去重、`lastChatFloor` 非整数 → `-1`、`processedVer` 非字符串 → 删除 |
+| ④ | 载入期自愈的 `changed` 在 `index.js:354` 被**丢弃** | 载入函数内无任何保存调用 → 修了什么**没有留痕**，且自愈只活在内存（磁盘仍旧脏，直到下一次保存或切后台/关页强制落盘才写回） | `core/migrate.js` 新增 `lastHealInfo()`（主台账 / 丢弃留痕 / 条目各修几条）；`index.js` 在挂载后写一条调试日志并 `scheduleSave('载入期数据自愈')` |
+
+**③ 顺带校正**：v3.13.0 引入的数据体检相关代码注释与测试名原写 **v3.11.0**（而 v3.11.0 是另一个已发布版本 —— UI 的 NSFW 标签末行），
+现统一校正为 v3.13.0；`docs/04-应用架构` 里指向批次档的失效路径 `P10c19` 改为 `P10c26`。
+
+**④ 测试**
+- `tests/unit/data-health.test.js` 新增 **D 组 5 项**：D1 维度不重复扫描（`scanned.dims=15`、同一异常不报两遍）·
+  D2 `cap` 截断下 `level` 仍为 `warn` · D3 丢弃留痕 + `lastChatFloor` + `processedVer` 逐项检出 ·
+  D4 三者**都被自愈**（留痕 `[{f:3,h:'x'}]`、`lastChatFloor=-1`、`processedVer` 删除）且幂等 ·
+  D5 `lastHealInfo()` 在干净数据上 `changed:false`（不误报「修过」）；
+- `tests/smoke-test.js#BH14`（端到端）扩写：脏丢弃留痕 + 脏 `lastChatFloor` 一并走真实链路，自愈后收敛且
+  断言 `lastHealInfo()` 的 `ledger/dropped/entries` 计数。
+
+**⑤ 未验证项（如实登记）**
+- 自愈「有修复才落盘」这一条**未在真机跑过**：真实存档当前零异常（`changed:false`），不会触发该分支；
+  其行为由 D4/D5 + BH14 的 `lastHealInfo()` 断言间接覆盖；
+- 未在真机上点开「设定 → 调试 → 🩺 数据体检」看新摘要（离线三处同源断言 + 冒烟 BH14 已覆盖渲染路径）。
+
+详见 `docs/history/P10c27-数据体检口径修正.md`。
+
 ## v3.13.0（2026-09-30）· 数据体检 + 载入期数据异常自愈（基于本地调试端口核对并修复）
 
 **用户要求**（原话）：「基于本地调试端口，核对存在的BUG和数据异常，进行修复。」

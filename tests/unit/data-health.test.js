@@ -1,5 +1,5 @@
 // ============================================================
-// 单元测试 · v3.11.0「数据体检 + 载入期数据异常自愈」
+// 单元测试 · v3.13.0「数据体检 + 载入期数据异常自愈」（v3.13.1 修四处口径缺陷）
 // 用户要求（原话）：「基于本地调试端口，核对存在的BUG和数据异常，进行修复。」
 //
 // 口径：
@@ -7,9 +7,14 @@
 //   · **自愈**（`core/migrate.js#healthSelfHeal`，随 `migrateState` 在载入期执行）只修「能从数据本身确定地修好」的部分：
 //     脏台账标记 · 非规范 NSFW 等级 · 负数 uses · 越界 importance · 倒置/非法的楼层区间；
 //   · 语义无法确定的（缺 id / 重复 id / 超长字段 / 非法墓碑时间戳）**只报告不擅改**；
-//   · 本批修掉的两个真实缺陷：
+//   · 本批（v3.13.0）修掉的两个真实缺陷：
 //     ① 旧版台账迁移把混入的 `null` 经 `Number(null) = 0` **伪造成「第 0 楼已处理」**，`{f:'x'}` 一类垃圾被静默丢一半；
 //     ② 调试试探自身用 `Number()` 宽松读取台账 → 也会把 `null` 读成第 0 楼，**异常被掩盖**（体检与桥同时修）。
+//   · v3.13.1（用户要求「检查最新版 BUG」后修，D 组锁死）：
+//     ③ `HEALTH_DIMS` 里 `plotSegments` 重复 → 该维被扫两遍（明细 / 计数翻倍、`scanned.dims` 虚高）；
+//     ④ `level` 原先由被 `cap` 截断的 `findings` 推导 → 大量 info 会把 warn 挤出明细，摘要**低估严重度**；
+//     ⑤ 丢弃留痕台账 `processedDropped` 与 `lastChatFloor` / `processedVer` 原先体检与自愈**都没覆盖**；
+//     ⑥ 自愈的 `changed` 原先被丢弃（无留痕）→ 现经 `lastHealInfo()` 回传，`index.js` 记日志并按需落盘。
 // 运行：node tests/unit/data-health.test.js
 // ============================================================
 import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harness/st-mock.js';
@@ -17,11 +22,11 @@ import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessag
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { dataHealthReport, dataHealthText, HEALTH_FINDINGS_CAP } from '../../core/data-health.js';
-import { migrateState, healthSelfHeal } from '../../core/migrate.js';
+import { migrateState, healthSelfHeal, lastHealInfo } from '../../core/migrate.js';
 import { buildBridgeMethods } from '../../ui/debug.js';
 import { bridgeDispatch, setBridgeMethods } from '../../adapters/debug-bridge.js';
 
-const R = makeReporter('data-health v3.11.0 数据体检 + 载入期数据异常自愈');
+const R = makeReporter('data-health v3.13.0–v3.13.1 数据体检 + 载入期数据异常自愈');
 const A = (n, c, e) => { const det = () => (typeof e === "function" ? (() => { try { return e(); } catch (err) { return String((err && err.message) || err); } })() : e); if (c && typeof c.then === "function") return c.then((v) => R.assert(n, v === true, det())); return R.assert(n, c === true, det()); };
 const J = (v) => JSON.stringify(v);
 const doc = makeDocument(['ftt-panel']);
@@ -134,7 +139,7 @@ A('A11 干净状态：无异常 → `ok=true` / `level=ok` / 明细为空（不�
     const clean = { atoms: [{ id: 'a1', text: '甲在码头搬运木箱，登记入册。', title: 't', floorStart: 1, floorEnd: 2, nsfw: 'strong', uses: 2, importance: 0.5 }], processedFloors: [{ f: 1, h: 'h1' }], lastKnownFloor: 1, deleted: {} };
     const r = dataHealthReport(clean);
     return r.ok === true && r.level === 'ok' && r.findings.length === 0 && J(r.counts) === J({})
-        && dataHealthText(r) === '数据体检：未发现异常（扫描 1 条 / 16 维）';
+        && dataHealthText(r) === '数据体检：未发现异常（扫描 1 条 / 15 维）';   // v3.13.1：维度去重后唯一 15 维
 })(), '见断言');
 
 // ---------- B 组：载入期自愈 ----------
@@ -231,5 +236,68 @@ await (async () => {
             && limited.counts['ledger-bad-mark'] === 4;
     })(), () => ({ findings: limited.findings.length, truncated: limited.truncated }));
 })();
+
+// ---------- D 组：v3.13.1 口径修复回归 ----------
+A('D1 维度**不重复扫描**：`plotSegments` 只算一维（`scanned.dims` = 唯一维度数），同一异常不会报两遍', (() => {
+    const one = { id: 'seg-1', header: 'H', uses: -5, floorStart: 9, floorEnd: 3, nsfw: 'STRONG' };
+    const r = dataHealthReport({ plotSegments: [one] });
+    const segRows = r.findings.filter((f) => f.dim === 'plotSegments');
+    const codes = segRows.map((f) => f.code).sort();
+    const uniq = [...new Set(codes)];
+    return r.scanned.dims === 15                                  // 13(ATOM_DIM_KEYS) + currencies + npcs（plotSegments 已含）
+        && dataHealthReport({}).scanned.dims === 15
+        && segRows.length === 3                                   // 3 处异常各一条（修复前是 6 条）
+        && J(codes) === J(uniq)
+        && r.counts['uses-invalid'] === 1 && r.counts['floor-inverted'] === 1 && r.counts['nsfw-invalid'] === 1;
+})(), () => { const r = dataHealthReport({ plotSegments: [{ id: 's', uses: -5, floorStart: 9, floorEnd: 3, nsfw: 'STRONG' }] }); return { dims: r.scanned.dims, counts: r.counts, rows: r.findings.filter((f) => f.dim === 'plotSegments').map((f) => f.code) }; });
+
+A('D2 `level` 由**发现到的异常**决定（不受 `cap` 截断影响）：大量 info 也不能把 warn 读没', (() => {
+    const big = { atoms: [], processedFloors: [{ f: null, h: '' }] };                    // 台账脏标记（warn）
+    for (let i = 0; i < 205; i++) big.atoms.push({ id: 'a' + i, title: 't', text: 'x'.repeat(20000) });   // 超长字段（info）
+    const r = dataHealthReport(big, { cap: 200 });
+    return r.truncated >= 1 && r.findings.some((f) => f.level === 'info') === true
+        && r.counts['ledger-bad-mark'] === 1 && r.level === 'warn'                       // 修复前是 'info'
+        && dataHealthText(r).indexOf('数据体检：warn') === 0;
+})(), () => { const big = { atoms: [], processedFloors: [{ f: null, h: '' }] }; for (let i = 0; i < 205; i++) big.atoms.push({ id: 'a' + i, text: 'x'.repeat(20000) }); const r = dataHealthReport(big, { cap: 200 }); return { level: r.level, counts: r.counts, truncated: r.truncated, text: dataHealthText(r) }; });
+
+A('D3 体检补齐三个**未覆盖字段**：丢弃留痕台账同口径校验 + `lastChatFloor` / `processedVer` 非法即报', (() => {
+    const r = dataHealthReport({
+        processedDropped: [{ f: null, h: '' }, { f: 3, h: 'x' }, { f: 3, h: 'x' }, { f: -7, h: '' }],
+        lastChatFloor: 'NaN-ish', processedVer: 12345,
+    }, { dims: [] });
+    const bad = r.findings.filter((f) => f.code === 'ledger-bad-mark');
+    const dup = r.findings.filter((f) => f.code === 'ledger-dup-mark');
+    return r.counts['ledger-bad-mark'] === 2 && r.counts['ledger-dup-mark'] === 1
+        && bad.every((f) => f.dim === 'processedDropped')
+        && dup[0].dim === 'processedDropped'
+        && r.counts['lastchatfloor-invalid'] === 1 && r.counts['processedver-invalid'] === 1
+        && r.level === 'warn';
+})(), () => dataHealthReport({ processedDropped: [{ f: null }], lastChatFloor: 'x', processedVer: 1 }, { dims: [] }).counts);
+
+A('D4 自愈补齐：丢弃留痕去非法去重、`lastChatFloor` 非法 → -1、`processedVer` 非字符串 → 删除；且幂等', (() => {
+    const dirty = {
+        processedFloors: [{ f: null, h: '' }, { f: 2, h: 'a' }, { f: 2, h: 'a' }],
+        processedDropped: [{ f: null, h: '' }, { f: -7, h: '' }, { f: 3, h: 'x' }, { f: 3, h: 'x' }],
+        lastKnownFloor: 'NaN', lastChatFloor: 'NaN', processedVer: 12345,
+    };
+    const once = JSON.parse(JSON.stringify(dirty));
+    const changed = healthSelfHeal(once);
+    const info = lastHealInfo();
+    const again = JSON.parse(JSON.stringify(once));
+    return changed === true && lastHealInfo().changed === true
+        && J(once.processedFloors) === J([{ f: 2, h: 'a' }])
+        && J(once.processedDropped) === J([{ f: 3, h: 'x' }])          // 修复前：原样 4 条不动
+        && once.lastKnownFloor === -1 && once.lastChatFloor === -1     // 修复前：lastChatFloor 仍是 'NaN'
+        && once.processedVer === undefined                              // 修复前：仍是 12345
+        && info && info.ledger === 2 && info.dropped === 3 && info.entries === 0
+        && healthSelfHeal(again) === false && lastHealInfo().changed === false;   // 幂等
+})(), () => { const d = { processedFloors: [], processedDropped: [{ f: null }, { f: 3, h: 'x' }, { f: 3, h: 'x' }], lastChatFloor: 'x', processedVer: 1 }; healthSelfHeal(d); return { after: d, info: lastHealInfo() }; });
+
+A('D5 自愈留痕回传：`lastHealInfo()` 在干净数据上给出 `changed:false`（不误报「修过」）', (() => {
+    const clean = { atoms: [{ id: 'a1', title: 't', text: '甲在码头搬箱子。', nsfw: 'strong', uses: 1, importance: 0.5 }], processedFloors: [{ f: 1, h: 'h' }], lastKnownFloor: 1, lastChatFloor: 1, processedVer: 'v1' };
+    const changed = healthSelfHeal(JSON.parse(JSON.stringify(clean)));
+    const info = lastHealInfo();
+    return changed === false && info && info.changed === false && info.ledger === 0 && info.dropped === 0 && info.entries === 0;
+})(), () => ({ info: lastHealInfo() }));
 
 R.done();

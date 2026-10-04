@@ -1,5 +1,5 @@
 // ============================================================
-// core/data-health.js —— **数据体检（只读）**（v3.11.0，用户要求「核对存在的 BUG 和数据异常」）
+// core/data-health.js —— **数据体检（只读）**（v3.13.0，用户要求「核对存在的 BUG 和数据异常」）
 //
 // 定位：给本地调试端口（调试桥 `ftt.dataHealth`）、面板与 `/ftt` 一条**只读、零副作用**的体检入口 ——
 //   把「存档里已经不对劲、但平时不报错」的数据异常逐条列出来，用户与开发都能一眼核对。
@@ -20,8 +20,16 @@
 //   数值类（warn）：`uses-invalid`（负数 / 非数字）· `importance-out-of-range`（不在 0..1）
 //   体积类（info）：`field-too-long`（单字段超过该维度字数上限）
 //   关联类（warn）：`link-bad-row` · `link-orphan`（引用的条目不存在）
-//   台账类（warn）：`processed-not-array` · `ledger-bad-mark` · `ledger-dup-mark` · `lastknown-invalid`
+//   台账类（warn）：`processed-not-array` · `ledger-bad-mark` · `ledger-dup-mark` · `lastknown-invalid` ·
+//                   `lastchatfloor-invalid` · `processedver-invalid`
 //   墓碑类（warn）：`tombstone-bad-ts`（时间戳非数字 → 该墓碑实际不生效，跨端可能被复活）
+//
+// v3.13.1（用户要求「检查最新版 BUG」后修的四处口径缺陷）：
+//   ① `HEALTH_DIMS` 里 `plotSegments` 重复 → 该维被扫两遍，明细与计数**翻倍**、`scanned.dims` 虚高（现去重）；
+//   ② `level` 原先由被 `cap` 截断的 `findings` 推导 → 大量 info 会把 warn 挤出明细，摘要**低估严重度**
+//      （现按累计到的最严重级别给出，与 `counts` 一致）；
+//   ③ v3.11.1 的丢失留痕台账 `processedDropped` 与 `lastChatFloor` / `processedVer` 原先**不在体检范围**（现补上）；
+//   ④ 载入期自愈的 `changed` 原先被丢弃（无留痕）→ 由 `core/migrate.js#lastHealInfo` 回传，`index.js` 记日志并按需落盘。
 // ============================================================
 import { ATOM_DIM_KEYS, DIM_CHAR_LIMITS, DIMENSIONS } from './constants.js';
 import { cfg, state as kernelState } from './model/runtime.js';
@@ -31,8 +39,12 @@ import { NSFW_LEVEL_FIELD, nsfwLevelNorm } from './nsfw-level.js';
 export const HEALTH_LEVELS = Object.freeze(['error', 'warn', 'info']);
 /** 单次体检最多返回的明细条数（超出只累计计数，避免把整份存档经调试端口外送） */
 export const HEALTH_FINDINGS_CAP = 200;
-/** 参与体检的维度（ATOM_DIM_KEYS + 货币/名册/变量/关联/分段） */
-const HEALTH_DIMS = ATOM_DIM_KEYS.concat(['currencies', 'npcs', 'plotSegments']);
+/** 参与体检的维度（ATOM_DIM_KEYS + 货币/名册/分段）；`ATOM_DIM_KEYS` 已含 `plotSegments` → **去重**（v3.13.1 修） */
+const HEALTH_DIMS = (() => {
+    const out = [];
+    for (const d of ATOM_DIM_KEYS.concat(['currencies', 'npcs', 'plotSegments'])) if (out.indexOf(d) < 0) out.push(d);
+    return out;
+})();
 /** 有内容哈希/条目 id 的维度（关联层的行是引用而非条目） */
 const HEALTH_TEXT_FIELDS = {
     atoms: ['title', 'text', 'content'],
@@ -98,8 +110,14 @@ export function dataHealthReport(st, opts) {
     const cap = Math.max(1, Math.min(Number(o.cap) || HEALTH_FINDINGS_CAP, 5000));
     const dims = (Array.isArray(o.dims) && o.dims.length) ? o.dims : HEALTH_DIMS;
     const out = { ok: true, level: 'ok', findings: [], counts: {}, scanned: { dims: 0, items: 0, fields: 0 }, truncated: 0, at: Date.now() };
+    // v3.13.1：等级按**发现到的异常**累计（而不是按被 `cap` 截断后的 `findings` 推导）——
+    //   此前 205 条超长字段(info) 会把 1 条台账脏标记(warn) 挤出 `findings`，摘要于是把 warn 读成 info。
+    const RANK = { info: 1, warn: 2, error: 3 };
+    let worst = 0;
     const add = (code, level, extra) => {
         out.counts[code] = (out.counts[code] || 0) + 1;
+        const r = RANK[level] || 0;
+        if (r > worst) worst = r;
         if (out.findings.length < cap) out.findings.push(Object.assign({ code: code, level: level }, extra || {}));
         else out.truncated++;
     };
@@ -189,25 +207,39 @@ export function dataHealthReport(st, opts) {
 
     // ---------- 已处理楼层台账 ----------
     try {
-        const pf = s.processedFloors;
-        if (pf !== undefined && pf !== null && !Array.isArray(pf)) {
-            add('processed-not-array', 'warn', { dim: 'processedFloors', detail: '台账应为数组，实际是 ' + typeof pf });
-        } else if (Array.isArray(pf)) {
+        /** 台账数组逐条校验（主台账与 v3.11.1 的丢弃留痕**同口径**；v3.13.1 起留痕也纳入体检） */
+        const checkMarks = (pf, dim) => {
+            if (pf !== undefined && pf !== null && !Array.isArray(pf)) {
+                add('processed-not-array', 'warn', { dim: dim, detail: '台账应为数组，实际是 ' + typeof pf });
+                return;
+            }
+            if (!Array.isArray(pf)) return;
             const seenF = Object.create(null);
             for (let i = 0; i < pf.length; i++) {
                 const x = pf[i];
                 const f = ledgerFloorNum(isObj(x) ? x.f : x);
                 const h = isObj(x) ? String(x.h || '') : '';
-                if (!isInt(f) || f < 0) { add('ledger-bad-mark', 'warn', { dim: 'processedFloors', at: i, value: x, detail: '台账标记的楼层号非法（空值 / 布尔 / 非数字都会让该标记失效）' }); continue; }
+                if (!isInt(f) || f < 0) { add('ledger-bad-mark', 'warn', { dim: dim, at: i, value: x, detail: '台账标记的楼层号非法（空值 / 布尔 / 非数字都会让该标记失效）' }); continue; }
                 const key = f + ':' + h;
-                if (seenF[key]) { add('ledger-dup-mark', 'warn', { dim: 'processedFloors', at: i, value: { f: f, h: h }, detail: '台账标记重复' }); continue; }
+                if (seenF[key]) { add('ledger-dup-mark', 'warn', { dim: dim, at: i, value: { f: f, h: h }, detail: '台账标记重复' }); continue; }
                 seenF[key] = 1;
             }
-        }
+        };
+        checkMarks(s.processedFloors, 'processedFloors');
+        checkMarks(s.processedDropped, 'processedDropped');
         const lk = s.lastKnownFloor;
         if (lk !== undefined && lk !== null) {
             const n = Number(lk);
             if (!Number.isFinite(n) || !isInt(n) || n < -1) add('lastknown-invalid', 'warn', { dim: 'lastKnownFloor', value: lk, detail: '应为 ≥-1 的整数（-1 = 未知）' });
+        }
+        // v3.13.1：另外两个台账辅助字段此前**不在体检范围**（脏了既不报也不修）
+        const lc = s.lastChatFloor;
+        if (lc !== undefined && lc !== null) {
+            const n = Number(lc);
+            if (!Number.isFinite(n) || !isInt(n) || n < -1) add('lastchatfloor-invalid', 'warn', { dim: 'lastChatFloor', value: lc, detail: '应为 ≥-1 的整数（-1 = 未知；末见楼层允许回退）' });
+        }
+        if (s.processedVer !== undefined && s.processedVer !== null && typeof s.processedVer !== 'string') {
+            add('processedver-invalid', 'warn', { dim: 'processedVer', value: typeof s.processedVer, detail: '应为字符串版本标签（非字符串会被当成「版本不符」而重算台账）' });
         }
     } catch (e) { /* 忽略 */ }
 
@@ -230,9 +262,10 @@ export function dataHealthReport(st, opts) {
         scanTree(s.deletedH, 'deletedH');
     } catch (e) { /* 忽略 */ }
 
-    const errs = Number(out.counts['container-type'] || 0) + Number(out.counts['entry-not-object'] || 0);
-    out.ok = errs === 0;
-    out.level = errs ? 'error' : (out.findings.length ? (out.findings.some((f) => f.level === 'warn') ? 'warn' : 'info') : 'ok');
+    // v3.13.1：等级由**累计到的最严重级别**决定（与 `counts` 一致，不受 `findings` 截断影响）；
+    //   `error` 只可能来自结构类（容器类型 / 条目不是对象）。
+    out.ok = worst < 3;
+    out.level = worst >= 3 ? 'error' : (worst === 2 ? 'warn' : (worst === 1 ? 'info' : 'ok'));
     return out;
 }
 
