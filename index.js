@@ -17,8 +17,9 @@ import { setFloorShrinkHook } from './host/floors.js';
 import { mergeDataObjects, mergeSnapshotStores } from './core/cross-sync.js';   // v3.0.21：载入并集（服务端文件为基底 + 本机缓冲补充）
 import { noteConflict } from './core/conflicts.js';
 // v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）：「设定 → 数据管理」删除到最近 6/10/12 层 ——
-//   一律走**酒馆官方 API**（`getContext().deleteMessage`），删前自动明文备份（3 槽轮转），删后精确校准楼层编号。
-import { setFloorTrimHooks, floorTrimStatus, floorTrimPrecheck, floorTrimApply, floorRecalibrate } from './host/floor-trim.js';
+//   一律走**酒馆官方 API**（v3.17.0：一次性批量截断 = `chat` 数组 + `saveChat` + `clearChat`/`printMessages` + 一次事件；
+//   逐层 `deleteMessage` 只在批量不可用且 ≤3 层时作最后手段），删前自动明文备份（3 槽轮转），删后精确校准楼层编号。
+import { setFloorTrimHooks, floorTrimStatus, floorTrimPrecheck, floorTrimApply, floorRecalibrate, floorTrimBusy } from './host/floor-trim.js';
 import { writeFloorBackup } from './adapters/floor-backup.js';
 import { notifyHooks } from './core/model/runtime.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo, setPanelStatus, refreshPanelStatus } from './ui/settings-panel.js';
@@ -595,6 +596,10 @@ export async function init() {
         const onChatChanged = () => {
             clearInject();
             onFloorChanged();
+            // v3.17.0（删楼卡顿修复的配套）：删楼过程中我们自己会触发一次视图重载（`reloadCurrentChat`）→
+            //   它发的 `CHAT_CHANGED` 会走到这里；此刻内存里的编号重映射还没落盘（写队列异步），
+            //   **绝不能**重读落盘状态（否则等于无声撤销重映射）→ 删楼期间跳过重读，内存态才是权威。
+            if (floorTrimBusy()) return;
             // 切换角色/聊天 → 作用域变化 → 重新载入该作用域容器
             void loadMemoryState().catch(() => { });
         };
@@ -1687,8 +1692,10 @@ function wirePipelineHooks() {
 
 /**
  * v2.94.0（`docs/D12` v0.2 §4 / §8-E）——**删楼动作**（设定 → 数据管理 三档按钮的唯一入口）。
- * 用户要求「用官方 API 实现，不然其他插件也会异常」→ 删除只在 `host/floor-trim.js` 内经
- * `getContext().deleteMessage(id)` 逐个执行（官方方法自带 `MESSAGE_DELETED` 事件 + `saveChatDebounced`）。
+ * 用户要求「用官方 API 实现，不然其他插件也会异常」→ 删除只在 `host/floor-trim.js` 内经**官方上下文 API** 执行：
+ * v3.17.0 起默认是**一次性批量截断**（官方 `chat` 数组 + `saveChat` + `clearChat`/`printMessages` + 一次
+ * `MESSAGE_DELETED`）；逐层 `deleteMessage` 只在「批量不可用且 ≤3 层」时作最后手段，超过即拒绝
+ * （真机实测逐层 ≈1.5 秒/层，242 层删 230 层会把界面卡住 5 分 45 秒）。
  * 本函数只负责**接线**（明文导出 / 3 槽轮转备份 / 账本落 ST 扩展设置 / 人工确认项 / 通知），
  * 业务判定与执行全在宿主层，便于单测与冒烟用桩宿主验证真实删除流程。
  */
@@ -1788,6 +1795,13 @@ function wireFloorTrimHooks() {
         saveLog: (v) => { try { setSetting('floorTrimLog', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
         noteConflict: (item) => { try { noteConflict(item); } catch (e) { /* 忽略 */ } },
         notify: (kind, text) => { try { notifyHooks.toast(String(text || ''), String(kind || 'info')); } catch (e) { /* 忽略 */ } },
+        // v3.17.0：批量截断的重渲染走 `clearChat()`（ST 官方行为：顺手把 `extension_prompts` 清空）→
+        //   删楼后立刻重推一次注入，避免「删完这一轮注入为空」。幂等：没删成功时不会被调用。
+        afterMutate: () => {
+            try { clearInject(); } catch (e) { /* 忽略 */ }
+            try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 忽略 */ }
+            try { void pushMemoryInject({ queryText: '' }).catch(() => { }); } catch (e) { /* 忽略 */ }
+        },
     });
     return true;
 }

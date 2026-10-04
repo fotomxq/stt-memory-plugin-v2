@@ -164,8 +164,18 @@ export function makeHost(opts) {
             ctx.saveMetadataCount = (ctx.saveMetadataCount || 0) + 1;
             eventSource.emit(eventTypes.MESSAGE_DELETED, ctx.chat.length);
         },
+        // v3.17.0（用户报告「使用插件内置删除楼层功能后，应用整体进入严重卡顿」）：**批量截断**能力桩 ——
+        //   还原 ST `st-context.js` 真实暴露的三个官方方法（删楼首选路径用它，一次完成）：
+        //     · `saveChat`（= ST 的 `saveChatConditional`）落盘；
+        //     · `clearChat` 只清显示（ST 默认 `clearData=false`，**不动 chat 数组**）；
+        //     · `printMessages` 按内存 `chat` 一次性重画。
+        //   传入 `opts.noBulk` 可移除这三个方法（模拟「宿主没有批量截断能力」→ 逐层回退 / 超限拒绝）。
+        saveChat: async () => { ctx.saveChatCount = (ctx.saveChatCount || 0) + 1; },
+        clearChat: async () => { ctx.clearChatCount = (ctx.clearChatCount || 0) + 1; ctx.extensionPrompts = {}; },
+        printMessages: async () => { ctx.printMessagesCount = (ctx.printMessagesCount || 0) + 1; },
     };
     if (o.noDeleteMessage) { delete ctx.deleteMessage; delete ctx.deleteLastMessage; }
+    if (o.noBulk) { delete ctx.saveChat; delete ctx.clearChat; delete ctx.printMessages; delete ctx.reloadCurrentChat; }
     if (o.noEventSource) delete ctx.eventSource; else ctx.eventSource = eventSource;
     ctx.eventTypes = o.noEventSource ? undefined : eventTypes;
     if (o.noInject) { delete ctx.setExtensionPrompt; delete ctx.extensionPrompts; }

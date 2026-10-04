@@ -2236,7 +2236,10 @@ export async function panelAction(action, payload) {
         } else if (a === 'floorTrim') {
             // v2.94.0（`docs/D12` v0.2 §4 / §8-E，用户约定）：设定 → 数据管理「✂️ 删除聊天楼层」三档
             //   （保留最近 6 / 10 / 12 层）。纪律：
-            //     ① **官方 API**（`ctx.deleteMessage`）—— 由宿主层执行，别的插件同样收到 `MESSAGE_DELETED` 事件；
+            //     ① **官方 API** —— v3.17.0 起默认是**一次性批量截断**（官方 `chat` 数组 + `saveChat` +
+            //        `clearChat`/`printMessages` + 一次 `MESSAGE_DELETED`），别的插件照常收到删除通知；
+            //        逐层 `deleteMessage` 只在「批量不可用且 ≤3 层」时作最后手段（真机实测 ≈1.5 秒/层，
+            //        230 层会把界面卡住近 6 分钟 —— 超限一律拒绝并说明）；
             //     ② 预检先行（只读）→ 二次确认（D9 U4）→ 自动备份 → 删除 → 精确编号校准；
             //     ③ 宿主不支持 → **提示不支持并说明**（D12 Q6：不静默失败），按钮侧已 disabled。
             const keep = Number(p.keep) || 0;
@@ -2247,6 +2250,10 @@ export async function panelAction(action, payload) {
             } else if (pre.supported === false || pre.unsupported) {
                 setNote('当前宿主不提供官方删除楼层接口，无法执行（记忆未改动）');
                 result = Object.assign(result, { ok: false, action: a, reason: String(pre.reason || 'unsupported-host') });
+            } else if (pre.blocked) {
+                // v3.17.0：只能逐层、且层数超上限 → **拒绝**（不许把界面卡住几分钟）
+                setNote('已拒绝：' + String(pre.summary || '宿主不支持批量截断'));
+                result = Object.assign(result, { ok: false, action: a, reason: String(pre.reason || 'slow-path-refused') });
             } else if (!pre.ok) {
                 setNote('无需删除：' + String(pre.summary || pre.reason || '当前楼层数已不超过该档'));
                 result = Object.assign(result, { ok: false, action: a, reason: String(pre.reason || 'precheck') });
@@ -2255,9 +2262,13 @@ export async function panelAction(action, payload) {
                 const warnLine = (Number(pre.unextracted) > 0)
                     ? ('\n⚠️ 其中 ' + Number(pre.unextracted) + ' 层<b>尚未提取</b>，删除后将无法再补提（插件数据不会丢）。\n')
                     : '';
+                const slowLine = (Number(pre.slowCount) > 0)
+                    ? ('\n⚠️ 当前宿主不支持批量截断，本次只能<b>逐层删除</b> ' + Number(pre.slowCount) + ' 层，预计约 '
+                        + Number(pre.slowSeconds) + ' 秒，期间界面会卡顿。\n')
+                    : '';
                 const go = await confirmDialog(
                     '将删除<b>聊天</b>中较早的楼层（不是插件记忆）。\n\n'
-                    + String(pre.summary || '') + '\n' + warnLine
+                    + String(pre.summary || '') + '\n' + warnLine + slowLine
                     + '\n删除前会自动生成一份明文备份；删除后插件会把记忆里的楼层编号一并校准（<b>记忆条目一条都不会删</b>）。\n\n是否继续？',
                     'FTT 删除聊天楼层'
                 );
@@ -2265,19 +2276,25 @@ export async function panelAction(action, payload) {
                     setNote('已取消删楼（聊天与记忆均未改动）');
                     result = Object.assign(result, { ok: false, action: a, reason: 'cancelled' });
                 } else {
-                    setNote('删除中…（先备份，再逐层删除并校准编号）');
+                    setNote('删除中…（先备份，再批量截断并校准编号）');
                     const r = (typeof hooks.floorTrim === 'function') ? await hooks.floorTrim(keep) : { ok: false, reason: 'no-hook' };
                     if (r && r.ok) {
-                        // v3.4.0（用户要求「改进为酒馆自带的命令删除」）：提示里**如实说明走的哪条路径**（命令 / 逐层回退）
-                        const viaTxt = (r.via === 'command') ? '酒馆命令' : (r.via === 'command+api' ? '命令未生效→逐层回退' : '逐层 API');
+                        // v3.17.0：提示里**如实说明走的哪条路径**（一次性批量截断 / 逐层回退）
+                        const viaTxt = (r.via === 'bulk') ? '批量截断' : (r.via === 'api' ? '逐层删除（慢）' : String(r.via || '未知'));
                         setNote('已删除 ' + Number(r.deleted) + ' 层，保留最近 ' + keep + ' 层 · 记忆保留 ' + Number((r.remap && r.remap.shifted) || 0) + ' 条已校准'
                             + ' · 方式 ' + viaTxt + (r.ms ? ('（' + Number(r.ms) + 'ms）') : '')
                             + (r.backup && r.backup.name ? (' · 备份 ' + r.backup.name) : ''));
                     } else if (r && r.partial) {
                         setNote('删楼未完成：已删 ' + Number(r.deleted) + '/' + Number(r.requested) + ' 层后中止（编号已按实际删除量校准，记忆未丢）'
-                            + (r.via === 'command+api' ? '；酒馆命令未生效，已逐层回退' : ''));
+                            + (r.via === 'bulk' ? '；批量截断未生效' : ''));
                     } else {
-                        const why = { 'backup-failed': '备份失败，已中止（未删除任何楼层）', 'backup-unavailable': '备份不可用，已中止（未删除任何楼层）', 'unsupported-host': '宿主不支持删除楼层' }[String(r && r.reason)] || String((r && r.reason) || '未知');
+                        const why = {
+                            'backup-failed': '备份失败，已中止（未删除任何楼层）',
+                            'backup-unavailable': '备份不可用，已中止（未删除任何楼层）',
+                            'unsupported-host': '宿主不支持删除楼层',
+                            'slow-path-refused': '批量截断不可用、逐层删除会长时间卡顿 → 已拒绝（聊天未改动）',
+                            'busy': '上一次删楼还没结束',
+                        }[String(r && r.reason)] || String((r && r.reason) || '未知');
                         setNote('删楼未执行：' + why);
                     }
                     result = Object.assign(result, r || { ok: false }, { action: a });

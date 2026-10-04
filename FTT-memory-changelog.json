@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.16.1",
+  "version": "3.17.0",
   "updatedAt": "2026-10-05",
   "generatedAt": "2026-10-05",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.17.0",
+      "date": "2026-10-05",
+      "title": "修「用内置删除楼层后，应用整体严重卡顿」——删楼改为一次批量截断，逐层只留 ≤3 层的最后手段",
+      "points": [
+        "① 真机取证（只读；本机 2026-10-05 01:59:58 → 02:05:43）：| 证据 | 内容 || --- | --- || 插件调试日志（localStorag…",
+        "② 修法：（host/floor-trim.js + core/floor-trim.js + index.js + UI 文案）| 路径 | 触发条件 | 做什么 | 实测/口…",
+        "③ 测试：新增单测 tests/unit/floor-trim-bulk.test.js（14 项）：能力矩阵（批量/整聊重载/仅逐层/都不支持）· 批量路径零 deleteMe…"
+      ]
+    },
     {
       "version": "3.16.1",
       "date": "2026-10-05",

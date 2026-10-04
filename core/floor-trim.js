@@ -21,6 +21,36 @@ import { markOriginGone, shiftFloorNow } from './floor-cover.js';   // v3.7.0：
 /** 三档预设（`docs/D12` §8-E：保留最近 6 / 10 / 12 层） */
 export const FLOOR_TRIM_PRESETS = Object.freeze([6, 10, 12]);
 
+// ============================================================
+// v3.17.0（用户报告「**使用插件内置删除楼层功能后，应用整体进入严重卡顿**」）——**慢速逐层删除的护栏**。
+//
+// 真机取证（本机 2026-10-05 01:59:58 → 02:05:43，242 层聊天删 230 层）：
+//   宿主 `executeSlashCommandsWithOptions` 存在但 `/cut` **不生效**（调用后 `chat` 长度不变）→ 旧代码退回
+//   「逐层 `ctx.deleteMessage(id)`」；而宿主的 `deleteMessage` 每层都要走一遍
+//   DOM 移除 + `saveChatDebounced()` + `MESSAGE_DELETED`（订阅该事件的所有扩展各自全量刷新）
+//   → 实测 **≈1.0–1.5 秒/层**，230 层合计 **5 分 45 秒**，期间整个应用几乎不可用。
+//
+// 因此（配合宿主层的一次性批量截断）：
+//   ① 逐层删除只作**最后手段**，且一次最多 `FLOOR_TRIM_SLOW_MAX` 层 —— 超过即**拒绝执行**并说明原因
+//      （绝不再静默地让界面卡住几分钟）；
+//   ② 单层耗时按 `FLOOR_TRIM_SLOW_MS_PER_FLOOR` 预估，预检 / 确认框 / 摘要都**如实告知预计卡多久**；
+//   ③ 逐层过程中累计超过 `FLOOR_TRIM_SLOW_BUDGET_MS` 即中止（宁可只删一部分并如实回报，
+//      也不让界面长时间卡住）。
+// ============================================================
+/** 逐层删除可接受的层数上限（超过即拒绝；批量截断不可用的宿主才有此顾虑） */
+export const FLOOR_TRIM_SLOW_MAX = 3;
+/** 逐层删除单层耗时估计（毫秒；真机实测 1.0–1.5 秒/层，取上界用于告知） */
+export const FLOOR_TRIM_SLOW_MS_PER_FLOOR = 1500;
+/** 逐层删除的硬预算（毫秒）：累计超过即中止本次逐层删除 */
+export const FLOOR_TRIM_SLOW_BUDGET_MS = 20000;
+
+/** 逐层删除耗时预估（秒；四舍五入，>0 时至少 1 秒）——预检与摘要共用，用于如实告知卡顿时长 */
+export function floorTrimSlowSeconds(count) {
+    const n = Math.max(0, Math.floor(Number(count) || 0));
+    if (n <= 0) return 0;
+    return Math.max(1, Math.round(n * FLOOR_TRIM_SLOW_MS_PER_FLOOR / 1000));
+}
+
 /** 条目楼层区间字段名（各维度一律 floorStart/floorEnd；分段总结用 start/end） */
 const PAIR_FIELDS = ['floorStart', 'floorEnd'];
 const SEG_FIELDS = ['start', 'end'];
@@ -177,5 +207,9 @@ export function trimSummaryText(plan, extra) {
     ];
     if (Number.isFinite(Number(e.unextracted)) && Number(e.unextracted) > 0) parts.push('其中 ' + Number(e.unextracted) + ' 层尚未提取');
     if (e.supported === false) parts.push('宿主不支持删除楼层');
+    // v3.17.0：逐层删除（最后手段）时如实预告耗时 —— 真机实测 ≈1.5 秒/层，期间界面会卡
+    if (Number.isFinite(Number(e.slowCount)) && Number(e.slowCount) > 0) {
+        parts.push('其中 ' + Number(e.slowCount) + ' 层需逐层删除（预计约 ' + floorTrimSlowSeconds(e.slowCount) + ' 秒，期间界面会卡顿）');
+    }
     return parts.join(' · ');
 }

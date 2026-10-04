@@ -4499,7 +4499,7 @@ await assert('BC1 v2.80.1 点击不再闪一下：每次动作后的重渲染**�
 // ---------- BG 设定 → 数据管理「✂️ 删除聊天楼层」（v2.94.0 / docs/D12 v0.2 §4 S4） ----------
 // 用户约定：「在设定-数据管理 中约定楼层删除的三个按钮（保留最近 6 / 10 / 12 层）」+
 //   「**用官方 API 实现，不然其他插件也会异常**」→ 本小节用桩宿主跑**真实删除流程**：
-//   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ 逐个 `ctx.deleteMessage` → 精确编号校准。
+//   面板三档按钮 → 二次确认 → 自动明文备份（落用户目录文件）→ **一次批量截断**（v3.17.0；零逐层调用）→ 精确编号校准。
 // v3.6.0（用户要求）：「总览自动修复功能，追加一个步骤，即根据最新的情节获取最新的时间、地点、人物等信息。
 //   注意最新的情节指根据内置的天数判断。」
 await assert('BH12 v3.6.0 总览「🛠 自动修复」追加「按最新情节刷新时间/地点/人物」（真实点击）：最新情节按**内置天数**判断（第 30 天那条虽然楼层更小，仍胜过第 2 天那条）→ 日期 / 时间 / 地点 / 在场人物都按它写入，提示如实回报「剧情时钟：已按最新情节刷新（第 30 天 · 日期 … · 时间 … · 地点 … · 在场 …）」；手工锁定时如实跳过、不覆盖用户锚点', (async () => {
@@ -4628,67 +4628,87 @@ await assert('BH11 v3.5.0 总览「🛠 自动修复」追加两步（真实点�
     }
 })(), '');
 
-// v3.4.0（用户要求）：「删除聊天楼层的三个按钮，需改进为酒馆自带的命令删除，提高删除效率。
-//   当前可能是逐层删除，非常消耗资源，需修复。」
-await assert('BH10 v3.4.0 三个删楼按钮改走**酒馆自带命令**：真实点击「保留最近 10 层」→ 只调用 **1 次** `executeSlashCommandsWithOptions("/cut 10")`、**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「删除方式 酒馆命令」+ 耗时；宿主不提供命令能力时**如实回退**逐层删除并在提示里说明（两条路径都只删更早的楼层、记忆一条不少、备份照旧）', (async () => {
+// v3.17.0（用户报告）：「请核对当使用插件内置删除楼层功能后，应用整体进入严重卡顿的问题。」
+//   真机取证：v3.4.0 依赖的 `/cut` 命令在宿主上**不生效** → 退到「逐层 deleteMessage」，
+//   实测 ≈1.5 秒/层 → 242 层删 230 层卡了 **5 分 45 秒**。
+//   修复口径：默认走**一次批量截断**；逐层只在「批量不可用且 ≤3 层」时作最后手段，超过即拒绝。
+await assert('BH10 v3.17.0 删楼不再逐层：真实点击「保留最近 10 层」→ 走**一次批量截断**（`saveChat`/`clearChat`/`printMessages` 各 1 次）且**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「方式 批量截断」；宿主只能逐层且待删 14 层 → **拒绝执行**（不备份、不动聊天）；只能逐层但只删 2 层 → 逐层最后手段可用；三条路径都只删更早楼层、记忆一条不少', (async () => {
     const RT = await import('../core/model/runtime.js');
     const FH = await import('../host/floor-trim.js');
     const keepChat = host.ctx.chat.slice();
     const keepLast = host.ctx.getLastMessageId;
     const keepDel = host.ctx.deleteMessage;
-    const keepCmd = host.ctx.executeSlashCommandsWithOptions;
+    const keepSave = host.ctx.saveChat, keepClear = host.ctx.clearChat, keepPrint = host.ctx.printMessages;
     const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
+    const mkChat = (n) => { host.ctx.chat.length = 0; for (let i = 0; i < n; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' }); host.ctx.getLastMessageId = () => host.ctx.chat.length - 1; };
+    /** 本轮新增的删楼备份文件（不许改删楼钩子：钩子归 index.js 接线，改了就污染后续 BG1 的真实备份） */
+    const newBackups = (before) => Array.from(srvFiles.keys()).filter((k) => String(k).indexOf('ftt2-floor-backup-') === 0 && !before.has(k));
     try {
-        const mkChat = (n) => { host.ctx.chat.length = 0; for (let i = 0; i < n; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' }); host.ctx.getLastMessageId = () => host.ctx.chat.length - 1; };
-        // ① 命令可用：一次截断，零逐层调用
-        mkChat(40);
-        const rec = { deleteCalls: 0, commands: [] };
-        host.ctx.deleteMessage = async (id) => { rec.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
-        host.ctx.executeSlashCommandsWithOptions = async (cmd) => { rec.commands.push(String(cmd)); const n = Number(String(cmd).split(/\s+/)[1]); if (Number.isFinite(n) && n >= 0 && n < host.ctx.chat.length) host.ctx.chat.splice(n, host.ctx.chat.length - n); return ''; };
-        FH.setFloorTrimHooks({
-            writeBackup: async (scope, slot, text) => ({ ok: true, name: 'ftt2-floor-backup-bh10-s' + (slot + 1) + '-20260930-120000.json', slot: slot, chars: String(text).length }),
-            exportJson: () => '{"format":"ftt-memory-v2-export","state":{}}',
-            getLog: () => null, saveLog: () => true, noteConflict: () => true, notify: () => true,
-        });
         await entry.popupAction('tab', { tab: 'settings' });
         await entry.popupAction('settingsSub', { sub: 'data' });
         host.ctx.callGenericPopup = async () => 1;                       // 二次确认 → 确认
+        // ① 宿主有批量能力（默认）：一次批量截断，零逐层调用
+        mkChat(40);
+        const b0 = { save: host.ctx.saveChatCount || 0, clear: host.ctx.clearChatCount || 0, print: host.ctx.printMessagesCount || 0 };
+        const files1 = new Set(srvFiles.keys());
+        const rec = { deleteCalls: 0 };
+        host.ctx.deleteMessage = async (id) => { rec.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
         const r1 = await entry.popupAction('floorTrim', { keep: 10 });
         const note1 = String((r1.state || {}).note || '');
-        const floors1 = host.ctx.chat.length;                          // 立即取（后面还会再删一轮）
-        const cmdOk = rec.commands.length === 1 && rec.commands[0] === '/cut 10' && rec.deleteCalls === 0
-            && floors1 === 10 && r1.ok === true && r1.via === 'command'
-            && note1.indexOf('方式 酒馆命令') >= 0 && String(r1.summary || '').indexOf('删除方式 酒馆命令') >= 0;
-        // ② 命令不可用：回退逐层，并在提示里说明
+        const floors1 = host.ctx.chat.length;                          // 立即取（后面还会再删几轮）
+        const bulkOk = r1.ok === true && r1.via === 'bulk' && rec.deleteCalls === 0 && floors1 === 10
+            && (host.ctx.saveChatCount || 0) - b0.save === 1 && (host.ctx.clearChatCount || 0) - b0.clear === 1
+            && (host.ctx.printMessagesCount || 0) - b0.print === 1
+            && host.ctx.chatMetadata.tainted === true
+            && newBackups(files1).length === 1                        // 删前备份照旧落盘（真实 fetch 桩）
+            && note1.indexOf('方式 批量截断') >= 0 && String(r1.summary || '').indexOf('删除方式 批量截断（一次完成') >= 0;
+        // ② 宿主只能逐层 + 待删 14 层（>3）→ **拒绝执行**：一层不删、连备份都不做
         mkChat(20);
-        delete host.ctx.executeSlashCommandsWithOptions;
+        delete host.ctx.saveChat; delete host.ctx.clearChat; delete host.ctx.printMessages;
+        const files2 = new Set(srvFiles.keys());
         const rec2 = { deleteCalls: 0 };
         host.ctx.deleteMessage = async (id) => { rec2.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
         const r2 = await entry.popupAction('floorTrim', { keep: 6 });
         const note2 = String((r2.state || {}).note || '');
-        const floors2 = host.ctx.chat.length;
-        const apiOk = r2.ok === true && rec2.deleteCalls === 14 && floors2 === 6
-            && r2.via === 'api' && note2.indexOf('方式 逐层 API') >= 0;
-        // ③ 能力与诊断如实
-        const cap = FH.floorTrimCapability();
-        const st = FH.floorTrimStatus();
-        const statOk2 = cap.command === false && st.via === 'api' && st.last && st.last.via === 'api';
-        // ④ 记忆一条不少
+        const refuseOk = r2.ok === false && r2.reason === 'slow-path-refused' && host.ctx.chat.length === 20
+            && rec2.deleteCalls === 0 && newBackups(files2).length === 0
+            && note2.indexOf('已拒绝') >= 0 && note2.indexOf('21 秒') >= 0;
+        // ③ 只能逐层但只删 2 层（≤3）→ 逐层最后手段可用：从后往前 2 次、如实回报 `api`
+        mkChat(20);
+        const rec3 = { deleteCalls: 0 };
+        host.ctx.deleteMessage = async (id) => { rec3.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
+        const r3 = await entry.popupAction('floorTrim', { keep: 18 });
+        const note3 = String((r3.state || {}).note || '');
+        const slowOk = r3.ok === true && r3.via === 'api' && rec3.deleteCalls === 2 && host.ctx.chat.length === 18
+            && note3.indexOf('方式 逐层删除（慢）') >= 0;
+        // ④ 能力与诊断如实回报当前宿主走哪条路径
+        host.ctx.saveChat = keepSave; host.ctx.clearChat = keepClear; host.ctx.printMessages = keepPrint;
+        const capBulk = FH.floorTrimCapability();
+        const stBulk = FH.floorTrimStatus();
+        delete host.ctx.saveChat; delete host.ctx.clearChat; delete host.ctx.printMessages;
+        const capSlow = FH.floorTrimCapability();
+        const stSlow = FH.floorTrimStatus();
+        const statOk = capBulk.bulk === true && capBulk.bulkMode === 'clear+print' && stBulk.via === 'bulk'
+            && capSlow.bulk === false && capSlow.slow === true && stSlow.via === 'api'
+            && stSlow.last && stSlow.last.via === 'api';
+        // ⑤ 记忆一条不少
         const entriesOk = Array.isArray(RT.state.atoms) && (RT.state.atoms.length === (keepAtoms || []).length);
-        const ok = cmdOk && apiOk && statOk2 && entriesOk;
-        if (!ok) console.log('BH10-DEBUG ' + JSON.stringify({ cmdOk, commands: rec.commands, deleteCalls: rec.deleteCalls, floors1, via1: r1.via, note1: note1.slice(0, 200), sum1: String(r1.summary || '').slice(0, 120), apiOk, calls2: rec2.deleteCalls, floors2, via2: r2.via, note2: note2.slice(0, 200), statOk2, entriesOk }));
+        const ok = bulkOk && refuseOk && slowOk && statOk && entriesOk;
+        if (!ok) console.log('BH10-DEBUG ' + JSON.stringify({ bulkOk, delCalls: rec.deleteCalls, floors1, via1: r1.via, note1: note1.slice(0, 200), refuseOk, calls2: rec2.deleteCalls, floors2: host.ctx.chat.length, note2: note2.slice(0, 200), slowOk, calls3: rec3.deleteCalls, via3: r3.via, note3: note3.slice(0, 160), statOk, capBulk, stBulkVia: stBulk.via, capSlow, entriesOk }));
         return ok;
     } finally {
         host.ctx.chat.length = 0; for (const m of keepChat) host.ctx.chat.push(m);
         host.ctx.getLastMessageId = keepLast;
         host.ctx.deleteMessage = keepDel;
-        if (keepCmd === undefined) delete host.ctx.executeSlashCommandsWithOptions; else host.ctx.executeSlashCommandsWithOptions = keepCmd;
+        if (keepSave === undefined) delete host.ctx.saveChat; else host.ctx.saveChat = keepSave;
+        if (keepClear === undefined) delete host.ctx.clearChat; else host.ctx.clearChat = keepClear;
+        if (keepPrint === undefined) delete host.ctx.printMessages; else host.ctx.printMessages = keepPrint;
         RT.state.atoms = keepAtoms;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }
 })(), '');
 
-await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官方 API 真删聊天楼层（20→10，`MESSAGE_DELETED` 每次触发）、删前自动明文备份落盘、删后记忆一条不少且编号校准、面板给出摘要', (async () => {
+await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官方 API 真删聊天楼层（20→10；v3.17.0 起是**一次批量截断** —— `saveChat` + `clearChat`/`printMessages` + **一次** `MESSAGE_DELETED`，零逐层调用）、删前自动明文备份落盘、删后记忆一条不少且编号校准、面板给出摘要', (async () => {
     const RT = await import('../core/model/runtime.js');
     const keepChat = host.ctx.chat.slice();
     const keepLast = host.ctx.getLastMessageId;
@@ -4720,12 +4740,17 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
             && dh.indexOf('将删除 10 层') >= 0;                  // 按钮 title 内的**预检**结论
         // ③ 真实动作（确认框由桩宿主 `callGenericPopup` 返回 1 = 确认）
         const beforeFiles = new Set(srvFiles.keys());
+        const b0 = { save: host.ctx.saveChatCount || 0, clear: host.ctx.clearChatCount || 0, print: host.ctx.printMessagesCount || 0 };
         const r = await entry.popupAction('floorTrim', { keep: 10 });
         const note = String(((r.state || {}).note) || '');
-        // ④ 聊天真的短了 + 官方方法副作用可观测（每次删除都触发 MESSAGE_DELETED / 落盘计数）
-        const delOk = host.ctx.chat.length === 10 && (host.ctx.deletedMessages || []).length === 10
-            && (host.ctx.deletedMessages || [])[0] === 9 && (host.ctx.deletedMessages || [])[9] === 0
-            && (host.ctx.saveMetadataCount || 0) >= 10;
+        // ④ 聊天真的短了 + 官方副作用可观测：v3.17.0 起是**一次批量截断** ——
+        //    `saveChat` / `clearChat` / `printMessages` 各 1 次、**零**逐层 `deleteMessage`、
+        //    `MESSAGE_DELETED` **一次**（与官方 `deleteMessage` 的 payload 同口径）、`chatMetadata.tainted` 置位
+        const delOk = host.ctx.chat.length === 10 && (host.ctx.deletedMessages || []).length === 0
+            && (host.ctx.saveChatCount || 0) - b0.save === 1
+            && (host.ctx.clearChatCount || 0) - b0.clear === 1
+            && (host.ctx.printMessagesCount || 0) - b0.print === 1
+            && r.via === 'bulk' && host.ctx.chatMetadata.tainted === true;
         // ⑤ 备份**真的落到了用户目录文件**（前缀不与主文件冲突；内容 = 导出信封）
         const backupNames = Array.from(srvFiles.keys()).filter((k) => String(k).indexOf('ftt2-floor-backup-') === 0 && !beforeFiles.has(k));
         const backupOk = backupNames.length === 1
@@ -4782,7 +4807,7 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         } catch (e) { rotateOk = false; }
         await entry.popupAction('tab', { tab: 'overview' });
         const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk && rotateOk;
-        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, delOk, backupOk, dataOk, noteOk, confOk, newOk, rotateOk, atoms: (RT.state.atoms || []).map((x) => ({ id: x.id, fs: x.floorStart, fe: x.floorEnd, ns: x.floorNowStart, ne: x.floorNowEnd, gone: x.originGone, stale: x.floorStale })) }));
+        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, reason: r.reason, via: r.via, note: String(r.note || note).slice(0, 220), delOk, backupOk, backupNames, dataOk, noteOk, confOk, newOk, rotateOk, chat: host.ctx.chat.length, atoms: (RT.state.atoms || []).map((x) => ({ id: x.id, fs: x.floorStart, fe: x.floorEnd, ns: x.floorNowStart, ne: x.floorNowEnd, gone: x.originGone, stale: x.floorStale })) }));
         return allOkBg1;
     } finally {
         host.ctx.chat.length = 0;
