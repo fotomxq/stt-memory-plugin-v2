@@ -28,7 +28,7 @@
 // ============================================================
 import { cfg, state, getStoryNow } from '../core/model/runtime.js';
 import { floorPositionLabel } from '../core/floor-cover.js';   // v3.7.0：楼层显示 = 当前位置 / 原文已移除
-import { nsfwLevelOf } from '../core/nsfw.js';                    // v3.8.0：NSFW 等级留档徽标（无/弱/强）
+import { nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';   // v3.8.0：NSFW 等级留档徽标；v3.9.0：+ 分类汇总与释义
 import { escHtml } from '../core/util.js';
 import { atomTitle, normPhase } from '../core/model/scalars.js';
 import { atomIsHidden } from '../core/merge.js';
@@ -202,17 +202,44 @@ function memoryBadge(id, ctx) {
 // 各维度行正文（返回 `{ main, tags: [], opsExtra }`；main 放在 V2 行的主体 span 内）
 // ============================================================
 /**
- * v3.8.0：**NSFW 等级留档徽标**（无 → 不显示）——「无 / 弱 / 强」三级，按**原文**判定、**弱化后不改变**（永久留档）。
+ * v3.8.0：**NSFW 等级留档徽标**（无 → 不显示）。
+ * v3.9.0（用户要求「情节、记忆、状态、物品、传言、计划悬念、概念等分类下**均有标签提示**，
+ *   用于告诉用户这个词条是什么级别的内容」）：徽标改为**写明等级的文字标签**（`NSFW·强` / `NSFW·弱`），
+ *   tooltip 给出该级别的完整释义（如「强 —— 完全是露骨内容」）与「按原文判定、弱化后不变」的留档口径；
+ *   并带 `data-ftt-nsfw-level` 便于样式与回归断言（`ui/panel.js` 的每个分类列表行都会调用本函数）。
  * @param {object} it 条目
- * @returns {string} HTML 片段（可空）
+ * @returns {string} HTML 片段（无级别时为空串）
  */
 export function nsfwBadgeHtml(it) {
     try {
         const l = nsfwLevelOf(it);
         if (l === 'none') return '';
-        const label = (l === 'strong') ? '强' : '弱';
-        const why = (l === 'strong') ? '完全是露骨内容' : '有部分亲密或暗示但无露骨内容';
-        return '<span class="ftt-tags-inline" title="NSFW 等级留档：' + label + '（' + why + '）｜按原文判定，弱化内容不会改变该标签">🔞' + label + '</span> ';
+        const label = nsfwLevelLabel(l);
+        const tip = 'NSFW 等级留档：' + nsfwLevelHint(l) + '｜按原文判定，弱化内容不会改变该标签（永久留档）';
+        return '<span class="ftt-tags-inline ftt-nsfw-tag" data-ftt-nsfw-level="' + l + '" title="' + escHtml(tip) + '">NSFW·' + label + '</span> ';
+    } catch (e) { return ''; }
+}
+
+/**
+ * v3.9.0：**分类级 NSFW 留档汇总**（列表页顶部一行）——告诉用户「这一类里有多少条是弱 / 强」。
+ *   没有已留档的条目时返回空串（不占位、不加噪声）。
+ * @param {Array} items 当前列表展示的条目
+ * @returns {string} HTML 片段（可空）
+ */
+export function nsfwLegendHtml(items) {
+    try {
+        const arr = Array.isArray(items) ? items : [];
+        let weak = 0, strong = 0;
+        for (const it of arr) {
+            const l = nsfwLevelOf(it);
+            if (l === 'strong') strong++; else if (l === 'weak') weak++;
+        }
+        if (!weak && !strong) return '';
+        const parts = [];
+        if (weak) parts.push('弱 <b>' + weak + '</b>');
+        if (strong) parts.push('强 <b>' + strong + '</b>');
+        return '<div class="ftt-muted" data-ftt-nsfw-legend>NSFW 留档：' + parts.join(' · ')
+            + '（按原文判定，弱化后不变；标记见每条行首）</div>';
     } catch (e) { return ''; }
 }
 

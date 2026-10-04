@@ -541,6 +541,10 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-text { color: var(--ftt-text-1); }
 #ftt-panel .ftt-dot-ok { color: var(--ftt-ok); }
 #ftt-panel .ftt-tags-inline { color: var(--ftt-accent); font-size: var(--ftt-font-xs); }
+/* v3.9.0：NSFW 等级留档标签（各分类行首 / 编辑器只读行）—— 弱用中性色、强用警示色，"无"不显示 */
+#ftt-panel .ftt-nsfw-tag { border: 1px solid var(--ftt-border); border-radius: 3px; padding: 0 3px; white-space: nowrap; }
+#ftt-panel .ftt-nsfw-tag[data-ftt-nsfw-level="strong"] { color: var(--ftt-danger); border-color: var(--ftt-danger); }
+#ftt-panel .ftt-nsfw-tag[data-ftt-nsfw-level="weak"] { color: var(--ftt-warn); border-color: var(--ftt-warn); }
 /* —— v1.182：情节分段总结（段内逐条剧情线）—— */
 #ftt-panel .ftt-seg-line { color: var(--ftt-text-1); font-size: var(--ftt-font-sm); line-height: 1.7; padding-left: 2px; }
 #ftt-panel .ftt-seg-no { color: var(--ftt-text-4); font-variant-numeric: tabular-nums; margin-right: 2px; }

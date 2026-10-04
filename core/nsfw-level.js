@@ -22,6 +22,13 @@
 export const NSFW_LEVELS = Object.freeze(['none', 'weak', 'strong']);
 /** 等级中文标签（界面用） */
 export const NSFW_LEVEL_LABELS = Object.freeze({ none: '无', weak: '弱', strong: '强' });
+/** 三级的中文释义（界面用：徽标 tooltip / 编辑器说明 / 分类汇总） */
+export const NSFW_LEVEL_HINTS = Object.freeze({
+    none: '与 NSFW 完全无关',
+    weak: '有部分亲密或暗示，但没有露骨内容',
+    strong: '完全是露骨内容',
+});
+
 /** 条目上的字段名 */
 export const NSFW_LEVEL_FIELD = 'nsfw';
 /**
@@ -84,6 +91,12 @@ export function nsfwLevelMax() {
 
 /** 等级中文标签（`强` / `弱` / `无`） */
 export function nsfwLevelLabel(l) { return NSFW_LEVEL_LABELS[nsfwLevelNorm(l)] || '无'; }
+
+/** 等级释义（`强 —— 完全是露骨内容`） */
+export function nsfwLevelHint(l) {
+    const v = nsfwLevelNorm(l);
+    return NSFW_LEVEL_LABELS[v] + ' —— ' + NSFW_LEVEL_HINTS[v];
+}
 
 /** 条目上的留档等级（字段缺省 = 无） */
 export function nsfwLevelOf(it) {
