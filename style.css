@@ -541,7 +541,9 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-text { color: var(--ftt-text-1); }
 #ftt-panel .ftt-dot-ok { color: var(--ftt-ok); }
 #ftt-panel .ftt-tags-inline { color: var(--ftt-accent); font-size: var(--ftt-font-xs); }
-/* v3.9.0：NSFW 等级留档标签（各分类行首 / 编辑器只读行）—— 弱用中性色、强用警示色，"无"不显示 */
+/* v3.9.0：NSFW 等级留档标签 —— 弱用中性色、强用警示色，「无」不显示
+   v3.11.0（用户要求）：位置由**行首**改到**末行**（与楼层信息等同段；由 `ui/list-rows.js#appendBadgeToLastLine` 注入）；
+   样式本身不变（仍是行内 chip，随末行继承 `--ftt-font-xs`），于是它读起来是「元信息标记」而不是「整行警告」 */
 #ftt-panel .ftt-nsfw-tag { border: 1px solid var(--ftt-border); border-radius: 3px; padding: 0 3px; white-space: nowrap; }
 #ftt-panel .ftt-nsfw-tag[data-ftt-nsfw-level="strong"] { color: var(--ftt-danger); border-color: var(--ftt-danger); }
 #ftt-panel .ftt-nsfw-tag[data-ftt-nsfw-level="weak"] { color: var(--ftt-warn); border-color: var(--ftt-warn); }

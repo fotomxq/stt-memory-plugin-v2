@@ -5833,9 +5833,9 @@ await assert('BO1 v3.8.0 NSFW 等级留档（端到端）：落库打标（强/�
 // v3.9.0（用户要求）：「NSFW 标签需要在情节、记忆、状态、物品、传言、计划悬念、概念等分类下均有标签提示，
 //   用于告诉用户这个词条是什么级别的内容。」
 //   本小节为**用户点名的每个分类**各放一条留档条目（经 `mergeDelta` 真实落库打标），逐个分类页断言：
-//   ① 行首有写明等级的文字标签（`data-ftt-nsfw-level` + 「NSFW·强 / NSFW·弱」）② 分类顶部有留档汇总
+//   ① **末行**有写明等级的文字标签（`data-ftt-nsfw-level` + 「NSFW·强 / NSFW·弱」；v3.11.0 由行首移到末行）② 分类顶部有留档汇总
 //   ③ 编辑器里也有只读的留档行（永久留档：弱化不改）。
-await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情节 / 记忆 / 状态 / 物品 / 传言 / 计划悬念 / 概念 逐个分类页断言行首文字标签 + 分类留档汇总 + 编辑器只读留档行', (async () => {
+await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情节 / 记忆 / 状态 / 物品 / 传言 / 计划悬念 / 概念 逐个分类页断言**末行**文字标签（v3.11.0 由行首移到末行）+ 分类留档汇总 + 编辑器只读留档行', (async () => {
     const RT = await import('../core/model/runtime.js');
     const IG = await import('../core/ingest.js');
     const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
@@ -5874,7 +5874,7 @@ await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情�
             suspense: (RT.state.suspense[0] || {}).nsfw, concepts: (RT.state.concepts[0] || {}).nsfw,
         };
         const labelOk = Object.keys(want).every((k) => got[k] === want[k]);
-        // 逐个分类页：行首标签 + 分类汇总
+        // 逐个分类页：末行标签 + 分类汇总（v3.11.0：标签从行首移到末行，与楼层等信息同段）
         const label = { strong: 'NSFW·强', weak: 'NSFW·弱' };
         const perKind = {};
         for (const kind of ['atoms', 'memories', 'states', 'items', 'rumors', 'plans', 'concepts']) {

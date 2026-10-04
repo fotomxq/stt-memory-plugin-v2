@@ -23,7 +23,7 @@ import { normalizeMemory, normalizeCurrentState } from '../../core/model/dims.js
 import { contentDedupeArray } from '../../core/migrate.js';
 import { mergeDataObjects } from '../../core/cross-sync.js';
 import { preserveEntryMeta } from '../../core/entry-meta.js';
-import { nsfwBadgeHtml, nsfwLegendHtml, listRowMainHtml, stateRowMainHtml } from '../../ui/list-rows.js';
+import { nsfwBadgeHtml, nsfwLegendHtml, listRowMainHtml, stateRowMainHtml, appendBadgeToLastLine } from '../../ui/list-rows.js';
 import {
     NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS, nsfwLevelNorm, nsfwLevelMax, nsfwLevelLabel,
     nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
@@ -227,6 +227,35 @@ await A('F1c 用户点名的各分类**均有**行内标签提示：情节 / 记
     const plain = listRowMainHtml('memories', { id: 'x9', title: '码头', content: '甲在仓库清点货物。' }, null);
     return st.indexOf('data-ftt-nsfw-level="strong"') > 0 && st.indexOf('NSFW·强') > 0
         && plain.indexOf('data-ftt-nsfw-level') < 0;
+})(), '见断言');
+
+// v3.11.0（用户要求）：「NSFW 标签放到底部**最后一行**，与楼层信息等混在一起展示」
+await A('F1d 位置契约：徽标落在该行**最后一个元信息行内**（`ftt-meta` 优先，情节行走 `ftt-desc`），**不再出现在行首**', (() => {
+    const inLast = (html) => {
+        const badge = html.indexOf('data-ftt-nsfw-level');
+        const lastLine = Math.max(html.lastIndexOf('ftt-meta'), html.lastIndexOf('ftt-desc'));
+        return badge > lastLine && badge > 0;
+    };
+    const a = listRowMainHtml('atoms', { id: 'p1', text: '两人做爱后相拥。', date: '1919-11-01', type: '主线', floorStart: 3, floorEnd: 4, uses: 2, nsfw: 'strong' }, null);
+    const m = listRowMainHtml('memories', { id: 'p2', title: '夜里', content: '两人亲吻后分别。', date: '1919-11-02', uses: 1, nsfw: 'weak' }, null);
+    const s = stateRowMainHtml({ id: 'p3', field: '衣着', value: '赤裸上身', uses: 3, nsfw: 'strong' });
+    // 情节行：徽标与**楼层信息**同段（末行里同时出现「楼」与徽标）
+    const tail = a.slice(a.lastIndexOf('ftt-desc'));
+    return inLast(a) && inLast(m) && inLast(s)
+        && tail.indexOf('data-ftt-nsfw-level') > 0 && tail.indexOf('楼') > 0
+        && a.indexOf('data-ftt-nsfw-level') !== 0 && m.indexOf('data-ftt-nsfw-level') !== 0;
+})(), '见断言');
+
+await A('F1e `appendBadgeToLastLine`：优先 `ftt-meta`（哪怕 `ftt-desc` 在它之后之外）→ 注入并补 ` · ` 分隔；两者都无 → 补一行；无级别 → 原样返回', (() => {
+    const badge = '<span data-ftt-nsfw-level="weak">NSFW·弱</span>';
+    const withBoth = appendBadgeToLastLine('<b>t</b><div class="ftt-desc">正文</div><div class="ftt-meta">调用1次</div>', badge);
+    const onlyDesc = appendBadgeToLastLine('<b>t</b><div class="ftt-desc">📅 日期 · 第 3 楼</div>', badge);
+    const none = appendBadgeToLastLine('<b>t</b>', badge);
+    const empty = appendBadgeToLastLine('<b>t</b>', '');
+    return withBoth.indexOf('<div class="ftt-meta">' + badge + ' · 调用1次</div>') > 0
+        && onlyDesc.indexOf('<div class="ftt-desc">' + badge + ' · 📅 日期 · 第 3 楼</div>') > 0
+        && none === '<b>t</b><div class="ftt-meta">' + badge + '</div>'
+        && empty === '<b>t</b>';
 })(), '见断言');
 
 await A('F2 `preserveEntryMeta`（归一化统一补齐）：按原文打标 + 继承同 id 既有留档（只升不降）；楼层溯源同批保留', (() => {
