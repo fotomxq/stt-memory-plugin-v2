@@ -29,6 +29,10 @@ npm run local -- --show-paths
 # 3) 改了代码后，把开发仓库的发布物同步进宿主扩展目录
 npm run local -- --deploy --yes
 
+# 3b) 部署时同步宿主副本到最新版（用户新约定，见 开发守则.md §6.4）
+npm run local:sync                 # 只读检查：条件是否满足 / 两侧版本与提交是否一致
+npm run local:sync -- --yes        # 执行：git fetch + merge --ff-only（宿主在跑也能替换）
+
 # 4) 机器可读输出 / 存报告（报告落在 tests/local/out/，已 gitignore）
 npm run local -- --json
 npm run local -- --save
@@ -177,6 +181,35 @@ node tests/local/bridge.mjs --host 0.0.0.0
 > 脏工作树；下次宿主自动更新可能提示冲突。调试完可用宿主原生更新或重新克隆恢复。
 > 建议部署前先完全退出宿主，避免文件占用。
 
+## 6b. 部署同步宿主副本（`npm run local:sync`，用户新约定）
+
+**用户新约定（原话）**：「如果在本地运行，且启动了调试端口，则在部署时除了 git 提交外，额外替换
+TauriTavern 下的插件到最新版。」
+
+```powershell
+npm run local:sync                  # 只读检查：条件是否满足 + 两侧版本/提交是否一致（不写、不调 git 写操作）
+npm run local:sync -- --yes         # 执行：git fetch <开发仓库> <分支> + merge --ff-only
+npm run local:sync -- --show-paths  # 打全路径（默认脱敏）
+```
+
+它与 §6 的 `--deploy` 是**两条路**，按部署副本形态自动分流：
+
+| 部署副本形态 | 采用方式 | 命令 | 特点 |
+| --- | --- | --- | --- |
+| 干净的 git 检出、与开发仓库同源 | **git 快进**（首选） | `npm run local:sync -- --yes` | 只 `fetch` + `merge --ff-only`；**宿主在跑也能替换**；两侧提交可精确核对 |
+| 非 git 目录 / 有本地改动 / 异源 | **文件级替换** | `npm run local -- --deploy --yes` | 只写不删、不碰 `.git`；**要求宿主已退出**（见 §6 守卫） |
+
+判定逻辑是纯函数 `host.js#planHostSync()`（七态：无宿主 / 非 git 检出 / 有本地改动 / 异源 / 已一致 /
+漂移 / git 不可用），由单测 `local-harness` 的 **D5** 锁定。**拒绝态一律 `ok:false`**：有本地改动或
+异源时**绝不覆盖**，只报告。
+
+条件探测（如实打印，不猜）：CDP `debugPort`（默认 9222，取自 `local.config.json`）可访问 **或**
+插件侧「🔌 调试桥」已开（短听 8791 收到插件连入 —— 桥是**反向**的，端口在工具这侧，见 §5.4）。
+
+**硬性边界**：只动宿主扩展目录下本插件自己的子目录；**永不** `reset --hard` / `clean` /
+`checkout -f` / `push`；插件用户数据与宿主配置一律不碰。**替换后必须刷新页面才生效**（插件在页面
+加载时装配；刷新后调试桥回到关闭属设计）。
+
 ## 7. 隐私与边界（硬性）
 
 1. **入库文件不得出现机器特有路径或主机名** —— 由 `scripts/check-local-leak.js` 强制（在 `npm run gate` 中）。
@@ -185,7 +218,7 @@ node tests/local/bridge.mjs --host 0.0.0.0
 3. **输出默认脱敏**：用户主目录被替换为 `%APPDATA%` / `~` 等占位符；`--show-paths` 才打全路径。
 4. **只读边界**：宿主配置（`config.yaml` / `settings.json` / `tauritavern-settings.json`）与
    插件用户数据（`_tauritavern/extension-store/**`）**一律只读**。写操作只可能发生在
-   `--deploy --yes` 时的插件发布物，以及 `--save` 时本目录的 `out/`。
+   `--deploy --yes` / `local:sync --yes` 时的插件发布物，以及 `--save` 时本目录的 `out/`。
 5. 门禁自身**也不回显命中内容**（只给规则名 + 打码片段），避免门禁变成泄漏渠道。
 
 ## 8. 文件说明
@@ -194,6 +227,7 @@ node tests/local/bridge.mjs --host 0.0.0.0
 | --- | --- | --- |
 | `host.js` | ✅ | 宿主发现与逐项只读读取、漂移比对、部署计划（纯逻辑，可单测） |
 | `run.js` | ✅ | 自检入口（`npm run local`） |
+| `sync-host.mjs` | ✅ | 部署同步宿主副本（`npm run local:sync`）：探测调试端口 → `planHostSync()` 判定 → 只 `fetch` + `merge --ff-only` |
 | `bridge.mjs` | ✅ | 调试桥服务：零依赖 WebSocket 服务端 + 交互/一次性调用 + `--selftest` + `--host`（默认回环） |
 | `launch-debug.cmd` | ✅ | 带 CDP / 代理启动 TauriTavern |
 | `local.config.example.json` | ✅ | 实参模板（占位符） |

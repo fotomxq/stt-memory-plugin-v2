@@ -341,3 +341,42 @@ export function planDeploy(devInv, extInv) {
         keptGit: true,
     };
 }
+
+/**
+ * 宿主副本同步计划（纯函数，**不落盘、不调 git**）—— 用户新约定（`开发守则.md` §6.4）：
+ * 「本地运行 + 调试端口已启动」时，部署除了 git 提交，还要把宿主下的插件替换到最新版。
+ *
+ * 分流规则（保守优先，永不覆盖用户改动）：
+ *   · 没找到宿主 / 部署目录 → `none`（无事可做）；
+ *   · 部署目录**不是 git 检出** → `deploy-copy`（改走 `npm run local -- --deploy --yes` 文件级替换）；
+ *   · 部署副本**有本地改动** → `refuse`（拒绝，绝不覆盖）；
+ *   · 与开发仓库**不同源**（origin 不一致）→ `refuse`；
+ *   · 已与开发仓库同一提交 → `none`（already-aligned）；
+ *   · 其余 → `ff`（fetch + `merge --ff-only`，宿主在跑也能替换）。
+ *
+ * @param {{deployedDir?:string, isRepo?:boolean, devSha?:string, deployedSha?:string,
+ *          sameRemote?:boolean, dirtyCount?:number|null, gitAvailable?:boolean}} info
+ * @returns {{action:'none'|'ff'|'deploy-copy'|'refuse', reason:string, ok:boolean, note:string}}
+ */
+export function planHostSync(info) {
+    const o = info || {};
+    const sha = (v) => String(v || '').trim();
+    // git 不可用 / 状态未知 → 不做 git 快进；改走文件级替换（那条路不依赖 git）
+    if (o.gitAvailable === false) {
+        return { action: 'deploy-copy', reason: 'git-unavailable', ok: false, note: '本机没有可用的 git → 请用 npm run local -- --deploy --yes（需先退出宿主）' };
+    }
+    if (!o.deployedDir) return { action: 'none', reason: 'no-host', ok: true, note: '未发现宿主扩展目录 → 无需同步' };
+    if (o.isRepo === false) {
+        return { action: 'deploy-copy', reason: 'not-a-git-checkout', ok: false, note: '部署副本不是 git 检出 → 请用 npm run local -- --deploy --yes' };
+    }
+    if (o.dirtyCount !== null && o.dirtyCount !== undefined && Number(o.dirtyCount) > 0) {
+        return { action: 'refuse', reason: 'deployed-dirty', ok: false, note: '部署副本有 ' + Number(o.dirtyCount) + ' 处本地改动 → 拒绝覆盖（请先自行处理）' };
+    }
+    if (o.sameRemote === false) {
+        return { action: 'refuse', reason: 'remote-mismatch', ok: false, note: '部署副本与开发仓库不同源 → 拒绝覆盖' };
+    }
+    if (sha(o.devSha) && sha(o.devSha) === sha(o.deployedSha)) {
+        return { action: 'none', reason: 'already-aligned', ok: true, note: '两侧已在同一提交 → 无需同步' };
+    }
+    return { action: 'ff', reason: 'drift', ok: true, note: '把宿主副本快进到开发仓库当前提交（fetch + merge --ff-only）' };
+}
