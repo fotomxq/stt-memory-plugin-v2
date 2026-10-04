@@ -198,6 +198,15 @@ export function probeCapabilities() {
         // v2.94.0（`docs/D12` §4）：官方删楼接口（设定 → 数据管理「删除到最近 N 层」依赖它；
         //   缺失时该操作降级为「明确提示不支持」（D12 Q6），**不静默失败**）
         deleteMessage: !!(ctx && typeof ctx.deleteMessage === 'function'),
+        // v3.17.1（用户报告「使用插件内置删除楼层功能后，应用整体进入严重卡顿」后补）：
+        //   批量截断所需的官方接口面 —— 落盘（`saveChat` 现行 / `saveChatConditional` 部分版本）、
+        //   整聊重画（`clearChat` + `printMessages`）与整聊重载（`reloadCurrentChat`）。
+        //   探针如实列出，便于在真机上核对「这次删楼会走哪条路径」（`ftt.probe` / `/ftt` 状态可读）。
+        saveChat: !!(ctx && typeof ctx.saveChat === 'function'),
+        saveChatConditional: !!(ctx && typeof ctx.saveChatConditional === 'function'),
+        clearChat: !!(ctx && typeof ctx.clearChat === 'function'),
+        printMessages: !!(ctx && typeof ctx.printMessages === 'function'),
+        reloadCurrentChat: !!(ctx && typeof ctx.reloadCurrentChat === 'function'),
         // 世界书
         loadWorldInfo: !!(ctx && typeof ctx.loadWorldInfo === 'function'),
         saveWorldInfo: !!(ctx && typeof ctx.saveWorldInfo === 'function'),
