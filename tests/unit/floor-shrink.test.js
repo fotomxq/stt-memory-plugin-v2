@@ -37,7 +37,10 @@ A('A2 600→10 骤减：识别为收缩、`lastKnownFloor` **收紧**为当前�
 })(), () => ({ lastKnownFloor: state.lastKnownFloor }));
 
 // B 组：只改编号、不删数据（Q1）
-A('B1 陈旧楼层区间 → 置未知区间 `0/0` + `floorStale`；**条目一条不少**（数据全保留，D12 §8-B）', (() => {
+// v3.7.0（用户要求）：「原子数据来源记录了楼层，**原始楼层不应该变动**。当楼层发生突变后，
+//   如找不到对应楼层哈希值，则**标记原文已移除**处理。」→ 本断言由「置 0/0 + floorStale」改判为
+//   「**来源楼层原样保留** + 打 `originGone`（原文已移除）」；条目依旧一条不少。
+A('B1 突变后**来源楼层原样保留**、找不到原文的条目打「原文已移除」（`originGone`）；**条目一条不少**（D12 §8-B）', (() => {
     boot(chatOf(10), {
         lastKnownFloor: 599,
         atoms: [atom('a_old', 100, 105), atom('a_new', 3, 5)],
@@ -46,11 +49,16 @@ A('B1 陈旧楼层区间 → 置未知区间 `0/0` + `floorStale`；**条目一�
     });
     const r = handleFloorShrink();
     const a1 = state.atoms[0], a2 = state.atoms[1];
-    return r.staleEntries >= 1 && state.atoms.length === 2 && state.memories.length === 1
-        && a1.floorStart === 0 && a1.floorEnd === 0 && a1.floorStale === true
-        && a2.floorStart === 3 && a2.floorEnd === 5 && a2.floorStale === undefined
-        && state.memories[0].floorStale === true;
-})(), () => ({ stale: state.atoms.map((x) => [x.id, x.floorStart, x.floorEnd, !!x.floorStale]) }));
+    return r.staleEntries >= 1 && r.originGone === r.staleEntries && state.atoms.length === 2 && state.memories.length === 1
+        // ① 超出末楼、又找不到哈希 → 原文已移除；**来源楼层不动**
+        && a1.floorStart === 100 && a1.floorEnd === 105 && a1.originGone === true && !!a1.originGoneAt
+        && a1.floorStale === undefined
+        // ② 区间仍在当前末楼之内 → 保持原状（保守：不臆断）
+        && a2.floorStart === 3 && a2.floorEnd === 5 && a2.originGone === undefined && a2.floorStale === undefined
+        // ③ 其它维度同样处理（记忆 / 分段总结）
+        && state.memories[0].floorStart === 590 && state.memories[0].floorEnd === 599 && state.memories[0].originGone === true
+        && state.plotSegments[0].originGone === true;
+})(), () => ({ r: { stale: state.atoms.map((x) => [x.id, x.floorStart, x.floorEnd, !!x.originGone]) }, originGone: undefined }));
 
 // C 组：台账哈希归位（Q3 绕过 mass-mismatch）
 A('C1 台账：幸存 10 楼的标记按**内容哈希**归位、被删楼的标记丢弃；版本签名刷新（Q3 强制归位）', (() => {

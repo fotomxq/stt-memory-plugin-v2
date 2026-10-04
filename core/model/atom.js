@@ -32,6 +32,13 @@ function normalizeAtom(e, fallbackFloor) {
         // 情节不再携带「未了结」—— 已发生事件为固定事实，不标注计划/悬念式状态（旧数据残留字段不再持久化）
         floorStart: Number.isInteger(fs) && fs >= 0 ? fs : 0,
         floorEnd: Number.isInteger(fe) && fe >= 0 ? fe : 0,
+        // v3.7.0（用户要求）：**来源楼层 floorStart/floorEnd 创建后永不变动**；删楼/楼层突变只更新
+        //   `floorNowStart/floorNowEnd`（当前位置）或打 `originGone`（原文已移除）——这些字段不参与内容哈希，
+        //   归一化时必须原样保留（否则下一次合并/AI 更新会把标记丢掉）。
+        ...(Number.isInteger(Number(e?.floorNowStart)) && Number(e.floorNowStart) >= 0 ? { floorNowStart: Number(e.floorNowStart) } : {}),
+        ...(Number.isInteger(Number(e?.floorNowEnd)) && Number(e.floorNowEnd) >= Number(e.floorNowStart) ? { floorNowEnd: Number(e.floorNowEnd) } : {}),
+        ...(e?.floorNowHash ? { floorNowHash: String(e.floorNowHash) } : {}),
+        ...(e?.originGone === true ? { originGone: true, originGoneAt: Number(e.originGoneAt) > 0 ? Number(e.originGoneAt) : Date.now() } : {}),
         uses: Number(e?.uses) || 0,
         // 原子层：标准化字段 + 可扩展插槽
         category: 'atoms',

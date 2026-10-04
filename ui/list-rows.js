@@ -27,6 +27,7 @@
 //   ③ 「下钻」块（角色档案的已知记忆/参与计划/在查悬念、概念的被引用）与「知情摘要」行**本批一并补齐**（V1 有则出）。
 // ============================================================
 import { cfg, state, getStoryNow } from '../core/model/runtime.js';
+import { floorPositionLabel } from '../core/floor-cover.js';   // v3.7.0：楼层显示 = 当前位置 / 原文已移除
 import { escHtml } from '../core/util.js';
 import { atomTitle, normPhase } from '../core/model/scalars.js';
 import { atomIsHidden } from '../core/merge.js';
@@ -233,7 +234,9 @@ function atomsRow(a, now) {
         : '';
     const hiddenTag = (() => { try { return atomIsHidden(a) ? ' 🙈已总结隐藏' : ''; } catch (x) { return ''; } })();
     const locs = arr(a.locations).length ? (' · ' + esc(a.locations.join('/'))) : '';
-    const meta = '<div class="ftt-desc">📅 ' + t + ' · ' + esc(a.type) + ' · ' + esc(a.floorStart) + '-' + esc(a.floorEnd) + '楼 · 调用' + (a.uses || 0) + '次 · 重要度' + importancePct(a) + '%' + locs + '</div>';
+    // v3.7.0：楼层标签按「当前位置」显示；「原文已移除」与「原 30-32 楼」都直接写在行内（来源楼层可查，但不占用楼层）
+    const floorTxt = (() => { try { return floorPositionLabel(a); } catch (x) { return ''; } })();
+    const meta = '<div class="ftt-desc">📅 ' + t + ' · ' + esc(a.type) + (floorTxt ? (' · ' + esc(floorTxt)) : '') + ' · 调用' + (a.uses || 0) + '次 · 重要度' + importancePct(a) + '%' + locs + '</div>';
     const title = (() => { try { return atomTitle(a); } catch (x) { return String(a.title || ''); } })();
     const ownTitle = !!title && !String(a.text || '').trim().startsWith(title);
     if (ownTitle) {
