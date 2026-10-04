@@ -23,6 +23,8 @@ import { traceList, traceStats, traceTimelineText, traceContext, traceClear, tra
 import { getCtx } from '../host/st-api.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
+// v3.11.0：**数据体检**（只读）—— 调试桥 `ftt.dataHealth` / 面板与 `/ftt` 共用同一份报告
+import { dataHealthReport, dataHealthText } from '../core/data-health.js';
 // v2.77.0：文件通道（宿主原生存储 / 酒馆用户目录文件）现状 —— 排障时先看这一项
 import { fileTransportStatus } from '../adapters/file-transport.js';
 import { settingsControlHtml } from './settings-pages.js';
@@ -212,6 +214,8 @@ export function buildDebugExport() {
         //   读取台账（人读文本 + 结构化统计；含服务端/本地/内存每一次读取的耗时、体积、条数与结果）
         readsText: (() => { try { return readLedgerText(30); } catch (e) { return String((e && e.message) || e); } })(),
         reads: (() => { try { return readLedgerStats(); } catch (e) { return { error: String((e && e.message) || e) }; } })(),
+        // v3.11.0：数据体检（只读；摘要 + 明细计数，便于「导出调试包」一并交给开发核对）
+        dataHealth: (() => { try { const r = dataHealthReport(); return { ok: r.ok, level: r.level, counts: r.counts, scanned: r.scanned, truncated: r.truncated, text: dataHealthText(r) }; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
     };
 }
 
@@ -476,13 +480,27 @@ export function buildBridgeMethods() {
 
     // —— 台账 / 未摘要清单的只读诊断（v3.0.9）——
     //   全部走 `maintain:false` 与纯函数比较：**不触发任何台账维护写入**（migrate/drift/reconcile/shrink 一律不跑）。
-    T['ftt.ledger'] = safe(() => ({
-        stats: processedStats(),
-        marks: (state.processedFloors || []).map((x) => ({ f: Number(x && typeof x === 'object' ? x.f : x), h: String((x && x.h) || '') })),
-        verMatches: (state.processedVer || '') === processedVerTag(),
-        processedVer: String(state.processedVer || ''),
-        currentVer: processedVerTag(),
-    }));
+    T['ftt.ledger'] = safe(() => {
+        const raw = Array.isArray(state.processedFloors) ? state.processedFloors : [];
+        // v3.11.0：楼层号解析改**严格**（只认非负整数 / 十进制数字串）——
+        //   此前用 `Number(x)` 会把 `null` 读成第 0 楼、把 `{f:'x'}` 读成 NaN 而不报，异常数据被掩盖。
+        const marks = raw.map((x) => {
+            const obj = !!x && typeof x === 'object' && !Array.isArray(x);
+            const rv = obj ? x.f : x;
+            let f = NaN;
+            if (typeof rv === 'number') f = Number.isInteger(rv) ? rv : NaN;
+            else if (typeof rv === 'string' && /^\d+$/.test(rv.trim())) f = Number(rv.trim());
+            return { f: Number.isInteger(f) ? f : null, h: obj ? String(x.h || '') : '', bad: !Number.isInteger(f) };
+        });
+        return {
+            stats: processedStats(),
+            marks: marks,
+            badMarks: marks.filter((m) => m.bad).length,
+            verMatches: (state.processedVer || '') === processedVerTag(),
+            processedVer: String(state.processedVer || ''),
+            currentVer: processedVerTag(),
+        };
+    });
     T['ftt.chatReady'] = safe(() => chatReadyForFloors());
     T['ftt.pendingScan'] = safe(() => {
         const s = scanPendingFloors({ maintain: false });
@@ -491,6 +509,12 @@ export function buildBridgeMethods() {
     T['ftt.pendingFloors'] = safe(() => listUnprocessedFloors({ maintain: false }));
     /** 单楼诊断：这一楼为什么被判为未摘要（逐项给出页面侧实际算出的值） */
     T['ftt.floorDiag'] = safe((p) => floorDiag(Number(p.i)));
+
+    // —— 数据体检（v3.11.0，**只读零副作用**）：把存档里的数据异常逐条列出 ——
+    //   脏台账标记 / 非规范 NSFW 等级 / 负数 uses / 倒置或非法的楼层区间 / 缺 id · 重复 id /
+    //   孤儿关联行 / 非法墓碑时间戳 / 超长字段 …（自愈在载入期 `migrateState`，这里只核对）
+    T['ftt.dataHealth'] = safe((p) => dataHealthReport(undefined, { cap: Number((p && p.cap) || 0) || undefined }));
+    T['ftt.dataHealthText'] = safe(() => dataHealthText(dataHealthReport()));
 
     // —— 载入链路诊断（v3.0.10，**只读**）——
     //   把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」四处并排读出来，
@@ -648,12 +672,20 @@ function memoryShape() {
     const keys = DIMENSIONS.map((d) => d.kind);
     const extra = ['npcs', 'vars', 'deleted'];
     const out = {};
+    // v3.11.0（数据体检）：计数表只回**数字**（数组 = 条数、对象 = 键数、缺失 = null）。
+    //   此前类型错误的容器会把 `typeof v`（如 `"string"`）直接填进计数表 —— 消费方（调试页/端口脚本）
+    //   拿到的就不是条数；现在统一归入 `bad`（维度 → 实际类型），异常本身由 `ftt.dataHealth` 报告。
+    const bad = {};
     for (const k of keys.concat(extra)) {
         try {
             const v = state[k];
-            out[k] = Array.isArray(v) ? v.length : ((v && typeof v === 'object') ? Object.keys(v).length : (v === undefined ? null : typeof v));
+            if (Array.isArray(v)) out[k] = v.length;
+            else if (v && typeof v === 'object') out[k] = Object.keys(v).length;
+            else if (v === undefined || v === null) out[k] = null;
+            else { out[k] = null; bad[k] = typeof v; }
         } catch (e) { out[k] = null; }
     }
+    if (Object.keys(bad).length) out.bad = bad;
     return out;
 }
 
@@ -794,6 +826,20 @@ export function debugPageHtml(controls) {
         // ④ 交互与宿主调用时间线
         '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
         traceSectionHtml(traceFilter),
+        '</div>',
+        // ④a v3.11.0（用户要求「核对存在的 BUG 和数据异常」）：**数据体检**（只读零副作用）
+        //   摘要一行 + 折叠明细（逐条 code / 维度 / 条目 / 字段）；自愈在载入期 `migrateState` 完成，这里只核对。
+        '<div class="ftt-section"><div class="ftt-sec-title">🩺 数据体检 <span class="ftt-muted">只读</span></div>',
+        (() => {
+            const r = (() => { try { return dataHealthReport(); } catch (e) { return null; } })();
+            if (!r) return '<div class="ftt-muted">体检不可用（读取状态失败）。</div>';
+            const rows = r.findings.slice(0, 40).map((f) => '<div>' + esc(f.code) + ' · ' + esc(String(f.dim || ''))
+                + (f.id ? (' · <b>' + esc(String(f.id)) + '</b>') : '') + (f.field ? (' · ' + esc(String(f.field))) : '')
+                + '：' + esc(String(f.detail || '')) + '</div>').join('');
+            return '<div class="ftt-muted" data-ftt-data-health>' + esc(dataHealthText(r)) + '</div>'
+                + hintDetailsHtml('明细（前 40 条；自愈在载入时完成，重复 id / 超长字段 / 非法墓碑时间戳只报告不擅自改）',
+                    '<div>' + (rows || '没有需要列出的明细。') + (r.truncated ? ('<div>…还有 ' + r.truncated + ' 条未列出</div>') : '') + '</div>');
+        })(),
         '</div>',
         // ④b v3.0.23：读取台账（服务端 / 本地 / 内存，每一次读取的时间与统计）
         '<div class="ftt-section"><div class="ftt-sec-title">📥 读取台账 <span class="ftt-muted">服务端 / 本地 / 内存</span></div>',
