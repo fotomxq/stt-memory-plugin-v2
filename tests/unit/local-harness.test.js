@@ -14,7 +14,7 @@ import {
     nodeFs, appDataRoots, ttAppRoots, ttExeCandidates, maskPath, discoverHost,
     readManifest, readGitHead, readGitRemote, readDisabledExtensions, pluginEnabled,
     readDevFlags, dirStats, storeStats, inventory, diffInventory, planDeploy,
-    sha256, PLUGIN_FOLDER,
+    planHostSync, sha256, PLUGIN_FOLDER,
 } from '../local/host.js';
 import {
     findProfilePaths, scanText, maskSecret, looksBinary, isAllowedLine, scanRepo,
@@ -164,6 +164,34 @@ try {
 
     R.assert('D4 sha256 稳定且能区分内容差异',
         sha256(Buffer.from('a')) === sha256(Buffer.from('a')) && sha256(Buffer.from('a')) !== sha256(Buffer.from('b')));
+
+    // ------------------------------------------------------------
+    // D5. 宿主副本同步判定（开发守则 §6.4 的纯函数：永不覆盖、只快进）
+    // ------------------------------------------------------------
+    const commit = 'a'.repeat(40);
+    const other = 'b'.repeat(40);
+    {
+        const p1 = planHostSync({ deployedDir: '', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true });
+        const p2 = planHostSync({ deployedDir: 'X', isRepo: false, devSha: commit, deployedSha: '', sameRemote: null });
+        const p3 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, dirtyCount: 3 });
+        const p4 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: false, dirtyCount: 0 });
+        const p5 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: commit, sameRemote: true, dirtyCount: 0 });
+        const p6 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, dirtyCount: 0 });
+        const p7 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, gitAvailable: false });
+        R.assert('D5 planHostSync：无宿主/非 git 检出/有本地改动/异源/已一致/漂移/git 不可用 七态分流正确',
+            p1.action === 'none' && p1.reason === 'no-host'
+            && p2.action === 'deploy-copy' && p2.reason === 'not-a-git-checkout'
+            && p3.action === 'refuse' && p3.reason === 'deployed-dirty' && String(p3.note).indexOf('3') > 0
+            && p4.action === 'refuse' && p4.reason === 'remote-mismatch'
+            && p5.action === 'none' && p5.reason === 'already-aligned'
+            && p6.action === 'ff' && p6.reason === 'drift' && p6.ok === true
+            && p7.action === 'deploy-copy' && p7.reason === 'git-unavailable',
+            { p1: p1.action, p2: p2.action, p3: p3.action, p4: p4.action, p5: p5.action, p6: p6.action, p7: p7.action });
+        R.assert('D5b planHostSync：**拒绝态一律 ok:false**（调用方据此不写任何东西），快进态不可覆盖脏副本',
+            p2.ok === false && p3.ok === false && p4.ok === false && p7.ok === false
+            && planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, dirtyCount: null }).action === 'ff',
+            { p2: p2.ok, p3: p3.ok, p4: p4.ok, p7: p7.ok });
+    }
 
     // ------------------------------------------------------------
     // E. 隐私门禁（scripts/check-local-leak.js）

@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.10.0",
-  "updatedAt": "2026-09-30",
-  "generatedAt": "2026-09-30",
+  "version": "3.10.1",
+  "updatedAt": "2026-10-04",
+  "generatedAt": "2026-10-04",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.10.1",
+      "date": "2026-10-04",
+      "title": "新约定：部署时同步宿主副本（npm run local:sync）",
+      "points": [
+        "① 落点（治理）：写进 开发守则.md §6.4（触发条件 / 部署顺序 / 两条同步路径 / 硬性边界 / 生效提醒 /登记要求），并在 §6.1 动作表增补一行；tests/…",
+        "② 交付（工具）：新增 tests/local/sync-host.mjs（npm run local:sync）：不带 --yes = 只读检查（不写任何东西、不调 git 写…"
+      ]
+    },
     {
       "version": "3.10.0",
       "date": "2026-09-30",
