@@ -3,6 +3,40 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.17.1（2026-10-05）· 删楼批量的**宿主兼容加固**：落盘键名两种都认 + 探针如实列出接口面
+
+**用户要求**（原话）：「请核对当使用插件内置删除楼层功能后，应用整体进入严重卡顿的问题。」（v3.17.0 的根因修复之后，本轮把「换台机器/换个 ST 版本就可能不成立」的假设补掉。）
+
+**① 为什么要加固**
+
+v3.17.0 的批量路径依赖宿主导出三个官方接口（`saveChat` / `clearChat`+`printMessages`）。
+`getContext()` 的导出键名**各版本不完全一致**：现行 `st-context.js` 是 `saveChat: saveChatConditional`，
+部分宿主/旧版直接导出 `saveChatConditional`；本机 ST 前端是内嵌资源、**离线无法逐字核对**。
+一旦键名对不上，本机就会从「批量」掉回「只能逐层」→ 大批量删除会被**拒绝**（比卡顿更难用）。
+
+**② 改了什么**
+
+| 位置 | 改动 |
+| --- | --- |
+| `host/floor-trim.js#bulkCapability` | 落盘函数按 **`saveChat` → `saveChatConditional`** 依次认（哪个在就用哪个）；重渲染仍优先 `clearChat`+`printMessages`，缺一退 `reloadCurrentChat`；`floorTrimCapability()/Status()` 新增 `bulkSave`，如实回报本次用的是哪个函数 |
+| `host/st-api.js#probeCapabilities` | 能力探针如实列出批量路径所需的接口面：`saveChat` / `saveChatConditional` / `clearChat` / `printMessages` / `reloadCurrentChat`（**只读**；`ftt.probe`、`/ftt` 状态、调试页、`window.FTT.probe` 都可见） |
+| `tests/harness/st-mock.js` | 桩宿主补齐 `saveChatConditional` 与 `reloadCurrentChat`（`opts.noBulk` 五个一起摘） |
+| `tests/unit/floor-trim-bulk.test.js` | 新增 **F1/F2**：只给 `saveChatConditional` 的宿主**照样走批量路径**（`bulkSave` 指认正确、零逐层调用）；探针如实列出接口面（完整宿主 true / 无批量宿主 false） |
+| 冒烟 `BH10` | 「无批量能力宿主」的构造改为**把五个接口全部摘掉**（否则新认的别名会让它仍走批量） |
+
+**③ 测试**
+
+- 全量：**145 文件 / 2241 断言** + 冒烟 **208 项** 全绿；
+- 真机可自查：刷新后 `ftt.probe` 的 `need.saveChat` / `need.clearChat` / `need.printMessages` / `need.reloadCurrentChat`
+  即「本机能不能走批量截断」；设定 → 数据管理的只读诊断行会直接写「删除方式 批量截断（一次完成）／逐层删除（慢）」。
+
+**④ 未验证项（如实登记）**
+
+- 本机是否**恰好**导出 `saveChat`（而非只导出别名）仍需刷新后由 `ftt.probe` 确认 —— 两种情形都已覆盖，不影响可用性；
+- 逐层路径（≤3 层）与「拒绝执行」在本机真机未复现（本机有批量能力），由单测覆盖。
+
+详见 `docs/history/P10c34-删楼批量宿主兼容加固.md`。
+
 ## v3.17.0（2026-10-05）· 修「用内置删除楼层后，应用整体严重卡顿」——删楼改为**一次批量截断**，逐层只留 ≤3 层的最后手段
 
 **用户要求**（原话）：「请核对当使用插件内置删除楼层功能后，应用整体进入严重卡顿的问题。」

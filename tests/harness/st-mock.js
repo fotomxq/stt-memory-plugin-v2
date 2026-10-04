@@ -171,11 +171,16 @@ export function makeHost(opts) {
         //     · `printMessages` 按内存 `chat` 一次性重画。
         //   传入 `opts.noBulk` 可移除这三个方法（模拟「宿主没有批量截断能力」→ 逐层回退 / 超限拒绝）。
         saveChat: async () => { ctx.saveChatCount = (ctx.saveChatCount || 0) + 1; },
+        // v3.17.1：部分 ST 版本/宿主直接导出 `saveChatConditional`（现行 st-context 是 `saveChat: saveChatConditional`）——
+        //   桩里两个都给，便于验证「键名不同也走批量路径」。
+        saveChatConditional: async () => { ctx.saveChatConditionalCount = (ctx.saveChatConditionalCount || 0) + 1; },
         clearChat: async () => { ctx.clearChatCount = (ctx.clearChatCount || 0) + 1; ctx.extensionPrompts = {}; },
         printMessages: async () => { ctx.printMessagesCount = (ctx.printMessagesCount || 0) + 1; },
+        // v3.17.1：整聊重载（批量路径在「没有 clearChat/printMessages」时的兜底渲染路线；探针也如实列它）
+        reloadCurrentChat: async () => { ctx.reloadCurrentChatCount = (ctx.reloadCurrentChatCount || 0) + 1; },
     };
     if (o.noDeleteMessage) { delete ctx.deleteMessage; delete ctx.deleteLastMessage; }
-    if (o.noBulk) { delete ctx.saveChat; delete ctx.clearChat; delete ctx.printMessages; delete ctx.reloadCurrentChat; }
+    if (o.noBulk) { delete ctx.saveChat; delete ctx.saveChatConditional; delete ctx.clearChat; delete ctx.printMessages; delete ctx.reloadCurrentChat; }
     if (o.noEventSource) delete ctx.eventSource; else ctx.eventSource = eventSource;
     ctx.eventTypes = o.noEventSource ? undefined : eventTypes;
     if (o.noInject) { delete ctx.setExtensionPrompt; delete ctx.extensionPrompts; }

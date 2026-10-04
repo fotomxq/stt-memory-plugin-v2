@@ -4632,13 +4632,21 @@ await assert('BH11 v3.5.0 总览「🛠 自动修复」追加两步（真实点�
 //   真机取证：v3.4.0 依赖的 `/cut` 命令在宿主上**不生效** → 退到「逐层 deleteMessage」，
 //   实测 ≈1.5 秒/层 → 242 层删 230 层卡了 **5 分 45 秒**。
 //   修复口径：默认走**一次批量截断**；逐层只在「批量不可用且 ≤3 层」时作最后手段，超过即拒绝。
-await assert('BH10 v3.17.0 删楼不再逐层：真实点击「保留最近 10 层」→ 走**一次批量截断**（`saveChat`/`clearChat`/`printMessages` 各 1 次）且**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「方式 批量截断」；宿主只能逐层且待删 14 层 → **拒绝执行**（不备份、不动聊天）；只能逐层但只删 2 层 → 逐层最后手段可用；三条路径都只删更早楼层、记忆一条不少', (async () => {
+await assert('BH10 v3.17.0/v3.17.1 删楼不再逐层：真实点击「保留最近 10 层」→ 走**一次批量截断**（`saveChat`/`clearChat`/`printMessages` 各 1 次）且**一次 `deleteMessage` 都不调用**，聊天一次截断到位，提示如实回报「方式 批量截断」；宿主只能逐层（批量接口全部缺失）且待删 14 层 → **拒绝执行**（不备份、不动聊天）；只能逐层但只删 2 层 → 逐层最后手段可用；三条路径都只删更早楼层、记忆一条不少', (async () => {
     const RT = await import('../core/model/runtime.js');
     const FH = await import('../host/floor-trim.js');
     const keepChat = host.ctx.chat.slice();
     const keepLast = host.ctx.getLastMessageId;
     const keepDel = host.ctx.deleteMessage;
     const keepSave = host.ctx.saveChat, keepClear = host.ctx.clearChat, keepPrint = host.ctx.printMessages;
+    // v3.17.1：批量能力现在认 5 个官方接口（`saveChat` / `saveChatConditional` / `clearChat` / `printMessages` /
+    //   `reloadCurrentChat`）—— 「无批量能力宿主」必须把它们**全部**摘掉，否则仍会走批量路径。
+    const keepSaveCond = host.ctx.saveChatConditional, keepReload = host.ctx.reloadCurrentChat;
+    const setBulk = (on) => {
+        const put = (k, v) => { if (on) host.ctx[k] = v; else delete host.ctx[k]; };
+        put('saveChat', keepSave); put('saveChatConditional', keepSaveCond);
+        put('clearChat', keepClear); put('printMessages', keepPrint); put('reloadCurrentChat', keepReload);
+    };
     const keepAtoms = JSON.parse(JSON.stringify(RT.state.atoms || []));
     const mkChat = (n) => { host.ctx.chat.length = 0; for (let i = 0; i < n; i++) host.ctx.chat.push({ is_user: i % 2 === 0, mes: '第' + i + '楼：甲在码头清点铜箱并记账（正文足够长）。', name: i % 2 === 0 ? 'User' : '角色甲' }); host.ctx.getLastMessageId = () => host.ctx.chat.length - 1; };
     /** 本轮新增的删楼备份文件（不许改删楼钩子：钩子归 index.js 接线，改了就污染后续 BG1 的真实备份） */
@@ -4664,7 +4672,7 @@ await assert('BH10 v3.17.0 删楼不再逐层：真实点击「保留最近 10 �
             && note1.indexOf('方式 批量截断') >= 0 && String(r1.summary || '').indexOf('删除方式 批量截断（一次完成') >= 0;
         // ② 宿主只能逐层 + 待删 14 层（>3）→ **拒绝执行**：一层不删、连备份都不做
         mkChat(20);
-        delete host.ctx.saveChat; delete host.ctx.clearChat; delete host.ctx.printMessages;
+        setBulk(false);
         const files2 = new Set(srvFiles.keys());
         const rec2 = { deleteCalls: 0 };
         host.ctx.deleteMessage = async (id) => { rec2.deleteCalls += 1; const i = Number(id); if (i >= 0 && i < host.ctx.chat.length) host.ctx.chat.splice(i, 1); };
@@ -4682,10 +4690,10 @@ await assert('BH10 v3.17.0 删楼不再逐层：真实点击「保留最近 10 �
         const slowOk = r3.ok === true && r3.via === 'api' && rec3.deleteCalls === 2 && host.ctx.chat.length === 18
             && note3.indexOf('方式 逐层删除（慢）') >= 0;
         // ④ 能力与诊断如实回报当前宿主走哪条路径
-        host.ctx.saveChat = keepSave; host.ctx.clearChat = keepClear; host.ctx.printMessages = keepPrint;
+        setBulk(true);
         const capBulk = FH.floorTrimCapability();
         const stBulk = FH.floorTrimStatus();
-        delete host.ctx.saveChat; delete host.ctx.clearChat; delete host.ctx.printMessages;
+        setBulk(false);
         const capSlow = FH.floorTrimCapability();
         const stSlow = FH.floorTrimStatus();
         const statOk = capBulk.bulk === true && capBulk.bulkMode === 'clear+print' && stBulk.via === 'bulk'
@@ -4703,6 +4711,8 @@ await assert('BH10 v3.17.0 删楼不再逐层：真实点击「保留最近 10 �
         if (keepSave === undefined) delete host.ctx.saveChat; else host.ctx.saveChat = keepSave;
         if (keepClear === undefined) delete host.ctx.clearChat; else host.ctx.clearChat = keepClear;
         if (keepPrint === undefined) delete host.ctx.printMessages; else host.ctx.printMessages = keepPrint;
+        if (keepSaveCond === undefined) delete host.ctx.saveChatConditional; else host.ctx.saveChatConditional = keepSaveCond;
+        if (keepReload === undefined) delete host.ctx.reloadCurrentChat; else host.ctx.reloadCurrentChat = keepReload;
         RT.state.atoms = keepAtoms;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
     }

@@ -15,7 +15,8 @@
 //   B **批量路径**：一次 splice + 一次 saveChat + 一次重渲染 + **一次**事件；**零** `deleteMessage`；摘要/账本如实记 `via:'bulk'`；
 //   C **降级矩阵**：落盘失败 → 原样放回（不假装成功）→ 超限拒绝 / ≤3 层逐层；只能逐层且超限 → 拒绝（不备份、不动聊天）；
 //   D **护栏**：逐层硬预算中止（partial）；重入保护（busy）；`afterMutate` 钩子在真的删掉后回调一次；
-//   E **界面与预检**：诊断行 / 按钮 title 按真实能力说明路径；被拒绝时预检**如实说明秒数**（不静默失败）。
+//   E **界面与预检**：诊断行 / 按钮 title 按真实能力说明路径；被拒绝时预检**如实说明秒数**（不静默失败）；
+//   F **v3.17.1 稳健性**：宿主导出的落盘键名不同（只给 `saveChatConditional`）也能走批量路径；探针如实列出接口面。
 //
 // 运行：node tests/unit/floor-trim-bulk.test.js
 // ============================================================
@@ -28,9 +29,10 @@ import {
     FLOOR_TRIM_SLOW_MAX,
 } from '../../host/floor-trim.js';
 import { FLOOR_TRIM_SLOW_MS_PER_FLOOR, FLOOR_TRIM_SLOW_BUDGET_MS, floorTrimSlowSeconds } from '../../core/floor-trim.js';
+import { probeCapabilities } from '../../host/st-api.js';
 import { settingsPageHtml } from '../../ui/settings-pages.js';
 
-const R = makeReporter('floor-trim-bulk v3.17.0 删楼：一次批量截断（默认）+ 慢速逐层护栏');
+const R = makeReporter('floor-trim-bulk v3.17.0–v3.17.1 删楼：一次批量截断（默认）+ 慢速逐层护栏');
 const J = (v) => JSON.stringify(v);
 const A = (n, c, e) => {
     const det = () => (typeof e === 'function' ? (() => { try { return e(); } catch (err) { return String((err && err.message) || err); } })() : e);
@@ -50,7 +52,7 @@ function boot(n, hostOpts) {
     host.ctx.characters = [{ name: '角色甲', avatar: 'trimbulk.png' }];
     host.ctx.characterId = 0;
     if (hostOpts) {
-        if (hostOpts.noBulk) { delete host.ctx.saveChat; delete host.ctx.clearChat; delete host.ctx.printMessages; }
+        if (hostOpts.noBulk) { delete host.ctx.saveChat; delete host.ctx.saveChatConditional; delete host.ctx.clearChat; delete host.ctx.printMessages; delete host.ctx.reloadCurrentChat; }
         if (hostOpts.noDeleteMessage) delete host.ctx.deleteMessage;
         if (hostOpts.reloadInstead) { delete host.ctx.clearChat; delete host.ctx.printMessages; host.ctx.reloadCount = 0; host.ctx.reloadCurrentChat = async () => { host.ctx.reloadCount += 1; }; }
         if (hostOpts.saveChatThrows) host.ctx.saveChat = async () => { throw new Error('server 500'); };
@@ -254,6 +256,37 @@ await A('D2 **重入保护**：删楼过程中再次调用直接返回 `busy`（
         J({ title: htmlSlow.indexOf('已拒绝') >= 0 }));
     A('E3 摘要函数如实给出逐层预估（`floorTrimSlowSeconds`：2 层 = 3 秒；0 层 = 0 秒）', floorTrimSlowSeconds(2) === 3 && floorTrimSlowSeconds(0) === 0 && floorTrimSlowSeconds(14) === 21, J([floorTrimSlowSeconds(2), floorTrimSlowSeconds(14)]));
 }
+
+// ---------- F 组：v3.17.1 稳健性（宿主导出的落盘键名不同也能走批量路径 + 探针如实列出接口面） ----------
+await A('F1 宿主只导出 `saveChatConditional`（部分 ST 版本的键名）时**仍然走批量路径**：`bulkSave` 如实回报用的哪个函数，删楼一次完成、零逐层调用',
+    (async () => {
+        const host = boot(20);
+        bootHooks();
+        delete host.ctx.saveChat;                                     // 只留别名（模拟旧版/异构宿主）
+        host.ctx.saveChatConditional = async () => { host.ctx.saveChatConditionalCount = (host.ctx.saveChatConditionalCount || 0) + 1; };
+        const cap = floorTrimCapability();
+        const r = await floorTrimApply({ keep: 10 });
+        return cap.bulk === true && cap.bulkSave === 'saveChatConditional'
+            && r.ok === true && r.deleted === 10 && r.via === 'bulk' && host.ctx.chat.length === 10
+            && (host.ctx.saveChatConditionalCount || 0) === 1 && (host.ctx.deletedMessages || []).length === 0
+            && (host.ctx.clearChatCount || 0) === 1 && (host.ctx.printMessagesCount || 0) === 1;
+    })(),
+    () => J({ bulkSave: 'saveChatConditional' }));
+
+A('F2 能力探针如实列出批量截断所需的官方接口面（`ftt.probe` / `/ftt` 状态可读）：完整宿主四个键都为 true，且 `bulkSave` 指认 `saveChat`',
+    (() => {
+        const host = boot(20);
+        const p = probeCapabilities();
+        const cap = floorTrimCapability();
+        const host2 = (() => { const h = boot(20, { noBulk: true }); return h; })();
+        const p2 = probeCapabilities();
+        return p.need.saveChat === true && p.need.saveChatConditional === true && p.need.clearChat === true
+            && p.need.printMessages === true && p.need.reloadCurrentChat === true
+            && cap.bulk === true && cap.bulkSave === 'saveChat'
+            && p2.need.saveChat === false && p2.need.clearChat === false && p2.need.reloadCurrentChat === false
+            && host.ctx.chat.length === 20 && host2.ctx.chat.length === 20;
+    })(),
+    () => J(probeCapabilities().need));
 
 if (uninstall) { try { uninstall(); } catch (e) { /* 忽略 */ } }
 R.done();

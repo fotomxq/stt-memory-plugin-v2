@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.17.0",
+  "version": "3.17.1",
   "updatedAt": "2026-10-05",
   "generatedAt": "2026-10-05",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.17.1",
+      "date": "2026-10-05",
+      "title": "删楼批量的宿主兼容加固：落盘键名两种都认 + 探针如实列出接口面",
+      "points": [
+        "① 为什么要加固：v3.17.0 的批量路径依赖宿主导出三个官方接口（saveChat / clearChat+printMessages）。getContext() 的导出键名…",
+        "② 改了什么：| 位置 | 改动 || --- | --- || host/floor-trim.js#bulkCapability | 落盘函数按 saveChat → sav…",
+        "③ 测试：全量：145 文件 / 2241 断言 + 冒烟 208 项 全绿；- 真机可自查：刷新后 ftt.probe 的 need.saveChat / need.clear…"
+      ]
+    },
     {
       "version": "3.17.0",
       "date": "2026-10-05",

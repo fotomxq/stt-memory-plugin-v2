@@ -107,27 +107,35 @@ export function floorTrimBusy() { return busy; }
 /**
  * 批量截断能力探测：是否能用**官方会话数组 + 官方落盘 + 官方重渲染**一次删掉前缀。
  * 只判「有没有 / 是不是函数」，**不产生任何副作用**。
- * @returns {{ok:boolean, mode:string, reason:string}}
+ *
+ * v3.17.1（稳健性）：落盘函数按 **`saveChat` → `saveChatConditional`** 依次认 —— 不同 ST 版本的
+ *   `st-context.js` 导出键名不同（现行版本是 `saveChat: saveChatConditional`，部分宿主/旧版直接导出
+ *   `saveChatConditional`）；重渲染优先 `clearChat`+`printMessages`（不重读磁盘、不发 `CHAT_CHANGED`），
+ *   缺一才退 `reloadCurrentChat`。两条都认不出才判定「不支持批量」。
+ * @returns {{ok:boolean, mode:string, saveVia:string, reason:string}}
  */
 function bulkCapability(ctx) {
     const c = ctx || null;
-    if (!c) return { ok: false, mode: '', reason: 'no-host' };
-    if (!Array.isArray(c.chat)) return { ok: false, mode: '', reason: 'no-chat' };
-    if (typeof c.saveChat !== 'function') return { ok: false, mode: '', reason: 'no-save-chat' };
+    if (!c) return { ok: false, mode: '', saveVia: '', reason: 'no-host' };
+    if (!Array.isArray(c.chat)) return { ok: false, mode: '', saveVia: '', reason: 'no-chat' };
+    const saveVia = (typeof c.saveChat === 'function') ? 'saveChat'
+        : ((typeof c.saveChatConditional === 'function') ? 'saveChatConditional' : '');
+    if (!saveVia) return { ok: false, mode: '', saveVia: '', reason: 'no-save-chat' };
     const redraw = (typeof c.clearChat === 'function' && typeof c.printMessages === 'function');
-    if (redraw) return { ok: true, mode: 'clear+print', reason: '' };
-    if (typeof c.reloadCurrentChat === 'function') return { ok: true, mode: 'reload', reason: '' };
-    return { ok: false, mode: '', reason: 'no-redraw' };
+    if (redraw) return { ok: true, mode: 'clear+print', saveVia: saveVia, reason: '' };
+    if (typeof c.reloadCurrentChat === 'function') return { ok: true, mode: 'reload', saveVia: saveVia, reason: '' };
+    return { ok: false, mode: '', saveVia: '', reason: 'no-redraw' };
 }
 
 /**
  * 能力探测（D12 Q6）：宿主是否提供**官方**删楼能力。
  * v3.17.0：`bulk` = 一次性批量截断可用（首选）；`slow` = 逐层 `deleteMessage` 可用（最后手段）。
+ * v3.17.1：`bulkSave` 如实回报批量路径用的是哪个官方落盘函数（`saveChat` / `saveChatConditional`），便于诊断。
  * 只判「有没有 / 是不是函数」，**不产生任何副作用**。
- * @returns {{ok:boolean, supported:boolean, bulk:boolean, bulkMode:string, slow:boolean, slowMax:number, reason:string, detail?:string}}
+ * @returns {{ok:boolean, supported:boolean, bulk:boolean, bulkMode:string, bulkSave:string, slow:boolean, slowMax:number, reason:string, detail?:string}}
  */
 export function floorTrimCapability() {
-    const fallback = { ok: false, supported: false, bulk: false, bulkMode: '', slow: false, slowMax: FLOOR_TRIM_SLOW_MAX, reason: 'error', detail: '' };
+    const fallback = { ok: false, supported: false, bulk: false, bulkMode: '', bulkSave: '', slow: false, slowMax: FLOOR_TRIM_SLOW_MAX, reason: 'error', detail: '' };
     try {
         const ctx = getCtx();
         if (!ctx) return Object.assign({}, fallback, { reason: 'no-host' });
@@ -138,7 +146,7 @@ export function floorTrimCapability() {
         if (!bulk.ok && !slow) return Object.assign({}, fallback, { reason: 'unsupported-host', detail: bulk.reason || '' });
         return {
             ok: true, supported: true,
-            bulk: !!bulk.ok, bulkMode: bulk.mode || '',
+            bulk: !!bulk.ok, bulkMode: bulk.mode || '', bulkSave: bulk.saveVia || '',
             slow: slow, slowMax: FLOOR_TRIM_SLOW_MAX,
             reason: '', detail: '',
         };
@@ -181,10 +189,11 @@ async function bulkCut(ctx, removeCount) {
     }
     try { if (ctx.chatMetadata && typeof ctx.chatMetadata === 'object') ctx.chatMetadata.tainted = true; } catch (e) { /* 忽略 */ }
     // ③ 落盘：失败即放回（不做「内存删了、盘上没删」的半截状态）
-    try { await ctx.saveChat(); }
+    //   v3.17.1：按探测结果调用宿主**实际导出**的那个官方落盘函数（`saveChat` / `saveChatConditional`）
+    try { await ctx[cap.saveVia || 'saveChat'](); }
     catch (e) {
         try { if (removed && removed.length) ctx.chat.unshift.apply(ctx.chat, removed); } catch (e2) { /* 忽略 */ }
-        return { ok: false, deleted: 0, mode: cap.mode, redraw: '', reason: 'save-failed', error: String((e && e.message) || e) };
+        return { ok: false, deleted: 0, mode: cap.mode, redraw: '', saveVia: cap.saveVia || '', reason: 'save-failed', error: String((e && e.message) || e) };
     }
     // ④ 重渲染：优先「清显示 + 重画」（不重读磁盘、不发 CHAT_CHANGED），不可用才退整聊重载
     let redraw = '';
@@ -221,6 +230,7 @@ export function floorTrimStatus() {
         supported: cap.supported,
         bulk: !!cap.bulk,                       // v3.17.0：宿主能否一次批量截断（默认路径）
         bulkMode: cap.bulkMode || '',
+        bulkSave: cap.bulkSave || '',           // v3.17.1：批量路径实际用的官方落盘函数名（诊断用）
         slow: !!cap.slow,                       // 逐层 `deleteMessage`（最后手段；>3 层即拒绝）
         slowMax: FLOOR_TRIM_SLOW_MAX,
         via: cap.supported ? (cap.bulk ? 'bulk' : 'api') : 'none',
