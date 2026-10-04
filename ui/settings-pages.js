@@ -1425,18 +1425,27 @@ function floorTrimSectionHtml() {
     const when = (() => {
         try { return new Date(Number((last && last.at) || 0)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(Number((last && last.at) || 0)); }
     })();
-    // v3.4.0（用户要求「改进为酒馆自带的命令删除，提高删除效率」）：诊断行显示**删除方式**（命令 / 逐层回退）
-    const viaText = (st && st.via === 'command') ? '酒馆命令（一次截断）' : ((st && st.via === 'api') ? '逐层删除' : '不可用');
-    const lastVia = (last && last.via) ? (' · 方式 ' + (last.via === 'command' ? '酒馆命令' : (last.via === 'command+api' ? '命令未生效→逐层' : '逐层')) + (last.ms ? (' · ' + Number(last.ms) + 'ms') : '')) : '';
+    // v3.17.0（用户报告「使用插件内置删除楼层功能后，应用整体进入严重卡顿」）：诊断行与按钮 title 一律
+    //   **按当前宿主真实能力**说明删除方式 —— 默认是一次性批量截断；逐层只在「批量不可用且 ≤3 层」时才是最后手段
+    //   （真机实测逐层 ≈1.5 秒/层）。旧账本里的 'command' / 'command+api' 属历史记录，照旧可读。
+    const viaLabel = (v) => ({
+        bulk: '批量截断', api: '逐层删除（慢）', command: '酒馆命令', 'command+api': '命令未生效→逐层',
+    })[String(v)] || '未知';
+    const viaText = supported ? (st.bulk ? '批量截断（一次完成）' : '逐层删除（慢）') : '不可用';
+    const lastVia = (last && last.via) ? (' · 方式 ' + viaLabel(last.via) + (last.ms ? (' · ' + Number(last.ms) + 'ms') : '')) : '';
     const diag = '只读诊断：当前 ' + floors + ' 层 · 插件 ' + entries + ' 条 · 删除方式 ' + viaText
         + (last ? (' · 上次删楼 ' + esc(when) + '（保留 ' + Number(last.keep) + ' 层 · 备份 ' + esc(String(last.backup || '未生成')) + lastVia + '）')
             : ' · 尚未删楼');
-    const pre = (keep) => floorTrimPrecheckCache(keep, floors);
+    const pre = (keep) => floorTrimPrecheckCache(keep, floors, !!(st && st.bulk));
+    const slowMax = Number((st && st.slowMax) || 3);
+    const pathText = supported
+        ? (st.bulk ? '一次性批量截断（官方 chat 数组 + saveChat + 重渲染 + 一次事件通知，快）'
+            : ('逐层官方 deleteMessage（慢，约 1.5 秒/层；最多 ' + slowMax + ' 层，超过即拒绝）'))
+        : '';
     const rows = FLOOR_TRIM_PRESETS.map((keep) => {
         const dis = supported ? '' : ' disabled';
         const title = supported
-            ? ('保留最近 ' + keep + ' 层后删除更早的楼层（' + pre(keep) + '）；删除方式：'
-                + ((st && st.via === 'command') ? '酒馆自带命令 /cut（一次截断整段，快）' : '逐层调用官方 deleteMessage（宿主无命令能力时的回退）'))
+            ? ('保留最近 ' + keep + ' 层后删除更早的楼层（' + pre(keep) + '）；删除方式：' + pathText)
             : ('当前宿主不提供官方删除楼层接口，无法执行（' + esc(String((st && st.reason) || '')) + '）');
         return '<button class="ftt-btn ftt-err" type="button" data-ftt-action="floorTrim" data-ftt-keep="' + keep + '"'
             + dis + ' title="' + esc(title) + '">保留最近 ' + keep + ' 层</button>';
@@ -1445,8 +1454,8 @@ function floorTrimSectionHtml() {
         '<div class="ftt-section"><div class="ftt-sec-title">✂️ 删除聊天楼层（减小聊天体积）</div>',
         '<div class="ftt-hint">酒馆对高楼层支持较差时，可以直接在这里删掉<b>更早的聊天楼层</b>。'
         + '插件已提取的记忆<b>不会</b>随之丢失：删除前自动生成一份明文备份，删除后把记忆里的楼层编号一并校准。</div>',
-        '<div class="ftt-hint">删除优先走<b>酒馆自带的截断命令</b>（一次删整段，比逐层删快得多）；'
-        + '宿主不支持该命令时才回退到逐层删除，两种方式都会在提示里如实说明。</div>',
+        '<div class="ftt-hint">删除默认走<b>一次批量截断</b>（官方 API，秒级完成）；'
+        + '只有宿主连批量截断都不支持、且只删不超过 ' + slowMax + ' 层时才逐层删除，超过即拒绝。</div>',
         '<div class="ftt-row">' + rows + '</div>',
         '<div class="ftt-hint ftt-mb-0">' + diag + '</div>',
         '</div>',
@@ -1454,18 +1463,27 @@ function floorTrimSectionHtml() {
 }
 
 /** 预检缓存（同一屏渲染内三档各算一次；只读、无副作用，缓存只为少算几遍哈希） */
-let trimPreCache = { floors: -1, map: {} };
-function floorTrimPrecheckCache(keep, floors) {
-    if (trimPreCache.floors !== floors) trimPreCache = { floors: floors, map: {} };
+let trimPreCache = { key: '', map: {} };
+function floorTrimPrecheckCache(keep, floors, bulk) {
+    // v3.17.0：键必须带上**当前宿主的删除路径能力** —— 同一屏里「批量可用 / 只能逐层」的预检结论不同
+    //   （前者给出将删层数，后者给出「预计多少秒 → 已拒绝」），只按楼层数缓存会串味。
+    const key = String(floors) + '|' + (bulk ? 'bulk' : 'slow');
+    if (trimPreCache.key !== key) trimPreCache = { key: key, map: {} };
     if (trimPreCache.map[keep] !== undefined) return trimPreCache.map[keep];
     let txt = '';
     try {
         const p = floorTrimPrecheck(keep);
         const pl = (p && p.plan) || {};
-        txt = pl.ok
-            ? ('当前 ' + pl.total + ' 层；将删除 ' + pl.removeCount + ' 层；受影响记忆 ' + Number((pl.affected && pl.affected.total) || 0) + ' 条'
-                + (Number(p.unextracted) > 0 ? ('；其中 ' + Number(p.unextracted) + ' 层尚未提取') : ''))
-            : (String((p && p.summary) || '') || '当前无需删除');
+        if (p && p.blocked) {
+            // v3.17.0：只能逐层且超上限 → 如实说明「会卡多久 / 为什么拒绝」
+            txt = '逐层删除 ' + Number(pl.removeCount) + ' 层预计约 ' + Number(p.slowSeconds) + ' 秒（界面会卡顿）→ 已拒绝；请到酒馆聊天界面自行删除更早的楼层';
+        } else {
+            txt = pl.ok
+                ? ('当前 ' + pl.total + ' 层；将删除 ' + pl.removeCount + ' 层；受影响记忆 ' + Number((pl.affected && pl.affected.total) || 0) + ' 条'
+                    + (Number(p.unextracted) > 0 ? ('；其中 ' + Number(p.unextracted) + ' 层尚未提取') : '')
+                    + (Number(p.slowCount) > 0 ? ('；逐层删除预计约 ' + Number(p.slowSeconds) + ' 秒') : ''))
+                : (String((p && p.summary) || '') || '当前无需删除');
+        }
     } catch (e) { txt = ''; }
     trimPreCache.map[keep] = txt;
     return txt;

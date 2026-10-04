@@ -177,14 +177,16 @@ A('B3 M=0 时不动任何字段（幂等短路）', (() => {
 })(), '');
 
 // ---------- C 组：官方 API 能力探测（D12 Q6） ----------
-A('C1 有 `ctx.deleteMessage` → supported=true；上下文缺失 → no-host', (() => {
+A('C1 有官方删楼能力 → supported=true（v3.17.0：`bulk` = 一次性批量截断可用，`slow` = 逐层可用）；上下文缺失 → no-host', (() => {
     bootHost({ floors: 20 });
     const cap = floorTrimCapability();
-    return cap.supported === true && cap.ok === true && cap.reason === '';
+    return cap.supported === true && cap.ok === true && cap.reason === ''
+        && cap.bulk === true && cap.bulkMode === 'clear+print' && cap.slow === true && cap.slowMax === 3
+        && floorTrimStatus().via === 'bulk';
 })(), () => J(floorTrimCapability()));
 
-A('C2 宿主**不提供**官方删楼接口 → supported=false / reason=unsupported-host（不静默失败，按钮侧置灰）', (() => {
-    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true } });
+A('C2 宿主**不提供**任何官方删楼接口（既无批量能力也无 deleteMessage）→ supported=false / reason=unsupported-host（不静默失败，按钮侧置灰）', (() => {
+    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true, noBulk: true } });
     const cap = floorTrimCapability();
     const pre = floorTrimPrecheck(6);
     return cap.supported === false && cap.reason === 'unsupported-host'
@@ -202,18 +204,23 @@ A('C3 无宿主上下文时预检/执行都如实返回（不抛异常）', (() 
 })(), '');
 
 // ---------- D 组：端到端执行（真实删除流程，全走官方 API 桩） ----------
-await A('D1 20 层保留 6：真实调用 `ctx.deleteMessage` 14 次（从后往前），聊天真的变短，并触发 14 次 MESSAGE_DELETED', (async () => {
-    bootHost({ floors: 20 });
+// v3.17.0（用户报告「使用插件内置删除楼层功能后，应用整体进入严重卡顿」）：**默认一次批量截断** ——
+//   真机实测「逐层 deleteMessage」每层 ≈1.5 秒（230 层卡 5 分 45 秒），故删楼只在
+//   「批量不可用且 ≤3 层」时才逐层（见 floor-trim-bulk.test.js 的完整矩阵）。
+await A('D1 20 层保留 6：走**一次批量截断**（官方 chat 数组 splice + saveChat + clearChat/printMessages + 一次 MESSAGE_DELETED），聊天真的变短；**一次 deleteMessage 都不调用**', (async () => {
+    const host = bootHost({ floors: 20 });
     bootState();
     bootHooks();
+    let deletedEvents = 0;
+    host.ctx.eventSource.on(host.ctx.eventTypes.MESSAGE_DELETED, () => { deletedEvents += 1; });
     const r = await floorTrimApply({ keep: 6 });
-    const host2 = globalThis.SillyTavern.getContext();
-    const deleted = host2.deletedMessages || [];
-    return r.ok === true && r.deleted === 14 && r.requested === 14
-        && host2.chat.length === 6
-        && deleted.length === 14
-        && deleted[0] === 13 && deleted[13] === 0                 // **从后往前**：先删最大下标
-        && (host2.saveMetadataCount || 0) === 14;                 // 每次都落盘（官方方法自带）
+    const ctx = globalThis.SillyTavern.getContext();
+    return r.ok === true && r.deleted === 14 && r.requested === 14 && r.via === 'bulk' && r.ms >= 0
+        && ctx.chat.length === 6
+        && (ctx.deletedMessages || []).length === 0                        // 逐层路径**完全没走**
+        && (ctx.saveChatCount || 0) === 1 && (ctx.clearChatCount || 0) === 1 && (ctx.printMessagesCount || 0) === 1
+        && ctx.chatMetadata.tainted === true                               // 官方字段（条件保存据此落盘）
+        && deletedEvents === 1;                                           // **一次**事件，不是 14 次
 })(), () => ({ r: '见断言', floors: globalThis.SillyTavern.getContext().chat.length }));
 
 await A('D2 记忆一条都不少（只改编号，v3.7.0）：原子数不变、全删段条目「原文已移除」（来源楼层保留）、跨越段按**新位置**记 floorNow*、幸存段条目前移', (async () => {
@@ -309,7 +316,7 @@ await A('E2 半途失败（第 5 次起无效）→ 如实报告 partial + 已�
 })(), () => J({ deleted: 5, floors: globalThis.SillyTavern.getContext().chat.length }));
 
 await A('E3 不支持宿主时执行直接返回 unsupported（不做任何备份、不碰聊天）', (async () => {
-    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true } });
+    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true, noBulk: true } });
     bootState();
     let backupCalled = false;
     bootHooks({ writeBackup: async () => { backupCalled = true; return { ok: true }; } });
@@ -338,8 +345,9 @@ A('F2 按钮 title 给出**预检**（将删层数 / 受影响条数）；宿主
     bootState();
     bootHooks();
     const okHtml = String(settingsPageHtml('data', '') || '');
-    const okTitle = okHtml.indexOf('将删除 14 层') >= 0 && okHtml.indexOf('受影响记忆 4 条') >= 0;
-    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true } });
+    const okTitle = okHtml.indexOf('将删除 14 层') >= 0 && okHtml.indexOf('受影响记忆 4 条') >= 0
+        && okHtml.indexOf('删除方式：一次性批量截断') >= 0;
+    bootHost({ floors: 20, hostOpts: { noDeleteMessage: true, noBulk: true } });
     const noHtml = String(settingsPageHtml('data', '') || '');
     const dis = noHtml.indexOf('data-ftt-action="floorTrim" data-ftt-keep="6" disabled') >= 0
         && noHtml.indexOf('当前宿主不提供官方删除楼层接口') >= 0;
