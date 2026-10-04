@@ -187,10 +187,17 @@ try {
             && p6.action === 'ff' && p6.reason === 'drift' && p6.ok === true
             && p7.action === 'deploy-copy' && p7.reason === 'git-unavailable',
             { p1: p1.action, p2: p2.action, p3: p3.action, p4: p4.action, p5: p5.action, p6: p6.action, p7: p7.action });
-        R.assert('D5b planHostSync：**拒绝态一律 ok:false**（调用方据此不写任何东西），快进态不可覆盖脏副本',
-            p2.ok === false && p3.ok === false && p4.ok === false && p7.ok === false
-            && planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, dirtyCount: null }).action === 'ff',
-            { p2: p2.ok, p3: p3.ok, p4: p4.ok, p7: p7.ok });
+        // v3.10.2（真机首跑暴露）：「干净与否**查不出来**」必须等同于「不干净」→ 拒绝；
+        //   只有调用方**根本没查**（键缺省）才继续判定。二者语义不同，绝不能混。
+        const p8 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true, dirtyCount: null });
+        const p9 = planHostSync({ deployedDir: 'X', isRepo: true, devSha: commit, deployedSha: other, sameRemote: true });
+        R.assert('D5b planHostSync：`dirtyCount: null`（查不出）= 拒绝 overwrite；键缺省（未查）= 允许判定',
+            p8.action === 'refuse' && p8.reason === 'clean-unknown' && p8.ok === false
+            && p9.action === 'ff' && p9.reason === 'drift',
+            { p8: p8.action + '/' + p8.reason, p9: p9.action + '/' + p9.reason });
+        R.assert('D5c planHostSync：**拒绝态一律 ok:false**（调用方据此不写任何东西），脏副本永不快进',
+            p2.ok === false && p3.ok === false && p4.ok === false && p7.ok === false && p8.ok === false,
+            { p2: p2.ok, p3: p3.ok, p4: p4.ok, p7: p7.ok, p8: p8.ok });
     }
 
     // ------------------------------------------------------------

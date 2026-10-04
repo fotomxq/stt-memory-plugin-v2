@@ -350,6 +350,8 @@ export function planDeploy(devInv, extInv) {
  *   · 没找到宿主 / 部署目录 → `none`（无事可做）；
  *   · 部署目录**不是 git 检出** → `deploy-copy`（改走 `npm run local -- --deploy --yes` 文件级替换）；
  *   · 部署副本**有本地改动** → `refuse`（拒绝，绝不覆盖）；
+ *   · **干净与否查不出来**（`dirtyCount === null`，例如 git 调用被 dubious-ownership 拒绝）→ `refuse`
+ *     —— **「不知道」不等于「干净」**，宁可不做也不覆盖；
  *   · 与开发仓库**不同源**（origin 不一致）→ `refuse`；
  *   · 已与开发仓库同一提交 → `none`（already-aligned）；
  *   · 其余 → `ff`（fetch + `merge --ff-only`，宿主在跑也能替换）。
@@ -361,6 +363,7 @@ export function planDeploy(devInv, extInv) {
 export function planHostSync(info) {
     const o = info || {};
     const sha = (v) => String(v || '').trim();
+    const hasKey = Object.prototype.hasOwnProperty.call(o, 'dirtyCount');
     // git 不可用 / 状态未知 → 不做 git 快进；改走文件级替换（那条路不依赖 git）
     if (o.gitAvailable === false) {
         return { action: 'deploy-copy', reason: 'git-unavailable', ok: false, note: '本机没有可用的 git → 请用 npm run local -- --deploy --yes（需先退出宿主）' };
@@ -369,7 +372,12 @@ export function planHostSync(info) {
     if (o.isRepo === false) {
         return { action: 'deploy-copy', reason: 'not-a-git-checkout', ok: false, note: '部署副本不是 git 检出 → 请用 npm run local -- --deploy --yes' };
     }
-    if (o.dirtyCount !== null && o.dirtyCount !== undefined && Number(o.dirtyCount) > 0) {
+    // v3.10.2：**「不知道」不等于「干净」** —— 显式传入 null（查过但没查出来，例如 git 被拒）时一律拒绝，
+    //   绝不放行；只有**调用方根本没查**（键缺省，例如只读检查模式）才继续往下判定。
+    if (hasKey && o.dirtyCount === null) {
+        return { action: 'refuse', reason: 'clean-unknown', ok: false, note: '无法确认部署副本是否干净（git 调用失败）→ 拒绝覆盖' };
+    }
+    if (hasKey && Number(o.dirtyCount) > 0) {
         return { action: 'refuse', reason: 'deployed-dirty', ok: false, note: '部署副本有 ' + Number(o.dirtyCount) + ' 处本地改动 → 拒绝覆盖（请先自行处理）' };
     }
     if (o.sameRemote === false) {
