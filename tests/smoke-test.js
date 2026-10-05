@@ -1898,7 +1898,8 @@ assert('AA1 FTT 物品修复 + 角色档案修复入口齐备（物品：isCurre
     const names = ['isCurrencyItemName', 'itemMergeExact', 'itemLowUsesPurge', 'itemRepairPrompt', 'itemRepairApply', 'itemRepair',
         'snapRepairFields', 'snapRepairFieldMap', 'snapshotAtomSize', 'characterRepairQueue', 'setSnapshotByPath',
         'characterRepairPrompt', 'characterRepairApply', 'characterRepair', 'characterEvidencePack',
-        'ensureSnapshotTags', 'deriveSnapshotTags', 'characterMechanicalPass', 'correctSnapshotBirthDates'];
+        'ensureSnapshotTags', 'deriveSnapshotTags', 'characterMechanicalPass', 'correctSnapshotBirthDates',
+        'ageAnomalyScan'];   // v3.22.0：超长年龄 / 长生者只读干跑
     const missing = names.filter((n) => typeof F[n] !== 'function');
     const st = rtMod.state;
     st.items = [
@@ -1934,7 +1935,7 @@ assert('AA1 FTT 物品修复 + 角色档案修复入口齐备（物品：isCurre
     const ev = F.characterEvidencePack('角色乙');
     const one = F.setSnapshotByPath({ identity: {} }, '身份.种族', '人类');
     const c1 = (st.snapshots || []).filter((x) => x.id === 'smoke-aa-c1')[0] || {};
-    const charOk = Array.isArray(fields) && fields.length === 20 && !!F.snapRepairFieldMap()['身份.性别']
+    const charOk = Array.isArray(fields) && fields.length === 21 && !!F.snapRepairFieldMap()['身份.性别']   // v3.22.0：+「身份.长生者」
         && atom.total === 19 && cq.list.length === 2 && cq.anomalyList.map(x => x.name).join(',') === '角色丁' && cq.deceasedCount === 0
         && Array.isArray(cPrompt) && cPrompt.length === 2 && String(cPrompt[1].content).indexOf('⚠️ 出生日期异常') >= 0
         && cApplied.changed >= 1 && c1.identity.species === '人类'
@@ -2088,9 +2089,9 @@ await assert('AC1 v3.18.0 角色修复 · 已去世研判（端到端）：明�
         // 名单判定：已去世者**不在待修复队列**（跳过后续处理），且本轮确实把在册角色交给了 AI
         const skipOk = q.deceasedList.indexOf('角色甲') >= 0 && q.list.every((x) => x.name !== '角色甲')
             && q.list.some((x) => x.name === '角色丁') && acAiCalls === 1 && acPrompt.indexOf('角色丁') > 0;
-        // ④ 机械返回结构不含新键（V1 黄金样本字段集不变），研判结果经内部记录读取
+        // ④ 机械返回结构键集固定（V1 字段集 + v1.205 `deceased` + v3.22.0 `immortal`），研判结果经内部记录读取
         const mech = globalThis.FTT.characterMechanicalPass();
-        const structOk = Object.keys(mech).sort().join(',') === 'ages,anomalies,birth,changed,deceased,tags,total'
+        const structOk = Object.keys(mech).sort().join(',') === 'ages,anomalies,birth,changed,deceased,immortal,tags,total'
             && (st.snapshots.filter((x) => x.name === '角色甲')[0].identity || {}).deceased === true;
         // ⑤ 通知如实说明「新标记已去世 N 名」与「待确认」；不再对已去世者做出生日期 / 年龄处理
         // 通知文案：从**调试日志**（`dbgLog('修复', …)`）核对（不接管 notifyHooks，避免影响后续小节的 toastr 断言）
@@ -2099,6 +2100,91 @@ await assert('AC1 v3.18.0 角色修复 · 已去世研判（端到端）：明�
             && logText.indexOf('精灵乙') > 0 && logText.indexOf('long-life-unconfirmed') > 0;
         const ok = dryOk && markOk && skipOk && structOk && noteOk;
         if (!ok) console.log('AC1-DEBUG ' + JSON.stringify({ dryOk, markOk, skipOk, structOk, noteOk, dry: dry.map((x) => [x.name, x.verdict, x.reason]), qList: q.list.map((x) => x.name), qDead: q.deceasedList, targetBlockDead: (acPrompt.split('【待修复角色')[1] || '').split('【近期正文')[0].indexOf('角色甲'), promptWindow: acPrompt.slice(1380, 1560), aiCalls: acAiCalls, log: logText.slice(0, 300), mechKeys: Object.keys(mech).sort() }));
+        return ok;
+    } finally {
+        st.snapshots = keep;
+        st.atoms = keepAtoms;
+        st.state = Object.assign({}, st.state, { date: keepDate });
+        host.ctx.generateRaw = keepGen;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+// ---------- AC2 角色修复 · 长生者与超长年龄（v3.22.0） ----------
+// 用户要求（原话）：「角色修复，新增对超长年龄人员的分析，明显不合理的可能是长期没出现的人物，但被误判会长生。
+//   其次角色新增字段，根据剧情标记是否为长生者，该开关可以被编辑。如果是标记了长生者，则无需在修复角色中被分析。
+//   如果被分析发现为误判角色，则可根据剧情或预判分析后，标记为去世。」
+await assert('AC1b v3.22.0 角色修复 · 长生者与超长年龄（端到端）：① 超长年龄进优先档并被点名研判（低纪元也照判）② 已标记长生者整批跳过修复（AI 名单与机械改写都不碰）③ 开关可勾可取消 ④ AI 判定误判 → 同时取消长生标记并按剧情标记去世；`FTT.ageAnomalyScan` 只读干跑可核对', (async () => {
+    const st = rtMod.state;
+    const CR = await import('../core/character-repair.js');
+    const keep = JSON.parse(JSON.stringify(st.snapshots || []));
+    const keepAtoms = JSON.parse(JSON.stringify(st.atoms || []));
+    const keepDate = (st.state || {}).date;
+    const keepGen = host.ctx.generateRaw;
+    try {
+        // 剧情锚点固定在 628 年（**低纪元** —— 专门验证超长年龄不再被纪元豁免）
+        st.state = Object.assign({}, st.state, { date: '0628-07-10', time: '下午' });
+        st.snapshots = [
+            // ① 超长年龄 + 无长寿依据 + 久未出场（年龄 328 岁、最后见面在 400 年）→ 入优先档、⚠️ 点名
+            { id: 'smoke-ai-old', name: '凡人甲', identity: { birthDate: '0300-01-01', occupation: '铁匠' }, tags: ['铁匠', '城中', '手艺人'], lastSeenDate: '0400-05-01', uses: 1 },
+            // ② 已标记长生者 → 整批跳过（不进 AI 名单、机械也不改）
+            { id: 'smoke-ai-imm', name: '长生乙', identity: { immortal: true, birthDate: '约300年' }, tags: ['修士', '长生', '洞府'], uses: 1 },
+            // ③ 普通角色（对照组）
+            { id: 'smoke-ai-hum', name: '常人丙', identity: { occupation: '商人' }, tags: ['商人', '码头', '旧识'], uses: 1 },
+        ];
+        st.atoms = [];
+        // 只读干跑：超长年龄可查、长生者跳过原因可查、**不写任何标记**
+        const scan = globalThis.FTT.ageAnomalyScan();
+        const oldRow = scan.find((x) => x.name === '凡人甲') || {};
+        const immRow = scan.find((x) => x.name === '长生乙') || {};
+        const dryOk = scan.length === 3 && oldRow.extreme === true && Number(oldRow.staleYears) > 200
+            && immRow.skip === 'immortal'
+            && (st.snapshots.find((x) => x.name === '长生乙').identity || {}).immortal === true;   // 干跑不改数据
+        // 真实点击「🔧 修复角色」：名单里只有凡人甲 / 常人丙（长生乙被跳过）；提示词带长生者守则与 ⚠️ 超长年龄点名
+        host.ctx.generateRaw = async (args) => {
+            acPrompt = JSON.stringify(args);
+            acAiCalls++;
+            return JSON.stringify({ '角色档案': { '更新': [
+                { '姓名': '凡人甲', '补全': { '身份.职业': '铁匠' } },
+                { '姓名': '常人丙', '补全': { '身份.职业': '商人' } },
+                // AI 判定「长生乙」的长生标记是误判、且剧情显示其早已离世 → 同时纠正 + 标记去世
+                { '姓名': '长生乙', '补全': { '身份.长生者': '否', '身份.已去世': '是' } },
+            ], '推断': [], '无依据': [], '删除': [] } });
+        };
+        acPrompt = ''; acAiCalls = 0;
+        // v3.22.0：**点击前**先取名单（点击后「长生乙」会被 AI 纠正为已去世 → 会转到 deceasedList，属预期）
+        const q0 = globalThis.FTT.characterRepairQueue();
+        const DL = await import('../adapters/debug-log.js');
+        try { DL.debugLogClear(); } catch (e) { /* 忽略 */ }
+        await entry.popupAction('tab', { tab: 'snapshots' });
+        const rc = await entry.popupAction('characterRepair', {});
+        const byName = (n) => (st.snapshots.filter((x) => x.name === n)[0] || {});
+        // 取**目标块**：模板里也可能出现「【待修复角色」字样 → 取最后一次出现（真实目标块在 user 消息里）
+        const block = String(String(acPrompt).split('【待修复角色').slice(-1)[0] || '').split('【近期正文')[0];
+        const promptOk = acAiCalls === 1
+            && block.indexOf('凡人甲') >= 0 && block.indexOf('常人丙') >= 0 && block.indexOf('长生乙') < 0
+            && String(acPrompt).indexOf('【长生者判定（保守）】') > 0
+            && String(acPrompt).indexOf('⚠️ 超长年龄') > 0 && String(acPrompt).indexOf('距今约') > 0
+            && q0.immortalCount === 1 && q0.immortalList[0] === '长生乙'
+            && q0.list.every((x) => x.name !== '长生乙')
+            && q0.list.some((x) => x.name === '凡人甲' && x.anomaly === 'age-extreme');
+        // 误判纠正落地：长生标记被取消 + 按剧情（AI 判定）标记去世；无依据者不被标记
+        const fixOk = (byName('长生乙').identity || {}).immortal === false
+            && (byName('长生乙').identity || {}).deceased === true
+            && (byName('凡人甲').identity || {}).deceased === undefined;
+        // 开关可编辑（双向）：编辑器字段 + 两条写入路径
+        const toggleOn = CR.setSnapshotByPath({ identity: {} }, '身份.长生者', '是');
+        const toggleOff = CR.setSnapshotByPath({ identity: { immortal: true } }, '身份.长生者', false);
+        const editOk = toggleOn.ok === true && toggleOn.changed === true && toggleOff.changed === true
+            && CR.SNAP_REPAIR_FIELD_MAP['身份.长生者'].optional === true;
+        // 提示与日志如实回报：跳过数（通知文案）+ 判定落地计数（调试日志）
+        const note = String(((rc.state || {}).note) || rc.note || '');
+        const logText = (() => { try { return JSON.stringify(DL.debugLogList() || []); } catch (e) { return ''; } })();
+        const noteOk = logText.indexOf('immortalCleared') > 0 && logText.indexOf('长生乙') > 0
+            && logText.indexOf('deceasedMarked') > 0
+            && logText.indexOf('birthSkippedImmortal') > 0;    // 机理层：长生者被机械阶段跳过（如实入日志）
+        const ok = dryOk && promptOk && fixOk && editOk && noteOk;
+        if (!ok) console.log('AC2-DEBUG ' + JSON.stringify({ dryOk, promptOk, fixOk, editOk, noteOk, note: note.slice(0, 300), scan: scan.map((x) => [x.name, x.age, x.extreme, x.skip]), q0Imm: q0.immortalList, q0List: q0.list.map((x) => [x.name, x.anomaly]), imm: byName('长生乙').identity, aiCalls: acAiCalls, blockHead: block.slice(0, 300), hasGuide: String(acPrompt).indexOf('【长生者判定（保守）】') > 0, hasAge: String(acPrompt).indexOf('⚠️ 超长年龄') > 0, hasGap: String(acPrompt).indexOf('距今约') > 0, blockHasImm: block.indexOf('长生乙') >= 0, log: logText.slice(0, 160) }));
         return ok;
     } finally {
         st.snapshots = keep;

@@ -379,20 +379,28 @@ function snapshotsRow(s, ctx) {
     if (arr(s.future && s.future.commitments).length) parts.push('承诺：' + esc(s.future.commitments.join('/')));
     const body = parts.length ? parts.join('，') : '（暂无详细信息）';
     const deadTag = (s.identity && s.identity.deceased === true) ? '<span class="ftt-badge ftt-badge--abandoned">🪦 已去世</span>' : '';
+    // v3.22.0（用户要求）：长生者标记（按剧情确认的超长寿命者）—— 显示徽标；他们不再被角色修复分析
+    const immortalTag = (s.identity && s.identity.immortal === true)
+        ? '<span class="ftt-badge ftt-badge--immortal" title="已按剧情标记为长生者：不再被「🔧 修复角色」分析（可在编辑里取消勾选）">🧬 长生者</span>' : '';
     let birthTag = '';
     try {
         const anom = snapshotBirthAnomaly(s, anchor);
         if (anom) {
             let why = anom;
             try { why = snapshotBirthAnomalyShort(anom) || anom; } catch (e) { why = anom; }
-            birthTag = '<span class="ftt-badge ftt-badge--blocked" title="' + esc(cut('出生日期异常：' + why + '（修复时优先）', 29)) + '">⚠️ 出生日期异常</span>';
+            // v3.22.0：超长年龄是**待研判**信号（不是出生日期格式/倒挂错误），角标与 tooltip 分开写
+            const nowLabel = (anom === 'age-extreme') ? '超长年龄（疑长期未出场）' : '出生日期异常';
+            const nowTitle = (anom === 'age-extreme')
+                ? ('超长年龄：' + why + '（修复时优先研判：标记长生者或已去世）')
+                : ('出生日期异常：' + why + '（修复时优先）');
+            birthTag = '<span class="ftt-badge ftt-badge--blocked" title="' + esc(cut(nowTitle, 29)) + '">⚠️ ' + esc(nowLabel) + '</span>';
         }
     } catch (e) { /* 忽略 */ }
     const tags = tagsLine(s.tags);
     const stamp = (icon, label, d, t) => (d ? (icon + ' ' + label + ' ' + esc(d) + (t ? (' ' + esc(t)) : '')) : '');
     const times = [stamp('🕒', '更新', s.lastUpdateDate, s.lastUpdateTime), stamp('👁', '见面', s.lastSeenDate, s.lastSeenTime)].filter(Boolean);
     const drill = characterDrillHtml(s.name, ctx);
-    return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + deadTag + birthTag + '</div>'
+    return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + deadTag + immortalTag + birthTag + '</div>'
         + '<div class="ftt-snap-desc">' + body + '</div>' + drill + tags
         + '<div class="ftt-meta">调用' + (s.uses || 0) + '次 · 重要度' + importancePct(s) + '%' + (times.length ? (' · ' + times.join(' · ')) : '') + '</div>';
 }

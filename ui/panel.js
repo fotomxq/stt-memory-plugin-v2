@@ -1249,7 +1249,7 @@ function prefillEditor(kind, out, item, preset) {
         if (kind === 'scenes' && p.name) out.set('name', String(p.name));
         if (kind === 'plans' || kind === 'suspense') { out.set('status', kind === 'plans' ? 'open' : 'open'); out.set('phase', ''); }
         if (kind === 'items') out.set('carried', false);
-        if (kind === 'snapshots') out.set('deceased', false);
+        if (kind === 'snapshots') { out.set('deceased', false); out.set('immortal', false); }   // v3.22.0：长生者开关同款默认未勾选
         return out;
     }
     const flat = flatFor(kind, item);

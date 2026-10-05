@@ -196,6 +196,9 @@ function snapshotBirthAnomaly(s, anchor) {
         const anchorD = ageAnchorDate(anchor);
         const ageTxt = calcAge(bd, anchorD);
         const age = ageTxt === '' ? NaN : Number(ageTxt);
+        // v3.22.0（用户要求）：**「长生者」显式标记同样豁免** —— 用户/AI 已按剧情确认该角色是超长寿命者，
+        //   此时「年龄大」不是数据错误（与 `snapshotLongLived` 的内容信号同一档）。
+        const longLived = snapshotLongLived(s) || snapshotImmortal(s);
         // v1.193：**公元前出生（年份为负）不判「超过 120 岁」** —— 跨公元前后的长寿角色（如公元 1919 年的剧情里
         //   出生于公元前 221 年）是用户明确要求支持的写法，年龄上千岁属预期；倒挂（after-record / future）仍照常判定。
         if (Number.isFinite(age) && age > 120 && !(parts.y < 0)) {
@@ -205,8 +208,16 @@ function snapshotBirthAnomaly(s, anchor) {
             //   ② **非现实纪元**：`age > 120` 是现实人类寿命的经验值；剧情锚点年份 < 1000（如 0191 年这种自设纪元、
             //      或故事从 0001-01-01 起算的编年）时该阈值不适用 —— 190 岁是设定而非数据错误。
             //   真正的**倒挂**（出生晚于剧情 / 晚于记录日期 / 格式非法）不受影响，照常判定。
-            if (!snapshotLongLived(s) && !snapshotLowEpochCalendar(anchorD)) return 'overage';
+            if (!longLived && !snapshotLowEpochCalendar(anchorD)) return 'overage';
         }
+        // v3.22.0（用户要求）：「**新增对超长年龄人员的分析**，明显不合理的可能是长期没出现的人物，但被误判会长生。」
+        //   口径：年龄**极端**超长（> `SNAP_AGE_EXTREME_YEARS`）且档案里**没有任何长寿依据**时，更可能不是真长寿，
+        //   而是**长期未出场**（人物早已离场/去世，年龄却随剧情日期一路增长）—— 交给优先档研判，由 AI/用户裁决。
+        //   与 `overage` 的两点差别：① **不受「低纪元」豁免**（真机：628 年剧情里出现数百岁的凡人，原先被静默放过）；
+        //   ② 它不是「数据错误」而是「**待研判**」信号（正文支持长生时可标记「长生者」→ 此后永久豁免）。
+        //   豁免：内容层长寿信号（`snapshotLongLived`）/ 已标记长生者 / 未来来客与穿越者（`traveler`，其生日本就在剧情之后或跨代）
+        //   以及**公元前出生**（v1.193 用户明确要求支持的「跨公元前后的长寿角色」写法 —— 年龄上千岁属预期，不在本判据内）。
+        if (Number.isFinite(age) && age > SNAP_AGE_EXTREME_YEARS && !longLived && !traveler && !(parts.y < 0)) return 'age-extreme';
         return '';
     } catch (e) { return ''; }
 }
@@ -260,6 +271,69 @@ function snapshotFlag(v) {
         if (/^(false|no|n|0|否|在世|健在|活着|未去世|未死|生)$/.test(s)) return false;
         return undefined;
     } catch (e) { return undefined; }
+}
+
+// ==================== v3.22.0：「长生者」开关（用户要求） ====================
+// 用户要求（原话）：「其次角色新增字段，根据剧情标记是否为长生者，该开关可以被编辑。
+//   如果是标记了长生者，则无需在修复角色中被分析。」
+// 口径：
+//   · 与「已去世」**同构**的三态（true = 长生者 / false = 明确不是 / undefined = 未提及），
+//     但**语义相反**：已去世 = 不再处理（年龄锁定），长生者 = 不再处理（年龄不可信、档案不再改写）；
+//   · **可编辑**：编辑器勾选框 + AI 在角色修复里按剧情判定（`身份.长生者`）都能写；
+//   · 与「已去世」不同的一点：它是**双向**的（可勾可取消）—— 误判纠正需要能取消。
+//   · 为什么单独一套词表：`snapshotFlag()` 的肯定词是**死亡语义**（已去世/死亡/已故…），
+//     直接复用会把「长生」判成「已去世」（这是不能承受的错判），故另立 `snapshotImmortalFlag()`。
+function snapshotImmortalFlag(v) {
+    try {
+        if (v === undefined || v === null || v === '') return undefined;
+        if (v === true || v === 1) return true;
+        if (v === false || v === 0) return false;
+        const s = String(v).trim().toLowerCase();
+        if (/^(true|yes|y|1|是|长生|长生者|长生不老|长生不老之人|不死|不死者|永生|永生者|超长寿命|长寿|不死之身|immortal|longlived|long-lived)$/.test(s)) return true;
+        if (/^(false|no|n|0|否|非长生|非长生者|不是长生|不是长生者|凡人|常人|普通人|mortal|normal)$/.test(s)) return false;
+        return undefined;
+    } catch (e) { return undefined; }
+}
+/** 是否已标记「长生者」（`identity.immortal === true`） */
+function snapshotImmortal(s) {
+    try { return snapshotImmortalFlag(s && s.identity ? s.identity.immortal : undefined) === true; } catch (e) { return false; }
+}
+/**
+ * v3.22.0：**角色修复的「不再处理」判据**（用户要求「标记了长生者的无需在修复角色中被分析」）。
+ *   已去世（年龄锁定在死亡那一刻）与已标记长生者（年龄本就不可信）都不再进入修复名单与机械改写。
+ * @param {object} s 角色档案
+ * @returns {{skip:boolean, reason:'deceased'|'immortal'|''}}
+ */
+function snapshotRepairSkip(s) {
+    try {
+        if (snapshotAgeIsLocked(s)) return { skip: true, reason: 'deceased' };
+        if (snapshotImmortal(s)) return { skip: true, reason: 'immortal' };
+    } catch (e) { /* 忽略 */ }
+    return { skip: false, reason: '' };
+}
+/**
+ * v3.22.0：**「最后见面」距今多少年**（剧情时间轴；用户口径「明显不合理的可能是长期没出现的人物」）。
+ *   取 `lastSeenDate` / `lastUpdateDate` 中**较晚**的那个与剧情锚点的年差；任一缺失 / 非法 → `NaN`。
+ * @param {object} s 角色档案
+ * @param {string} [anchor] 剧情锚点（缺省用 `ageAnchorDate()`）
+ * @returns {number} 年（可为小数；`NaN` = 判不出）
+ */
+function snapshotLastSeenGapYears(s, anchor) {
+    try {
+        const anchorD = ageAnchorDate(anchor);
+        const a = storyDateMsFromStr(anchorD);
+        if (!Number.isFinite(a)) return NaN;
+        let best = NaN;
+        for (const d of [s && s.lastSeenDate, s && s.lastUpdateDate]) {
+            const t = String(d || '').trim();
+            if (!/^-?\d{1,4}-\d{2}-\d{2}$/.test(t)) continue;
+            const ms = storyDateMsFromStr(t);
+            if (!Number.isFinite(ms)) continue;
+            if (!Number.isFinite(best) || ms > best) best = ms;
+        }
+        if (!Number.isFinite(best)) return NaN;
+        return (a - best) / (365.25 * 24 * 3600 * 1000);
+    } catch (e) { return NaN; }
 }
 // v1.176：出生日期**精度归一** —— 只要"存在出生日期"就应当能算出年龄，因此支持三种精度：
 //   `YYYY-MM-DD`（day）→ `YYYY-MM`（month，按当月 1 日估算）→ `YYYY`（year，按 1 月 1 日估算）；
@@ -620,6 +694,8 @@ function snapshotContentCopy(s) {
         if (id.title) idParts.push('称号:' + id.title);
         if (id.family) idParts.push('家族:' + id.family);
         if (id.deceased !== undefined) idParts.push('已去世:' + (id.deceased ? '是' : '否'));
+        // v3.22.0：「长生者」开关同样进内容副本（用户可编辑的字段 → 参与身份指纹/跨端合并口径）
+        if (id.immortal !== undefined) idParts.push('长生者:' + (id.immortal ? '是' : '否'));
         if (idParts.length) seg.push('身份：' + idParts.join('，'));
         if (s.appearance) seg.push('外貌：' + s.appearance);
         const p = s.personality || {};
@@ -675,6 +751,14 @@ function normalizeSnapshot(e0) {
     const deceasedRaw = (e?.identity && e.identity.deceased !== undefined) ? e.identity.deceased
         : ((e?.profile && e.profile.deceased !== undefined) ? e.profile.deceased : e?.deceased);
     const deceased = snapshotFlag(deceasedRaw);
+    // v3.22.0（用户要求）：「长生者」开关 —— 与「已去世」同构的三态；未提及时不写字段（增量合并保持旧值）。
+    //   吃三种输入位置（identity / profile / 顶层）与中文别名（`长生者` / `长生` / `不死`），与已去世同一宽容度。
+    const immortalRaw = (e?.identity && e.identity.immortal !== undefined) ? e.identity.immortal
+        : ((e?.profile && e.profile.immortal !== undefined) ? e.profile.immortal
+            : (e?.immortal !== undefined ? e.immortal
+                : ((e?.identity && e.identity['长生者'] !== undefined) ? e.identity['长生者']
+                    : ((e?.profile && e.profile['长生者'] !== undefined) ? e.profile['长生者'] : e?.['长生者']))));
+    const immortal = snapshotImmortalFlag(immortalRaw);
     const identity = {
         gender: normText(src?.gender || e?.gender || '', 10),
         birthDate, age,
@@ -684,6 +768,7 @@ function normalizeSnapshot(e0) {
         family: normText(src?.family || '', 60),
     };
     if (deceased !== undefined) identity.deceased = deceased;
+    if (immortal !== undefined) identity.immortal = immortal;   // v3.22.0：长生者开关
     const out = {
         id: String(e?.id || `snapshot_${hashText(name.toLowerCase())}`),
         name,
@@ -737,7 +822,7 @@ function normalizeSnapshot(e0) {
 // 显示：`formatMoney(n)` —— 千分位 + 中文数量级（万 1e4 / 亿 1e8 / 兆 1e12 / 京 1e16；≥1e20 用「垓」），
 //   保留 2 位小数并去尾零；负数（净支出/负债）保留符号；非数字 → ''。
 
-export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
+export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, snapshotImmortalFlag, snapshotImmortal, snapshotRepairSkip, snapshotLastSeenGapYears, SNAP_AGE_EXTREME_YEARS, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,4}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
@@ -750,6 +835,8 @@ const SNAP_BIRTH_ANOMALY_LABEL = {
     future: '出生日期晚于当前剧情日期',
     'after-record': '出生日期晚于该角色的「最后见面 / 最后更新」日期（倒挂）',
     overage: '按剧情日期算出的年龄超过 120 岁',
+    // v3.22.0（用户要求「新增对超长年龄人员的分析」）：极端超长年龄 = **待研判**信号，不是「数据错误」断言
+    'age-extreme': '年龄远超凡人寿命（疑似长期未出场而虚增 · 或误判长生）—— 交给角色修复研判',
     'bad-format': '出生日期格式非法（非 年-月-日）',
 };
 
@@ -757,8 +844,18 @@ const SNAP_BIRTH_ANOMALY_SHORT = {
     future: '晚于剧情日期',
     'after-record': '早于出生日期就被记录（倒挂）',
     overage: '按剧情算超过 120 岁',
+    'age-extreme': '超长年龄（疑长期未出场）',
     'bad-format': '日期格式非法',
 };
+
+/**
+ * v3.22.0（用户要求）：**「超长年龄」研判阈值**（年）。
+ *   `overage`（120 岁）是「现实人类寿命」经验值、且被「低纪元」豁免；本阈值更极端（200 岁），
+ *   **任何纪元都照判** —— 一个人物档案里出现 200+ 岁而没有任何长寿依据（长生 / 不死 / 精灵 / 穿越 / 转世…）
+ *   时，更可能是「长期未出场」导致年龄随剧情推进虚增（人物其实早已离场/去世），而不是真长寿。
+ *   判定只**入优先档并交研判**，绝不自动改数据；研判成立（正文支持）→ 勾「长生者」即可永久豁免。
+ */
+const SNAP_AGE_EXTREME_YEARS = 200;
 
 const SNAP_APPEARANCE_LIMIT = 120;   // 外貌聚合文本上限（中文按字）
 // 旧分组字段 → 中文标签（拼聚合文本用；顺序即展示顺序）
