@@ -6,7 +6,7 @@
 // 动作名：`clockEdit` / `clockEditCancel` / `clockManualSave` / `clockManualClear` / `clockRepair`。
 //   v2.51.0：`clockPatrol`（时间巡检修复）按用户决定整段移除。
 // ============================================================
-import { state, notifyHooks } from '../core/model/runtime.js';
+import { state, cfg, notifyHooks } from '../core/model/runtime.js';
 import { clockDateLabel } from '../core/clock.js';
 import { storyClockReference } from '../core/clock-extract.js';
 import {
@@ -55,10 +55,27 @@ export function clockSectionHtml() {
         else rows.push('<div class="ftt-clock-line">👥 在场角色：<span class="ftt-muted">（未识别 · 不限制注入）</span></div>');
         lines.push('<div class="ftt-item ftt-item--col" data-ftt-clock>' + rows.join('\n') + '</div>');
         // 手工改写工具行 + 编辑面板（三项输入；日期/时间宽松解析，地点自由文本）
+        // v3.20.1（用户报告「手动改日期右侧总是显示『自动同步中』，请核对原因并修正该错误提示信息」）：
+        //   核对结论 —— 该文案有两个毛病，都不是「卡在同步」：
+        //   ① **用词让人误判成进度态**：原文案「自动同步中」里的「中」读起来像**正在进行的进度**
+        //      （与「加载中」同构），而它其实是一条**常驻的模式说明**（只要没有手工锚点就一直显示）
+        //      → 用户看到的就是「一直显示自动同步中」，像是卡住了；
+        //   ② **它不看开关，会写假话**（真机复现：`cfg.clockExtractEnabled=false` 与 `cfg.enabled=false`
+        //      两种情形下渲染出的仍是「自动同步中」，而当时根本不会自动同步）。
+        //   现在按开关如实分三种说法，并把「…中」换成「已开启 / 已关闭 / 已停用」（模式说明而非进度）。
+        const autoHint = (() => {
+            if (cfg && cfg.enabled === false) {
+                return '<span class="ftt-muted">⚙️ 自动同步：<b>已停用</b>（组件总开关已关 → 时钟保持原值；可在「设定」里打开）</span>';
+            }
+            if (cfg && cfg.clockExtractEnabled === false) {
+                return '<span class="ftt-muted">⚙️ 自动同步：<b>已关闭</b>（消息后不再自动更新；可在 设定 → 基础 打开「消息后自动同步时钟」）</span>';
+            }
+            return '<span class="ftt-muted">⚙️ 自动同步：<b>已开启</b>（日期/时间/地点只取<b>本聊天的最新情节</b>；其它数据类别与正文解析都不参与 —— 想钉住就用手工改写）</span>';
+        })();
         lines.push('<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="clockEdit" title="手工强制改写剧情日期 / 时间 / 地点（锚点错了就在这里改）">✏️ 手工改写日期/时间/地点</button>'
             + (cMan
                 ? '<span class="ftt-muted">🔒 已手工锁定' + (cMan.lock ? '' : '（未锁定：仍可被自动提取覆盖）') + '</span><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clockManualClear" title="解除手工值，恢复自动提取">🔓 解锁并恢复自动同步</button>'
-                : '<span class="ftt-muted">自动同步中（日期/时间/地点只取<b>最新情节</b>；其它数据类别与正文解析都不参与）</span>') + '</div>');
+                : autoHint) + '</div>');
         if (clockEditing) {
             lines.push('<div class="ftt-editor"><div class="ftt-editor-title">✏️ 手工强制改写剧情时钟（锚点）</div>'
                 + '<div class="ftt-muted ftt-w-full">填入后点「💾 保存并锁定」即强制生效：自动同步不再覆盖这三项，直到点「🔓 解锁并恢复自动」。'
