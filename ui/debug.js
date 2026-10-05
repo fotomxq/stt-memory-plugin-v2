@@ -49,6 +49,8 @@ import {
     hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag, liveFloorTail,
 } from '../host/floors.js';
 import { floorCoverage } from '../core/floor-cover.js';
+// v3.20.0：情节「聊天归属 / 位置越界」体检（只读；回答「时钟为什么取了别条聊天的时间」）
+import { currentChatKey, currentChatTail, plotScopeSnapshot } from '../core/chat-scope.js';
 // v3.0.10：载入链路诊断（内存 / 本机缓冲 / 服务端文件 / 调试日志 四处并排对比）
 import { scopeId } from '../core/state.js';
 import { stateFileName } from '../adapters/user-file.js';
@@ -509,6 +511,13 @@ export function buildBridgeMethods() {
     T['ftt.pendingFloors'] = safe(() => listUnprocessedFloors({ maintain: false }));
     /** 单楼诊断：这一楼为什么被判为未摘要（逐项给出页面侧实际算出的值） */
     T['ftt.floorDiag'] = safe((p) => floorDiag(Number(p.i)));
+    // v3.20.0（只读零副作用）：**情节归属体检** —— 回答「时钟为什么取了别条聊天的时间」：
+    //   本聊天 / 归属未知（升级前历史数据）/ 别条聊天 各多少条、多少条位置越界、
+    //   以及**本聊天**最新几条的楼层与日期时间（不含正文）。
+    T['ftt.plotScope'] = safe(() => {
+        const snap = plotScopeSnapshot();
+        return Object.assign({ chatKey: currentChatKey().slice(0, 12) + (currentChatKey() ? '…' : ''), chatTail: currentChatTail() }, snap);
+    });
 
     // —— 数据体检（v3.13.0，**只读零副作用**）：把存档里的数据异常逐条列出 ——
     //   脏台账标记 / 非规范 NSFW 等级 / 负数 uses / 倒置或非法的楼层区间 / 缺 id · 重复 id /

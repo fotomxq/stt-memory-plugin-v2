@@ -211,9 +211,10 @@ const localKey = () => 'ftt2_state_' + scopeId();
         const norm = (st) => {
             const c = clone(st); c.version = '<VERSION>'; c.scope = '<SCOPE>'; delete c.updatedAt;
             // v3.11.1：**有意偏离 V1** —— V2 新增两个台账辅助字段（见 core/state.js）。
+            // v3.20.0：再新增 `chatKey`（当前聊天标识，时钟据此只采信本聊天的情节）。
             //   按 `开发守则.md` §4：在测试里显式归一后再与 V1 黄金投影深比较（样本本身不改）；
             //   它们的存在性由下面 S10 单独断言。
-            delete c.processedDropped; delete c.lastChatFloor;
+            delete c.processedDropped; delete c.lastChatFloor; delete c.chatKey;
             return c;
         };
         // 与 oracle 同款富状态种子（每个容器都有数据 + 双墓碑 + 台账 + 时钟）
@@ -259,7 +260,7 @@ const localKey = () => 'ftt2_state_' + scopeId();
         try { ret = await resetState(); } finally { Date.now = realNow; }
         const after = snap(kernelState());
         // v3.11.1：V2 专有台账辅助字段（V1 无）—— 比较 V1 黄金键集时显式归一，并单独断言存在性
-        const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
+        const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
         const afterKeys = Object.keys(kernelState()).filter((k) => V2_LEDGER_KEYS.indexOf(k) < 0).sort();
 
         R.assert('S8 resetState 前置状态与 oracle 种子逐项一致（计数 / 双墓碑 / 台账 / 时钟 / 游标）',
