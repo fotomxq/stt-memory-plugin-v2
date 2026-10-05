@@ -1048,6 +1048,69 @@ await assert('BT1 v3.19.0 「🧠 词条分析」真实点击：只提交留档�
     }
 })(), '');
 
+// v3.21.0（用户要求）：「NSFW弱化的转化库新增支持导出和导入」—— 真实点击：
+//   ⬇ 导出 → 真实下载 `FTT转化库_<日期时间>.json` + 页面渲染导出文本框（可手工复制）；
+//   ⬆ 导入 → 展开粘贴框 → 真实点击「⬆ 导入粘贴内容」→ **合并**（已在库的匹配词不覆盖、新匹配词新增）并如实回报。
+await assert('BU1 v3.21.0 转化库导出/导入真实点击：⬇ 导出转化库 → 真实下载 `FTT转化库_*.json` 并渲染导出文本框；⬆ 导入转化库 → 粘贴 JSON 后合并（不覆盖既有匹配词、不删除任何条目）并如实回报', (async () => {
+    const keepRules = JSON.parse(JSON.stringify(rtMod.cfg.nsfwRules || []));
+    const keepSet = { tab: panelState().tab, sub: panelState().settingsSub };
+    const saveCreate = doc.createElement;
+    const saveURL = globalThis.URL, saveBlob = globalThis.Blob;
+    const clicks = [], urls = [];
+    try {
+        rtMod.cfg.nsfwRules = [{ from: '冒烟甲', to: '冒烟甲改' }];
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'safety' });
+        const page = String(panelBodyHtml('settings'));
+        // ① 下载环境桩 + 真实点击委托（与用户点击同路径）
+        doc.createElement = (tag) => ({ tagName: String(tag).toUpperCase(), style: {}, value: '', click() { clicks.push(this); }, remove() { }, dataset: {}, listeners: {} });
+        globalThis.URL = { createObjectURL: () => { const u = 'blob:smoke-rules/' + (urls.length + 1); urls.push(u); return u; }, revokeObjectURL: () => { } };
+        globalThis.Blob = function Blob(parts, opt) { this.parts = parts; this.type = (opt || {}).type || ''; };
+        const el = doc.getElementById('ftt-panel');
+        const click = (el && el.listeners && el.listeners.click) || [];
+        const fire = (dataset) => {
+            const tg = { dataset, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 ? tg : null) };
+            click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+            return new Promise((r) => setTimeout(r, 20));
+        };
+        await fire({ fttAction: 'nsfwRuleExport' });
+        const anchor = clicks.filter((x) => x.tagName === 'A')[0];
+        const note1 = String((panelState() || {}).note || '');
+        const exportedBox = String(panelBodyHtml('settings'));
+        // ② 展开导入框 → 粘贴（1 条已在库 + 1 条新匹配词）→ 真实点击导入
+        await fire({ fttAction: 'nsfwRuleImportOpen' });
+        const openBox = String(panelBodyHtml('settings'));
+        const payload = JSON.stringify({ kind: 'nsfwRules', schema: 1, rules: [{ from: '冒烟甲', to: '不许覆盖' }, { from: '冒烟乙', to: '冒烟乙改' }] });
+        const prevDoc = globalThis.document;
+        globalThis.document = Object.assign({}, doc, { querySelector: (sel) => (String(sel).indexOf('data-ftt-nsfw-rule-import') >= 0 ? { value: payload } : null) });
+        await fire({ fttAction: 'nsfwRuleImportApply' });
+        globalThis.document = prevDoc;
+        const note2 = String((panelState() || {}).note || '');
+        const lib = rtMod.cfg.nsfwRules || [];
+        const closed = String(panelBodyHtml('settings'));
+        doc.createElement = saveCreate;
+        const ok = page.indexOf('data-ftt-action="nsfwRuleExport"') >= 0 && page.indexOf('data-ftt-action="nsfwRuleImportOpen"') >= 0
+            && !!anchor && /^FTT转化库_\d{8}-\d{6}\.json$/.test(String(anchor.download || ''))
+            && String(anchor.href || '').indexOf('blob:') === 0 && urls.length === 1
+            && note1.indexOf('已导出转化库 1 条') >= 0 && note1.indexOf('已下载文件 FTT转化库_') >= 0
+            && exportedBox.indexOf('data-ftt-nsfw-rule-export') >= 0
+            && openBox.indexOf('data-ftt-nsfw-rule-import') >= 0
+            && note2.indexOf('新增 1 条') >= 0 && note2.indexOf('已在库 1 条') >= 0
+            && lib.some((x) => x.from === '冒烟乙' && x.to === '冒烟乙改')
+            && lib.some((x) => x.from === '冒烟甲' && x.to === '冒烟甲改') && !lib.some((x) => x.to === '不许覆盖')
+            && closed.indexOf('data-ftt-nsfw-rule-import') < 0;
+        if (!ok) console.log('BU1-DEBUG ' + JSON.stringify({ anchor: anchor && anchor.download, urls: urls.length, note1: note1.slice(0, 140), note2: note2.slice(0, 200), lib: lib.slice(0, 3) }));
+        return ok;
+    } finally {
+        doc.createElement = saveCreate;
+        if (saveURL === undefined) delete globalThis.URL; else globalThis.URL = saveURL;
+        if (saveBlob === undefined) delete globalThis.Blob; else globalThis.Blob = saveBlob;
+        rtMod.cfg.nsfwRules = keepRules;
+        await entry.popupAction('tab', { tab: keepSet.tab });
+        await entry.popupAction('settingsSub', { sub: keepSet.sub });
+    }
+})(), '');
+
 assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd / nsfwRuleAdd / nsfwState / nsfwApply）', (() => {    const F = globalThis.FTT;
     const kw0 = F.nsfwKeywords().length;
     const add = F.nsfwKeywordAdd('冒烟测试词');

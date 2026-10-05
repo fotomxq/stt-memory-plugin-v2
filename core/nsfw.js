@@ -3,6 +3,8 @@
 // 覆盖：
 //   ① 识别词条库（v1.197）：内置 63 条 + `cfg.nsfwKeywords` 自定义库（增/改/删/恢复内置，索引经「生效列表」定位）；
 //   ② 固定规则转化库（v1.198~v1.199）：内置一套与识别词条一一对应的转化词 + `cfg.nsfwRules` 自定义库；
+//      v3.21.0（用户要求）：转化库**导出 / 导入**（导出当前生效库的 JSON 信封；导入为**合并不覆盖**，
+//      逐条走 `nsfwRuleAdd` 与手工新增同口径；宽容解析见 `nsfwRulesParseImport` 头注）；
 //   ③ 零 AI 机械替换 `nsfwApplyRules`（**对原文单遍匹配 + 区间占位**：不链式二次转换、重叠按「长词优先」；
 //      英文走 `\b词\w*` + 误伤名单，避免 cumulative/circumstance 一类普通词被改写）与 `nsfwFixedReplace`（落地写回 + 镜像字段同步）；
 //   ④ 命中判定 `nsfwKeywordHits`（与替换同一判定口径）+ 关键词预筛（按词条库签名缓存，不改变命中结果，只省无命中字段的扫描）；
@@ -394,6 +396,148 @@ function nsfwRuleDelete(idx) {
 function nsfwRuleReset() {
     try { cfg.nsfwRules = []; return { ok: true, n: NSFW_RULES.length }; } catch (e) { return { ok: false, reason: 'error' }; }
 }
+
+// ==================== 转化库导出 / 导入（v3.21.0） ====================
+// 用户要求：「NSFW弱化的转化库新增支持导出和导入。」
+// 口径：
+//   · **导出** = 当前**生效**转化库（`nsfwRuleList()`：自定义非空用它，否则用内置）→ 带信封的 JSON 文本，
+//     信封含 `kind`（导入端用来防止误导入别的库）与 `schema`（将来换格式时可判版本）；
+//   · **导入** = **合并**（只新增，不覆盖既有匹配词、绝不删除）—— 逐条走 `nsfwRuleAdd()`，
+//     于是修剪/长度上限/大小写不敏感去重与「手工新增」**完全同一套口径**，不会出现两套规则；
+//   · **宽容解析**：信封对象 / 裸数组 / `{rules|nsfwRules|list|items|规则|转化库:[…]}` /
+//     逐行文本（`匹配词→转化词`，支持 `->` `=>` 与制表符，`#` 开头为注释）；
+//     条目内字段名也宽容：`from|match|匹配词|词|source|fromWord` → `to|replace|替换词|转化词|target|toWord`。
+//   · **如实回报**：新增 / 已在库（去重跳过）/ 缺词 / 格式不合格 / 超长被截断 各自计数，绝不静默。
+const NSFW_RULES_IO_KIND = 'nsfwRules';
+const NSFW_RULES_IO_SCHEMA = 1;
+/** 与 `nsfwRuleAdd` 同口径的字段长度上限（导入时超出即截断并计数） */
+const NSFW_RULE_FROM_CAP = 40;
+const NSFW_RULE_TO_CAP = 40;
+
+/**
+ * 导出载荷（纯数据；`now` 可注入，便于测试固定时间）。
+ * @param {number} [now]
+ * @returns {{app:string,kind:string,schema:number,exportedAt:string,source:string,count:number,rules:Array<{from:string,to:string}>}}
+ */
+function nsfwRulesExportPayload(now) {
+    let list = [];
+    try { list = nsfwRuleList(); } catch (e) { list = []; }
+    let at = '';
+    try { at = new Date(Number(now) || Date.now()).toISOString(); } catch (e) { at = ''; }
+    return {
+        app: 'ftt-memory-v2',
+        kind: NSFW_RULES_IO_KIND,
+        schema: NSFW_RULES_IO_SCHEMA,
+        exportedAt: at,
+        source: nsfwRulesCustomized() ? 'custom' : 'builtin',
+        count: list.length,
+        rules: list.map((r) => ({ from: String(r.from), to: String(r.to) })),
+    };
+}
+/** 导出文本（缩进 2：便于人读与手改；末尾留换行） */
+function nsfwRulesExportText(now) {
+    try { return JSON.stringify(nsfwRulesExportPayload(now), null, 2) + '\n'; } catch (e) { return ''; }
+}
+/** 对象取字段（键名大小写不敏感；找不到返回 ''） */
+function nsfwRuleFieldOf(x, keys) {
+    try {
+        if (!x || typeof x !== 'object') return '';
+        const lower = {};
+        for (const k of Object.keys(x)) lower[String(k).toLowerCase()] = x[k];
+        for (const k of keys) {
+            const v = lower[String(k).toLowerCase()];
+            if (v !== undefined && v !== null) return String(v);
+        }
+    } catch (e) { /* 忽略 */ }
+    return '';
+}
+/**
+ * 单条导入项归一：字符串形态（`匹配词→转化词`）或对象形态（字段名宽容）。
+ * @returns {{from:string,to:string,bad:boolean}}
+ */
+function nsfwRuleItemNormalize(x) {
+    if (typeof x === 'string' || typeof x === 'number') {
+        const parts = String(x == null ? '' : x).split(/→|->|=>|\t/);
+        if (parts.length >= 2) return { from: parts[0], to: parts.slice(1).join(''), bad: false };
+        return { from: '', to: '', bad: true };
+    }
+    if (!x || typeof x !== 'object' || Array.isArray(x)) return { from: '', to: '', bad: true };
+    return {
+        from: nsfwRuleFieldOf(x, ['from', 'match', '匹配词', '词', 'source', 'fromword']),
+        to: nsfwRuleFieldOf(x, ['to', 'replace', '替换词', '转化词', 'target', 'toword']),
+        bad: false,
+    };
+}
+/** 从解析结果里取规则数组（信封优先认 `kind`：别的库直接拒绝，避免误导入） */
+function nsfwRulesArrayFrom(parsed) {
+    if (Array.isArray(parsed)) return { ok: true, list: parsed };
+    if (parsed && typeof parsed === 'object') {
+        const kind = String(parsed.kind == null ? '' : parsed.kind).trim();
+        if (kind && kind !== NSFW_RULES_IO_KIND) return { ok: false, reason: 'kind' };
+        for (const k of ['rules', 'nsfwRules', 'nsfwrules', 'list', 'items', '规则', '转化库']) {
+            if (Array.isArray(parsed[k])) return { ok: true, list: parsed[k] };
+        }
+    }
+    return { ok: false, reason: 'shape' };
+}
+/**
+ * 解析导入文本 → 规则数组。
+ * @returns {{ok:boolean, reason:string, list:Array, mode:string}}
+ */
+function nsfwRulesParseImport(text) {
+    const src = String(text == null ? '' : text).trim();
+    if (!src) return { ok: false, reason: 'empty', list: [], mode: '' };
+    let parsed = null, parsedOk = false;
+    try { parsed = JSON.parse(src); parsedOk = true; } catch (e) { parsedOk = false; }
+    if (parsedOk) {
+        const a = nsfwRulesArrayFrom(parsed);
+        if (!a.ok) return { ok: false, reason: a.reason, list: [], mode: 'json' };
+        return { ok: true, reason: '', list: a.list, mode: 'json' };
+    }
+    // 非 JSON → 逐行文本（`匹配词→转化词`；`#` 注释与空行跳过）
+    const list = [];
+    for (const line of src.split(/\r?\n/)) {
+        const s = String(line).trim();
+        if (!s || s.startsWith('#')) continue;
+        list.push(s);
+    }
+    if (!list.length) return { ok: false, reason: 'bad-json', list: [], mode: 'lines' };
+    return { ok: true, reason: '', list: list, mode: 'lines' };
+}
+/**
+ * **导入并合并**转化库（只新增，不覆盖、不删除）。
+ * @param {string} text JSON 信封 / 裸数组 / 逐行文本
+ * @returns {{ok:boolean, reason:string, mode:string, added:number, dup:number, empty:number, shape:number, failed:number, truncated:number, total:number, samples:string[]}}
+ */
+function nsfwRulesImportText(text) {
+    const empty = { ok: false, reason: '', mode: '', added: 0, dup: 0, empty: 0, shape: 0, failed: 0, truncated: 0, total: nsfwRuleList().length, samples: [] };
+    const parsed = nsfwRulesParseImport(text);
+    if (!parsed.ok) return Object.assign({}, empty, { reason: parsed.reason, mode: parsed.mode });
+    let added = 0, dup = 0, blanks = 0, shape = 0, failed = 0, truncated = 0, usable = 0;
+    const samples = [];
+    for (const item of parsed.list) {
+        const n = nsfwRuleItemNormalize(item);
+        if (n.bad) { shape++; continue; }
+        const f = String(n.from == null ? '' : n.from).trim();
+        const t = String(n.to == null ? '' : n.to).trim();
+        if (!f || !t) { blanks++; continue; }
+        if (f.length > NSFW_RULE_FROM_CAP || t.length > NSFW_RULE_TO_CAP) truncated++;
+        const r = nsfwRuleAdd(f, t);
+        if (r && r.ok) {
+            added++; usable++;
+            if (samples.length < 3) samples.push('「' + r.from + '」→「' + r.to + '」');
+        } else if (r && r.reason === 'dup') { dup++; usable++; }
+        else failed++;
+    }
+    // 逐行文本模式：一条都没成形 → 根本不是可识别的清单（不伪装成「格式不合格 N 条」的成功导入）
+    if (parsed.mode === 'lines' && !usable) return Object.assign({}, empty, { reason: 'bad-json', mode: 'lines', shape: shape, empty: blanks + shape });
+    return {
+        ok: true, reason: '', mode: parsed.mode,
+        added: added, dup: dup, empty: blanks, shape: shape, failed: failed, truncated: truncated,
+        total: nsfwRuleList().length, samples: samples,
+    };
+}
+
 /** 自动开关（默认开）：`undefined` 也视为开（老配置合并后不会丢默认行为） */
 function nsfwReplaceAutoOn() { try { return !(cfg && cfg.nsfwReplaceAuto === false); } catch (e) { return true; } }
 
@@ -896,6 +1040,9 @@ export {
     nsfwDimList, nsfwDimListOf,
     nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordsSeed, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRulesSeed, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
+    // v3.21.0（用户要求）：转化库导出 / 导入（合并）—— 信封、宽容解析与逐条计数
+    nsfwRulesExportPayload, nsfwRulesExportText, nsfwRulesParseImport, nsfwRulesImportText,
+    NSFW_RULES_IO_KIND, NSFW_RULES_IO_SCHEMA,
     nsfwEnRegex, nsfwEnWordOk, nsfwKeywordProbe, nsfwKeywordHits, nsfwApplyRules, nsfwFixedReplace,
     nsfwGetByPath, nsfwSetByPath, nsfwMirrorKey, nsfwSyncMirror, nsfwMirrorGroup, nsfwTextFields, nsfwEntryTitle,
     nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt, applyNsfwSoftenResult, nsfwSoftenEnabledOn, nsfwSoftenRuleText, nsfwSoftenState,

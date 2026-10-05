@@ -17,8 +17,11 @@ import {
     nsfwSoftenState, nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwFixedReplace, runNsfwSoften, NSFW_DIM_LABEL,
+    // v3.21.0（用户要求）：转化库导出 / 导入
+    nsfwRulesExportText, nsfwRulesImportText,
     nsfwLabelStats, nsfwBackfill, nsfwClassifyItem, nsfwLevelLabel, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS,   // v3.8.0：NSFW 等级留档
 } from '../core/nsfw.js';
+import { downloadTextFile, pickTextFile, fileIoCapabilities } from './file-io.js';   // v3.21.0：转化库真实落文件 / 选文件
 // v3.19.0：NSFW 词条分析（抽强留档 → AI 找词 → 写转化库）
 import { nsfwAnalyzeState, runNsfwAnalyze, nsfwAnalyzeSeenReset, NSFW_ANALYZE_BATCH, NSFW_ANALYZE_MAX_ADD, NSFW_ANALYZE_SPREAD_MAX } from '../core/nsfw-analyze.js';
 import { settingsControlHtml } from './settings-pages.js';
@@ -39,6 +42,39 @@ function toast(kind, title, text) {
  *   此前只有内存态被改写 —— 重开面板/重载页面后改动会丢（要等别的流程顺带保存配置）。
  */
 function persistCfg() { try { saveCfg(); } catch (e) { /* 落盘失败不影响内存态 */ } }
+
+// ---------- v3.21.0：转化库导出 / 导入（页面态；动作结果就地显示） ----------
+/**
+ * 页面态：
+ *   · `open` = 导入粘贴框是否展开（点了「⬆ 导入转化库」才展开，避免页面常驻一个大文本框）；
+ *   · `exportText` = 最近一次导出的 JSON（下载失败/宿主不支持下载时从这里手工复制）；
+ *   · `note` = 最近一次导出/导入的结果行（新窗口/刷新后清空）。
+ */
+let ruleIo = { open: false, exportText: '', note: '' };
+/** 页面态复位（测试/冒烟用；真实使用中由动作自行维护） */
+export function nsfwRuleIoReset() { ruleIo = { open: false, exportText: '', note: '' }; return true; }
+/** 导出文件名：`FTT转化库_<YYYYMMDD-HHMMSS>.json`（v3.0.17 口径：文件名必须带日期时间，便于多次导出区分） */
+function rulesExportFileName(now) {
+    try {
+        const d = new Date(Number(now) || Date.now());
+        const p = (n) => String(n).padStart(2, '0');
+        return 'FTT转化库_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+            + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.json';
+    } catch (e) { return 'FTT转化库.json'; }
+}
+/** 导入结果 → 一行如实回报（新增 / 已在库 / 缺词 / 格式不合格 / 截断 / 当前生效） */
+function rulesImportNote(r) {
+    const reasonLabel = { empty: '文本框是空的', 'bad-json': '不是可识别的 JSON 或逐行清单', shape: '没找到规则数组（需要 {rules:[…]} 或裸数组）', kind: '这不是转化库文件（kind 不符）' };
+    if (!r || !r.ok) return '导入失败：' + (reasonLabel[String(r && r.reason)] || String((r && r.reason) || '未知')) + '（未改动转化库）';
+    const bits = ['新增 ' + Number(r.added || 0) + ' 条'];
+    if (Number(r.dup)) bits.push('已在库 ' + Number(r.dup) + ' 条（去重跳过）');
+    if (Number(r.empty)) bits.push('缺匹配词/转化词 ' + Number(r.empty) + ' 条');
+    if (Number(r.shape)) bits.push('格式不合格 ' + Number(r.shape) + ' 条');
+    if (Number(r.failed)) bits.push('写入失败 ' + Number(r.failed) + ' 条');
+    if (Number(r.truncated)) bits.push('超长已截断 ' + Number(r.truncated) + ' 条');
+    return '导入完成（合并不覆盖）：' + bits.join(' · ') + ' → 当前生效 ' + Number(r.total || 0) + ' 条'
+        + (r.samples && r.samples.length ? '；例：' + r.samples.join('；') : '');
+}
 /** 面板 DOM 取值（测试/无 DOM 时回退 payload） */
 function domValue(sel, payloadVal) {
     if (payloadVal !== undefined && payloadVal !== null) return String(payloadVal);
@@ -147,6 +183,26 @@ export function nsfwPageHtml() {
         '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleAdd" title="加入转化库（匹配词去重）">＋ 新增</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleReset" title="清空自定义列表，恢复内置标准转化库">♻ 恢复内置默认</button>',
         '</div>',
+        // v3.21.0（用户要求）：「转化库新增支持导出和导入」—— 导出当前**生效**库（含内置）为 JSON 文件；
+        //   导入为**合并**（只新增、不覆盖既有匹配词、绝不删除），逐条回报新增/去重/不合格/截断。
+        '<div class="ftt-row" style="align-items:center;gap:6px">',
+        '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleExport" title="把当前生效的转化库导出为 JSON 文件（含匹配词→转化词；可备份、迁移、分享）">⬇ 导出转化库</button>',
+        '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleImportOpen" title="从 JSON 导入转化库（合并：只新增，不覆盖既有匹配词）">⬆ 导入转化库</button>',
+        '<span class="ftt-muted" data-ftt-nsfw-rule-io-state>' + (ruleIo.note ? esc(ruleIo.note) : ('尚未导出/导入（当前生效 ' + ruleList.length + ' 条）')) + '</span>',
+        '</div>',
+        (ruleIo.open
+            ? ('<div class="ftt-field ftt-field-col"><label>导入转化库（粘贴 JSON：导出的信封 / 裸数组 '
+                + '[{"from":"…","to":"…"}] / 逐行「匹配词→转化词」都可以）</label>'
+                + '<textarea data-ftt-nsfw-rule-import="1" rows="6" placeholder=\'{"kind":"nsfwRules","schema":1,"rules":[{"from":"做爱","to":"亲近"}]}\'></textarea>'
+                + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="nsfwRuleImportApply">⬆ 导入粘贴内容（合并）</button>'
+                + '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleImportFile" title="直接选择导出的 .json 文件">📂 选择文件导入</button>'
+                + '<button class="ftt-btn ftt-sm" data-ftt-action="nsfwRuleImportClose">✖ 收起</button></div>'
+                + '<div class="ftt-muted ftt-w-full">合并口径：按匹配词去重（大小写不敏感）、**不覆盖已有条目、不删除任何条目**；每条超长（&gt;' + 40 + ' 字）会被截断并计数。要「整体替换」请先「♻ 恢复内置默认」再导入。</div></div>')
+            : ''),
+        (ruleIo.exportText
+            ? ('<div class="ftt-field ftt-field-col"><label>导出结果（上面「⬇ 导出转化库」的内容；浏览器未触发下载时可从这里手动复制保存）</label>'
+                + '<textarea data-ftt-nsfw-rule-export="1" rows="6">' + esc(ruleIo.exportText) + '</textarea></div>')
+            : ''),
         '<div class="ftt-hint ftt-w-full" style="max-height:260px;overflow:auto">' + (ruleRows || '<div class="ftt-muted">（空）点「恢复内置默认」可载入内置转化库</div>') + '</div>',
         '</div>',
 
@@ -312,6 +368,74 @@ export async function nsfwAction(action, payload) {
             toast('success', note, '');
             return { ok: true, action: a, note, detail: r };
         }
+        // ---------- v3.21.0（用户要求）：转化库导出 / 导入 ----------
+        if (a === 'nsfwRuleExport') {
+            const text = nsfwRulesExportText();
+            ruleIo.exportText = text;
+            const count = nsfwRuleList().length;
+            // ① **真实下载文件**（与数据管理页「⬇ 导出 JSON」同一个 `downloadTextFile`）
+            const fname = rulesExportFileName();
+            const dl = text ? downloadTextFile(fname, text, 'application/json') : { ok: false, reason: 'empty' };
+            // ② 复制到剪贴板（保留，便于直接分享/粘贴到别处）
+            let copied = false;
+            try {
+                const nav = globalThis.navigator;
+                if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
+            } catch (e) { copied = false; }
+            const bits = ['已导出转化库 ' + count + ' 条（' + String(text).length + ' 字符）'];
+            bits.push(dl.ok ? ('已下载文件 ' + dl.filename) : ('未下载文件（' + dl.reason + '）—— 可从下方文本框手动复制保存'));
+            if (copied) bits.push('已复制到剪贴板');
+            const note = bits.join(' · ');
+            ruleIo.note = note;
+            toast(dl.ok ? 'success' : 'warning', note, '');
+            return { ok: true, action: a, note, chars: String(text).length, count: count, copied: copied, downloaded: !!dl.ok, filename: dl.ok ? dl.filename : '', downloadReason: dl.reason || '', detail: { count: count } };
+        }
+        if (a === 'nsfwRuleImportOpen') {
+            ruleIo.open = true;
+            const note = fileIoCapabilities().pick
+                ? '导入转化库：把 JSON 粘贴到下面的文本框点「⬆ 导入粘贴内容」，或点「📂 选择文件导入」直接选文件（合并：只新增，不覆盖既有匹配词）'
+                : '导入转化库：当前宿主不支持文件选择器 —— 请把 JSON 粘贴到下面的文本框，再点「⬆ 导入粘贴内容」';
+            ruleIo.note = note;
+            return { ok: true, action: a, note, detail: { open: true } };
+        }
+        if (a === 'nsfwRuleImportClose') {
+            ruleIo.open = false;
+            const note = '已收起导入框（未改动转化库）';
+            return { ok: true, action: a, note, detail: { open: false } };
+        }
+        if (a === 'nsfwRuleImportFile') {
+            if (!fileIoCapabilities().pick) {
+                ruleIo.open = true;
+                const note = '当前宿主不支持文件选择器 —— 请把 JSON 粘贴到文本框，再点「⬆ 导入粘贴内容」';
+                ruleIo.note = note;
+                return { ok: false, action: a, note, reason: 'no-picker' };
+            }
+            const picked = await pickTextFile({ accept: '.json,application/json' });
+            if (!picked.ok) {
+                ruleIo.open = true;
+                const note = (picked.reason === 'cancelled' ? '已取消选择文件' : ('未取到文件（' + picked.reason + '）'))
+                    + ' —— 也可把 JSON 粘贴到文本框，再点「⬆ 导入粘贴内容」';
+                ruleIo.note = note;
+                return { ok: false, action: a, note, reason: picked.reason || 'no-file' };
+            }
+            const r = nsfwRulesImportText(picked.text);
+            if (r.added) persistCfg();
+            if (r.ok) ruleIo.open = false;
+            const note = (r.ok ? ('已读取文件 ' + (picked.name || '（未命名）') + '：') : '') + rulesImportNote(r);
+            ruleIo.note = note;
+            toast(r.ok && r.added ? 'success' : 'warning', note, '');
+            return { ok: !!r.ok, action: a, note, fileName: picked.name, fileSize: picked.size, detail: r };
+        }
+        if (a === 'nsfwRuleImportApply') {
+            const text = domValue('[data-ftt-nsfw-rule-import]', p.text !== undefined ? p.text : undefined);
+            const r = nsfwRulesImportText(text);
+            if (r.added) persistCfg();
+            if (r.ok) ruleIo.open = false;
+            const note = rulesImportNote(r);
+            ruleIo.note = note;
+            toast(r.ok && r.added ? 'success' : 'warning', note, '');
+            return { ok: !!r.ok, action: a, note, added: r.added, dup: r.dup, invalid: Number(r.empty || 0) + Number(r.shape || 0) + Number(r.failed || 0), truncated: r.truncated, total: r.total, detail: r };
+        }
         return { ok: false, action: a, note: '未知 NSFW弱化动作：' + a };
     } catch (e) {
         const note = String((e && e.message) || e).slice(0, 160);
@@ -320,5 +444,6 @@ export async function nsfwAction(action, payload) {
     }
 }
 
-/** NSFW弱化动作名（供面板分发；动作名与 V1 逐字一致；`nsfwAnalyze` / `nsfwAnalyzeReset` 为 v3.18.0 新增） */
-export const NSFW_ACTIONS = Object.freeze(['nsfwSoften', 'nsfwLabelBackfill', 'nsfwAnalyze', 'nsfwAnalyzeReset', 'nsfwRuleApply', 'nsfwKwAdd', 'nsfwKwSave', 'nsfwKwDel', 'nsfwKwReset', 'nsfwRuleAdd', 'nsfwRuleSave', 'nsfwRuleDel', 'nsfwRuleReset']);
+/** NSFW弱化动作名（供面板分发；动作名与 V1 逐字一致；`nsfwAnalyze` / `nsfwAnalyzeReset` 为 v3.18.0 新增；
+ *  `nsfwRuleExport` / `nsfwRuleImportOpen` / `nsfwRuleImportApply` / `nsfwRuleImportFile` / `nsfwRuleImportClose` 为 v3.21.0 新增） */
+export const NSFW_ACTIONS = Object.freeze(['nsfwSoften', 'nsfwLabelBackfill', 'nsfwAnalyze', 'nsfwAnalyzeReset', 'nsfwRuleApply', 'nsfwKwAdd', 'nsfwKwSave', 'nsfwKwDel', 'nsfwKwReset', 'nsfwRuleAdd', 'nsfwRuleSave', 'nsfwRuleDel', 'nsfwRuleReset', 'nsfwRuleExport', 'nsfwRuleImportOpen', 'nsfwRuleImportApply', 'nsfwRuleImportFile', 'nsfwRuleImportClose']);
