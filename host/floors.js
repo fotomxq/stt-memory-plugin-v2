@@ -600,7 +600,16 @@ export function handleFloorShrink(opts) {
                 const hasNow = Number.isInteger(ns0) && Number.isInteger(ne0) && ns0 >= 0 && ne0 >= ns0;
                 const h = oldHashAt[r[0]] || '';
                 const fn = it.floorNowHash ? String(it.floorNowHash) : '';
-                if (h && nowHashAt[h] !== undefined) {                 // ① 原文仍在 → 按内容哈希定位
+                // v3.20.0（时钟「时间总是错的」第二重成因）：**条目自己的位置指纹优先于台账代理**。
+                //   台账 `processedFloors` 与情节库同为**按角色**存储 —— 里面可能混着别条聊天/旧聊天的标记，
+                //   于是 `oldHashAt[floorStart]`（台账代理）只对「本聊天自己产出的条目」成立。
+                //   真机取证：198 年罗马线的旧情节被这条代理定位到当前聊天第 11 楼、被**写上**代理指纹
+                //   并 `clearGone` 解除「原文已移除」→ **每次删楼都把陈旧情节洗白成「位置有效」**，
+                //   时钟随之地被它压住（用户看到的「每次都是错的时间」就是这条复发链）。
+                //   现在：条目**自己有指纹**却在本聊天里找不到 = 内容确实不在了 → 直接判「原文已移除」，
+                //   不再用台账代理救活；**没有指纹**的历史条目仍走代理（不倒退）。
+                const ownMissing = !!fn && nowHashAt[fn] === undefined;
+                if (!ownMissing && h && nowHashAt[h] !== undefined) {   // ① 原文仍在 → 按内容哈希定位
                     shiftFloorNow(it, nowHashAt[h] - r[0]);
                     it.floorNowHash = h;
                     clearGone(it);

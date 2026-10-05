@@ -37,7 +37,7 @@ import { maybeAutoCheckOnStartup, updateStatusText } from './host/update.js';
 import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
-import { wireKernelChatHooks, attachKernelState, latestAiMessageText } from './host/chat.js';
+import { wireKernelChatHooks, attachKernelState, latestAiMessageText, noteChatKey } from './host/chat.js';
 import { wirePersistHooks, loadFromLocalStorage, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
 // v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
 import { localFileEnabled } from './adapters/local-file.js';
@@ -607,7 +607,17 @@ export async function init() {
             //   **绝不能**重读落盘状态（否则等于无声撤销重映射）→ 删楼期间跳过重读，内存态才是权威。
             if (floorTrimBusy()) return;
             // 切换角色/聊天 → 作用域变化 → 重新载入该作用域容器
-            void loadMemoryState().catch(() => { });
+            void loadMemoryState().catch(() => { }).then(() => {
+                // v3.20.0：载入后同步「当前聊天标识」；**真的换了一条聊天** → 立刻按本聊天的最新情节重解析时钟。
+                //   为什么必须在载入之后：`chatKey` 与情节库一样是**按角色**存的 —— 刚载入时它还是上一条聊天的值，
+                //   若在这里就判定「归属」，会把上一条聊天的时钟一直显示到本聊天有新楼层被分析为止。
+                try {
+                    const r = noteChatKey();
+                    if (r && r.changed && clockAutoExtractOnce({ force: true }) === true) {
+                        try { void saveStateNowQuiet('chat-key'); } catch (e) { /* 忽略 */ }
+                    }
+                } catch (e) { /* 忽略 */ }
+            });
         };
         runtime.bind = bindCoreEvents({
             GENERATION_ENDED: onGenEnded,

@@ -44,6 +44,12 @@ function emptyState() {
         //   此前基线只有 `lastKnownFloor`（= 已分析最大楼）：聊天涨到 49 楼、只分析到 22 楼时基线严重落后，
         //   之后删到 29 楼**检测不到收缩** → 来源楼层不归位（真机取证）。
         lastChatFloor: -1,
+        // v3.20.0：**当前打开的聊天标识**（宿主注入；`chatMetadata.chat_id_hash` 优先，退 `ctx.chatId`）。
+        //   为什么需要：记忆容器是**按角色**存的（`scope: char:xxxx`），同一角色的多条聊天共用同一份
+        //   `atoms` —— 里面混着别条聊天/旧聊天留下的情节，其楼层号在本聊天里没有意义，却会在
+        //   「最新情节」排序里压住本聊天真正的最新情节 → 时钟长期显示错误的时间（真机取证见
+        //   `core/chat-scope.js` 头注）。新落库的情节带 `chatKey`，排序据此把别条聊天的情节降级。
+        chatKey: '',
         // 已完结计划 / 已揭晓悬念 —— 只留统计数据（原文直接删除，见 merge/UI 了结路径）
         stats: { plansClosed: 0, suspenseResolved: 0 },
         // 跨端删除墓碑 —— { dim: { id: 删除时间ms } }，随信封持久化；合并时对方条目

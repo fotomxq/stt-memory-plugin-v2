@@ -16,6 +16,7 @@
 // 约定：不抛异常；任何一步失败都返回结构化结果，不影响提取主流程。
 // ============================================================
 import { cfg, state } from '../core/model/runtime.js';
+import { noteChatKey } from './chat.js';
 import { clockAutoExtractOnce, clockExtractState } from '../core/clock-extract.js';
 import { clockManualState } from '../core/clock-patrol.js';
 import { atomContentHash } from '../core/model/hash.js';
@@ -45,6 +46,11 @@ export function calibrateBasics(opts) {
     const before = clockSnapshot();
     let changed = false;
     let skipped = '';
+    // v3.20.0：**每次分析前先同步「当前聊天标识」** —— 新落库的情节据此打 `chatKey`（聊天归属），
+    //   时钟据此刻意只采信本聊天的情节（否则别条聊天/旧聊天的情节会压住本聊天的最新情节 →
+    //   「最新情节已经变化，但还是识别为错误的时间」，真机取证见 core/chat-scope.js）。
+    //   放在这里的原因：所有分析路径（单楼 / 批量 / 自动）都会先经过 `calibrateBasics()`，单点覆盖、且在合并之前。
+    try { noteChatKey(); } catch (e) { /* 忽略：标识读不到就只是不打标 */ }
     try {
         if (!cfg || cfg.enabled === false) skipped = 'disabled';
         else if (cfg.clockExtractEnabled === false) skipped = 'auto-off';

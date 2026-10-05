@@ -39,6 +39,10 @@ function normalizeAtom(e, fallbackFloor) {
         ...(Number.isInteger(Number(e?.floorNowEnd)) && Number(e.floorNowEnd) >= Number(e.floorNowStart) ? { floorNowEnd: Number(e.floorNowEnd) } : {}),
         ...(e?.floorNowHash ? { floorNowHash: String(e.floorNowHash) } : {}),
         ...(e?.originGone === true ? { originGone: true, originGoneAt: Number(e.originGoneAt) > 0 ? Number(e.originGoneAt) : Date.now() } : {}),
+        // v3.20.0：**聊天归属**（本条目是「哪条聊天」的情节）。与楼层溯源同一纪律：归一化必须原样保留，
+        //   否则下一次 AI 更新/合并会把归属冲掉 —— 而归属决定时钟是否采信这条情节（见 core/chat-scope.js）。
+        //   注意：**条件展开**（V1 黄金样本不含该键 → 输出逐字节不变，V1 移植保真度门禁不受影响）。
+        ...(e?.chatKey ? { chatKey: String(e.chatKey).slice(0, 80) } : {}),
         // v3.8.0（用户要求）：**NSFW 等级留档**（无/弱/强）—— 只升不降、弱化后不变，见 core/nsfw-level.js
         uses: Number(e?.uses) || 0,
         // 原子层：标准化字段 + 可扩展插槽

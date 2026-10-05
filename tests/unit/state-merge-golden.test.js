@@ -42,9 +42,10 @@ R.assert('S1 scopeId / stateKey 与 V1 同口径（char:<hash>；存档键前缀
 R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账本 + 时钟 + 主角 + 快照链等）', (() => {
     const e = emptyState();
     // v3.11.1：**有意偏离 V1** —— V2 新增两个台账辅助字段（`processedDropped` / `lastChatFloor`，见 core/state.js）。
+    // v3.20.0：再新增 `chatKey`（**当前聊天标识**，时钟据此只采信本聊天的情节；见 core/chat-scope.js）。
     //   按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再比较，样本本身一字不改；
     //   同时**单独断言新字段确实存在**（归一 ≠ 删字段）。
-    const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
+    const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
     const got = {
         keys: Object.keys(e).filter(k => V2_LEDGER_KEYS.indexOf(k) < 0), scope: e.scope,
         dims: ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'links', 'currencies', 'plotSegments', 'rumors'].map(k => Array.isArray(e[k]) ? k : k + ':' + typeof e[k]),
@@ -54,7 +55,8 @@ R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账�
     const want = JSON.parse(J(G.empty)); delete want.version;
     return JT(got) === JT(want) && e.version === VERSION
         && V2_LEDGER_KEYS.every(k => Object.prototype.hasOwnProperty.call(e, k))
-        && Array.isArray(e.processedDropped) && Number(e.lastChatFloor) === -1;
+        && Array.isArray(e.processedDropped) && Number(e.lastChatFloor) === -1
+        && e.chatKey === '';
 })(), Object.keys(emptyState()));
 
 // ---------- 隐藏条目保护 ----------

@@ -10,6 +10,7 @@
 // ============================================================
 
 import { clockDateTrim, clockDateValid, clockDateLabel, clockMonthDay, storyDateMsFromStr } from './clock.js';
+import { chatTier, currentChatKey, currentChatTail, plotDemoted } from './chat-scope.js';   // v3.20.0：情节的聊天归属/位置越界判据
 import { clamp } from './util.js';
 import { activeAtoms, atomIsHidden } from './merge.js';
 import { recallDateNum } from './migrate.js';
@@ -1390,8 +1391,17 @@ function trustedPlotList() {
             const ne = Number.isInteger(a.floorNowEnd) ? a.floorNowEnd : (Number(a.floorEnd) || 0);
             return Math.max(ns, ne);
         };
-        /** v3.16.1：原文已移除（0 = 活情节在前，1 = 已移除在后） */
-        const goneOf = (a) => (a && a.originGone === true ? 1 : 0);
+        // v3.20.0（用户报告「最新的情节已经变化，但还是识别为错误的时间」，**每次删楼复发**）：
+        //   ① **聊天归属分级** `chatTier()` —— 记忆容器是**按角色**存的，同一角色的多条聊天共用 `atoms`，
+        //      别条聊天/旧聊天留下的情节楼层号在本聊天里没有意义，却会压住本聊天真正的最新情节
+        //      （真机：24 楼的 628 年长安线被 508 楼的昆仑山旧线、198 年罗马线压住，时钟长期显示错时间）。
+        //   ② **位置越界降级** `plotOverflow()` —— 当前位置超过**当前聊天末楼**的条目，那个楼层根本不存在，
+        //      不可能是「剧情当下」（真机修复日志：「最新情节在第 508 楼、当前只有第 13 楼」）。
+        //   两者都只**降级、不排除**（与 v3.16.1「原文已移除降级」同一纪律）—— 判据见 `core/chat-scope.js`。
+        const chatKey = currentChatKey();
+        const chatTail = currentChatTail();
+        /** v3.16.1：原文已移除（0 = 活情节在前，1 = 已移除在后）；v3.20.0：并入「位置越界」 */
+        const goneOf = (a) => plotDemoted(a, chatTail);
         const floorOf = curOf;
         // v2.98.0：排序**只在「两边都有楼层信息」时**以楼层为准（原口径不变）；
         //   一旦有一方**没有楼层信息**（手动新增/编辑的情节、导入的旧数据、被删楼标记为未知区间的情节…），
@@ -1405,9 +1415,12 @@ function trustedPlotList() {
         //     避免「新情节还没写天数」被老情节压下去（保守、不倒退）。
         const dayOf = (a) => Number(a && a.storyDay) || 0;
         const sorted = list.slice().sort((a, b) => {
+            // v3.20.0：**本聊天的情节优先**（0 = 本聊天 / 1 = 归属未知的历史数据 / 2 = 别条聊天）
+            const at = chatTier(a, chatKey), bt = chatTier(b, chatKey);
+            if (at !== bt) return at - bt;
             const aday = dayOf(a), bday = dayOf(b);
             if (aday > 0 && bday > 0 && aday !== bday) return bday - aday;   // ★ 内置天数优先（两边都有）
-            // v3.16.1：**原文已移除的降级**（同档内再按当前位置 / 日期 / id 比较）
+            // v3.16.1：**原文已移除的降级**（同档内再按当前位置 / 日期 / id 比较）；v3.20.0 并入位置越界
             const ag = goneOf(a), bg = goneOf(b);
             if (ag !== bg) return ag - bg;
             const af = floorOf(a), bf = floorOf(b);
@@ -1470,8 +1483,11 @@ function latestPlotByFloor() {
             const ne = Number.isInteger(a.floorNowEnd) ? a.floorNowEnd : (Number(a.floorEnd) || 0);
             return Math.max(ns, ne);
         };
-        const goneOf = (a) => (a && a.originGone === true ? 1 : 0);
-        const sorted = list.slice().sort((a, b) => (goneOf(a) - goneOf(b))
+        // v3.20.0：与 `trustedPlotList` 完全同口径 —— **聊天归属优先** + 「原文已移除 / 位置越界」降级
+        const chatKey = currentChatKey();
+        const chatTail = currentChatTail();
+        const sorted = list.slice().sort((a, b) => (chatTier(a, chatKey) - chatTier(b, chatKey))
+            || (plotDemoted(a, chatTail) - plotDemoted(b, chatTail))
             || (curOf(b) - curOf(a))
             || String(b.date || '').localeCompare(String(a.date || '')));
         for (const a of sorted) {
@@ -1493,19 +1509,24 @@ function atomLatestDated() {
     try {
         // v3.16.1：与 `trustedPlotList` 同一口径 —— **原文已移除的情节降级**（拆楼后它们往往是**旧聊天**的残留，
         //   其日期可能比当前剧情更晚 → 会把「最近情节日期」参考带成未来日期），且同日期时比较**当前位置**。
-        const goneOf = (x) => (x && x.originGone === true ? 1 : 0);
+        // v3.20.0：再叠一层「聊天归属优先 / 位置越界降级」（见 `core/chat-scope.js`）。
         const curOf = (x) => Math.max(
             Number.isInteger(x && x.floorNowEnd) ? x.floorNowEnd : (Number(x && x.floorEnd) || 0),
             Number.isInteger(x && x.floorNowStart) ? x.floorNowStart : (Number(x && x.floorStart) || 0));
         const pickDated = (arr, dim) => {
             let best = null;
+            // v3.20.0：与 `trustedPlotList` 同口径 —— **本聊天优先** + 「原文已移除 / 位置越界」降级
+            const chatKey2 = currentChatKey();
+            const chatTail2 = currentChatTail();
             for (const x of (arr || [])) {
                 if (!x || !clockDateValid(x.date)) continue;
                 if (dim === 'atoms' && x.validity === 'inactive') continue;
                 const d = String(x.date).slice(0, 10);
-                if (!best
-                    || goneOf(x) < goneOf(best.node)
-                    || (goneOf(x) === goneOf(best.node) && (d > best.date || (d === best.date && curOf(x) > curOf(best.node))))) {
+                if (!best) { best = { dim, node: x, date: d }; continue; }
+                const tx = chatTier(x, chatKey2), tb = chatTier(best.node, chatKey2);
+                if (tx > tb) continue;
+                const gx = plotDemoted(x, chatTail2), gb = plotDemoted(best.node, chatTail2);
+                if (tx < tb || gx < gb || (gx === gb && (d > best.date || (d === best.date && curOf(x) > curOf(best.node))))) {
                     best = { dim, node: x, date: d };
                 }
             }

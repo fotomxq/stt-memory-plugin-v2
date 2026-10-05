@@ -5,7 +5,7 @@
 // 事实源：docs/history/P0-探针报告.md（getContext 键位：chat / characters / characterId / name1 / name2）。
 // ============================================================
 import { getCtx } from './st-api.js';
-import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages } from '../core/model/runtime.js';
+import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages, state } from '../core/model/runtime.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 // v2.44.0（用户报告）：酒馆消息正文是可含 HTML 的富文本（`<br>`/`<p>`/`&nbsp;`…）→ 在**读入边界**统一清洗，
 //   这样「提取提示词 / 剧情时钟 / 楼层哈希之外的取文」都不会把标签带进数据（哈希仍用原始稳定正文，见 host/floors.js）
@@ -65,6 +65,54 @@ export function currentLastMessageId() {
     return ctx.chat.length - 1;
 }
 
+/**
+ * v3.20.0：**当前聊天的稳定标识**（`state.chatKey` 的来源；用于给情节打「聊天归属」）。
+ *
+ * 为什么需要：记忆容器按**角色**存（`scope: char:xxxx`），同一角色的多条聊天共用一份 `atoms` ——
+ *   别条聊天/旧聊天的情节混在里面，楼层号在本聊天里没有意义，却会参与「最新情节」排序 →
+ *   时钟长期显示别条故事的时间（真机取证见 `core/chat-scope.js` 头注）。
+ *
+ * 取值优先级（都取不到就返回 `''` = 判不出来，此时**不打标、不改排序**）：
+ *   ① `chatMetadata.chat_id_hash` —— 宿主写在**聊天文件里**的稳定哈希（随聊天文件走，最可靠）；
+ *   ② `ctx.chatId` —— 酒馆的聊天标识 / 文件名；
+ *   ③ `chatMetadata.integrity` —— 聊天文件里的 UUID。
+ * 只**读**聊天元数据，绝不写入（写路径另属阶段 S3，见 adapters/chat-meta.js 头注）。
+ * @returns {string}
+ */
+export function currentChatKey() {
+    const ctx = getCtx();
+    if (!ctx) return '';
+    try {
+        const m = (ctx.chatMetadata && typeof ctx.chatMetadata === 'object') ? ctx.chatMetadata : null;
+        const norm = (v) => { const s = String(v == null ? '' : v).trim(); return s ? s.slice(0, 80) : ''; };
+        const h = m ? norm(m.chat_id_hash) : '';
+        if (h) return h;
+        const id = norm(ctx.chatId);
+        if (id) return id;
+        const ig = m ? norm(m.integrity) : '';
+        if (ig) return ig;
+    } catch (e) { /* 忽略 */ }
+    return '';
+}
+
+/**
+ * 把「当前聊天标识」记进内核状态（幂等）。
+ *   · 标识**读不到**时写空串：宁可「归属未知」，也不能把新聊天的新情节错打成上一条聊天的归属；
+ *   · 返回 `changed` 供调用方决定是否重解析时钟（切聊天 → 时钟应立刻切到本聊天的最新情节）。
+ * @returns {{changed:boolean, key:string, from:string, applied:boolean}}
+ */
+export function noteChatKey() {
+    const key = currentChatKey();
+    const st = state;
+    if (!st || typeof st !== 'object') return { changed: false, key: key, from: '', applied: false };
+    const prev = String(st.chatKey || '');
+    if (prev === key) return { changed: false, key: key, from: prev, applied: true };
+    st.chatKey = key;
+    try { traceEvent({ cat: 'kernel', kind: 'chat-key', level: 'info', detail: { from: prev.slice(0, 12), to: key.slice(0, 12), where: 'host/chat.js' }, dedupeKey: 'chat-key|' + key.slice(0, 12) }); } catch (e) { /* 追踪失败不影响记账 */ }
+    try { debugLogPush('楼层', { action: '聊天归属已更新', from: prev ? prev.slice(0, 12) : '（无）', to: key ? key.slice(0, 12) : '（读不到）' }); } catch (e) { /* 忽略 */ }
+    return { changed: true, key: key, from: prev, applied: true };
+}
+
 /** 当前角色稳定标识（优先角色文件名 avatar；见 st-api.currentCharScope 的口径） */
 export function currentStableCharKey() {
     const ctx = getCtx();
@@ -91,10 +139,15 @@ export function wireKernelChatHooks() {
     });
     setLastMessageId(currentLastMessageId());
     setScopeKey(currentStableCharKey());
+    // v3.20.0：同步「当前聊天标识」（切聊天 / 消息渲染 / 启动都会走到这里）——
+    //   新落库的情节据此打 `chatKey`，时钟据此只采信本聊天的情节（见 core/chat-scope.js）。
+    let chatKey = '';
+    try { chatKey = noteChatKey().key; } catch (e) { /* 忽略 */ }
     return {
         messages: messages.length,
         lastMessageId: currentLastMessageId(),
         scopeKey: currentStableCharKey(),
+        chatKey: chatKey,
         assistantChars: latestAiMessageText().length,
     };
 }

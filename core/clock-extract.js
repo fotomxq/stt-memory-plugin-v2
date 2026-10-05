@@ -356,9 +356,28 @@ function resolveStoryClock(opts) {
             return null;
         };
         const dp = pickField((it) => it.date);
-        const tp = pickField((it) => it.time);
-        const lp = pickField((it) => it.location);
         const d = dp ? dp.value : '';
+        // v3.20.0（用户报告「最新的情节已经变化，但还是识别为错误的时间」的第二重成因）：
+        //   **逐字段一致性守卫** —— 日期、时间、地点分别向前取第一条有值的，本意是「最新情节只写了时间没写日期」
+        //   也能取到值（v2.98.0）；但反过来会出现**日期取自最新那条、时间/地点却取自更早的另一天**的拼接，
+        //   用户看到的就是「日期变了，时间还是错的」。真机取证：日期 628-07-10（最新情节）＋ 时间/地点
+        //   取自 198 年罗马线的旧情节。这里给时间/地点加同一条约束：
+        //   **其节点日期必须为空（该条没写日期，属于「沿用上一已知日期」的正常情形）或与已选日期同日**；
+        //   不同日的旧值一律跳过（宁可保持原值，也不拼出一个自相矛盾的时钟）。
+        const sameDay = (it) => {
+            if (!d) return true;
+            const dd = String(it && it.date ? it.date : '').slice(0, 10);
+            return !dd || dd === String(d).slice(0, 10);
+        };
+        const skipCount = (get) => {
+            let n = 0;
+            for (const it of list) { if (get(it) && !sameDay(it)) n++; }
+            return n;
+        };
+        const skippedTime = skipCount((it) => it.time);
+        const skippedLoc = skipCount((it) => it.location);
+        const tp = pickField((it) => (sameDay(it) ? it.time : ''));
+        const lp = pickField((it) => (sameDay(it) ? it.location : ''));
         const t = tp ? tp.value : '';
         const loc = lp ? lp.value : '';
         out.date = d;
@@ -374,8 +393,11 @@ function resolveStoryClock(opts) {
         out.plotFloor = Number(node.floorEnd) || Number(node.floorStart) || 0;
         out.textMode = 'plot-only';
         clockTracePick(trace, 'date', { value: d, from: 'plot', why: d ? ('情节内最新一条带日期的节点' + showNode(dp)) : '情节都没有日期 → 日期保持原值' });
-        clockTracePick(trace, 'time', { value: t, from: out.source.time, why: t ? ('情节内最新一条带时间的节点' + showNode(tp) + (dp && tp && dp.node !== tp.node ? '（与日期不是同一条：日期取自更早那条）' : '')) : '情节都没有时间字段 → 时间保持原值' });
-        clockTracePick(trace, 'location', { value: loc, from: out.source.location, why: loc ? ('情节内最新一条带地点的节点' + showNode(lp)) : '情节都没有地点字段 → 地点保持原值' });
+        clockTracePick(trace, 'time', { value: t, from: out.source.time, why: t ? ('情节内最新一条带时间、且与本轮日期同日（或未写日期）的节点' + showNode(tp) + (dp && tp && dp.node !== tp.node ? '（与日期不是同一条）' : '')) : (skippedTime ? ('当日情节都没有时间字段（已跳过 ' + skippedTime + ' 条不同日的旧时间）→ 时间保持原值') : '情节都没有时间字段 → 时间保持原值') });
+        clockTracePick(trace, 'location', { value: loc, from: out.source.location, why: loc ? ('情节内最新一条带地点、且与本轮日期同日（或未写日期）的节点' + showNode(lp)) : (skippedLoc ? ('当日情节都没有地点字段（已跳过 ' + skippedLoc + ' 条不同日的旧地点）→ 地点保持原值') : '情节都没有地点字段 → 地点保持原值') });
+        if (skippedTime || skippedLoc) {
+            clockTraceNote(trace, '一致性守卫：已跳过与本轮日期不同日的旧值（时间 ' + skippedTime + ' 条 · 地点 ' + skippedLoc + ' 条）——避免「日期已更新、时间还留在旧日」的拼接');
+        }
         // 在场角色：按**最新一条情节**的涉及角色（正文不再参与；该条无角色 → 沿用旧名单）
         const pres = resolvePresentNames('', list[0]);
         out.source.present = pres.source;
