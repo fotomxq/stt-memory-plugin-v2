@@ -988,8 +988,67 @@ await assert('R3 AI 弱化：nsfwSoften 交 AI 逐条改写，含关键词的结
         && String(it.text).indexOf('调教') < 0 && String(it.content).indexOf('调教') < 0;
 })(), '');
 
-assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd / nsfwRuleAdd / nsfwState / nsfwApply）', (() => {
-    const F = globalThis.FTT;
+// v3.19.0（用户要求）：「设定-NSFW弱化 新增词条分析按钮」—— 抽取**留档为强**的原子数据交 AI 找涉敏词与替换词，
+//   校验后写入**转化库**（同批补进识别词条库），供后续弱化使用。
+await assert('BT1 v3.19.0 「🧠 词条分析」真实点击：只提交留档为「强」的原子数据 → AI 找词 → 校验通过的对写入**转化库**（并补进识别词条库）、误伤词（在非强留档数据里过泛）与造词被丢弃、进度推进、提示与状态行如实回报；设定页有该分节与按钮', (async () => {
+    const st = rtMod.state;
+    const keepAtoms = JSON.parse(JSON.stringify(st.atoms || []));
+    const keepRules = JSON.parse(JSON.stringify(rtMod.cfg.nsfwRules || []));
+    const keepKeywords = JSON.parse(JSON.stringify(rtMod.cfg.nsfwKeywords || []));
+    const keepAi = aiSoft;
+    const keepAuto = rtMod.cfg.nsfwReplaceAuto;
+    try {
+        rtMod.cfg.nsfwReplaceAuto = false;                       // 本用例只测分析，不跑固定规则
+        rtMod.cfg.nsfwRules = [];
+        rtMod.cfg.nsfwKeywords = [];
+        st.atoms = [
+            // 强留档：含新词「湿滑花瓣」与「缠丝绳」
+            { id: 'smoke-az-1', title: '夜谈', text: '两人在帐中做爱，湿滑花瓣般的触感让他失控。', nsfw: 'strong', tags: [], uses: 0, floorStart: 1, floorEnd: 1 },
+            { id: 'smoke-az-2', title: '绳戏', text: '她用缠丝绳把人缚在柱上，低声发号施令。', nsfw: 'strong', tags: [], uses: 0, floorStart: 2, floorEnd: 2 },
+            // 非强留档：同一个「湿滑花瓣」在日常语境里出现（触发误伤护栏）
+            { id: 'smoke-az-3', title: '集市', text: '清晨的集市里，湿滑花瓣被摆在木盘上称重售卖。', nsfw: 'none', tags: [], uses: 0, floorStart: 3, floorEnd: 3 },
+            { id: 'smoke-az-4', title: '摊位', text: '湿滑花瓣在二号摊位按斤论价，买主挑拣。', nsfw: 'none', tags: [], uses: 0, floorStart: 4, floorEnd: 4 },
+            { id: 'smoke-az-5', title: '清晨', text: '湿滑花瓣沾着露水，被小贩摆上木架。', nsfw: 'none', tags: [], uses: 0, floorStart: 5, floorEnd: 5 },
+            { id: 'smoke-az-6', title: '雨后', text: '雨后湿滑花瓣散落一地，无人收拾。', nsfw: 'none', tags: [], uses: 0, floorStart: 6, floorEnd: 6 },
+            { id: 'smoke-az-7', title: '午后', text: '她把湿滑花瓣收进纸袋，转身离开集市。', nsfw: 'none', tags: [], uses: 0, floorStart: 7, floorEnd: 7 },
+        ];
+        const beforeRules = globalThis.FTT.nsfwRules().length;
+        aiSoft = JSON.stringify({ '词条': [
+            { '编号': 2, '词': '缠丝绳', '替换': '细绳', '理由': '器物柔化' },                 // ✓ 应落库
+            { '编号': 1, '词': '湿滑花瓣', '替换': '花瓣般的触感', '理由': '器官代称柔化' },   // ✗ 误伤护栏（非强留档里 5 条）
+            { '编号': 1, '词': '根本不存在的词', '替换': '无害', '理由': '造词' },             // ✗ 原文里没有
+        ], '无法处理': [] });
+        const r = await entry.popupAction('nsfwAnalyze', {});
+        const rulesNow = globalThis.FTT.nsfwRules();
+        const kwsNow = globalThis.FTT.nsfwKeywords();
+        const azState = globalThis.FTT.nsfwAnalyzeState();
+        const html = String((await entry.popupAction('refresh', {})).html || '');
+        const addedOk = rulesNow.some((x) => x.from === '缠丝绳' && x.to === '细绳')
+            && kwsNow.indexOf('缠丝绳') >= 0
+            && !rulesNow.some((x) => x.from === '湿滑花瓣')        // 误伤词不得落库
+            && !kwsNow.some((x) => String(x) === '根本不存在的词');
+        const note = String(r.note || '');
+        const ok = r.ok === true && addedOk && rulesNow.length === beforeRules + 1
+            && note.indexOf('新增转化规则 1 条') >= 0 && note.indexOf('丢弃不合格 2 条') >= 0
+            && azState && azState.last && Number(azState.last.added) === 1 && Number(azState.last.rejected) === 2
+            && Array.isArray(azState.items) && azState.items.some((x) => x.from === '缠丝绳')
+            && Number(azState.seen) > 0
+            && html.indexOf('🧠 词条分析（AI 找涉敏词 → 写入转化库）') >= 0
+            && html.indexOf('data-ftt-action="nsfwAnalyze"') >= 0 && html.indexOf('data-ftt-action="nsfwAnalyzeReset"') >= 0
+            && html.indexOf('data-ftt-nsfw-analyze-state') >= 0;
+        if (!ok) console.log('BT1-DEBUG ' + JSON.stringify({ rOk: r.ok, note: note.slice(0, 220), rules: rulesNow.length, beforeRules, added: rulesNow.filter((x) => x.from === '缠丝绳'), kwHas: kwsNow.indexOf('缠丝绳'), last: azState && azState.last, seen: azState && azState.seen }));
+        return ok;
+    } finally {
+        aiSoft = keepAi;
+        rtMod.cfg.nsfwReplaceAuto = keepAuto;
+        rtMod.cfg.nsfwRules = keepRules;
+        rtMod.cfg.nsfwKeywords = keepKeywords;
+        st.atoms = keepAtoms;
+        globalThis.FTT.nsfwAnalyzeSeenReset();
+    }
+})(), '');
+
+assert('R4 词条库/转化库动作与 FTT 调试入口齐备（nsfwKeywordAdd / nsfwRuleAdd / nsfwState / nsfwApply）', (() => {    const F = globalThis.FTT;
     const kw0 = F.nsfwKeywords().length;
     const add = F.nsfwKeywordAdd('冒烟测试词');
     const kw1 = F.nsfwKeywords().length;

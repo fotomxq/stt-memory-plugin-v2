@@ -182,6 +182,12 @@ import {
     // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
     nsfwLevelOf, nsfwLabelStats, nsfwBackfill, nsfwClassifyItem,
 } from './core/nsfw.js';
+// v3.18.0（用户要求）：「设定 → NSFW弱化 → 🧠 词条分析」—— 抽取**强留档**原子数据交 AI 找涉敏词与替换词，
+//   结果写入转化库（并同批补进识别词条库）；账本落 ST 扩展设置 `nsfwAnalyzeLog`（不进数据模型）。
+import {
+    runNsfwAnalyze, nsfwAnalyzeState, nsfwAnalyzePack, nsfwAnalyzeCandidates, nsfwAnalyzeSanitize,
+    nsfwAnalyzeSeenReset, nsfwAnalyzeSeenCount, setNsfwAnalyzeHooks, NSFW_ANALYZE_MAX_ADD,
+} from './core/nsfw-analyze.js';
 import { promptToGenerateArgs } from './host/extract.js';
 import { dataHealthReport, dataHealthText } from './core/data-health.js';   // v3.13.0：数据体检（只读）
 // v2.58.0：提取记忆三层流程（向量 / JS / AI）与向量层宿主适配（对齐 V1 的 Embedding / Rerank API 设置）
@@ -1067,6 +1073,14 @@ function bootstrapDiagnostics() {
             nsfwBackfill: (opts) => nsfwBackfill(opts || {}),
             nsfwLevelOf: (it) => nsfwLevelOf(it),
             nsfwClassify: (dim, it) => nsfwClassifyItem(dim, it),
+            // v3.19.0：NSFW 词条分析（抽取强留档 → AI 找词 → 写转化库；只读诊断入口给本地调试端口）
+            nsfwAnalyze: (opts) => runNsfwAnalyze(opts || {}),
+            nsfwAnalyzeState: () => nsfwAnalyzeState(),
+            nsfwAnalyzePack: (opts) => nsfwAnalyzePack(opts || {}),
+            nsfwAnalyzeScan: (opts) => nsfwAnalyzeCandidates(opts || {}),
+            nsfwAnalyzeFilter: (pack, delta, opts) => nsfwAnalyzeSanitize(pack, delta, opts || {}),
+            nsfwAnalyzeSeen: () => nsfwAnalyzeSeenCount(),
+            nsfwAnalyzeSeenReset: () => nsfwAnalyzeSeenReset(),
             // B8-5 遗忘域（状态衰退 / 记忆遗忘 / 通用清扫；V1 中为自动行为，这里另给诊断入口）
             forgetState: () => forgetState(),
             forgetRunAll: (opts) => forgetRunAll(opts || {}),
@@ -1782,6 +1796,23 @@ async function runFloorTrim(keep) {
     }
 }
 
+/**
+ * v3.19.0：NSFW 词条分析账本钩子（只接一次、幂等）。
+ * 账本落 ST 扩展设置 `nsfwAnalyzeLog`（已分析指纹 + 最近一次结果 + 最近 10 条新增明细）——
+ * 「运行账本」而非记忆数据，故不进数据模型（`DATA_VERSION` 不变）。
+ * 在装配期就接线（不像删楼那样等到第一次动作）：设定页的状态行要**立刻**能读到「上次分析」。
+ */
+let nsfwAnalyzeWired = false;
+function wireNsfwAnalyzeHooks() {
+    if (nsfwAnalyzeWired) return true;
+    nsfwAnalyzeWired = true;
+    setNsfwAnalyzeHooks({
+        getLog: () => { try { return getSettings().nsfwAnalyzeLog || null; } catch (e) { return null; } },
+        saveLog: (v) => { try { setSetting('nsfwAnalyzeLog', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
+    });
+    return true;
+}
+
 /** 删楼钩子只接一次（幂等；账本落 ST 扩展设置 `floorTrimLog` —— 不进数据模型 → DATA_VERSION 不变） */
 let floorTrimWired = false;
 function wireFloorTrimHooks() {
@@ -2027,6 +2058,8 @@ function installHostBridges() {
     //   ① 历史读写的接线此前**只在打开面板时**发生（`openPanelPopup`）→ 未开过面板就永远读不到/写不进样本；
     //   ② `pipelineEta` 一度不在 `DEFAULT_SETTINGS`（v2.94.0 已修），落盘静默失败。现在与其它内核钩子同批装配。
     wirePipelineHooks();
+    // v3.19.0：NSFW 词条分析账本钩子（设定页状态行要在装配期就能读到「上次分析」）
+    wireNsfwAnalyzeHooks();
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages, opts) => {

@@ -1,6 +1,6 @@
 // ============================================================
 // core/config.js —— **逐字移植自 V1**（src/modules/03-中文键映射与配置.js + 07 的 KIND_MAP）
-// 覆盖：`defaultCfg` 全量默认配置（14 类维度 + 修复/遗忘/时钟/传言/NSFW/存储等键）、32 条提示词模板
+// 覆盖：`defaultCfg` 全量默认配置（14 类维度 + 修复/遗忘/时钟/传言/NSFW/存储等键）、33 条提示词模板
 //   `PROMPT_TEMPLATES_V2` 与默认版本、中文键映射 `CN_KEY_MAP` / `normalizeDeltaKeys`、维度标签、`KIND_MAP`。
 // 适配：ESM 化 + 注入视图（cfg/state）；`KIND_MAP` 的 get/set 直接读写注入的 state（与 V1 同语义）。
 // 生成方式：**显式清单**（不用闭包）+ 以「下一个顶层声明」为界并在顶层收尾行截断（避免吃到后续语句）。
@@ -82,7 +82,7 @@ const PROMPT_GROUPS = [
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
     { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
-    { title: '④ 质检维护', desc: '质检与修复规则 + 各维度专用修复 + 情节分段总结 + 内容弱化（与「内容弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'planSuspRepair', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften'] },
+    { title: '④ 质检维护', desc: '质检与修复规则 + 各维度专用修复 + 情节分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'planSuspRepair', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
 ];
 
 const PROMPT_TEMPLATES_V2 = {
@@ -646,6 +646,25 @@ const PROMPT_TEMPLATES_V2 = {
         '6. 同一字段只描述一次，不重复铺陈同一件事。',
         '禁止：不输出露骨词汇与露骨比喻；不使用替代性脏话；不写成医学报告或普法口吻；不因该规则删掉剧情结论（例如「两人有了夫妻之实」这类事实必须保留）。',
     ].join('\n'),
+    // v3.19.0（用户要求）：「设定-NSFW弱化 → 🧠 词条分析」的提示词 —— 从**已标记为强 NSFW**的原子数据里
+    //   找出造成露骨的词与建议替换词，插件据此自动写入**转化库**（并同批补进识别词条库），供固定规则替换使用。
+    //   与 `nsfwSoften` 的区别：弱化是「改文本」，本条是「建词表」——产物是规则，不是正文。
+    nsfwAnalyze: [
+        '【NSFW 词条分析（用于自动建立转化库）】本规则用于**成年向题材**的记忆维护：从**已被标记为「强 NSFW」**的原文里，',
+        '找出真正造成露骨的词汇，并各给一个柔化后的替换词 —— 插件会把「词 → 替换词」写入转化库，',
+        '此后按固定规则**机械替换**（不再调用 AI），从而在保留剧情事实的同时消除露骨表述。',
+        '',
+        '输出格式：只输出一个合法 JSON 对象：',
+        '{"词条":[{"编号":1,"词":"原文里出现过的词","替换":"柔化后的替换词","理由":"一句话"}],"无法处理":[2,5]}',
+        '',
+        '要求：',
+        '1. 「编号」= 清单里的 #号；「词」必须**原样照抄**该条原文里出现过的连续子串（不要改写、不要造词、不要给近义词）；',
+        '2. 「替换」要柔性、克制、留白：不含任何露骨词、不猎奇、不添加原文没有的信息，长度尽量不超过原词加 4 个字；',
+        '3. 「词」只取**造成强 NSFW 的词**（性行为与性器官、性状态、侮辱性称呼等）；不要提交日常词',
+        '   （如 身体 / 眼睛 / 房间 / 声音 / 衣服 / 拥抱 / 亲吻）与单字词 —— 它们会被机械替换到各处，造成误伤；',
+        '4. 同一个「词」只出现一次；某条原文里找不到合适的词，就把它的编号放进「无法处理」；',
+        '5. 每条最多 6 个词；宁可少而准，不要凑数。',
+    ].join('\n'),
 };
 
 const PROMPT_LEGACY_SIGS = {
@@ -687,6 +706,8 @@ const PROMPT_LEGACY_SIGS = {
     rumors: [],
     // v1.195：内容弱化（NSFW）为**新增键**（此前无默认文本）
     nsfwSoften: [],
+    // 注：v3.19.0 的 `nsfwAnalyze`（NSFW 词条分析）是 **V2 专用模板**（V1 无此键）→ 本表是 V1 旧默认签名镜像，
+    //   不给它留空数组，保持「表内键集 = V1 键集」的可比对性（缺失键在迁移里天然视为「无历史默认」）。
 };
 
 const ARMOR_PRESET_V1178_DEFAULT = [

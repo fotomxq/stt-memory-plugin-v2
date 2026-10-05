@@ -81,14 +81,15 @@ R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一�
     J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
     && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion
     // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 → 模板键集合 = V1 键集合减去它
-    && J(Object.keys(PROMPT_TEMPLATES_V2).sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
+    // v3.19.0：`nsfwAnalyze`（NSFW 词条分析）是 **V2 专用新增键**（V1 无）→ 比对时同样剔除
+    && J(Object.keys(PROMPT_TEMPLATES_V2).filter((k) => k !== 'nsfwAnalyze').sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
     [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
 // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 —— 比对时两侧同步剔除该键与对应文案
 // v2.60.0（用户要求：去罗嗦/去历史）：分组**描述**已重写为 V2 文案，故此处的 V1 逐字比对只保留
 //   「标题 + keys」结构（描述另在 C5b 做 V2 自检：非空、≤ 60 字、与模板条数一致）。
 const normPromptGroup = (g) => Object.assign({}, g, {
     desc: undefined,
-    keys: (g.keys || []).filter((k) => k !== 'clockRegexGen'),
+    keys: (g.keys || []).filter((k) => k !== 'clockRegexGen' && k !== 'nsfwAnalyze'),   // v3.19.0：`nsfwAnalyze` 为 V2 专用键
 });
 R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致（剔除已移除的时钟正则生成项）',
     J(PROMPT_GROUPS.map(normPromptGroup)) === J((G.promptGroups || []).map(normPromptGroup))

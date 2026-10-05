@@ -892,6 +892,8 @@ async function runNsfwSoften(opts) {
 export {
     NSFW_SOFTEN_BATCH, NSFW_TEXT_CAP, NSFW_FIELD_MAP, NSFW_DIM_LABEL, NSFW_KEYWORDS, NSFW_KEYWORDS_V1, NSFW_KEYWORDS_V310, NSFW_KEYWORDS_V312,
     NSFW_REPLACE_PAIRS, NSFW_RULES, NSFW_EN_INNOCENT,
+    // v3.19.0：维度列表读取（NSFW 词条分析按维度遍历强留档字段时复用；此前仅模块内部使用）
+    nsfwDimList, nsfwDimListOf,
     nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordsSeed, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRulesSeed, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwEnRegex, nsfwEnWordOk, nsfwKeywordProbe, nsfwKeywordHits, nsfwApplyRules, nsfwFixedReplace,
