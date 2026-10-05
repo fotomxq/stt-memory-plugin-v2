@@ -81,6 +81,55 @@ export function markOriginGone(it, at) {
     } catch (e) { return false; }
 }
 
+/**
+ * v3.22.1：**条目「溯源/降级」字段的合并口径**（跨端 / 跨层合并时用）。
+ *
+ * 为什么需要（真机取证，用户报告「现在又出现了时钟异常」）：
+ *   跨层载入是「以某一层为基底 + 其他层并集并入」（`core/cross-sync.js#mergeDataObjects` /
+ *   `core/migrate.js#contentDedupeArray`）。**冲突/同内容去重时只按 `updatedAt` 取一侧的整对象**，
+ *   而 `originGone`/`floorNow*`/`hidden` 这类**溯源与降级标记不属于内容哈希**（见 `docs/D8` 槽位口径），
+ *   于是**较旧的那份副本（没有标记）胜出时，标记就凭空消失** —— 一个已被判「原文已移除」的
+ *   **别条聊天旧情节**会重新变成「活情节」，位置又比本聊天真正的最新情节高 → 时钟被它压住。
+ *   真机证据：10:51 时 0198 年线（亚历山大港浴池）三条情节均为 `originGone:true`；13:19 复核时
+ *   其中三条已变回「未标记」，而 `floorShrinkAt` **从未设置**（说明不是拆楼归位清掉的），
+ *   时间线恰好是 13:18 那次「以 10-04 的服务端旧文件为基底 + local 并集」的载入；同期时钟
+ *   从 `628-07-10`（正确）退到 `0198-05-16`（别条聊天旧线）。
+ *
+ * 口径（保守、只增不减，与 v3.8.0 的 NSFW 等级「只升不降」同款）：
+ *   · **只升不降**：`originGone`（原文已移除）、`hidden`（已总结隐藏）、`summarizedBy` / `mergedSummary`
+ *     （情节总结相关）—— 任一侧成立即成立；**清除只能由本地已核实路径改写**
+ *     （`handleFloorShrink.mapEntry` 按内容哈希确认原文仍在 → `clearGone`），合并**从不**清除；
+ *   · **补空**：`originGoneAt` / `floorNowStart` / `floorNowEnd` / `floorNowHash` / `chatKey` ——
+ *     目标侧缺失（`undefined`/`null`/空串/非法值）时从另一侧补齐，**绝不覆盖已有值**
+ *     （已有值来自本地已核实的当前位置 / 归属）。
+ * @param {object} target 胜出条目（就地补齐；调用方通常已深拷贝）
+ * @param {object} other 另一侧条目
+ * @returns {string[]} 实际补齐/抬升的字段名（供诊断与单测）
+ */
+export function mergeEntryProvenance(target, other) {
+    const out = [];
+    try {
+        if (!target || typeof target !== 'object' || !other || typeof other !== 'object') return out;
+        const missing = (v) => v === undefined || v === null || v === '' || (typeof v === 'number' && !Number.isFinite(v));
+        // ① 只升不降类
+        if (other.originGone === true && target.originGone !== true) { target.originGone = true; out.push('originGone'); }
+        if (other.hidden === true && target.hidden !== true) { target.hidden = true; out.push('hidden'); }
+        if (other.summarizedBy && !target.summarizedBy) { target.summarizedBy = String(other.summarizedBy); out.push('summarizedBy'); }
+        if (other.mergedSummary && !target.mergedSummary) { target.mergedSummary = JSON.parse(JSON.stringify(other.mergedSummary)); out.push('mergedSummary'); }
+        // ② 补空类（不覆盖已有值）
+        if (missing(target.originGoneAt) && !missing(other.originGoneAt)) { target.originGoneAt = other.originGoneAt; out.push('originGoneAt'); }
+        for (const k of ['floorNowStart', 'floorNowEnd']) {
+            const ok = Number.isInteger(target[k]) && target[k] >= 0;
+            const okOther = Number.isInteger(other[k]) && other[k] >= 0;
+            if (!ok && okOther) { target[k] = other[k]; out.push(k); }
+        }
+        if (!target.floorNowHash && other.floorNowHash) { target.floorNowHash = String(other.floorNowHash); out.push('floorNowHash'); }
+        // v3.22.0：聊天归属 —— 有归属总比「归属未知」强，但**不覆盖**已有归属
+        if (!target.chatKey && other.chatKey) { target.chatKey = String(other.chatKey).slice(0, 80); out.push('chatKey'); }
+    } catch (e) { /* 忽略 */ }
+    return out;
+}
+
 /** 写入「当前位置」（相对原始区间整体平移 `shift` 层；起点下限 0） */
 export function shiftFloorNow(it, shift) {
     try {

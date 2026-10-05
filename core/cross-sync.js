@@ -11,6 +11,7 @@
 // ============================================================
 import { ATOM_DIM_KEYS } from './constants.js';
 import { nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0：NSFW 等级留档（跨端合并取高）
+import { mergeEntryProvenance } from './floor-cover.js';   // v3.22.1：溯源/降级标记「只升不降 + 补空」
 import { atomContentHash } from './model/hash.js';
 import { storageHash } from './envelope.js';
 import { hashText } from './util.js';
@@ -137,7 +138,11 @@ function mergeDataObjects(baseData, remoteData, opts) {
             for (const id of Object.keys(L)) {
                 if (!(id in R)) { merged.push(L[id]); continue; }
                 const hL = atomContentHash(cat, L[id]), hR = atomContentHash(cat, R[id]);
-                if (hL && hL === hR) { nsfwMergeLevel(L[id], R[id]); merged.push(L[id]); stat.same++; continue; }   // v3.8.0：留档取高
+                if (hL && hL === hR) {
+                    nsfwMergeLevel(L[id], R[id]);                 // v3.8.0：留档取高
+                    mergeEntryProvenance(L[id], R[id]);            // v3.22.1：内容相同 ≠ 标记相同（标记不参与内容哈希），同样只升不降
+                    merged.push(L[id]); stat.same++; continue;
+                }
                 const lw = Number(L[id].updatedAt) || 0, rw = Number(R[id].updatedAt) || 0;
                 const winRemote = rw > lw || (rw === lw && remTs > baseTs);
                 const dimMerger = DIM_ENTRY_MERGERS[cat];
@@ -149,6 +154,10 @@ function mergeDataObjects(baseData, remoteData, opts) {
                 const winner = winRemote ? copyVal(R[id]) : L[id];
                 // v3.8.0：**NSFW 等级留档只升不降** —— 胜出条目的文本可能被弱化过，另一侧的「强」不能被丢掉
                 nsfwMergeLevel(winner, winRemote ? L[id] : R[id]);
+                // v3.22.1：**溯源 / 降级标记同样只升不降、位置指纹只补空** ——
+                //   否则「较旧那份副本没有 originGone / floorNow*」时，标记会随整对象替换而消失，
+                //   被判「原文已移除」的旧聊天情节会复活成活情节并把时钟压回旧故事线（真机取证见 core/floor-cover.js#mergeEntryProvenance）。
+                mergeEntryProvenance(winner, winRemote ? L[id] : R[id]);
                 merged.push(winner);       // 本地胜出 → 复用克隆树内对象
                 if (winRemote) stat.conflictWinRemote++; else stat.conflictWinLocal++;
             }
