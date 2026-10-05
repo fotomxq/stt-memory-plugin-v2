@@ -81,14 +81,14 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 148 文件 / 2288 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 149 文件 / 2295 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 210 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 35 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0） |
-| 历史批次档数 | `docs/history/*.md` | 158 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 159 份（不含本层 `README.md`） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。
