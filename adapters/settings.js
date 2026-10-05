@@ -40,6 +40,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     syncConflicts: [],      // v2.92.0：待人工确认项（设定 → 存储 / 总览横幅）
     pipelineEta: {},        // v2.90.0：每个处理行为最近 5 次耗时（预估倒计时样本）
     floorTrimLog: {},       // v2.94.0（`docs/D12` §4）：删楼账本（只留最近 3 条 + 上次备份槽位）
+    // v3.19.0（用户要求「设定-NSFW弱化 新增词条分析按钮」）：词条分析账本 ——
+    //   已分析字段的内容指纹（上限 300，超出淘汰最旧）+ 最近一次结果与最近 10 条新增明细；
+    //   同为「运行账本」而非记忆数据，故留在 extensionSettings（`DATA_VERSION` 不变）。
+    nsfwAnalyzeLog: {},
     // 迁移
     migratedFrom: '',
 });

@@ -286,14 +286,16 @@ await A('P4 AI 无返回：如实回报 error=no-ai 且不改数据（固定规�
 // ============================================================
 // U 组：设定页与动作接线
 // ============================================================
-R.assert('U1 设定「NSFW弱化」页（v3.10.0 由「内容弱化」改名）：分节（NSFW 等级留档 / NSFW弱化 / 固定规则替换 / 转化库 / 识别词条库）+ V1 同名动作按钮齐备（v3.8.0 增「🔖 立即补档」）', (() => {
+R.assert('U1 设定「NSFW弱化」页（v3.10.0 由「内容弱化」改名）：分节（NSFW 等级留档 / NSFW弱化 / 词条分析 / 固定规则替换 / 转化库 / 识别词条库）+ 动作按钮齐备（v3.8.0 增「🔖 立即补档」；v3.18.0 增「🧠 词条分析」与「♻ 重置分析进度」）', (() => {
     boot(G.inputs.scenario);
     const html = nsfwPageHtml();
     return html.indexOf('>NSFW弱化</div>') >= 0 && html.indexOf('固定规则替换（不调用 AI 的机械转化）') >= 0
+        && html.indexOf('🧠 词条分析（AI 找涉敏词 → 写入转化库）') >= 0 && html.indexOf('data-ftt-nsfw-analyze') >= 0
         && html.indexOf('转化库（匹配词 → 转化词，可在设定中管理）') >= 0 && html.indexOf('识别词条库（用于匹配需弱化的内容）') >= 0
-        && ['nsfwSoften', 'nsfwLabelBackfill', 'nsfwRuleApply', 'nsfwRuleAdd', 'nsfwRuleReset', 'nsfwKwAdd', 'nsfwKwReset', 'nsfwKwSave', 'nsfwKwDel', 'nsfwRuleSave', 'nsfwRuleDel']
+        && ['nsfwSoften', 'nsfwLabelBackfill', 'nsfwAnalyze', 'nsfwAnalyzeReset', 'nsfwRuleApply', 'nsfwRuleAdd', 'nsfwRuleReset', 'nsfwKwAdd', 'nsfwKwReset', 'nsfwKwSave', 'nsfwKwDel', 'nsfwRuleSave', 'nsfwRuleDel']
             .every((a) => html.indexOf('data-ftt-action="' + a + '"') >= 0)
-        && html.indexOf('data-ftt-nsfw-kw-new') >= 0 && html.indexOf('data-ftt-nsfw-rule-new-from') >= 0 && NSFW_ACTIONS.length === 11;   // v3.8.0：「🔖 立即补档」
+        && html.indexOf('data-ftt-nsfw-kw-new') >= 0 && html.indexOf('data-ftt-nsfw-rule-new-from') >= 0
+        && html.indexOf('data-ftt-nsfw-analyze-state') >= 0 && NSFW_ACTIONS.length === 13;   // v3.8.0：「🔖 立即补档」；v3.19.0：「🧠 词条分析」+「♻ 重置分析进度」
 })(), '');
 
 R.assert('U2 设定页接入：safety 子页渲染该页（不再是「待后续批次」占位）', (() => {

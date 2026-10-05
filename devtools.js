@@ -180,6 +180,14 @@ export function installDevtools(hooks) {
             nsfwRuleDelete: (i) => (hooks && typeof hooks.nsfwRuleDelete === 'function' ? hooks.nsfwRuleDelete(i) : null),
             nsfwKeywordReset: () => (hooks && typeof hooks.nsfwKeywordReset === 'function' ? hooks.nsfwKeywordReset() : null),
             nsfwRuleReset: () => (hooks && typeof hooks.nsfwRuleReset === 'function' ? hooks.nsfwRuleReset() : null),
+            // v3.19.0：NSFW 词条分析（抽取强留档 → AI 找词 → 写转化库；诊断入口同源）
+            nsfwAnalyze: (opts) => (hooks && typeof hooks.nsfwAnalyze === 'function' ? hooks.nsfwAnalyze(opts || {}) : Promise.resolve({ added: 0, error: 'no-hook' })),
+            nsfwAnalyzeState: () => (hooks && typeof hooks.nsfwAnalyzeState === 'function' ? hooks.nsfwAnalyzeState() : null),
+            nsfwAnalyzePack: (opts) => (hooks && typeof hooks.nsfwAnalyzePack === 'function' ? hooks.nsfwAnalyzePack(opts || {}) : null),
+            nsfwAnalyzeScan: (opts) => (hooks && typeof hooks.nsfwAnalyzeScan === 'function' ? hooks.nsfwAnalyzeScan(opts || {}) : null),
+            nsfwAnalyzeFilter: (pack, delta, opts) => (hooks && typeof hooks.nsfwAnalyzeFilter === 'function' ? hooks.nsfwAnalyzeFilter(pack, delta, opts || {}) : null),
+            nsfwAnalyzeSeen: () => (hooks && typeof hooks.nsfwAnalyzeSeen === 'function' ? hooks.nsfwAnalyzeSeen() : 0),
+            nsfwAnalyzeSeenReset: () => (hooks && typeof hooks.nsfwAnalyzeSeenReset === 'function' ? hooks.nsfwAnalyzeSeenReset() : false),
             // B8-5 遗忘域
             forgetState: () => (hooks && typeof hooks.forgetState === 'function' ? hooks.forgetState() : null),
             forgetRunAll: (opts) => (hooks && typeof hooks.forgetRunAll === 'function' ? hooks.forgetRunAll(opts || {}) : Promise.resolve(null)),
