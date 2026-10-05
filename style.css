@@ -497,6 +497,8 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-badge--parallel { border-color: rgba(106,166,224,.4); background: var(--ftt-info-soft); color: var(--ftt-info); }
 #ftt-panel .ftt-badge--blocked { border-color: rgba(224,164,74,.45); background: var(--ftt-warn-soft); color: var(--ftt-warn); }
 #ftt-panel .ftt-badge--abandoned { border-color: rgba(209,99,107,.45); background: var(--ftt-danger-soft); color: var(--ftt-danger); }
+/* v3.22.0：「长生者」标记（按剧情确认的超长寿命者；配色取紫色族，与 🪦 已去世的红色族区分） */
+#ftt-panel .ftt-badge--immortal { border-color: rgba(169,139,224,.45); background: var(--ftt-purple-soft); color: var(--ftt-purple); }
 #ftt-panel .ftt-badge--entry { border-color: var(--ftt-line-2); color: var(--ftt-text-3); }
 /* 关系表：与全局表格同色阶（此前用的是自己的一套 #333842/#1d2129） */
 #ftt-panel .ftt-rel-wrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); background: var(--ftt-bg-1); }

@@ -42,6 +42,9 @@ import {
     stampSnapshotTime, ageAnchorDate, snapshotAgeIsLocked, snapshotBirthAnomaly, snapshotBirthAnomalyLabel,
     snapshotFlag, parseBirthDateParts, calcAge, refreshAllSnapshotAges,
     ensureSnapshotBirthDate, birthDateInFuture, snapshotFutureOrigin, guessAgeFromCues,
+    // v3.22.0（用户要求）：长生者开关 + 「不再处理」判据 + 超长年龄研判所需的年龄/年差
+    snapshotImmortal, snapshotImmortalFlag, snapshotRepairSkip, snapshotLastSeenGapYears, snapshotAge,
+    SNAP_AGE_EXTREME_YEARS,
 } from './model/snapshot.js';
 import { clockDateStr } from './clock.js';
 import { tombMany, atomIsHidden } from './merge.js';
@@ -72,6 +75,10 @@ const SNAP_REPAIR_FIELDS = [
     { p: '身份.家族', g: ['identity', 'family'], t: 'str' },
     // v1.164：已去世开关 —— 只做「标记为已去世」（正文明确死亡时），从不回退为在世；不计入缺失清单
     { p: '身份.已去世', g: ['identity', 'deceased'], t: 'bool', optional: true },
+    // v3.22.0（用户要求）：「长生者」开关（**根据剧情标记是否为长生者，该开关可以被编辑**）——
+    //   与「已去世」同构的 bool、同样不计入缺失清单；差别：它**可双向写**（勾上/取消都允许，误判要能纠正），
+    //   且被标记的角色此后**不再被角色修复分析**（见 `buildCharacterRepairQueue` / `snapshotRepairSkip`）。
+    { p: '身份.长生者', g: ['identity', 'immortal'], t: 'bool', optional: true },
     // v1.162：外貌特征聚合为**单字段**（身高/体型/发色发型/瞳色/肤色/显著特征 → 一句话）
     { p: '外貌', g: ['appearance'], t: 'str' },
     { p: '性格.性格特质', g: ['personality', 'traits'], t: 'arr' },
@@ -429,7 +436,9 @@ function snapshotDeathVerdict(s, opts) {
         const ev = snapshotDeathEvidence(s, opts);
         const ownBlob = ev.own.join(' ');
         const allBlob = ownBlob + ' ' + ev.related.join(' ');
-        const longLife = LONG_LIFE_WORDS.some((w) => allBlob.indexOf(w) >= 0);
+        // v3.22.0：**已标记「长生者」= 长寿命语境**（用户/AI 已按剧情确认）→ 与内容层长寿信号同一档：
+        //   必须出现「形神俱灭 / 魂飞魄散」一类**终局**措辞才可标记已去世（长生者也会死，但门槛更高）。
+        const longLife = LONG_LIFE_WORDS.some((w) => allBlob.indexOf(w) >= 0) || snapshotImmortal(s);
         out.longLife = longLife;
         const sents = [];
         for (const t of ev.own.concat(ev.related)) for (const x of deathSplitSentences(t)) sents.push(x);
@@ -520,34 +529,80 @@ let lastDeathMark = null;
 function lastDeceasedMark() { return lastDeathMark; }
 
 /**
+ * v3.22.0（用户要求「新增对超长年龄人员的分析」）：**只读干跑** —— 逐角色给出「超长年龄」研判所需的读数：
+ *   姓名 / 出生日期 / 按剧情锚点算出的年龄 / 是否超长（`extreme`）/ 异常码与文案 / 是否已标记长生者 /
+ *   跳过原因（deceased / immortal）/ 「最后见面」距今多少年（判「长期未出场」用）。
+ *   **不写任何标记**：真正落笔只有两条路 —— ① 角色修复里 AI 按剧情判定（写 `身份.长生者` / `身份.已去世`）；
+ *   ② 用户在编辑器里勾选。与 v3.18.0 的 `FTT.deceasedScan()` 同款只读口径。
+ * @returns {Array<object>} 按年龄从大到小
+ */
+function characterAgeScan() {
+    const out = [];
+    try {
+        for (const s of ((state && state.snapshots) || [])) {
+            if (!s || typeof s !== 'object' || !s.name) continue;
+            const age = (() => { try { const a = Number(snapshotAge(s)); return Number.isFinite(a) ? a : null; } catch (e) { return null; } })();
+            const anomaly = (() => { try { return snapshotBirthAnomaly(s) || ''; } catch (e) { return ''; } })();
+            const gap = (() => { try { const g = snapshotLastSeenGapYears(s); return Number.isFinite(g) ? Math.round(g * 10) / 10 : null; } catch (e) { return null; } })();
+            out.push({
+                name: String(s.name),
+                birthDate: String((s.identity && s.identity.birthDate) || ''),
+                age: age,
+                extreme: anomaly === 'age-extreme',
+                immortal: snapshotImmortal(s),
+                skip: snapshotRepairSkip(s).reason,
+                anomaly: anomaly,
+                anomalyLabel: anomaly ? snapshotBirthAnomalyLabel(anomaly) : '',
+                staleYears: gap,
+                lastSeenDate: String(s.lastSeenDate || s.lastUpdateDate || ''),
+                threshold: SNAP_AGE_EXTREME_YEARS,
+            });
+        }
+    } catch (e) { /* 忽略 */ }
+    out.sort((a, b) => (Number(b.age) || 0) - (Number(a.age) || 0));
+    return out;
+}
+
+/**
  * 待修复名单（V1 `buildCharacterRepairQueue`）：分两档 ——
  *   ① **优先档**：出生日期倒挂 / 异常（`snapshotBirthAnomaly` 非空）的角色，**无视字数门限一律入列**，
  *      按异常严重度（future > after-record > overage > bad-format）排在**最前**；
  *   ② 常规档：有效字数 < `cfg.repairCharacterMinSize` 者，按 size 升序（同尺寸时字段更少者优先）。
  *   v1.205：**已去世角色整批跳过**（用户要求「修复角色功能跳过已去世角色」）—— 年龄已锁定、档案不再补全。
- * @returns {{list:Array, all:Array, total:number, minSize:number, anomalies:number, anomalyList:Array, deceasedCount:number, deceasedList:Array}}
+ *   v3.22.0：**已标记「长生者」的角色同样整批跳过**（用户要求「如果是标记了长生者，则无需在修复角色中被分析」）
+ *     —— 年龄本就不可信，反复分析只会互相打架；两类跳过分别计数，供通知如实说明。
+ * @returns {{list:Array, all:Array, total:number, minSize:number, anomalies:number, anomalyList:Array, deceasedCount:number, deceasedList:Array, immortalCount:number, immortalList:Array}}
  */
 function buildCharacterRepairQueue() {
     const all = [];
     const deceased = [];
+    const immortal = [];
     const minSize = Math.max(0, Number((cfg && cfg.repairCharacterMinSize) != null ? cfg.repairCharacterMinSize : 0) || 0);
     try {
         (state.snapshots || []).forEach(s => {
             if (!s || !s.name) return;
-            if (snapshotAgeIsLocked(s)) { deceased.push(String(s.name)); return; }
+            // v3.22.0：统一跳过判据（已去世 → 年龄锁定；长生者 → 年龄不可信）
+            const skip = snapshotRepairSkip(s);
+            if (skip.skip) { (skip.reason === 'immortal' ? immortal : deceased).push(String(s.name)); return; }
             const m = snapshotAtomSize(s);
             // v1.172：出生日期异常（倒挂）与档案厚薄无关 —— 数据自相矛盾必须优先处置
             let anomaly = '';
             try { anomaly = snapshotBirthAnomaly(s) || ''; } catch (e) { }
+            // v3.22.0：「超长年龄」研判依据（年龄 + 最后见面距今）—— 只读，供提示词与通知说明「长期未出场」
+            const ageNum = (() => { try { const a = Number(snapshotAge(s)); return Number.isFinite(a) ? a : NaN; } catch (e) { return NaN; } })();
+            const gap = (() => { try { return snapshotLastSeenGapYears(s); } catch (e) { return NaN; } })();
             all.push({
                 snap: s, id: s.id, name: String(s.name), size: m.size, filled: m.filled, total: m.total, missing: m.missing,
                 anomaly: anomaly,
                 anomalyLabel: anomaly ? snapshotBirthAnomalyLabel(anomaly) : '',
                 birthDate: String((s.identity && s.identity.birthDate) || '').trim(),
+                age: Number.isFinite(ageNum) ? ageNum : null,
+                staleYears: Number.isFinite(gap) ? Math.round(gap * 10) / 10 : null,
             });
         });
     } catch (e) { }
-    const anomalyRank = { future: 0, 'after-record': 1, overage: 2, 'bad-format': 3 };
+    // v3.22.0：`age-extreme`（超长年龄待研判）排在其后 —— 它不是「数据自相矛盾」，而是「疑似长期未出场/误判长生」
+    const anomalyRank = { future: 0, 'after-record': 1, overage: 2, 'age-extreme': 3, 'bad-format': 4 };
     const rankOf = (x) => (x && x.anomaly && anomalyRank[x.anomaly] !== undefined) ? anomalyRank[x.anomaly] : 9;
     const thin = minSize > 0 ? all.filter(x => x.size < minSize) : all.slice();
     const anomalyList = all.filter(x => x.anomaly);
@@ -558,6 +613,7 @@ function buildCharacterRepairQueue() {
     return {
         list: merged, all: all, total: all.length, minSize: minSize, anomalies: anomalyList.length, anomalyList: anomalyList,
         deceasedCount: deceased.length, deceasedList: deceased,     // v1.205：被跳过的已去世角色（供通知如实说明）
+        immortalCount: immortal.length, immortalList: immortal,     // v3.22.0：被跳过的长生者（同上）
     };
 }
 
@@ -570,11 +626,25 @@ const SNAP_REPAIR_FIELD_ALIAS = {
     gender: '身份.性别', birthDate: '身份.出生日期', species: '身份.种族', occupation: '身份.职业',
     title: '身份.称号', family: '身份.家族',
     deceased: '身份.已去世', '已去世': '身份.已去世', '是否死亡': '身份.已去世',   // v1.164
+    // v3.22.0：长生者开关（AI 输出 / 编辑器字段名都宽容）
+    immortal: '身份.长生者', '长生者': '身份.长生者', '长生': '身份.长生者', '是否长生': '身份.长生者',
+    longLived: '身份.长生者', 'isImmortal': '身份.长生者',
     traits: '性格.性格特质', quirks: '性格.小癖好', values: '性格.价值观', speechStyle: '性格.说话风格',
     origin: '背景资料.出身', history: '背景资料.经历',
     relationToUser: '社交.与主角关系', attitudeToUser: '社交.对主角态度',
     todos: '未来.待办', commitments: '未来.承诺',
 };
+
+/**
+ * v3.22.0：按字段选「开关解析器」—— 已去世用死亡语义词表（`snapshotFlag`，V1 原样），
+ *   长生者用长生语义词表（`snapshotImmortalFlag`）。两套词表**不可混用**：
+ *   若拿死亡词表去解析「长生者」，`"长生"` 会命中「是」→ 语义完全反了（同一处代码维护两套，故显式分派）。
+ */
+function snapshotFlagForField(path, val) {
+    const p = String(path || '');
+    if (p === '身份.长生者') return (val === true || val === false) ? val : snapshotImmortalFlag(val);
+    return (val === true || val === false) ? val : snapshotFlag(String(val == null ? '' : val).trim());
+}
 
 /** 按中文点路径（或英文字段别名）写值；返回 `{ ok, changed }`。ok=false → 路径非法/值无效；
  *  changed=false → 仅填空不覆盖，故无变化（V1 `setSnapshotByPath`）。
@@ -589,8 +659,15 @@ function setSnapshotByPath(s, path, val, opts) {
         if (f.t === 'rel') return { ok: false, changed: false };
         // v1.164：开关字段（已去世）—— 只做「标记为已去世」，从不回退（撤回标记请到编辑器取消勾选）
         if (f.t === 'bool') {
-            const flag = snapshotFlag(val === true || val === false ? val : String(val == null ? '' : val).trim());
+            const flag = snapshotFlagForField(f.p, val);
             if (flag === undefined) return { ok: false, changed: false };
+            // v3.22.0：「身份.长生者」**可双向写**（勾上/取消都允许 —— 误判纠正必须能取消）
+            if (f.p === '身份.长生者') {
+                if (snapshotImmortal(s) === flag) return { ok: true, changed: false };
+                s.identity = s.identity || {};
+                s.identity.immortal = flag;
+                return { ok: true, changed: true };
+            }
             if (flag !== true) return { ok: true, changed: false };
             if (snapGetByPath(s, f.g) === true) return { ok: true, changed: false };
             s.identity = s.identity || {};
@@ -691,12 +768,42 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
                 ? `【当前剧情日期】尚未明确；已知的**最晚剧情记录日期**为 ${refNowTxt} —— 出生日期请以此为依据合理推算，**不要用现实时间（今天）当基准**`
                 : '【当前剧情日期】未知（正文与记忆里都没有明确的剧情日期）——出生日期请以正文中**最晚出现的明确日期**为依据，并在依据里写明该日期；**不要用现实时间（今天）当基准**');
         const anomCount = targets.filter(t => t && t.anomaly).length;
+        // v3.22.0：异常分两类（出生日期异常 / 超长年龄待研判）—— 计数文案分开写，
+        //   且**在没有超长年龄目标时逐字保持 V1 原文**（V1 黄金样本逐字符比对不受影响）。
+        const ageAnoms = targets.filter(t => t && t.anomaly === 'age-extreme').length;
+        const birthAnoms = Math.max(0, anomCount - ageAnoms);
+        const anomHead = (birthAnoms ? `，其中 ⚠️ 出生日期异常 ${birthAnoms} 条已优先` : '')
+            + (ageAnoms ? (o.immortalGuide ? `，其中 ⚠️ 超长年龄 ${ageAnoms} 条待研判` : `，其中 ⚠️ 年龄异常 ${ageAnoms} 条已优先`) : '');
+        const anomTail = (ageAnoms && !birthAnoms)
+            ? (o.immortalGuide ? '超长年龄待研判者优先' : '年龄异常者优先')
+            : '出生日期异常者优先';
         const blocks = targets.map((t, i) => {
             const s = (t && t.snap) || {};
             const out = [];
             out.push(`#${i + 1} 姓名「${t.name}」（现有 ${t.size} 字 · ${t.total} 个字段中已填 ${t.filled} 个）`);
             // v1.172：出生日期倒挂 / 异常 —— 明确点名（含现值与原因），并允许改写该字段
-            if (t.anomaly) {
+            // v3.22.0（用户要求「新增对超长年龄人员的分析」）：`age-extreme` 是**另一类**异常 ——
+            //   它**不要求**改写出生日期（改日期会把「长期未出场」误改成别的数据），而是要 AI 结合剧情研判
+            //   这个年龄是否成立：成立 → 标记「长生者」；不成立且正文显示早已离场/去世 → 标记「已去世」。
+            if (t.anomaly === 'age-extreme') {
+                const gapTxt = (t.staleYears !== null && t.staleYears !== undefined)
+                    ? `（档案记录最后见面 ${s.lastSeenDate || '—'} / 最后更新 ${s.lastUpdateDate || '—'}，距今约 ${t.staleYears} 年）`
+                    : '（档案没有「最后见面 / 最后更新」日期）';
+                const ageTxtNum = (t.age !== null && t.age !== undefined) ? t.age : '?';
+                // 未开启长生者守则时只做**中性点名**（不说「长生者」三个字）：这样默认提示词与 V1 逐字黄金样本保持一致；
+                //   开启守则（`runCharacterRepair` 的真实路径）时才给出 ① ② ③ 完整研判口径。
+                out.push(o.immortalGuide
+                    ? (`  ⚠️ 超长年龄（${t.anomalyLabel || t.anomaly}）：按当前剧情日期算出的年龄约 **${ageTxtNum} 岁**`
+                        + `（出生日期「${t.birthDate || '（空）'}」）${gapTxt}`
+                        + ` —— 请**结合剧情研判**：① 若相关原子数据 / 正文明确支持该角色是长生、不死、精灵、神明、修真等**超长寿命设定**`
+                        + `（含明确的时间旅行 / 转世），输出 {"身份.长生者":"是"}；② 若**没有**任何长寿依据，则**不要**标记长生，`
+                        + `并按「长期未出场」处理：正文或相关数据能看出该角色早已死亡 / 失踪 / 离场（例如几十上百年未再出场、`
+                        + `其亲属或势力已更替、明确提及他的死亡或身后事）→ 输出 {"身份.已去世":"是"}；③ 两者都不成立 → `
+                        + `两个字段都**不要输出**（宁可留着待下轮研判）。**年龄超长本身不是长寿依据。**`)
+                    : (`  ⚠️ 年龄异常（${t.anomalyLabel || t.anomaly}）：按当前剧情日期算出的年龄约 ${ageTxtNum} 岁`
+                        + `（出生日期「${t.birthDate || '（空）'}」）${gapTxt} —— 请结合剧情研判该年龄是否成立，`
+                        + `**年龄超长本身不构成依据**；不要据此改写出生日期。`));
+            } else if (t.anomaly) {
                 out.push(`  ⚠️ 出生日期异常（${t.anomalyLabel || t.anomaly}）：现值「${t.birthDate || '（空）'}」`
                     + `${(s.lastSeenDate || s.lastUpdateDate) ? `（档案记录：最后见面 ${s.lastSeenDate || '—'} / 最后更新 ${s.lastUpdateDate || '—'}）` : ''}`
                     + ' —— **必须修正「身份.出生日期」**：以正文 / 档案依据重新给出合理出生年月日，须早于上述记录日期且不晚于当前剧情日期（若正文明确该角色来自未来 / 穿越，则保持原值不动）。');
@@ -741,9 +848,23 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
         const strictLine = strict
             ? '【加强轮】上一轮**没有产生任何可落库的字段**（模型空手而归）。本轮请严格按依据优先级逐角色、逐字段补全 —— 哪怕只有相关原子数据里的间接线索，也要给出保守值；每个角色都必须给出「标签」（3-5 个）；再次空手返回视为任务失败。\n\n'
             : '';
+        // v3.22.0（用户要求）：「长生者」判定守则 —— 仅在 `opts.immortalGuide` 为真时追加（默认不追加 → V1 逐字黄金样本不变）。
+        //   用户原话：「新增对超长年龄人员的分析，明显不合理的可能是长期没出现的人物，但被误判会长生。」
+        const immortalLine = o.immortalGuide
+            ? '【长生者判定（保守）】只有当相关原子数据或正文**明确支持**该角色为超长寿命者（长生 / 不死 / 永生 / 精灵 / 妖族 / 神明 / 修真 / 渡劫 / 转世 / 明确的时间旅行设定）时，才输出 {"身份.长生者":"是"}；'
+                + '**年龄超长本身不是依据** —— 一个人物「几百年没出场、年龄随剧情推进越算越大」恰恰更可能是**长期未出场**（人早已离场或去世），此时**不要**标记长生。'
+                + '若该角色**已经**标着「长生者」但本轮依据显示那是误判（没有任何长寿依据、且正文/相关数据表明其早已死亡或消失）→ 同时输出 {"身份.长生者":"否","身份.已去世":"是"}（误判纠正 + 标记去世）；'
+                + '只想纠正长生标记、死亡尚无依据时，**只**输出 {"身份.长生者":"否"}。'
+                + '标了「长生者」的角色不会再进入后续修复名单，所以**宁可少标不可错标**。\n\n'
+            : '';
+        // v3.22.0：输出契约里追加「超长年龄」那一条 —— **仅在长生者守则开启时**，
+        //   这样默认调用（V1 逐字黄金样本 / deathGuide-only 调用）的提示词一字不变。
+        const ageClause = o.immortalGuide
+            ? '；**标了 ⚠️ 超长年龄 的角色：不要改出生日期，按上方①②③研判「身份.长生者」/「身份.已去世」**'
+            : '';
         return [
             { role: 'system', content: `${tpl}\n只输出 JSON，不要解释文字。` },
-            { role: 'user', content: `${strictLine}${deathLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomCount ? `，其中 ⚠️ 出生日期异常 ${anomCount} 条已优先` : ''}：出生日期异常者优先，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
+            { role: 'user', content: `${strictLine}${deathLine}${immortalLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomHead}：${anomTail}，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）${ageClause}；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
         ];
     } catch (e) { return [{ role: 'system', content: '补全角色档案的缺失字段，输出「角色档案」的更新。' }, { role: 'user', content: '请输出角色档案补全结果（JSON）。' }]; }
 }
@@ -777,6 +898,9 @@ function applyCharacterRepairResult(delta, targets) {
             const tgt = byName[snapNameKey(nm)] || null;
             const allowBirthRewrite = !!(tgt && tgt.anomaly);
             const birthBefore = String((s.identity && s.identity.birthDate) || '').trim();
+            // v3.22.0：「长生者」标记的前后对比（用于「误判纠正」如实上报）
+            const immortalBefore = snapshotImmortal(s);
+            const deceasedBefore = snapshotAgeIsLocked(s);
             let roleChanged = 0;
             for (const path of Object.keys(fill)) {
                 const p = String(path).trim();
@@ -785,6 +909,18 @@ function applyCharacterRepairResult(delta, targets) {
                 if (!r.ok) { out.invalid++; continue; }
                 if (r.changed) { roleChanged++; out.fields.push(`${s.name}·${canon}`); }
             }
+            // v3.22.0（用户要求）：「被分析发现为误判角色 → 可根据剧情标记为去世」的落地计数 ——
+            //   · AI 把「长生者」从「是」改成「否」（误判纠正）→ `immortalCleared`
+            //   · AI 本轮把角色标成「长生者」 → `immortalSet`
+            //   · AI 本轮把角色标成「已去世」 → `deceasedMarked`
+            try {
+                const immortalAfter = snapshotImmortal(s);
+                if (immortalBefore !== immortalAfter) {
+                    if (immortalAfter) { out.immortalSet = (out.immortalSet || 0) + 1; out.immortalNames = (out.immortalNames || []).concat([s.name]); }
+                    else { out.immortalCleared = (out.immortalCleared || 0) + 1; out.immortalClearedNames = (out.immortalClearedNames || []).concat([s.name]); }
+                }
+                if (!deceasedBefore && snapshotAgeIsLocked(s)) { out.deceasedMarked = (out.deceasedMarked || 0) + 1; out.deceasedMarkedNames = (out.deceasedMarkedNames || []).concat([s.name]); }
+            } catch (e) { /* 忽略 */ }
             // v1.172：倒挂修正计数（出生日期真的被改写 → 单独上报，便于确认「优先处置」生效）
             if (allowBirthRewrite) {
                 const birthAfter = String((s.identity && s.identity.birthDate) || '').trim();
@@ -830,15 +966,19 @@ function applyCharacterRepairResult(delta, targets) {
 
 /** 全局机械处理（AI 前，零 AI，V1 `correctSnapshotBirthDates`）：出生日期校正 ——
  *  缺失（跳过，交 AI 不臆造）/ 占位（`birthSource='fallback'`）/ 未来出生（非未来来客）/ 格式非法 → 按线索重推；
- *  v1.205：已去世角色出生日期与年龄**一律不动**（年龄锁定在死亡那一刻）。 */
+ *  v1.205：已去世角色出生日期与年龄**一律不动**（年龄锁定在死亡那一刻）。
+ *  v3.22.0：**已标记「长生者」的角色同样不动**（用户要求「标记了长生者则无需被分析」）——
+ *    他们的年龄本就不可信（长寿/穿越设定），机械重推只会把设定改坏；分别计数以便如实说明。 */
 function correctSnapshotBirthDates(opts) {
-    const stat = { total: 0, already: 0, corrected: 0, skippedEmpty: 0, skippedDeceased: 0, items: [] };
+    const stat = { total: 0, already: 0, corrected: 0, skippedEmpty: 0, skippedDeceased: 0, skippedImmortal: 0, items: [] };
     try {
         for (const s of ((state && state.snapshots) || [])) {
             if (!s || typeof s !== 'object') continue;
             stat.total++;
             // v1.205：已去世 → 出生日期与年龄**一律不动**（年龄锁定在死亡那一刻）
-            if (snapshotAgeIsLocked(s)) { stat.skippedDeceased++; continue; }
+            // v3.22.0：长生者 → 同样不动（年龄不可信，机械重推会把设定改坏）
+            const skip = snapshotRepairSkip(s);
+            if (skip.skip) { (skip.reason === 'immortal' ? (stat.skippedImmortal++) : (stat.skippedDeceased++)); continue; }
             const cur = String((s.identity && s.identity.birthDate) || '').trim();
             if (!cur) { stat.skippedEmpty++; continue; }                          // 缺失 → 交 AI（机械阶段不臆造）
             const parsed = parseBirthDateParts(cur);
@@ -853,7 +993,7 @@ function correctSnapshotBirthDates(opts) {
 }
 /** 机械处理总入口（V1 `runCharacterMechanicalPass`）：出生日期校正 + 标签补充 + 年龄刷新（全部零 AI） */
 function runCharacterMechanicalPass(opts) {
-    const out = { total: 0, birth: null, ages: null, tags: null, anomalies: 0, changed: false };
+    const out = { total: 0, birth: null, ages: null, tags: null, anomalies: 0, changed: false, deceased: 0, immortal: 0 };
     try {
         const list = (state && state.snapshots) || [];
         out.total = list.length;
@@ -867,17 +1007,20 @@ function runCharacterMechanicalPass(opts) {
         try { out.ages = refreshAllSnapshotAges(); } catch (e) { }
         // v1.205：已去世角色被跳过的数量（出生日期与年龄都不动）—— 供通知与调试如实说明
         try { out.deceased = (out.birth && out.birth.skippedDeceased) || 0; } catch (e) { out.deceased = 0; }
+        // v3.22.0：被跳过的「长生者」数量（用户要求「标记了长生者则无需被分析」）
+        try { out.immortal = (out.birth && out.birth.skippedImmortal) || 0; } catch (e) { out.immortal = 0; }
         out.changed = !!((lastDeathMark && lastDeathMark.marked) || (out.birth && out.birth.corrected) || (out.tags && out.tags.filled)
             || (out.ages && (out.ages.fixed || out.ages.cleared)));
         if (out.changed) { try { saveState(); } catch (e) { } }
         try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { }
-        if (out.changed || out.deceased) {
+        if (out.changed || out.deceased || out.immortal) {
             try {
                 dbgLog('摘要', {
                     action: '角色机械处理（AI 前全局）', total: out.total,
                     birthCorrected: out.birth ? out.birth.corrected : 0,
                     birthSkippedEmpty: out.birth ? out.birth.skippedEmpty : 0,
                     birthSkippedDeceased: out.deceased || 0,
+                    birthSkippedImmortal: out.immortal || 0,
                     tagsFilled: out.tags ? out.tags.filled : 0,
                     tagsAdded: out.tags ? out.tags.added : 0,
                     ageFixed: out.ages ? out.ages.fixed : 0,
@@ -921,15 +1064,27 @@ async function runCharacterRepair(opts) {
         const mech = runCharacterMechanicalPass();
         // v1.205：已去世角色**跳过修复**（年龄锁定，档案不再改写）—— 在结果文案里如实说明
         const deadText = mech.deceased ? `已去世 ${mech.deceased} 名跳过（年龄锁定）；` : '';
+        // v3.22.0（用户要求）：「如果是标记了长生者，则无需在修复角色中被分析」—— 同样在文案里如实说明
+        const immText = mech.immortal ? `长生者 ${mech.immortal} 名跳过（年龄不可信，标记后不再分析）；` : '';
+        // v3.22.0：AI 本轮的长生/去世结论（标记长生 X · 误判纠正 Y · 标记去世 Z）
+        const immortalOutcomeText = (r) => {
+            try {
+                const bits = [];
+                if (r.immortalSet) bits.push(`标记长生者 ${r.immortalSet} 名（${(r.immortalNames || []).slice(0, 4).join('、')}${(r.immortalNames || []).length > 4 ? '…' : ''}）`);
+                if (r.immortalCleared) bits.push(`纠正误判长生 ${r.immortalCleared} 名（${(r.immortalClearedNames || []).slice(0, 4).join('、')}${(r.immortalClearedNames || []).length > 4 ? '…' : ''}）`);
+                if (r.deceasedMarked) bits.push(`标记已去世 ${r.deceasedMarked} 名（${(r.deceasedMarkedNames || []).slice(0, 4).join('、')}${(r.deceasedMarkedNames || []).length > 4 ? '…' : ''}）`);
+                return bits.length ? (' · ' + bits.join(' · ')) : '';
+            } catch (e) { return ''; }
+        };
         // v3.18.0：机械已去世研判结果（新标记 / 待确认）—— 进通知与文案
         const deathStat = lastDeceasedMark();
         const deathText = (deathStat && (deathStat.marked || deathStat.uncertain)) ? (deceasedMarkText(deathStat) + '；') : '';
         const mechText = (mech.changed
             ? `全局机械处理 ${mech.total} 名：出生日期校正 ${mech.birth ? mech.birth.corrected : 0} 名 · 标签补充 ${mech.tags ? mech.tags.filled : 0} 名 · 年龄刷新 ${mech.ages ? mech.ages.fixed : 0} 名${mech.ages && mech.ages.cleared ? `（清无效值 ${mech.ages.cleared}）` : ''}`
-            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deathText}${deadText}`;
+            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deathText}${deadText}${immText}`;
         const q = buildCharacterRepairQueue();
         if (!q.list.length) {
-            notify('success', '角色修复：无需修复', `${mechText}可修复的 ${q.total} 名角色档案有效字数都已达到门限（≥ ${q.minSize} 字）${q.deceasedCount ? ` · 另有 ${q.deceasedCount} 名已去世角色按固定规则跳过（年龄锁定）` : ''}。如需重查更完整的档案，可在 设定 → 自动修复 调低「角色修复字数门限」。`);
+            notify('success', '角色修复：无需修复', `${mechText}可修复的 ${q.total} 名角色档案有效字数都已达到门限（≥ ${q.minSize} 字）${q.deceasedCount ? ` · 另有 ${q.deceasedCount} 名已去世角色按固定规则跳过（年龄锁定）` : ''}${q.immortalCount ? ` · 另有 ${q.immortalCount} 名长生者跳过（已按剧情标记，不再分析）` : ''}。如需重查更完整的档案，可在 设定 → 自动修复 调低「角色修复字数门限」。`);
             return { made: 0, skipped: true, total: q.total, queue: 0, deceased: q.deceasedCount || 0, mech: mech };
         }
         const batch = Math.max(1, Math.min(10, Number(cfg.repairCharacterBatch) || 3));
@@ -937,14 +1092,14 @@ async function runCharacterRepair(opts) {
         const beforeCount = snaps.length;
         const floors = Math.max(1, Number(cfg.repairFloors) || Number(cfg.feedFloors) || 10);
         // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
-        notify('warning', '开始修复角色档案…', `${mechText}待修复 ${q.list.length} 名（可修复 ${q.total} 名，门限 ${q.minSize} 字${q.anomalies ? ` · ⚠️ 出生日期异常 ${q.anomalies} 名已入优先档` : ''}${q.deceasedCount ? ` · 已去世 ${q.deceasedCount} 名跳过` : ''}）· 本轮处理 ${targets.length} 名：${targets.map(t => t.name + (t.anomaly ? '⚠️' : '')).join('、')}`);
+        notify('warning', '开始修复角色档案…', `${mechText}待修复 ${q.list.length} 名（可修复 ${q.total} 名，门限 ${q.minSize} 字${q.anomalies ? ` · ⚠️ 出生日期异常 ${q.anomalies} 名已入优先档` : ''}${q.deceasedCount ? ` · 已去世 ${q.deceasedCount} 名跳过` : ''}${q.immortalCount ? ` · 长生者 ${q.immortalCount} 名跳过` : ''}）· 本轮处理 ${targets.length} 名：${targets.map(t => t.name + (t.anomaly ? '⚠️' : '')).join('、')}`);
         // v1.177：AI 空手而归时**自动加强重试一次**（用户要求「确保能一次性补全信息，而不是反复不提供」）——
         //   第 2 轮用加强版说明（strict：逐字段必给 + 标签必给 + 依据优先级重申），同一批目标、同一次点击内完成。
         let attempts = 0, r = null;
         const maxAttempts = 2;
         while (attempts < maxAttempts) {
             attempts++;
-            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1, deathGuide: true });   // v3.18.0：附保守「已去世」判定守则
+            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1, deathGuide: true, immortalGuide: true });   // v3.18.0：已去世守则；v3.22.0：长生者守则
             const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '角色修复'));
             r = applyCharacterRepairResult(normalizeDeltaKeys(extractJsonObject(resp) || {}), targets);
             if (r.changed || r.removed) break;
@@ -983,9 +1138,14 @@ async function runCharacterRepair(opts) {
         }
         saveState();
         const rest = Math.max(0, q.list.length - targets.length);
-        notify('success', '角色修复完成', `${repairReport({ before: targets.length, after: targets.length, checked: targets.length, submittedNames: targets.map(t => t.name), rolesChanged: r.rolesChanged, changed: r.changed, deleted: r.removed, queueLeft: rest })}；本轮目标 ${targets.length} 名${attempts > 1 ? `（AI 加强重试 ${attempts} 轮）` : ''} · 实际补全 ${r.rolesChanged} 名 / ${r.changed} 个字段${r.removed ? ` · 删除明显错误 ${r.removed} 条` : ''}${r.rolesInferred ? ` · 保守推断 ${r.rolesInferred} 名` : ''}${r.rolesNoBasis ? ` · 无依据 ${r.rolesNoBasis} 名` : ''}${r.invalid ? ` · 无效字段 ${r.invalid} 个` : ''}${(birthFix || r.birthInferred) ? ` · 推测出生日期 ${birthFix || r.birthInferred} 名` : ''}${tagFix ? ` · 标签自动补充 ${tagFix} 名` : ''}${r.birthFixed ? ` · 修正倒挂出生日期 ${r.birthFixed} 名` : ''}${ageSyncText}；角色 ${beforeCount} → ${after}；${rest ? `待修复名单剩余 ${rest} 名，可再次点击继续` : '待修复名单已清空'}。`);
+        notify('success', '角色修复完成', `${repairReport({ before: targets.length, after: targets.length, checked: targets.length, submittedNames: targets.map(t => t.name), rolesChanged: r.rolesChanged, changed: r.changed, deleted: r.removed, queueLeft: rest })}；本轮目标 ${targets.length} 名${attempts > 1 ? `（AI 加强重试 ${attempts} 轮）` : ''} · 实际补全 ${r.rolesChanged} 名 / ${r.changed} 个字段${r.removed ? ` · 删除明显错误 ${r.removed} 条` : ''}${r.rolesInferred ? ` · 保守推断 ${r.rolesInferred} 名` : ''}${r.rolesNoBasis ? ` · 无依据 ${r.rolesNoBasis} 名` : ''}${r.invalid ? ` · 无效字段 ${r.invalid} 个` : ''}${(birthFix || r.birthInferred) ? ` · 推测出生日期 ${birthFix || r.birthInferred} 名` : ''}${tagFix ? ` · 标签自动补充 ${tagFix} 名` : ''}${r.birthFixed ? ` · 修正倒挂出生日期 ${r.birthFixed} 名` : ''}${immortalOutcomeText(r)}${ageSyncText}；角色 ${beforeCount} → ${after}；${rest ? `待修复名单剩余 ${rest} 名，可再次点击继续` : '待修复名单已清空'}。`);
         if (r.birthFixed) { try { dbgLog('摘要', { action: '倒挂出生日期修正', names: r.birthFixedNames || [], count: r.birthFixed }); } catch (e) { } }
-        try { dbgLog('摘要', { action: '角色修复完成', targets: targets.map(t => t.name), attempts: attempts, fields: r.fields, changed: r.changed, rolesChanged: r.rolesChanged, inferred: r.rolesInferred || 0, removed: r.removed, noBasis: r.rolesNoBasis, invalid: r.invalid, queueLeft: rest, ageSync: { fixed: ageSync.fixed, cleared: ageSync.cleared } }); } catch (e) { }
+        try { dbgLog('摘要', { action: '角色修复完成', targets: targets.map(t => t.name), attempts: attempts, fields: r.fields, changed: r.changed, rolesChanged: r.rolesChanged, inferred: r.rolesInferred || 0, removed: r.removed, noBasis: r.rolesNoBasis, invalid: r.invalid, queueLeft: rest, ageSync: { fixed: ageSync.fixed, cleared: ageSync.cleared },
+            // v3.22.0：长生者判定与误判纠正的落地计数（可事后核对「谁被标成长生 / 谁被纠正为去世」）
+            immortalSet: r.immortalSet || 0, immortalNames: (r.immortalNames || []).slice(0, 8),
+            immortalCleared: r.immortalCleared || 0, immortalClearedNames: (r.immortalClearedNames || []).slice(0, 8),
+            deceasedMarked: r.deceasedMarked || 0, deceasedMarkedNames: (r.deceasedMarkedNames || []).slice(0, 8),
+        }); } catch (e) { }
         return { made: 1, targets: targets.length, attempts: attempts, changed: r.changed, rolesChanged: r.rolesChanged, inferred: r.rolesInferred || 0, removed: r.removed, noBasis: r.rolesNoBasis, invalid: r.invalid, queueLeft: rest, mech: mech, ageSync: ageSync };
     } catch (e) {
         warn('角色修复失败', e);
@@ -1005,4 +1165,6 @@ export {
     DEATH_WORDS, DEATH_TERMINAL, LONG_LIFE_WORDS, DEATH_NEGATE, DEATH_THIRD_PARTY,
     deathSplitSentences, deathSentenceJudge, snapshotDeathEvidence, snapshotDeathVerdict,
     markDeceasedByEvidence, deceasedMarkText, lastDeceasedMark,
+    // v3.22.0：长生者（跳过修复）+ 超长年龄研判
+    characterAgeScan,
 };

@@ -115,6 +115,7 @@ import {
     SNAP_REPAIR_FIELDS, SNAP_REPAIR_FIELD_MAP, snapshotAtomSize, buildCharacterRepairQueue,
     setSnapshotByPath, buildCharacterRepairPrompt, applyCharacterRepairResult, runCharacterRepair,
     characterEvidencePack, ensureSnapshotTags, deriveSnapshotTags, runCharacterMechanicalPass, correctSnapshotBirthDates,
+    characterAgeScan,   // v3.22.0：超长年龄 / 长生者只读干跑
 } from './core/character-repair.js';
 import {
     STATE_REPAIR_FIELDS, stateCanonField, stateRepairRoster, stateSubjectMatch, stateRepairMatch, stateRepairClean,
@@ -1261,6 +1262,8 @@ function bootstrapDiagnostics() {
             ensureSnapshotTags: (s) => ensureSnapshotTags(s),
             deriveSnapshotTags: (s, o) => deriveSnapshotTags(s, o),
             characterMechanicalPass: (o) => runCharacterMechanicalPass(o),
+            // v3.22.0：超长年龄 / 长生者只读干跑（`FTT.ageAnomalyScan()` 经 devtools 透出，见 devtools.js）
+            characterAgeScan: () => characterAgeScan(),
             // 注：只读干跑 `FTT.deceasedScan()` 由 `devtools.js` **直接实现**（不占宿主钩子位；此处不再重复登记）
             correctSnapshotBirthDates: (o) => correctSnapshotBirthDates(o),
             // B8-6c-4 状态记录修复（V1 v1.158 匹配角色 → 机械清理/规范化 → AI 整理；v1.205 已去世固定规则）

@@ -25,7 +25,8 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import {
     snapshotBirthAnomaly, snapshotLongLived, snapshotLowEpochCalendar, calcAge, ageAnchorDate,
-    snapshotAge, snapshotBirthAnomalyLabel, SNAP_BIRTH_ANOMALY_LABEL,
+    snapshotAge, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT,
+    SNAP_AGE_EXTREME_YEARS,
 } from '../../core/model/snapshot.js';
 import { buildCharacterRepairQueue } from '../../core/character-repair.js';
 import { listRowMainHtml } from '../../ui/list-rows.js';
@@ -61,16 +62,30 @@ function bootScenario(sc) {
 const scen = (n) => SCENARIOS.filter((s) => s.name === n)[0];
 
 // ---------- A 组：oracle 对照 + 场景逐项 ----------
-A('A1 oracle 齐备：11 个场景 · 3 处已记录差异 · V1 标签表与当前一致', FX.scenarios.length === 11
+// v3.22.0（用户要求「新增对超长年龄人员的分析」）：**有意偏离 V1** —— 新增异常码 `age-extreme`（年龄 > 200 岁
+//   且档案无任何长寿依据 → 待研判；**不受低纪元豁免**，但豁免公元前出生 / 长生设定 / 穿越者 / 已标记长生者）。
+//   按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再与 V1 oracle 比对（样本一字不改），
+//   并单独断言新码确实存在；受影响场景（`boundary-0999`：0700 年生、1000 年前后剧情 → 299 岁）单列期望。
+const V2_ONLY_ANOMALY_KEYS = ['age-extreme'];
+const V2_EXPECT_OVERRIDE = { 'boundary-0999': 'age-extreme' };
+const letV1Labels = (tbl) => {
+    const out = {};
+    for (const k of Object.keys(FX.labels)) out[k] = tbl[k];
+    return out;
+};
+A('A1 oracle 齐备：11 个场景 · 3 处已记录差异 · V1 标签表（4 码）与当前一致 · 新增 `age-extreme` 码已登记', FX.scenarios.length === 11
     && FX.scenarios.filter((s) => s.deviation).length === 3
-    && J(FX.labels) === J(SNAP_BIRTH_ANOMALY_LABEL), J({ n: FX.scenarios.length, labels: SNAP_BIRTH_ANOMALY_LABEL }));
+    && J(letV1Labels(SNAP_BIRTH_ANOMALY_LABEL)) === J(FX.labels)
+    && V2_ONLY_ANOMALY_KEYS.every((k) => typeof SNAP_BIRTH_ANOMALY_LABEL[k] === 'string' && typeof SNAP_BIRTH_ANOMALY_SHORT[k] === 'string')
+    && SNAP_AGE_EXTREME_YEARS === 200, J({ n: FX.scenarios.length, labels: SNAP_BIRTH_ANOMALY_LABEL }));
 
-A('A2 11 个场景实时结论 = 期望（含用户场景豁免、真异常保留、纪元边界）', (() => {
+A('A2 11 个场景实时结论 = 期望（含用户场景豁免、真异常保留、纪元边界、v3.22.0 超长年龄待研判）', (() => {
     const bad = [];
     for (const sc of SCENARIOS) {
         const s = bootScenario(sc);
         const got = String(snapshotBirthAnomaly(s) || '');
-        if (got !== String(sc.expect)) bad.push({ n: sc.name, got: got, want: sc.expect });
+        const want = String(V2_EXPECT_OVERRIDE[sc.name] !== undefined ? V2_EXPECT_OVERRIDE[sc.name] : sc.expect);
+        if (got !== want) bad.push({ n: sc.name, got: got, want: want });
     }
     return bad.length === 0;
 })(), '见断言');
@@ -141,9 +156,12 @@ A('B3 修复优先档不再把主角拉进来（真异常角色仍在优先档�
         && (q1.list || []).every((x) => x.anomaly === '');
 })(), J({ q1: (buildCharacterRepairQueue().anomalyList || []).map((x) => x.name) }));
 
-A('B4 标签文案未动（V1 逐字）：四种异常的 label 与 oracle 一致', (() => {
-    const all = Object.keys(SNAP_BIRTH_ANOMALY_LABEL).every((k) => SNAP_BIRTH_ANOMALY_LABEL[k] === FX.labels[k]);
-    return all && snapshotBirthAnomalyLabel('overage') === '按剧情日期算出的年龄超过 120 岁';
+A('B4 标签文案未动（V1 逐字）：V1 的四种异常 label / short 与 oracle 一致；v3.22.0 新增码另给文案', (() => {
+    const all = Object.keys(FX.labels).every((k) => SNAP_BIRTH_ANOMALY_LABEL[k] === FX.labels[k]
+        && SNAP_BIRTH_ANOMALY_SHORT[k] === FX.shorts[k]);
+    return all && snapshotBirthAnomalyLabel('overage') === '按剧情日期算出的年龄超过 120 岁'
+        && snapshotBirthAnomalyLabel('age-extreme') === SNAP_BIRTH_ANOMALY_LABEL['age-extreme']
+        && snapshotBirthAnomalyShort('age-extreme') === SNAP_BIRTH_ANOMALY_SHORT['age-extreme'];
 })(), J(SNAP_BIRTH_ANOMALY_LABEL));
 
 R.done();

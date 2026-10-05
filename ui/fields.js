@@ -27,6 +27,9 @@ function kindFields(kind) {
             F('occupation', '职业', 'text'), F('title', '称号', 'text'), F('species', '种族', 'text'), F('family', '家族', 'text'),
             // v1.164：角色存亡开关（勾选 = 已去世；角色页显示 🪦，注入时随身份带出）
             F('deceased', '已去世（剧情已明确死亡/牺牲时勾选）', 'checkbox'),
+            // v3.22.0（用户要求）：「长生者」开关（勾选 = 按剧情确认是超长寿命者；角色页显示 🧬；
+            //   勾选后**不再被「🔧 修复角色」分析**；可随时取消 —— 误判纠正就靠取消勾选或 AI 研判）
+            F('immortal', '长生者（剧情明确超长寿命/不死/精灵/神明等设定时勾选；勾选后不再被角色修复分析）', 'checkbox'),
             // v1.162：外貌特征聚合为单字段（原 身高/体型/发色发型/瞳色/肤色/特征 六项合并）
             F('appearance', '外貌特征（身高/体型/发色/瞳色等，一句话）', 'textarea'),
             F('traits', '性格特质(逗号分隔)', 'text'), F('quirks', '小癖好(逗号分隔)', 'text'), F('values', '价值观(逗号分隔)', 'text'), F('speechStyle', '说话风格', 'text'),
@@ -126,7 +129,7 @@ function deconstructEntry(kind, flat) {
     } else if (kind === 'snapshots') {
         const identity = {}, personality = {}, background = {}, social = {}, future = {};
         const flatMap = {
-            identity: ['gender', 'birthDate', 'deceased', 'species', 'occupation', 'title', 'family'],
+            identity: ['gender', 'birthDate', 'deceased', 'immortal', 'species', 'occupation', 'title', 'family'],
             personality: ['traits', 'quirks', 'values', 'speechStyle'],
             background: ['origin', 'history'],
             social: ['relationToUser', 'attitudeToUser'],

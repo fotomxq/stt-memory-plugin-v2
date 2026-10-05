@@ -98,17 +98,25 @@ const setP = (mut, path, val, opts) => {
     const r = setSnapshotByPath(s, path, val, opts);
     return { r, s };
 };
+/**
+ * v3.22.0：**有意偏离 V1** —— 「长生者」功能给机械处理结构加了两个计数（`mech.immortal` 与
+ *   `mech.birth.skippedImmortal`，与 v1.205 的 `deceased` 同款：供通知如实说明「为什么跳过了谁」）。
+ *   按 `开发守则.md` §4「黄金样本不可手改」：**在测试里显式归一**后再与 V1 黄金投影比对
+ *   （样本本身一字不改），并单独断言新计数确实存在（归一 ≠ 删字段）。
+ */
+const v2StripMech = (m) => JSON.parse(JSON.stringify(m, (k, v) => ((k === 'immortal' || k === 'skippedImmortal') ? undefined : v)));
 
 // ============================================================
 // C 组：角色修复内核 —— 与 V1 逐项比对
 // ============================================================
-R.assert('C1 snapshotAtomSize：有效正文字数（去空白）+ 字段填充数 + 缺失清单；optional 字段「身份.已去世」不参与统计 —— 5 条档案逐条与 V1 一致', (() => {
+R.assert('C1 snapshotAtomSize：有效正文字数（去空白）+ 字段填充数 + 缺失清单；optional 字段「身份.已去世 / 身份.长生者」不参与统计 —— 5 条档案逐条与 V1 一致', (() => {
     boot(G.inputs.scenario);
     const got = (state.snapshots || []).map(s => [s.name, snapshotAtomSize(s)]);
     state.snapshots[0].identity.deceased = true;
     return J(got) === J(G.atomSize) && J(snapshotAtomSize(state.snapshots[0])) === J(G.atomSizeDeceased)
-        && got[0][1].total === 19 && SNAP_REPAIR_FIELDS.length === 20
-        && SNAP_REPAIR_FIELD_MAP['身份.已去世'].optional === true;
+        && got[0][1].total === 19 && SNAP_REPAIR_FIELDS.length === 21     // v3.22.0：+「身份.长生者」（optional，不计入 total）
+        && SNAP_REPAIR_FIELD_MAP['身份.已去世'].optional === true
+        && SNAP_REPAIR_FIELD_MAP['身份.长生者'].optional === true;       // v3.22.0（用户要求）：长生者开关同样不计入缺失清单
 })(), G.atomSize);
 
 R.assert('C2 buildCharacterRepairQueue：字数门限筛选 + 出生日期异常优先档（无视门限、排在最前）+ 已去世整批跳过 + total/anomalies/deceased 计数 —— 与 V1 一致；门限 0 时全量入列', (() => {
@@ -132,9 +140,11 @@ R.assert('C3 机械处理（零 AI）：correctSnapshotBirthDates（缺失跳过
     boot(G.inputs.scenario);
     runCharacterMechanicalPass();
     const after = buildCharacterRepairQueue().list.map(x => [x.name, x.size, x.filled, x.anomaly]);
-    return J(mech) === J(G.mechPass) && J(mechSnaps) === J(G.mechSnapshots)
-        && J(cb) === J(G.correctBirth) && J(after) === J(G.afterMechQueue)
-        && mech.deceased === 1 && mech.birth.corrected === 1 && mech.tags.filled === 1 && after[1][3] === '';
+    return J(v2StripMech(mech)) === J(G.mechPass) && J(mechSnaps) === J(G.mechSnapshots)
+        && J(v2StripMech(cb)) === J(G.correctBirth) && J(after) === J(G.afterMechQueue)
+        && mech.deceased === 1 && mech.birth.corrected === 1 && mech.tags.filled === 1 && after[1][3] === ''
+        // v3.22.0：新计数确实存在（本场景无长生者 → 为 0）
+        && Number(mech.immortal) === 0 && Number(mech.birth.skippedImmortal) === 0;
 })(), G.mechPass);
 
 R.assert('C4 setSnapshotByPath 类型分支：str 只填空（已填不改）· 空话占位拒收 · 英文别名还原 · arr 只填空 · tags 并集 · rel 拒收 · bool 只「标记为已去世」 · 非法路径 —— 与 V1 逐字段一致', (() => {
@@ -237,7 +247,7 @@ await A('P1 runCharacterRepair 全链路：① 全局机械处理 → ② 待修
         res: {
             made: r.made, targets: r.targets, attempts: r.attempts, changed: r.changed, rolesChanged: r.rolesChanged,
             inferred: r.inferred, removed: r.removed, noBasis: r.noBasis, invalid: r.invalid, queueLeft: r.queueLeft,
-            mech: r.mech, ageSync: r.ageSync, keys: Object.keys(r).sort(),
+            mech: v2StripMech(r.mech), ageSync: r.ageSync, keys: Object.keys(r).sort(),
         },
         snapshots: snaps(), states: (state.currentStates || []).map(x => x.subject), toasts, aiCalls,
     };
@@ -253,7 +263,7 @@ await A('P2 runCharacterRepair AI 空手而归：自动**加强重试一轮**（
     const got = {
         res: {
             made: r.made, targets: r.targets, attempts: r.attempts, noBasis: r.noBasis, inferred: r.inferred,
-            invalid: r.invalid, queueLeft: r.queueLeft, mech: r.mech, ageSync: r.ageSync, keys: Object.keys(r).sort(),
+            invalid: r.invalid, queueLeft: r.queueLeft, mech: v2StripMech(r.mech), ageSync: r.ageSync, keys: Object.keys(r).sort(),
         },
         toasts, aiCalls,
     };
@@ -359,7 +369,7 @@ R.assert('U3 FTT 调试入口齐备：snapRepairFields / snapRepairFieldMap / sn
     const tags = F.deriveSnapshotTags({ name: '角色庚', identity: { occupation: '船医' }, tags: [] });
     const et = F.ensureSnapshotTags({ name: '角色庚', identity: { occupation: '船医' }, tags: [] });
     const one = F.setSnapshotByPath({ identity: {} }, '身份.种族', '人类');
-    const ok = on === true && Array.isArray(fields) && fields.length === 20 && !!F.snapRepairFieldMap()['身份.性别']
+    const ok = on === true && Array.isArray(fields) && fields.length === 21 && !!F.snapRepairFieldMap()['身份.性别']   // v3.22.0：+「身份.长生者」
         && q.list.length === 4 && q.anomalyList.length === 1 && q.deceasedList[0] === '已故者'
         && Array.isArray(prompt) && prompt.length === 2 && prompt[0].role === 'system'
         && applied.invalid === 1 && applied.rolesChanged === 1 && applied.changed >= 1

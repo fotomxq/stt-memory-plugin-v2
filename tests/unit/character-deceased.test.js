@@ -184,13 +184,14 @@ A('B5 用户核心要求回归：**超长寿命角色不被标记**（精灵 / �
 })(), () => markDeceasedByEvidence({ silent: true }));
 
 // ---------- C 组：机械总入口接线 ----------
-A('C1 `runCharacterMechanicalPass()` 返回结构**不含**新键（V1 黄金样本口径不变），研判结果经 `lastDeceasedMark()` 读取', (() => {
+A('C1 `runCharacterMechanicalPass()` 返回结构键集固定（V1 黄金样本口径 + v1.205 `deceased` + v3.22.0 `immortal`），研判结果经 `lastDeceasedMark()` 读取', (() => {
     boot({ snapshots: [snap('角色甲', '角色甲在最后的战斗中阵亡。')] });
     const mech = runCharacterMechanicalPass();
     const keys = Object.keys(mech).sort();
     const death = lastDeceasedMark();
-    return J(keys) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'tags', 'total'])
-        && mech.changed === true && death && death.marked === 1 && death.markedNames[0] === '角色甲';
+    // v3.22.0：「长生者」跳过计数进结构（与 v1.205 的 `deceased` 同款 —— 供通知如实说明跳过原因）
+    return J(keys) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'tags', 'total'])
+        && mech.changed === true && Number(mech.immortal) === 0 && death && death.marked === 1 && death.markedNames[0] === '角色甲';
 })(), () => Object.keys(runCharacterMechanicalPass()).sort());
 
 await (async () => {

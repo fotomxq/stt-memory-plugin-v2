@@ -192,15 +192,17 @@ await A('A4 未知动作与卸载：未知动作返回失败不抛；unmount 关
 }, panelInfo());
 
 // ---------- B2：条目操作与编辑器全量 ----------
-await A('B2-1 编辑器字段表与 V1 一致：各维度字段数与标签取自 kindFields（13 维）', async () => {
+await A('B2-1 编辑器字段表与 V1 一致：各维度字段数与标签取自 kindFields（13 维）；v3.22.0 snapshots +1', async () => {
     boot();
     const counts = ['atoms', 'states', 'snapshots', 'memories', 'concepts', 'items', 'currencies', 'plotSegments', 'rumors', 'plans', 'suspense', 'scenes', 'parallels']
         .map((k) => k + ':' + kindFields(k).length).join(' ');
     await panelAction('edit', { kind: 'snapshots', id: 's1' });
     const ed = panelBodyHtml('snapshots');
-    return counts === 'atoms:11 states:5 snapshots:20 memories:8 concepts:7 items:6 currencies:7 plotSegments:2 rumors:10 plans:11 suspense:11 scenes:3 parallels:13'
+    // v3.22.0（用户要求「角色新增字段…该开关可以被编辑」）：snapshots 20 → 21（+「长生者」勾选框）
+    return counts === 'atoms:11 states:5 snapshots:21 memories:8 concepts:7 items:6 currencies:7 plotSegments:2 rumors:10 plans:11 suspense:11 scenes:3 parallels:13'
         && ed.indexOf('class="ftt-editor"') >= 0 && ed.indexOf('data-ftt-ed="birthDate"') >= 0
-        && ed.indexOf('出生日期(年-月-日；年龄自动计算)') >= 0 && ed.indexOf('data-ftt-ed="deceased"') >= 0;
+        && ed.indexOf('出生日期(年-月-日；年龄自动计算)') >= 0 && ed.indexOf('data-ftt-ed="deceased"') >= 0
+        && ed.indexOf('data-ftt-ed="immortal"') >= 0;      // v3.22.0：长生者开关在编辑器里
 }, '');
 
 await A('B2-2 新增（含预设）：add 打开空编辑器；addStateFor 预设主体；addChildScene 预设父级并生成 pathArr', async () => {

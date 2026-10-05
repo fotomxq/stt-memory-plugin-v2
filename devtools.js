@@ -339,6 +339,11 @@ export function installDevtools(hooks) {
                 } catch (e) { return []; }
             },
             correctSnapshotBirthDates: (o) => (hooks && typeof hooks.correctSnapshotBirthDates === 'function' ? hooks.correctSnapshotBirthDates(o) : null),
+            // v3.22.0（用户要求「新增对超长年龄人员的分析」）：**超长年龄 / 长生者只读干跑** ——
+            //   逐角色给出 出生日期 / 按剧情算出的年龄 / 是否超长（`extreme`）/ 是否已标记长生者 /
+            //   跳过原因（`deceased` | `immortal`）/「最后见面」距今多少年（判「长期未出场」用）。
+            //   **不写任何标记**：落笔只有两条路 —— 角色修复里 AI 按剧情判定，或用户在编辑器里勾选。
+            ageAnomalyScan: () => (hooks && typeof hooks.characterAgeScan === 'function' ? hooks.characterAgeScan() : []),
             // B8-6c-4 状态记录修复（V1 v1.158 匹配 → 机械清理 → AI 整理；v1.205 已去世固定规则）
             stateRepairFields: () => (hooks && typeof hooks.stateRepairFields === 'function' ? hooks.stateRepairFields() : null),
             stateCanonField: (f) => (hooks && typeof hooks.stateCanonField === 'function' ? hooks.stateCanonField(f) : ''),
