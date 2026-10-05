@@ -152,10 +152,23 @@ export function wireKernelChatHooks() {
     };
 }
 
-/** 把某个 state 注入内核（载入/切换角色/跨端合并后调用） */
-export function attachKernelState(state) {
-    setKernelState(state || null);
-    return state || null;
+/**
+ * 把某个 state 注入内核（载入/切换角色/跨端合并后调用）
+ *
+ * v3.22.1：注入之后**立刻**记一次「当前聊天标识」。
+ *   缺陷成因（真机取证）：`state.chatKey` 原本只在 `wireKernelChatHooks`（消息渲染 / 切聊天）里写，
+ *   而**刷新页面**的首屏路径是「载入 → 合并 → attachKernelState → 重解析时钟」，此刻
+ *   `state.chatKey` 还是空串 ⇒ 聊天分层（`core/chat-scope.js`）**失效** ⇒ 别条聊天的旧情节
+ *   一并参与「最新情节」评选。真机上 13:18 那次「以滞后一天的服务端文件为基底 + local 并集」的
+ *   载入就落在这个窗口里：时钟被 0198 年线的旧情节压回 `0198-05-16`，直到第 73 楼被分析后才自愈。
+ *   这里补上「注入即归属」，让分层从**第一次解析**起就生效（幂等；读不到标识时按空串=归属未知，不放宽）。
+ * @param {object} next 要注入的内核状态
+ * @returns {object} 注入的状态（`state.chatKey` 已被就地更新）
+ */
+export function attachKernelState(next) {
+    setKernelState(next || null);
+    try { noteChatKey(); } catch (e) { /* 归属记账失败不阻断注入 */ }
+    return next || null;
 }
 
 /** 内核当前看到的聊天消息（调试用） */

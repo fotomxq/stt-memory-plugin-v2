@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.22.0",
+  "version": "3.22.1",
   "updatedAt": "2026-10-05",
   "generatedAt": "2026-10-05",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.22.1",
+      "date": "2026-10-05",
+      "title": "时钟回归修复：合并 / 去重不再洗掉「原文已移除」等溯源标记（旧聊天情节复活压住时钟的根因）",
+      "points": [
+        "① 真机取证（调试桥 + 落盘状态 + 插件追踪时间线，全部为：只读观测）| 时刻 | 观测事实 || --- | --- || 10:51 | 别条聊天旧故事线（0198 年）…",
+        "② 根因（代码级、确定性复现）：originGone / hidden / summarizedBy / floorNow* 这类溯源与降级标记不参与内容哈希（docs/D8 槽…",
+        "③ 修复（四处，全部为「只保守、不放松」）：| 位置 | 改动 || --- | --- || core/floor-cover.js | 新增 mergeEntryProven…"
+      ]
+    },
     {
       "version": "3.22.0",
       "date": "2026-10-05",

@@ -9,6 +9,7 @@
 import { clockDateParts, clockDateTrim } from './clock.js';
 import { nsfwLevelNorm, nsfwMergeLevel } from './nsfw-level.js';   // v3.8.0 等级留档；v3.13.0 数据异常自愈（等级规范化）
 import { ATOM_DIM_KEYS, VERSION } from './constants.js';
+import { mergeEntryProvenance } from './floor-cover.js';   // v3.22.1：同内容去重时的溯源/降级标记合并口径（只升不降 + 补空）
 import { ensureAtomHashes } from './merge.js';
 // v2.86.0（`docs/D8` R1=B）：同内容去重 = **身份哈希**（认身份）
 import { atomIdentityHash } from './model/hash.js';
@@ -44,6 +45,11 @@ function contentDedupeArray(cat, arr) {
             const merged = JSON.parse(JSON.stringify(win));
             nsfwMergeLevel(merged, ex);            // v3.8.0：同内容去重 → NSFW 留档取高（「强」不被「弱/无」冲掉）
             nsfwMergeLevel(merged, it);
+            // v3.22.1：**溯源/降级标记不参与内容哈希**，去重时同样「只升不降 + 补空」——
+            //   否则同内容的两份副本里，胜出那份若没有 `originGone`/`hidden`，标记会被去重抹掉，
+            //   已判「原文已移除」的旧聊天情节复活成活情节（真机取证见 core/floor-cover.js#mergeEntryProvenance）。
+            mergeEntryProvenance(merged, ex);
+            mergeEntryProvenance(merged, it);
             merged.floorStart = Math.min(Number(ex.floorStart) || 0, Number(it.floorStart) || 0) || (Number(win.floorStart) || 0);
             merged.floorEnd = Math.max(Number(ex.floorEnd) || 0, Number(it.floorEnd) || 0);
             merged.uses = (Number(ex.uses) || 0) + (Number(it.uses) || 0);
