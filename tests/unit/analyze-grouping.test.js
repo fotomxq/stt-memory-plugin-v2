@@ -80,7 +80,8 @@ A('A4 两节各一句短提示（≤90 字、无历史版本字样）；长解�
     let m;
     while ((m = re.exec(HTML)) !== null) hints.push(String(m[1]).replace(/<[^>]+>/g, '').trim());
     return hints.length === 5 && hints.every((t) => t.length > 0 && t.length <= 90)
-        && hints[0].indexOf('默认 10') > 0 && hints[1].indexOf('不注入') > 0
+        // v3.23.0：默认段长 10 → **3 个正文/段**（全部 AI 摘要入口共用；文案随之更新）
+        && hints[0].indexOf('默认 3') > 0 && hints[0].indexOf('全部 AI 摘要入口共用') > 0 && hints[1].indexOf('不注入') > 0
         && hints[2].indexOf('货币') > 0 && hints[3].indexOf('关联层') >= 0 && hints[4].indexOf('硬截断') > 0
         && hints.every((t) => t.indexOf('V1') < 0)
         && HTML.indexOf('<details') > 0 && HTML.indexOf('ftt-hint-body') > 0

@@ -45,12 +45,19 @@ function boot(extra) {
 const DELTA = (n) => ({ atoms: { add: [{ title: '事件' + n, text: '甲在码头清点货物并记录第' + n + '批去向（正文足够长）。', date: '1919-11-29' }] } });
 
 // ---------- 分段构建 ----------
-R.assert('S1 分段构建与 V1 一致：按 cfg.summaryChunkSize 切段、末段收口、chunk 守卫', (() => {
+R.assert('S1 分段构建与 V1 一致：按段长切段、末段收口、chunk 守卫（v3.23.0：默认段长 = **3 个正文**）', (() => {
+    const keep = cfg.summaryChunkSize;
+    cfg.summaryChunkSize = 4;                    // 显式配置：非法入参回落到它
     const a = buildSegments(0, 9, 4);
     const b = buildSegments(3, 3, 10);
-    const c = buildSegments(5, 8, 0);            // 0 → 回退默认（cfg.summaryChunkSize = 4）
+    const c = buildSegments(5, 8, 0);            // 0 → 非法 → 回落 cfg（4）
+    cfg.summaryChunkSize = undefined;            // 未配置 → 回落**默认段长 3**（v3.23.0）
+    const d = buildSegments(0, 9, 0);
+    cfg.summaryChunkSize = keep;
     return J(a) === J([{ start: 0, end: 3 }, { start: 4, end: 7 }, { start: 8, end: 9 }])
-        && J(b) === J([{ start: 3, end: 3 }]) && c.length === 1;
+        && J(b) === J([{ start: 3, end: 3 }])
+        && J(c) === J([{ start: 5, end: 8 }])
+        && J(d) === J([{ start: 0, end: 2 }, { start: 3, end: 5 }, { start: 6, end: 8 }, { start: 9, end: 9 }]);
 })(), buildSegments(0, 9, 4));
 
 // ---------- 段分析 ----------
@@ -153,7 +160,7 @@ await (async () => {
     let abortCalled = 0;
     let batchArgs = null;
     setPanelHooks2({
-        autoSummary: async (o) => { batchArgs = o; return { ok: true, segments: 2, floors: '4-9', added: 3, aborted: 0 }; },
+        autoSummary: async (o) => { batchArgs = o; return { ok: true, segments: 2, floors: '4-9', added: 3, aborted: 0, chunkSize: 4 }; },
         abort: () => { abortCalled++; return { ok: true, busy: true }; },
         clearFloors: () => ({ ok: true, cleared: 5 }),
         batchProgress: () => ({ segTotal: 2, segDone: 1, range: '4-9', activeSeg: { start: 4, end: 5 }, aborted: 0 }),
@@ -166,7 +173,7 @@ await (async () => {
     const r2 = await panelAction('clearFloors', {});
     R.assert('B5（v2.52.0）面板接线：⚡ 立即 AI 摘要 触发批量并回填完成文案；总览不再出现「清除已处理记录」（改属设定→数据管理）', (() => {
         return batchArgs && batchArgs.silent === false && abortCalled === 1 && r2.ok === true
-            && String(note.html).indexOf('摘要完成：2 段 · 读取楼层 4-9 · 新增 3 条') >= 0
+            && String(note.html).indexOf('摘要完成：2 段（每段 ≤4 个正文） · 读取楼层 4-9 · 新增 3 条') >= 0
             && String(note.html).indexOf('data-ftt-action="clearFloors"') < 0
             && String(note.html).indexOf('🧵 管线状态') >= 0;
     })(), { batchArgs, abortCalled, r2, note: String(note.html).match(/data-ftt-note>[^<]*/) });

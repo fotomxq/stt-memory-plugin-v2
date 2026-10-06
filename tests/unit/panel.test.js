@@ -142,7 +142,7 @@ await A('A1 工具行动作：⚡ 批量摘要 / 📤 提取（单楼）/ 📤 �
     boot();
     // B3 起：`summary` 走批量分段摘要钩子（autoSummary）、`extractNow` 走逐楼提取钩子（extract）
     setPanelHooks2({
-        autoSummary: async (o) => ({ ok: true, segments: 2, floors: '4-9', added: 3, aborted: 0, silent: o && o.silent }),
+        autoSummary: async (o) => ({ ok: true, segments: 2, floors: '4-9', added: 3, aborted: 0, chunkSize: 3, silent: o && o.silent }),
         extract: async () => ({ ok: true, done: 1, results: [{ floor: 4, ok: true, added: 2 }] }),
         inject: async () => ({ ok: true, chars: 12 }),
         clearInject: () => true,
@@ -156,7 +156,7 @@ await A('A1 工具行动作：⚡ 批量摘要 / 📤 提取（单楼）/ 📤 �
     const batch = await panelAction('extractNow', {});
     const noteBatch = panelState().note;
     return all.ok === true && one.ok === true && inj.ok === true && batch.ok === true
-        && noteAll.indexOf('摘要完成：2 段 · 读取楼层 4-9 · 新增 3 条') >= 0
+        && noteAll.indexOf('摘要完成：2 段（每段 ≤3 个正文） · 读取楼层 4-9 · 新增 3 条') >= 0
         && noteOne.indexOf('第 4 楼：新增 2 条') >= 0
         && noteInj.indexOf('已注入 12 字') >= 0 && noteBatch.indexOf('分析完成') >= 0;
 }, panelState().note);

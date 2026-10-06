@@ -39,6 +39,9 @@ import { cleanText } from '../core/html-text.js';
 //   于是用户真正在看的「批量摘要 / 单楼分析」永远没有 token 计数、预估倒计时、阶段与结构摘要。
 //   现在统一经 `genTracked()` 记账（并发安全：每路各持自己的 runId）。
 import { beginPipeline, endPipeline, addStreamChunk, noteResponseText, setPipelinePhase, setPipelineKeys, summarizeResponseKeys } from '../core/pipeline.js';
+// v3.23.0（用户要求）：「全部 AI 摘要需支持分段处理，且默认采用 3 个正文进行切片，分批进行处理。避免一次性分析记忆。」
+//   → 段长口径收敛到内核纯函数（默认 3、段内必连续、段长只作上界），批量摘要 / 多楼（全量）提取共用同一实现。
+import { SUMMARY_CHUNK_DEFAULT, normalizeChunkSize, chunkFloorRange, chunkFloorIds } from '../core/chunk.js';
 // v3.0.3（用户要求）：「每次被动提取记忆…应该触发保存到服务器的操作」—— 提取结束后**立即**落一次服务端
 import { persistNow } from '../core/model/runtime.js';
 
@@ -50,6 +53,8 @@ const extractState = {
     //   只给了时间与关键词，V2 连**提取内容**（AI 回复）一并留存，便于「刚才到底提了什么」一目了然。
     // B3：分段批量（V1 runAutoSummary）状态
     segTotal: 0, segDone: 0, segRange: '', activeSeg: null, aborted: 0, lastBatch: null,
+    // v3.23.0：本次批量实际生效的「每段正文数」（默认 3；面板进度与调试桥可读）
+    segChunkSize: 0,
 };
 /** v2.61.0：最后一次「提取前校对」结果（总览/日志展示） */
 let lastPreflight = null;
@@ -77,9 +82,11 @@ export function activeSegment() { return extractState.activeSeg ? Object.assign(
 export function batchProgress() {
     // v2.63.0（用户报告「管线状态的计时器不动」）：带上**忙位起始时刻** `since` —— 面板据此显示真实读秒，
     //   而不是「面板渲染那一刻」才开始计时（V1 的 `busy.pipe.startedAt` 同口径）。
+    // v3.23.0：带上**每段正文数** `chunkSize`（面板/调试桥据此说明「一段几个正文」）。
     return {
         segTotal: extractState.segTotal, segDone: extractState.segDone, range: extractState.segRange,
         activeSeg: activeSegment(), aborted: extractState.aborted, since: Number(extractState.busySince) || 0,
+        chunkSize: Number(extractState.segChunkSize) || summaryChunkSize(),
     };
 }
 
@@ -393,7 +400,15 @@ export async function analyzeFloor(floorId, opts) {
 
 /**
  * 批量分析（默认分析「未分析楼层」；`onlyLatest` 只分析最后一楼）。
- * @param {object} [opts] ids / onlyLatest / limit / dims / ai / silent
+ *
+ * **v3.23.0（用户要求「全部AI摘要需支持分段处理…避免一次性分析记忆」）**：
+ *   · 单楼（`ids` 恰好一个，含 `autoExtractLatest` 的被动路径）→ **行为一字不变**（走 `analyzeFloor`）；
+ *   · 多楼 / 全量（`ids` 多个，如 `/ftt-analyze`、面板「提取」回落路径）→ **按段推进**：
+ *       先把清单按「连续」断开，再按 `cfg.summaryChunkSize`（默认 **3** 个正文）切片，
+ *       **一段 = 一次 AI 调用 = 一次 `mergeDelta(整段)`**（与批量摘要完全同一套口径）。
+ *       修复前：一楼一次 AI 调用（没有任何"段"概念）；现在同一条"不一次性分析记忆"的口径覆盖全部摘要入口。
+ * @param {object} [opts] ids / onlyLatest / limit / dims / ai / silent / chunkSize
+ * @returns {Promise<{ok:boolean, floors:number[], results:Array, segments:number, done:number, failed:number, note?:string}>}
  */
 export async function analyzeFloors(opts) {
     const o = opts || {};
@@ -403,17 +418,34 @@ export async function analyzeFloors(opts) {
     try {
         let ids = Array.isArray(o.ids) ? o.ids.slice() : null;
         if (!ids) ids = o.onlyLatest ? listUnprocessedFloors({ limit: 1 }).slice(-1) : listUnprocessedFloors({ limit: Number(o.limit) > 0 ? Number(o.limit) : 0 });
-        if (!ids.length) return { ok: true, floors: [], results: [], note: '没有未分析楼层' };
+        if (!ids.length) return { ok: true, floors: [], results: [], segments: 0, note: '没有未分析楼层' };
+        // 单楼：保持「单楼分析」原语义（提示词/台账/`via:'floor'` 记账一字不变）
+        if (ids.length === 1) {
+            const one = Number(ids[0]);
+            const r = await analyzeFloor(one, o);
+            const results = [Object.assign({ floor: one, start: one, end: one, floors: [one] }, r)];
+            return { ok: r.ok === true, floors: ids, results, segments: 1, done: r.ok ? 1 : 0, failed: r.ok ? 0 : 1 };
+        }
+        // 多楼 / 全量：按「连续段 + 段长」切片，逐段分析（一次 AI = 一段）
+        const chunks = chunkFloorIds(ids, o.chunkSize, cfg.summaryChunkSize);
+        extractState.segTotal = chunks.length;
+        extractState.segDone = 0;
+        extractState.segRange = chunks.length ? (chunks[0].start + '-' + chunks[chunks.length - 1].end) : '';
         const results = [];
-        for (const id of ids) {
-            const r = await analyzeFloor(id, o);
-            results.push(Object.assign({ floor: id }, r));
+        for (const c of chunks) {
+            const r = await analyzeSegment(c.start, c.end, o);
+            extractState.segDone += 1;
+            results.push(Object.assign({ floor: c.start, start: c.start, end: c.end, floors: c.ids }, r));
+            if (typeof o.onProgress === 'function') { try { o.onProgress({ seg: { start: c.start, end: c.end }, result: r, done: extractState.segDone, total: chunks.length }); } catch (e) { /* 忽略 */ } }
         }
         const done = results.filter((r) => r.ok).length;
-        return { ok: done > 0, floors: ids, results, done, failed: results.length - done };
+        return { ok: done > 0, floors: ids, results, segments: chunks.length, done, failed: results.length - done };
     } finally {
         extractState.busy = false;
         extractState.busySince = 0;
+        extractState.segTotal = 0;
+        extractState.segDone = 0;
+        extractState.segRange = '';
     }
 }
 
@@ -497,14 +529,20 @@ export async function analyzeSegment(start, end, opts) {
     }
 }
 
-/** 把楼层区间切成段（V1：`cfg.summaryChunkSize`，默认 10 楼/段） */
+/**
+ * 把楼层区间切成段（V1：`cfg.summaryChunkSize`；**v3.23.0 起默认 3 个正文/段**，见 `core/chunk.js`）。
+ * 保留为薄封装：V1 黄金/单测仍按 `(start, end, size)` 调用它；切片口径统一由内核纯函数实现。
+ * @param {number} start 起始楼层
+ * @param {number} end 结束楼层
+ * @param {*} [chunkSize] 段长（非法/缺省 → `cfg.summaryChunkSize` → 3）
+ */
 export function buildSegments(start, end, chunkSize) {
-    const s0 = Math.max(0, Number(start) || 0);
-    const e0 = Math.max(s0, Number(end) || s0);
-    const n = Math.max(1, Number(chunkSize) || Number(cfg.summaryChunkSize) || 10);
-    const out = [];
-    for (let a = s0; a <= e0; a += n) out.push({ start: a, end: Math.min(e0, a + n - 1) });
-    return out;
+    return chunkFloorRange(start, end, chunkSize, cfg.summaryChunkSize);
+}
+
+/** 当前生效的「每段正文数」（诊断 / 面板文案用；唯一事实源 = `core/chunk.js`） */
+export function summaryChunkSize() {
+    return normalizeChunkSize(cfg.summaryChunkSize, SUMMARY_CHUNK_DEFAULT);
 }
 
 /**
@@ -542,9 +580,10 @@ export async function runAutoSummary(opts) {
             if (!pendingIds.length) return { ok: true, made: 0, added: 0, failed: 0, floors: '0-0', segments: 0, aborted: 0, skipped: true };
             start = Math.min.apply(null, pendingIds);
         }
-        const segments = buildSegments(start, effLast, o.chunkSize || cfg.summaryChunkSize);
+        const segments = buildSegments(start, effLast, o.chunkSize);
         extractState.segTotal = segments.length;
         extractState.segRange = start + '-' + effLast;
+        extractState.segChunkSize = summaryChunkSize();
         let made = 0, added = 0, failed = 0, aborted = 0;
         // v2.81.0：汇总各段的「分析后同步」（有 changed 的优先；都没有则取首个非空），供总览/调试观测
         let postCalibAgg = null;
@@ -569,6 +608,8 @@ export async function runAutoSummary(opts) {
             if (typeof o.onProgress === 'function') { try { o.onProgress({ seg: Object.assign({}, seg), result: r, done: extractState.segDone, total: extractState.segTotal }); } catch (e) { /* 忽略 */ } }
         }
         const out = { ok: made > 0 || (failed === 0 && aborted === 0), made, added, failed, floors: start + '-' + effLast, segments: segments.length, aborted, ms: Date.now() - t0,
+            // v3.23.0：如实回报本次生效的**每段正文数**（默认 3）——面板与调试桥据此说明切片口径
+            chunkSize: summaryChunkSize(),
             postCalib: (postCalibAgg ? { changed: !!postCalibAgg.changed, skipped: String(postCalibAgg.skipped || ''), note: String(postCalibAgg.note || ''), clock: postCalibAgg.clock } : null) };
         extractState.lastBatch = out;
         // v2.59.0：批量汇总也记一条（总览显示「本次批量：N 段 / 新增 M 条」；正文沿用最后一段的 AI 回复）

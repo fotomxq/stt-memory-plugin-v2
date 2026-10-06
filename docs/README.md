@@ -1,6 +1,8 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.9 ｜ 日期：2026-10-05 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.10 ｜ 日期：2026-10-05 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.10 变更（随 v3.23.0）：§3 数字口径同步（单测 152→**153** 文件 / 2350→**2364** 断言；调试桥只读方法 35→**36**，+`ftt.chunkPlan`；
+>   历史批次档 162→**163** 份）；目录树与区间随之改为 `P10c42`；「分析记忆」数据流补记**统一段长口径**（`core/chunk.js`，默认 3 个正文/段）。
 > v2.9 变更（随 v3.22.1）：§3 数字口径同步（单测 151→**152** 文件 / 2333→**2350** 断言；历史批次档 161→**162** 份）；
 >   目录树与区间随之改为 `P10c41`；D8 升 v0.6（新增 §11「非哈希字段的合并口径」）、D11 升 v0.5（新增 §3.7）。
 > v2.8 变更（设计稿一致性校对，随 v3.20.0–v3.22.0）：目录树里的设计稿版本号与说明同步（D1 v1.1 / D8 v0.5 / D9 v0.3 /
@@ -35,12 +37,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，162 份）
+└── history/                  # 历史批次层（只读留痕，163 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c41           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c42           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -85,14 +87,15 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 152 文件 / 2350 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 153 文件 / 2364 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 212 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
-| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 35 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0） |
-| 历史批次档数 | `docs/history/*.md` | 162 份（不含本层 `README.md`） |
+| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 36 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0） |
+| 历史批次档数 | `docs/history/*.md` | 163 份（不含本层 `README.md`） |
+| 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
 > 已知冲突逐条登记在 `勘误-历史档过时条目.md`。

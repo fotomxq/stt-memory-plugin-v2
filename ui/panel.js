@@ -36,9 +36,12 @@ import {
     runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
 } from '../core/plot-segment.js';
 import {
-    runParallelWeave, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
+    // v3.23.0：推演世界改走**分段**入口（每段 ≤ cfg.summaryChunkSize，默认 3 个正文）
+    runParallelWeaveChunked, runParallelAdvance, promoteParallelEvent, parallelLastKeywords,
     runParallelCustom,   // v2.99.0：自定义平行世界推演（输入一段话 → AI 单独推演）
 } from '../core/parallel.js';
+// v3.23.0：段长口径唯一事实源（面板文案「每段 ≤N 楼」与提取管线同源）
+import { summaryChunkSize } from '../host/extract.js';
 import { parallelExpired, importancePct } from '../core/recall.js';
 // v2.90.0（用户要求）：管线状态补「流式摘要 + token 计数 + 预估倒计时」
 import {
@@ -398,16 +401,25 @@ export function pipelineBoxRowsHtml() {
         const batchOn = (typeof hooks.busy === 'function') ? !!hooks.busy() : false;
         const bp = batchOn && (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {};
         const total = Number(bp.segTotal) || 0, done = Number(bp.segDone) || 0;
-        const range = (bp.range && (bp.range.start !== undefined)) ? (' · 第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '';
+        // v3.23.0：`batchProgress().range` 生产值是**字符串**（`'起始-结束'`），而部分调用方/测试给的是
+        //   对象 `{start,end}` —— 两种形态都认（旧代码只认对象，于是生产侧「第 N-M 楼」从来没显示过）。
+        const rangeStr = (() => {
+            const r = bp.range;
+            if (r && typeof r === 'object') return (r.start === undefined) ? '' : (Number(r.start) + '-' + Number(r.end));
+            const s = String(r == null ? '' : r);
+            return /^\d+-\d+$/.test(s) ? s : '';
+        })();
+        const range = rangeStr ? (' · 第 ' + rangeStr + ' 楼') : '';
         const seg = total ? (' · 分段 ' + done + '/' + total) : '';
+        // v3.23.0：段长对用户可见（默认 3 个正文/段，全部 AI 摘要入口共用）
+        const per = Number(bp.chunkSize) > 0 ? (' · 每段 ≤' + Number(bp.chunkSize) + ' 个正文') : '';
         const aborted = bp.aborted ? ' · 已请求中断' : '';
         const rows = [];
         if (batchOn) {
             const since = Number(bp.since) > 0 ? Number(bp.since) : 0;
             const sec = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : 0;
-            const list = String((bp.range && bp.range.start !== undefined) ? ('第 ' + bp.range.start + '-' + bp.range.end + ' 楼') : '');
-            const batchText = '[AI] AI 摘要（批量）' + (total ? (' · 分段 ' + done + '/' + total) : '') + (list ? (' · ' + list) : '')
-                + (sec ? (' · 已用时 ' + sec + 's') : '') + aborted;
+            const batchText = '[AI] AI 摘要（批量）' + (total ? (' · 分段 ' + done + '/' + total) : '') + (rangeStr ? (' · 第 ' + rangeStr + ' 楼') : '')
+                + per + (sec ? (' · 已用时 ' + sec + 's') : '') + aborted;
             rows.push('<div class="ftt-pipe-line" data-ftt-pipeline-row="batch" title="AI：批量摘要（未摘要楼层分段分析，与「第 N 楼」同一条分析管线）">'
                 + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(batchText) + '</span></div>');
         }
@@ -416,7 +428,7 @@ export function pipelineBoxRowsHtml() {
         const batchIdx = batchOn ? -1 : runs.findIndex((r) => String(r.label) === '批量摘要');
         for (let i = 0; i < runs.length; i++) {
             const r = runs[i];
-            const extra = (i === batchIdx && (seg || range)) ? (seg + range) : '';
+            const extra = (i === batchIdx && (seg || range)) ? (seg + range + per) : '';
             rows.push('<div class="ftt-pipe-line" data-ftt-pipeline-row="' + r.id + '" title="' + attr(String(r.kindLabel) + '：' + String(r.label)) + '">'
                 + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">' + esc(r.text + extra + (i === batchIdx ? aborted : '')) + '</span></div>');
         }
@@ -2074,13 +2086,17 @@ export async function panelAction(action, payload) {
                 const feedN = Math.max(1, Number(cfg.feedFloors) || Number(cfg.summaryFloors) || 10);
                 const fr = { start: Math.max(0, lastId - feedN + 1), end: lastId };
                 const kws = parallelLastKeywords().slice(0, 10);
-                const r = await runParallelWeave(fr, { keywords: kws, force: true });
-                if (r && r.error === 'busy') setNote('⏳ 摘要/情节总结/推演/推进/修复进行中，请稍候');
+                // v3.23.0（用户要求「全部AI摘要需支持分段处理…默认采用 3 个正文进行切片，分批进行处理」）：
+                //   推演世界同样**按段**推进（每段 ≤ `cfg.summaryChunkSize`，默认 3 个正文），
+                //   不再一次性把整个区间正文塞进一个提示词。编排层聚合，`runParallelWeave` 内部语义不变。
+                const r = await runParallelWeaveChunked(fr, { keywords: kws, force: true });
+                const segTxt = r && r.chunks > 1 ? ('（分段 ' + r.chunks + ' 段 · 每段 ≤' + summaryChunkSize() + ' 楼）') : '';
+                if (r && r.busy) setNote('⏳ 摘要/情节总结/推演/推进/修复进行中，请稍候');
                 else if (r && r.error) setNote('❌ 推演世界失败:' + String(r.error).slice(0, 60));
                 else if (r && r.skipped === 'dedup') setNote('推演世界：已跳过重复分析（楼层正文与原子未变化）');
-                else if (r && r.skipped === 'empty') setNote('推演世界完成：无新增/更新点（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
-                else setNote('推演世界完成：新增 ' + Number(r.added || 0) + ' / 更新 ' + Number(r.updated || 0) + '（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
-                result = Object.assign(result, { ok: !(r && r.error), action: a, weave: r });
+                else if (r && r.skipped === 'empty' && !(r.added || r.updated)) setNote('推演世界完成' + segTxt + '：无新增/更新点（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
+                else setNote('推演世界完成' + segTxt + '：新增 ' + Number(r.added || 0) + ' / 更新 ' + Number(r.updated || 0) + '（平行事件共 ' + Number((state.parallels || []).length) + ' 条）');
+                result = Object.assign(result, { ok: !(r && (r.error || r.busy)), action: a, weave: r });
             }
         }
         else if (a === 'promoteParallel') {
@@ -2136,15 +2152,16 @@ export async function panelAction(action, payload) {
                 return done({ ok: false, reason: 'busy', floors: Array.from(singleFloorBusy) });
             }
             const pendN = (() => { try { return (typeof hooks.pending === 'function') ? (hooks.pending({}) || []).length : 0; } catch (e) { return 0; } })();
-            setNote('AI 摘要分析中…（' + (pendN ? (pendN + ' 个未摘要楼层 · ') : '') + '分段批量摘要，与「第 N 楼」同一条分析管线）');
+            const perN = summaryChunkSize();
+            setNote('AI 摘要分析中…（' + (pendN ? (pendN + ' 个未摘要楼层 · ') : '') + '分段批量摘要：每段 ≤' + perN + ' 个正文，与「第 N 楼」同一条分析管线）');
             ps.busy = true;                                  // 兼容旧文本口径（真实忙位由 extractBusy 给出）
             renderPanel();                                   // ① 立刻可见（按钮转圈 + 两个入口禁用 + 管线行出现）
-            try { panelNotify('info', 'AI 摘要：开始分析' + (pendN ? (' ' + pendN + ' 个未摘要楼层') : '未摘要楼层') + '…'); } catch (e) { /* 忽略 */ }
+            try { panelNotify('info', 'AI 摘要：开始分析' + (pendN ? (' ' + pendN + ' 个未摘要楼层') : '未摘要楼层') + '（分段，每段 ≤' + perN + ' 个正文）…'); } catch (e) { /* 忽略 */ }
             const r = await hooks.autoSummary({ silent: false });
             ps.busy = false;
             const okAll = !!(r && r.ok);
             setNote(okAll
-                ? ('摘要完成：' + r.segments + ' 段 · 读取楼层 ' + r.floors + ' · 新增 ' + r.added + ' 条' + (r.aborted ? '（中断：剩余 ' + r.aborted + ' 段未分析）' : ''))
+                ? ('摘要完成：' + r.segments + ' 段（每段 ≤' + Number(r.chunkSize || perN) + ' 个正文） · 读取楼层 ' + r.floors + ' · 新增 ' + r.added + ' 条' + (r.aborted ? '（中断：剩余 ' + r.aborted + ' 段未分析）' : ''))
                 : ('未完成：' + String((r && r.reason) || '未知') + (r && r.failed ? '（失败 ' + r.failed + ' 段）' : '')));
             try {
                 panelNotify(okAll ? 'success' : 'warning', okAll

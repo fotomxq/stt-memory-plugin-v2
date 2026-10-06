@@ -34,7 +34,7 @@ import { hintDetailsHtml } from './hints.js';
 //   复用「⬇ 导出记忆 JSON」同一条下载实现（Blob + `<a download>`），而不是只塞剪贴板/文本框。
 import { downloadTextFile } from './file-io.js';
 // v2.94.0（`docs/D11` v0.3 §3.2 阶段 S1 / `docs/D12` v0.2 S4b）：`chatMetadata` 主载体**只读**差异报告
-import { state } from '../core/model/runtime.js';
+import { state, cfg } from '../core/model/runtime.js';
 import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters/chat-meta.js';
 // v3.0.7：本地调试桥（**跨宿主**：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不报错）
 import {
@@ -51,6 +51,9 @@ import {
 import { floorCoverage } from '../core/floor-cover.js';
 // v3.20.0：情节「聊天归属 / 位置越界」体检（只读；回答「时钟为什么取了别条聊天的时间」）
 import { currentChatKey, currentChatTail, plotScopeSnapshot } from '../core/chat-scope.js';
+// v3.23.0（只读）：**分段切片口径**体检 —— 回答「这次分析会切成几段、每段几个正文」
+import { chunkInfo, chunkFloorIds, SUMMARY_CHUNK_DEFAULT } from '../core/chunk.js';
+import { summaryChunkSize, batchProgress, lastExtractRecord } from '../host/extract.js';
 // v3.0.10：载入链路诊断（内存 / 本机缓冲 / 服务端文件 / 调试日志 四处并排对比）
 import { scopeId } from '../core/state.js';
 import { stateFileName } from '../adapters/user-file.js';
@@ -517,6 +520,31 @@ export function buildBridgeMethods() {
     T['ftt.plotScope'] = safe(() => {
         const snap = plotScopeSnapshot();
         return Object.assign({ chatKey: currentChatKey().slice(0, 12) + (currentChatKey() ? '…' : ''), chatTail: currentChatTail() }, snap);
+    });
+    // v3.23.0（用户要求「全部AI摘要需支持分段处理，且默认采用 3 个正文进行切片，分批进行处理」）：
+    //   **分段切片体检**（只读零副作用）—— 回答「生效段长是多少、它来自配置还是默认值、
+    //   当前未摘要楼层会被切成几段、每段覆盖哪些楼（前 5 段预览）、上一批实际用了多少段」。
+    T['ftt.chunkPlan'] = safe(() => {
+        const chunkSize = summaryChunkSize();
+        const cfgRaw = (cfg && cfg.summaryChunkSize === undefined) ? null : Number(cfg.summaryChunkSize);
+        const pending = listUnprocessedFloors({ maintain: false });
+        const plan = chunkInfo(pending, chunkSize);
+        const chunks = chunkFloorIds(pending, chunkSize);
+        const bp = batchProgress();
+        const last = lastExtractRecord();
+        return {
+            chunkSize: chunkSize,
+            // `cfg` = `cfg.summaryChunkSize` 有值（载入配置后恒如此）；`default` = 连配置键都没有（载入前的空配置）
+            effectiveFrom: cfgRaw === null ? 'default' : 'cfg',
+            cfgValue: cfgRaw,
+            // 是否就是内置默认段长（**3 个正文/段**）—— 回答「用户有没有改过」
+            isBuiltinDefault: chunkSize === SUMMARY_CHUNK_DEFAULT,
+            pending: pending.length,
+            pendingSegments: plan.segments,
+            pendingPreview: chunks.slice(0, 5).map((c) => ({ start: c.start, end: c.end, floors: c.ids.length })),
+            running: { segTotal: Number(bp.segTotal) || 0, segDone: Number(bp.segDone) || 0, range: String(bp.range || ''), chunkSize: Number(bp.chunkSize) || chunkSize },
+            lastBatch: (last && last.via === 'batch') ? { floors: String(last.floors || ''), segments: Number(last.segments) || 0, added: Number(last.added) || 0, aborted: Number(last.aborted) || 0, chunkSize: Number(last.chunkSize) || null } : null,
+        };
     });
 
     // —— 数据体检（v3.13.0，**只读零副作用**）：把存档里的数据异常逐条列出 ——

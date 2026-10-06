@@ -8,6 +8,8 @@
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
+// v3.23.0：「每段正文数」默认值唯一事实源（`3`）—— 全部 AI 摘要入口共用同一段长口径
+import { SUMMARY_CHUNK_DEFAULT } from './chunk.js';
 
 const CN_KEY_MAP = {
     '当前状态': 'state', '情节': 'atoms', '状态记录': 'states', '角色档案': 'snapshots', '平行事件': 'parallels',
@@ -921,7 +923,11 @@ const defaultCfg = {
     vectorWeight: 0.4,
     vectorTimeoutMs: 15000,
     summaryFloors: 30,
-    summaryChunkSize: 10,   // v1.32：分段读取楼层数（每次分析不是全量，分段排队处理）
+    // v1.32：分段读取楼层数（每次分析不是全量，分段排队处理）
+    // v3.23.0（用户要求「全部AI摘要需支持分段处理，且默认采用 **3 个正文**进行切片，分批进行处理。
+    //   避免一次性分析记忆。」）：默认值 **10 → 3**，并成为**全部摘要入口**（批量摘要 / 多楼·全量提取 /
+    //   推演世界）的**统一段长上界**（唯一事实源 = `core/chunk.js#SUMMARY_CHUNK_DEFAULT`）。
+    summaryChunkSize: SUMMARY_CHUNK_DEFAULT,
     // v2.86.0（`docs/D7`）：重要度改为「窗口调用占比」（每次提取后重算最近 N 条；逐维独立、状态按主体分组）
     impRecalcEnabled: true,      // 是否启用重要度重算（关闭则保留历史值）
     impWindowRadius: 10,         // 窗口半径（前后各 R 条，含自身 → 窗口 2R+1 条）
