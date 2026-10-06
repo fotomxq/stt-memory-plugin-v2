@@ -134,6 +134,7 @@ function useTauriTavern(withDev = true) {
                 'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
                 'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
                 'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors', 'ftt.ledger', 'ftt.loadDiag',
+                'ftt.localDir',                                              // v3.26.0：+本机缓冲目录模式体检
                 'ftt.memorySample', 'ftt.memoryShape',
                 'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.plotScope', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads',
                 'ftt.search', 'ftt.snapshot', 'ftt.stateSize', 'ftt.syncLog',              // v3.25.0：+搜索 / 楼层窗口 / 同步日志
@@ -283,7 +284,7 @@ function useTauriTavern(withDev = true) {
         useVanilla();
         for (const name of ['sys.info', 'sys.methods', 'sys.host', 'sys.bridgeState', 'ftt.snapshot', 'ftt.probe', 'ftt.stateSize',
             'ftt.debugLogStats', 'ftt.debugPageInfo', 'ftt.traceStats', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
-            'ftt.fileTransport', 'ftt.chatMeta', 'ftt.memoryShape', 'ftt.reads']) {
+            'ftt.fileTransport', 'ftt.chatMeta', 'ftt.memoryShape', 'ftt.reads', 'ftt.localDir']) {
             const r = await bridgeDispatch({ id: name, method: name });
             A('E1 酒馆原生下 ' + name + ' 返回帧且不抛', r && typeof r.ok === 'boolean', r);
         }

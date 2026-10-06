@@ -144,3 +144,70 @@ export function readFileText(file) {
         } catch (e) { reject(e); }
     });
 }
+
+/**
+ * v3.26.0（用户要求「增加选择目录，可手动选择目录」）——**选择文件夹并取回它的名字**。
+ *
+ * 为什么只取名字（**如实**）：宿主只允许扩展写到游戏数据目录内（`api.extension.store` 的命名空间
+ *   只接受 `[A-Za-z0-9_.-]`），用户选中的真实磁盘路径**交不进存储层**。因此这里只把文件夹名
+ *   当作「数据目录内的子目录名」，由调用方明确告知最终落盘位置。
+ *
+ * 两条实现路径（按可用性依次尝试，都不抛）：
+ *   ① `showDirectoryPicker()`（File System Access API）：**空文件夹也能拿到名字**，首选；
+ *   ② `<input type="file" webkitdirectory>`：只在文件夹**含文件**时返回路径
+ *      （空文件夹 → `files` 为空 → 拿不到名字），此时如实回报 `empty-folder`，让用户手动输入。
+ * @returns {Promise<{ok:boolean, reason:string, name:string, via:string}>}
+ */
+export function pickDirectoryName(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+        const done = (r) => { try { resolve(r); } catch (e) { /* 忽略 */ } };
+        const empty = (reason) => done({ ok: false, reason: reason, name: '', via: '' });
+        try {
+            const g = globalThis;
+            const doc = g && g.document;
+            if (!doc || typeof doc.createElement !== 'function') return empty('no-dom');
+            // ① File System Access API（空文件夹也可用）
+            try {
+                if (typeof g.showDirectoryPicker === 'function') {
+                    Promise.resolve(g.showDirectoryPicker()).then((h) => {
+                        const nm = str(h && h.name);
+                        if (nm) return done({ ok: true, reason: '', name: nm, via: 'picker' });
+                        done({ ok: false, reason: 'no-name', name: '', via: 'picker' });
+                    }).catch((e) => {
+                        const m = str(e && e.message);
+                        done({ ok: false, reason: /abort|cancel|denied|gesture/i.test(m) ? 'cancelled' : ('error:' + m), name: '', via: 'picker' });
+                    });
+                    return;
+                }
+            } catch (e) { /* 落到 webkitdirectory */ }
+            // ② `<input webkitdirectory>`
+            const input = doc.createElement('input');
+            try { input.type = 'file'; } catch (e) { return empty('no-input'); }
+            try { input.webkitdirectory = true; } catch (e) { /* 忽略 */ }
+            try { if (typeof input.setAttribute === 'function') input.setAttribute('webkitdirectory', ''); } catch (e) { /* 忽略 */ }
+            try { if (input.style) input.style.display = 'none'; } catch (e) { /* 忽略 */ }
+            let settled = false;
+            const finish = (r) => { if (settled) return; settled = true; detach(input); done(r); };
+            input.onchange = () => {
+                try {
+                    const files = (input && input.files) ? input.files : null;
+                    const first = files && files[0];
+                    const rel = str(first && first.webkitRelativePath);
+                    const nm = rel ? rel.split('/')[0] : '';
+                    if (nm) finish({ ok: true, reason: '', name: nm, via: 'webkitdirectory' });
+                    else finish({ ok: false, reason: 'empty-folder', name: '', via: 'webkitdirectory' });
+                } catch (e) { finish({ ok: false, reason: 'read-failed', name: '', via: 'webkitdirectory' }); }
+            };
+            try { input.oncancel = () => finish({ ok: false, reason: 'cancelled', name: '', via: 'webkitdirectory' }); } catch (e) { /* 忽略 */ }
+            attach(input);
+            try { input.click(); } catch (e) { return empty('click-failed'); }
+            const ms = Number(o.timeoutMs) > 0 ? Number(o.timeoutMs) : 120000;
+            if (typeof g.setTimeout === 'function') {
+                g.setTimeout(() => finish({ ok: false, reason: 'cancelled', name: '', via: 'webkitdirectory' }), ms);
+            }
+        } catch (e) {
+            empty('error:' + str(e && e.message));
+        }
+    });
+}
