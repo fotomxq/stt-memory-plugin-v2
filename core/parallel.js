@@ -73,6 +73,8 @@ import { upsertEntry, deleteEntry } from './entries.js';
 import { rumorMarkParallelChange } from './rumor-evolve.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 import { defaultCfg } from './config.js';
+// v3.23.0（用户要求「全部 AI 摘要需支持分段处理…避免一次性分析记忆」）：推演世界同样按「每段 ≤3 个正文」切片
+import { chunkFloorRange } from './chunk.js';
 
 // ---------- 楼层取文钩子（宿主注入；内核默认空） ----------
 let textHooks = {
@@ -329,6 +331,48 @@ export async function runParallelWeave(floorRange, opts) {
         // V1 此处先判「用户中断」（abortQuiet）；V2 无中断标志 → 一律按异常告警。
         warn('交织管线异常', e); return { ok: false, error: String(e && e.message || e) };
     }
+}
+
+// ==================== 推演世界的**分段**入口（v3.23.0 用户要求） ====================
+/**
+ * **分段推演世界**：把区间按 `cfg.summaryChunkSize`（默认 **3** 个正文）切片，逐段调用 `runParallelWeave`。
+ *
+ * 用户要求（原话）：「全部AI摘要需支持分段处理，且默认采用 **3 个正文**进行切片，分批进行处理。避免一次性分析记忆。」
+ * 现状缺陷：`runParallelWeave` 会**一次**把整个区间正文（默认 `summaryFloors` = 30 楼，手动入口按 `feedFloors` 取）
+ *   拼进同一个提示词 —— 与摘要入口的「分段」口径不一致，楼层一多就是"一次性分析"。
+ * 本函数只做**编排**：不改 `runParallelWeave` 的任何内部语义（提示词/去重/落库/通知逐字不变），
+ *   只是把它调用 N 次、每次喂 ≤ 段长 个正文，再聚合结果。
+ *
+ * 聚合口径（保守）：
+ *   · `ok` = 至少一段成功（`error === 'busy'` 不计成功）；
+ *   · `added` / `updated` = 各段求和；`skipped` = 首个非空跳过原因（`dedup` / `empty`）；
+ *   · `busy` = 任一段因管线占用被拒（调用方据此提示"请稍候"）；
+ *   · `chunks` = 段数，`range` = 实际覆盖区间（便于提示与调试留痕）。
+ * @param {{start?:number,end?:number}} [floorRange]
+ * @param {{keywords?:string[], force?:boolean, chunkSize?:number}} [opts]
+ * @returns {Promise<{ok:boolean, added:number, updated:number, chunks:number, range:string, busy:boolean, skipped:string, results:Array, error?:string}>}
+ */
+export async function runParallelWeaveChunked(floorRange, opts) {
+    const o = opts || {};
+    const fr = floorRange || {};
+    const start = Number(fr.start) >= 0 ? Math.trunc(Number(fr.start)) : 0;
+    const rawEnd = Number(fr.end);
+    const end = Number.isFinite(rawEnd) ? Math.max(start, Math.trunc(rawEnd)) : (start + (Number(cfg.summaryFloors) || 10));
+    const chunks = chunkFloorRange(start, end, o.chunkSize, cfg.summaryChunkSize);
+    const results = [];
+    let added = 0, updated = 0, okAny = false, busy = false, skipped = '', error = '';
+    for (const c of chunks) {
+        const r = await runParallelWeave({ start: c.start, end: c.end }, o);
+        results.push(Object.assign({ start: c.start, end: c.end }, r || {}));
+        if (r && r.error === 'busy') { busy = true; continue; }
+        if (r && r.error && !error) error = String(r.error);
+        if (r && r.ok) { okAny = true; added += Number(r.added) || 0; updated += Number(r.updated) || 0; if (!skipped && r.skipped) skipped = String(r.skipped); }
+    }
+    return {
+        ok: okAny, added: added, updated: updated, chunks: chunks.length,
+        range: chunks.length ? (chunks[0].start + '-' + chunks[chunks.length - 1].end) : '',
+        busy: busy, skipped: skipped, results: results, error: error,
+    };
 }
 
 // ==================== v1.72 平行事件「推进/演变」（手动 · 全部/单条） ====================

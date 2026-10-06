@@ -1204,7 +1204,7 @@ export function analyzePageHtml(controls) {
         '</div>',
         (scope
             ? '<div class="ftt-section"><div class="ftt-sec-title">分析范围</div>' + scope
-            + shortHintHtml('分批处理（默认 10）；自动补全覆盖全部未摘要楼层，手动摘要只处理最近楼层。')
+            + shortHintHtml('分批处理（默认 3 个正文/段，全部 AI 摘要入口共用）')
             + '</div>'
             : ''),
         (seg

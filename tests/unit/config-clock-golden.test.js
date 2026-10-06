@@ -47,7 +47,10 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'storeMaxAtoms', 'storeMaxMemories', 'storeMaxSnapshots', 'storeMaxItems', 'storeMaxConcepts', 'storeMaxScenes',
         'storeMaxPlans', 'storeMaxSuspense', 'storeMaxNpcs', 'storeMaxRumors', 'storeMaxCurrencies'];
     // v2.86.0（`docs/D7` §4.9 C1）：「重要度」值域改为窗口占比（典型 0-30%）→ 清扫保护阈值 0.7 → 0.2（≈4 倍窗口均值）
-    const DEVIATED_KEYS = ['lowUseForgetProtectImportance'];
+    // v3.23.0（用户要求「全部AI摘要需支持分段处理，且默认采用 **3 个正文**进行切片，分批进行处理。避免一次性分析记忆。」）：
+    //   「每段正文数」默认值 **10 → 3**（`core/chunk.js#SUMMARY_CHUNK_DEFAULT`，成为全部摘要入口的统一段长上界）——
+    //   语义键不变、用户可改，属**默认值有意偏离**（样本一字不改，仅在此登记）。
+    const DEVIATED_KEYS = ['lowUseForgetProtectImportance', 'summaryChunkSize'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
         && RAISED_CAP_KEYS.indexOf(k) < 0 && DEVIATED_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));

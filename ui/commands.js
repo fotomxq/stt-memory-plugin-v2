@@ -174,8 +174,13 @@ export function registerSlashCommand(getExtra, hooks) {
                     else if (raw && typeof hooks.pending === 'function') return '待分析楼层：' + (hooks.pending({}).join('、') || '（无）');
                     const r = await hooks.extract(opts);
                     if (r && Array.isArray(r.results)) {
-                        const head = '分析完成：成功 ' + r.done + ' / 共 ' + r.results.length + (r.note ? '（' + r.note + '）' : '');
-                        const rows = r.results.map((x) => '· 第 ' + x.floor + ' 楼 ' + (x.ok ? '✅ 新增 ' + x.added + ' 条' : '❌ ' + (x.reason || '失败')));
+                        // v3.23.0：多楼提取改为**按段**推进（每段 ≤ cfg.summaryChunkSize，默认 3 个正文）→
+                        //   回报按"段"渲染（`4-6 楼`），不再假装是逐楼结果。
+                        const seg = (x) => (Number(x.end) > Number(x.start) ? ('第 ' + x.start + '-' + x.end + ' 楼') : ('第 ' + x.floor + ' 楼'));
+                        const head = '分析完成：成功 ' + r.done + ' / 共 ' + r.results.length
+                            + (Number(r.segments) > 1 ? ('（' + r.segments + ' 段 · 每段 ≤' + (r.chunkSize || '?') + ' 楼）') : '')
+                            + (r.note ? '（' + r.note + '）' : '');
+                        const rows = r.results.map((x) => '· ' + seg(x) + ' ' + (x.ok ? '✅ 新增 ' + x.added + ' 条' : '❌ ' + (x.reason || '失败')));
                         return [head].concat(rows).join('\n');
                     }
                     if (r && r.ok) return '第 ' + r.floor + ' 楼分析完成：新增 ' + r.added + ' 条（共 ' + r.total + ' 条）· ' + r.ms + 'ms';

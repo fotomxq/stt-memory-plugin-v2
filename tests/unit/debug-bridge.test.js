@@ -129,7 +129,7 @@ function useTauriTavern(withDev = true) {
         setBridgeMethods(T);
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
-                'ftt.chatMeta', 'ftt.chatReady', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
+                'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
                 'ftt.dataHealth', 'ftt.dataHealthText',                      // v3.11.0：数据体检（只读）
                 'ftt.debugLogStats', 'ftt.debugPageInfo',
                 'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.loadDiag', 'ftt.memorySample', 'ftt.memoryShape',

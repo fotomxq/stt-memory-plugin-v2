@@ -222,10 +222,17 @@ A('C6 区间口径：内核 lastMessageId 落后（新楼刚入聊天、宿主�
     const r = await analyzeFloors({
         ai: async () => { calls.push(1); return { ok: true, text: J({ atoms: { add: [{ title: '新事件', text: '甲在码头清点货物并记录去向（正文足够长）。' }] } }) }; },
     });
-    A('D1 列表与执行同源：analyzeFloors 只分析未摘要清单（覆盖的 1/2/3 楼不被重复分析）',
-        J(r.floors) === J(pending) && calls.length === pending.length
+    // v3.23.0：多楼 / 全量提取改为**按段**推进（每段 ≤ cfg.summaryChunkSize，本用例 = 4 个正文）——
+    //   因此「AI 调用次数 = 段数」（≤ 楼层数），不再是「一楼一次」；判据仍是**只分析未摘要清单**。
+    A('D1 列表与执行同源：analyzeFloors 只分析未摘要清单（覆盖的 1/2/3 楼不被重复分析），多楼时按段推进',
+        J(r.floors) === J(pending)
+        && r.segments === r.results.length && r.segments > 0 && r.segments <= pending.length
+        && calls.length === r.segments
+        && r.results.every((x) => Number(x.start) >= 0 && Number(x.end) >= Number(x.start))
+        // 每个段的区间都不含「已有记忆数据」的 1/2/3 楼
+        && r.results.every((x) => (x.start > 3) || (x.end < 1))
         && r.floors.indexOf(1) < 0 && r.floors.indexOf(2) < 0 && r.floors.indexOf(3) < 0,
-        J({ floors: r.floors, pending: pending, calls: calls.length }));
+        J({ floors: r.floors, pending: pending, calls: calls.length, segments: r.segments }));
 }
 
 {
