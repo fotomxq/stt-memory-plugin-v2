@@ -44,6 +44,15 @@ async function A(name, cond, detail) {
 }
 const J = (v) => JSON.stringify(v);
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+/**
+ * v3.24.0（UI 优化）：`.ftt-modal` 根节点新增**对话框语义**属性（`role="dialog"` / `aria-modal` / `aria-label`）。
+ * 本文件的 DOM 影子与断言因此改为**按前缀定位开标签**（`MODAL_PREFIX`）并把属性归一后再比字符串 ——
+ * 「外层仍是 `<div class="ftt-modal">` 这一个节点」这一外部接口口径**不变**（只是多了属性）。
+ */
+const MODAL_PREFIX = '<div class="ftt-modal"';
+const MODAL_OPEN = '<div class="ftt-modal">';
+/** 把开标签上的属性归一掉（仅用于字符串比对，不改变任何被测行为） */
+const normModal = (s) => String(s).replace(/^<div class="ftt-modal"[^>]*>/, MODAL_OPEN);
 
 /**
  * DOM 影子：建模真实浏览器的两条关键行为 ——
@@ -85,15 +94,17 @@ function makeFakePanel(opts) {
         listeners: {},
         get scrollTop() { return scroll.panel; },
         set scrollTop(v) { scroll.panel = Number(v) || 0; },
-        get innerHTML() { return modal ? ('<div class="ftt-modal">' + modal._h + '</div>') : ''; },
+        get innerHTML() { return modal ? (MODAL_OPEN + modal._h + '</div>') : ''; },
         set innerHTML(v) {
             const html = String(v);
             stats.panelWrites++;
             modal = /class="ftt-modal"/.test(html) ? makeModal() : null;
             if (modal) {
-                const open = '<div class="ftt-modal">';
-                const i = html.indexOf(open);
-                modal._h = (i >= 0) ? html.slice(i + open.length, html.lastIndexOf('</div>')) : '';
+                // v3.24.0：根节点带上了对话框语义属性（`role` / `aria-modal` / `aria-label`）→ 这里按
+                //   「`<div class="ftt-modal"` 起始、到第一个 `>` 为止」定位开标签，不再假定没有别的属性。
+                const i = html.indexOf(MODAL_PREFIX);
+                const gt = i >= 0 ? html.indexOf('>', i) : -1;
+                modal._h = (gt >= 0) ? html.slice(gt + 1, html.lastIndexOf('</div>')) : '';
             }
             zeroBodies();
             scroll.panel = 0;
@@ -158,14 +169,15 @@ await A('A3 复用路径产出的内容与 `panelHtml()` 完全一致（拆分�
     const inner = fake.querySelector('.ftt-modal').innerHTML;
     // 两条路径（复用节点 / 整树替换）写入的内容必须一致：字符串层 type 补全后的模态内部
     return inner === ensureButtonTypes(panelModalInnerHtml())
-        && ('<div class="ftt-modal">' + inner + '</div>') === ensureButtonTypes(panelHtml());
+        && normModal(MODAL_OPEN + inner + '</div>') === normModal(ensureButtonTypes(panelHtml()));
 })(), () => ({ inner: fake.querySelector('.ftt-modal').innerHTML.slice(0, 80) }));
 
-await A('A4 `panelHtml()` 仍是完整浮层（外层包 `<div class="ftt-modal">`）：外部接口与既有测试口径不变', (() => {
+await A('A4 `panelHtml()` 仍是完整浮层（外层包 `<div class="ftt-modal">`，v3.24.0 起同一节点上带对话框语义属性）：外部接口与既有测试口径不变', (() => {
     const h = panelHtml();
-    return h.indexOf('<div class="ftt-modal">') === 0 && h.lastIndexOf('</div>') === h.length - 6
-        && h === ('<div class="ftt-modal">' + panelModalInnerHtml() + '</div>');
-})(), () => panelHtml().slice(0, 60));
+    return h.indexOf(MODAL_PREFIX) === 0 && h.lastIndexOf('</div>') === h.length - 6
+        && normModal(h) === (MODAL_OPEN + panelModalInnerHtml() + '</div>')
+        && h.indexOf('role="dialog"') >= 0 && h.indexOf('aria-modal="true"') >= 0;
+})(), () => panelHtml().slice(0, 96));
 
 // ---------- B 组：真实点击路径 ----------
 await A('B1 连续点击（`panelAction` ×6，每次动作后都会重渲染）→ 模态节点**始终是同一个**，覆盖层只被替换过一次', (async () => {
@@ -212,7 +224,7 @@ await A('C2 无 `.ftt-modal` 的环境（桩 DOM / 受限宿主）→ 安全回�
     el2.querySelector = () => null;
     doc._els['ftt-panel'] = el2;
     const html = renderPanel();
-    const ok = typeof html === 'string' && html.indexOf('<div class="ftt-modal">') === 0;
+    const ok = typeof html === 'string' && html.indexOf(MODAL_PREFIX) === 0;
     boot();                                            // 还原
     return ok;
 })(), () => 'fallback');

@@ -52,6 +52,8 @@ import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/de
 import { relationSnapshot, relationStats, dependents, relationsOf, relationQueryRefs, relationLayerOn } from './core/relations.js';
 // v2.41.0：调试包导出（面板「📦 导出调试包」与 FTT.debugLogExport 共用同一实现）
 import { setDebugHooks as setDebugPageHooks, buildDebugExport, installDebugBridge } from './ui/debug.js';
+// v3.24.0：统一用户通知出口（kind 归一 + 行为配色类 + 转义 + 去重 + 分级停留）
+import { showToast } from './ui/notify.js';
 // v2.42.0：交互/宿主/命令追踪（FTT 入口包装 + 诊断入口）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceList, traceTimelineText, traceStats, traceContext, traceClear } from './core/trace.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
@@ -2095,17 +2097,15 @@ function installHostBridges() {
         clear: (id) => { try { clearTimeout(id); } catch (e) { /* 忽略 */ } },
     });
     setNotifyHooks({
-        toast: (text, kind) => {
-            try {
-                const t = globalThis.toastr;
-                if (!t) return;
-                // v2.96.0：补上 `success`（V1 `notify('success', …)` 的等价物；此前一律落到 info）
-                const fn = kind === 'error' ? t.error
-                    : (kind === 'warning' ? t.warning
-                        : (kind === 'success' ? (t.success || t.info) : t.info));
-                if (typeof fn === 'function') fn.call(t, String(text == null ? '' : text));
-            } catch (e) { /* 静默 */ }
-        },
+        // v3.24.0（用户要求「进一步优化UI设计、优化通知效果等」）：**统一走 `ui/notify.js#showToast`**
+        //   —— 改动前这里只把 kind 压成 4 类宿主方法、且不传任何选项，导致：
+        //     ① `style.css` 早已写好的 8 类行为配色类（`ftt-toastr--weave/--sync/--repair/--analysis…`）
+        //        **从未被挂上**（死 CSS，所有通知长得一样）；
+        //     ② `escapeHtml` 未开（正文里的 `<...>` 被当 HTML 渲染）；无去重（同文案连发刷屏）；
+        //        无长度上限；错误与普通提示停留时间相同（来不及看清失败原因）。
+        //   现在（口径详见 `ui/notify.js` 头注）：kind 全量归一 → 配色类 + 转义 + 去重 + 分级停留 + 截断。
+        //   面板 `hooks.notify` 与删楼 `floorTrim.notify` 也最终经过此处，故三处入口一次收口。
+        toast: (text, kind) => { try { return showToast(globalThis.toastr, kind, text) === true; } catch (e) { return false; } },
     });
     return { identity: true, notify: true };
 }

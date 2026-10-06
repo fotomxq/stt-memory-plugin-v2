@@ -62,13 +62,15 @@ R.assert('S1 V1 样式已逐字并入：style.css 含 #ftt-panel 系列规则且
     return need.every((k) => CSS.indexOf(k) >= 0) && (CSS.match(/#ftt-panel/g) || []).length >= 300;
 })(), (CSS.match(/#ftt-panel/g) || []).length);
 
-R.assert('S2 浮层 DOM 与 V1 同构：#ftt-panel > .ftt-modal > 头/标签/13 个 .ftt-body[data-ftt-body]', (() => {
+R.assert('S2 浮层 DOM 与 V1 同构：#ftt-panel > .ftt-modal > 头/标签/13 个 .ftt-body[data-ftt-body]（v3.24.0：同一节点上新增对话框语义属性）', (() => {
     const html = panelHtml();
     const tabIds = PANEL_TABS.map((t) => t[0]);
     return tabIds.length === 13
-        && html.indexOf('<div class="ftt-modal">') >= 0
+        && html.indexOf('<div class="ftt-modal"') >= 0
+        && html.indexOf('role="dialog"') >= 0 && html.indexOf('aria-modal="true"') >= 0
         && html.indexOf('class="ftt-modal-head"') >= 0 && html.indexOf('class="ftt-close"') >= 0
-        && html.indexOf('class="ftt-tabs"') >= 0
+        && html.indexOf('class="ftt-tabs"') >= 0 && html.indexOf('role="tablist"') >= 0
+        && html.indexOf('role="tab"') >= 0 && html.indexOf('aria-selected="true"') >= 0
         && tabIds.every((t) => html.indexOf('data-ftt-tab="' + t + '"') >= 0 && html.indexOf('data-ftt-body="' + t + '"') >= 0)
         && html.indexOf('📖 FTT记忆组件') >= 0 && html.indexOf('总记忆数') >= 0;
 })(), panelInfo());
