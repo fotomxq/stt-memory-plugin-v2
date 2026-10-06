@@ -1548,6 +1548,10 @@ function pageExtraHtml(pid) {
             '<div class="ftt-hint">下面两项都会永久删除本地记录，<b>删除前建议先「⬇ 导出 JSON 文件」备份</b>。</div>',
             '<div class="ftt-row">',
             '<button class="ftt-btn" data-ftt-action="clearFloors" title="只清「已处理楼层」的计数，不删除任何记忆条目；清除后总览重新列出第 0 层之后的所有待分析楼层">🧹 清除已处理楼层记录</button>',
+            // v3.26.4（用户报告「突然冒出来大量未分析的楼层，实际早已分析」）：与上面**互为逆操作** ——
+            //   台账标记丢失时（删楼 / 部分载入会把低楼层标记丢掉，且旧版不留痕），用户确认「当初分析过」后
+            //   一次性登记为已分析：只写记账，不调用 AI、不删任何记忆条目。
+            '<button class="ftt-btn" data-ftt-action="markPending" title="把当前未分析清单登记为「已分析」：只写楼层记账，不调用 AI、不删除任何记忆条目；用于「当初确实分析过、只是记账丢了」的楼层；可用左边的「清除已处理楼层记录」撤销">✔ 登记未分析楼层为已分析</button>',
             // B9-a：V1 数据管理页第 4 个按钮（`data-ftt-action="reset"`，文案逐字「🗑 清空当前角色记忆」）。
             //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
             //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。

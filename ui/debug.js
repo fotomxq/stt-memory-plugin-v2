@@ -50,6 +50,7 @@ import { localFileDirCandidates, localFileRealLocation } from '../adapters/local
 import {
     processedStats, scanPendingFloors, listUnprocessedFloors, floorMessage, floorStableText,
     hashFloorText, floorAnalyzableText, chatReadyForFloors, processedVerTag, liveFloorTail,
+    ledgerHealth,   // v3.26.4：台账健康量表（只读；标记可读性 / 留痕 / 覆盖 / 未分析 / 上次回填）
 } from '../host/floors.js';
 import { floorCoverage } from '../core/floor-cover.js';
 // v3.20.0：情节「聊天归属 / 位置越界」体检（只读；回答「时钟为什么取了别条聊天的时间」）
@@ -542,6 +543,13 @@ export function buildBridgeMethods() {
             verMatches: (state.processedVer || '') === processedVerTag(),
             processedVer: String(state.processedVer || ''),
             currentVer: processedVerTag(),
+            // v3.26.4（真机取证「突然冒出来大量未分析的楼层，实际早已分析」）：健康量表 ——
+            //   一眼看清「台账几条 / 其中几条在当前聊天里读不到正文（部分载入或楼层已消失的信号）/
+            //   留痕几条 / 覆盖几层 / 仍然未分析几层 / 上次留痕回填救回几条」。**只读，不改任何数据**。
+            health: ledgerHealth(),
+            droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped : [])
+                .slice(-80)
+                .map((x) => ({ f: Number(x && x.f), h: String((x && x.h) || '') })),
         };
     });
     T['ftt.chatReady'] = safe(() => chatReadyForFloors());

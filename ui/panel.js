@@ -683,7 +683,13 @@ function overviewBody() {
                     + (dis ? ' disabled' : '')
                     + ' title="' + attr(title) + '">第' + esc(f) + '楼</button>';
             }).join(' ')
-            + (pending.length > 40 ? ' …+' + (pending.length - 40) : '') + '</div></div>');
+            + (pending.length > 40 ? ' …+' + (pending.length - 40) : '')
+            // v3.26.4（用户报告「突然冒出来大量未分析的楼层，实际早已分析」）：这些楼层里若有**当初确实分析过、
+            //   只是台账标记丢了**的（真机取证：删楼 / 部分载入把低楼层标记静默丢弃，且不留痕），
+            //   给一条**显式**的补救出口 —— 只写记账，不调用 AI、不删任何记忆条目（清除记录可撤销）。
+            + '<div class="ftt-hint ftt-pend-tools"><button class="ftt-btn ftt-sm" type="button" data-ftt-action="markPending"'
+            + ' title="若这些楼层当初确实分析过（只是「已处理」记账丢了）：一次性登记为已分析。只写楼层记账，不调用 AI、不删除任何记忆条目；可用「🧹 清除已处理楼层记录」撤销">✔ 登记为已分析</button></div>'
+            + '</div></div>');
     }
     const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
     // v3.10.3：与管线同口径 —— 覆盖统计也**限定在本聊天范围内**（越界区间不计入，见 core/floor-cover.js）
@@ -1914,6 +1920,9 @@ const DANGER_ACTION_PROMPTS = {
     'localCopyClearOthers': '清除**其它角色**留在本机的状态副本？\n\n只删其它角色的本机副本（当前角色的不动）；每个角色清掉后，下次切到它时会从服务端重新载入。\n若某个角色有未上传的改动，清掉就等于丢弃它。',
     'v1LegacyClear': '清除 V1 遗留的本机数据（导入源）？\n\n这些是 V1 插件留在本机的旧存档 / 旧命名缓存 / 旧设置，「⬆ 导入 V1」靠它迁移；**清理后无法再从本机迁移 V1 数据**。',
     'clearFloors': '清除「已处理楼层」记录？\n\n只重置「哪些楼层已摘要」，**记忆条目一条不删**；清除后总览会重新列出**第 0 层之后的所有待分析楼层**（便于整段重做），再次分析后它们会照常从清单消失。',
+    // ── v3.26.4（用户报告「突然冒出来大量未分析的楼层，实际早已分析」）──
+    //   登记为已分析 = **写台账**（会改变「哪些楼层待分析」的判定）→ 二次确认并写明可撤销路径。
+    'markPending': '把当前未分析清单登记为「已分析」？\n\n只写**楼层记账**：不调用 AI、不删除也不修改任何记忆条目、不改聊天正文。\n用途：这些楼层当初确实分析过、只是「已处理」记账丢了（删楼 / 部分载入会把低楼层标记丢掉），登记后它们不会再被列入待分析、也不会被重复分析（重复分析会重复落库、白花 token）。\n撤销：数据管理页「🧹 清除已处理楼层记录」。',
     // ── v3.15.0（用户要求「货币增加修正按钮…」）──
     //   货币修正是**纯机械**的批量删改：会剔除条目、合并冗余、改写单位/额度 → 属不可逆的批量数据操作，必须二次确认。
     'currencyRepairApply': '应用货币修正计划？\n\n将按预览里逐条列出的内容执行：① 剔除不应该被记录的角色货币（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）② 合并冗余条目（同归属同币种的别名合并，保留最新额度、不累加）③ 修正计价（单位写法归一、额度缺省用流水净额补齐）。\n\n被剔除与被合并掉的条目都会留删除墓碑（跨端同步不会复活），操作**只减不增**、不可撤销 —— 建议先「⬇ 导出 JSON 文件」备份。',
@@ -2336,6 +2345,25 @@ export async function panelAction(action, payload) {
                 : '清空失败');
             // v3.0.20：把结果并入动作返回值（含 `cleared` / `coverUpTo` 与清空后的待分析条数），供面板/测试/命令如实核对
             result = Object.assign(result, r || {}, { action: a, pending: pendN, ok: !!(r && r.ok) });
+        } else if (a === 'markPending') {
+            // v3.26.4（用户报告「突然冒出来大量未分析的楼层，实际早已分析」）：**显式登记**出口 ——
+            //   台账标记确实丢失、数据里也再无证据的楼层，由用户确认「当初分析过」后一次性登记为已分析。
+            //   二次确认由**点击路径**的危险动作闸承担（`DANGER_ACTION_PROMPTS.markPending`，见 v2.94.0 U4
+            //   「程序化调用不受影响」口径）→ 本分支只执行。
+            const pendNow = (() => { try { return (typeof hooks.pending === 'function') ? (hooks.pending({}) || []) : []; } catch (e) { return []; } })();
+            if (!pendNow.length) {
+                setNote('当前没有待分析楼层（台账未改动）');
+                result = Object.assign(result, { ok: false, action: a, reason: 'nothing-pending' });
+            } else {
+                const r = (typeof hooks.markPending === 'function') ? hooks.markPending() : { ok: false, reason: 'unsupported' };
+                const left = Number.isFinite(Number(r && r.pendingAfter))
+                    ? Number(r.pendingAfter)
+                    : (() => { try { return (typeof hooks.pending === 'function') ? (hooks.pending({}) || []).length : null; } catch (e) { return null; } })();
+                setNote(r && r.ok
+                    ? ('已登记 ' + (r.marked || 0) + ' 楼为已分析（跳过 ' + (r.skipped || 0) + ' 楼：非 AI 楼 / 无正文）· 待分析 ' + left + ' 楼（撤销：🧹 清除已处理楼层记录）')
+                    : ('登记失败：' + String((r && r.reason) || '未知原因')));
+                result = Object.assign(result, r || {}, { action: a, ok: !!(r && r.ok), pending: left });
+            }
         } else if (a === 'reset') {
             // V1 `case 'reset'`（数据管理页「🗑 清空当前角色记忆」）：确认文案**逐字一致**
             //   （V1 原文：`confirm('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。')` → `resetState()` → `toast('已清空','info')`）。

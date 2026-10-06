@@ -71,7 +71,7 @@ import {
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, summaryDimsForPrompt, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
-import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump, kernelStateReady } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）；v3.24.1：+kernelStateReady（初始化顺序守卫）
+import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump, kernelStateReady, markFloorsProcessed } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）；v3.24.1：+kernelStateReady（初始化顺序守卫）；v3.26.4：+markFloorsProcessed（用户登记未分析楼层为已分析）
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
 import { folderInfo } from './host/paths.js';
@@ -955,7 +955,7 @@ export function debugDumpSnapshot() {
  * 这样即使初始化没有触发（宿主事件缺失/加载时机不同），用户依然能用命令自查。
  */
 function bootstrapDiagnostics() {
-    const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup, exportState: exportStateJson, importState: importStateJson };
+    const hooks = { importV1: runV1Import, extract: runExtract, summary: runSummaryBatch, abort: abortExtraction, clearFloors: clearProcessedFloors, markPending: markPendingFloors, pending: pendingFloors, panel: forceMountPanel, ui: openPanelPopup, exportState: exportStateJson, importState: importStateJson };
     // v2.41.0：调试页钩子**模块加载即接线**（`init` 未必触发；导出调试包需要 dump/meta）
     try {
         setDebugPageHooks({
@@ -1707,6 +1707,7 @@ export function panelRuntimeHooks() {
         // v2.99.0（用户要求「可添加新平行世界」）：面板「🧪 自定义推演」的运行入口
         parallelCustom: (idea) => runParallelCustom(String(idea == null ? '' : idea), {}),
         clearFloors: clearProcessedFloors,     // 数据管理「清除已处理记录」
+    markPending: markPendingFloors,       // v3.26.4：数据管理「登记未分析楼层为已分析」（与清除互为逆操作）
         resetState: () => resetState(),        // 数据管理「清空当前角色记忆」（缺省回落适配层同名函数）
         // v2.94.0（D12 §4 / §8-E）：数据管理「删除到最近 N 层」三档（官方 API + 备份 + 精确编号校准）
         floorTrimStatus: () => { try { return floorTrimStatus(); } catch (e) { return null; } },
@@ -2018,6 +2019,20 @@ export function abortExtraction() { return abortExtract(); }
 
 /** 清除已处理楼层台账（V1「清除已处理记录」；不删除任何记忆条目） */
 export function clearProcessedFloors() { return clearFloors(); }
+
+/**
+ * v3.26.4（用户要求：「新版本 请调试对接，突然冒出来大量未分析的楼层，实际早已分析」）——
+ * **把当前未分析清单登记为「已分析」**：只写台账标记，不调用 AI、不动任何记忆条目、不改正文。
+ *   用途：台账标记确实丢失、且数据里再无证据的楼层（真机 41 层即此情形）——用户确认「当初分析过」后一次性登记，
+ *   避免被重复分析（重复分析会重复落库、白花 token）。与「🧹 清除已处理楼层记录」互为逆操作。
+ */
+export function markPendingFloors() {
+    const list = (() => { try { return kernelStateReady() ? (pendingFloors({}) || []) : []; } catch (e) { return []; } })();
+    const r = markFloorsProcessed(list);
+    // 登记后立即复算一次，把「还剩几层未分析」如实带回去（界面与测试可核对）
+    const left = (() => { try { return kernelStateReady() ? (pendingFloors({}) || []).length : null; } catch (e) { return null; } })();
+    return Object.assign({ pendingBefore: list.length, pendingAfter: left }, r || {});
+}
 
 /** 待分析楼层清单（命令与调试）；`{detail:true}` → 返回扫描明细（跳过计数 / 覆盖数 / 扫描区间） */
 export function pendingFloors(opts) {

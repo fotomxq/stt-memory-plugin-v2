@@ -6723,6 +6723,47 @@ await assert('BZ1 v3.26.3 召回方式如实告知（端到端）：总览点「
     }
 })(), '');
 
+// v3.26.4（用户报告：「新版本 请调试对接，突然冒出来大量未分析的楼层，实际早已分析。」）：
+// 真机取证 = 台账标记在「删楼 / 部分载入」时被静默丢弃（且不留痕）→ 聊天恢复后那批楼层既无标记也无留痕
+//   → 覆盖判据也不认 → 成片误报「未分析」。本项验两条端到端链路：
+//   ① **留痕回填自愈**（内容仍在 → 恢复为已处理）；② 面板「✔ 登记为已分析」动作（只写记账、不动任何条目）。
+await assert('BZ2 v3.26.4 台账自愈与「登记为已分析」（端到端）：留痕按内容归位救回误报楼层；面板动作把剩余未分析楼层一次性登记（不调用 AI / 不改任何记忆条目），清单归零', (async () => {
+    const FL2 = await import('../host/floors.js');
+    const RTB = await import('../core/model/runtime.js');
+    const keepChat = host.ctx.chat.slice();
+    const keepLast = host.ctx.getLastMessageId;
+    const keepMarks = JSON.parse(JSON.stringify(RTB.state.processedFloors || []));
+    const keepDropped = JSON.parse(JSON.stringify(RTB.state.processedDropped || []));
+    const keepVer = RTB.state.processedVer;
+    try {
+        host.ctx.chat.length = 0;
+        for (let i = 0; i < 12; i++) host.ctx.chat.push({ is_user: i % 2 === 1, role: i % 2 === 0 ? 'assistant' : 'user', mes: '第' + i + ' 楼：甲在码头清点铜箱并把数目记在账册上。' });
+        host.ctx.getLastMessageId = () => host.ctx.chat.length - 1;
+        RTB.state.processedFloors = [];
+        RTB.state.processedVer = FL2.processedVerTag();
+        // 留痕：第 4 楼（AI 楼）的旧哈希 —— 内容其实还在（「删楼 → 恢复聊天」之后的情形）
+        RTB.state.processedDropped = [{ f: 1, h: FL2.hashFloorText(4) }];
+        const before = FL2.listUnprocessedFloors({ maintain: false });
+        const healed = FL2.healLedgerFromDropped();
+        const after = FL2.listUnprocessedFloors({ maintain: false });
+        // ② 面板动作：把剩余未分析楼层一次性登记（危险动作闸只在真实点击时拦，程序化调用直接执行）
+        const atomsBefore = JSON.stringify(RTB.state.atoms || []);
+        const act = await entry.popupAction('markPending', {});
+        const pendLeft = FL2.listUnprocessedFloors({ maintain: false });
+        const atomsSame = JSON.stringify(RTB.state.atoms || []) === atomsBefore;
+        const ok = healed.restored === 1 && before.indexOf(4) >= 0 && after.indexOf(4) < 0
+            && act && act.ok === true && Number(act.marked) > 0 && pendLeft.length === 0 && atomsSame;
+        if (!ok) console.log('BZ2-DEBUG ' + JSON.stringify({ healed, before, after, act: { ok: act && act.ok, marked: act && act.marked, skipped: act && act.skipped, pending: act && act.pending }, pendLeft, atomsSame, note: act && act.note }));
+        return ok;
+    } finally {
+        host.ctx.chat.length = 0; keepChat.forEach((m) => host.ctx.chat.push(m));
+        host.ctx.getLastMessageId = keepLast;
+        RTB.state.processedFloors = keepMarks;
+        RTB.state.processedDropped = keepDropped;
+        RTB.state.processedVer = keepVer;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

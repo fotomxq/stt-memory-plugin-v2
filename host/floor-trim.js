@@ -47,7 +47,7 @@ import {
 } from '../core/floor-trim.js';
 import { getCtx } from './st-api.js';
 import { wireKernelChatHooks } from './chat.js';   // v3.0.16：删楼后立刻把「聊天视图 / 末楼快照」刷新为活值
-import { hashFloorText, handleFloorShrink } from './floors.js';
+import { hashFloorText, handleFloorShrink, rememberDroppedMarks } from './floors.js';
 import { nextFloorBackupSlot } from '../adapters/floor-backup.js';
 
 export { FLOOR_TRIM_PRESETS, FLOOR_TRIM_SLOW_MAX };
@@ -400,6 +400,10 @@ export async function floorTrimApply(opts) {
             catch (e) { return []; }
         })();
         const remap = remapAfterTrim(state, deleted, chatLen() - 1);
+        // v3.26.4（真机取证「突然冒出来大量未分析的楼层，实际早已分析」）：被删段内的台账标记**丢弃前留痕**
+        //   （与 v3.11.1 的其它丢弃路径同口径）——否则「删楼 → 撤销 / 恢复聊天 / 切回更长分支」之后，
+        //   这批楼层既无标记也无留痕，覆盖判据也不认 → 成片变回「未分析」且无法自愈。
+        try { rememberDroppedMarks(remap && remap.dropped); } catch (e) { /* 忽略：留痕失败不阻塞删除 */ }
         // ⑥b v3.0.16（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
         //   ① **立刻刷新聊天视图**（内核 `getLastMessageId()` 是快照，删完仍是旧值；不同步的话
         //      依赖快照的下游——批量摘要的区间、时钟窗口、遗忘/修复的末楼基准——都还按旧值算，
