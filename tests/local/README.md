@@ -153,9 +153,9 @@ node tests/local/bridge.mjs --host 0.0.0.0
 （目标主机默认 `127.0.0.1`，要调手机端才显式改为局域网地址）。**本版未加鉴权** —— 因此刻意保持只读；
 若今后要开放写操作或长期监听局域网，须先补令牌。
 
-**数据体检（v3.11.0，只读零副作用）**：`ftt.dataHealth`（结构化：`ok/level/counts/scanned/findings`，`{cap}` 可限流）与
+**数据体检（v3.13.0，只读零副作用）**：`ftt.dataHealth`（结构化：`ok/level/counts/scanned/findings`，`{cap}` 可限流）与
 `ftt.dataHealthText`（一行摘要）。能确定修好的异常在**载入期自愈**（`core/migrate.js#healthSelfHeal`），端口**不提供写操作**；
-详见 `docs/history/P10c19-数据体检与数据异常自愈.md` 与 `docs/02-数据架构` §5。
+详见 `docs/history/P10c26-数据体检与数据异常自愈.md`（v3.25.1 校对：旧文写 `P10c19` 与 `v3.11.0`，两者均错）与 `docs/02-数据架构` §5。
 
 **台账诊断（v3.0.9，只读零副作用）**：`ftt.ledger`（台账标记 + 版本签名一致性）· `ftt.chatReady`（聊天就绪判定）·
 `ftt.pendingScan`（未摘要清单 + 逐项跳过计数：user/hidden/missing/noText/processed/covered/chatNotReady）·
