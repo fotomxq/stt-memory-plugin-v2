@@ -168,6 +168,29 @@ export function isFloorProcessed(i) {
 }
 
 /**
+ * **内核状态是否已注入**（v3.24.1 真机根因修复）。
+ *
+ * 用户报告（原话）：「刷新后初始化阶段，插件会抛出两个错误，均可能是初始化顺序异常导致的数据错乱。」
+ * 真机错误原文：「已处理楼层漂移防呆失败 Cannot read properties of null (reading 'processedFloors')」（另一条同类）。
+ *
+ * 根因（**初始化顺序**，确定性）：`state` 是内核的注入视图（`core/model/runtime.js` 的 `export let state = null`），
+ *   只在「载入 → 注入」之后才有值。而 `index.js#init()` 的时序是：
+ *     …→ `installHostBridges()`（537）→ **`panelStatusSnapshot()`（545 / 562）** → `loadMemoryState()`（564，内部才 `setKernelState`）
+ *   即**状态注入之前**就会走一遍面板状态快照 → `pendingFloors()` → `listUnprocessedFloors()` →
+ *   `scanPendingFloors()` 的**台账维护块**（765~769）→ `processedDriftGuard()` / `reconcileProcessedFloors()`
+ *   读 `state.processedFloors` → **`state` 为 null → TypeError** → 各函数的 `catch` 里 `warn(...)` →
+ *   用户看到两条「…失败 Cannot read properties of null」的异常提示（且此时 `dbgLog` 尚未接线 → 调试日志里查不到，
+ *   这正是「只看到弹窗、日志里什么都没有」的原因）。
+ *
+ * 判据：`state` 必须是对象才算就绪。未就绪时**任何台账读写都一律短路**（既不抛错、也绝不动数据）——
+ *   「数据错乱」的风险恰恰在于早期误判：此时 `hashFloorText()` 可能全为空，台账一旦按空哈希刷新就会被清空。
+ * @returns {boolean}
+ */
+export function kernelStateReady() {
+    try { return !!state && typeof state === 'object'; } catch (e) { return false; }
+}
+
+/**
  * **聊天是否已就绪**（v2.87.0 修复「重启/更新后大量早期楼层冒出来」的关键守卫）。
  * 用户报告：「总览的未摘要每次更新或重启后，都会提示大量早期楼层，该问题在之前版本已经存在。」
  * 根因：插件启动/更新的时刻**聊天可能尚未同步进宿主 ctx**（`getCtx().chat` 为空或消息还没有正文）。
@@ -198,6 +221,9 @@ export function chatReadyForFloors() {
 /** 台账归位刷新（V1 v1.170/v1.174 口径：签名不符时把已知楼层按当前算法重算哈希） */
 export function migrateProcessedFloorsV170() {
     try {
+        // v3.24.1：状态未注入 → 不迁移（此前会静默抛 `null.processedVer` 并被本函数的 catch 吞掉，
+        //   表现为「迁移没做、也没人说」；现在如实回报 skipped）
+        if (!kernelStateReady()) return { refreshed: 0, migrated: 0, skipped: 'state-not-ready' };
         // V1 v1.85 同款短路：**版本签名一致 → 直接返回**。缺了这一句时「旧标记迁移」会在每次扫描时
         //   把标记哈希刷成当前正文哈希 —— 那会把「正文被改写、本该重新分析」的楼层也永久判为已处理。
         if ((state.processedVer || '') === processedVerTag()) return { migrated: 0, skipped: 'current' };
@@ -234,6 +260,8 @@ export function migrateProcessedFloorsV170() {
 /** 记录已分析楼层（V1 `recordProcessedFloors`：`{f,h}` 台账 + 版本签名 + lastKnownFloor + 落盘） */
 export function recordProcessedFloors(start, end) {
     try {
+        // v3.24.1：状态未注入 → 不记账（绝不把「未就绪」写成「已处理」；调用方据 reason 可诊断）
+        if (!kernelStateReady()) return { ok: false, reason: 'state-not-ready' };
         state.processedFloors = state.processedFloors || [];
         const map = new Map();
         for (const x of state.processedFloors) { const f = markFloor(x); if (Number.isFinite(f)) map.set(f, x); }
@@ -369,6 +397,9 @@ let lastDriftTs = 0;
  */
 export function processedDriftGuard(notify, force) {
     try {
+        // v3.24.1：内核状态尚未注入（刷新后 init 早期的面板状态快照会走到这里）→ 一律短路，绝不在
+        //   `state` 为 null 时读台账（真机报错「…漂移防呆失败 Cannot read properties of null」的根因）
+        if (!kernelStateReady()) return { skipped: 'state-not-ready' };
         const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
         if (pf.length < 10) return { skipped: 'too-few' };
         const ready = chatReadyForFloors();
@@ -432,6 +463,8 @@ export function processedDriftGuard(notify, force) {
  */
 export function reconcileProcessedFloors(notify) {
     try {
+        // v3.24.1：同上 —— 内核状态未注入时不做归位对账（真机第二条报错即此处）
+        if (!kernelStateReady()) return { kept: 0, dropped: 0, skipped: 'state-not-ready' };
         const pf = state.processedFloors || [];
         if (!pf.length) return { kept: 0, dropped: 0 };
         // v2.87.0：聊天未就绪 → 不归位、不丢标记（**先于**版本判定，保证重启期的原因一致可诊断）
@@ -512,6 +545,8 @@ export function handleFloorShrink(opts) {
     try {
         const ready = chatReadyForFloors();
         if (!ready.ready) return { ok: true, skipped: 'chat-not-ready' };
+        // v3.24.1：内核状态未注入 → 不动作（收缩处理会**写台账**；此刻写下去等于把数据建在空状态上）
+        if (!kernelStateReady()) return { ok: true, skipped: 'state-not-ready' };
         const total = ready.total;
         const lastId = total - 1;
         const known = shrinkBaseline();          // v3.11.1：含「最近见到的聊天末楼」，不再只看分析进度
@@ -750,7 +785,7 @@ export function scanPendingFloors(opts) {
     const end = Number.isFinite(Number(o.endFloor)) ? Number(o.endFloor) : tail;
     const lastIdStale = Number.isFinite(lastId) && lastId >= 0 && lastId !== tail;
     const startFloor = Math.max(0, Number(o.startFloor) || 0);
-    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0, chatNotReady: 0 };
+    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0, chatNotReady: 0, stateNotReady: 0 };
     let changedFromDropped = 0;      // v3.11.1：因「正文改写 + 标记已丢」重新入队的楼层数（诊断）
     const out = [];
     try {
@@ -761,14 +796,26 @@ export function scanPendingFloors(opts) {
             return { floors: [], startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, skipped: skipped, chatReady: false, chatReason: ready.reason };
         }
         if (o.maintain !== false) {
-            // v2.93.0（`docs/D12`）：**先处理楼层骤减**（用户会主动删楼减体积）—— 幂等，无收缩即短路返回
-            try { handleFloorShrink(); } catch (e) { /* 忽略 */ }
-            try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ }
-            try { processedDriftGuard(false); } catch (e) { /* 忽略 */ }
-            const now = Date.now();
-            if (now - lastReconcileTs > RECONCILE_MS) { lastReconcileTs = now; try { reconcileProcessedFloors(false); } catch (e) { /* 忽略 */ } }
+            // v3.24.1（真机根因）：**内核状态尚未注入 → 整块台账维护一律跳过**。
+            //   刷新后 `init()` 在 `loadMemoryState()`（内部才 `setKernelState`）**之前**就会取一次面板状态快照
+            //   （`panelStatusSnapshot()` → `pendingFloors()` → 这里），此时 `state === null`：
+            //   旧实现会依次进入四个维护函数并在读 `state.processedFloors` 时抛 TypeError，
+            //   各函数的 catch 里 `warn(...)` → 用户看到两条「…失败 Cannot read properties of null」的异常提示
+            //   （且此刻 `dbgLog` 尚未接线 → 调试日志里查不到，只看到弹窗）。
+            //   注意：这里**只是延后**维护，不是取消 —— 状态注入后下一次扫描会照常补齐（幂等）。
+            if (!kernelStateReady()) {
+                skipped.stateNotReady = 1;
+            } else {
+                // v2.93.0（`docs/D12`）：**先处理楼层骤减**（用户会主动删楼减体积）—— 幂等，无收缩即短路返回
+                try { handleFloorShrink(); } catch (e) { /* 忽略 */ }
+                try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ }
+                try { processedDriftGuard(false); } catch (e) { /* 忽略 */ }
+                const now = Date.now();
+                if (now - lastReconcileTs > RECONCILE_MS) { lastReconcileTs = now; try { reconcileProcessedFloors(false); } catch (e) { /* 忽略 */ } }
+            }
         }
-        const cov = floorCoverage(state, { maxFloor: end });   // v3.10.3：越界区间不计入覆盖（见 core/floor-cover.js）
+        // 状态未注入时按空容器判覆盖（`floorCoverage` 只读、零副作用；此处避免把 null 传下去）
+        const cov = floorCoverage(kernelStateReady() ? state : {}, { maxFloor: end });   // v3.10.3：越界区间不计入覆盖（见 core/floor-cover.js）
         const skipCovered = (o.ignoreCovered !== true);
         // v3.0.20：用户显式「清除已处理楼层记录」→ 该楼号及之前不再按「已有记忆数据」跳过（见 clearProcessedFloors）
         const coverResetUpTo = (() => {
@@ -798,9 +845,19 @@ export function scanPendingFloors(opts) {
             if (!contentChanged && skipCovered && i > coverResetUpTo && cov.has(i)) { skipped.covered++; continue; }
             out.push(i);
         }
-        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0), skipped: skipped };
+        return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: droppedMarksCount(), skipped: skipped };
     } catch (e) { /* 忽略 */ }
-    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0), skipped: skipped };
+    return { floors: out, startFloor: startFloor, endFloor: end, lastId: Number.isFinite(lastId) ? lastId : -1, lastIdStale: lastIdStale, covered: 0, coverItems: 0, coverIgnored: 0, coverMaxFloor: end, changedFromDropped: changedFromDropped, droppedMarks: droppedMarksCount(), skipped: skipped };
+}
+
+/**
+ * v3.24.1：「丢弃留痕」条数（**空状态安全**）。
+ *   此前 `scanPendingFloors` 的两条 return 直接写 `state.processedDropped.length` —— 该表达式**不在**
+ *   函数内部 try/catch 的保护范围内，状态未注入时会直接在返回语句上抛
+ *   `Cannot read properties of null (reading 'processedDropped')`（与本批修的是同一类错序缺陷）。
+ */
+function droppedMarksCount() {
+    try { return kernelStateReady() && Array.isArray(state.processedDropped) ? state.processedDropped.length : 0; } catch (e) { return 0; }
 }
 
 /**
@@ -834,6 +891,8 @@ export function listUnprocessedFloors(opts) {
  */
 export function clearProcessedFloors() {
     try {
+        // v3.24.1：状态未注入 → 不清（清空是**写**操作，绝不能建在空状态上）
+        if (!kernelStateReady()) return { ok: false, reason: 'state-not-ready', cleared: 0 };
         const before = (state.processedFloors || []).length;
         state.processedFloors = [];
         state.lastKnownFloor = -1;
