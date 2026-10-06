@@ -375,6 +375,10 @@ const g2 = await runAll();
 // v3.26.1：自基线再生成（仅开发用；默认不写）。字段集合 = 有意偏离 V1 的那几段。
 if (process.env.FT_EVOLVE_BASELINE === '1') {
     const pick = (o) => ({
+        // v3.26.1：**自描述标记** —— 让任何读到这份 fixture 的人都立刻明白它不是 V1 oracle（见 `docs/D15` §4/§8 Q3）
+        _selfBaseline: true,
+        _why: 'V2 自基线（非 V1 oracle）：v3.26.1 修复 rumorRoll 的 base36/16 进制误读后，机械演化的掷骰与决策有意偏离 V1，故这几段改锁 V2 行为；生成方式见本文件头。',
+        _generatedBy: 'tests/unit/rumor-evolve-golden.test.js（FT_EVOLVE_BASELINE=1）',
         roll: o.roll, rollRepeat: o.rollRepeat, variants: o.variants, link: o.link,
         maybeStart: o.maybeStart, maybeStart0: o.maybeStart0, evolve: o.evolve, evolveNow: o.evolveNow,
         evolveToasts: o.evolveToasts, tickAdvance: o.tickAdvance,

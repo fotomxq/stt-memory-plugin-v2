@@ -252,6 +252,75 @@ for (const f of mdFiles) {
     });
 }
 
+// ------------------------------------------------------------
+// ③b 引用形态：C8 符号级存在性 + C9 绝对行号棘轮（v1.1，见 docs/D14 §3 / docs/D15 §6）
+// ------------------------------------------------------------
+/**
+ * **C8：`文件#符号` 里的符号必须真实存在**（词边界匹配；允许 `符号()` 形态）。
+ *   动机：文件存在 ≠ 文档说的函数/常量还在 —— 改名或删除后文档仍指着它，读者会被误导。
+ *   口径：只核**本仓库**、**非历史层**的文档；仓库外路径（C5 的白名单）不参与；文件不存在交给 C5 报错。
+ */
+const SYM_REF_RE = /^([\w\u4e00-\u9fa5][\w\u4e00-\u9fa5./-]*\.(?:m?js|cjs))#([A-Za-z_$][\w$]*)(?:\(\))?$/;
+const LINE_REF_RE = /^([\w\u4e00-\u9fa5][\w\u4e00-\u9fa5./-]*\.(?:m?js|cjs)):(\d+)(?:-(\d+))?$/;
+const bodyCache = new Map();
+/** 解析仓库内文件（裸文件名按常见落点试；找不到返回 null —— 由 C5 报「引用不存在」） */
+function repoFileBody(rel) {
+    if (bodyCache.has(rel)) return bodyCache.get(rel);
+    const cands = [rel];
+    if (rel.indexOf('/') < 0) for (const d of BARE_DIRS) cands.push(d + rel);
+    let out = null;
+    for (const c of cands) { if (existsSync(join(ROOT, c))) { out = { path: c, text: read(c) }; break; } }
+    bodyCache.set(rel, out);
+    return out;
+}
+let symRefChecked = 0;
+let lineRefChecked = 0;
+const lineRefSamples = [];
+for (const f of mdFiles) {
+    const rel = relative(ROOT, f).split('\\').join('/');
+    if (isHistorical(rel)) continue;
+    const lines = readFileSync(f, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+        if (line.indexOf(MISSING_PATH_OK) >= 0) return;
+        const re = /`([^`\n]+)`/g;
+        let m;
+        while ((m = re.exec(line)) !== null) {
+            const tok = String(m[1]).trim();
+            if (!tok || tok.length > 120 || tok.indexOf(' ') >= 0 || tok.indexOf('|') >= 0) continue;
+            const sm = SYM_REF_RE.exec(tok);
+            if (sm) {
+                const hit = repoFileBody(sm[1]);
+                if (!hit) continue;                                   // 文件不存在 → 由 C5 报错
+                symRefChecked++;
+                if (!new RegExp('\\b' + sm[2].replace(/\$/g, '\\$&') + '\\b').test(hit.text)) {
+                    problems.push('符号引用不存在：' + rel + ':' + (i + 1) + ' → ' + tok
+                        + '（该文件里找不到这个标识符：改名/删除后请同步文档，或改指现存符号）');
+                }
+                continue;
+            }
+            const lm = LINE_REF_RE.exec(tok);
+            if (lm) {
+                if (!repoFileBody(lm[1])) continue;                   // 冻结坐标（V1 源码等不在本仓库）→ 不计入
+                lineRefChecked++;
+                if (lineRefSamples.length < 3) lineRefSamples.push(rel + ':' + (i + 1) + ' → ' + tok);
+            }
+        }
+    });
+}
+/**
+ * **C9：本仓库自有源码的绝对行号引用「只减不增」**（存量预算 = 棘轮）。
+ *   行号会随任何一次代码改动漂移，文档不会自动跟着走；**新引用一律写 `文件#符号`**（C8 负责核）。
+ *   把某处行号改成符号引用后，请把这里的预算**同步调小**（棘轮只允许下调）。
+ *   冻结坐标（V1 源码行号、历史档）不在本仓库 → 不计入本预算。
+ */
+const LINE_REF_BUDGET = 211;
+if (lineRefChecked > LINE_REF_BUDGET) {
+    problems.push('本仓库源码的绝对行号引用 ' + lineRefChecked + ' 处 > 预算 ' + LINE_REF_BUDGET
+        + '（新增引用请写 `文件#符号`，见 开发守则 §2.3 / docs/D14 C9）· 例：' + lineRefSamples.join('、'));
+}
+notes.push('引用形态：`文件#符号` ' + symRefChecked + ' 处全部可解析；本仓库源码绝对行号 '
+    + lineRefChecked + '/' + LINE_REF_BUDGET + '（只减不增）');
+
 // §3 表头声明的版本必须等于当前版本（表头写「当前值（vX.Y.Z）」；不随版本更新就会出现「表说旧版本、行却是新值」）
 const claimVer = (docsReadme.match(/当前值（v(\d+\.\d+\.\d+)）/) || [])[1];
 if (!claimVer) {

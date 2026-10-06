@@ -8,10 +8,11 @@
 //   A 版本号规则纯函数（`scripts/check-version-sync.js#checkVersionFormat`）——
 //     合法 / 位数递增（3.25.9 → 3.25.10 → 3.99.9 → 3.100.0）/ 格式非法 / 主版本非 3 时必须失败（除非显式放行）；
 //   B 规则与文档**同源**：`docs/README.md` §3 的「版本号规则」行与四处版本都指向同一规则；
-//   C docs 事实门禁本身可用：`scripts/check-docs-facts.js` 能跑通，且**真的会**在数字被改动时报错（反向探针）。
+//   C docs 事实门禁本身可用：`scripts/check-docs-facts.js` 能跑通，且**真的会**在数字被改动时报错（反向探针）；
+//   D v1.1 新增判据的反向探针：C8（符号级存在性）/ C9（本仓库源码绝对行号棘轮）——用临时台账文件探针，不改既有文档。
 // 运行：node tests/unit/version-rule.test.js
 // ============================================================
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,6 +90,41 @@ A('C2 **反向探针**：把 §3「内核配置键数」故意改错 → 门禁�
         catch (e) { failed = true; said = String(e.stdout || ''); }
         return failed && said.indexOf('§3「内核配置键数」') >= 0 && said.indexOf('实测') > 0;
     } finally { writeFileSync(p, back); }
+})(), '');
+
+// ---------- D 组：v1.1 新增判据 C8（符号级存在性）/ C9（行号棘轮）的反向探针 ----------
+// 为什么用**临时台账文件**做探针：C8/C9 扫的是 `docs/**` 全量，直接改既有文档会污染仓库；
+//   新建一个 `docs/D99-探针.md`（头部元信息合规、含故意写错的引用）→ 跑门禁 → 必失败 → 删除。
+//   这样探针**不改任何既有文档**，也不会因为中途异常留下垃圾（finally 里删）。
+const PROBE_DOC = join(ROOT, 'docs', 'D99-门禁反向探针.md');
+const PROBE_HEAD = '# D99 · 门禁反向探针（临时）\n\n> 文档版本：v1.0 ｜ 日期：2026-10-06 ｜ 类型：**设计稿（不发版）** ｜ 状态：临时\n\n';
+const runFacts = () => {
+    try { return { ok: true, out: execFileSync(process.execPath, [join(ROOT, 'scripts', 'check-docs-facts.js')], { cwd: ROOT, encoding: 'utf8' }) }; }
+    catch (e) { return { ok: false, out: String(e.stdout || '') }; }
+};
+A('D1 **C8 反向探针**：文档里写一个不存在的符号（`core/rumor-evolve.js#notARealSymbol`）→ 门禁必须失败并指出「符号引用不存在」', (() => {
+    try {
+        writeFileSync(PROBE_DOC, PROBE_HEAD + '引用：`core/rumor-evolve.js#notARealSymbol`。\n', 'utf8');
+        const r = runFacts();
+        return r.ok === false && r.out.indexOf('符号引用不存在') >= 0 && r.out.indexOf('notARealSymbol') >= 0;
+    } catch (e) { return false; } finally { try { rmSync(PROBE_DOC, { force: true }); } catch (e) { /* 忽略 */ } }
+})(), '');
+
+A('D2 **C9 反向探针**：文档里**新增**一批本仓库源码的绝对行号引用 → 门禁必须失败并提示「改成 `文件#符号`」', (() => {
+    try {
+        const lines = [];
+        for (let i = 1; i <= 12; i++) lines.push('引用 ' + i + '：`core/recall.js:' + (100 + i) + '`。');
+        writeFileSync(PROBE_DOC, PROBE_HEAD + lines.join('\n') + '\n', 'utf8');
+        const r = runFacts();
+        return r.ok === false && r.out.indexOf('绝对行号引用') >= 0 && r.out.indexOf('文件#符号') >= 0;
+    } catch (e) { return false; } finally { try { rmSync(PROBE_DOC, { force: true }); } catch (e) { /* 忽略 */ } }
+})(), '');
+
+A('D3 C8/C9 的**正向**口径：当前工作区的符号引用全部可解析、行号引用未越预算（探针删净后门禁回到通过）', (() => {
+    const r = runFacts();
+    return r.ok === true && r.out.indexOf('引用形态：') > 0
+        && r.out.indexOf('全部可解析') > 0 && r.out.indexOf('只减不增') > 0
+        && existsSync(PROBE_DOC) === false;
 })(), '');
 
 R.done();

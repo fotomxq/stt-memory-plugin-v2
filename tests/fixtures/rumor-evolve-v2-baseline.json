@@ -1,4 +1,7 @@
 {
+  "_selfBaseline": true,
+  "_why": "V2 自基线（非 V1 oracle）：v3.26.1 修复 rumorRoll 的 base36/16 进制误读后，机械演化的掷骰与决策有意偏离 V1，故这几段改锁 V2 行为；生成方式见本文件头。",
+  "_generatedBy": "tests/unit/rumor-evolve-golden.test.js（FT_EVOLVE_BASELINE=1）",
   "roll": [
     {
       "seed": "rum_m1|fission|2020-01-01|1",
