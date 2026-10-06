@@ -73,7 +73,7 @@ import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceCurrentOp } from 
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
-import { debugAction, DEBUG_ACTIONS } from './debug.js';
+import { debugAction, DEBUG_ACTIONS, updateBridgeStatusDom } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 // B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
 import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
@@ -458,6 +458,14 @@ export function updatePipelineStatusDom(now, docOverride) {
 
 /** 管线状态计时器（V1 v1.85：500ms 心跳）——忙位期间动态刷新读秒；空闲/面板不可见时自动停止（不泄漏定时器） */
 let pipelineTimer = null;
+/** v3.25.0：调试桥状态行的驻留刷新计时器（与 `pipelineTimer` 同款；离开 设定→调试 即停） */
+let bridgeTimer = null;
+function stopBridgeTick() {
+    if (!bridgeTimer) return false;
+    try { clearInterval(bridgeTimer); } catch (e) { /* 忽略 */ }
+    bridgeTimer = null;
+    return true;
+}
 /** 计时器是否在跑（测试/诊断） */
 export function pipelineTickState() { return { running: !!pipelineTimer, busySince: busySince }; }
 function stopPipelineTick() {
@@ -491,6 +499,31 @@ function syncPipelineTick() {
             } catch (e) { stopPipelineTick(); }
         }, 500) : null;
         pipelineTimer = iv;
+        return !!iv;
+    } catch (e) { return false; }
+}
+
+/**
+ * v3.25.0（用户报告「显示正在连接或重试，实际上已经连接」）：**调试桥状态行的驻留刷新**。
+ *
+ * 缺陷成因：调试页的状态文案只在渲染那一刻采样（`bridgeState().connected`），而 WebSocket 是**异步**建立的
+ *   —— 点「▶ 开启调试桥」后页面立刻重绘（那一刻确实没连上 → 「未连接（重试中）」），
+ *   `onopen` 到达后没有任何东西再重画那一行 → 界面永远停在「重试中」。
+ * 口径：面板开着且**正停在 设定 → 调试**时，按 1s 心跳调 `updateBridgeStatusDom()` 就地更新那一个节点
+ *   （文本未变不写 DOM）；离开该页 / 关面板 / 找不到节点 → 立刻停表。与 `syncPipelineTick` 同款结构。
+ */
+function syncBridgeTick() {
+    try {
+        const onDebug = String(ps.tab) === 'settings' && String(ps.settingsSub) === 'debug';
+        if (!ps.open || !onDebug) { stopBridgeTick(); return false; }
+        if (bridgeTimer) return true;
+        const iv = (typeof setInterval === 'function') ? setInterval(() => {
+            try {
+                if (!ps.open || String(ps.tab) !== 'settings' || String(ps.settingsSub) !== 'debug') { stopBridgeTick(); return; }
+                if (!updateBridgeStatusDom()) stopBridgeTick();
+            } catch (e) { stopBridgeTick(); }
+        }, 1000) : null;
+        bridgeTimer = iv;
         return !!iv;
     } catch (e) { return false; }
 }
@@ -1683,6 +1716,7 @@ export function renderPanel() {
     // v2.63.0：DOM 写完后启停「管线状态」读秒计时器（此刻那一行才真的存在；切页/关闭/空闲则停表）
     const finish = (html) => {
         try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ }
+        try { syncBridgeTick(); } catch (e) { /* v3.25.0：调试页驻留时刷新调试桥状态行 */ }
         try { flashScrollIntoView(el); } catch (e) { /* 定位失败不影响渲染 */ }   // v3.0.13：把「本次新增」条目滚入视野
         // v3.1.0：渲染观测（慢渲染另推一条留痕；失败静默）
         try {
@@ -1777,6 +1811,7 @@ export function openPanel(tab) {
 export function closePanel() {
     ps.open = false;
     stopPipelineTick();   // v2.63.0：面板关闭即停读秒计时器（不泄漏定时器）
+    stopBridgeTick();     // v3.25.0：同上，调试桥状态行心跳一并停（面板已不在，节点也没了）
     try { traceEvent({ cat: 'ui', kind: 'panel-close', level: 'info', detail: { tab: ps.tab }, site: traceSite() }); } catch (e2) { /* 忽略 */ }
     const el = overlayEl;
     if (!el) return true;
@@ -3492,6 +3527,7 @@ export function bindEscClose() {
 /** 卸载（disable / delete） */
 export function unmountPanel() {
     stopPipelineTick();
+    stopBridgeTick();
     closePanel();
     const doc = docEl();
     try {

@@ -6520,6 +6520,29 @@ await assert('BW1 v3.24.1 初始化期零「空状态」异常（真机两错回
     return bad.length === 0;
 })(), '');
 
+// ---------- BX 调试桥区块（v3.25.0）：状态行是**可就地刷新的活节点**，且与 bridgeStatusLine 同源 ----------
+// 用户报告（原话）：「修复调试-调试桥的错误，显示正在链接或重试，实际上已经链接的问题。」
+// 缺陷成因：状态文案只在渲染那一刻采样；WebSocket 异步连上后没人再重画 → 界面卡在「重试中」。
+// 本断言走真实装配：调试页必须渲染出 `[data-ftt-bridge-status]` 节点，且文本 = `bridgeStatusLine()`（唯一事实源）。
+await assert('BX1 v3.25.0 调试桥状态行可就地刷新（端到端）：调试页渲染出 `data-ftt-bridge-status` 活节点，文本与 `bridgeStatusLine()` 同源，开关按钮两侧文案正确', (async () => {
+    const DBG = await import('../ui/debug.js');
+    const BR = await import('../adapters/debug-bridge.js');
+    await entry.popupAction('tab', { tab: 'settings' });
+    await entry.popupAction('settingsSub', { sub: 'debug' });
+    const h = String((await entry.popupAction('refresh', {})).html || '');
+    const live = BR.bridgeStatusLine();
+    const nodeOk = h.indexOf('data-ftt-bridge-status') >= 0 && h.indexOf(live) > 0;
+    const btnOk = h.indexOf('data-ftt-action="bridgeToggle"') >= 0
+        && (h.indexOf('▶ 开启调试桥') >= 0 || h.indexOf('⏹ 关闭调试桥') >= 0);
+    // 关闭态：文案是「已关闭」；开启后（不依赖真实连接）文案应变为「未连接（重试中…）」
+    const offText = BR.bridgeStatusLine({ supported: true, running: false, connected: false, targetHost: BR.bridgeTarget(), port: BR.bridgePort() });
+    const onText = BR.bridgeStatusLine({ supported: true, running: true, connected: false, targetHost: BR.bridgeTarget(), port: BR.bridgePort(), retryAt: Date.now() + 3000 });
+    const sameSource = DBG.bridgeStatusView().live === BR.bridgeStatusLine();
+    // 无节点环境（桩 DOM 未必支持 querySelector）：如实返回 false 而不是抛错
+    const noNode = DBG.updateBridgeStatusDom() === false || DBG.updateBridgeStatusDom() === true;
+    return nodeOk && btnOk && offText.indexOf('已关闭') === 0 && onText.indexOf('未连接（重试中') === 0 && sameSource && noNode;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

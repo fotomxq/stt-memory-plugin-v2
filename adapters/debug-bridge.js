@@ -48,6 +48,25 @@ const stats = { calls: 0, errors: 0, denied: 0, byMethod: Object.create(null) };
 let lastCall = null;
 let lastError = '';
 let lastHello = 0;
+/**
+ * v3.25.0（用户报告「显示正在连接或重试，实际上已经连接」）：**状态跃迁序号**。
+ *
+ * 缺陷成因：调试页的状态文案只在**渲染那一刻**采样一次（`bridgeState().connected`），而 WebSocket 是
+ *   **异步**建立的 —— 用户点「▶ 开启调试桥」后页面立刻重绘（那一刻确实还没连上，显示「未连接（重试中）」），
+ *   随后 `onopen` 到达、连接成功，但**没有任何东西再重画那一行** → 界面永远停在「重试中」。
+ * 修法：每次状态跃迁（启动 / 停下 / 连上 / 断开 / 出错 / 改目标）`seq += 1`；调试页驻留时按 1s 心跳
+ *   调 `bridgeStatusLine()` 就地更新那一行（`ui/debug.js#updateBridgeStatusDom`）——
+ *   文案与判定**只此一处实现**，避免「页面文案」与「真实状态」两套逻辑漂移。
+ */
+let stateSeq = 0;
+/** 本次连接建立时刻（0 = 当前未连接） */
+let connectedAt = 0;
+/** 下次重试时刻（0 = 无待重试）——供状态行显示「Ns 后重试」 */
+let retryAt = 0;
+/** 本次会话累计连接尝试次数（诊断「到底连了几次」） */
+let attempts = 0;
+/** 记一次状态跃迁 */
+function bumpState() { stateSeq += 1; return stateSeq; }
 
 /** 取 WebSocket 构造器（**不做任何假设**：老 WebView/无浏览器环境返回 null） */
 function wsCtor() {
@@ -111,6 +130,7 @@ export function bridgeMethodNames() {
 export function setBridgePort(p) {
     const n = Number(p);
     if (!Number.isInteger(n) || n < 1 || n > 65535) return false;
+    if (n !== port) bumpState();
     port = n;
     return true;
 }
@@ -136,6 +156,7 @@ export function setBridgeHost(h) {
     if (!s || s.length > 253) return false;
     const ok = /^[A-Za-z0-9._-]+$/.test(s) || /^\[[0-9A-Fa-f:.]+\]$/.test(s);
     if (!ok) return false;
+    if (s !== target) bumpState();
     target = s;
     return true;
 }
@@ -165,7 +186,44 @@ export function bridgeState() {
         lastCall,
         lastError,
         lastHello,
+        // v3.25.0：状态跃迁序号与连接时序（供调试页**就地刷新**状态行，不再「连上了还写着重试中」）
+        seq: stateSeq,
+        connectedAt,
+        retryAt,
+        attempts,
     };
+}
+
+/**
+ * **用户可见的调试桥状态文案**（v3.25.0：唯一事实源）。
+ *
+ * 为什么抽出来：此前这段判断写在 `ui/debug.js#debugBridgeSectionHtml()` 里，只能在**渲染那一刻**算一次；
+ *   而连接是异步建立的 → 用户点开启后页面立刻重绘（此刻未连上）→ 连接成功后没人再重画 → 界面卡在「重试中」。
+ *   现在页面渲染与 1s 心跳刷新共用本函数，文案与真实状态不可能再各说各话。
+ * @param {object} [st] 状态快照（省略 = 现取）
+ * @returns {string}
+ */
+export function bridgeStatusLine(st) {
+    const s = st || bridgeState();
+    if (!s.supported) return '传输不可用（本环境没有 WebSocket）';
+    if (!s.running) return '已关闭' + (s.attempts ? ('（本次会话曾尝试连接 ' + Number(s.attempts) + ' 次）') : '');
+    if (s.connected) {
+        const at = (() => {
+            try {
+                if (!s.connectedAt) return '';
+                const d = new Date(Number(s.connectedAt));
+                const p = (n) => String(n).padStart(2, '0');
+                return '（' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + ' 起）';
+            } catch (e) { return ''; }
+        })();
+        return '已连接 ' + s.targetHost + ':' + s.port + at;
+    }
+    const left = (() => {
+        try { return Number(s.retryAt) > 0 ? Math.max(0, Math.ceil((Number(s.retryAt) - Date.now()) / 1000)) : 0; } catch (e) { return 0; }
+    })();
+    return '未连接（重试中，' + s.targetHost + ':' + s.port + '）'
+        + (left ? (' · ' + left + 's 后重试') : '')
+        + (Number(s.attempts) > 1 ? (' · 已尝试 ' + Number(s.attempts) + ' 次') : '');
 }
 
 export function bridgeStats() {
@@ -176,6 +234,7 @@ export function bridgeStats() {
 export function bridgeResetStats() {
     stats.calls = 0; stats.errors = 0; stats.denied = 0; stats.byMethod = Object.create(null);
     lastCall = null; lastError = ''; lastHello = 0;
+    bumpState();
 }
 
 /**
@@ -241,14 +300,17 @@ function helloPayload() {
 function scheduleRetry() {
     if (!running || retryTimer) return;
     try {
-        retryTimer = setTimeout(() => { retryTimer = null; if (running) open(); }, BRIDGE_RETRY_MS);
-    } catch (e) { retryTimer = null; }
+        retryAt = Date.now() + BRIDGE_RETRY_MS;
+        retryTimer = setTimeout(() => { retryTimer = null; retryAt = 0; if (running) open(); }, BRIDGE_RETRY_MS);
+    } catch (e) { retryTimer = null; retryAt = 0; }
 }
 
 function open() {
     const C = wsCtor();
     if (!running || !C) return;
     const url = 'ws://' + target + ':' + port;
+    attempts += 1;
+    bumpState();
     let ws;
     try { ws = new C(url); } catch (e) {
         lastError = '无法创建 WebSocket：' + String((e && e.message) || e);
@@ -262,18 +324,25 @@ function open() {
             if (seq !== connSeq) return;
             lastError = '';
             lastHello = Date.now();
+            connectedAt = Date.now();
+            retryAt = 0;
+            if (retryTimer) { try { clearTimeout(retryTimer); } catch (e) { /* 忽略 */ } retryTimer = null; }
+            bumpState();
             send(helloPayload());
         };
         ws.onmessage = (ev) => { void handleMessage(ev); };
-        ws.onerror = () => { if (seq === connSeq) lastError = '连接错误（' + target + ':' + port + '）'; };
+        ws.onerror = () => { if (seq === connSeq) { lastError = '连接错误（' + target + ':' + port + '）'; bumpState(); } };
         ws.onclose = () => {
             if (seq !== connSeq) return;
             socket = null;
+            connectedAt = 0;
+            bumpState();
             scheduleRetry();
         };
     } catch (e) {
         lastError = '绑定 WebSocket 回调失败：' + String((e && e.message) || e);
         socket = null;
+        bumpState();
         scheduleRetry();
     }
 }
@@ -307,9 +376,12 @@ export function bridgeStop() {
     running = false;
     connSeq++;
     if (retryTimer) { try { clearTimeout(retryTimer); } catch (e) { /* 忽略 */ } retryTimer = null; }
+    retryAt = 0;
     try {
         if (socket) { socket.onclose = null; socket.close(); }
     } catch (e) { /* 关闭失败不影响停止语义 */ }
     socket = null;
+    connectedAt = 0;
+    bumpState();
     return bridgeState();
 }

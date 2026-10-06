@@ -34,11 +34,11 @@ import { hintDetailsHtml } from './hints.js';
 //   复用「⬇ 导出记忆 JSON」同一条下载实现（Blob + `<a download>`），而不是只塞剪贴板/文本框。
 import { downloadTextFile } from './file-io.js';
 // v2.94.0（`docs/D11` v0.3 §3.2 阶段 S1 / `docs/D12` v0.2 S4b）：`chatMetadata` 主载体**只读**差异报告
-import { state, cfg } from '../core/model/runtime.js';
+import { state, cfg, warnBacklogList } from '../core/model/runtime.js';
 import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters/chat-meta.js';
 // v3.0.7：本地调试桥（**跨宿主**：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不报错）
 import {
-    bridgeStart, bridgeStop, bridgeState, bridgeSupported, bridgeHost, bridgeMethodNames,
+    bridgeStart, bridgeStop, bridgeState, bridgeSupported, bridgeHost, bridgeMethodNames, bridgeStatusLine, bridgeDispatch,
     setBridgeMethods, setBridgePort, bridgePort, setBridgeHost, bridgeTarget, isLoopbackHost,
     BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST, BRIDGE_PROTOCOL,
 } from '../adapters/debug-bridge.js';
@@ -457,7 +457,18 @@ export function buildBridgeMethods() {
         methods: bridgeMethodNames(),
         note: '只读调试桥；默认关闭、刷新即关',
     });
-    T['sys.methods'] = async () => bridgeMethodNames();
+    /**
+     * `sys.methods`：方法名清单；`{detail:true}` 时回**带说明与参数**的清单（v3.25.0）——
+     *   外部工具据此自我说明，不必先去翻仓库文档（提高调试效率）。
+     */
+    T['sys.methods'] = async (p) => {
+        const names = bridgeMethodNames();
+        if (!(p && p.detail === true)) return names;
+        return names.map((n) => {
+            const d = BRIDGE_METHOD_DOCS[n] || {};
+            return { name: n, desc: String(d.desc || ''), params: String(d.params || '') };
+        });
+    };
     T['sys.host'] = async () => bridgeHost();
     T['sys.bridgeState'] = async () => bridgeState();
 
@@ -573,7 +584,302 @@ export function buildBridgeMethods() {
     T['host.llmLogsRaw'] = needDev('LLM 请求日志原文', 'llmApiLogs', 'getRaw');
     T['host.llmLogsKeep'] = needDev('LLM 日志保留数', 'llmApiLogs', 'getKeep');
 
+    // ---- v3.25.0「完善调试工具 · 强化可读取数据范围」新增的只读方法 ----
+    // 口径（与既有方法一致，逐条都**只读**）：
+    //   · 大文本一律**截断 + 上限**（`BRIDGE_TEXT_CAP` / 各自的 limit 上限），避免经端口外送巨量正文；
+    //   · 真实正文/配置值**默认不外送**，需显式 `values:true`（沿用 `ftt.memorySample` 的既有约定）；
+    //   · 任何异常都被 `safe()` 收敛成 `{available:false, reason}`，绝不抛给外部工具。
+
+    /**
+     * `ftt.debugLog`：**调试日志条目**（不止统计）——
+     *   `{ kind?, grep?, limit?, since?, full? }`。此前只有 `ftt.debugLogStats`（计数），
+     *   排查时最缺的就是「那几条异常/修复日志的原文」。
+     */
+    T['ftt.debugLog'] = safe((p) => {
+        const o = p || {};
+        const q = String(o.grep == null ? '' : o.grep).trim().toLowerCase();
+        const kinds = o.kind ? String(o.kind).split(/[,\s]+/).filter(Boolean) : [];
+        const limit = clampNum(o.limit, 1, 200, 40);
+        const since = Number(o.since) > 0 ? Number(o.since) : 0;
+        const full = o.full === true;
+        let rows = (() => { try { return debugLogList() || []; } catch (e) { return []; } })();
+        if (kinds.length) rows = rows.filter((l) => kinds.indexOf(String((l && l.kind) || '')) >= 0);
+        if (since) rows = rows.filter((l) => Number((l && l.at) || 0) >= since);
+        if (q) rows = rows.filter((l) => (String((l && l.kind) || '') + ' ' + String((l && l.data) || '')).toLowerCase().indexOf(q) >= 0);
+        const total = rows.length;
+        const out = rows.slice(0, limit).map((l) => ({
+            at: Number((l && l.at) || 0), kind: String((l && l.kind) || ''),
+            data: clipText(String((l && l.data) || ''), full ? BRIDGE_TEXT_CAP : 600),
+        }));
+        return { available: true, total, returned: out.length, truncated: total > out.length, kinds: debugLogStats().kinds || {}, rows: out };
+    });
+
+    /**
+     * `ftt.trace`：**交互/宿主调用时间线条目**（不止统计）——`{ cat?, level?, errorsOnly?, grep?, limit?, detail? }`。
+     *   回答「出错前的那几步到底做了什么」（opId 关联由每条自带）。
+     */
+    T['ftt.trace'] = safe((p) => {
+        const o = p || {};
+        const limit = clampNum(o.limit, 1, 300, 60);
+        const grep = String(o.grep == null ? '' : o.grep).trim().toLowerCase();
+        let rows = (() => { try { return traceList({ cat: o.cat ? String(o.cat) : '' }) || []; } catch (e) { return []; } })();
+        if (o.errorsOnly === true) rows = rows.filter((x) => x && (x.level === 'warn' || x.level === 'error' || x.ok === false));
+        if (grep) rows = rows.filter((x) => JSON.stringify({ k: x && x.kind, s: x && x.site, r: x && x.reason }).toLowerCase().indexOf(grep) >= 0);
+        const total = rows.length;
+        const out = rows.slice(0, limit).map((x) => {
+            const b = { id: String((x && x.id) || ''), at: Number((x && x.at) || 0), cat: String((x && x.cat) || ''), kind: String((x && x.kind) || ''), level: String((x && x.level) || ''), ok: x && x.ok !== false, ms: Number((x && x.ms) || 0), opId: String((x && x.opId) || ''), site: traceSiteText(x && x.site), reason: String((x && x.reason) || '') };
+            if (o.detail === true) b.detail = x && x.detail;
+            return b;
+        });
+        return { available: true, total, returned: out.length, truncated: total > out.length, stats: traceStats(), rows: out };
+    });
+
+    /**
+     * `ftt.errors`：**一站式异常排查**（异常日志 + 错误时间线 + 初始化期告警暂存 + 数据体检计数）。
+     *   一次调用把「哪里错了、错前做了什么、有没有初始化期错序」都拿到，省去逐个方法试。
+     */
+    T['ftt.errors'] = safe((p) => {
+        const limit = clampNum((p && p.limit), 1, 50, 10);
+        const errLogs = (() => { try { return debugLogErrors(limit) || []; } catch (e) { return []; } })();
+        const errTrace = (() => { try { return (traceList({}) || []).filter((x) => x && (x.level === 'error' || x.level === 'warn' || x.ok === false)).slice(0, limit); } catch (e) { return []; } })();
+        const backlog = (() => { try { return warnBacklogList() || []; } catch (e) { return []; } })();
+        const health = (() => { try { const r = dataHealthReport(); return { findings: r.findings.length, truncated: r.truncated, byCode: r.findings.reduce((a, f) => { a[f.code] = (a[f.code] || 0) + 1; return a; }, {}) }; } catch (e) { return null; } })();
+        return {
+            available: true,
+            counts: { logErrors: (() => { try { return debugLogErrorCount(); } catch (e) { return 0; } })(), traceErrors: errTrace.length, preWireWarns: backlog.length },
+            logErrors: errLogs.map((l) => ({ at: Number((l && l.at) || 0), data: clipText(String((l && l.data) || ''), 600) })),
+            traceErrors: errTrace.map((x) => ({ at: Number((x && x.at) || 0), cat: String((x && x.cat) || ''), kind: String((x && x.kind) || ''), level: String((x && x.level) || ''), reason: String((x && x.reason) || ''), site: traceSiteText(x && x.site), opId: String((x && x.opId) || '') })),
+            // v3.24.1：初始化期（调试日志接线前）的告警暂存 —— 排查「刷新后报错但日志里查不到」
+            preWireWarns: backlog.map((x) => ({ at: Number((x && x.at) || 0), msg: clipText(String((x && x.msg) || ''), 300) })),
+            dataHealth: health,
+        };
+    });
+
+    /**
+     * `ftt.entries`：**按维度的条目清单/单条详情**（只读；可翻页）——
+     *   `{ dim, id?, offset?, limit?, values? }`。`values:false`（默认）只回元信息（长度/楼层/标签数…）。
+     */
+    T['ftt.entries'] = safe((p) => {
+        const o = p || {};
+        const dim = String(o.dim || '');
+        if (!dim) return { available: false, reason: '缺少 dim 参数（可用：' + DIMENSIONS.map((d) => d.kind).join('/') + '）' };
+        let arr = null;
+        try { arr = state[dim]; } catch (e) { arr = null; }
+        if (!Array.isArray(arr)) return { available: false, reason: '维度不存在或不是数组：' + dim, dim: dim };
+        const values = o.values === true;
+        if (o.id !== undefined && o.id !== null && o.id !== '') {
+            const id = String(o.id);
+            const it = arr.filter((x) => x && String(x.id || '') === id)[0];
+            if (!it) return { available: false, reason: '未找到该条目', dim: dim, id: id };
+            return { available: true, dim: dim, total: arr.length, entry: entryView(dim, it, values) };
+        }
+        const limit = clampNum(o.limit, 1, 200, 20);
+        const offset = Math.max(0, Math.trunc(Number(o.offset) || 0));
+        const page = arr.slice(offset, offset + limit);
+        return {
+            available: true, dim: dim, total: arr.length, offset, returned: page.length,
+            hasMore: offset + page.length < arr.length, values: values,
+            rows: page.map((it) => entryView(dim, it, values)),
+        };
+    });
+
+    /**
+     * `ftt.search`：**跨维度关键词搜索**（只读，零副作用）——`{ q, dims?, limit?, values?, fields? }`。
+     *   回答「这条文本/这个 id 到底在哪条数据里」；默认只回命中维度、id 与命中片段（不外送整条）。
+     */
+    T['ftt.search'] = safe((p) => {
+        const o = p || {};
+        const q = String(o.q == null ? '' : o.q).trim();
+        if (!q) return { available: false, reason: '缺少 q 参数' };
+        const needle = q.toLowerCase();
+        const dims = (Array.isArray(o.dims) && o.dims.length ? o.dims.map(String) : DIMENSIONS.map((d) => d.kind)).filter((d) => {
+            try { return Array.isArray(state[d]); } catch (e) { return false; }
+        });
+        const limit = clampNum(o.limit, 1, 100, 20);
+        const hits = [];
+        let scanned = 0;
+        for (const dim of dims) {
+            const arr = state[dim] || [];
+            for (let i = 0; i < arr.length; i++) {
+                const it = arr[i];
+                if (!it || typeof it !== 'object') continue;
+                scanned += 1;
+                const fields = (Array.isArray(o.fields) && o.fields.length) ? o.fields.map(String) : null;
+                const where = [];
+                const keys = fields || Object.keys(it);
+                for (const k of keys) {
+                    let v = it[k];
+                    if (v === null || v === undefined) continue;
+                    if (typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { continue; } }
+                    const s = String(v);
+                    if (s.toLowerCase().indexOf(needle) < 0) continue;
+                    where.push({ field: k, snippet: snippetAround(s, q, 60) });
+                }
+                if (where.length) {
+                    hits.push({ dim: dim, index: i, id: String(it.id || ''), fields: where.slice(0, 6) });
+                    if (hits.length >= limit) break;
+                }
+            }
+            if (hits.length >= limit) break;
+        }
+        return { available: true, q: q, dims: dims, scanned: scanned, hits: hits, truncated: hits.length >= limit };
+    });
+
+    /**
+     * `ftt.config`：**生效配置摘要**（只读）——`{ keys?, includePrompts? }`。
+     *   默认回**键 → 值的类型/长度**（不外送提示词正文这类大文本）；传 `keys:['summaryChunkSize']`
+     *   可精确取值，`includePrompts:true` 才把提示词模板正文一并回传（默认关）。
+     */
+    T['ftt.config'] = safe((p) => {
+        const o = p || {};
+        const want = (Array.isArray(o.keys) && o.keys.length) ? o.keys.map(String) : null;
+        const includePrompts = o.includePrompts === true;
+        const keys = want || Object.keys(cfg || {});
+        const values = {};
+        const shape = {};
+        for (const k of keys) {
+            let v;
+            try { v = cfg[k]; } catch (e) { continue; }
+            if (v === undefined) continue;
+            const isPrompt = (k === 'promptTemplates');
+            if (want || includePrompts) {
+                if (isPrompt && !includePrompts) {
+                    // 显式点名要提示词、但没开 includePrompts → 明确**如实告知**怎么拿，而不是静默丢掉这个键
+                    values[k] = '<提示词模板 ' + Object.keys(v || {}).length + ' 个；需 includePrompts:true 才回传正文>';
+                    shape[k] = 'object(' + Object.keys(v || {}).length + ')';
+                    continue;
+                }
+                if (typeof v === 'object' && v !== null) {
+                    let j = ''; try { j = JSON.stringify(v); } catch (e) { j = ''; }
+                    values[k] = j.length <= 2000 ? v : ('<对象过大，已省略；json 长度 ' + j.length + '>');
+                } else values[k] = v;
+            } else {
+                if (Array.isArray(v)) shape[k] = 'array(' + v.length + ')';
+                else if (v && typeof v === 'object') shape[k] = 'object(' + Object.keys(v).length + ')';
+                else if (typeof v === 'string') shape[k] = 'string(' + v.length + ')';
+                else shape[k] = typeof v;
+            }
+        }
+        return {
+            available: true, version: VERSION,
+            keyCount: Object.keys(cfg || {}).length,
+            returned: want ? 'keys' : 'shape',
+            values: want ? values : undefined,
+            shape: want ? undefined : shape,
+            promptsIncluded: includePrompts,
+            promptTemplateCount: (() => { try { return Object.keys(cfg.promptTemplates || {}).length; } catch (e) { return 0; } })(),
+        };
+    });
+
+    /**
+     * `ftt.floors`：**楼层窗口诊断**（只读）——`{ start?, end?, values? }`。
+     *   回答「AI 到底看到了什么」：逐楼给 角色 / 稳定正文长度 / 可分析正文长度 / 哈希，
+     *   `values:true` 才回**可分析正文**（截断）。默认窗口 = 最近 5 楼。
+     */
+    T['ftt.floors'] = safe((p) => {
+        const o = p || {};
+        const tail = liveFloorTail();
+        const end = Number.isFinite(Number(o.end)) ? Math.max(0, Math.trunc(Number(o.end))) : (tail >= 0 ? tail : 0);
+        const start = Number.isFinite(Number(o.start)) ? Math.max(0, Math.trunc(Number(o.start))) : Math.max(0, end - 4);
+        const values = o.values === true;
+        const rows = [];
+        for (let i = start; i <= end && rows.length < 60; i++) {
+            const m = floorMessage(i);
+            if (!m) { rows.push({ i: i, exists: false }); continue; }
+            const stable = String(floorStableText(m) || '');
+            const an = String(floorAnalyzableText(i) || '');
+            rows.push(Object.assign({
+                i: i, exists: true,
+                user: m.is_user === true, hidden: m.is_hidden === true,
+                name: String(m.name || '').slice(0, 40),
+                stableChars: stable.length, analyzableChars: an.length,
+                hash: hashFloorText(i) || '',
+                analyzable: an.length > 0,
+            }, values ? { text: clipText(an, BRIDGE_TEXT_CAP) } : {}));
+        }
+        return { available: true, start, end, tail, values, count: rows.length, rows };
+    });
+
+    /** `ftt.syncLog`：**同步日志最近条目**（只读；`{limit?}`）——回答「刚才那次跨端对账到底发生了什么」。 */
+    T['ftt.syncLog'] = safe((p) => {
+        const limit = clampNum((p && p.limit), 1, 60, 15);
+        const list = (() => { try { return (globalThis.FTT && typeof globalThis.FTT.syncLog === 'function') ? (globalThis.FTT.syncLog() || []) : []; } catch (e) { return []; } })();
+        return {
+            available: true, total: list.length, returned: Math.min(limit, list.length),
+            rows: list.slice(0, limit).map((r) => ({
+                ts: Number((r && r.ts) || 0), src: String((r && r.src) || ''), action: String((r && r.action) || ''), mode: String((r && r.mode) || ''),
+                localN: Number((r && r.localN) || 0), remoteN: Number((r && r.remoteN) || 0), afterN: Number((r && r.afterN) || 0),
+                note: clipText(String((r && r.note) || ''), 200),
+            })),
+        };
+    });
+
+    /**
+     * `sys.batch`：**一次往返批量调用**（效率）——`{ calls:[{method, params?}] }`（最多 20 条）。
+     *   外部工具往常要串行发 10 个请求；现在一次拿齐。走 `bridgeDispatch()`（与外部工具同一条派发路径：
+     *   白名单校验、统计、异常收敛全部一致），因此**未登记方法照样被拒**，不会绕过只读约定。
+     */
+    T['sys.batch'] = async (p) => {
+        const calls = Array.isArray(p && p.calls) ? p.calls.slice(0, 20) : [];
+        const out = [];
+        for (const c of calls) {
+            const m = String((c && c.method) || '');
+            const r = await bridgeDispatch({ id: 'batch:' + m, method: m, params: (c && c.params) || {} });
+            out.push(r && r.ok ? { method: m, ok: true, result: r.result } : { method: m, ok: false, error: String((r && r.error && r.error.message) || '未知原因') });
+        }
+        return { available: true, count: out.length, results: out };
+    };
+
+    /** `sys.ping`：连通性与时钟（外部工具用它测往返，不读任何数据） */
+    T['sys.ping'] = async () => ({ available: true, at: Date.now(), protocol: BRIDGE_PROTOCOL, version: VERSION });
+
     return T;
+}
+
+/** 数字夹取（新方法共用的入参守卫） */
+function clampNum(v, min, max, dflt) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return dflt;
+    return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+/** 文本截断（新方法共用：超过上限加省略号与字节数提示） */
+function clipText(s, cap) {
+    const t = String(s == null ? '' : s);
+    const n = clampNum(cap, 40, BRIDGE_TEXT_CAP, 600);
+    return t.length > n ? (t.slice(0, n) + '…（共 ' + t.length + ' 字）') : t;
+}
+/** 命中片段（围绕首次出现处取上下文） */
+function snippetAround(s, needle, span) {
+    const t = String(s == null ? '' : s);
+    const i = t.toLowerCase().indexOf(String(needle).toLowerCase());
+    if (i < 0) return clipText(t, 80);
+    const a = Math.max(0, i - Math.floor(span / 2));
+    return (a > 0 ? '…' : '') + t.slice(a, a + span) + (a + span < t.length ? '…' : '');
+}
+/** 单条记忆条目的**只读视图**（默认元信息；`values:true` 才带整条，长文本截断） */
+function entryView(dim, it, values) {
+    const o = (it && typeof it === 'object') ? it : { value: it };
+    const shape = {};
+    for (const f of Object.keys(o)) {
+        const v = o[f];
+        shape[f] = Array.isArray(v) ? ('array(' + v.length + ')') : (typeof v === 'string' ? ('string(' + v.length + ')') : typeof v);
+    }
+    const meta = {
+        dim: dim, id: String(o.id || ''),
+        title: String(o.title || o.name || o.subject || o.owner || '').slice(0, 60),
+        floorStart: (o.floorStart === undefined ? null : Number(o.floorStart)),
+        floorEnd: (o.floorEnd === undefined ? null : Number(o.floorEnd)),
+        date: String(o.date || ''), time: String(o.time || ''),
+        tags: Array.isArray(o.tags) ? o.tags.length : 0,
+        shape: shape,
+    };
+    if (!values) return meta;
+    const full = {};
+    for (const f of Object.keys(o)) {
+        const v = o[f];
+        full[f] = (typeof v === 'string') ? clipText(v, 2000) : v;
+    }
+    return Object.assign(meta, { values: full });
 }
 
 /**
@@ -768,6 +1074,61 @@ export function installDebugBridge() {
 /** 是否已装配（只读诊断） */
 export function debugBridgeInstalled() { return bridgeInstalled; }
 
+/** 调试桥文本类字段的单字段上限（字符；新方法共用，避免经端口外送巨量正文） */
+export const BRIDGE_TEXT_CAP = 4000;
+
+/**
+ * 只读方法的**说明与参数**（v3.25.0：`sys.methods({detail:true})` 用）。
+ * 只登记需要说明的；未登记的方法在 detail 清单里 `desc/params` 为空字符串（不编造）。
+ */
+const BRIDGE_METHOD_DOCS = Object.freeze({
+    'sys.info': { desc: '协议 / 插件 / 宿主 / 桥状态 / 方法名清单', params: '' },
+    'sys.ping': { desc: '连通性探针（不读任何数据，用于测往返）', params: '' },
+    'sys.batch': { desc: '一次往返批量调用（只走已登记方法）', params: '{calls:[{method,params?}]} ≤20' },
+    'sys.methods': { desc: '方法名清单；detail=true 回说明与参数', params: '{detail?:true}' },
+    'sys.host': { desc: '宿主识别（vanilla / tauritavern · ABI · api 键）', params: '' },
+    'sys.bridgeState': { desc: '桥状态快照（含 seq/connectedAt/retryAt/attempts，供状态行刷新）', params: '' },
+    'ftt.debugLog': { desc: '调试日志条目（不止统计）', params: '{kind?,grep?,limit?≤200,since?,full?}' },
+    'ftt.debugLogStats': { desc: '调试日志统计（条数 / 分类计数 / 最旧最新）', params: '' },
+    'ftt.errors': { desc: '一站式异常排查（异常日志 + 错误时间线 + 初始化期告警暂存 + 体检计数）', params: '{limit?≤50}' },
+    'ftt.trace': { desc: '交互/宿主调用时间线条目', params: '{cat?,level?,errorsOnly?,grep?,limit?≤300,detail?}' },
+    'ftt.traceStats': { desc: '时间线统计（会话 / 分类 / 级别）', params: '' },
+    'ftt.entries': { desc: '按维度的条目清单或单条详情（可翻页）', params: '{dim,id?,offset?,limit?≤200,values?}' },
+    'ftt.search': { desc: '跨维度关键词搜索（返回命中字段与片段）', params: '{q,dims?,fields?,limit?≤100,values?}' },
+    'ftt.config': { desc: '生效配置摘要（默认只回类型/长度；keys 精确取值；提示词需 includePrompts）', params: '{keys?,includePrompts?}' },
+    'ftt.floors': { desc: '楼层窗口诊断（角色 / 正文长度 / 哈希；values=true 回可分析正文）', params: '{start?,end?,values?}' },
+    'ftt.syncLog': { desc: '同步日志最近条目（跨端对账/镜像推送）', params: '{limit?≤60}' },
+    'ftt.memoryShape': { desc: '各维度条数（不含正文）', params: '' },
+    'ftt.memorySample': { desc: '按维度取样（默认只回字段名与长度）', params: '{dim,limit?≤20,values?}' },
+    'ftt.ledger': { desc: '已处理楼层台账（标记 / 版本签名 / 坏标记）', params: '' },
+    'ftt.pendingScan': { desc: '未摘要扫描明细（区间 / 跳过计数 / 聊天就绪）', params: '' },
+    'ftt.pendingFloors': { desc: '未摘要楼层号清单', params: '' },
+    'ftt.floorDiag': { desc: '单楼诊断：这一楼为什么被判未摘要', params: '{i}' },
+    'ftt.plotScope': { desc: '情节归属体检（本聊天/未知/别条 · 越界 · 最新几条）', params: '' },
+    'ftt.chunkPlan': { desc: '分段切片体检（生效段长 / 未摘要段数 / 预览）', params: '' },
+    'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
+    'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
+    'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排）', params: '' },
+    'ftt.reads': { desc: '读取台账（分来源统计 + 最近若干行）', params: '{limit?}' },
+    'ftt.writeStats': { desc: '原生写队列诊断（并发峰值 / 最近一次写）', params: '' },
+    'ftt.snapshot': { desc: '插件运行态快照', params: '' },
+    'ftt.probe': { desc: '宿主能力探测结果', params: '' },
+    'ftt.stateSize': { desc: '导出文本字节数（不回正文）', params: '' },
+    'ftt.chatReady': { desc: '聊天是否已就绪（台账维护的前置守卫）', params: '' },
+    'ftt.chatMeta': { desc: 'chatMetadata 主载体只读差异报告', params: '' },
+    'ftt.fileTransport': { desc: '文件通道现状（宿主原生存储 / 酒馆用户目录）', params: '' },
+    'ftt.clockTraceInfo': { desc: '时钟取值追踪（逐字段来源与理由）', params: '' },
+    'ftt.clockTraceSummary': { desc: '时钟取值追踪摘要文本', params: '' },
+    'ftt.debugPageInfo': { desc: '调试页数据形状（日志/时间线/异常计数）', params: '' },
+    'host.frontendLogsList': { desc: 'TauriTavern 前端日志（控制台捕获需在宿主侧开启）', params: '' },
+    'host.consoleCaptureGet': { desc: 'TauriTavern 控制台捕获开关状态', params: '' },
+    'host.backendLogsTail': { desc: 'TauriTavern 后端日志尾部', params: '' },
+    'host.llmLogsIndex': { desc: 'TauriTavern LLM 请求日志索引', params: '' },
+    'host.llmLogsPreview': { desc: 'TauriTavern LLM 日志预览', params: '' },
+    'host.llmLogsRaw': { desc: 'TauriTavern LLM 日志原文', params: '' },
+    'host.llmLogsKeep': { desc: 'TauriTavern LLM 日志保留数', params: '' },
+});
+
 /** 「🔌 调试桥」区块（只读渲染；开关默认关） */
 export function debugBridgeSectionHtml() {
     if (!bridgeInstalled) installDebugBridge();
@@ -776,12 +1137,16 @@ export function debugBridgeSectionHtml() {
     const hostLabel = host.tauriTavern
         ? ('TauriTavern' + (host.abiVersion === null ? '' : ('（ABI v' + host.abiVersion + '）')) + (host.devApi ? ' · api.dev 可用' : ' · api.dev 不可用'))
         : '酒馆原生（浏览器）';
-    const connLabel = !st.supported ? '传输不可用'
-        : (!st.running ? '已关闭' : (st.connected ? ('已连接 ' + st.targetHost + ':' + st.port) : ('未连接（重试中，' + st.targetHost + ':' + st.port + '）')));
+    // v3.25.0：状态文案改走 `bridgeStatusLine()`（**唯一事实源**），并挂 `data-ftt-bridge-status` 供 1s 心跳
+    //   就地刷新 —— 修复「显示正在连接/重试中，实际已经连上」。
+    const connLabel = bridgeStatusLine(st);
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">🔌 调试桥 <span class="ftt-muted">本地调试 · 只读</span></div>',
         '<div class="ftt-row"><span class="ftt-muted">宿主：' + esc(hostLabel) + '</span></div>',
-        '<div class="ftt-row"><span class="ftt-muted">状态：' + esc(connLabel) + ' · 已登记 ' + st.methodCount + ' 个只读方法</span></div>',
+        '<div class="ftt-row"><span class="ftt-muted">状态：<b data-ftt-bridge-status>' + esc(connLabel) + '</b>'
+            + ' · 已登记 ' + st.methodCount + ' 个只读方法'
+            + (st.connected && st.connectedAt ? (' · 连接号 ' + Number(st.seq || 0)) : '')
+            + '</span></div>',
         '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-bridge-host value="' + esc(String(bridgeTarget())) + '" placeholder="目标主机（默认 ' + esc(BRIDGE_DEFAULT_HOST) + '）">'
             + '<input class="ftt-input" type="text" data-ftt-bridge-port value="' + esc(String(bridgePort())) + '" placeholder="端口">'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="bridgeTargetSet" title="只改内存中的目标；刷新后回到默认值">保存目标</button>'
@@ -802,6 +1167,36 @@ export function debugBridgeSectionHtml() {
         (st.lastError ? ('<div class="ftt-hint">最近错误：' + esc(st.lastError) + '</div>') : ''),
         '</div>',
     ].join('\n');
+}
+
+/**
+ * **就地刷新调试桥状态行**（v3.25.0 修复「显示正在连接/重试中，实际已经连上」）。
+ *
+ * 缺陷成因：状态文案只在渲染那一刻采样（`bridgeState().connected`），而 WebSocket 是异步建立的 ——
+ *   点「▶ 开启调试桥」后页面立刻重绘（此刻确实未连上 → 显示「未连接（重试中）」），
+ *   `onopen` 到达后**没有任何东西再重画那一行** → 界面永远停在「重试中」。
+ * 修法：调试页驻留时由 `ui/panel.js#syncBridgeTick()` 每 1s 调本函数，只改这一个节点的文本
+ *   （文本未变则不写 DOM）；文案与判定来自 `adapters/debug-bridge.js#bridgeStatusLine()`（唯一事实源）。
+ * @returns {boolean} 是否找到并处理了状态节点（false = 节点不在，调用方应停表）
+ */
+export function updateBridgeStatusDom() {
+    try {
+        const doc = globalThis.document;
+        if (!doc) return false;
+        const el = (typeof doc.querySelector === 'function') ? doc.querySelector('[data-ftt-bridge-status]') : null;
+        if (!el) return false;
+        const text = bridgeStatusLine();
+        if (String(el.textContent == null ? '' : el.textContent) !== text) {
+            el.textContent = text;
+            lastBridgeStatusText = text;
+        }
+        return true;
+    } catch (e) { return false; }
+}
+/** 最近一次就地刷新写入的状态文案（诊断/单测） */
+let lastBridgeStatusText = '';
+export function bridgeStatusView() {
+    return { text: lastBridgeStatusText, live: bridgeStatusLine(), seq: Number(bridgeState().seq) || 0 };
 }
 
 /**
