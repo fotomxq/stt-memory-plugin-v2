@@ -3,6 +3,34 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.26.5（2026-10-06）· 本地目录模式：读写**可核对**、换目录不再丢、变量/内存库/聊天元数据**三层全停用**
+
+**用户要求**（原话）：「新版本 本机缓冲设计可能存在问题，保存到本地文件后，是否没有正常读取和写入？请修复相关问题。如果设置了，则内存和变量及传统本地存储方案全部作废，仅采用本地文件存储。」
+
+**① 真机只读取证（调试桥 `ftt.localDir` / `ftt.loadDiag` / 文件系统，未改任何数据）**
+
+| 项 | 实测 |
+| --- | --- |
+| 目录配置 | `storage.localFilePath = "ftt2-local"`（候选另有 `ftt2-files`） |
+| 目录**写入** | 正常：`…/extension-store/ftt2-local/blobs/local/ftt2-local_ftt2-local-char_1xbib3t.json` 一直在更新（与主文件同字节数） |
+| 变量层 / 内存库 | 按设计已停用：localStorage 无 `ftt2_state_*`，`idbWrites=0`、`idbSkipped=160` |
+| 但**界面在说谎** | ① `localFileStatsGet().backend` **恒为空串**（被统计对象里的 `backend:''` 覆盖）→ 存储页长期显示「后端 —」；②「真实落盘」只写 `kv/local/`（本机缓冲信封必然 ≥96KB → 实际在 **`blobs/local/`**），文件名还漏了目录前缀（磁盘上叫 `ftt2-local_ftt2-local-char_1xbib3t.json`）→ 照 UI 去文件管理器找**找不到**；③ 数据管理页在目录模式下只列「浏览器变量 / 内存库」两行（按设计恒为空）→ 整页看起来「本机什么都没有」；④ `ftt.loadDiag` 恒只查 localStorage → 目录模式恒报 `present:false` |
+| 对齐/换目录的**真缺陷** | ⑤ 目录模式下「🔁 立即对齐本机层」只比较变量层与内存库 → 目录副本**更新时会被旧的变量层内容覆盖**（数据回退风险）；⑥ **换目录**时不迁移旧目录里更新的一份 → 新目录看起来「空的」 |
+
+**② 修复**
+
+| # | 改动 | 落点 |
+| --- | --- | --- |
+| ① | 统计对象不再自带 `backend` 字段（后端一律现算）→ 存储页/诊断显示真实后端；新增 `lastReadAt` / `lastWriteAt` / `lastChannel` | `adapters/local-file.js#localFileStatsGet` |
+| ② | 「真实落盘」**两种通道都列出**（`blobs/local/` 大信封 · `kv/local/` 小信封）+ **真实键名**（含目录前缀）；存储页再补「当前角色真实文件」 | `#localFileRealLocation` / `#localFileFileKey` · `ui/sync.js` |
+| ③ | 数据管理页在目录模式下**单独一行**「状态副本（本地目录）」：路径 / 最近写入 / 读·写·未命中计数 / 失败原因 / 真实键名 / 最近读回；「浏览器本地变量 / 内存库」两行明确标注**已停用（目录模式不读不写）** | `ui/buffer-manage.js` |
+| ④ | 新增只读探针 `localLayerReadProbe()`：**按模式**报告本机层（目录模式真的去读目录文件 → 命中 / 字节 / 信封哈希一致 / 条数 / 时间戳）；`ftt.loadDiag` 改用它（并保留 `localBuffer` 别名） | `adapters/store.js` · `ui/debug.js` |
+| ⑤ | 对齐改为**取最新、绝不覆盖**：候选源扩到「变量层 / 内存库 / **当前目录文件** / **聊天元数据** / **上一次用过的目录**」；目录已是最新 → `action=verified`（只核对）；否则写 → 回读逐字节校验 → 才清旧层 | `adapters/store.js#pickLocalSource` / `#switchLocalLayer` |
+| ⑥ | **换目录**：把旧目录里更新的一份迁进新目录（写 → 回读校验），旧目录文件保留当备份（`action=moved-dir`） | 同上（`previousPath`） |
+| ⑦ | **独占性补齐**：目录模式下**聊天元数据层也不读**（V2 本就不写它）→ 本机只剩「目录文件 + 服务端文件」两层；对齐时它仍作为「最新一份」的候选源 | `index.js#loadMemoryState` · `adapters/store.js` |
+
+**③ 边界（如实）**：浏览器本地仍保留**可再生成的辅助缓存**（调试日志 / 交互时间线 / 版本清单 / 同步标记，均自带体积硬上限）—— 它们不含记忆数据，清掉不影响记忆；存储页已逐条写明「停用范围」只覆盖记忆数据的变量层 / 内存库 / 聊天元数据。
+
 ## v3.26.4（2026-10-06）· 台账「已处理楼层」标记丢失修复：不再静默丢标记 + 留痕回填自愈 + 「登记为已分析」
 
 **用户要求**（原话）：「新版本 请调试对接，突然冒出来大量未分析的楼层，实际早已分析。」

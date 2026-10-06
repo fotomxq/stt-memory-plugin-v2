@@ -38,7 +38,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText, noteChatKey } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
+import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys, localLayerInfo } from './adapters/store.js';   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
 // v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
 import { localFileEnabled } from './adapters/local-file.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
@@ -351,8 +351,20 @@ export async function loadMemoryState() {
     if (localDirMode) {
         // **目录模式**：本机层只有一个真相 = 本地目录文件
         try { layers.local = await loadFromLocalFile(); } catch (e) { /* 目录层异常 → 交由服务端文件兜底 */ }
+        // v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅采用本地文件」）：
+        //   **聊天元数据层同样不读** —— 它虽不由 V2 写入，但读它等于把一个非文件来源当并集输入
+        //   （用户明确要求只留「本地目录 + 服务端文件」）。
+        layers.chatmeta = null;
         try {
-            readLedgerRecord({ action: '本机层停用', src: 'local', ok: true, miss: true, reason: 'local-dir-mode', note: '已设置本地缓冲目录 → 变量层与内存库不读不写（只留目录 + 服务端）' });
+            readLedgerRecord({ action: '本机层停用', src: 'local', ok: true, miss: true, reason: 'local-dir-mode', note: '已设置本地缓冲目录 → 变量层 / 内存库 / 聊天元数据都不读不写（只留目录 + 服务端）' });
+        } catch (e) { /* 忽略 */ }
+        try {
+            debugLogPush('对账', {
+                action: '载入：本机层 = 本地目录（其余三层停用）',
+                path: String((() => { try { return localLayerInfo().path; } catch (e) { return ''; } })()),
+                localOk: !!(layers.local), localItems: (() => { try { return layers.local ? dimCountsOf(layers.local).total : 0; } catch (e) { return 0; } })(),
+                note: '变量层 / 内存库 / 聊天元数据 本次都没读',
+            });
         } catch (e) { /* 忽略 */ }
     } else {
         // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」）：本机缓冲可能是**压缩记录** ——
@@ -374,8 +386,11 @@ export async function loadMemoryState() {
         } catch (e) { /* 忽略 */ }
     }
     try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
-    const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
-    layers.chatmeta = (cm && cm.state) || null;
+    // v3.26.5：目录模式下**不读聊天元数据**（只留「目录 + 服务端」两层；见上面 localDirMode 分支的说明）
+    if (!localDirMode) {
+        const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
+        layers.chatmeta = (cm && cm.state) || null;
+    }
     const pick = pickNewerState(layers.local, layers.file);            // 保留：作为**诊断**（谁的时间戳更新）
     const chosen = alignLoadedLayers(layers);
     st = chosen.st; via = chosen.via;

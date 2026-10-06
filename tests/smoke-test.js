@@ -6764,6 +6764,51 @@ await assert('BZ2 v3.26.4 台账自愈与「登记为已分析」（端到端）
     }
 })(), '');
 
+// v3.26.5（用户报告：「本机缓冲设计可能存在问题，保存到本地文件后，是否没有正常读取和写入？
+//   请修复相关问题。如果设置了，则内存和变量及传统本地存储方案全部作废，仅采用本地文件存储。」）
+// 真机取证：目录**写**正常，但界面/诊断在说谎 —— 存储页恒显示「后端 —」、真实位置只写 kv/local/（大信封其实在
+//   blobs/local/）、数据管理页目录模式下只列「浏览器变量 / 内存库」两行（按设计恒空）→ 整页像「本机什么都没有」。
+// 本项端到端核对：目录模式下**本机层如实可见**（存储页 / 数据管理页 / 只读探针三处同源）。
+await assert('BZ3 v3.26.5 目录模式「本机层如实可见」（端到端）：存储页写出真实后端与真实落盘（blobs/kv 两通道 + 真实键名）+「变量层/内存库/聊天元数据已停用」；数据管理页列出目录副本行并把另两层标注已停用；只读探针真读目录文件（命中 / 哈希一致）', (async () => {
+    const RT3 = await import('../core/model/runtime.js');
+    const ST3 = await import('../adapters/store.js');
+    const LF3 = await import('../adapters/local-file.js');
+    const keepCfg = JSON.parse(JSON.stringify(RT3.cfg.storage || {}));
+    try {
+        RT3.cfg.storage = Object.assign({}, RT3.cfg.storage, { localFilePath: '目录BZ3' });
+        ST3.invalidateLocalBufferCache();
+        await ST3.saveStateNow({ force: true });
+        // ① 存储页：后端 / 停用范围 / 真实落盘（两通道 + 真实键名）/ 目录读写计数
+        await entry.popupAction('tab', { tab: 'settings' });
+        const page = String(((await entry.popupAction('settingsSub', { sub: 'storage' })).html) || '');
+        const be = String(ST3.localLayerInfo().backend || '');
+        const key = String(ST3.localLayerInfo().fileKey || '');
+        const pageOk = page.indexOf('变量层 / 内存库 / 聊天元数据已停用') > 0
+            && be !== '' && page.indexOf('后端 ' + be) > 0
+            && page.indexOf('真实落盘') > 0 && key !== '' && page.indexOf(key) > 0
+            // 宿主原生通道才谈 blobs/kv 两张表；酒馆文件通道（st-files）走 user/files/
+            && (be !== 'tt-native' || page.indexOf('blobs/local/') > 0);
+        // ② 数据管理页：目录副本行 + 另两层标注已停用
+        const page2 = String(((await entry.popupAction('settingsSub', { sub: 'data' })).html) || '');
+        const dataOk = page2.indexOf('data-ftt-dir-copy') > 0
+            && page2.indexOf('状态副本（本地目录）') > 0
+            && page2.indexOf('已停用（目录模式不读不写）') > 0
+            && page2.indexOf('真实文件：') > 0;
+        // ③ 只读探针：真读目录文件（mode / present / hashOk），不再是「恒查 localStorage」
+        const probe = await ST3.localLayerReadProbe();
+        const probeOk = probe.mode === 'local-file' && probe.present === true && probe.hashOk === true
+            && Number(probe.bytes) > 0 && String(probe.fileKey) === key;
+        const ok = pageOk && dataOk && probeOk;
+        if (!ok) console.log('BZ3-DEBUG ' + JSON.stringify({ pageOk, dataOk, probeOk, be, key, probe: { mode: probe.mode, present: probe.present, hashOk: probe.hashOk, bytes: probe.bytes } }));
+        return ok;
+    } finally {
+        RT3.cfg.storage = Object.assign({}, RT3.cfg.storage, keepCfg);
+        try { ST3.invalidateLocalBufferCache(); await ST3.saveStateNow({ force: true }); } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+        void LF3;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

@@ -26,7 +26,10 @@ import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileG
 import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
 // v3.16.0（用户要求）：**本地文件存储模式** —— 路径非空时，本机缓冲层改走宿主的本地文件（无 localStorage 配额限制）
-import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFileStatsGet, localFilePath, localFileDirHistory, localFileDirRemember } from './local-file.js';
+import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFileFileKey, localFileStatsGet, localFilePath, localFilePathSanitize, localFileDirHistory, localFileDirRemember, localFileRealLocation } from './local-file.js';
+// v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅用本地文件」）：对齐 / 换目录时
+//   把**聊天元数据**（只读旧载体）也算进候选源 —— 它虽然不由 V2 写入，但「哪份最新就用哪份」才对得起用户。
+import { chatMetaLoadState } from './chat-meta.js';
 // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
 import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './gzip.js';
 import { hydrateStorageData } from '../core/slim.js';
@@ -827,11 +830,21 @@ export function localLayerInfo() {
     } catch (e) { localChars = 0; }
     const on = !!(file && file.enabled);
     const stale = (() => { try { return localStaleInfo(); } catch (e) { return null; } })();
+    // v3.26.5（真机取证「保存到本地文件后，是否没有正常读取和写入？」）：目录模式下界面必须能**逐项核对**
+    //   目录层到底写没写、读没读 —— 这里把「真实键名 / 两种通道路径 / 读回时间 / 失败原因」一并交出去。
+    const real = (() => { try { return localFileRealLocation(String((file && file.path) || ''), scopeId()); } catch (e) { return null; } })();
     return {
         enabled: on, path: String((file && file.path) || ''), name: String((file && file.name) || ''),
         backend: String((file && file.backend) || ''), fileBytes: Number((file && file.lastBytes) || 0),
         writes: Number((file && file.writes) || 0), reads: Number((file && file.reads) || 0),
         failures: Number((file && file.failures) || 0), lastReason: String((file && file.lastReason) || ''),
+        misses: Number((file && file.misses) || 0),
+        fileLastAt: Number((file && file.lastAt) || 0),
+        fileLastReadAt: Number((file && file.lastReadAt) || 0),
+        fileLastWriteAt: Number((file && file.lastWriteAt) || 0),
+        channel: String((file && file.lastChannel) || ''),
+        fileKey: String((real && real.key) || '') || (() => { try { return localFileFileKey(scopeId()); } catch (e) { return ''; } })(),
+        realFiles: (real && Array.isArray(real.files)) ? real.files : [],
         localChars: localChars, budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
         // v3.26.2：压缩留存现状（`gz` = 本机记录是压缩记录；`plainChars` = 原始字符数；`stale` = 本机层停滞标记）
         gz: gz, plainChars: plainChars,
@@ -839,6 +852,7 @@ export function localLayerInfo() {
         stale: stale,
         gzipAvailable: (() => { try { return gzipAvailable(); } catch (e) { return false; } })(),
         // v3.26.0：目录模式下**内存库与变量层都已停用**（读与写都不再经过这两层）
+        // v3.26.5：**聊天元数据层同样停用**（目录模式只读「目录文件 + 服务端文件」）
         memLayersDisabled: on,
         idbWrites: Number(localStats.idbWrites || 0), idbSkipped: Number(localStats.idbSkipped || 0),
         probes: Number((file && file.probes) || 0),
@@ -878,15 +892,54 @@ export async function switchLocalLayer(opts) {
     try {
         if (localFileEnabled()) {
             // v3.26.0：内存库（IndexedDB）也是要停用的一层 → 迁移时**两层一起看**，取更新的一份为源
+            // v3.26.5（用户要求「仅采用本地文件存储」）：候选源扩到四类 —— 变量层 / 内存库 / **目录文件本身** /
+            //   **聊天元数据**；另把**上一次用过的目录**（`previousPath`，换目录时）也算进来。
+            //   并且：**目录文件已是最新时绝不覆盖**（旧实现在这里会把变量层的旧内容写回目录 → 数据回退）。
             const idbText = await idbEnvelopeText();
-            const src = pickLocalSource(raw, idbText);
+            const curPath = localFilePath();
+            const prevPath = String(o.previousPath || '');
+            const prevNorm = localFilePathSanitize(prevPath);
+            const fileNow = await (async () => { try { return await localFileRead(scopeId()); } catch (e) { return null; } })();
+            // 换目录时（previousPath 与当前不同）额外读**旧目录**：它往往才是最新的那份
+            const filePrev = (prevNorm && prevNorm !== curPath)
+                ? await (async () => { try { return await localFileRead(scopeId(), prevPath); } catch (e) { return null; } })()
+                : null;
+            // v3.26.5 注意：`chatMetaLoadState()` 返回的是**读取记录**（`{ok,present,...,state}`），
+            //   信封必须用 `rec.state` 组装 —— 直接传记录会让 `storageEnvelope` 拿不到 `updatedAt`
+            //   （回落成「此刻」）→ 聊天元数据会假装永远最新，把真正的候选源全压掉。
+            const metaRec = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
+            const metaState = (metaRec && metaRec.state && typeof metaRec.state === 'object') ? metaRec.state : null;
+            const metaText = (() => { try { return metaState ? JSON.stringify(storageEnvelope(metaState)) : ''; } catch (e) { return ''; } })();
+            const candFile = (fileNow && fileNow.ok && fileNow.text) ? String(fileNow.text)
+                : ((filePrev && filePrev.ok && filePrev.text) ? String(filePrev.text) : '');
+            const src = pickLocalSource(raw, idbText, candFile, metaText);
             localFileDirRemember(localFilePath());
+            // ① 目录副本已是最新（含跨目录迁移时「旧目录更新」的情形）→ 只做**读回校验**，不写、不清
+            if (src.from === 'file') {
+                const fromPrev = !(fileNow && fileNow.ok && fileNow.text) && !!(filePrev && filePrev.ok && filePrev.text);
+                if (fromPrev) {
+                    // 旧目录更新 → 把它迁进新目录（写 → 回读逐字节校验 → 才认）
+                    const wr2 = await localFileWrite(src.text, scopeId());
+                    const rr2 = wr2 && wr2.ok ? await localFileRead(scopeId()) : null;
+                    if (!wr2 || !wr2.ok || !rr2 || !rr2.ok || String(rr2.text) !== src.text) {
+                        return { ok: false, action: 'error', bytes: 0, cleared: 0, from: 'file', reason: '旧目录内容迁入新目录失败（写或回读校验不一致）→ 旧目录文件保留可用', previousPath: prevNorm };
+                    }
+                    markLocalWritten('', 0);
+                    lastPathMemory = localFilePath();
+                    try { debugLogPush('存储', { action: '换目录：旧目录内容已迁入新目录', from: prevNorm, to: localFilePath(), bytes: src.text.length }); } catch (e) { /* 忽略 */ }
+                    return { ok: true, action: 'moved-dir', bytes: src.text.length, cleared: 0, from: 'file', reason: '已把旧目录（' + prevNorm + '）里更新的一份迁进新目录（' + localFilePath() + '，写 → 回读校验通过）', previousPath: prevNorm };
+                }
+                markLocalWritten('', 0);
+                lastPathMemory = localFilePath();
+                try { debugLogPush('存储', { action: '目录副本已是最新 → 未覆盖（变量层 / 内存库 / 聊天元数据保持停用）', path: localFilePath(), bytes: src.text.length }); } catch (e) { /* 忽略 */ }
+                return { ok: true, action: 'verified', bytes: src.text.length, cleared: 0, idbCleared: false, from: 'file', reason: '目录副本已是最新（' + src.text.length + ' 字符，读回校验通过）→ 未覆盖任何层；变量层 / 内存库 / 聊天元数据保持停用' };
+            }
             if (!src.text) {
                 lastPathMemory = localFilePath();
-                return { ok: true, action: 'none', bytes: 0, cleared: 0, from: '', reason: '变量层与内存库都为空（无需迁移）' };
+                return { ok: true, action: 'none', bytes: 0, cleared: 0, from: '', reason: '目录、变量层、内存库与聊天元数据都为空（无需迁移）' };
             }
             const wr = await localFileWrite(src.text, scopeId());
-            if (!wr || !wr.ok) return { ok: false, action: 'error', bytes: 0, cleared: 0, from: src.from, reason: '写入本地文件失败：' + String((wr && wr.error) || '') };
+            if (!wr || !wr.ok) return { ok: false, action: 'error', bytes: 0, cleared: 0, from: src.from, reason: '写入本地目录失败：' + String((wr && wr.error) || '') };
             const rr = await localFileRead(scopeId());
             if (!rr || !rr.ok || String(rr.text) !== src.text) {
                 return { ok: false, action: 'error', bytes: 0, cleared: 0, from: src.from, reason: '回读校验不一致 → 变量层与内存库保持不动（不丢数据）' };
@@ -899,7 +952,8 @@ export async function switchLocalLayer(opts) {
             localFileDirRemember(localFilePath());
             lastPathMemory = localFilePath();
             try { debugLogPush('存储', { action: '本地目录模式：变量层与内存库已迁移并停用', path: String(localFileStatsGet().path || ''), bytes: src.text.length, cleared: cleared, idbCleared: idbCleared, from: src.from }); } catch (e) { /* 忽略 */ }
-            return { ok: true, action: 'migrated', bytes: src.text.length, cleared: cleared, idbCleared: idbCleared, from: src.from, reason: '已迁移 ' + src.text.length + ' 字符到本地目录（来源：' + (src.from === 'idb' ? '内存库' : '变量层') + '），并清空变量层（' + cleared + ' 个键）' + (idbCleared ? '与内存库副本' : '') };
+            const fromLabel = { idb: '内存库', variable: '变量层', chatmeta: '聊天元数据', file: '目录文件' }[src.from] || src.from;
+            return { ok: true, action: 'migrated', bytes: src.text.length, cleared: cleared, idbCleared: idbCleared, from: src.from, reason: '已迁移 ' + src.text.length + ' 字符到本地目录（来源：' + fromLabel + '），并清空变量层（' + cleared + ' 个键）' + (idbCleared ? '与内存库副本' : '') };
         }
         // 关闭模式：两层都空而文件有内容 → 按**上次路径**迁回（保住本机层，不让用户一关就少一层）
         const usePath = lastPath || '';
@@ -927,9 +981,16 @@ export async function switchLocalLayer(opts) {
 /**
  * v3.26.0：在「变量层信封文本」与「内存库信封文本」之间挑**更新**的一份作为迁移源（纯函数，便于单测）。
  * 判据 = 信封 `payload.updatedAt`；无法解析的一份**不参与**比较（绝不用坏数据覆盖好数据）。
- * @returns {{text:string, from:'variable'|'idb'|''}}
+ * v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅用本地文件」）：候选扩到**四类** ——
+ *   变量层 / 内存库 / **当前目录文件** / **聊天元数据**（只读旧载体）。多给的参数按位置可选，旧调用（两个参数）
+ *   行为逐字不变（并列时仍取变量层）。
+ * @param {string} varText 变量层信封文本
+ * @param {string} idbText 内存库信封文本
+ * @param {string} [fileText] 目录文件信封文本
+ * @param {string} [metaText] 聊天元数据（由 state 现组装的信封文本）
+ * @returns {{text:string, from:'variable'|'idb'|'file'|'chatmeta'|'', at:number}}
  */
-export function pickLocalSource(varText, idbText) {
+export function pickLocalSource(varText, idbText, fileText, metaText) {
     const atOf = (t) => {
         if (!t) return -1;
         try {
@@ -938,10 +999,54 @@ export function pickLocalSource(varText, idbText) {
             return Number((env.payload && env.payload.updatedAt) || 0);
         } catch (e) { return -1; }
     };
-    const a = atOf(varText), b = atOf(idbText);
-    if (a < 0 && b < 0) return { text: '', from: '' };
-    if (b > a) return { text: String(idbText), from: 'idb' };
-    return { text: String(varText), from: 'variable' };
+    const cands = [
+        { from: 'variable', text: varText },
+        { from: 'idb', text: idbText },
+        { from: 'file', text: fileText },
+        { from: 'chatmeta', text: metaText },
+    ].map((x) => ({ from: x.from, text: x.text ? String(x.text) : '', at: atOf(x.text) }))
+        .filter((x) => x.at >= 0);
+    if (!cands.length) return { text: '', from: '', at: -1 };
+    // 稳定排序（`Array.sort` 稳定）→ 并列时保持 [变量层, 内存库, 目录, 聊天元数据] 的顺序（旧行为：并列取变量层）
+    cands.sort((a, b) => b.at - a.at);
+    return { text: cands[0].text, from: cands[0].from, at: cands[0].at };
+}
+
+/**
+ * v3.26.5（真机取证「保存到本地文件后，是否没有正常读取和写入？」）——
+ * **本机层「载入视角」的只读事实探针**（诊断用）：目录模式**真的去读目录文件**并如实回报
+ * 「命中/未命中 / 字节 / 信封哈希是否一致 / 条数 / 时间戳」；普通模式读变量层（localStorage）。
+ * 只读：不写、不清、不改任何层（`localFileRead` 会进读取台账，便于与真实载入对照）。
+ * @returns {Promise<{mode:string,key:string,present:boolean,bytes?:number,hashOk?:boolean,items?:number,at?:number,path?:string,fileKey?:string,real?:Array<object>,miss?:boolean,error?:string,gz?:boolean}>}
+ */
+export async function localLayerReadProbe() {
+    const key = 'ftt2_state_' + scopeId();
+    try {
+        if (localFileEnabled()) {
+            const out = { mode: 'local-file', key: key, present: false, path: localFilePath(), name: localFileName(scopeId()), fileKey: localFileFileKey(scopeId()), backend: (() => { try { return localFileStatsGet().backend; } catch (e) { return ''; } })() };
+            try { out.real = localFileRealLocation(out.path, scopeId()).files; } catch (e) { out.real = []; }
+            const r = await localFileRead(scopeId());
+            if (r && r.ok && r.text) {
+                const raw = String(r.text);
+                out.present = true;
+                out.bytes = raw.length;
+                out.channel = String(r.channel || '');
+                out.backend = String(r.backend || out.backend || '');
+                try {
+                    const env = JSON.parse(raw);
+                    out.hashOk = !env.hash || env.hash === storageHash(env.payload);
+                    out.at = Number((env.payload && env.payload.updatedAt) || 0);
+                    out.items = countsOf(env.payload && env.payload.data).total;
+                } catch (e) { out.hashOk = false; }
+            } else { out.miss = true; out.error = String((r && r.error) || 'miss'); }
+            return out;
+        }
+        const out = { mode: 'localStorage', key: key, present: false };
+        const raw = storageHooks.getItem(key);
+        out.present = !!raw;
+        if (raw) { out.bytes = String(raw).length; out.gz = localRecordKind(raw) === 'gz'; }
+        return out;
+    } catch (e) { return { mode: 'error', key: key, present: false, error: String((e && e.message) || e) }; }
 }
 
 /**

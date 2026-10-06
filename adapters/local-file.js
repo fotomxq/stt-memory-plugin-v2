@@ -33,7 +33,7 @@
 // ============================================================
 import { cfg, dbgLog } from '../core/model/runtime.js';
 import { fileTransportUploadText, fileTransportReadAuto, fileTransportDelete, fileTransportBackend } from './file-transport.js';
-import { ttNativeOn, ttNativeActive, ttDirListCapability, ttListNamespaces } from './tt-store.js';
+import { ttNativeOn, ttNativeActive, ttDirListCapability, ttListNamespaces, ttKeyOf } from './tt-store.js';
 // v3.26.0：目录选择器把「用过的目录」写回配置（变量层停用后，候选清单不能依赖 localStorage）
 import { saveKernelCfg } from './config-store.js';
 
@@ -88,6 +88,19 @@ export function localFileFlatName(scope, override) {
     const p = localFilePath(override).replace(/\//g, '-');
     return (p ? (p + '-') : '') + 'ftt2-local-' + scopeSlug(scope) + '.json';
 }
+/**
+ * v3.26.5：宿主实际落盘的**键名**（原生通道按官方规则归一：非法字符 → `_`）。
+ *   真机取证：存储页过去写「`ftt2-local-＜角色＞.json`」，而磁盘上是
+ *   `ftt2-local_ftt2-local-char_1xbib3t.json`（目录名进了文件名）—— 用户照 UI 去找文件会找不到，
+ *   于是以为「没写进去」。此处给出**可直接对照磁盘**的键名。
+ */
+export function localFileFileKey(scope, override) {
+    try { return ttKeyOf(localFileName(scope, override)); } catch (e) { return localFileName(scope, override); }
+}
+/** 平铺兜底键名（同上口径） */
+export function localFileFlatKey(scope, override) {
+    try { return ttKeyOf(localFileFlatName(scope, override)); } catch (e) { return localFileFlatName(scope, override); }
+}
 /** 稳定短哈希（FNV-1a 32 位 → 6 位 36 进制；无依赖、跨会话稳定，用于命名空间去重） */
 function shortHash(s) {
     let h = 0x811c9dc5;
@@ -127,17 +140,23 @@ export function localFileNsLegacy(override) {
 }
 
 /** 运行统计（诊断 / 面板 / 调试包） */
-const localFileStats = { writes: 0, reads: 0, misses: 0, failures: 0, migrated: 0, restored: 0, probes: 0, lastReason: '', lastBytes: 0, lastAt: 0, backend: '' };
+// v3.26.5（真机取证）：本对象里**不能**留 `backend` 字段 —— `localFileStatsGet()` 是
+//   `Object.assign(事实, 本对象)`，本对象里的 `backend:''` 会把「真实后端」覆盖成空串，
+//   于是存储页长期显示「后端 —」、任何按后端分支的显示都失真（真机实测 `ftt.localDir.backend` 恒为 `''`，
+//   而同一时刻 `ftt.fileTransport.backend` 明明是 `tt-native`）。后端一律由 `localFileBackend()` 现算。
+const localFileStats = { writes: 0, reads: 0, misses: 0, failures: 0, migrated: 0, restored: 0, probes: 0, lastReason: '', lastBytes: 0, lastAt: 0, lastReadAt: 0, lastWriteAt: 0, lastChannel: '' };
 export function localFileStatsGet() {
-    return Object.assign({
+    return Object.assign({}, localFileStats, {
         enabled: localFileEnable(), raw: localFileRawPath(), path: localFilePath(),
         name: localFileName(''), ns: localFileNs(), backend: localFileBackend(),
-    }, localFileStats);
+    });
 }
 /** 重置统计（测试 / 诊断） */
 export function localFileStatsReset() {
     localFileStats.writes = 0; localFileStats.reads = 0; localFileStats.misses = 0; localFileStats.failures = 0;
-    localFileStats.migrated = 0; localFileStats.restored = 0; localFileStats.probes = 0; localFileStats.lastReason = ''; localFileStats.lastBytes = 0; localFileStats.lastAt = 0;
+    localFileStats.migrated = 0; localFileStats.restored = 0; localFileStats.probes = 0; localFileStats.lastReason = '';
+    localFileStats.lastBytes = 0; localFileStats.lastAt = 0; localFileStats.lastReadAt = 0; localFileStats.lastWriteAt = 0;
+    localFileStats.lastChannel = '';
     return true;
 }
 function localFileBackend() { try { return fileTransportBackend(); } catch (e) { return ''; } }
@@ -171,8 +190,10 @@ export async function localFileWrite(text, scope, override) {
             localFileStats.writes += 1;
             localFileStats.lastBytes = body.length;
             localFileStats.lastAt = Date.now();
+            localFileStats.lastWriteAt = localFileStats.lastAt;
+            localFileStats.lastChannel = String((r && r.channel) || r.backend || '');
             localFileStats.lastReason = '';
-            return { ok: true, backend: String(r.backend || ''), bytes: body.length, path: path };
+            return { ok: true, backend: String(r.backend || ''), channel: String(r.channel || ''), bytes: body.length, path: path, key: localFileFileKey(scope, override) };
         }
         localFileStats.failures += 1;
         localFileStats.lastReason = String((r && (r.error || r.reason)) || 'write-failed');
@@ -200,7 +221,9 @@ export async function localFileRead(scope, override) {
             localFileStats.reads += 1;
             localFileStats.lastBytes = String(r.text).length;
             localFileStats.lastAt = Date.now();
-            return { ok: true, text: String(r.text), backend: String(r.backend || ''), path: path };
+            localFileStats.lastReadAt = localFileStats.lastAt;
+            localFileStats.lastChannel = String((r && r.channel) || r.backend || '');
+            return { ok: true, text: String(r.text), backend: String(r.backend || ''), channel: String(r.channel || ''), path: path, key: localFileFileKey(scope, override) };
         }
         // 主名未命中 → 试平铺兜底名（可能上次是用它写成功的）
         const r2 = await fileTransportReadAuto(localFileFlatName(scope, override), Object.assign({}, o, { ns: undefined, stName: localFileFlatName(scope, override) }));
@@ -208,7 +231,8 @@ export async function localFileRead(scope, override) {
             localFileStats.reads += 1;
             localFileStats.lastBytes = String(r2.text).length;
             localFileStats.lastAt = Date.now();
-            return { ok: true, text: String(r2.text), backend: String(r2.backend || ''), flat: true, path: path };
+            localFileStats.lastReadAt = localFileStats.lastAt;
+            return { ok: true, text: String(r2.text), backend: String(r2.backend || ''), flat: true, path: path, key: localFileFlatKey(scope, override) };
         }
         // v3.26.0：**旧命名空间只读兼容** —— v3.16.0~v3.25.x 把非 ASCII 目录名一律映射成 `_`（无哈希），
         //   升级后命名空间会带哈希 → 老数据若只按新命名空间找会被判为「本机层没数据」。此处补一次只读回退。
@@ -385,23 +409,39 @@ export async function localFileProbeDir(rawPath) {
 
 /**
  * 「这个目录最终落在磁盘哪里」的**如实**说明（面板显示用；不猜、不美化）。
- * @returns {{known:boolean, backend:string, text:string}}
+ *
+ * v3.26.5（真机取证「保存到本地文件后，是否没有正常读取和写入？」）：旧文案只写 `kv/local/`，
+ *   但本机缓冲信封必然 ≥96KB（`TT_KV_MAX_BYTES`）→ 实际落在 **`blobs/local/`**；文件名还少了目录前缀
+ *   （磁盘上叫 `ftt2-local_ftt2-local-char_1xbib3t.json`）。用户按旧文案去文件管理器里找 → 找不到 →
+ *   误判「没写进去」。现在**两种通道都列出**，并给出**可按角色算出的真实键名**。
+ * @param {string} rawPath 目录（缺省用配置里的）
+ * @param {string} [scope] 角色作用域（给了就回传该角色的真实键名与两条候选路径）
+ * @returns {{known:boolean, backend:string, text:string, key:string, files:Array<{channel:string,path:string,note:string}>}}
  */
-export function localFileRealLocation(rawPath) {
+export function localFileRealLocation(rawPath, scope) {
     const path = localFilePathSanitize(rawPath);
-    if (!path) return { known: true, backend: '', text: '未开启：本机缓冲仍写浏览器变量与内存库' };
     const backend = localFileBackend();
-    const file = 'ftt2-local-＜角色＞.json';
+    const sc = (scope === undefined || scope === null || scope === '') ? '＜角色＞' : String(scope);
+    const key = localFileFileKey(sc);
+    const files = [];
+    if (!path) return { known: true, backend: '', text: '未开启：本机缓冲仍写浏览器变量与内存库', key: '', files: files };
     if (backend === 'tt-native') {
-        return { known: true, backend: backend, text: '数据目录内：_tauritavern/extension-store/' + localFileNs(path) + '/kv/local/' + file };
+        files.push({ channel: 'blob', path: '_tauritavern/extension-store/' + localFileNs(path) + '/blobs/local/' + key, note: '大信封（≥96KB，本机缓冲通常在这里）' });
+        files.push({ channel: 'kv', path: '_tauritavern/extension-store/' + localFileNs(path) + '/kv/local/' + key, note: '小信封（<96KB）' });
+        return {
+            known: true, backend: backend, key: key, files: files,
+            // 纯文本（调用方自行转义）：blobs = 大信封（本机缓冲通常在这里），kv = 小信封
+            text: '数据目录内：_tauritavern/extension-store/' + localFileNs(path) + '/ —— 大信封在 blobs/local/（本机缓冲通常在这里）、小信封在 kv/local/；文件名 ' + key,
+        };
     }
-    return { known: true, backend: backend, text: '用户目录内：user/files/' + path + '/' + file };
+    files.push({ channel: 'file', path: 'user/files/' + path + '/' + key, note: '酒馆文件通道（子目录不被接受时退化为平铺名）' });
+    return { known: true, backend: backend, key: key, files: files, text: '用户目录内：user/files/' + path + '/' + key };
 }
 
 export { localFileStats };
 export default {
     localFileEnable, localFileEnabled, localFileRawPath, localFilePath, localFilePathSanitize,
-    localFileName, localFileFlatName, localFileNs, localFileNsLegacy, localFileWrite, localFileRead, localFileDelete,
+    localFileName, localFileFlatName, localFileFileKey, localFileFlatKey, localFileNs, localFileNsLegacy, localFileWrite, localFileRead, localFileDelete,
     localFileStatsGet, localFileStatsReset,
     localFileDirCandidates, localFileDirHistory, localFileDirRemember, localFileDirScanHost,
     localFileProbeDir, localFileRealLocation, localFileDirHostCapability,

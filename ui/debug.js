@@ -44,7 +44,7 @@ import {
 } from '../adapters/debug-bridge.js';
 import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 // v3.26.0：「选择目录」的只读体检（模式 / 候选 / 真实落盘位置 / 宿主枚举能力）
-import { localLayerInfo } from '../adapters/store.js';
+import { localLayerInfo, localLayerReadProbe } from '../adapters/store.js';
 import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
@@ -509,6 +509,16 @@ export function buildBridgeMethods() {
             probes: Number((info && info.probes) || 0),
             failures: Number((info && info.failures) || 0),
             lastReason: String((info && info.lastReason) || ''),
+            // v3.26.5：目录层的**可核对事实**（写了几次、读回几次、未命中几次、最近读写时刻、真实键名与两通道路径）
+            writes: Number((info && info.writes) || 0),
+            reads: Number((info && info.reads) || 0),
+            misses: Number((info && info.misses) || 0),
+            fileBytes: Number((info && info.fileBytes) || 0),
+            fileLastReadAt: Number((info && info.fileLastReadAt) || 0),
+            fileLastWriteAt: Number((info && info.fileLastWriteAt) || 0),
+            fileKey: String((info && info.fileKey) || ''),
+            channel: String((info && info.channel) || ''),
+            realFiles: (info && Array.isArray(info.realFiles)) ? info.realFiles : [],
             real: real ? real.text : '',
             hostEnumeration: cand && cand.host ? cand.host : { supported: false, api: '' },
             candidates: cand && Array.isArray(cand.items) ? cand.items.map((x) => ({ path: x.path, source: x.source, current: x.current })) : [],
@@ -1020,17 +1030,12 @@ async function loadDiag() {
             tag: processedVerTag(),
         },
     };
-    // ① 本机缓冲（localStorage；只 getItem）
+    // ① 本机层（v3.26.5：**按模式如实报告** —— 目录模式真的去读目录文件，而不是恒查 localStorage）
+    //    旧口径在目录模式下恒报 `present:false`，让「本机缓冲写没写、读没读」看起来全是坏的。
     try {
-        const ls = globalThis.localStorage;
-        if (!ls) out.localBuffer = { available: false };
-        else {
-            const raw = ls.getItem(key);
-            out.localBuffer = raw
-                ? Object.assign({ available: true, present: true, bytes: raw.length }, ledgerOfEnvelopeText(raw))
-                : { available: true, present: false };
-        }
-    } catch (e) { out.localBuffer = { available: false, error: String((e && e.message) || e) }; }
+        out.localLayer = await localLayerReadProbe();
+        out.localBuffer = out.localLayer;
+    } catch (e) { out.localLayer = { mode: 'error', error: String((e && e.message) || e) }; out.localBuffer = out.localLayer; }
     // ② 服务端文件（与载入同一条只读读取）
     try {
         const r = await fileTransportReadAuto(stateFileName(scope));
