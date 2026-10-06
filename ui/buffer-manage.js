@@ -179,13 +179,33 @@ export function bufferSectionHtml(copy) {
     // ── ① 本机数据副本（记忆数据的本机副本；最容易被漏掉的一类）──
     rows.push('<h5 class="ftt-h4-inline">🧱 本机数据副本 <span class="ftt-muted">记忆数据在本机的副本</span></h5>');
     rows.push('<div class="ftt-hint">清掉后<b>下次打开会从服务端记忆文件重新载入</b>；服务端那份不受影响（若从没成功上传过，清掉本机副本等于丢弃未上传的改动 —— 建议先「⬇ 导出 JSON 文件」）。</div>');
+    // v3.26.5（用户报告「保存到本地文件后，是否没有正常读取和写入？」）：**目录模式必须在这里显示目录层** ——
+    //   旧版只列「浏览器本地变量 / 内存库」，而这两层在目录模式下按设计是空的 → 整页看起来「本机什么都没有」，
+    //   用户据此判断「没写进去」。现在目录层单独一行（真实键名 + 两通道路径 + 最近读回/写入 + 读写计数 + 失败原因）。
+    {
+        let info = null;
+        try { info = localLayerInfo(); } catch (e) { info = null; }
+        if (info && info.enabled) {
+            const when = (t) => (Number(t) > 0 ? fmtTs(Number(t)) : '—');
+            rows.push('<div class="ftt-muted" data-ftt-dir-copy><b>状态副本（本地目录）</b>：'
+                + esc(String(info.path || '')) + ' · 最近写入 ' + esc(fmtChars(Number(info.fileBytes || 0)))
+                + '（' + esc(when(info.fileLastWriteAt)) + '） · 读 ' + Number(info.reads || 0) + ' / 写 ' + Number(info.writes || 0)
+                + ' / 未命中 ' + Number(info.misses || 0)
+                + (Number(info.failures) ? (' · <span class="ftt-err">失败 ' + Number(info.failures) + '：' + esc(String(info.lastReason || '')) + '</span>') : '')
+                + '<br><span class="ftt-muted">真实文件：' + esc(String(info.fileKey || '')) + '（blobs/local/ 大信封 · kv/local/ 小信封）'
+                + (info.fileLastReadAt ? (' · 最近读回 ' + esc(when(info.fileLastReadAt))) : ' · 本次会话尚未读回')
+                + '</span></div>');
+            rows.push('<div class="ftt-hint">目录模式下<b>浏览器本地变量、内存库、聊天元数据都不读不写</b>（只读只写目录 + 服务端）；下面两行按设计恒为空，不是故障。</div>');
+        }
+    }
     {
         // 状态副本（localStorage）：**同步**可算（真实键值现算）→ 首屏就显示真值
         const lo = (st.copy && st.copy.local) || { count: 0, bytes: 0, chars: 0, keys: [] };
         const loStat = Number(lo.count || 0) > 0
             ? (fmtChars(lo.chars) + ' · 约 ' + fmtBytes(lo.bytes) + (lo.gz ? ' · 压缩留存' : ''))
             : '（无本机副本）';
-        rows.push(rowHtml('状态副本（浏览器本地变量）', loStat, 'localCopyClear', '清除当前角色在本机浏览器里的状态副本（服务端记忆文件不动；下次打开会重新载入）', !(Number(lo.count) > 0), 'ftt-err'));
+        const dirOn = (() => { try { return !!localLayerInfo().enabled; } catch (e) { return false; } })();
+        rows.push(rowHtml('状态副本（浏览器本地变量）' + (dirOn ? ' · 已停用（目录模式不读不写）' : ''), loStat, 'localCopyClear', '清除当前角色在本机浏览器里的状态副本（服务端记忆文件不动；下次打开会重新载入）', !(Number(lo.count) > 0), 'ftt-err'));
         // v3.26.2：本机层「停滞」如实告知（上次写入被跳过 → 这份副本不是最新的）
         {
             const stale = st.copy && st.copy.stale;

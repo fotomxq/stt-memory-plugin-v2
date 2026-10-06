@@ -330,28 +330,32 @@ function localFileModeHtml() {
     })();
     const stat = '<div class="ftt-muted ftt-my-1" data-ftt-local-file-status><b>本机缓冲模式：' + mode + '</b>'
         + (on
-            ? (' · <b>变量层与内存库已停用</b>（只留目录 + 服务端） · 后端 ' + esc(String(info.backend || '—'))
+            ? (' · <b>变量层 / 内存库 / 聊天元数据已停用</b>（只读只写目录 + 服务端） · 后端 ' + esc(String(info.backend || '—'))
                 + ' · 最近写入 ' + Number(info.fileBytes || 0).toLocaleString() + ' 字符'
-                + (Number(info.failures) ? (' · 失败 ' + Number(info.failures)) : ''))
+                + (Number(info.fileLastWriteAt) ? ('（' + esc(fmtTime(info.fileLastWriteAt)) + '）') : '')
+                + (Number(info.failures) ? (' · <b>失败 ' + Number(info.failures) + '</b> ' + esc(String(info.lastReason || ''))) : ''))
             : plainTxt)
         + staleTxt
         + '</div>';
-    const one = '<div class="ftt-muted">填目录 = 只写目录 + 服务端；留空 = 变量层 + 内存库。</div>';
+    const one = '<div class="ftt-muted">填目录 = 只写目录 + 服务端（浏览器变量 / 内存库 / 聊天元数据一律不读不写）；留空 = 变量层 + 内存库。</div>';
     const desc = (() => { try { return settingsControlHtml({ key: 'storage.localFilePath', label: '本地文件目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
-    const detail = hintDetailsHtml('本地文件/目录模式说明', '<div class="ftt-hint">开启后：本机缓冲改写宿主的<b>本地目录</b>，'
-        + '<b>不再写浏览器变量、也不再写内存库</b>（按要求：只保留本地目录与服务端存储）→ 不受浏览器本地化配额限制'
+    const detail = hintDetailsHtml('本地文件/目录模式说明', '<div class="ftt-hint">开启后：本机缓冲改写宿主的<b>本地目录文件</b>，'
+        + '<b>不再读写浏览器变量、也不再读写内存库与聊天元数据</b>（按要求：只保留本地目录与服务端存储）→ 不受浏览器本地化配额限制'
         + '（旧模式信封超过 1.8M 字符会<b>静默停更</b>）。<br>'
         + '目录只能在<b>宿主数据目录之内</b>（盘符 / 前导斜杠 / <code>..</code> 会被剥离，非法字符转 <code>_</code>）：'
-        + 'TauriTavern → 真实目录 <code>_tauritavern/extension-store/&lt;命名空间&gt;/kv/local/</code>；网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<br>'
-        + '开启/关闭时自动对齐：开启 → 变量层与内存库里<b>较新的那份</b>迁进目录（写 → 回读校验 → 才清两层）；'
-        + '关闭 → 目录内容迁回变量层与内存库。迁移<b>先写后清</b>，任何一步失败都不清数据。<br>'
-        + '<b>停用范围</b>：记忆数据的变量层与内存库；调试日志 / 同步标记等辅助键体积有硬上限（如调试日志 0.6M 字符），仍留浏览器本地。</div>');
+        + 'TauriTavern → 真实落在 <code>_tauritavern/extension-store/&lt;命名空间&gt;/</code> 下的 <code>blobs/local/</code>（大信封，本机缓冲通常在这里）或 <code>kv/local/</code>（小信封）；'
+        + '网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<b>文件名含目录前缀</b>（如 <code>ftt2-local_ftt2-local-char_xxxxxx.json</code>），与下方「真实落盘」逐字对应。<br>'
+        + '开启/对齐时：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里<b>最新的那份</b>写进当前目录（写 → 回读校验 → 才清旧层）；'
+        + '<b>目录副本已是最新时绝不覆盖</b>。<br>'
+        + '<b>停用范围</b>：记忆数据的变量层 / 内存库 / 聊天元数据；调试日志 / 同步标记等辅助键体积有硬上限（如调试日志 0.6M 字符），仍留浏览器本地。</div>');
     const extra = on
         ? '<div class="ftt-muted">目录：读 ' + Number(info.reads || 0) + ' · 写 ' + Number(info.writes || 0)
-            + ' · 校验 ' + Number(info.probes || 0) + ' 次</div>'
+            + ' · 未命中 ' + Number(info.misses || 0) + ' · 校验 ' + Number(info.probes || 0) + ' 次'
+            + (Number(info.fileLastReadAt) ? (' · 最近读回 ' + esc(fmtTime(info.fileLastReadAt))) : '')
+            + '</div>'
         : '';
     const ops = '<div class="ftt-row">'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前路径约定对齐：开启时把变量层与内存库里较新的那份迁进目录并清空两层（写→回读校验→才清）；关闭时把目录内容迁回两层">🔁 立即对齐本机层</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前目录对齐本机层：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里最新的那份写进当前目录（写→回读校验→才清旧层）；目录副本已是最新时只做校验、不覆盖；关闭目录时把内容迁回变量层与内存库">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
     return stat + one + desc + localFileDirPickerHtml(info) + detail + extra + ops;
@@ -368,7 +372,14 @@ function localFileDirPickerHtml(info) {
     const rows = items.map((it) => '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirUse" data-ftt-dir="'
         + esc(it.path) + '" title="' + esc(it.note || '') + '">' + (it.current ? '✓ ' : '') + esc(it.label)
         + (it.source === 'host' ? '（宿主）' : '') + '</button>').join('');
-    const realTxt = (() => { try { return localFileRealLocation(String((info && info.path) || '')).text; } catch (e) { return ''; } })();
+    const realTxt = (() => {
+        try {
+            // v3.26.5：基础文案用占位角色名，**再补上当前角色的真实键名**（用户要能照着去文件管理器里核对）
+            const base = localFileRealLocation(String((info && info.path) || '')).text;
+            const key = String((info && info.fileKey) || '');
+            return key ? (base + '；当前角色真实文件 ' + key) : base;
+        } catch (e) { return ''; }
+    })();
     const scanRow = cand.host && cand.host.supported
         ? '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirScan" title="列举宿主扩展存储里已有的目录">🔍 扫描宿主已有目录</button>'
         : '<span class="ftt-muted">宿主未提供目录枚举（可手动输入）</span>';
@@ -465,10 +476,16 @@ export async function syncAction(action, payload) {
             try { syncToast(pr.ok ? 'success' : 'warning', '目录校验', note); } catch (e) { /* 忽略 */ }
             return { ok: !!pr.ok, action: a, note: note, detail: pr };
         }
-        // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐两层（变量 ↔ 本地文件；先写后清）
+        // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐本机层（变量 / 内存库 / 聊天元数据 / 目录 ↔ 目录；先写后清）
+        // v3.26.5：目录模式下若**目录副本已是最新** → 只做读回校验并明说「未覆盖」（旧实现会拿旧层内容覆盖目录）；
+        //   换目录时把旧目录里更新的一份迁进新目录（`moved-dir`）。
         if (a === 'localFileAlign') {
             const r = await switchLocalLayer();
-            const note = (r.ok ? '本机层对齐完成：' : '本机层对齐未完成：') + String(r.reason || '');
+            const act = String((r && r.action) || '');
+            const head = act === 'verified' ? '目录副本已核对（未覆盖）：'
+                : act === 'moved-dir' ? '已换目录并迁移：'
+                    : (r.ok ? '本机层对齐完成：' : '本机层对齐未完成：');
+            const note = head + String(r.reason || '');
             try { syncToast(r.ok ? 'success' : 'warning', note, ''); } catch (e) { /* 忽略 */ }
             return { ok: r.ok !== false, action: a, note: note, detail: r };
         }

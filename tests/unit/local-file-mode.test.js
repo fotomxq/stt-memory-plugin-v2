@@ -26,11 +26,11 @@ import { emptyState } from '../../core/state.js';
 import { scopeId } from '../../core/state.js';
 import {
     setStorageHooks, saveStateNow, localBufferState, localLayerInfo, switchLocalLayer, loadFromLocalFile,
-    invalidateLocalBufferCache, pickLocalSource,
+    invalidateLocalBufferCache, pickLocalSource, localLayerReadProbe,
 } from '../../adapters/store.js';
 import {
     localFileEnable, localFileEnabled, localFilePath, localFilePathSanitize, localFileName, localFileNs, localFileNsLegacy,
-    localFileWrite, localFileRead, localFileStatsGet, localFileDirCandidates, localFileDirHistory,
+    localFileWrite, localFileRead, localFileStatsGet, localFileFileKey, localFileDirCandidates, localFileDirHistory,
     localFileDirRemember, localFileDirScanHost, localFileProbeDir, localFileRealLocation, LOCAL_DIR_HISTORY_MAX,
 } from '../../adapters/local-file.js';
 import { ttResetSession } from '../../adapters/tt-store.js';
@@ -38,6 +38,7 @@ import { syncAction, storagePageHtml, SYNC_ACTIONS } from '../../ui/sync.js';
 import { applySettingsControl, SETTINGS_CONTROLS, settingsControlHtml } from '../../ui/settings-pages.js';
 import { pickDirectoryName } from '../../ui/file-io.js';
 import { loadMemoryState } from '../../index.js';
+import { getCtx } from '../../host/st-api.js';
 
 const R = makeReporter('local-file-mode v3.26.0 本地目录模式（只留目录 + 服务端）+ 目录选择器');
 const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, x); };
@@ -266,7 +267,9 @@ await A('B3 存储页动作 `localFileAlign` / `localFileStatusRefresh` 经 `syn
     await saveStateNow({ force: true });
     const a1 = await syncAction('localFileAlign', {});
     const a2 = await syncAction('localFileStatusRefresh', {});
-    return a1.ok !== false && String(a1.note).indexOf('本机层') >= 0
+    // v3.26.5：目录副本已是最新时对齐是**核对**（`verified`）而不是「迁移」—— 提示相应改为「目录副本已核对（未覆盖）」
+    return a1.ok !== false && /目录副本已核对|本机层/.test(String(a1.note))
+        && a1.detail && String(a1.detail.action) === 'verified'
         && a2.ok === true && String(a2.note).indexOf('本地文件模式') >= 0
         && a2.detail && a2.detail.enabled === true;
 }, () => ({ a1: null }));
@@ -358,17 +361,26 @@ await A('B9 `localFileDirScan`：宿主**没有**枚举能力 → 如实回报 n
         && localFileDirCandidates().host.supported === true;
 }, () => ({ yes: null }));
 
-await A('B10 `localFileRealLocation` 如实给出真实落盘位置（宿主原生 → 扩展存储目录；不假装能选任意磁盘路径）', async () => {
+await A('B10 `localFileRealLocation` 如实给出真实落盘位置（宿主原生 → 扩展存储目录；**两种通道都列出** + 真实键名；不假装能选任意磁盘路径）', async () => {
     boot({ storage: { localFilePath: '我的目录' } });
-    const r = localFileRealLocation('我的目录');
+    const r = localFileRealLocation('我的目录', 'char:abc123');
     const ns = localFileNs('我的目录');
     const off = localFileRealLocation('');
     // v3.26.0：非 ASCII 目录名的命名空间会带**路径短哈希**（否则中文目录会双双变成 `____` 互相覆盖）
+    // v3.26.5（真机取证）：本机缓冲信封必然 ≥96KB → 实际落在 `blobs/local/`（旧文案只写 kv/local/ → 用户照它去找会找不到）；
+    //   文件名也含目录前缀（磁盘上叫 `ftt2-local_ftt2-local-char_abc123.json`），故 `key` 必须与磁盘逐字一致。
+    const blob = r.files.filter((x) => x.channel === 'blob')[0] || {};
+    const kv = r.files.filter((x) => x.channel === 'kv')[0] || {};
+    const key = localFileFileKey('char:abc123');
     return r.known === true && r.backend === 'tt-native'
-        && r.text.indexOf('_tauritavern/extension-store/' + ns + '/kv/local/') > 0
+        && r.text.indexOf('_tauritavern/extension-store/' + ns + '/') > 0
+        && r.text.indexOf('blobs/local/') > 0
+        && r.key === key && key.indexOf('ftt2-local-char_abc123.json') > 0
+        && blob.path === '_tauritavern/extension-store/' + ns + '/blobs/local/' + key
+        && kv.path === '_tauritavern/extension-store/' + ns + '/kv/local/' + key
         && ns !== '我的目录' && ns.indexOf('-') > 0 && localFileNs('剧情目录') !== ns
         && off.text.indexOf('未开启') >= 0;
-}, () => ({ real: localFileRealLocation('我的目录'), ns: localFileNs('我的目录') }));
+}, () => ({ real: localFileRealLocation('我的目录', 'char:abc123'), ns: localFileNs('我的目录') }));
 
 await A('B12 命名空间碰撞修复 + 旧命名空间只读兼容：不同中文目录不再写进同一个命名空间', async () => {
     boot({ storage: { localFilePath: '记忆缓冲' } });
@@ -431,5 +443,107 @@ await A('C2 载入路径：目录模式下 `loadMemoryState()` **不读变量层
         && idbReads === reads0                               // 内存库一次都没读
         && lsMap.has(key);                                   // 变量层里的旧副本原样未动
 }, () => ({ via: null }));
+
+// ============================================================
+// v3.26.5（用户报告：「本机缓冲设计可能存在问题，保存到本地文件后，是否没有正常读取和写入？
+//   请修复相关问题。如果设置了，则内存和变量及传统本地存储方案全部作废，仅采用本地文件存储。」）
+//
+// 真机只读取证（调试桥）：
+//   · 目录**写**是正常的（`<ns>/blobs/local/ftt2-local_ftt2-local-char_xxxxxx.json` 一直在更新）；
+//   · 但**界面与诊断都在说谎**：`localFileStatsGet().backend` 恒为 `''`（被统计对象里的空串覆盖）、
+//     「真实落盘」只写 `kv/local/`（大信封实际在 `blobs/local/`）且文件名漏了目录前缀、
+//     数据管理页在目录模式下只列「浏览器变量 / 内存库」两行（按设计恒为空）→ 整页看起来「本机什么都没有」；
+//   · `ftt.loadDiag` 恒只查 localStorage → 目录模式恒报 `present:false`；
+//   · 「立即对齐」在目录模式下拿变量层的**旧**内容覆盖目录文件（数据回退风险），换目录时不迁移旧目录内容。
+// 本批：① 统计/位置/诊断如实；② 对齐「取最新、不覆盖、可换目录」；③ 目录模式**三层全停用**（+聊天元数据）。
+// ============================================================
+await A('D1 统计不再自相矛盾：`localFileStatsGet().backend` / `localLayerInfo().backend` = 真实后端（此前被统计对象里的空串覆盖 → 存储页恒显示「后端 —」）', async () => {
+    boot({ storage: { localFilePath: 'ftt2-local' } });
+    await saveStateNow({ force: true });
+    const st = localFileStatsGet();
+    const info = localLayerInfo();
+    return st.backend === 'tt-native' && info.backend === 'tt-native'
+        && Number(st.writes) >= 1 && Number(st.lastWriteAt) > 0 && Number(st.lastAt) > 0
+        && String(info.fileKey) === localFileFileKey(scopeId())
+        && String(info.fileKey).indexOf('ftt2-local_ftt2-local-char_') >= 0
+        && Array.isArray(info.realFiles) && info.realFiles.some((x) => String(x.path).indexOf('/blobs/local/') > 0);
+}, () => ({ st: localFileStatsGet(), info: localLayerInfo(), scope: scopeId() }));
+
+await A('D2 `localLayerReadProbe` 按**模式**如实回报：目录模式下真的去读目录文件（命中 → 哈希一致 / 条数 / 时间戳；未命中 → 如实 miss），不再恒查 localStorage', async () => {
+    boot({ storage: { localFilePath: 'ftt2-local' } });
+    const miss = await localLayerReadProbe();
+    await saveStateNow({ force: true });
+    const hit = await localLayerReadProbe();
+    return miss.mode === 'local-file' && miss.present === false && miss.miss === true
+        && hit.mode === 'local-file' && hit.present === true && hit.hashOk === true
+        && Number(hit.bytes) > 0 && Number(hit.items) > 0 && Number(hit.at) > 0
+        && String(hit.fileKey) === localFileFileKey(scopeId());
+}, () => ({ hit: null, be: localFileStatsGet().backend }));
+
+await A('D3 `pickLocalSource` 扩到四源（变量 / 内存库 / 目录 / 聊天元数据）：取 `updatedAt` 最新的一份；两参旧行为逐字不变（并列取变量层）', async () => {
+    const env = (at) => JSON.stringify({ payload: { updatedAt: at, data: {} } });
+    return pickLocalSource(env(100), env(200)).from === 'idb'
+        && pickLocalSource(env(100), env(50), env(900), env(10)).from === 'file'
+        && pickLocalSource(env(100), env(50), env(10), env(900)).from === 'chatmeta'
+        && pickLocalSource(env(100), env(100)).from === 'variable'
+        && pickLocalSource('', '').from === '' && pickLocalSource('bad', '').from === '';
+}, () => ({}));
+
+await A('D4 对齐**不再拿旧内容覆盖新目录**：目录副本已是最新 → `action=verified`（内容逐字不变、变量层不清）；变量层更新时才迁进目录并清变量层', async () => {
+    boot({ storage: { localFilePath: 'ftt2-local' } });
+    await saveStateNow({ force: true });
+    const key = lsKey();
+    const dirBefore = String((await localFileRead(scopeId())).text);
+    // ① 变量层塞一份**更旧**的副本 → 对齐只能校验、绝不能覆盖目录
+    lsMap.set(key, JSON.stringify({ payload: { updatedAt: 1, data: { atoms: [{ id: 'stale-var', text: '旧内容。', title: '旧', tags: [] }] } } }));
+    const r1 = await switchLocalLayer();
+    const dirAfter1 = String((await localFileRead(scopeId())).text);
+    const lsKept1 = lsMap.has(key);          // 必须在 r2 之前取（r2 会清变量层）
+    // ② 变量层换成**更新**的一份 → 迁进目录 + 回读校验通过 + 清变量层
+    const fresh = JSON.stringify({ payload: { updatedAt: Date.now() + 60000, data: { atoms: [{ id: 'fresh-var', text: '新内容。', title: '新', tags: [] }] } } });
+    lsMap.set(key, fresh);
+    const r2 = await switchLocalLayer();
+    const dirAfter2 = String((await localFileRead(scopeId())).text);
+    return r1.ok === true && r1.action === 'verified' && dirAfter1 === dirBefore && lsKept1
+        && r2.ok === true && r2.action === 'migrated' && dirAfter2 === fresh && lsMap.has(key) === false;
+}, () => ({ r: null }));
+
+await A('D5 **换目录**：把「上一次用过的目录」里更新的一份迁进新目录（写 → 回读校验通过），旧目录文件保留不动', async () => {
+    boot({ storage: { localFilePath: '目录甲' } });
+    await saveStateNow({ force: true });
+    const textA = String((await localFileRead(scopeId())).text);
+    const nsA = localFileNs('目录甲');
+    const keysA = dirKeys(nsA).slice();
+    // 切到「目录乙」（配置已改）→ 旧目录甲里的内容必须迁过来（先清掉聊天元数据，避免别处遗留的更新副本抢走「最新」）
+    try { getCtx().chatMetadata = {}; } catch (e) { /* 忽略 */ }
+    cfg.storage.localFilePath = '目录乙';
+    const r = await switchLocalLayer({ previousPath: '目录甲' });
+    const textB = await localFileRead(scopeId());
+    return r.ok === true && r.action === 'moved-dir'
+        && textB.ok === true && String(textB.text) === textA
+        && dirKeys(nsA).length === keysA.length && dirKeys(nsA).length > 0;      // 旧目录原样保留
+}, () => ({ moved: null }));
+
+await A('D6 目录模式下**聊天元数据层也不读**（只留目录 + 服务端）；关闭目录模式后恢复并集（对照）', async () => {
+    boot({ storage: { localFilePath: 'ftt2-local' } });
+    await saveStateNow({ force: true });
+    const sc = scopeId();
+    // chatMetadata 里放一份「更新」且带独有条目的副本（V2 只读它，从不写）
+    const metaState = Object.assign(emptyState(), {
+        updatedAt: Date.now() + 999999,
+        atoms: [{ id: 'lf-meta-only', text: '聊天元数据独有条目。', title: '元数据', tags: [] }],
+    });
+    const CTX = getCtx();
+    CTX.chatMetadata = {};
+    CTX.chatMetadata['ftt_memory_v2'] = { format: 'ftt-memory-v2-meta', version: '1', at: Date.now() + 999999, scope: sc, state: metaState };
+    const rDir = await loadMemoryState();
+    const idsDir = ((kernelState() && kernelState().atoms) || []).map((x) => x.id);
+    // 关闭目录模式 → 同一份 chatMetadata 应当重新被并集进来（证明「是目录模式让它停用」而不是数据不可用）
+    cfg.storage.localFilePath = '';
+    const rOff = await loadMemoryState();
+    const idsOff = ((kernelState() && kernelState().atoms) || []).map((x) => x.id);
+    return idsDir.indexOf('lf-meta-only') < 0 && idsOff.indexOf('lf-meta-only') >= 0
+        && !!rDir && !!rOff;
+}, () => ({ meta: null }));
 
 R.done();
