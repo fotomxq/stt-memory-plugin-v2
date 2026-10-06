@@ -144,6 +144,14 @@ function budgetLedgerHtml() {
     ];
     if (out) parts.push('上次实际注入 <b>' + out + '</b> 字');
     if (Number(st.overBudget) > 0) parts.push('<b>超限未注入 ' + st.overBudget + ' 次</b>');
+    // v3.26.3（用户要求「提示应增加用什么方式召回的」）：账目里也如实写出**上次召回方式**（含降级原因）
+    const mk = st.lastMethod || null;
+    if (mk && (mk.label || mk.note)) {
+        parts.push('上次召回方式 <b>' + esc(String(mk.label || '（未命中）')) + '</b>'
+            + (mk.note ? ('（' + esc(String(mk.note)) + '）') : ''));
+    } else if (st.lastHitLayer) {
+        parts.push('上次召回方式 <b>' + esc(String({ vector: '向量召回', js: '本地关键词召回', ai: 'AI 分析召回' }[String(st.lastHitLayer)] || st.lastHitLayer)) + '</b>');
+    }
     return '<div class="ftt-muted" data-ftt-budget-ledger>注入账目：' + parts.join(' · ')
         + '（正文预算 = 上限 − 结构框架；「使用说明」属你的提示词，不占用该预算）</div>';
 }

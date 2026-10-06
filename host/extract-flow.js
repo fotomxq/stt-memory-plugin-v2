@@ -24,6 +24,87 @@ import { debugLogPush } from '../adapters/debug-log.js';
 const str = (v) => String(v == null ? '' : v).trim();
 function log(kind, data) { try { debugLogPush(kind, data); } catch (e) { /* 忽略 */ } }
 
+// ============================================================
+// v3.26.3（用户要求）：「总览的召回完成提示，应增加**用什么方式召回**的。」
+//
+// 事实：三层流程（向量 → 本地 JS 抽取 → AI 分析）各自都可能命中，也可能整条降级到
+//   `host/inject.js` 的**本地兜底**；而旧提示只把 `hitLayer` 映射成「向量层 / JS 抽取层 / AI 分析层」，
+//   且**流程未进入**（向量与 AI 都未启用）时标签为空 —— 用户看不出「这次到底靠什么召回」，
+//   更看不出「为什么没用向量」。
+// 口径：把「实际经过」说成一句人话 —— labels 固定为 **向量召回 / 本地关键词召回 / AI 分析召回**，
+//   并附**降级 / 跳过原因**（向量未启用 / 向量无命中 / 向量请求失败 / 长任务在途 → 跳过 AI 层 …）。
+// ============================================================
+/** 召回方式标签（对外统一词表；面板提示与诊断共用） */
+export const RECALL_METHOD_LABELS = Object.freeze({
+    vector: '向量召回',
+    local: '本地关键词召回',
+    ai: 'AI 分析召回',
+});
+
+/** 向量层未命中/不可用的原因 → 人话（用于「为什么降级到本地」） */
+const VECTOR_REASON_TEXT = Object.freeze({
+    disabled: '向量未启用',
+    'not-configured': '向量未配置',
+    'no-keywords': '无关键词可用',
+    'empty-bank': '向量库为空',
+    'embedding-failed': '向量请求失败',
+    'keyword-embedding-failed': '关键词向量失败',
+    'no-hit': '向量无命中',
+});
+
+/**
+ * 召回方式信息（**纯函数**，便于单测）。
+ * @param {object} info
+ *   `hitLayer` 三层流程命中层（`vector`/`js`/`ai`/`''`）· `trace` 逐层轨迹 ·
+ *   `flowEntered` 是否进入三层流程 · `usedLocalFallback` 是否由本地兜底产出正文 ·
+ *   `vectorEnabled` / `aiEnabled` 配置态 · `aiSkippedBusy` 长任务在途跳过 AI 层 · `keywords` 关键词
+ * @returns {{key:string, label:string, note:string, keywords:string[]}}
+ */
+export function recallMethodInfo(info) {
+    const o = info || {};
+    const hit = str(o.hitLayer);
+    const trace = Array.isArray(o.trace) ? o.trace : [];
+    const kws = (Array.isArray(o.keywords) ? o.keywords : []).map((x) => str(x)).filter(Boolean);
+    const kwTxt = kws.length ? ('关键词 ' + kws.length + ' 个') : '无关键词';
+    const vectorTrace = trace.filter((x) => x && x.layer === 'vector')[0] || null;
+    const vectorReason = (() => {
+        if (o.vectorEnabled !== true) return '向量未启用';
+        if (vectorTrace) {
+            if (vectorTrace.ok === false) return VECTOR_REASON_TEXT[str(vectorTrace.reason)] || ('向量不可用（' + str(vectorTrace.reason || 'unknown') + '）');
+            if (Number(vectorTrace.count || 0) <= 0) return '向量无命中';
+        }
+        return '';
+    })();
+    const aiReason = (() => {
+        if (o.aiSkippedBusy === true) return '长任务在途 → 跳过 AI 层';
+        if (o.aiEnabled !== true) return 'AI 层未启用';
+        return '';
+    })();
+    const out = { key: '', label: '', note: '', keywords: kws.slice(0, 6) };
+    if (hit === 'vector') {
+        out.key = 'vector'; out.label = RECALL_METHOD_LABELS.vector; out.note = kwTxt;
+        return out;
+    }
+    if (hit === 'ai') {
+        out.key = 'ai'; out.label = RECALL_METHOD_LABELS.ai; out.note = kwTxt;
+        return out;
+    }
+    if (hit === 'js' || (o.usedLocalFallback === true)) {
+        out.key = 'local'; out.label = RECALL_METHOD_LABELS.local;
+        // 「已降级」只在**本来开着却没用上**时标注；「向量未启用」是如实陈述，不是降级
+        const degraded = (o.vectorEnabled === true && !!vectorReason);
+        out.note = [
+            kwTxt,
+            vectorReason ? (vectorReason + (degraded ? ' → 已降级' : '')) : '',
+            o.aiSkippedBusy === true ? '长任务在途 → 跳过 AI 层' : '',
+        ].filter(Boolean).join(' · ');
+        return out;
+    }
+    // 没有任何一层产出正文 → 如实说明「用什么方式试过、为什么没成」
+    out.note = [o.flowEntered === true ? '三层流程均未命中' : '未进入三层流程', vectorReason, aiReason].filter(Boolean).join(' · ');
+    return out;
+}
+
 /**
  * 三层流程（返回第一层命中的结果；全部未命中 → `hits=[]` 且 `reason` 说明原因）。
  * @param {string} floorText 最近楼层正文（查询意图来源）
