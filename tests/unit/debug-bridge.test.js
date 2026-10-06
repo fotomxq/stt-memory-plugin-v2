@@ -130,14 +130,18 @@ function useTauriTavern(withDev = true) {
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
-                'ftt.dataHealth', 'ftt.dataHealthText',                      // v3.11.0：数据体检（只读）
-                'ftt.debugLogStats', 'ftt.debugPageInfo',
-                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.ledger', 'ftt.loadDiag', 'ftt.memorySample', 'ftt.memoryShape',
-                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.plotScope', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads', 'ftt.snapshot', 'ftt.stateSize', 'ftt.traceStats',
+                'ftt.config', 'ftt.dataHealth', 'ftt.dataHealthText',                      // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要
+                'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
+                'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
+                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors', 'ftt.ledger', 'ftt.loadDiag',
+                'ftt.memorySample', 'ftt.memoryShape',
+                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.plotScope', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads',
+                'ftt.search', 'ftt.snapshot', 'ftt.stateSize', 'ftt.syncLog',              // v3.25.0：+搜索 / 楼层窗口 / 同步日志
+                'ftt.trace', 'ftt.traceStats',
                 'ftt.writeStats',                                            // v3.15.1：原生写队列诊断（并发峰值 / 最近一次写）
                 'host.backendLogsTail', 'host.consoleCaptureGet', 'host.frontendLogsList',
                 'host.llmLogsIndex', 'host.llmLogsKeep', 'host.llmLogsPreview', 'host.llmLogsRaw',
-                'sys.bridgeState', 'sys.host', 'sys.info', 'sys.methods',
+                'sys.batch', 'sys.bridgeState', 'sys.host', 'sys.info', 'sys.methods', 'sys.ping',   // v3.25.0：+批量 / 探针
             ].join(','), names);
 
         // 显式黑名单：已知的改动型动作 / 写入型开关，一律不得登记
