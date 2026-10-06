@@ -105,7 +105,8 @@ const B1 = await (async () => {
         renderOnce: b1 - b0 === 1,                 // renderPanel 自身：1 次构建（旧实现 2 次）
         actionOnce: b2 - b1 === 1,                 // 一次动作：+1（旧实现 renderPanel 2 次 + 返回值 1 次 = 3 次）
         actionOnce2: b3 - b2 === 1,
-        htmlReused: html === P.panelHtmlBuilt() && html.indexOf('<div class="ftt-modal">') === 0,
+        // v3.24.0：`.ftt-modal` 根节点新增对话框语义属性 → 只断言「仍是这一个根节点」（不再假定没有别的属性）
+        htmlReused: html === P.panelHtmlBuilt() && html.indexOf('<div class="ftt-modal"') === 0,
         bytes: String(P.panelHtmlBuilt()).length,
     };
 })();

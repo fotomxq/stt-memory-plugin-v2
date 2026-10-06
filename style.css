@@ -110,8 +110,9 @@
   --ftt-panel-head-bg: #22262f;   /* 顶栏底色 */
   --ftt-border: #3a4048;          /* 分隔线 / 弱边框 */
   --ftt-border-strong: #4a4f5c;   /* 控件边框 */
-  --ftt-danger: var(--ftt-danger);          /* 危险色（删除 / 失败） */
-  --ftt-success: var(--ftt-success);         /* 成功色 */
+  /* v3.24.0：此处原为 `--ftt-danger: var(--ftt-danger)` / `--ftt-success: var(--ftt-success)`
+     —— **自引用变量是死声明**（CSS 变量自引用解析为无效值），危险/成功两色实际上一直由下方
+     「视觉体系 v2」的 `#ftt-panel` 令牌块提供。删掉死声明，避免误以为这里能改色。 */
   --ftt-accent: #e0b06a;          /* 强调色（焦点 / 高亮），与既有取色一致 */
 }
 #ftt-panel .ftt-modal { margin: auto; width: min(var(--ftt-panel-max-w), calc(100vw - 32px)); height: min(80vh, 960px); height: min(80dvh, 960px); max-height: 100vh; max-height: 100dvh; background: var(--ftt-panel-bg); color: #e8e4df; border: 1px solid #4a4f5c; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
@@ -291,9 +292,14 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-dim-row select { width: 100%; background: #101318; color: #f0ece6; border: 1px solid #4a4f5c; border-radius: 5px; padding: 4px 8px; font-size: 12px; }
 #ftt-panel .ftt-loc-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #333842; }
 #ftt-panel .ftt-loc-row .ftt-loc-name { flex: 1; color: #e8e4df; font-size: 12px; }
-/* ===== /统一消息弹窗（notify → ST toastr）—— 行为配色（左侧色条） =====
-   弹窗一律走酒馆自带 toastr（避免自建 DOM 弹层导致卡死），此处仅叠加行为配色类。 */
-#toast-container .ftt-toastr { border-left-width: 4px !important; border-left-style: solid !important; }
+/* ===== 统一消息弹窗（notify → ST toastr）—— 行为配色 =====
+   弹窗一律走酒馆自带 toastr（避免自建 DOM 弹层导致卡死），此处仅叠加行为配色类。
+
+   ⚠️ v3.24.0 之前这组类**从未被任何 JS 挂上**（`ui/notify.js` 出生前没有出口传 `toastClass`）——
+   也就是说下面 8 条配色一直是**死 CSS**，所有通知长得一模一样。现在由
+   `ui/notify.js#notifyClassOf` 生成类名、`showToast()` 经 toastr 的 `toastClass` 选项挂上
+   （并有 `onShown` 兜底），本组规则**才真正生效**。 */
+#toast-container .ftt-toastr { border-left-width: 4px !important; border-left-style: solid !important; border-radius: 10px; }
 #toast-container .ftt-toastr--info { border-left-color: #7f9bb3 !important; }
 #toast-container .ftt-toastr--analysis { border-left-color: #4da3ff !important; }
 #toast-container .ftt-toastr--success { border-left-color: #3ecf6e !important; }
@@ -302,6 +308,25 @@ body.ftt-no-effects #toast-container *::before {
 #toast-container .ftt-toastr--sync { border-left-color: #a06bff !important; }
 #toast-container .ftt-toastr--weave { border-left-color: #ff8fab !important; }
 #toast-container .ftt-toastr--repair { border-left-color: #22c7c2 !important; }
+/* v3.24.0：配色之外再给「一眼可辨」的三处细节 ——
+   ① 进度条同色（剩余时间条不再一律默认色）；
+   ② 错误/警告的正文加粗一点点（扫一眼就知道这条不是在报成功）；
+   ③ 通知本身不因超长文案无限变高（正文最多 6 行，超出省略）。
+   全部只作用于带 `ftt-toastr` 类的通知，不碰酒馆自有的其它通知。 */
+#toast-container .ftt-toastr--info .toast-progress { background-color: #7f9bb3 !important; }
+#toast-container .ftt-toastr--analysis .toast-progress { background-color: #4da3ff !important; }
+#toast-container .ftt-toastr--success .toast-progress { background-color: #3ecf6e !important; }
+#toast-container .ftt-toastr--warning .toast-progress { background-color: #ffb02e !important; }
+#toast-container .ftt-toastr--error .toast-progress { background-color: #ff5d5d !important; }
+#toast-container .ftt-toastr--sync .toast-progress { background-color: #a06bff !important; }
+#toast-container .ftt-toastr--weave .toast-progress { background-color: #ff8fab !important; }
+#toast-container .ftt-toastr--repair .toast-progress { background-color: #22c7c2 !important; }
+#toast-container .ftt-toastr--error .toast-message,
+#toast-container .ftt-toastr--warning .toast-message { font-weight: 600; }
+#toast-container .ftt-toastr .toast-message {
+    display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+    word-break: break-word; line-height: 1.45;
+}
 /* ===== 视觉体系 v2（色调 / 组件规范 / 美学提升）=====
    统一调色板（冷灰蓝底 + 琥珀强调）、层级与阴影、组件细节（标签/卡片/按钮/输入/开关/表格/滚动条/
    空态/消息弹窗），并保持「界面特效」开关与 prefers-reduced-motion 对全部动效的约束。 */
@@ -357,7 +382,10 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-btn.ftt-ok { background: linear-gradient(180deg, #5cc281, #3f9a60); border-color: #3f9a60; color: #0d1f13; font-weight: 600; }
 #ftt-panel .ftt-btn.ftt-err { background: linear-gradient(180deg, #d9727a, #b04a53); border-color: #b04a53; color: #fff; font-weight: 600; }
 #ftt-panel .ftt-btn.ftt-sm { min-height: 24px; padding: 3px 10px; font-size: 11px; }
-#ftt-panel .ftt-btn:disabled { opacity: .45; box-shadow: none; }
+#ftt-panel .ftt-btn:disabled { opacity: .45; box-shadow: none; cursor: not-allowed; }
+/* v3.24.0：焦点可见性补强 —— 开关（switch）与关闭按钮此前只有 hover 态，键盘 Tab 到时看不出焦点在哪 */
+#ftt-panel .ftt-close:focus-visible { outline: 2px solid var(--ftt-accent); outline-offset: 2px; border-radius: 6px; }
+#ftt-panel .ftt-tab:focus-visible, #ftt-panel .ftt-subtab:focus-visible { outline: 2px solid var(--ftt-accent); outline-offset: -2px; }
 #ftt-panel .ftt-btn:focus-visible, #ftt-panel .ftt-op:focus-visible, #ftt-panel input:focus-visible, #ftt-panel select:focus-visible, #ftt-panel textarea:focus-visible { outline: none; border-color: var(--ftt-accent); box-shadow: 0 0 0 3px var(--ftt-accent-soft); }
 #ftt-panel .ftt-item { background: var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm); padding: 9px 11px; margin: 6px 0; }
 #ftt-panel .ftt-item:hover { border-color: var(--ftt-line-2); background: #232933; }
@@ -483,6 +511,13 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-note.ftt-note-warn { border-left-color: var(--ftt-warn); color: var(--ftt-warn); }
 #ftt-panel .ftt-note.ftt-note-ok { border-left-color: var(--ftt-ok); color: var(--ftt-ok); }
 #ftt-panel .ftt-note.ftt-note-err { border-left-color: var(--ftt-danger); color: var(--ftt-danger); }
+/* v3.24.0：总览「状态提示行」（`setNote()` 写的那一行）按级别配色 ——
+   改动前失败/被拒绝与「已完成」长得一样，用户只能逐字读那行小字才发现「刚才那步其实失败了」。
+   现在：错误红、警告琥珀、成功绿，各自带很淡的底色，扫一眼即可分辨。 */
+#ftt-panel .ftt-note-line { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; padding: 5px 9px; border-radius: var(--ftt-radius-sm); background: rgba(255,255,255,.02); }
+#ftt-panel .ftt-note-line.ftt-note--err { border-left-color: var(--ftt-danger); color: var(--ftt-danger); background: var(--ftt-danger-soft); font-weight: 600; }
+#ftt-panel .ftt-note-line.ftt-note--warn { border-left-color: var(--ftt-warn); color: var(--ftt-warn); background: var(--ftt-warn-soft); }
+#ftt-panel .ftt-note-line.ftt-note--ok { border-left-color: var(--ftt-ok); color: var(--ftt-ok); background: var(--ftt-ok-soft); }
 #ftt-panel .ftt-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 #ftt-panel .ftt-inline.ftt-inline-tight { gap: 4px; }
 /* 徽标（维度 / 记忆类型 / 阶段 / 状态）：与胶囊同族，尺寸更小、语义色更明确 */

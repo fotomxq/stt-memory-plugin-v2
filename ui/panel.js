@@ -131,7 +131,7 @@ export const PANEL_TABS = Object.freeze([
 const TAB_DIM = { atoms: 'atoms', states: 'currentStates', snapshots: 'snapshots', memories: 'memories', items: 'items', currencies: 'currencies', rumors: 'rumors', plans: 'plans', scenes: 'scenes', concepts: 'concepts', parallels: 'parallels' };
 
 const ps = {
-    tab: 'overview', open: false, q: {}, editing: null, note: '', opened: 0,
+    tab: 'overview', open: false, q: {}, editing: null, note: '', noteLevel: '', opened: 0,
     busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
     settingsSub: 'base', // 设定页当前子页（V1 的 14 组子页 + v2.80.0 新增「约束」= 15 组）
     // 注：关系表「按角色筛选」「跳转定位」「选角色态」自 B9-b 起由 `ui/rel-table.js` 持有（V1 同款闭包变量口径），
@@ -213,7 +213,7 @@ export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || 
 /** 面板状态（诊断/测试） */
 export function panelState() {
     return {
-        id: PANEL_ID, tab: ps.tab, open: ps.open, opened: ps.opened, note: ps.note,
+        id: PANEL_ID, tab: ps.tab, open: ps.open, opened: ps.opened, note: ps.note, noteLevel: ps.noteLevel || '',
         tabs: PANEL_TABS.map((t) => t[0]), editing: ps.editing ? Object.assign({}, ps.editing) : null,
         search: Object.assign({}, ps.q),
         multi: Object.assign({}, ps.multi),
@@ -657,7 +657,11 @@ function overviewBody() {
     const covered = (() => { try { return floorCoverage(state, { maxFloor: liveFloorTail() }).floors; } catch (e) { return 0; } })();
     lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要')
         + (covered ? (' · 已有记忆数据 ' + covered + ' 楼') : '') + '</div>');
-    if (ps.note) lines.push('<div class="ftt-hint" data-ftt-note>' + esc(ps.note) + '</div>');
+    // v3.24.0：状态提示行带**级别配色**（复用既有的 `.ftt-note--err/--warn/--ok` 语义色；
+    //   级别由 `setNote()` 推断或显式给出，见 `noteLevelOf`）。
+    //   同时给出**状态播报语义**（`role=status` + `aria-live=polite`）—— 读屏软件会念出「刚才那步的结果」，
+    //   与本次「提示行分级」配对（看得见 / 听得见，两路都要有）。
+    if (ps.note) lines.push('<div class="ftt-hint ftt-note ftt-note-line' + (ps.noteLevel ? (' ftt-note--' + ps.noteLevel) : '') + '" role="status" aria-live="polite" data-ftt-note>' + esc(ps.note) + '</div>');
     // ⑧ v2.66.0：最后一次提取放**最末端**（回顾性质，不占首屏；折叠内容给足高度）
     if (lastExtractLines) lines.push(lastExtractLines);
     // v2.66.0：总览统一容器（布局微调锚点：收紧区块间距、限高可滚的未摘要列表，见 style.css）
@@ -1495,9 +1499,12 @@ export function panelModalInnerHtml(opts) {
         + (loadBlocked()
             ? '<span class="ftt-stat ftt-busy" title="首次载入尚未完成，读完会自动刷新">⏳ 读取中…</span>'
             : '<span class="ftt-stat" title="全部类目记忆条目之和">总记忆数 ' + totalMemory() + '</span>')
-        + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）">✕</button></div>';
-    const tabs = '<div class="ftt-tabs">' + PANEL_TABS.map(([t, l]) =>
-        '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '">' + esc(l) + '</a>').join('') + '</div>';
+        + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）" aria-label="关闭 FTT记忆组件面板">✕</button></div>';
+    // v3.24.0（UI 优化）：标签条给出**标签语义**（`role=tablist` + `role=tab` + `aria-selected`），
+    //   读屏软件能听出「这是第几个页签、当前选中哪个」；纯新增属性，不改类名与结构（既有断言不受影响）。
+    const tabs = '<div class="ftt-tabs" role="tablist" aria-label="FTT记忆组件分页">' + PANEL_TABS.map(([t, l]) =>
+        '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '"'
+        + ' role="tab" aria-selected="' + (t === active ? 'true' : 'false') + '" title="' + esc(String(l)) + '">' + esc(l) + '</a>').join('') + '</div>';
     const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">'
         + ((all || t === active) ? panelBodyHtml(t) : '') + '</div>').join('\n');
     return head + tabs + bodies;
@@ -1505,7 +1512,9 @@ export function panelModalInnerHtml(opts) {
 
 /** 整个浮层 HTML（与 V1 同名同层级；V1 样式挂在 #ftt-panel 上） */
 export function panelHtml(opts) {
-    return '<div class="ftt-modal">' + panelModalInnerHtml(opts) + '</div>';
+    // v3.24.0（UI 优化）：浮层给出**对话框语义**（`role=dialog` + `aria-modal` + 可读标题）——
+    //   读屏软件不再把面板当成一坨普通文本；纯新增属性，不改类名与结构。
+    return '<div class="ftt-modal" role="dialog" aria-modal="true" aria-label="FTT记忆组件">' + panelModalInnerHtml(opts) + '</div>';
 }
 
 /** 找到（或创建）浮层元素：优先 body，退到任意扩展容器（桩 DOM 无 body 时也能工作） */
@@ -1698,7 +1707,8 @@ export function renderPanel() {
     // v3.1.0：**一次渲染只构建一遍**（旧实现构建两遍：`panelModalInnerHtml` + `panelHtml`），
     //   并把结果缓存给 `panelHtmlBuilt()`，供动作返回值复用（旧实现在 `finalizePanelAction` 里再构建第三遍）。
     const innerHtml = ensureButtonTypes(panelModalInnerHtml());
-    const html = '<div class="ftt-modal">' + innerHtml + '</div>';
+    // v3.24.0：与 `panelHtml()` 同口径，模态节点也带对话框语义（读屏可识别；纯新增属性）
+    const html = '<div class="ftt-modal" role="dialog" aria-modal="true" aria-label="FTT记忆组件">' + innerHtml + '</div>';
     lastRenderedHtml = html;
     applyPanelWidth(el);
     if (!el) return html;
@@ -1776,7 +1786,52 @@ export function closePanel() {
 }
 export function panelOpen() { return ps.open; }
 
-function setNote(text) { ps.note = String(text == null ? '' : text); return ps.note; }
+/**
+ * 面板提示行（总览底部那行小字）—— **v3.24.0 起带级别**。
+ *
+ * 用户要求（原话）：「进一步优化UI设计、优化通知效果等。」
+ * 改动前的问题：`setNote()` 只有一个字符串，**失败 / 被拒绝 / 入口未就绪与「已完成」长得一模一样**
+ *   （`style.css` 里 `#ftt-panel .ftt-note.ftt-note-err` 这条规则**从未被应用过** → 死 CSS）。
+ *   于是「刚点的那步其实失败了」只能靠逐字读那行小字才发现。
+ *
+ * 现在：`setNote(text, level)` ——
+ *   · 显式 level（`'err'` / `'warn'` / `'ok'` / `''`）优先；
+ *   · 未显式给定时按文案**保守推断**（只认明确的失败/警告标记词，见 `noteLevelOf`），
+ *     这样 ~150 处既有调用**一处不改**也能得到正确分级；
+ *   · 级别经 `panelState().noteLevel` 透出，渲染为 `ftt-note--err/--warn/--ok` 三档配色。
+ * @param {*} text 提示文案
+ * @param {''|'err'|'warn'|'ok'} [level] 显式级别（省略 = 按文案推断）
+ * @returns {string} 提示文案
+ */
+/** 面板提示行的**级别标记词**（保守：只认明确的失败/警告/成功措辞，避免把「已完成 0 条失败」之类误判） */
+const NOTE_ERR_MARK = /失败|未就绪|未完成|未执行|已拒绝|无法|错误|异常|无效|不支持|不可用|拒绝/;
+const NOTE_WARN_MARK = /未找到|未选中|已取消|跳过|请稍候|至少|不提供|没有可|已达上限|占用中/;
+const NOTE_OK_MARK = /完成|已保存|已删除|已清空|已注入|已更新|已对齐|已标定|已还原|已选择|已调整|已收起|已打开|已切换|已定位/;
+
+/**
+ * 面板提示行的级别（v3.24.0）：显式 level 优先，否则按**保守标记词**推断。
+ * @param {string} text 提示文案
+ * @param {''|'err'|'warn'|'ok'} [level] 显式级别
+ * @returns {''|'err'|'warn'|'ok'}
+ */
+export function noteLevelOf(text, level) {
+    const l = String(level == null ? '' : level).trim().toLowerCase();
+    if (l === 'err' || l === 'error' || l === 'fail') return 'err';
+    if (l === 'warn' || l === 'warning') return 'warn';
+    if (l === 'ok' || l === 'success') return 'ok';
+    const s = String(text == null ? '' : text);
+    if (!s) return '';
+    if (NOTE_ERR_MARK.test(s)) return 'err';
+    if (NOTE_WARN_MARK.test(s)) return 'warn';
+    if (NOTE_OK_MARK.test(s)) return 'ok';
+    return '';
+}
+
+function setNote(text, level) {
+    ps.note = String(text == null ? '' : text);
+    ps.noteLevel = noteLevelOf(ps.note, level);
+    return ps.note;
+}
 
 /**
  * 确认框（V1 `D.confirm(...)` 的 V2 等价）：

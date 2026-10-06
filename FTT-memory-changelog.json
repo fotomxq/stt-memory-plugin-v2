@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.23.0",
+  "version": "3.24.0",
   "updatedAt": "2026-10-05",
   "generatedAt": "2026-10-05",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.24.0",
+      "date": "2026-10-05",
+      "title": "UI 与通知效果优化：通知行为配色真正生效 + 面板提示行分级 + 无障碍语义",
+      "points": [
+        "① 通知效果（本轮主项）—— 修的都是「写了但从没生效」的死代码：| 缺陷（改动前，逐条核对过代码） | 现在 || --- | --- || style.css 早写好 8 类…",
+        "② UI 设计：| 项 | 改动 || --- | --- || 修掉死 CSS | style.css 的 --ftt-danger: var(--ftt-danger) / …",
+        "③ 测试：新增单测 tests/unit/notify.test.js（21 项）：kind 归一（8 类 / 英文别名 / 中文类别词 / 9 类非法输入）· 选方法（细粒度只…"
+      ]
+    },
     {
       "version": "3.23.0",
       "date": "2026-10-05",

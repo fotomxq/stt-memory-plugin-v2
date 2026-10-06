@@ -6462,6 +6462,47 @@ await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情�
 })(), '');
 
 
+// ---------- BS 通知出口（v3.24.0）：核心通知 → 插件接线 → 行为配色类真的挂到通知上 ----------
+// 用户要求（原话）：「进一步优化UI设计、优化通知效果等。」
+// 改动前：`style.css` 的 8 类行为配色（`#toast-container .ftt-toastr--*`）**没有任何 JS 挂过** →
+//   所有通知长得一模一样；且调 toastr 不传选项（无转义 / 无去重 / 无分级停留 / 无长度上限）。
+// 本断言走**真实接线**（`core` 经 `notifyHooks.toast` → `index.js#setNotifyHooks` → `ui/notify.js#showToast`）。
+await assert('BV1 v3.24.0 通知出口统一（端到端走真实接线）：① 行为配色类按 kind 挂上（`weave/sync/repair/analysis/error/warning/success/info` 全 8 类）② `escapeHtml`+`preventDuplicates` 开启 ③ 错误/警告停留更久 ④ 超长文案被截断 ⑤ 空文案不发', (async () => {
+    const keep = globalThis.toastr;
+    const calls = [];
+    try {
+        const mk = (name) => function (text, title, options) {
+            calls.push({ name, text: String(text), title: String(title == null ? '' : title), options: options || {} });
+            if (options && typeof options.onShown === 'function') { try { options.onShown.call(null); } catch (e) { /* 忽略 */ } }
+        };
+        globalThis.toastr = { info: mk('info'), success: mk('success'), warning: mk('warning'), error: mk('error') };
+        const { notifyHooks } = await import('../core/model/runtime.js');
+        const KINDS = ['info', 'analysis', 'success', 'warning', 'error', 'sync', 'weave', 'repair'];
+        KINDS.forEach((k) => notifyHooks.toast('探针·' + k, k));
+        notifyHooks.toast('x'.repeat(600), 'warning');
+        notifyHooks.toast('   ', 'info');
+        const byText = {};
+        for (const c of calls) byText[c.text.slice(0, 8)] = c;
+        const clsOk = KINDS.every((k) => {
+            const c = calls.filter((x) => x.text === '探针·' + k)[0];
+            return !!c && String(c.options.toastClass).indexOf('ftt-toastr--' + k) >= 0
+                && c.title === '' && c.options.escapeHtml === true && c.options.preventDuplicates === true;
+        });
+        const methodOk = calls.filter((x) => x.text === '探针·weave')[0].name === 'info'          // 细粒度只走配色，不改语义色
+            && calls.filter((x) => x.text === '探针·repair')[0].name === 'warning'
+            && calls.filter((x) => x.text === '探针·error')[0].name === 'error'
+            && calls.filter((x) => x.text === '探针·success')[0].name === 'success';
+        const timeOk = calls.filter((x) => x.text === '探针·error')[0].options.timeOut === 10000
+            && calls.filter((x) => x.text === '探针·info')[0].options.timeOut === 4500;
+        const long = calls.filter((x) => x.text.length > 100)[0];
+        const truncOk = !!long && long.text.length === 300 && long.text.slice(-1) === '…';
+        const emptyOk = calls.length === KINDS.length + 2 - 1;                                   // 空文案不发（只多出「超长」那一条）
+        return clsOk && methodOk && timeOk && truncOk && emptyOk;
+    } finally {
+        globalThis.toastr = keep;
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

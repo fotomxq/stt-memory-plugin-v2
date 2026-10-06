@@ -3,6 +3,42 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.24.0（2026-10-05）· UI 与通知效果优化：**通知行为配色真正生效** + 面板提示行分级 + 无障碍语义
+
+**用户要求**（原话）：「新版本 进一步优化UI设计、优化通知效果等。」
+
+**① 通知效果（本轮主项）—— 修的都是「写了但从没生效」的死代码**
+
+| 缺陷（改动前，逐条核对过代码） | 现在 |
+| --- | --- |
+| `style.css` 早写好 8 类**行为配色**（`#toast-container .ftt-toastr--info / --analysis / --success / --warning / --error / --sync / --weave / --repair`，左侧色条），但**没有任何 JS 挂过这些类** → 所有通知长得一模一样，「推演世界 / 同步 / 修复」的识别色从未生效 | 新增统一出口 `ui/notify.js`：按 kind 生成 `ftt-toastr ftt-toastr--<kind>`，经 toastr 的 `toastClass` 挂上（并有 `onShown` 兜底），**8 类配色全部真正生效** |
+| 注入点只把 kind 压成 4 类宿主方法：`'weave'`（推演世界实际在传）静默落到 `toastr.info` | **kind 全量归一**：8 类规范 kind + 英文别名（`warn/err/fail/ok/done/fatal…`）+ 中文类别词（`推演/同步/修复/分析/成功/警告/错误`）。细粒度 kind 只体现在**配色**上、不改语义色（`weave/analysis/sync → info`，`repair → warning`） |
+| 调 toastr **不传任何选项**：无 `escapeHtml`（记忆正文/条目标题里的 `<...>` 被当 HTML 渲染）、无去重（同文案连发刷屏）、无长度上限（超长文案撑爆通知）、错误与普通提示停留时间相同 | `escapeHtml: true` · `preventDuplicates: true` · 关闭按钮与进度条开启 · **分级停留**（错误 10s / 警告·修复 7s / 普通 4.5s，悬停延长取一半）· 文案压空白并**截断到 300 字**（CSS 再限 6 行） |
+| 进度条一律宿主默认色 | 进度条按 kind 与左色条同色；错误/警告正文加粗一档 |
+| 三个入口各写一份注入实现（面板 / 删楼 / 内核） | 收口到**唯一出口** `ui/notify.js#showToast`（`index.js#setNotifyHooks` 一处落地，另两处经它自然受益） |
+
+**② UI 设计**
+
+| 项 | 改动 |
+| --- | --- |
+| **修掉死 CSS** | `style.css` 的 `--ftt-danger: var(--ftt-danger)` / `--ftt-success: var(--ftt-success)` 是**自引用变量**（CSS 自引用解析为无效值）→ 这两条声明一直没作用（真实取值来自下方「视觉体系 v2」令牌块）。已删除并注明，避免误以为那里能改色 |
+| **面板提示行分级** | `setNote(text, level)`：失败 / 未就绪 / 被拒绝 / 无效 → **红**（`ftt-note--err`，这条类此前同样是死 CSS），警告 → 琥珀，完成 → 绿，各带很淡底色。级别**显式优先、否则按保守标记词推断** —— 于是 ~150 处既有调用**一处不改**也得到正确分级；`panelState().noteLevel` 可读 |
+| **无障碍语义** | `.ftt-modal` 加 `role="dialog" aria-modal="true" aria-label`；标签条 `role="tablist"` + 每页 `role="tab" aria-selected`；关闭按钮 `aria-label`；提示行 `role="status" aria-live="polite"`（读屏会念出「刚才那步的结果」）—— 纯新增属性，类名与结构不变 |
+| **焦点可见性** | 关闭按钮 / 页签补 `:focus-visible` 焦点环（此前键盘 Tab 到时看不出焦点在哪）；禁用按钮 `cursor: not-allowed` |
+
+**③ 测试**
+
+- 新增单测 `tests/unit/notify.test.js`（**21 项**）：kind 归一（8 类 / 英文别名 / 中文类别词 / 9 类非法输入）· 选方法（细粒度只走配色）· 配色类与 `style.css` 规则逐条对齐 · 文案压空白与截断 · 选项（转义 / 去重 / 分级停留 / 进度条 / 不覆盖宿主位置）· `onShown` 兜底（DOM 与 jQuery 两形态）· `showToast` 异常姿态（缺失 / 无方法 / 空文案 / 宿主抛错一律 `false` 不抛）· `noteLevelOf` 推断与显式优先 · **真实早退/成功路径的分级渲染**（`ftt-note--err` / `ftt-note--ok`）；
+- 新增冒烟 `BV1`：**端到端走真实接线**（内核 `notifyHooks.toast` → `index.js` → `ui/notify.js` → 假 toastr），断言 8 类配色类、`escapeHtml`/`preventDuplicates`、分级停留、超长截断、空文案不发；
+- 同步更新 4 处既有断言（**只放宽字符串前缀、口径不变**，均注明 v3.24.0）：`panel-rerender`（`.ftt-modal` 开标签改为按前缀定位 + 属性归一后比对，A3/A4/C2 与 DOM 影子）、`panel`（S2 补断言对话框/页签语义属性）、`perf-render`（B1 根节点判定放宽为前缀）；
+- 全量：**154 文件 / 2386 断言** + 冒烟 **213 项** 全绿（含静态 8 项门禁）。
+
+**④ 未验证项（如实登记）**
+
+- 真机待刷新后核对：通知左侧色条应随行为变色（推演=粉、同步=紫、修复=青、错误=红、警告=琥珀）；错误通知停留更久、右下角有进度条与关闭按钮；条目标题里的 `<` 应显示为文本而不再被当标签；
+- 面板底部提示行应随结果显示红/琥珀/绿；`#ftt-panel` 内的读屏播报（`role=status`）需在真机读屏下确认；
+- toastr 的 `toastClass` 选项在 TauriTavern 内置版本上是否被采纳，**以真机为准**（已备 `onShown` 兜底：即使不采纳，色条也会在显示回调里补上）。
+
 ## v3.23.0（2026-10-05）· 全部 AI 摘要**按 3 个正文切片、分批处理**（统一分段口径；不再一次性分析记忆）
 
 **用户要求**（原话）：「新版本 全部AI摘要需支持分段处理，且默认采用3个正文进行切片，分批进行处理。避免一次性分析记忆。」
