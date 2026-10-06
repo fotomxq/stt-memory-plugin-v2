@@ -30,7 +30,7 @@ import { readLedgerStats } from '../core/read-ledger.js';
 import { clockTraceList } from '../core/clock-trace.js';
 import { vectorCacheStats } from '../adapters/vector-cache.js';
 import { syncLogList } from '../adapters/sync.js';
-import { localKeyStats, localCopyStats, idbCopyStats } from '../adapters/store.js';
+import { localKeyStats, localCopyStats, idbCopyStats, localLayerInfo } from '../adapters/store.js';   // v3.26.2：+localLayerInfo（状态副本的压缩留存与停滞标记）
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -137,10 +137,16 @@ export function bufferStats() {
     };
     const totalBytes = versionList.bytes + debugLog.bytes + trace.bytes + vec.bytes
         + groups.syncLog.bytes + names.bytes + marks.bytes + v1.bytes + copyLocal.bytes + copyOthers.bytes;
+    // v3.26.2：状态副本的**留存形态**与「是否已停更」（`localLayerInfo` 同步可算 → 首屏就能如实显示）
+    let copyExtra = { gz: false, stale: null, overBudget: false, budget: 0, plainChars: 0 };
+    try {
+        const info = localLayerInfo();
+        copyExtra = { gz: !!info.gz, stale: info.stale || null, overBudget: !!info.overBudget, budget: Number(info.budget || 0), plainChars: Number(info.plainChars || 0) };
+    } catch (e) { /* 忽略 */ }
     return {
         // 兼容既有调用点（v2.54.0 的字段名保持不变）
         versionList: versionList, debugLog: debugLog, trace: trace,
-        copy: { local: copyLocal, others: copyOthers, scope: (ks ? '' : '') },
+        copy: { local: Object.assign({}, copyLocal, copyExtra), others: copyOthers, scope: (ks ? '' : '') },
         groups: groups,
         totalBytes: totalBytes,
         any: !!(versionList.cached || debugLog.count || trace.count || ledger.count || clock.count
@@ -177,9 +183,19 @@ export function bufferSectionHtml(copy) {
         // 状态副本（localStorage）：**同步**可算（真实键值现算）→ 首屏就显示真值
         const lo = (st.copy && st.copy.local) || { count: 0, bytes: 0, chars: 0, keys: [] };
         const loStat = Number(lo.count || 0) > 0
-            ? (fmtChars(lo.chars) + ' · 约 ' + fmtBytes(lo.bytes))
+            ? (fmtChars(lo.chars) + ' · 约 ' + fmtBytes(lo.bytes) + (lo.gz ? ' · 压缩留存' : ''))
             : '（无本机副本）';
         rows.push(rowHtml('状态副本（浏览器本地变量）', loStat, 'localCopyClear', '清除当前角色在本机浏览器里的状态副本（服务端记忆文件不动；下次打开会重新载入）', !(Number(lo.count) > 0), 'ftt-err'));
+        // v3.26.2：本机层「停滞」如实告知（上次写入被跳过 → 这份副本不是最新的）
+        {
+            const stale = st.copy && st.copy.stale;
+            if (stale && Number(stale.at) > 0) {
+                const when = (() => { try { return new Date(Number(stale.at)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(stale.at); } })();
+                rows.push('<div class="ftt-hint ftt-warn-box">⚠️ <b>本机状态副本自 ' + esc(when) + ' 起未更新</b>：'
+                    + '上次写入被跳过（' + esc(Number(stale.chars || 0).toLocaleString()) + ' &gt; ' + esc(Number(stale.budget || 0).toLocaleString()) + ' 字符配额）。'
+                    + '可到「设定 → 存储」设置<b>本机缓冲目录</b>：该模式下本机缓冲写本地目录，不受浏览器配额限制。</div>');
+            }
+        }
         // 内存库副本（IndexedDB）：异步统计 → 先占位，取到后就地更新
         const cachedIdb = copyCache && copyCache.idb ? copyCache.idb : null;
         const idbStat = cachedIdb

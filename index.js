@@ -38,7 +38,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText, noteChatKey } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
+import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys } from './adapters/store.js';   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
 // v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
 import { localFileEnabled } from './adapters/local-file.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
@@ -355,8 +355,23 @@ export async function loadMemoryState() {
             readLedgerRecord({ action: '本机层停用', src: 'local', ok: true, miss: true, reason: 'local-dir-mode', note: '已设置本地缓冲目录 → 变量层与内存库不读不写（只留目录 + 服务端）' });
         } catch (e) { /* 忽略 */ }
     } else {
-        try { layers.local = loadFromLocalStorage(); } catch (e) { layers.local = null; }
+        // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」）：本机缓冲可能是**压缩记录** ——
+        //   明文走原来的**同步**路径（零额外微任务，行为与既往逐字节一致）；
+        //   只有记录确实是压缩格式时才多一次 `await`（解压），校验口径完全一致。
+        try {
+            if (localBufferGzPending()) layers.local = await loadFromLocalStorageGz();
+            else layers.local = loadFromLocalStorage();
+        } catch (e) { layers.local = null; }
         try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
+        // 本机层「停滞标记」：上一次因超预算/写失败而停更 → 如实记一条（面板状态行也会显示），
+        //   避免用户以为本机副本是新的（这正是「数据看起来回退」的来源）。
+        try {
+            const stale = localStaleInfo();
+            if (stale && Number(stale.at) > 0) {
+                readLedgerRecord({ action: '本机层停滞', src: 'local', ok: false, miss: true, reason: String(stale.reason || 'stale'), note: '本机缓冲自 ' + new Date(Number(stale.at)).toLocaleString('zh-CN', { hour12: false }) + ' 起未更新（' + Number(stale.chars || 0) + ' > ' + Number(stale.budget || 0) + ' 字符）' });
+                debugLogPush('对账', { action: '载入：本机层处于停滞状态（上次写入被跳过）', at: Number(stale.at) || 0, chars: Number(stale.chars) || 0, budget: Number(stale.budget) || 0, reason: String(stale.reason || '') });
+            }
+        } catch (e) { /* 忽略 */ }
     }
     try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
     const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();

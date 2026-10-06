@@ -308,12 +308,33 @@ function localFileModeHtml() {
     try { info = localLayerInfo(); } catch (e) { info = null; }
     const on = !!(info && info.enabled);
     const mode = on ? ('本地目录（' + esc(String(info.path || '')) + '）') : '变量（localStorage）+ 内存库';
+    // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」）：普通模式下如实写出**留存形态**与**是否已停更**
+    const plainTxt = (() => {
+        if (!info) return '';
+        if (on) return '';
+        const stored = Number(info.localChars || 0);
+        const plain = Number(info.plainChars || stored);
+        const budget = Number(info.budget || 0);
+        if (info.overBudget) {
+            return ' · <b>已超出浏览器配额 → 本机层停更</b>（' + plain.toLocaleString() + ' > ' + budget.toLocaleString()
+                + ' 字符；服务端与内存库不受影响）→ 建议在下方设置<b>本机缓冲目录</b>';
+        }
+        if (info.gz) return ' · <b>压缩留存</b>（原始 ' + plain.toLocaleString() + ' → 存 ' + stored.toLocaleString() + ' 字符）';
+        return ' · 明文留存 ' + stored.toLocaleString() + '/' + budget.toLocaleString() + ' 字符';
+    })();
+    const staleTxt = (() => {
+        const s = info && info.stale;
+        if (!s || !Number(s.at)) return '';
+        const when = (() => { try { return new Date(Number(s.at)).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return String(s.at); } })();
+        return ' · ⚠️ 本机层自 <b>' + esc(when) + '</b> 起未更新（上次写入被跳过）';
+    })();
     const stat = '<div class="ftt-muted ftt-my-1" data-ftt-local-file-status><b>本机缓冲模式：' + mode + '</b>'
         + (on
             ? (' · <b>变量层与内存库已停用</b>（只留目录 + 服务端） · 后端 ' + esc(String(info.backend || '—'))
                 + ' · 最近写入 ' + Number(info.fileBytes || 0).toLocaleString() + ' 字符'
                 + (Number(info.failures) ? (' · 失败 ' + Number(info.failures)) : ''))
-            : (' · 变量层 ' + Number((info && info.localChars) || 0).toLocaleString() + ' 字符'))
+            : plainTxt)
+        + staleTxt
         + '</div>';
     const one = '<div class="ftt-muted">填目录 = 只写目录 + 服务端；留空 = 变量层 + 内存库。</div>';
     const desc = (() => { try { return settingsControlHtml({ key: 'storage.localFilePath', label: '本地文件目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();

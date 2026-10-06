@@ -10,7 +10,7 @@
 // ============================================================
 import { MODULE_NAME } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
-import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn } from '../core/model/runtime.js';
+import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn, notifyHooks } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
 import { entryIndexBuild, entryIndexInit, primeAtomIndex, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume } from '../core/sweep.js';
@@ -27,6 +27,8 @@ import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHAR
 import { scheduleWorldbookSync } from './worldbook.js';
 // v3.16.0（用户要求）：**本地文件存储模式** —— 路径非空时，本机缓冲层改走宿主的本地文件（无 localStorage 配额限制）
 import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFileStatsGet, localFilePath, localFileDirHistory, localFileDirRemember } from './local-file.js';
+// v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
+import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './gzip.js';
 import { hydrateStorageData } from '../core/slim.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
 import { trackPipeline } from '../core/pipeline.js';
@@ -184,6 +186,116 @@ export const LOCAL_BUFFER_MAX_CHARS = 1800000;
 let localBufferMaxChars = LOCAL_BUFFER_MAX_CHARS;
 /** 覆盖预算（测试用；0 = 用默认） */
 export function setLocalBufferMaxChars(n) { localBufferMaxChars = Math.max(0, Number(n) || 0); return localBufferMaxChars; }
+
+// ============================================================
+// v3.26.2（用户报告：「保存：本机缓冲超预算 → 本次跳过 … {"chars":1994370,"budget":1800000}」
+//   ——「该问题会造成数据异常，请核对解决思路，或在本地存储中用更好的方法留存数据。」）
+//
+// 事实：本机缓冲是**本机层的兜底副本**；超预算就整层停更 → 本机只留 IndexedDB 与服务端，
+//   「本机缓冲」不再是最近一次的数据（换设备 / 服务端读失败时看到的是**旧副本** → 观感就是数据回滚）。
+//
+// 解决思路（本批）：**不再直接放弃，而是压缩后留存** ——
+//   ① 明文信封超过 `LOCAL_BUFFER_GZ_MIN_CHARS`（或超过预算）时，先 `gzip → base64` 写一条**压缩记录**
+//      `{"ftt2gz":1,"at":…,"chars":<原始字符数>,"b64":"…"}`；真实状态 2M 字符 → 记录通常几十~几百 KB，
+//      于是「超预算」在正常体量下不再发生（压缩比见 `docs/D13`：≈35×）；
+//   ② 仍然超预算（内容不可压 / 预算被调得很小）或**宿主不支持压缩**时：如实跳过 + **一次性可操作提示**
+//      （告诉用户去「设定 → 存储」设「本机缓冲目录」，该模式下本机缓冲写本地目录、不受浏览器配额限制）；
+//   ③ 一旦发生跳过，落一条**停滞标记**（`ftt2_LocalStale`，几百字节）→ 下次启动能如实告诉用户
+//      「本机层自 <时间> 起未更新」，而不是让人以为本机副本是新的；任一次成功写入即清除该标记；
+//   ④ 读路径两种格式都认（明文走原来的**同步**路径、零额外微任务；压缩记录多一次 `await` 解压），
+//      校验口径完全一致（信封完整 + 载荷哈希）。
+//
+// 纪律：压缩记录**只是本机缓存**，不是数据契约 —— 服务端文件 / 分片 / 快照 / IndexedDB 的格式一字未动。
+// ============================================================
+/** 明文信封超过该字符数就用压缩记录留存（200K：低于它压缩收益小、还平白多一次解压） */
+export const LOCAL_BUFFER_GZ_MIN_CHARS = 200000;
+/** 压缩记录的固定前缀（用于**同步**判定「这一条需要解压」——避免无谓的 JSON.parse 1MB 文本） */
+const LOCAL_GZ_MARK = '{"ftt2gz":1';
+/** 本机层停滞标记的键（只在「跳过」时写入；成功写入即删） */
+const LOCAL_STALE_KEY = 'ftt2_LocalStale';
+
+/** 存放形态：`empty` / `plain`（明文信封）/ `gz`（压缩记录） */
+function localRecordKind(raw) {
+    const s = String(raw == null ? '' : raw);
+    if (!s) return 'empty';
+    return (s.charCodeAt(0) === 0x7b && s.slice(0, 16).indexOf('"ftt2gz"') >= 0) ? 'gz' : 'plain';
+}
+/** v3.26.2：该本机记录文本是否是**压缩记录**（供别的模块识别，如 `adapters/sync.js` 的校验并修复） */
+export function isLocalGzRecord(raw) {
+    try { return localRecordKind(raw) === 'gz'; } catch (e) { return false; }
+}
+/**
+ * v3.26.2：把**压缩记录**解压回明文信封文本（异步；失败返回 `''`）。
+ * 校验口径与读路径一致：记录形状 → base64 → gunzip；任何一步失败都返回空串（调用方按未命中处理）。
+ */
+export async function inflateLocalGzRecord(raw) {
+    try {
+        if (!isLocalGzRecord(raw)) return '';
+        const rec = JSON.parse(String(raw));
+        const u8 = base64ToBytes(String((rec && rec.b64) || ''));
+        if (!u8 || !u8.length) return '';
+        const text = await gunzipFromBytes(u8);
+        return (text === null || text === undefined) ? '' : String(text);
+    } catch (e) { return ''; }
+}
+/** 该作用域的本机记录是否需要**异步解压**（供载入路径决定是否多一次 await） */
+export function localBufferGzPending(scope) {
+    try { return localRecordKind(storageHooks.getItem('ftt2_state_' + (scope || scopeId()))) === 'gz'; } catch (e) { return false; }
+}
+/** 组装压缩记录文本 */
+function gzRecordText(plainChars, b64) {
+    return LOCAL_GZ_MARK + ',"at":' + Date.now() + ',"chars":' + Number(plainChars || 0) + ',"b64":"' + String(b64 || '') + '"}';
+}
+/** 明文信封解析（同步；两条读路径**共用同一校验口径**） */
+function parseLocalEnvelopeText(raw) {
+    try {
+        const env = JSON.parse(String(raw));
+        if (!env || !env.payload) return { ok: false, reason: 'bad-envelope', state: null };
+        const h = storageHash(env.payload);
+        if (env.hash && env.hash !== h) return { ok: false, reason: 'hash-mismatch', state: null, hash: h };
+        return { ok: true, reason: '', state: env.payload.data || null, hash: h };
+    } catch (e) { return { ok: false, reason: 'parse-failed', state: null, error: String((e && e.message) || e) }; }
+}
+/** 本机层「停滞」的**内存态**（v3.26.2）：为真时**不允许**走「等值跳过」——
+ *  否则「上次被跳过（标记在）+ 内容没变」会让本机层永远补不上（真机上表现为本机副本长期陈旧）。 */
+let localStaleMarked = false;
+/** 本机层停滞标记（如实告知「本机层自何时起未更新」；无标记 → null） */
+export function localStaleInfo() {
+    try {
+        const raw = storageHooks.getItem(LOCAL_STALE_KEY);
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!(o && typeof o === 'object')) return null;
+        localStaleMarked = true;                    // 读到标记 → 内存态同步（跨会话也生效）
+        return { at: Number(o.at) || 0, chars: Number(o.chars) || 0, budget: Number(o.budget) || 0, reason: String(o.reason || '') };
+    } catch (e) { return null; }
+}
+function localStaleMark(chars, budget, reason) {
+    localStaleMarked = true;
+    try { storageHooks.setItem(LOCAL_STALE_KEY, JSON.stringify({ at: Date.now(), chars: Number(chars) || 0, budget: Number(budget) || 0, reason: String(reason || '') })); } catch (e) { /* 忽略 */ }
+}
+function localStaleClear() {
+    // 注意：**不做 getItem 预检**（避免给「本机缓冲读取次数」这类既有口径加噪声）；
+    // 删不存在的键是幂等无副作用的（同时也是跨会话清除上一条停滞标记的唯一途径）。
+    localStaleMarked = false;
+    try { storageHooks.removeItem(LOCAL_STALE_KEY); } catch (e) { /* 忽略 */ }
+}
+/** 「本机缓冲跳过」的**一次性**可操作提示（每个会话最多一次；避免每次保存都弹） */
+let localSkipHintShown = false;
+function localSkipHintOnce(chars, budget) {
+    if (localSkipHintShown) return false;
+    localSkipHintShown = true;
+    try {
+        const msg = '本机缓冲已超出浏览器配额（' + Number(chars || 0).toLocaleString() + ' > ' + Number(budget || 0).toLocaleString()
+            + ' 字符）→ 本机层停更（服务端与内存库不受影响）。'
+            + '建议：设定 → 存储 → 设置「本机缓冲目录」——该模式下本机缓冲写本地目录，不受配额限制。';
+        if (notifyHooks && typeof notifyHooks.toast === 'function') notifyHooks.toast(msg, 'warning');
+    } catch (e) { /* 忽略 */ }
+    return true;
+}
+/** 测试/诊断用：重置一次性提示开关 */
+export function resetLocalSkipHint() { localSkipHintShown = false; return true; }
+
 /** 最近一次本机缓冲写入结论（诊断 / 面板 / 调试包） */
 let localBuffer = { at: 0, ok: false, skipped: 'never-written', chars: 0, budget: LOCAL_BUFFER_MAX_CHARS, reason: '' };
 export function localBufferState() { return Object.assign({}, localBuffer, { stats: localBufferStats() }); }
@@ -207,7 +319,7 @@ export function localBufferState() { return Object.assign({}, localBuffer, { sta
 
 let localParseCache = null;           // { key, raw, payload, items }：文本未变 → 复用解析结果
 let localLastSig = '';               // 上次写入的载荷签名（长度 + 信封哈希，避免比较 1MB 字符串）
-const localStats = { reads: 0, parseHits: 0, writes: 0, unchanged: 0, idbWrites: 0, idbSkipped: 0, overBudget: 0, failed: 0, lastWriteAt: 0, lastSkipReason: '' };
+const localStats = { reads: 0, parseHits: 0, writes: 0, unchanged: 0, idbWrites: 0, idbSkipped: 0, overBudget: 0, failed: 0, gzipWrites: 0, gzipReads: 0, gzUnavailable: 0, lastWriteAt: 0, lastSkipReason: '' };
 /** 本机缓冲读写统计（诊断 / 面板 / 调试包；`localBufferState().stats` 同源） */
 export function localBufferStats() { return Object.assign({}, localStats); }
 
@@ -441,7 +553,8 @@ async function saveStateNowInner(o) {
         const key = 'ftt2_state_' + scopeId();
         const budget = localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS;
         const sig = String(envelope && envelope.hash ? envelope.hash : '') + ':' + text.length;
-        if (localLastSig !== '' && localLastSig === sig) {
+        // v3.26.2：本机层处于「停滞」状态时**不允许等值跳过** —— 否则「上次被跳过 + 内容没变」会永远补不上
+        if (localLastSig !== '' && localLastSig === sig && !localStaleMarked) {
             localStats.unchanged += 1;
             localStats.lastSkipReason = 'unchanged';
             localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaFile ? 'local-file' : 'localStorage' };
@@ -466,25 +579,67 @@ async function saveStateNowInner(o) {
                 try { debugLogPush('存储', { action: '本地目录写入失败 → 不回退变量层', path: String(localFileStatsGet().path || ''), error: String((wr && wr.error) || ''), chars: text.length }); } catch (e) { /* 忽略 */ }
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: text.length, reason: 'file-write-failed', note: '本地模式：写目录失败 → 不回退变量层' }); } catch (e) { /* 忽略 */ }
             }
-        } else if (budget > 0 && text.length > budget) {
-            localStats.overBudget += 1;
-            localStats.lastSkipReason = 'over-budget';
-            localBuffer = { at: Date.now(), ok: false, skipped: 'over-budget', chars: text.length, budget: budget, reason: '信封超过本机缓冲预算' };
-            try { kernelWarn('保存：本机缓冲超预算 → 本次跳过（服务端文件与 IndexedDB 不受影响）', { chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
-            try { debugLogPush('存储', { action: '本机缓冲超预算 → 跳过写入', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
-            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, miss: true, bytes: text.length, reason: 'over-budget', extra: { budget: budget }, note: '超过字符预算 → 跳过（服务端文件与 IndexedDB 不受影响）' }); } catch (e) { /* 忽略 */ }
-        } else if (storageHooks.setItem(key, text)) {
-            via.push('localStorage');
-            markLocalWritten(sig, text.length);
-            localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '' };
-            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget } }); } catch (e) { /* 忽略 */ }
         } else {
-            localStats.failed += 1;
-            localStats.lastSkipReason = 'write-failed';
-            localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '宿主拒绝写入（常见原因：配额不足）' };
-            try { kernelWarn('保存：本机缓冲写入被拒（配额不足？）→ 已记台账；服务端文件与 IndexedDB 不受影响', { chars: text.length }); } catch (e) { /* 忽略 */ }
-            try { debugLogPush('存储', { action: '本机缓冲写入失败', chars: text.length, budget: budget }); } catch (e) { /* 忽略 */ }
-            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: text.length, reason: 'write-failed' }); } catch (e) { /* 忽略 */ }
+            // 普通模式：明文 / 压缩二选一，再按预算判定（v3.26.2 起**压缩优先**）
+            //   · 明文超过 `LOCAL_BUFFER_GZ_MIN_CHARS` 或超过预算 → 试压缩；
+            //   · 压缩记录**更省**时才用它（超预算时它是唯一可行路径）；
+            //   · 仍然装不下 / 宿主不支持压缩 → 如实跳过 + 停滞标记 + 一次性可操作提示。
+            const wantGz = text.length >= LOCAL_BUFFER_GZ_MIN_CHARS || (budget > 0 && text.length > budget);
+            let rec = '';
+            let gzTried = false;
+            let gzOk = false;
+            if (wantGz) {
+                gzTried = true;
+                const g = await (async () => { try { return await gzipToBase64(text); } catch (e) { return null; } })();
+                gzOk = !!(g && g.ok && g.b64);
+                if (gzOk) rec = gzRecordText(text.length, g.b64);
+            }
+            const useGz = !!(rec && (text.length > budget || rec.length < text.length));
+            const stored = useGz ? rec : text;
+            if (budget > 0 && stored.length > budget) {
+                // 装不下（压缩不可用 / 压完仍超预算）→ 如实跳过，并把「本机层自何时起未更新」记下来
+                localStats.overBudget += 1;
+                localStats.lastSkipReason = 'over-budget';
+                if (gzTried && !gzOk) localStats.gzUnavailable += 1;
+                localBuffer = {
+                    at: Date.now(), ok: false, skipped: 'over-budget', gz: false, gzTried: gzTried,
+                    chars: text.length, storedChars: stored.length, budget: budget,
+                    reason: rec ? '压缩后仍超过本机缓冲预算' : (gzOk ? '明文超过预算' : (gzTried ? '压缩不可用' : '明文超过预算')),
+                };
+                try {
+                    kernelWarn('保存：本机缓冲超预算 → 本次跳过（已尝试压缩留存；服务端文件与 IndexedDB 不受影响）',
+                        { chars: text.length, budget: budget, gzTried: gzTried, gzOk: gzOk, gzStoredChars: rec.length, gzAvailable: gzipAvailable() });
+                } catch (e) { /* 忽略 */ }
+                try { debugLogPush('存储', { action: '本机缓冲超预算 → 跳过写入（压缩未能解决）', chars: text.length, budget: budget, gzTried: gzTried, gzStoredChars: rec.length, gzAvailable: gzipAvailable() }); } catch (e) { /* 忽略 */ }
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, miss: true, bytes: text.length, reason: 'over-budget', extra: { budget: budget, gzTried: gzTried, gzStoredChars: rec.length }, note: '超过字符预算且压缩未能解决 → 跳过（服务端文件与 IndexedDB 不受影响）' }); } catch (e) { /* 忽略 */ }
+                localStaleMark(text.length, budget, 'over-budget');
+                localSkipHintOnce(text.length, budget);
+            } else if (storageHooks.setItem(key, stored)) {
+                via.push(useGz ? 'localStorage-gz' : 'localStorage');
+                if (useGz) localStats.gzipWrites += 1;
+                markLocalWritten(sig, text.length);
+                localBuffer = {
+                    at: Date.now(), ok: true, skipped: '', gz: useGz, gzTried: gzTried,
+                    chars: text.length, storedChars: stored.length, budget: budget, reason: '', layer: 'localStorage',
+                };
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: stored.length, extra: { budget: budget, gz: useGz, plainChars: text.length, layer: 'localStorage' } }); } catch (e) { /* 忽略 */ }
+                if (useGz) {
+                    try { debugLogPush('存储', { action: '本机缓冲已压缩留存', plainChars: text.length, storedChars: stored.length, budget: budget }); } catch (e) { /* 忽略 */ }
+                }
+            } else {
+                localStats.failed += 1;
+                localStats.lastSkipReason = useGz ? 'gz-write-failed' : 'write-failed';
+                localBuffer = {
+                    at: Date.now(), ok: false, skipped: 'write-failed', gz: useGz, gzTried: gzTried,
+                    chars: text.length, storedChars: stored.length, budget: budget,
+                    reason: useGz ? '压缩记录被宿主拒绝写入（配额不足？）' : '宿主拒绝写入（常见原因：配额不足）',
+                };
+                try { kernelWarn('保存：本机缓冲写入被拒（配额不足？）→ 服务端文件与 IndexedDB 不受影响', { chars: text.length, storedChars: stored.length, gz: useGz }); } catch (e) { /* 忽略 */ }
+                try { debugLogPush('存储', { action: '本机缓冲写入失败', chars: text.length, storedChars: stored.length, gz: useGz, budget: budget }); } catch (e) { /* 忽略 */ }
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: stored.length, reason: useGz ? 'gz-write-failed' : 'write-failed' }); } catch (e) { /* 忽略 */ }
+                localStaleMark(text.length, budget, useGz ? 'gz-write-failed' : 'write-failed');
+                localSkipHintOnce(text.length, budget);
+            }
         }
     } catch (e) { /* 忽略 */ }
     // ⑤ IndexedDB 缓冲（可用时）—— **不做等值跳过**：它是异步写、不阻塞主线程，
@@ -582,27 +737,71 @@ export function loadFromLocalStorage() {
         const raw = storageHooks.getItem(key);
         localStats.reads += 1;
         if (!raw) { localParseCache = null; readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-local-buffer', note: '本机缓冲为空（首次使用或已清理）' }); return null; }
+        // v3.26.2：压缩记录**需要异步解压** → 本同步路径如实让路（由载入侧的 `loadFromLocalStorageGz()` 接手），
+        //   不把它误判成「信封损坏」而报假警。
+        if (localRecordKind(raw) === 'gz') {
+            localParseCache = null;
+            readLedgerEnd(tok, { ok: true, miss: true, reason: 'gz-record', note: '本机缓冲是压缩记录 → 由异步路径解压读取' });
+            return null;
+        }
         const c = localParseCache;
         if (c && c.key === key && c.raw === raw) {
             localStats.parseHits += 1;
             readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: c.items, note: '命中解析缓存（文本未变 → 不重复解析信封）', extra: { parse: 'cached' } });
             return c.payload;
         }
-        const env = JSON.parse(raw);
-        if (!env || !env.payload) { localParseCache = null; readLedgerEnd(tok, { ok: false, reason: 'bad-envelope', bytes: String(raw).length }); kernelWarn('载入：本机缓冲信封不完整 → 丢弃', ''); return null; }
-        const h = storageHash(env.payload);
-        if (env.hash && env.hash !== h) {
+        const pr = parseLocalEnvelopeText(raw);
+        if (!pr.ok) {
             localParseCache = null;
-            readLedgerEnd(tok, { ok: false, reason: 'hash-mismatch', bytes: String(raw).length, hash: h, note: '信封哈希不一致 → 丢弃本机缓冲' });
-            kernelWarn('载入：本机缓冲哈希不一致 → 丢弃', '');
+            readLedgerEnd(tok, { ok: false, reason: pr.reason, bytes: String(raw).length, hash: pr.hash });
+            if (pr.reason === 'bad-envelope') kernelWarn('载入：本机缓冲信封不完整 → 丢弃', '');
+            else if (pr.reason === 'hash-mismatch') kernelWarn('载入：本机缓冲哈希不一致 → 丢弃', '');
             return null;
         }
-        const st = env.payload.data || null;
+        const st = pr.state;
         localParseCache = { key: key, raw: raw, payload: st, items: countsOf(st).total };
-        readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: localParseCache.items, hash: h, note: '信封校验通过' });
+        readLedgerEnd(tok, { ok: true, bytes: String(raw).length, items: localParseCache.items, hash: pr.hash, note: '信封校验通过' });
         return st;
     } catch (e) {
         localParseCache = null;
+        readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
+        return null;
+    }
+}
+
+/**
+ * v3.26.2：**读压缩留存的本机缓冲**（异步；只在记录是压缩格式时才需要）。
+ * 口径与明文路径**完全一致**（信封完整 + 载荷哈希），只是多一步 `gunzip`；
+ * 任何失败都如实记账并返回 null（交由服务端文件 / IndexedDB 兜底）。
+ * @returns {Promise<object|null>} state 或 null
+ */
+export async function loadFromLocalStorageGz() {
+    const tok = readLedgerBegin('读本机缓冲（压缩）', 'local', { target: 'ftt2_state_' + scopeId() });
+    try {
+        const raw = storageHooks.getItem('ftt2_state_' + scopeId());
+        if (!raw) { readLedgerEnd(tok, { ok: true, miss: true, reason: 'no-local-buffer' }); return null; }
+        if (localRecordKind(raw) !== 'gz') { readLedgerEnd(tok, { ok: true, miss: true, reason: 'not-gz' }); return loadFromLocalStorage(); }
+        const rec = JSON.parse(String(raw));
+        const plainChars = Number((rec && rec.chars) || 0);
+        const u8 = base64ToBytes(String((rec && rec.b64) || ''));
+        if (!u8 || !u8.length) { readLedgerEnd(tok, { ok: false, reason: 'gz-b64-broken', bytes: String(raw).length }); kernelWarn('载入：本机缓冲压缩记录无法解码 → 丢弃', ''); return null; }
+        const text = await gunzipFromBytes(u8);
+        if (text === null || text === undefined) { readLedgerEnd(tok, { ok: false, reason: 'gunzip-failed', bytes: String(raw).length }); kernelWarn('载入：本机缓冲解压失败 → 丢弃（服务端文件与内存库仍在）', ''); return null; }
+        const pr = parseLocalEnvelopeText(text);
+        if (!pr.ok) {
+            readLedgerEnd(tok, { ok: false, reason: pr.reason, bytes: String(raw).length, hash: pr.hash });
+            if (pr.reason === 'bad-envelope') kernelWarn('载入：本机缓冲（压缩）信封不完整 → 丢弃', '');
+            else if (pr.reason === 'hash-mismatch') kernelWarn('载入：本机缓冲（压缩）哈希不一致 → 丢弃', '');
+            return null;
+        }
+        localStats.gzipReads += 1;
+        readLedgerEnd(tok, {
+            ok: true, bytes: String(raw).length, items: countsOf(pr.state).total, hash: pr.hash,
+            note: '压缩记录解压 + 信封校验通过',
+            extra: { gz: true, plainChars: plainChars, storedChars: String(raw).length },
+        });
+        return pr.state;
+    } catch (e) {
         readLedgerEnd(tok, { ok: false, reason: String((e && e.message) || e) });
         return null;
     }
@@ -617,14 +816,28 @@ export function localLayerInfo() {
     try { file = localFileStatsGet(); } catch (e) { file = null; }
     const key = 'ftt2_state_' + scopeId();
     let localChars = 0;
-    try { localChars = String(storageHooks.getItem(key) || '').length; } catch (e) { localChars = 0; }
+    let gz = false;
+    let plainChars = 0;
+    try {
+        const raw = storageHooks.getItem(key);
+        localChars = String(raw == null ? '' : raw).length;
+        gz = localRecordKind(raw) === 'gz';
+        if (gz) { try { plainChars = Number((JSON.parse(String(raw)) || {}).chars) || 0; } catch (e) { plainChars = 0; } }
+        else plainChars = localChars;
+    } catch (e) { localChars = 0; }
     const on = !!(file && file.enabled);
+    const stale = (() => { try { return localStaleInfo(); } catch (e) { return null; } })();
     return {
         enabled: on, path: String((file && file.path) || ''), name: String((file && file.name) || ''),
         backend: String((file && file.backend) || ''), fileBytes: Number((file && file.lastBytes) || 0),
         writes: Number((file && file.writes) || 0), reads: Number((file && file.reads) || 0),
         failures: Number((file && file.failures) || 0), lastReason: String((file && file.lastReason) || ''),
         localChars: localChars, budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
+        // v3.26.2：压缩留存现状（`gz` = 本机记录是压缩记录；`plainChars` = 原始字符数；`stale` = 本机层停滞标记）
+        gz: gz, plainChars: plainChars,
+        overBudget: String(localBuffer.skipped || '') === 'over-budget',
+        stale: stale,
+        gzipAvailable: (() => { try { return gzipAvailable(); } catch (e) { return false; } })(),
         // v3.26.0：目录模式下**内存库与变量层都已停用**（读与写都不再经过这两层）
         memLayersDisabled: on,
         idbWrites: Number(localStats.idbWrites || 0), idbSkipped: Number(localStats.idbSkipped || 0),
@@ -1022,22 +1235,39 @@ export async function idbCopyStats() {
     } catch (e) { return out; }
 }
 
-/** 当前作用域的本机副本清点（localStorage 信封 + IndexedDB 副本） */
+/** 当前作用域的本机副本清点（localStorage 信封 / 压缩记录 + IndexedDB 副本） */
 export async function localCopyStats() {
     const ks = localKeyStats();
     const cur = ks.state.current;
     const idb = await idbCopyStats();
-    let envelopeAt = 0, items = 0;
+    let envelopeAt = 0, items = 0, gz = false;
     try {
         const raw = storageHooks.getItem('ftt2_state_' + scopeId());
-        if (raw) { const env = JSON.parse(raw); envelopeAt = Number((env && env.payload && env.payload.updatedAt) || 0); items = countsOf((env && env.payload && env.payload.data) || null).total; }
+        if (raw) {
+            gz = localRecordKind(raw) === 'gz';
+            // v3.26.2：压缩记录要**解压后**才算得出信封时间与条数（否则面板会显示 0）
+            const text = gz ? await (async () => {
+                try {
+                    const rec = JSON.parse(String(raw));
+                    const u8 = base64ToBytes(String((rec && rec.b64) || ''));
+                    if (!u8 || !u8.length) return '';
+                    return String(await gunzipFromBytes(u8) || '');
+                } catch (e) { return ''; }
+            })() : raw;
+            if (text) {
+                const env = JSON.parse(text);
+                envelopeAt = Number((env && env.payload && env.payload.updatedAt) || 0);
+                items = countsOf((env && env.payload && env.payload.data) || null).total;
+            }
+        }
     } catch (e) { /* 忽略 */ }
     return {
         scope: scopeId(),
-        local: { present: cur.count > 0, chars: cur.chars, bytes: cur.bytes, updatedAt: envelopeAt, items: items },
+        local: { present: cur.count > 0, chars: cur.chars, bytes: cur.bytes, updatedAt: envelopeAt, items: items, gz: gz },
         idb: { available: idb.available, present: idb.current, bytes: (idb.keys.filter((x) => x.current)[0] || {}).bytes || 0 },
         others: { count: ks.state.others.count, bytes: ks.state.others.bytes, keys: ks.state.others.keys.map((x) => x.key) },
         budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
+        stale: (() => { try { return localStaleInfo(); } catch (e) { return null; } })(),
     };
 }
 
@@ -1231,6 +1461,7 @@ function markLocalWritten(sig, chars) {
     localStats.writes += 1;
     localStats.lastWriteAt = Date.now();
     localBuffer = Object.assign({}, localBuffer, { chars: chars });
+    localStaleClear();                           // v3.26.2：本层已重新跟上 → 清掉「停滞标记」
     return true;
 }
 

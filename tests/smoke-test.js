@@ -5227,22 +5227,41 @@ await assert('BH8 v3.1.0 容量与配额（`docs/D13` S2/S3）：向量缓存内
         globalThis.FTT.vectorCacheCaps(keepCaps);
         VC.resetVectorCacheState();
 
-        // ② 本机缓冲预算：把预算压到当前信封之下 → 跳过写入但服务端文件照写
+        // ② 本机缓冲预算：把预算压到当前信封之下 →
+        //   v3.26.2 起**先试压缩留存**（用户报告的那条「超预算 → 本次跳过」不再发生）；
+        //   压缩不可用时（宿主无 CompressionStream）才如实跳过，且**停滞标记 + 一次性提示**到位。
         await entry.popupAction('tab', { tab: 'overview' });
         await ST.saveStateNow({ reason: 'bh8-base', force: true });
         const chars = ST.localBufferState().chars;
         const localKey = 'ftt2_state_' + (await import('../core/state.js')).scopeId();
-        const beforeRaw = globalThis.localStorage.getItem(localKey);
         ST.setLocalBufferMaxChars(Math.max(100, chars - 100));
-        await ST.saveStateNow({ reason: 'bh8-over', force: true });
+        await ST.flushStateNow('bh8-over', { force: true });
+        const gzRaw = String(globalThis.localStorage.getItem(localKey) || '');
+        // 断言只取**与并发保存无关**的事实：本机记录确实是压缩记录、声明的原始字符数 > 记录长度、计数增长。
+        const gzDeclared = (() => { try { return Number((JSON.parse(gzRaw) || {}).chars) || 0; } catch (e) { return 0; } })();
+        const gzOk = gzRaw.indexOf('{"ftt2gz":1') === 0 && gzDeclared > 0 && gzDeclared > gzRaw.length
+            && Number(ST.localBufferStats().gzipWrites) >= 1;
+        // 压缩不可用 → 如实跳过（旧内容不被清空）+ 停滞标记 + FTT 入口如实回报
+        const keepCS = globalThis.CompressionStream;
+        try { delete globalThis.CompressionStream; } catch (e) { globalThis.CompressionStream = undefined; }
+        const gzUn0 = Number(ST.localBufferStats().gzUnavailable || 0);
+        await ST.flushStateNow('bh8-over-nogz', { force: true });
         const lb = ST.localBufferState();
         const budgetOk = lb.ok === false && lb.skipped === 'over-budget' && lb.chars > lb.budget
-            && globalThis.localStorage.getItem(localKey) === beforeRaw
+            && String(globalThis.localStorage.getItem(localKey) || '').length > 0     // 旧内容未被清空
             && !!globalThis.FTT.localBuffer() && globalThis.FTT.localBuffer().skipped === 'over-budget'
-            && !!(ST.storeStatus().localBuffer);
+            && !!(ST.storeStatus().localBuffer)
+            && Number(ST.localBufferStats().gzUnavailable) > gzUn0
+            && !!(ST.localStaleInfo() && Number(ST.localStaleInfo().at) > 0);
+        try { globalThis.CompressionStream = keepCS; } catch (e) { /* 忽略 */ }
         ST.setLocalBufferMaxChars(keepBudget);
-        await ST.saveStateNow({ reason: 'bh8-restore', force: true });
-        const restoredOk = ST.localBufferState().ok === true;
+        // 说明：冒烟环境里有**后台保存**（内核钩子 / 防抖）同时在跑，lushStateNow 会把并发请求**合流**到在途那次，
+        //   于是「恢复预算」这一次可能没真正跑 → 有界重试直到「停滞标记被清」（最多 3 次；语义断言不变）。
+        for (let i = 0; i < 3 && ST.localStaleInfo() !== null; i++) {
+            await ST.flushStateNow('bh8-restore', { force: true });
+        }
+        // 恢复预算 → 本机层重新跟上（停滞标记被清 = 面板不再提示「本机层未更新」）
+        const restoredOk = ST.localStaleInfo() === null;
 
         // ③ 调试日志单条上限（有意偏离 V1：6000 → 2000）
         DL.debugLogClear();
@@ -5250,8 +5269,8 @@ await assert('BH8 v3.1.0 容量与配额（`docs/D13` S2/S3）：向量缓存内
         const l = DL.debugLogList()[0] || { data: '' };
         const capOk = DL.DEBUG_DATA_MAX === 2000 && String(l.data).length === 2000;
 
-        const ok = lruOk && budgetOk && restoredOk && capOk;
-        if (!ok) console.log('BH8-DEBUG ' + JSON.stringify({ lruOk, vs, budgetOk, lb, restoredOk, capOk, max: DL.DEBUG_DATA_MAX }));
+        const ok = lruOk && gzOk && budgetOk && restoredOk && capOk;
+        if (!ok) console.log('BH8-DEBUG ' + JSON.stringify({ lruOk, vs, gzOk, gzParts: [gzRaw.slice(0, 12), gzDeclared, gzRaw.length, ST.localBufferStats().gzipWrites], budgetOk, budgetParts: [lb.ok, lb.skipped, lb.chars, lb.budget, String(globalThis.localStorage.getItem(localKey) || '').length, Number(ST.localBufferStats().gzUnavailable), !!ST.localStaleInfo()], restoreParts: [ST.localBufferState().ok, ST.localBufferState().skipped, !!ST.localStaleInfo()], capOk, max: DL.DEBUG_DATA_MAX }));
         return ok;
     } finally {
         ST.setLocalBufferMaxChars(keepBudget);
