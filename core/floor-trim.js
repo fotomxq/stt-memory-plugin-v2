@@ -155,13 +155,14 @@ function remapPair(o, aKey, bKey, removeCount) {
  * @param {object} st 内核 state（就地修改）
  * @param {number} removeCount 从**头部**删除的楼层数 M
  * @param {number} [newLastId] 新末楼号（缺省 = 当前 chat 末尾；用于收紧 `lastKnownFloor`）
- * @returns {{ok:boolean, shifted:number, staled:number, partial:number, dims:object}}
+ * @returns {{ok:boolean, shifted:number, staled:number, partial:number, dims:object, dropped:Array<{f:number,h:string}>}}
+ *   `dropped` = 被删段内、因而从台账里移除的标记（**调用方须留痕**，见 v3.26.4）
  */
 export function remapAfterTrim(st, removeCount, newLastId) {
     const M = Math.max(0, Math.floor(Number(removeCount) || 0));
     const dims = {};
     let shifted = 0, staled = 0, partial = 0;
-    if (!st || typeof st !== 'object' || M <= 0) return { ok: true, shifted: 0, staled: 0, partial: 0, dims: dims };
+    if (!st || typeof st !== 'object' || M <= 0) return { ok: true, shifted: 0, staled: 0, partial: 0, dims: dims, dropped: [] };
     const scan = (dim, arr, fields) => {
         let s = 0, t = 0, p = 0;
         for (const it of (Array.isArray(arr) ? arr : [])) {
@@ -173,12 +174,20 @@ export function remapAfterTrim(st, removeCount, newLastId) {
     };
     for (const d of DIMENSIONS) scan(d.kind, st[d.kind], d.kind === 'plotSegments' ? SEG_FIELDS : PAIR_FIELDS);
     // 台账：被删段内的标记直接丢弃；幸存段的楼层号前移 M（此后 `reconcileProcessedFloors` 仍可按哈希复核）
+    // v3.26.4（真机取证「突然冒出来大量未分析的楼层，实际早已分析」）：丢弃的标记**必须留痕** ——
+    //   此前静默丢弃，于是「删楼 → 撤销删楼 / 恢复聊天 / 切回更长分支 / 换同角色另一条聊天」之后，
+    //   这批楼层既无标记也无留痕（覆盖判据也不认）→ 成片变回「未分析」，且无法自愈。
+    //   core 层不做留痕本身（那是状态写入口径，见 `host/floors.js#rememberDroppedMarks`），只如实回报。
+    const dropped = [];
     try {
         const pf = Array.isArray(st.processedFloors) ? st.processedFloors : [];
         const next = [];
         for (const x of pf) {
             const f = Number(x && x.f);
-            if (!Number.isFinite(f) || f < M) continue;
+            if (!Number.isFinite(f) || f < M) {
+                if (Number.isFinite(f) && f >= 0) dropped.push({ f: f, h: String((x && x.h) || '') });
+                continue;
+            }
             next.push({ f: f - M, h: String((x && x.h) || '') });
         }
         st.processedFloors = next;
@@ -188,7 +197,7 @@ export function remapAfterTrim(st, removeCount, newLastId) {
         if (Number.isFinite(nl) && nl >= -1) st.lastKnownFloor = nl;
         st.floorShrinkAt = Date.now();
     } catch (e) { /* 忽略 */ }
-    return { ok: true, shifted: shifted, staled: staled, partial: partial, dims: dims };
+    return { ok: true, shifted: shifted, staled: staled, partial: partial, dims: dims, dropped: dropped };
 }
 
 /** 预检一句话（面板与确认框共用；不含正文，只讲数字与后果） */

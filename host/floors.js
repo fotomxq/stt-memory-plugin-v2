@@ -238,22 +238,34 @@ export function migrateProcessedFloorsV170() {
             return { refreshed: 0, migrated: 0, skipped: 'chat-not-ready' };
         }
         const lastId = Number(getLastMessageId());
-        let refreshed = 0, dropped = 0;
+        let refreshed = 0, dropped = 0, keptNoText = 0;
         const next = [];
+        const droppedMarks = [];
         for (const x of pf) {
             const f = markFloor(x);
-            if (!Number.isFinite(f) || f < 0) { dropped++; continue; }
-            if (Number.isFinite(lastId) && lastId >= 0 && f > lastId) { dropped++; continue; }   // 楼层已不存在（删除/回滚）
+            if (!Number.isFinite(f) || f < 0) { dropped++; droppedMarks.push(x); continue; }
+            if (Number.isFinite(lastId) && lastId >= 0 && f > lastId) { dropped++; droppedMarks.push(x); continue; }   // 楼层已不存在（删除/回滚）
             const h = hashFloorText(f);
-            if (!h) { dropped++; continue; }        // 无正文 → 丢弃该标记（V1 同口径）
-            next.push({ f, h });
+            if (!h) {
+                // v3.26.4（真机取证「突然冒出来大量未分析的楼层，实际早已分析」）：
+                //   **楼层下标还在、只是这一步取不到正文** → 保留原标记，绝不因此丢弃。
+                //   旧口径「无正文 → 丢弃该标记」在「宿主只交进来一部分聊天」时会把整本台账静默刷掉
+                //   （丢的是**低楼层**标记），而丢完还要 `state.processedVer = 当前签名` —— 之后再无处可查。
+                //   真正的「楼层不存在」由上一句的 `f > lastId` 判定（那是**可确认**的消失）。
+                next.push({ f: f, h: String((x && x.h) || '') });
+                keptNoText++;
+                continue;
+            }
+            next.push({ f: f, h: h });
             refreshed++;
         }
+        // v3.26.4：丢弃一律留痕（旧口径此处不留痕 → 恢复聊天后无法按内容归位）
+        try { if (droppedMarks.length) rememberDroppedMarks(droppedMarks); } catch (e) { /* 忽略 */ }
         state.processedFloors = next.slice(-5000);
         state.processedVer = processedVerTag();
         if (next.length) state.lastKnownFloor = Math.max(Number(state.lastKnownFloor) || -1, Math.max.apply(null, next.map((x) => x.f)));
-        log('摘要', { action: 'v1.84 旧标记批量迁移', migrated: refreshed, dropped: dropped });
-        return { refreshed, migrated: refreshed, dropped };
+        log('摘要', { action: 'v1.84 旧标记批量迁移', migrated: refreshed, dropped: dropped, keptNoText: keptNoText });
+        return { refreshed, migrated: refreshed, dropped, keptNoText };
     } catch (e) { return { refreshed: 0 }; }
 }
 
@@ -438,20 +450,28 @@ export function processedDriftGuard(notify, force) {
         if (ratio < 0.5) return { checked: checked, mismatch: mismatch, ratio: ratio, drifted: false };
         // 漂移 → 全量按当前算法刷新（楼层号不变 → 仍视为「已处理」，不重新分析）
         const out = [];
-        let dropped = 0;
+        let dropped = 0, keptNoText = 0;
+        const droppedMarks = [];
         for (const m of pf) {
             const f = Number(m && m.f);
-            if (!Number.isFinite(f) || f < 0 || f > lastId) { dropped++; continue; }
+            if (!Number.isFinite(f) || f < 0 || f > lastId) { dropped++; droppedMarks.push(m); continue; }
             const h = hashFloorText(f);
-            if (!h) { dropped++; continue; }
+            if (!h) {
+                // v3.26.4：楼层下标还在、只是取不到正文 → **保留标记**（旧口径在这里丢弃 → 台账被静默刷掉，
+                //   见 `migrateProcessedFloorsV170` 同批注释）；漂移刷新只为换哈希，不为删条目。
+                out.push({ f: f, h: String((m && m.h) || '') });
+                keptNoText++;
+                continue;
+            }
             out.push({ f: f, h: h });
         }
+        try { if (droppedMarks.length) rememberDroppedMarks(droppedMarks); } catch (e) { /* 忽略 */ }
         state.processedFloors = out;
         state.processedVer = processedVerTag();
         state.lastKnownFloor = Math.max(Number.isFinite(known) ? known : -1, lastId);
         saveState();
-        log('摘要', { action: '已处理楼层哈希漂移 → 全量刷新', before: pf.length, after: out.length, dropped: dropped, ratio: Number(ratio.toFixed(3)) });
-        return { drifted: true, before: pf.length, after: out.length, dropped: dropped, ratio: ratio };
+        log('摘要', { action: '已处理楼层哈希漂移 → 全量刷新', before: pf.length, after: out.length, dropped: dropped, keptNoText: keptNoText, ratio: Number(ratio.toFixed(3)) });
+        return { drifted: true, before: pf.length, after: out.length, dropped: dropped, keptNoText: keptNoText, ratio: ratio };
     } catch (e) { warn('已处理楼层漂移防呆失败', e); return { skipped: 'error' }; }
 }
 
@@ -460,6 +480,10 @@ export function processedDriftGuard(notify, force) {
  *   其他插件增删/隐藏楼层导致索引错位时，按「当前内容哈希 ∈ 历史已处理哈希集」把标记归位到新索引
  *   （内容未变只挪位置 → 保持已处理，不再冒出）。
  *   大批量失配（≥50% 且基数 ≥10）**不删标记** —— 交给 `processedDriftGuard` 按当前口径整体刷新。
+ * v3.26.4（真机取证「突然冒出来大量未分析的楼层，实际早已分析」）：**「丢弃留痕」里的历史哈希同样是「在册证据」** ——
+ *   删楼丢弃的低楼层标记进留痕后，若聊天被恢复 / 撤销 / 切回更长分支（内容回来了），只按当前标记重建会**漏掉这批楼层**，
+ *   而下面的「丢弃前留痕」还会用**错位的新哈希覆盖旧留痕** → 那批楼层从此既无标记也无留痕（真机 41 层就是这样丢的）。
+ *   现在：留痕哈希参与归位（内容找到 → 重新在册），且**内容已找到的留痕随即失效**（只保留「内容确实没了」的）。
  */
 export function reconcileProcessedFloors(notify) {
     try {
@@ -475,22 +499,31 @@ export function reconcileProcessedFloors(notify) {
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
         const oldHashes = new Set();
         for (const m of pf) { const h = m && m.h; if (h) oldHashes.add(h); }
+        const droppedBefore = Array.isArray(state.processedDropped) ? state.processedDropped.slice() : [];
+        for (const x of droppedBefore) { const h = x && x.h; if (h) oldHashes.add(String(h)); }   // v3.26.4：留痕也算在册证据
         if (!oldHashes.size) return { kept: 0, dropped: 0 };
         const keep = [];
+        const found = new Set();          // 在当前聊天里找到的历史哈希（含来自留痕的）
         for (let f = 0; f <= lastId; f++) {
             const h = hashFloorText(f);
-            if (h && oldHashes.has(h)) keep.push({ f: f, h: h });
+            if (h && oldHashes.has(h)) { keep.push({ f: f, h: h }); found.add(h); }
         }
         const before = pf.length;
-        const dropped = before - keep.length;
+        // 「真的丢了」= 台账标记的哈希在当前聊天里**找不到**（留痕救回的不算丢弃 → dropped 可能小于 0？不，这里按标记算）
+        const lostList = pf.filter((m) => { const h = String((m && m.h) || ''); return !h || !found.has(h); });
+        const dropped = lostList.length;
         if (before >= 10 && dropped / before >= 0.5) {
             log('摘要', { action: '已处理楼层对账跳过（整体失配）', before: before, wouldDrop: dropped });
             return { kept: before, dropped: 0, skipped: 'mass-mismatch' };
         }
-        // v3.11.1：**丢弃前留痕**（旧哈希进 `processedDropped`）—— 覆盖判据据此识别「正文被改写过」
+        // v3.11.1：**丢弃前留痕**（旧哈希进 `processedDropped`）—— 覆盖判据据此识别「正文被改写过」。
+        // v3.26.4：只对**确实找不到内容**的标记留痕（旧实现拿「楼层号没保留」当丢弃 → 会用错位的新哈希覆盖旧留痕）；
+        //   同时把「内容已重新找到」的留痕**失效**（它们已重新在册，留着只会让覆盖判据误判「正文被改写」）。
         try {
-            const keptFloors = new Set(keep.map((x) => Number(x.f)));
-            rememberDroppedMarks(pf.filter((x) => !keptFloors.has(markFloor(x))));
+            rememberDroppedMarks(lostList);
+            const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
+            const keepDropped = arr.filter((x) => { const h = String((x && x.h) || ''); return !(h && found.has(h)); });
+            if (keepDropped.length !== arr.length) state.processedDropped = keepDropped;
         } catch (e) { /* 忽略 */ }
         // v2.64.0（V1 缺陷修复）：V1 只在 `dropped !== 0` 时写回 —— 于是「条数不变、只是楼层号整体挪位」
         //   （顶部插入一条新消息，其余内容整体后移）时**归位结果被丢弃**：标记仍指向旧楼层号，
@@ -509,6 +542,207 @@ export function reconcileProcessedFloors(notify) {
         }
         return { kept: keep.length, dropped: dropped, relocated: relocated };
     } catch (e) { warn('已处理楼层对账失败', e); return { dropped: -1 }; }
+}
+
+/**
+ * v3.26.4（真机取证「新版本 请调试对接，突然冒出来大量未分析的楼层，实际早已分析」）——
+ * **台账自愈（留痕回填）+ 诊断量表**。
+ *
+ * 真机事实（只读取证，未改任何数据）：
+ *   · 聊天 231 层（0..230），台账 `processedFloors` 只剩 68 条，且全部与各自楼层正文**哈希一致**（台账本身没错位）；
+ *   · 未分析清单重算 = 41 层（全是 AI 楼 2,4,…,98）——这批楼层**既无标记、也无「丢弃留痕」、覆盖判据也不认**；
+ *   · 旧副本（本机缓冲 16:30）里同一台账有 104 条标记 —— 低楼层标记是在某次删楼 / 换聊天 / 部分载入之后
+ *     **被静默丢弃**的：`core/floor-trim.js#remapAfterTrim` 与两处维护函数丢弃标记时**不留痕**，
+ *     于是「正文其实还在」也无从归位。
+ *
+ * 本批三件事：
+ *   ① 丢弃一律留痕（删楼 / 迁移 / 漂移刷新三处补齐，与 v3.11.1 同口径）；
+ *   ② **留痕回填**：留痕里的旧哈希若在当前聊天里按内容找得到 → 该楼内容仍在 → 恢复为「已处理」标记
+ *      （这正是「删楼 → 撤销 / 恢复聊天 / 切回更长分支 / 换同角色另一条聊天」之后的救回路径）；
+ *   ③ **「原文已移除」常态化复核**：原文还在（位置指纹找得到）→ 解除标记并归位，
+ *      不再要求「必须先检测到楼层收缩」。
+ */
+
+/** 上一次「留痕回填」的结果（只读诊断用；由扫描路径写入） */
+let lastLedgerHeal = null;
+/** @returns {{at:number, restored:number, kept:number, floors:number[]}|null} */
+export function lastLedgerHealInfo() { return lastLedgerHeal ? Object.assign({}, lastLedgerHeal) : null; }
+
+/** 当前聊天「内容哈希 → 楼层」索引（0..lastId，只读；同哈希取最小楼层） */
+function nowHashIndex(lastId) {
+    const at = new Map();
+    try {
+        for (let f = 0; f <= lastId; f++) {
+            const h = hashFloorText(f);
+            if (!h) continue;
+            if (!at.has(h)) at.set(h, f);
+        }
+    } catch (e) { /* 读取失败 → 空索引 */ }
+    return at;
+}
+
+/**
+ * **留痕回填**：把「丢弃留痕」里内容仍在的那些楼层恢复为「已处理」标记。
+ *   判据与 `reconcileProcessedFloors` 同源（**按内容哈希定位**，不看楼层号）：
+ *   · 旧哈希在当前聊天里找得到 → 内容仍在 → 恢复标记（若该楼已有标记则保留现有，不覆盖）；
+ *   · 找不到 → 内容确实没了 → **保留留痕**（口径不变：`droppedContentChanged` 继续如实判「正文被改写」）。
+ * @returns {{restored:number, kept:number, floors?:number[], skipped?:string}}
+ */
+export function healLedgerFromDropped() {
+    try {
+        if (!kernelStateReady()) return { restored: 0, kept: 0, skipped: 'state-not-ready' };
+        const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
+        if (!arr.length) { lastLedgerHeal = { at: Date.now(), restored: 0, kept: 0, floors: [] }; return { restored: 0, kept: 0, skipped: 'no-dropped' }; }
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { restored: 0, kept: arr.length, skipped: 'chat-not-ready' };
+        const lastId = ready.total - 1;
+        if (!Number.isFinite(lastId) || lastId < 0) return { restored: 0, kept: arr.length, skipped: 'no-chat' };
+        const idx = nowHashIndex(lastId);
+        const marks = new Map();
+        for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
+            const f = markFloor(x);
+            if (Number.isFinite(f) && f >= 0) marks.set(f, { f: f, h: String((x && x.h) || '') });
+        }
+        const keep = [];
+        const floors = [];
+        for (const x of arr) {
+            const h = String((x && x.h) || '');
+            const at = h ? idx.get(h) : undefined;
+            if (at === undefined) { keep.push({ f: markFloor(x), h: h }); continue; }
+            if (!marks.has(at)) { marks.set(at, { f: at, h: h }); floors.push(at); }
+        }
+        const restored = floors.length;
+        if (restored) {
+            state.processedFloors = Array.from(marks.values()).sort((a, b) => a.f - b.f).slice(-5000);
+            state.processedVer = processedVerTag();
+            state.lastKnownFloor = Math.max(Number(state.lastKnownFloor) || -1, Math.max.apply(null, floors));
+        }
+        if (keep.length !== arr.length) state.processedDropped = keep;
+        if (restored || keep.length !== arr.length) {
+            saveState();
+            log('摘要', { action: '台账留痕回填（内容仍在 → 恢复为已处理）', restored: restored, kept: keep.length });
+        }
+        lastLedgerHeal = { at: Date.now(), restored: restored, kept: keep.length, floors: floors.slice(0, 60) };
+        return { restored: restored, kept: keep.length, floors: floors };
+    } catch (e) { warn('台账留痕回填失败', e); return { restored: 0, kept: 0, error: String((e && e.message) || e) }; }
+}
+
+/**
+ * **「原文已移除」常态化复核**（v3.26.4）：只对**带位置指纹**（`floorNowHash`）的条目复核 ——
+ *   指纹在当前聊天里找得到 → 原文仍在 → `clearGone` + 归位（`floorNow*` = 找到的楼层 + 原跨度）。
+ *   注意：本函数**只解除标记**（保守方向）；找不到的条目保持「原文已移除」，绝不臆断。
+ * @returns {{restored:number, checked:number, stillGone:number, skipped?:string}}
+ */
+export function recheckOriginGone() {
+    try {
+        if (!kernelStateReady()) return { restored: 0, checked: 0, stillGone: 0, skipped: 'state-not-ready' };
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { restored: 0, checked: 0, stillGone: 0, skipped: 'chat-not-ready' };
+        const lastId = ready.total - 1;
+        if (!Number.isFinite(lastId) || lastId < 0) return { restored: 0, checked: 0, stillGone: 0, skipped: 'no-chat' };
+        const idx = nowHashIndex(lastId);
+        let restored = 0, checked = 0, stillGone = 0;
+        for (const d of DIMENSIONS) {
+            for (const it of (Array.isArray(state[d.kind]) ? state[d.kind] : [])) {
+                if (!it || it.originGone !== true) continue;
+                const fn = it.floorNowHash ? String(it.floorNowHash) : '';
+                if (!fn) continue;                       // 无指纹 → 无从复核（保持「原文已移除」）
+                checked++;
+                const at = idx.get(fn);
+                if (at === undefined) { stillGone++; continue; }
+                const r = originFloorRange(it);
+                it.floorNowStart = at;
+                it.floorNowEnd = at + (r ? Math.max(0, r[1] - r[0]) : 0);
+                delete it.originGone;
+                delete it.originGoneAt;
+                restored++;
+            }
+        }
+        if (restored) {
+            saveState();
+            log('摘要', { action: '「原文已移除」复核：内容仍在 → 解除标记', restored: restored, checked: checked });
+        }
+        return { restored: restored, checked: checked, stillGone: stillGone };
+    } catch (e) { warn('「原文已移除」复核失败', e); return { restored: 0, checked: 0, stillGone: 0, error: String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.26.4（用户补救出口）：**把指定楼层登记为「已分析」** —— 只写台账标记，
+ *   **不动任何记忆条目、不调用 AI、不改正文**（与 `clearProcessedFloors` 互为逆操作）。
+ * 用途：标记确实丢失、数据里也再无证据的楼层（真机 41 层即此情形）——用户确认「这些楼当初分析过」后，
+ *   一次性登记，避免它们被重复分析（重复分析会重复落库、白花 token）。
+ * 口径与扫描一致：只登记**存在、非隐藏、非用户、有正文**的楼层；登记失败/跳过如实计数回报。
+ * @param {number[]} list 楼层号清单
+ * @returns {{ok:boolean, marked:number, skipped:number, floors?:number[], reason?:string}}
+ */
+export function markFloorsProcessed(list) {
+    try {
+        if (!kernelStateReady()) return { ok: false, reason: 'state-not-ready', marked: 0, skipped: 0 };
+        const ready = chatReadyForFloors();
+        if (!ready.ready) return { ok: false, reason: 'chat-not-ready', marked: 0, skipped: 0 };
+        const nums = (Array.isArray(list) ? list : []).map((x) => Number(x)).filter((f) => Number.isInteger(f) && f >= 0);
+        if (!nums.length) return { ok: false, reason: 'empty', marked: 0, skipped: 0 };
+        const map = new Map();
+        for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
+            const f = markFloor(x);
+            if (Number.isFinite(f) && f >= 0) map.set(f, { f: f, h: String((x && x.h) || '') });
+        }
+        let marked = 0, skipped = 0;
+        const done = [];
+        for (const f of nums) {
+            const m = floorMessage(f);
+            const h = hashFloorText(f);
+            if (!m || m.is_hidden || m.is_user || !h) { skipped++; continue; }
+            map.set(f, { f: f, h: h });
+            marked++;
+            done.push(f);
+        }
+        if (!marked) return { ok: false, reason: 'nothing-markable', marked: 0, skipped: skipped };
+        state.processedFloors = Array.from(map.values()).sort((a, b) => a.f - b.f).slice(-5000);
+        state.processedVer = processedVerTag();
+        state.lastKnownFloor = Math.max(Number(state.lastKnownFloor) || -1, Math.max.apply(null, done));
+        // 登记成功 → 这些楼的「丢弃留痕」失效（它们已重新在册；留痕只描述「不在册」）
+        try {
+            const set = new Set(done);
+            const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
+            const keep = arr.filter((x) => !set.has(markFloor(x)));
+            if (keep.length !== arr.length) state.processedDropped = keep;
+        } catch (e) { /* 忽略 */ }
+        saveState();
+        log('摘要', { action: '用户登记未分析楼层为已分析', marked: marked, skipped: skipped, count: done.length });
+        return { ok: true, marked: marked, skipped: skipped, floors: done };
+    } catch (e) { warn('登记已分析楼层失败', e); return { ok: false, reason: 'error', marked: 0, skipped: 0 }; }
+}
+
+/**
+ * **台账健康量表**（v3.26.4；只读诊断，供调试桥 `ftt.ledger.health` 与真机取证）。
+ *   回答三个问题：台账有多少条、有多少条**在当前聊天里读不到正文**（部分载入/楼层消失的信号）、
+ *   留痕有几条、覆盖几层、未分析几层、上次留痕回填救回几条。
+ */
+export function ledgerHealth() {
+    try {
+        if (!kernelStateReady()) return { ready: false };
+        const lastId = (() => { try { const ctx = getCtx(); const n = (ctx && Array.isArray(ctx.chat)) ? ctx.chat.length : 0; return n > 0 ? n - 1 : -1; } catch (e) { return -1; } })();
+        const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
+        let readable = 0, unreadable = 0, outOfRange = 0;
+        for (const x of pf) {
+            const f = markFloor(x);
+            if (!Number.isFinite(f) || f < 0) { outOfRange++; continue; }
+            if (f > lastId) { outOfRange++; continue; }
+            if (hashFloorText(f)) readable++; else unreadable++;
+        }
+        const cov = floorCoverage(state, { maxFloor: lastId });
+        const pending = listUnprocessedFloors({ maintain: false });
+        return {
+            ready: true, lastId: lastId,
+            marks: pf.length, marksReadable: readable, marksUnreadable: unreadable, marksOutOfRange: outOfRange,
+            dropped: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0),
+            coverFloors: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored,
+            pending: pending.length, pendingFloors: pending.slice(0, 60),
+            verMatches: (state.processedVer || '') === processedVerTag(),
+            lastHeal: lastLedgerHealInfo(),
+        };
+    } catch (e) { return { ready: false, error: String((e && e.message) || e) }; }
 }
 
 /**
@@ -811,7 +1045,15 @@ export function scanPendingFloors(opts) {
                 try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ }
                 try { processedDriftGuard(false); } catch (e) { /* 忽略 */ }
                 const now = Date.now();
-                if (now - lastReconcileTs > RECONCILE_MS) { lastReconcileTs = now; try { reconcileProcessedFloors(false); } catch (e) { /* 忽略 */ } }
+                if (now - lastReconcileTs > RECONCILE_MS) {
+                    lastReconcileTs = now;
+                    try { reconcileProcessedFloors(false); } catch (e) { /* 忽略 */ }
+                    // v3.26.4：同一节流窗口里跑两条**自愈**（幂等、只读优先、聊天就绪才动作）：
+                    //   ① 留痕回填（内容仍在 → 恢复为已处理）；② 「原文已移除」常态化复核。
+                    //   顺序：先对账（按内容归位）→ 再回填/复核，避免用过期留痕覆盖刚归位的结果。
+                    try { healLedgerFromDropped(); } catch (e) { /* 忽略 */ }
+                    try { recheckOriginGone(); } catch (e) { /* 忽略 */ }
+                }
             }
         }
         // 状态未注入时按空容器判覆盖（`floorCoverage` 只读、零副作用；此处避免把 null 传下去）
