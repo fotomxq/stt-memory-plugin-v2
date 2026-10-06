@@ -19,7 +19,7 @@ import { cfg, state } from './model/runtime.js';
 import { scenePathArr } from './model/scalars.js';
 import { plotSegmentId } from './model/segment.js';
 import { migrateSnapshotV1162, normalizeSnapshot } from './model/snapshot.js';
-import { hashText, normalizeList } from './util.js';
+import { hashText, normalizeList, hasBadToken, scrubBadToken, walkStrings } from './util.js';
 function recallDateNum(s) {
     try {
         const p = clockDateParts(clockDateTrim(s));   // v1.193：负年份（公元前）→ 带符号数值
@@ -169,9 +169,10 @@ const HEAL_DIMS = (() => {
     return out;
 })();
 
-/** 上一次载入期自愈的摘要（`index.js` 据此留痕 / 按需落盘；v3.13.1） */
+/** 上一次载入期自愈的摘要（`index.js` 据此留痕 / 按需落盘；v3.13.1）
+ *  `texts` = v3.26.1 新增：清掉坏占位 token（`undefined` / `NaN` / `[object Object]`）的条目数 */
 let lastHeal = null;
-/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number}|null} */
+/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number, texts:number}|null} */
 function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; }
 
 /**
@@ -184,12 +185,14 @@ function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; 
  *   ③ 条目级：NSFW 等级规范化（`Strong`/`true`/`4` → `strong`；无法识别 → 删除字段，缺省即「无」）；
  *   ④ 条目级：`uses` 负数/非数字 → `0`；`importance` 越界 → 夹到 `0..1`（非数字 → `0.5`）；
  *   ⑤ 楼层：来源区间**倒置**（`floorStart > floorEnd`）→ 互换修好（两端都是真实楼层，只是顺序写反）；
- *      `floorNow*` 非法/倒置/只有一半、或已判「原文已移除」却仍带当前位置 → **整对删除**（派生数据，下次突变识别会重算）。
+ *      `floorNow*` 非法/倒置/只有一半、或已判「原文已移除」却仍带当前位置 → **整对删除**（派生数据，下次突变识别会重算）；
+ *   ⑥ v3.26.1：**坏占位 token**（`undefined` / `NaN` / `[object Object]`，以「值」的形态出现时才清）→
+ *      逐条深度清理（深 ≤4 / 字符串 ≤20000），计数进 `lastHealInfo().texts`。
  * 只报告不擅自改的（语义无法确定，交 `core/data-health.js` 体检列出）：缺 id / 重复 id / 超长字段 / 墓碑时间戳非法。
  */
 function healthSelfHeal(s) {
     let changed = false;
-    const stat = { ledger: 0, dropped: 0, entries: 0 };
+    const stat = { ledger: 0, dropped: 0, entries: 0, texts: 0 };
     try {
         if (!s || typeof s !== 'object') { lastHeal = null; return false; }
         // ① 台账（主 + 丢弃留痕）
@@ -261,6 +264,23 @@ function healthSelfHeal(s) {
                     if (bad) { delete it.floorNowStart; delete it.floorNowEnd; fixed = true; }
                 }
                 if (fixed) { changed = true; stat.entries++; }
+            }
+        }
+        // ⑥ v3.26.1（用户报告「有传言中出现了 undefined 字样，其他原子数据可能也有」）——**坏占位 token 自愈**：
+        //   存档里已经写进去的 `undefined` / `NaN` / `[object Object]`（成因见 `core/util.js#scrubBadToken`
+        //   与 `docs/history/P10c47`）在载入时清掉；逐条深度遍历（深度 ≤4、字符串 ≤20000 双上限），
+        //   命中的字段**只清 token、不删条目**，并计入 `lastHealInfo().texts` 供面板/日志如实回报。
+        for (const dim of HEAL_DIMS) {
+            const arr = s[dim];
+            if (!Array.isArray(arr)) continue;
+            for (const it of arr) {
+                if (!it || typeof it !== 'object') continue;
+                let hit = false;
+                try {
+                    const r = walkStrings(it, (v) => (hasBadToken(v) ? scrubBadToken(v) : undefined), { maxDepth: 4, maxStrings: 4000 });
+                    hit = r.changed > 0;
+                } catch (e) { /* 单个条目异常不影响其余 */ }
+                if (hit) { changed = true; stat.texts++; }
             }
         }
     } catch (e) { /* 自愈失败不阻塞迁移 */ }

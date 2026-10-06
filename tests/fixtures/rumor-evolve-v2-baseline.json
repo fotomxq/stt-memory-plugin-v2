@@ -1,0 +1,1804 @@
+{
+  "roll": [
+    {
+      "seed": "rum_m1|fission|2020-01-01|1",
+      "v": 0.3304324927739799
+    },
+    {
+      "seed": "rum_m1|variant|2020-01-01|1",
+      "v": 0.6572618375066668
+    },
+    {
+      "seed": "rum_m2|link|2020-05-20|3",
+      "v": 0.34918259433470666
+    },
+    {
+      "seed": "rum_m3|mutate|2019-11-01|2",
+      "v": 0.6616964302957058
+    },
+    {
+      "seed": "",
+      "v": 0.15233800723217428
+    },
+    {
+      "seed": null,
+      "v": 0.15233800723217428
+    },
+    {
+      "seed": "码头上有人说：河神显灵？",
+      "v": 0.07875409419648349
+    }
+  ],
+  "rollRepeat": [
+    0.6572618375066668,
+    0.6572618375066668,
+    0.2984040924347937
+  ],
+  "variants": [
+    {
+      "id": "rum_v1",
+      "date": "2020-06-01",
+      "idxs": [
+        "受害者视角",
+        "受害者视角",
+        "夸大版",
+        "官方口径",
+        "夸大版",
+        "官方口径",
+        "受害者视角"
+      ]
+    },
+    {
+      "id": "rum_v2",
+      "date": "2020-06-01",
+      "idxs": [
+        "夸大版",
+        "添油加醋",
+        "官方口径",
+        "官方口径",
+        "官方口径",
+        "反转为辟谣",
+        "夸大版"
+      ]
+    },
+    {
+      "id": "rum_v3",
+      "date": "2020-06-01",
+      "idxs": [
+        "夸大版",
+        "夸大版",
+        "添油加醋",
+        "添油加醋",
+        "官方口径",
+        "受害者视角",
+        "反转为辟谣"
+      ]
+    },
+    {
+      "id": "rum_v4",
+      "date": "2020-06-01",
+      "idxs": [
+        "反转为辟谣",
+        "反转为辟谣",
+        "添油加醋",
+        "夸大版",
+        "反转为辟谣",
+        "受害者视角",
+        "受害者视角"
+      ]
+    },
+    {
+      "id": "rum_v5",
+      "date": "2020-06-01",
+      "idxs": [
+        "添油加醋",
+        "夸大版",
+        "反转为辟谣",
+        "反转为辟谣",
+        "夸大版",
+        "夸大版",
+        "受害者视角"
+      ]
+    },
+    {
+      "id": "rum_v6",
+      "date": "2020-06-01",
+      "idxs": [
+        "受害者视角",
+        "夸大版",
+        "添油加醋",
+        "受害者视角",
+        "反转为辟谣",
+        "夸大版",
+        "反转为辟谣"
+      ]
+    }
+  ],
+  "link": {
+    "inputs": {
+      "id": "rum_link",
+      "subject": "码头失窃",
+      "content": "码头的货被偷了，有人说是内贼。",
+      "date": "2020-06-01",
+      "tags": [
+        "甲",
+        "乙",
+        "丙"
+      ],
+      "ferment": 50,
+      "carriers": [
+        {
+          "who": "甲",
+          "role": "源头"
+        }
+      ],
+      "media": [],
+      "chain": [],
+      "parallelRefs": [],
+      "lineage": {
+        "rootId": "rum_link",
+        "parentId": "",
+        "children": [],
+        "generation": 0
+      }
+    },
+    "runs": [
+      {
+        "id": "rum_lk_1",
+        "result": {
+          "kind": "消退",
+          "sim": 1,
+          "parallelId": "p1",
+          "title": "平行事件甲"
+        },
+        "rumor": {
+          "id": "rum_lk_1",
+          "subject": "码头失窃",
+          "content": "码头的货被偷了，有人说是内贼。",
+          "date": "2020-06-01",
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "ferment": 35,
+          "carriers": [
+            {
+              "who": "甲",
+              "role": "源头"
+            }
+          ],
+          "media": [],
+          "chain": [
+            {
+              "at": "2020-06-01",
+              "round": 0,
+              "kind": "联动",
+              "from": "",
+              "to": "平行事件甲",
+              "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+            }
+          ],
+          "parallelRefs": [
+            "p1"
+          ],
+          "lineage": {
+            "rootId": "rum_link",
+            "parentId": "",
+            "children": [],
+            "generation": 0
+          }
+        },
+        "parallels": [
+          {
+            "id": "p1",
+            "title": "平行事件甲",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p2",
+            "title": "平行事件乙",
+            "tags": [
+              "丁",
+              "戊",
+              "己"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p3",
+            "title": "已转正事件",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          }
+        ],
+        "rolls": [
+          0.6813133382238448,
+          0.509430970530957
+        ]
+      },
+      {
+        "id": "rum_lk_476",
+        "result": {
+          "kind": "发酵",
+          "sim": 1,
+          "parallelId": "p1",
+          "title": "平行事件甲"
+        },
+        "rumor": {
+          "id": "rum_lk_476",
+          "subject": "码头失窃",
+          "content": "码头的货被偷了，有人说是内贼。",
+          "date": "2020-06-01",
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "ferment": 62,
+          "carriers": [
+            {
+              "who": "甲",
+              "role": "源头"
+            }
+          ],
+          "media": [],
+          "chain": [
+            {
+              "at": "2020-06-01",
+              "round": 0,
+              "kind": "联动",
+              "from": "",
+              "to": "平行事件甲",
+              "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言发酵 +12"
+            }
+          ],
+          "parallelRefs": [
+            "p1"
+          ],
+          "lineage": {
+            "rootId": "rum_link",
+            "parentId": "",
+            "children": [],
+            "generation": 0
+          }
+        },
+        "parallels": [
+          {
+            "id": "p1",
+            "title": "平行事件甲",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p2",
+            "title": "平行事件乙",
+            "tags": [
+              "丁",
+              "戊",
+              "己"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p3",
+            "title": "已转正事件",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          }
+        ],
+        "rolls": [
+          0.017818098654970527,
+          0.27295970008708537
+        ]
+      },
+      {
+        "id": "rum_lk_8",
+        "result": {
+          "kind": "消退",
+          "sim": 1,
+          "parallelId": "p1",
+          "title": "平行事件甲"
+        },
+        "rumor": {
+          "id": "rum_lk_8",
+          "subject": "码头失窃",
+          "content": "码头的货被偷了，有人说是内贼。",
+          "date": "2020-06-01",
+          "tags": [
+            "甲",
+            "乙",
+            "丙"
+          ],
+          "ferment": 35,
+          "carriers": [
+            {
+              "who": "甲",
+              "role": "源头"
+            }
+          ],
+          "media": [],
+          "chain": [
+            {
+              "at": "2020-06-01",
+              "round": 0,
+              "kind": "联动",
+              "from": "",
+              "to": "平行事件甲",
+              "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+            }
+          ],
+          "parallelRefs": [
+            "p1"
+          ],
+          "lineage": {
+            "rootId": "rum_link",
+            "parentId": "",
+            "children": [],
+            "generation": 0
+          }
+        },
+        "parallels": [
+          {
+            "id": "p1",
+            "title": "平行事件甲",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p2",
+            "title": "平行事件乙",
+            "tags": [
+              "丁",
+              "戊",
+              "己"
+            ],
+            "previews": []
+          },
+          {
+            "id": "p3",
+            "title": "已转正事件",
+            "tags": [
+              "甲",
+              "乙",
+              "丙"
+            ],
+            "previews": []
+          }
+        ],
+        "rolls": [
+          0.1441515504848212,
+          0.6119478498585522
+        ]
+      }
+    ],
+    "kinds": [
+      "消退",
+      "发酵",
+      "消退"
+    ]
+  },
+  "maybeStart": {
+    "results": [
+      null,
+      null,
+      {
+        "kind": "变异",
+        "variant": "夸大版"
+      },
+      null
+    ],
+    "rumors": [
+      {
+        "id": "rum_mb1",
+        "subject": "传言rum_mb1",
+        "content": "说法rum_mb1",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 95,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [],
+        "lineage": {
+          "rootId": "rum_mb1",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-05-01"
+      },
+      {
+        "id": "rum_mb2",
+        "subject": "传言rum_mb2",
+        "content": "说法rum_mb2",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 95,
+        "carriers": [],
+        "media": [],
+        "chain": [],
+        "lineage": {
+          "rootId": "rum_mb2",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-05-01"
+      },
+      {
+        "id": "rum_mu1",
+        "subject": "传言rum_mu1",
+        "content": "说法rum_mu1",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 65,
+        "pending": {
+          "kind": "变异",
+          "need": 2,
+          "progress": 0,
+          "target": "夸大版",
+          "at": "2020-06-01"
+        },
+        "carriers": [],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 5,
+            "kind": "异变",
+            "from": "",
+            "to": "",
+            "note": "变化过程开始：变异「夸大版」（需 2 轮，不会立刻生效）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_mu1",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-05-01"
+      },
+      {
+        "id": "rum_mu2",
+        "subject": "传言rum_mu2",
+        "content": "说法rum_mu2",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 30,
+        "carriers": [],
+        "media": [],
+        "chain": [],
+        "lineage": {
+          "rootId": "rum_mu2",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-05-01"
+      }
+    ]
+  },
+  "maybeStart0": [
+    null,
+    null,
+    null,
+    null
+  ],
+  "evolve": {
+    "out": {
+      "ok": true,
+      "reason": "golden",
+      "list": 4,
+      "aged": 1,
+      "ferment": 6,
+      "links": 2,
+      "changes": 0,
+      "committed": 3,
+      "fissions": 2,
+      "decay": {
+        "removed": 0,
+        "triggered": false,
+        "overRatio": false,
+        "n": 6,
+        "cap": 200
+      },
+      "disabled": false,
+      "fissionsIds": [
+        "rum_13mb7va",
+        "rum_h0vs4n"
+      ]
+    },
+    "rumors": [
+      {
+        "id": "rum_c1",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 87,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "载体停用",
+            "from": "临江日报",
+            "to": "",
+            "note": "载体「临江日报」超寿命（152 天 > 30 天）停止扩散"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c1",
+            "note": "分裂为新的传言分支「夸大版」（子条 rum_13mb7va）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ **推动平行世界发生新的变化**（已写入其预演）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "",
+          "children": [
+            "rum_13mb7va"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c2",
+        "subject": "传言rum_c2",
+        "content": "说法rum_c2（说法演变为：添油加醋）",
+        "objectivity": "主观",
+        "stage": "异变",
+        "ferment": 94,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "口耳相传",
+            "name": "口耳相传",
+            "at": "2020-05-31",
+            "durability": 2,
+            "active": true
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "异变",
+            "from": "说法rum_c2",
+            "to": "说法rum_c2（说法演变为：添油加醋）",
+            "note": "说法完成演化（添油加醋）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 94）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c2",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c3",
+        "subject": "传言rum_c3",
+        "content": "说法rum_c3",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 81,
+        "pending": {
+          "kind": "裂变",
+          "need": 3,
+          "progress": 1,
+          "target": "受害者视角",
+          "at": "2020-05-30"
+        },
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程推进：裂变（1/3 轮）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c3",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_c4",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 19,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c4",
+            "note": "分裂为新的传言分支「not-a-variant」（子条 rum_h0vs4n）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 萌芽（发酵度 19）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "",
+          "children": [
+            "rum_h0vs4n"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_13mb7va",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1（夸大版）",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 35,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c1",
+            "to": "传言rum_c1",
+            "note": "由「传言rum_c1」裂变而来（夸大版）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：扩散 → 萌芽（发酵度 35）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "rum_c1",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "floorStart": 0,
+        "floorEnd": 0
+      },
+      {
+        "id": "rum_h0vs4n",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4（not-a-variant）",
+        "objectivity": "主观",
+        "stage": "消退",
+        "ferment": 13,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c4",
+            "to": "传言rum_c4",
+            "note": "由「传言rum_c4」裂变而来（not-a-variant）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "rum_c4",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [],
+        "floorStart": 0,
+        "floorEnd": 0
+      }
+    ],
+    "parallels": [
+      {
+        "id": "p1",
+        "title": "平行事件甲",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "previews": [
+          "传言「传言rum_c1」发酵推动：说法rum_c1"
+        ]
+      }
+    ],
+    "tick": {
+      "round": 1,
+      "lastFloor": 9,
+      "parallelFloor": -1,
+      "runs": 8
+    }
+  },
+  "evolveNow": {
+    "out": {
+      "ok": true,
+      "reason": "manual",
+      "list": 6,
+      "aged": 0,
+      "ferment": 6,
+      "links": 2,
+      "changes": 0,
+      "committed": 0,
+      "fissions": 0,
+      "decay": {
+        "removed": 0,
+        "triggered": false,
+        "overRatio": false,
+        "n": 6,
+        "cap": 200
+      },
+      "disabled": false,
+      "fissionsIds": []
+    },
+    "rumors": [
+      {
+        "id": "rum_c1",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1",
+        "objectivity": "主观",
+        "stage": "异变",
+        "ferment": 90,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "载体停用",
+            "from": "临江日报",
+            "to": "",
+            "note": "载体「临江日报」超寿命（152 天 > 30 天）停止扩散"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c1",
+            "note": "分裂为新的传言分支「夸大版」（子条 rum_13mb7va）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ **推动平行世界发生新的变化**（已写入其预演）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 90）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "",
+          "children": [
+            "rum_13mb7va"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c2",
+        "subject": "传言rum_c2",
+        "content": "说法rum_c2（说法演变为：添油加醋）",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 85,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "口耳相传",
+            "name": "口耳相传",
+            "at": "2020-05-31",
+            "durability": 2,
+            "active": true
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "异变",
+            "from": "说法rum_c2",
+            "to": "说法rum_c2（说法演变为：添油加醋）",
+            "note": "说法完成演化（添油加醋）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 94）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：异变 → 发酵（发酵度 85）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c2",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c3",
+        "subject": "传言rum_c3",
+        "content": "说法rum_c3",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 82,
+        "pending": {
+          "kind": "裂变",
+          "need": 3,
+          "progress": 2,
+          "target": "受害者视角",
+          "at": "2020-05-30"
+        },
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程推进：裂变（1/3 轮）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程推进：裂变（2/3 轮）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c3",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_c4",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 20,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c4",
+            "note": "分裂为新的传言分支「not-a-variant」（子条 rum_h0vs4n）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 萌芽（发酵度 19）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "",
+          "children": [
+            "rum_h0vs4n"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_13mb7va",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1（夸大版）",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 23,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c1",
+            "to": "传言rum_c1",
+            "note": "由「传言rum_c1」裂变而来（夸大版）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：扩散 → 萌芽（发酵度 35）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "rum_c1",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "floorStart": 0,
+        "floorEnd": 0
+      },
+      {
+        "id": "rum_h0vs4n",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4（not-a-variant）",
+        "objectivity": "主观",
+        "stage": "消退",
+        "ferment": 14,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c4",
+            "to": "传言rum_c4",
+            "note": "由「传言rum_c4」裂变而来（not-a-variant）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "rum_c4",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [],
+        "floorStart": 0,
+        "floorEnd": 0
+      }
+    ]
+  },
+  "evolveToasts": [
+    [
+      "success",
+      "📢 传言演化完成 载体停用 1 · 平行联动 2 · 酝酿变化 0 · 完成变化 3（含裂变 2）· 衰退移除 0（共 6 条）"
+    ]
+  ],
+  "tickAdvance": {
+    "ticks": [
+      {
+        "floor": 10,
+        "ret": {
+          "ok": true,
+          "round": 0,
+          "every": 2,
+          "triggered": true
+        },
+        "tick": {
+          "round": 0,
+          "lastFloor": 10,
+          "parallelFloor": -1,
+          "runs": 7
+        }
+      },
+      {
+        "floor": 10,
+        "ret": {
+          "ok": true,
+          "round": 0,
+          "every": 2,
+          "triggered": false
+        },
+        "tick": {
+          "round": 0,
+          "lastFloor": 10,
+          "parallelFloor": -1,
+          "runs": 8
+        }
+      },
+      {
+        "floor": 11,
+        "ret": {
+          "ok": true,
+          "round": 1,
+          "every": 2,
+          "triggered": false
+        },
+        "tick": {
+          "round": 1,
+          "lastFloor": 11,
+          "parallelFloor": -1,
+          "runs": 8
+        }
+      },
+      {
+        "floor": 12,
+        "ret": {
+          "ok": true,
+          "round": 0,
+          "every": 2,
+          "triggered": true
+        },
+        "tick": {
+          "round": 0,
+          "lastFloor": 12,
+          "parallelFloor": -1,
+          "runs": 8
+        }
+      },
+      {
+        "floor": 13,
+        "ret": {
+          "ok": true,
+          "round": 1,
+          "every": 2,
+          "triggered": false
+        },
+        "tick": {
+          "round": 1,
+          "lastFloor": 13,
+          "parallelFloor": -1,
+          "runs": 9
+        }
+      },
+      {
+        "floor": 14,
+        "ret": {
+          "ok": true,
+          "round": 0,
+          "every": 2,
+          "triggered": true
+        },
+        "tick": {
+          "round": 0,
+          "lastFloor": 14,
+          "parallelFloor": -1,
+          "runs": 9
+        }
+      }
+    ],
+    "rumors": [
+      {
+        "id": "rum_c1",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1",
+        "objectivity": "主观",
+        "stage": "异变",
+        "ferment": 93,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "载体停用",
+            "from": "临江日报",
+            "to": "",
+            "note": "载体「临江日报」超寿命（152 天 > 30 天）停止扩散"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c1",
+            "note": "分裂为新的传言分支「夸大版」（子条 rum_13mb7va）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ **推动平行世界发生新的变化**（已写入其预演）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 90）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "",
+          "children": [
+            "rum_13mb7va"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c2",
+        "subject": "传言rum_c2",
+        "content": "说法rum_c2（说法演变为：添油加醋）",
+        "objectivity": "主观",
+        "stage": "异变",
+        "ferment": 93,
+        "pending": {
+          "kind": "变异",
+          "need": 2,
+          "progress": 0,
+          "target": "反转为辟谣",
+          "at": "2020-06-01"
+        },
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [
+          {
+            "type": "口耳相传",
+            "name": "口耳相传",
+            "at": "2020-05-31",
+            "durability": 2,
+            "active": true
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "异变",
+            "from": "说法rum_c2",
+            "to": "说法rum_c2（说法演变为：添油加醋）",
+            "note": "说法完成演化（添油加醋）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 94）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：异变 → 发酵（发酵度 85）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 10,
+            "kind": "异变",
+            "from": "",
+            "to": "",
+            "note": "变化过程开始：变异「反转为辟谣」（需 2 轮，不会立刻生效）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 10,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 异变（发酵度 93）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c2",
+          "parentId": "",
+          "children": [],
+          "generation": 0
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ]
+      },
+      {
+        "id": "rum_c3",
+        "subject": "传言rum_c3",
+        "content": "说法rum_c3",
+        "objectivity": "主观",
+        "stage": "发酵",
+        "ferment": 83,
+        "pending": {
+          "kind": "裂变",
+          "need": 2,
+          "progress": 0,
+          "target": "官方口径",
+          "at": "2020-06-01"
+        },
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程推进：裂变（1/3 轮）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程推进：裂变（2/3 轮）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 10,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c3",
+            "note": "分裂为新的传言分支「受害者视角」（子条 rum_gnz0xi）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 10,
+            "kind": "裂变",
+            "from": "",
+            "to": "",
+            "note": "变化过程开始：裂变「官方口径」（需 2 轮，不会立刻生效）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c3",
+          "parentId": "",
+          "children": [
+            "rum_gnz0xi"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_c4",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 21,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头"
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "裂变",
+            "from": "",
+            "to": "传言rum_c4",
+            "note": "分裂为新的传言分支「not-a-variant」（子条 rum_h0vs4n）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：发酵 → 萌芽（发酵度 19）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "",
+          "children": [
+            "rum_h0vs4n"
+          ],
+          "generation": 0
+        },
+        "parallelRefs": [],
+        "date": "2020-06-01"
+      },
+      {
+        "id": "rum_13mb7va",
+        "subject": "传言rum_c1",
+        "content": "说法rum_c1（夸大版）",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 26,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [
+          {
+            "type": "报刊",
+            "name": "临江日报",
+            "at": "2020-01-01",
+            "durability": 1,
+            "active": false
+          }
+        ],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c1",
+            "to": "传言rum_c1",
+            "note": "由「传言rum_c1」裂变而来（夸大版）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 8,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：扩散 → 萌芽（发酵度 35）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 9,
+            "kind": "联动",
+            "from": "",
+            "to": "平行事件甲",
+            "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ 传言消退 -15"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c1",
+          "parentId": "rum_c1",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [
+          "p1"
+        ],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "floorStart": 0,
+        "floorEnd": 0
+      },
+      {
+        "id": "rum_h0vs4n",
+        "subject": "传言rum_c4",
+        "content": "说法rum_c4（not-a-variant）",
+        "objectivity": "主观",
+        "stage": "萌芽",
+        "ferment": 15,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c4",
+            "to": "传言rum_c4",
+            "note": "由「传言rum_c4」裂变而来（not-a-variant）"
+          },
+          {
+            "at": "2020-06-01",
+            "round": 10,
+            "kind": "发酵",
+            "from": "",
+            "to": "",
+            "note": "阶段：消退 → 萌芽（发酵度 15）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c4",
+          "parentId": "rum_c4",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [],
+        "floorStart": 0,
+        "floorEnd": 0
+      },
+      {
+        "id": "rum_gnz0xi",
+        "subject": "传言rum_c3",
+        "content": "说法rum_c3（受害者视角）",
+        "objectivity": "主观",
+        "stage": "扩散",
+        "ferment": 50,
+        "pending": null,
+        "carriers": [
+          {
+            "who": "甲",
+            "role": "源头",
+            "at": ""
+          }
+        ],
+        "media": [],
+        "chain": [
+          {
+            "at": "2020-06-01",
+            "round": 0,
+            "kind": "起源",
+            "from": "传言rum_c3",
+            "to": "传言rum_c3",
+            "note": "由「传言rum_c3」裂变而来（受害者视角）"
+          }
+        ],
+        "lineage": {
+          "rootId": "rum_c3",
+          "parentId": "rum_c3",
+          "children": [],
+          "generation": 1
+        },
+        "parallelRefs": [],
+        "source": "",
+        "date": "2020-06-01",
+        "tags": [],
+        "floorStart": 0,
+        "floorEnd": 0
+      }
+    ]
+  }
+}

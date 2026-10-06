@@ -83,8 +83,26 @@ function rumorTickState() {
     } catch (e) { return { round: 0, lastFloor: -1, parallelFloor: -1, runs: 0, lastAt: 0 }; }
 }
 // 确定性掷骰：同一 seed 恒返回同一 0~1（跨端一致；测试可复现）
+// v3.26.1（用户报告「有传言中出现了 undefined 字样」）——**根因修复**：
+//   旧实现把 `hashText()`（djb2 → **base36**，见 `core/util.js`）按 **16 进制**解析 ——
+//   哈希串里一旦出现 `g`~`z`（base36 合法、16 进制非法）`parseInt(...,16)` 就是 `NaN`，
+//   于是概率判定全线失效（`NaN < chance` 恒假 → 该传言永不裂变/变异；`NaN >= chance` 恒假 →
+//   联动分支永远走「推动」），并且 `rumorVariantFor` 取到 `RUMOR_VARIANTS[NaN]` = `undefined`，
+//   被模板拼进正文与链路（`（说法演变为：undefined）`）后**落进存档**。
+//   现在按 base36 解析，并对任何非有限值给出确定性的 0（宁可不命中，也不写脏数据）。
+//   同时补一道 **32 位终混（finalizer）**：djb2 的末步是 `h*33 ^ c`，只改种子最后一个字符时
+//   哈希只变动低位 —— 直接 `%100000` 会让同一传言的掷骰**几乎不随轮次变化**（实测 1..9 轮全落在 0.1959），
+//   等于把「概率」变成了常数。终混后同一 seed 仍恒定、不同 seed 分布良好（跨端一致，见单测）。
 function rumorRoll(seed) {
-    try { return (parseInt(hashText(String(seed == null ? '' : seed)), 16) % 100000) / 100000; } catch (e) { return 0; }
+    try {
+        let x = parseInt(hashText(String(seed == null ? '' : seed)), 36);
+        if (!Number.isFinite(x)) return 0;
+        x = x >>> 0;
+        x ^= x >>> 16; x = Math.imul(x, 0x7feb352d);
+        x ^= x >>> 15; x = Math.imul(x, 0x846ca68b);
+        x ^= x >>> 16;
+        return (x >>> 0) / 4294967296;
+    } catch (e) { return 0; }
 }
 function rumorStoryDate() {
     try { const n = getStoryNow(); return (n && /^-?\d{1,4}-\d{2}-\d{2}/.test(String(n))) ? clockDateTrim(n) : ''; } catch (e) { return ''; }
@@ -192,12 +210,29 @@ function rumorParallelLink(r, idx) {
         return { kind, sim: bestSim, parallelId: pid, title: pTitle };
     } catch (e) { return null; }
 }
+// v3.26.1：变体名**永不返回 undefined**（旧实现 `RUMOR_VARIANTS[NaN]` = undefined → 正文里写进「undefined」）；
+//   掷骰异常 / 越界 / 变体表为空时一律回落到第一个变体（用户要求「AI 或机械演化不可控时用默认值顶上去」）。
 function rumorVariantFor(r, idx) {
+    const n = RUMOR_VARIANTS.length;
+    if (!n) return '变体';
     try {
-        const i = Math.floor(rumorRoll(`${r.id}|variant|${r.date || ''}|${idx}`) * RUMOR_VARIANTS.length);
-        return RUMOR_VARIANTS[Math.max(0, Math.min(RUMOR_VARIANTS.length - 1, i))];
+        const roll = rumorRoll(`${r.id}|variant|${r.date || ''}|${idx}`);
+        const i = Math.floor((Number.isFinite(roll) ? roll : 0) * n);
+        return RUMOR_VARIANTS[Math.max(0, Math.min(n - 1, i))] || RUMOR_VARIANTS[0];
     } catch (e) { return RUMOR_VARIANTS[0]; }
 }
+/**
+ * v3.26.1：从「变化过程」里取变体名（**永不返回空 / undefined**）。
+ * 旧存档里的 `pending.target` 可能已被写成占位 token（历史脏数据）→ 经 `normText` 清理，
+ * 清空后再回落到确定性变体；任何一步异常都给默认值 `'变体'`。
+ */
+function rumorPendingVariant(r, p, idx) {
+    try {
+        const raw = String((p && p.target) || '').trim();
+        return (raw ? normText(raw, 60) : '') || rumorVariantFor(r, idx) || '变体';
+    } catch (e) { return '变体'; }
+}
+
 // 开始一个「变化过程」（同一时间只允许一个；需满 N 轮才提交 —— 变化不会立刻发生）
 function rumorStartPending(r, kind, target, idx) {
     try {
@@ -226,7 +261,7 @@ function rumorCommitPending(r, idx) {
         const p = r.pending;
         if (!p) return null;
         if (p.kind === '裂变') {
-            const variant = String(p.target || '').trim() || rumorVariantFor(r, idx);
+            const variant = rumorPendingVariant(r, p, idx);
             const cid = rumorChildId(r, variant);
             const exist = (state.rumors || []).find(x => x && x.id === cid);
             r.pending = null;
@@ -255,9 +290,10 @@ function rumorCommitPending(r, idx) {
             return { childId: cid, variant, child };
         }
         if (p.kind === '变异') {
-            const variant = String(p.target || '').trim() || rumorVariantFor(r, idx);
+            // v3.26.1：变体名缺省 / 异常 → 回落到确定性变体；正文与链路一律经 `normText`（内部清理坏占位 token）
+            const variant = rumorPendingVariant(r, p, idx);
             const before = String(r.content || '');
-            r.content = normText(`${before}（说法演变为：${variant}）`, Math.max(40, Number((cfg && cfg.dimCharLimits && cfg.dimCharLimits.rumors) || 240)));
+            r.content = normText(`${before}（说法演变为：${String(variant)}）`, Math.max(40, Number((cfg && cfg.dimCharLimits && cfg.dimCharLimits.rumors) || 240)));
             r.ferment = Math.min(100, (Number(r.ferment) || 0) + 8);
             r.pending = null;
             rumorChainPush(r, { kind: '异变', from: before.slice(0, 40), to: String(r.content).slice(0, 40), note: `说法完成演化（${variant}）` });

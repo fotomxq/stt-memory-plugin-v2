@@ -22,11 +22,113 @@ export function escHtml(v) {
 }
 
 /**
+ * ============================================================
+ * v3.26.1（用户报告「有传言中出现了 undefined 字样，其他原子数据可能也有」）——**坏占位 token 清理**。
+ *
+ * 事实与成因（真机取证，见 `docs/history/P10c47`）：机械演化把「说法变体」插进文本时，
+ *   取变体的掷骰函数把 base36 哈希按 **16 进制**解析 → 含 `g`~`z` 的种子得到 `NaN` →
+ *   变体名变成 `undefined`，于是正文被写成 `…（说法演变为：undefined）`、链路写成 `说法完成演化（undefined）`。
+ *
+ * 纪律：**只清「不可能出现在正常正文里」的占位 token**（`undefined` / `NaN` / `[object Object]`），
+ *   且只清它们以「值」的形态出现的位置（整字段 / 冒号后 / 括号内 / 顿号逗号句号分隔处），
+ *   不碰普通的词句 —— 不做「见 undefined 就删」的粗暴替换（那会误伤正文里正常出现的英文词）。
+ * ============================================================
+ */
+const BAD_TOKEN = 'undefined|NaN|\\[object Object\\]';
+/** 该文本是否含坏占位 token（廉价预检：绝大多数文本一次 indexOf 就返回） */
+export function hasBadToken(s) {
+    const t = String(s == null ? '' : s);
+    return t.indexOf('undefined') >= 0 || t.indexOf('NaN') >= 0 || t.indexOf('[object') >= 0;
+}
+/**
+ * 清理坏占位 token（**幂等**；返回值与入参为字符串）。
+ * 处理形态（按顺序；token = `undefined` / `NaN` / `[object Object]`）：
+ *   ① 整字段就是 token → `''`；
+ *   ② `[object Object]` **任何位置**都删（它绝不可能出现在正常正文里）；
+ *   ③ 以 token **结尾**的括号（含可选标签前缀，如「（说法演变为：undefined）」「（发酵度 NaN）」）→ 整段删除；
+ *   ④ 冒号后的 token（后接分隔符 / 行尾）→ 只删 token；
+ *   ⑤ 行首 token + 冒号 → 连冒号一起删；
+ *   ⑥ 孤立 token（后接分隔符 / 行尾）→ 只删 token；
+ *   ⑦ 收尾整洁：空标签冒号 / 重复顿号逗号 / 连续空格。
+ * **不做**「见 undefined 就全局删」的粗暴替换 —— 正文里正常出现的英文词（如 `the undefined behaviour`）保持原样。
+ */
+export function scrubBadToken(s) {
+    let t = String(s == null ? '' : s);
+    if (!hasBadToken(t)) return t;
+    t = t.replace(new RegExp('^\\s*(?:' + BAD_TOKEN + ')\\s*$', 'g'), '');                                    // ①
+    if (!hasBadToken(t)) return t;
+    t = t.replace(/\[object Object\]/g, '');                                                                 // ②
+    t = t.replace(new RegExp('[（(][^（）()\\n]{0,24}?(?:[:：]\\s*)?(?:' + BAD_TOKEN + ')\\s*[）)]', 'g'), '');  // ③
+    t = t.replace(new RegExp('[:：]\\s*(?:' + BAD_TOKEN + ')(?=\\s*[，,。；;、！!？?\\]】」』]|\\s*$)', 'g'), ''); // ④
+    t = t.replace(new RegExp('^\\s*(?:' + BAD_TOKEN + ')\\s*[:：]\\s*', 'g'), '');                            // ⑤
+    t = t.replace(new RegExp('(?:' + BAD_TOKEN + ')(?=\\s*[，,。；;、\\]】」』]|\\s*$)', 'g'), '');             // ⑥
+    t = t.replace(/[、，,]{2,}/g, (m) => m[0]);                                                              // ⑦
+    t = t.replace(/ {2,}/g, ' ').replace(/[:：]\s*$/, '');
+    return t.trim();
+}
+/**
+ * 深度遍历对象 / 数组里的**字符串字段**（供载入期自愈与数据体检共用）。
+ * 边界（防大对象拖慢载入）：`maxDepth`（默认 4）与 `maxStrings`（默认 20000）双上限；**只读不改**。
+ * @param {*} root
+ * @param {(value:string, path:string) => (string|void)} visit 返回字符串则**替换**该字段（返回 undefined 表示只读）
+ * @param {{maxDepth?:number, maxStrings?:number}} [opts]
+ * @returns {{visited:number, changed:number, truncated:boolean}}
+ */
+export function walkStrings(root, visit, opts) {
+    const o = opts || {};
+    const maxDepth = Math.max(0, Number(o.maxDepth) || 4);
+    const maxStrings = Math.max(1, Number(o.maxStrings) || 20000);
+    const out = { visited: 0, changed: 0, truncated: false };
+    const walk = (node, path, depth) => {
+        if (out.truncated || node == null || depth > maxDepth) return node;
+        if (typeof node === 'string') {
+            if (out.visited >= maxStrings) { out.truncated = true; return node; }
+            out.visited++;
+            const next = visit(node, path);
+            if (typeof next === 'string' && next !== node) { out.changed++; return next; }
+            return node;
+        }
+        if (Array.isArray(node)) {
+            for (let i = 0; i < node.length; i++) {
+                const v = node[i];
+                if (typeof v === 'string') {
+                    if (out.visited >= maxStrings) { out.truncated = true; break; }
+                    out.visited++;
+                    const next = visit(v, path + '[' + i + ']');
+                    if (typeof next === 'string' && next !== v) { node[i] = next; out.changed++; }
+                } else if (v && typeof v === 'object') node[i] = walk(v, path + '[' + i + ']', depth + 1);
+            }
+            return node;
+        }
+        if (typeof node === 'object') {
+            for (const k of Object.keys(node)) {
+                const v = node[k];
+                const p = path ? (path + '.' + k) : k;
+                if (typeof v === 'string') {
+                    if (out.visited >= maxStrings) { out.truncated = true; break; }
+                    out.visited++;
+                    const next = visit(v, p);
+                    if (typeof next === 'string' && next !== v) { node[k] = next; out.changed++; }
+                } else if (v && typeof v === 'object') node[k] = walk(v, p, depth + 1);
+            }
+            return node;
+        }
+        return node;
+    };
+    walk(root, '', 0);
+    return out;
+}
+
+/**
  * 文本归一（与 V1 完全一致：**保留换行**，仅统一 CRLF 与首尾空白，再按 max 截断）。
  * 说明：内核归一化依赖此语义（atom 正文保留段落），不要改成单行化。
+ * v3.26.1：追加**坏占位 token 清理**（`undefined` / `NaN` / `[object Object]`，见 `scrubBadToken`）——
+ *   这是**唯一**的写入口径，于是 AI 返回的脏值、机械演化拼出的脏值、手工编辑粘贴的脏值
+ *   都不可能再落进存档（用户要求「AI 回复不可控时用默认值顶上去，避免出现异常数据」）。
  */
 export function normText(s, max) {
-    const t = String(s == null ? '' : s).replace(/\r\n?/g, '\n').trim();
+    let t = String(s == null ? '' : s).replace(/\r\n?/g, '\n').trim();
+    if (hasBadToken(t)) t = scrubBadToken(t).trim();
     return (max && t.length > max) ? t.slice(0, max) : t;
 }
 

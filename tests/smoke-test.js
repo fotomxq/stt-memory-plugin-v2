@@ -6613,6 +6613,61 @@ await assert('BX1 v3.25.0 调试桥状态行可就地刷新（端到端）：调
     return nodeOk && btnOk && offText.indexOf('已关闭') === 0 && onText.indexOf('未连接（重试中') === 0 && sameSource && noNode;
 })(), '');
 
+// ---------- BY v3.26.1「undefined 脏数据」根因修复 + 文本卫生（用户报告） ----------
+// 用户要求（原话）：「有传言中出现了undefined字样，其他原子数据可能也有，请核对原因并进行修复。
+//   同时建议如果AI回复不可控，可以用默认值来顶上去，避免出现异常数据。」
+// 真机取证：只有传言的正文与传导链路命中（`（说法演变为：undefined）` / `说法完成演化（undefined）`），
+//   根因是 `rumorRoll` 把 base36 哈希按 16 进制解析 → NaN → 变体名 undefined。
+// 本小节端到端：真实面板跑一次传言演化（全库无 undefined）→ 载入期自愈清掉存量脏数据（含调试日志留痕）
+//   → 只读体检（调试桥同源 `dataHealthReport`）对残留如实列出 `text-bad-token`。
+await assert('BY1 v3.26.1「undefined 脏数据」修复（端到端）：真实传言演化后全库文本无 undefined；载入期自愈清掉存量脏数据并留痕；只读体检对残留列出 text-bad-token', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const RU = await import('../core/rumor-evolve.js');
+    const MG = await import('../core/migrate.js');
+    const DH = await import('../core/data-health.js');
+    const keepRumors = JSON.parse(JSON.stringify(RT.state.rumors || []));
+    const keepCfg = JSON.parse(JSON.stringify(RT.cfg || {}));
+    try {
+        // ① 真实面板动作跑一次机械演化：给一条**必然进入「变异」提交**的传言（pending 目标为空 —— 历史脏数据的形态）
+        RT.state.rumors = [{
+            id: 'bs1-r1', subject: '码头失窃', content: '码头的货被偷了，有人说是内贼。', objectivity: '主观',
+            stage: '发酵', ferment: 70, date: '2020-05-01', tags: ['码头'], carriers: [{ who: '角色甲', role: '源头' }],
+            media: [], chain: [], lineage: { rootId: 'bs1-r1', parentId: '', children: [], generation: 0 },
+            pending: { kind: '变异', need: 2, progress: 2, target: '', at: '2020-05-01' },
+        }];
+        await entry.popupAction('tab', { tab: 'rumors' });
+        const ev = await entry.popupAction('rumorEvolve', {});
+        const afterEvolve = JSON.stringify(RT.state.rumors);
+        const evolveOk = ev.ok === true && afterEvolve.indexOf('undefined') < 0
+            && afterEvolve.indexOf('（说法演变为：') > 0;                    // 变体仍被拼进去，只是不再是 undefined
+        // ② 载入期自愈：把「历史脏数据」放回状态 → 走真实迁移链（`migrateState`，与载入同一条）
+        RT.state.rumors = [{
+            id: 'bs1-r2', subject: '码头失窃', content: '胡商称见黑袍人（说法演变为：undefined）',
+            chain: [{ at: '2020-05-01', kind: '异变', note: '说法完成演化（undefined）' }], lineage: {}, carriers: [], media: [], tags: [],
+        }];
+        const before = JSON.stringify(RT.state.rumors);
+        const migrated = MG.migrateState(RT.state);
+        const heal = MG.lastHealInfo();
+        const after = JSON.stringify(migrated.rumors);
+        const healOk = before.indexOf('undefined') > 0 && after.indexOf('undefined') < 0
+            && Number(heal && heal.texts) >= 1 && String(migrated.rumors[0].content) === '胡商称见黑袍人';
+        // ③ 只读体检：残留时如实列出（与调试桥 `ftt.dataHealth` 同一实现）
+        const rep = DH.dataHealthReport({ rumors: [{ id: 'bs1-r3', subject: '甲', content: '甲说（说法演变为：undefined）' }] }, {});
+        const healthOk = Number(rep.counts['text-bad-token']) === 1 && rep.level === 'warn'
+            && (rep.findings || []).some((f) => f.code === 'text-bad-token' && f.dim === 'rumors');
+        // ④ 掷骰与变体：旧实现的两个 NaN 病例必须已修好
+        const rollOk = ['rum_v2|variant|2020-06-01|1', 'rum_13oko38|variant|2020-05-01|1'].every((s) => Number.isFinite(RU.rumorRoll(s)))
+            && [1, 2, 3, 4, 5].every((i) => typeof RU.rumorVariantFor({ id: 'rum_13oko38', date: '2020-05-01' }, i) === 'string');
+        const ok = evolveOk && healOk && healthOk && rollOk;
+        if (!ok) console.log('BY1-DEBUG ' + JSON.stringify({ evolveOk, healOk, healthOk, rollOk, heal }));
+        return ok;
+    } finally {
+        RT.state.rumors = keepRumors;
+        Object.assign(RT.cfg, keepCfg);
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

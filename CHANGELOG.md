@@ -3,6 +3,32 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.26.1（2026-10-06）· 传言里的 `undefined` 根因修复 + 文本卫生（坏占位 token 不再进存档 · 存量载入自愈）
+
+**用户要求**（原话）：「有传言中出现了undefined字样，其他原子数据可能也有，请核对原因并进行修复。同时建议如果AI回复不可控，可以用默认值来顶上去，避免出现异常数据。」
+
+**① 核对原因（只读扫描真机存档 + 逐函数复现）**
+
+| 项 | 事实 |
+| --- | --- |
+| 症状位置 | 扫描真实状态文件（185 万字符）：命中 **6 处**，全部集中在**传言** —— 一条传言的 `content` 里有 `（说法演变为：undefined）`、`chain[7].note` 是 `说法完成演化（undefined）`，并随快照链复制到 2 份快照。其余维度（情节/状态/角色/记忆/物品/计划/场景/概念/平行/货币）**零命中** |
+| 根因 | `core/rumor-evolve.js#rumorRoll()` 把 `hashText()`（djb2 → **base36**）按 **16 进制**解析：哈希串含 `g`~`z` 时 `parseInt(...,16)` = `NaN`（实测 `rum_v2|variant|…`、`rum_13oko38|variant|…` 均为 NaN，而 `rum_m1|variant|…` 侥幸得到 0.00005） |
+| 后果 | ① `rumorVariantFor` 取 `RUMOR_VARIANTS[NaN]` = `undefined` → 模板把 `undefined` 拼进正文与链路 → **落盘**；② 概率判定失效（`NaN < chance` 恒假 → 该传言永不裂变/变异；`NaN >= chance` 恒假 → 联动分支永远走「推动」）；③ 掷骰几乎不随轮次变化（djb2 只改末字符时哈希仅低位数变化） |
+
+**② 修复（根因 + 默认值 + 全链路兜底）**
+
+| 层 | 改动 |
+| --- | --- |
+| 掷骰 | `rumorRoll` 改按 **base36** 解析 + **32 位终混（finalizer）** → 恒返回 `[0,1)` 有限数、同 seed 恒定、分布均匀（2 万样本十等分桶差 < 7%） |
+| 变体名 | 新增 `rumorPendingVariant()`；`rumorVariantFor` **永不返回空值**（越界 / 异常 / 变体表为空 → 回落默认变体）—— 用户建议的「用默认值顶上去」 |
+| 文本卫生（唯一写入口径） | `core/util.js` 新增 `hasBadToken` / `scrubBadToken` / `walkStrings`，并接进 **`normText`** → AI 返回的脏值、机械演化拼出的脏值、手工粘贴的脏值都不可能落进存档；只清「值」形态的占位 token，**不误伤**正文里正常出现的英文词句 |
+| 存量自愈 | `core/migrate.js#healthSelfHeal` 新增第 ⑥ 步：逐条深度清理（深 ≤4 / 字符串 ≤20000），计数进 `lastHealInfo().texts` → **载入即自愈**，用户无需手工清理 |
+| 只读体检 | `core/data-health.js` 新增发现码 **`text-bad-token`**（dim / id / 字段可定位），与调试桥 `ftt.dataHealth` 同源 |
+
+**③ 有意偏离 V1（如实记录）**：V1 的同一函数就有这个缺陷（黄金样本里 `rum_m1` 的变体恒为「夸大版」、`rum_v2` 恒为 `undefined` 即其证据）。因此机械演化的**掷骰结果与据此发生的决策必然不同于 V1** —— `tests/unit/rumor-evolve-golden.test.js` 中受影响的 8 项（Z3/Z10/Z12/Z16/Z17/Z18/Z20/Z21）改为与新增的 **V2 自基线**（`tests/fixtures/rumor-evolve-v2-baseline.json`）逐字比对，其余断言（结构归一 / id 派生 / 墓碑 / 衰退打分 / 文案模板 / 通知接线 / AI 补写）仍与 V1 oracle 逐字一致；文件头与文档同步说明。
+
+**门禁**：`npm run gate` 全绿（单测 158 文件 / 2446 断言，冒烟 217 项）。
+
 ## v3.26.0（2026-10-06）· 本机缓冲「选择目录」+ 设置本地目录后只留目录与服务端（变量层与内存库整体停用）
 
 **用户要求**（原话）：「新版本。设置本机缓冲时，除了保留当前的 input，还需增加选择目录，可手动选择目录。其次如果设置了本地缓冲目录，则存储不再使用内存或变量存储，只保留本地目录和服务端存储。」
