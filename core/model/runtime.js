@@ -105,9 +105,54 @@ let chatHooks = {
     latestAiFloorText: () => '',
     dbgLog: () => undefined,
 };
+/**
+ * 接线前告警的暂存（v3.24.1）。
+ *
+ * 背景（真机取证受阻的根因）：`warn(...)` 的三个出口里，`persistHooks.warn` 与 `chatHooks.dbgLog`
+ *   **都要等 host 接线后才有实现**；而插件初始化早期（刷新后 `init()` 里 `wireKernelChatHooks()` 之前）
+ *   发生的告警只有 toast 一个出口能生效 → 用户看到弹窗，调试日志 / 调试桥里却**一条都查不到**。
+ * 口径：每条 `warn()` 文案先落进这个有界暂存；`setChatHooks()` **首次**接线时 `flushWarnBacklog()`
+ *   把它们一次性补记进调试日志（`kind='异常'`）并清空（幂等：事件刷新会反复调 `setChatHooks`，不重复写）。
+ */
+export const WARN_BACKLOG_MAX = 20;
+let warnBacklog = [];
+/** 读告警暂存（最近 `WARN_BACKLOG_MAX` 条；只读快照） */
+export function warnBacklogList() { try { return warnBacklog.slice(); } catch (e) { return []; } }
+/** 清空告警暂存（接线补记后调用 / 测试复位） */
+export function clearWarnBacklog() { warnBacklog = []; return true; }
+/** 记一条暂存（只保留最近 N 条） */
+function pushWarnBacklog(msg) {
+    try {
+        warnBacklog.push({ at: Date.now(), msg: String(msg == null ? '' : msg) });
+        if (warnBacklog.length > WARN_BACKLOG_MAX) warnBacklog.splice(0, warnBacklog.length - WARN_BACKLOG_MAX);
+    } catch (e) { /* noop */ }
+}
+/**
+ * 把「接线前暂存的告警」一次性补记进调试日志（只记一次；失败静默）。
+ * @returns {number} 实际补记条数
+ */
+export function flushWarnBacklog() {
+    let n = 0;
+    try {
+        const list = warnBacklog.slice();
+        if (!list.length) return 0;
+        warnBacklog = [];
+        for (const it of list) {
+            try {
+                dbgLog('异常', { action: '初始化期告警（调试日志接线前暂存，现补记）', message: String((it && it.msg) || '').slice(0, 300), at: Number((it && it.at) || 0) });
+                n++;
+            } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* noop */ }
+    return n;
+}
+
 /** 注入聊天/日志读取钩子（host 启动时调用） */
 export function setChatHooks(next) {
     chatHooks = Object.assign({}, chatHooks, next || {});
+    // v3.24.1：**接线时补记接线前的告警**（有则补、补完清空 → 天然幂等；`setChatHooks` 会被事件反复调用，
+    //   但没有暂存时这里零开销）。否则初始化早期的告警只活在弹窗里 —— 真机排查时「日志全空」的原因。
+    if (warnBacklog.length) flushWarnBacklog();
     return chatHooks;
 }
 /** 取聊天消息数组（默认空） */
@@ -142,6 +187,10 @@ export function warn(...args) {
             return a.filter(Boolean).join(' ').slice(0, 300);
         } catch (e) { return ''; }
     })();
+    // v3.24.1（初始化顺序取证的基石）：**先留存，再分发** —— 初始化早期（`dbgLog` 尚未接线）的告警
+    //   此前只会弹一个 toast、调试日志里什么都没有（真机「只看到弹窗、日志查不到」的原因）。
+    //   暂存见 `pushWarnBacklog`；`setChatHooks` 首次接线时一次性补记进调试日志。
+    pushWarnBacklog(msg);
     try { if (typeof persistHooks.warn === 'function') persistHooks.warn(...args); } catch (e) { /* noop */ }
     try { dbgLog('异常', { action: '内核告警', message: msg, args: args.length }); } catch (e) { /* noop */ }
     try { notifyError(msg); } catch (e) { /* noop */ }

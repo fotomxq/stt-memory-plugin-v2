@@ -1,6 +1,8 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.11 ｜ 日期：2026-10-05 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.12 ｜ 日期：2026-10-05 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.12 变更（随 v3.24.1）：§3 数字口径同步（单测 154→**155** 文件 / 2386→**2395** 断言；冒烟 213→**214** 项；历史批次档 164→**165** 份）；
+>   目录树与区间随之改为 `P10c44`；「分析记忆」补记**初始化顺序守卫**（内核状态未注入时台账维护一律短路）。
 > v2.11 变更（随 v3.24.0）：§3 数字口径同步（单测 153→**154** 文件 / 2365→**2386** 断言；冒烟 212→**213** 项；历史批次档 163→**164** 份）；
 >   目录树与区间随之改为 `P10c43`；目录树补记**通知出口**（`ui/notify.js`）与「状态提示行分级」。
 > v2.10 变更（随 v3.23.0）：§3 数字口径同步（单测 152→**153** 文件 / 2350→**2365** 断言；调试桥只读方法 35→**36**，+`ftt.chunkPlan`；
@@ -39,12 +41,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，164 份）
+└── history/                  # 历史批次层（只读留痕，165 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c43           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c44           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -89,14 +91,14 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 154 文件 / 2386 断言 |
-| 冒烟规模 | `tests/smoke-test.js` | 213 项 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 155 文件 / 2395 断言 |
+| 冒烟规模 | `tests/smoke-test.js` | 214 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 36 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0） |
-| 历史批次档数 | `docs/history/*.md` | 164 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 165 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

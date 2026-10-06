@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.24.0",
+  "version": "3.24.1",
   "updatedAt": "2026-10-05",
   "generatedAt": "2026-10-05",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.24.1",
+      "date": "2026-10-05",
+      "title": "刷新后初始化两错根因修复：内核状态未注入时不再动台账（初始化顺序守卫 + 早期告警取证通道）",
+      "points": [
+        "① 根因（初始化顺序，确定性、已复现）：| 环 | 事实 || --- | --- || state 的生命周期 | 内核注入视图（core/model/runtime.js 的…",
+        "② 修复：| 位置 | 改动 || --- | --- || host/floors.js | 新增 kernelStateReady()；processedDriftGuard…",
+        "③ 测试：新增单测 tests/unit/init-order-guard.test.js（9 项）：真机路径复现（state === null 时 scanPendingFlo…"
+      ]
+    },
     {
       "version": "3.24.0",
       "date": "2026-10-05",

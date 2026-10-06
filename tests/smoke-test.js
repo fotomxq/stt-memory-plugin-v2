@@ -6503,6 +6503,23 @@ await assert('BV1 v3.24.0 通知出口统一（端到端走真实接线）：①
     }
 })(), '');
 
+// ---------- BW 初始化顺序（v3.24.1）：真机「刷新后抛出两个错误」的端到端回归 ----------
+// 用户报告（原话）：「刷新后初始化阶段，插件会抛出两个错误，均可能是初始化顺序异常导致的数据错乱，引发报错。」
+// 错误原文（其中一条）：「已处理楼层漂移防呆失败 Cannot read properties of null (reading 'processedFloors')」。
+// 成因：`init()` 在 `loadMemoryState()`（内部才注入内核状态）**之前**就取面板状态快照 → 台账维护读空状态。
+// 本断言走**真实装配**（本文件顶部的 `init()` 已完整跑过一遍）：这两条字符串不得出现在调试日志里。
+await assert('BW1 v3.24.1 初始化期零「空状态」异常（真机两错回归）：真实装配全程的调试日志里没有 `processedFloors` / 漂移防呆失败 / 归位对账失败 这类初始化错序告警', (async () => {
+    const DL = await import('../adapters/debug-log.js');
+    const RTM = await import('../core/model/runtime.js');
+    const lines = (() => { try { return DL.debugLogList() || []; } catch (e) { return []; } })();
+    const texts = lines.map((l) => String((l && l.data) || ''));
+    const backlog = (() => { try { return RTM.warnBacklogList() || []; } catch (e) { return []; } })();
+    const all = texts.concat(backlog.map((x) => String((x && x.msg) || '')));
+    const bad = all.filter((t) => /processedFloors|漂移防呆失败|已处理楼层对账失败|楼层收缩处理失败/.test(t));
+    if (bad.length) console.log('BW1-DEBUG ' + JSON.stringify(bad.slice(0, 3)));
+    return bad.length === 0;
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

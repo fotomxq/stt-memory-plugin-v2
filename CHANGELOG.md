@@ -3,6 +3,43 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.24.1（2026-10-05）· 刷新后初始化两错根因修复：**内核状态未注入时不再动台账**（初始化顺序守卫 + 早期告警取证通道）
+
+**用户报告**（原话）：「刷新后初始化阶段，插件会抛出两个错误，均可能是初始化顺序异常导致的数据错乱，引发报错。」
+**用户提供的错误原文（其中一条）**：「已处理楼层漂移防呆失败 Cannot read properties of null (reading 'processedFloors')」（另一条同类）。
+
+**① 根因（初始化顺序，确定性、已复现）**
+
+| 环 | 事实 |
+| --- | --- |
+| `state` 的生命周期 | 内核注入视图（`core/model/runtime.js` 的 `export let state = null`），只在「载入 → 注入」后才有值 |
+| `init()` 的时序 | `installHostBridges()`（537）→ **`panelStatusSnapshot()`（545 / 562 两处）** → `loadMemoryState()`（564，**状态在它内部才注入**） |
+| 于是 | **状态注入之前**就取了一次面板状态快照 → `pendingFloors()` → `listUnprocessedFloors()` → `scanPendingFloors()` 的**台账维护块** → `processedDriftGuard()` / `reconcileProcessedFloors()` 读 `state.processedFloors` → **`state` 为 null → TypeError** → 各函数 `catch` 里 `warn(...)` → 用户看到**两条**「…失败 Cannot read properties of null」 |
+| 为什么日志里查不到 | 此刻 `chatHooks.dbgLog` / `persistHooks.warn` 都还没接线（它们在 `loadMemoryState()` 里才接）→ `warn()` 只剩 toast 一个出口能生效 |
+| 数据错乱风险 | 真实风险不在「抛错」而在「早期误判」：状态未注入时 `hashFloorText()` 可能全为空，台账一旦按空哈希刷新/丢弃就会被清空 —— 所以必须**整块延后**而不是「容错继续」 |
+
+**② 修复**
+
+| 位置 | 改动 |
+| --- | --- |
+| `host/floors.js` | 新增 **`kernelStateReady()`**；`processedDriftGuard` / `reconcileProcessedFloors` / `migrateProcessedFloorsV170` / `handleFloorShrink` / `recordProcessedFloors` / `clearProcessedFloors` **六个入口一律短路**并如实回报 `skipped/reason = 'state-not-ready'`（**绝不**在空状态上读或写）；`scanPendingFloors` 的台账维护块整体跳过并标记 `skipped.stateNotReady`，覆盖判定改传空容器（只读、零副作用） |
+| `host/floors.js`（顺带） | 修掉同一函数**返回语句里**的裸访问 `state.processedDropped`（不在 try/catch 保护范围内，状态为空时同样会抛）→ 抽出空状态安全的 `droppedMarksCount()` |
+| `index.js#panelStatusSnapshot` | **未注入不问待分析楼层**（`pending` 保持 `null`，界面本就处于「⏳ 正在读取数据…」载入闸门态；注入后 `refreshPanelStatus()` 自然拿到真值）—— 这是「初始化顺序」在调用方的修复；`extraForStatus().extractPending` 同口径 |
+| `index.js`（模块加载期） | `installGlobalInterceptor()` / `bindDocumentReady()` / `startReadyProbe()` 三处**原本裸调用**（一旦抛错会让整个扩展加载失败）→ 全部包住并记 `runtime.lastError` |
+| `core/model/runtime.js`（取证通道） | `warn()` **先落有界暂存**（最近 20 条），`setChatHooks()` 接线时**一次性补记**进调试日志（`kind='异常'`，动作注明「初始化期告警…补记」）→ 初始化期的告警再也不会只活在弹窗里；新增 `warnBacklogList()` / `clearWarnBacklog()` / `flushWarnBacklog()` |
+
+**③ 测试**
+
+- 新增单测 `tests/unit/init-order-guard.test.js`（**9 项**）：真机路径复现（`state === null` 时 `scanPendingFloors({})` 不再抛错且标记 `stateNotReady`）· 六个入口逐条短路并**回报原因** · **零告警**（整轮初始化路径跑完 `notifyHooks.toast` 一次都没被调用 = 真机那两条弹窗不再出现）· 只读诊断在空状态下安全 · **注入后照常工作**（不倒退、台账形状与版本签名照旧）· 接线前告警暂存与补记（含幂等与 20 条上限）· `extraForStatus().extractPending` 未注入为 `null`；
+- 新增冒烟 `BW1`：**真实装配全程**的调试日志里不得出现 `processedFloors` / 漂移防呆失败 / 归位对账失败 / 楼层收缩处理失败；
+- 全量：**155 文件 / 2395 断言** + 冒烟 **214 项** 全绿（含静态 8 项门禁）。
+
+**④ 未验证项（如实登记）**
+
+- 真机待刷新后复核：初始化阶段**不应再出现**那两条异常提示；调试日志（设定 → 调试）里也不应再有对应条目；
+- 若日后仍出现「初始化期告警」，现在会**同时**出现在弹窗与调试日志（`kind='异常'`，动作「初始化期告警…补记」）—— 下次可直接用 `ftt.debugLogStats` 与我核对；
+- 台账维护只是**延后**（不是取消）：状态注入后下一次扫描会照常补齐（幂等），因此不会少分析楼层。
+
 ## v3.24.0（2026-10-05）· UI 与通知效果优化：**通知行为配色真正生效** + 面板提示行分级 + 无障碍语义
 
 **用户要求**（原话）：「新版本 进一步优化UI设计、优化通知效果等。」

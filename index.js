@@ -71,7 +71,7 @@ import {
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, summaryDimsForPrompt, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
-import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）
+import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump, kernelStateReady } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）；v3.24.1：+kernelStateReady（初始化顺序守卫）
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
 import { folderInfo } from './host/paths.js';
@@ -257,7 +257,7 @@ export function extraForStatus() {
         chat: runtime.chat,
         import: runtime.importSummary || '',
         extract: extractStats(),
-        extractPending: (() => { try { return pendingFloors({}).length; } catch (e) { return null; } })(),
+        extractPending: (() => { try { return kernelStateReady() ? pendingFloors({}).length : null; } catch (e) { return null; } })(),
         i18n: i18nStats(),
         bootstrap: Object.assign({}, runtime.bootstrap, {
             panel: panelMountInfo(), menu: menuInfo(), floating: floatingInfo(), popup: popupInfo(), ready: runtime.ready,
@@ -831,7 +831,18 @@ export async function importStateJson(text) {
 function panelStatusSnapshot() {
     let injectChars = 0, pending = null;
     try { injectChars = readInject().length; } catch (e) { /* 忽略 */ }
-    try { pending = pendingFloors({}).length; } catch (e) { /* 忽略 */ }
+    /**
+     * v3.24.1（真机根因修复）：**内核状态注入之前不问「待分析楼层」**。
+     *
+     * 用户报告：「刷新后初始化阶段，插件会抛出两个错误，均可能是初始化顺序异常导致的数据错乱。」
+     * 真机错误：「已处理楼层漂移防呆失败 Cannot read properties of null (reading 'processedFloors')」（另一条同类）。
+     * 成因：`init()` 的时序是 `installHostBridges()` → **本函数（545 / 562 两处）** → `loadMemoryState()`
+     *   （状态在它内部才 `setKernelState`）。也就是说**状态还没注入**就取了一次面板状态快照，
+     *   `pendingFloors()` → `scanPendingFloors()` 的台账维护块在 `state === null` 上读 `processedFloors` → 抛错 → 两条异常提示。
+     * 口径：未注入时 `pending` 保持 `null`（界面本就处于「⏳ 正在读取数据…」的载入闸门态，不显示残缺条数），
+     *   注入后（`refreshPanelStatus()`）自然拿到真实数字。
+     */
+    try { pending = kernelStateReady() ? pendingFloors({}).length : null; } catch (e) { /* 忽略 */ }
     // v3.14.0：把首屏载入闸门一起带给界面（抽屉卡片据此只显示「读取中」而不是残缺条数）
     let load = null;
     try { load = loadGateInfo(); } catch (e) { load = null; }
@@ -2145,7 +2156,9 @@ export function teardown() {
 
 /** 页面加载期（阻塞加载器还在时）执行：同步装配，保持轻量 */
 export function onActivate() {
-    installGlobalInterceptor();
+    // v3.24.1：**载入期副作用一律不得把模块炸掉**（此前这里与模块尾部的同名调用都是裸调用：
+    //   一旦宿主形态异常导致抛错，整个扩展会加载失败 —— 属同一批「初始化顺序/健壮性」问题）
+    try { installGlobalInterceptor(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
 }
 
 /**
@@ -2217,7 +2230,8 @@ export async function onClean() { teardown(); }
 // ---------------- 模块加载期副作用（仅在有宿主时执行） ----------------
 
 // 1) 生成前拦截器必须是全局函数（manifest.generate_interceptor 按名字查找）
-installGlobalInterceptor();
+// v3.24.1：包住 —— 模块加载期的裸调用一旦抛错会让**整个扩展加载失败**（用户看到的就是「刷新后报错」）。
+try { installGlobalInterceptor(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
 
 // 1b) 诊断入口提前注册（不依赖任何事件）—— 装上了但界面没出现时仍可用 `/ftt`、`/ftt-panel`、`FTT.panelInfo()`
 try { bootstrapDiagnostics(); } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
@@ -2247,9 +2261,10 @@ bindAppLifecycle();
 try { bindExitFlush(); } catch (e) { /* 忽略：不影响启动 */ }
 
 // 3) 可见性探针：多触发 + 有限轮询 —— 宿主事件缺失/时机不符时仍会装配并挂载面板
-bindDocumentReady();
+try { bindDocumentReady(); } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
 try { setPopupHooks(popupHooks()); syncEntryButtons(cfgRef.buttonLocations || {}, entryClickHooks()); } catch (e) { /* 忽略 */ }
-startReadyProbe();
+// v3.24.1：同上，探针同样是模块加载期的副作用，不得把模块炸掉
+try { startReadyProbe(); } catch (e) { runtime.bootstrap.lastError = String((e && e.message) || e); }
 
 // ---------------- 测试与自检用导出 ----------------
 export const __internals = {
