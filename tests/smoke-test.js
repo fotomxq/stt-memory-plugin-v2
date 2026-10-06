@@ -6687,6 +6687,42 @@ await assert('BY1 v3.26.1「undefined 脏数据」修复（端到端）：真实
     }
 })(), '');
 
+// ---------- BZ v3.26.3 召回方式如实告知（用户要求） ----------
+// 用户要求（原话）：「总览的召回完成提示，应增加用什么方式召回的。」
+// 口径：方式词表 = **向量召回 / 本地关键词召回 / AI 分析召回**，并带降级/跳过原因；
+//   未进入三层流程（向量与 AI 都未启用）时也必须说清「用的是本地关键词召回」。
+await assert('BZ1 v3.26.3 召回方式如实告知（端到端）：总览点「提取记忆」→ 提示行写明**用什么方式召回**（本地关键词召回 + 「向量未启用」；向量开启但未配置 → 「向量未配置 → 已降级」）；注入账目同源', (async () => {
+    const RT8 = await import('../core/model/runtime.js');
+    const INJ2 = await import('../host/inject.js');
+    const keepVec = RT8.cfg.useVector, keepKw = RT8.cfg.useKeywordFlow, keepUrl = RT8.cfg.embeddingUrl;
+    try {
+        // ① 向量与 AI 层都未启用 → 只能走本地关键词召回，提示必须说明「向量未启用」（而不是留空）
+        RT8.cfg.useVector = false; RT8.cfg.useKeywordFlow = false;
+        await entry.popupAction('tab', { tab: 'overview' });
+        await entry.popupAction('extractNow', {});
+        const page1 = String((await entry.popupAction('refresh', {})).html || '');
+        const note1 = String((page1.match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+        const localOk = note1.indexOf('召回完成：') >= 0 && note1.indexOf('本地关键词召回') > 0 && note1.indexOf('向量未启用') > 0;
+        // ② 开着向量但没配置地址 → 走本地兜底，提示必须说明是**降级**
+        RT8.cfg.useVector = true; RT8.cfg.embeddingUrl = '';
+        await entry.popupAction('extractNow', {});
+        const page2 = String((await entry.popupAction('refresh', {})).html || '');
+        const note2 = String((page2.match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+        const degradeOk = note2.indexOf('本地关键词召回') > 0 && note2.indexOf('已降级') > 0;
+        // ③ 诊断同源：`pushStats().lastMethod` 与提示行来自同一份数据；注入账目行也写出方式
+        const st = INJ2.pushStats();
+        const mk = st.lastMethod || {};
+        const ledgerOk = !!mk.label && String(mk.label).indexOf('本地关键词召回') >= 0
+            && String(st.lastLayer) === 'js';
+        const ok = localOk && degradeOk && ledgerOk;
+        if (!ok) console.log('BZ1-DEBUG ' + JSON.stringify({ localOk, degradeOk, ledgerOk, note1, note2, mk }));
+        return ok;
+    } finally {
+        RT8.cfg.useVector = keepVec; RT8.cfg.useKeywordFlow = keepKw; RT8.cfg.embeddingUrl = keepUrl;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
 // ---------- D 注入与收尾 ----------
 assert('D1 注入通道可用且可写入/清空', (() => {
     const inp = entry.__internals;

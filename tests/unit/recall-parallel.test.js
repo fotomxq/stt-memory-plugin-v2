@@ -28,6 +28,8 @@ import { setAiHooks } from '../../core/ai-hooks.js';
 import { pushStats, readInject, injectInFlight, setInjectRuntime } from '../../host/inject.js';
 import { runRecallNow, runExtract } from '../../index.js';
 import { analyzeFloors, extractBusy, extractStats } from '../../host/extract.js';
+// v3.26.3：召回方式词表（纯函数）+ 注入统计里的 lastMethod
+import { recallMethodInfo, RECALL_METHOD_LABELS } from '../../host/extract-flow.js';
 import { buildMemoryBodyForInject } from '../../core/recall.js';
 import { fttGenerateInterceptor, interceptorStats, resetInterceptorStats } from '../../host/interceptor.js';
 import { panelAction, panelBodyHtml, openPanel, setPanelHooks2 } from '../../ui/panel.js';
@@ -208,6 +210,23 @@ await (async () => {
         && note.indexOf('注入 120 字') >= 0 && note.indexOf('7ms') >= 0,
         J({ calls: calls, note: note }));
 
+    // F1b v3.26.3（用户要求「总览的召回完成提示，应增加用什么方式召回的」）：
+    //   宿主给出 `method`（统一词表 + 降级原因）时，提示行必须把它写出来；`kept-last` 也要如实说明。
+    setPanelHooks2({ recall: async () => ({ ok: true, count: 5, chars: 300, ms: 9, hitLayer: 'js', busy: false, method: { key: 'local', label: '本地关键词召回', note: '关键词 3 个 · 向量无命中 → 已降级', keywords: ['甲', '乙', '丙'] } }) });
+    await panelAction('extractNow', {});
+    const noteM = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+    A('F1b 召回提示带**召回方式**（v3.26.3）：`method.label` + 降级原因写进总览提示行',
+        noteM.indexOf('召回完成：5 条') >= 0 && noteM.indexOf('本地关键词召回') > 0
+        && noteM.indexOf('向量无命中 → 已降级') > 0 && noteM.indexOf('注入 300 字') > 0,
+        J({ note: noteM }));
+
+    setPanelHooks2({ recall: async () => ({ ok: true, reason: 'kept-last', count: 0, chars: 512, ms: 4, hitLayer: '', busy: false, method: { key: 'local', label: '本地关键词召回', note: '关键词 1 个', keywords: ['甲'] } }) });
+    await panelAction('extractNow', {});
+    const noteK = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+    A('F1c 「沿用上次注入」（kept-last）如实说明：不再谎报条数，并保留召回方式',
+        noteK.indexOf('沿用上次注入 512 字') > 0 && noteK.indexOf('本地关键词召回') > 0,
+        J({ note: noteK }));
+
     // 回落：未接线 recall（显式置空，避免上一次注入的钩子残留）→ 仍可用旧入口
     setPanelHooks2({ recall: undefined, extract: async () => { calls.extract += 1; return { ok: true, added: 1, total: 1 }; } });
     await panelAction('extractNow', {});
@@ -216,11 +235,32 @@ await (async () => {
         J(calls));
 })();
 
-A('F3 诊断：`pushStats()` 给出 joined / lastMs / lastLayer，`injectInFlight()` 完成后为 false', (() => {
+A('F3 诊断：`pushStats()` 给出 joined / lastMs / lastLayer / **lastMethod（召回方式）**，`injectInFlight()` 完成后为 false', (() => {
     const s = pushStats();
     return typeof s.joined === 'number' && s.joined >= 1 && typeof s.lastMs === 'number'
-        && typeof s.lastLayer === 'string' && injectInFlight() === false && s.builds > 0;
+        && typeof s.lastLayer === 'string' && injectInFlight() === false && s.builds > 0
+        && !!s.lastMethod && typeof s.lastMethod === 'object' && typeof s.lastMethod.label === 'string'
+        && typeof s.lastMethod.note === 'string';
 })(), J(pushStats()));
+
+// ---------- G 组：召回方式词表（v3.26.3 纯函数；用户要求「提示里说清用什么方式召回」） ----------
+A('G1 `recallMethodInfo` 六种情形：向量 / 本地（降级）/ 本地（未启用）/ AI / 全未命中 / 未进入流程', (() => {
+    const vec = recallMethodInfo({ hitLayer: 'vector', keywords: ['甲', '乙'], vectorEnabled: true });
+    const locEn = recallMethodInfo({ hitLayer: '', usedLocalFallback: true, flowEntered: true, vectorEnabled: true, keywords: ['x'], trace: [{ layer: 'vector', ok: false, count: 0, reason: 'no-hit' }] });
+    const locOff = recallMethodInfo({ hitLayer: 'js', flowEntered: false, vectorEnabled: false, keywords: [] });
+    const ai = recallMethodInfo({ hitLayer: 'ai', keywords: ['q'], aiEnabled: true });
+    const none = recallMethodInfo({ hitLayer: '', flowEntered: true, vectorEnabled: true, aiEnabled: true, aiSkippedBusy: true, trace: [{ layer: 'vector', ok: false, count: 0, reason: 'embedding-failed' }] });
+    const noflow = recallMethodInfo({ hitLayer: '', flowEntered: false, vectorEnabled: false, aiEnabled: false });
+    return RECALL_METHOD_LABELS.vector === '向量召回' && RECALL_METHOD_LABELS.local === '本地关键词召回' && RECALL_METHOD_LABELS.ai === 'AI 分析召回'
+        && vec.label === '向量召回' && vec.note === '关键词 2 个' && J(vec.keywords) === J(['甲', '乙'])
+        && locEn.key === 'local' && locEn.label === '本地关键词召回'
+        && locEn.note.indexOf('向量无命中 → 已降级') > 0
+        && locOff.key === 'local' && locOff.note.indexOf('向量未启用') > 0 && locOff.note.indexOf('已降级') < 0   // 没开向量 ≠ 降级
+        && ai.label === 'AI 分析召回' && ai.note === '关键词 1 个'
+        && none.key === '' && none.label === '' && none.note.indexOf('三层流程均未命中') >= 0
+        && none.note.indexOf('向量请求失败') > 0 && none.note.indexOf('长任务在途 → 跳过 AI 层') > 0
+        && noflow.note.indexOf('未进入三层流程') >= 0 && noflow.note.indexOf('AI 层未启用') > 0;
+})(), J({ vec: recallMethodInfo({ hitLayer: 'vector', keywords: ['甲'], vectorEnabled: true }), loc: recallMethodInfo({ hitLayer: 'js', flowEntered: false, vectorEnabled: false }) }));
 
 A('F4 按钮文案与 title 说明「不占分析管道、可与摘要并行、发送前自动刷新」', (() => {
     boot({});

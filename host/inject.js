@@ -11,6 +11,8 @@ import { clockDateLabel } from '../core/clock.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）也是管线动作
 import { beginPipeline, endPipeline, setPipelinePhase } from '../core/pipeline.js';
 import { debugLogPush } from '../adapters/debug-log.js';
+// v3.26.3（用户要求）：把「用什么方式召回」说成统一词表 + 降级原因（纯函数，见 host/extract-flow.js）
+import { recallMethodInfo } from './extract-flow.js';
 /** 调试日志（关闭调试时不写；失败静默） */
 const dbgLog = (kind, data) => { try { debugLogPush(kind, data); } catch (e) { /* 静默 */ } };
 
@@ -65,7 +67,7 @@ export function readInject() {
 
 let injectSeq = 0;
 let lastInjectText = '';
-const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastError: '', lastOverhead: 0, lastGuide: 0, lastBodyBudget: 0, overBudget: 0 };
+const injectStats = { builds: 0, pushes: 0, empties: 0, keptLast: 0, stale: 0, joined: 0, lastChars: 0, lastAt: 0, lastMs: 0, lastLayer: '', lastHitLayer: '', lastMethod: null, lastError: '', lastOverhead: 0, lastGuide: 0, lastBodyBudget: 0, overBudget: 0 };   // v3.26.3：+lastMethod（召回方式）
 // v2.74.0（用户要求）：「提取记忆…确保可以**并行处理**」——**单飞（single-flight）**：
 //   同一时刻只允许一次「构建 + 推送」，并发调用者**共享同一次结果**（await 同一个 Promise），
 //   既不互相覆盖注入（既有 seq 令牌仍然生效），也不会因为重复构建而重复调用向量 / AI 接口。
@@ -194,7 +196,7 @@ async function buildAndPushInject(o) {
     try { pipeRun = beginPipeline('提取记忆（召回 + 注入）', { kind: 'task', phase: '召回候选' }) || {}; } catch (e) { pipeRun = {}; }
     try {
         injectStats.builds += 1;
-        if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false };
+        if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false, method: { key: '', label: '', note: '注入开关关闭（未召回）', keywords: [] } };
         const mySeq = ++injectSeq;
         const cfg = runtimeRef.cfg || {};
         // v3.10.3（A2）→ v3.11.3 修正：`charBudget` 约束**记忆正文 + 结构框架**；
@@ -213,18 +215,25 @@ async function buildAndPushInject(o) {
         injectStats.lastBodyBudget = budget.bodyBudget;
         if (!budget.ok) {
             injectStats.overBudget += 1;
-            return { ok: true, reason: 'budget-too-small', chars: 0, count: 0, injected: false, overhead: budget.frame, guide: budget.guide, bodyBudget: 0 };
+            return { ok: true, reason: 'budget-too-small', chars: 0, count: 0, injected: false, method: { key: '', label: '', note: '字符预算太小（未召回）', keywords: [] }, overhead: budget.frame, guide: budget.guide, bodyBudget: 0 };
         }
         let body = '';
         let hitLayer = '';
+        // v3.26.3（用户要求「总览的召回完成提示应增加用什么方式召回的」）：
+        //   把「这一次到底用什么方式召回」如实收集下来（三层流程的逐层轨迹 + 是否走了本地兜底），
+        //   交给 `recallMethodInfo()`（纯函数）生成统一词表与降级原因，随返回值与 `injectStats` 一起给出。
+        let flowInfo = null;
+        let usedLocalFallback = false;
         // ① 三层流程（仅在启用向量层或 AI 层时进入；否则保持既有同步本地召回路径不变）
-        if (typeof runtimeRef.extractFlow === 'function' && (cfg.useVector === true || cfg.useKeywordFlow === true)) {
+        const flowEntered = (typeof runtimeRef.extractFlow === 'function' && (cfg.useVector === true || cfg.useKeywordFlow === true));
+        if (flowEntered) {
             try {
                 const ft = String(o.floorText || (typeof runtimeRef.recentFloorText === 'function' ? (runtimeRef.recentFloorText() || '') : '') || o.queryText || '');
                 const flow = await runtimeRef.extractFlow(ft, {
                     queryText: String(o.queryText || ''),
                     charBudget: budget.bodyBudget,
                 });
+                flowInfo = flow || null;
                 if (flow && flow.ok && flow.lines.length) { body = flow.lines.join('\n'); hitLayer = flow.hitLayer || ''; }
             } catch (e) { /* 向量/AI 层失败 → 降级到本地召回 */ }
         }
@@ -234,7 +243,24 @@ async function buildAndPushInject(o) {
                 charBudget: budget.bodyBudget, maxAtoms: cfg.maxAtoms, maxMemories: cfg.maxMemories,
                 countUses: true, inject: true,
             });
+            usedLocalFallback = !!String(body || '').trim();
         }
+        // 召回方式（词表 + 降级原因）—— 命中 / 未命中两种情况都给出
+        const method = (() => {
+            try {
+                return recallMethodInfo({
+                    hitLayer: hitLayer,
+                    trace: (flowInfo && flowInfo.trace) || [],
+                    flowEntered: flowEntered,
+                    usedLocalFallback: usedLocalFallback,
+                    vectorEnabled: cfg.useVector === true,
+                    aiEnabled: cfg.useKeywordFlow === true,
+                    aiSkippedBusy: !!(flowInfo && (flowInfo.trace || []).some((x) => x && x.layer === 'ai' && x.skipped === 'busy')),
+                    keywords: (flowInfo && flowInfo.keywords) || [],
+                });
+            } catch (e) { return { key: '', label: '', note: '', keywords: [] }; }
+        })();
+        injectStats.lastMethod = Object.assign({}, method);
         const text = wrapInjectText(body);
         if (mySeq !== injectSeq) { injectStats.stale += 1; return { ok: true, reason: 'stale', chars: 0, injected: false }; }
         const ms = Date.now() - t0;
@@ -242,7 +268,7 @@ async function buildAndPushInject(o) {
         if (!text && lastInjectText) {
             injectStats.keptLast += 1;
             injectStats.lastMs = ms;
-            return { ok: true, reason: 'kept-last', chars: lastInjectText.length, count: 0, injected: false, hitLayer: hitLayer, ms: ms };
+            return { ok: true, reason: 'kept-last', chars: lastInjectText.length, count: 0, injected: false, hitLayer: hitLayer, method: method, ms: ms };
         }
         if (!text) injectStats.empties += 1;
         const r = setInject(text, { position: PROMPT_POSITION.IN_PROMPT, depth: 0, scan: false, role: PROMPT_ROLE.SYSTEM });
@@ -253,7 +279,7 @@ async function buildAndPushInject(o) {
         injectStats.lastMs = ms;
         injectStats.lastLayer = String(hitLayer || (body ? 'js' : ''));
         injectStats.lastHitLayer = hitLayer;
-        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, ms: ms, overhead: budget.frame, guide: budget.guide, bodyBudget: budget.bodyBudget, guideDropped: false };
+        return { ok: !!r.ok, reason: r.reason, chars: text.length, count: count, injected: true, hitLayer: hitLayer, method: method, ms: ms, overhead: budget.frame, guide: budget.guide, bodyBudget: budget.bodyBudget, guideDropped: false };
     } catch (e) {
         injectStats.lastError = String((e && e.message) || e);
         return { ok: false, reason: 'error', chars: 0, count: 0, injected: false, ms: Date.now() - t0 };

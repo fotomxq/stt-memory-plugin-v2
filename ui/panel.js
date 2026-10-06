@@ -2265,12 +2265,25 @@ export async function panelAction(action, payload) {
             if (typeof hooks.recall === 'function') {
                 setNote('召回中…（向量 / JS 为主，不占用分析管道）');
                 const r = await hooks.recall({});
-                const layerLabel = { vector: '向量层', js: 'JS 抽取层', ai: 'AI 分析层' }[String((r && r.hitLayer) || '')] || '';
+                // v3.26.3（用户要求「总览的召回完成提示，应增加用什么方式召回的」）：
+                //   方式来自 `host/inject.js` 的 `method`（`recallMethodInfo()` 统一词表：
+                //   **向量召回 / 本地关键词召回 / AI 分析召回** + 降级/跳过原因，如「向量无命中 → 已降级」）；
+                //   宿主未提供 `method` 时（旧接线 / 测试桩）回落旧的 `hitLayer` 映射，行为不变。
+                const mk = (r && r.method) || null;
+                const layerLabel = (mk && mk.label)
+                    ? String(mk.label)
+                    : ({ vector: '向量层', js: 'JS 抽取层', ai: 'AI 分析层' }[String((r && r.hitLayer) || '')] || '');
+                const methodNote = (mk && mk.note) ? String(mk.note) : '';
+                const methodTxt = (layerLabel || methodNote)
+                    ? ('（' + [layerLabel, methodNote].filter(Boolean).join(' · ') + '）')
+                    : '';
                 setNote(r && r.ok
-                    ? ('召回完成：' + Number((r && r.count) || 0) + ' 条' + (layerLabel ? '（' + layerLabel + '）' : '')
-                        + ' · 注入 ' + Number((r && r.chars) || 0) + ' 字 · ' + Number((r && r.ms) || 0) + 'ms'
-                        + (r && r.busy ? '（与在途长任务并行）' : ''))
-                    : ('召回未完成：' + String((r && r.reason) || '未知')));
+                    ? (String((r && r.reason) || '') === 'kept-last'
+                        ? ('召回完成：本次未重新命中 → 沿用上次注入 ' + Number((r && r.chars) || 0) + ' 字' + methodTxt + ' · ' + Number((r && r.ms) || 0) + 'ms')
+                        : ('召回完成：' + Number((r && r.count) || 0) + ' 条' + methodTxt
+                            + ' · 注入 ' + Number((r && r.chars) || 0) + ' 字 · ' + Number((r && r.ms) || 0) + 'ms'
+                            + (r && r.busy ? '（与在途长任务并行）' : '')))
+                    : ('召回未完成：' + String((r && r.reason) || '未知') + methodTxt));
             } else if (typeof hooks.extract === 'function') {
                 setNote('分析中…');
                 const r = await hooks.extract({});
