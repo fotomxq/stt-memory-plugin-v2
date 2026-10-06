@@ -130,16 +130,26 @@ await (async () => {
     const r1 = await saveStateNow({ reason: 'caps-budget-1', force: true });
     const wrote = kv.has('ftt2_state_' + scopeId()) && localBufferState().ok === true && String(r1.via).indexOf('localStorage') >= 0;
     const charsNow = localBufferState().chars;
-    // 把预算压到当前信封之下 → 跳过本机缓冲，但服务端文件照写
+    // 把预算压到当前信封之下 → **v3.26.2 起先试压缩留存**（用户报告「超预算 → 本次跳过」的那条报错）
     const before = kv.get('ftt2_state_' + scopeId());
     setLocalBufferMaxChars(Math.max(100, charsNow - 100));
     state.atoms[0].text = '改一条以触发真实写入（正文足够长）。'.repeat(6);
     const r2 = await saveStateNow({ reason: 'caps-budget-2', force: true });
     const st2 = localBufferState();
-    const skippedOk = st2.ok === false && st2.skipped === 'over-budget' && st2.chars > st2.budget
-        && String(r2.via).indexOf('localStorage') < 0 && String(r2.via).indexOf('file') >= 0
-        && kv.get('ftt2_state_' + scopeId()) === before;
-    // 恢复预算 → 正常写入
+    const gzSavedOk = st2.ok === true && st2.gz === true && String(r2.via).indexOf('localStorage-gz') >= 0
+        && kv.get('ftt2_state_' + scopeId()) !== before && String(kv.get('ftt2_state_' + scopeId())).indexOf('"ftt2gz":1') >= 0;
+    // **压缩不可用**（如宿主没有 CompressionStream）→ 回到「如实跳过」的老口径（绝不静默）
+    const keepCS = globalThis.CompressionStream;
+    try { delete globalThis.CompressionStream; } catch (e) { globalThis.CompressionStream = undefined; }
+    state.atoms[2].text = '再改一条（压缩不可用，将如实跳过）。'.repeat(6);
+    const beforeSkip = kv.get('ftt2_state_' + scopeId());
+    const r2b = await saveStateNow({ reason: 'caps-budget-2b', force: true });
+    const st2b = localBufferState();
+    const skippedOk = st2b.ok === false && st2b.skipped === 'over-budget' && st2b.chars > st2b.budget
+        && String(r2b.via).indexOf('localStorage') < 0 && String(r2b.via).indexOf('file') >= 0
+        && kv.get('ftt2_state_' + scopeId()) === beforeSkip;
+    try { globalThis.CompressionStream = keepCS; } catch (e) { /* 忽略 */ }
+    // 恢复预算 → 正常写入（并清掉「停滞标记」）
     setLocalBufferMaxChars(0);
     const r3 = await saveStateNow({ reason: 'caps-budget-3', force: true });
     const restored = localBufferState().ok === true && kv.get('ftt2_state_' + scopeId()) !== before;
@@ -151,10 +161,10 @@ await (async () => {
     const st4 = localBufferState();
     const failOk = st4.ok === false && st4.skipped === 'write-failed' && String(r4.via).indexOf('localStorage') < 0;
     const status = storeStatus();
-    R.assert('C1 本机缓冲字符预算（`docs/D13` R1/Q5）：写入前按字符数判预算 —— 正常写✅；**超预算如实跳过**（服务端文件与 IndexedDB 不受影响、旧内容不被清空）并可在 `localBufferState()` / `storeStatus().localBuffer` 读到原因；宿主拒绝写入（配额）同样如实留痕；恢复预算后照常写',
-        wrote && skippedOk && restored && failOk
+    R.assert('C1 本机缓冲字符预算（`docs/D13` R1/Q5）：正常写✅；**超预算先试压缩留存**（v3.26.2：写压缩记录、不丢本机层）；压缩不可用时**如实跳过**（服务端文件与 IndexedDB 不受影响、旧内容不被清空）并可在 `localBufferState()` / `storeStatus().localBuffer` 读到原因；宿主拒绝写入（配额）同样如实留痕；恢复预算后照常写',
+        wrote && gzSavedOk && skippedOk && restored && failOk
         && status.localBuffer && typeof status.localBuffer.budget === 'number' && LOCAL_BUFFER_MAX_CHARS === 1800000,
-        J({ wrote, charsNow, skipped: { ok: st2.ok, skipped: st2.skipped, chars: st2.chars, budget: st2.budget }, restored, failOk, st4 }));
+        J({ wrote, charsNow, gz: { ok: st2.ok, gz: st2.gz, stored: st2.storedChars, plain: st2.chars }, skipped: { ok: st2b.ok, skipped: st2b.skipped, chars: st2b.chars, budget: st2b.budget }, restored, failOk, st4 }));
 })();
 
 // ==================== D 组：调试日志单条上限 ====================

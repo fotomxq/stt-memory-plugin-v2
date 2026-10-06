@@ -61,6 +61,8 @@ import {
     slimSnapshotStoreForStorage, hydrateSnapshotStore, snapshotIndexFrom,
 } from '../core/slim.js';
 import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes, gzipAvailable } from './gzip.js';
+// v3.26.2：本机缓冲的**压缩记录**识别与解压（「校验并修复」要能把本机层这一份候选读出来）
+import { isLocalGzRecord, inflateLocalGzRecord } from './store.js';
 // v3.26.0（用户要求「设置了本地缓冲目录则不再使用内存或变量存储」）：校验并修复的本机层候选
 //   在目录模式下必须读**目录文件**（变量层此时停用）
 import { localFileEnabled, localFileRead } from './local-file.js';
@@ -1307,6 +1309,7 @@ async function storageVerifyInner(repair) {
  * 读本机缓冲信封（校验用；不依赖 store 的载入路径）。
  * v3.26.0：**设置了本地缓冲目录时改读目录文件** —— 变量层此时整体停用（不读不写），
  *   若仍只读变量层，「校验并修复」在目录模式下会永远看不到本机层这一份候选。
+ * v3.26.2：本机缓冲可能是**压缩记录**（超预算时压缩留存）→ 这里同样解压后再解析。
  */
 async function readLocalEnvelope() {
     try {
@@ -1317,6 +1320,11 @@ async function readLocalEnvelope() {
         }
         const raw = lsGet('ftt2_state_' + scopeId());
         if (!raw) return null;
+        if (isLocalGzRecord(raw)) {
+            const text = await inflateLocalGzRecord(raw);
+            if (!text) return null;
+            return JSON.parse(text);
+        }
         return JSON.parse(raw);
     } catch (e) { return null; }
 }
