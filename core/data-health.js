@@ -19,6 +19,7 @@
 //   NSFW 类（warn）：`nsfw-invalid`（等级不是「无 / 弱 / 强」的规范值）
 //   数值类（warn）：`uses-invalid`（负数 / 非数字）· `importance-out-of-range`（不在 0..1）
 //   体积类（info）：`field-too-long`（单字段超过该维度字数上限）
+//   文本类（warn）：`text-bad-token`（文本里混入 `undefined` / `NaN` / `[object Object]` 占位；v3.26.1）
 //   关联类（warn）：`link-bad-row` · `link-orphan`（引用的条目不存在）
 //   台账类（warn）：`processed-not-array` · `ledger-bad-mark` · `ledger-dup-mark` · `lastknown-invalid` ·
 //                   `lastchatfloor-invalid` · `processedver-invalid`
@@ -34,6 +35,8 @@
 import { ATOM_DIM_KEYS, DIM_CHAR_LIMITS, DIMENSIONS } from './constants.js';
 import { cfg, state as kernelState } from './model/runtime.js';
 import { NSFW_LEVEL_FIELD, nsfwLevelNorm } from './nsfw-level.js';
+// v3.26.1：坏占位 token（`undefined` / `NaN` / `[object Object]`）只读体检
+import { hasBadToken, walkStrings } from './util.js';
 
 /** 体检发现的等级：`error` 计入 `ok=false`；`warn` / `info` 只提示 */
 export const HEALTH_LEVELS = Object.freeze(['error', 'warn', 'info']);
@@ -183,6 +186,21 @@ export function dataHealthReport(st, opts) {
                     if (typeof v !== 'string' || !v) continue;
                     out.scanned.fields++;
                     if (v.length > lim) add('field-too-long', 'info', { dim: dim, id: id, field: p, value: v.length, detail: '长度 ' + v.length + ' 超过该维度上限 ' + lim });
+                }
+            }
+            // v3.26.1（用户报告「有传言中出现了 undefined 字样」）：文本里的**坏占位 token**
+            //   （`undefined` / `NaN` / `[object Object]`，多由拼接时取到空值造成）——
+            //   载入期已由 `core/migrate.js#healthSelfHeal` 清理；此处只读列出**残留**（例如深层的数组元素）。
+            {
+                const hitPaths = [];
+                try {
+                    walkStrings(it, (v, path) => {
+                        if (hasBadToken(v)) hitPaths.push(path);
+                        return undefined;                                  // 只读，不改
+                    }, { maxDepth: 4, maxStrings: 4000 });
+                } catch (e) { /* 忽略 */ }
+                for (const p of hitPaths.slice(0, 3)) {
+                    add('text-bad-token', 'warn', { dim: dim, id: id, field: p, detail: '文本里混入了占位 token（undefined / NaN / [object Object]）' });
                 }
             }
         }

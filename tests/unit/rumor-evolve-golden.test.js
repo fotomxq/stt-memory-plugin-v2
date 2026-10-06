@@ -22,8 +22,25 @@
 // 说明：V1 `saveState` 会调 `tombstoneSweep` 自动给消失条目留墓碑，故本测试的 `saveState` 桩同样调用
 //   `tombstoneSweep()`，并在 `boot()` 后调 `entryIndexInit()` 对齐基线 —— 与 oracle 侧的 `F.entryIndexInit()` 一一对应。
 // 确定性：固定剧情日期 2020-06-01 + 固定 seed；时间戳字段一律经投影剔除；全量结果**连跑两次逐字节一致**。
+//
 // ============================================================
-import { readFileSync } from 'node:fs';
+// ⚠ v3.26.1 **有意偏离 V1**（用户报告「有传言中出现了 undefined 字样，其他原子数据可能也有」）
+//
+// 事实：V1 的 `rumorRoll(seed)` 把 `hashText()`（djb2 → **base36**）按 **16 进制**解析 ——
+//   · 哈希串含 `g`~`z` 时 `parseInt(...,16)` = `NaN` → 概率比较全失效（`NaN < chance` 恒假 →
+//     该传言永不裂变/变异；`NaN >= chance` 恒假 → 联动分支永远走「推动」）；
+//   · `rumorVariantFor` 取 `RUMOR_VARIANTS[NaN]` = `undefined` → 模板拼出
+//     `（说法演变为：undefined）` / `说法完成演化（undefined）` 并**落进存档**（真机取证，见 `docs/history/P10c47`）。
+// 本版：按 base36 解析 + 32 位终混（`core/rumor-evolve.js#rumorRoll`），变体名永不返回空值
+//   （`rumorPendingVariant`，异常即回落默认变体）。
+// 因此**掷骰结果与据此发生的机械演化决策必然不同于 V1** —— 受影响的断言（Z3/Z10/Z12/Z16/Z17/Z18/Z20/Z21）
+//   改为与 **V2 v3.26.1 自基线**逐字比对（`tests/fixtures/rumor-evolve-v2-baseline.json`，
+//   由本版实现生成、明确标注为「自基线」，只锁回归、不再声称 V1 逐值一致）；
+//   其余断言（结构归一 / id 派生 / 墓碑 / 衰退打分 / 文案模板 / 通知接线 / AI 补写）仍与 V1 oracle 逐字一致。
+// 自基线再生成（仅开发用；改动掷骰口径时跑一次并**人工核对**）：
+//   `FT_EVOLVE_BASELINE=1 node tests/unit/rumor-evolve-golden.test.js`
+// ============================================================
+import { readFileSync, writeFileSync } from 'node:fs';
 import { normHashes, normHashStrings } from '../harness/hash-norm.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +52,8 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { entryIndexInit, tombstoneSweep } from '../../core/sweep.js';
 import * as RU from '../../core/rumor-evolve.js';
+// v3.26.1：变体名白名单（断言「永不返回空 / undefined」用）
+import { RUMOR_VARIANTS } from '../../core/model/rumor.js';
 import {
     rumorEnabledOn, rumorEveryRounds, rumorNeedRounds, rumorTickState, rumorRoll, rumorStoryDate, rumorDayDiff,
     rumorChainPush, rumorActiveMediaCount, rumorMediaWeight, mergeRumorListBy, rumorAgeMedia, rumorFermentDelta,
@@ -47,6 +66,9 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const G = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'v1-golden-rumor-evolve.json'), 'utf8'));
+/** v3.26.1 **V2 自基线**（有意偏离 V1 的部分：掷骰与据此发生的机械演化；见文件头说明） */
+const BASE_PATH = join(ROOT, 'tests', 'fixtures', 'rumor-evolve-v2-baseline.json');
+const B = (() => { try { return JSON.parse(readFileSync(BASE_PATH, 'utf8')); } catch (e) { return null; } })();
 const R = makeReporter('rumor-evolve-golden B8-7 传言演化引擎（V1 对齐）');
 const J = (v) => JSON.stringify(normHashStrings(normHashes(v === undefined ? null : v)));
 const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
@@ -350,6 +372,17 @@ async function runAll() {
 const g1 = await runAll();
 const g2 = await runAll();
 
+// v3.26.1：自基线再生成（仅开发用；默认不写）。字段集合 = 有意偏离 V1 的那几段。
+if (process.env.FT_EVOLVE_BASELINE === '1') {
+    const pick = (o) => ({
+        roll: o.roll, rollRepeat: o.rollRepeat, variants: o.variants, link: o.link,
+        maybeStart: o.maybeStart, maybeStart0: o.maybeStart0, evolve: o.evolve, evolveNow: o.evolveNow,
+        evolveToasts: o.evolveToasts, tickAdvance: o.tickAdvance,
+    });
+    writeFileSync(BASE_PATH, JSON.stringify(pick(g1), null, 2) + '\n', 'utf8');
+    console.log('[rumor-evolve] 已写入 V2 自基线：' + BASE_PATH);
+}
+
 await A('Z1 配置读取器：rumorEnabledOn / rumorEveryRounds（0·负·小数·非数字·缺键）/ rumorNeedRounds 与 V1 一致',
     () => J(g1.cfgReaders) === J(G.cfgReaders) && g1.cfgReaders.every[1] === 1 && g1.cfgReaders.every[3] === 5
         && g1.cfgReaders.everyMissing === 5 && g1.cfgReaders.need[1] === 2 && g1.cfgReaders.enabled[2] === false,
@@ -360,9 +393,12 @@ await A('Z2 rumorTickState 脏值归一（字符串小数 / 负数 / null / 非�
         && g1.tick[1].got.runs === 0 && g1.tick[2].got.lastFloor === -1,
     [g1.tick, G.tick]);
 
-await A('Z3 rumorRoll 确定性：固定 seed 恒返回同一值（含空串 / null / 中文 seed），且与 V1 数值一致',
-    () => J(g1.roll) === J(G.roll) && J(g1.rollRepeat) === J(G.rollRepeat) && g1.rollRepeat[0] === g1.rollRepeat[1],
-    [g1.roll, G.roll]);
+// Z3 v3.26.1 改判（有意偏离 V1）：掷骰改按 base36 解析 + 32 位终混 —— 见文件头说明。
+await A('Z3 rumorRoll 确定性（v3.26.1 改判）：固定 seed 恒返回同一值、空串 / null / 中文 seed 一致；**恒为 [0,1) 有限数**（V1 会得到 NaN）；与 V2 自基线一致',
+    () => J(g1.roll) === J(B.roll) && J(g1.rollRepeat) === J(B.rollRepeat) && g1.rollRepeat[0] === g1.rollRepeat[1]
+        && g1.roll.every((x) => Number.isFinite(x.v) && x.v >= 0 && x.v < 1)
+        && J(g1.roll.map((x) => x.seed)) === J(G.roll.map((x) => x.seed)),
+    [g1.roll, B && B.roll]);
 
 await A('Z4 rumorStoryDate / rumorDayDiff：日期裁剪、空剧情日期、带时刻、不可解析 → 0，与 V1 一致',
     () => g1.storyDate === G.storyDate && g1.storyDateEmpty === G.storyDateEmpty && g1.storyDateDirty === G.storyDateDirty
@@ -398,21 +434,25 @@ await A('Z9 rumorParallelLinkScore：标签 Jaccard（无标签/不相关 → 0�
     () => J(g1.linkScore) === J(G.linkScore) && g1.linkScore[0][1] === 1 && g1.linkScore[1][1] === 0,
     [g1.linkScore, G.linkScore]);
 
-await A('Z10 rumorParallelLink 三选一：发酵(+12) / 消退(-15) / 推动(写入平行预演 +6)，标签关联 + 概率掷骰与 V1 一致',
-    () => J(g1.link) === J(G.link) && J(g1.link.kinds) === J(G.link.kinds)
-        && g1.link.kinds.join(',') === '发酵,消退,推动'
-        && J(g1.link.runs[2].parallels[0].previews) === J(G.link.runs[2].parallels[0].previews),
-    [g1.link, G.link]);
+// Z10 v3.26.1 改判（有意偏离 V1）：三选一的分支由掷骰决定，掷骰已修 → 与 V2 自基线比对（分支名必须仍属三选一）。
+await A('Z10 rumorParallelLink 三选一（v3.26.1 改判）：发酵(+12) / 消退(-15) / 推动(写入平行预演 +6)，标签关联判定不变、分支由掷骰决定 → 与 V2 自基线一致',
+    () => J(g1.link) === J(B.link) && J(g1.link.kinds) === J(B.link.kinds)
+        && g1.link.kinds.every((k) => ['发酵', '消退', '推动'].indexOf(k) >= 0)
+        && J(g1.linkScore) === J(G.linkScore)
+        && J(g1.link.runs[2].parallels[0].previews) === J(B.link.runs[2].parallels[0].previews),
+    [g1.link, B && B.link]);
 
 await A('Z11 rumorParallelLink 关闭（chance=0）与无命中（相似度不足）→ null；转正平行事件不参与联动',
     () => J(g1.linkChance0) === J(G.linkChance0) && g1.linkChance0 === null
         && J(g1.linkNoHit) === J(G.linkNoHit) && g1.linkNoHit === null && g1.linkScore[2][1] === 1,
     [g1.linkChance0, g1.linkNoHit]);
 
-await A('Z12 rumorVariantFor：按下标取变体；V1 的 NaN 越界怪癖（返回 undefined）被逐字保留',
-    () => J(g1.variants) === J(G.variants) && g1.variants[0].idxs.every(v => v === '夸大版')
-        && g1.variants[1].idxs.every(v => v === null),
-    [g1.variants, G.variants]);
+// Z12 v3.26.1 改判（**用户报告的 BUG 回归判据**）：V1 的 NaN → undefined 怪癖已被修掉。
+await A('Z12 rumorVariantFor（v3.26.1 改判 · 用户 BUG 回归）：按下标取变体，**任何 id/日期/下标都返回非空变体名**（V1 的 NaN → undefined 越界怪癖已修，不再把 undefined 写进正文）；与 V2 自基线一致',
+    () => J(g1.variants) === J(B.variants)
+        && g1.variants.every((x) => x.idxs.every((v) => typeof v === 'string' && v.length > 0 && RUMOR_VARIANTS.indexOf(v) >= 0))
+        && g1.variants.every((x) => x.idxs.length === G.variants[0].idxs.length),
+    [g1.variants, B && B.variants]);
 
 await A('Z13 rumorStartPending：同一时间只允许一个变化过程（已有 pending → false）；新建写入 need/progress/at 与链路',
     () => J(g1.startPending) === J(G.startPending) && g1.startPending.dup === false && g1.startPending.ok === true
@@ -430,38 +470,49 @@ await A('Z15 rumorCommitPending：裂变派生稳定子 id（主体不变 + 世�
         && g1.commit.rumors.find(x => x.id === 'rum_13mb7va').lineage.generation === 1,
     [g1.commit, G.commit]);
 
-await A('Z16 rumorMaybeStartChange：裂变（高发酵 + 有传播者）/ 变异（≥60）/ 不开始 三径与 V1 一致；chance=0 → 全 null',
-    () => J(g1.maybeStart) === J(G.maybeStart) && J(g1.maybeStart0) === J(G.maybeStart0)
-        && g1.maybeStart.results[0].kind === '裂变' && g1.maybeStart.results[2].kind === '变异' && g1.maybeStart.results[3] === null,
-    [g1.maybeStart, G.maybeStart]);
+// Z16 v3.26.1 改判（有意偏离 V1）：是否开始变化由掷骰决定（V1 的 NaN 让部分传言永不变化）。
+await A('Z16 rumorMaybeStartChange（v3.26.1 改判）：裂变（高发酵 + 有传播者）/ 变异（≥60）/ 不开始三径仍在（`kind` 必须属允许集）；chance=0 → 全 null；与 V2 自基线一致',
+    () => J(g1.maybeStart) === J(B.maybeStart) && J(g1.maybeStart0) === J(B.maybeStart0)
+        && g1.maybeStart.results.every((x) => x === null || ['裂变', '变异'].indexOf(x.kind) >= 0)
+        && g1.maybeStart0.every((x) => x === null),
+    [g1.maybeStart, B && B.maybeStart]);
 
-await A('Z17 runRumorEvolve：老化 + 发酵 + 联动 + 酝酿 + 提交 + 阶段重算 + 日期跟新（统计与整库状态与 V1 一致）',
-    () => J(g1.evolve) === J({ out: G.evolve.out, rumors: G.evolve.rumors, parallels: G.evolve.parallels, tick: tickView(G.evolve.tick) }) && g1.evolve.out.aged === 1 && g1.evolve.out.links === 3
-        && g1.evolve.out.committed === 3 && g1.evolve.out.fissions === 2 && g1.evolve.rumors.length === 6
-        && J(g1.evolve.out.fissionsIds) === J(G.evolve.out.fissionsIds),
-    [g1.evolve, G.evolve]);
+// Z17 v3.26.1 改判（有意偏离 V1）：整库演化结果含掷骰决策 → 与 V2 自基线比对；
+//   结构不变量（条数 / 子 id 集合 / 无 undefined 文本）仍逐条断言。
+await A('Z17 runRumorEvolve（v3.26.1 改判）：老化 + 发酵 + 联动 + 酝酿 + 提交 + 阶段重算 + 日期跟新；结构不变量（条数 / 子 id / 无坏占位）成立，整库状态与 V2 自基线一致',
+    () => J(g1.evolve) === J(B.evolve)
+        && g1.evolve.out.aged === 1 && g1.evolve.rumors.length === B.evolve.rumors.length
+        && J(g1.evolve.out.fissionsIds) === J(B.evolve.out.fissionsIds)
+        && J(g1.evolve).indexOf('undefined') < 0,
+    [g1.evolve.out, B && B.evolve && B.evolve.out]);
 
-await A('Z18 runRumorEvolveNow：默认 reason=manual，二次演化（无 pending → 不再提交）与 V1 一致',
-    () => J(g1.evolveNow) === J(G.evolveNow) && g1.evolveNow.out.reason === 'manual'
-        && g1.evolveNow.out.committed === 0 && g1.evolveNow.out.changes === 1,
-    [g1.evolveNow, G.evolveNow]);
+// Z18 v3.26.1 改判（有意偏离 V1）：同上（掷骰决策）。
+await A('Z18 runRumorEvolveNow（v3.26.1 改判）：默认 reason=manual、`silent` 不通知；整库状态与 V2 自基线一致且无坏占位文本',
+    () => J(g1.evolveNow) === J(B.evolveNow) && g1.evolveNow.out.reason === 'manual'
+        && J(g1.evolveNow).indexOf('undefined') < 0,
+    [g1.evolveNow.out, B && B.evolveNow && B.evolveNow.out]);
 
 await A('Z19 rumorEnabled=false → runRumorEvolve 直接 disabled 短路（列表不变）',
     () => J(g1.evolveDisabled) === J(G.evolveDisabled) && g1.evolveDisabled.disabled === true && g1.evolveDisabled.list === 4,
     [g1.evolveDisabled, G.evolveDisabled]);
 
-await A('Z20 演化完成通知：V1 notify({title,text}) → V2 notifyHooks.toast(title + text) 文案逐字符一致',
-    () => J(g1.evolveToasts) === J(G.evolveToasts.map(t => [t[0], [t[1], t[2]].filter(Boolean).join(' ')]))
-        && g1.evolveToasts.length === 1 && g1.evolveToasts[0][0] === 'success',
-    [g1.evolveToasts, G.evolveToasts]);
+// Z20 v3.26.1 改判（有意偏离 V1）：通知里的计数来自掷骰决策 → 与 V2 自基线比对（文案模板与出口仍是 V1 口径）。
+await A('Z20 演化完成通知（v3.26.1 改判）：V1 `notify({title,text})` → V2 `notifyHooks.toast(title + text)` 的**文案模板与出口不变**，计数与 V2 自基线一致',
+    () => J(g1.evolveToasts) === J(B.evolveToasts)
+        && g1.evolveToasts.length === 1 && g1.evolveToasts[0][0] === 'success'
+        && String(g1.evolveToasts[0][1]).indexOf('📢 传言演化完成') === 0
+        && String(g1.evolveToasts[0][1]).indexOf('undefined') < 0,
+    [g1.evolveToasts, B && B.evolveToasts]);
 
-await A('Z21 rumorTickAdvance：每新楼 1 轮、同楼层不重复计数、满 N 轮触发异步演化并归零；与 V1 一致',
-    () => J(g1.tickAdvance) === J({
-        ticks: G.tickAdvance.ticks.map(x => ({ floor: x.floor, ret: x.ret, tick: tickView(x.tick) })),
-        rumors: G.tickAdvance.rumors,
-    }) && g1.tickAdvance.ticks[0].ret.triggered === true && g1.tickAdvance.ticks[1].ret.triggered === false
-        && g1.tickAdvance.ticks[2].ret.round === 1 && g1.tickAdvance.ticks[3].ret.triggered === true,
-    [g1.tickAdvance, G.tickAdvance]);
+// Z21 v3.26.1 改判（有意偏离 V1）：轮次计数口径不变（同楼层不重复 / 满轮触发），
+//   但触发后真的跑了演化（掷骰已修）→ 整库状态与 V2 自基线比对。
+await A('Z21 rumorTickAdvance（v3.26.1 改判）：每新楼 1 轮、同楼层不重复计数、满 N 轮触发异步演化并归零（口径与 V1 一致）；演化后整库状态与 V2 自基线一致',
+    () => J(g1.tickAdvance) === J(B.tickAdvance)
+        && J(g1.tickAdvance.ticks.map((x) => ({ floor: x.floor, ret: x.ret }))) === J(G.tickAdvance.ticks.map((x) => ({ floor: x.floor, ret: x.ret })))
+        && g1.tickAdvance.ticks[0].ret.triggered === true && g1.tickAdvance.ticks[1].ret.triggered === false
+        && g1.tickAdvance.ticks[2].ret.round === 1 && g1.tickAdvance.ticks[3].ret.triggered === true
+        && J(g1.tickAdvance.rumors).indexOf('undefined') < 0,
+    [g1.tickAdvance.ticks, B && B.tickAdvance && B.tickAdvance.ticks]);
 
 await A('Z22 rumorMarkParallelChange：轮次重置 + parallelFloor 记录（非法入参回退 lastFloor）与 V1 一致',
     () => J(g1.parallelChange) === J({ a: tickView(G.parallelChange.a), b: tickView(G.parallelChange.b), stored: tickView(G.parallelChange.stored) })
