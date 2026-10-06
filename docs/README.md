@@ -41,6 +41,7 @@ docs/
 ├── D11-同步机制设计稿.md               # 设计层（chatMetadata 为主载体 + ready 守门；**剔除同步开关只留世界书 · 默认值内置 · 兼容用户删楼**，裁决已定 v0.5：补 `state.chatKey` + 控件数复核 + §3.7 合并口径硬化）
 ├── D12-楼层骤减的数据安全与删除操作设计稿.md  # 设计层（600→10 骤减核对 · 编号重映射兜底 · **删楼属常态**（减聊天体积）· 三按钮落「设定→数据管理」；裁决已定 v0.3：补 v3.20.0 归位硬化与情节归属）
 ├── D13-存储层级与界面成本上限核对.md        # 设计层（写 6 层/读 5 层体积口径 · **常驻内存上限**（向量缓存无上限/调试日志 1.8M 字符/时间线 7MB）· **打开界面耗时上限**（角色页 O(档案×(记忆+计划+悬念)×关联行)，实测 1.5–6 秒；一次渲染构建 13 页 ×2、每次点击 ×3）；待裁决 Q1–Q8；**S0/S1/S2/S3 已落地 v3.1.0**，Q8 按建议暂不做；v1.1 补新增字段体积复核）
+├── D14-文档事实一致性与版本号追加规则设计稿.md  # 设计层（版本号**只在 `3.XX.XX` 上追加**：主版本固定 3、`minor`/`patch` 位数不限；docs 一致性判据 C1–C7 = 数字口径逐行实测 / 目录地图文件数 / runner 自查规模 / 引用存在性 / 目录树集合 / 版本规则 / 历史层豁免；**S1 已落地**，S2/S3 与 Q1–Q4 待裁决）
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
@@ -85,22 +86,26 @@ docs/
 
 ## 3. 数字口径（单一来源，避免各文档漂移）
 
-| 口径 | 权威来源 | 当前值（v3.19.0） |
+> 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
+> 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
+
+| 口径 | 权威来源 | 当前值（v3.25.0） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.19.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.25.0` |
+| 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
-| 内核配置键数 | `core/config.js#defaultCfg` | 222 |
+| 内核配置键数 | `core/config.js#defaultCfg` | 221 |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 156 文件 / 2414 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 157 文件 / 2421 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 215 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
-| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 46 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0） |
+| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 46 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个） |
 | 历史批次档数 | `docs/history/*.md` | 166 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
@@ -127,7 +132,10 @@ docs/
 2. 设计讨论：只加 `D*` 设计稿，**不改代码、不动版本**（`开发守则.md` §1）。
 3. `history/` 与 `CHANGELOG.md` **只增不改**；结论被推翻时在原档追加「结论变更」段落，并在勘误表登记。
 4. 新增文档必须带**头部元信息**（文档版本 / 日期 / 类型 / 状态），由 `scripts/check-docs.js` 强制。
-5. 改了会变数字的东西（维度 / 控件 / 测试规模）→ **同步更新本文件 §3**。
+5. 改了会变数字的东西（维度 / 控件 / 测试规模 / 桥方法数 / 历史档数）→ **同一提交内更新本文件 §3**，
+   否则 `npm run gate` 会失败（判据 C1–C3 见 `docs/D14`；入口 `npm run docs:facts`）。
+   §3 是**唯一事实源**：其它文档（含 `03-技术架构` §7、`05-开发指南` §2）一律不再写死会变的计数。
+6. 新增本地文档后，记得把它加进 §1 目录树（判据 C6 会核对集合相等）；引用仓库内文件时路径必须真实存在（判据 C5）。
 
 ## 6. 整理进度
 

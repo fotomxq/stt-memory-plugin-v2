@@ -6566,4 +6566,28 @@ try {
 } catch (e) { /* 忽略 */ }
 console.log('\n========== V2 冒烟：' + pass + ' 通过, ' + fail + ' 失败 ==========');
 if (fail) { console.log('  失败项：' + failures.join(' | ')); process.exit(1); }
+
+// v3.25.1：**文档口径自查** —— 本文件是「冒烟项数」的唯一实测方，因此由它比对 `docs/README.md` §3「冒烟规模」，
+//   避免文档数字静默漂移（`scripts/check-docs-facts.js` 不该为了一个数字再跑一遍整条冒烟）。
+try {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const url = await import('node:url');
+    const ROOT = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+    const md = fs.readFileSync(path.join(ROOT, 'docs', 'README.md'), 'utf8');
+    const line = md.split('\n').filter((l) => /^\|\s*冒烟规模\s*\|/.test(l))[0] || '';
+    const m = line.match(/(\d+)\s*项/);
+    if (!m) {
+        console.log('  ❌ docs 口径不一致：docs/README.md §3「冒烟规模」行缺失或格式不符（应形如 `215 项`）');
+        process.exit(1);
+    }
+    if (Number(m[1]) !== pass) {
+        console.log('  ❌ docs 口径不一致：冒烟项数文档写 ' + Number(m[1]) + '，实测 ' + pass);
+        console.log('  请把 `docs/README.md` §3「冒烟规模」更新为：' + pass + ' 项（同一提交内完成）');
+        process.exit(1);
+    }
+} catch (e) {
+    console.log('  ❌ docs 口径自查失败：' + String((e && e.message) || e));
+    process.exit(1);
+}
 process.exit(0);
