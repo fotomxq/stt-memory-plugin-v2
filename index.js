@@ -344,11 +344,20 @@ export async function loadMemoryState() {
     //   基底取「服务端文件（含分片重建）」，其余各层只贡献**并集**（同名按时间取新、墓碑生效），
     //   且**绝不整体覆盖**基底 —— 于是「换设备 / 清缓存 / 恢复聊天备份 / 初次激活」都能自动对齐。
     const layers = { local: null, idb: null, file: null, chatmeta: null };
-    try { layers.local = loadFromLocalStorage(); } catch (e) { layers.local = null; }
-    // v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时**本机层以本地文件为真相
-    //   （文件读是异步的 → 只在开启时多这一次 await；关闭时零额外微任务、零行为变化）
-    try { if (localFileEnabled()) { const lf = await loadFromLocalFile(); if (lf) layers.local = lf; } } catch (e) { /* 文件层异常 → 保留变量层结果 */ }
-    try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
+    // v3.26.0（用户要求「设置了本地缓冲目录，则存储不再使用内存或变量存储，只保留本地目录和服务端存储」）：
+    //   **目录模式开启时，变量层与内存库整体停用**（不读也不写）——
+    //   读它们等于把用户明确要求停用的旧副本重新拉回来当并集来源（会出现「明明只留了目录，却冒出旧数据」）。
+    const localDirMode = (() => { try { return localFileEnabled(); } catch (e) { return false; } })();
+    if (localDirMode) {
+        // **目录模式**：本机层只有一个真相 = 本地目录文件
+        try { layers.local = await loadFromLocalFile(); } catch (e) { /* 目录层异常 → 交由服务端文件兜底 */ }
+        try {
+            readLedgerRecord({ action: '本机层停用', src: 'local', ok: true, miss: true, reason: 'local-dir-mode', note: '已设置本地缓冲目录 → 变量层与内存库不读不写（只留目录 + 服务端）' });
+        } catch (e) { /* 忽略 */ }
+    } else {
+        try { layers.local = loadFromLocalStorage(); } catch (e) { layers.local = null; }
+        try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
+    }
     try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
     const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
     layers.chatmeta = (cm && cm.state) || null;
@@ -1748,8 +1757,9 @@ function wirePipelineHooks() {
  *
  * | 层 | 落点 | 开关 / 跳过条件 |
  * | --- | --- | --- |
- * | 本机缓冲（浏览器本地变量） | `localStorage` 键 `ftt2_state_<scope>` | 始终 |
- * | IndexedDB 缓冲 | `localforage` 可用时 | 不可用即跳过 |
+ * | 本机缓冲（浏览器本地变量） | `localStorage` 键 `ftt2_state_<scope>` | 始终（**设置本地缓冲目录后整层停用**） |
+ * | 本机缓冲（本地目录） | 宿主数据目录内的相对目录（`cfg.storage.localFilePath`） | 路径非空（v3.16.0 起；v3.26.0 起该模式下变量层与内存库都停用） |
+ * | IndexedDB 缓冲 | `localforage` 可用时 | 不可用即跳过；**设置本地缓冲目录后整层跳过** |
  * | 服务端记忆文件（完整信封） | `/api/files/upload` `ftt2-state-<scope>.json` | `storage.stateFile` |
  * | 服务端**分片**（v3.0.21） | `ftt2-shard-*`（本次 `force` 全量重传 → 与内存完全一致） | `storage.stateFile` |
  * | 快照文件 | `snapshotFilePushNow()` | `storage.snapshotFile` 且快照链非空 |

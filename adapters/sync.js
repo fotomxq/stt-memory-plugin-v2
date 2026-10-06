@@ -61,6 +61,9 @@ import {
     slimSnapshotStoreForStorage, hydrateSnapshotStore, snapshotIndexFrom,
 } from '../core/slim.js';
 import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes, gzipAvailable } from './gzip.js';
+// v3.26.0（用户要求「设置了本地缓冲目录则不再使用内存或变量存储」）：校验并修复的本机层候选
+//   在目录模式下必须读**目录文件**（变量层此时停用）
+import { localFileEnabled, localFileRead } from './local-file.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：同步 / 持久化动作纳入管线状态
 import { trackPipeline } from '../core/pipeline.js';
 
@@ -1300,9 +1303,18 @@ async function storageVerifyInner(repair) {
     return { at: Date.now(), repair: !!repair, details, bad: bad.length, repaired, repairedFrom };
 }
 
-/** 读本机缓冲信封（校验用；不依赖 store 的载入路径） */
+/**
+ * 读本机缓冲信封（校验用；不依赖 store 的载入路径）。
+ * v3.26.0：**设置了本地缓冲目录时改读目录文件** —— 变量层此时整体停用（不读不写），
+ *   若仍只读变量层，「校验并修复」在目录模式下会永远看不到本机层这一份候选。
+ */
 async function readLocalEnvelope() {
     try {
+        if (localFileEnabled()) {
+            const r = await localFileRead(scopeId());
+            if (!r || !r.ok || !r.text) return null;
+            return JSON.parse(String(r.text));
+        }
         const raw = lsGet('ftt2_state_' + scopeId());
         if (!raw) return null;
         return JSON.parse(raw);

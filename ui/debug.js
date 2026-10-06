@@ -43,6 +43,9 @@ import {
     BRIDGE_DEFAULT_PORT, BRIDGE_DEFAULT_HOST, BRIDGE_PROTOCOL,
 } from '../adapters/debug-bridge.js';
 import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
+// v3.26.0：「选择目录」的只读体检（模式 / 候选 / 真实落盘位置 / 宿主枚举能力）
+import { localLayerInfo } from '../adapters/store.js';
+import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
     processedStats, scanPendingFloors, listUnprocessedFloors, floorMessage, floorStableText,
@@ -486,6 +489,30 @@ export function buildBridgeMethods() {
     T['ftt.clockTraceInfo'] = safe(() => clockTraceInfo());
     T['ftt.clockTraceSummary'] = safe(() => clockTraceSummary());
     T['ftt.fileTransport'] = safe(() => fileTransportStatus());
+    // v3.26.0（用户要求「增加选择目录」）：本机缓冲目录模式的**只读**体检 ——
+    //   当前模式 / 目录 / 真实落盘位置 / 候选清单 / 宿主枚举能力 / 变量层与内存库是否已停用。
+    //   真机核对「目录选择器到底看到了什么」时用它，不用猜。
+    T['ftt.localDir'] = safe(() => {
+        const info = (() => { try { return localLayerInfo(); } catch (e) { return null; } })();
+        const cand = (() => { try { return localFileDirCandidates(); } catch (e) { return null; } })();
+        const real = (() => { try { return localFileRealLocation(String((info && info.path) || '')); } catch (e) { return null; } })();
+        return {
+            available: true,
+            enabled: !!(info && info.enabled),
+            path: String((info && info.path) || ''),
+            backend: String((info && info.backend) || ''),
+            memLayersDisabled: !!(info && info.memLayersDisabled),
+            idbWrites: Number((info && info.idbWrites) || 0),
+            idbSkipped: Number((info && info.idbSkipped) || 0),
+            localChars: Number((info && info.localChars) || 0),
+            probes: Number((info && info.probes) || 0),
+            failures: Number((info && info.failures) || 0),
+            lastReason: String((info && info.lastReason) || ''),
+            real: real ? real.text : '',
+            hostEnumeration: cand && cand.host ? cand.host : { supported: false, api: '' },
+            candidates: cand && Array.isArray(cand.items) ? cand.items.map((x) => ({ path: x.path, source: x.source, current: x.current })) : [],
+        };
+    });
     T['ftt.chatMeta'] = safe(() => chatMetaDiffReport());
 
     // —— 记忆真实数据（**只读**）——
@@ -1111,6 +1138,7 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排）', params: '' },
     'ftt.reads': { desc: '读取台账（分来源统计 + 最近若干行）', params: '{limit?}' },
     'ftt.writeStats': { desc: '原生写队列诊断（并发峰值 / 最近一次写）', params: '' },
+    'ftt.localDir': { desc: '本机缓冲目录模式体检（目录 / 真实落盘 / 候选 / 宿主枚举能力 / 内存库是否停用）', params: '' },
     'ftt.snapshot': { desc: '插件运行态快照', params: '' },
     'ftt.probe': { desc: '宿主能力探测结果', params: '' },
     'ftt.stateSize': { desc: '导出文本字节数（不回正文）', params: '' },

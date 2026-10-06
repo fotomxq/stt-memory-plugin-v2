@@ -3349,6 +3349,8 @@ export function bindOverlay() {
                 layer: ds.fttLayer || '',
                 // v2.94.0：数据管理「✂️ 删除聊天楼层」三档的保留层数（`data-ftt-keep="6|10|12"`）
                 keep: (ds.fttKeep !== undefined) ? ds.fttKeep : '',
+                // v3.26.0：本机缓冲「选择目录」候选按钮（`data-ftt-dir="<相对目录名>"`）
+                dir: ds.fttDir || '',
             });
         });
         if (typeof el.addEventListener === 'function') {

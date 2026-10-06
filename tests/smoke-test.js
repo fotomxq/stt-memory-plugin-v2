@@ -6254,12 +6254,18 @@ await assert('BQ1 v3.15.0 货币修正（端到端）：按钮出计划预览（
     }
 })(), '');
 
-// ---------- BR 本地文件存储模式（v3.16.0） ----------
-// 用户要求（原话）：「本地存储除了当前内存和变量外，增加本地文件存储模式，用于替代变量存储，避免超出限制。
+// ---------- BR 本地文件存储模式（v3.16.0 / v3.26.0） ----------
+// 用户要求（v3.16.0 原话）：「本地存储除了当前内存和变量外，增加本地文件存储模式，用于替代变量存储，避免超出限制。
 //   但需用户在设定-存储中约定本地化路径。如果没约定路径，则视为不开启。开启后将取代变量方式。」
 //   本小节走**真实面板与设定页**：约定路径 → 存储页出现模式状态/目录控件/对齐按钮 → 动作可达；
-//   本桩环境无宿主原生存储 → 文件写失败时**回退变量层**（不丢数据）；清空路径 → 恢复「不开启」。
-await assert('BR1 v3.16.0 本地文件存储模式（端到端）：留空 = 不开启；约定路径后存储页给出模式状态 + 目录控件 + 「立即对齐」，动作可达；宿主文件写不可用时**回退变量层**（本机缓冲不丢），清空路径即回到变量模式', (async () => {
+//   本桩环境无宿主原生存储 → 走酒馆文件通道（写成功即落文件层）；清空路径 → 恢复「不开启」。
+// v3.26.0（用户要求）：
+//   ①「设置本机缓冲时，除了保留当前的 input，还需增加选择目录，可手动选择目录。」→ BR2 走**目录选择器**：
+//      页面上原 input 仍在 + 折叠的候选目录 + 新建（写探针 → 回读校验 → 采用）；
+//   ②「如果设置了本地缓冲目录，则存储不再使用内存或变量存储，只保留本地目录和服务端存储。」
+//      → BR1 的「写失败回退变量层」断言随之删除（不再回退）；BR2 端到端断言目录模式下
+//      **变量层不被写入**、载入**不读变量层**，清空路径后变量层恢复写入。
+await assert('BR1 v3.16.0 本地文件存储模式（端到端）：留空 = 不开启；约定路径后存储页给出模式状态 + 目录控件 + 「立即对齐」，动作可达；保存真实落在目录文件层，清空路径即回到变量模式', (async () => {
     const RT = await import('../core/model/runtime.js');
     const ST = await import('../adapters/store.js');
     const LF = await import('../adapters/local-file.js');
@@ -6297,6 +6303,70 @@ await assert('BR1 v3.16.0 本地文件存储模式（端到端）：留空 = 不
         if (!ok) console.log('BR1-DEBUG ' + JSON2({ offOk, pageOk, actOk, fileOk, backOk, st: st, a1: a1 && a1.note, a2: a2 && a2.note, align: align && align.note }));
         return ok;
         function JSON2(v) { return J2(v); }
+    } finally {
+        RT.cfg.storage = keepCfg;
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+// ---------- BR2 「选择目录」+ 只留目录与服务端（v3.26.0） ----------
+// 用户要求（原话）：
+//   ①「设置本机缓冲时，除了保留当前的 input，还需增加选择目录，可手动选择目录。」
+//   ②「如果设置了本地缓冲目录，则存储不再使用内存或变量存储，只保留本地目录和服务端存储。」
+//   本小节端到端锁死：选择器在原 input 之外出现（含真实落盘位置与候选）→「新建并使用」**真的写探针校验**
+//   →目录模式下保存**不写变量层**、载入**不读变量层**→ 清空路径后变量层恢复写入。
+await assert('BR2 v3.26.0 本机缓冲「选择目录」+ 只留目录与服务端（端到端）：原 input 保留 + 目录选择器（候选/新建/校验/真实落盘）；新建目录写探针校验后采用；目录模式下保存不写变量层、载入不读变量层；清空后变量层恢复', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const ST = await import('../adapters/store.js');
+    const LF = await import('../adapters/local-file.js');
+    const keepCfg = JSON.parse(JSON.stringify(RT.cfg.storage || {}));
+    const key = 'ftt2_state_' + (await import('../core/state.js')).scopeId();
+    try {
+        // ① 页面上：原 input **仍在** + 目录选择器（折叠块）/ 新建输入 / 五个动作 / 真实落盘位置
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage, { localFilePath: '' });
+        await entry.popupAction('tab', { tab: 'settings' });
+        const page = String(((await entry.popupAction('settingsSub', { sub: 'storage' })).html) || '');
+        const pageOk = page.indexOf('data-ftt-cfg="storage.localFilePath"') > 0
+            && page.indexOf('data-ftt-local-dir-picker') > 0 && page.indexOf('data-ftt-local-dir-new') > 0
+            && page.indexOf('真实落盘') > 0 && page.indexOf('data-ftt-action="localFileDirUse"') > 0
+            && page.indexOf('data-ftt-action="localFileDirCreate"') > 0
+            && page.indexOf('data-ftt-action="localFileDirSystem"') > 0
+            && page.indexOf('data-ftt-action="localFileDirProbe"') > 0
+            && page.indexOf('data-ftt-local-file-status') > 0;
+        // ② 新建并使用：真的写探针 → 回读校验 → 才落配置（校验不过不改配置 —— 反例见单测）
+        const mk = await entry.popupAction('localFileDirCreate', { dir: '选择目录BR2' });
+        const mkOk = mk && mk.ok === true && RT.cfg.storage.localFilePath === '选择目录BR2'
+            && String(mk.note || '').indexOf('探针校验通过') > 0
+            && LF.localFileDirHistory().indexOf('选择目录BR2') >= 0;
+        // ③ 目录模式保存：**不写变量层**（键先删掉 → 保存后仍不存在），本机层走目录文件
+        delete memStore[key];
+        ST.invalidateLocalBufferCache();
+        const saved = await ST.saveStateNow({ force: true });
+        const st = ST.localBufferState();
+        const info = ST.localLayerInfo();
+        const dirOk = saved && saved.ok !== false && st && st.layer === 'local-file'
+            && String(saved.via || '').indexOf('localStorage') < 0
+            && String(saved.via || '').indexOf('indexedDB') < 0
+            && !Object.prototype.hasOwnProperty.call(memStore, key)      // 变量层一个字节都没写
+            && info.enabled === true && info.memLayersDisabled === true && Number(info.idbSkipped) >= 1;
+        // ④ 载入：目录模式下**不读变量层** —— 埋一份「更新的幽灵副本」进变量层，载入结果里不得出现
+        const ghostSt = JSON.parse(JSON.stringify(RT.state));
+        ghostSt.atoms = [{ id: 'br2-ghost', text: '变量层里的幽灵条目（目录模式下必须被无视）。', title: '幽灵', tags: [] }];
+        memStore[key] = JSON.stringify({ v: 1, scope: (await import('../core/state.js')).scopeId(), payload: { scope: (await import('../core/state.js')).scopeId(), updatedAt: Date.now() + 9999999, data: ghostSt }, hash: '' });
+        const via = await entry.loadMemoryState();
+        const ids = (RT.state.atoms || []).map((x) => String(x.id || ''));
+        const loadOk = ids.indexOf('br2-ghost') < 0;
+        // ⑤ 清空路径 → 变量层恢复写入（同一份数据在目录模式下不写、回到变量模式后写）
+        RT.cfg.storage.localFilePath = '';
+        delete memStore[key];
+        ST.invalidateLocalBufferCache();
+        const back = await ST.saveStateNow({ force: true });
+        const backOk = back && back.ok !== false && String(back.via || '').indexOf('localStorage') >= 0
+            && Object.prototype.hasOwnProperty.call(memStore, key)
+            && ST.localLayerInfo().memLayersDisabled === false;
+        const ok = pageOk && mkOk && dirOk && loadOk && backOk;
+        if (!ok) console.log('BR2-DEBUG ' + JSON.stringify({ pageOk, mkOk, dirOk, loadOk, backOk, st, via, mk: mk && mk.note, back: back && back.via }));
+        return ok;
     } finally {
         RT.cfg.storage = keepCfg;
         try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }

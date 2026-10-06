@@ -32,8 +32,16 @@ import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
 import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
 // v3.16.0（用户要求）：本地文件存储模式 —— 状态展示 + 「立即对齐本机层」动作
-import { localFileStatsGet } from '../adapters/local-file.js';
+// v3.26.0（用户要求）：目录选择器（候选 / 新建 / 系统选择 / 校验）+ 采用目录的单一入口
+import {
+    localFileStatsGet, localFilePathSanitize, localFileDirCandidates, localFileDirRemember,
+    localFileDirScanHost, localFileProbeDir, localFileRealLocation,
+} from '../adapters/local-file.js';
 import { localLayerInfo, switchLocalLayer } from '../adapters/store.js';
+// v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
+import { saveKernelCfg } from '../adapters/config-store.js';
+// v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
+import { pickDirectoryName } from './file-io.js';
 // v2.94.0（`docs/D12` §3.4 / 阶段 S3）：楼层校准只读诊断 + 「重新校准楼层」幂等动作
 import { floorCalibrateStatus } from '../host/floor-trim.js';
 
@@ -287,36 +295,108 @@ function floorCalibrateSectionHtml() {
 
 /**
  * v3.16.0（用户要求）——**本地文件存储模式**分节（设定 → 存储）。
- *   · 路径留空 = 不开启（变量层照旧）；填写 = 取代变量方式（本机缓冲写进宿主的本地文件，不受 localStorage 配额限制）。
+ *   · 路径留空 = 不开启（变量层 + 内存库照旧）；填写 = 本机缓冲写进宿主的本地文件。
  *   · 路径输入框走通用 `data-ftt-cfg="storage.localFilePath"`（改动即落盘 + 自动对齐两层）。
+ * v3.26.0（用户要求）：
+ *   ① 「除了保留当前的 input，还需增加选择目录，可手动选择目录」→ 追加**目录选择器**
+ *      （候选目录 / 新建目录并写探针校验 / 系统文件夹选择 / 校验当前目录），原 input **原样保留**；
+ *   ② 「如果设置了本地缓冲目录，则存储不再使用内存或变量存储，只保留本地目录和服务端存储」
+ *      → 状态行如实写出「变量层与内存库已停用」，并把本机层对齐语义改为**三层对齐**（迁移时清两层）。
  */
 function localFileModeHtml() {
     let info = null;
     try { info = localLayerInfo(); } catch (e) { info = null; }
     const on = !!(info && info.enabled);
-    const mode = on ? ('本地文件（' + esc(String(info.path || '')) + '）') : '变量（localStorage）';
+    const mode = on ? ('本地目录（' + esc(String(info.path || '')) + '）') : '变量（localStorage）+ 内存库';
     const stat = '<div class="ftt-muted ftt-my-1" data-ftt-local-file-status><b>本机缓冲模式：' + mode + '</b>'
         + (on
-            ? (' · 后端 ' + esc(String(info.backend || '—')) + ' · 最近写入 ' + Number(info.fileBytes || 0).toLocaleString() + ' 字符'
+            ? (' · <b>变量层与内存库已停用</b>（只留目录 + 服务端） · 后端 ' + esc(String(info.backend || '—'))
+                + ' · 最近写入 ' + Number(info.fileBytes || 0).toLocaleString() + ' 字符'
                 + (Number(info.failures) ? (' · 失败 ' + Number(info.failures)) : ''))
             : (' · 变量层 ' + Number((info && info.localChars) || 0).toLocaleString() + ' 字符'))
         + '</div>';
-    const one = '<div class="ftt-muted">填目录 = 改用本地文件；留空 = 不开启（仍用变量层）。</div>';
+    const one = '<div class="ftt-muted">填目录 = 只写目录 + 服务端；留空 = 变量层 + 内存库。</div>';
     const desc = (() => { try { return settingsControlHtml({ key: 'storage.localFilePath', label: '本地文件目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
-    const detail = hintDetailsHtml('本地文件模式说明', '<div class="ftt-hint">开启后：本机缓冲改写宿主的<b>本地文件</b>，不再写 localStorage 变量 → '
-        + '不受浏览器本地化配额限制（旧模式信封超过 1.8M 字符会<b>静默停更</b>）。<br>'
+    const detail = hintDetailsHtml('本地文件/目录模式说明', '<div class="ftt-hint">开启后：本机缓冲改写宿主的<b>本地目录</b>，'
+        + '<b>不再写浏览器变量、也不再写内存库</b>（按要求：只保留本地目录与服务端存储）→ 不受浏览器本地化配额限制'
+        + '（旧模式信封超过 1.8M 字符会<b>静默停更</b>）。<br>'
         + '目录只能在<b>宿主数据目录之内</b>（盘符 / 前导斜杠 / <code>..</code> 会被剥离，非法字符转 <code>_</code>）：'
-        + 'TauriTavern → 真实目录 <code>_tauritavern/extension-store/&lt;目录&gt;/</code>；网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<br>'
-        + '开启/关闭时自动对齐两层：变量层内容迁进文件（写 → 回读校验 → 才清变量键）；关闭则把文件内容迁回变量层。'
-        + '迁移<b>先写后清</b>，任何一步失败都不会清掉数据。</div>');
+        + 'TauriTavern → 真实目录 <code>_tauritavern/extension-store/&lt;命名空间&gt;/kv/local/</code>；网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<br>'
+        + '开启/关闭时自动对齐：开启 → 变量层与内存库里<b>较新的那份</b>迁进目录（写 → 回读校验 → 才清两层）；'
+        + '关闭 → 目录内容迁回变量层与内存库。迁移<b>先写后清</b>，任何一步失败都不清数据。<br>'
+        + '<b>停用范围</b>：记忆数据的变量层与内存库；调试日志 / 同步标记等辅助键体积有硬上限（如调试日志 0.6M 字符），仍留浏览器本地。</div>');
     const extra = on
-        ? '<div class="ftt-muted">本地文件：读 ' + Number(info.reads || 0) + ' · 写 ' + Number(info.writes || 0) + '</div>'
+        ? '<div class="ftt-muted">目录：读 ' + Number(info.reads || 0) + ' · 写 ' + Number(info.writes || 0)
+            + ' · 校验 ' + Number(info.probes || 0) + ' 次</div>'
         : '';
     const ops = '<div class="ftt-row">'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前路径约定对齐两层：开启时把变量层迁进本地文件并清空变量键（写→回读校验→才清）；关闭时把文件内容迁回变量层">🔁 立即对齐本机层</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前路径约定对齐：开启时把变量层与内存库里较新的那份迁进目录并清空两层（写→回读校验→才清）；关闭时把目录内容迁回两层">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
-    return stat + one + desc + detail + extra + ops;
+    return stat + one + desc + localFileDirPickerHtml(info) + detail + extra + ops;
+}
+
+/** v3.26.0：目录扫描结果缓存（动作里异步取，取完重绘即可见） */
+let dirScanCache = null;
+
+/** v3.26.0：目录选择器（折叠块；候选目录 / 新建 / 系统选择 / 校验） */
+function localFileDirPickerHtml(info) {
+    const cand = (() => { try { return localFileDirCandidates(); } catch (e) { return { items: [], host: { supported: false } }; } })();
+    const items = (cand.items || []).concat(dirScanCache && dirScanCache.dirs ? dirScanCache.dirs.map((d) => ({ path: d, label: d, source: 'host', note: '宿主已有目录' })) : [])
+        .filter((it, i, arr) => arr.findIndex((x) => x.path === it.path) === i);
+    const rows = items.map((it) => '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirUse" data-ftt-dir="'
+        + esc(it.path) + '" title="' + esc(it.note || '') + '">' + (it.current ? '✓ ' : '') + esc(it.label)
+        + (it.source === 'host' ? '（宿主）' : '') + '</button>').join('');
+    const realTxt = (() => { try { return localFileRealLocation(String((info && info.path) || '')).text; } catch (e) { return ''; } })();
+    const scanRow = cand.host && cand.host.supported
+        ? '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirScan" title="列举宿主扩展存储里已有的目录">🔍 扫描宿主已有目录</button>'
+        : '<span class="ftt-muted">宿主未提供目录枚举（可手动输入）</span>';
+    return '<details class="ftt-details" data-ftt-local-dir-picker><summary>📁 选择目录…（' + items.length + ' 个候选）</summary>'
+        + (rows ? ('<div class="ftt-row">' + rows + '</div>') : '')
+        + '<div class="ftt-row"><input type="text" data-ftt-local-dir-new placeholder="新建目录名（数据目录内的相对路径）">'
+        + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localFileDirCreate" title="按输入框内容新建目录：写探针 → 回读校验 → 采用">➕ 新建并使用</button></div>'
+        + '<div class="ftt-row">' + scanRow
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirSystem" title="调用系统文件夹选择框；受宿主限制只取文件夹名，实际仍写到数据目录内">📂 从系统选择文件夹…</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileDirProbe" title="对当前目录写探针并回读校验（证明真的可写）">✅ 校验当前目录</button></div>'
+        + '<div class="ftt-hint">真实落盘：' + esc(realTxt) + '</div>'
+        + (dirScanCache ? ('<div class="ftt-hint">' + esc(dirScanCache.note || '') + '</div>') : '')
+        + '</details>';
+}
+
+/** 目录输入框（新建）的当前值：优先 payload（测试/程序化调用），否则读面板 DOM */
+function domDirInput() {
+    try {
+        const doc = globalThis.document;
+        const el = doc && typeof doc.querySelector === 'function' ? doc.querySelector('[data-ftt-local-dir-new]') : null;
+        return el ? String(el.value == null ? '' : el.value) : '';
+    } catch (e) { return ''; }
+}
+
+/**
+ * v3.26.0：**采用一个目录**（选择器 / 新建 / 系统选择共用同一条路）：
+ *   归一 → **写探针 + 回读校验**（证明可写）→ 落配置 → 记忆进候选清单 → 三层对齐（迁移 + 清两层）。
+ * 校验不过**不改配置**（绝不让用户切到一个写不进去的目录）。
+ */
+async function adoptLocalDir(raw, action) {
+    const norm = (() => { try { return localFilePathSanitize(raw); } catch (e) { return ''; } })();
+    if (!norm) return { ok: false, action: action, note: '请先填写或选择一个目录名（数据目录内的相对路径）' };
+    const probe = await localFileProbeDir(norm);
+    if (!probe.ok) {
+        const note = '目录不可写：' + norm + '（' + String(probe.error || 'unknown') + '）';
+        try { syncToast('warning', '目录校验未通过', note); } catch (e) { /* 忽略 */ }
+        return { ok: false, action: action, note: note, detail: probe };
+    }
+    const prev = String((cfg && cfg.storage && cfg.storage.localFilePath) || '');
+    try {
+        cfg.storage = Object.assign({}, cfg.storage || {});
+        cfg.storage.localFilePath = norm;
+        saveKernelCfg();
+    } catch (e) { /* 落盘失败不影响内存态 */ }
+    try { localFileDirRemember(norm); } catch (e) { /* 忽略 */ }
+    const sw = await switchLocalLayer({ previousPath: prev });
+    const note = '已采用目录 ' + norm + '（探针校验通过）· ' + String(sw.reason || '');
+    try { syncToast(sw.ok === false ? 'warning' : 'success', '本机缓冲目录', note); } catch (e) { /* 忽略 */ }
+    return { ok: sw.ok !== false, action: action, note: note, detail: { probe: probe, switch: sw } };
 }
 
 /**
@@ -327,6 +407,43 @@ export async function syncAction(action, payload) {
     const a = String(action || '');
     const p = payload || {};
     try {
+        // v3.26.0（用户要求「增加选择目录，可手动选择目录」）：
+        //   `localFileDirUse`    = 候选目录一键采用（payload.dir）
+        //   `localFileDirCreate` = 新建目录并采用（payload.dir，缺省读面板输入框）
+        //   `localFileDirSystem` = 调系统文件夹选择框 → 取文件夹名 → 与新建同一条路（如实告知宿主限制）
+        //   `localFileDirScan`   = 扫描宿主已有目录（宿主不支持时如实说明，不假装）
+        //   `localFileDirProbe`  = 对当前目录写探针并回读校验
+        if (a === 'localFileDirUse') return await adoptLocalDir(String(p.dir || ''), a);
+        if (a === 'localFileDirCreate') return await adoptLocalDir(String(p.dir || '') || domDirInput(), a);
+        if (a === 'localFileDirScan') {
+            const r = await localFileDirScanHost();
+            dirScanCache = { at: Date.now(), dirs: r.dirs || [], note: r.ok ? ('扫描到 ' + (r.dirs || []).length + ' 个宿主目录') : ('扫描未成功：' + String(r.note || r.reason || '')) };
+            return { ok: !!r.ok, action: a, note: dirScanCache.note, detail: r };
+        }
+        if (a === 'localFileDirSystem') {
+            const pk = await pickDirectoryName({});
+            if (!pk || !pk.ok) {
+                const why = String((pk && pk.reason) || 'cancelled');
+                const note = why === 'empty-folder'
+                    ? '所选文件夹是空的：系统选择框只在含文件时返回路径 → 请在上方手动输入目录名'
+                    : ('未取到文件夹（' + why + '）→ 可手动输入目录名');
+                try { syncToast('warning', '选择文件夹未完成', note); } catch (e) { /* 忽略 */ }
+                return { ok: false, action: a, note: note };
+            }
+            const note0 = '已取到文件夹名「' + String(pk.name) + '」——宿主限制：扩展只能写到游戏数据目录内，故按该名字新建子目录。';
+            const r = await adoptLocalDir(String(pk.name), a);
+            return Object.assign({}, r, { note: note0 + String(r.note || '') });
+        }
+        if (a === 'localFileDirProbe') {
+            const path = String((cfg && cfg.storage && cfg.storage.localFilePath) || '');
+            if (!path) return { ok: false, action: a, note: '尚未设置目录（先选择或输入一个目录名）' };
+            const pr = await localFileProbeDir(path);
+            const note = pr.ok
+                ? ('目录可写：' + path + '（写探针 → 回读校验通过 → 已删除探针）· ' + localFileRealLocation(path).text)
+                : ('目录校验未通过：' + path + '（' + String(pr.error || 'unknown') + '）');
+            try { syncToast(pr.ok ? 'success' : 'warning', '目录校验', note); } catch (e) { /* 忽略 */ }
+            return { ok: !!pr.ok, action: a, note: note, detail: pr };
+        }
         // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐两层（变量 ↔ 本地文件；先写后清）
         if (a === 'localFileAlign') {
             const r = await switchLocalLayer();
@@ -461,7 +578,9 @@ export async function syncAction(action, payload) {
 /** 存储/同步动作名判定（供面板分发；保持 V1 动作名逐字一致） */
 export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh', 'syncPickLocal', 'syncPickRemote', 'syncPickMerge',
     // v3.16.0：本地文件模式（对齐两层 / 刷新状态）
-    'localFileAlign', 'localFileStatusRefresh']);
+    // v3.26.0：目录选择器（采用候选目录 / 新建并采用 / 系统选择 / 扫描宿主 / 校验目录）
+    'localFileAlign', 'localFileStatusRefresh',
+    'localFileDirUse', 'localFileDirCreate', 'localFileDirSystem', 'localFileDirScan', 'localFileDirProbe']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }

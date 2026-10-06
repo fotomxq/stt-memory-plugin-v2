@@ -571,6 +571,39 @@ export async function ttListKeys(table, opts) {
     } catch (e) { markErr(e, 'list-keys'); return []; }
 }
 
+/**
+ * v3.26.0（用户要求「增加选择目录，可手动选择目录」）——**目录枚举能力**与**目录列举**。
+ * 事实：官方 Public Contract 里没有「列命名空间」这一项；本函数**只在宿主真的提供**时才算有能力
+ *   （`listNamespaces` / `listDirs` 之一），否则如实回报 `supported:false`，
+ *   由 UI 决定「不渲染这个按钮」——绝不假装能枚举、也绝不发无谓请求。
+ */
+export function ttDirListCapability() {
+    try {
+        const st = ttStoreApi();
+        const api = st && (typeof st.listNamespaces === 'function' ? 'listNamespaces'
+            : (typeof st.listDirs === 'function' ? 'listDirs' : ''));
+        return { supported: !!api, api: api ? String(api) : '' };
+    } catch (e) { return { supported: false, api: '' }; }
+}
+
+/**
+ * 列举宿主扩展存储里的命名空间（= 数据目录内的目录名）。
+ * @returns {Promise<{ok:boolean, dirs:string[], api?:string, reason?:string}>}
+ */
+export async function ttListNamespaces(opts) {
+    const o = opts || {};
+    const cap = ttDirListCapability();
+    if (!cap.supported) return { ok: false, dirs: [], reason: 'no-api' };
+    const st = ttStoreApi();
+    try {
+        await ttEnsureReady(o.timeoutMs);
+        const r = await st[cap.api]({});
+        const list = Array.isArray(r) ? r : ((r && Array.isArray(r.namespaces)) ? r.namespaces : ((r && Array.isArray(r.dirs)) ? r.dirs : []));
+        markOk();
+        return { ok: true, dirs: list.map((x) => String(x)).filter(Boolean), api: cap.api };
+    } catch (e) { markErr(e, 'list-namespaces'); return { ok: false, dirs: [], reason: String((e && e.message) || e) }; }
+}
+
 /** Blob table 下的 key 列表（官方 `listBlobKeys`，绕开缓存） */
 export async function ttListBlobKeys(table, opts) {
     const o = opts || {};
