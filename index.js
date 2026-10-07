@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -545,7 +545,11 @@ export async function loadFromLocalDisk() {
     const name = 'ftt2-local-' + String(scope || 'default').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
     try {
         const r = await localDiskRead(name);
-        if (!r || !r.ok || !r.text) return null;
+        if (!r || !r.ok || !r.text) {
+            // v3.31.0（用户要求「拆碎了保存」）：单文件缺失时读**结构化分片**目录（逐维文件 + manifest）
+            try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return sh.data; } catch (e) { /* 忽略 */ }
+            return null;
+        }
         const env = JSON.parse(String(r.text));
         if (!env || !env.payload) return null;
         const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
