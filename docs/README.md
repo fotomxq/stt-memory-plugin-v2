@@ -1,6 +1,9 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.20 ｜ 日期：2026-10-06 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.21 ｜ 日期：2026-10-07 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.21 变更（随 v3.26.6）：§3 数字口径同步（单测 **160** 文件 / 2481→**2486** 断言；冒烟仍 **220** 项；历史批次档 172→**173** 份）；
+>   目录树与区间随之改为 `P10c52`；**存档超大面积回滚**根因修复（宿主原生存储「KV 通道旧孪生副本」不再冒充服务端主文件：
+>   双通道读时取较新的一份并删除旧副本，写入侧不再产生孪生副本），见 `docs/02` §3.3 与 `docs/history/P10c52`。
 > v2.20 变更（随 v3.26.5）：§3 数字口径同步（单测 **160** 文件 / 2475→**2481** 断言；冒烟 219→**220** 项；历史批次档 171→**172** 份）；
 >   目录树与区间随之改为 `P10c51`；本地目录模式补**读写可核对**（真实后端 / 两通道真实落盘与键名 / 目录副本行 / 按模式探针）、
 >   **对齐取最新不覆盖 + 换目录迁移**，并把**聊天元数据**一并停用（目录模式只留「目录 + 服务端」），见 `docs/02` §3.3、`docs/04` 与 `docs/history/P10c51`。
@@ -61,12 +64,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，172 份）
+└── history/                  # 历史批次层（只读留痕，173 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c51           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c52           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -107,9 +110,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.26.5） |
+| 口径 | 权威来源 | 当前值（v3.26.6） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.26.5` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.26.6` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -117,14 +120,14 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 160 文件 / 2481 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 160 文件 / 2486 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 220 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 47 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`） |
-| 历史批次档数 | `docs/history/*.md` | 172 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 173 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
