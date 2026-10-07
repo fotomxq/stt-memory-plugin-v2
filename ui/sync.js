@@ -44,7 +44,7 @@ import { auxStoreInfo } from '../adapters/aux-store.js';
 //   真实落点在宿主数据目录内；拿得到数据根目录时还给出「目录联接」的可复制命令。
 import { localFilePathAudit } from '../adapters/local-file.js';
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）
-import { localDiskInfo, localDiskProbeDir, localDiskReprobe, localDiskJoin } from '../adapters/local-disk.js';
+import { localDiskInfo, localDiskProbeDir, localDiskReprobe, localDiskJoin, localDiskPickDir } from '../adapters/local-disk.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -345,6 +345,8 @@ function localFileModeHtml() {
                 + '<br>记忆副本 ' + esc(String(f1)) + ' · 辅助数据 ' + esc(String(f2)) + '</div>';
         })();
         const ops = '<div class="ftt-row">'
+            // v3.30.0（用户要求「浏览器是可以选择文件夹的，选择后展示即可」）：浏览器原生文件夹选择器
+            + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskPick" title="用浏览器原生的文件夹选择器选一个本地文件夹（WebView2 / TauriTavern 都支持）；浏览器出于隐私只暴露文件夹名">📂 选择文件夹…</button>'
             + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskProbe" title="对这个真磁盘路径写一个探针文件 → 回读逐字节校验 → 删除：证明「这个目录真的能写」">✅ 校验本地磁盘目录</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="localDiskStatus">🔄 刷新磁盘状态</button>'
             + '<span class="ftt-muted">校验通过后才算可用；写盘失败会回退浏览器层并标记无效。</span></div>';
@@ -588,6 +590,13 @@ export async function syncAction(action, payload) {
             try { syncToast(pr.ok ? 'success' : 'warning', '本地磁盘目录', note); } catch (e) { /* 忽略 */ }
             return { ok: !!pr.ok, action: a, note: note, detail: pr };
         }
+        if (a === 'localDiskPick') {
+            const pk = await localDiskPickDir();
+            if (!pk.ok) { try { syncToast('warning', '选择文件夹未完成', String(pk.note || pk.reason || '')); } catch (e) { /* 忽略 */ } return { ok: false, action: a, note: String(pk.note || pk.reason || '未选择'), detail: pk }; }
+            try { cfg.storage = Object.assign({}, cfg.storage || {}); cfg.storage.localDiskDir = String(pk.name || ''); saveKernelCfg(); } catch (e) { /* 忽略 */ }
+            try { syncToast('success', '本地存储文件夹', String(pk.note || '')); } catch (e) { /* 忽略 */ }
+            return { ok: true, action: a, note: String(pk.note || ''), detail: pk };
+        }
         if (a === 'localDiskStatus') {
             localDiskReprobe();
             const d = localDiskInfo();
@@ -737,7 +746,8 @@ export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh'
     'localFileAlign', 'localFileStatusRefresh',
     'localFileDirUse', 'localFileDirCreate', 'localFileDirSystem', 'localFileDirScan', 'localFileDirProbe',
     // v3.28.0（用户纠正设计）：本地**磁盘**目录（真磁盘路径，替代浏览器本地存储）—— 校验 / 刷新状态
-    'localDiskProbe', 'localDiskStatus']);
+    // v3.30.0：+localDiskPick（浏览器原生文件夹选择器）
+    'localDiskProbe', 'localDiskStatus', 'localDiskPick']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }
