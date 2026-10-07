@@ -43,6 +43,8 @@ import { auxStoreInfo } from '../adapters/aux-store.js';
 // v3.27.1（用户报告「路径填 D:\… 但那里没有任何数据」）：**路径审计** —— 绝对路径会被归一成命名空间名、
 //   真实落点在宿主数据目录内；拿得到数据根目录时还给出「目录联接」的可复制命令。
 import { localFilePathAudit } from '../adapters/local-file.js';
+// v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）
+import { localDiskInfo, localDiskProbeDir, localDiskReprobe } from '../adapters/local-disk.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -309,6 +311,35 @@ function floorCalibrateSectionHtml() {
  *      → 状态行如实写出「变量层与内存库已停用」，并把本机层对齐语义改为**三层对齐**（迁移时清两层）。
  */
 function localFileModeHtml() {
+    // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）才是「替代浏览器本地存储」的本地目录；
+    //   下面的「服务端扩展存储目录」是**参与官方同步的服务端数据集** —— 两者语义不同，这里分开呈现。
+    const diskHtml = (() => {
+        let d = null;
+        try { d = localDiskInfo(); } catch (e) { d = null; }
+        if (!d) return '';
+        const cap = d.capability || {};
+        const s = d.stats || {};
+        const capTxt = cap.ok
+            ? ('<b>可写盘</b>（机制 ' + esc(String(cap.mechanism || '')) + (cap.ns ? ('：api.dev.' + esc(String(cap.ns))) : '') + '）')
+            : '<b class="ftt-err">宿主未提供写任意磁盘路径的接口</b>（' + esc(String(cap.note || '')) + '）';
+        // 可见行只留结论（提示行长度口径 L1 ≤90 字）；能力/路径/失败原因放折叠详情
+        const status = '<div class="ftt-muted" data-ftt-disk-status><b>本地磁盘目录</b>：'
+            + (d.enabled ? esc(String(d.dir || '')) : '未开启')
+            + ' · 写 ' + Number(s.writes || 0) + ' / 读 ' + Number(s.reads || 0) + ' / 校验 ' + Number(s.probes || 0)
+            + '</div>';
+        const hint = '<div class="ftt-hint">这是替代浏览器本地存储的<b>本地目录</b>（真磁盘路径，如 <code>D:\\FTT\\store</code>）；'
+            + '与下方「服务端扩展存储目录」不是一回事。</div>';
+        const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地磁盘目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
+        const ops = '<div class="ftt-row">'
+            + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskProbe" title="对这个真磁盘路径写一个探针文件 → 回读逐字节校验 → 删除：证明「这个目录真的能写」">✅ 校验本地磁盘目录</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="localDiskStatus">🔄 刷新磁盘状态</button>'
+            + '<span class="ftt-muted">校验通过后才算可用；写盘失败不回退浏览器层。</span></div>';
+        const capDetail = hintDetailsHtml('能力与失败明细',
+            '<div class="ftt-muted">能力：' + capTxt + '</div>'
+            + (Number(s.failures) ? ('<div class="ftt-muted"><span class="ftt-err">失败 ' + Number(s.failures) + ' 次：' + esc(String(s.lastError || '')) + '</span></div>') : '')
+            + '<div class="ftt-muted">写盘失败一律不回退浏览器层（浏览器变量 / 内存库保持停用），如实回报失败。</div>');
+        return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地磁盘目录（替代浏览器本地存储）</div>' + hint + status + ctl + capDetail + ops + '</div>';
+    })();
     let info = null;
     try { info = localLayerInfo(); } catch (e) { info = null; }
     const on = !!(info && info.enabled);
@@ -403,7 +434,7 @@ function localFileModeHtml() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前目录对齐本机层：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里最新的那份写进当前目录（写→回读校验→才清旧层）；目录副本已是最新时只做校验、不覆盖；关闭目录时把内容迁回变量层与内存库">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
-    return stat + one + desc + localFileDirPickerHtml(info) + detail + auditTxt + extra + auxTxt + ops;
+    return diskHtml + stat + one + desc + localFileDirPickerHtml(info) + detail + auditTxt + extra + auxTxt + ops;
 }
 
 /** v3.26.0：目录扫描结果缓存（动作里异步取，取完重绘即可见） */
@@ -527,6 +558,25 @@ export async function syncAction(action, payload) {
         // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐本机层（变量 / 内存库 / 聊天元数据 / 目录 ↔ 目录；先写后清）
         // v3.26.5：目录模式下若**目录副本已是最新** → 只做读回校验并明说「未覆盖」（旧实现会拿旧层内容覆盖目录）；
         //   换目录时把旧目录里更新的一份迁进新目录（`moved-dir`）。
+        // v3.28.0（用户纠正设计）：本地**磁盘**目录（真磁盘路径）—— 校验 / 刷新状态
+        if (a === 'localDiskProbe') {
+            const dir = String((cfg && cfg.storage && cfg.storage.localDiskDir) || '').trim();
+            if (!dir) return { ok: false, action: a, note: '尚未填写本地磁盘目录（先填一条真磁盘路径，如 D:\\FTT\\store）' };
+            const pr = await localDiskProbeDir(dir);
+            const note = pr.ok
+                ? ('本地磁盘目录可写：' + String(pr.path || dir) + '（写探针 → 回读逐字节校验通过 · 机制 ' + String(pr.mechanism || '') + '）')
+                : ('本地磁盘目录不可写：' + String(pr.error || 'unknown') + '（扩展需要宿主提供写盘接口；没有就只能用「服务端扩展存储目录」或做目录联接）');
+            try { syncToast(pr.ok ? 'success' : 'warning', '本地磁盘目录', note); } catch (e) { /* 忽略 */ }
+            return { ok: !!pr.ok, action: a, note: note, detail: pr };
+        }
+        if (a === 'localDiskStatus') {
+            localDiskReprobe();
+            const d = localDiskInfo();
+            const note = d.capability && d.capability.ok
+                ? ('本地磁盘目录：' + (d.enabled ? String(d.dir || '') : '未开启') + ' · 能力 ' + String(d.capability.mechanism || ''))
+                : ('本地磁盘目录：宿主未提供写任意磁盘路径的接口（' + String((d.capability && d.capability.note) || '') + '）');
+            return { ok: true, action: a, note: note, detail: d };
+        }
         if (a === 'localFileAlign') {
             const r = await switchLocalLayer();
             const act = String((r && r.action) || '');
@@ -666,7 +716,9 @@ export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh'
     // v3.16.0：本地文件模式（对齐两层 / 刷新状态）
     // v3.26.0：目录选择器（采用候选目录 / 新建并采用 / 系统选择 / 扫描宿主 / 校验目录）
     'localFileAlign', 'localFileStatusRefresh',
-    'localFileDirUse', 'localFileDirCreate', 'localFileDirSystem', 'localFileDirScan', 'localFileDirProbe']);
+    'localFileDirUse', 'localFileDirCreate', 'localFileDirSystem', 'localFileDirScan', 'localFileDirProbe',
+    // v3.28.0（用户纠正设计）：本地**磁盘**目录（真磁盘路径，替代浏览器本地存储）—— 校验 / 刷新状态
+    'localDiskProbe', 'localDiskStatus']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }
