@@ -52,6 +52,7 @@ let lastError = '';
 let lastOkAt = 0;
 let lastReason = '';
 const stats = { writes: 0, kvWrites: 0, blobWrites: 0, reads: 0, misses: 0, listCalls: 0, fallbacks: 0, twinPicks: 0, twinDrops: 0 };
+const twinSeen = Object.create(null);       // v3.26.7：`ns\0key` → 本会话在哪个通道见过同名副本（清理前先确认存在，绝不盲删）
 const missCache = Object.create(null);      // `${ns}\u0000${key}` → 判定时间
 const listCache = Object.create(null);      // `${ns}/${table}` → { at, keys: string[] }
 const writeChannel = Object.create(null);   // `${ns}\u0000${key}` → 'kv' | 'blob'
@@ -201,7 +202,8 @@ function markErr(e, reason) {
 export function ttIsNotFound(e) {
     try {
         const m = String((e && e.message) || e || '');
-        return /not\s*found|not_found|no\s*such|does\s*not\s*exist|enoent|未找到|不存在/i.test(m);
+        // v3.26.7：补上宿主真实的删除失败文案（「Failed to delete extension store entry: Not found: …: 系统找不到指定的文件。」）
+        return /not\s*found|not_found|no\s*such|does\s*not\s*exist|enoent|未找到|不存在|找不到/i.test(m);
     } catch (e2) { return false; }
 }
 function missMark(ns, key) { try { stats.misses++; missCache[ctxKey(ns, key)] = Date.now(); } catch (e) { /* 忽略 */ } }
@@ -541,12 +543,32 @@ export async function ttPutBytes(name, bytes, opts) {
      */
     const dropTwin = async (which) => {
         try {
-            if (which === 'kv') { await ttKvDel(name, o); }
-            else if (ttBlobApi()) { await ttBlobDel(name, o); }
+            /**
+             * v3.26.7（真机报错）：「后端错误 Failed to delete extension store entry: Not found:
+             *   …kv\\main\\ftt2-state-char1xbib3t.json.json: 系统找不到指定的文件。」
+             *   —— v3.26.6 的孪生清理是**无条件删除**，于是每次保存都对「本来就不存在」的那一侧发删除，
+             *   宿主把底层删除失败如实报成后端错误（虽然我们这边按幂等成功处理，用户仍会看到报错）。
+             *   现在：**先确认另一通道确实有同名副本**（本会话读到的记录 `twinSeen`，否则用**不抛错**的
+             *   `tryGetJson` / `listBlobKeys` 探一次），确认有才删；删成功后清掉记录。
+             */
+            const ck = ctxKey(ns, key);
+            if (which === 'kv') {
+                const has = (twinSeen[ck] === 'kv') ? true : !!(await ttKvTryGet(name, Object.assign({}, o, { force: true }))).found;
+                if (!has) return false;
+                await ttKvDel(name, o);
+                if (twinSeen[ck] === 'kv') delete twinSeen[ck];
+            } else {
+                if (!ttBlobApi()) return false;
+                const has = await ttBlobHas(name, Object.assign({}, o, { force: true }));
+                if (!has) return false;
+                await ttBlobDel(name, o);
+                if (twinSeen[ck] === 'blob') delete twinSeen[ck];
+            }
             stats.twinDrops++;
             // 删除会清掉通道提示 → 把本次写入的通道重新登记
-            writeChannel[ctxKey(ns, key)] = (which === 'kv') ? 'blob' : 'kv';
-        } catch (e) { /* 忽略 */ }
+            writeChannel[ck] = (which === 'kv') ? 'blob' : 'kv';
+            return true;
+        } catch (e) { return false; }
     };
     if (ch === 'blob') {
         const r = await ttBlobPut(name, u8, o);
@@ -616,13 +638,17 @@ export async function ttGetBytes(name, opts) {
             const hit = (rv && rb) ? pickNewerBytes(rv, rb) : (rv || rb);
             if (rv && rb) {
                 const loser = (hit === rv) ? rb : rv;
+                // v3.26.7：先登记「落选通道确实有副本」（供写入侧的孪生清理确认存在，绝不盲删），删成功后清掉
+                const ck = ctxKey(ns, key);
+                twinSeen[ck] = loser.channel;
                 stats.twinPicks++;
                 try {
                     if (loser.channel === 'kv') await ttKvDel(name, o);
                     else if (ttBlobApi()) await ttBlobDel(name, o);
+                    delete twinSeen[ck];
                     stats.twinDrops++;
                     // `ttKvDel` 会清掉通道提示 → 把本次选中的通道重新登记，保持会话内的快路径
-                    writeChannel[ctxKey(ns, key)] = hit.channel;
+                    writeChannel[ck] = hit.channel;
                 } catch (e) { /* 忽略：删不掉只是留个旧副本，不影响本次读取（下次读仍按较新的一份） */ }
                 try {
                     dbgLog('对账', {
@@ -651,11 +677,22 @@ export async function ttGetBytes(name, opts) {
     return { found: false };
 }
 
-/** 删除原生存储（两个通道都删，避免「删了又被另一通道唤醒」） */
+/** 删除原生存储（**先探存在再删**：避免对不存在的条目发删除 → 宿主报后端错误） */
 export async function ttDelete(name, opts) {
-    const kv = await ttKvDel(name, opts);
-    const blob = ttBlobApi() ? await ttBlobDel(name, opts) : { ok: false, reason: 'no-blob' };
-    return { ok: !!(kv.ok || blob.ok), kv: !!kv.ok, blob: !!blob.ok };
+    const o = opts || {};
+    /**
+     * v3.26.7（真机报错）：「后端错误 Failed to delete extension store entry: Not found:
+     *   …\\kv\\main\\ftt2-state-char1xbib3t.json.json: 系统找不到指定的文件。」
+     *   旧实现无条件删两个通道 → 对「本来就没有」的那一侧也发删除请求。现在先探（都用**不抛错**的
+     *   `tryGetJson` / `listBlobKeys`），两侧都没有就直接按「已删除」返回（幂等，零请求）。
+     */
+    const probeKv = (async () => { try { const r = await ttKvTryGet(name, Object.assign({}, o, { force: true })); return !!(r && r.found); } catch (e) { return false; } })();
+    const probeBlob = (async () => { try { return ttBlobApi() ? await ttBlobHas(name, Object.assign({}, o, { force: true })) : false; } catch (e) { return false; } })();
+    const [hasKv, hasBlob] = await Promise.all([probeKv, probeBlob]);
+    if (!hasKv && !hasBlob) return { ok: true, kv: false, blob: false, alreadyAbsent: true };
+    const kv = hasKv ? await ttKvDel(name, o) : { ok: false, miss: true };
+    const blob = hasBlob ? await ttBlobDel(name, o) : { ok: false, miss: true };
+    return { ok: !!(kv.ok || blob.ok), kv: !!kv.ok, blob: !!blob.ok, alreadyAbsent: false };
 }
 
 /** KV table 下的 key 列表（官方 `listKeys`；诊断/数据管理用） */

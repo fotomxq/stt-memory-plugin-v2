@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.26.6",
+  "version": "3.26.7",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.26.7",
+      "date": "2026-10-07",
+      "title": "删除不再「盲删」：修掉 v3.26.6 引入的宿主后端错误（Failed to delete … Not found）",
+      "points": [
+        "用户报告：（原话，附宿主报错）：「错误信息：后端错误 Failed to delete extension store entry: Not found: Extension s…",
+        "根因：v3.26.6 的「孪生副本清理」是无条件删除 —— 每次保存都对外层通道发一次删除请求，而那份副本在第一次清理后就不存在了（甚至从来不存在）→ 宿主对底层删除失败如实报成…",
+        "修复：| # | 改动 | 落点 || --- | --- | --- || ① | 孪生清理改为先确认存在再删：本会话读到的记录（新登记表 twinSeen）优先，否则用不抛错…"
+      ]
+    },
     {
       "version": "3.26.6",
       "date": "2026-10-07",
