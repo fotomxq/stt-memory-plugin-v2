@@ -43,6 +43,8 @@ import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBu
 import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
+// v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
+import { localDiskOn, localDiskInfo, localDiskRead } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -350,7 +352,25 @@ export async function loadMemoryState() {
     //   **目录模式开启时，变量层与内存库整体停用**（不读也不写）——
     //   读它们等于把用户明确要求停用的旧副本重新拉回来当并集来源（会出现「明明只留了目录，却冒出旧数据」）。
     const localDirMode = (() => { try { return localFileEnabled(); } catch (e) { return false; } })();
-    if (localDirMode) {
+    // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）优先级最高 —— 它替代的是**浏览器本地存储**，
+    //   与「宿主扩展存储命名空间」（服务端数据集）是两件事；启用它时同样只留「本地磁盘 + 服务端」。
+    const localDiskMode = (() => { try { return localDiskOn(); } catch (e) { return false; } })();
+    if (localDiskMode) {
+        // **本地磁盘模式**：本机层只有一个真相 = 本地磁盘上的那个文件（写 → 回读逐字节校验）
+        try { layers.local = await loadFromLocalDisk(); } catch (e) { /* 磁盘层异常 → 交由服务端文件兜底 */ }
+        layers.chatmeta = null;
+        try {
+            readLedgerRecord({ action: '本机层 = 本地磁盘目录', src: 'local', ok: true, miss: !layers.local, reason: 'local-disk-mode', note: '已设置本地磁盘目录 → 浏览器变量 / 内存库 / 聊天元数据都不读不写（替代浏览器本地存储）' });
+        } catch (e) { /* 忽略 */ }
+        try {
+            debugLogPush('对账', {
+                action: '载入：本机层 = 本地磁盘目录（浏览器变量 / 内存库 / 聊天元数据停用）',
+                dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()),
+                localOk: !!(layers.local), localItems: (() => { try { return layers.local ? dimCountsOf(layers.local).total : 0; } catch (e) { return 0; } })(),
+                capability: (() => { try { const c = localDiskInfo().capability; return c.ok ? c.mechanism : ('none:' + c.note); } catch (e) { return ''; } })(),
+            });
+        } catch (e) { /* 忽略 */ }
+    } else if (localDirMode) {
         // **目录模式**：本机层只有一个真相 = 本地目录文件
         try { layers.local = await loadFromLocalFile(); } catch (e) { /* 目录层异常 → 交由服务端文件兜底 */ }
         // v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅采用本地文件」）：
@@ -389,7 +409,7 @@ export async function loadMemoryState() {
     }
     try { layers.file = await loadFromServerFile(); } catch (e) { layers.file = null; }
     // v3.26.5：目录模式下**不读聊天元数据**（只留「目录 + 服务端」两层；见上面 localDirMode 分支的说明）
-    if (!localDirMode) {
+    if (!localDirMode && !localDiskMode) {
         const cm = (() => { try { return chatMetaLoadState(); } catch (e) { return null; } })();
         layers.chatmeta = (cm && cm.state) || null;
     }
@@ -496,6 +516,25 @@ function dimCountsOf(st) {
  * @returns {{st:object|null, via:string, base:string, baseAt:number, unioned:string[], skipped:Array<{src:string,reason:string}>,
  *            contributed:object, report:object, baseLabel:string}}
  */
+/**
+ * v3.28.0（用户纠正设计）：读「本地磁盘目录」里的本机副本（替代浏览器变量层）。
+ *   校验口径与本机缓冲一致：信封完整 + 载荷哈希一致，否则丢弃（交由服务端文件兜底）。**只读**。
+ * @returns {Promise<object|null>} state 或 null
+ */
+export async function loadFromLocalDisk() {
+    const scope = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
+    const name = 'ftt2-local-' + String(scope || 'default').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
+    try {
+        const r = await localDiskRead(name);
+        if (!r || !r.ok || !r.text) return null;
+        const env = JSON.parse(String(r.text));
+        if (!env || !env.payload) return null;
+        const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
+        if (env.hash && h && env.hash !== h) return null;
+        return env.payload.data || null;
+    } catch (e) { return null; }
+}
+
 export function alignLoadedLayers(layers) {
     const L = layers || {};
     const atOf = (s) => Number((s && s.updatedAt) || 0);

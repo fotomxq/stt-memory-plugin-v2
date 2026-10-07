@@ -36,7 +36,7 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储」）：本机缓冲的本地文件目录（空 = 不开启）
     // v3.26.0（用户要求「增加选择目录，可手动选择目录」）：用过的目录清单（目录选择器的候选来源之一；
     //   放配置而不是 localStorage —— 目录模式下变量层整体停用，候选清单不能反过来依赖它）
-    'localFilePath', 'localFileDirs'];
+    'localFilePath', 'localFileDirs', 'localDiskDir'];   // v3.28.0：本地磁盘目录（真磁盘路径，替代浏览器本地存储）
     // v2.51.0 时钟改版（用户要求）：V1 的这 10 个时钟设定**有意删除**（只取最新情节后全部失效，插件内不留废弃项）——
     //   删除项必须在 V2 中**不存在**且不落入「V2 专有键」白名单。
     const REMOVED_V1_KEYS = ['clockForceDegrade', 'clockAnomalyJumpYears', 'clockAutoPatrol', 'clockPatrolAutoFix',

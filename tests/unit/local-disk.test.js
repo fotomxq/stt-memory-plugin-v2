@@ -1,0 +1,120 @@
+// ============================================================
+// 单元测试 · v3.28.0「**本地磁盘目录**」= 替代浏览器本地存储的真磁盘路径
+//
+// 用户纠正（原话）：「理解错误了，本地存储指替代浏览器变量、内存等本地数据存储方式，而不是指服务端的存储路径。
+//   请修复该错误设计。」
+//
+// 口径（`adapters/local-disk.js`）：
+//   · **路径保留原样**（不像「服务端扩展存储命名空间」那样剥盘符 / 折叠多级）；只去尾部分隔符；
+//   · 能力探测：① `api.dev` 的文件类命名空间（按关键字发现 write/read 方法）；② Tauri 原始桥 fs 插件；
+//     ③ 都没有 → 如实回报「宿主不提供写任意磁盘路径的接口」，**绝不假装成功**；
+//   · 每次真实写入都要**写 → 回读逐字节校验**；校验不过不算成功；
+//   · 写盘失败**不回退**浏览器层（浏览器变量 / 内存库保持停用）。
+//
+// 运行：node tests/unit/local-disk.test.js
+// ============================================================
+import { makeReporter } from '../harness/st-mock.js';
+import { cfg } from '../../core/model/runtime.js';
+import { defaultCfg } from '../../core/config.js';
+import {
+    localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
+    localDiskCapability, localDiskWrite, localDiskRead, localDiskProbeDir, localDiskInfo, localDiskReset,
+} from '../../adapters/local-disk.js';
+
+const R = makeReporter('local-disk v3.28.0 本地磁盘目录（替代浏览器本地存储）');
+const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, x); };
+const J = (v) => JSON.stringify(v);
+
+/** 宿主桩：一个假的 `api.dev.files`（内存盘 + 记录调用） */
+function makeDevHost() {
+    const disk = new Map();
+    const calls = [];
+    const files = {
+        async writeTextFile(a) { calls.push({ m: 'write', a: a }); disk.set(String(a.path), String(a.text != null ? a.text : a.content)); return { ok: true }; },
+        async readTextFile(a) { const k = String(a.path); if (!disk.has(k)) throw new Error('ENOENT: ' + k); return { text: disk.get(k) }; },
+    };
+    const abi = { abiVersion: 1, ready: Promise.resolve(true), api: { dev: { files: files, backendLogs: { tail: async () => ({}) } }, extension: { store: {} } } };
+    return { abi, disk, calls, files };
+}
+function useHost(h) {
+    const out = h || null;
+    try { delete globalThis.window.__TAURITAVERN__; } catch (e) { /* 忽略 */ }
+    try { delete globalThis.window.__TAURI_INTERNALS__; } catch (e) { /* 忽略 */ }
+    if (h) { try { globalThis.window.__TAURITAVERN__ = h.abi; } catch (e) { /* 忽略 */ } }
+    localDiskReset();
+    return out;
+}
+function boot(storage) {
+    Object.assign(cfg, JSON.parse(JSON.stringify(defaultCfg)));
+    cfg.storage = Object.assign({}, cfg.storage, storage || {});
+    try { if (!globalThis.window) globalThis.window = {}; } catch (e) { /* 忽略 */ }
+}
+
+// ------------------------------------------------------------
+await A('A1 路径形态与归一：**保留真磁盘路径原样**（只去尾部分隔符）—— 与服务端命名空间的归一规则完全相反', async () => {
+    boot({ localDiskDir: 'D:\\Downloads\\stn\\fft_v2_store\\' });
+    const raw = localDiskRaw();
+    return localDiskOn() === true
+        && raw === 'D:\\Downloads\\stn\\fft_v2_store'
+        && localDiskPathKind('D:\\FTT\\store') === 'windows-abs'
+        && localDiskPathKind('\\\\srv\\share\\x') === 'unc'
+        && localDiskPathKind('/mnt/store') === 'posix-abs'
+        && localDiskPathKind('相对/目录') === 'relative'
+        && localDiskPathKind('') === 'empty'
+        && localDiskPathNorm('D:\\FTT\\store\\') === 'D:\\FTT\\store'
+        && localDiskJoin('D:\\FTT\\store', '子\\a.json') === 'D:\\FTT\\store\\子\\a.json'
+        && localDiskJoin('/mnt/store', 'a.json') === '/mnt/store/a.json';
+}, () => ({ raw: localDiskRaw(), info: localDiskInfo() }));
+
+await A('A2 能力探测：`api.dev` 下按关键字发现「文件类命名空间 + write/read 方法」→ 判定可写盘；没有 → 如实回报不可用（不假装）', async () => {
+    useHost(makeDevHost());
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    const cap = localDiskCapability(true);
+    const okCap = cap.ok === true && cap.mechanism === 'dev-api' && cap.ns === 'files'
+        && cap.writeMethod === 'writeTextFile' && cap.readMethod === 'readTextFile';
+    useHost(null);
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    const cap2 = localDiskCapability(true);
+    return okCap && cap2.ok === false && String(cap2.note).indexOf('未提供') > 0;
+}, () => ({ cap: localDiskCapability(true) }));
+
+await A('A3 写入即校验：写盘 → **回读逐字节比对** → 通过才算成功；读回不一致/读不到 → 如实失败且不记账为成功', async () => {
+    const h = useHost(makeDevHost());
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    const w = await localDiskWrite('a.json', '{"x":1}');
+    const r = await localDiskRead('a.json');
+    // 篡改 disk：写入成功但读回被改 → 校验必须失败
+    h.files.readTextFile = async (a) => ({ text: 'TAMPERED' });
+    const w2 = await localDiskWrite('b.json', '{"y":2}');
+    const info = localDiskInfo();
+    return w.ok === true && String(w.path) === 'D:\\FTT\\store\\a.json' && Number(w.bytes) === 7
+        && r.ok === true && r.text === '{"x":1}'
+        && w2.ok === false && String(w2.reason || w2.error).indexOf('verify') >= 0
+        && Number(info.stats.writes) === 1 && Number(info.stats.failures) >= 1;
+}, () => ({ info: localDiskInfo() }));
+
+await A('A4 目录探针：写 → 回读 → 通过即 `ok`，并回报真实文件路径与机制；空路径 / 不可写如实失败', async () => {
+    useHost(makeDevHost());
+    boot({ localDiskDir: '' });
+    const empty = await localDiskProbeDir('   ');
+    const ok = await localDiskProbeDir('D:\\FTT\\store');
+    useHost(null);
+    boot({ localDiskDir: '' });
+    const noCap = await localDiskProbeDir('D:\\FTT\\store');
+    return empty.ok === false && empty.error === 'empty'
+        && ok.ok === true && ok.mechanism === 'dev-api' && String(ok.path).indexOf('ftt2-local-probe.json') > 0
+        && noCap.ok === false && String(noCap.error).length > 0;
+}, () => ({ info: localDiskInfo() }));
+
+await A('A5 只读状态：目录 / 能力 / 机制 / 统计齐全（UI 与诊断同源）', async () => {
+    useHost(makeDevHost());
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    await localDiskWrite('c.json', 'x');
+    const info = localDiskInfo();
+    return info.enabled === true && info.dir === 'D:\\FTT\\store' && info.kind === 'windows-abs'
+        && info.capability.ok === true && info.capability.mechanism === 'dev-api'
+        && J(info.capability.devKeys).indexOf('files') > 0
+        && Number(info.stats.writes) === 1 && Number(info.stats.lastBytes) === 1;
+}, () => ({ info: localDiskInfo() }));
+
+R.done();

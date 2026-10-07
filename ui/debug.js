@@ -46,7 +46,8 @@ import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 // v3.26.0：「选择目录」的只读体检（模式 / 候选 / 真实落盘位置 / 宿主枚举能力）
 import { localLayerInfo, localLayerReadProbe } from '../adapters/store.js';
 import { localFilePathAudit } from '../adapters/local-file.js';   // v3.27.1：路径审计（绝对路径 → 命名空间名 + 真实落点）
-import { auxStoreInfo } from '../adapters/aux-store.js';         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
+import { auxStoreInfo } from '../adapters/aux-store.js';
+import { localDiskInfo } from '../adapters/local-disk.js';   // v3.28.0：本地磁盘目录（真磁盘路径）状态+能力         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
 import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
@@ -524,6 +525,7 @@ export function buildBridgeMethods() {
             real: real ? real.text : '',
             // v3.27.1：**路径审计**（用户填绝对路径时的实际去向 + 联接方案）+ 辅助数据落点
             audit: (() => { try { const a = localFilePathAudit(String((info && info.path) || '')); return { raw: a.raw, effective: a.effective, remapped: a.remapped, reasons: a.reasons, ns: a.ns, real: a.real, root: a.root, junctionCommand: a.junction ? a.junction.command : '' }; } catch (e) { return null; } })(),
+            disk: (() => { try { return localDiskInfo(); } catch (e) { return null; } })(),   // v3.28.0：本地磁盘目录
             aux: (() => { try { const a = auxStoreInfo(); return { mode: a.mode, path: a.path, pending: a.pending, lastError: a.lastError, items: (a.items || []).map((x) => ({ key: x.key, file: x.file, where: x.where, bytes: x.bytes })) }; } catch (e) { return null; } })(),
             hostEnumeration: cand && cand.host ? cand.host : { supported: false, api: '' },
             candidates: cand && Array.isArray(cand.items) ? cand.items.map((x) => ({ path: x.path, source: x.source, current: x.current })) : [],

@@ -30,6 +30,8 @@ import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFi
 // v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅用本地文件」）：对齐 / 换目录时
 //   把**聊天元数据**（只读旧载体）也算进候选源 —— 它虽然不由 V2 写入，但「哪份最新就用哪份」才对得起用户。
 import { chatMetaLoadState } from './chat-meta.js';
+// v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）—— 与上面的「宿主扩展存储命名空间」语义不同
+import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo } from './local-disk.js';
 // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
 import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './gzip.js';
 import { hydrateStorageData } from '../core/slim.js';
@@ -552,6 +554,10 @@ async function saveStateNowInner(o) {
     //   v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时本层改走本地文件**（无 localStorage 配额限制）。
     let localViaFile = false;
     try { localViaFile = localFileEnabled(); } catch (e) { localViaFile = false; }
+    // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）优先于上面那条「宿主扩展存储命名空间」——
+    //   前者才是「替代浏览器本地存储」的本地目录；后者属**服务端**数据集（参与官方同步）。
+    let localViaDisk = false;
+    try { localViaDisk = (typeof localDiskOn === 'function') ? localDiskOn() : false; } catch (e) { localViaDisk = false; }
     try {
         const key = 'ftt2_state_' + scopeId();
         const budget = localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS;
@@ -560,8 +566,24 @@ async function saveStateNowInner(o) {
         if (localLastSig !== '' && localLastSig === sig && !localStaleMarked) {
             localStats.unchanged += 1;
             localStats.lastSkipReason = 'unchanged';
-            localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaFile ? 'local-file' : 'localStorage' };
+            localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaDisk ? 'local-disk' : (localViaFile ? 'local-file' : 'localStorage') };
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）', extra: { layer: localViaFile ? 'local-file' : 'localStorage' } }); } catch (e) { /* 忽略 */ }
+        } else if (localViaDisk) {
+            // v3.28.0（用户纠正设计）：**本地磁盘目录** = 用真文件替代浏览器本地存储（localStorage 变量）。
+            //   写 → 回读逐字节校验（`localDiskWrite` 内部完成），失败**不回退**浏览器层（与既有纪律一致）。
+            const dr = await localDiskWrite('ftt2-local-' + String(scopeId()).replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', text);
+            if (dr && dr.ok) {
+                via.push('local-disk');
+                markLocalWritten(sig, text.length);
+                localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-disk', path: String(dr.path || '') };
+                try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
+            } else {
+                localStats.failed += 1;
+                localStats.lastSkipReason = 'disk-write-failed';
+                localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '本地磁盘目录写入失败（不回退浏览器本地存储）', layer: 'local-disk', path: String((dr && dr.path) || '') };
+                try { kernelWarn('保存：本地磁盘目录写入失败（不写浏览器变量；服务端文件不受影响）', { dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()), error: String((dr && dr.error) || '') }); } catch (e) { /* 忽略 */ }
+                try { debugLogPush('存储', { action: '本地磁盘目录写入失败 → 不回退浏览器层', error: String((dr && dr.error) || ''), chars: text.length }); } catch (e) { /* 忽略 */ }
+            }
         } else if (localViaFile) {
             // **本地文件模式**：写到用户约定的路径（宿主的本地文件），**不再写 localStorage**（= 取代变量层）
             const wr = await localFileWrite(text, scopeId());
@@ -648,7 +670,7 @@ async function saveStateNowInner(o) {
     // ⑤ IndexedDB 缓冲（可用时）—— **不做等值跳过**：它是异步写、不阻塞主线程，
     //   且与 localStorage 是两层独立真相（本层写失败后仍需能自愈），耦合跳过会留下「永远补不上」的缺口。
     //   v3.26.0（用户要求）：**本地目录模式下本层整体停用**（不写、不读）—— 本机只留「目录 + 服务端」两层。
-    if (localViaFile) {
+    if (localViaFile || localViaDisk) {
         localStats.idbSkipped += 1;
     } else {
         try {

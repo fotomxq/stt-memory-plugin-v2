@@ -20,6 +20,9 @@
 import { cfg } from '../core/model/runtime.js';
 import { fileTransportUploadText, fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { localFileEnabled, localFileNs, localFilePath } from './local-file.js';
+// v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）优先级最高 ——
+//   设了它就把辅助数据写成**真文件**（`<本地磁盘目录>/aux-*.json`），而不是宿主扩展存储命名空间。
+import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo } from './local-disk.js';
 
 /** 目录模式下辅助文件的表名（与记忆数据分开，便于用户区分「记忆」与「辅助」） */
 export const AUX_TABLE = 'aux';
@@ -40,7 +43,9 @@ let initInfo = null;
 const stats = { loads: 0, saves: 0, failures: 0, migrated: 0, lastError: '', lastAt: 0 };
 
 /** 是否处于「目录模式」（辅助数据跟随目录） */
-export function auxDirMode() { try { return localFileEnabled(); } catch (e) { return false; } }
+export function auxDirMode() { try { return localDiskOn() || localFileEnabled(); } catch (e) { return false; } }
+/** v3.28.0：辅助数据是否落在**真磁盘目录**（优先于扩展存储命名空间） */
+export function auxDiskMode() { try { return localDiskOn(); } catch (e) { return false; } }
 
 /** localStorage（不可用 → null）；同时兼容 `window.localStorage` 与 `globalThis.localStorage` 两种注入 */
 function ls() {
@@ -140,7 +145,7 @@ export async function auxStoreInit() {
         const name = auxFileName(key);
         try {
             let dirText = null;
-            const r = await fileTransportReadAuto(name, auxOpts(name));
+            const r = auxDiskMode() ? (await localDiskRead(name)) : (await fileTransportReadAuto(name, auxOpts(name)));
             if (r && r.ok && typeof r.text === 'string' && r.text) dirText = String(r.text);
             const localText = (() => { try { const s = ls(); return s ? s.getItem(key) : null; } catch (e) { return null; } })();
             if (dirText !== null) {
@@ -153,9 +158,9 @@ export async function auxStoreInit() {
             }
             if (localText !== null) {
                 // 先写后清：写目录 → 回读逐字节校验 → 才删 localStorage
-                const w = await fileTransportUploadText(name, String(localText), auxOpts(name));
+                const w = auxDiskMode() ? (await localDiskWrite(name, String(localText))) : (await fileTransportUploadText(name, String(localText), auxOpts(name)));
                 if (!w || !w.ok) { out.errors.push(key + ':write-failed'); stats.failures++; continue; }
-                const back = await fileTransportReadAuto(name, auxOpts(name));
+                const back = auxDiskMode() ? (await localDiskRead(name)) : (await fileTransportReadAuto(name, auxOpts(name)));
                 if (!back || !back.ok || String(back.text) !== String(localText)) { out.errors.push(key + ':verify-failed'); stats.failures++; continue; }
                 mem[key] = String(localText);
                 meta[key] = { at: Date.now(), bytes: String(localText).length, file: name };
@@ -187,12 +192,12 @@ export async function auxStoreFlush() {
         const name = auxFileName(key);
         try {
             if (dirty[key] === 'del') {
-                await fileTransportDelete(name, auxOpts(name));
+                if (auxDiskMode()) { /* 磁盘模式：删除留待下一次落盘覆盖（不主动删用户磁盘上的文件） */ } else { await fileTransportDelete(name, auxOpts(name)); }
                 delete mem[key];
                 delete meta[key];
             } else {
                 const text = String(mem[key] == null ? '' : mem[key]);
-                const w = await fileTransportUploadText(name, text, auxOpts(name));
+                const w = auxDiskMode() ? (await localDiskWrite(name, text)) : (await fileTransportUploadText(name, text, auxOpts(name)));
                 if (!w || !w.ok) { stats.failures++; stats.lastError = 'write-failed:' + key; continue; }
                 meta[key] = { at: Date.now(), bytes: text.length, file: name };
             }
@@ -226,7 +231,8 @@ export function auxStoreInfo() {
     });
     return {
         mode: dirMode ? 'dir' : 'localStorage',
-        path: (() => { try { return localFilePath(); } catch (e) { return ''; } })(),
+        path: (() => { try { return auxDiskMode() ? String(localDiskInfo().dir || '') : localFilePath(); } catch (e) { return ''; } })(),
+        disk: (() => { try { const i = localDiskInfo(); return { enabled: i.enabled, dir: i.dir, capability: i.capability }; } catch (e) { return null; } })(),
         items: items,
         pending: Object.keys(dirty).length,
         migration: initInfo ? Object.assign({}, initInfo) : null,
