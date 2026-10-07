@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.30.0",
+  "version": "3.30.1",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.30.1",
+      "date": "2026-10-07",
+      "title": "核对「本机存不下去」：真机报错 missing file path → 修 Tauri fs 调用；磁盘失败直接落浏览器层",
+      "points": [
+        "① 真机取证（调试桥日志，只读）：| 事实 | 值 || --- | --- || 本地存储路径 | D:\\Downloads\\stn\\fft_v2_store（diskEnab…",
+        "② 修复：| # | 落点 | 改动 || --- | --- | --- || ① | adapters/local-disk.js | Tauri fs 调用改全组合试写：命…"
+      ]
+    },
     {
       "version": "3.30.0",
       "date": "2026-10-07",

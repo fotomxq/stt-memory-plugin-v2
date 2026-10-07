@@ -229,18 +229,28 @@ async function diskWriteText(path, text) {
          *   ③ `{ path, text }` / ④ `{ path, data: <字节数组> }`（旧别名）
          */
         const bytes = Array.from(new TextEncoder().encode(body));
-        const shapes = [
+        /**
+         * v3.30.1（真机报错 `missing file path`）：Tauri v2 `fs` 插件的命令名与参数包装在**宿主之间**并不统一 ——
+         *   命令名可能带/不带 `plugin:` 前缀，参数可能直接摊平、也可能包在 `args` 里，`path` 也可能要求
+         *   `{ path: { path } }` 这种「scope 对象」形态。逐组合试，一律以「写后回读一致」为成功判据。
+         */
+        const cmds = ['plugin:fs|write_text_file', 'plugin:fs|write_file', 'fs|write_text_file'];
+        const argShapes = [
             { path: path, contents: body },
             { path: path, contents: bytes },
             { path: path, text: body },
             { path: path, data: bytes },
+            { args: { path: path, contents: body } },
+            { path: { path: path }, contents: body },
         ];
-        let lastErr = '';
-        for (const arg of shapes) {
-            try { await inv('plugin:fs|write_text_file', arg); return { ok: true, mechanism: c.mechanism }; }
-            catch (e) { lastErr = String((e && e.message) || e); }
+        let lastErr2 = '';
+        for (const cmd of cmds) {
+            for (const arg of argShapes) {
+                try { await inv(cmd, arg); return { ok: true, mechanism: c.mechanism + '/' + cmd }; }
+                catch (e) { lastErr2 = String((e && e.message) || e); }
+            }
         }
-        return { ok: false, reason: 'write-failed', error: lastErr };
+        return { ok: false, reason: 'write-failed', error: lastErr2 };
     } catch (e) { return { ok: false, reason: 'write-failed', error: String((e && e.message) || e) }; }
 }
 /** 读文本 */

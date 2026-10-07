@@ -647,7 +647,7 @@ async function saveStateNowInner(o) {
             return false;
         })())) {
             // 磁盘写入成功：上面已记账，这里无需再做事
-        } else if (localViaFile) {
+        } else if (localViaFile && !diskFellBack) {   // v3.30.1：磁盘层失败时**直接落浏览器层**（不再拐到服务端命名空间通道）
             // **本地文件模式**：写到用户约定的路径（宿主的本地文件），**不再写 localStorage**（= 取代变量层）
             const wr = await localFileWrite(text, scopeId());
             if (wr && wr.ok) {
