@@ -332,7 +332,7 @@ function localFileModeHtml() {
         const invalidHtml = (inv && inv.invalid)
             ? ('<div class="ftt-hint ftt-warn-box" data-ftt-disk-invalid>⚠️ <b>该路径已被标记为「无效」</b>：写入/读取失败，已回退浏览器本地存储 —— 请修正后重新「✅ 校验本地磁盘目录」。</div>')
             : '';
-        const hint = '<div class="ftt-hint">本地目录（替代浏览器本地存储）：可<b>只填一个目录名</b>（如 fft_v2_store），也可填绝对路径。</div>';
+        const hint = '<div class="ftt-hint">本地目录（替代浏览器本地存储）：点「📂 选择文件夹…」会<b>自动把路径填进来</b>（无需手工输入）；也可<b>只填一个目录名</b>（如 fft_v2_store）或直接填绝对路径。</div>';
         // v3.33.0（用户要求「本地存储路径不能随服务端转移，因为不同端的存储路径可能有差异」）：
         //   本机路径只写**本机**（设备本地存储），随服务端同步的配置里这一项**恒为空** —— 换设备各自设置。
         const platTxt = '<div class="ftt-muted" data-ftt-disk-platform><b>本机平台</b>：' + esc(String(d.platformLabel || '未知平台'))
@@ -344,6 +344,15 @@ function localFileModeHtml() {
         //   设定后显示**完整路径**（用户填的绝对路径原样回显 + 真实文件路径）。
         const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地存储路径（绝对路径，或只填一个目录名；留空 = 不开启；不随服务端同步）', type: 'text' }); } catch (e) { return ''; } })();
         const fullPath = (() => {
+            // v3.35.0：句柄模式（浏览器选中的文件夹）—— 绝对路径浏览器不暴露，但**路径框里有标记值**，
+            //   这里把它是什么、写到哪里、失效了怎么办都讲清楚（不再让用户以为「没选上、得手工填」）
+            if (d.handleMode) {
+                return '<div class="ftt-muted" data-ftt-disk-fullpath>路径：' + esc(String(d.dir || ''))
+                    + '（' + esc(String(d.display || d.handleName || '')) + '）'
+                    + '<br>记忆副本 该文件夹内 ' + esc(String(d.handleName || '')) + '/ftt2-local-＜角色＞.json · 辅助数据同目录 aux-＜键名＞.json'
+                    + (d.handleLive ? '' : '<br><span class="ftt-err">句柄已失效（刷新页面后需重新「📂 选择文件夹…」，或改成绝对路径 / 只填一个目录名）</span>')
+                    + '</div>';
+            }
             if (!d.enabled) return '';
             const f1 = (() => { try { return localDiskJoin(d.dir, 'ftt2-local-＜角色＞.json'); } catch (e) { return ''; } })();
             const f2 = (() => { try { return localDiskJoin(d.dir, 'aux-＜键名＞.json'); } catch (e) { return ''; } })();
@@ -605,9 +614,11 @@ export async function syncAction(action, payload) {
         if (a === 'localDiskPick') {
             const pk = await localDiskPickDir();
             if (!pk.ok) { try { syncToast('warning', '选择文件夹未完成', String(pk.note || pk.reason || '')); } catch (e) { /* 忽略 */ } return { ok: false, action: a, note: String(pk.note || pk.reason || '未选择'), detail: pk }; }
-            // v3.33.0：只有**真路径**（宿主对话框 / 宿主接口）才写进路径框 —— 浏览器句柄场景路径不可见，
-            //   写一个「文件夹名」进去会变成相对路径（宿主只会当命名空间名），反而误导。
-            const gotPath = String(pk.path || '');
+            // v3.33.0：真路径（宿主对话框 / 宿主接口）写进路径框。
+            // v3.35.0（用户报告「选择文件夹后不显示完整路径、要人工填写」）：浏览器句柄场景**也写** ——
+            //   写的是**句柄标记** `@handle/<文件夹名>`（本模块认得它 = 用本会话的文件夹句柄写），
+            //   路径框因此立刻有可见、可复制的值；不再要求用户手工填路径。
+            const gotPath = String(pk.path || pk.marker || '');
             if (gotPath) {
                 try { cfg.storage = Object.assign({}, cfg.storage || {}); cfg.storage.localDiskDir = gotPath; saveKernelCfg(); } catch (e) { /* 忽略 */ }
             }

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.34.0",
+  "version": "3.35.0",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.35.0",
+      "date": "2026-10-07",
+      "title": "本地存储路径：选择文件夹后自动填回路径（不再要求人工填写）",
+      "points": [
+        "① 句柄标记 @handle/<文件夹名>：（adapters/local-disk.js）：选中后把标记写进路径框 / 配置（storage.localDiskDir）——框里…",
+        "② 界面：（ui/sync.js）：路径框自动填标记；「完整路径」行改为「路径：@handle/<名>（浏览器选中的文件夹 · 绝对路径不可见 · 本会话内直接写入该文件夹）」；…",
+        "③ 顺带补齐文档事实口径：history 分区表 P10c 区间（0–45 → 0–63）与合计、docs/05 的 tests/ 文件数与单测档数（scripts/check-…"
+      ]
+    },
     {
       "version": "3.34.0",
       "date": "2026-10-07",

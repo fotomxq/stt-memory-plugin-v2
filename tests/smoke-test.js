@@ -6832,6 +6832,76 @@ assert('D2 teardown：解绑事件 + 清空注入 + 移除面板 + 清理调试�
 
 uninstall();
 uninstallFetch();      // 收尾：卸掉「服务端文件通道 / 更新检查」共用的 fetch 桩
+// ---------- CA 本地存储路径：选择文件夹后路径框自动显示（v3.35.0） ----------
+// 用户报告（原话）：「设定-本地存储路径，如果选择文件夹，本地存储路径不会显示完整路径，而是需人工填写路径，修复该错误。」
+await assert('CA1 v3.35.0 修复「选择文件夹后本地存储路径不显示、要人工填写」：真实点击「📂 选择文件夹…」（浏览器原生选择器桩）→ 路径框自动填入 `@handle/<文件夹名>` 并在页面讲清「浏览器选中的文件夹 · 绝对路径不可见」；「✅ 校验本地磁盘目录」走句柄探针（写→回读→删）通过；刷新后句柄失效时如实红字提示重选', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const LD = await import('../adapters/local-disk.js');
+    const keepDir = String((RT.cfg.storage && RT.cfg.storage.localDiskDir) || '');
+    // 说明：前面的收尾小节可能已卸载全局宿主（`globalThis.window` 不再存在）→ 这里自备最小桩并原样还原
+    const hadWindow = typeof globalThis.window !== 'undefined';
+    const keepWin = globalThis.window;
+    const keepPick = hadWindow ? globalThis.window.showDirectoryPicker : undefined;
+    try {
+        if (!globalThis.window) globalThis.window = {};
+        // 桩：浏览器原生文件夹选择器（File System Access 的最小实现：写 / 读 / 列 / 删 / 权限）
+        const files = new Map();
+        const handle = {
+            name: 'fft_v2_store', kind: 'directory',
+            queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+            getFileHandle: async (n) => ({
+                createWritable: async () => ({ write: async (t) => { files.set(String(n), String(t)); }, close: async () => { } }),
+                getFile: async () => ({ text: async () => String(files.get(String(n)) || '') }),
+            }),
+            getDirectoryHandle: async () => ({ getFileHandle: handle.getFileHandle }),
+            removeEntry: async (n) => { files.delete(String(n)); },
+            entries: async function* () { for (const [k, v] of files) yield [k, { name: k, kind: 'file', size: v.length }]; },
+        };
+        globalThis.window.showDirectoryPicker = async () => handle;
+        LD.localDiskReset();
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: '' });
+        // ① 真实点击「📂 选择文件夹…」
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'storage' });
+        const pick = await entry.popupAction('localDiskPick', {});
+        const dir = String((RT.cfg.storage && RT.cfg.storage.localDiskDir) || '');
+        const pickOk = pick.ok === true && dir === '@handle/fft_v2_store'
+            && String(pick.note || '').indexOf('@handle/fft_v2_store') > 0;
+        // ② 页面把标记与「这是什么」一起显示（用户不再看到空框、也不用手工填）
+        const page = String(((await entry.popupAction('refresh', {})).html) || '');
+        const pageOk = page.indexOf('@handle/fft_v2_store') > 0 && page.indexOf('浏览器选中的文件夹') > 0
+            && page.indexOf('绝对路径不可见') > 0 && page.indexOf('自动把路径填进来') > 0;
+        // ③ 校验：句柄探针（写 → 回读 → 删）真实通过，且**不**把标记解析成宿主路径
+        const probe = await entry.popupAction('localDiskProbe', {});
+        const probeOk = probe.ok === true && String((RT.cfg.storage || {}).localDiskDir) === '@handle/fft_v2_store'
+            && files.size === 0 && String(probe.note || '').indexOf('可写') > 0;
+        // ④ 刷新（句柄失效）→ 如实红字提示重选，且回退浏览器层（不假装还能写）
+        LD.localDiskReset();
+        const page2 = String(((await entry.popupAction('refresh', {})).html) || '');
+        const lost = await entry.popupAction('localDiskProbe', {});
+        const lostOk = page2.indexOf('句柄已失效') > 0 && page2.indexOf('重新「📂 选择文件夹…」') > 0
+            && lost.ok === false && String((lost.detail || {}).error) === 'handle-lost'
+            && (() => { try { return LD.localDiskOn() === false; } catch (e) { return false; } })();
+        const ok = pickOk && pageOk && probeOk && lostOk;
+        if (!ok) console.log('CA1-DEBUG ' + JSON.stringify({ pickOk, pageOk, probeOk, lostOk, dir: dir, pickNote: String(pick.note || '').slice(0, 160), probeNote: String(probe.note || '').slice(0, 160), lostErr: (lost.detail || {}).error, files: files.size }));
+        return ok;
+    } finally {
+        try { LD.localDiskReset(); } catch (e) { /* 忽略 */ }
+        try { RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: keepDir }); } catch (e) { /* 忽略 */ }
+        try {
+            if (hadWindow) {
+                if (keepPick === undefined && globalThis.window) delete globalThis.window.showDirectoryPicker;
+                else if (globalThis.window) globalThis.window.showDirectoryPicker = keepPick;
+            } else {
+                delete globalThis.window;      // 此前就没有 window → 原样还原
+            }
+        } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+
 // v2.34.0：收尾 flush —— 先让未 await 的 thenable 断言完成、并等防呆微任务判定，再汇总（防「静默消失」）
 try {
     for (const g of pendingGuards) { try { await g.settle(); } catch (e) { /* 断言自身异常已由内部捕获 */ } }
