@@ -395,6 +395,41 @@ function useHost(host) {
             const d = ttChannelDetailHtml();
             return d.indexOf('双通道') > 0;
         });
+        // v3.26.7（真机报错「后端错误 Failed to delete extension store entry: Not found: …系统找不到指定的文件。」）：
+        //   v3.26.6 的孪生清理是**无条件删除** → 每次保存都对「本来就没有」的一侧发删除 → 宿主报后端错误。
+        //   现在：**先确认另一通道确实有同名副本，再删**；删过就不再重复发。
+        await A('E6 大载荷写入时 KV 侧没有同名副本 → **一次删除请求都不发**（不再触发宿主的「Not found」后端错误）', async () => {
+            const h4 = useHost(makeTtHost());
+            const r = await ttPutBytes('ftt2-state-notwin.json', ttTextBytes(env(7000, 'x') + ' '.repeat(TT_KV_MAX_BYTES)));
+            return r.ok === true && r.channel === 'blob' && h4.calls.del === 0;
+        });
+        await A('E7 KV 侧确有同名副本 → 删除恰好一次；紧接着再写一次同键 → **不再重复发删除**（真机重复报错的来源）', async () => {
+            const h5 = useHost(makeTtHost());
+            const KEY5 = 'ftt2-state-twin5.json';
+            const K5 = 'ftt2-files/main/' + KEY5;
+            h5.kv.set(K5, { k: 'b64', v: Buffer.from(env(1, 'stale'), 'utf8').toString('base64'), ts: 1 });
+            ttResetSession();
+            const r1 = await ttPutBytes(KEY5, ttTextBytes(env(8000, 'a') + ' '.repeat(TT_KV_MAX_BYTES)));
+            const del1 = h5.calls.del;
+            const r2 = await ttPutBytes(KEY5, ttTextBytes(env(9000, 'b') + ' '.repeat(TT_KV_MAX_BYTES)));
+            return r1.ok === true && r2.ok === true && del1 === 1 && h5.calls.del === 1 && !h5.kv.has(K5);
+        });
+        await A('E8 「删除不存在的键」按幂等成功处理且不记错误（认得宿主真实文案：Failed to delete … Not found … 系统找不到指定的文件。）', async () => {
+            const h6 = useHost(makeTtHost());
+            const before = ttChannelInfo().err;
+            const r = await ttKvDel('ftt2-state-absent.json');
+            return r.ok === true && r.idempotent === true && h6.calls.del === 1 && ttChannelInfo().err === before;
+        });
+        await A('E9 `ttDelete` 先探存在再删：只存在于 blobs 的键 → **不发 KV 删除**；两侧都没有 → 一次删除都不发且按成功返回', async () => {
+            const h7 = useHost(makeTtHost());
+            const onlyBlob = 'ftt2-state-onlyblob.json';
+            h7.blobs.set('ftt2-files/main/' + onlyBlob, ttTextBytes('{"v":1}'));
+            const r1 = await ttDelete(onlyBlob);
+            const delAfter1 = h7.calls.del;
+            const r2 = await ttDelete('ftt2-state-nowhere.json');
+            return r1.ok === true && h7.calls.delBlob === 1 && delAfter1 === 0
+                && r2.ok === true && r2.alreadyAbsent === true && h7.calls.del === 0 && h7.calls.delBlob === 1;
+        });
     }
 
     unHost();

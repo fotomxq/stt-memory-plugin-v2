@@ -132,13 +132,14 @@ await A('Q7 读操作不进写队列（读仍可并发）：并发 3 次读不�
     return reads.every((r) => r.found === true) && after.queued === before.queued && after.done === before.done;
 }, () => ({ stats: ttWriteStats() }));
 
-await A('Q8 `ttDelete`（KV + Blob 双删）也走队列：并发删除不重叠，且不因缺失键中断', async () => {
+await A('Q8 `ttDelete`（KV + Blob 双删）也走队列：并发删除不重叠；**缺失键不再发无谓删除**（v3.26.7：先探存在再删，避免宿主报「Not found」后端错误）', async () => {
     const h = useHost(makeHost2({ delayMs: 3 }));
     await ttKvPut('q8.json', 'AA'); await ttBlobPut('q8.json', new Uint8Array([9]));
     const st0 = ttWriteStats().queued;
     const rs = await Promise.all([ttDelete('q8.json'), ttDelete('q8-missing.json')]);
     return rs.every((x) => x.ok === true) && h.rec.maxInFlight === 1
-        && ttWriteStats().queued === st0 + 4 && ttWriteStats().pending === 0;
+        && rs[1].alreadyAbsent === true && rs[0].alreadyAbsent === false
+        && ttWriteStats().queued === st0 + 2 && ttWriteStats().pending === 0;
 }, () => ({ stats: ttWriteStats() }));
 
 await A('Q9 诊断口径：统计可读且可重置（`last` 记录标签与耗时；重置后归零）', async () => {
