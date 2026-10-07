@@ -845,6 +845,7 @@ export function localLayerInfo() {
         channel: String((file && file.lastChannel) || ''),
         fileKey: String((real && real.key) || '') || (() => { try { return localFileFileKey(scopeId()); } catch (e) { return ''; } })(),
         realFiles: (real && Array.isArray(real.files)) ? real.files : [],
+        realRoot: String((real && real.root) || ''),          // v3.27.0：宿主数据根目录（有 → UI 显示完整路径）
         localChars: localChars, budget: localBufferMaxChars > 0 ? localBufferMaxChars : LOCAL_BUFFER_MAX_CHARS,
         // v3.26.2：压缩留存现状（`gz` = 本机记录是压缩记录；`plainChars` = 原始字符数；`stale` = 本机层停滞标记）
         gz: gz, plainChars: plainChars,

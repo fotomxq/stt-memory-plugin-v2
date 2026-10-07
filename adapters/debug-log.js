@@ -5,16 +5,17 @@
 //   V1 口径：数组 JSON、最多 300 条、最新在前；读取时容忍损坏（解析失败 → 视为空）。
 // ============================================================
 import { DEBUG_KEY } from '../core/debug-log.js';
+import { auxFacade } from './aux-store.js';   // v3.27.0：辅助数据跟随本地目录统一收纳
 import { setDebugLogHooks, debugLogPush, debugLogList, debugLogClear, debugLogSync, debugLogStats } from '../core/debug-log.js';
 
 const DATA_MAX = 6000;
 
 /** localStorage 可用性（V1 同款判断：`window.localStorage` 存在即可） */
 function ls() {
-    try {
-        const w = globalThis.window;
-        return (w && w.localStorage) ? w.localStorage : null;
-    } catch (e) { return null; }
+    // v3.27.0（用户要求「日志/快照等辅助数据也跟随本地目录统一收纳」）：
+    //   原来是裸 localStorage —— 现在统一走辅助存储门面：**设了本地目录 → 落到该目录下的 aux 文件**；
+    //   没设 → 行为逐字不变（仍写 localStorage）。
+    return auxFacade();
 }
 
 /** 读取持久层（损坏/缺省 → 空数组；条目做最小归一） */

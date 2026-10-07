@@ -38,6 +38,8 @@ import {
     localFileDirScanHost, localFileProbeDir, localFileRealLocation,
 } from '../adapters/local-file.js';
 import { localLayerInfo, switchLocalLayer } from '../adapters/store.js';
+// v3.27.0（用户要求「日志等信息也跟随本地目录统一收纳」）：辅助数据落点状态（目录 / 浏览器本机存储）
+import { auxStoreInfo } from '../adapters/aux-store.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -347,7 +349,23 @@ function localFileModeHtml() {
         + '网页版酒馆 → <code>user/files/&lt;目录&gt;/</code>。<b>文件名含目录前缀</b>（如 <code>ftt2-local_ftt2-local-char_xxxxxx.json</code>），与下方「真实落盘」逐字对应。<br>'
         + '开启/对齐时：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里<b>最新的那份</b>写进当前目录（写 → 回读校验 → 才清旧层）；'
         + '<b>目录副本已是最新时绝不覆盖</b>。<br>'
-        + '<b>停用范围</b>：记忆数据的变量层 / 内存库 / 聊天元数据；调试日志 / 同步标记等辅助键体积有硬上限（如调试日志 0.6M 字符），仍留浏览器本地。</div>');
+        + '<b>停用范围</b>：记忆数据的变量层 / 内存库 / 聊天元数据；<b>辅助数据（调试日志 / 交互时间线 / 同步与对账标记 / 版本清单缓存）以及快照链、同步日志的副本</b>都会随之收纳到本目录（v3.27.0），不再占用浏览器本机存储。</div>');
+    // v3.27.0（用户要求「日志等信息也跟随本地目录统一收纳」）：如实写出**辅助数据**现在落在哪里
+    const auxTxt = (() => {
+        try {
+            const a = auxStoreInfo();
+            const mb = (n) => (Number(n) >= 1048576 ? (Number(n) / 1048576).toFixed(1) + 'MB' : (Number(n) >= 1024 ? Math.round(Number(n) / 1024) + 'KB' : Number(n) + 'B'));
+            const total = (a.items || []).reduce((s, x) => s + Number(x.bytes || 0), 0);
+            const names = '调试日志 / 交互时间线 / 同步与对账标记 / 版本清单缓存';
+            if (a.mode === 'dir') {
+                return '<div class="ftt-muted" data-ftt-aux-line><b>辅助数据：已收纳到目录</b>（' + esc(String(a.path || '')) + '/aux/） · ' + esc(names)
+                    + ' · 共 ' + esc(mb(total)) + (a.pending ? (' · 待落盘 ' + Number(a.pending)) : '')
+                    + (a.lastError ? (' · <span class="ftt-err">最近失败：' + esc(String(a.lastError)) + '</span>') : '')
+                    + '<br><span class="ftt-muted">快照链与同步日志在写完服务端后**额外收录一份**到同一目录（aux-ftt2-snap-… / aux-ftt2-log-….json）</span></div>';
+            }
+            return '<div class="ftt-muted" data-ftt-aux-line>辅助数据：仍在<b>浏览器本机存储</b>（' + esc(names) + ' · 共 ' + esc(mb(total)) + '）→ 设了目录就一并收纳到目录</div>';
+        } catch (e) { return ''; }
+    })();
     const extra = on
         ? '<div class="ftt-muted">目录：读 ' + Number(info.reads || 0) + ' · 写 ' + Number(info.writes || 0)
             + ' · 未命中 ' + Number(info.misses || 0) + ' · 校验 ' + Number(info.probes || 0) + ' 次'
@@ -358,7 +376,7 @@ function localFileModeHtml() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前目录对齐本机层：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里最新的那份写进当前目录（写→回读校验→才清旧层）；目录副本已是最新时只做校验、不覆盖；关闭目录时把内容迁回变量层与内存库">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
-    return stat + one + desc + localFileDirPickerHtml(info) + detail + extra + ops;
+    return stat + one + desc + localFileDirPickerHtml(info) + detail + extra + auxTxt + ops;
 }
 
 /** v3.26.0：目录扫描结果缓存（动作里异步取，取完重绘即可见） */
@@ -375,9 +393,12 @@ function localFileDirPickerHtml(info) {
     const realTxt = (() => {
         try {
             // v3.26.5：基础文案用占位角色名，**再补上当前角色的真实键名**（用户要能照着去文件管理器里核对）
+            // v3.27.0（用户要求）：设了目录就显示**完整路径**（宿主数据根目录 + 命名空间 + 表），而不是只给目录名。
             const base = localFileRealLocation(String((info && info.path) || '')).text;
             const key = String((info && info.fileKey) || '');
-            return key ? (base + '；当前角色真实文件 ' + key) : base;
+            const root = String((info && info.realRoot) || '');
+            const head = root ? ('完整路径：' + root + ' 下的 _tauritavern/extension-store/' + String((info && info.path) || '') + '/') : '';
+            return [head, base, key ? ('当前角色真实文件 ' + key) : ''].filter(Boolean).join('；');
         } catch (e) { return ''; }
     })();
     const scanRow = cand.host && cand.host.supported

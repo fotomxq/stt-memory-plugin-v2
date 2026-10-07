@@ -3,6 +3,27 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.27.0（2026-10-07）· 辅助数据（日志 / 时间线 / 标记 / 版本清单 / 快照副本）随目录**统一收纳** + 目录设置显示**完整路径**
+
+**用户要求**（原话）：「新版本，快照、日志等信息，也应该主动跟随本地存储变动。如设置了本地路径，则应该存储到对应目录下统一管理收纳。其次，请完善本地目录设置，如果设置了则显示完成路径，而不是简单的目录名称。」
+
+**① 辅助数据也跟随目录（新增 `adapters/aux-store.js`）**
+
+| 数据 | 之前 | 现在（设了目录） |
+| --- | --- | --- |
+| 调试日志（`SPreset_FTTMemoryDebug`） | 浏览器 localStorage | **目录 `<目录>/aux/aux-SPreset_FTTMemoryDebug.json`** |
+| 交互时间线（`SPreset_FTTMemoryTrace`，历史上限 7MB） | 浏览器 localStorage | 目录 `aux/aux-SPreset_FTTMemoryTrace.json` |
+| 同步与对账标记（远端哈希 / 快照签名 / 推送签名 / 同步门控 …） | 浏览器 localStorage | 目录 `aux/aux-<标记键>.json` |
+| 版本清单缓存（`fttAboutJson`） | 浏览器 localStorage | 目录 `aux/aux-fttAboutJson.json` |
+| 快照链 / 同步日志 | 仅服务端文件 | **写完服务端后额外收录一份**到同一目录（只读路径不变，跨端同步语义不受影响） |
+
+口径：**留空 = 不开启**（读写仍走 localStorage，行为逐字不变）；目录模式下同步 API 走内存缓存 + **防抖异步落盘**（1.2s，退出/切后台强制落盘）；启动时**先写后清**迁移（写目录 → 回读逐字节校验 → 才删浏览器旧键）；落盘失败只记账不丢数据。UI：设定 → 存储 新增「辅助数据：已收纳到目录 <目录>/aux/ · 共 N」；数据管理页新增「辅助数据落点」+ 可展开**明细**（文件名 / 大小 / 落点）。
+
+**② 目录设置显示完整路径**
+
+* 宿主**数据根目录**两条来源：① 宿主 API 里的路径字段；② **从宿主报错里学**（TauriTavern 的后端错误会原样写出绝对路径，例如 `…\data\_tauritavern\extension-store\…`）→ 学到即缓存；
+* 设定 → 存储 的「真实落盘」现在写出**完整路径**（`<数据根目录>/_tauritavern/extension-store/<目录>/（blobs/local/ · kv/local/）`）+ 当前角色真实文件名；宿主未提供绝对路径时**如实标注**「用户数据目录」而不假装知道。
+
 ## v3.26.7（2026-10-07）· 删除不再「盲删」：修掉 v3.26.6 引入的宿主后端错误（Failed to delete … Not found）
 
 **用户报告**（原话，附宿主报错）：「错误信息：后端错误 Failed to delete extension store entry: Not found: Extension store entry `…\kv\main\ftt2-state-char1xbib3t.json.json`: 系统找不到指定的文件。」

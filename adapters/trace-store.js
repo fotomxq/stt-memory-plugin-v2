@@ -5,6 +5,7 @@
 //   无 localStorage（Node 测试/受限宿主）时自动退化；损坏数据容忍（解析失败 → 空）。
 // ============================================================
 import { setTraceHooks } from '../core/trace.js';
+import { auxFacade } from './aux-store.js';   // v3.27.0：交互时间线跟随本地目录统一收纳
 
 /** 持久化键（与 V1 调试日志 `SPreset_FTTMemoryDebug` 并列，互不覆盖） */
 export const TRACE_KEY = 'SPreset_FTTMemoryTrace';
@@ -12,10 +13,10 @@ export const TRACE_KEY = 'SPreset_FTTMemoryTrace';
 export const TRACE_STORE_CAP = 120;
 
 function ls() {
-    try {
-        const w = globalThis.window;
-        return (w && w.localStorage) ? w.localStorage : null;
-    } catch (e) { return null; }
+    // v3.27.0（用户要求「日志/快照等辅助数据也跟随本地目录统一收纳」）：
+    //   原来是裸 localStorage —— 现在统一走辅助存储门面：**设了本地目录 → 落到该目录下的 aux 文件**；
+    //   没设 → 行为逐字不变（仍写 localStorage）。
+    return auxFacade();
 }
 
 /** 读取持久化尾部（归一；损坏 → 空数组） */

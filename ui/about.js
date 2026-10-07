@@ -30,6 +30,7 @@
 import { VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH } from '../core/constants.js';
 import { getSettings } from '../adapters/settings.js';
 import { escHtml } from '../core/util.js';
+import { auxFacade } from '../adapters/aux-store.js';   // v3.27.0：版本清单缓存跟随本地目录统一收纳
 import { extensionFolder } from '../host/paths.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
@@ -62,10 +63,10 @@ export function setAboutHooks(next) {
 
 /** localStorage 视图（V1 同款判断：`window.localStorage` 存在即可） */
 function ls() {
-    try {
-        const w = globalThis.window;
-        return (w && w.localStorage) ? w.localStorage : null;
-    } catch (e) { return null; }
+    // v3.27.0（用户要求「日志/快照等辅助数据也跟随本地目录统一收纳」）：
+    //   原来是裸 localStorage —— 现在统一走辅助存储门面：**设了本地目录 → 落到该目录下的 aux 文件**；
+    //   没设 → 行为逐字不变（仍写 localStorage）。
+    return auxFacade();
 }
 
 /** 扩展目录的 HTTP 挂载根（`/scripts/extensions/<扩展目录>/`；推导不出时退回常量目录） */

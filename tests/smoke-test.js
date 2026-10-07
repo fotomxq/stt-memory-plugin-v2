@@ -6357,7 +6357,9 @@ await assert('BR2 v3.26.0 本机缓冲「选择目录」+ 只留目录与服务�
             && page.indexOf('data-ftt-action="localFileDirCreate"') > 0
             && page.indexOf('data-ftt-action="localFileDirSystem"') > 0
             && page.indexOf('data-ftt-action="localFileDirProbe"') > 0
-            && page.indexOf('data-ftt-local-file-status') > 0;
+            && page.indexOf('data-ftt-local-file-status') > 0
+            // v3.27.0：辅助数据（日志/时间线/标记/版本清单）落点如实写出；目录模式下给出**完整路径**一条
+            && page.indexOf('data-ftt-aux-line') > 0 && page.indexOf('辅助数据') > 0;
         // ② 新建并使用：真的写探针 → 回读校验 → 才落配置（校验不过不改配置 —— 反例见单测）
         const mk = await entry.popupAction('localFileDirCreate', { dir: '选择目录BR2' });
         const mkOk = mk && mk.ok === true && RT.cfg.storage.localFilePath === '选择目录BR2'
