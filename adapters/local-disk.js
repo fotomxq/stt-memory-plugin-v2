@@ -371,6 +371,87 @@ export async function localDiskProbeDir(rawPath) {
     return out;
 }
 
+/**
+ * v3.31.0（用户要求「本地文件可以拆碎了保存……呈现结构化、体系化，而不是聚合到单一文件」）：
+ *   把一份存储信封**按维度拆成多个文件**写进本地目录：`<本地存储路径>/<scope>/<维度>.json` + `manifest.json`。
+ *   · 浏览器选中的文件夹（File System Access）→ 建子目录后逐文件写；
+ *   · 宿主文件 API（tauri-fs）→ 逐文件写（同样路径）。
+ *   与**单文件**机制并存（单文件仍是「一次写入」的原子副本），本函数是**结构化副本**，失败只记诊断、不阻塞保存。
+ * @param {object} env 存储信封
+ * @param {string} scope 角色作用域
+ * @returns {Promise<{ok:boolean, dir?:string, files?:number, counts?:object, error?:string}>}
+ */
+export async function localDiskWriteShards(env, scope) {
+    const dir = localDiskRaw();
+    if (!dir && !fsHandle) return { ok: false, error: 'off' };
+    try {
+        const { splitParts, buildManifest, manifestFileName, shardFileName, scopeSlug } = await import('./local-shards.js');
+        const r = splitParts(env);
+        if (!r.ok) return { ok: false, error: r.reason || 'no-data' };
+        const sub = scopeSlug(scope || r.scope);
+        const mf = buildManifest(r.parts, { at: r.at, scope: String(scope || r.scope || '') });
+        // ① 浏览器文件夹句柄：建 `<scope>` 子目录后逐文件写
+        if (fsHandle && await handleUsable()) {
+            try {
+                const subDir = await fsHandle.getDirectoryHandle(sub, { create: true });
+                const writeInto = async (h, name, text) => {
+                    const fh = await h.getFileHandle(name, { create: true });
+                    const ws = await fh.createWritable();
+                    await ws.write(text); await ws.close();
+                };
+                for (const k of Object.keys(r.parts)) await writeInto(subDir, shardFileName(k), JSON.stringify(r.parts[k]));
+                await writeInto(subDir, manifestFileName(), JSON.stringify(mf));
+                stats.writes++;
+                return { ok: true, dir: dir + '/' + sub, files: Object.keys(r.parts).length + 1, counts: r.counts };
+            } catch (e) { /* 落到宿主机制 */ }
+        }
+        // ② 宿主文件 API：逐文件写
+        let n = 0;
+        for (const k of Object.keys(r.parts)) {
+            const w = await diskWriteText(localDiskJoin(localDiskJoin(dir, sub), shardFileName(k)), JSON.stringify(r.parts[k]));
+            if (!w.ok) return { ok: false, error: String(w.error || 'write-failed'), files: n };
+            n++;
+        }
+        const wm = await diskWriteText(localDiskJoin(localDiskJoin(dir, sub), manifestFileName()), JSON.stringify(mf));
+        if (!wm.ok) return { ok: false, error: String(wm.error || 'manifest-failed'), files: n };
+        stats.writes++;
+        return { ok: true, dir: localDiskJoin(dir, sub), files: n + 1, counts: r.counts };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.31.0：读回**结构化分片**（`<scope>/manifest.json` + 逐维文件）→ 合并成 data。
+ *   清单校验：坏片只报坏片（返回 `bad`），只要 `meta` 可用就仍返回数据（维度缺失按空数组处理）。
+ */
+export async function localDiskReadShards(scope) {
+    const dir = localDiskRaw();
+    try {
+        const { joinParts, verifyParts, manifestFileName, shardFileName, allShardNames, scopeSlug } = await import('./local-shards.js');
+        const sub = scopeSlug(scope);
+        const readOne = async (name) => {
+            if (fsHandle && await handleUsable()) {
+                try { const d2 = await fsHandle.getDirectoryHandle(sub); const fh = await d2.getFileHandle(name); const f = await fh.getFile(); return await f.text(); } catch (e) { return null; }
+            }
+            if (!dir) return null;
+            const r = await diskReadText(localDiskJoin(localDiskJoin(dir, sub), name));
+            return (r && r.ok) ? String(r.text) : null;
+        };
+        const mfRaw = await readOne(manifestFileName());
+        if (!mfRaw) return { ok: false, error: 'no-manifest' };
+        const mf = JSON.parse(mfRaw);
+        const parts = {};
+        for (const k of allShardNames()) {
+            const raw = await readOne(shardFileName(k));
+            if (raw == null) continue;
+            try { parts[k] = JSON.parse(raw); } catch (e) { /* 坏片跳过（verify 会报） */ }
+        }
+        const vf = verifyParts(parts, mf);
+        if (!parts.meta) return { ok: false, error: 'no-meta', bad: vf.bad };
+        const j = joinParts(parts);
+        return { ok: !!j.ok, data: j.data, dims: j.dims, bad: vf.bad, at: Number(mf.at || 0) || 0, dir: dir ? localDiskJoin(dir, sub) : sub };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
 /** 只读状态（UI / 诊断） */
 export function localDiskInfo() {
     const dir = localDiskRaw();
@@ -398,5 +479,5 @@ export default {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
-    localDiskPickDir, localDiskHasHandle,
+    localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards,
 };

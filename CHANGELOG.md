@@ -3,6 +3,31 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.31.0（2026-10-07）· 本机层**结构化分片**：逐维文件 / 逐维键 + 清单，不再聚合成单一文件
+
+**用户要求**（原话）：「本地文件可以拆碎了保存，这样方便分片处理，呈现结构化、体系化，而不是聚合到单一文件。其他本地存储文件同理。」
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | 新增 `adapters/local-shards.js`（**纯函数**） | `splitParts(env)` 按维度切成 `{meta, atoms, memories, …}`（meta = 非维度字段：state/vars/stats/deleted/台账/归属/快照指纹…）；`joinParts(parts)` 合并回同一份 data；`buildManifest(parts)` 逐片记 `hash/bytes/n`；`verifyParts()` **坏一维只报那一维**（不整体作废）；命名口径：目录 `<scope>/<维度>.json` + `manifest.json`，浏览器 `ftt2_ls_<scope>__<维度>` |
+| ② | `adapters/local-disk.js` | 新增 `localDiskWriteShards(env, scope)`：把同一份内容**再写一份结构化副本**到 `<本地存储路径>/<scope>/<维度>.json` + `manifest.json`（浏览器选中的文件夹 → 自动建 `<scope>` 子目录；否则走宿主文件 API）；新增 `localDiskReadShards(scope)` 读回并校验 |
+| ③ | `adapters/store.js` 保存 ④ | 单文件副本成功后再写结构化分片（**best-effort**，失败只记诊断、不阻塞保存）；结果记入 `localBuffer.shards` 与调试日志 |
+| ④ | `index.js#loadFromLocalDisk` | 单文件未命中时**回退读结构化分片**（清单 + 逐维文件）—— 单文件与分片两条路互为兜底 |
+
+**结构（落在本地目录里长这样）**
+
+```text
+<本地存储路径>/
+└── char_1xbib3t/
+    ├── manifest.json      # {v, at, scope, parts:{atoms:{hash,bytes,n}, …}}
+    ├── meta.json          # 非维度字段（state/vars/stats/deleted/台账/归属…）
+    ├── atoms.json  memories.json  items.json  plans.json  suspense.json
+    ├── scenes.json  concepts.json  parallels.json  rumors.json
+    └── currencies.json  currentStates.json  links.json  snapshots.json  plotSegments.json
+```
+
+**好处**：单条记录小（不再撞单键配额）；坏一维只影响那一维、可单独核对/替换；与服务端分片同名同构；后续可按维增量写（只重写变化的那几维）。
+
 ## v3.30.1（2026-10-07）· 核对「本机存不下去」：真机报错 `missing file path` → 修 Tauri fs 调用；磁盘失败直接落**浏览器层**
 
 **用户要求**（原话）：「请核对本地浏览器端及TauriTavern为何无法在本地保存数据，需核对错误原因并修复。」
