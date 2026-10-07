@@ -63,13 +63,24 @@ export function localDiskRaw() {
     try { return localDiskPathNorm((cfg && cfg.storage && cfg.storage.localDiskDir) || ''); } catch (e) { return ''; }
 }
 /** 是否把「本地磁盘目录」当作本机层（唯一判据：路径非空且宿主具备写盘能力） */
-/** v3.33.0：只要「有路径」或「本会话选过文件夹句柄」就算开启（句柄场景路径框可以为空） */
-export function localDiskOn() { return !!(localDiskRaw() || fsHandle); }
+/**
+ * 是否把「本地磁盘目录」当作本机层。
+ *   v3.33.0：有路径 **或** 本会话选过文件夹句柄即算开启（句柄场景路径框可以为空）。
+ *   v3.35.0：句柄标记路径在**句柄已失效**（刷新后）时算**未开启** —— 与真实能力一致：
+ *     绝不假装还能写那个文件夹（否则每次保存都会失败并弹告警），而是干净地回退浏览器本地存储，
+ *     由界面提示「重新选择文件夹 / 改填绝对路径」。
+ */
+export function localDiskOn() {
+    const raw = localDiskRaw();
+    if (fsHandle) return true;
+    return !!(raw && !localDiskIsHandlePath(raw));
+}
 
 /** 路径形态判定（绝对路径 / UNC / 相对） */
 export function localDiskPathKind(raw) {
     const s = String(raw == null ? '' : raw).trim();
     if (!s) return 'empty';
+    if (localDiskIsHandlePath(s)) return 'handle';     // v3.35.0：浏览器选中的文件夹（绝对路径不可见）
     if (/^[A-Za-z]:[\\/]/.test(s)) return 'windows-abs';
     if (s.slice(0, 2) === '\\\\') return 'unc';          // UNC：以两个反斜杠开头（写成字符比较，避免转义歧义）
     if (s.charAt(0) === '/') return 'posix-abs';
@@ -102,6 +113,30 @@ export function localDiskJoin(dir, name) {
 let fsHandle = null;
 /** 是否已有「浏览器选中的文件夹」句柄（本会话） */
 export function localDiskHasHandle() { return !!fsHandle; }
+/**
+ * v3.35.0（用户报告「设定-本地存储路径：如果选择文件夹，本地存储路径**不会显示完整路径**，而是**需人工填写路径**」）：
+ *   **句柄路径标记** —— 浏览器原生文件夹选择器（File System Access）出于隐私**不暴露绝对路径**，
+ *   于是「选了文件夹」之后路径框只能是空的（用户被迫手工填写，尽管文件其实已经写进那个文件夹了）。
+ *   现在选中后把 `<标记前缀><文件夹名>` 写进路径框：① 框里立刻有可见、可复制的值（不再需要手工填）；
+ *   ② 本模块认得它 = 「用本会话的文件夹句柄写」；③ 刷新后句柄失效 → 如实提示重选（绝不假装仍可用）。
+ */
+export const HANDLE_PREFIX = '@handle/';
+/** 是否为「浏览器选中的文件夹」标记路径 */
+export function localDiskIsHandlePath(raw) {
+    try { return String(raw == null ? '' : raw).trim().indexOf(HANDLE_PREFIX) === 0; } catch (e) { return false; }
+}
+/** 从标记路径里取文件夹名（非标记 → 空串） */
+export function localDiskHandleName(raw) {
+    try {
+        const s = String(raw == null ? '' : raw).trim();
+        return localDiskIsHandlePath(s) ? s.slice(HANDLE_PREFIX.length).replace(/[\\/]+$/, '') : '';
+    } catch (e) { return ''; }
+}
+/** 由文件夹名生成标记路径（`''` 名 → 空串） */
+export function localDiskHandleMarker(name) {
+    const n = String(name == null ? '' : name).trim().replace(/[\\/]+$/, '');
+    return n ? (HANDLE_PREFIX + n) : '';
+}
 
 /**
  * v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：**平台识别**。
@@ -158,6 +193,7 @@ export function localDiskPathWarn(raw, platform) {
     const dir = localDiskPathNorm(raw);
     if (!dir) return '';
     const kind = localDiskPathKind(dir);
+    if (kind === 'handle') return '';    // v3.35.0：浏览器选中的文件夹没有跨平台路径问题
     const plat = String(platform || localDiskPlatform().name);
     const relativeTip = '改成**只填一个目录名**（如 fft_v2_store）即可自动落在宿主应用数据目录内';
     if (plat === 'android' || plat === 'ios') {
@@ -255,7 +291,14 @@ export async function localDiskPickDir() {
                     const pb = await handleProbe();
                     tried.push({ mechanism: 'fs-handle', name: String(h.name || ''), ok: !!pb.ok, error: pb.ok ? '' : String(pb.error || '') });
                     if (pb.ok) {
-                        return { ok: true, mechanism: 'fs-handle', path: '', name: String(h.name || ''), note: '已选中文件夹「' + String(h.name || '') + '」（写探针通过；浏览器只暴露文件夹名、绝对路径不可见，刷新后需重新选择 —— 想跨刷新请填绝对路径或改用系统对话框）', tried: tried };
+                        // v3.35.0：把**句柄标记**一并返回 → 界面写进路径框（框里立刻可见，不再需要人工填写）
+                        const marker = localDiskHandleMarker(h.name);
+                        return {
+                            ok: true, mechanism: 'fs-handle', path: marker, marker: marker, name: String(h.name || ''),
+                            note: '已选中文件夹「' + String(h.name || '') + '」（写探针通过）—— 路径框已填入 ' + marker
+                                + '；浏览器出于隐私不暴露绝对路径，该标记即「写入本会话选中的文件夹」，刷新后句柄失效需重新选择',
+                            tried: tried,
+                        };
                     }
                     fsHandle = null;
                 }
@@ -415,6 +458,8 @@ export async function localDiskBaseDir(reprobe) {
 export async function localDiskResolveDir(input) {
     const raw = localDiskPathNorm(input);
     if (!raw) return { ok: false, dir: '', raw: '', resolved: false, base: '', error: 'empty' };
+    // v3.35.0：句柄标记不是宿主路径 —— 原样返回（写入会走本会话的文件夹句柄），绝不解析成宿主目录
+    if (localDiskIsHandlePath(raw)) return { ok: true, dir: raw, raw: raw, resolved: false, base: '', handleMode: true, error: '' };
     const kind = localDiskPathKind(raw);
     if (kind !== 'relative') return { ok: true, dir: raw, raw: raw, resolved: false, base: '', error: '' };
     const b = await localDiskBaseDir(false);
@@ -654,6 +699,21 @@ export async function localDiskProbeDir(rawPath) {
     const cap = localDiskCapability(true);
     out.mechanism = cap.mechanism;
     const prev = localDiskRaw();
+    // v3.35.0：**句柄标记** —— 校验「本会话选中的文件夹」是否还能写（刷新后句柄失效则如实报错，不解析成宿主路径）
+    if (localDiskIsHandlePath(raw)) {
+        out.handleMode = true;
+        out.mechanism = 'fs-handle';
+        try {
+            if (!fsHandle) { out.error = 'handle-lost'; out.note = '浏览器选中的文件夹句柄已失效（刷新页面后需重新「📂 选择文件夹…」）'; return out; }
+            if (!(await handleUsable())) { out.error = 'handle-denied'; out.note = '浏览器未授予该文件夹的读写权限（请重新选择并允许）'; return out; }
+            const pb = await handleProbe();
+            if (!pb.ok) { out.error = String(pb.error || 'probe-failed'); localDiskMarkInvalid(raw, 'probe-write-failed', out.error); return out; }
+            out.ok = true; out.resolved = false; out.dir = raw; out.path = raw + '/' + 'ftt2-local-＜角色＞.json';
+            stats.probes++; stats.lastAt = Date.now();
+            localDiskClearInvalid();
+            return out;
+        } catch (e) { out.error = String((e && e.message) || e); return out; }
+    }
     try {
         const rs = await localDiskResolveDir(raw);
         out.dir = String(rs.dir || raw); out.resolved = !!rs.resolved; out.base = String(rs.base || '');
@@ -870,8 +930,17 @@ export function localDiskInfo() {
     const dir = localDiskRaw();
     const c = localDiskCapability(false);
     const plat = localDiskPlatform(false);
+    const handleMode = localDiskIsHandlePath(dir);
+    const handleName = handleMode ? localDiskHandleName(dir) : (fsHandle ? String(fsHandle.name || '') : '');
     return {
-        enabled: !!dir || !!fsHandle, dir: dir || (fsHandle ? String(fsHandle.name || '') : ''), kind: fsHandle ? 'fs-handle' : localDiskPathKind(dir), handle: !!fsHandle,
+        enabled: localDiskOn(),
+        // v3.35.0：句柄模式 → `dir` 就是标记本身（路径框里显示的就是它）；另给 `display` 供界面讲清楚「这是什么」
+        dir: dir || (fsHandle ? String(fsHandle.name || '') : ''),
+        display: handleMode
+            ? (handleName + '（浏览器选中的文件夹 · 绝对路径不可见 · 本会话内直接写入该文件夹' + (fsHandle ? '' : ' · 句柄已失效，请重新选择') + '）')
+            : '',
+        handleMode: handleMode, handleName: handleName, handleLive: !!fsHandle,
+        kind: handleMode ? 'handle' : (fsHandle ? 'fs-handle' : localDiskPathKind(dir)), handle: !!fsHandle,
         // v3.33.0：平台与「路径形态 vs 本机平台」的冲突提示（用户报告「Android 上设不了」的直接可见原因）
         platform: plat.name, platformSource: plat.source, platformLabel: localDiskPlatformLabel(plat.name),
         pathWarn: localDiskPathWarn(dir, plat.name),
@@ -898,6 +967,7 @@ export function localDiskReset() {
 export const localDiskStats = stats;
 
 export default {
+    HANDLE_PREFIX, localDiskIsHandlePath, localDiskHandleName, localDiskHandleMarker,
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
