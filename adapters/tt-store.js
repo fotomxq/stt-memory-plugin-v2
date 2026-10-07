@@ -51,7 +51,7 @@ let announced = false;
 let lastError = '';
 let lastOkAt = 0;
 let lastReason = '';
-const stats = { writes: 0, kvWrites: 0, blobWrites: 0, reads: 0, misses: 0, listCalls: 0, fallbacks: 0 };
+const stats = { writes: 0, kvWrites: 0, blobWrites: 0, reads: 0, misses: 0, listCalls: 0, fallbacks: 0, twinPicks: 0, twinDrops: 0 };
 const missCache = Object.create(null);      // `${ns}\u0000${key}` → 判定时间
 const listCache = Object.create(null);      // `${ns}/${table}` → { at, keys: string[] }
 const writeChannel = Object.create(null);   // `${ns}\u0000${key}` → 'kv' | 'blob'
@@ -486,6 +486,40 @@ export async function ttBlobDel(name, opts) {
 export function ttChannelFor(size) { try { return (Number(size) >= TT_KV_MAX_BYTES && !!ttBlobApi()) ? 'blob' : 'kv'; } catch (e) { return 'kv'; } }
 
 /**
+ * v3.26.6：读取结果里信封的 `payload.updatedAt`（无法解析 → -1；gzip 载荷 / 非信封同样 -1）。
+ * @param {{bytes?:Uint8Array}} r
+ * @returns {number}
+ */
+function envelopeUpdatedAtOf(r) {
+    try {
+        if (!r || !r.bytes || !r.bytes.length) return -1;
+        const s = bytesToText(r.bytes);
+        if (!s) return -1;
+        const env = JSON.parse(s);
+        const at = Number(env && env.payload && env.payload.updatedAt);
+        return (Number.isFinite(at) && at > 0) ? at : -1;
+    } catch (e) { return -1; }
+}
+
+/**
+ * v3.26.6：**同键双通道并存时选哪一份**（纯函数，便于单测）。
+ *   判据：两侧都能解出信封 `payload.updatedAt` 时**取更新的**；否则（gzip / 非信封 / 有一侧解不出）
+ *   取**字节数更大**的一份 —— 大文件通道（blobs）才是权威大对象，而 KV 通道的孪生副本
+ *   只可能来自「当年载荷还小」的时代（真机取证：v3.0.18 的 62KB 旧状态 vs 1MB 现状态）。
+ * @returns {{found:boolean, bytes:Uint8Array, channel:string, ns:string}}
+ */
+export function pickNewerBytes(a, b) {
+    try {
+        if (!a) return b;
+        if (!b) return a;
+        const aa = envelopeUpdatedAtOf(a), ab = envelopeUpdatedAtOf(b);
+        if (aa >= 0 && ab >= 0 && aa !== ab) return aa > ab ? a : b;
+        const la = a.bytes ? a.bytes.length : 0, lb = b.bytes ? b.bytes.length : 0;
+        return la >= lb ? a : b;
+    } catch (e) { return a || b; }
+}
+
+/**
  * 写入原生存储（自动选 KV / Blob）。
  * @param {string} name 键名（原始文件名，内部按官方规则归一）
  * @param {Uint8Array} bytes 原始载荷字节（gzip 或明文 UTF-8 —— 与文件通道内容口径一致）
@@ -494,17 +528,44 @@ export async function ttPutBytes(name, bytes, opts) {
     const o = opts || {};
     const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     if (!u8.length) return { ok: false, reason: 'empty' };
+    const ns = String(o.ns || TT_NS);
+    const key = ttKeyOf(name);
+    const prevCh = writeChannel[ctxKey(ns, key)] || '';
     const ch = o.channel || ttChannelFor(u8.length);
+    /**
+     * v3.26.6（真机取证「超大面积回滚」）：**大载荷写进 blobs 之后，必须把 KV 通道的旧孪生副本删掉**。
+     *   旧行为只写不清 → 状态在 2026-09-29 还是 62KB（KV），后来长到 1MB（blobs），
+     *   KV 里那份 v3.0.18 旧状态**一直留着**；新会话读取时先试 KV → 读到陈旧主文件 → 回滚。
+     *   删除是幂等的（键不存在也算成功），且只在「本次写的是大载荷 / 通道发生变化」时做，
+     *   不给小载荷（清单 / 日志）添无谓请求。
+     */
+    const dropTwin = async (which) => {
+        try {
+            if (which === 'kv') { await ttKvDel(name, o); }
+            else if (ttBlobApi()) { await ttBlobDel(name, o); }
+            stats.twinDrops++;
+            // 删除会清掉通道提示 → 把本次写入的通道重新登记
+            writeChannel[ctxKey(ns, key)] = (which === 'kv') ? 'blob' : 'kv';
+        } catch (e) { /* 忽略 */ }
+    };
     if (ch === 'blob') {
         const r = await ttBlobPut(name, u8, o);
-        if (r.ok) return r;
+        if (r.ok) {
+            // 大载荷落 blobs → 清掉可能存在的 KV 孪生（含历史遗留）
+            await dropTwin('kv');
+            return r;
+        }
         stats.fallbacks++;
         const kv = await ttKvPut(name, bytesToBase64(u8), o);      // Blob 写失败 → 退回 KV（绝不丢数据）
         if (kv.ok) kv.afterBlobError = String(r.error || r.reason || 'error');
         return kv;
     }
     const r = await ttKvPut(name, bytesToBase64(u8), o);
-    if (r.ok) return r;
+    if (r.ok) {
+        // 通道从 blobs 退回 KV（载荷变小）→ 清掉 blobs 里的旧大副本，避免「新旧两份同时被读到」
+        if (prevCh === 'blob') await dropTwin('blob');
+        return r;
+    }
     if (ttBlobApi()) {
         stats.fallbacks++;
         const blob = await ttBlobPut(name, u8, o);
@@ -539,6 +600,45 @@ export async function ttGetBytes(name, opts) {
         if (r && r.ok && r.bytes && r.bytes.length) return { found: true, bytes: r.bytes, channel: 'blob', ns: ns };
         return null;
     };
+    // v3.26.6（真机取证「存档数据发生超大面积回滚」）：**同键双通道并存时不能盲信先试的那个**。
+    //   真机事实：`kv/main/ftt2-state-char1xbib3t.json.json` 是 **v3.0.18（2026-09-29）** 留下的旧副本
+    //   （载荷 62KB < 96KB 阈值时写进 KV），后来状态长到 1MB 改走 blobs，而 **KV 孪生副本从未删除**。
+    //   于是每个新会话（`known` 为空 → 先试 KV）都把这份 9 条原子的陈旧状态当成「服务端主文件」读进来
+    //   （真机日志：`mainAt = 2026-09-29T23:53`，而 blobs 里那份是当天最新）→ 再叠加「主文件滞后 → 套用分片」
+    //   → 逐步回滚，且随后被保存写回 → **回滚固化**。分片同样是双份（如 atoms 分片的 KV 孪生停在 10-02）。
+    //   现在：新会话（不知道写入通道）**两个通道都读**，取「信封 `payload.updatedAt` 更新」的一份；
+    //   时间戳不可比（gzip 载荷 / 非信封）时取**更大**的一份（大文件通道才是权威大对象）；
+    //   选中后把落选的那份**删掉**（自愈：旧副本不再有机会复活）。
+    if (!known) {
+        const rv = await tryKv();
+        const rb = await tryBlob();
+        if (rv || rb) {
+            const hit = (rv && rb) ? pickNewerBytes(rv, rb) : (rv || rb);
+            if (rv && rb) {
+                const loser = (hit === rv) ? rb : rv;
+                stats.twinPicks++;
+                try {
+                    if (loser.channel === 'kv') await ttKvDel(name, o);
+                    else if (ttBlobApi()) await ttBlobDel(name, o);
+                    stats.twinDrops++;
+                    // `ttKvDel` 会清掉通道提示 → 把本次选中的通道重新登记，保持会话内的快路径
+                    writeChannel[ctxKey(ns, key)] = hit.channel;
+                } catch (e) { /* 忽略：删不掉只是留个旧副本，不影响本次读取（下次读仍按较新的一份） */ }
+                try {
+                    dbgLog('对账', {
+                        action: '同键双通道并存 → 取较新的一份并删除旧副本',
+                        key: key, ns: ns, table: String(o.table || TT_TABLE),
+                        picked: hit.channel, pickedAt: envelopeUpdatedAtOf(hit), bytesPicked: hit.bytes.length,
+                        dropped: loser.channel, droppedAt: envelopeUpdatedAtOf(loser), bytesDropped: loser.bytes.length,
+                    });
+                } catch (e) { /* 忽略 */ }
+            }
+            missClear(ns, key);
+            return hit;
+        }
+        missMark(ns, key);
+        return { found: false };
+    }
     const order = (known === 'blob') ? [tryBlob, tryKv] : [tryKv, tryBlob];
     for (const step of order) {
         const hit = await step();
@@ -659,6 +759,7 @@ export function ttChannelInfo() {
         kvMaxBytes: TT_KV_MAX_BYTES,
         writes: stats.writes, kvWrites: stats.kvWrites, blobWrites: stats.blobWrites,
         reads: stats.reads, misses: stats.misses, listCalls: stats.listCalls, fallbacks: stats.fallbacks,
+        twinPicks: stats.twinPicks, twinDrops: stats.twinDrops,   // v3.26.6：同键双通道并存 → 取较新 + 删旧副本 的次数
         lastOkAt: lastOkAt, err: lastError, errAt: lastError ? lastOkAt : 0, errReason: lastReason,
     };
 }
@@ -682,6 +783,8 @@ export function ttChannelDetailHtml() {
             '命名空间：' + c.ns + '（表 ' + c.table + '；旧数据只读兼容 ' + c.legacyNs + '）',
             '写入分布：KV ' + c.kvWrites + ' 次 / 大文件 ' + c.blobWrites + ' 次（≥' + Math.round(c.kvMaxBytes / 1024) + 'KB 走大文件通道）',
             '未命中抑制：' + c.misses + ' 次（' + TT_MISS_TTL_MS / 1000 + 's 内同键不再探测）',
+            // v3.26.6：同键在 KV 与大文件两个通道都有副本时，取较新的一份并删掉旧副本（真机「超大面积回滚」根因）
+            '双通道取新：' + Number(c.twinPicks || 0) + ' 次（其中删除旧副本 ' + Number(c.twinDrops || 0) + ' 份）',
             c.mirror ? '镜像：开启（原生写入后另写一份酒馆用户目录文件）' : '镜像：关闭',
         ];
         if (c.err) rows.push('最近错误：' + c.err + (c.errReason ? ('（' + c.errReason + '）') : ''));

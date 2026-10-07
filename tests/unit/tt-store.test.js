@@ -23,7 +23,7 @@ import { defaultCfg } from '../../core/config.js';
 import { gzipToBytes } from '../../adapters/gzip.js';
 import {
     TT_NS, TT_LEGACY_NS, TT_TABLE, TT_KV_MAX_BYTES, TT_MISS_TTL_MS, TT_LIST_TTL_MS, TT_KEY_RE,
-    ttKeyOf, ttDetected, ttNativeOn, ttNativeActive, ttStoreApi, ttBlobApi, ttFeatureSeen,
+    ttKeyOf, ttDetected, ttNativeOn, ttNativeActive, ttStoreApi, ttBlobApi, ttFeatureSeen, pickNewerBytes,
     ttKvPut, ttKvTryGet, ttKvDel, ttBlobPut, ttBlobHas, ttBlobGet, ttChannelFor, ttPutBytes, ttGetBytes,
     ttDelete, ttListKeys, ttListBlobKeys, ttStoreOverview, ttGetLegacyBytes, ttBytesToTextAuto,
     ttTextBytes, ttMissStats, ttChannelInfo, ttChannelStatusHtml, ttChannelDetailHtml,
@@ -337,6 +337,64 @@ function useHost(host) {
             return html.indexOf('⚪') === 0 && html.indexOf('酒馆用户目录文件') > 0;
         });
         await A('D2 缓存清理可调用（立即同步取真值路径）', () => { ttDropCaches(); return ttMissStats().cached === 0; });
+    }
+
+    console.log('\n[E] v3.26.6 同键双通道并存：取较新的一份并删掉旧副本（真机「超大面积回滚」根因）');
+    {
+        // 真机事实：`kv/main/ftt2-state-char1xbib3t.json.json` 是 v3.0.18（2026-09-29）的旧副本
+        //   （当年载荷 62KB → 写进 KV），后来状态长到 1MB 改走 blobs，**KV 孪生副本从未删除**；
+        //   新会话读取时先试 KV → 把这份陈旧状态当「服务端主文件」读进来 → 数据被逐步回滚并写回（回滚固化）。
+        const env = (at, tag) => JSON.stringify({ v: 1, scope: 'char:x', payload: { scope: 'char:x', updatedAt: at, data: { atoms: [{ id: tag, text: tag, title: tag, tags: [] }] } } });
+        const h = useHost(makeTtHost());
+        const KEY = 'ftt2-state-twin.json';
+        const K = 'ftt2-files/main/' + KEY;
+        // KV 里：旧的小副本；blobs 里：新的 1MB 大副本（模拟「后来长大改走 blobs」）
+        h.kv.set(K, { k: 'b64', v: Buffer.from(env(1000, 'old'), 'utf8').toString('base64'), ts: 1000 });
+        const big = ttTextBytes(env(2000, 'new') + ' '.repeat(TT_KV_MAX_BYTES));
+        h.blobs.set(K, big);
+        ttResetSession();                                  // 新会话：写入通道未知（正是真机的情形）
+
+        await A('E1 纯函数 `pickNewerBytes`：两侧都能解出信封 `payload.updatedAt` → 取更新的；不可比 → 取更大的一份', () => {
+            const mk = (at, n) => ({ found: true, channel: 'x', bytes: ttTextBytes(env(at, 't') + ' '.repeat(n)) });
+            const a = mk(100, 10), b = mk(200, 10);
+            const c = { found: true, channel: 'kv', bytes: ttTextBytes('not-json') };
+            const d = { found: true, channel: 'blob', bytes: ttTextBytes('not-json' + ' '.repeat(500)) };
+            return pickNewerBytes(a, b) === b && pickNewerBytes(b, a) === b && pickNewerBytes(c, d) === d;
+        });
+        await A('E2 新会话读到的是**较新**的那份（不再是「先试 KV 就中旧副本」），且旧孪生副本被删除', async () => {
+            const r = await ttGetBytes(KEY);
+            const dec = await ttBytesToTextAuto(r.bytes);
+            const parsed = JSON.parse(dec.text);
+            const info = ttChannelInfo();
+            return r.found === true && parsed.payload.updatedAt === 2000
+                && r.channel === 'blob'
+                && !h.kv.has(K)                                   // 旧副本已被删（自愈）
+                && Number(info.twinPicks) >= 1 && Number(info.twinDrops) >= 1;
+        });
+        await A('E3 反向：blobs 旧、KV 新 → 取 KV 的那份并删掉 blobs 旧副本', async () => {
+            const h2 = useHost(makeTtHost());
+            const KEY2 = 'ftt2-state-twin2.json';
+            const K2 = 'ftt2-files/main/' + KEY2;
+            h2.blobs.set(K2, ttTextBytes(env(1000, 'old-blob') + ' '.repeat(TT_KV_MAX_BYTES)));
+            h2.kv.set(K2, { k: 'b64', v: Buffer.from(env(3000, 'new-kv'), 'utf8').toString('base64'), ts: 3000 });
+            ttResetSession();
+            const r = await ttGetBytes(KEY2);
+            const dec = await ttBytesToTextAuto(r.bytes);
+            return r.found === true && JSON.parse(dec.text).payload.updatedAt === 3000 && !h2.blobs.has(K2);
+        });
+        await A('E4 大载荷写入 blobs 之后，KV 通道的同名孪生副本被清掉（从此不可能再被「先试 KV」读到）', async () => {
+            const h3 = useHost(makeTtHost());
+            const KEY3 = 'ftt2-state-twin3.json';
+            const K3 = 'ftt2-files/main/' + KEY3;
+            h3.kv.set(K3, { k: 'b64', v: Buffer.from('{"v":1,"payload":{"updatedAt":1,"data":{}}}', 'utf8').toString('base64'), ts: 1 });
+            ttResetSession();
+            const r = await ttPutBytes(KEY3, ttTextBytes(env(5000, 'fresh') + ' '.repeat(TT_KV_MAX_BYTES)));
+            return r.ok === true && r.channel === 'blob' && !h3.kv.has(K3) && h3.blobs.has(K3);
+        });
+        await A('E5 通道详情行如实写出「双通道取新 + 删旧副本」的次数（真机取证口）', () => {
+            const d = ttChannelDetailHtml();
+            return d.indexOf('双通道') > 0;
+        });
     }
 
     unHost();
