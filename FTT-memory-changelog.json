@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.31.0",
+  "version": "3.32.0",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.32.0",
+      "date": "2026-10-07",
+      "title": "快照 / 日志也结构化拆分：一条快照一个文件、日志按天分片，不再聚合成单一文件",
+      "points": [
+        "结构（落在本地目录里长这样）：text<本地存储路径>/└── char_1xbib3t/├── manifest.json meta.json atoms.json …（v3.…",
+        "好处：单条快照 / 单天日志各自成文件（可单独核对、替换、按时间取用）；坏一片只影响那一片；与服务端分片、本机层逐维分片同构。主记录（ftt2-local-*.json、aux-…"
+      ]
+    },
     {
       "version": "3.31.0",
       "date": "2026-10-07",

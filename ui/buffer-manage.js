@@ -252,7 +252,18 @@ export function bufferSectionHtml(copy) {
                 + (a.pending ? (' · 待落盘 ' + Number(a.pending)) : '')
                 + (a.lastError ? (' · <span class="ftt-err">最近失败：' + esc(String(a.lastError)) + '</span>') : '')
                 + '</div>'
-                + '<div class="ftt-muted">快照链与同步日志在写完服务端后<b>额外收录一份</b>到同一目录，便于统一备份。</div></details>');
+                + '<div class="ftt-muted">快照链与同步日志在写完服务端后<b>额外收录一份</b>到同一目录，便于统一备份。</div>'
+                + (() => {
+                    // v3.32.0（用户要求「日志文件也需要拆开做存储」）：按天分片的落点如实回报（只读统计，不做 I/O）
+                    const p = (a && a.parts) ? a.parts : null;
+                    const keys = p ? Object.keys(p) : [];
+                    if (!keys.length) return '';
+                    return '<div class="ftt-muted" data-ftt-log-parts>日志结构化拆分：'
+                        + keys.map((k) => esc(k) + ' ' + Number((p[k] && p[k].count) || 0) + ' 条 / ' + Number((p[k] && p[k].files) || 0) + ' 个按天文件'
+                            + (p[k] && p[k].error ? '（<span class="ftt-err">' + esc(String(p[k].error)) + '</span>）' : '')).join(' · ')
+                        + ' → ' + esc(String((p[keys[0]] && p[keys[0]].dir) || '')) + '</div>';
+                })()
+                + '</details>');
         }
     }
     rows.push('<div class="ftt-hint">都是可再生成的缓存（日志 / 台账 / 追踪 / 向量 / 版本清单 / 命名与对账标记）；清理<b>不影响记忆数据</b>。</div>');

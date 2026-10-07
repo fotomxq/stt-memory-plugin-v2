@@ -3,6 +3,37 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.32.0（2026-10-07）· 快照 / 日志也**结构化拆分**：一条快照一个文件、日志**按天分片**，不再聚合成单一文件
+
+**用户要求**（原话）：「本地存储的快照，也需要拆分结构化存储，避免单一文件聚合。日志文件也需要拆开做存储。」
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | 新增 `adapters/local-parts.js`（**纯函数**） | `snapshotParts(snapStore)` → **一条快照一个文件**（`snapshots/<id>.json`）+ `snapshots/manifest.json`（链顺序 + 逐条 `hash/bytes/n/ts`）；`logParts(entries, kind, {cap})` → **按天分片**（`logs/<kind>-<YYYY-MM-DD>[-n].json`，同一天超 `cap` 再切 `-2`、`-3`）+ `logs/manifest.json`（各片 `hash/bytes/n/时间范围`）；`joinSnapshotParts` / `joinLogParts` 按清单校验 hash 后还原，**坏一条只报那一条** |
+| ② | `adapters/local-disk.js` | 新增 `localDiskWriteParts('snapshots'\|'logs', …)` / `localDiskReadParts(…)`：写进 `<本地存储路径>/<scope>/snapshots/…`、`<scope>/logs/…`（浏览器选中的文件夹走 `getDirectoryHandle(…, {create:true})`；否则宿主文件 API 逐文件写）；读回按清单逐片校验 hash |
+| ③ | `adapters/store.js` 保存 ④ | 单文件副本成功后**再写快照链结构化分片**（best-effort，失败只记诊断、不阻塞保存）；结果记入 `localBuffer.snapParts` 与调试日志 |
+| ④ | `adapters/aux-store.js` 落盘 | 调试日志（`SPreset_FTTMemoryDebug`）/ 交互时间线（`SPreset_FTTMemoryTrace`）写完主记录后**再按天分片写一份**（`cap=500`）；落点统计进 `auxStoreInfo().parts` |
+| ⑤ | `index.js#loadFromLocalDisk` + `recoverSnapParts` | 载入**只补不覆盖**：信封里的快照链为空/缺失时用 `snapshots/` 逐条分片复原；链非空时**一字不动**，分片不可用时如实保留空链（绝不凭空造数据） |
+| ⑥ | 诊断 / UI | `ftt.diskFiles` 附带两类分片清单状态（条数 / 文件数 / 坏片数 / 目录）；数据管理页辅助数据明细新增「日志结构化拆分」行（条数 / 按天文件数 / 落点） |
+
+**结构（落在本地目录里长这样）**
+
+```text
+<本地存储路径>/
+└── char_1xbib3t/
+    ├── manifest.json  meta.json  atoms.json  …（v3.31.0 的逐维分片）
+    ├── snapshots/
+    │   ├── manifest.json        # {v, at, count, order:[…], parts:{<id>.json:{hash,bytes,n,kind,ts}}}
+    │   ├── root_1.json          # 一条快照一个文件
+    │   └── incr_2.json  incr_3.json …
+    └── logs/
+        ├── manifest.json        # {v, at, kind, count, order, parts:{<片>:{day,n,hash,bytes,from,to}}}
+        ├── debug-2026-10-06.json
+        └── debug-2026-10-07.json  trace-2026-10-07.json …
+```
+
+**好处**：单条快照 / 单天日志各自成文件（可单独核对、替换、按时间取用）；坏一片只影响那一片；与服务端分片、本机层逐维分片同构。主记录（`ftt2-local-*.json`、`aux-*.json`）**照旧保留** —— 分片是**额外**的结构化副本，不是替换，避免一次性改动过大。
+
 ## v3.31.0（2026-10-07）· 本机层**结构化分片**：逐维文件 / 逐维键 + 清单，不再聚合成单一文件
 
 **用户要求**（原话）：「本地文件可以拆碎了保存，这样方便分片处理，呈现结构化、体系化，而不是聚合到单一文件。其他本地存储文件同理。」
