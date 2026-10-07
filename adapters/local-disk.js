@@ -77,6 +77,68 @@ export function localDiskJoin(dir, name) {
     return d + sep + String(name || '').replace(/^[\\/]+/, '');
 }
 
+/**
+ * v3.30.0（用户要求）：「缺少选择目录的能力，浏览器是可以选择文件夹的。选择后展示即可。」
+ *   用**浏览器原生**的 File System Access API（`showDirectoryPicker`；WebView2 / Chromium 与 TauriTavern 都支持）：
+ *   选中后拿到目录句柄，本机副本 / 辅助数据就写到该文件夹（真文件，**无需宿主文件 API**）。
+ *   如实说明：浏览器出于隐私**不暴露绝对路径**（只显示文件夹名）；刷新后句柄失效（安全限制）→ 需重新选择，
+ *   未选择时自动回退浏览器本地存储，绝不因此丢数据。
+ */
+let fsHandle = null;
+/** 是否已有「浏览器选中的文件夹」句柄（本会话） */
+export function localDiskHasHandle() { return !!fsHandle; }
+/** 浏览器文件夹选择（由用户操作触发；失败如实回报） */
+export async function localDiskPickDir() {
+    try {
+        const w = globalThis.window;
+        if (!w || typeof w.showDirectoryPicker !== 'function') {
+            return { ok: false, reason: 'unsupported', note: '当前宿主不支持浏览器文件夹选择（File System Access API）' };
+        }
+        const h = await w.showDirectoryPicker({ mode: 'readwrite' });
+        if (h && typeof h.requestPermission === 'function') {
+            const perm = await h.requestPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') return { ok: false, reason: 'denied', note: '未授予读写权限' };
+        }
+        fsHandle = h;
+        return { ok: true, name: String((h && h.name) || ''), note: '已选中文件夹「' + String((h && h.name) || '') + '」（浏览器只暴露文件夹名，绝对路径不可见）' };
+    } catch (e) { return { ok: false, reason: String((e && e.name) || 'cancelled'), note: String((e && e.message) || e) }; }
+}
+/** 句柄可用性（权限可能被浏览器回收） */
+async function handleUsable() {
+    try {
+        if (!fsHandle) return false;
+        if (typeof fsHandle.queryPermission === 'function') {
+            const p = await fsHandle.queryPermission({ mode: 'readwrite' });
+            if (p === 'granted') return true;
+            const q = await fsHandle.requestPermission({ mode: 'readwrite' });
+            return q === 'granted';
+        }
+        return true;
+    } catch (e) { return false; }
+}
+const baseNameOfPath = (p) => String(p == null ? '' : p).split(/[\\/]/).filter(Boolean).pop() || '';
+async function handleWriteText(name, text) {
+    const fh = await fsHandle.getFileHandle(String(name), { create: true });
+    const ws = await fh.createWritable();
+    await ws.write(String(text == null ? '' : text));
+    await ws.close();
+    return { ok: true };
+}
+async function handleReadText(name) {
+    const fh = await fsHandle.getFileHandle(String(name));
+    const f = await fh.getFile();
+    return { ok: true, text: await f.text() };
+}
+async function handleList() {
+    const out = [];
+    for await (const ent of fsHandle.entries()) {
+        const nm = Array.isArray(ent) ? ent[0] : (ent && ent.name);
+        const h = Array.isArray(ent) ? ent[1] : ent;
+        out.push({ name: String(nm || ''), isFile: !(h && h.kind === 'directory'), size: 0 });
+    }
+    return out;
+}
+
 /** 宿主 ABI（`window.__TAURITAVERN__`） */
 function abi() {
     try {
@@ -146,6 +208,8 @@ export function localDiskReprobe() { return localDiskCapability(true); }
 
 /** 写文本（按探测到的机制；不抛错，失败如实回报） */
 async function diskWriteText(path, text) {
+    // v3.30.0：**浏览器选中的文件夹句柄优先**（原生、无需宿主 API）
+    try { if (fsHandle && await handleUsable()) return Object.assign(await handleWriteText(String(path).split(/[\\/]/).pop(), text), { mechanism: 'fs-handle' }); } catch (e) { /* 落到下面的宿主机制 */ }
     const c = localDiskCapability(false);
     const body = String(text == null ? '' : text);
     if (!c.ok) return { ok: false, reason: 'no-capability', error: c.note };
@@ -181,6 +245,7 @@ async function diskWriteText(path, text) {
 }
 /** 读文本 */
 async function diskReadText(path) {
+    try { if (fsHandle && await handleUsable()) return Object.assign(await handleReadText(String(path).split(/[\\/]/).pop()), { mechanism: 'fs-handle' }); } catch (e) { /* 落到下面的宿主机制 */ }
     const c = localDiskCapability(false);
     if (!c.ok) return { ok: false, reason: 'no-capability', error: c.note };
     try {
@@ -212,6 +277,7 @@ export async function localDiskList() {
     const out = { ok: false, dir: dir, names: [], entries: [], error: '' };
     if (!dir) { out.error = 'off'; return out; }
     try {
+        if (fsHandle && await handleUsable()) { out.entries = await handleList(); out.names = out.entries.map((x) => x.name); out.ok = true; return out; }
         const inv = tauriInvoke();
         if (!inv) { out.error = 'no-invoke'; return out; }
         const r = await inv('plugin:fs|read_dir', { path: dir });
@@ -300,7 +366,7 @@ export function localDiskInfo() {
     const dir = localDiskRaw();
     const c = localDiskCapability(false);
     return {
-        enabled: !!dir, dir: dir, kind: localDiskPathKind(dir),
+        enabled: !!dir || !!fsHandle, dir: dir || (fsHandle ? String(fsHandle.name || '') : ''), kind: fsHandle ? 'fs-handle' : localDiskPathKind(dir), handle: !!fsHandle,
         capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, devKeys: c.devKeys, note: c.note },
         invalid: localDiskInvalid(),   // v3.28.1：路径是否已被标记为**无效**（写入失败 / 探针失败）
         stats: Object.assign({}, stats),
@@ -312,6 +378,7 @@ export function localDiskReset() {
     stats.writes = 0; stats.reads = 0; stats.failures = 0; stats.probes = 0;
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
     localDiskClearInvalid();
+    fsHandle = null;
     return true;
 }
 
@@ -321,4 +388,5 @@ export default {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
+    localDiskPickDir, localDiskHasHandle,
 };

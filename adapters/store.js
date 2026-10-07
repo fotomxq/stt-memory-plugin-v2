@@ -30,6 +30,7 @@ import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFi
 // v3.26.5（用户要求「设置了目录则内存 / 变量 / 传统本地存储全部作废，仅用本地文件」）：对齐 / 换目录时
 //   把**聊天元数据**（只读旧载体）也算进候选源 —— 它虽然不由 V2 写入，但「哪份最新就用哪份」才对得起用户。
 import { chatMetaLoadState } from './chat-meta.js';
+import { auxLsGet, auxLsSet } from './aux-store.js';   // v3.30.0：跨刷新防回滚基线（跨层都留一份）
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）—— 与上面的「宿主扩展存储命名空间」语义不同
 import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo } from './local-disk.js';
 // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
@@ -45,6 +46,7 @@ import { readLedgerBegin, readLedgerEnd, readLedgerRecord, readLedgerStats } fro
 import { capRelLinks } from '../core/rel-maint.js';
 
 const SAVE_DEBOUNCE_MS = 800;
+const LASTGOOD_KEY = 'ftt2_LastGoodCounts';   // v3.30.0：上次成功写盘的条目数（跨刷新防回滚）
 let diskWarnedFor = '';             // v3.28.1：磁盘写失败已提醒过的路径（同路径每次会话只弹一次）
 let saveTimer = null;
 let lastSave = { at: 0, ok: false, via: '', bytes: 0, error: '' };
@@ -402,8 +404,46 @@ function countsOf(st) {
 
 /** 上一次**成功写入**（或载入来源）的条目数基线 */
 let lastPushCounts = null;
+let lastGoodCounts = null;             // v3.30.0：上次**成功写盘**的条目数（跨刷新防回滚基线）
 /** 是否已记录基线（载入来源也算，避免首次保存就误判） */
-export function primeShrinkBaseline(st) { try { lastPushCounts = countsOf(st); return lastPushCounts; } catch (e) { return null; } }
+export function primeShrinkBaseline(st) {
+    try {
+        const now = countsOf(st);
+        // v3.30.0（用户报告「刷新就立马丢失的一干二净，还要人工导入才恢复」）：**跨刷新**的防回滚基线 ——
+        //   只 prime「本次载入的态」是不够的：若本次载入本身就是残缺/空态，基线也跟着变坏，守护形同虚设。
+        //   这里把「上次**成功写盘**时的条目数」（`ftt2_LastGoodCounts`）也算进来，取两者**逐维最大**。
+        const mark = (() => { try { const raw = auxLsGet(LASTGOOD_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } })();
+        lastPushCounts = mergeCounts(now, mark);
+        lastGoodCounts = mark || null;
+        return lastPushCounts;
+    } catch (e) { return null; }
+}
+/** 逐维取最大值（`a` 为当前，`b` 为上次完好保存的标记） */
+function mergeCounts(a, b) {
+    const out = Object.assign({}, a || {});
+    try {
+        if (!b || typeof b !== 'object') return out;
+        const dims = Object.assign({}, (a && a.dims) || {});
+        for (const k of Object.keys(b.dims || {})) dims[k] = Math.max(Number(dims[k] || 0), Number(b.dims[k] || 0));
+        out.dims = dims;
+        out.total = Math.max(Number((a && a.total) || 0), Number(b.total || 0));
+        out.tombs = Number((a && a.tombs) || 0);
+        return out;
+    } catch (e) { return out; }
+}
+/** 记录「上次完好保存」的条目数（每次成功写服务端文件后调用；跨刷新防回滚用） */
+function noteLastGoodCounts(st) {
+    try {
+        const c = countsOf(st);
+        const rec = { at: Date.now(), total: Number(c.total) || 0, dims: c.dims || {}, tombs: Number(c.tombs) || 0 };
+        if (!(rec.total > 0)) return rec;              // 空态不覆盖标记（绝不用「空」当基线）
+        lastGoodCounts = rec;
+        // 只经辅助存储门面写（浏览器模式 = localStorage；磁盘 / 命名空间模式 = 对应层）——
+        //   不再额外写 storageHooks：那会在目录模式下往浏览器变量层塞键（破坏「目录模式不写变量层」的口径）。
+        try { auxLsSet(LASTGOOD_KEY, JSON.stringify(rec)); } catch (e) { /* 忽略 */ }
+        return rec;
+    } catch (e) { return null; }
+}
 
 /**
  * 「异常缩水」判定：本次要写的状态相比基线丢了 `dropped` 条，而本次**新增的删除墓碑**只有 `tombstoned` 条，
@@ -432,7 +472,9 @@ function shrinkGuardCheck(st) {
         })();
         const unexplained = dropped - tombstoned;
         const ratio = before > 0 ? (dropped / before) : 0;
-        const blocked = before >= 30 && unexplained >= 20 && ratio >= 0.3;
+        // v3.30.0：**绝不允许把非空状态写成空态**（除非 orce：清空 / 导入 / 手动同步）—— 这是「刷新就丢光」的最后一道闸；
+        //   其余按既有比例判据（>=30 条且丢 >=20 条且比例 >=30%）。
+        const blocked = (before >= 1 && after === 0) || (before >= 30 && unexplained >= 20 && ratio >= 0.3);
         return {
             blocked: blocked, before: before, after: after, dropped: dropped, tombstoned: tombstoned, ratio: ratio,
             detail: { before: before, after: after, dropped: dropped, tombstoned: tombstoned, ratio: Math.round(ratio * 100) / 100 },
@@ -554,7 +596,7 @@ async function saveStateNowInner(o) {
     //   v3.10.4（A4）：再加一道**等值跳过** —— 与上次写入逐字节同源（同信封哈希 + 同长度）时不重写 1MB。
     //   v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时本层改走本地文件**（无 localStorage 配额限制）。
     let diskFellBack = false;          // v3.28.1：本次保存是否「磁盘写失败 → 回退浏览器层」（决定内存库照写）
-let localViaFile = false;
+    let localViaFile = false;
     try { localViaFile = localFileEnabled(); } catch (e) { localViaFile = false; }
     // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）优先于上面那条「宿主扩展存储命名空间」——
     //   前者才是「替代浏览器本地存储」的本地目录；后者属**服务端**数据集（参与官方同步）。
@@ -733,6 +775,7 @@ let localViaFile = false;
         pushedSeq = touchSeq;
         // v3.0.21：记下本次成功写入的条目数 —— 下一次保存的「异常缩水」守卫以它为基线
         try { lastPushCounts = countsOf(st); } catch (e) { lastPushCounts = null; }
+        try { noteLastGoodCounts(st); } catch (e) { /* 忽略：标记失败不影响本次保存 */ }
         // v3.0.18：记下**这次真正上传的内容**（信封哈希 + scope + 信封时间戳）——
         //   下次据此复现同一份载荷做比对（不用再多算一次哈希）
         try {
