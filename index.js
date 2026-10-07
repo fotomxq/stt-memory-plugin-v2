@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts, localDiskEnsureResolved } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -354,6 +354,11 @@ export async function loadMemoryState() {
     const localDirMode = (() => { try { return localFileEnabled(); } catch (e) { return false; } })();
     // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）优先级最高 —— 它替代的是**浏览器本地存储**，
     //   与「宿主扩展存储命名空间」（服务端数据集）是两件事；启用它时同样只留「本地磁盘 + 服务端」。
+    const localDiskMode0 = (() => { try { return localDiskOn(); } catch (e) { return false; } })();
+    // v3.34.0（用户要求「兼容 android 端的 TauriTavern」）：配置里只有**目录名**时，先解析到宿主应用数据目录
+    //   （`$APPLOCALDATA/<名字>`，TauriTavern 的 fs 只放行应用数据目录），并把解析后的**完整路径**写回配置。
+    //   必须在判定模式与读写之前做 —— 否则会拿一个相对名去写盘（宿主必然拒绝）。
+    if (localDiskMode0) { try { await localDiskEnsureResolved(); } catch (e) { /* 解析失败：仍按原名尝试，写入会如实失败并告警 */ } }
     const localDiskMode = (() => { try { return localDiskOn(); } catch (e) { return false; } })();
     if (localDiskMode) {
         // **本地磁盘模式**：本机层只有一个真相 = 本地磁盘上的那个文件（写 → 回读逐字节校验）

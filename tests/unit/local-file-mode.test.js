@@ -606,9 +606,10 @@ await A('E2 该路径重新「校验」通过 → 无效标记清除（可恢复
 }, () => ({ info: localDiskInfo() }));
 
 // ============================================================
-// v3.33.0（用户要求）：「本地存储路径不能随服务端转移」+「修复本地存储路径设置，无法设置 android」
+// v3.33.0（用户要求）：「本地存储路径不能随服务端转移」
+// v3.34.0（用户要求）：「兼容 android 端的 TauriTavern；当前存在问题可能是方法用错了，会弹出报错」
 // ============================================================
-await A('E3 存储页如实说明**设备本地**：路径只存本机（不随服务端同步）+ 本机平台 + 路径形态冲突告警 + 候选目录按钮与动作可达', async () => {
+await A('E3 存储页如实说明**设备本地**：路径只存本机（不随服务端同步）+ 本机平台 + 跨平台路径告警 + **不再有候选目录按钮**（用户明确不要）', async () => {
     boot({ storage: { localFilePath: '', localDiskDir: 'D:\\FTT\\store' } });
     const LD = await import('../../adapters/local-disk.js');
     // 假装本机是 Android：`D:\…` 这种从桌面同步过来的路径必须**当场点明**（否则用户只会看到「校验失败」）
@@ -617,41 +618,56 @@ await A('E3 存储页如实说明**设备本地**：路径只存本机（不随�
     const html = String(storagePageHtml(SETTINGS_CONTROLS.storage) || '');
     const CS = await import('../../adapters/config-store.js');
     const snap = CS.deviceLocalCfgSnapshot();
-    const acts = ['localDiskDirs', 'localDiskDirUse'];
     const d = LD.localDiskInfo();
     return html.indexOf('data-ftt-disk-platform') > 0 && html.indexOf('不随服务端同步') > 0
         && html.indexOf('data-ftt-disk-warn') > 0 && html.indexOf('Windows 路径') > 0
-        && html.indexOf('data-ftt-action="localDiskDirs"') > 0 && html.indexOf('data-ftt-action="localDiskDirUse"') < 0   // 未取候选前不渲染候选按钮
-        && acts.every((x) => SYNC_ACTIONS.indexOf(x) >= 0)
+        && html.indexOf('只填一个') > 0                                        // 提示「只填目录名即可」
+        && html.indexOf('localDiskDirs') < 0 && html.indexOf('localDiskDirUse') < 0   // 候选目录已移除
         && d.platform === 'android' && String(d.pathWarn).length > 0
         && snap.keys.indexOf('storage.localDiskDir') >= 0;
 }, () => ({ info: localDiskInfo() }));
 
-await A('E4 动作 `localDiskDirs` / `localDiskDirUse`：候选目录**实测可写才写入**；不可写如实拒绝（不把配置改坏）', async () => {
-    const h = boot({ storage: { localFilePath: '', localDiskDir: '' } });
+await A('E4 存储页动作 `localDiskProbe`：只填**目录名** → 解析到宿主应用数据目录 → 探针通过 → 把**完整路径写回**本机配置', async () => {
+    boot({ storage: { localFilePath: '', localDiskDir: 'fft_v2_store' } });
     const LD = await import('../../adapters/local-disk.js');
     LD.localDiskReset();
-    // 宿主只提供「写任意路径」接口（dev 文件 API，内存盘）：候选目录 → 探针 → 通过即采用
+    // TauriTavern 口径的宿主桩：路径插件（AppLocalData=15）+ fs（写 = 原始字节 + headers.path）
     const disk = new Map();
-    h.abi.api.dev = {
-        files: {
-            async writeTextFile(a) { disk.set(String(a.path), String(a.text != null ? a.text : a.content)); return { ok: true }; },
-            async readTextFile(a) { const k = String(a.path); if (!disk.has(k)) throw new Error('ENOENT'); return { ok: true, text: disk.get(k) }; },
-        },
-    };
+    let wroteProbe = 0;
+    try {
+        globalThis.window.__TAURI_INTERNALS__ = {
+            invoke: async (cmd, arg, opt) => {
+                const headers = (opt && opt.headers) || {};
+                if (cmd === 'plugin:path|resolve_directory') { if (Number(arg && arg.directory) === 15) return '/data/user/0/com.tauritavern.client/files'; throw new Error('denied'); }
+                if (cmd === 'plugin:fs|mkdir') return null;
+                if (cmd === 'plugin:fs|exists') return disk.has(String(arg && arg.path));
+                if (cmd === 'plugin:fs|remove') { disk.delete(String(arg && arg.path)); return null; }
+                if (cmd === 'plugin:fs|read_text_file') { const k = String(arg && arg.path); if (!disk.has(k)) throw new Error('ENOENT'); return new TextEncoder().encode(String(disk.get(k))); }
+                if (cmd === 'plugin:fs|write_text_file') {
+                    if (!(arg instanceof Uint8Array) || !headers.path) throw new Error('invalid args: missing file path');
+                    const full = decodeURIComponent(String(headers.path));
+                    disk.set(full, new TextDecoder('utf-8').decode(arg));
+                    if (/ftt2-local-probe\.json$/.test(full)) wroteProbe++;
+                    return null;
+                }
+                throw new Error('not allowed: ' + cmd);
+            },
+        };
+    } catch (e) { /* 忽略 */ }
     ttResetSession();
     LD.localDiskReprobe();
-    const r1 = await syncAction('localDiskDirs', {});
-    const use = await syncAction('localDiskDirUse', { dir: 'D:\\候选\\store' });
+    const pr = await syncAction('localDiskProbe', {});
     const okDir = String((cfg.storage || {}).localDiskDir || '');
-    // 不可写目录：把写接口撤掉 → 必须**拒绝写入配置**
-    delete h.abi.api.dev.files;
-    ttResetSession();
+    // 宿主拒绝写入（放行范围外）→ 探针如实失败，**不把配置改坏**
+    try { globalThis.window.__TAURI_INTERNALS__.invoke = async (cmd) => { if (cmd === 'plugin:fs|mkdir') return null; throw new Error('forbidden path'); }; } catch (e) { /* 忽略 */ }
+    LD.localDiskReset();
     LD.localDiskReprobe();
-    const bad = await syncAction('localDiskDirUse', { dir: 'D:\\不可写\\store' });
-    return r1.ok === true && Array.isArray(r1.detail && r1.detail.items)
-        && use.ok === true && okDir === 'D:\\候选\\store' && disk.size > 0
-        && bad.ok === false && String((cfg.storage || {}).localDiskDir || '') === 'D:\\候选\\store';
+    cfg.storage = Object.assign({}, cfg.storage || {}, { localDiskDir: '/storage/emulated/0/不许可/store' });
+    const bad = await syncAction('localDiskProbe', {});
+    return pr.ok === true && okDir === '/data/user/0/com.tauritavern.client/files/fft_v2_store'
+        && wroteProbe >= 1 && disk.size === 0 && String(pr.note).indexOf('应用数据目录') < 0 && String(pr.note).indexOf('可写') > 0
+        && bad.ok === false && String(bad.note).indexOf('应用数据目录') > 0
+        && String((cfg.storage || {}).localDiskDir) === '/storage/emulated/0/不许可/store';
 }, () => ({ cfg: (cfg.storage || {}).localDiskDir }));
 
 R.done();

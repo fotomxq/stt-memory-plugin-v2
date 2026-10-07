@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.33.0",
+  "version": "3.34.0",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.34.0",
+      "date": "2026-10-07",
+      "title": "兼容 Android 端 TauriTavern：修对 Tauri 插件调用形态（写用原始字节 + headers）、目录名解析到应用数据目录",
+      "points": [
+        "Android 为什么设不了、为什么会弹报错（三条一起）：① 写调用形态错（plugin:fs|write_text_file 要的是原始字节 body + headers.pa…",
+        "实测的调用口径：（TauriTavern 客户端构建静态核对；本版据此改写传输层）：| 用途 | 正确形态 | 旧实现（错） || --- | --- | --- || 写文件 …"
+      ]
+    },
     {
       "version": "3.33.0",
       "date": "2026-10-07",

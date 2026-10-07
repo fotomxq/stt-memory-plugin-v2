@@ -541,9 +541,10 @@ export function buildBridgeMethods() {
     //   · `ftt.diskFiles`：**列出本地存储目录里的文件**（只读；宿主 ACL 不放行时如实返回 ok:false）。
     T['ftt.diskProbe'] = safe(async () => {
         const info = localDiskInfo();
-        if (!info.dir) return { ok: false, reason: 'off', note: '尚未设置本地存储路径（设定 → 存储 → 本地存储路径）' };
+        if (!info.dir) return { ok: false, reason: 'off', note: '尚未设置本地存储路径（设定 → 存储 → 本地存储路径；可只填一个目录名，如 fft_v2_store）' };
         const pr = await localDiskProbeDir(info.dir);
-        return Object.assign({ dir: info.dir, capability: info.capability }, pr);
+        // v3.34.0：连同**解析结果**一起回报（只填目录名 → 解析到宿主应用数据目录的真实路径）
+        return Object.assign({ dir: info.dir, base: info.base, platform: info.platform, fsShape: info.fsShape, capability: info.capability }, pr);
     });
     T['ftt.diskFiles'] = safe(async () => {
         const info = localDiskInfo();

@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.34.0（2026-10-07）· 兼容 Android 端 TauriTavern：**修对 Tauri 插件调用形态**（写用原始字节 + headers）、目录名解析到应用数据目录
+
+**用户要求**（原话）：「android也是TauriTavern，不需要增加什么候选目录。其次请兼容android端的TauriTavern，当前存在问题可能是方法用错了，会弹出报错。」
+
+**Android 为什么设不了、为什么会弹报错（三条一起）**：① 写调用形态错（`plugin:fs|write_text_file` 要的是**原始字节 body + `headers.path`**，旧实现传 JSON `{path,contents}` → 宿主报 `missing file path` 并弹窗）；② 旧实现一次写盲试 18 种组合，每次失败都被宿主当成一次错误（弹报错被放大）；③ 宿主的 fs 只放行**应用数据目录**（`$APPLOCALDATA` 等），而配置里存的是别的设备同步过来的绝对路径 → 必然被拒。
+
+**实测的调用口径**（TauriTavern 客户端构建静态核对；本版据此改写传输层）：
+
+| 用途 | 正确形态 | 旧实现（错） |
+| --- | --- | --- |
+| 写文件 | `invoke('plugin:fs\|write_text_file', <原始字节>, { headers: { path: encodeURIComponent(路径), options: '{}' } })` | `invoke(cmd, { path, contents })` → 宿主报「missing file path」并弹窗 |
+| 读文件 | `invoke('plugin:fs\|read_text_file', { path, options })` → **返回字节**，需 UTF-8 解码 | 只传 `{ path }`，且按字符串处理返回值 |
+| 建目录 / 存在 / 删除 | `plugin:fs\|mkdir`（`{ recursive:true }`）/ `exists` / `remove`，均 `{ path, options }` | 从不建目录；探针文件删不掉 |
+| 目录 | `plugin:path\|resolve_directory`，`{ directory: <BaseDirectory 数值枚举> }`（**AppLocalData = 15**） | 从未调用（`D:\…` 直接写 → 被放行范围拒绝） |
+| 选择文件夹 | `plugin:dialog\|open`，`{ options: { directory: true, multiple: false } }` | 试了 4 种参数形态（每次失败都可能弹报错） |
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | `adapters/local-disk.js` | 传输层按上表改写：写=原始字节+`headers.path`、读=`{path,options}`+字节解码、写前 `mkdir -p`、探针清理用 `exists`+`remove`；**成功后缓存形态**（`fsShape`），**只在「参数形态不对」时才换下一种**（放行范围类拒绝只发一次 IPC）——不再 18 连试（用户看到的「弹出报错」正是每次盲试都被宿主当错误） |
+| ② | `adapters/local-disk.js` | **只填一个目录名**（如 `fft_v2_store`）→ 解析到宿主应用数据目录（`$APPLOCALDATA/<名字>`，`plugin:path` 数值枚举 15），并把**解析后的完整路径**写回配置（`localDiskEnsureResolved`，启动时也跑一次）；`localDiskInfo()` 增 `base/baseLabel/fsShape` |
+| ③ | `ui/sync.js` 存储页 | **移除「📁 候选目录」**（用户明确不需要）：删掉该按钮与两个动作（`SYNC_ACTIONS` 21 → 19）；「✅ 校验本地磁盘目录」现在会先解析目录名、再写探针 → 回读 → **删探针**，通过后把完整路径回填；提示改为「可只填一个目录名」，能力明细里写明宿主的放行范围 |
+| ④ | 诚实失败 | 放行范围外的绝对路径（`D:\…` / `/storage/emulated/0/…`）→ 写入被拒时如实报「宿主只放行应用数据目录（该路径被拒绝）—— 可只填一个目录名」，**标记路径无效并回退浏览器层**，绝不假装成功 |
+
 ## v3.33.0（2026-10-07）· 「本地存储路径」改**设备本地**（不随服务端转移）+ 修复 Android 上设不了
 
 **用户要求**（原话）：「新版本 修复本地存储路径设置，无法设置android。其次本地存储路径不能随服务端转移，因为不同端的存储路径可能有差异。」

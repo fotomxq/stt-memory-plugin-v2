@@ -20,11 +20,12 @@ import {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskWrite, localDiskRead, localDiskProbeDir, localDiskInfo, localDiskReset,
     localDiskWriteParts, localDiskReadParts,
-    localDiskPlatform, localDiskPlatformLabel, localDiskPathWarn, localDiskDirCandidates, localDiskPickDir,
+    localDiskPlatform, localDiskPlatformLabel, localDiskPathWarn, localDiskPickDir,
+    localDiskBaseDir, localDiskResolveDir, localDiskEnsureResolved,
 } from '../../adapters/local-disk.js';
 
 const R = makeReporter('local-disk v3.28.0 本地磁盘目录（替代浏览器本地存储）');
-let diskCandDbg = null, lastPickDbg = null;   // A9/A11 现场（失败时打出来）
+let lastPickDbg = null, A9Dbg = null;   // A9/A11 现场（失败时打出来）
 const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, (typeof x === 'function') ? x() : x); };
 const J = (v) => JSON.stringify(v);
 
@@ -164,98 +165,170 @@ await A('A7 拆分读的诚实口径：清单缺失 → 如实失败；**坏片�
         && r.ok === false && J(r.bad) === J(['s1.json']) && r.snapStore.length === 1
         && String(r.snapStore[0].id) === 's2';
 }, () => ({ info: localDiskInfo() }));
-
 // ------------------------------------------------------------
-// v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：平台识别 / 路径形态冲突 / 候选目录 / 多机制选择器
+// v3.33.0/v3.34.0（用户报告「兼容 android 端的 TauriTavern，当前存在问题可能是方法用错了，会弹出报错」）：
+//   平台识别 / 路径形态提示 / **TauriTavern 正确调用形态** / 目录名解析到应用数据目录 / 选择器
+//   —— 形态口径来自客户端构建实测：写 = 原始字节 body + `headers.path`；读 = `{path, options}` 返回字节；
+//      路径 = `{directory: <BaseDirectory 数值枚举>}`；对话框 = `{options:{directory:true}}`。
+// ------------------------------------------------------------
 /** 换一台「设备」：改 UA + 清会话缓存（平台缓存随之重置） */
 function useUa(ua) {
     try { Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { userAgent: String(ua || '') } }); } catch (e) { /* 忽略 */ }
     localDiskReset();
 }
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36';
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36';
 
-await A('A8 平台识别与路径冲突提示：Android 收到 `D:\\…` 必须**当场点明**（这就是「Android 上设不了」的直接原因）', async () => {
+/** **规范形态**的宿主桩：只认 TauriTavern 实测口径，其余一律拒绝（用来证明「方法用对了」） */
+function makeTauriHost(opts) {
+    const o = opts || {};
+    const disk = new Map();
+    const calls = [];
+    const dirs = Object.assign({ 15: '/data/user/0/com.tauritavern.client/files' }, o.dirs || {});
+    try {
+        globalThis.window.__TAURI_INTERNALS__ = {
+            invoke: async (cmd, arg, opt) => {
+                const headers = (opt && opt.headers) || {};
+                calls.push({ cmd: cmd, arg: arg, headers: headers, isBytes: (arg instanceof Uint8Array) });
+                if (cmd === 'plugin:path|resolve_directory') {
+                    const n = Number(arg && arg.directory);
+                    if (dirs[n]) return dirs[n];
+                    throw new Error('path resolve denied');
+                }
+                if (cmd === 'plugin:dialog|open') {
+                    if (o.dialog === undefined) throw new Error('dialog unavailable');
+                    return o.dialog;
+                }
+                if (cmd === 'plugin:fs|mkdir') { disk.set('dir:' + String(arg && arg.path), true); return null; }
+                if (cmd === 'plugin:fs|exists') return disk.has(String(arg && arg.path));
+                if (cmd === 'plugin:fs|remove') { disk.delete(String(arg && arg.path)); return null; }
+                if (cmd === 'plugin:fs|read_text_file') {
+                    const k = String(arg && arg.path);
+                    if (!disk.has(k)) throw new Error('ENOENT');
+                    return new TextEncoder().encode(String(disk.get(k)));     // 返回**字节**
+                }
+                if (cmd === 'plugin:fs|write_text_file') {
+                    // 只有「原始字节 body + headers.path」才认；JSON 参数形态一律拒绝（旧实现就错在这里）
+                    if (!(arg instanceof Uint8Array) || !headers.path) throw new Error('invalid args: missing file path');
+                    const k = decodeURIComponent(String(headers.path));
+                    if (o.denyWrite) throw new Error('forbidden path: ' + k);
+                    disk.set(k, new TextDecoder('utf-8').decode(arg));
+                    return null;
+                }
+                throw new Error('not allowed: ' + cmd);
+            },
+        };
+    } catch (e) { /* 忽略 */ }
+    return { disk: disk, calls: calls };
+}
+
+await A('A8 平台识别与路径冲突提示：Android 收到 `D:\…` 当场点明「改成只填目录名」（跨设备同步来的绝对路径在别的平台必然写不进去）', async () => {
     useHost(null);
     boot({ localDiskDir: 'D:\\FTT\\store' });
-    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36');
+    useUa(ANDROID_UA);
     const android = localDiskPlatform();
     const warnWin = localDiskPathWarn('D:\\FTT\\store');
-    const okPosix = localDiskPathWarn('/storage/emulated/0/Download/ftt_v2_store');
-    useUa('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36');
+    const okPosix = localDiskPathWarn('/data/user/0/com.tauritavern.client/files/fft_v2_store');
+    const warnRel = localDiskPathWarn('fft_v2_store');       // 只填目录名 → **不再是告警**（v3.34.0 推荐用法）
+    useUa(DESKTOP_UA);
     const desk = localDiskPlatform();
-    const warnPosix = localDiskPathWarn('/storage/emulated/0/Download/x');
     const okWin = localDiskPathWarn('D:\\FTT\\store');
-    const warnRel = localDiskPathWarn('相对目录');
     return android.name === 'android' && android.source === 'userAgent'
-        && warnWin.indexOf('Windows 路径') > 0 && warnWin.indexOf('Android') > 0 && okPosix === ''
-        && desk.name === 'desktop' && warnPosix.indexOf('Android') > 0 && okWin === ''
-        && warnRel.indexOf('绝对路径') > 0 && localDiskPlatformLabel('android') === 'Android';
-}, () => ({ android: localDiskPlatform(), warn: localDiskPathWarn('D:\\FTT\\store') }));
+        && warnWin.indexOf('Windows 路径') > 0 && warnWin.indexOf('Android') > 0 && warnWin.indexOf('目录名') > 0
+        && okPosix === '' && warnRel === ''
+        && desk.name === 'desktop' && okWin === ''      // 同平台绝对路径不在这里告警（是否放行由探针实测）
+        && localDiskPlatformLabel('android') === 'Android';
+}, () => ({ warn: localDiskPathWarn('D:\\FTT\\store') }));
 
-await A('A9 候选目录：宿主 `path` 插件给出的标准目录逐个收集（Android 上填不出路径时的主要出路）', async () => {
+await A('A9 **方法用对了吗**：写 = 原始字节 body + `headers.path`；读 = `{path, options}` 且返回**字节** —— 一次写只发一次 IPC（不盲试、不弹报错）', async () => {
     useHost(null);
-    boot({ localDiskDir: '' });
-    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
-    const dirs = {
-        AppLocalData: '/data/user/0/com.tauritavern.client/files',
-        Download: '/storage/emulated/0/Download',
+    const h = makeTauriHost({});
+    boot({ localDiskDir: 'fft_v2_store' });   // 相对目录名 → 解析到应用数据目录
+    useUa(ANDROID_UA);
+    const w = await localDiskWrite('a.json', '{"x":1}');
+    const r = await localDiskRead('a.json');
+    const writes = h.calls.filter((c) => c.cmd === 'plugin:fs|write_text_file');
+    const reads = h.calls.filter((c) => c.cmd === 'plugin:fs|read_text_file');
+    const info = localDiskInfo();
+    const cond = {
+        w: w.ok === true, mech: String(w.mechanism).indexOf('v2-raw') > 0,
+        r: r.ok === true && r.text === '{"x":1}',
+        wn: writes.length, wb: writes[0] ? writes[0].isBytes : null, wh: writes[0] ? String(writes[0].headers.path).length : -1,
+        rn: reads.length, rp: reads[0] ? String(reads[0].arg && reads[0].arg.path).length : -1,
+        shape: info.fsShape,
     };
-    try {
-        globalThis.window.__TAURI_INTERNALS__ = {
-            invoke: async (cmd, arg) => {
-                if (cmd === 'plugin:path|resolve_directory' && dirs[String((arg && arg.directory) || '')]) return dirs[arg.directory];
-                throw new Error('not allowed: ' + cmd);
-            },
-        };
-    } catch (e) { /* 忽略 */ }
-    const c = await localDiskDirCandidates();
-    diskCandDbg = c;
-    const paths = c.items.map((x) => x.path);
-    const out = c.platform === 'android'
-        && paths.indexOf('/data/user/0/com.tauritavern.client/files') >= 0
-        && paths.indexOf('/storage/emulated/0/Download') >= 0
-        && c.items.filter((x) => x.source === 'tauri-path').length === 2
-        && c.items.some((x) => x.source === 'suggested')           // Android 公共目录**建议**（需探针实测）
-        && c.notes.join(' ').indexOf('Android') >= 0;
-    useHost(null);
-    return out;
-}, (() => ({ cand: diskCandDbg })));
+    // 读共 2 次：① localDiskWrite 内部的写后回读校验；② 本测试显式 localDiskRead（都是 {path, options} 形态）
+    const ok = cond.w && cond.mech && cond.r && cond.wn === 1 && cond.wb === true && cond.wh > 0 && cond.rn === 2 && cond.rp > 0 && cond.shape === 'v2-raw';
+    A9Dbg = cond;
+    return ok;
+}, () => ({ cond: A9Dbg, info: localDiskInfo() }));
 
-await A('A10 选择器全都不可用时：**如实回报尝试过什么**（不假装成功、不静默）', async () => {
+await A('A10 只填一个**目录名** → 解析到宿主应用数据目录（`$APPLOCALDATA`，数值枚举 15）并把完整路径写回配置', async () => {
+    useHost(null);
+    const h = makeTauriHost({});
+    boot({ localDiskDir: 'fft_v2_store' });
+    useUa(ANDROID_UA);
+    const pr = await localDiskProbeDir('fft_v2_store');
+    const info = localDiskInfo();
+    const mk = h.calls.filter((c) => c.cmd === 'plugin:fs|mkdir');
+    const ds = h.calls.filter((c) => c.cmd === 'plugin:path|resolve_directory');
+    return pr.ok === true && pr.resolved === true
+        && pr.dir === '/data/user/0/com.tauritavern.client/files/fft_v2_store'
+        && String(pr.base).indexOf('AppLocalData') > 0
+        && mk.length >= 1 && String(mk[0].arg.path) === '/data/user/0/com.tauritavern.client/files/fft_v2_store'
+        && ds.length >= 1 && Number(ds[0].arg.directory) === 15
+        && info.base === '/data/user/0/com.tauritavern.client/files' && info.fsShape === 'v2-raw'
+        && Array.from(h.disk.keys()).every((k) => k.indexOf('dir:') === 0 || !/ftt2-local-probe\.json$/.test(k));   // 探针文件已删
+}, () => ({ info: localDiskInfo() }));
+
+await A('A11 宿主拒绝时**如实失败**（不假装成功、不反复盲试）：写被拒 → 探针失败 + 路径标记无效；只发规范形态那一次', async () => {
+    useHost(null);
+    const h = makeTauriHost({ denyWrite: true });
+    boot({ localDiskDir: 'fft_v2_store' });
+    useUa(ANDROID_UA);
+    const pr = await localDiskProbeDir('fft_v2_store');
+    const info = localDiskInfo();
+    const writes = h.calls.filter((c) => c.cmd === 'plugin:fs|write_text_file');
+    return pr.ok === false && String(pr.error).indexOf('应用数据目录') > 0
+        && info.invalid && info.invalid.invalid === true
+        && writes.length === 1;     // 放行范围类拒绝**只发一次**：不换参数形态重试 → 不再多弹报错
+}, () => ({ info: localDiskInfo() }));
+
+await A('A12 选择器：全不可用时如实回报尝试过什么；宿主对话框可用时 → 用 `{options:{directory:true}}` 拿到真路径并**探针实测**通过', async () => {
+    // ① 全不可用
     useHost(null);
     boot({ localDiskDir: '' });
-    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
+    useUa(DESKTOP_UA);
+    const bad = await localDiskPickDir();
+    lastPickDbg = bad;
+    const mechs = bad.tried.map((x) => x.mechanism);
+    const ok1 = bad.ok === false && mechs.indexOf('dialog') >= 0 && mechs.indexOf('fs-handle') >= 0
+        && String(bad.note).indexOf('目录名') > 0;
+    // ② 宿主对话框可用（Android 上给应用数据目录里的路径）
+    useHost(null);
+    const h = makeTauriHost({ dialog: '/data/user/0/com.tauritavern.client/files/fft_v2_store' });
+    boot({ localDiskDir: '' });
+    useUa(ANDROID_UA);
     const pk = await localDiskPickDir();
     lastPickDbg = pk;
-    const mechs = pk.tried.map((x) => x.mechanism);
-    return pk.ok === false && pk.reason === 'unsupported'
-        && mechs.indexOf('dialog') >= 0 && mechs.indexOf('fs-handle') >= 0 && mechs.indexOf('dev-api') >= 0
-        && String(pk.note).indexOf('候选目录') > 0 && String(pk.note).indexOf('Android') > 0;
+    const dlg = h.calls.filter((c) => c.cmd === 'plugin:dialog|open');
+    return ok1 && pk.ok === true && pk.mechanism === 'dialog'
+        && pk.path === '/data/user/0/com.tauritavern.client/files/fft_v2_store'
+        && dlg.length === 1 && dlg[0].arg && dlg[0].arg.options && dlg[0].arg.options.directory === true;
 }, () => ({ pk: lastPickDbg }));
 
-await A('A11 选择器走宿主对话框：拿到**真路径**并**写探针实测**（写→回读→删），通过才算选中', async () => {
+await A('A13 启动自愈 `localDiskEnsureResolved`：配置里只有目录名 → 解析成完整路径并**写回配置**（之后任何写入都不再需要解析）', async () => {
     useHost(null);
-    boot({ localDiskDir: '' });
-    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
-    const disk = new Map();
-    try {
-        globalThis.window.__TAURI_INTERNALS__ = {
-            invoke: async (cmd, arg) => {
-                const a = (arg && arg.args) ? arg.args : arg;
-                const path = String((a && ((a.path && a.path.path) || a.path)) || '');
-                if (cmd === 'plugin:dialog|open') return '/storage/emulated/0/ftt_v2_store';
-                if (/write/.test(cmd)) { disk.set(path, String(a.contents != null ? a.contents : (a.text != null ? a.text : a.data))); return null; }
-                if (/read_text_file/.test(cmd)) { if (!disk.has(path)) throw new Error('ENOENT'); return disk.get(path); }
-                if (cmd === 'plugin:path|resolve_directory') throw new Error('no path plugin');
-                throw new Error('not allowed: ' + cmd);
-            },
-        };
-    } catch (e) { /* 忽略 */ }
-    const pk = await localDiskPickDir();
-    const out = pk.ok === true && pk.mechanism === 'dialog' && pk.path === '/storage/emulated/0/ftt_v2_store'
-        && String(pk.name) === 'ftt_v2_store' && Array.isArray(pk.tried) && pk.tried[0] && pk.tried[0].ok === true
-        && Array.from(disk.keys()).some((k) => /ftt2-local-probe\.json$/.test(k));
-    useHost(null);
-    return out;
-}, () => ({ pk: lastPickDbg }));
+    makeTauriHost({});
+    boot({ localDiskDir: 'fft_v2_store' });
+    useUa(ANDROID_UA);
+    const r = await localDiskEnsureResolved();
+    const after = String((cfg.storage || {}).localDiskDir || '');
+    const base = await localDiskBaseDir(false);
+    const again = await localDiskEnsureResolved();
+    return r.ok === true && r.resolved === true && after === '/data/user/0/com.tauritavern.client/files/fft_v2_store'
+        && base.ok === true && base.label === 'AppLocalData'
+        && again.resolved === false;      // 已是绝对路径 → 幂等（不再解析）
+}, () => ({ cfg: (cfg.storage || {}).localDiskDir }));
 
 R.done();

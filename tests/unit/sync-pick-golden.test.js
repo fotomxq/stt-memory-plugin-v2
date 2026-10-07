@@ -320,7 +320,7 @@ await A('R11（v3.0.4 新增）分歧横幅第三项「🔀 合并差异（下�
     const after = stateView();
     return banner.indexOf('data-ftt-action="syncPickMerge"') >= 0
         && banner.indexOf('🔀 合并差异') >= 0 && banner.indexOf('下载对端') >= 0
-        && SYNC_ACTIONS.length === 21 && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0   // v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项；v3.33.0：+候选目录 2 项（localDiskDirs / localDiskDirUse）
+        && SYNC_ACTIONS.length === 19 && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0   // v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项
         && r.ok === true && r.action === 'syncPickMerge'
         && crossPendingGet() === null && pendingProj() === null
         && logs.length === 1 && logs[0].action === '分歧选择' && logs[0].mode === '合并差异(下载对端去重合并)'
@@ -362,7 +362,7 @@ await A('V1 面板接线（v3.0.3 / v3.0.4：显式注入待选后）：`syncPic
     const page1 = String(panelBodyHtml('settings') || '');
     const r1 = await panelAction('syncPickLocal', {});
     const note = String(panelState().note || '');
-    return SYNC_ACTIONS.length === 21 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
+    return SYNC_ACTIONS.length === 19 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
         && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0
         && pageModules.indexOf('data-ftt-action="syncPickLocal"') < 0
         && page0.indexOf('data-ftt-action="syncPickLocal"') < 0

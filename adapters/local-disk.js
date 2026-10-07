@@ -13,9 +13,23 @@
 //
 // 能力现实（必须如实）：网页 JS 不能凭空写盘 —— 需要宿主提供文件 API。本模块**按优先级探测**：
 //   ① `__TAURITAVERN__.api.dev` 下的文件/路径类命名空间（名字按关键字发现，方法按 write/read 关键字发现）；
-//   ② Tauri v2 的 fs 插件命令（`window.__TAURI_INTERNALS__.invoke('plugin:fs|write_text_file' …)`）；
+//   ② TauriTavern 的 Tauri v2 插件（`plugin:fs|*` / `plugin:path|*` / `plugin:dialog|*`）；
 //   ③ 都没有 → 如实回报「宿主不提供任意磁盘路径写入」，UI 不假装成功。
 // 任何一次真实写入都必须**回读逐字节校验**（与目录探针同纪律），校验不过就当没成功。
+//
+// v3.34.0（用户报告「兼容 android 端的 TauriTavern，当前存在问题可能是方法用错了，会弹出报错」）：
+//   **调用形态曾是错的** —— 从 TauriTavern 客户端构建实测（2026-10）：
+//     · 写：`plugin:fs|write_text_file` 收的是**原始字节 body**，路径与选项走 **HTTP headers**：
+//       `invoke(cmd, new TextEncoder().encode(text), { headers: { path: encodeURIComponent(路径), options: '{}' } })`
+//       （旧实现传 `{ path, contents }` JSON → 宿主报错弹窗，且每次写要盲试 18 种组合，报错被放大 18 倍）；
+//     · 读：`plugin:fs|read_text_file` 收 `{ path, options }`，**返回字节**（ArrayBuffer / Uint8Array / number[]）；
+//     · 其余：`exists` / `mkdir` / `remove` / `read_dir` 同样收 `{ path, options }`；
+//     · 目录：`plugin:path|resolve_directory` 收 `{ directory: <BaseDirectory 数值枚举> }`
+//       （Audio=1 … Data=4, LocalData=5, Document=6, Download=7, Temp=12, AppConfig=13, AppData=14, **AppLocalData=15**, AppCache=16, AppLog=17, Desktop=18, Home=21）；
+//     · 对话框：`plugin:dialog|open` 收 `{ options: { directory: true, multiple: false } }`。
+//   另一条硬事实：宿主的 fs 放行范围是**应用数据目录**（`$APPDATA` / `$APPLOCALDATA` / `$LOCALDATA` / `$APPCACHE` / `$RESOURCE`），
+//   **任意绝对路径（`D:\…`、`/storage/emulated/0/…`）不在放行范围内** → 拒绝。因此「只填一个目录名」会被
+//   解析到**应用数据目录**下（`$APPLOCALDATA/<名字>`），并把**解析后的完整路径**回填显示 —— 桌面与 Android 同一套口径。
 // ============================================================
 import { cfg, dbgLog } from '../core/model/runtime.js';
 
@@ -135,47 +149,38 @@ export function localDiskPlatformLabel(name) {
     return n === 'android' ? 'Android' : (n === 'ios' ? 'iOS' : (n === 'desktop' ? '桌面系统' : '未知平台'));
 }
 /**
- * v3.33.0：路径形态与本机平台的**冲突提示**（''=没问题）。
- *   用户遇到的「Android 上根本设不了」根因之一：路径框里留着从别的设备同步过来的 `D:\…`，
- *   在本机必然不可写 → 校验失败 → 看起来「设置了也没用」。这里把话说在前面。
+ * v3.33.0/v3.34.0：路径形态与本机平台的**冲突提示**（'' = 没问题）。
+ *   用户遇到的「Android 上根本设不了」根因：路径框里留着**从别的设备同步过来的** `D:\…`，
+ *   在本机必然不可写（而且宿主的 fs 只放行**应用数据目录**）→ 校验失败 → 看起来「设置了也没用」。
+ *   现在把话说在前面：跨平台路径直接点明；**只写目录名**（如 `fft_v2_store`）是最省事也最稳的用法。
  */
 export function localDiskPathWarn(raw, platform) {
     const dir = localDiskPathNorm(raw);
     if (!dir) return '';
     const kind = localDiskPathKind(dir);
     const plat = String(platform || localDiskPlatform().name);
+    const relativeTip = '改成**只填一个目录名**（如 fft_v2_store）即可自动落在宿主应用数据目录内';
     if (plat === 'android' || plat === 'ios') {
-        if (kind === 'windows-abs') return '这看起来是 Windows 路径，本机是 ' + localDiskPlatformLabel(plat) + '：本机写不了它 —— 请填本机路径（如 /storage/emulated/0/Download/ftt_v2_store）或点「📁 候选目录」';
+        if (kind === 'windows-abs') return '这看起来是 Windows 路径，本机是 ' + localDiskPlatformLabel(plat) + '：本机写不了它 —— ' + relativeTip;
     } else if (plat === 'desktop') {
-        if (kind === 'posix-abs' && dir.charAt(1) !== '/') return '这看起来是 Android / Linux 路径，本机是桌面系统：本机写不了它 —— 请填本机路径（如 D:\\FTT\\store）';
+        if (kind === 'posix-abs' && dir.charAt(1) !== '/') return '这看起来是 Android / Linux 路径，本机是桌面系统：本机写不了它 —— ' + relativeTip;
     }
-    if (kind === 'relative') return '这不是绝对路径：宿主只会把相对路径当**命名空间名**（真实落点在宿主数据目录内），建议填绝对路径';
+    if (kind === 'windows-abs' || (kind === 'posix-abs' && dir.charAt(1) !== '/')) {
+        return '';   // 同平台的绝对路径**不在这里告警**（是否放行由探针实测决定；能力明细里已写明宿主只放行应用数据目录）
+    }
     return '';
 }
 
-/** 系统对话框选目录（Tauri `dialog` 插件；返回真路径，Android 上可能是 SAF 给出的路径） */
+/** 系统对话框选目录（Tauri `dialog` 插件：`{ options: { directory: true, multiple: false } }`；返回真路径） */
 async function dialogPickDir() {
     const inv = tauriInvoke();
     if (!inv) return { error: 'no-bridge' };   // 没有 Tauri 原始桥 → 连对话框都谈不上（如实回报）
-    const cmds = ['plugin:dialog|open', 'dialog|open'];
-    const shapes = [
-        { options: { directory: true, multiple: false, title: '选择本地存储目录' } },
-        { directory: true, multiple: false, title: '选择本地存储目录' },
-        { options: { directory: true, multiple: false } },
-        { directory: true },
-    ];
-    let lastErr = '';
-    for (const cmd of cmds) {
-        for (const arg of shapes) {
-            try {
-                const r = await inv(cmd, arg);
-                const p = (typeof r === 'string') ? r : ((r && (r.path || r.filePath || r.uri)) || '');
-                if (p) return { path: String(p) };
-                return { error: 'cancelled' };      // 命令可用但用户取消 → 不再试其它形态
-            } catch (e) { lastErr = String((e && e.message) || e); }
-        }
-    }
-    return { error: lastErr || 'dialog-unavailable' };
+    try {
+        const r = await inv('plugin:dialog|open', { options: { directory: true, multiple: false, title: '选择本地存储目录' } });
+        const p = (typeof r === 'string') ? r : ((r && (r.path || r.filePath || r.uri)) || '');
+        if (p) return { path: String(p) };
+        return { error: 'cancelled' };      // 命令可用但用户取消
+    } catch (e) { return { error: String((e && e.message) || e) }; }
 }
 
 /** 句柄写探针（写 → 回读 → 删除自己的探针文件；只动自己的文件） */
@@ -192,62 +197,6 @@ async function handleProbe() {
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
-/**
- * v3.33.0：**宿主提供的可写目录候选**（Android 上尤其重要 —— 那里通常没有浏览器文件夹选择器）。
- *   来源：① Tauri `path` 插件的标准目录；② 宿主 `api.*` 里形如路径的字段/零参方法；
- *   ③ Android 常见公共目录（**仅建议**，选中后会做写探针，写不进去会如实失败）。
- * @returns {Promise<{platform:string, items:Array<{path:string,label:string,source:string,kind:string}>, notes:string[]}>}
- */
-export async function localDiskDirCandidates() {
-    const plat = await localDiskPlatformAsync();
-    const items = [];
-    const notes = [];
-    const push = (p, label, source) => {
-        const d = localDiskPathNorm(p);
-        if (!d) return;
-        if (items.some((x) => x.path === d)) return;
-        items.push({ path: d, label: String(label || ''), source: String(source || ''), kind: localDiskPathKind(d) });
-    };
-    // ① Tauri path 插件（AppLocalData / Download / Document / Home / Temp …）
-    const inv = tauriInvoke();
-    if (inv) {
-        const names = ['AppLocalData', 'AppData', 'AppConfig', 'Download', 'Document', 'Home', 'Temp', 'Data', 'LocalData', 'Desktop'];
-        for (const n of names) {
-            let got = '';
-            for (const cmd of ['plugin:path|resolve_directory', 'path|resolve_directory']) {
-                for (const arg of [{ directory: n }, { path: n }, { dir: n }]) {
-                    try { const r = await inv(cmd, arg); got = (typeof r === 'string') ? r : String((r && (r.path || r.dir)) || ''); } catch (e) { got = ''; }
-                    if (got) break;
-                }
-                if (got) break;
-            }
-            if (got) push(got, n, 'tauri-path');
-        }
-        if (!items.length) notes.push('宿主没有提供 Tauri `path` 插件接口（拿不到标准目录）');
-    }
-    // ② 宿主 api 里的路径类字段 / 零参方法（关键字匹配，调用失败一律忽略）
-    try {
-        const a = abi();
-        const holders = [a && a.api && a.api.dev, a && a.api && a.api.path, a && a.api && a.api.paths, a && a.api].filter((x) => x && typeof x === 'object');
-        for (const holder of holders) {
-            for (const k of Object.keys(holder).slice(0, 60)) {
-                if (!/dir|path|home|root|folder|data|download|document|temp|store/i.test(k)) continue;
-                let v = holder[k];
-                if (typeof v === 'function') { try { v = await v({}); } catch (e) { try { v = holder[k](); } catch (e2) { continue; } } }
-                const s = (typeof v === 'string') ? v : ((v && (v.path || v.dir || v.dirPath)) || '');
-                if (typeof s === 'string' && /^([A-Za-z]:[\\/]|\/|\\\\)/.test(s)) push(s, k, 'host-api');
-            }
-        }
-    } catch (e) { /* 忽略 */ }
-    // ③ Android：宿主一般只放行「应用私有目录 / 系统选择器授予的目录」——给两条常见公共位置做建议（需探针实测）
-    if (plat.name === 'android') {
-        push('/storage/emulated/0/Download/ftt_v2_store', 'Download（公共下载目录 · 需宿主放行）', 'suggested');
-        push('/storage/emulated/0/Documents/ftt_v2_store', 'Documents（公共文档目录 · 需宿主放行）', 'suggested');
-        notes.push('Android：浏览器文件夹选择器通常不可用；若宿主没有 `dialog` / `path` 接口，请用「系统选择文件夹」或直接填应用私有目录（宿主数据目录内），并点「✅ 校验」实测能否写入。');
-    }
-    if (!items.some((x) => x.source === 'tauri-path')) notes.push('提示：候选目录只是**建议**，选中后会写一个探针文件并回读校验；校验通过才算可用。');
-    return { platform: plat.name, platformSource: plat.source, items: items, notes: notes };
-}
 
 /** 宿主 dev API 里的「选目录」方法（关键字发现；没有 → null） */
 function devPickMethod() {
@@ -337,7 +286,7 @@ export async function localDiskPickDir() {
     return {
         ok: false, reason: 'unsupported', tried: tried,
         note: '本机（' + localDiskPlatformLabel(plat.name) + '）没有可用的文件夹选择器：' + tried.map((x) => String(x.mechanism) + (x.error ? ('✗' + String(x.error).slice(0, 40)) : '✓')).join(' · ')
-            + ' —— 可点「📁 候选目录」选一个宿主给出的目录，或直接手填路径后点「✅ 校验」',
+            + ' —— 直接**只填一个目录名**（如 fft_v2_store）后点「✅ 校验本地磁盘目录」即可（会自动落在宿主应用数据目录内）',
     };
 }
 
@@ -400,6 +349,108 @@ const FS_NS_RE = /file|files|fs|disk|workspace|path|paths|io/i;
 const WRITE_RE = /write|save|put|create/i;
 const READ_RE = /read|load|get/i;
 
+// ------------------------------------------------------------
+// v3.34.0：TauriTavern（Tauri v2 插件）的**正确调用形态**（客户端构建实测；见文件头）
+//   · 命中后**缓存形态**（`fsShape`）：同会话不再试另一种 —— 盲试会让宿主把每次失败都弹成报错；
+//   · 写入前 `mkdir { recursive: true }`（新子目录必须自己建）；探针/清理用 `exists` / `remove`；
+//   · 目录名（相对）解析到宿主**应用数据目录**（fs 只放行应用数据目录）。
+// ------------------------------------------------------------
+let fsShape = '';              // '' | 'v2-raw' | 'v1-json'（成功后缓存）
+/** Tauri `BaseDirectory` 数值枚举（客户端构建实测：Audio=1 … AppLocalData=15 … Template=23） */
+const BASE_DIR_ENUM = Object.freeze({
+    AppLocalData: 15, AppData: 14, LocalData: 5, AppCache: 16, Data: 4,
+    Document: 6, Download: 7, Temp: 12, AppConfig: 13, Home: 21, Desktop: 18,
+});
+let baseDirCache = { at: 0, dir: '', label: '', error: '' };
+
+/** 字节 / 字符串 / 数组 → 文本（Tauri fs 读回的是**字节**） */
+function decodeFsBytes(r) {
+    try {
+        if (typeof r === 'string') return r;
+        if (!r) return '';
+        if (r instanceof ArrayBuffer) return new TextDecoder('utf-8').decode(new Uint8Array(r));
+        if (r instanceof Uint8Array || Array.isArray(r)) return new TextDecoder('utf-8').decode(new Uint8Array(r));
+        if (typeof r === 'object') {
+            if (typeof r.text === 'string') return r.text;
+            if (typeof r.contents === 'string') return r.contents;
+            if (r.data != null) return decodeFsBytes(r.data);
+        }
+    } catch (e) { /* 忽略 */ }
+    return '';
+}
+
+/** 建目录（`recursive`；已存在 / 不支持都当成功 —— 真正判据是随后「写 → 回读」） */
+async function diskMkdir(dir) {
+    const inv = tauriInvoke();
+    if (!inv || !dir) return false;
+    try { await inv('plugin:fs|mkdir', { path: dir, options: { recursive: true } }); return true; } catch (e) { return false; }
+}
+/** 是否存在（探针清理前的**存在性判断** —— 与「绝不盲删」同纪律） */
+export async function localDiskExists(path) {
+    const inv = tauriInvoke();
+    if (!inv || !path) return false;
+    try { return (await inv('plugin:fs|exists', { path: path, options: {} })) === true; } catch (e) { return false; }
+}
+/** 删一个文件（**只删自己写下的探针文件**；失败只记诊断） */
+async function diskRemove(path) {
+    const inv = tauriInvoke();
+    if (!inv || !path) return false;
+    try { await inv('plugin:fs|remove', { path: path, options: {} }); return true; } catch (e) { return false; }
+}
+/** 宿主应用数据目录（`plugin:path|resolve_directory`；数值枚举 = 客户端实测口径）；结果缓存 */
+export async function localDiskBaseDir(reprobe) {
+    const inv = tauriInvoke();
+    if (!inv) return { ok: false, dir: '', label: '', error: 'no-bridge' };
+    if (!reprobe && baseDirCache.dir) return { ok: true, dir: baseDirCache.dir, label: baseDirCache.label, error: '' };
+    for (const label of ['AppLocalData', 'AppData', 'LocalData', 'AppCache', 'Data']) {
+        try {
+            const r = await inv('plugin:path|resolve_directory', { directory: BASE_DIR_ENUM[label] });
+            const dir = (typeof r === 'string') ? r : String((r && (r.path || r.dir)) || '');
+            if (dir) { baseDirCache = { at: Date.now(), dir: localDiskPathNorm(dir), label: label, error: '' }; return { ok: true, dir: baseDirCache.dir, label: label, error: '' }; }
+        } catch (e) { baseDirCache = { at: Date.now(), dir: '', label: '', error: String((e && e.message) || e) }; }
+    }
+    return { ok: false, dir: '', label: '', error: baseDirCache.error || 'resolve-failed' };
+}
+/** 目录名 → 应用数据目录下的绝对路径（绝对路径原样返回）；宿主不给基准目录则如实失败 */
+export async function localDiskResolveDir(input) {
+    const raw = localDiskPathNorm(input);
+    if (!raw) return { ok: false, dir: '', raw: '', resolved: false, base: '', error: 'empty' };
+    const kind = localDiskPathKind(raw);
+    if (kind !== 'relative') return { ok: true, dir: raw, raw: raw, resolved: false, base: '', error: '' };
+    const b = await localDiskBaseDir(false);
+    if (!b.ok || !b.dir) return { ok: false, dir: raw, raw: raw, resolved: false, base: '', error: String(b.error || 'no-base-dir') };
+    return { ok: true, dir: localDiskJoin(b.dir, raw), raw: raw, resolved: true, base: b.dir + '（' + b.label + '）', error: '' };
+}
+/**
+ * v3.34.0：**各读写入口统一用「有效目录」** —— 配置里只有一个目录名（相对）时，
+ *   当场解析到宿主应用数据目录（`$APPLOCALDATA/<名字>`）再用；解析不了就退回原名（写入会如实失败并告警）。
+ * @returns {Promise<string>} 绝对路径（或原名）
+ */
+async function effectiveDir() {
+    const raw = localDiskRaw();
+    if (!raw) return '';
+    if (localDiskPathKind(raw) !== 'relative') return raw;
+    const rs = await localDiskResolveDir(raw);
+    return (rs.ok && rs.dir) ? rs.dir : raw;
+}
+/**
+ * v3.34.0：启动 / 校验时把「只填了目录名」的配置**一次性解析成绝对路径**并写回（设备本地），
+ *   之后任何写入都不再需要解析，UI 也能显示完整路径。
+ * @returns {Promise<{ok:boolean, dir:string, resolved:boolean, error:string}>}
+ */
+export async function localDiskEnsureResolved() {
+    const raw = localDiskRaw();
+    if (!raw || localDiskPathKind(raw) !== 'relative') return { ok: true, dir: raw, resolved: false, error: '' };
+    const rs = await localDiskResolveDir(raw);
+    if (!rs.ok || !rs.dir) return { ok: false, dir: raw, resolved: false, error: String(rs.error || 'resolve-failed') };
+    try {
+        cfg.storage = Object.assign({}, cfg.storage || {});
+        cfg.storage.localDiskDir = rs.dir;
+        try { const RT = await import('../core/model/runtime.js'); RT.saveCfg(); } catch (e) { /* 落盘失败不影响本次会话 */ }
+    } catch (e) { /* 忽略 */ }
+    return { ok: true, dir: rs.dir, resolved: true, error: '' };
+}
+
 /**
  * 探测宿主可用的「写盘」能力（**只读探测，不写任何东西**）。
  * @returns {{ok:boolean, mechanism:string, ns:string, writeMethod:string, readMethod:string, tauriFs:boolean, devKeys:string[], note:string}}
@@ -460,35 +511,38 @@ async function diskWriteText(path, text) {
         const inv = tauriInvoke();
         if (!inv) return { ok: false, reason: 'no-invoke' };
         /**
-         * v3.29.0：Tauri v2 `fs` 插件的 `write_text_file` 在不同版本/ACL 下参数形态不完全一致 ——
-         *   逐形态试（**每一种都以「写后能回读一致」为准**，由调用方校验）：
-         *   ① `{ path, contents: <字符串> }`（多数版本）
-         *   ② `{ path, contents: <字节数组> }`（部分版本把 text 当字节写）
-         *   ③ `{ path, text }` / ④ `{ path, data: <字节数组> }`（旧别名）
+         * v3.34.0（用户报告「方法用错了，会弹出报错」）：**不再盲试多种形态** ——
+         *   每次盲试失败都会被宿主当成一次错误（弹窗），旧实现一次写要试 18 种组合。
+         *   现在只试两种**已知**形态，成功即缓存（同会话不再试另一种）：
+         *   ① 规范（TauriTavern 实测）：`invoke(cmd, <原始字节>, { headers: { path, options } })`；
+         *   ② 旧宿主：`invoke(cmd, { path, contents })`。
          */
-        const bytes = Array.from(new TextEncoder().encode(body));
-        /**
-         * v3.30.1（真机报错 `missing file path`）：Tauri v2 `fs` 插件的命令名与参数包装在**宿主之间**并不统一 ——
-         *   命令名可能带/不带 `plugin:` 前缀，参数可能直接摊平、也可能包在 `args` 里，`path` 也可能要求
-         *   `{ path: { path } }` 这种「scope 对象」形态。逐组合试，一律以「写后回读一致」为成功判据。
-         */
-        const cmds = ['plugin:fs|write_text_file', 'plugin:fs|write_file', 'fs|write_text_file'];
-        const argShapes = [
-            { path: path, contents: body },
-            { path: path, contents: bytes },
-            { path: path, text: body },
-            { path: path, data: bytes },
-            { args: { path: path, contents: body } },
-            { path: { path: path }, contents: body },
-        ];
-        let lastErr2 = '';
-        for (const cmd of cmds) {
-            for (const arg of argShapes) {
-                try { await inv(cmd, arg); return { ok: true, mechanism: c.mechanism + '/' + cmd }; }
-                catch (e) { lastErr2 = String((e && e.message) || e); }
+        // v3.34.0：新子目录自己建（`mkdir -p`）；已存在 / 不支持都不算失败
+        const dirOf = String(path).replace(/[\\/][^\\/]*$/, '');
+        if (dirOf) await diskMkdir(dirOf);
+        const bytes = new TextEncoder().encode(body);
+        // ① 规范形态（TauriTavern 客户端构建实测）：**原始字节 body** + `headers.path`
+        const tryV2 = async () => {
+            await inv('plugin:fs|write_text_file', bytes, { headers: { path: encodeURIComponent(String(path)), options: '{}' } });
+        };
+        // ② 旧形态（Tauri v1 / 更老的宿主）：JSON 参数
+        const tryV1 = async () => { await inv('plugin:fs|write_text_file', { path: path, contents: body }); };
+        const order = (fsShape === 'v1-json') ? [['v1-json', tryV1], ['v2-raw', tryV2]] : [['v2-raw', tryV2], ['v1-json', tryV1]];
+        let lastErr = '';
+        for (const pair of order) {
+            try { await pair[1](); fsShape = pair[0]; return { ok: true, mechanism: c.mechanism + '/' + pair[0] }; }
+            catch (e) {
+                lastErr = String((e && e.message) || e);
+                /**
+                 * v3.34.0：**只在「参数形态不对」时才试下一种** —— 权限 / 放行范围类拒绝（forbidden / not allowed / scope）
+                 *   是**路径本身**的问题，换个参数形态也照样被拒；继续试只会让宿主再弹一次报错（用户报告的「弹出报错」）。
+                 */
+                if (!/missing|invalid|unexpected|deserial|expected|args|argument/i.test(lastErr)) break;
             }
         }
-        return { ok: false, reason: 'write-failed', error: lastErr2 };
+        fsShape = '';
+        const forbidden = /forbidden|not allowed|denied|scope|permission/i.test(lastErr);
+        return { ok: false, reason: forbidden ? 'forbidden-path' : 'write-failed', error: lastErr };
     } catch (e) { return { ok: false, reason: 'write-failed', error: String((e && e.message) || e) }; }
 }
 /** 读文本 */
@@ -505,11 +559,9 @@ async function diskReadText(path) {
         }
         const inv = tauriInvoke();
         if (!inv) return { ok: false, reason: 'no-invoke' };
-        const r = await inv('plugin:fs|read_text_file', { path: path });
-        const text = (typeof r === 'string') ? r
-            : (r && typeof r === 'object' && typeof r.text === 'string') ? r.text
-                : (r && typeof r === 'object' && typeof r.contents === 'string') ? r.contents
-                    : (r && typeof r === 'object' && r.data) ? new TextDecoder().decode(new Uint8Array(r.data)) : '';
+        // v3.34.0（TauriTavern 实测）：`{ path, options }`，返回值是**字节**（ArrayBuffer / Uint8Array / number[]）
+        const r = await inv('plugin:fs|read_text_file', { path: path, options: {} });
+        const text = decodeFsBytes(r);
         if (!text) return { ok: false, reason: 'empty' };
         return { ok: true, text: text };
     } catch (e) { return { ok: false, reason: 'read-failed', error: String((e && e.message) || e) }; }
@@ -521,14 +573,14 @@ async function diskReadText(path) {
  * @returns {Promise<{ok:boolean, dir:string, names:string[], entries:Array<{name:string,isFile:boolean,size:number}>, error?:string}>}
  */
 export async function localDiskList() {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     const out = { ok: false, dir: dir, names: [], entries: [], error: '' };
     if (!dir) { out.error = 'off'; return out; }
     try {
         if (fsHandle && await handleUsable()) { out.entries = await handleList(); out.names = out.entries.map((x) => x.name); out.ok = true; return out; }
         const inv = tauriInvoke();
         if (!inv) { out.error = 'no-invoke'; return out; }
-        const r = await inv('plugin:fs|read_dir', { path: dir });
+        const r = await inv('plugin:fs|read_dir', { path: dir, options: {} });
         const arr = Array.isArray(r) ? r : (r && Array.isArray(r.entries) ? r.entries : []);
         out.entries = arr.map((x) => ({
             name: String((x && (x.name || x.path || x.fileName)) || ''),
@@ -548,13 +600,20 @@ export async function localDiskList() {
  * @returns {Promise<{ok:boolean, path:string, bytes?:number, mechanism?:string, error?:string, reason?:string}>}
  */
 export async function localDiskWrite(name, text) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     if (!dir) return { ok: false, reason: 'off', path: '' };
     const safe = String(name || '').replace(/^[\\/]+/, '').replace(/\.\./g, '');
     const full = localDiskJoin(dir, safe);
     const body = String(text == null ? '' : text);
     const w = await diskWriteText(full, body);
-    if (!w.ok) { stats.failures++; stats.lastError = String(w.error || w.reason || 'write-failed'); localDiskMarkInvalid(dir, 'write-failed', stats.lastError); return { ok: false, path: full, error: stats.lastError, reason: w.reason }; }
+    if (!w.ok) {
+        const why = (w.reason === 'forbidden-path')
+            ? '宿主只放行应用数据目录（该路径被拒绝）—— 可只填一个目录名（如 fft_v2_store）'
+            : String(w.error || w.reason || 'write-failed');
+        stats.failures++; stats.lastError = why;
+        localDiskMarkInvalid(dir, String(w.reason || 'write-failed'), why);
+        return { ok: false, path: full, error: why, reason: w.reason, raw: String(w.error || '') };
+    }
     const r = await diskReadText(full);
     if (!r.ok || String(r.text) !== body) {
         stats.failures++;
@@ -570,7 +629,7 @@ export async function localDiskWrite(name, text) {
 
 /** 读一个文件（不存在 → `{ok:false, miss:true}`） */
 export async function localDiskRead(name) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     if (!dir) return { ok: false, reason: 'off' };
     const safe = String(name || '').replace(/^[\\/]+/, '').replace(/\.\./g, '');
     const full = localDiskJoin(dir, safe);
@@ -580,25 +639,40 @@ export async function localDiskRead(name) {
     return { ok: true, path: full, text: String(r.text) };
 }
 
-/** 目录探针：写 → 回读 → 删除（证明「这个真磁盘路径确实可写」；删除失败只记诊断） */
+/**
+ * 目录探针：**建目录 → 写 → 回读 → 删掉自己的探针文件**（证明「这个目录确实可写」）。
+ * v3.34.0：传入**目录名**（相对）时先解析到宿主应用数据目录（`$APPLOCALDATA/<名字>`）——
+ *   宿主的 fs 只放行应用数据目录，`D:\…` / `/storage/emulated/0/…` 一律会被拒绝；
+ *   解析后的**完整路径**由 `dir` 返回（UI 据此回填显示）。
+ * @param {string} rawPath 绝对路径，或一个目录名
+ * @returns {Promise<{ok:boolean, dir:string, raw:string, resolved:boolean, base:string, kind:string, path:string, mechanism:string, error:string}>}
+ */
 export async function localDiskProbeDir(rawPath) {
-    const dir = localDiskPathNorm(rawPath);
-    const out = { ok: false, dir: dir, kind: localDiskPathKind(rawPath), path: '', mechanism: '', error: '' };
-    if (!dir) { out.error = 'empty'; return out; }
+    const raw = localDiskPathNorm(rawPath);
+    const out = { ok: false, dir: raw, raw: raw, resolved: false, base: '', kind: localDiskPathKind(rawPath), path: '', mechanism: '', error: '' };
+    if (!raw) { out.error = 'empty'; return out; }
     const cap = localDiskCapability(true);
     out.mechanism = cap.mechanism;
     const prev = localDiskRaw();
     try {
+        const rs = await localDiskResolveDir(raw);
+        out.dir = String(rs.dir || raw); out.resolved = !!rs.resolved; out.base = String(rs.base || '');
+        if (!rs.ok) { out.error = String(rs.error || 'resolve-failed'); localDiskMarkInvalid(raw, 'resolve-failed', out.error); return out; }
         // 探针用「显式路径」：临时把 cfg 指向待校验目录（不改配置持久化，只在本函数内）
         cfg.storage = Object.assign({}, cfg.storage || {});
         const keep = cfg.storage.localDiskDir;
-        cfg.storage.localDiskDir = dir;
-        const body = JSON.stringify({ probe: 1, at: Date.now(), dir: dir });
+        cfg.storage.localDiskDir = out.dir;
+        const body = JSON.stringify({ probe: 1, at: Date.now(), dir: out.dir });
         const w = await localDiskWrite('ftt2-local-probe.json', body);
         const r = await localDiskRead('ftt2-local-probe.json');
         cfg.storage.localDiskDir = keep;
-        if (!w.ok) { out.error = String(w.error || w.reason || 'write-failed'); localDiskMarkInvalid(dir, 'probe-write-failed', out.error); return out; }
-        if (!r.ok || String(r.text) !== body) { out.error = 'verify-failed'; return out; }
+        if (!w.ok) { out.error = String(w.error || w.reason || 'write-failed'); localDiskMarkInvalid(out.dir, 'probe-write-failed', out.error); return out; }
+        if (!r.ok || String(r.text) !== body) { out.error = 'verify-failed'; localDiskMarkInvalid(out.dir, 'probe-verify-failed', '写后回读不一致'); return out; }
+        // 删掉自己的探针文件（存在才删；失败只记诊断，绝不动别人的文件）
+        try {
+            const probeFull = String(w.path || '');
+            if (probeFull && await localDiskExists(probeFull)) await diskRemove(probeFull);
+        } catch (e) { /* 忽略 */ }
         out.ok = true; out.path = String(w.path || '');
         stats.probes++; stats.lastAt = Date.now();
         localDiskClearInvalid();
@@ -620,7 +694,7 @@ export async function localDiskProbeDir(rawPath) {
  * @returns {Promise<{ok:boolean, dir?:string, files?:number, counts?:object, error?:string}>}
  */
 export async function localDiskWriteShards(env, scope) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     if (!dir && !fsHandle) return { ok: false, error: 'off' };
     try {
         const { splitParts, buildManifest, manifestFileName, shardFileName, scopeSlug } = await import('./local-shards.js');
@@ -662,7 +736,7 @@ export async function localDiskWriteShards(env, scope) {
  *   清单校验：坏片只报坏片（返回 `bad`），只要 `meta` 可用就仍返回数据（维度缺失按空数组处理）。
  */
 export async function localDiskReadShards(scope) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     try {
         const { joinParts, verifyParts, manifestFileName, shardFileName, allShardNames, scopeSlug } = await import('./local-shards.js');
         const sub = scopeSlug(scope);
@@ -703,7 +777,7 @@ export async function localDiskReadShards(scope) {
  * @returns {Promise<{ok:boolean, dir?:string, files?:number, count?:number, error?:string}>}
  */
 export async function localDiskWriteParts(what, list, scope, opts) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     if (!dir && !fsHandle) return { ok: false, error: 'off' };
     try {
         const LP = await import('./local-parts.js');
@@ -751,7 +825,7 @@ export async function localDiskWriteParts(what, list, scope, opts) {
  * @returns {Promise<{ok:boolean, manifest?:object, files?:object, bad?:string[], snapStore?:Array, entries?:Array, count?:number, dir?:string, error?:string}>}
  */
 export async function localDiskReadParts(what, scope) {
-    const dir = localDiskRaw();
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
     if (!dir && !fsHandle) return { ok: false, error: 'off' };
     try {
         const LP = await import('./local-parts.js');
@@ -801,6 +875,8 @@ export function localDiskInfo() {
         // v3.33.0：平台与「路径形态 vs 本机平台」的冲突提示（用户报告「Android 上设不了」的直接可见原因）
         platform: plat.name, platformSource: plat.source, platformLabel: localDiskPlatformLabel(plat.name),
         pathWarn: localDiskPathWarn(dir, plat.name),
+        // v3.34.0：宿主应用数据目录（相对目录名的落点）+ 已实测成功的传输形态（诊断「方法对不对」）
+        base: baseDirCache.dir, baseLabel: baseDirCache.label, fsShape: fsShape,
         capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, devKeys: c.devKeys, note: c.note },
         invalid: localDiskInvalid(),   // v3.28.1：路径是否已被标记为**无效**（写入失败 / 探针失败）
         stats: Object.assign({}, stats),
@@ -810,6 +886,8 @@ export function localDiskInfo() {
 export function localDiskReset() {
     caps = null;
     platCache = null;   // v3.33.0：平台缓存也清（测试里会改 UA / 宿主）
+    fsShape = '';       // v3.34.0：传输形态缓存也清（下一次写会重新尝试规范形态）
+    baseDirCache = { at: 0, dir: '', label: '', error: '' };
     stats.writes = 0; stats.reads = 0; stats.failures = 0; stats.probes = 0;
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
     localDiskClearInvalid();
@@ -824,6 +902,8 @@ export default {
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
     localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards, localDiskWriteParts, localDiskReadParts,
-    // v3.33.0：平台识别 / 路径形态冲突提示 / 宿主候选目录（Android 上「怎么设置」的依据）
-    localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn, localDiskDirCandidates,
+    // v3.33.0：平台识别 / 路径形态冲突提示
+    localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn,
+    // v3.34.0：宿主应用数据目录（相对目录名的落点）/ 名称解析 / 存在性判断
+    localDiskBaseDir, localDiskResolveDir, localDiskExists,
 };
