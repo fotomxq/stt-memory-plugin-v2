@@ -45,6 +45,7 @@ import { readLedgerBegin, readLedgerEnd, readLedgerRecord, readLedgerStats } fro
 import { capRelLinks } from '../core/rel-maint.js';
 
 const SAVE_DEBOUNCE_MS = 800;
+let diskWarnedFor = '';             // v3.28.1：磁盘写失败已提醒过的路径（同路径每次会话只弹一次）
 let saveTimer = null;
 let lastSave = { at: 0, ok: false, via: '', bytes: 0, error: '' };
 let indexReady = false;
@@ -552,7 +553,8 @@ async function saveStateNowInner(o) {
     // ④ 本机缓冲（localStorage 信封）—— v3.1.0：**写入前按字符预算判定**（超预算如实跳过并留痕）
     //   v3.10.4（A4）：再加一道**等值跳过** —— 与上次写入逐字节同源（同信封哈希 + 同长度）时不重写 1MB。
     //   v3.16.0（用户要求「本地文件存储模式替代变量存储」）：**路径非空时本层改走本地文件**（无 localStorage 配额限制）。
-    let localViaFile = false;
+    let diskFellBack = false;          // v3.28.1：本次保存是否「磁盘写失败 → 回退浏览器层」（决定内存库照写）
+let localViaFile = false;
     try { localViaFile = localFileEnabled(); } catch (e) { localViaFile = false; }
     // v3.28.0（用户纠正设计）：「**本地磁盘目录**」（真磁盘路径）优先于上面那条「宿主扩展存储命名空间」——
     //   前者才是「替代浏览器本地存储」的本地目录；后者属**服务端**数据集（参与官方同步）。
@@ -568,22 +570,41 @@ async function saveStateNowInner(o) {
             localStats.lastSkipReason = 'unchanged';
             localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaDisk ? 'local-disk' : (localViaFile ? 'local-file' : 'localStorage') };
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）', extra: { layer: localViaFile ? 'local-file' : 'localStorage' } }); } catch (e) { /* 忽略 */ }
-        } else if (localViaDisk) {
+        } else if (localViaDisk && (await (async () => {
             // v3.28.0（用户纠正设计）：**本地磁盘目录** = 用真文件替代浏览器本地存储（localStorage 变量）。
-            //   写 → 回读逐字节校验（`localDiskWrite` 内部完成），失败**不回退**浏览器层（与既有纪律一致）。
+            // v3.28.1（用户要求）：「写盘失败**回退浏览器层**，但必须**明显提醒**，且**标记该路径无效**」——
+            //   于是这里失败时：① 标记无效（UI 红字告警 + 诊断可见）；② 弹一次醒目通知；③ 返回 false
+            //   → 本次保存**自然落到下面的浏览器分支**（明文 / 压缩 + 预算判定），内存库也照写（回退口径）。
             const dr = await localDiskWrite('ftt2-local-' + String(scopeId()).replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', text);
             if (dr && dr.ok) {
+                diskFellBack = false;
                 via.push('local-disk');
                 markLocalWritten(sig, text.length);
                 localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-disk', path: String(dr.path || '') };
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
-            } else {
-                localStats.failed += 1;
-                localStats.lastSkipReason = 'disk-write-failed';
-                localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '本地磁盘目录写入失败（不回退浏览器本地存储）', layer: 'local-disk', path: String((dr && dr.path) || '') };
-                try { kernelWarn('保存：本地磁盘目录写入失败（不写浏览器变量；服务端文件不受影响）', { dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()), error: String((dr && dr.error) || '') }); } catch (e) { /* 忽略 */ }
-                try { debugLogPush('存储', { action: '本地磁盘目录写入失败 → 不回退浏览器层', error: String((dr && dr.error) || ''), chars: text.length }); } catch (e) { /* 忽略 */ }
+                return true;
             }
+            // —— 失败：标记无效 + 醒目提醒（每个路径每次会话只弹一次，避免刷屏）+ 如实记账 ——
+            diskFellBack = true;
+            const dirNow = String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })());
+            const why = String((dr && (dr.error || dr.reason)) || 'write-failed');
+            localStats.failed += 1;
+            localStats.lastSkipReason = 'disk-write-failed-fallback';
+            localBuffer = { at: Date.now(), ok: false, skipped: 'write-failed', chars: text.length, budget: budget, reason: '本地磁盘目录写入失败 → 已回退浏览器本地存储（该路径已标记为无效）', layer: 'local-disk', path: String((dr && dr.path) || '') };
+            try { kernelWarn('保存：本地磁盘目录写入失败 → 已回退浏览器本地存储（路径已标记无效）', { dir: dirNow, error: why }); } catch (e) { /* 忽略 */ }
+            try { debugLogPush('存储', { action: '本地磁盘目录写入失败 → 回退浏览器层 + 标记路径无效', dir: dirNow, error: why, chars: text.length }); } catch (e) { /* 忽略 */ }
+            try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, bytes: text.length, reason: 'disk-write-failed-fallback', note: '本地磁盘目录写入失败 → 回退浏览器本地存储；路径已标记无效' }); } catch (e) { /* 忽略 */ }
+            try {
+                if (diskWarnedFor !== dirNow) {
+                    diskWarnedFor = dirNow;
+                    if (notifyHooks && typeof notifyHooks.toast === 'function') {
+                        notifyHooks.toast('⚠️ 本地磁盘目录写入失败，已回退浏览器本地存储；该路径已标记为「无效」，请到「设定 → 存储」重新校验', 'warning');
+                    }
+                }
+            } catch (e) { /* 忽略 */ }
+            return false;
+        })())) {
+            // 磁盘写入成功：上面已记账，这里无需再做事
         } else if (localViaFile) {
             // **本地文件模式**：写到用户约定的路径（宿主的本地文件），**不再写 localStorage**（= 取代变量层）
             const wr = await localFileWrite(text, scopeId());
@@ -670,7 +691,8 @@ async function saveStateNowInner(o) {
     // ⑤ IndexedDB 缓冲（可用时）—— **不做等值跳过**：它是异步写、不阻塞主线程，
     //   且与 localStorage 是两层独立真相（本层写失败后仍需能自愈），耦合跳过会留下「永远补不上」的缺口。
     //   v3.26.0（用户要求）：**本地目录模式下本层整体停用**（不写、不读）—— 本机只留「目录 + 服务端」两层。
-    if (localViaFile || localViaDisk) {
+    // v3.28.1：磁盘写失败已回退浏览器层 → 内存库这次**照写**（回退口径要一致，否则回退只回了一半）
+    if (localViaFile || (localViaDisk && !diskFellBack)) {
         localStats.idbSkipped += 1;
     } else {
         try {

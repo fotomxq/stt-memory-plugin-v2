@@ -564,4 +564,45 @@ await A('D7 v3.27.1 路径审计：**填绝对路径会被归一成命名空间�
         && a3.effective === 'abs/x' && a3.remapped === true;
 }, () => ({ audit: localFilePathAudit('D:\\Downloads\\stn\\fft_v2_store', 'C:\\data-root') }));
 
+// ============================================================
+// v3.28.1（用户要求）：「如果写盘失败回退浏览器层，但必须明显提醒用户，且标记用户设置的路径无效。」
+// ============================================================
+await A('E1 本地磁盘目录**写盘失败 → 回退浏览器层**：变量层真的写入、内存库照写、该路径被标记「无效」，并**弹一次醒目提醒**', async () => {
+    boot({ storage: { localFilePath: '', localDiskDir: 'D:\\不可写\\store' } });   // 宿主无 dev 文件 API → 能力缺失 → 必然写失败
+    const RT2 = await import('../../core/model/runtime.js');
+    const LD = await import('../../adapters/local-disk.js');
+    const toasts = [];
+    RT2.setNotifyHooks({ toast: (text, kind) => { toasts.push({ text: String(text), kind: String(kind) }); return true; } });
+    invalidateLocalBufferCache();
+    const saved = await saveStateNow({ force: true });
+    const b = localBufferState();
+    const inf = LD.localDiskInfo();
+    const ok = saved && saved.ok !== false && b && String(b.layer) === 'localStorage'
+        && String(lsMap.get(lsKey()) || '').length > 100            // 回退真的写进了浏览器变量层
+        && idbWrites > 0                                            // 内存库照写（回退口径一致）
+        && inf.invalid && inf.invalid.invalid === true              // 路径被标记无效
+        && toasts.some((t) => t.kind === 'warning' && t.text.indexOf('本地磁盘目录') > 0);
+    RT2.setNotifyHooks({});
+    return ok;
+}, () => ({ info: localDiskInfo(), layer: localBufferState() }));
+
+await A('E2 该路径重新「校验」通过 → 无效标记清除（可恢复正常磁盘层）', async () => {
+    const h = boot({ storage: { localFilePath: '', localDiskDir: 'D:\\可写\\store' } });
+    const LD = await import('../../adapters/local-disk.js');
+    // 装上「dev 文件 API」能力（内存盘桩）：写 → 回读一致
+    const disk = new Map();
+    h.abi.api.dev = {
+        files: {
+            async writeTextFile(a) { disk.set(String(a.path), String(a.text != null ? a.text : a.content)); return { ok: true }; },
+            async readTextFile(a) { const k = String(a.path); if (!disk.has(k)) throw new Error('ENOENT'); return { text: disk.get(k) }; },
+        },
+    };
+    ttResetSession();
+    LD.localDiskReprobe();
+    LD.localDiskMarkInvalid('D:\\可写\\store', 'test', 'x');      // 先人为标记无效
+    const pr = await LD.localDiskProbeDir('D:\\可写\\store');      // 校验通过 → 清除
+    const inf = LD.localDiskInfo();
+    return pr.ok === true && inf.invalid.invalid === false && disk.size > 0;
+}, () => ({ info: localDiskInfo() }));
+
 R.done();

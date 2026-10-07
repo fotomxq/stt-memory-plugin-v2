@@ -323,22 +323,27 @@ function localFileModeHtml() {
             ? ('<b>可写盘</b>（机制 ' + esc(String(cap.mechanism || '')) + (cap.ns ? ('：api.dev.' + esc(String(cap.ns))) : '') + '）')
             : '<b class="ftt-err">宿主未提供写任意磁盘路径的接口</b>（' + esc(String(cap.note || '')) + '）';
         // 可见行只留结论（提示行长度口径 L1 ≤90 字）；能力/路径/失败原因放折叠详情
+        const inv = d.invalid || {};
         const status = '<div class="ftt-muted" data-ftt-disk-status><b>本地磁盘目录</b>：'
             + (d.enabled ? esc(String(d.dir || '')) : '未开启')
             + ' · 写 ' + Number(s.writes || 0) + ' / 读 ' + Number(s.reads || 0) + ' / 校验 ' + Number(s.probes || 0)
             + '</div>';
+        // v3.28.1（用户要求）：路径被标记无效 → **显著告警**（已回退浏览器本地存储，请重新校验）
+        const invalidHtml = (inv && inv.invalid)
+            ? ('<div class="ftt-hint ftt-warn-box" data-ftt-disk-invalid>⚠️ <b>该路径已被标记为「无效」</b>：写入/读取失败，已回退浏览器本地存储 —— 请修正后重新「✅ 校验本地磁盘目录」。</div>')
+            : '';
         const hint = '<div class="ftt-hint">这是替代浏览器本地存储的<b>本地目录</b>（真磁盘路径，如 <code>D:\\FTT\\store</code>）；'
             + '与下方「服务端扩展存储目录」不是一回事。</div>';
         const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地磁盘目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
         const ops = '<div class="ftt-row">'
             + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskProbe" title="对这个真磁盘路径写一个探针文件 → 回读逐字节校验 → 删除：证明「这个目录真的能写」">✅ 校验本地磁盘目录</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="localDiskStatus">🔄 刷新磁盘状态</button>'
-            + '<span class="ftt-muted">校验通过后才算可用；写盘失败不回退浏览器层。</span></div>';
+            + '<span class="ftt-muted">校验通过后才算可用；写盘失败会回退浏览器层并标记无效。</span></div>';
         const capDetail = hintDetailsHtml('能力与失败明细',
             '<div class="ftt-muted">能力：' + capTxt + '</div>'
             + (Number(s.failures) ? ('<div class="ftt-muted"><span class="ftt-err">失败 ' + Number(s.failures) + ' 次：' + esc(String(s.lastError || '')) + '</span></div>') : '')
-            + '<div class="ftt-muted">写盘失败一律不回退浏览器层（浏览器变量 / 内存库保持停用），如实回报失败。</div>');
-        return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地磁盘目录（替代浏览器本地存储）</div>' + hint + status + ctl + capDetail + ops + '</div>';
+            + '<div class="ftt-muted">写盘 / 读盘失败时：<b>回退浏览器本地存储</b>（变量 + 内存库）并弹一次醒目通知，同时把该路径标记为「无效」；修正后重新校验即可恢复。</div>');
+        return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地磁盘目录（替代浏览器本地存储）</div>' + hint + invalidHtml + status + ctl + capDetail + ops + '</div>';
     })();
     let info = null;
     try { info = localLayerInfo(); } catch (e) { info = null; }
