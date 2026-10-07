@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.28.1",
+  "version": "3.29.0",
   "updatedAt": "2026-10-07",
   "generatedAt": "2026-10-07",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.29.0",
+      "date": "2026-10-07",
+      "title": "本地存储：一个路径框即生效 + 显示完整路径 + 可用调试端口核对落盘",
+      "points": [
+        "用法：设定 → 存储 → 「本地存储路径」填 D:\\Downloads\\stn\\fft_v2_store → 点「✅ 校验本地存储路径」；或开调试桥后跑 ftt.diskProb…"
+      ]
+    },
     {
       "version": "3.28.1",
       "date": "2026-10-07",

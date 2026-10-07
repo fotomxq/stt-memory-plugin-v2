@@ -47,7 +47,7 @@ import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 import { localLayerInfo, localLayerReadProbe } from '../adapters/store.js';
 import { localFilePathAudit } from '../adapters/local-file.js';   // v3.27.1：路径审计（绝对路径 → 命名空间名 + 真实落点）
 import { auxStoreInfo } from '../adapters/aux-store.js';
-import { localDiskInfo } from '../adapters/local-disk.js';   // v3.28.0：本地磁盘目录（真磁盘路径）状态+能力         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
+import { localDiskInfo, localDiskProbeDir, localDiskList } from '../adapters/local-disk.js';   // v3.28.0/3.29.0：本地磁盘目录状态 + 探针 + 文件列举         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
 import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
@@ -530,6 +530,21 @@ export function buildBridgeMethods() {
             hostEnumeration: cand && cand.host ? cand.host : { supported: false, api: '' },
             candidates: cand && Array.isArray(cand.items) ? cand.items.map((x) => ({ path: x.path, source: x.source, current: x.current })) : [],
         };
+    });
+    // v3.29.0（用户要求「核对文件是否保存到本地了，可以用调试端口测试」）：
+    //   · `ftt.diskProbe`：对**当前本地存储路径**做一次真写探针（写 → 回读逐字节校验 → 删除自己的探针文件），
+    //     如实回报能否写盘、真实文件路径与机制 —— 只写自己的探针文件，不动任何记忆数据；
+    //   · `ftt.diskFiles`：**列出本地存储目录里的文件**（只读；宿主 ACL 不放行时如实返回 ok:false）。
+    T['ftt.diskProbe'] = safe(async () => {
+        const info = localDiskInfo();
+        if (!info.dir) return { ok: false, reason: 'off', note: '尚未设置本地存储路径（设定 → 存储 → 本地存储路径）' };
+        const pr = await localDiskProbeDir(info.dir);
+        return Object.assign({ dir: info.dir, capability: info.capability }, pr);
+    });
+    T['ftt.diskFiles'] = safe(async () => {
+        const info = localDiskInfo();
+        const ls = await localDiskList();
+        return { enabled: info.enabled, dir: info.dir, invalid: info.invalid, stats: info.stats, list: ls };
     });
     T['ftt.chatMeta'] = safe(() => chatMetaDiffReport());
 
@@ -1164,6 +1179,8 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.stateSize': { desc: '导出文本字节数（不回正文）', params: '' },
     'ftt.chatReady': { desc: '聊天是否已就绪（台账维护的前置守卫）', params: '' },
     'ftt.chatMeta': { desc: 'chatMetadata 主载体只读差异报告', params: '' },
+    'ftt.diskProbe': { desc: '本地存储路径写探针（写 → 回读校验 → 删除，证明真能写盘）', params: '' },
+    'ftt.diskFiles': { desc: '列出本地存储目录里的文件（只读；含路径无效标记与写盘统计）', params: '' },
     'ftt.fileTransport': { desc: '文件通道现状（宿主原生存储 / 酒馆用户目录）', params: '' },
     'ftt.clockTraceInfo': { desc: '时钟取值追踪（逐字段来源与理由）', params: '' },
     'ftt.clockTraceSummary': { desc: '时钟取值追踪摘要文本', params: '' },

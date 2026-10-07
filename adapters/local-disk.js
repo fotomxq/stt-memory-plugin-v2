@@ -157,9 +157,26 @@ async function diskWriteText(path, text) {
         }
         const inv = tauriInvoke();
         if (!inv) return { ok: false, reason: 'no-invoke' };
-        // Tauri v2 fs 插件：write_text_file({ path, contents })（v1 为 { path, contents } 同名参数）
-        await inv('plugin:fs|write_text_file', { path: path, contents: Array.from(new TextEncoder().encode(body)) });
-        return { ok: true, mechanism: c.mechanism };
+        /**
+         * v3.29.0：Tauri v2 `fs` 插件的 `write_text_file` 在不同版本/ACL 下参数形态不完全一致 ——
+         *   逐形态试（**每一种都以「写后能回读一致」为准**，由调用方校验）：
+         *   ① `{ path, contents: <字符串> }`（多数版本）
+         *   ② `{ path, contents: <字节数组> }`（部分版本把 text 当字节写）
+         *   ③ `{ path, text }` / ④ `{ path, data: <字节数组> }`（旧别名）
+         */
+        const bytes = Array.from(new TextEncoder().encode(body));
+        const shapes = [
+            { path: path, contents: body },
+            { path: path, contents: bytes },
+            { path: path, text: body },
+            { path: path, data: bytes },
+        ];
+        let lastErr = '';
+        for (const arg of shapes) {
+            try { await inv('plugin:fs|write_text_file', arg); return { ok: true, mechanism: c.mechanism }; }
+            catch (e) { lastErr = String((e && e.message) || e); }
+        }
+        return { ok: false, reason: 'write-failed', error: lastErr };
     } catch (e) { return { ok: false, reason: 'write-failed', error: String((e && e.message) || e) }; }
 }
 /** 读文本 */
@@ -176,10 +193,38 @@ async function diskReadText(path) {
         const inv = tauriInvoke();
         if (!inv) return { ok: false, reason: 'no-invoke' };
         const r = await inv('plugin:fs|read_text_file', { path: path });
-        const text = (typeof r === 'string') ? r : (r && typeof r === 'object' && typeof r.text === 'string' ? r.text : '');
+        const text = (typeof r === 'string') ? r
+            : (r && typeof r === 'object' && typeof r.text === 'string') ? r.text
+                : (r && typeof r === 'object' && typeof r.contents === 'string') ? r.contents
+                    : (r && typeof r === 'object' && r.data) ? new TextDecoder().decode(new Uint8Array(r.data)) : '';
         if (!text) return { ok: false, reason: 'empty' };
         return { ok: true, text: text };
     } catch (e) { return { ok: false, reason: 'read-failed', error: String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.29.0（用户要求「核对文件是否保存到本地了」）：**列出本地磁盘目录里的文件**（只读）。
+ *   用 Tauri fs 插件的 `read_dir`（ACL 不放行 → 如实返回 `{ok:false}`，不假装）。
+ * @returns {Promise<{ok:boolean, dir:string, names:string[], entries:Array<{name:string,isFile:boolean,size:number}>, error?:string}>}
+ */
+export async function localDiskList() {
+    const dir = localDiskRaw();
+    const out = { ok: false, dir: dir, names: [], entries: [], error: '' };
+    if (!dir) { out.error = 'off'; return out; }
+    try {
+        const inv = tauriInvoke();
+        if (!inv) { out.error = 'no-invoke'; return out; }
+        const r = await inv('plugin:fs|read_dir', { path: dir });
+        const arr = Array.isArray(r) ? r : (r && Array.isArray(r.entries) ? r.entries : []);
+        out.entries = arr.map((x) => ({
+            name: String((x && (x.name || x.path || x.fileName)) || ''),
+            isFile: !(x && (x.isDirectory === true || x.isDir === true)),
+            size: Number((x && (x.size || x.len)) || 0),
+        })).filter((x) => x.name);
+        out.names = out.entries.map((x) => x.name);
+        out.ok = true;
+        return out;
+    } catch (e) { out.error = String((e && e.message) || e); return out; }
 }
 
 /**
@@ -275,5 +320,5 @@ export const localDiskStats = stats;
 export default {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
-    localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid,
+    localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
 };

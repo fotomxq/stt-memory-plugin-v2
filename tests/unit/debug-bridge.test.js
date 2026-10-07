@@ -132,6 +132,7 @@ function useTauriTavern(withDev = true) {
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
                 'ftt.config', 'ftt.dataHealth', 'ftt.dataHealthText',                      // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要
                 'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
+                'ftt.diskFiles', 'ftt.diskProbe',                                         // v3.29.0：本地存储路径写探针 / 目录文件列举（用调试端口核对文件是否落到本地）
                 'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
                 'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors', 'ftt.ledger', 'ftt.loadDiag',
                 'ftt.localDir',                                              // v3.26.0：+本机缓冲目录模式体检
