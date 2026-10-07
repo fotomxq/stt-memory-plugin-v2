@@ -408,6 +408,61 @@ export async function localFileProbeDir(rawPath) {
 }
 
 /**
+ * v3.27.1（用户报告）：「路径已经设置：`D:\Downloads\stn\fft_v2_store`，但是实际上没有任何数据被保存到该目录下。」
+ *
+ * 事实（宿主硬限制）：**扩展只能写在宿主数据目录之内** —— 数据目录之外的绝对路径根本传不进 `api.extension.store`
+ *   （命名空间只允许 `[A-Za-z0-9_.-]`），酒馆文件通道也只在 `user/files/` 之下。于是：
+ *   · 你填的绝对路径**不会被当作磁盘路径**，而是被归一成一个**命名空间名**（盘符 / 前导斜杠 / `..` 剥掉、
+ *     非法字符转 `_`），真实落点是 `<数据根目录>/_tauritavern/extension-store/<命名空间>/…`；
+ *   · 「📂 从系统选择文件夹…」受宿主限制**只取文件夹名**，所以配置里留下的是 `fft_v2_store`（而不是整条路径）。
+ *
+ * 本函数把这件事**如实审计出来**，供 UI 明说（含「真想落到 D: 就得用目录联接」的可复制命令）。
+ * @param {string} [raw] 用户输入（缺省用配置里的）
+ * @param {string} [root] 宿主数据根目录（缺省用 `ttDataRoot()`）
+ * @returns {{raw:string,effective:string,remapped:boolean,reasons:string[],ns:string,real:string,root:string,
+ *            files:Array<object>,junction:({from:string,to:string,command:string,steps:string[]}|null)}}
+ */
+export function localFilePathAudit(raw, root) {
+    const rawIn = String(raw == null ? localFileRawPath() : raw).trim();
+    const effective = localFilePathSanitize(rawIn);
+    const reasons = [];
+    let remapped = false;
+    try {
+        if (/^[A-Za-z]:/.test(rawIn)) { reasons.push('盘符会被剥掉（扩展只能写在宿主数据目录内）'); remapped = true; }
+        if (/^[\\/]/.test(rawIn)) { reasons.push('前导斜杠会被剥掉（不接受绝对路径）'); remapped = true; }
+        if (/(^|[\\/])\.\.([\\/]|$)/.test(rawIn)) { reasons.push('`..` 段会被丢弃（不允许跳出数据目录）'); remapped = true; }
+        if (effective && effective !== rawIn.replace(/\\/g, '/')) { remapped = true; }
+        if (effective.indexOf('/') > 0) { reasons.push('多级路径会折叠成单个命名空间名（宿主命名空间只接受一段）'); remapped = true; }
+        if (!effective) { reasons.push('归一后为空 → 视为「不开启」'); }
+    } catch (e) { /* 忽略 */ }
+    const rootAbs = String(root == null ? (() => { try { return ttDataRoot(); } catch (e) { return ''; } })() : root).trim();
+    const real = (() => { try { return localFileRealLocation(effective || rawIn, ''); } catch (e) { return null; } })();
+    const ns = effective ? localFileNs(effective) : '';
+    const sep = rootAbs.indexOf('\\') >= 0 ? '\\' : '/';
+    const junction = (() => {
+        // 只有「用户填的是一条绝对 Windows 路径」且「拿得到宿主数据根目录」时才给联接方案
+        if (!/^[A-Za-z]:[\\/]/.test(rawIn) || !rootAbs || !ns) return null;
+        const from = rootAbs.replace(/[\\/]+$/, '') + sep + '_tauritavern' + sep + 'extension-store' + sep + ns;
+        const cmd = 'mklink /J "' + from + '" "' + rawIn + '"';
+        return {
+            from: from, to: rawIn, command: cmd,
+            steps: [
+                '① 把「' + from + '」里的文件全部移动到「' + rawIn + '」（目标目录要先清空）',
+                '② 删除空目录「' + from + '」',
+                '③ 在 cmd 里运行：' + cmd,
+                '④ 之后插件的写入会通过联接直接落到你指定的磁盘目录（两个路径看到同一份文件）',
+            ],
+        };
+    })();
+    return {
+        raw: rawIn, effective: effective, remapped: remapped, reasons: reasons, ns: ns,
+        real: (real && real.text) || '', root: rootAbs,
+        files: (real && Array.isArray(real.files)) ? real.files : [],
+        junction: junction,
+    };
+}
+
+/**
  * 「这个目录最终落在磁盘哪里」的**如实**说明（面板显示用；不猜、不美化）。
  *
  * v3.26.5（真机取证「保存到本地文件后，是否没有正常读取和写入？」）：旧文案只写 `kv/local/`，

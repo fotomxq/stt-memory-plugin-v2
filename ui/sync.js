@@ -40,6 +40,9 @@ import {
 import { localLayerInfo, switchLocalLayer } from '../adapters/store.js';
 // v3.27.0（用户要求「日志等信息也跟随本地目录统一收纳」）：辅助数据落点状态（目录 / 浏览器本机存储）
 import { auxStoreInfo } from '../adapters/aux-store.js';
+// v3.27.1（用户报告「路径填 D:\… 但那里没有任何数据」）：**路径审计** —— 绝对路径会被归一成命名空间名、
+//   真实落点在宿主数据目录内；拿得到数据根目录时还给出「目录联接」的可复制命令。
+import { localFilePathAudit } from '../adapters/local-file.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -358,12 +361,36 @@ function localFileModeHtml() {
             const total = (a.items || []).reduce((s, x) => s + Number(x.bytes || 0), 0);
             const names = '调试日志 / 交互时间线 / 同步与对账标记 / 版本清单缓存';
             if (a.mode === 'dir') {
-                return '<div class="ftt-muted" data-ftt-aux-line><b>辅助数据：已收纳到目录</b>（' + esc(String(a.path || '')) + '/aux/） · ' + esc(names)
-                    + ' · 共 ' + esc(mb(total)) + (a.pending ? (' · 待落盘 ' + Number(a.pending)) : '')
+                // 提示行长度口径（ui-spec L1）：明细放折叠块，可见行只留结论
+                return '<div class="ftt-muted" data-ftt-aux-line><b>辅助数据：已收纳到目录</b>（' + esc(String(a.path || '')) + '/aux/） · '
+                    + esc(names) + ' · 共 ' + esc(mb(total)) + (a.pending ? (' · 待落盘 ' + Number(a.pending)) : '')
                     + (a.lastError ? (' · <span class="ftt-err">最近失败：' + esc(String(a.lastError)) + '</span>') : '')
-                    + '<br><span class="ftt-muted">快照链与同步日志在写完服务端后**额外收录一份**到同一目录（aux-ftt2-snap-… / aux-ftt2-log-….json）</span></div>';
+                    + '</div>';
             }
             return '<div class="ftt-muted" data-ftt-aux-line>辅助数据：仍在<b>浏览器本机存储</b>（' + esc(names) + ' · 共 ' + esc(mb(total)) + '）→ 设了目录就一并收纳到目录</div>';
+        } catch (e) { return ''; }
+    })();
+    // v3.27.1（用户报告「路径已经设置：D:\Downloads\stn\fft_v2_store，但没有任何数据被保存到该目录下」）：
+    //   宿主硬限制 —— 扩展只能写在**数据目录之内**；绝对路径会被归一成**命名空间名**。这里把审计结论明说，
+    //   并在拿得到数据根目录时给出「目录联接」命令（想真落到 D: 的唯一可行做法）。
+    const auditTxt = (() => {
+        try {
+            const a = localFilePathAudit('');
+            if (!a.raw) return '';
+            if (!a.remapped) {
+                return '<div class="ftt-muted" data-ftt-path-audit>路径审计：<b>相对目录名</b>「' + esc(a.effective) + '」→ 直接写在数据目录内（无改写）</div>';
+            }
+            const head = '<div class="ftt-hint ftt-warn-box" data-ftt-path-audit>⚠️ <b>路径被改写</b>：扩展只能写在数据目录内 → 实际写入命名空间「' + esc(a.ns) + '」</div>';
+            const body = '<div class="ftt-muted">你填的：' + esc(a.raw) + '</div>'
+                + '<div class="ftt-muted">原因：' + esc(a.reasons.join('；') || '（归一后与输入不同）') + '</div>'
+                + '<div class="ftt-muted">真实落点：' + esc(a.real) + '</div>'
+                + (a.junction
+                    ? ('<div class="ftt-hint">想真的落到你指定的目录？用<b>目录联接</b>：Windows 不允许扩展直接写数据目录之外，'
+                        + '但可以把命名空间目录联接到目标目录 —— 两边看到同一份文件（插件照写，你在自己的盘上管理）。</div>'
+                        + '<div class="ftt-muted">' + a.junction.steps.map((x) => esc(x)).join('<br>') + '</div>'
+                        + '<div class="ftt-muted">命令：<code data-ftt-junction-cmd>' + esc(a.junction.command) + '</code></div>')
+                    : '');
+            return head + hintDetailsHtml('路径改写详情 / 如何落到你指定的盘（目录联接）', body);
         } catch (e) { return ''; }
     })();
     const extra = on
@@ -376,7 +403,7 @@ function localFileModeHtml() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前目录对齐本机层：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里最新的那份写进当前目录（写→回读校验→才清旧层）；目录副本已是最新时只做校验、不覆盖；关闭目录时把内容迁回变量层与内存库">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
-    return stat + one + desc + localFileDirPickerHtml(info) + detail + extra + auxTxt + ops;
+    return stat + one + desc + localFileDirPickerHtml(info) + detail + auditTxt + extra + auxTxt + ops;
 }
 
 /** v3.26.0：目录扫描结果缓存（动作里异步取，取完重绘即可见） */

@@ -30,7 +30,7 @@ import {
 } from '../../adapters/store.js';
 import {
     localFileEnable, localFileEnabled, localFilePath, localFilePathSanitize, localFileName, localFileNs, localFileNsLegacy,
-    localFileWrite, localFileRead, localFileStatsGet, localFileFileKey, localFileDirCandidates, localFileDirHistory,
+    localFileWrite, localFileRead, localFileStatsGet, localFileFileKey, localFilePathAudit, localFileDirCandidates, localFileDirHistory,
     localFileDirRemember, localFileDirScanHost, localFileProbeDir, localFileRealLocation, LOCAL_DIR_HISTORY_MAX,
 } from '../../adapters/local-file.js';
 import { ttResetSession } from '../../adapters/tt-store.js';
@@ -545,5 +545,23 @@ await A('D6 目录模式下**聊天元数据层也不读**（只留目录 + 服�
     return idsDir.indexOf('lf-meta-only') < 0 && idsOff.indexOf('lf-meta-only') >= 0
         && !!rDir && !!rOff;
 }, () => ({ meta: null }));
+
+await A('D7 v3.27.1 路径审计：**填绝对路径会被归一成命名空间名**（盘符/前导斜杠/`..` 被剥、多级折叠），如实列出原因；拿得到数据根目录时给出「目录联接」命令与真实落点', async () => {
+    boot({ storage: { localFilePath: 'fft_v2_store' } });
+    // ① 绝对路径（真机场景：用户填 D:\Downloads\stn\fft_v2_store）
+    const a1 = localFilePathAudit('D:\\Downloads\\stn\\fft_v2_store', 'C:\\data-root');
+    // ② 纯相对目录名 → 无改写
+    const a2 = localFilePathAudit('fft_v2_store', 'C:\\data-root');
+    // ③ 上跳 / 前导斜杠 → 剥掉
+    const a3 = localFilePathAudit('/abs/../x', 'C:\\data-root');
+    return a1.remapped === true && a1.effective === 'Downloads/stn/fft_v2_store'
+        && a1.reasons.join('|').indexOf('盘符') >= 0 && a1.reasons.join('|').indexOf('命名空间') >= 0
+        && a1.real.indexOf('_tauritavern/extension-store/') > 0
+        && !!a1.junction && a1.junction.command.indexOf('mklink /J') === 0
+        && a1.junction.command.indexOf('_tauritavern\\extension-store\\') > 0
+        && a1.junction.from.indexOf('C:\\data-root') === 0 && a1.junction.to === 'D:\\Downloads\\stn\\fft_v2_store'
+        && a2.remapped === false && a2.effective === 'fft_v2_store' && a2.junction === null
+        && a3.effective === 'abs/x' && a3.remapped === true;
+}, () => ({ audit: localFilePathAudit('D:\\Downloads\\stn\\fft_v2_store', 'C:\\data-root') }));
 
 R.done();
