@@ -23,6 +23,26 @@ import { cfg, dbgLog } from '../core/model/runtime.js';
 let caps = null;
 /** 最近一次读写统计（诊断 / UI） */
 const stats = { writes: 0, reads: 0, failures: 0, probes: 0, lastError: '', lastAt: 0, lastBytes: 0, mechanism: '' };
+/**
+ * v3.28.1（用户要求）：「写盘失败 → **回退浏览器层**，但必须明显提醒，且**标记该路径无效**」。
+ *   这里维护「路径无效」状态：任何一次真实写入失败 / 探针失败 / 能力缺失都会置位；
+ *   成功写入或探针通过时清除。UI 据此显著告警，保存流水线据此回退浏览器层。
+ * @type {{invalid:boolean, dir:string, at:number, reason:string, error:string}}
+ */
+let invalid = { invalid: false, dir: '', at: 0, reason: '', error: '' };
+/** 标记「该路径无效」（可被 `localDiskClearInvalid()` 清除） */
+export function localDiskMarkInvalid(dir, reason, error) {
+    invalid = { invalid: true, dir: String(dir || ''), at: Date.now(), reason: String(reason || ''), error: String(error || '') };
+    return Object.assign({}, invalid);
+}
+/** 清除无效标记（写入成功 / 探针通过时调用） */
+export function localDiskClearInvalid() {
+    const was = Object.assign({}, invalid);
+    invalid = { invalid: false, dir: '', at: 0, reason: '', error: '' };
+    return was;
+}
+/** 当前「路径无效」状态（只读） */
+export function localDiskInvalid() { return Object.assign({}, invalid); }
 
 /** 生效的本地磁盘目录（`''` = 不开启）；返回**归一后的真磁盘路径**（去尾部分隔符） */
 export function localDiskRaw() {
@@ -175,14 +195,16 @@ export async function localDiskWrite(name, text) {
     const full = localDiskJoin(dir, safe);
     const body = String(text == null ? '' : text);
     const w = await diskWriteText(full, body);
-    if (!w.ok) { stats.failures++; stats.lastError = String(w.error || w.reason || 'write-failed'); return { ok: false, path: full, error: stats.lastError, reason: w.reason }; }
+    if (!w.ok) { stats.failures++; stats.lastError = String(w.error || w.reason || 'write-failed'); localDiskMarkInvalid(dir, 'write-failed', stats.lastError); return { ok: false, path: full, error: stats.lastError, reason: w.reason }; }
     const r = await diskReadText(full);
     if (!r.ok || String(r.text) !== body) {
         stats.failures++;
         stats.lastError = 'verify-failed';
+        localDiskMarkInvalid(dir, 'verify-failed', '写后回读不一致');
         return { ok: false, path: full, error: 'write-then-readback-mismatch', reason: 'verify-failed' };
     }
     stats.writes++; stats.lastAt = Date.now(); stats.lastBytes = body.length; stats.lastError = ''; stats.mechanism = String(w.mechanism || '');
+    localDiskClearInvalid();   // v3.28.1：写得进去 → 该路径有效
     try { dbgLog('存储', { action: '本地磁盘目录：写入并回读校验通过', path: full, bytes: body.length, mechanism: stats.mechanism }); } catch (e) { /* 忽略 */ }
     return { ok: true, path: full, bytes: body.length, mechanism: stats.mechanism };
 }
@@ -216,10 +238,11 @@ export async function localDiskProbeDir(rawPath) {
         const w = await localDiskWrite('ftt2-local-probe.json', body);
         const r = await localDiskRead('ftt2-local-probe.json');
         cfg.storage.localDiskDir = keep;
-        if (!w.ok) { out.error = String(w.error || w.reason || 'write-failed'); return out; }
+        if (!w.ok) { out.error = String(w.error || w.reason || 'write-failed'); localDiskMarkInvalid(dir, 'probe-write-failed', out.error); return out; }
         if (!r.ok || String(r.text) !== body) { out.error = 'verify-failed'; return out; }
         out.ok = true; out.path = String(w.path || '');
         stats.probes++; stats.lastAt = Date.now();
+        localDiskClearInvalid();
     } catch (e) {
         try { cfg.storage.localDiskDir = prev; } catch (e2) { /* 忽略 */ }
         out.error = String((e && e.message) || e);
@@ -234,6 +257,7 @@ export function localDiskInfo() {
     return {
         enabled: !!dir, dir: dir, kind: localDiskPathKind(dir),
         capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, devKeys: c.devKeys, note: c.note },
+        invalid: localDiskInvalid(),   // v3.28.1：路径是否已被标记为**无效**（写入失败 / 探针失败）
         stats: Object.assign({}, stats),
     };
 }
@@ -242,6 +266,7 @@ export function localDiskReset() {
     caps = null;
     stats.writes = 0; stats.reads = 0; stats.failures = 0; stats.probes = 0;
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
+    localDiskClearInvalid();
     return true;
 }
 
@@ -250,5 +275,5 @@ export const localDiskStats = stats;
 export default {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
-    localDiskInfo, localDiskReset,
+    localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid,
 };

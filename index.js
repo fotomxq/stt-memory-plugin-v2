@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -359,6 +359,25 @@ export async function loadMemoryState() {
         // **本地磁盘模式**：本机层只有一个真相 = 本地磁盘上的那个文件（写 → 回读逐字节校验）
         try { layers.local = await loadFromLocalDisk(); } catch (e) { /* 磁盘层异常 → 交由服务端文件兜底 */ }
         layers.chatmeta = null;
+        if (!layers.local) {
+            /**
+             * v3.28.1（用户要求）：「写盘失败**回退浏览器层**，但必须明显提醒，且**标记该路径无效**」。
+             *   载入同理：磁盘层读不到（文件缺失 / 路径不可用 / 读盘失败）→ **回退浏览器层**（数据优先），
+             *   把该路径标记为无效并**弹一次醒目通知**，由用户到「设定 → 存储」重新校验。
+             */
+            try { localDiskMarkInvalid((() => { try { return localDiskRaw(); } catch (e) { return ''; } })(), 'load-miss', '本地磁盘目录里没有可用的本机副本（或读盘失败）'); } catch (e) { /* 忽略 */ }
+            try {
+                if (localBufferGzPending()) layers.local = await loadFromLocalStorageGz();
+                else layers.local = loadFromLocalStorage();
+            } catch (e) { layers.local = null; }
+            try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
+            try { const cm2 = chatMetaLoadState(); layers.chatmeta = (cm2 && cm2.state) || null; } catch (e) { /* 忽略 */ }
+            diskLoadFellBack = true;
+            try { debugLogPush('异常', { action: '载入：本地磁盘目录读不到本机副本 → 已回退浏览器本地存储（该路径已标记为无效）', dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()), level: 'warning' }); } catch (e) { /* 忽略 */ }
+            try { debugLogPush('对账', { action: '载入：本地磁盘目录未命中 → 回退浏览器层 + 标记路径无效', dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()) }); } catch (e) { /* 忽略 */ }
+            try { notifyHooks.toast('⚠️ 本地磁盘目录未读到本机副本，已回退浏览器本地存储；该路径已标记为「无效」，请到「设定 → 存储」重新校验', 'warning'); } catch (e) { /* 忽略 */ }
+            try { readLedgerRecord({ action: '本机层回退', src: 'local', ok: true, miss: false, reason: 'disk-load-miss-fallback', note: '本地磁盘目录未命中 → 已回退浏览器变量 / 内存库；该路径标记为无效' }); } catch (e) { /* 忽略 */ }
+        }
         try {
             readLedgerRecord({ action: '本机层 = 本地磁盘目录', src: 'local', ok: true, miss: !layers.local, reason: 'local-disk-mode', note: '已设置本地磁盘目录 → 浏览器变量 / 内存库 / 聊天元数据都不读不写（替代浏览器本地存储）' });
         } catch (e) { /* 忽略 */ }
@@ -585,6 +604,7 @@ export function alignLoadedLayers(layers) {
 }
 
 /** 初始化（幂等；任何一步失败都不影响其余步骤与宿主） */
+let diskLoadFellBack = false;       // v3.28.1：本次载入是否「磁盘层未命中 → 回退浏览器层」
 export async function init() {
     runtime.lastError = '';
     if (!hasHost()) return { ok: false, reason: 'no-host' };
