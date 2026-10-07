@@ -4337,8 +4337,14 @@ await assert('AS2 宿主调用入流：经 getCtx() 的调用自动记 方法/�
     TR.traceClear();
     ctx.generateRaw = async () => 'ok-text';
     await ctx.generateRaw({ prompt: 'x' });
-    await new Promise((r) => setTimeout(r, 20));
-    const asyncEv = pick('generateRaw');
+    // v3.26.7（稳定性）：异步追踪记录**落地时刻**取决于事件循环负载 —— 固定 20ms 在重载下偶发不够
+    //   （本用例历史上 3 次红 1 次）。改成**轮询等待**（最多 500ms），断言强度不变。
+    let asyncEv = null;
+    for (let i = 0; i < 50; i++) {
+        asyncEv = pick('generateRaw');
+        if (asyncEv) break;
+        await new Promise((r) => setTimeout(r, 10));
+    }
     delete ctx.generateRaw;
     return !!sync && sync.cat === 'host' && sync.kind === 'saveSettingsDebounced' && sync.ok === true
         && TR.traceSiteText(sync.site).indexOf('tests/smoke-test.js') === 0
