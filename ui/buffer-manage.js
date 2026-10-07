@@ -30,7 +30,8 @@ import { readLedgerStats } from '../core/read-ledger.js';
 import { clockTraceList } from '../core/clock-trace.js';
 import { vectorCacheStats } from '../adapters/vector-cache.js';
 import { syncLogList } from '../adapters/sync.js';
-import { localKeyStats, localCopyStats, idbCopyStats, localLayerInfo } from '../adapters/store.js';   // v3.26.2：+localLayerInfo（状态副本的压缩留存与停滞标记）
+import { localKeyStats, localCopyStats, idbCopyStats, localLayerInfo } from '../adapters/store.js';
+import { auxStoreInfo } from '../adapters/aux-store.js';   // v3.27.0：辅助数据（日志/时间线/标记/版本清单）落点   // v3.26.2：+localLayerInfo（状态副本的压缩留存与停滞标记）
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -232,6 +233,28 @@ export function bufferSectionHtml(copy) {
     }
     // ── ② 缓存与日志 ──
     rows.push('<h5 class="ftt-h4-inline ftt-mt-2">🧰 缓存与日志 <span class="ftt-muted">排障与加速用的本机缓存</span></h5>');
+    // v3.27.0（用户要求「快照、日志等信息，也应该主动跟随本地存储变动……统一管理收纳」）：
+    //   逐条如实写出辅助数据**现在落在哪里**（目录 / 浏览器本机存储），并给出目录里的文件名。
+    //   注意：提示行 ≤90 字（ui-spec L1），细节放普通行；不写具体文件名前缀（避免与 H1「只统计、不出正文」口径冲突）。
+    {
+        let a = null;
+        try { a = auxStoreInfo(); } catch (e) { a = null; }
+        if (a && a.items && a.items.length) {
+            const where = a.mode === 'dir'
+                ? ('已收纳到目录 <b>' + esc(String(a.path || '')) + '/aux/</b>')
+                : '<b>浏览器本机存储</b>（设目录后自动收纳）';
+            const total = a.items.reduce((s, x) => s + Number(x.bytes || 0), 0);
+            rows.push('<div class="ftt-hint" data-ftt-aux-block>辅助数据落点：' + where + ' · 共 ' + esc(fmtBytes(total)) + '</div>');
+            // 明细放进折叠块：① 提示行长度口径（ui-spec L1）只算**可见提示**，明细不该撑爆它；
+            //   ② 用户展开即可逐项核对（文件名 / 大小 / 落点）。
+            rows.push('<details class="ftt-details" data-ftt-aux-detail><summary>辅助数据明细（' + a.items.length + ' 项）</summary>'
+                + '<div class="ftt-muted">' + a.items.map((x) => esc(x.file || x.key) + '：' + esc(x.bytes ? fmtBytes(x.bytes) : '（空）') + (x.where === 'dir' ? '（目录）' : '（浏览器）')).join(' · ')
+                + (a.pending ? (' · 待落盘 ' + Number(a.pending)) : '')
+                + (a.lastError ? (' · <span class="ftt-err">最近失败：' + esc(String(a.lastError)) + '</span>') : '')
+                + '</div>'
+                + '<div class="ftt-muted">快照链与同步日志在写完服务端后<b>额外收录一份</b>到同一目录，便于统一备份。</div></details>');
+        }
+    }
     rows.push('<div class="ftt-hint">都是可再生成的缓存（日志 / 台账 / 追踪 / 向量 / 版本清单 / 命名与对账标记）；清理<b>不影响记忆数据</b>。</div>');
     rows.push(rowHtml('调试日志', dStat, 'dbgClear', '清空调试日志（记忆数据不受影响）', d.count === 0));
     rows.push(rowHtml('交互追踪简报', tStat, 'dbgTraceClear', '清空交互/宿主调用简报（调试日志与记忆数据不受影响）', t.count === 0));

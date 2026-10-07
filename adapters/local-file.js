@@ -33,7 +33,7 @@
 // ============================================================
 import { cfg, dbgLog } from '../core/model/runtime.js';
 import { fileTransportUploadText, fileTransportReadAuto, fileTransportDelete, fileTransportBackend } from './file-transport.js';
-import { ttNativeOn, ttNativeActive, ttDirListCapability, ttListNamespaces, ttKeyOf } from './tt-store.js';
+import { ttNativeOn, ttNativeActive, ttDirListCapability, ttListNamespaces, ttKeyOf, ttDataRoot } from './tt-store.js';
 // v3.26.0：目录选择器把「用过的目录」写回配置（变量层停用后，候选清单不能依赖 localStorage）
 import { saveKernelCfg } from './config-store.js';
 
@@ -426,12 +426,21 @@ export function localFileRealLocation(rawPath, scope) {
     const files = [];
     if (!path) return { known: true, backend: '', text: '未开启：本机缓冲仍写浏览器变量与内存库', key: '', files: files };
     if (backend === 'tt-native') {
-        files.push({ channel: 'blob', path: '_tauritavern/extension-store/' + localFileNs(path) + '/blobs/local/' + key, note: '大信封（≥96KB，本机缓冲通常在这里）' });
-        files.push({ channel: 'kv', path: '_tauritavern/extension-store/' + localFileNs(path) + '/kv/local/' + key, note: '小信封（<96KB）' });
+        const ns = localFileNs(path);
+        // v3.27.0（用户要求「设置了本地目录则显示**完整路径**，而不是简单的目录名称」）：能拿到宿主数据根目录时
+        //   给出**绝对路径**（`<root>/<ns>/blobs/local/<key>`）；拿不到就如实标「用户数据目录」而不假装知道。
+        const root = (() => { try { return String(ttDataRoot() || ''); } catch (e) { return ''; } })();
+        const sep = root.indexOf('\\') >= 0 ? '\\' : '/';
+        const rel = '_tauritavern/extension-store/' + ns;
+        const absOf = (channel) => root ? (root.replace(/[\\/]+$/, '') + sep + '_tauritavern' + sep + 'extension-store' + sep + ns + sep + channel + sep + 'local' + sep + key) : '';
+        files.push({ channel: 'blob', path: rel + '/blobs/local/' + key, abs: absOf('blobs'), note: '大信封（≥96KB，本机缓冲通常在这里）' });
+        files.push({ channel: 'kv', path: rel + '/kv/local/' + key, abs: absOf('kv'), note: '小信封（<96KB）' });
         return {
-            known: true, backend: backend, key: key, files: files,
-            // 纯文本（调用方自行转义）：blobs = 大信封（本机缓冲通常在这里），kv = 小信封
-            text: '数据目录内：_tauritavern/extension-store/' + localFileNs(path) + '/ —— 大信封在 blobs/local/（本机缓冲通常在这里）、小信封在 kv/local/；文件名 ' + key,
+            known: true, backend: backend, key: key, files: files, root: root,
+            // 纯文本（调用方自行转义）：有绝对路径就给完整路径；否则给数据目录内的相对路径
+            text: (root
+                ? ('完整路径：' + root.replace(/[\\/]+$/, '') + sep + '_tauritavern' + sep + 'extension-store' + sep + ns + sep + '（blobs/local/ 大信封 · kv/local/ 小信封）；文件名 ' + key)
+                : ('用户数据目录内：_tauritavern/extension-store/' + ns + '/ —— 大信封在 blobs/local/（本机缓冲通常在这里）、小信封在 kv/local/；文件名 ' + key + '（宿主未提供绝对路径）')),
         };
     }
     files.push({ channel: 'file', path: 'user/files/' + path + '/' + key, note: '酒馆文件通道（子目录不被接受时退化为平铺名）' });

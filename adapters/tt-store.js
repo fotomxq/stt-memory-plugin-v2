@@ -53,6 +53,7 @@ let lastOkAt = 0;
 let lastReason = '';
 const stats = { writes: 0, kvWrites: 0, blobWrites: 0, reads: 0, misses: 0, listCalls: 0, fallbacks: 0, twinPicks: 0, twinDrops: 0 };
 const twinSeen = Object.create(null);       // v3.26.7：`ns\0key` → 本会话在哪个通道见过同名副本（清理前先确认存在，绝不盲删）
+let dataRootCache = '';                    // v3.27.0：宿主导出的数据根目录（绝对路径；来源见 ttLearnDataRoot）
 const missCache = Object.create(null);      // `${ns}\u0000${key}` → 判定时间
 const listCache = Object.create(null);      // `${ns}/${table}` → { at, keys: string[] }
 const writeChannel = Object.create(null);   // `${ns}\u0000${key}` → 'kv' | 'blob'
@@ -194,7 +195,52 @@ export function ttKeyOf(name) {
 
 function ctxKey(ns, key) { return String(ns) + '\u0000' + String(key); }
 function markOk() { lastOkAt = Date.now(); lastError = ''; lastReason = ''; }
+/**
+ * v3.27.0（用户要求「设置了本地目录则显示**完整路径**」）：宿主导出的**数据根目录**（绝对路径）。
+ *   两条来源，互为补充：
+ *     ① 宿主 API 里的字符串字段（`api.extension.store.dataRoot` / `api.dev.dataRoot` / `api.db.dataRoot` …）；
+ *     ② **从宿主报错里学**（TauriTavern 的后端错误会把绝对路径原样写出来，形如
+ *        「Failed to delete extension store entry: Not found: Extension store entry
+ *          ＜用户数据目录＞\_tauritavern\extension-store\＜命名空间＞\kv\main\＜键＞.json」）
+ *        —— 这是真机上唯一能拿到绝对路径的可靠途径，学到即缓存（只读、不上报）。
+ *   拿不到 → 返回 `''`，UI 如实写「用户数据目录」而不假装知道。
+ * @param {string} [text] 可选：从这段文本里学习（一般传错误消息）
+ * @returns {string} 数据根目录绝对路径（无 → ''）
+ */
+export function ttLearnDataRoot(text) {
+    try {
+        const s = String(text == null ? '' : text);
+        if (s) {
+            const m = s.match(/[A-Za-z]:[\\/][^"'<>|\r\n]*?[\\/]_tauritavern[\\/]extension-store/i)
+                || s.match(/\/[^"'<>|\r\n]*?\/_tauritavern\/extension-store/i);
+            if (m) {
+                const full = String(m[0]).replace(/[\\/]extension-store$/i, '');
+                if (full && full.length > 6) dataRootCache = full;
+            }
+        }
+        if (!dataRootCache) {
+            const w = globalThis.window;
+            const api = (w && w.__TAURITAVERN__ && w.__TAURITAVERN__.api) || {};
+            const cands = [
+                api.extension && api.extension.store && api.extension.store.dataRoot,
+                api.extension && api.extension.dataRoot,
+                api.dev && api.dev.dataRoot,
+                api.db && api.db.dataRoot,
+                api.extension && api.extension.paths && api.extension.paths.data,
+            ];
+            for (const c of cands) {
+                const v = String(c == null ? '' : c);
+                if (v && /[\\/]/.test(v)) { dataRootCache = v; break; }
+            }
+        }
+    } catch (e) { /* 忽略：拿不到就返回空 */ }
+    return dataRootCache;
+}
+/** 已学到的数据根目录（无 → ''） */
+export function ttDataRoot() { try { return dataRootCache || ttLearnDataRoot(''); } catch (e) { return ''; } }
+
 function markErr(e, reason) {
+    try { ttLearnDataRoot(String((e && e.message) || e || '')); } catch (e3) { /* 忽略：顺手从宿主报错里学绝对路径 */ }
     try { lastError = String((e && e.message) || e || '').slice(0, 160); } catch (e2) { lastError = 'error'; }
     lastReason = String(reason || '');
 }

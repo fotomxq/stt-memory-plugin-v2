@@ -30,6 +30,7 @@ import {
     cfg, state, setKernelState, saveState, log, warn, notifyHooks, identityView, getLastMessageId,
 } from '../core/model/runtime.js';
 import { scopeId, emptyState } from '../core/state.js';
+import { auxLsGet, auxLsSet, auxLsRemove, auxMirrorFile } from './aux-store.js';   // v3.27.0：辅助数据（同步标记 / 快照与同步日志的目录副本）跟随本地目录统一收纳
 import { VERSION } from '../core/constants.js';
 import { hashText } from '../core/util.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
@@ -95,9 +96,11 @@ let remotePushSkipNotified = false;
 
 // ---------- localStorage 小工具（本机缓冲；键按作用域隔离；可注入以便宿主/测试替换） ----------
 let lsHooks = {
-    get: (k) => { try { return globalThis.localStorage ? globalThis.localStorage.getItem(k) : null; } catch (e) { return null; } },
-    set: (k, v) => { try { if (globalThis.localStorage) globalThis.localStorage.setItem(k, String(v)); return true; } catch (e) { return false; } },
-    del: (k) => { try { if (globalThis.localStorage) globalThis.localStorage.removeItem(k); return true; } catch (e) { return false; } },
+    // v3.27.0（用户要求「日志等信息也跟随本地目录统一收纳」）：同步与对账标记改走辅助存储门面 ——
+    //   设了本地目录 → 落到目录下的 aux 文件；没设 → 行为逐字不变（仍写 localStorage）。
+    get: (k) => auxLsGet(k),
+    set: (k, v) => { auxLsSet(k, v); return true; },
+    del: (k) => { auxLsRemove(k); return true; },
 };
 /** 注入本机存储钩子（宿主为 TauriTavern/自定义存储时使用；测试亦用） */
 export function setSyncStorageHooks(next) { lsHooks = Object.assign({}, lsHooks, next || {}); return lsHooks; }
@@ -559,6 +562,9 @@ export async function snapshotFilePushNow() {
         if (r && r.ok) {
             snapFileLastOkAt = Date.now(); snapFilePushedSig = snapshotSig();
             remoteSnapSigMark(snapFilePushedSig);
+            // v3.27.0（用户要求「快照也跟着本地目录统一收纳」）：同一份内容**额外收录**到目录下的 aux 文件
+            //   （只读路径不变 —— 权威仍在原命名空间，跨端同步语义不受影响）
+            try { await auxMirrorFile(r.name || snapshotFileName(), text); } catch (e) { /* 忽略：副本失败不影响主写入 */ }
             scheduleMetaFilePush(null, '');
             return { ok: true, count: payload.count, name: r.name, gz: !!r.gz, slim: stateFileSlimOn() };
         }
@@ -912,6 +918,8 @@ export async function syncLogServerMerge(opts) {
             if (uploaded) { syncLogServerLastOkAt = Date.now(); syncLogServerLastError = ''; syncLogServerDisabled = false; }
             else if (up && (up.status === 401 || up.status === 403)) syncLogServerMarkFailed(up.status);
             else if (up && up.error) syncLogServerLastError = String(up.error);
+            // v3.27.0（用户要求「日志也跟随本地目录统一收纳」）：同一份同步日志**额外收录**到目录下的 aux 文件
+            if (uploaded) { try { await auxMirrorFile(syncLogServerFile(), mergedJson); } catch (e) { /* 忽略 */ } }
         }
         return { ok: true, localN: local.length, remoteN: remote.length, mergedN: merged.length, localChanged, uploaded };
     } catch (e) { return { ok: false, reason: 'error' }; } finally { syncLogServerMerging = false; }

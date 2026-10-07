@@ -41,6 +41,8 @@ import { wireKernelChatHooks, attachKernelState, latestAiMessageText, noteChatKe
 import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys, localLayerInfo } from './adapters/store.js';   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
 // v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
 import { localFileEnabled } from './adapters/local-file.js';
+// v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
+import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -550,7 +552,15 @@ export async function init() {
     if (runtime.ready) return { ok: true, reused: true };
     try { runtime.probe = probeCapabilities(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
-    // B9-a：调试日志接线（内核环形缓冲 ⇄ localStorage；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
+    // v2.34.0（强化调试）：安装全局异常捕捉 —— 未捕获错误 / 未处理 Promise 拒绝自动写入调试日志（`kind='异常'`）
+    try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; }
+    try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
+    // v3.27.0（用户要求「快照、日志等信息也应该主动跟随本地存储变动」）：**目录模式下**先把辅助数据
+    //   （调试日志 / 交互时间线 / 同步与对账标记 / 版本清单缓存）从目录读进内存，并把浏览器里遗留的旧键
+    //   **先写后清**迁进目录；非目录模式零行为变化（`{skipped:'off'}`）。
+    //   **必须在 `wireDebugLog()` / `wireTraceStore()` 之前** —— 它们启动时就会读一次持久层。
+    try { runtime.aux = await auxStoreInit(); } catch (e) { runtime.aux = { ok: false, error: String((e && e.message) || e) }; }
+    // B9-a：调试日志接线（内核环形缓冲 ⇄ 本机持久层；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
     try { runtime.debug = wireDebugLog(); } catch (e) { runtime.debug = { persistent: false, synced: 0 }; }
     // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
     //   读取台账 → 调试日志（`kind='读取'`）+ 交互时间线（`kernel/read`）。台账本身是纯内核，
@@ -570,9 +580,6 @@ export async function init() {
             },
         });
     } catch (e) { /* 忽略 */ }
-    // v2.34.0（强化调试）：安装全局异常捕捉 —— 未捕获错误 / 未处理 Promise 拒绝自动写入调试日志（`kind='异常'`）
-    try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; }
-    try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
     try { runtime.i18n = registerLocaleData(); } catch (e) { runtime.i18n = { ok: false, reason: 'error' }; }
     // 界面形态：**弹窗优先**（用户要求对齐 V1）；仅当 cfg.uiShowDrawer 打开时才在扩展设置抽屉里渲染卡片
@@ -2257,7 +2264,8 @@ function bindExitFlush() {
         const doc = globalThis.document;
         const win = globalThis.window;
         // 退出/切后台是**最后一次**写主文件的机会 → 强制完整落盘（`force` 绕开「无变化短路」）
-        const fire = (why) => { try { void flushStateNow(why, { force: true }); } catch (e) { /* 忽略 */ } };
+        // v3.27.0：退出/切后台时把**辅助数据**（调试日志 / 时间线 / 同步标记 / 版本清单）也强制落盘到目录
+        const fire = (why) => { try { void flushStateNow(why, { force: true }); } catch (e) { /* 忽略 */ } try { void auxStoreFlush(); } catch (e) { /* 忽略 */ } };
         if (doc && typeof doc.addEventListener === 'function') {
             const onVis = () => { try { if (doc.visibilityState === 'hidden') fire('应用切到后台'); } catch (e) { /* 忽略 */ } };
             doc.addEventListener('visibilitychange', onVis);
