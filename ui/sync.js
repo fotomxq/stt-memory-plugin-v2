@@ -44,7 +44,7 @@ import { auxStoreInfo } from '../adapters/aux-store.js';
 //   真实落点在宿主数据目录内；拿得到数据根目录时还给出「目录联接」的可复制命令。
 import { localFilePathAudit } from '../adapters/local-file.js';
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）
-import { localDiskInfo, localDiskProbeDir, localDiskReprobe } from '../adapters/local-disk.js';
+import { localDiskInfo, localDiskProbeDir, localDiskReprobe, localDiskJoin } from '../adapters/local-disk.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -334,7 +334,16 @@ function localFileModeHtml() {
             : '';
         const hint = '<div class="ftt-hint">这是替代浏览器本地存储的<b>本地目录</b>（真磁盘路径，如 <code>D:\\FTT\\store</code>）；'
             + '与下方「服务端扩展存储目录」不是一回事。</div>';
-        const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地磁盘目录（留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
+        // v3.29.0（用户要求）：**只给一个路径输入框，填了就生效** —— 不再提供预设候选 / 名称映射等「默认选项」；
+        //   设定后显示**完整路径**（用户填的绝对路径原样回显 + 真实文件路径）。
+        const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地存储路径（完整路径；留空 = 不开启）', type: 'text' }); } catch (e) { return ''; } })();
+        const fullPath = (() => {
+            if (!d.enabled) return '';
+            const f1 = (() => { try { return localDiskJoin(d.dir, 'ftt2-local-＜角色＞.json'); } catch (e) { return ''; } })();
+            const f2 = (() => { try { return localDiskJoin(d.dir, 'aux-＜键名＞.json'); } catch (e) { return ''; } })();
+            return '<div class="ftt-muted" data-ftt-disk-fullpath>完整路径：' + esc(String(d.dir || ''))
+                + '<br>记忆副本 ' + esc(String(f1)) + ' · 辅助数据 ' + esc(String(f2)) + '</div>';
+        })();
         const ops = '<div class="ftt-row">'
             + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskProbe" title="对这个真磁盘路径写一个探针文件 → 回读逐字节校验 → 删除：证明「这个目录真的能写」">✅ 校验本地磁盘目录</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="localDiskStatus">🔄 刷新磁盘状态</button>'
@@ -343,7 +352,7 @@ function localFileModeHtml() {
             '<div class="ftt-muted">能力：' + capTxt + '</div>'
             + (Number(s.failures) ? ('<div class="ftt-muted"><span class="ftt-err">失败 ' + Number(s.failures) + ' 次：' + esc(String(s.lastError || '')) + '</span></div>') : '')
             + '<div class="ftt-muted">写盘 / 读盘失败时：<b>回退浏览器本地存储</b>（变量 + 内存库）并弹一次醒目通知，同时把该路径标记为「无效」；修正后重新校验即可恢复。</div>');
-        return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地磁盘目录（替代浏览器本地存储）</div>' + hint + invalidHtml + status + ctl + capDetail + ops + '</div>';
+        return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地存储路径（替代浏览器变量 / 内存库）</div>' + hint + invalidHtml + status + ctl + fullPath + capDetail + ops + '</div>';
     })();
     let info = null;
     try { info = localLayerInfo(); } catch (e) { info = null; }
@@ -439,7 +448,12 @@ function localFileModeHtml() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileAlign" title="按当前目录对齐本机层：把「变量层 / 内存库 / 聊天元数据 / 上一次用过的目录」里最新的那份写进当前目录（写→回读校验→才清旧层）；目录副本已是最新时只做校验、不覆盖；关闭目录时把内容迁回变量层与内存库">🔁 立即对齐本机层</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="localFileStatusRefresh">🔄 刷新状态</button>'
         + '<span class="ftt-muted">先写后清，失败不清数据。</span></div>';
-    return diskHtml + stat + one + desc + localFileDirPickerHtml(info) + detail + auditTxt + extra + auxTxt + ops;
+    // v3.29.0（用户要求「不需要自动提供其他默认选项」）：服务端扩展存储目录（命名空间选择器）**降级为折叠的高级项**，
+    //   默认只留「本地存储路径」一个输入框；两者语义不同（本地 vs 服务端），不再混在一起。
+    const advanced = hintDetailsHtml('高级：服务端扩展存储目录（参与官方同步，不是本地存储）',
+        '<div class="ftt-hint">这里是服务端数据集（扩展存储命名空间，参与 TT-Sync）；写的是相对命名空间名，不是磁盘路径。</div>'
+        + stat + one + desc + localFileDirPickerHtml(info) + detail + auditTxt + extra);
+    return diskHtml + auxTxt + advanced + ops;
 }
 
 /** v3.26.0：目录扫描结果缓存（动作里异步取，取完重绘即可见） */
