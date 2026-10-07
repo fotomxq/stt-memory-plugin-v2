@@ -3,6 +3,20 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.33.0（2026-10-07）· 「本地存储路径」改**设备本地**（不随服务端转移）+ 修复 Android 上设不了
+
+**用户要求**（原话）：「新版本 修复本地存储路径设置，无法设置android。其次本地存储路径不能随服务端转移，因为不同端的存储路径可能有差异。」
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | 新增 `adapters/device-local.js` | **设备本地**键值存储（`localStorage` 命名空间 `ftt2_dev_<键>`；无 localStorage → 内存副本并标注 `available=false`，不假装已持久化）；`deviceLocalGet/Set/Remove/Keys/Info/Reset` |
+| ② | `adapters/config-store.js` | `DEVICE_LOCAL_CFG_KEYS = ['storage.localDiskDir']`：**载入**以本机值为准（本机没有才把老配置里的那份**一次性迁移**进来），**落盘副本里该键恒为空**（先深拷贝再剥离，内核视图不受影响）→ 配置随服务端同步，但**路径不再跟着走**；`lastLoadInfo().deviceLocal/deviceMigrated`、`deviceLocalCfgSnapshot()` 供诊断 |
+| ③ | `adapters/local-disk.js` | 新增 `localDiskPlatform/PlatformAsync/PlatformLabel`（UA + Tauri `os` 插件）· `localDiskPathWarn`（**路径形态与本机平台不匹配当场告警**：Android 收到 `D:\…`）· `localDiskDirCandidates`（Tauri `path` 标准目录 / 宿主 api 路径字段 / Android 常见公共目录建议）；`localDiskPickDir` 改**多机制**：系统对话框（真路径，跨刷新有效）→ 浏览器 File System Access（句柄）→ 宿主接口，**每个机制都写探针 → 回读 → 删**，全失败如实列出尝试过什么；`localDiskOn()` 认句柄（路径框可空）；`localDiskInfo()` 增平台 / 告警 / 句柄 |
+| ④ | `ui/sync.js` 存储页 | 如实写明**本机平台**与「路径只存本机（**不随服务端同步**：换设备各自设置）」；路径形态冲突红字告警；「📂 选择文件夹…」（多机制）· 新增「📁 候选目录」（`localDiskDirs`）与候选目录点选即用（`localDiskDirUse`：**探针通过才写入配置**，不可写如实拒绝） |
+| ⑤ | 诊断 | `ftt.localDir` 增 `deviceLocal`（本机存着哪些「不随服务端同步」的键与值）；`ftt.localDir.disk` 增平台 / 路径告警 |
+
+**Android 为什么设不了（本版怎么修）**：配置原本整体随服务端同步 → 桌面设的 `D:\…` 会被搬到 Android，在那台设备上必然写不进去（校验失败），看起来就像「根本没法设置」。现在路径只留在设置它的那台设备；Android 上另给三条出路：**系统对话框**（若宿主提供）、**候选目录**（宿主 `path` 插件给出的应用私有 / 下载 / 文档目录，点选即实测）、**手填路径 + 校验**；平台不匹配时当场点明「这是 Windows 路径，本机是 Android」。
+
 ## v3.32.0（2026-10-07）· 快照 / 日志也**结构化拆分**：一条快照一个文件、日志**按天分片**，不再聚合成单一文件
 
 **用户要求**（原话）：「本地存储的快照，也需要拆分结构化存储，避免单一文件聚合。日志文件也需要拆开做存储。」
