@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -547,15 +547,36 @@ export async function loadFromLocalDisk() {
         const r = await localDiskRead(name);
         if (!r || !r.ok || !r.text) {
             // v3.31.0（用户要求「拆碎了保存」）：单文件缺失时读**结构化分片**目录（逐维文件 + manifest）
-            try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return sh.data; } catch (e) { /* 忽略 */ }
+            try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return await recoverSnapParts(sh.data, scope || 'default'); } catch (e) { /* 忽略 */ }
             return null;
         }
         const env = JSON.parse(String(r.text));
         if (!env || !env.payload) return null;
         const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
         if (env.hash && h && env.hash !== h) return null;
-        return env.payload.data || null;
+        return await recoverSnapParts(env.payload.data || null, scope || 'default');
     } catch (e) { return null; }
+}
+
+/**
+ * v3.32.0（用户要求「快照也拆分结构化存储」）：载入后**只补不覆盖** ——
+ *   信封里的快照链为空/缺失时，用 `snapshots/` 逐条分片复原（写盘时逐条落一份小文件，读回按 manifest 校验 hash）。
+ *   绝不因为分片缺失而清空既有链（数据优先）。
+ * @param {object|null} st 已校验的本机副本
+ * @param {string} scope 角色作用域
+ * @returns {Promise<object|null>} 可能被补上快照链的 state
+ */
+export async function recoverSnapParts(st, scope) {
+    try {
+        if (!st || typeof st !== 'object') return st;
+        if (Array.isArray(st.snapStore) && st.snapStore.length) return st;
+        const pt = await localDiskReadParts('snapshots', scope || 'default');
+        if (pt && pt.ok && Array.isArray(pt.snapStore) && pt.snapStore.length) {
+            st.snapStore = pt.snapStore;
+            try { debugLogPush('存储', { action: '快照链由结构化分片复原', dir: String(pt.dir || ''), count: pt.snapStore.length, bad: (pt.bad || []).length }); } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* 忽略：兜底失败不影响既有载入 */ }
+    return st;
 }
 
 export function alignLoadedLayers(layers) {

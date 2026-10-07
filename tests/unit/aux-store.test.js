@@ -15,7 +15,7 @@
 import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harness/st-mock.js';
 import { cfg, setPersistHooks, setScopeKey, setKernelState } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
-import { emptyState } from '../../core/state.js';
+import { emptyState, scopeId } from '../../core/state.js';
 import {
     auxFacade, auxFileName, auxLsGet, auxLsSet, auxLsRemove,
     auxStoreInit, auxStoreFlush, auxStoreInfo, auxStoreReset, auxMirrorFile, AUX_KEYS,
@@ -23,12 +23,19 @@ import {
 import { ttResetSession } from '../../adapters/tt-store.js';
 
 const R = makeReporter('aux-store v3.27.0 辅助数据随目录统一收纳');
-const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, x); };
+let detailA8 = null;   // A8 失败时把现场（文件清单 / 分片统计）打出来
+const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, (typeof x === 'function') ? x() : x); };
 const J = (v) => JSON.stringify(v);
 
 /** 宿主桩：官方扩展存储（KV/Blob） */
 function makeStoreHost() {
     const kv = new Map(); const blobs = new Map();
+    // v3.32.0：内存盘（`api.dev.files`）—— 给「本地磁盘目录」模式下的日志结构化分片测试用
+    const disk = new Map();
+    const files = {
+        async writeTextFile(a) { disk.set(String(a.path), String(a.text != null ? a.text : a.content)); return { ok: true }; },
+        async readTextFile(a) { const k = String(a.path); if (!disk.has(k)) throw new Error('ENOENT: ' + k); return { text: disk.get(k) }; },
+    };
     const k = (a) => String(a.namespace) + '/' + String(a.table || 'main') + '/' + String(a.key);
     const store = {
         async setJson(a) { kv.set(k(a), a.value); },
@@ -41,7 +48,7 @@ function makeStoreHost() {
         async deleteBlob(a) { blobs.delete(k(a)); },
         async listBlobKeys(a) { const p = String(a.namespace) + '/' + String(a.table || 'main') + '/'; return Array.from(blobs.keys()).filter((x) => x.indexOf(p) === 0).map((x) => x.slice(p.length)); },
     };
-    return { abi: { abiVersion: 1, ready: Promise.resolve(true), api: { extension: { store } } }, store, kv, blobs };
+    return { abi: { abiVersion: 1, ready: Promise.resolve(true), api: { extension: { store }, dev: { files: files } } }, store, kv, blobs, disk };
 }
 
 const doc = makeDocument([]);
@@ -165,5 +172,28 @@ await A('A7 只读状态如实计数：目录 / 浏览器两种模式下都给�
     return keysOk && info.mode === 'dir' && item.where === 'dir' && item.bytes === 3
         && info2.mode === 'localStorage' && item2.where === 'localStorage' && item2.bytes === 3;
 }, () => ({ info: auxStoreInfo() }));
+
+// ------------------------------------------------------------
+// v3.32.0（用户要求「日志文件也需要拆开做存储」）：日志**按天分片**落到 `<本地目录>/<scope>/logs/`
+await A('A8 日志结构化拆分：调试日志 / 交互时间线各自**按天文件** + `logs/manifest.json`，主记录照旧；只读状态回报分片落点', async () => {
+    const h = boot({ storage: { localDiskDir: 'D:\\FTT\\store' } });
+    const d1 = new Date('2026-10-06T10:00:00').getTime();
+    const d2 = new Date('2026-10-07T09:00:00').getTime();
+    auxLsSet('SPreset_FTTMemoryDebug', J([{ at: d1, msg: '甲' }, { at: d1 + 1, msg: '乙' }, { at: d2, msg: '丙' }]));
+    auxLsSet('SPreset_FTTMemoryTrace', J([{ id: 't1', at: d2 + 5, cat: 'llm', kind: 'x' }]));
+    const fr = await auxStoreFlush();
+    const sub = String(scopeId()).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 48) || 'default';
+    const keys = Array.from(h.disk.keys()).map((x) => x.replace('D:\\FTT\\store\\', ''));
+    const info = auxStoreInfo();
+    detailA8 = { fr: fr, keys: keys, parts: info.parts, mode: info.mode, lastError: info.lastError, failures: info.failures };
+    // 主记录（`aux-*.json`）仍在根上：分片是**额外**的结构化副本，不是替换
+    return keys.indexOf('aux-SPreset_FTTMemoryDebug.json') >= 0
+        && keys.indexOf(sub + '\\logs\\manifest.json') >= 0
+        && keys.indexOf(sub + '\\logs\\debug-2026-10-06.json') >= 0
+        && keys.indexOf(sub + '\\logs\\debug-2026-10-07.json') >= 0
+        && keys.indexOf(sub + '\\logs\\trace-2026-10-07.json') >= 0
+        && Number(info.parts.debug.count) === 3 && Number(info.parts.trace.count) === 1
+        && String(info.parts.debug.dir).indexOf('\\logs') > 0;
+}, () => detailA8);
 
 R.done();

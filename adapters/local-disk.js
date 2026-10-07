@@ -452,7 +452,108 @@ export async function localDiskReadShards(scope) {
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
+/**
+ * v3.32.0（用户要求「快照 / 日志也拆分结构化存储，避免单一文件聚合」）：
+ *   把快照链与日志**按结构化小文件**写进本地目录：
+ *     · 快照：`<目录>/<scope>/snapshots/<条目 id>.json` + `snapshots/manifest.json`；
+ *     · 日志：`<目录>/<scope>/logs/<kind>-<YYYY-MM-DD>.json` + `logs/manifest.json`。
+ *   best-effort：失败只记诊断，不阻塞主流程。
+ * @param {'snapshots'|'logs'} what
+ * @param {Array<object>} list 快照链（`state.snapStore`）或日志条目
+ * @param {string} scope 角色作用域
+ * @param {{kind?:string, cap?:number}} [opts] 日志种类与每片条数上限
+ * @returns {Promise<{ok:boolean, dir?:string, files?:number, count?:number, error?:string}>}
+ */
+export async function localDiskWriteParts(what, list, scope, opts) {
+    const dir = localDiskRaw();
+    if (!dir && !fsHandle) return { ok: false, error: 'off' };
+    try {
+        const LP = await import('./local-parts.js');
+        const { scopeSlug } = await import('./local-shards.js');
+        const sub = scopeSlug(scope);
+        const kind = String((opts && opts.kind) || 'debug');
+        const built = (what === 'snapshots')
+            ? LP.snapshotParts(list)
+            : LP.logParts(list, kind, { cap: (opts && opts.cap) || 500 });
+        if (!built || !built.ok) return { ok: false, error: (built && built.reason) || 'build-failed' };
+        const dirName = (what === 'snapshots') ? LP.SNAP_DIR : LP.LOG_DIR;
+        const mfName = (what === 'snapshots') ? LP.SNAP_MANIFEST : LP.LOG_MANIFEST;
+        const writePair = async (write) => {
+            let n = 0;
+            for (const name of Object.keys(built.files)) { await write(dirName + '/' + name, built.files[name]); n++; }
+            await write(dirName + '/' + mfName, JSON.stringify(built.manifest));
+            return n + 1;
+        };
+        if (fsHandle && await handleUsable()) {
+            try {
+                let subDir = await fsHandle.getDirectoryHandle(sub, { create: true });
+                subDir = await subDir.getDirectoryHandle(dirName, { create: true });
+                const w = async (name, text) => {
+                    const short = name.split('/').pop();
+                    const fh = await subDir.getFileHandle(short, { create: true });
+                    const ws = await fh.createWritable(); await ws.write(text); await ws.close();
+                };
+                const files = await writePair(w);
+                stats.writes++;
+                return { ok: true, dir: dir + '/' + sub + '/' + dirName, files: files, count: Number(built.manifest.count || 0) };
+            } catch (e) { /* 落到宿主机制 */ }
+        }
+        const base = localDiskJoin(localDiskJoin(dir, sub), dirName);
+        const files = await writePair(async (name, text) => { await diskWriteText(localDiskJoin(base, name.split('/').pop()), text); });
+        stats.writes++;
+        return { ok: true, dir: base, files: files, count: Number(built.manifest.count || 0) };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.32.0：读回**快照 / 日志的结构化拆分**（逐条 / 按天小文件 + manifest），按清单校验逐片 hash。
+ *   坏片只报坏片（`bad`），可用片照常返回 —— 与分片读同构，供载入兜底与诊断使用。
+ * @param {'snapshots'|'logs'} what
+ * @param {string} scope 角色作用域
+ * @returns {Promise<{ok:boolean, manifest?:object, files?:object, bad?:string[], snapStore?:Array, entries?:Array, count?:number, dir?:string, error?:string}>}
+ */
+export async function localDiskReadParts(what, scope) {
+    const dir = localDiskRaw();
+    if (!dir && !fsHandle) return { ok: false, error: 'off' };
+    try {
+        const LP = await import('./local-parts.js');
+        const { scopeSlug } = await import('./local-shards.js');
+        const sub = scopeSlug(scope);
+        const dirName = (what === 'snapshots') ? LP.SNAP_DIR : LP.LOG_DIR;
+        const readOne = async (name) => {
+            if (fsHandle && await handleUsable()) {
+                try {
+                    const d2 = await fsHandle.getDirectoryHandle(sub);
+                    const d3 = await d2.getDirectoryHandle(dirName);
+                    const fh = await d3.getFileHandle(name);
+                    const f = await fh.getFile();
+                    return await f.text();
+                } catch (e) { return null; }
+            }
+            const r = await diskReadText(localDiskJoin(localDiskJoin(localDiskJoin(dir, sub), dirName), name));
+            return (r && r.ok) ? String(r.text) : null;
+        };
+        const mfRaw = await readOne('manifest.json');
+        if (!mfRaw) return { ok: false, error: 'no-manifest' };
+        const mf = JSON.parse(mfRaw);
+        const files = {};
+        for (const name of (Array.isArray(mf.order) ? mf.order : [])) {
+            const raw = await readOne(String(name));
+            if (raw == null) continue;
+            files[String(name)] = raw;
+        }
+        const j = (what === 'snapshots') ? LP.joinSnapshotParts(mf, files) : LP.joinLogParts(mf, files);
+        return {
+            ok: !!j.ok, manifest: mf, files: files, bad: j.bad || [],
+            snapStore: j.snapStore || [], entries: j.entries || [],
+            count: Number(mf.count || 0) || 0,
+            dir: dir ? localDiskJoin(localDiskJoin(dir, sub), dirName) : (sub + '/' + dirName),
+        };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
 /** 只读状态（UI / 诊断） */
+
 export function localDiskInfo() {
     const dir = localDiskRaw();
     const c = localDiskCapability(false);
@@ -479,5 +580,5 @@ export default {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
-    localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards,
+    localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards, localDiskWriteParts, localDiskReadParts,
 };

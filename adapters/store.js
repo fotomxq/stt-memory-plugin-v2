@@ -32,7 +32,7 @@ import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFi
 import { chatMetaLoadState } from './chat-meta.js';
 import { auxLsGet, auxLsSet } from './aux-store.js';   // v3.30.0：跨刷新防回滚基线（跨层都留一份）
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）—— 与上面的「宿主扩展存储命名空间」语义不同
-import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo, localDiskWriteShards } from './local-disk.js';
+import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo, localDiskWriteShards, localDiskWriteParts } from './local-disk.js';
 // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
 import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './gzip.js';
 import { hydrateStorageData } from '../core/slim.js';
@@ -625,6 +625,8 @@ async function saveStateNowInner(o) {
                 localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-disk', path: String(dr.path || '') };
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
                 // v3.31.0（用户要求）：同一份内容**再写一份结构化分片**（逐维文件 + manifest）—— best-effort，不阻塞保存
+                // v3.32.0（用户要求）：快照链也写**结构化分片**（snapshots/<id>.json + manifest）—— best-effort
+                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], scopeId(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPush('存储', { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
                 try { const sh = await localDiskWriteShards(envelope, scopeId()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPush('存储', { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
                 return true;
             }

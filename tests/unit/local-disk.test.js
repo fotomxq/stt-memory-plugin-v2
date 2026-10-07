@@ -19,6 +19,7 @@ import { defaultCfg } from '../../core/config.js';
 import {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskWrite, localDiskRead, localDiskProbeDir, localDiskInfo, localDiskReset,
+    localDiskWriteParts, localDiskReadParts,
 } from '../../adapters/local-disk.js';
 
 const R = makeReporter('local-disk v3.28.0 本地磁盘目录（替代浏览器本地存储）');
@@ -115,6 +116,51 @@ await A('A5 只读状态：目录 / 能力 / 机制 / 统计齐全（UI 与诊�
         && info.capability.ok === true && info.capability.mechanism === 'dev-api'
         && J(info.capability.devKeys).indexOf('files') > 0
         && Number(info.stats.writes) === 1 && Number(info.stats.lastBytes) === 1;
+}, () => ({ info: localDiskInfo() }));
+
+// ------------------------------------------------------------
+// v3.32.0（用户要求「快照 / 日志也拆分结构化存储」）：写回读**往返**
+await A('A6 快照 / 日志结构化拆分：逐条 / 按天上文件 + 清单，**回读按清单校验 hash** 后逐字还原来路', async () => {
+    const h = useHost(makeDevHost());
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    const snaps = [
+        { id: 's1', kind: 'auto', ts: '2026-10-06T10:00:00Z', atomsHashes: { a1: 'h1' }, data: { atoms: [] } },
+        { id: 's2', kind: 'manual', ts: '2026-10-06T11:00:00Z', atomsHashes: {}, data: { atoms: [] } },
+    ];
+    const logs = [
+        { at: 1791300000000, tag: '存储', msg: '甲' },     // 同一天 3 条（cap=2 → 当天再切一片 `-2`）
+        { at: 1791300000001, tag: '存储', msg: '乙' },
+        { at: 1791300000002, tag: '存储', msg: '丙' },
+        { at: 1791472800000, tag: '同步', msg: '丁' },     // 另一天
+    ];
+    const ws = await localDiskWriteParts('snapshots', snaps, 'default', {});
+    const wl = await localDiskWriteParts('logs', logs, 'default', { kind: 'debug', cap: 2 });
+    const rs = await localDiskReadParts('snapshots', 'default');
+    const rl = await localDiskReadParts('logs', 'default');
+    const keys = Array.from(h.disk.keys()).map((x) => x.replace('D:\\FTT\\store\\', ''));
+    const logFiles = keys.filter((k) => k.indexOf('default\\logs\\debug-') === 0);
+    return ws.ok === true && ws.count === 2 && ws.files === 3
+        && wl.ok === true && wl.count === 4
+        && keys.indexOf('default\\snapshots\\s1.json') >= 0 && keys.indexOf('default\\snapshots\\s2.json') >= 0
+        && keys.indexOf('default\\snapshots\\manifest.json') >= 0
+        && keys.indexOf('default\\logs\\manifest.json') >= 0
+        && logFiles.length === 3 && logFiles.filter((k) => /-2\.json$/.test(k)).length === 1   // 2 天 + 当天超 cap 再切一片
+        && rs.ok === true && J(rs.snapStore) === J(snaps) && rs.bad.length === 0
+        && rl.ok === true && rl.entries.length === 4 && rl.bad.length === 0
+        && rl.entries[0].msg === '甲' && rl.entries[3].msg === '丁';
+}, () => ({ info: localDiskInfo() }));
+
+await A('A7 拆分读的诚实口径：清单缺失 → 如实失败；**坏片只报坏片**，其余片照常返回（不清空）', async () => {
+    const h = useHost(makeDevHost());
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    const none = await localDiskReadParts('snapshots', 'default');
+    await localDiskWriteParts('snapshots', [{ id: 's1', data: {} }, { id: 's2', data: {} }], 'default', {});
+    // 篡改 s1 的内容（与清单 hash 不符）→ 只报 s1，s2 仍可用
+    h.disk.set('D:\\FTT\\store\\default\\snapshots\\s1.json', '{"id":"s1","data":{"tampered":true}}');
+    const r = await localDiskReadParts('snapshots', 'default');
+    return none.ok === false && none.error === 'no-manifest'
+        && r.ok === false && J(r.bad) === J(['s1.json']) && r.snapStore.length === 1
+        && String(r.snapStore[0].id) === 's2';
 }, () => ({ info: localDiskInfo() }));
 
 R.done();

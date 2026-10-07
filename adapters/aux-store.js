@@ -18,6 +18,7 @@
 //   · 落盘失败如实记账（`lastError`），**绝不丢**（内存副本仍在，下一次防抖或退出前再试）。
 // ============================================================
 import { cfg } from '../core/model/runtime.js';
+import { scopeId as kernelScopeId } from '../core/state.js';   // v3.32.0：日志分片目录按角色作用域
 import { fileTransportUploadText, fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { localFileEnabled, localFileNs, localFilePath } from './local-file.js';
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）优先级最高 ——
@@ -40,7 +41,7 @@ const meta = Object.create(null);
 let flushTimer = null;
 let initDone = false;
 let initInfo = null;
-const stats = { loads: 0, saves: 0, failures: 0, migrated: 0, lastError: '', lastAt: 0 };
+const stats = { loads: 0, saves: 0, failures: 0, migrated: 0, lastError: '', lastAt: 0, parts: {} };   // v3.32.0：`parts` = 日志结构化分片的落点统计（debug / trace）
 
 /** 是否处于「目录模式」（辅助数据跟随目录） */
 export function auxDirMode() { try { return localDiskOn() || localFileEnabled(); } catch (e) { return false; } }
@@ -124,6 +125,8 @@ export function auxFacade() {
     };
 }
 
+/** v3.32.0：当前角色作用域（日志分片目录用；取不到 → default） */
+function scopeIdOf() { try { return String(kernelScopeId() || '') || 'default'; } catch (e) { return 'default'; } }
 function scheduleFlush() {
     try {
         if (flushTimer) return;
@@ -200,6 +203,20 @@ export async function auxStoreFlush() {
                 const w = auxDiskMode() ? (await localDiskWrite(name, text)) : (await fileTransportUploadText(name, text, auxOpts(name)));
                 if (!w || !w.ok) { stats.failures++; stats.lastError = 'write-failed:' + key; continue; }
                 meta[key] = { at: Date.now(), bytes: text.length, file: name };
+                // v3.32.0（用户要求「日志文件也需要拆开做存储」）：调试日志 / 交互时间线**按天分片**再写一份结构化副本
+                //   注意：只在成功写出主记录后、且**不阻塞**主流程；失败只记 `stats.parts[kind].error`。
+                try {
+                    const kind = (key === 'SPreset_FTTMemoryDebug') ? 'debug' : ((key === 'SPreset_FTTMemoryTrace') ? 'trace' : (/log/i.test(key) ? 'log' : ''));
+                    if (kind && text) {
+                        const arr = JSON.parse(text);
+                        if (Array.isArray(arr)) {
+                            const LD2 = await import('./local-disk.js');
+                            const r = await LD2.localDiskWriteParts('logs', arr, scopeIdOf(), { kind: kind, cap: 500 });
+                            if (r && r.ok) { stats.parts[kind] = { at: Date.now(), dir: String(r.dir || ''), files: Number(r.files || 0), count: Number(r.count || 0) }; }
+                            else { stats.parts[kind] = { at: Date.now(), dir: String((r && r.dir) || ''), files: 0, count: 0, error: String((r && r.error) || 'write-failed') }; }
+                        }
+                    }
+                } catch (e) { /* 忽略：分片副本失败不影响主记录 */ }
             }
             delete dirty[key];
             written++;
@@ -239,6 +256,7 @@ export function auxStoreInfo() {
         lastError: stats.lastError,
         failures: stats.failures,
         stats: Object.assign({}, stats),
+        parts: Object.assign({}, stats.parts),   // v3.32.0：日志结构化分片（按天文件 + manifest）的落点
     };
 }
 
@@ -271,7 +289,7 @@ export function auxStoreReset() {
     for (const k of Object.keys(dirty)) delete dirty[k];
     for (const k of Object.keys(meta)) delete meta[k];
     flushTimer = null; initDone = false; initInfo = null;
-    stats.loads = 0; stats.saves = 0; stats.failures = 0; stats.migrated = 0; stats.lastError = ''; stats.lastAt = 0;
+    stats.loads = 0; stats.saves = 0; stats.failures = 0; stats.migrated = 0; stats.lastError = ''; stats.lastAt = 0; stats.parts = {};
     return true;
 }
 

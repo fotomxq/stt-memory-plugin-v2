@@ -47,7 +47,7 @@ import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 import { localLayerInfo, localLayerReadProbe } from '../adapters/store.js';
 import { localFilePathAudit } from '../adapters/local-file.js';   // v3.27.1：路径审计（绝对路径 → 命名空间名 + 真实落点）
 import { auxStoreInfo } from '../adapters/aux-store.js';
-import { localDiskInfo, localDiskProbeDir, localDiskList } from '../adapters/local-disk.js';   // v3.28.0/3.29.0：本地磁盘目录状态 + 探针 + 文件列举         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
+import { localDiskInfo, localDiskProbeDir, localDiskList, localDiskReadParts } from '../adapters/local-disk.js';   // v3.28.0/3.29.0：本地磁盘目录状态 + 探针 + 文件列举 + v3.32.0 快照/日志分片清单         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
 import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
 import {
@@ -544,7 +544,19 @@ export function buildBridgeMethods() {
     T['ftt.diskFiles'] = safe(async () => {
         const info = localDiskInfo();
         const ls = await localDiskList();
-        return { enabled: info.enabled, dir: info.dir, invalid: info.invalid, stats: info.stats, list: ls };
+        // v3.32.0（用户要求「快照 / 日志拆分结构化存储」）：一并回报两类**结构化拆分**的清单状态（只读）
+        const parts = {};
+        try {
+            const sc = (() => { try { return String(scopeId() || '') || 'default'; } catch (e) { return 'default'; } })();
+            for (const [key, what] of [['snapshots', 'snapshots'], ['logs', 'logs']]) {
+                const r = await localDiskReadParts(what, sc);
+                parts[key] = {
+                    ok: !!r.ok, error: String(r.error || ''), count: Number(r.count || 0),
+                    files: Object.keys(r.files || {}).length, bad: (r.bad || []).length, dir: String(r.dir || ''),
+                };
+            }
+        } catch (e) { parts.error = String((e && e.message) || e); }
+        return { enabled: info.enabled, dir: info.dir, invalid: info.invalid, stats: info.stats, list: ls, parts: parts };
     });
     T['ftt.chatMeta'] = safe(() => chatMetaDiffReport());
 
