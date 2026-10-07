@@ -20,10 +20,12 @@ import {
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskWrite, localDiskRead, localDiskProbeDir, localDiskInfo, localDiskReset,
     localDiskWriteParts, localDiskReadParts,
+    localDiskPlatform, localDiskPlatformLabel, localDiskPathWarn, localDiskDirCandidates, localDiskPickDir,
 } from '../../adapters/local-disk.js';
 
 const R = makeReporter('local-disk v3.28.0 本地磁盘目录（替代浏览器本地存储）');
-const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, x); };
+let diskCandDbg = null, lastPickDbg = null;   // A9/A11 现场（失败时打出来）
+const A = async (n, fn, e) => { let c = false, x = e; try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); } R.assert(n, c === true, (typeof x === 'function') ? x() : x); };
 const J = (v) => JSON.stringify(v);
 
 /** 宿主桩：一个假的 `api.dev.files`（内存盘 + 记录调用） */
@@ -162,5 +164,98 @@ await A('A7 拆分读的诚实口径：清单缺失 → 如实失败；**坏片�
         && r.ok === false && J(r.bad) === J(['s1.json']) && r.snapStore.length === 1
         && String(r.snapStore[0].id) === 's2';
 }, () => ({ info: localDiskInfo() }));
+
+// ------------------------------------------------------------
+// v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：平台识别 / 路径形态冲突 / 候选目录 / 多机制选择器
+/** 换一台「设备」：改 UA + 清会话缓存（平台缓存随之重置） */
+function useUa(ua) {
+    try { Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { userAgent: String(ua || '') } }); } catch (e) { /* 忽略 */ }
+    localDiskReset();
+}
+
+await A('A8 平台识别与路径冲突提示：Android 收到 `D:\\…` 必须**当场点明**（这就是「Android 上设不了」的直接原因）', async () => {
+    useHost(null);
+    boot({ localDiskDir: 'D:\\FTT\\store' });
+    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36');
+    const android = localDiskPlatform();
+    const warnWin = localDiskPathWarn('D:\\FTT\\store');
+    const okPosix = localDiskPathWarn('/storage/emulated/0/Download/ftt_v2_store');
+    useUa('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36');
+    const desk = localDiskPlatform();
+    const warnPosix = localDiskPathWarn('/storage/emulated/0/Download/x');
+    const okWin = localDiskPathWarn('D:\\FTT\\store');
+    const warnRel = localDiskPathWarn('相对目录');
+    return android.name === 'android' && android.source === 'userAgent'
+        && warnWin.indexOf('Windows 路径') > 0 && warnWin.indexOf('Android') > 0 && okPosix === ''
+        && desk.name === 'desktop' && warnPosix.indexOf('Android') > 0 && okWin === ''
+        && warnRel.indexOf('绝对路径') > 0 && localDiskPlatformLabel('android') === 'Android';
+}, () => ({ android: localDiskPlatform(), warn: localDiskPathWarn('D:\\FTT\\store') }));
+
+await A('A9 候选目录：宿主 `path` 插件给出的标准目录逐个收集（Android 上填不出路径时的主要出路）', async () => {
+    useHost(null);
+    boot({ localDiskDir: '' });
+    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
+    const dirs = {
+        AppLocalData: '/data/user/0/com.tauritavern.client/files',
+        Download: '/storage/emulated/0/Download',
+    };
+    try {
+        globalThis.window.__TAURI_INTERNALS__ = {
+            invoke: async (cmd, arg) => {
+                if (cmd === 'plugin:path|resolve_directory' && dirs[String((arg && arg.directory) || '')]) return dirs[arg.directory];
+                throw new Error('not allowed: ' + cmd);
+            },
+        };
+    } catch (e) { /* 忽略 */ }
+    const c = await localDiskDirCandidates();
+    diskCandDbg = c;
+    const paths = c.items.map((x) => x.path);
+    const out = c.platform === 'android'
+        && paths.indexOf('/data/user/0/com.tauritavern.client/files') >= 0
+        && paths.indexOf('/storage/emulated/0/Download') >= 0
+        && c.items.filter((x) => x.source === 'tauri-path').length === 2
+        && c.items.some((x) => x.source === 'suggested')           // Android 公共目录**建议**（需探针实测）
+        && c.notes.join(' ').indexOf('Android') >= 0;
+    useHost(null);
+    return out;
+}, (() => ({ cand: diskCandDbg })));
+
+await A('A10 选择器全都不可用时：**如实回报尝试过什么**（不假装成功、不静默）', async () => {
+    useHost(null);
+    boot({ localDiskDir: '' });
+    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
+    const pk = await localDiskPickDir();
+    lastPickDbg = pk;
+    const mechs = pk.tried.map((x) => x.mechanism);
+    return pk.ok === false && pk.reason === 'unsupported'
+        && mechs.indexOf('dialog') >= 0 && mechs.indexOf('fs-handle') >= 0 && mechs.indexOf('dev-api') >= 0
+        && String(pk.note).indexOf('候选目录') > 0 && String(pk.note).indexOf('Android') > 0;
+}, () => ({ pk: lastPickDbg }));
+
+await A('A11 选择器走宿主对话框：拿到**真路径**并**写探针实测**（写→回读→删），通过才算选中', async () => {
+    useHost(null);
+    boot({ localDiskDir: '' });
+    useUa('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36');
+    const disk = new Map();
+    try {
+        globalThis.window.__TAURI_INTERNALS__ = {
+            invoke: async (cmd, arg) => {
+                const a = (arg && arg.args) ? arg.args : arg;
+                const path = String((a && ((a.path && a.path.path) || a.path)) || '');
+                if (cmd === 'plugin:dialog|open') return '/storage/emulated/0/ftt_v2_store';
+                if (/write/.test(cmd)) { disk.set(path, String(a.contents != null ? a.contents : (a.text != null ? a.text : a.data))); return null; }
+                if (/read_text_file/.test(cmd)) { if (!disk.has(path)) throw new Error('ENOENT'); return disk.get(path); }
+                if (cmd === 'plugin:path|resolve_directory') throw new Error('no path plugin');
+                throw new Error('not allowed: ' + cmd);
+            },
+        };
+    } catch (e) { /* 忽略 */ }
+    const pk = await localDiskPickDir();
+    const out = pk.ok === true && pk.mechanism === 'dialog' && pk.path === '/storage/emulated/0/ftt_v2_store'
+        && String(pk.name) === 'ftt_v2_store' && Array.isArray(pk.tried) && pk.tried[0] && pk.tried[0].ok === true
+        && Array.from(disk.keys()).some((k) => /ftt2-local-probe\.json$/.test(k));
+    useHost(null);
+    return out;
+}, () => ({ pk: lastPickDbg }));
 
 R.done();

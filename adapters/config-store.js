@@ -10,6 +10,48 @@ import { defaultCfg } from '../core/config.js';
 import { migratePromptTemplates, migrateArmorPreset } from '../core/prompt-migrate.js';
 import { getSettings, saveSettings } from './settings.js';
 import { clampStoreFloors } from '../core/ingest.js';   // v2.85.0：保底被动下移（上限权威）
+import { deviceLocalGet, deviceLocalSet, deviceLocalRemove, deviceLocalInfo } from './device-local.js';   // v3.33.0：设备本地键
+
+/**
+ * v3.33.0（用户要求「本地存储路径不能随服务端转移，因为不同端的存储路径可能有差异」）：
+ *   **设备本地键** —— 值只写本机（`adapters/device-local.js`），**绝不进入随服务端同步的 ST 配置**。
+ *   读：以本机值为准（本机没有时，把老配置里的值**一次性迁移**到本机，然后把配置里的那份清空）；
+ *   写：内核 `cfg` 里的值 → 本机；落盘的配置副本里这些键一律写空。
+ */
+export const DEVICE_LOCAL_CFG_KEYS = Object.freeze(['storage.localDiskDir']);
+
+/** 读 `storage.localDiskDir` 这类「两段键」 */
+export function cfgPathGet(obj, key) {
+    try {
+        const parts = String(key).split('.');
+        let cur = obj;
+        for (const p of parts) { if (!isPlain(cur)) return ''; cur = cur[p]; }
+        return String(cur == null ? '' : cur);
+    } catch (e) { return ''; }
+}
+/** 写「两段键」（中间层缺则建） */
+export function cfgPathSet(obj, key, val) {
+    try {
+        if (!isPlain(obj)) return false;
+        const parts = String(key).split('.');
+        let cur = obj;
+        for (let i = 0; i < parts.length - 1; i++) { if (!isPlain(cur[parts[i]])) cur[parts[i]] = {}; cur = cur[parts[i]]; }
+        cur[parts[parts.length - 1]] = String(val == null ? '' : val);
+        return true;
+    } catch (e) { return false; }
+}
+/** 把「设备本地键」从一份配置对象里抹成空串（用于落盘副本） */
+export function stripDeviceLocalCfg(obj) {
+    const out = isPlain(obj) ? obj : {};
+    for (const k of DEVICE_LOCAL_CFG_KEYS) cfgPathSet(out, k, '');
+    return out;
+}
+/** 设备本地键的快照（诊断 / UI：本机到底存了什么） */
+export function deviceLocalCfgSnapshot() {
+    const values = {};
+    for (const k of DEVICE_LOCAL_CFG_KEYS) values[k] = deviceLocalGet(k);
+    return { keys: DEVICE_LOCAL_CFG_KEYS.slice(), values: values, store: deviceLocalInfo() };
+}
 
 let lastLoad = null;
 /** 最近一次载入/迁移摘要（诊断） */
@@ -79,17 +121,28 @@ export function loadKernelCfg(opts) {
         merged.promptTemplates = migratePromptTemplates(merged.promptTemplates);
         promptMigrate = { changed: before !== stableStringify(merged.promptTemplates), armor: mergeArmor, info: promptMigrateStatsSafe() };
     } catch (e) { /* 迁移失败不阻塞载入 */ }
-    const changedOld = stableStringify(saved) !== stableStringify(merged);
-    store.cfg = merged;
+    // v3.33.0：**设备本地键**（如「本地存储路径」）—— 以本机值为准；本机没有时把老配置里的那份**一次性迁移**到本机
+    const deviceMigrated = [];
+    for (const k of DEVICE_LOCAL_CFG_KEYS) {
+        const local = deviceLocalGet(k);
+        const fromCfg = cfgPathGet(merged, k);
+        let val = local;
+        if (!val && fromCfg) { val = fromCfg; deviceLocalSet(k, val); deviceMigrated.push(k); }
+        cfgPathSet(merged, k, val || '');
+    }
+    const changedOld = stableStringify(saved) !== stableStringify(stripDeviceLocalCfg(deepClone(merged) || {}));
+    // 注意：必须**先深拷贝再剥离** —— `applyKernelCfg()` 让 `cfg.storage` 与 `merged.storage` 是同一个对象，
+    //   直接剥离会把内核视图里的值也清掉（本机路径当场失效）。落盘副本与内核视图从此是两份独立对象。
+    store.cfg = stripDeviceLocalCfg(deepClone(merged) || {});   // 落盘副本里这些键**一律为空** → 绝不随服务端搬到别的设备
     applyKernelCfg(merged);
     // v2.85.0（用户要求）：「保底数据被动联动」的**启动自愈** —— 历史存档里若存在「某维保底 > 该维有效上限」，
     //   按当前占比把保底**下移**到上限之下（只降不升），并把结果写回存档；否则打开设定页会看到自相矛盾的数字。
     let floorsMoved = [];
     try { floorsMoved = clampStoreFloors(); } catch (e) { /* 自愈失败不阻塞载入 */ }
-    if (floorsMoved.length) { try { store.cfg = deepClone(cfg) || {}; } catch (e) { /* 忽略 */ } }
+    if (floorsMoved.length) { try { store.cfg = stripDeviceLocalCfg(deepClone(cfg) || {}); } catch (e) { /* 忽略 */ } }
     const changed = changedOld || floorsMoved.length > 0;
     if (changed && o.persist !== false) { try { saveSettings(); } catch (e) { /* 忽略 */ } }
-    const out = { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length, prompt: promptMigrate, floorsMoved: floorsMoved };
+    const out = { keys: Object.keys(merged).length, changed, defaults: Object.keys(defaults).length, saved: Object.keys(saved).length, prompt: promptMigrate, floorsMoved: floorsMoved, deviceLocal: deviceLocalCfgSnapshot(), deviceMigrated: deviceMigrated };
     lastLoad = out;
     return out;
 }
@@ -98,7 +151,12 @@ export function loadKernelCfg(opts) {
 export function saveKernelCfg() {
     try {
         const store = getSettings();
-        store.cfg = deepClone(cfg) || {};
+        // v3.33.0：设备本地键先落到**本机**，落盘副本里写空（配置随服务端同步，路径不能跟着走）
+        for (const k of DEVICE_LOCAL_CFG_KEYS) {
+            const v = cfgPathGet(cfg, k);
+            if (v) deviceLocalSet(k, v); else deviceLocalRemove(k);
+        }
+        store.cfg = stripDeviceLocalCfg(deepClone(cfg) || {});
         saveSettings();
         return true;
     } catch (e) { return false; }

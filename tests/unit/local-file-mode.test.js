@@ -605,4 +605,53 @@ await A('E2 该路径重新「校验」通过 → 无效标记清除（可恢复
     return pr.ok === true && inf.invalid.invalid === false && disk.size > 0;
 }, () => ({ info: localDiskInfo() }));
 
+// ============================================================
+// v3.33.0（用户要求）：「本地存储路径不能随服务端转移」+「修复本地存储路径设置，无法设置 android」
+// ============================================================
+await A('E3 存储页如实说明**设备本地**：路径只存本机（不随服务端同步）+ 本机平台 + 路径形态冲突告警 + 候选目录按钮与动作可达', async () => {
+    boot({ storage: { localFilePath: '', localDiskDir: 'D:\\FTT\\store' } });
+    const LD = await import('../../adapters/local-disk.js');
+    // 假装本机是 Android：`D:\…` 这种从桌面同步过来的路径必须**当场点明**（否则用户只会看到「校验失败」）
+    try { Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Safari/537.36' } }); } catch (e) { /* 忽略 */ }
+    LD.localDiskReset();
+    const html = String(storagePageHtml(SETTINGS_CONTROLS.storage) || '');
+    const CS = await import('../../adapters/config-store.js');
+    const snap = CS.deviceLocalCfgSnapshot();
+    const acts = ['localDiskDirs', 'localDiskDirUse'];
+    const d = LD.localDiskInfo();
+    return html.indexOf('data-ftt-disk-platform') > 0 && html.indexOf('不随服务端同步') > 0
+        && html.indexOf('data-ftt-disk-warn') > 0 && html.indexOf('Windows 路径') > 0
+        && html.indexOf('data-ftt-action="localDiskDirs"') > 0 && html.indexOf('data-ftt-action="localDiskDirUse"') < 0   // 未取候选前不渲染候选按钮
+        && acts.every((x) => SYNC_ACTIONS.indexOf(x) >= 0)
+        && d.platform === 'android' && String(d.pathWarn).length > 0
+        && snap.keys.indexOf('storage.localDiskDir') >= 0;
+}, () => ({ info: localDiskInfo() }));
+
+await A('E4 动作 `localDiskDirs` / `localDiskDirUse`：候选目录**实测可写才写入**；不可写如实拒绝（不把配置改坏）', async () => {
+    const h = boot({ storage: { localFilePath: '', localDiskDir: '' } });
+    const LD = await import('../../adapters/local-disk.js');
+    LD.localDiskReset();
+    // 宿主只提供「写任意路径」接口（dev 文件 API，内存盘）：候选目录 → 探针 → 通过即采用
+    const disk = new Map();
+    h.abi.api.dev = {
+        files: {
+            async writeTextFile(a) { disk.set(String(a.path), String(a.text != null ? a.text : a.content)); return { ok: true }; },
+            async readTextFile(a) { const k = String(a.path); if (!disk.has(k)) throw new Error('ENOENT'); return { ok: true, text: disk.get(k) }; },
+        },
+    };
+    ttResetSession();
+    LD.localDiskReprobe();
+    const r1 = await syncAction('localDiskDirs', {});
+    const use = await syncAction('localDiskDirUse', { dir: 'D:\\候选\\store' });
+    const okDir = String((cfg.storage || {}).localDiskDir || '');
+    // 不可写目录：把写接口撤掉 → 必须**拒绝写入配置**
+    delete h.abi.api.dev.files;
+    ttResetSession();
+    LD.localDiskReprobe();
+    const bad = await syncAction('localDiskDirUse', { dir: 'D:\\不可写\\store' });
+    return r1.ok === true && Array.isArray(r1.detail && r1.detail.items)
+        && use.ok === true && okDir === 'D:\\候选\\store' && disk.size > 0
+        && bad.ok === false && String((cfg.storage || {}).localDiskDir || '') === 'D:\\候选\\store';
+}, () => ({ cfg: (cfg.storage || {}).localDiskDir }));
+
 R.done();

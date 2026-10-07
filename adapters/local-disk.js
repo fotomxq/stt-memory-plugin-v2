@@ -49,7 +49,8 @@ export function localDiskRaw() {
     try { return localDiskPathNorm((cfg && cfg.storage && cfg.storage.localDiskDir) || ''); } catch (e) { return ''; }
 }
 /** 是否把「本地磁盘目录」当作本机层（唯一判据：路径非空且宿主具备写盘能力） */
-export function localDiskOn() { return !!localDiskRaw(); }
+/** v3.33.0：只要「有路径」或「本会话选过文件夹句柄」就算开启（句柄场景路径框可以为空） */
+export function localDiskOn() { return !!(localDiskRaw() || fsHandle); }
 
 /** 路径形态判定（绝对路径 / UNC / 相对） */
 export function localDiskPathKind(raw) {
@@ -87,22 +88,259 @@ export function localDiskJoin(dir, name) {
 let fsHandle = null;
 /** 是否已有「浏览器选中的文件夹」句柄（本会话） */
 export function localDiskHasHandle() { return !!fsHandle; }
-/** 浏览器文件夹选择（由用户操作触发；失败如实回报） */
+
+/**
+ * v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：**平台识别**。
+ *   为什么要它：路径形态**因平台而异** —— 桌面是 `D:\…`，Android 是 `/storage/emulated/0/…`；
+ *   而配置随服务端同步会把桌面路径搬到 Android（或反之），在那台设备上必然写不进去。
+ *   `navigator.userAgent` 先给个结论，宿主（Tauri `os` 插件）能回答时以它为准。
+ * @param {boolean} [reprobe] 忽略缓存
+ * @returns {{name:'android'|'ios'|'desktop'|'unknown', source:string, ua:string}}
+ */
+let platCache = null;
+export function localDiskPlatform(reprobe) {
+    if (platCache && !reprobe) return platCache;
+    const out = { name: 'unknown', source: '', ua: '' };
+    try {
+        const ua = String((globalThis.navigator && globalThis.navigator.userAgent) || '');
+        out.ua = ua.slice(0, 160);
+        if (/android/i.test(ua)) { out.name = 'android'; out.source = 'userAgent'; }
+        else if (/iphone|ipad|ipod/i.test(ua)) { out.name = 'ios'; out.source = 'userAgent'; }
+        else if (/windows|macintosh|mac os x|linux|cros/i.test(ua)) { out.name = 'desktop'; out.source = 'userAgent'; }
+    } catch (e) { /* 忽略 */ }
+    platCache = out;
+    return out;
+}
+/** 问宿主平台（Tauri `os` 插件；失败 → 退回 UA 结论）；结果缓存 */
+export async function localDiskPlatformAsync() {
+    const inv = tauriInvoke();
+    if (inv) {
+        for (const cmd of ['plugin:os|platform', 'os|platform']) {
+            try {
+                const r = await inv(cmd, {});
+                const s = String((typeof r === 'string') ? r : ((r && (r.platform || r.os)) || '')).toLowerCase();
+                if (s) {
+                    const name = /android/.test(s) ? 'android' : (/ios|iphone|ipad/.test(s) ? 'ios' : 'desktop');
+                    platCache = { name: name, source: 'tauri-os:' + s, ua: (platCache && platCache.ua) || '' };
+                    return platCache;
+                }
+            } catch (e) { /* 试下一形态 */ }
+        }
+    }
+    return localDiskPlatform(false);
+}
+/** 平台的中文名（提示文案用） */
+export function localDiskPlatformLabel(name) {
+    const n = String(name || localDiskPlatform().name);
+    return n === 'android' ? 'Android' : (n === 'ios' ? 'iOS' : (n === 'desktop' ? '桌面系统' : '未知平台'));
+}
+/**
+ * v3.33.0：路径形态与本机平台的**冲突提示**（''=没问题）。
+ *   用户遇到的「Android 上根本设不了」根因之一：路径框里留着从别的设备同步过来的 `D:\…`，
+ *   在本机必然不可写 → 校验失败 → 看起来「设置了也没用」。这里把话说在前面。
+ */
+export function localDiskPathWarn(raw, platform) {
+    const dir = localDiskPathNorm(raw);
+    if (!dir) return '';
+    const kind = localDiskPathKind(dir);
+    const plat = String(platform || localDiskPlatform().name);
+    if (plat === 'android' || plat === 'ios') {
+        if (kind === 'windows-abs') return '这看起来是 Windows 路径，本机是 ' + localDiskPlatformLabel(plat) + '：本机写不了它 —— 请填本机路径（如 /storage/emulated/0/Download/ftt_v2_store）或点「📁 候选目录」';
+    } else if (plat === 'desktop') {
+        if (kind === 'posix-abs' && dir.charAt(1) !== '/') return '这看起来是 Android / Linux 路径，本机是桌面系统：本机写不了它 —— 请填本机路径（如 D:\\FTT\\store）';
+    }
+    if (kind === 'relative') return '这不是绝对路径：宿主只会把相对路径当**命名空间名**（真实落点在宿主数据目录内），建议填绝对路径';
+    return '';
+}
+
+/** 系统对话框选目录（Tauri `dialog` 插件；返回真路径，Android 上可能是 SAF 给出的路径） */
+async function dialogPickDir() {
+    const inv = tauriInvoke();
+    if (!inv) return { error: 'no-bridge' };   // 没有 Tauri 原始桥 → 连对话框都谈不上（如实回报）
+    const cmds = ['plugin:dialog|open', 'dialog|open'];
+    const shapes = [
+        { options: { directory: true, multiple: false, title: '选择本地存储目录' } },
+        { directory: true, multiple: false, title: '选择本地存储目录' },
+        { options: { directory: true, multiple: false } },
+        { directory: true },
+    ];
+    let lastErr = '';
+    for (const cmd of cmds) {
+        for (const arg of shapes) {
+            try {
+                const r = await inv(cmd, arg);
+                const p = (typeof r === 'string') ? r : ((r && (r.path || r.filePath || r.uri)) || '');
+                if (p) return { path: String(p) };
+                return { error: 'cancelled' };      // 命令可用但用户取消 → 不再试其它形态
+            } catch (e) { lastErr = String((e && e.message) || e); }
+        }
+    }
+    return { error: lastErr || 'dialog-unavailable' };
+}
+
+/** 句柄写探针（写 → 回读 → 删除自己的探针文件；只动自己的文件） */
+async function handleProbe() {
+    const name = 'ftt2-local-probe.json';
+    const body = JSON.stringify({ probe: 1, at: Date.now() });
+    try {
+        const w = await handleWriteText(name, body);
+        if (!w || w.ok !== true) return { ok: false, error: 'write-failed' };
+        const r = await handleReadText(name).catch(() => ({ ok: false, text: '' }));
+        if (!r || String(r.text) !== body) return { ok: false, error: 'verify-failed' };
+        try { if (fsHandle && typeof fsHandle.removeEntry === 'function') await fsHandle.removeEntry(name); } catch (e) { /* 删不掉只记诊断 */ }
+        return { ok: true, name: name };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.33.0：**宿主提供的可写目录候选**（Android 上尤其重要 —— 那里通常没有浏览器文件夹选择器）。
+ *   来源：① Tauri `path` 插件的标准目录；② 宿主 `api.*` 里形如路径的字段/零参方法；
+ *   ③ Android 常见公共目录（**仅建议**，选中后会做写探针，写不进去会如实失败）。
+ * @returns {Promise<{platform:string, items:Array<{path:string,label:string,source:string,kind:string}>, notes:string[]}>}
+ */
+export async function localDiskDirCandidates() {
+    const plat = await localDiskPlatformAsync();
+    const items = [];
+    const notes = [];
+    const push = (p, label, source) => {
+        const d = localDiskPathNorm(p);
+        if (!d) return;
+        if (items.some((x) => x.path === d)) return;
+        items.push({ path: d, label: String(label || ''), source: String(source || ''), kind: localDiskPathKind(d) });
+    };
+    // ① Tauri path 插件（AppLocalData / Download / Document / Home / Temp …）
+    const inv = tauriInvoke();
+    if (inv) {
+        const names = ['AppLocalData', 'AppData', 'AppConfig', 'Download', 'Document', 'Home', 'Temp', 'Data', 'LocalData', 'Desktop'];
+        for (const n of names) {
+            let got = '';
+            for (const cmd of ['plugin:path|resolve_directory', 'path|resolve_directory']) {
+                for (const arg of [{ directory: n }, { path: n }, { dir: n }]) {
+                    try { const r = await inv(cmd, arg); got = (typeof r === 'string') ? r : String((r && (r.path || r.dir)) || ''); } catch (e) { got = ''; }
+                    if (got) break;
+                }
+                if (got) break;
+            }
+            if (got) push(got, n, 'tauri-path');
+        }
+        if (!items.length) notes.push('宿主没有提供 Tauri `path` 插件接口（拿不到标准目录）');
+    }
+    // ② 宿主 api 里的路径类字段 / 零参方法（关键字匹配，调用失败一律忽略）
+    try {
+        const a = abi();
+        const holders = [a && a.api && a.api.dev, a && a.api && a.api.path, a && a.api && a.api.paths, a && a.api].filter((x) => x && typeof x === 'object');
+        for (const holder of holders) {
+            for (const k of Object.keys(holder).slice(0, 60)) {
+                if (!/dir|path|home|root|folder|data|download|document|temp|store/i.test(k)) continue;
+                let v = holder[k];
+                if (typeof v === 'function') { try { v = await v({}); } catch (e) { try { v = holder[k](); } catch (e2) { continue; } } }
+                const s = (typeof v === 'string') ? v : ((v && (v.path || v.dir || v.dirPath)) || '');
+                if (typeof s === 'string' && /^([A-Za-z]:[\\/]|\/|\\\\)/.test(s)) push(s, k, 'host-api');
+            }
+        }
+    } catch (e) { /* 忽略 */ }
+    // ③ Android：宿主一般只放行「应用私有目录 / 系统选择器授予的目录」——给两条常见公共位置做建议（需探针实测）
+    if (plat.name === 'android') {
+        push('/storage/emulated/0/Download/ftt_v2_store', 'Download（公共下载目录 · 需宿主放行）', 'suggested');
+        push('/storage/emulated/0/Documents/ftt_v2_store', 'Documents（公共文档目录 · 需宿主放行）', 'suggested');
+        notes.push('Android：浏览器文件夹选择器通常不可用；若宿主没有 `dialog` / `path` 接口，请用「系统选择文件夹」或直接填应用私有目录（宿主数据目录内），并点「✅ 校验」实测能否写入。');
+    }
+    if (!items.some((x) => x.source === 'tauri-path')) notes.push('提示：候选目录只是**建议**，选中后会写一个探针文件并回读校验；校验通过才算可用。');
+    return { platform: plat.name, platformSource: plat.source, items: items, notes: notes };
+}
+
+/** 宿主 dev API 里的「选目录」方法（关键字发现；没有 → null） */
+function devPickMethod() {
+    try {
+        const a = abi();
+        const dev = a && a.api && a.api.dev ? a.api.dev : null;
+        if (!dev || typeof dev !== 'object') return null;
+        for (const k of Object.keys(dev)) {
+            if (!/pick|select|choose|dialog/i.test(k)) continue;
+            if (!/dir|folder|path/i.test(k)) continue;
+            if (typeof dev[k] !== 'function') continue;
+            return { ns: k, fn: dev[k].bind(dev) };
+        }
+    } catch (e) { /* 忽略 */ }
+    return null;
+}
+
+/**
+ * v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：**多机制**选目录，逐个实测后再接受：
+ *   ① 宿主系统对话框（Tauri `dialog` 插件）—— 给出**真路径**，跨刷新有效（桌面首选；Android 走 SAF）；
+ *   ② 浏览器原生文件夹选择器（File System Access）—— 只有句柄、绝对路径不可见（Chromium 系可用；Android 一般没有）；
+ *   ③ 宿主 `api.dev` 的选目录方法。
+ *   每个机制**都必须通过写探针**（写 → 回读 → 删除自己的探针文件）才算成功；全都失败 → 如实回报尝试过什么。
+ * @returns {Promise<{ok:boolean, mechanism?:string, path?:string, name?:string, note:string, tried:Array<object>}>}
+ */
 export async function localDiskPickDir() {
+    const tried = [];
+    // ① 系统对话框（真路径）
+    try {
+        const d = await dialogPickDir();
+        if (d && d.path) {
+            const pr = await localDiskProbeDir(d.path);
+            tried.push({ mechanism: 'dialog', path: String(d.path), ok: !!pr.ok, error: pr.ok ? '' : String(pr.error || 'write-failed') });
+            if (pr.ok) {
+                return { ok: true, mechanism: 'dialog', path: localDiskPathNorm(d.path), name: baseNameOfPath(d.path), note: '已选中目录 ' + localDiskPathNorm(d.path) + '（写探针 → 回读校验通过，真路径跨刷新有效）', tried: tried };
+            }
+        } else if (d && d.error && d.error !== 'cancelled') {
+            tried.push({ mechanism: 'dialog', error: String(d.error), note: d.error === 'no-bridge' ? '本机没有 Tauri 原始桥 → 无系统文件夹对话框' : '' });
+        } else if (d && d.error === 'cancelled') {
+            tried.push({ mechanism: 'dialog', error: 'cancelled', note: '用户取消' });
+            return { ok: false, reason: 'cancelled', note: '已取消选择', tried: tried };
+        }
+    } catch (e) { tried.push({ mechanism: 'dialog', error: String((e && e.message) || e) }); }
+    // ② 浏览器原生文件夹选择器（句柄；路径不可见）
     try {
         const w = globalThis.window;
-        if (!w || typeof w.showDirectoryPicker !== 'function') {
-            return { ok: false, reason: 'unsupported', note: '当前宿主不支持浏览器文件夹选择（File System Access API）' };
+        if (w && typeof w.showDirectoryPicker === 'function') {
+            try {
+                const h = await w.showDirectoryPicker({ mode: 'readwrite' });
+                if (h) {
+                    if (typeof h.requestPermission === 'function') {
+                        const perm = await h.requestPermission({ mode: 'readwrite' });
+                        if (perm !== 'granted') { tried.push({ mechanism: 'fs-handle', error: 'denied' }); return { ok: false, reason: 'denied', note: '未授予读写权限', tried: tried }; }
+                    }
+                    fsHandle = h;
+                    const pb = await handleProbe();
+                    tried.push({ mechanism: 'fs-handle', name: String(h.name || ''), ok: !!pb.ok, error: pb.ok ? '' : String(pb.error || '') });
+                    if (pb.ok) {
+                        return { ok: true, mechanism: 'fs-handle', path: '', name: String(h.name || ''), note: '已选中文件夹「' + String(h.name || '') + '」（写探针通过；浏览器只暴露文件夹名、绝对路径不可见，刷新后需重新选择 —— 想跨刷新请填绝对路径或改用系统对话框）', tried: tried };
+                    }
+                    fsHandle = null;
+                }
+            } catch (e) {
+                tried.push({ mechanism: 'fs-handle', error: String((e && (e.name || e.message)) || e) });
+                return { ok: false, reason: String((e && e.name) || 'cancelled'), note: '已取消选择', tried: tried };
+            }
+        } else {
+            tried.push({ mechanism: 'fs-handle', error: 'unsupported', note: '本机没有 File System Access API' });
         }
-        const h = await w.showDirectoryPicker({ mode: 'readwrite' });
-        if (h && typeof h.requestPermission === 'function') {
-            const perm = await h.requestPermission({ mode: 'readwrite' });
-            if (perm !== 'granted') return { ok: false, reason: 'denied', note: '未授予读写权限' };
-        }
-        fsHandle = h;
-        return { ok: true, name: String((h && h.name) || ''), note: '已选中文件夹「' + String((h && h.name) || '') + '」（浏览器只暴露文件夹名，绝对路径不可见）' };
-    } catch (e) { return { ok: false, reason: String((e && e.name) || 'cancelled'), note: String((e && e.message) || e) }; }
+    } catch (e) { tried.push({ mechanism: 'fs-handle', error: String((e && e.message) || e) }); }
+    // ③ 宿主 dev API 的选目录方法
+    const dp = devPickMethod();
+    if (dp) {
+        try {
+            const r = await dp.fn({});
+            const p = (typeof r === 'string') ? r : ((r && (r.path || r.dir)) || '');
+            if (p) {
+                const pr = await localDiskProbeDir(String(p));
+                tried.push({ mechanism: 'dev-api:' + dp.ns, path: String(p), ok: !!pr.ok, error: pr.ok ? '' : String(pr.error || '') });
+                if (pr.ok) return { ok: true, mechanism: 'dev-api', path: localDiskPathNorm(String(p)), name: baseNameOfPath(String(p)), note: '已选中目录 ' + localDiskPathNorm(String(p)) + '（宿主接口 · 写探针通过）', tried: tried };
+            } else tried.push({ mechanism: 'dev-api:' + dp.ns, error: 'no-path' });
+        } catch (e) { tried.push({ mechanism: 'dev-api:' + dp.ns, error: String((e && e.message) || e) }); }
+    } else {
+        tried.push({ mechanism: 'dev-api', error: 'unsupported', note: '宿主没有提供选目录方法' });
+    }
+    const plat = localDiskPlatform(false);
+    return {
+        ok: false, reason: 'unsupported', tried: tried,
+        note: '本机（' + localDiskPlatformLabel(plat.name) + '）没有可用的文件夹选择器：' + tried.map((x) => String(x.mechanism) + (x.error ? ('✗' + String(x.error).slice(0, 40)) : '✓')).join(' · ')
+            + ' —— 可点「📁 候选目录」选一个宿主给出的目录，或直接手填路径后点「✅ 校验」',
+    };
 }
+
 /** 句柄可用性（权限可能被浏览器回收） */
 async function handleUsable() {
     try {
@@ -557,8 +795,12 @@ export async function localDiskReadParts(what, scope) {
 export function localDiskInfo() {
     const dir = localDiskRaw();
     const c = localDiskCapability(false);
+    const plat = localDiskPlatform(false);
     return {
         enabled: !!dir || !!fsHandle, dir: dir || (fsHandle ? String(fsHandle.name || '') : ''), kind: fsHandle ? 'fs-handle' : localDiskPathKind(dir), handle: !!fsHandle,
+        // v3.33.0：平台与「路径形态 vs 本机平台」的冲突提示（用户报告「Android 上设不了」的直接可见原因）
+        platform: plat.name, platformSource: plat.source, platformLabel: localDiskPlatformLabel(plat.name),
+        pathWarn: localDiskPathWarn(dir, plat.name),
         capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, devKeys: c.devKeys, note: c.note },
         invalid: localDiskInvalid(),   // v3.28.1：路径是否已被标记为**无效**（写入失败 / 探针失败）
         stats: Object.assign({}, stats),
@@ -567,6 +809,7 @@ export function localDiskInfo() {
 /** 测试/诊断：重置会话状态 */
 export function localDiskReset() {
     caps = null;
+    platCache = null;   // v3.33.0：平台缓存也清（测试里会改 UA / 宿主）
     stats.writes = 0; stats.reads = 0; stats.failures = 0; stats.probes = 0;
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
     localDiskClearInvalid();
@@ -581,4 +824,6 @@ export default {
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
     localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards, localDiskWriteParts, localDiskReadParts,
+    // v3.33.0：平台识别 / 路径形态冲突提示 / 宿主候选目录（Android 上「怎么设置」的依据）
+    localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn, localDiskDirCandidates,
 };
