@@ -11,7 +11,7 @@
 //   继续逐字比对（横幅与两个处置动作的代码仍在，供旧版本遗留待选与回归测试使用）。
 // v3.0.4 增项（用户要求）：「设定跨端同步分歧中，应增加合并差异选项，即将对端下载后合并去重。」→
 //   横幅第三项 `syncPickMerge`（下载对端 → 并集去重 → 写回服务端；两端都不丢）由 R11 锁定（含待选场景），
-//   R12 锁定「无待选用本端口径不假装成功」；`SYNC_ACTIONS` 由 8 项 → 9 项。
+//   R12 锁定「无待选用本端口径不假装成功」；`SYNC_ACTIONS` 由 8 项 → 9 项（v3.36.0 起为 21 项：+待确认 resolveConflicts / conflictAct）。
 // 覆盖：R1–R7 V1 逐项比对（R2/R3 已按 v3.0.3 改判登记）；R11/R12 v3.0.4 合并差异；V1–V4 V2 编排与接线（自动合并 + 横幅渲染 + 面板动作 + FTT 入口）。
 // 与 V1 的动作来源差异（如实记录）：V1 的自动对账入口是 `crossPullPolicy`（同步日志 action 取触发源标签），
 //   V2 无该函数，等价入口是 `adapters/sync.js#runStorageSync`（「保存后镜像」）→ 日志 action 为 `保存后镜像`；
@@ -320,7 +320,7 @@ await A('R11（v3.0.4 新增）分歧横幅第三项「🔀 合并差异（下�
     const after = stateView();
     return banner.indexOf('data-ftt-action="syncPickMerge"') >= 0
         && banner.indexOf('🔀 合并差异') >= 0 && banner.indexOf('下载对端') >= 0
-        && SYNC_ACTIONS.length === 19 && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0   // v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项
+        && SYNC_ACTIONS.length === 21 && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0   // v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项；v3.36.0：+待确认 2 项（resolveConflicts / conflictAct）
         && r.ok === true && r.action === 'syncPickMerge'
         && crossPendingGet() === null && pendingProj() === null
         && logs.length === 1 && logs[0].action === '分歧选择' && logs[0].mode === '合并差异(下载对端去重合并)'
@@ -352,7 +352,7 @@ await A('R12（v3.0.4）无待选时点「合并差异」：与另两个处置�
 // ============================================================
 // V 组：V2 编排与接线
 // ============================================================
-await A('V1 面板接线（v3.0.3 / v3.0.4：显式注入待选后）：`syncPickLocal`/`syncPickRemote`/`syncPickMerge` 进入 `SYNC_ACTIONS`（9 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页**仅在有待选时**渲染横幅', async () => {
+await A('V1 面板接线（v3.0.3 / v3.0.4：显式注入待选后）：`syncPickLocal`/`syncPickRemote`/`syncPickMerge` 进入 `SYNC_ACTIONS`（v3.36.0 起 21 项）并经 `panelAction` 可达、提示写入 `panelState().note`；存储页**仅在有待选时**渲染横幅', async () => {
     boot();
     openPanel('settings'); setPanelHooks2({});
     await panelAction('settingsSub', { sub: 'storage' });
@@ -362,7 +362,7 @@ await A('V1 面板接线（v3.0.3 / v3.0.4：显式注入待选后）：`syncPic
     const page1 = String(panelBodyHtml('settings') || '');
     const r1 = await panelAction('syncPickLocal', {});
     const note = String(panelState().note || '');
-    return SYNC_ACTIONS.length === 19 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
+    return SYNC_ACTIONS.length === 21 && SYNC_ACTIONS.indexOf('syncPickLocal') >= 0 && SYNC_ACTIONS.indexOf('syncPickRemote') >= 0
         && SYNC_ACTIONS.indexOf('syncPickMerge') >= 0
         && pageModules.indexOf('data-ftt-action="syncPickLocal"') < 0
         && page0.indexOf('data-ftt-action="syncPickLocal"') < 0

@@ -1713,9 +1713,14 @@ export async function openPanelPopup(tab) {
                 });
             } catch (e) { /* 忽略 */ }
         });
+        // v3.36.0（用户要求「重新设计该位置的逻辑」）：待确认清单与**只读记录**分成两个设置键；
+        //   `log` 钩子把「记录」类同时写一条调试日志（不再要求用户确认）
         setConflictHooks({
             get: () => { try { return getSettings().syncConflicts || []; } catch (e) { return []; } },
             save: (list) => { try { setSetting('syncConflicts', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
+            getLog: () => { try { return getSettings().syncConflictLog || []; } catch (e) { return []; } },
+            saveLog: (list) => { try { setSetting('syncConflictLog', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
+            log: (item) => { try { debugLogPush('同步', { action: '记录（无需确认）', kind: String((item && item.kind) || ''), detail: String((item && item.detail) || '').slice(0, 200), count: Number((item && item.count) || 1) }); } catch (e) { /* 忽略 */ } },
         });
         wirePipelineHooks();
         setDebugPageHooks({
