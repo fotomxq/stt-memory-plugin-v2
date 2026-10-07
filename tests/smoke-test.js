@@ -5064,10 +5064,13 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         const noteOk = String(r.note || note).indexOf('已删除 10 层') >= 0
             && String(r.note || note).indexOf('保留最近 10 层') >= 0
             && String(r.note || note).indexOf('备份') >= 0;
-        // ⑧ 人工确认项（低噪声：一类一条，含备份与「记忆保留 N 条」）
+        // ⑧ 留痕（低噪声：一类一条，含备份与「记忆保留 N 条」）
+        //    v3.36.0（用户要求「如果不需要确认，则只是一种日志」）：删楼是**完成通知** → 现在归入**只读记录区**，
+        //    **不再**作为「待确认项」要求用户逐条确认
         const CF = await import('../core/conflicts.js');
-        const conf = CF.listConflicts().filter((x) => String(x.kind) === '删楼')[0];
-        const confOk = !!conf && String(conf.detail).indexOf('备份') >= 0 && String(conf.detail).indexOf('记忆保留') >= 0;
+        const conf = CF.listConflictLog().filter((x) => String(x.kind) === '删楼')[0];
+        const confOk = !!conf && String(conf.detail).indexOf('备份') >= 0 && String(conf.detail).indexOf('记忆保留') >= 0
+            && CF.listConflicts().every((x) => String(x.kind) !== '删楼');         // 不再要求确认（其它小节可能另有待确认项，故不要求全局为 0）
         // ⑨ v3.0.16 根因回归（用户报告「使用内置删除楼层后，无法衔接继续分析，新增正文无法分析」）：
         //   删楼后继续聊天 → 新增正文仍能被「⚡ 立即 AI 摘要」分析。这里把**内核末楼快照**人为设成
         //   远大于当前聊天的旧值（模拟官方 deleteMessage 之后、刷新事件还没到的真实窗口）——
@@ -5101,7 +5104,9 @@ await assert('BG1 数据管理页真实点击「保留最近 10 层」：走官�
         } catch (e) { rotateOk = false; }
         await entry.popupAction('tab', { tab: 'overview' });
         const allOkBg1 = uiOk && r.ok === true && delOk && backupOk && dataOk && noteOk && confOk && newOk && rotateOk;
-        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, reason: r.reason, via: r.via, note: String(r.note || note).slice(0, 220), delOk, backupOk, backupNames, dataOk, noteOk, confOk, newOk, rotateOk, chat: host.ctx.chat.length, atoms: (RT.state.atoms || []).map((x) => ({ id: x.id, fs: x.floorStart, fe: x.floorEnd, ns: x.floorNowStart, ne: x.floorNowEnd, gone: x.originGone, stale: x.floorStale })) }));
+        if (!allOkBg1) console.log('BG1-DEBUG ' + JSON.stringify({ uiOk, rOk: r.ok, reason: r.reason, via: r.via, note: String(r.note || note).slice(0, 220), delOk, backupOk, backupNames, dataOk, noteOk, confOk, newOk, rotateOk,
+            confLogKinds: CF.listConflictLog().map((x) => String(x.kind)), confPendKinds: CF.listConflicts().map((x) => String(x.kind)), confDetail: String((conf && conf.detail) || '').slice(0, 90),
+            chat: host.ctx.chat.length, atoms: (RT.state.atoms || []).map((x) => ({ id: x.id, fs: x.floorStart, fe: x.floorEnd, ns: x.floorNowStart, ne: x.floorNowEnd, gone: x.originGone, stale: x.floorStale })) }));
         return allOkBg1;
     } finally {
         host.ctx.chat.length = 0;
@@ -5241,19 +5246,37 @@ await assert('BH8 v3.1.0 容量与配额（`docs/D13` S2/S3）：向量缓存内
         const chars = ST.localBufferState().chars;
         const localKey = 'ftt2_state_' + (await import('../core/state.js')).scopeId();
         ST.setLocalBufferMaxChars(Math.max(100, chars - 100));
-        await ST.flushStateNow('bh8-over', { force: true });
-        const gzRaw = String(globalThis.localStorage.getItem(localKey) || '');
+        // v3.36.0：`flushStateNow` 会把**并发在途**的保存合流（同一次保存只跑一遍，见 adapters/store.js），
+        //   因此单次 flush 之后读到的可能是上一轮在途的明文记录。这里改成**有界轮询 + 按需重触发**
+        //   （语义断言不变：本机记录必须是压缩记录、声明原始字符数 > 记录长度、gz 计数增长）。
+        const waitFor = async (cond, tries, fn) => {
+            for (let i = 0; i < tries; i++) {
+                if (await cond()) return true;
+                await new Promise((r) => setTimeout(r, 5));
+                if (fn) await fn(i);
+            }
+            return await cond();
+        };
+        let gzRaw = '';
+        let gzDeclared = 0;
+        await waitFor(() => {
+            gzRaw = String(globalThis.localStorage.getItem(localKey) || '');
+            gzDeclared = (() => { try { return Number((JSON.parse(gzRaw) || {}).chars) || 0; } catch (e) { return 0; } })();
+            return gzRaw.indexOf('{"ftt2gz":1') === 0;
+        }, 8, (i) => ST.flushStateNow('bh8-over' + (i ? ('-retry' + i) : ''), { force: true }));
         // 断言只取**与并发保存无关**的事实：本机记录确实是压缩记录、声明的原始字符数 > 记录长度、计数增长。
-        const gzDeclared = (() => { try { return Number((JSON.parse(gzRaw) || {}).chars) || 0; } catch (e) { return 0; } })();
         const gzOk = gzRaw.indexOf('{"ftt2gz":1') === 0 && gzDeclared > 0 && gzDeclared > gzRaw.length
             && Number(ST.localBufferStats().gzipWrites) >= 1;
         // 压缩不可用 → 如实跳过（旧内容不被清空）+ 停滞标记 + FTT 入口如实回报
         const keepCS = globalThis.CompressionStream;
         try { delete globalThis.CompressionStream; } catch (e) { globalThis.CompressionStream = undefined; }
         const gzUn0 = Number(ST.localBufferStats().gzUnavailable || 0);
-        await ST.flushStateNow('bh8-over-nogz', { force: true });
-        const lb = ST.localBufferState();
-        const budgetOk = lb.ok === false && lb.skipped === 'over-budget' && lb.chars > lb.budget
+        let lb = ST.localBufferState();
+        const noGzOk = await waitFor(() => {
+            lb = ST.localBufferState();
+            return lb.ok === false && lb.skipped === 'over-budget' && Number(ST.localBufferStats().gzUnavailable || 0) > gzUn0;
+        }, 8, (i) => ST.flushStateNow('bh8-over-nogz' + (i ? ('-retry' + i) : ''), { force: true }));
+        const budgetOk = noGzOk && lb.ok === false && lb.skipped === 'over-budget' && lb.chars > lb.budget
             && String(globalThis.localStorage.getItem(localKey) || '').length > 0     // 旧内容未被清空
             && !!globalThis.FTT.localBuffer() && globalThis.FTT.localBuffer().skipped === 'over-budget'
             && !!(ST.storeStatus().localBuffer)
@@ -5276,7 +5299,7 @@ await assert('BH8 v3.1.0 容量与配额（`docs/D13` S2/S3）：向量缓存内
         const capOk = DL.DEBUG_DATA_MAX === 2000 && String(l.data).length === 2000;
 
         const ok = lruOk && gzOk && budgetOk && restoredOk && capOk;
-        if (!ok) console.log('BH8-DEBUG ' + JSON.stringify({ lruOk, vs, gzOk, gzParts: [gzRaw.slice(0, 12), gzDeclared, gzRaw.length, ST.localBufferStats().gzipWrites], budgetOk, budgetParts: [lb.ok, lb.skipped, lb.chars, lb.budget, String(globalThis.localStorage.getItem(localKey) || '').length, Number(ST.localBufferStats().gzUnavailable), !!ST.localStaleInfo()], restoreParts: [ST.localBufferState().ok, ST.localBufferState().skipped, !!ST.localStaleInfo()], capOk, max: DL.DEBUG_DATA_MAX }));
+        if (!ok) console.log('BH8-DEBUG ' + JSON.stringify({ lruOk, vs, gzOk, gzParts: [gzRaw.slice(0, 12), gzDeclared, gzRaw.length, ST.localBufferStats().gzipWrites], budgetOk, noGzOk, budgetParts: [lb.ok, lb.skipped, lb.chars, lb.budget, String(globalThis.localStorage.getItem(localKey) || '').length, Number(ST.localBufferStats().gzUnavailable), !!ST.localStaleInfo()], restoreParts: [ST.localBufferState().ok, ST.localBufferState().skipped, !!ST.localStaleInfo()], capOk, max: DL.DEBUG_DATA_MAX }));
         return ok;
     } finally {
         ST.setLocalBufferMaxChars(keepBudget);
@@ -6900,6 +6923,83 @@ await assert('CA1 v3.35.0 修复「选择文件夹后本地存储路径不显示
     }
 })(), '');
 
+
+
+// ---------- CB 待确认区（v3.36.0：差异化动作 + 记录分离） ----------
+// 用户报告（原话）：「设定-存储-待确认，点击全部已确认会报错。而且这里设计非常不合理，只能确认无法改其他内容，
+//   那和日志没任何区别了。请重新设计该位置的逻辑，如果是确认，应该有差异化处理的机制；如果不需要确认，则只是一种日志。」
+await assert('CB1 v3.36.0 待确认区重新设计（端到端）：待确认项一栏一项并带**该类自己的动作按钮**、「记录」类只进只读区且不计入待确认；真实点击「✅ 全部已确认」不再报 unknown-action（清待确认、留记录）；真实点击单条动作「✅ 知道了」销账；「🔀 重新同步」经白名单路由；总览「去处理」跳到设定→存储', (async () => {
+    const CF = await import('../core/conflicts.js');
+    const PM = await import('../ui/panel.js');
+    const keepHooks = CF.conflictHooks();
+    let store = []; let storeLog = [];
+    // 本小节只测**界面与动作**：待确认清单用本地的临时宿主钩子（不改动真实设置层）
+    CF.setConflictHooks({
+        get: () => store, save: (x) => { store = x; },
+        getLog: () => storeLog, saveLog: (x) => { storeLog = x; },
+        log: () => undefined,
+    });
+    try {
+        CF.resetConflicts();
+        // ① 两个「待确认」类 + 一个「记录」类
+        CF.noteConflict({ kind: '跨端合并冲突', detail: '本地与远端同 id 不同内容 3 条', count: 3 });
+        CF.noteConflict({ kind: '并集自检异常', detail: '合并后情节 10 条 < 合并前 12 条', count: 1 });
+        CF.noteConflict({ kind: '删楼', detail: '删除 10 层（保留最近 10 层）；备份 bk.json', count: 1 });
+        const n0 = CF.pendingConflictCount();
+        const log0 = CF.conflictLogCount();
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'storage' });
+        const page = String(((await entry.popupAction('refresh', {})).html) || '');
+        const pageOk = n0 === 4 && log0 === 1
+            && page.indexOf('待确认（共 4 项 · 2 类）') > 0
+            && page.indexOf('data-ftt-conflict-item=') > 0
+            && page.indexOf('data-ftt-cact="dismiss"') > 0 && page.indexOf('data-ftt-cact="verify"') > 0
+            && page.indexOf('data-ftt-cact="resync"') > 0
+            && page.indexOf('✅ 全部已确认（4）') > 0
+            && page.indexOf('data-ftt-conflict-log') > 0 && page.indexOf('无需确认') > 0
+            && page.indexOf('data-ftt-conflict-log-row="删楼|') > 0;
+        // ② 真实点击「✅ 全部已确认」——修复前是 unknown-action 报错、且什么都不会发生
+        const all = await entry.popupAction('resolveConflicts', {});
+        const allOk = all.ok === true && Number(all.cleared) === 2
+            && CF.pendingConflictCount() === 0 && CF.conflictLogCount() === 1
+            && String(all.note || '').indexOf('已全部确认 2 类') >= 0 && String(all.note || '').indexOf('记录') > 0;
+        // ③ 真实点击单条动作「✅ 知道了」
+        CF.noteConflict({ kind: '并集自检异常', detail: 'D', count: 2 });
+        const cid = String((CF.listConflicts()[0] || {}).id || '');
+        const one = await entry.popupAction('conflictAct', { cid: cid, cact: 'dismiss' });
+        const oneOk = one.ok === true && Number(one.removed) === 1 && CF.pendingConflictCount() === 0
+            && String(one.note || '').indexOf('剩余待确认 0 项') > 0;
+        // ④ 差异化动作「🔀 重新同步（并集）」：只要求**经白名单路由**（这条路径会把该待确认项销账或如实保留）
+        CF.noteConflict({ kind: '跨端合并冲突', detail: 'E', count: 1 });
+        const cid2 = String((CF.listConflicts()[0] || {}).id || '');
+        const rs = await entry.popupAction('conflictAct', { cid: cid2, cact: 'resync' });
+        const rsOk = String(rs.reason || '') !== 'unknown-action'
+            && (rs.ok === true ? CF.pendingConflictCount() === 0 : String(rs.note || '').indexOf('待确认项已保留') > 0);
+        // ⑤ 总览「去处理」：跳到设定 → 存储并回报待确认条数（此前同样报 unknown-action）
+        CF.resetConflicts();
+        CF.noteConflict({ kind: '跨端合并冲突', detail: 'F', count: 1 });
+        const go = await entry.popupAction('goStorageConflicts', {});
+        const goOk = go.ok === true && Number(go.conflicts) === 1
+            && PM.panelState().tab === 'settings' && String(PM.panelState().settingsSub) === 'storage';
+        const ok = pageOk && allOk && oneOk && rsOk && goOk;
+        if (!ok) console.log('CB1-DEBUG ' + JSON.stringify({
+            pageOk, allOk, oneOk, rsOk, goOk, n0, log0,
+            hasSection: page.indexOf('data-ftt-conflicts') >= 0,
+            header: (page.match(/待确认（共 [^）]*）/) || [''])[0],
+            hasItem: page.indexOf('data-ftt-conflict-item=') > 0,
+            hasLogBlock: page.indexOf('data-ftt-conflict-log') > 0,
+            all: { ok: all.ok, cleared: all.cleared, note: String(all.note || '').slice(0, 80) },
+            one: { ok: one.ok, removed: one.removed, note: String(one.note || '').slice(0, 80) },
+            rs: { ok: rs.ok, reason: rs.reason, note: String(rs.note || '').slice(0, 80) },
+            go: { ok: go.ok, conflicts: go.conflicts, sub: PM.panelState().settingsSub },
+        }));
+        return ok;
+    } finally {
+        try { CF.resetConflicts(); } catch (e) { /* 忽略 */ }
+        try { CF.setConflictHooks(keepHooks); } catch (e) { /* 忽略 */ }   // 还原真实宿主钩子（设置层）
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
 
 
 // v2.34.0：收尾 flush —— 先让未 await 的 thenable 断言完成、并等防呆微任务判定，再汇总（防「静默消失」）

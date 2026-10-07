@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.35.0",
-  "updatedAt": "2026-10-07",
-  "generatedAt": "2026-10-07",
+  "version": "3.36.0",
+  "updatedAt": "2026-10-08",
+  "generatedAt": "2026-10-08",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.36.0",
+      "date": "2026-10-08",
+      "title": "待确认区重新设计：差异化动作 + 记录分离（并修「点击全部已确认报错」）",
+      "points": [
+        "① BUG：点「✅ 全部已确认」报 unknown-action：（总览横幅的「去处理」同样）：resolveConflicts / goStorageConflicts只在标记…",
+        "② 待确认（decide）与记录（log）分离：（core/conflicts.js）- CONFLICT_KINDS 类别登记表：跨端合并冲突（待确认）· 并集自检异常（待确认…",
+        "③ 界面：（ui/sync.js）：待确认区一栏一项（data-ftt-conflict-item + data-ftt-cact 动作按钮）+ 批量按钮；新增只读「📋 最近记…"
+      ]
+    },
     {
       "version": "3.35.0",
       "date": "2026-10-07",

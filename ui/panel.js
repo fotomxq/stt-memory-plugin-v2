@@ -542,8 +542,8 @@ export function conflictBannerHtml() {
             + '<b class="ftt-pipe-title">⚠️ 待确认</b> <span class="ftt-muted" style="flex:1 1 auto;min-width:0">'
             + esc(String(first.detail || first.kind || '').slice(0, 80)) + (cnt > 1 ? ('　（共 ' + cnt + ' 项）') : '')
             + '</span>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="goStorageConflicts" title="去「设定 → 存储」查看完整清单">去处理</button>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="resolveConflicts" title="全部标记为已确认（只清提示，不动数据）">已确认</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="goStorageConflicts" title="去「设定 → 存储」查看完整清单（每类带自己的处理动作）">去处理</button>'
+            + '<button class="ftt-btn ftt-sm" data-ftt-action="resolveConflicts" title="把待确认项全部标记为已确认（只清提示，不动数据）">全部已确认</button>'
             + '</div>';
     } catch (e) { return ''; }
 }
@@ -2536,6 +2536,14 @@ export async function panelAction(action, payload) {
                     result = Object.assign(result, { ok: true, dim: dim, shares: next, floorsMoved: moved });
                 }
             }
+        } else if (a === 'goStorageConflicts') {
+            // v3.36.0：总览「⚠️ 待确认」横幅的「去处理」→ 跳到「设定 → 存储」的待确认分节
+            //   （此前该动作未登记 → 点击报 unknown-action；与「全部已确认」一并修复）
+            ps.tab = 'settings';
+            ps.settingsSub = 'storage';
+            const n = pendingConflictCount();
+            setNote(n ? ('已定位到 设定 → 存储：待确认 ' + n + ' 项（每类带自己的处理动作）') : '当前没有待确认项');
+            result = Object.assign(result, { ok: true, action: a, conflicts: pendingConflictCount() });
         } else if (a === 'linkQuery') {
             // v2.83.0：关联层派生视图的查询（设定 → 约束 → 🔗 关联层）；只写页内查询词，结果渲染时现算
             const q = setLinkQuery(String(p.q == null ? '' : p.q));
@@ -3392,6 +3400,9 @@ export function bindOverlay() {
                 keep: (ds.fttKeep !== undefined) ? ds.fttKeep : '',
                 // v3.26.0：本机缓冲「选择目录」候选按钮（`data-ftt-dir="<相对目录名>"`）
                 dir: ds.fttDir || '',
+                // v3.36.0：待确认项的单条差异化动作（`data-ftt-cid` = 条目 id；`data-ftt-cact` = 动作 id）
+                cid: ds.fttCid || '',
+                cact: ds.fttCact || '',
             });
         });
         if (typeof el.addEventListener === 'function') {

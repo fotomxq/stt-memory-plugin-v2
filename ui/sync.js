@@ -27,7 +27,8 @@ import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
 import { hintDetailsHtml } from './hints.js';   // v3.16.0：本地文件模式的折叠说明
 // v2.92.0（用户要求）：需人工确认项 —— 设定 → 存储 展示同一份清单（总览亦有醒目提示）
-import { listConflicts, pendingConflictCount, clearConflicts } from '../core/conflicts.js';
+import { listConflicts, pendingConflictCount, clearConflicts, listConflictLog, conflictLogCount,
+    conflictKindSpec, resolveConflict, CONFLICT_ACT } from '../core/conflicts.js';   // v3.36.0：待确认（差异化动作）/ 只读记录 分离
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
 import { ttChannelStatusHtml, ttChannelDetailHtml } from '../adapters/tt-store.js';
@@ -202,16 +203,49 @@ export function storagePageHtml(controls) {
         'storage.worldbook', 'storage.worldbookName', 'storage.worldbookMode', 'storage.worldbookScanDepth', 'storage.worldbookPosition',
         'storage.worldbookDepth', 'storage.worldbookPreventRecursion', 'storage.worldbookProbability', 'storage.worldbookSticky',
         'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes'].indexOf(String(c.key)) < 0);
-    // v2.92.0：待人工确认项（跨端合并冲突 / 并集自检异常）—— 有才显示，附「全部已确认」按钮
+    // v2.92.0 建立 / v3.36.0 重新设计（用户报告「只能确认、和日志没区别」+「全部已确认报错」）：
+    //   **待确认**（`mode:'decide'`）= 真需要人做决定的事 → 一栏一项 + **该类自己的动作按钮**（如「🔀 重新同步（并集）」
+    //     「🔍 校验并修复存储」＋「✅ 知道了」）；
+    //   **记录**（`mode:'log'`）= 已自动处理完、只是通知（删楼 / 楼层收缩 / 跨端分歧已自动合并）→ 只读一栏，
+    //     **不计入待确认计数、不需要确认**（同时已写一条调试日志）。
     const conflictSection = (() => {
         try {
             const n = pendingConflictCount();
-            if (n <= 0) return '<div class="ftt-hint" data-ftt-conflicts>无待确认项（跨端合并冲突与并集自检均正常）</div>';
-            const rows = listConflicts().slice(0, 6).map((x) => '<div class="ftt-muted">· ' + esc(String(x.kind || '')) + '：' + esc(String(x.detail || '').slice(0, 110)) + '（×' + Math.max(1, Number(x.count) || 1) + '）</div>').join('');
-            return '<div class="ftt-section" data-ftt-conflicts><div class="ftt-sec-title">⚠️ 待确认（共 ' + n + ' 项）</div>'
-                + '<div class="ftt-muted">这些是**需人工核对**的情况（合并冲突 / 并集自检异常），已按「并集 + 按时间取新」处理，**不会自动改数据**。</div>'
-                + rows
-                + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="resolveConflicts" title="全部标记为已确认（只清提示，不动数据）">✅ 全部已确认</button></div></div>';
+            const rows = listConflicts();
+            const logRows = listConflictLog();
+            const logN = conflictLogCount();
+            // ① 待确认（差异化动作）
+            let head;
+            if (rows.length) {
+                const items = rows.slice(0, 6).map((x) => {
+                    const spec = conflictKindSpec(x.kind);
+                    const btns = spec.actions.map((act) => '<button class="ftt-btn ftt-sm" data-ftt-action="conflictAct" data-ftt-cid="'
+                        + esc(String(x.id || '')) + '" data-ftt-cact="' + esc(String(act.id)) + '" title="' + esc(String(act.hint || '')) + '">'
+                        + esc(String(act.label || act.id)) + '</button>').join('');
+                    return '<div class="ftt-item ftt-inline" data-ftt-conflict-item="' + esc(String(x.id || '')) + '">'
+                        + '<span class="ftt-grow"><b>' + esc(String(x.kind || '')) + '</b> <span class="ftt-muted">×' + Math.max(1, Number(x.count) || 1) + '</span>'
+                        + '<div class="ftt-muted">' + esc(String(x.detail || '').slice(0, 160)) + '</div>'
+                        + (spec.hint ? ('<div class="ftt-muted">' + esc(spec.hint) + '</div>') : '') + '</span>'
+                        + '<span class="ftt-item-ops">' + btns + '</span></div>';
+                }).join('');
+                head = '<div class="ftt-section" data-ftt-conflicts><div class="ftt-sec-title">⚠️ 待确认（共 ' + n + ' 项 · ' + rows.length + ' 类）</div>'
+                    + '<div class="ftt-muted">这些<b>需要你决定</b>：每类都带自己的处理动作（重新同步 / 校验并修复 / 知道了）。'
+                    + '合并策略一律「并集 + 按时间取新」，这些动作只做消歧与核对，<b>不会替你删数据</b>。</div>'
+                    + items
+                    + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="resolveConflicts" title="把上面列出的待确认项全部标记为已确认（只清提示，不动数据）">✅ 全部已确认（' + n + '）</button>'
+                    + '<span class="ftt-muted">只清待确认清单；下方「最近记录」不受影响。</span></div></div>';
+            } else {
+                head = '<div class="ftt-hint" data-ftt-conflicts>无待确认项（跨端合并冲突与并集自检均正常）</div>';
+            }
+            // ② 记录（只读，不需要确认）
+            const logBlock = logRows.length
+                ? ('<div class="ftt-section" data-ftt-conflict-log><div class="ftt-sec-title">📋 最近记录（' + logRows.length + ' 类 · 共 ' + logN + ' 次 · 无需确认）</div>'
+                    + '<div class="ftt-muted">这些**已经自动处理完**，只是留个记录（同时已写进调试日志）—— 不需要确认。</div>'
+                    + logRows.slice(0, 8).map((x) => '<div class="ftt-muted" data-ftt-conflict-log-row="' + esc(String(x.id || '')) + '">· '
+                        + esc(String(x.kind || '')) + '：' + esc(String(x.detail || '').slice(0, 130)) + '（×' + Math.max(1, Number(x.count) || 1) + '）</div>').join('')
+                    + '</div>')
+                : '';
+            return head + logBlock;
         } catch (e) { return ''; }
     })();
     return [
@@ -596,6 +630,41 @@ export async function syncAction(action, payload) {
         // v3.16.0（用户要求）：按当前「本地文件目录」约定对齐本机层（变量 / 内存库 / 聊天元数据 / 目录 ↔ 目录；先写后清）
         // v3.26.5：目录模式下若**目录副本已是最新** → 只做读回校验并明说「未覆盖」（旧实现会拿旧层内容覆盖目录）；
         //   换目录时把旧目录里更新的一份迁进新目录（`moved-dir`）。
+        // v3.36.0（用户要求）：**待确认项的差异化动作**
+        //   `resolveConflicts`   = 全部已确认（只清待确认清单；记录保留）—— 修复 v3.35.0 之前「点了报 unknown-action」的缺陷
+        //   `conflictAct`        = 单条处理：dismiss（知道了）/ resync（交给「立即同步」）/ verify（交给「校验并修复」）
+        if (a === 'resolveConflicts') {
+            const r = clearConflicts();
+            const note = r.cleared
+                ? ('已全部确认 ' + r.cleared + ' 类待确认项（只清提示，不动数据' + (r.keptLog ? ('；最近记录仍有 ' + r.keptLog + ' 类（无需确认）') : '') + '）')
+                : '当前没有待确认项';
+            try { syncToast('success', '待确认', note); } catch (e) { /* 忽略 */ }
+            return { ok: true, action: a, note: note, cleared: r.cleared, keptLog: r.keptLog };
+        }
+        if (a === 'conflictAct') {
+            const cid = String(p.cid || p.id || '');
+            const cact = String(p.cact || p.act || CONFLICT_ACT.DISMISS);
+            if (!cid) return { ok: false, action: a, note: '缺少待确认项 id' };
+            const spec = conflictKindSpec(String(cid).split('|')[0]);
+            const allowed = spec.actions.map((x) => String(x.id));
+            if (allowed.indexOf(cact) < 0) return { ok: false, action: a, note: '该类不支持该动作：' + cact };
+            // 差异动作：先把「消歧 / 核对」跑掉，再销账（失败则保留待确认项，如实回报）
+            let detail = null;
+            if (cact === CONFLICT_ACT.RESYNC) detail = await syncAction('storageSync', {});
+            else if (cact === CONFLICT_ACT.VERIFY) detail = await syncAction('storageVerify', {});
+            if (detail && detail.ok === false) {
+                const note = '动作未完成（' + String(detail.note || detail.reason || 'unknown') + '）：待确认项已保留';
+                try { syncToast('warning', '待确认', note); } catch (e) { /* 忽略 */ }
+                return { ok: false, action: a, note: note, cid: cid, cact: cact, detail: detail };
+            }
+            const r = resolveConflict(cid, cact);
+            const label = (spec.actions.filter((x) => String(x.id) === cact)[0] || {}).label || cact;
+            const note = '已处理「' + String(cid).split('|')[0] + '」：' + String(label).replace(/^[^\w\u4e00-\u9fa5]+/, '')
+                + (detail && detail.note ? ('（' + String(detail.note).slice(0, 80) + '）') : '')
+                + ' · 剩余待确认 ' + Number(r.pending || 0) + ' 项';
+            try { syncToast('success', '待确认', note); } catch (e) { /* 忽略 */ }
+            return { ok: true, action: a, note: note, cid: cid, cact: cact, removed: r.removed, pending: r.pending, detail: detail };
+        }
         // v3.28.0（用户纠正设计）：本地**磁盘**目录（真磁盘路径）—— 校验 / 刷新状态
         if (a === 'localDiskProbe') {
             const dir = String((cfg && cfg.storage && cfg.storage.localDiskDir) || '').trim();
@@ -775,7 +844,11 @@ export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh'
     'localFileDirUse', 'localFileDirCreate', 'localFileDirSystem', 'localFileDirScan', 'localFileDirProbe',
     // v3.28.0（用户纠正设计）：本地**磁盘**目录（真磁盘路径，替代浏览器本地存储）—— 校验 / 刷新状态
     // v3.30.0：+localDiskPick（浏览器原生文件夹选择器）
-    'localDiskProbe', 'localDiskStatus', 'localDiskPick']);
+    'localDiskProbe', 'localDiskStatus', 'localDiskPick',
+    // v3.36.0（用户报告「点击全部已确认会报错」）：待确认项的动作此前**未登记** → 落到 unknown-action；
+    //   现登记 `resolveConflicts`（全部已确认）/ `conflictAct`（单条差异化动作）。
+    //   注：总览横幅的「去处理」（`goStorageConflicts`）是**面板导航**动作，由 `ui/panel.js` 处理，不在这里。
+    'resolveConflicts', 'conflictAct']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }

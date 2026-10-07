@@ -216,7 +216,13 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'nsfw-legend': '分类级 NSFW 留档汇总行（列表页顶部「弱 N · 强 M」，重绘即更新）',
         // v3.21.0（转化库导出/导入）：导出结果文本框与「已导入粘贴框」同款 —— **渲染给用户复制**，不需读者
         'nsfw-rule-export': '转化库导出结果文本框（v3.21.0：浏览器未触发下载时从这里手工复制保存）',
-    };
+            // v3.36.0：待确认区（一栏一项 + 单条差异化动作）—— 均为结构 / 测试锚点
+        'conflict-item': '待确认条目容器（`data-ftt-conflict-item="<id>"`，重绘即更新；样式与测试锚点）',
+        'conflict-log': '只读记录区容器（`data-ftt-conflict-log`；「不需要确认」的记录，重绘即更新）',
+        'conflict-log-row': '只读记录行（`data-ftt-conflict-log-row="<id>"`，测试锚点）',
+        'cid': '待确认条目 id（**由委托透传为 `cid`**，见 L6）',
+        'cact': '待确认条目的动作 id（**由委托透传为 `cact`**，见 L6）',
+};
     const unread = [];
     for (const a of attrs) {
         if (UI_SRC.indexOf('.ftt' + pascal(a)) >= 0) continue;                                  // dataset 直读
