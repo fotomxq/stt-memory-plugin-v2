@@ -45,7 +45,9 @@ import { auxStoreInfo } from '../adapters/aux-store.js';
 //   真实落点在宿主数据目录内；拿得到数据根目录时还给出「目录联接」的可复制命令。
 import { localFilePathAudit } from '../adapters/local-file.js';
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）
-import { localDiskInfo, localDiskProbeDir, localDiskReprobe, localDiskJoin, localDiskPickDir } from '../adapters/local-disk.js';
+// v3.38.0（用户要求「设定到本地时应该通过浏览器方法去构建相关文件」）：
+//   `localDiskUseBrowserDir` = 一键使用**浏览器内置目录**（OPFS，纯浏览器方法，PC / 手机通用）
+import { localDiskInfo, localDiskProbeDir, localDiskReprobe, localDiskJoin, localDiskPickDir, localDiskUseBrowserDir, localDiskIsBrowserPath, localDiskBrowserMarker } from '../adapters/local-disk.js';
 // v3.26.0：目录选择器写回配置（与设定页同一落盘入口）
 import { saveKernelCfg } from '../adapters/config-store.js';
 // v3.26.0：「从系统选择文件夹…」—— 取文件夹名（宿主限制下只能作为数据目录内的子目录名）
@@ -356,9 +358,12 @@ function localFileModeHtml() {
         if (!d) return '';
         const cap = d.capability || {};
         const s = d.stats || {};
+        // v3.38.0：能力分三类如实写 —— 浏览器内置目录（OPFS，纯浏览器方法）/ 浏览器选中的文件夹 / 宿主文件接口
         const capTxt = cap.ok
-            ? ('<b>可写盘</b>（机制 ' + esc(String(cap.mechanism || '')) + (cap.ns ? ('：api.dev.' + esc(String(cap.ns))) : '') + '）')
-            : '<b class="ftt-err">宿主未提供写任意磁盘路径的接口</b>（' + esc(String(cap.note || '')) + '）';
+            ? (cap.mechanism === 'browser-opfs'
+                ? ('<b>可写盘</b>（<b>浏览器内置目录</b>：由浏览器直接建文件，不需要宿主接口）')
+                : ('<b>可写盘</b>（机制 ' + esc(String(cap.mechanism || '')) + (cap.ns ? ('：api.dev.' + esc(String(cap.ns))) : '') + (d.handleLive ? ' ＋ 浏览器选中的文件夹' : '') + '）'))
+            : '<b class="ftt-err">' + esc(String(cap.note || '本机没有可用的本地目录机制')) + '</b>';
         // 可见行只留结论（提示行长度口径 L1 ≤90 字）；能力/路径/失败原因放折叠详情
         const inv = d.invalid || {};
         const status = '<div class="ftt-muted" data-ftt-disk-status><b>本地磁盘目录</b>：'
@@ -369,11 +374,13 @@ function localFileModeHtml() {
         const invalidHtml = (inv && inv.invalid)
             ? ('<div class="ftt-hint ftt-warn-box" data-ftt-disk-invalid>⚠️ <b>该路径已被标记为「无效」</b>：写入/读取失败，已回退浏览器本地存储 —— 请修正后重新「✅ 校验本地磁盘目录」。</div>')
             : '';
-        const hint = '<div class="ftt-hint">本地目录（替代浏览器本地存储）：点「📂 选择文件夹…」会<b>自动把路径填进来</b>（无需手工输入）；也可<b>只填一个目录名</b>（如 fft_v2_store）或直接填绝对路径。</div>';
+        // v3.38.0：提示行长度口径（L1 ≤90 字 / N6 ≤70 字）—— 只留结论，细节进折叠说明
+        const hint = '<div class="ftt-hint">本地目录（替代浏览器本地存储）：<b>只填一个目录名</b>最通用 —— 没有宿主时由<b>浏览器</b>直接建文件。</div>';
         // v3.33.0（用户要求「本地存储路径不能随服务端转移，因为不同端的存储路径可能有差异」）：
         //   本机路径只写**本机**（设备本地存储），随服务端同步的配置里这一项**恒为空** —— 换设备各自设置。
         const platTxt = '<div class="ftt-muted" data-ftt-disk-platform><b>本机平台</b>：' + esc(String(d.platformLabel || '未知平台'))
             + ' · 路径只存本机（<b>不随服务端同步</b>：换设备需各自设置）'
+            + ' · 浏览器内置目录：' + (d.browserFs ? '<b>可用</b>' : '不可用')
             + (d.base ? (' · 宿主应用数据目录：' + esc(String(d.base))) : '')
             + (d.handle ? ' · 本会话已选文件夹句柄（绝对路径不可见，刷新后需重选）' : '') + '</div>';
         const warnHtml = d.pathWarn ? ('<div class="ftt-hint ftt-warn-box" data-ftt-disk-warn>⚠️ ' + esc(String(d.pathWarn)) + '</div>') : '';
@@ -381,6 +388,16 @@ function localFileModeHtml() {
         //   设定后显示**完整路径**（用户填的绝对路径原样回显 + 真实文件路径）。
         const ctl = (() => { try { return settingsControlHtml({ key: 'storage.localDiskDir', label: '本地存储路径（绝对路径，或只填一个目录名；留空 = 不开启；不随服务端同步）', type: 'text' }); } catch (e) { return ''; } })();
         const fullPath = (() => {
+            // v3.38.0：**浏览器内置目录**（OPFS）—— 由浏览器直接建文件，无需宿主；刷新后仍有效
+            if (d.browserMode) {
+                const base = (d.dir && localDiskIsBrowserPath(String(d.dir))) ? String(d.dir) : localDiskBrowserMarker(String(d.browserName || d.dir || ''));
+                const f1 = (() => { try { return localDiskJoin(base, 'ftt2-local-＜角色＞.json'); } catch (e) { return ''; } })();
+                const f2 = (() => { try { return localDiskJoin(base, 'aux-＜键名＞.json'); } catch (e) { return ''; } })();
+                return '<div class="ftt-muted" data-ftt-disk-fullpath data-ftt-disk-browser>路径：' + esc(String(d.dir || base))
+                    + '（' + esc(String(d.display || d.browserName || '')) + '）'
+                    + '<br>记忆副本 ' + esc(String(f1)) + ' · 辅助数据 ' + esc(String(f2))
+                    + '<br>由<b>浏览器</b>直接建文件（PC / 手机通用；刷新后仍有效）—— 填普通路径框里的目录名即等价于此</div>';
+            }
             // v3.35.0：句柄模式（浏览器选中的文件夹）—— 绝对路径浏览器不暴露，但**路径框里有标记值**，
             //   这里把它是什么、写到哪里、失效了怎么办都讲清楚（不再让用户以为「没选上、得手工填」）
             if (d.handleMode) {
@@ -399,14 +416,18 @@ function localFileModeHtml() {
         const ops = '<div class="ftt-row">'
             // v3.34.0：选择文件夹 → 宿主系统对话框（TauriTavern 的 `plugin:dialog|open`）+ 浏览器原生选择器 + 宿主接口
             + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskPick" title="依次尝试：宿主系统对话框（给真路径，跨刷新有效）→ 浏览器原生文件夹选择器 → 宿主接口；每个机制都写探针文件并回读校验">📂 选择文件夹…</button>'
+            // v3.38.0（用户要求「设定到本地时应该通过浏览器方法去构建相关文件」）：**一键用浏览器内置目录**
+            + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskBrowserDir" title="用浏览器自带的文件系统（OPFS）建一个本插件的目录：不需要宿主接口，PC 与手机都能用，刷新后仍有效；写入前同样写探针 → 回读校验。路径框会填入 @browser/<目录名>">🧩 浏览器内置目录</button>'
             + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="localDiskProbe" title="只填目录名时会先解析到宿主应用数据目录（$APPLOCALDATA）；然后写一个探针文件 → 回读逐字节校验 → 删掉探针：证明「这个目录真的能写」。通过后把完整路径写回本机配置">✅ 校验本地磁盘目录</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="localDiskStatus">🔄 刷新磁盘状态</button>'
             + '<span class="ftt-muted">校验通过后才算可用；写盘失败会回退浏览器层并标记无效。</span></div>';
         const capDetail = hintDetailsHtml('能力与失败明细',
             '<div class="ftt-muted">能力：' + capTxt + (d.fsShape ? (' · 传输形态：<b>' + esc(String(d.fsShape)) + '</b>') : '') + '</div>'
             + (Number(s.failures) ? ('<div class="ftt-muted"><span class="ftt-err">失败 ' + Number(s.failures) + ' 次：' + esc(String(s.lastError || '')) + '</span></div>') : '')
+            + '<div class="ftt-muted">三种机制自动选：宿主对话框 → 浏览器文件夹选择器 → <b>浏览器内置目录</b>；选完<b>自动把路径填进来</b>。</div>'
             + '<div class="ftt-muted">与下方「服务端扩展存储目录」不是一回事：这一项是**本机**的本地目录。</div>'
             + '<div class="ftt-muted">TauriTavern 只放行<b>应用数据目录</b>（`$APPLOCALDATA` 等）：绝对路径写不进去时，改成只填目录名即可。</div>'
+            + '<div class="ftt-muted">纯浏览器（PC 网页版 / Firefox）也能写：走<b>浏览器内置目录</b>（OPFS），文件在本浏览器内（调试页可查）。</div>'
             + '<div class="ftt-muted">写盘 / 读盘失败时：<b>回退浏览器本地存储</b>（变量 + 内存库）并弹一次醒目通知，同时把该路径标记为「无效」；修正后重新校验即可恢复。</div>');
         return '<div class="ftt-section"><div class="ftt-sec-title">💾 本地存储路径（替代浏览器变量 / 内存库）</div>' + hint + platTxt + warnHtml + invalidHtml + status + ctl + fullPath + capDetail + ops + '</div>';
     })();
@@ -697,6 +718,21 @@ export async function syncAction(action, payload) {
             try { syncToast('success', '本地存储文件夹', String(pk.note || '')); } catch (e) { /* 忽略 */ }
             return { ok: true, action: a, note: String(pk.note || ''), detail: pk };
         }
+        // v3.38.0（用户报告）：「本地存储路径」在纯浏览器（PC 网页版）上以前**只能靠宿主接口** → 不可用；
+        //   现在一键切到**浏览器内置目录**（OPFS）：由浏览器自己建文件，不需要宿主接口，刷新后仍有效。
+        if (a === 'localDiskBrowserDir') {
+            const r = await localDiskUseBrowserDir();
+            if (!r.ok) {
+                const note = String(r.note || r.reason || '浏览器内置目录不可用');
+                try { syncToast('warning', '浏览器内置目录未完成', note); } catch (e) { /* 忽略 */ }
+                return { ok: false, action: a, note: note, detail: r };
+            }
+            if (r.path) {
+                try { cfg.storage = Object.assign({}, cfg.storage || {}); cfg.storage.localDiskDir = r.path; saveKernelCfg(); } catch (e) { /* 忽略 */ }
+            }
+            try { syncToast('success', '本地存储目录', String(r.note || '')); } catch (e) { /* 忽略 */ }
+            return { ok: true, action: a, note: String(r.note || ''), dir: String(r.path || ''), detail: r };
+        }
         if (a === 'localDiskStatus') {
             localDiskReprobe();
             const d = localDiskInfo();
@@ -851,7 +887,9 @@ export const SYNC_ACTIONS = Object.freeze(['storageSync', 'storageStatusRefresh'
     // v3.36.0（用户报告「点击全部已确认会报错」）：待确认项的动作此前**未登记** → 落到 unknown-action；
     //   现登记 `resolveConflicts`（全部已确认）/ `conflictAct`（单条差异化动作）。
     //   注：总览横幅的「去处理」（`goStorageConflicts`）是**面板导航**动作，由 `ui/panel.js` 处理，不在这里。
-    'resolveConflicts', 'conflictAct']);
+    'resolveConflicts', 'conflictAct',
+    // v3.38.0：浏览器内置目录（OPFS）—— 纯浏览器方法建本地文件
+    'localDiskBrowserDir']);
 
 /** 存储页版本行（关于页/调试用；确认页面与内核同版本） */
 export function syncVersionLine() { return VERSION + ' · ' + String((cfg && cfg.updateRepo) || ''); }

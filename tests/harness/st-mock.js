@@ -211,6 +211,78 @@ export function installGlobalHost(host, doc) {
 }
 
 /**
+ * v3.38.0：**假 OPFS**（浏览器内置目录 / Origin Private File System 的最小子集）。
+ *   形状与浏览器一致：`navigator.storage.getDirectory()` → 目录句柄
+ *   （`getDirectoryHandle` / `getFileHandle` / `removeEntry` / `entries`）。
+ *   用于验证「纯浏览器（无宿主接口）也能建本地文件」这条新路径。
+ * @returns {{storage:{getDirectory:Function}, root:object, files:Function}}
+ */
+export function makeOpfs() {
+    const root = { kind: 'directory', name: '', dirs: new Map(), files: new Map() };
+    const dirHandle = (node) => ({
+        kind: 'directory', name: node.name,
+        getDirectoryHandle: async (n, o) => {
+            if (!node.dirs.has(n)) {
+                if (!o || !o.create) { const e = new Error('NotFoundError'); e.name = 'NotFoundError'; throw e; }
+                node.dirs.set(n, { kind: 'directory', name: String(n), dirs: new Map(), files: new Map() });
+            }
+            return dirHandle(node.dirs.get(n));
+        },
+        getFileHandle: async (n, o) => {
+            if (!node.files.has(n)) {
+                if (!o || !o.create) { const e = new Error('NotFoundError'); e.name = 'NotFoundError'; throw e; }
+                node.files.set(n, '');
+            }
+            return {
+                kind: 'file', name: String(n),
+                createWritable: async () => ({ write: async (t) => { node.files.set(n, String(t)); }, close: async () => { /* noop */ } }),
+                getFile: async () => ({ size: String(node.files.get(n)).length, text: async () => String(node.files.get(n)) }),
+            };
+        },
+        removeEntry: async (n) => {
+            if (!node.files.delete(n) && !node.dirs.delete(n)) { const e = new Error('NotFoundError'); e.name = 'NotFoundError'; throw e; }
+        },
+        entries: async function* () {
+            for (const [k, v] of node.files) yield [k, { kind: 'file', name: k, getFile: async () => ({ size: String(v).length }) }];
+            for (const k of node.dirs.keys()) yield [k, { kind: 'directory', name: k }];
+        },
+    });
+    return {
+        root: root,
+        storage: { getDirectory: async () => dirHandle(root) },
+        /** 目录树里的全部文件路径（扁平；诊断 / 断言用） */
+        files: () => {
+            const out = [];
+            const walk = (node, pfx) => {
+                for (const [k, v] of node.files) out.push((pfx ? pfx + '/' : '') + k);
+                for (const [k, v] of node.dirs) walk(v, (pfx ? pfx + '/' : '') + k);
+            };
+            walk(root, '');
+            return out;
+        },
+    };
+}
+
+/**
+ * v3.38.0：装/卸 `navigator`（`storage.getDirectory` = OPFS）。
+ *   Node 也自带 `navigator`，所以这里用 `defineProperty`（可配置）替换整个对象，并返回卸载函数。
+ * @param {object} opfs `makeOpfs()` 的返回值
+ * @param {string} [ua] userAgent（平台识别用）
+ */
+export function installGlobalOpfs(opfs, ua) {
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const mk = (storage) => ({
+        userAgent: String(ua || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'),
+        storage: storage,
+    });
+    Object.defineProperty(globalThis, 'navigator', { value: mk(opfs ? opfs.storage : undefined), configurable: true, writable: true });
+    return () => {
+        if (desc) Object.defineProperty(globalThis, 'navigator', desc);
+        else { try { delete globalThis.navigator; } catch (e) { /* 忽略 */ } }
+    };
+}
+
+/**
  * 安装 fetch 桩（返回卸载函数）。
  * @param {Function|object} handler (url, opts) => {status, json, text} 或 {status, body, text}
  *   简化写法：返回 {status:200, body:{...}} 时自动同时支持 json()/text()

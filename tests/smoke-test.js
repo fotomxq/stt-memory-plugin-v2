@@ -7021,6 +7021,82 @@ await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / �
 })(), '');
 
 
+// ---------- CC 浏览器内置目录（v3.38.0：纯浏览器也能用「本地存储路径」） ----------
+// 用户报告（原话）：「手机端必须使用内置路径，而跑到PC端，又不可用了。根据通知推测，可能你把服务端的方法，
+//   用在了前端中？请核对原因，修复'本地存储路径'设定到本地时，应该通过浏览器方法去构建相关文件。」
+await assert('CC1 v3.38.0 「本地存储路径」在**没有任何宿主接口**的纯浏览器（PC 网页版）里可用：改由浏览器方法建文件（OPFS）—— 真实点击「🧩 浏览器内置目录」→ 路径框填入 `@browser/<目录名>`、探针（写→回读→删）通过、本机副本真的写进浏览器目录并回读一致；相对目录名也自动落到浏览器目录（不写死路径）；「📂 选择文件夹…」在没有文件夹选择器时**回落**到浏览器内置目录而不是死路', (async () => {
+    const RT = await import('../core/model/runtime.js');
+    const LD = await import('../adapters/local-disk.js');
+    const { makeOpfs, installGlobalOpfs } = await import('./harness/st-mock.js');
+    const keepDir = String((RT.cfg.storage && RT.cfg.storage.localDiskDir) || '');
+    const hadWin = typeof globalThis.window !== 'undefined';
+    const keepWin = globalThis.window;
+    const keepTauri = hadWin ? globalThis.window.__TAURI_INTERNALS__ : undefined;
+    const opfs = makeOpfs();
+    const unOpfs = installGlobalOpfs(opfs, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36');
+    try {
+        if (!globalThis.window) globalThis.window = {};
+        delete globalThis.window.__TAURI_INTERNALS__;         // 纯浏览器：没有任何宿主文件接口
+        if (globalThis.window.showDirectoryPicker) delete globalThis.window.showDirectoryPicker;
+        LD.localDiskReset();
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: '' });
+        await entry.popupAction('tab', { tab: 'settings' });
+        await entry.popupAction('settingsSub', { sub: 'storage' });
+        // ① 能力：浏览器内置目录本身就是可用机制（修复前这里是 ok:false → 「PC 端不可用」）
+        const cap = LD.localDiskCapability(true);
+        const capOk = cap.ok === true && cap.mechanism === 'browser-opfs' && cap.browserFs === true && cap.tauriFs === false;
+        // ② 真实点击「🧩 浏览器内置目录」
+        const pick = await entry.popupAction('localDiskBrowserDir', {});
+        const dir = String((RT.cfg.storage && RT.cfg.storage.localDiskDir) || '');
+        const pickOk = pick.ok === true && dir === '@browser/fft_v2_store' && opfs.files().length === 0;
+        // ③ 页面把「这是什么 / 文件落在哪 / 不需要宿主接口」讲清楚
+        const page = String(((await entry.popupAction('refresh', {})).html) || '');
+        const pageOk = page.indexOf('data-ftt-action="localDiskBrowserDir"') > 0
+            && page.indexOf('@browser/fft_v2_store') > 0 && page.indexOf('data-ftt-disk-browser') > 0
+            && page.indexOf('不需要宿主接口') > 0 && page.indexOf('ftt2-local-＜角色＞.json') > 0;
+        // ④ 真实点击「✅ 校验本地磁盘目录」：写 → 回读 → 删探针（探针不留在目录里）
+        const probe = await entry.popupAction('localDiskProbe', {});
+        const probeOk = probe.ok === true && opfs.files().length === 0
+            && String((probe.detail || {}).dir || '').indexOf('@browser/') === 0;
+        // ⑤ 本机副本真的写进浏览器目录（写 → 回读逐字节一致）
+        const w = await LD.localDiskWrite('cc1-check.json', '{"cc":1}');
+        const r = await LD.localDiskRead('cc1-check.json');
+        const writeOk = w.ok === true && w.mechanism === 'browser-opfs' && r.ok === true && String(r.text) === '{"cc":1}'
+            && opfs.files().indexOf('fft_v2_store/cc1-check.json') >= 0;
+        // ⑥ 相对目录名在无宿主的本机自动落到浏览器目录，且**不把解析结果写回配置**（设备中立）
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: 'fft_v2_store' });
+        const rs = await LD.localDiskResolveDir('fft_v2_store');
+        const relOk = rs.ok === true && rs.browserMode === true && rs.dir === '@browser/fft_v2_store'
+            && String((RT.cfg.storage || {}).localDiskDir) === 'fft_v2_store';
+        // ⑦ 没有文件夹选择器时「📂 选择文件夹…」回落到浏览器内置目录（而不是「没有可用的选择器」死路）
+        RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: '' });
+        const pick2 = await entry.popupAction('localDiskPick', {});
+        const fallbackOk = pick2.ok === true && String((pick2.detail || {}).mechanism) === 'browser-opfs'
+            && String((RT.cfg.storage || {}).localDiskDir) === '@browser/fft_v2_store';
+        const ok = capOk && pickOk && pageOk && probeOk && writeOk && relOk && fallbackOk;
+        if (!ok) console.log('CC1-DEBUG ' + JSON.stringify({
+            capOk, pickOk, pageOk, probeOk, writeOk, relOk, fallbackOk,
+            cap: cap, dir: dir, files: opfs.files(),
+            probe: { ok: probe.ok, dir: (probe.detail || {}).dir, note: String(probe.note || '').slice(0, 120) },
+            pick2: { ok: pick2.ok, mech: (pick2.detail || {}).mechanism, dir: String((RT.cfg.storage || {}).localDiskDir) },
+        }));
+        return ok;
+    } finally {
+        try { LD.localDiskReset(); } catch (e) { /* 忽略 */ }
+        try { RT.cfg.storage = Object.assign({}, RT.cfg.storage || {}, { localDiskDir: keepDir }); } catch (e) { /* 忽略 */ }
+        try { unOpfs(); } catch (e) { /* 忽略 */ }
+        try {
+            if (hadWin) {
+                if (keepTauri === undefined) delete globalThis.window.__TAURI_INTERNALS__;
+                else globalThis.window.__TAURI_INTERNALS__ = keepTauri;
+            } else delete globalThis.window;
+        } catch (e) { /* 忽略 */ }
+        try { await entry.popupAction('tab', { tab: 'overview' }); } catch (e) { /* 忽略 */ }
+    }
+})(), '');
+
+
+
 // v2.34.0：收尾 flush —— 先让未 await 的 thenable 断言完成、并等防呆微任务判定，再汇总（防「静默消失」）
 try {
     for (const g of pendingGuards) { try { await g.settle(); } catch (e) { /* 断言自身异常已由内部捕获 */ } }

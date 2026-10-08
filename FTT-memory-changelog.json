@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.37.0",
+  "version": "3.38.0",
   "updatedAt": "2026-10-08",
   "generatedAt": "2026-10-08",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.38.0",
+      "date": "2026-10-08",
+      "title": "「本地存储路径」补浏览器内置目录（OPFS）：纯浏览器（PC 网页版）终于可用",
+      "points": [
+        "用户报告：（原话）：「手机端必须使用内置路径，而跑到PC端，又不可用了。根据通知推测，可能你把服务端的方法，用在了前端中？请核对原因，修复'本地存储路径'设定到本地时，应该通过浏…",
+        "核对结论（用户推测基本成立）：v3.28~v3.37 的「本地存储路径」把「能不能写盘」整体押在宿主上（TauriTavern plugin:fs|* / api.dev）＋一个…",
+        "修复：新增浏览器内置目录（OPFS：navigator.storage.getDirectory，adapters/browser-fs.js）：纯浏览器方法、不需要宿主接口；标…"
+      ]
+    },
     {
       "version": "3.37.0",
       "date": "2026-10-08",
