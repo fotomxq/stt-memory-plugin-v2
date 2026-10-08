@@ -219,7 +219,10 @@ export function storagePageHtml(controls) {
             if (rows.length) {
                 const items = rows.slice(0, 6).map((x) => {
                     const spec = conflictKindSpec(x.kind);
-                    const btns = spec.actions.map((act) => '<button class="ftt-btn ftt-sm" data-ftt-action="conflictAct" data-ftt-cid="'
+                    // v3.37.0（S1 兜底）：该类**没有**登记动作时（例如老数据里语义已改为「记录」的类别），
+                    //   一律补一个「✅ 知道了」—— 绝不出现「待确认但无法处理」的行
+                    const acts = spec.actions.length ? spec.actions : [{ id: CONFLICT_ACT.DISMISS, label: '✅ 知道了', hint: '标记已确认（只清提示，不动数据）' }];
+                    const btns = acts.map((act) => '<button class="ftt-btn ftt-sm" data-ftt-action="conflictAct" data-ftt-cid="'
                         + esc(String(x.id || '')) + '" data-ftt-cact="' + esc(String(act.id)) + '" title="' + esc(String(act.hint || '')) + '">'
                         + esc(String(act.label || act.id)) + '</button>').join('');
                     return '<div class="ftt-item ftt-inline" data-ftt-conflict-item="' + esc(String(x.id || '')) + '">'
@@ -233,7 +236,7 @@ export function storagePageHtml(controls) {
                     + '合并策略一律「并集 + 按时间取新」，这些动作只做消歧与核对，<b>不会替你删数据</b>。</div>'
                     + items
                     + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="resolveConflicts" title="把上面列出的待确认项全部标记为已确认（只清提示，不动数据）">✅ 全部已确认（' + n + '）</button>'
-                    + '<span class="ftt-muted">只清待确认清单；下方「最近记录」不受影响。</span></div></div>';
+                    + '<span class="ftt-muted">只清待确认清单；处理过的会以「已确认：<类别>」留一条记录（下方记录区里），确认也有迹可循。</span></div></div>';
             } else {
                 head = '<div class="ftt-hint" data-ftt-conflicts>无待确认项（跨端合并冲突与并集自检均正常）</div>';
             }
