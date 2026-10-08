@@ -5,7 +5,7 @@
 // 事实源：docs/history/P0-探针报告.md（getContext 键位：chat / characters / characterId / name1 / name2）。
 // ============================================================
 import { getCtx } from './st-api.js';
-import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, getChatMessages, state } from '../core/model/runtime.js';
+import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, kernelState, getChatMessages, state } from '../core/model/runtime.js';
 import { debugLogPush } from '../adapters/debug-log.js';
 // v2.44.0（用户报告）：酒馆消息正文是可含 HTML 的富文本（`<br>`/`<p>`/`&nbsp;`…）→ 在**读入边界**统一清洗，
 //   这样「提取提示词 / 剧情时钟 / 楼层哈希之外的取文」都不会把标签带进数据（哈希仍用原始稳定正文，见 host/floors.js）
@@ -166,9 +166,17 @@ export function wireKernelChatHooks() {
  * @returns {object} 注入的状态（`state.chatKey` 已被就地更新）
  */
 export function attachKernelState(next) {
-    setKernelState(next || null);
+    // v3.39.0（用户报告「本地召回失败 Cannot read properties of null (reading 'state')」）：
+    //   **绝不把已注入的内核态降级成 null** —— 传入 falsy（异常路径 / 空合并结果）时保留当前态并如实记账。
+    //   内核态为 null 会让所有 `state.*` 取用处抛错（本模块历史上已因此修过「楼层漂移防呆」一处）。
+    if (!next || typeof next !== 'object') {
+        const kept = (() => { try { return kernelState(); } catch (e) { return null; } })();
+        try { debugLogPush('异常', { action: '注入内核态被拒绝（传入的不是对象）→ 保留当前态', kept: !!kept, got: String(typeof next) }); } catch (e) { /* 忽略 */ }
+        return kept || null;
+    }
+    setKernelState(next);
     try { noteChatKey(); } catch (e) { /* 归属记账失败不阻断注入 */ }
-    return next || null;
+    return next;
 }
 
 /** 内核当前看到的聊天消息（调试用） */

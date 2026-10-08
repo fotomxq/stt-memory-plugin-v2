@@ -43,6 +43,24 @@ const useBuffer = {};
 
 let useFlushTimer = null;
 
+// ============================================================
+// v3.39.0（用户报告「本地召回失败 Cannot read properties of null (reading 'state')」）：
+//   **内核态在启动 / 切换角色 / 跨端合并的窗口里可能是 `null`**（`core/model/runtime.js` 的
+//   `export let state = null`，由宿主在载入完成后注入）。旧实现直接 `state.state.*` →
+//   抛 `Cannot read properties of null (reading 'state')`，被本模块入口的 catch 包成
+//   `warn('本地召回失败', e)` —— 用户看到的正是这条红错（同一类问题此前在「已处理楼层漂移防呆」出现过）。
+//   口径：本模块**一律经 `st()` 取用**；未注入时退化为**空容器**（各大类读作空数组 → 召回如实为空），
+//   `stState()` 同样兜底 —— 于是「状态没就绪」表现为「这轮没有可召回的内容」，而不是一条异常。
+// ============================================================
+const EMPTY_STATE = Object.freeze({});
+/** 内核态（未注入 → 空容器；本模块各处只读，绝不写入） */
+const st = () => (state && typeof state === 'object') ? state : EMPTY_STATE;
+/** `state.state`（当前状态块：日期/时间/地点/在场…；未注入 → 空容器） */
+function stState() {
+    const s = st();
+    return (s.state && typeof s.state === 'object') ? s.state : EMPTY_STATE;
+}
+
 function buildQueryText(intentText) { return String(intentText || '').trim().slice(-4000); }
 
 // 按类目特征匹配的简化支撑（避免全文丢给 AI 分析排序，提高召回率/准确率）
@@ -218,7 +236,7 @@ function relDevLabel(dev) { return ({ accurate: '准确', partial: '片面', mis
 
 function relShortName(w) { const s = String(w || ''); const i = s.indexOf('·'); return i > 0 ? s.slice(i + 1) : s; }
 
-function relPresentList() { try { return (state.state && Array.isArray(state.state.present)) ? state.state.present.filter(Boolean) : []; } catch (e) { return []; } }
+function relPresentList() { try { const s = stState(); return Array.isArray(s.present) ? s.present.filter(Boolean) : []; } catch (e) { return []; } }
 
 function relIsPresent(w) { try { const k = snapNameKey(w); return !!k && relPresentList().some(n => snapNameKey(n) === k); } catch (e) { return false; } }
 
@@ -352,7 +370,7 @@ function buildInjectConstraints(ctx) {
         const inSet = (dim, id) => Array.isArray(injected[dim]) && injected[dim].indexOf(String(id)) >= 0;
         const rowsOf = (dim, id) => { try { return relLinksOf(dim, id).filter(x => x.who); } catch (e) { return []; } };
         // 记忆（公开事实不计入非公共信息）
-        for (const m of (state.memories || [])) {
+        for (const m of (st().memories || [])) {
             if (!m || !m.id) continue;
             let rows = [], anchor = null;
             try { const all = relLinksOf('memories', m.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { }
@@ -363,7 +381,7 @@ function buildInjectConstraints(ctx) {
                 detail.push(`  - 记忆「${title}」知情者 = ${known}`);
             } else agg.memories++;
         }
-        for (const p of (state.plans || [])) {
+        for (const p of (st().plans || [])) {
             if (!p || !p.id || p.status === 'closed') continue;
             let rows = [], anchor = null;
             try { const all = relLinksOf('plans', p.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { }
@@ -374,7 +392,7 @@ function buildInjectConstraints(ctx) {
                 detail.push(`  - 计划「${title}」知情者 = ${known}`);
             } else agg.plans++;
         }
-        for (const s of (state.suspense || [])) {
+        for (const s of (st().suspense || [])) {
             if (!s || !s.id || s.status === 'closed') continue;
             let rows = [];
             try { rows = relLinksOf('suspense', s.id).filter(x => x.who); } catch (e) { }
@@ -384,7 +402,7 @@ function buildInjectConstraints(ctx) {
                 detail.push(`  - 悬念「${title}」知情者 = ${known}`);
             } else agg.suspense++;
         }
-        for (const x of (state.parallels || [])) {
+        for (const x of (st().parallels || [])) {
             if (!x || !x.id || x.promotedTo) continue;
             agg.parallels++;
         }
@@ -397,7 +415,7 @@ function buildInjectConstraints(ctx) {
         infoLines.push('2. 非公共信息（未列出者不得提及 / 暗示 / 配合 / 依据）：');
         if (nameAll) {
             const allNames = [];
-            for (const m of (state.memories || [])) { if (m && m.id) { try { const an = relLinksOf('memories', m.id).find(x => !x.who); if (an && an.public) continue; } catch (e) { } allNames.push(String(m.title || '').slice(0, 20)); } }
+            for (const m of (st().memories || [])) { if (m && m.id) { try { const an = relLinksOf('memories', m.id).find(x => !x.who); if (an && an.public) continue; } catch (e) { } allNames.push(String(m.title || '').slice(0, 20)); } }
             if (allNames.length) infoLines.push(`  - 记忆（共 ${allNames.length} 条）：${allNames.slice(0, 12).join('、')}`);
         }
         if (detail.length) infoLines.push(...detail);
@@ -407,7 +425,7 @@ function buildInjectConstraints(ctx) {
         lines.push('3. 不得当作已发生：计划（尚未执行）、悬念（尚未揭晓）、平行事件（正文之外推演）、传言（**未经证实的说法**，可能不实或被夸大）一律不得被角色当作已发生事实；平行事件对任何角色都不可见。');
         // 4. 未完成 / 未证实（只针对本轮注入的计划 / 悬念，逐条给事实）
         const unfin = [];
-        for (const p of (state.plans || [])) {
+        for (const p of (st().plans || [])) {
             if (!p || !p.id || !inSet('plans', p.id)) continue;
             const prog = Number(p.progress);
             const steps = Array.isArray(p.steps) ? p.steps : [];
@@ -420,7 +438,7 @@ function buildInjectConstraints(ctx) {
                 unfin.push(`  - 计划「${title}」${phTxt}${Number.isFinite(prog) ? `进度 ${Math.max(0, Math.min(100, Math.round(prog)))}%` : ''}${open ? `${Number.isFinite(prog) ? '，' : ''}尚有 ${open} 个未完成步骤` : ''}：未完成部分不得当作已完成。`);
             }
         }
-        for (const s of (state.suspense || [])) {
+        for (const s of (st().suspense || [])) {
             if (!s || !s.id || !inSet('suspense', s.id)) continue;
             const clues = Array.isArray(s.clues) ? s.clues : [];
             const title = String(s.title || s.content || '').slice(0, 20);
@@ -429,7 +447,7 @@ function buildInjectConstraints(ctx) {
         if (unfin.length) lines.push('4. 未完成 / 未证实：', ...unfin);
         // 4.5 传言传播范围（v1.192）：只有列出的传播者 / 听闻者知道这条说法在传，且说法本身未必为真
         const rumorKnow = [];
-        for (const r of (state.rumors || [])) {
+        for (const r of (st().rumors || [])) {
             if (!r || !r.id || !inSet('rumors', r.id)) continue;
             const who = (Array.isArray(r.carriers) ? r.carriers : []).filter(c => c && c.who)
                 .map(c => `${relShortName(c.who)}（${c.role || '传播者'}）`).join('、');
@@ -565,11 +583,11 @@ function recallDateAnchor() {
         let m = -1;
         const scan = (arr, pick) => { for (const x of (arr || [])) { const d = recallDateNum(pick(x)); if (Number.isFinite(d) && d > m) m = d; } };
         scan(activeAtoms(), x => x.date);   // v1.203：已总结隐藏的日期不再作为召回基准
-        scan(state.memories, x => x.date);
-        scan(state.currentStates, x => x.updatedAt);
-        scan(state.plans, x => x.date);
-        scan(state.suspense, x => x.date);
-        scan(state.concepts, x => x.date);
+        scan(st().memories, x => x.date);
+        scan(st().currentStates, x => x.updatedAt);
+        scan(st().plans, x => x.date);
+        scan(st().suspense, x => x.date);
+        scan(st().concepts, x => x.date);
         return Number.isFinite(m) ? m : NaN;
     } catch (e) { return NaN; }
 }
@@ -578,7 +596,7 @@ function recallMaxFloor() {
     try {
         let m = 0;
         const scan = (arr) => { for (const x of (arr || [])) m = Math.max(m, Number(x.floorEnd) || 0); };
-        scan(activeAtoms()); scan(state.currentStates); scan(state.snapshots); scan(state.memories); scan(state.concepts);   // v1.203
+        scan(activeAtoms()); scan(st().currentStates); scan(st().snapshots); scan(st().memories); scan(st().concepts);   // v1.203
         return m > 0 ? m : 1;
     } catch (e) { return 1; }
 }
@@ -722,7 +740,7 @@ function recallEntryVotes(e, tokens) {
 // 姓名核 = 全名首段（用于状态主体与档案名归并/过滤）
 
 function parallelDecayScore(p) {
-    const list = state.parallels || [];
+    const list = st().parallels || [];
     const ts = list.map(x => Number(x && x.updatedAt) || 0).filter(t => t > 0);
     const earliest = ts.length ? Math.min.apply(null, ts) : 0;
     const latest = ts.length ? Math.max.apply(null, ts) : (Number(p && p.updatedAt) || 0);
@@ -767,8 +785,8 @@ function injectPresentItems() {
         seen.add(core);
         items.push({ name: f, aliases: nameAliases(f) });
     };
-    for (const s of (state.snapshots || [])) addItem(s.name);
-    for (const s of (state.currentStates || [])) addItem(s.subject);
+    for (const s of (st().snapshots || [])) addItem(s.name);
+    for (const s of (st().currentStates || [])) addItem(s.subject);
     return items;
 }
 // 纯 JS 文本匹配 —— 返回 { present:[全名…], known }（known=是否有已知角色名单）
@@ -810,7 +828,7 @@ function injectPresentNames() {
                 if (r2.present.length) return r2.present;
             }
         } catch (e) { }
-        const stored = (state && state.state && Array.isArray(state.state.present)) ? state.state.present.filter(Boolean) : null;
+        const stored = (() => { const s = stState(); return Array.isArray(s.present) ? s.present.filter(Boolean) : null; })();
         if (stored && stored.length) return stored;      // 用与存储同源的名单（总览/注入保持一致）
         return String(text || '').trim() ? [] : null;    // 有正文但都没命中 → 严格空；完全无正文 → 不限制
     } catch (e) { return null; }
@@ -835,7 +853,20 @@ function injectPresentHit(present, name) {
 function buildMemoryBodyForInject(queryText, opts) {
     try {
         const o = opts || {};
-        const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : d; };
+        // v3.39.0（用户报告「本地召回失败 reading 'state'」）：**状态未就绪 → 如实空手而归**（不抛错、不告警）
+        if (!state || typeof state !== 'object') {
+            try { dbgLog('召回', { action: '内核态尚未注入（启动 / 切换中）→ 本轮不召回', query: String(queryText || '').slice(0, 40) }); } catch (e) { /* 忽略 */ }
+            if (o.diagnose) {
+                return {
+                    ok: false, reason: 'state-not-ready', budget: 0, itemBudget: 0, reserve: 0, used: 0,
+                    caps: {}, constraintOn: false, constraintCap: 0, position: 'tail',
+                    bodyText: '', constraintText: '', constraintClipped: false, totalText: '',
+                    injected: {}, candidates: {}, catHeads: [],
+                    note: '内核态尚未注入（首屏载入 / 切换角色 / 跨端合并的窗口期）→ 本轮无可召回内容',
+                };
+            }
+            return '';
+        }        const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : d; };
         const budget = num(o.charBudget, cfg.charBudget || 8000);
         // v1.165：为固定约束段预留字符（约束段与关键词召回解耦 —— 即使条目被截断，约束也必须注入）
         //   预留量取配置上限（确定性）：约束文本在预算分配完成后按「实际注入的条目」生成（逐条点名 + 未注入聚合）
@@ -874,7 +905,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         const qTokens = recallQueryTokens(q);
         // /注入场景（opts.inject）→ [角色档案]/[状态记录] 仅限最新在场人员；
         //   优先使用与剧情时钟联动存储的 state.state.present（时间/地点/在场同源一致），无存储时实时楼层回退
-        const present = o.inject ? ((state.state && Array.isArray(state.state.present)) ? state.state.present.slice() : injectPresentNames()) : null;
+        const present = o.inject ? ((() => { const s = stState(); return Array.isArray(s.present) ? s.present.slice() : injectPresentNames(); })()) : null;
         const rcScore = (kind) => (e) => {
             const base = recallEntryScore(e, { kind, q, anchor: rcAnchor, maxFloor: rcMaxFloor });
             if (!qTokens.length) return base;                       // 非关键词召回（q 空）：维持 纯优先级
@@ -890,14 +921,14 @@ function buildMemoryBodyForInject(queryText, opts) {
         const curParts = [];
         // v1.188：日期行附「（纪年）·季节」，时间行显示区间 —— 仅在字段存在时追加
         // v2.88.0：改为 Markdown 列表项 + 粗体标签（`- **日期**：…`）—— 内容与字段顺序不变，只换呈现形态
-        if (state.state.date) curParts.push(`- **日期**：${clockDateLabel(state.state.date)}${state.state.era ? `（${state.state.era}）` : ''}${state.state.season ? `·${state.state.season}` : ''}`);   // v1.193：公元前加前缀
-        if (state.state.time) curParts.push(`- **时间**：${state.state.time}${state.state.timeEnd ? `→${state.state.timeEnd}` : ''}`);
+        if (stState().date) curParts.push(`- **日期**：${clockDateLabel(stState().date)}${stState().era ? `（${stState().era}）` : ''}${stState().season ? `·${stState().season}` : ''}`);   // v1.193：公元前加前缀
+        if (stState().time) curParts.push(`- **时间**：${stState().time}${stState().timeEnd ? `→${stState().timeEnd}` : ''}`);
         // v2.48.0（用户要求）：「**剧情第 N 天，不允许注入**，这个设定只是在插件内校准时间用的」——
         //   V1 v1.206 11943 会把 `剧情天数:第N天` 写进注入体（V1 故障明确修正 #6），V2 起**不再注入**。
         //   `state.state.storyDay` 仍照常记录，仅供**插件内时间校准**（`clockStoryDayEpoch` 纪元首日 →
         //   「纪元首日 + (N-1) 天」换算日期，见 core/clock-extract.js 的 storyday 分支）与总览展示，
         //   任何注入/投喂/世界书文本都不得出现「第 N 天」（门禁：tests/unit/storyday-no-inject.test.js）。
-        if (state.state.location) curParts.push(`- **地点**：${state.state.location}`);
+        if (stState().location) curParts.push(`- **地点**：${stState().location}`);
         // 在场角色（顿号分割）；与 日期/时间/地点 同行块输出，正常应四行齐全
         if (present && present.length) curParts.push(`- **在场角色**：${present.slice(0, 10).join('、')}`);
         const curLines = curParts.length ? [curParts.join('\n')] : [];
@@ -906,7 +937,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         //   不受关键词门槛限制，保证 AI 一定看到最近发了什么；机制档（其余配额）按原优先级评分/关键词投票择优，
         //   平局按「最新在前」稳定序；合并去重后 **输出顺序一律按剧情时间从早到晚**（预算消费顺序仍按优先级，渲染时重排））
         const atomRows = [];
-        const activeAtoms = (state.atoms || []).filter(a => a && !atomIsHidden(a) && a.validity !== 'inactive');   // v1.203：已总结隐藏的不参与注入（局部名遮蔽同名函数，故此处直接判隐藏态）
+        const activeAtoms = (st().atoms || []).filter(a => a && !atomIsHidden(a) && a.validity !== 'inactive');   // v1.203：已总结隐藏的不参与注入（局部名遮蔽同名函数，故此处直接判隐藏态）
         const ratioRaw = (o.atomsRecentRatio != null) ? o.atomsRecentRatio : ((cfg && cfg.atomsRecentRatio != null) ? cfg.atomsRecentRatio : 0.4);
         const ratioRecent = Math.max(0, Math.min(1, Number(ratioRaw) || 0));
         const quotaRecent = Math.min(activeAtoms.length, Math.round(maxAtoms * ratioRecent));
@@ -946,7 +977,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         for (const c of atomRowCands) { if (countUses) markUsed('atoms', c.e); atomRows.push({ text: c.text, score: c.score, sort: c.e }); }
         cats.push({ head: '[情节记忆]', md: mdHeadOf('[情节记忆]'), rows: atomRows });
         // [状态记录]：匹配的 当前状态 按优先级取最近 maxStates 条 → 按角色分组输出（分组行仍为一个候选行）
-        const activeStates = (state.currentStates || []).slice().reverse().filter(s => s.status !== 'inactive');
+        const activeStates = (st().currentStates || []).slice().reverse().filter(s => s.status !== 'inactive');
         const stateCands = [];
         for (const s of activeStates) {
             // 注入时只保留最新在场角色 的状态记录
@@ -969,7 +1000,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         // [角色档案]（按姓名命中后按优先级取 maxSnapshots 名；无剧情日期 → 楼层/活跃度主导）
         const snapRows = [];
         const snapCands = [];
-        for (const sn of (state.snapshots || []).slice().reverse()) {
+        for (const sn of (st().snapshots || []).slice().reverse()) {
             // 注入时只保留最新在场角色 的档案
             if (present && !injectPresentHit(present, sn.name)) continue;
             // 角色按角色姓名识别
@@ -999,7 +1030,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         // [长期记忆]（匹配候选按优先级取 maxMemories 条；平局按「最新在前」）
         const memRows = [];
         const memCands = [];
-        for (const m of (state.memories || []).slice().reverse()) {
+        for (const m of (st().memories || []).slice().reverse()) {
             // 记忆按标签相关性识别（tags/keywords）
             if (!q || tagMatch(m.tags, q) || tagMatch(m.keywords, q)) {
                 // v1.165：关联感知渲染（角色 + 内容；有差异按角色分行；无关联时回退归属者口径）
@@ -1015,7 +1046,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         // [物品]（命中的物品按优先级取 maxItems 件）—— 标签作为触发关键词与记忆一致
         const itemRows = [];
         const itemCands = [];
-        for (const it of (state.items || []).slice().reverse()) {
+        for (const it of (st().items || []).slice().reverse()) {
             if (q) {
                 const hay = `${it.name || ''} ${it.location || ''} ${it.desc || ''}`.toLowerCase();
                 if (!(tagMatch(it.tags, q) || tagMatch(it.keywords, q) || (it.name && q.includes(String(it.name).toLowerCase())) || hay.includes(q))) continue;
@@ -1038,7 +1069,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             const me = String((typeof defaultCurrencyOwner === 'function' ? defaultCurrencyOwner() : '') || '');
             const presentSet = (present && present.length) ? present : null;
             const curCands = [];
-            for (const cu of (state.currencies || []).slice().reverse()) {
+            for (const cu of (st().currencies || []).slice().reverse()) {
                 if (!cu || !cu.name) continue;
                 const owner = String(cu.owner || '');
                 const isTracked = (typeof isTrackedCurrencyOwner === 'function') && !!owner && isTrackedCurrencyOwner(owner);
@@ -1077,7 +1108,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             const rumorRows = [];
             const presentSet = (present && present.length) ? present : null;
             const rumCands = [];
-            for (const r of (state.rumors || []).slice().reverse()) {
+            for (const r of (st().rumors || []).slice().reverse()) {
                 if (!r || !r.subject) continue;
                 if (String(r.stage || '') === '沉寂') continue;
                 const hay = `${r.subject} ${r.content || ''} ${(r.tags || []).join(' ')} ${(r.carriers || []).map(c => (c && c.who) || '').join(' ')}`;
@@ -1095,13 +1126,13 @@ function buildMemoryBodyForInject(queryText, opts) {
             if (rumorRows.length) cats.push({ head: '[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）', md: mdHeadOf('[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）'), rows: rumorRows });
         }
         // [计划]：进行中（匹配）按优先级取 maxPlans 条 —— 注入必带 时间/角色/标题/描述
-        const planCands = (state.plans || []).slice().reverse().filter(p => p.status === 'open' && (!q || rawMatch(p.content, q) || rawMatch(p.title || '', q) || tagMatch(p.tags, q) || (p.characters || []).some(c => nameMatch(c, q))));
+        const planCands = (st().plans || []).slice().reverse().filter(p => p.status === 'open' && (!q || rawMatch(p.content, q) || rawMatch(p.title || '', q) || tagMatch(p.tags, q) || (p.characters || []).some(c => nameMatch(c, q))));
         planCands.forEach(p => markCand('plans', p.id));
         planCands.sort((a, b) => (rcScore('plans')(b) || 0) - (rcScore('plans')(a) || 0));
         const openPlans = planCands.slice(0, maxPlans);
         cats.push({ head: '[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）', md: mdHeadOf('[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）'), rows: openPlans.map(p => { if (countUses) markUsed('plans', p); return { score: rcScore('plans')(p), text: `- ${planSuspRelPrefix('plans', p, 'plan')}${planSuspLine(p, 'plan')}`, ref: { dim: 'plans', id: p.id } }; }) });
         // [悬念]：未解（匹配）按优先级取 maxSuspense 条 —— 注入必带 时间/角色/标题/描述
-        const suspCands = (state.suspense || []).slice().reverse().filter(s => s.status === 'open' && (!q || rawMatch(s.content, q) || rawMatch(s.title || '', q) || tagMatch(s.tags, q) || (s.characters || []).some(c => nameMatch(c, q))));
+        const suspCands = (st().suspense || []).slice().reverse().filter(s => s.status === 'open' && (!q || rawMatch(s.content, q) || rawMatch(s.title || '', q) || tagMatch(s.tags, q) || (s.characters || []).some(c => nameMatch(c, q))));
         suspCands.forEach(s => markCand('suspense', s.id));
         suspCands.sort((a, b) => (rcScore('suspense')(b) || 0) - (rcScore('suspense')(a) || 0));
         const openSusp = suspCands.slice(0, maxSuspense);
@@ -1112,7 +1143,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         //   按「现实更新时间」近度 + 命中度 评分取 maxParallelsInj 条
         const parRows = [];
         const parCands = [];
-        for (const p of (state.parallels || []).slice().reverse()) {
+        for (const p of (st().parallels || []).slice().reverse()) {
             // v1.166：已转正为情节的平行事件不再作为平行事件注入（内容已由情节承载）
             if (p && p.promotedTo) continue;
             let expired = false;
@@ -1128,7 +1159,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         cats.push({ head: '[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', md: mdHeadOf('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）'), rows: parRows });
         // [场景地点]：树整体作为一块（保持层级；预算放不下整块则跳过）
         let sceneText = '';
-        const scenes = (state.scenes || []).slice();
+        const scenes = (st().scenes || []).slice();
         if (scenes.length) {
             // 场景按路径和名称识别（q 非空时只保留路径/名称命中的节点）；最多 maxScenes 个场景条目构树
             const filteredScenes = (q ? scenes.filter(s => nameMatch(s.name, q) || String(s.pathStr || '').includes(q.toLowerCase()) || (Array.isArray(s.pathArr) ? s.pathArr.some(seg => nameMatch(seg, q)) : false)) : scenes).slice(0, maxScenes);
@@ -1142,7 +1173,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         // [概念]（命中候选按优先级取 maxConcepts 条）
         const conceptRows = [];
         const conceptCands = [];
-        for (const c of (state.concepts || []).slice().reverse()) {
+        for (const c of (st().concepts || []).slice().reverse()) {
             // 概念按标签相关性识别（tags/keywords）
             if (!q || tagMatch(c.tags, q) || tagMatch(c.keywords, q) || nameMatch(c.name, q)) {
                 // v1.170：概念日期同样附相对时间标注
@@ -1332,7 +1363,7 @@ function buildSceneTreeLines(scenes) {
 // 口径：被总结的原情节**不删除**，只打 `hidden` + `summarizedBy` 标记；此后
 //   ① 不参与注入 / 召回（本地与向量）/ 世界书标签等任何投喂；
 //   ② 不参与存储上限裁剪（淘汰）、情节总结（半自动）、修复与质检、NSFW 扫描与固定规则替换、分段总结批次、去重等**任何自动动作**；
-//   ③ 仍持久保存在 `state.atoms` 中，唯一消失途径 = 人工删除（多选批量删除或逐条删除）；
+//   ③ 仍持久保存在 `st().atoms` 中，唯一消失途径 = 人工删除（多选批量删除或逐条删除）；
 //   ④ 人工删除「总结情节」时，其来源情节自动恢复显示（避免内容被永久藏起来）。
 
 function planPhaseLabel(v) { const p = normPhase(v); return PLAN_PHASE_LABEL[p] || ''; }
@@ -1382,7 +1413,7 @@ function scheduleUseFlush() {
  */
 function trustedPlotList() {
     try {
-        const list = (state.atoms || []).filter((a) => a && a.validity !== 'inactive'
+        const list = (st().atoms || []).filter((a) => a && a.validity !== 'inactive'
             && !(a.hidden === true) && !String(a.summarizedBy || '').trim() && !a.mergedSummary);
         if (!list.length) return [];
         /** v3.16.1：**当前位置**（`floorNow*` 优先，缺失才用原始楼层）—— 拆楼后两者不同尺度，不能混比 */
@@ -1533,7 +1564,7 @@ function atomLatestDated() {
             return best;
         };
         const a = pickDated(activeAtoms(), 'atoms');   // v1.203：排除已总结隐藏
-        const m = pickDated(state.memories, 'memories');
+        const m = pickDated(st().memories, 'memories');
         let best = null;
         if (a && m) best = (m.date > a.date) ? m : a;
         else best = a || m;

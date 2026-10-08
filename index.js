@@ -673,6 +673,18 @@ export async function init() {
         });
     } catch (e) { /* 忽略 */ }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
+    // v3.39.0（用户报告「本地召回失败 Cannot read properties of null (reading 'state')」）：
+    //   内核态初始为 `null`（`core/model/runtime.js`），而**生成拦截器是页面级全局钩子**（manifest 的
+    //   `generate_interceptor`）—— 首屏载入还没结束就发送时，召回会在 `state.state` 上抛错。
+    //   这里**先把空容器注入内核**（载入完成后由 `loadMemoryState` 换成真实态；载入期的用户动作会让
+    //   `kernelStateSeq()` 变化，载入据此让位，语义不变）→ 从根上关掉「state 为 null」的窗口。
+    try {
+        if (!kernelState()) {
+            const placeholder = emptyState();
+            attachKernelState(placeholder);
+            try { debugLogPush('载入', { action: '内核态占位注入（空容器）', note: '首屏载入完成前，召回 / 界面读取都拿到一个合法的空容器，而不是 null' }); } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* 占位失败不阻塞启动 */ }
     try { runtime.i18n = registerLocaleData(); } catch (e) { runtime.i18n = { ok: false, reason: 'error' }; }
     // 界面形态：**弹窗优先**（用户要求对齐 V1）；仅当 cfg.uiShowDrawer 打开时才在扩展设置抽屉里渲染卡片
     if (cfgShowDrawer()) {
