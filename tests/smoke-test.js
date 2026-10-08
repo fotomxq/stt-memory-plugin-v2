@@ -6928,7 +6928,7 @@ await assert('CA1 v3.35.0 修复「选择文件夹后本地存储路径不显示
 // ---------- CB 待确认区（v3.36.0：差异化动作 + 记录分离） ----------
 // 用户报告（原话）：「设定-存储-待确认，点击全部已确认会报错。而且这里设计非常不合理，只能确认无法改其他内容，
 //   那和日志没任何区别了。请重新设计该位置的逻辑，如果是确认，应该有差异化处理的机制；如果不需要确认，则只是一种日志。」
-await assert('CB1 v3.36.0 待确认区重新设计（端到端）：待确认项一栏一项并带**该类自己的动作按钮**、「记录」类只进只读区且不计入待确认；真实点击「✅ 全部已确认」不再报 unknown-action（清待确认、留记录）；真实点击单条动作「✅ 知道了」销账；「🔀 重新同步」经白名单路由；总览「去处理」跳到设定→存储', (async () => {
+await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / 确认留痕（端到端）：待确认项一栏一项并带**该类自己的动作按钮**、「记录」类只进只读区且不计入待确认；真实点击「✅ 全部已确认」不再报 unknown-action（清待确认、留记录）；真实点击单条动作「✅ 知道了」销账；「🔀 重新同步」经白名单路由；总览「去处理」跳到设定→存储', (async () => {
     const CF = await import('../core/conflicts.js');
     const PM = await import('../ui/panel.js');
     const keepHooks = CF.conflictHooks();
@@ -6960,9 +6960,14 @@ await assert('CB1 v3.36.0 待确认区重新设计（端到端）：待确认项
             && page.indexOf('data-ftt-conflict-log-row="删楼|') > 0;
         // ② 真实点击「✅ 全部已确认」——修复前是 unknown-action 报错、且什么都不会发生
         const all = await entry.popupAction('resolveConflicts', {});
+        // v3.37.0（S2）：批量确认给**每一类**都留一条「已确认：<类别>」记录 → 1（删楼）+ 2 = 3
+        const batchLog = storeLog.map((x) => String(x.kind));
         const allOk = all.ok === true && Number(all.cleared) === 2
-            && CF.pendingConflictCount() === 0 && CF.conflictLogCount() === 1
-            && String(all.note || '').indexOf('已全部确认 2 类') >= 0 && String(all.note || '').indexOf('记录') > 0;
+            && CF.pendingConflictCount() === 0 && CF.conflictLogCount() === 5   // 计数口径：1（删楼）+ 3 + 1
+            && String(all.note || '').indexOf('已全部确认 2 类') >= 0 && String(all.note || '').indexOf('记录') > 0
+            && batchLog.indexOf('已确认：跨端合并冲突') >= 0 && batchLog.indexOf('已确认：并集自检异常') >= 0
+            && storeLog.some((x) => String(x.kind) === '已确认：跨端合并冲突' && Number(x.count) === 3)   // 计数如实带过来（该类合并了 3 条）
+            && storeLog.some((x) => String(x.kind) === '已确认：并集自检异常' && Number(x.count) === 1);
         // ③ 真实点击单条动作「✅ 知道了」
         CF.noteConflict({ kind: '并集自检异常', detail: 'D', count: 2 });
         const cid = String((CF.listConflicts()[0] || {}).id || '');
@@ -6981,9 +6986,23 @@ await assert('CB1 v3.36.0 待确认区重新设计（端到端）：待确认项
         const go = await entry.popupAction('goStorageConflicts', {});
         const goOk = go.ok === true && Number(go.conflicts) === 1
             && PM.panelState().tab === 'settings' && String(PM.panelState().settingsSub) === 'storage';
-        const ok = pageOk && allOk && oneOk && rsOk && goOk;
+        // ⑥ v3.37.0（S1）旧数据迁移（端到端）：老版本把「删楼」写进待确认区 → 迁移后搬到只读记录区，
+        //    待确认区只剩真正的 decide 类；若仍留在待确认区，界面也必须有「✅ 知道了」兜底按钮（绝不给无动作的行）
+        store.push({ id: '删楼|旧的删楼通知', kind: '删楼', detail: '旧的删楼通知', count: 1, firstAt: 1, lastAt: 1, seq: 9 });
+        const mig = CF.migrateConflicts();
+        const page2 = String(((await entry.popupAction('refresh', {})).html) || '');
+        const seg2 = page2.slice(page2.indexOf('data-ftt-conflicts'));
+        const migOk = mig.moved === 1 && mig.kept === 1
+            && page2.indexOf('data-ftt-conflict-item="删楼|旧的删楼通知"') < 0
+            && page2.indexOf('data-ftt-conflict-log-row="删楼|旧的删楼通知"') > 0
+            && seg2.indexOf('data-ftt-conflict-item="跨端合并冲突|F"') > 0
+            && seg2.indexOf('data-ftt-cact="dismiss"') > 0
+            && CF.migrateConflicts().moved === 0;                       // 幂等
+        const ok = pageOk && allOk && oneOk && rsOk && goOk && migOk;
         if (!ok) console.log('CB1-DEBUG ' + JSON.stringify({
-            pageOk, allOk, oneOk, rsOk, goOk, n0, log0,
+            pageOk, allOk, oneOk, rsOk, goOk, migOk, n0, log0,
+            batchLog: batchLog, cleared: all.cleared, plog: CF.conflictLogCount(),
+            mig: mig, storeLog: storeLog.map((x) => x.kind),
             hasSection: page.indexOf('data-ftt-conflicts') >= 0,
             header: (page.match(/待确认（共 [^）]*）/) || [''])[0],
             hasItem: page.indexOf('data-ftt-conflict-item=') > 0,

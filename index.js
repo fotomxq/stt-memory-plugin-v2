@@ -12,7 +12,7 @@ import { getSettings, setSetting } from './adapters/settings.js';
 // v2.90.0（用户要求）：管线状态的历史耗时（预估倒计时样本）落 ST 扩展设置 —— 不进数据模型 → DATA_VERSION 不变
 import { setPipelineHooks } from './core/pipeline.js';
 // v2.92.0（用户要求）：需人工确认项（跨端冲突/自检异常）—— 设定 + 总览同时展示，落 ST 扩展设置
-import { setConflictHooks } from './core/conflicts.js';
+import { setConflictHooks, migrateConflicts } from './core/conflicts.js';
 import { setFloorShrinkHook } from './host/floors.js';
 import { mergeDataObjects, mergeSnapshotStores } from './core/cross-sync.js';   // v3.0.21：载入并集（服务端文件为基底 + 本机缓冲补充）
 import { noteConflict } from './core/conflicts.js';
@@ -651,6 +651,9 @@ export async function init() {
     try { runtime.aux = await auxStoreInit(); } catch (e) { runtime.aux = { ok: false, error: String((e && e.message) || e) }; }
     // B9-a：调试日志接线（内核环形缓冲 ⇄ 本机持久层；V1 `dbgLoadFromStorage()` 的 V2 等价物在 wireDebugLog 内）
     try { runtime.debug = wireDebugLog(); } catch (e) { runtime.debug = { persistent: false, synced: 0 }; }
+    // v3.37.0（设计复核 S3）：**冲突 / 记录钩子在这里就接上**（幂等；`openPanelPopup` 也调用）——
+    //   否则「没开过面板」的会话里，合并冲突 / 删楼通知会写进默认内存钩子 → 直接丢失；顺带迁移老待确认项（S1）。
+    try { wireConflictHooks(); } catch (e) { /* 忽略 */ }
     // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：
     //   读取台账 → 调试日志（`kind='读取'`）+ 交互时间线（`kernel/read`）。台账本身是纯内核，
     //   出口（日志/时间线）由这里注入 —— 内核零宿主依赖。
@@ -1697,6 +1700,35 @@ function panelHooks() {
  * 优先 `callGenericPopup(html, POPUP_TYPE.TEXT)`；不可用时退回「再试挂载 + 提示」。
  * @returns {Promise<{ok:boolean, via:string, reason?:string}>}
  */
+/**
+ * v3.37.0（用户要求「请核对是否有设计缺陷」· 设计复核 S3）：
+ * **冲突 / 记录钩子接线**（幂等）。此前只在 `openPanelPopup` 里接 → **没开过面板时**（例如只跑分析、
+ *   自动同步合并出冲突、内置删楼）`noteConflict` 写进的是**默认内存钩子**（`get:()=>[]` / `save:no-op`）
+ *   → 记录**直接丢失**（用户下次开面板什么都看不到）。
+ *   现在 `init()` 也调用它（并且装配时顺带迁移老数据，见 `migrateConflicts`）。
+ */
+let conflictWired = false;
+function wireConflictHooks() {
+    if (conflictWired) return true;
+    conflictWired = true;
+    try {
+        setConflictHooks({
+            get: () => { try { return getSettings().syncConflicts || []; } catch (e) { return []; } },
+            save: (list) => { try { setSetting('syncConflicts', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
+            // v3.36.0：**只读记录**区与「待确认」分开存；`log` 钩子同时写一条调试日志（不再要求用户确认）
+            getLog: () => { try { return getSettings().syncConflictLog || []; } catch (e) { return []; } },
+            saveLog: (list) => { try { setSetting('syncConflictLog', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
+            log: (item) => { try { debugLogPush('同步', { action: '记录（无需确认）', kind: String((item && item.kind) || ''), detail: String((item && item.detail) || '').slice(0, 200), count: Number((item && item.count) || 1) }); } catch (e) { /* 忽略 */ } },
+        });
+        // v3.37.0（S1）：把「语义已变成记录」的老待确认项迁到记录区（幂等；否则界面会出现**没有动作按钮**的行）
+        try {
+            const mg = migrateConflicts();
+            if (mg.moved) debugLogPush('同步', { action: '待确认项迁移（老数据 → 记录区）', moved: mg.moved, kept: mg.kept, log: mg.log });
+        } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 忽略 */ }
+    return true;
+}
+
 export async function openPanelPopup(tab) {
     // V1 同构主界面：**浮层 #ftt-panel**（13 分页 + V1 原样式）
     try {
@@ -1714,14 +1746,8 @@ export async function openPanelPopup(tab) {
             } catch (e) { /* 忽略 */ }
         });
         // v3.36.0（用户要求「重新设计该位置的逻辑」）：待确认清单与**只读记录**分成两个设置键；
-        //   `log` 钩子把「记录」类同时写一条调试日志（不再要求用户确认）
-        setConflictHooks({
-            get: () => { try { return getSettings().syncConflicts || []; } catch (e) { return []; } },
-            save: (list) => { try { setSetting('syncConflicts', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
-            getLog: () => { try { return getSettings().syncConflictLog || []; } catch (e) { return []; } },
-            saveLog: (list) => { try { setSetting('syncConflictLog', Array.isArray(list) ? list : []); } catch (e) { /* 忽略 */ } },
-            log: (item) => { try { debugLogPush('同步', { action: '记录（无需确认）', kind: String((item && item.kind) || ''), detail: String((item && item.detail) || '').slice(0, 200), count: Number((item && item.count) || 1) }); } catch (e) { /* 忽略 */ } },
-        });
+        //   v3.37.0（S3）：改走幂等 `wireConflictHooks()`（`init()` 也会调用 → 没开过面板也不丢记录）
+        wireConflictHooks();
         wirePipelineHooks();
         setDebugPageHooks({
             dump: () => debugDumpSnapshot(),

@@ -14,6 +14,16 @@
 //       **不计入待确认计数、不需要确认**，并同时写一条调试日志。
 //   去重与上限纪律不变（`kind + detail` 去重累加、待确认上限 50 条、记录上限 20 条）。
 //   持久化仍由宿主注入（ST 扩展设置 `syncConflicts` / `syncConflictLog`，**不进数据模型** → DATA_VERSION 不变）。
+//
+// v3.37.0（用户要求「请核对是否有设计缺陷」）—— 复核出并修掉的三处**设计缺陷**：
+//   S1 **旧数据会变成「无法处理」**：v3.35 及更早写进 `syncConflicts` 的「删楼 / 楼层收缩 / 跨端分歧」升级后落在
+//      **待确认**区，而它们的新语义是「记录」→ 渲染出来**一个动作按钮都没有**（既不能单条确认，又占着徽标）。
+//      修：`migrateConflicts()` 在装配时把它们**迁移到记录区**（保留计数与明细，幂等）＋ 界面兜底：任何待确认项
+//      若该类没有可用动作，一律补一个「✅ 知道了」（绝不出现「无法处理」的行）。
+//   S2 **「确认」不留痕**：处理动作只清清单，事后无从追溯（用户原话的另一面：「和日志没区别」）。
+//      修：`resolveConflict` / `clearConflicts` 追加一条**合并计数**的记录（`已确认：<类别> ×N`）。
+//   S3 **钩子只在开面板时才接上**（`index.js#openPanelPopup`）：没开过面板时的合并冲突 / 删楼通知
+//      被写进默认内存钩子 → **直接丢失**。修：`wireConflictHooks()` 在 `init()` 里就接线（幂等）。
 // ============================================================
 
 export const CONFLICT_CAP = 50;
@@ -118,6 +128,13 @@ export function noteConflict(item) {
     return { ok: true, id: base.id, mode: 'decide', count: r.count, total: r.total, remain: pendingConflictCount() };
 }
 
+/** 追加一条「记录」（只读区；按 kind+detail 去重累加；返回 `{ok,id,mode:'log',count,total}`） */
+function noteLog(kind, detail, count) {
+    const r = upsert(loadLog(), { id: String(kind) + '|' + String(detail), kind: String(kind), detail: String(detail), count: count, scope: '' }, CONFLICT_LOG_CAP, () => ++seqLog);
+    saveLog(r.list);
+    return { ok: true, id: String(kind) + '|' + String(detail), mode: 'log', count: r.count, total: r.total };
+}
+
 /** 待确认项列表（副本，倒序：最新在前） */
 export function listConflicts() { return load().slice(); }
 /** 只读**记录**列表（副本；这些不需要确认） */
@@ -141,15 +158,51 @@ export function conflictLogCount() {
 export function resolveConflict(idOrKind, action) {
     const k = String(idOrKind || '');
     const list = load();
+    const gone = list.filter((x) => String(x.id) === k || String(x.kind) === k);
     const next = list.filter((x) => String(x.id) !== k && String(x.kind) !== k);
     save(next);
+    // v3.37.0（S2）：「确认」也留痕 —— 每条被处理掉的待确认项在记录区留一条**合并计数**的记录（同样只读、无需再确认）
+    try {
+        for (const x of gone) noteLog('已确认：' + String(x.kind || ''), String(x.detail || '').slice(0, 120), Math.max(1, Number(x.count) || 1));
+    } catch (e) { /* 忽略 */ }
     return { ok: true, removed: list.length - next.length, remain: next.length, action: String(action || CONFLICT_ACT.DISMISS), pending: pendingConflictCount() };
 }
 /** 全部标记已确认（**只清待确认清单**；只读记录原样保留） */
 export function clearConflicts() {
-    const n = load().length;
+    const list = load();
+    const n = list.length;
     save([]);
+    try {
+        for (const x of list) noteLog('已确认：' + String(x.kind || ''), String(x.detail || '').slice(0, 120), Math.max(1, Number(x.count) || 1));
+    } catch (e) { /* 忽略 */ }
     return { ok: true, cleared: n, keptLog: loadLog().length, pending: 0 };
+}
+
+/**
+ * v3.37.0（S1）：**旧数据迁移** —— 把「语义已变成记录」的类别从待确认区搬到记录区。
+ *   背景：v3.35 及更早把删楼 / 楼层收缩 / 跨端分歧都写进 `syncConflicts`（那时只有待确认一种语义）；
+ *   现在这些类别的 `mode` 是 `log` → 它们若留在待确认区，界面**无动作按钮可点**（既不能单条确认，又占徽标）。
+ *   幂等：搬过之后再跑不产生变化；明细与计数原样保留（合并进记录区的同 id 记录）。
+ * @returns {{moved:number, kept:number, log:number}}
+ */
+export function migrateConflicts() {
+    let moved = 0;
+    try {
+        const list = load();
+        if (!list.length) return { moved: 0, kept: 0, log: loadLog().length };
+        const keep = [];
+        for (const x of list) {
+            const spec = conflictKindSpec(x.kind);
+            if (spec.mode === 'log') {
+                noteLog(String(x.kind || ''), String(x.detail || ''), Math.max(1, Number(x.count) || 1));
+                moved++;
+                continue;
+            }
+            keep.push(x);
+        }
+        if (moved) save(keep);
+        return { moved: moved, kept: keep.length, log: loadLog().length };
+    } catch (e) { return { moved: 0, kept: load().length, log: loadLog().length }; }
 }
 
 /** 供 UI 展示的一句话摘要（只统计待确认；不泄露内容） */

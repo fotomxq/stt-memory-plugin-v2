@@ -2541,6 +2541,7 @@ export async function panelAction(action, payload) {
             //   （此前该动作未登记 → 点击报 unknown-action；与「全部已确认」一并修复）
             ps.tab = 'settings';
             ps.settingsSub = 'storage';
+            ps.editing = null; ps.peek = ''; ps.flash = null;      // v3.37.0：与 `tab` 动作同口径（切页不留残留编辑/速览）
             const n = pendingConflictCount();
             setNote(n ? ('已定位到 设定 → 存储：待确认 ' + n + ' 项（每类带自己的处理动作）') : '当前没有待确认项');
             result = Object.assign(result, { ok: true, action: a, conflicts: pendingConflictCount() });
