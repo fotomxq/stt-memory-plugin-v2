@@ -32,6 +32,8 @@
 //   解析到**应用数据目录**下（`$APPLOCALDATA/<名字>`），并把**解析后的完整路径**回填显示 —— 桌面与 Android 同一套口径。
 // ============================================================
 import { cfg, dbgLog } from '../core/model/runtime.js';
+// v3.38.0（用户报告「PC 端不可用」）：**浏览器内置目录**（OPFS）—— 纯浏览器也能构造真文件（无需宿主接口）
+import { browserFsAvailable, browserFsNote, browserFsReset, browserFsWrite, browserFsRead, browserFsExists, browserFsRemove, browserFsList, browserFsProbe } from './browser-fs.js';
 
 /** 探测结果缓存（每次会话探一次；`localDiskReprobe()` 可强制重探） */
 let caps = null;
@@ -72,6 +74,8 @@ export function localDiskRaw() {
  */
 export function localDiskOn() {
     const raw = localDiskRaw();
+    // v3.38.0：浏览器内置目录 —— 当前浏览器不支持 OPFS 时如实算「未开启」（与句柄失效同纪律，绝不假装能写）
+    if (localDiskIsBrowserPath(raw)) return browserFsAvailable();
     if (fsHandle) return true;
     return !!(raw && !localDiskIsHandlePath(raw));
 }
@@ -81,6 +85,7 @@ export function localDiskPathKind(raw) {
     const s = String(raw == null ? '' : raw).trim();
     if (!s) return 'empty';
     if (localDiskIsHandlePath(s)) return 'handle';     // v3.35.0：浏览器选中的文件夹（绝对路径不可见）
+    if (localDiskIsBrowserPath(s)) return 'browser';   // v3.38.0：浏览器内置目录（OPFS，刷新后仍在）
     if (/^[A-Za-z]:[\\/]/.test(s)) return 'windows-abs';
     if (s.slice(0, 2) === '\\\\') return 'unc';          // UNC：以两个反斜杠开头（写成字符比较，避免转义歧义）
     if (s.charAt(0) === '/') return 'posix-abs';
@@ -139,6 +144,40 @@ export function localDiskHandleMarker(name) {
 }
 
 /**
+ * v3.38.0：**浏览器内置目录标记** `@browser/<目录名>`。
+ *   为什么需要它：`@handle/<名>`（浏览器选中的文件夹）**只在本会话有效**，刷新即失效；
+ *   而纯浏览器（PC 酒馆网页版 / Firefox）又没有宿主 fs —— 于是「本地存储路径」在 PC 上根本不可用。
+ *   `@browser/<名>` 指向**浏览器自带**的 OPFS 目录：不需要宿主接口、刷新后仍在，且**设备中立**
+ *   （同一个配置在手机与 PC 上都成立，各自写各自的浏览器目录）。
+ */
+export const BROWSER_PREFIX = '@browser/';
+/** 是否为「浏览器内置目录」标记路径 */
+export function localDiskIsBrowserPath(raw) {
+    try { return String(raw == null ? '' : raw).trim().indexOf(BROWSER_PREFIX) === 0; } catch (e) { return false; }
+}
+/** 从标记路径里取目录名（非标记 → 空串） */
+export function localDiskBrowserName(raw) {
+    try {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!localDiskIsBrowserPath(s)) return '';
+        return s.slice(BROWSER_PREFIX.length).split(/[\\/]+/).filter(Boolean)[0] || '';
+    } catch (e) { return ''; }
+}
+/** 由目录名生成标记路径（`''` 名 → 空串） */
+export function localDiskBrowserMarker(name) {
+    const n = String(name == null ? '' : name).trim().split(/[\\/]+/).filter(Boolean)[0] || '';
+    return n ? (BROWSER_PREFIX + n) : '';
+}
+/** 标记路径 → 浏览器内置目录根下的相对路径（`@browser/a/b.json` → `a/b.json`） */
+function browserRel(path) {
+    try {
+        const s = String(path == null ? '' : path).trim();
+        const rest = localDiskIsBrowserPath(s) ? s.slice(BROWSER_PREFIX.length) : s;
+        return rest.split(/[\\/]+/).filter((x) => x && x !== '.' && x !== '..').join('/');
+    } catch (e) { return ''; }
+}
+
+/**
  * v3.33.0（用户报告「修复本地存储路径设置，无法设置 android」）：**平台识别**。
  *   为什么要它：路径形态**因平台而异** —— 桌面是 `D:\…`，Android 是 `/storage/emulated/0/…`；
  *   而配置随服务端同步会把桌面路径搬到 Android（或反之），在那台设备上必然写不进去。
@@ -194,6 +233,7 @@ export function localDiskPathWarn(raw, platform) {
     if (!dir) return '';
     const kind = localDiskPathKind(dir);
     if (kind === 'handle') return '';    // v3.35.0：浏览器选中的文件夹没有跨平台路径问题
+    if (kind === 'browser') return '';   // v3.38.0：浏览器内置目录是设备中立的标记，跨平台照用
     const plat = String(platform || localDiskPlatform().name);
     const relativeTip = '改成**只填一个目录名**（如 fft_v2_store）即可自动落在宿主应用数据目录内';
     if (plat === 'android' || plat === 'ios') {
@@ -310,7 +350,24 @@ export async function localDiskPickDir() {
             tried.push({ mechanism: 'fs-handle', error: 'unsupported', note: '本机没有 File System Access API' });
         }
     } catch (e) { tried.push({ mechanism: 'fs-handle', error: String((e && e.message) || e) }); }
-    // ③ 宿主 dev API 的选目录方法
+    // ③ v3.38.0：**浏览器内置目录**（OPFS）—— 没有文件夹选择器时（Android / Firefox）也能用**纯浏览器方法**建文件
+    try {
+        if (browserFsAvailable()) {
+            const name = defaultBrowserDirName();
+            const pb = await browserFsProbe(name);
+            tried.push({ mechanism: 'browser-opfs', name: name, ok: !!pb.ok, error: pb.ok ? '' : String(pb.error || '') });
+            if (pb.ok) {
+                const marker = localDiskBrowserMarker(name);
+                return {
+                    ok: true, mechanism: 'browser-opfs', path: marker, marker: marker, name: name,
+                    note: '已使用**浏览器内置目录**「' + name + '」（OPFS · 写探针通过）—— 路径框已填入 ' + marker
+                        + '；纯浏览器方法，不需要宿主接口：PC 与手机都能用，刷新后仍有效（文件保存在本浏览器内）',
+                    tried: tried,
+                };
+            }
+        } else tried.push({ mechanism: 'browser-opfs', error: 'unsupported', note: '本浏览器不支持内置目录（OPFS）' });
+    } catch (e) { tried.push({ mechanism: 'browser-opfs', error: String((e && e.message) || e) }); }
+    // ④ 宿主 dev API 的选目录方法
     const dp = devPickMethod();
     if (dp) {
         try {
@@ -328,8 +385,42 @@ export async function localDiskPickDir() {
     const plat = localDiskPlatform(false);
     return {
         ok: false, reason: 'unsupported', tried: tried,
-        note: '本机（' + localDiskPlatformLabel(plat.name) + '）没有可用的文件夹选择器：' + tried.map((x) => String(x.mechanism) + (x.error ? ('✗' + String(x.error).slice(0, 40)) : '✓')).join(' · ')
+        note: '本机（' + localDiskPlatformLabel(plat.name) + '）没有可用的文件夹选择器，且浏览器内置目录不可用：' + tried.map((x) => String(x.mechanism) + (x.error ? ('✗' + String(x.error).slice(0, 40)) : '✓')).join(' · ')
             + ' —— 直接**只填一个目录名**（如 fft_v2_store）后点「✅ 校验本地磁盘目录」即可（会自动落在宿主应用数据目录内）',
+    };
+}
+
+/** 浏览器内置目录的默认目录名：沿用当前「相对目录名」配置，否则 `fft_v2_store` */
+function defaultBrowserDirName() {
+    try {
+        const raw = localDiskRaw();
+        if (raw && localDiskPathKind(raw) === 'relative') return localDiskBrowserName(raw) || raw;
+    } catch (e) { /* 忽略 */ }
+    return 'fft_v2_store';
+}
+
+/**
+ * v3.38.0（用户要求「设定到本地时，应该通过浏览器方法去构建相关文件」）：
+ *   **显式选择**「浏览器内置目录」—— 由浏览器自己建文件（OPFS），不需要宿主接口。
+ *   设备中立（同一配置手机 / PC 都成立）、刷新后仍有效；写探针通过才接受。
+ * @param {string} [name] 目录名（默认沿用当前配置的相对名，否则 `fft_v2_store`）
+ * @returns {Promise<{ok:boolean, mechanism?:string, path?:string, marker?:string, name?:string, note:string, tried:Array<object>}>}
+ */
+export async function localDiskUseBrowserDir(name) {
+    const n = String(name == null ? '' : name).trim().split(/[\\/]+/).filter(Boolean)[0] || defaultBrowserDirName();
+    const tried = [];
+    if (!browserFsAvailable()) {
+        tried.push({ mechanism: 'browser-opfs', name: n, error: 'unsupported', note: browserFsNote() });
+        return { ok: false, reason: 'unsupported', note: '本浏览器不支持内置目录（OPFS）：' + browserFsNote() + ' —— 可改用「📂 选择文件夹…」或宿主目录', tried: tried };
+    }
+    const pb = await browserFsProbe(n);
+    tried.push({ mechanism: 'browser-opfs', name: n, ok: !!pb.ok, error: pb.ok ? '' : String(pb.error || '') });
+    if (!pb.ok) return { ok: false, reason: 'probe-failed', note: '浏览器内置目录写探针失败：' + String(pb.error || 'write-failed'), tried: tried };
+    const marker = localDiskBrowserMarker(n);
+    return {
+        ok: true, mechanism: 'browser-opfs', path: marker, marker: marker, name: n, tried: tried,
+        note: '已使用**浏览器内置目录**「' + n + '」（OPFS · 写探针通过）—— 路径框已填入 ' + marker
+            + '；纯浏览器方法（PC / 手机通用，刷新后仍有效），文件在本浏览器内，可在调试页查看清单',
     };
 }
 
@@ -347,6 +438,71 @@ async function handleUsable() {
     } catch (e) { return false; }
 }
 const baseNameOfPath = (p) => String(p == null ? '' : p).split(/[\\/]/).filter(Boolean).pop() || '';
+/**
+ * v3.38.0：**句柄是否该接管本次读写** —— 只有「配置就是句柄标记」或「配置为空但有会话句柄」时才接管。
+ *   修复一处**假成功**：旧实现在任何路径下都优先用句柄（`fsHandle && handleUsable()`），
+ *   于是本会话选过文件夹后，校验一个显式绝对路径也会写进那个文件夹、回读也自洽 → 探针**永远通过**。
+ */
+function handleActive() {
+    try {
+        const raw = localDiskRaw();
+        return !!fsHandle && (localDiskIsHandlePath(raw) || !raw);
+    } catch (e) { return false; }
+}
+/** 句柄内的相对路径（`@handle/<名>/a/b.json` → `a/b.json`；目录本身 → `''`） */
+function relForHandle(path) {
+    try {
+        const s = String(path == null ? '' : path).trim();
+        if (localDiskIsHandlePath(s)) return s.slice(HANDLE_PREFIX.length).split(/[\\/]+/).filter(Boolean).slice(1).join('/');
+        return s.split(/[\\/]+/).filter((x) => x && x !== '.' && x !== '..').join('/');
+    } catch (e) { return ''; }
+}
+/** 按相对路径写入会话句柄（逐段建目录） */
+async function handleWritePath(rel, text) {
+    const parts = String(rel == null ? '' : rel).split('/').filter(Boolean);
+    if (!parts.length) throw new Error('empty-path');
+    const name = parts.pop();
+    let h = fsHandle;
+    for (const p of parts) h = await h.getDirectoryHandle(p, { create: true });
+    const fh = await h.getFileHandle(name, { create: true });
+    const ws = await fh.createWritable();
+    await ws.write(String(text == null ? '' : text));
+    await ws.close();
+    return { ok: true };
+}
+/** 按相对路径读取会话句柄 */
+async function handleReadPath(rel) {
+    const parts = String(rel == null ? '' : rel).split('/').filter(Boolean);
+    if (!parts.length) throw new Error('empty-path');
+    const name = parts.pop();
+    let h = fsHandle;
+    for (const p of parts) h = await h.getDirectoryHandle(p);
+    const fh = await h.getFileHandle(name);
+    const f = await fh.getFile();
+    return { ok: true, text: await f.text() };
+}
+/** 删会话句柄里的一个文件（`rel` 相对句柄根） */
+async function handleRemovePath(rel) {
+    const parts = String(rel == null ? '' : rel).split('/').filter(Boolean);
+    if (!parts.length) throw new Error('empty-path');
+    const name = parts.pop();
+    let h = fsHandle;
+    for (const p of parts) h = await h.getDirectoryHandle(p);
+    await h.removeEntry(name);
+    return { ok: true };
+}
+/** 列出会话句柄里的相对目录（`''` = 根） */
+async function handleListPath(rel) {
+    const out = [];
+    let h = fsHandle;
+    for (const p of String(rel == null ? '' : rel).split('/').filter(Boolean)) h = await h.getDirectoryHandle(p);
+    for await (const ent of h.entries()) {
+        const nm = Array.isArray(ent) ? ent[0] : (ent && ent.name);
+        const hh = Array.isArray(ent) ? ent[1] : ent;
+        out.push({ name: String(nm || ''), isFile: !(hh && hh.kind === 'directory'), size: 0 });
+    }
+    return out;
+}
 async function handleWriteText(name, text) {
     const fh = await fsHandle.getFileHandle(String(name), { create: true });
     const ws = await fh.createWritable();
@@ -430,12 +586,24 @@ async function diskMkdir(dir) {
 }
 /** 是否存在（探针清理前的**存在性判断** —— 与「绝不盲删」同纪律） */
 export async function localDiskExists(path) {
+    // v3.38.0：浏览器内置目录 / 会话句柄各自判断存在性（不再只问宿主）
+    try {
+        if (localDiskIsBrowserPath(path)) return await browserFsExists(browserRel(path));
+        if (handleActive() && fsHandle) {
+            try { await handleReadPath(relForHandle(path)); return true; } catch (e) { return false; }
+        }
+    } catch (e) { /* 落到宿主判断 */ }
     const inv = tauriInvoke();
     if (!inv || !path) return false;
     try { return (await inv('plugin:fs|exists', { path: path, options: {} })) === true; } catch (e) { return false; }
 }
-/** 删一个文件（**只删自己写下的探针文件**；失败只记诊断） */
+/** 删一个文件（**只删自己写下的探针 / 过期文件**；失败只记诊断） */
 async function diskRemove(path) {
+    // v3.38.0：三个后端都要能删 —— 否则浏览器内置目录的探针文件会**留在**用户的目录里（清理失效）
+    try {
+        if (localDiskIsBrowserPath(path)) return !!(await browserFsRemove(browserRel(path))).ok;
+        if (handleActive() && fsHandle) return !!(await handleRemovePath(relForHandle(path))).ok;
+    } catch (e) { /* 落到宿主机制 */ }
     const inv = tauriInvoke();
     if (!inv || !path) return false;
     try { await inv('plugin:fs|remove', { path: path, options: {} }); return true; } catch (e) { return false; }
@@ -460,10 +628,24 @@ export async function localDiskResolveDir(input) {
     if (!raw) return { ok: false, dir: '', raw: '', resolved: false, base: '', error: 'empty' };
     // v3.35.0：句柄标记不是宿主路径 —— 原样返回（写入会走本会话的文件夹句柄），绝不解析成宿主目录
     if (localDiskIsHandlePath(raw)) return { ok: true, dir: raw, raw: raw, resolved: false, base: '', handleMode: true, error: '' };
+    // v3.38.0：浏览器内置目录标记 —— 原样返回（写入走 OPFS），同样绝不解析成宿主目录
+    if (localDiskIsBrowserPath(raw)) return { ok: true, dir: raw, raw: raw, resolved: false, base: browserFsNote(), browserMode: true, error: '' };
     const kind = localDiskPathKind(raw);
     if (kind !== 'relative') return { ok: true, dir: raw, raw: raw, resolved: false, base: '', error: '' };
     const b = await localDiskBaseDir(false);
-    if (!b.ok || !b.dir) return { ok: false, dir: raw, raw: raw, resolved: false, base: '', error: String(b.error || 'no-base-dir') };
+    if (!b.ok || !b.dir) {
+        /**
+         * v3.38.0（用户报告「手机端必须用内置路径，跑到 PC 端又不可用」）：**纯浏览器也要能用**。
+         *   相对目录名在「没有宿主文件接口」的本机（PC 酒馆网页版 / Firefox）以前直接失败 →
+         *   现在落到**浏览器内置目录**（OPFS）：同一份配置（`fft_v2_store`）在手机（宿主应用数据目录）
+         *   与 PC（浏览器目录）**都成立**，各自写各自的本地目录 —— 这正是「本地存储路径」该有的语义。
+         *   注意：此时**不把解析结果写回配置**（保持设备中立的目录名，见 `localDiskEnsureResolved`）。
+         */
+        if (browserFsAvailable()) {
+            return { ok: true, dir: localDiskBrowserMarker(raw), raw: raw, resolved: false, browserMode: true, base: browserFsNote(), error: '' };
+        }
+        return { ok: false, dir: raw, raw: raw, resolved: false, base: '', error: String(b.error || 'no-base-dir') };
+    }
     return { ok: true, dir: localDiskJoin(b.dir, raw), raw: raw, resolved: true, base: b.dir + '（' + b.label + '）', error: '' };
 }
 /**
@@ -473,7 +655,9 @@ export async function localDiskResolveDir(input) {
  */
 async function effectiveDir() {
     const raw = localDiskRaw();
-    if (!raw) return '';
+    // v3.38.0：配置留空但本会话已选文件夹 → 用**句柄标记**当目录（此前返回 `''` → 各入口一律 `off`，
+    //   与 `localDiskOn()`（句柄存在即为开启）自相矛盾：选了文件夹却一个文件都写不出来）
+    if (!raw) return fsHandle ? localDiskHandleMarker(String(fsHandle.name || '')) : '';
     if (localDiskPathKind(raw) !== 'relative') return raw;
     const rs = await localDiskResolveDir(raw);
     return (rs.ok && rs.dir) ? rs.dir : raw;
@@ -488,6 +672,8 @@ export async function localDiskEnsureResolved() {
     if (!raw || localDiskPathKind(raw) !== 'relative') return { ok: true, dir: raw, resolved: false, error: '' };
     const rs = await localDiskResolveDir(raw);
     if (!rs.ok || !rs.dir) return { ok: false, dir: raw, resolved: false, error: String(rs.error || 'resolve-failed') };
+    // v3.38.0：落到浏览器内置目录时**保持原目录名**（设备中立：换设备各自解析，绝不写死成某个路径）
+    if (rs.browserMode) return { ok: true, dir: String(rs.dir || raw), resolved: false, browserMode: true, error: '' };
     try {
         cfg.storage = Object.assign({}, cfg.storage || {});
         cfg.storage.localDiskDir = rs.dir;
@@ -497,12 +683,22 @@ export async function localDiskEnsureResolved() {
 }
 
 /**
+ * v3.38.0：本机是否存在**任一**可用机制（宿主接口 / 会话句柄 / 浏览器内置目录）。
+ *   用于把「没有机制」与「机制有、但这次调用失败」分开如实回报。
+ */
+function hasAnyMechanism() {
+    try { if (localDiskCapability(false).ok) return true; } catch (e) { /* 忽略 */ }
+    try { if (fsHandle) return true; } catch (e) { /* 忽略 */ }
+    return browserFsAvailable();
+}
+
+/**
  * 探测宿主可用的「写盘」能力（**只读探测，不写任何东西**）。
  * @returns {{ok:boolean, mechanism:string, ns:string, writeMethod:string, readMethod:string, tauriFs:boolean, devKeys:string[], note:string}}
  */
 export function localDiskCapability(reprobe) {
     if (caps && !reprobe) return caps;
-    const out = { ok: false, mechanism: '', ns: '', writeMethod: '', readMethod: '', tauriFs: false, devKeys: [], note: '' };
+    const out = { ok: false, mechanism: '', ns: '', writeMethod: '', readMethod: '', tauriFs: false, browserFs: false, devKeys: [], note: '' };
     try {
         const a = abi();
         const dev = a && a.api && a.api.dev ? a.api.dev : null;
@@ -532,7 +728,13 @@ export function localDiskCapability(reprobe) {
             out.note = '检测到 Tauri 原始桥（fs 插件命令；是否放行取决于宿主 ACL，需用探针实测）';
         }
         out.ok = out.ok || out.tauriFs;
-        if (!out.ok) out.note = '宿主未提供任何「写任意磁盘路径」的接口（api.dev 无文件类命名空间、也无 Tauri 原始桥）';
+        /**
+         * v3.38.0：**浏览器内置目录**（OPFS）也算「可用机制」—— 它是纯浏览器方法，不需要任何宿主接口。
+         *   以前这里只认宿主接口 → PC 酒馆网页版报 `ok:false`（用户报告的「PC 端不可用」）。
+         */
+        out.browserFs = browserFsAvailable();
+        if (!out.ok && out.browserFs) { out.ok = true; out.mechanism = 'browser-opfs'; out.note = browserFsNote(); }
+        if (!out.ok) out.note = '本机没有可用的本地目录机制（api.dev 无文件类命名空间、无 Tauri 原始桥、浏览器也不支持内置目录）';
     } catch (e) { out.note = String((e && e.message) || e); }
     caps = out;
     return caps;
@@ -542,8 +744,15 @@ export function localDiskReprobe() { return localDiskCapability(true); }
 
 /** 写文本（按探测到的机制；不抛错，失败如实回报） */
 async function diskWriteText(path, text) {
-    // v3.30.0：**浏览器选中的文件夹句柄优先**（原生、无需宿主 API）
-    try { if (fsHandle && await handleUsable()) return Object.assign(await handleWriteText(String(path).split(/[\\/]/).pop(), text), { mechanism: 'fs-handle' }); } catch (e) { /* 落到下面的宿主机制 */ }
+    // v3.38.0 ① **浏览器内置目录（OPFS）**：纯浏览器方法，不需要宿主接口（PC 端可用性的根因修复）
+    if (localDiskIsBrowserPath(path)) {
+        const r = await browserFsWrite(browserRel(path), text);
+        return r.ok
+            ? { ok: true, mechanism: 'browser-opfs', path: String(r.path || '') }
+            : { ok: false, reason: 'browser-write-failed', error: String(r.error || 'write-failed') };
+    }
+    // v3.30.0 ② 浏览器选中的文件夹句柄（原生、无需宿主 API）；v3.38.0：只在**配置就是句柄标记**时接管
+    try { if (handleActive() && await handleUsable()) { await handleWritePath(relForHandle(path), text); return { ok: true, mechanism: 'fs-handle' }; } } catch (e) { /* 落到下面的宿主机制 */ }
     const c = localDiskCapability(false);
     const body = String(text == null ? '' : text);
     if (!c.ok) return { ok: false, reason: 'no-capability', error: c.note };
@@ -592,7 +801,12 @@ async function diskWriteText(path, text) {
 }
 /** 读文本 */
 async function diskReadText(path) {
-    try { if (fsHandle && await handleUsable()) return Object.assign(await handleReadText(String(path).split(/[\\/]/).pop()), { mechanism: 'fs-handle' }); } catch (e) { /* 落到下面的宿主机制 */ }
+    // v3.38.0 ① 浏览器内置目录（OPFS）
+    if (localDiskIsBrowserPath(path)) {
+        const r = await browserFsRead(browserRel(path));
+        return r.ok ? { ok: true, text: String(r.text == null ? '' : r.text), mechanism: 'browser-opfs' } : { ok: false, reason: String(r.ok ? 'read-failed' : 'browser-miss'), error: String(r.error || 'miss') };
+    }
+    try { if (handleActive() && await handleUsable()) return Object.assign(await handleReadPath(relForHandle(path)), { mechanism: 'fs-handle' }); } catch (e) { /* 落到下面的宿主机制 */ }
     const c = localDiskCapability(false);
     if (!c.ok) return { ok: false, reason: 'no-capability', error: c.note };
     try {
@@ -622,9 +836,16 @@ export async function localDiskList() {
     const out = { ok: false, dir: dir, names: [], entries: [], error: '' };
     if (!dir) { out.error = 'off'; return out; }
     try {
-        if (fsHandle && await handleUsable()) { out.entries = await handleList(); out.names = out.entries.map((x) => x.name); out.ok = true; return out; }
+        // v3.38.0：浏览器内置目录（OPFS）
+        if (localDiskIsBrowserPath(dir)) {
+            const r = await browserFsList(browserRel(dir));
+            out.entries = r.entries || []; out.names = out.entries.map((x) => x.name); out.ok = !!r.ok;
+            out.error = r.ok ? '' : String(r.error || 'browser-list-failed');
+            return out;
+        }
+        if (handleActive() && await handleUsable()) { out.entries = await handleListPath(relForHandle(dir)); out.names = out.entries.map((x) => x.name); out.ok = true; return out; }
         const inv = tauriInvoke();
-        if (!inv) { out.error = 'no-invoke'; return out; }
+        if (!inv) { out.error = hasAnyMechanism() ? 'no-invoke' : String(localDiskCapability(false).note || 'no-capability'); return out; }
         const r = await inv('plugin:fs|read_dir', { path: dir, options: {} });
         const arr = Array.isArray(r) ? r : (r && Array.isArray(r.entries) ? r.entries : []);
         out.entries = arr.map((x) => ({
@@ -717,6 +938,8 @@ export async function localDiskProbeDir(rawPath) {
     try {
         const rs = await localDiskResolveDir(raw);
         out.dir = String(rs.dir || raw); out.resolved = !!rs.resolved; out.base = String(rs.base || '');
+        // v3.38.0：相对目录名落到**浏览器内置目录**（本机无宿主文件接口）→ 标记形态，探针走 OPFS
+        if (rs.browserMode) { out.browserMode = true; out.kind = 'browser'; }
         if (!rs.ok) { out.error = String(rs.error || 'resolve-failed'); localDiskMarkInvalid(raw, 'resolve-failed', out.error); return out; }
         // 探针用「显式路径」：临时把 cfg 指向待校验目录（不改配置持久化，只在本函数内）
         cfg.storage = Object.assign({}, cfg.storage || {});
@@ -733,7 +956,9 @@ export async function localDiskProbeDir(rawPath) {
             const probeFull = String(w.path || '');
             if (probeFull && await localDiskExists(probeFull)) await diskRemove(probeFull);
         } catch (e) { /* 忽略 */ }
-        out.ok = true; out.path = String(w.path || '');
+        out.ok = true;
+        // v3.38.0：浏览器内置目录的探针路径按**标记形态**回报（`@browser/<名>/…`），与 UI 展示口径一致
+        out.path = out.browserMode ? localDiskJoin(out.dir, 'ftt2-local-probe.json') : String(w.path || '');
         stats.probes++; stats.lastAt = Date.now();
         localDiskClearInvalid();
     } catch (e) {
@@ -762,22 +987,8 @@ export async function localDiskWriteShards(env, scope) {
         if (!r.ok) return { ok: false, error: r.reason || 'no-data' };
         const sub = scopeSlug(scope || r.scope);
         const mf = buildManifest(r.parts, { at: r.at, scope: String(scope || r.scope || '') });
-        // ① 浏览器文件夹句柄：建 `<scope>` 子目录后逐文件写
-        if (fsHandle && await handleUsable()) {
-            try {
-                const subDir = await fsHandle.getDirectoryHandle(sub, { create: true });
-                const writeInto = async (h, name, text) => {
-                    const fh = await h.getFileHandle(name, { create: true });
-                    const ws = await fh.createWritable();
-                    await ws.write(text); await ws.close();
-                };
-                for (const k of Object.keys(r.parts)) await writeInto(subDir, shardFileName(k), JSON.stringify(r.parts[k]));
-                await writeInto(subDir, manifestFileName(), JSON.stringify(mf));
-                stats.writes++;
-                return { ok: true, dir: dir + '/' + sub, files: Object.keys(r.parts).length + 1, counts: r.counts };
-            } catch (e) { /* 落到宿主机制 */ }
-        }
-        // ② 宿主文件 API：逐文件写
+        // v3.38.0：**统一走 `diskWriteText` 路由**（浏览器内置目录 / 会话句柄 / 宿主 fs 三选一，按路径判定）
+        //   旧实现各自内联一套句柄分支 → 与路由规则容易漂移（句柄会劫持显式路径）。
         let n = 0;
         for (const k of Object.keys(r.parts)) {
             const w = await diskWriteText(localDiskJoin(localDiskJoin(dir, sub), shardFileName(k)), JSON.stringify(r.parts[k]));
@@ -801,9 +1012,7 @@ export async function localDiskReadShards(scope) {
         const { joinParts, verifyParts, manifestFileName, shardFileName, allShardNames, scopeSlug } = await import('./local-shards.js');
         const sub = scopeSlug(scope);
         const readOne = async (name) => {
-            if (fsHandle && await handleUsable()) {
-                try { const d2 = await fsHandle.getDirectoryHandle(sub); const fh = await d2.getFileHandle(name); const f = await fh.getFile(); return await f.text(); } catch (e) { return null; }
-            }
+            // v3.38.0：统一走 `diskReadText` 路由（见 `localDiskWriteShards` 同款说明）
             if (!dir) return null;
             const r = await diskReadText(localDiskJoin(localDiskJoin(dir, sub), name));
             return (r && r.ok) ? String(r.text) : null;
@@ -856,20 +1065,7 @@ export async function localDiskWriteParts(what, list, scope, opts) {
             await write(dirName + '/' + mfName, JSON.stringify(built.manifest));
             return n + 1;
         };
-        if (fsHandle && await handleUsable()) {
-            try {
-                let subDir = await fsHandle.getDirectoryHandle(sub, { create: true });
-                subDir = await subDir.getDirectoryHandle(dirName, { create: true });
-                const w = async (name, text) => {
-                    const short = name.split('/').pop();
-                    const fh = await subDir.getFileHandle(short, { create: true });
-                    const ws = await fh.createWritable(); await ws.write(text); await ws.close();
-                };
-                const files = await writePair(w);
-                stats.writes++;
-                return { ok: true, dir: dir + '/' + sub + '/' + dirName, files: files, count: Number(built.manifest.count || 0) };
-            } catch (e) { /* 落到宿主机制 */ }
-        }
+        // v3.38.0：统一走 `diskWriteText` 路由（浏览器内置目录 / 会话句柄 / 宿主 fs）
         const base = localDiskJoin(localDiskJoin(dir, sub), dirName);
         const files = await writePair(async (name, text) => { await diskWriteText(localDiskJoin(base, name.split('/').pop()), text); });
         stats.writes++;
@@ -893,15 +1089,7 @@ export async function localDiskReadParts(what, scope) {
         const sub = scopeSlug(scope);
         const dirName = (what === 'snapshots') ? LP.SNAP_DIR : LP.LOG_DIR;
         const readOne = async (name) => {
-            if (fsHandle && await handleUsable()) {
-                try {
-                    const d2 = await fsHandle.getDirectoryHandle(sub);
-                    const d3 = await d2.getDirectoryHandle(dirName);
-                    const fh = await d3.getFileHandle(name);
-                    const f = await fh.getFile();
-                    return await f.text();
-                } catch (e) { return null; }
-            }
+            // v3.38.0：统一走 `diskReadText` 路由
             const r = await diskReadText(localDiskJoin(localDiskJoin(localDiskJoin(dir, sub), dirName), name));
             return (r && r.ok) ? String(r.text) : null;
         };
@@ -932,21 +1120,33 @@ export function localDiskInfo() {
     const plat = localDiskPlatform(false);
     const handleMode = localDiskIsHandlePath(dir);
     const handleName = handleMode ? localDiskHandleName(dir) : (fsHandle ? String(fsHandle.name || '') : '');
+    // v3.38.0：**浏览器内置目录**（OPFS）—— 纯浏览器方法，PC / 手机都可用（刷新后仍在，无需重选）
+    /**
+     * v3.38.0：相对目录名在本机**没有宿主基准目录**但有 OPFS 时，实际会落到浏览器内置目录
+     *   （`localDiskResolveDir` 的口径）—— 这里给一个**同步预览**，让界面如实显示真实落点。
+     */
+    const browserPreview = !localDiskIsHandlePath(dir) && localDiskPathKind(dir) === 'relative'
+        && !baseDirCache.dir && browserFsAvailable();
+    const browserMode = localDiskIsBrowserPath(dir) || browserPreview;
+    const browserName = browserMode ? (localDiskBrowserName(dir) || (browserPreview ? dir : '')) : '';
     return {
         enabled: localDiskOn(),
         // v3.35.0：句柄模式 → `dir` 就是标记本身（路径框里显示的就是它）；另给 `display` 供界面讲清楚「这是什么」
         dir: dir || (fsHandle ? String(fsHandle.name || '') : ''),
         display: handleMode
             ? (handleName + '（浏览器选中的文件夹 · 绝对路径不可见 · 本会话内直接写入该文件夹' + (fsHandle ? '' : ' · 句柄已失效，请重新选择') + '）')
-            : '',
+            : (browserMode
+                ? (browserName + '（浏览器内置目录（OPFS）· 由浏览器直接建文件，不需要宿主接口 · 刷新后仍在；文件在本浏览器内，可从调试页查看）')
+                : ''),
         handleMode: handleMode, handleName: handleName, handleLive: !!fsHandle,
-        kind: handleMode ? 'handle' : (fsHandle ? 'fs-handle' : localDiskPathKind(dir)), handle: !!fsHandle,
+        browserMode: browserMode, browserName: browserName, browserFs: browserFsAvailable(),
+        kind: handleMode ? 'handle' : (browserMode ? 'browser' : (fsHandle ? 'fs-handle' : localDiskPathKind(dir))), handle: !!fsHandle,
         // v3.33.0：平台与「路径形态 vs 本机平台」的冲突提示（用户报告「Android 上设不了」的直接可见原因）
         platform: plat.name, platformSource: plat.source, platformLabel: localDiskPlatformLabel(plat.name),
         pathWarn: localDiskPathWarn(dir, plat.name),
         // v3.34.0：宿主应用数据目录（相对目录名的落点）+ 已实测成功的传输形态（诊断「方法对不对」）
         base: baseDirCache.dir, baseLabel: baseDirCache.label, fsShape: fsShape,
-        capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, devKeys: c.devKeys, note: c.note },
+        capability: { ok: c.ok, mechanism: c.mechanism, ns: c.ns, writeMethod: c.writeMethod, readMethod: c.readMethod, tauriFs: c.tauriFs, browserFs: !!c.browserFs, devKeys: c.devKeys, note: c.note },
         invalid: localDiskInvalid(),   // v3.28.1：路径是否已被标记为**无效**（写入失败 / 探针失败）
         stats: Object.assign({}, stats),
     };
@@ -961,6 +1161,7 @@ export function localDiskReset() {
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
     localDiskClearInvalid();
     fsHandle = null;
+    try { browserFsReset(); } catch (e) { /* 忽略 */ }
     return true;
 }
 
@@ -968,10 +1169,13 @@ export const localDiskStats = stats;
 
 export default {
     HANDLE_PREFIX, localDiskIsHandlePath, localDiskHandleName, localDiskHandleMarker,
+    // v3.38.0：浏览器内置目录（OPFS）—— 纯浏览器方法，PC 端可用性的修复
+    BROWSER_PREFIX, localDiskIsBrowserPath, localDiskBrowserName, localDiskBrowserMarker, localDiskUseBrowserDir,
     localDiskRaw, localDiskOn, localDiskPathKind, localDiskPathNorm, localDiskJoin,
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
     localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards, localDiskWriteParts, localDiskReadParts,
+    localDiskList, localDiskEnsureResolved,
     // v3.33.0：平台识别 / 路径形态冲突提示
     localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn,
     // v3.34.0：宿主应用数据目录（相对目录名的落点）/ 名称解析 / 存在性判断

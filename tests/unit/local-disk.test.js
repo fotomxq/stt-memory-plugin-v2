@@ -79,7 +79,9 @@ await A('A2 能力探测：`api.dev` 下按关键字发现「文件类命名空�
     useHost(null);
     boot({ localDiskDir: 'D:\\FTT\\store' });
     const cap2 = localDiskCapability(true);
-    return okCap && cap2.ok === false && String(cap2.note).indexOf('未提供') > 0;
+    // v3.38.0：口径改为「本机是否有**任一**可用机制」—— 纯浏览器可走浏览器内置目录（OPFS）；
+    //   测试环境两者都没有 → 如实回报 `ok:false` 并写明「本机没有可用的本地目录机制」。
+    return okCap && cap2.ok === false && String(cap2.note).indexOf('本机没有可用的本地目录机制') === 0;
 }, () => ({ cap: localDiskCapability(true) }));
 
 await A('A3 写入即校验：写盘 → **回读逐字节比对** → 通过才算成功；读回不一致/读不到 → 如实失败且不记账为成功', async () => {

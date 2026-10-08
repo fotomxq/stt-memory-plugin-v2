@@ -87,13 +87,24 @@ A('A2 路径形态单列 `handle`：不再被当成「相对目录名」（否�
         && localDiskPathKind('') === 'empty';
 })(), '见断言');
 
-A('A3 `localDiskOn()`：句柄在 → 开启；**句柄标记 + 句柄已失效** → 未开启（干净回退浏览器层，不误标无效）；真路径 → 开启', (() => {
-    boot({ storage: { localDiskDir: '@handle/fft_v2_store' } });
+// v3.38.0：本断言原先把 `storage` 传给了 kernel **state**（不是 `cfg`）→ 路径其实一直是空串，
+//   等于「恒真」的假绿。现在显式写 `cfg.storage.localDiskDir`，并补上「有句柄 → 开启」「真路径 → 开启」两例。
+await (async () => {
+    boot({});
+    cfg.storage = Object.assign({}, cfg.storage || {}, { localDiskDir: '@handle/fft_v2_store' });
     const lost = localDiskOn();
-    boot({ storage: { localDiskDir: '@handle/fft_v2_store' } });
+    boot({});
+    cfg.storage = Object.assign({}, cfg.storage || {}, { localDiskDir: '@handle/fft_v2_store' });
     globalThis.window.showDirectoryPicker = async () => makeHandle('fft_v2_store');
-    return lost === false;
-})(), '见断言');
+    await localDiskPickDir();                        // 真的选一次 → 本会话才有句柄
+    const withHandle = localDiskOn();
+    boot({});
+    cfg.storage = Object.assign({}, cfg.storage || {}, { localDiskDir: 'D:\\fft_v2_store' });
+    const absPath = localDiskOn();
+    A('A3 `localDiskOn()`：**句柄标记 + 句柄已失效** → 未开启（干净回退浏览器层，不误标无效）；本会话已选句柄 → 开启；真路径 → 开启', (() => {
+        return lost === false && withHandle === true && absPath === true;
+    })(), () => ({ lost: lost, withHandle: withHandle, absPath: absPath, dir: cfg.storage && cfg.storage.localDiskDir }));
+})();
 
 // ---------- B 组：选中结果写进路径框 ----------
 await (async () => {

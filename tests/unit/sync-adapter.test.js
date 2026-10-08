@@ -459,7 +459,7 @@ await A('I2 面板动作接线：syncLogClear / syncLogRefresh / storageVerify /
         && r4.ok === true && !!r4.note
         && r5.ok === true && !!r5.note
         && r6.ok === true && Array.isArray(r6.names) && String(r6.note).indexOf('世界书') >= 0   // B8-7：世界书列表刷新（无宿主接口时如实告警）
-        && SYNC_ACTIONS.length === 21;     // B9-d：+syncPickLocal / syncPickRemote；v3.0.4：+syncPickMerge；v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项；v3.36.0：+待确认 2 项（resolveConflicts / conflictAct）
+        && SYNC_ACTIONS.length === 22;     // B9-d：+syncPickLocal / syncPickRemote；v3.0.4：+syncPickMerge；v3.16.0：+本机层 2 项；v3.26.0：+目录选择器 5 项；v3.36.0：+待确认 2 项；v3.38.0：+浏览器内置目录 1 项（localDiskBrowserDir）
 }, (() => ({ acts: SYNC_ACTIONS })));
 
 await A('I3 UI 动作直调：syncAction 未知动作不崩、日志 HTML 含「本地 → 对端 → 同步后」三段', async () => {
