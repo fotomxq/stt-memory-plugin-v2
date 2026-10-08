@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.38.0",
+  "version": "3.39.0",
   "updatedAt": "2026-10-08",
   "generatedAt": "2026-10-08",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.39.0",
+      "date": "2026-10-08",
+      "title": "修复「本地召回失败 Cannot read properties of null (reading 'state')」：内核态未就绪时召回如实空手而归",
+      "points": [
+        "用户报告：（原话）：「修复报错：本地召回失败 Cannot read properties of null (reading 'state')」",
+        "根因（与早前那条「已处理楼层漂移防呆失败 reading 'processedFloors'」同一类）：内核态初始为 null（core/model/runtime.js：exp…",
+        "行为口径：状态没就绪 ⇒ 「这轮没有可召回的内容」（界面照常、载入后自愈），不再是异常；真出错（如数据损坏）仍照旧 warn 出来，不静默。"
+      ]
+    },
     {
       "version": "3.38.0",
       "date": "2026-10-08",

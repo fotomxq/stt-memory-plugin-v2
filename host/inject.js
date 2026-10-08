@@ -5,7 +5,7 @@
 // ============================================================
 import { INJECT_ID, PROMPT_POSITION, PROMPT_ROLE } from '../core/constants.js';
 import { getCtx, safeCall } from './st-api.js';
-import { cfg as kernelCfg, getStoryNow } from '../core/model/runtime.js';
+import { cfg as kernelCfg, getStoryNow, kernelState as kernelStateRef } from '../core/model/runtime.js';
 import { buildMemoryBodyForInject } from '../core/recall.js';
 import { clockDateLabel } from '../core/clock.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）也是管线动作
@@ -17,7 +17,7 @@ import { recallMethodInfo } from './extract-flow.js';
 const dbgLog = (kind, data) => { try { debugLogPush(kind, data); } catch (e) { /* 静默 */ } };
 
 // 内核视图引用（配置 / 剧情时钟 / 召回函数）—— 延迟取用，允许测试替换
-const runtimeRef = { cfg: kernelCfg, getStoryNow, buildMemoryBodyForInject, extractFlow: null, recentFloorText: null };
+const runtimeRef = { cfg: kernelCfg, getStoryNow, kernelState: kernelStateRef, buildMemoryBodyForInject, extractFlow: null, recentFloorText: null };
 /** 替换内核视图引用（仅测试与调试使用） */
 export function setInjectRuntime(ref) { Object.assign(runtimeRef, ref || {}); return runtimeRef; }
 
@@ -238,6 +238,17 @@ async function buildAndPushInject(o) {
             } catch (e) { /* 向量/AI 层失败 → 降级到本地召回 */ }
         }
         // ② 本地召回（第二层 JS 抽取 / 兜底）
+        // v3.39.0（用户报告「本地召回失败 Cannot read properties of null (reading 'state')」）：
+        //   内核态**尚未注入**（首屏载入 / 切换角色 / 跨端合并的窗口期）→ **如实跳过本轮召回**，
+        //   给出可查的原因，而不是让内核在 `state.state` 上抛错（那会被包成一条红字告警）。
+        const stateReady = (() => { try { return !!(runtimeRef.kernelState && runtimeRef.kernelState()); } catch (e) { return false; } })();
+        if (!stateReady) {
+            injectStats.lastError = '';
+            const method = { key: 'state-not-ready', label: '状态未就绪', note: '内核态尚未注入（首屏载入 / 切换中的窗口期）→ 本轮不召回；载入完成后会自动重算', keywords: [] };
+            injectStats.lastMethod = Object.assign({}, method);
+            dbgLog('召回', { action: '内核态尚未注入 → 本轮不召回（不视为错误）' });
+            return { ok: true, reason: 'state-not-ready', chars: 0, count: 0, injected: false, method: method, ms: Date.now() - t0 };
+        }
         if (!body && runtimeRef.buildMemoryBodyForInject) {
             body = runtimeRef.buildMemoryBodyForInject(String(o.queryText || ''), {
                 charBudget: budget.bodyBudget, maxAtoms: cfg.maxAtoms, maxMemories: cfg.maxMemories,

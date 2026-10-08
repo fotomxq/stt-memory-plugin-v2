@@ -3,6 +3,21 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.39.0（2026-10-08）· 修复「本地召回失败 Cannot read properties of null (reading 'state')」：内核态未就绪时召回如实空手而归
+
+**用户报告**（原话）：「修复报错：本地召回失败 Cannot read properties of null (reading 'state')」
+
+**根因（与早前那条「已处理楼层漂移防呆失败 reading 'processedFloors'」同一类）**：内核态初始为 `null`（`core/model/runtime.js`：`export let state = null`，由宿主在**载入完成后**注入），而**生成拦截器是页面级全局钩子**（manifest 的 `generate_interceptor`）——首屏载入 / 切换角色 / 跨端合并的**窗口期**里发送，就会走到本地召回 `core/recall.js#buildMemoryBodyForInject`；旧实现在 `state.state.date` 等处直接取属性 → 抛 `Cannot read properties of null (reading 'state')` → 被入口 `catch` 包成 `warn('本地召回失败', e)`（用户看到的正是这条红字）。
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | `core/recall.js` | 全模块改为经 **`st()` / `stState()`** 取用内核态：未注入时退化为**空容器**（各大类读作空数组 → 召回如实为空），**不再抛错**；入口额外**提前短路**（`diagnose` 模式如实回 `{ok:false, reason:'state-not-ready'}`，自查面板据此说明原因，而不是「解析失败」） |
+| ② | `host/inject.js` | 状态未就绪 → **如实跳过本轮注入**（`reason='state-not-ready'` + 召回方式词条「状态未就绪」），**不记为错误、不覆盖上一次注入**；载入完成后自动重算 |
+| ③ | `host/chat.js#attachKernelState` | **绝不把已有内核态降级成 `null`**：传入非对象（异常路径 / 空合并结果）时保留当前态并记账 —— 从源头堵住「内核态被置空」 |
+| ④ | `index.js#init` | 首屏在 `loadMemoryState()` **之前**先注入**空容器占位**（载入完成后换成真实态；载入期的用户动作仍按 `kernelStateSeq()` 让位）→ 从根上关掉「state 为 null」的窗口（与面板状态快照那处修复同一口径） |
+
+**行为口径**：状态没就绪 ⇒ 「这轮没有可召回的内容」（界面照常、载入后自愈），**不再是异常**；真出错（如数据损坏）仍照旧 `warn` 出来，不静默。
+
 ## v3.38.0（2026-10-08）· 「本地存储路径」补**浏览器内置目录**（OPFS）：纯浏览器（PC 网页版）终于可用
 
 **用户报告**（原话）：「手机端必须使用内置路径，而跑到PC端，又不可用了。根据通知推测，可能你把服务端的方法，
