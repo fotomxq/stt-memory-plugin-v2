@@ -38,7 +38,7 @@ import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './g
 import { hydrateStorageData } from '../core/slim.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：保存 / 同步类动作也进管线状态
 import { trackPipeline } from '../core/pipeline.js';
-import { debugLogPush } from './debug-log.js';   // v2.87.0：内核 warn → 调试日志（kind = 异常）
+import { debugLogPush, debugLogPushCoalesced } from './debug-log.js';   // v2.87.0：内核 warn → 调试日志（kind = 异常）
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志，方便追踪问题」）
 //   —— 载入路径的每一次读取都进**读取台账**（`core/read-ledger.js`），并逐层回报「读到什么 / 多久 / 多少条」。
 import { readLedgerBegin, readLedgerEnd, readLedgerRecord, readLedgerStats } from '../core/read-ledger.js';
@@ -626,8 +626,8 @@ async function saveStateNowInner(o) {
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
                 // v3.31.0（用户要求）：同一份内容**再写一份结构化分片**（逐维文件 + manifest）—— best-effort，不阻塞保存
                 // v3.32.0（用户要求）：快照链也写**结构化分片**（snapshots/<id>.json + manifest）—— best-effort
-                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], scopeId(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPush('存储', { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
-                try { const sh = await localDiskWriteShards(envelope, scopeId()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPush('存储', { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
+                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], scopeId(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPushCoalesced('存储', 'snap-parts|' + String(sp.dir || ''), { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
+                try { const sh = await localDiskWriteShards(envelope, scopeId()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPushCoalesced('存储', 'shards|' + String(sh.dir || ''), { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
                 return true;
             }
             // —— 失败：标记无效 + 醒目提醒（每个路径每次会话只弹一次，避免刷屏）+ 如实记账 ——

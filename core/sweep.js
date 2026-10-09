@@ -11,7 +11,9 @@ import { ATOM_DIM_KEYS } from './constants.js';
 import { tombSet, tombSetH } from './merge.js';
 // v2.86.0（`docs/D8` R1=B）：墓碑索引 / 复活防护 = **身份哈希**
 import { atomIdentityHash } from './model/hash.js';
-import { state } from './model/runtime.js';
+import { state, log } from './model/runtime.js';
+// v3.40.0（`docs/D16` A2）：条目被墓碑化时**级联**清掉指向它的关联行（悬空关联不再积累）
+import { purgeLinksForGoneEntries as relPurgeForGone } from './model/rel.js';
 let entryIndexPrev = null;
 
 let tombstoneSweepSuppress = 0;      // 整体替换类操作（快照还原等）临时抑制，避免把“回滚”误记为删除
@@ -62,6 +64,7 @@ function tombstoneSweep() {
         if (tombstoneSweepSuppress > 0) { atomIndexCur = null; entryIndexInit(); return 0; }
         const ts = Date.now();
         let n = 0;
+        const gone = [];   // v3.40.0（`docs/D16` A2）：本轮确证消失的条目 → 关联行**级联**清理
         // v1.200（P2）：复用本保存周期已建立的「当前 id→哈希索引」（含已刷新的 it.h），不再重复哈希全量条目
         const curIdx = atomIndexCur || entryIndexBuild(true);
         for (const cat of ATOM_DIM_KEYS) {
@@ -73,11 +76,20 @@ function tombstoneSweep() {
                 if (id in cur) continue;
                 const h = prev[id];
                 if (h && curH[h]) continue;         // 同内容仍在（去重/换 id 合并）→ 不是删除
-                try { tombSet(cat, id, ts); if (h) tombSetH(cat, h, ts); n++; } catch (e) { }
+                try { tombSet(cat, id, ts); if (h) tombSetH(cat, h, ts); n++; gone.push({ dim: cat, id: id }); } catch (e) { }
             }
         }
         entryIndexPrev = curIdx;        // 直接把本次索引作为下一次基线（旧实现 entryIndexInit 会再算一遍）
         atomIndexCur = null;
+        // v3.40.0（`docs/D16` A2）：条目确证消失 → **级联**删掉指向它的关联行（悬空关联不再积累）
+        if (gone.length) {
+            try {
+                const pr = relPurgeForGone(gone);
+                if (pr && pr.removed) {
+                    try { log('关联', { action: '级联清理悬空关联行（条目已删除）', removed: pr.removed, byDim: pr.byDim }); } catch (e) { /* 忽略 */ }
+                }
+            } catch (e) { /* 级联失败不影响墓碑 */ }
+        }
         return n;
     } catch (e) { return 0; }
 }

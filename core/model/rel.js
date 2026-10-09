@@ -352,10 +352,43 @@ const SNAP_GROUP_MAP = {
 };
 
 // B8-6b+ 关联维护：以下常量/助手供 `core/rel-maint.js`（修复管道零 AI 步骤）复用
+
+/**
+ * v3.40.0（`docs/D16` A2）：**级联** —— 指定维度里刚刚消失的那些 id，把它们的关联行一并删掉。
+ *   用于「条目本轮被墓碑化」的同一现场（`core/sweep.js#tombstoneSweep`），证据同源（同一次索引差集），
+ *   所以不会误删「只是暂时读不到」的条目关联。返回删除条数。
+ *
+ * 注：**全量**清理悬空 / 幽灵 / 空行的「一键清理」已有实现（`core/rel-maint.js#cleanInvalidRelLinks`，
+ *   关系表页「🧹 清理无效关系」），本函数只负责**新产生的**孤儿（条目一消失就顺手删行），两者互补。
+ * @param {Array<{dim:string,id:string}>} gone 本轮消失的条目
+ * @returns {{removed:number, byDim:object}}
+ */
+function purgeLinksForGoneEntries(gone) {
+    const out = { removed: 0, byDim: {} };
+    try {
+        const s = state;
+        if (!s || typeof s !== 'object') return out;
+        const list = Array.isArray(gone) ? gone : [];
+        if (!list.length) return out;
+        const keys = new Set(list.map((g) => String((g && g.dim) || '') + '|' + String((g && g.id) || '')));
+        const links = Array.isArray(s.links) ? s.links : [];
+        const keep = [];
+        for (const l of links) {
+            const k = String((l && l.dim) || '') + '|' + String((l && l.refId) || '');
+            if (l && keys.has(k)) { out.byDim[String(l.dim || '')] = (out.byDim[String(l.dim || '')] || 0) + 1; out.removed++; continue; }
+            keep.push(l);
+        }
+        if (out.removed) s.links = keep;
+        return out;
+    } catch (e) { return out; }
+}
+
 export {
     normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats, relHowLabelOf,
     // v3.1.0：关联行索引（渲染热路径用；纯函数、无跨渲染缓存）
     relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey,
     REL_LINK_KINDS, REL_LINK_DIMS, REL_LINK_HOW_RANK,
     relLinkId, relLinkHow, relLinkDeviation,
+    // v3.40.0（`docs/D16` A2）：条目被删时**级联**清理它的关联行
+    purgeLinksForGoneEntries,
 };

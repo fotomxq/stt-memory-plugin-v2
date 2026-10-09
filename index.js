@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts, localDiskEnsureResolved } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskInvalid, localDiskClearInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts, localDiskEnsureResolved } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -367,10 +367,21 @@ export async function loadMemoryState() {
         if (!layers.local) {
             /**
              * v3.28.1（用户要求）：「写盘失败**回退浏览器层**，但必须明显提醒，且**标记该路径无效**」。
-             *   载入同理：磁盘层读不到（文件缺失 / 路径不可用 / 读盘失败）→ **回退浏览器层**（数据优先），
-             *   把该路径标记为无效并**弹一次醒目通知**，由用户到「设定 → 存储」重新校验。
+             * v3.40.0（`docs/D16` L9）：**「未命中」与「路径不可用」分级** —— 真机取证是一次「读得太早」的
+             *   未命中（磁盘层写 67 次全成功、文件就在那儿），旧实现却把它当成路径坏掉：标记无效 + error 级日志 +
+             *   醒目告警，用户每次刷新都看到。现在：
+             *     · **已知路径不可用**（本会话写过失败 / 已被标记无效）→ 照旧：标记 + 醒目告警（v3.28.1 口径不变）；
+             *     · **纯未命中**（无失败证据）→ 如实记一条 `载入`（不是「异常」）、**不标记无效**、只给一句
+             *       **信息级**提示（首次保存后本机副本会自动建立）。
              */
-            try { localDiskMarkInvalid((() => { try { return localDiskRaw(); } catch (e) { return ''; } })(), 'load-miss', '本地磁盘目录里没有可用的本机副本（或读盘失败）'); } catch (e) { /* 忽略 */ }
+            const dirNow = (() => { try { return String(localDiskRaw() || ''); } catch (e) { return ''; } })();
+            const knownBad = (() => {
+                try { return localDiskInvalid().invalid === true; } catch (e) { return false; }
+            })();
+            const wroteOk = (() => { try { return Number(localDiskInfo().stats.writes || 0) > 0; } catch (e) { return false; } })();
+            if (knownBad) {
+                try { localDiskMarkInvalid(dirNow, 'load-miss', '本地磁盘目录里没有可用的本机副本（或读盘失败）'); } catch (e) { /* 忽略 */ }
+            }
             try {
                 if (localBufferGzPending()) layers.local = await loadFromLocalStorageGz();
                 else layers.local = loadFromLocalStorage();
@@ -378,10 +389,18 @@ export async function loadMemoryState() {
             try { layers.idb = await loadFromIndexedDB(); } catch (e) { layers.idb = null; }
             try { const cm2 = chatMetaLoadState(); layers.chatmeta = (cm2 && cm2.state) || null; } catch (e) { /* 忽略 */ }
             diskLoadFellBack = true;
-            try { debugLogPush('异常', { action: '载入：本地磁盘目录读不到本机副本 → 已回退浏览器本地存储（该路径已标记为无效）', dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()), level: 'warning' }); } catch (e) { /* 忽略 */ }
-            try { debugLogPush('对账', { action: '载入：本地磁盘目录未命中 → 回退浏览器层 + 标记路径无效', dir: String((() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })()) }); } catch (e) { /* 忽略 */ }
-            try { notifyHooks.toast('⚠️ 本地磁盘目录未读到本机副本，已回退浏览器本地存储；该路径已标记为「无效」，请到「设定 → 存储」重新校验', 'warning'); } catch (e) { /* 忽略 */ }
-            try { readLedgerRecord({ action: '本机层回退', src: 'local', ok: true, miss: false, reason: 'disk-load-miss-fallback', note: '本地磁盘目录未命中 → 已回退浏览器变量 / 内存库；该路径标记为无效' }); } catch (e) { /* 忽略 */ }
+            const dirShown = (() => { try { return localDiskInfo().dir; } catch (e) { return ''; } })();
+            if (knownBad) {
+                try { debugLogPush('异常', { action: '载入：本地磁盘目录读不到本机副本 → 已回退浏览器本地存储（该路径已标记为无效）', dir: dirShown, level: 'warning' }); } catch (e) { /* 忽略 */ }
+                try { debugLogPush('对账', { action: '载入：本地磁盘目录未命中 → 回退浏览器层 + 标记路径无效', dir: dirShown }); } catch (e) { /* 忽略 */ }
+                try { notifyHooks.toast('⚠️ 本地磁盘目录未读到本机副本，已回退浏览器本地存储；该路径已标记为「无效」，请到「设定 → 存储」重新校验', 'warning'); } catch (e) { /* 忽略 */ }
+                try { readLedgerRecord({ action: '本机层回退', src: 'local', ok: true, miss: false, reason: 'disk-load-miss-fallback', note: '本地磁盘目录未命中（该路径已标记为无效）→ 已回退浏览器变量 / 内存库' }); } catch (e) { /* 忽略 */ }
+            } else {
+                // 纯未命中：如实记账（不是错误），只给信息级提示；**不标记无效**（路径没有被证明有问题）
+                try { debugLogPush('载入', { action: '本机层：暂无本机副本 → 本次以服务端 / 浏览器层为基底（重试后仍未命中；路径未被标记无效）', dir: dirShown, retries: 2, wroteOkInSession: wroteOk, level: 'info' }); } catch (e) { /* 忽略 */ }
+                try { notifyHooks.toast('本机层暂无副本，本次已用服务端 / 浏览器本地存储；本机层会随下一次保存自动建立', 'info'); } catch (e) { /* 忽略 */ }
+                try { readLedgerRecord({ action: '本机层未命中', src: 'local', ok: true, miss: true, reason: 'disk-load-miss-not-invalid', note: '重试后仍未命中本机副本 → 以服务端 / 浏览器层为基底；**不标记路径无效**（未证明路径有问题）' }); } catch (e) { /* 忽略 */ }
+            }
         }
         try {
             readLedgerRecord({ action: '本机层 = 本地磁盘目录', src: 'local', ok: true, miss: !layers.local, reason: 'local-disk-mode', note: '已设置本地磁盘目录 → 浏览器变量 / 内存库 / 聊天元数据都不读不写（替代浏览器本地存储）' });
@@ -543,25 +562,50 @@ function dimCountsOf(st) {
 /**
  * v3.28.0（用户纠正设计）：读「本地磁盘目录」里的本机副本（替代浏览器变量层）。
  *   校验口径与本机缓冲一致：信封完整 + 载荷哈希一致，否则丢弃（交由服务端文件兜底）。**只读**。
+ *
+ * v3.40.0（`docs/D16` L9）：**首屏未命中 → 短延迟后重试一次**。
+ *   真机取证：磁盘层写 67 次全成功、文件确实在（单文件 5.55 MB），但载入期有 3 次未命中 ——
+ *   因为**读发生得比宿主文件层就绪更早**（浏览器内置目录 / 句柄刚建好那一刻）。
+ *   旧实现「一次未命中」就回退 + 标记路径无效 + 写一条 error 级日志（用户每次刷新都可能看到），
+ *   而路径其实完全正常。现在：默认试 2 次（间隔 `LOCAL_DISK_LOAD_RETRY_MS`），两次都未命中才算「没有副本」。
+ * @param {{tries?:number, gapMs?:number}} [opts] 测试可传 `tries:1` / `gapMs:0`
  * @returns {Promise<object|null>} state 或 null
  */
-export async function loadFromLocalDisk() {
+export const LOCAL_DISK_LOAD_RETRY_MS = 250;
+export async function loadFromLocalDisk(opts) {
+    const o = opts || {};
+    const tries = Math.max(1, Math.floor(Number(o.tries)) || 2);
+    const gapMs = Number.isFinite(Number(o.gapMs)) ? Math.max(0, Number(o.gapMs)) : LOCAL_DISK_LOAD_RETRY_MS;
     const scope = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
     const name = 'ftt2-local-' + String(scope || 'default').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
-    try {
-        const r = await localDiskRead(name);
-        if (!r || !r.ok || !r.text) {
-            // v3.31.0（用户要求「拆碎了保存」）：单文件缺失时读**结构化分片**目录（逐维文件 + manifest）
-            try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return await recoverSnapParts(sh.data, scope || 'default'); } catch (e) { /* 忽略 */ }
-            return null;
+    const once = async () => {
+        try {
+            const r = await localDiskRead(name);
+            if (!r || !r.ok || !r.text) {
+                // v3.31.0（用户要求「拆碎了保存」）：单文件缺失时读**结构化分片**目录（逐维文件 + manifest）
+                try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return await recoverSnapParts(sh.data, scope || 'default'); } catch (e) { /* 忽略 */ }
+                return null;
+            }
+            const env = JSON.parse(String(r.text));
+            if (!env || !env.payload) return null;
+            const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
+            if (env.hash && h && env.hash !== h) return null;
+            return await recoverSnapParts(env.payload.data || null, scope || 'default');
+        } catch (e) { return null; }
+    };
+    for (let i = 0; i < tries; i++) {
+        const st = await once();
+        if (st) {
+            // 读到了 → 该路径显然是好的：清掉任何历史「无效」标记（不再让上一次的失败结论挂在本会话上）
+            try { localDiskClearInvalid(); } catch (e) { /* 忽略 */ }
+            if (i > 0) { try { debugLogPush('载入', { action: '本机层：重试后读到本机副本（首次未命中，多为宿主文件层尚未就绪）', attempt: i + 1, gapMs: gapMs }); } catch (e) { /* 忽略 */ } }
+            return st;
         }
-        const env = JSON.parse(String(r.text));
-        if (!env || !env.payload) return null;
-        const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
-        if (env.hash && h && env.hash !== h) return null;
-        return await recoverSnapParts(env.payload.data || null, scope || 'default');
-    } catch (e) { return null; }
+        if (i + 1 < tries && gapMs > 0) await new Promise((res) => { try { timerHooks.set(res, gapMs); } catch (e) { setTimeout(res, gapMs); } });
+    }
+    return null;
 }
+
 
 /**
  * v3.32.0（用户要求「快照也拆分结构化存储」）：载入后**只补不覆盖** ——

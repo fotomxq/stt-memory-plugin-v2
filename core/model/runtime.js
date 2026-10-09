@@ -104,6 +104,8 @@ let chatHooks = {
     getAssistantText: () => '',
     latestAiFloorText: () => '',
     dbgLog: () => undefined,
+    // v3.40.0（`docs/D16` L11）：合并式日志钩子（未接线 → `dbgLogCoalesced` 退化为 `dbgLog`）
+    dbgLogCoalesced: null,
 };
 /**
  * 接线前告警的暂存（v3.24.1）。
@@ -163,6 +165,20 @@ export function getAssistantText() { try { return String(chatHooks.getAssistantT
 export function latestAiFloorText() { try { return String(chatHooks.latestAiFloorText() || ''); } catch (e) { return ''; } }
 /** 调试日志（内核默认 no-op） */
 export function dbgLog(...args) { try { return chatHooks.dbgLog(...args); } catch (e) { return undefined; } }
+/**
+ * v3.40.0（`docs/D16` L11）：**合并式**调试日志 —— 同一 `key` 在窗口内的重复「成功」日志只占一条
+ *   （带 `n` / `lastAt` / `bytes`）；宿主未接线合并钩子时**自动退化为普通 `dbgLog`**（行为不变、不丢日志）。
+ * @param {string} kind 分类
+ * @param {string} key 合并键（同一件事才用同一个键）
+ * @param {object} data 载荷
+ * @param {{windowMs?:number, force?:boolean}} [opts]
+ */
+export function dbgLogCoalesced(kind, key, data, opts) {
+    try {
+        if (typeof chatHooks.dbgLogCoalesced === 'function') return chatHooks.dbgLogCoalesced(kind, key, data, opts);
+        return chatHooks.dbgLog(kind, data);
+    } catch (e) { return undefined; }
+}
 
 /** 日志钩子（内核默认 no-op；宿主可注入真实日志） */
 export function log(...args) {

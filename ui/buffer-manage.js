@@ -32,6 +32,8 @@ import { vectorCacheStats } from '../adapters/vector-cache.js';
 import { syncLogList } from '../adapters/sync.js';
 import { localKeyStats, localCopyStats, idbCopyStats, localLayerInfo } from '../adapters/store.js';
 import { auxStoreInfo } from '../adapters/aux-store.js';   // v3.27.0：辅助数据（日志/时间线/标记/版本清单）落点   // v3.26.2：+localLayerInfo（状态副本的压缩留存与停滞标记）
+// v3.40.0（`docs/D16` A2）：无效关联行的只读统计（孤儿 / 幽灵角色 / 空行）—— 清理动作与关系表页共用同一实现
+import { relInvalidStats } from '../core/rel-maint.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -267,6 +269,22 @@ export function bufferSectionHtml(copy) {
         }
     }
     rows.push('<div class="ftt-hint">都是可再生成的缓存（日志 / 台账 / 追踪 / 向量 / 版本清单 / 命名与对账标记）；清理<b>不影响记忆数据</b>。</div>');
+    // v3.40.0（`docs/D16` A2）：**无效关联行**如实摆在这里 —— 孤儿（指向的条目已不存在）/ 幽灵角色 / 空行。
+    //   清理走既有核心实现（`core/rel-maint.js#cleanInvalidRelLinks`：写删除墓碑、幂等、宁可漏删不误删），
+    //   与关系表页的「🧹 清理无效关系」同一个动作名 → 同一份代码路径。
+    {
+        let iv = null;
+        try { iv = relInvalidStats(); } catch (e) { iv = null; }
+        if (iv && Number(iv.total) > 0) {
+            const r = iv.reasons || {};
+            const inv = Number(iv.invalid) || 0;
+            rows.push('<div class="ftt-hint" data-ftt-rel-invalid>无效关联行：<b>' + inv + '</b> / ' + Number(iv.total) + ' 条'
+                + (r.dangling ? ('（孤儿 ' + Number(r.dangling) + '）') : '')
+                + (r.ghost ? ('（幽灵角色 ' + Number(r.ghost) + '）') : '')
+                + (r.empty ? ('（空行 ' + Number(r.empty) + '）') : '')
+                + ' <button class="ftt-btn ftt-sm ftt-err" data-ftt-action="relCleanInvalid" title="删掉指向已不存在条目 / 幽灵角色 / 空行的关联行（写删除墓碑，跨端不会复活；幂等）">🧹 清理无效关联</button></div>');
+        }
+    }
     rows.push(rowHtml('调试日志', dStat, 'dbgClear', '清空调试日志（记忆数据不受影响）', d.count === 0));
     rows.push(rowHtml('交互追踪简报', tStat, 'dbgTraceClear', '清空交互/宿主调用简报（调试日志与记忆数据不受影响）', t.count === 0));
     const lg = G.ledger || { count: 0, cap: 0 };

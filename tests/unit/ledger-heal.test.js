@@ -151,7 +151,9 @@ A('C1 `healLedgerFromDropped`：留痕里的旧哈希按内容找得到 → 恢�
     const after = scanPendingFloors({ maintain: false }).floors;
     return r.restored === 1 && r.kept === 1
         && before.indexOf(4) >= 0 && after.indexOf(4) < 0                       // 第 4 楼（AI 楼）：救回（不再列未分析）
-        && J(st.processedFloors) === J([{ f: 4, h: hashFloorText(4) }])
+        && J(st.processedFloors.map((x) => ({ f: x.f, h: x.h }))) === J([{ f: 4, h: hashFloorText(4) }])
+        // v3.40.0（`docs/D16` A1）：回填出来的标记同样带**归属 + 时刻**（at>0；本用例无 chatKey → ck 为空串）
+        && Number(st.processedFloors[0].at) > 0 && String(st.processedFloors[0].ck || '') === ''
         && J(st.processedDropped.map((x) => Number(x.f))) === J([2]);           // 内容确实没了 → 留痕保留（口径不变）
 })(), J({ r: healLedgerFromDropped(), marks: state.processedFloors, dropped: state.processedDropped }));
 

@@ -6,7 +6,7 @@
 // ============================================================
 import { getCtx } from './st-api.js';
 import { setChatHooks, setLastMessageId, setScopeKey, setKernelState, kernelState, getChatMessages, state } from '../core/model/runtime.js';
-import { debugLogPush } from '../adapters/debug-log.js';
+import { debugLogPush, debugLogPushCoalesced } from '../adapters/debug-log.js';
 // v2.44.0（用户报告）：酒馆消息正文是可含 HTML 的富文本（`<br>`/`<p>`/`&nbsp;`…）→ 在**读入边界**统一清洗，
 //   这样「提取提示词 / 剧情时钟 / 楼层哈希之外的取文」都不会把标签带进数据（哈希仍用原始稳定正文，见 host/floors.js）
 import { cleanText, hasHtmlTag, htmlStats } from '../core/html-text.js';
@@ -136,6 +136,8 @@ export function wireKernelChatHooks() {
         getAssistantText: latestAiMessageText,
         latestAiFloorText: latestAiMessageText,
         dbgLog: (kind, data) => debugLogPush(kind, data),      // B9：调试日志接入环形缓冲（V1 `dbgLog` 口径；此前为空实现）
+        // v3.40.0（`docs/D16` L11）：合并式日志（高频成功写盘只占一条，带 n / lastAt / bytes）
+        dbgLogCoalesced: (kind, key, data, opts) => debugLogPushCoalesced(kind, key, data, opts),
     });
     setLastMessageId(currentLastMessageId());
     setScopeKey(currentStableCharKey());

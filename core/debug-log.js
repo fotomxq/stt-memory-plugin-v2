@@ -66,6 +66,66 @@ function debugLogPush(kind, data) {
     } catch (e) { return false; }
 }
 
+// ============================================================
+// v3.40.0（`docs/D16` L11）：**合并式记录** —— 高频「成功」日志不再刷屏。
+//
+// 真机取证：300 条环里「存储」占 248（83%），最近 200 条只有 3 种动作、其中 **166 条是同一句**
+//   「本地磁盘目录：写入并回读校验通过」→ 摘要 / 异常 / 同步类诊断被挤出（与 v3.10.4 修过的
+//   「读取占 69%」同族，这次换成了存储）。口径：**同一个 key 在窗口内的重复成功，原地升级为
+//   「计数 + 最近时刻 + 累计字节」**，只占一条；失败类日志仍逐条（不许合并，避免掩盖问题）。
+// ============================================================
+/** key → { at, row }（`row` 是环形缓冲里的**同一个对象**，原地改写即可） */
+let coalesceRefs = Object.create(null);
+/** 默认合并窗口（毫秒） */
+const COALESCE_WINDOW_MS = 5000;
+
+/**
+ * 合并式记录：同一 `key` 在 `windowMs` 内重复调用 → 把已有那条升级为 `{n, lastAt, bytes}`
+ * @param {string} kind 分类（与 `debugLogPush` 同）
+ * @param {string} key 合并键（**同一件事**才用同一个键，例如 `local-disk-write|tt-native`）
+ * @param {object} data 载荷（可带 `bytes` / `count`）
+ * @param {{windowMs?:number, force?:boolean}} [opts] `force` = 不合并，直接新记一条
+ * @returns {boolean} 是否记录成功
+ */
+function debugLogPushCoalesced(kind, key, data, opts) {
+    const o = opts || {};
+    try {
+        if (cfg && cfg.debugEnabled === false) return false;
+        const k = String(key == null ? '' : key);
+        const win = Number.isFinite(Number(o.windowMs)) ? Math.max(0, Number(o.windowMs)) : COALESCE_WINDOW_MS;
+        const now = Date.now();
+        const ref = k ? coalesceRefs[k] : null;
+        if (o.force !== true && win > 0 && ref && (now - Number(ref.at || 0)) <= win && debugLogs.indexOf(ref.row) >= 0) {
+            const row = ref.row;
+            let obj = null;
+            try { obj = JSON.parse(row.data); } catch (e) { obj = null; }
+            if (obj && typeof obj === 'object') {
+                const add = Math.max(1, Number((data && data.count) || 1));
+                obj.n = Math.max(1, Number(obj.n || 1)) + add;
+                obj.lastAt = now;
+                if (data && data.bytes != null) obj.bytes = Number(obj.bytes || 0) + Number(data.bytes || 0);
+                try { row.data = JSON.stringify(obj).slice(0, DEBUG_DATA_MAX); } catch (e) { /* 忽略 */ }
+                row.at = now;                       // 合并后按「最近一次」排序（仍是最新在前）
+                ref.at = now;
+                try { hooks.save(debugLogs.slice()); } catch (e) { /* 忽略 */ }
+                return true;
+            }
+        }
+        const row = debugLogNormalize(kind, data);
+        debugLogs.unshift(row);
+        if (debugLogs.length > DEBUG_CAP) debugLogs = debugLogs.slice(0, DEBUG_CAP);
+        if (k) coalesceRefs[k] = { at: now, row: row };
+        // 合并表不无限增长（键由调用点固定，正常只有几个；异常情况下按时间淘汰）
+        const ks = Object.keys(coalesceRefs);
+        if (ks.length > 64) {
+            ks.sort((a, b) => Number(coalesceRefs[a].at || 0) - Number(coalesceRefs[b].at || 0));
+            for (const k2 of ks.slice(0, ks.length - 64)) delete coalesceRefs[k2];
+        }
+        try { hooks.save(debugLogs.slice()); } catch (e) { /* 忽略 */ }
+        return true;
+    } catch (e) { return false; }
+}
+
 /** 取日志（最新在前；内存为空时尝试从宿主加载一次 —— V1 `dbgGet`） */
 function debugLogList() {
     try {
@@ -81,6 +141,7 @@ function debugLogList() {
 function debugLogClear() {
     const n = debugLogs.length;
     debugLogs = [];
+    coalesceRefs = Object.create(null);   // v3.40.0：合并引用表一并清（否则下次会去改写已不存在的条目）
     try { hooks.save([]); } catch (e) { /* 忽略 */ }
     return n;
 }
@@ -121,6 +182,6 @@ function debugLogStats() {
 
 export {
     DEBUG_CAP, DEBUG_KEY, DEBUG_DATA_MAX,
-    setDebugLogHooks, debugLogPush, debugLogList, debugLogClear, debugLogSync, debugLogStats, debugLogMerge, debugLogNormalize,
+    setDebugLogHooks, debugLogPush, debugLogPushCoalesced, debugLogList, debugLogClear, debugLogSync, debugLogStats, debugLogMerge, debugLogNormalize,
     debugLogErrors, debugLogErrorCount, debugLogLastError,
 };

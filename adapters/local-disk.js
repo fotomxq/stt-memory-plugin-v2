@@ -31,7 +31,7 @@
 //   **任意绝对路径（`D:\…`、`/storage/emulated/0/…`）不在放行范围内** → 拒绝。因此「只填一个目录名」会被
 //   解析到**应用数据目录**下（`$APPLOCALDATA/<名字>`），并把**解析后的完整路径**回填显示 —— 桌面与 Android 同一套口径。
 // ============================================================
-import { cfg, dbgLog } from '../core/model/runtime.js';
+import { cfg, dbgLog, dbgLogCoalesced } from '../core/model/runtime.js';
 // v3.38.0（用户报告「PC 端不可用」）：**浏览器内置目录**（OPFS）—— 纯浏览器也能构造真文件（无需宿主接口）
 import { browserFsAvailable, browserFsNote, browserFsReset, browserFsWrite, browserFsRead, browserFsExists, browserFsRemove, browserFsList, browserFsProbe } from './browser-fs.js';
 
@@ -889,7 +889,9 @@ export async function localDiskWrite(name, text) {
     }
     stats.writes++; stats.lastAt = Date.now(); stats.lastBytes = body.length; stats.lastError = ''; stats.mechanism = String(w.mechanism || '');
     localDiskClearInvalid();   // v3.28.1：写得进去 → 该路径有效
-    try { dbgLog('存储', { action: '本地磁盘目录：写入并回读校验通过', path: full, bytes: body.length, mechanism: stats.mechanism }); } catch (e) { /* 忽略 */ }
+    // v3.40.0（`docs/D16` L11）：成功写盘是**高频**日志 —— 合并记录（同 key 在窗口内只占一条，带 n / lastAt / bytes），
+    //   否则 300 条环会被同一句话占满（真机 83% 是「存储」，其中 166/200 是这一句），异常与摘要类诊断被挤出。
+    try { dbgLogCoalesced('存储', 'local-disk-write|' + String(stats.mechanism || ''), { action: '本地磁盘目录：写入并回读校验通过', path: full, bytes: body.length, mechanism: stats.mechanism }); } catch (e) { /* 忽略 */ }
     return { ok: true, path: full, bytes: body.length, mechanism: stats.mechanism };
 }
 
