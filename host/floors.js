@@ -17,6 +17,37 @@ import { DIMENSIONS } from '../core/constants.js';   // v2.93.0：楼层收缩�
 //   另：**楼层哈希仍用原始稳定正文**（`floorStableText`），既有「已处理楼层」台账不会失效。
 import { cleanText } from '../core/html-text.js';
 import { activeAtoms } from '../core/merge.js';   // v3.5.0：楼层突变判定取「可见情节」的最新楼层
+// v3.40.0（`docs/D16` A1）：台账标记要带**聊天归属**，否则换聊天后「这一楼已分析」会被别的聊天冒领。
+import { currentChatKey } from '../core/chat-scope.js';
+
+/**
+ * v3.40.0（`docs/D16` A1）：台账标记的**归属键** —— 写标记时记下当前聊天标识，读标记时只认本聊天。
+ *   真机取证：8 个「已分析」标记**全部越界**、覆盖楼层 0、丢弃留痕 120 条而 95% 与台账无关 —— 都是
+ *   「这条标记属于哪条聊天」从未落盘所致。**兼容口径**：老标记没有 `ck`（或当前键未知）→ 一律按可用处理
+ *   （绝不因为缺字段把用户的历史台账判废 —— 那正是「突然冒出大量未分析楼层」的成因）。
+ * @returns {string} 当前聊天标识（读不到 → ''）
+ */
+export function currentChatMarkKey() {
+    try { return String(currentChatKey() || ''); } catch (e) { return ''; }
+}
+/** 标记的聊天归属（无 → ''） */
+function markChatKey(mark) { return String((mark && mark.ck) || ''); }
+/** 标记的写入时刻（无 → 0 = legacy） */
+function markAt(mark) { return Number((mark && mark.at) || 0) || 0; }
+/**
+ * 该标记是否**属于当前聊天**：两侧都有值且不同 → false；任一侧为空（legacy / 键未知）→ true（保守可用）。
+ * @param {object} mark
+ * @param {string} [ck] 当前聊天标识
+ * @returns {boolean}
+ */
+function markBelongsToCurrentChat(mark, ck) {
+    const mck = markChatKey(mark);
+    const cur = String(ck == null ? currentChatMarkKey() : ck);
+    if (!mck || !cur) return true;
+    return mck === cur;
+}
+/** 写标记时的公共字段（归属 + 时刻） */
+function markMeta() { return { at: Date.now(), ck: currentChatMarkKey() }; }
 
 /** V1 台账版本与哈希自检签名（签名 = hashText(固定样本)，故与 V1 逐字符同值） */
 export const PROCESSED_VER = 'v1.174';
@@ -149,6 +180,18 @@ function processedMarkOf(i) {
 }
 
 /**
+ * 该楼在**当前聊天**里的可用标记（v3.40.0：属于别的聊天的标记视为「本聊天没有标记」）。
+ *   与 `processedMarkOf` 的区别只有一条：跨聊天归属的标记不再冒领本聊天的楼层。
+ * @param {number} i 楼层号
+ * @returns {object|undefined}
+ */
+function processedMarkForCurrentChat(i) {
+    const mark = processedMarkOf(i);
+    if (!mark) return undefined;
+    return markBelongsToCurrentChat(mark) ? mark : undefined;
+}
+
+/**
  * 是否已分析（V1 `isFloorProcessed`）：
  *   ① 台账版本签名不符（插件/算法更新）→ 按当前算法重算台账（**不是**把历史楼层全判未分析）；
  *   ② 台账无该楼 → false；③ 内容哈希一致 → true；④ 内容变了 → false（视为需重新分析）。
@@ -157,8 +200,7 @@ function processedMarkOf(i) {
 export function isFloorProcessed(i) {
     try {
         if ((state.processedVer || '') !== processedVerTag()) { try { migrateProcessedFloorsV170(); } catch (e) { /* 忽略 */ } }
-        const pf = state.processedFloors || [];
-        const mark = pf.find((x) => markFloor(x) === Number(i));
+        const mark = processedMarkForCurrentChat(i);   // v3.40.0：跨聊天归属的标记不冒领本聊天
         if (!mark) return false;
         const h = hashFloorText(i);
         if (!h) return false;
@@ -252,11 +294,13 @@ export function migrateProcessedFloorsV170() {
                 //   旧口径「无正文 → 丢弃该标记」在「宿主只交进来一部分聊天」时会把整本台账静默刷掉
                 //   （丢的是**低楼层**标记），而丢完还要 `state.processedVer = 当前签名` —— 之后再无处可查。
                 //   真正的「楼层不存在」由上一句的 `f > lastId` 判定（那是**可确认**的消失）。
-                next.push({ f: f, h: String((x && x.h) || '') });
+                next.push({ f: f, h: String((x && x.h) || ''), at: markAt(x), ck: markChatKey(x) });
                 keptNoText++;
                 continue;
             }
-            next.push({ f: f, h: h });
+            // v3.40.0（`docs/D16` A1）：刷新哈希时**保留归属与时刻** —— 迁移曾把 `ck/at` 一并丢掉，
+            //   于是「标记属于哪条聊天」在升级后全部失效（跨聊天冒领的根因之一）。
+            next.push({ f: f, h: h, at: markAt(x), ck: markChatKey(x) });
             refreshed++;
         }
         // v3.26.4：丢弃一律留痕（旧口径此处不留痕 → 恢复聊天后无法按内容归位）
@@ -277,7 +321,8 @@ export function recordProcessedFloors(start, end) {
         state.processedFloors = state.processedFloors || [];
         const map = new Map();
         for (const x of state.processedFloors) { const f = markFloor(x); if (Number.isFinite(f)) map.set(f, x); }
-        for (let i = Math.max(0, Number(start) || 0); i <= (Number(end) || 0); i++) map.set(i, { f: i, h: hashFloorText(i) });
+        const meta = markMeta();   // v3.40.0：归属 + 时刻
+        for (let i = Math.max(0, Number(start) || 0); i <= (Number(end) || 0); i++) map.set(i, Object.assign({ f: i, h: hashFloorText(i) }, meta));
         state.processedFloors = Array.from(map.values()).slice(-5000);
         state.processedVer = processedVerTag();
         const endN = Number(end) || 0;
@@ -308,15 +353,16 @@ export function recordProcessedFloors(start, end) {
 /** 丢弃留痕上限（条；按楼层去重后保留最新一批） */
 const PROCESSED_DROPPED_CAP = 600;
 
-/** v3.11.1：把「被丢弃的台账标记」留痕（有界、按楼层去重、新值覆盖） */
+/** v3.11.1：把「被丢弃的台账标记」留痕（有界、按楼层去重、新值覆盖；v3.40.0 起带归属与时刻） */
 export function rememberDroppedMarks(list) {
     try {
+        const meta = markMeta();
         const map = new Map();
         for (const src of [Array.isArray(state.processedDropped) ? state.processedDropped : [], list || []]) {
             for (const x of src) {
                 const f = markFloor(x);
                 if (!Number.isFinite(f) || f < 0) continue;
-                map.set(f, { f: f, h: String((x && x.h) || '') });
+                map.set(f, { f: f, h: String((x && x.h) || ''), at: Number((x && x.at) || 0) || meta.at, ck: String((x && x.ck) || meta.ck) });
             }
         }
         const arr = Array.from(map.values()).sort((a, b) => a.f - b.f).slice(-PROCESSED_DROPPED_CAP);
@@ -347,8 +393,13 @@ export function droppedContentChanged(i) {
         const arr = state.processedDropped;
         if (!Array.isArray(arr) || !arr.length) return false;
         const f = Number(i);
+        const ck = currentChatMarkKey();
         let rec = null;
-        for (const x of arr) { if (Number(x && x.f) === f) { rec = x; break; } }
+        for (const x of arr) {
+            if (Number(x && x.f) !== f) continue;
+            if (!markBelongsToCurrentChat(x, ck)) continue;   // v3.40.0：别的聊天的留痕不作数
+            rec = x; break;
+        }
         if (!rec || !rec.h) return false;
         const h = hashFloorText(f);
         return !!h && h !== String(rec.h);
@@ -459,11 +510,11 @@ export function processedDriftGuard(notify, force) {
             if (!h) {
                 // v3.26.4：楼层下标还在、只是取不到正文 → **保留标记**（旧口径在这里丢弃 → 台账被静默刷掉，
                 //   见 `migrateProcessedFloorsV170` 同批注释）；漂移刷新只为换哈希，不为删条目。
-                out.push({ f: f, h: String((m && m.h) || '') });
+                out.push({ f: f, h: String((m && m.h) || ''), at: markAt(m), ck: markChatKey(m) });
                 keptNoText++;
                 continue;
             }
-            out.push({ f: f, h: h });
+            out.push({ f: f, h: h, at: markAt(m), ck: markChatKey(m) });   // v3.40.0（A1）：刷新哈希保留归属/时刻
         }
         try { if (droppedMarks.length) rememberDroppedMarks(droppedMarks); } catch (e) { /* 忽略 */ }
         state.processedFloors = out;
@@ -504,9 +555,16 @@ export function reconcileProcessedFloors(notify) {
         if (!oldHashes.size) return { kept: 0, dropped: 0 };
         const keep = [];
         const found = new Set();          // 在当前聊天里找到的历史哈希（含来自留痕的）
+        // v3.40.0（A1）：归位时按**哈希**继承原标记的归属 / 时刻（改的是楼层号，不是「哪个聊天分析的」）
+        const metaByHash = new Map();
+        for (const m of pf) { const h = String((m && m.h) || ''); if (h && !metaByHash.has(h)) metaByHash.set(h, { at: markAt(m), ck: markChatKey(m) }); }
         for (let f = 0; f <= lastId; f++) {
             const h = hashFloorText(f);
-            if (h && oldHashes.has(h)) { keep.push({ f: f, h: h }); found.add(h); }
+            if (h && oldHashes.has(h)) {
+                const meta = metaByHash.get(h) || { at: Date.now(), ck: currentChatMarkKey() };
+                keep.push({ f: f, h: h, at: meta.at, ck: meta.ck });
+                found.add(h);
+            }
         }
         const before = pf.length;
         // 「真的丢了」= 台账标记的哈希在当前聊天里**找不到**（留痕救回的不算丢弃 → dropped 可能小于 0？不，这里按标记算）
@@ -598,18 +656,21 @@ export function healLedgerFromDropped() {
         const lastId = ready.total - 1;
         if (!Number.isFinite(lastId) || lastId < 0) return { restored: 0, kept: arr.length, skipped: 'no-chat' };
         const idx = nowHashIndex(lastId);
+        const ck = currentChatMarkKey();   // v3.40.0：只回填**属于本聊天**的留痕（别的聊天的留痕不作数）
+        const meta = markMeta();
         const marks = new Map();
         for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
             const f = markFloor(x);
-            if (Number.isFinite(f) && f >= 0) marks.set(f, { f: f, h: String((x && x.h) || '') });
+            if (Number.isFinite(f) && f >= 0) marks.set(f, { f: f, h: String((x && x.h) || ''), at: markAt(x), ck: markChatKey(x) });
         }
         const keep = [];
         const floors = [];
         for (const x of arr) {
             const h = String((x && x.h) || '');
+            if (!markBelongsToCurrentChat(x, ck)) { keep.push({ f: markFloor(x), h: h, at: markAt(x), ck: markChatKey(x) }); continue; }
             const at = h ? idx.get(h) : undefined;
-            if (at === undefined) { keep.push({ f: markFloor(x), h: h }); continue; }
-            if (!marks.has(at)) { marks.set(at, { f: at, h: h }); floors.push(at); }
+            if (at === undefined) { keep.push({ f: markFloor(x), h: h, at: markAt(x), ck: markChatKey(x) }); continue; }
+            if (!marks.has(at)) { marks.set(at, { f: at, h: h, at: meta.at, ck: ck }); floors.push(at); }
         }
         const restored = floors.length;
         if (restored) {
@@ -685,15 +746,16 @@ export function markFloorsProcessed(list) {
         const map = new Map();
         for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
             const f = markFloor(x);
-            if (Number.isFinite(f) && f >= 0) map.set(f, { f: f, h: String((x && x.h) || '') });
+            if (Number.isFinite(f) && f >= 0) map.set(f, { f: f, h: String((x && x.h) || ''), at: markAt(x), ck: markChatKey(x) });
         }
+        const meta = markMeta();   // v3.40.0：登记也带归属 + 时刻（旧值被新值覆盖是登记语义）
         let marked = 0, skipped = 0;
         const done = [];
         for (const f of nums) {
             const m = floorMessage(f);
             const h = hashFloorText(f);
             if (!m || m.is_hidden || m.is_user || !h) { skipped++; continue; }
-            map.set(f, { f: f, h: h });
+            map.set(f, Object.assign({ f: f, h: h }, meta));
             marked++;
             done.push(f);
         }
@@ -724,19 +786,30 @@ export function ledgerHealth() {
         if (!kernelStateReady()) return { ready: false };
         const lastId = (() => { try { const ctx = getCtx(); const n = (ctx && Array.isArray(ctx.chat)) ? ctx.chat.length : 0; return n > 0 ? n - 1 : -1; } catch (e) { return -1; } })();
         const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
-        let readable = 0, unreadable = 0, outOfRange = 0;
+        const ck = currentChatMarkKey();   // v3.40.0：归属未知（''）时不做跨聊天判定（保守）
+        let readable = 0, unreadable = 0, outOfRange = 0, crossChat = 0, noTimestamp = 0, legacyNoCk = 0;
         for (const x of pf) {
+            const mck = markChatKey(x);
+            if (!mck) legacyNoCk++;
+            if (!markAt(x)) noTimestamp++;
+            if (ck && mck && mck !== ck) { crossChat++; continue; }   // 属于别的聊天 → 不计入本聊天的可读/越界
             const f = markFloor(x);
             if (!Number.isFinite(f) || f < 0) { outOfRange++; continue; }
             if (f > lastId) { outOfRange++; continue; }
             if (hashFloorText(f)) readable++; else unreadable++;
         }
+        const dropped = Array.isArray(state.processedDropped) ? state.processedDropped : [];
+        const droppedCrossChat = dropped.filter((x) => ck && markChatKey(x) && markChatKey(x) !== ck).length;
+        const droppedNoTimestamp = dropped.filter((x) => !markAt(x)).length;
         const cov = floorCoverage(state, { maxFloor: lastId });
         const pending = listUnprocessedFloors({ maintain: false });
         return {
             ready: true, lastId: lastId,
             marks: pf.length, marksReadable: readable, marksUnreadable: unreadable, marksOutOfRange: outOfRange,
-            dropped: (Array.isArray(state.processedDropped) ? state.processedDropped.length : 0),
+            // v3.40.0（`docs/D16` A1）：把「为什么这些标记不能证明本聊天已分析」分成三个可见数字
+            marksCrossChat: crossChat, marksNoTimestamp: noTimestamp, marksLegacyNoChat: legacyNoCk,
+            chatKey: ck,
+            dropped: dropped.length, droppedCrossChat: droppedCrossChat, droppedNoTimestamp: droppedNoTimestamp,
             coverFloors: cov.floors, coverItems: cov.items, coverIgnored: cov.ignored,
             pending: pending.length, pendingFloors: pending.slice(0, 60),
             verMatches: (state.processedVer || '') === processedVerTag(),
@@ -804,10 +877,16 @@ export function handleFloorShrink(opts) {
             const hist = new Set(extraHashes);                          // v3.0.19：历史已处理哈希（含重映射前被丢掉的）
             for (const x of pf) { const h = String((x && x.h) || ''); if (h) hist.add(h); }
             const keep = [];
+            // v3.40.0（A1）：拆楼归位同样按哈希继承归属 / 时刻
+            const metaByHash2 = new Map();
+            for (const x of pf) { const h = String((x && x.h) || ''); if (h && !metaByHash2.has(h)) metaByHash2.set(h, { at: markAt(x), ck: markChatKey(x) }); }
             for (let f = 0; f <= lastId; f++) {
                 const h = hashFloorText(f);
                 if (!h) continue;
-                if (hist.has(h)) keep.push({ f: f, h: h });
+                if (hist.has(h)) {
+                    const meta = metaByHash2.get(h) || { at: Date.now(), ck: currentChatMarkKey() };
+                    keep.push({ f: f, h: h, at: meta.at, ck: meta.ck });
+                }
             }
             state.processedFloors = keep;
             state.processedVer = processedVerTag();

@@ -6,7 +6,7 @@
 // ============================================================
 import { DEBUG_KEY } from '../core/debug-log.js';
 import { auxFacade } from './aux-store.js';   // v3.27.0：辅助数据跟随本地目录统一收纳
-import { setDebugLogHooks, debugLogPush, debugLogList, debugLogClear, debugLogSync, debugLogStats } from '../core/debug-log.js';
+import { setDebugLogHooks, debugLogPush, debugLogPushCoalesced, debugLogList, debugLogClear, debugLogSync, debugLogStats } from '../core/debug-log.js';
 
 const DATA_MAX = 6000;
 
@@ -54,5 +54,5 @@ function wireDebugLog() {
 
 export {
     DEBUG_KEY, debugLogLoad, debugLogSave, wireDebugLog,
-    debugLogPush, debugLogList, debugLogClear, debugLogSync, debugLogStats,
+    debugLogPush, debugLogPushCoalesced, debugLogList, debugLogClear, debugLogSync, debugLogStats,
 };

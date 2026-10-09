@@ -3,6 +3,21 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.40.0（2026-10-08）· 按 `docs/D16` 落地 P0/P1：本机层「未命中」不再误判路径坏 · 台账带**聊天归属** · 关联行**级联清理** · 存储日志**合并**
+
+**用户要求**（原话）：「新版本，请开工修复。」（承接设计稿 `docs/D16` 的 P0–P2 清单）
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | `index.js#loadFromLocalDisk` / `loadMemoryState`（**D16 L9**） | 磁盘层**首次未命中 → 短延迟重试一次**（`LOCAL_DISK_LOAD_RETRY_MS = 250`；读到即**清除**历史「无效」标记）；「**未命中**」与「**路径不可用**」分级：无失败证据的未命中只记 `载入` 级诊断 + 一句信息提示、**不再标记无效**，已知坏路径（本会话写过失败 / 已标记）仍照 v3.28.1 口径醒目告警 |
+| ② | `host/floors.js`（**D16 A1**） | 台账标记统一带**归属 `ck` + 时刻 `at`**（写入 / 登记 / 留痕 / 回填 / 迁移 / 漂移刷新 / 哈希归位 / 拆楼归位**八处**全部保留，迁移不再把归属丢掉）；**跨聊天不冒领**：`isFloorProcessed` 只认本聊天的标记（legacy 无 `ck` 或当前键未知 → 照旧可用，避免误报未分析）；`ledgerHealth` 新增 `marksCrossChat` / `marksNoTimestamp` / `marksLegacyNoChat` / `droppedCrossChat` / `droppedNoTimestamp` / `chatKey` 六项如实计数；`droppedContentChanged` 与留痕回填只认本聊天的留痕 |
+| ③ | `core/sweep.js` + `core/model/rel.js`（**D16 A2**） | 条目被**墓碑化**时**级联**删掉指向它的关联行（证据同源：同一次索引差集，不会误删「只是暂时读不到」的关联）；新增 `purgeLinksForGoneEntries(gone)` 纯函数；**全量清理**沿用既有实现（关系表页 `relCleanInvalid`） |
+| ④ | `ui/buffer-manage.js` + `ui/panel.js`（**D16 A2**） | 数据管理页新增一行「**无效关联行：N / M 条**（孤儿 / 幽灵 / 空行）+ 🧹 清理无效关联」（只读统计 + 一键清理：写删除墓碑、幂等；**二次确认**文案写明「只删关联行、不删记忆条目」） |
+| ⑤ | `core/debug-log.js` + `core/model/runtime.js` + `host/chat.js`（**D16 L11**） | 新增**合并式日志** `debugLogPushCoalesced(kind, key, data)`：同一 `key` 在窗口（默认 5s）内重复 → **原地升级为一条**（`n` / `lastAt` / 累计 `bytes`），`debugLogClear()` 一并复位合并表；未接线时 `dbgLogCoalesced` **自动退化为普通 `dbgLog`**（不丢日志）。三处高频成功写盘（本地磁盘写盘 / 本机层分片 / 快照链分片）改用合并记录 |
+
+**本批为何先修这四条（运行态取证）**：真机运行态取证（调试接口）显示「**每次刷新唯一一条 error 日志**就是本机层未命中」（而磁盘层写 67 次全成功、文件就在那儿）；
+台账 8 个标记**全部越界**且 `coverFloors=0`（缺归属）；体检报 107 项异常里 **29 条悬空关联**；300 条日志环里「存储」占 **248（83%）**、其中 166/200 是同一句话。
+
 ## v3.39.0（2026-10-08）· 修复「本地召回失败 Cannot read properties of null (reading 'state')」：内核态未就绪时召回如实空手而归
 
 **用户报告**（原话）：「修复报错：本地召回失败 Cannot read properties of null (reading 'state')」
