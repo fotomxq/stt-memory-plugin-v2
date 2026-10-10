@@ -17,9 +17,11 @@
 //
 // 运行：node scripts/check-docs-facts.js
 // ============================================================
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// v3.40.3（技-12）：批次档前缀匹配 / 目录树结构化解析抽为**纯函数库**，供本脚本与反向探针共用
+import { BATCH_REF_RE as BATCH_REF_RE_LIB, batchHits as batchHitsLib, parseTopTreeNames } from './docs-facts-lib.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -198,6 +200,19 @@ function walkMd(dir, acc = []) {
 const mdFiles = walkMd(ROOT);
 const PATH_RE = /^[\w\u4e00-\u9fa5][\w\u4e00-\u9fa5./-]*\.(md|js|mjs|cjs|json|css|html)$/;
 /**
+ * **批次档前缀引用**（v3.40.3 / `docs/D22` `技-12`，登记 `docs/D17` U132）。
+ *   历史盲区：C5 只校验**带扩展名**的引用 → `history/P10c46` 这类「批次档前缀」从未被拦住，
+ *   于是「最近一次界面变更」指向的批次档悄悄过期了也没人发现。
+ *   匹配形态与唯一匹配判据见 `scripts/docs-facts-lib.js`（纯函数，便于反向探针直接驱动）。
+ */
+const BATCH_REF_RE = BATCH_REF_RE_LIB;
+/** 批次档目录下的文件名（C5 扩展用的唯一索引） */
+const historyDocNames = (() => {
+    try { return readdirSync(join(ROOT, 'docs', 'history')).filter((f) => f.endsWith('.md') && f !== 'README.md'); } catch (e) { return []; }
+})();
+/** 前缀 → 命中的批次档（唯一匹配；实现见 lib） */
+function batchHits(prefix) { return batchHitsLib(prefix, historyDocNames); }
+/**
  * **失效路径豁免标记**（行内 HTML 注释，渲染时不可见）：用于**文档本身在登记一处错误路径**的场合
  *   —— 例如 `docs/D14` 逐条列出「旧文写错的文件名」，那些路径**本来就不存在**、也不该被判为引用失效。
  * 口径：标记只豁免**它所在的那一行**；必须在同一行显式写出，且该行应说明「为什么这是失效路径」
@@ -225,6 +240,7 @@ const EXTERNAL_PATHS = new Set([
     'stt-memory-plugin-v2/manifest.json',
 ]);
 let refChecked = 0;
+let batchRefChecked = 0;
 for (const f of mdFiles) {
     const rel = relative(ROOT, f).split('\\').join('/');
     if (isHistorical(rel)) continue;
@@ -239,6 +255,21 @@ for (const f of mdFiles) {
             if (tok.indexOf(' ') >= 0 || tok.indexOf('*') >= 0 || tok.indexOf('…') >= 0 || tok.indexOf('|') >= 0) continue;
             if (/^https?:/i.test(tok)) continue;
             tok = tok.split('#')[0].split('?')[0];
+            // 批次档前缀引用（无扩展名）：单独一条判据（v3.40.3 / 技-12）
+            const bm = BATCH_REF_RE.exec(tok);
+            if (bm) {
+                const hits = batchHits(bm[1]);
+                batchRefChecked++;
+                if (hits.length === 0) {
+                    problems.push('批次档引用不存在：' + rel + ':' + (i + 1) + ' → ' + tok
+                        + '（docs/history/ 下没有以 `' + bm[1] + '-` 开头、也不叫 `' + bm[1] + '.md` 的文件；'
+                        + '若本行是在**举例说明**编号 / 区间（而非引用某一份批次档），请在本行加 `' + MISSING_PATH_OK + '`）');
+                } else if (hits.length > 1) {
+                    problems.push('批次档引用不唯一：' + rel + ':' + (i + 1) + ' → ' + tok
+                        + '（匹配到 ' + hits.length + ' 份：' + hits.slice(0, 4).join('、') + (hits.length > 4 ? '…' : '') + '；请写到能唯一匹配的前缀）');
+                }
+                continue;
+            }
             if (!PATH_RE.test(tok)) continue;
             if (EXTERNAL_PATHS.has(tok)) continue;
             const cands = [tok, 'docs/' + tok, 'docs/history/' + tok];
@@ -310,18 +341,59 @@ for (const f of mdFiles) {
 /**
  * **C9：本仓库自有源码的绝对行号引用「只减不增」**（存量预算 = 棘轮）。
  *   行号会随任何一次代码改动漂移，文档不会自动跟着走；**新引用一律写 `文件#符号`**（C8 负责核）。
- *   把某处行号改成符号引用后，请把这里的预算**同步调小**（棘轮只允许下调）。
  *   冻结坐标（V1 源码行号、历史档）不在本仓库 → 不计入本预算。
  *   **注意**：`tests/unit/version-rule.test.js` 的「C9 反向探针」会临时新增 12 条行号并要求门禁失败 ——
- *   因此预算必须**紧贴实际存量**（留有富余会让该探针失效）。存量历史：301 → 211（v1.1）→ **160**（v1.2 文档一致性修订轮）。
+ *   因此预算必须**紧贴实际存量**（留有富余会让该探针失效）。
+ *
+ *   v3.40.3（`docs/D22` `技-13` / `docs/D17` U133）：预算**不再硬编码在本脚本里** ——
+ *   从 `scripts/line-ref-budget.json` 读 `baseline + margin`（棘轮语义不变：实测 > 预算即失败）。
+ *   下调棘轮只需 `node scripts/check-docs-facts.js --write-baseline`（或手改该 JSON），
+ *   **改引用之后不再需要手改门禁脚本本身**。
  */
-const LINE_REF_BUDGET = 160;
-if (lineRefChecked > LINE_REF_BUDGET) {
-    problems.push('本仓库源码的绝对行号引用 ' + lineRefChecked + ' 处 > 预算 ' + LINE_REF_BUDGET
-        + '（新增引用请写 `文件#符号`，见 开发守则 §2.3 / docs/D14 C9）· 例：' + lineRefSamples.join('、'));
+const BUDGET_REL = 'scripts/line-ref-budget.json';
+const budgetInfo = (() => {
+    try {
+        const j = JSON.parse(read(BUDGET_REL));
+        const base = Number(j && j.baseline);
+        const margin = Number(j && j.margin);
+        if (!Number.isFinite(base) || base < 0) return { ok: false, error: 'baseline 缺失或非数字' };
+        if (!Number.isFinite(margin) || margin < 0) return { ok: false, error: 'margin 缺失或非数字' };
+        return { ok: true, baseline: base, margin: margin, budget: base + margin, raw: j };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+})();
+if (!budgetInfo.ok) {
+    problems.push('C9 预算文件不可用：scripts/line-ref-budget.json（' + budgetInfo.error
+        + '）—— 该文件是行号棘轮预算的唯一来源，见 开发指南 §3 与 `docs/D22` `技-13`');
 }
-notes.push('引用形态：`文件#符号` ' + symRefChecked + ' 处全部可解析；本仓库源码绝对行号 '
-    + lineRefChecked + '/' + LINE_REF_BUDGET + '（只减不增）');
+const LINE_REF_BUDGET = budgetInfo.ok ? budgetInfo.budget : 0;
+if (budgetInfo.ok && lineRefChecked > LINE_REF_BUDGET) {
+    problems.push('本仓库源码的绝对行号引用 ' + lineRefChecked + ' 处 > 预算 ' + LINE_REF_BUDGET
+        + '（= baseline ' + budgetInfo.baseline + ' + margin ' + budgetInfo.margin
+        + '，见 scripts/line-ref-budget.json）（新增引用请写 `文件#符号`，见 开发守则 §2.3 / docs/D14 C9）· 例：' + lineRefSamples.join('、'));
+}
+if (budgetInfo.ok) {
+    notes.push('引用形态：`文件#符号` ' + symRefChecked + ' 处全部可解析；本仓库源码绝对行号 '
+        + lineRefChecked + '/' + LINE_REF_BUDGET + '（只减不增；预算来自 scripts/line-ref-budget.json 的 baseline '
+        + budgetInfo.baseline + ' + margin ' + budgetInfo.margin + '）');
+    // v3.40.3（技-13）：`--write-baseline` = 把棘轮落到本次实测值（只允许下调；上调需显式 `--force`）
+    if (process.argv.indexOf('--write-baseline') >= 0) {
+        const cur = Number(budgetInfo.baseline);
+        const force = process.argv.indexOf('--force') >= 0;
+        if (lineRefChecked > cur && !force) {
+            console.log('  ⚠️ --write-baseline 拒绝上调：实测 ' + lineRefChecked + ' > baseline ' + cur
+                + '（棘轮只减不增；确需上调请显式加 --force 并在 CHANGELOG 说明原因）');
+        } else {
+            budgetInfo.raw.baseline = lineRefChecked;
+            budgetInfo.raw.updatedAt = new Date().toISOString().slice(0, 10);
+            budgetInfo.raw.updatedBy = 'check-docs-facts.js --write-baseline（实测 ' + lineRefChecked + ' 处）';
+            try {
+                writeFileSync(join(ROOT, BUDGET_REL), JSON.stringify(budgetInfo.raw, null, 2) + '\n', 'utf8');
+                console.log('  ✅ 已写入 C9 预算：baseline ' + cur + ' → ' + lineRefChecked
+                    + '（scripts/line-ref-budget.json，margin ' + budgetInfo.margin + '）');
+            } catch (e) { console.log('  ❌ 写入预算文件失败：' + String((e && e.message) || e)); }
+        }
+    }
+}
 
 // §3 表头声明的版本必须等于当前版本（表头写「当前值（vX.Y.Z）」；不随版本更新就会出现「表说旧版本、行却是新值」）
 const claimVer = (docsReadme.match(/当前值（v(\d+\.\d+\.\d+)）/) || [])[1];
@@ -332,19 +404,9 @@ if (!claimVer) {
 }
 
 // 目录树列出的 docs/*.md 与磁盘集合必须相等（不含 README.md 自身；`history/` 子树单独看）
-const treeNames = (() => {
-    const i = docsReadme.indexOf('## 1. 目录结构');
-    const j = docsReadme.indexOf('```', docsReadme.indexOf('```', i) + 3);
-    let block = (i >= 0 && j > i) ? docsReadme.slice(i, j) : '';
-    // 只取 `history/` 之前的顶层条目（含 `docs/history/README.md` 等子树项不算顶层）
-    const hi = block.indexOf('history/');
-    if (hi >= 0) block = block.slice(0, hi);
-    const out = [];
-    const re = /[├└]──\s+([\w\u4e00-\u9fa5-]+\.md)/g;
-    let m;
-    while ((m = re.exec(block)) !== null) { if (m[1] !== 'README.md') out.push(m[1]); }
-    return out;
-})();
+// C6（v3.40.3 / 技-12）：**结构化解析**取代裸子串截断 —— 实现见 `scripts/docs-facts-lib.js#parseTopTreeNames`
+//   （旧实现用 `block.indexOf('history/')` 截断：树里任一**描述文字**含该子串就会静默截短比较范围）
+const treeNames = parseTopTreeNames(docsReadme);
 const diskDocs = readdirSync(join(ROOT, 'docs')).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
 const missingInTree = diskDocs.filter((f) => treeNames.indexOf(f) < 0);
 const extraInTree = treeNames.filter((f) => diskDocs.indexOf(f) < 0);

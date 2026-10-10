@@ -1,6 +1,6 @@
 {
   "name": "ftt-memory-v2",
-  "version": "3.40.2",
+  "version": "3.40.3",
   "private": true,
   "type": "module",
   "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",
@@ -17,9 +17,13 @@
     "local:bridge:selftest": "node tests/local/bridge.mjs --selftest",
     "local:leak": "node scripts/check-local-leak.js",
     "docs:facts": "node scripts/check-docs-facts.js",
-    "gate": "node scripts/check-core-purity.js && node scripts/check-core-refs.js && node scripts/check-i18n.js && node scripts/check-version-sync.js && node scripts/check-docs.js && node scripts/check-docs-facts.js && node scripts/check-local-leak.js && node scripts/check-changelog-json.js && node scripts/check-ui-spec.js && node tests/unit/run.js && node tests/smoke-test.js",
+    "gate": "node scripts/check-core-purity.js && node scripts/check-core-refs.js && node scripts/check-i18n.js && node scripts/check-version-sync.js && node scripts/check-docs.js && node scripts/check-docs-facts.js && node scripts/check-local-leak.js && node scripts/check-changelog-json.js && node scripts/check-ui-spec.js && node scripts/check-config-decl.js && node scripts/check-drafts.js && node tests/unit/run.js && node tests/smoke-test.js",
     "ui-spec": "node scripts/check-ui-spec.js",
-    "ui-spec:strict": "node scripts/check-ui-spec.js --strict"
+    "ui-spec:strict": "node scripts/check-ui-spec.js --strict",
+    "config:decl": "node scripts/check-config-decl.js",
+    "config:decl:strict": "node scripts/check-config-decl.js --strict",
+    "drafts": "node scripts/check-drafts.js",
+    "drafts:strict": "node scripts/check-drafts.js --strict"
   },
   "license": "AGPL-3.0",
   "author": "fotomxq"

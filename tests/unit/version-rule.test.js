@@ -12,12 +12,14 @@
 //   D v1.1 新增判据的反向探针：C8（符号级存在性）/ C9（本仓库源码绝对行号棘轮）——用临时台账文件探针，不改既有文档。
 // 运行：node tests/unit/version-rule.test.js
 // ============================================================
-import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeReporter } from '../harness/st-mock.js';
 import { checkVersionFormat, FIXED_MAJOR, VERSION_RULE } from '../../scripts/check-version-sync.js';
+// v3.40.3（`docs/D22` `技-12`）：C5 批次档前缀唯一匹配 / C6 目录树结构化解析的纯函数
+import { batchHits, parseTopTreeNames } from '../../scripts/docs-facts-lib.js';
 
 const R = makeReporter('version-rule v3.25.1 版本号追加规则 + docs 事实门禁自检');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -125,6 +127,51 @@ A('D3 C8/C9 的**正向**口径：当前工作区的符号引用全部可解析�
     return r.ok === true && r.out.indexOf('引用形态：') > 0
         && r.out.indexOf('全部可解析') > 0 && r.out.indexOf('只减不增') > 0
         && existsSync(PROBE_DOC) === false;
+})(), '');
+
+// ---------- E 组：v3.40.3（`docs/D22` `技-12`）—— C5 批次档前缀 / C6 目录树结构化解析的反向探针 ----------
+// 这两处判据抽成了纯函数（`scripts/docs-facts-lib.js`），因此探针可以**精确驱动**它们，
+//   不必往 `docs/` 写临时文件（那会反过来牵动 C6 自己的目录树集合判据）。
+A('E1 **C5 反向探针**：写一个不存在的**批次档前缀**（`history/P10c9999`）→ 门禁必须失败并指出「批次档引用不存在」', (() => {
+    try {
+        writeFileSync(PROBE_DOC, PROBE_HEAD + '见 `history/P10c9999`。\n', 'utf8');
+        const r = runFacts();
+        return r.ok === false && r.out.indexOf('批次档引用不存在') >= 0 && r.out.indexOf('P10c9999') >= 0;
+    } catch (e) { return false; } finally { try { rmSync(PROBE_DOC, { force: true }); } catch (e) { /* 忽略 */ } }
+})(), '');
+
+A('E2 **C5 唯一匹配**：`P10c6` 只认 `P10c6-…`（不吞 `P10c60`–`P10c68`）、`P10c` 只认 `P10c-…`、`P10c68` 唯一；不存在的前缀命中 0 条', (() => {
+    const names = ['P10c6-分片提交.md', 'P10c60-快照拆分.md', 'P10c68-D16-P0P1落地.md', 'P10c-时钟取值追踪与日志口径.md'];
+    const a = batchHits('P10c6', names), b = batchHits('P10c', names), c = batchHits('P10c68', names), d = batchHits('P10c9999', names);
+    return a.length === 1 && a[0] === 'P10c6-分片提交.md'
+        && b.length === 1 && b[0] === 'P10c-时钟取值追踪与日志口径.md'
+        && c.length === 1 && c[0] === 'P10c68-D16-P0P1落地.md'
+        && d.length === 0;
+})(), '');
+
+A('E3 **C6 反向探针**：树条目的**描述文字里含 `history/`** 也不得截短比较范围（旧实现裸子串截断 → 后两行被吞掉、误报「漏列」）', (() => {
+    const tree = [
+        '## 1. 目录结构（四层）',
+        '```text',
+        'docs/',
+        '├── README.md               # 索引（本文件）',
+        '├── D22-开发待办清单.md     # 设计层（读法见 history/P10c46 与 docs/history/ 全层）',
+        '├── D28-性能专项设计稿.md   # 设计层（evidence 在 history/P10c70）',
+        '└── history/                # 历史批次层（只读留痕）',
+        '    ├── README.md',
+        '    └── P10c70-x.md',
+        '```',
+        '## 2. 阅读路径',
+    ].join('\n');
+    const got = parseTopTreeNames(tree);
+    return got.length === 2 && got[0] === 'D22-开发待办清单.md' && got[1] === 'D28-性能专项设计稿.md';
+})(), '');
+
+A('E4 **C6 正向**：真实 `docs/README.md` 的目录树解析结果 == 磁盘上的 `docs/*.md` 集合（不含 README.md 自身）', (() => {
+    const md = readFileSync(join(ROOT, 'docs', 'README.md'), 'utf8');
+    const got = parseTopTreeNames(md).slice().sort();
+    const disk = readdirSync(join(ROOT, 'docs')).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
+    return got.length === disk.length && got.every((v, i) => v === disk[i]);
 })(), '');
 
 R.done();
