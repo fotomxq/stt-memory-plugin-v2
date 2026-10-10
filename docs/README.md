@@ -1,6 +1,14 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.53 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.54 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.54 变更（随 **v3.40.2**：修复**存储丢失** —— 刷新后大量已分析内容消失、只剩早期数据）：
+>   根因① **本机副本作用域 token 写读不一致**（写侧 `core/state.js#scopeId()` 是 `getScopeKey()` 的**二次哈希**）→ 本机副本写得进读不回（v3.28.0 起；`localDiskInfo().stats` 实测 `writes:3 / reads:0`）；
+>   根因② `loadFromServerFile` **先读明文后试 `.gz`**，而写侧 gzip 开启时只写 `.gz` → 遗留旧明文永远压住新数据；
+>   ① 新增 `adapters/local-disk.js#localScopeToken` / `#localCopyFileName`（写读唯一来源）· `index.js#findLocalCopyByScope`（按内容作用域精确找回）·
+>      `loadFromServerFile` 候选读全后按信封 `updatedAt` 取新 · `localDiskList` 补 dev-api 分支；
+>   ② §3 数字口径同步：表头与版本号 → **3.40.2**、单测 **170 文件 / 2608 断言**、历史批次档数 190 → **191**；§1 目录树 `history/` 计数 → **191 份**、`P10c*` 区间 → **`P10c70`**；
+>   ③ 留痕：`docs/history/P10c70-存储丢失修复-本机副本token与主文件候选取新.md`；`docs/05-开发指南.md` §2 的 `tests/` 计数 196 → **197**（同提交）；
+>   ④ **`docs/D16` L9 的结论更正**：当年「3 次未命中」被判为「读得太早」，实为**文件名对不上导致的 100% 读不到**（详见批次档 §3）。
 > v2.53 变更（随 **v3.40.1**：`docs/D22` W0 首条落地，**纯文档澄清**，代码未动）：
 >   `03-技术架构.md` **§9.2 收录 `docs/D10` §1.2 的 `R2`–`R5`**（快照链按 `atomsHashes` 字面去重 · 合并后触发上限裁剪 · id 墓碑误伤 · 原生通道与文件通道并存），
 >   原有四条缺陷按 `R1`–`R5` **分类基准**重排（`R1` 已修、`R2`–`R5` 标 `⏳ 未修`，修复归 `docs/D21` `技-4`）；`03` 文档版本 v0.2 → **v0.3**；
@@ -239,12 +247,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，190 份）
+└── history/                  # 历史批次层（只读留痕，191 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c69           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c70           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -297,9 +305,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.40.1） |
+| 口径 | 权威来源 | 当前值（v3.40.2） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.1` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.2` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -307,14 +315,14 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 169 文件 / 2595 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 170 文件 / 2608 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 49 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`） |
-| 历史批次档数 | `docs/history/*.md` | 190 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 191 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -32,8 +32,35 @@
 //   解析到**应用数据目录**下（`$APPLOCALDATA/<名字>`），并把**解析后的完整路径**回填显示 —— 桌面与 Android 同一套口径。
 // ============================================================
 import { cfg, dbgLog, dbgLogCoalesced } from '../core/model/runtime.js';
+// v3.40.2：本机副本的作用域 token 必须与内核**同一个来源**（见 `localScopeToken` 的说明）
+import { scopeId } from '../core/state.js';
 // v3.38.0（用户报告「PC 端不可用」）：**浏览器内置目录**（OPFS）—— 纯浏览器也能构造真文件（无需宿主接口）
 import { browserFsAvailable, browserFsNote, browserFsReset, browserFsWrite, browserFsRead, browserFsExists, browserFsRemove, browserFsList, browserFsProbe } from './browser-fs.js';
+
+/**
+ * **本机副本的作用域 token —— 写读两侧的唯一来源**（v3.40.2 数据丢失修复）。
+ *
+ * 缺陷（v3.28.0「本地磁盘目录」引入起就存在）：
+ *   · **写侧**（`adapters/store.js` 保存流水线）用 `core/state.js#scopeId()` → `char:<hash(scopeKey)>`；
+ *   · **读侧**（`index.js#loadFromLocalDisk`）用 `getScopeKey()` → 宿主注入的 `char:<hash>`。
+ *   二者**不是同一个字符串**（`scopeId()` 是对 `getScopeKey()` 的**二次哈希**），于是本机副本
+ *   **写得进、读不回**：每次刷新都判「本机层没有副本」→ 回退浏览器层 / 服务端旧副本
+ *   （用户报告：「刷新后大量已分析内容丢失、只剩早期数据」）。
+ *   写读两侧从此都只经本函数取值，杜绝再次错位（同 `stateFileWriteName` 的「单一来源」口径）。
+ * @returns {string} 作用域 token（`char:<hash>`；宿主未注入时 `char:<hash('default')>`）
+ */
+export function localScopeToken() { try { return String(scopeId() || 'default'); } catch (e) { return 'default'; } }
+
+/**
+ * 本机副本**单文件**名（写读唯一来源）。历史实现两侧各写了一遍 `.replace(...)`，
+ *   正是这种重复导致了 v3.40.2 修掉的作用域错位。
+ * @param {string} scope `localScopeToken()` 的返回值
+ */
+export function localCopyFileName(scope) {
+    return 'ftt2-local-' + String(scope == null ? '' : scope).replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
+}
+/** 本机副本文件名前缀（按内容作用域兜底找回时用于筛候选；只读） */
+export const LOCAL_COPY_PREFIX = 'ftt2-local-';
 
 /** 探测结果缓存（每次会话探一次；`localDiskReprobe()` 可强制重探） */
 let caps = null;
@@ -844,6 +871,28 @@ export async function localDiskList() {
             return out;
         }
         if (handleActive() && await handleUsable()) { out.entries = await handleListPath(relForHandle(dir)); out.names = out.entries.map((x) => x.name); out.ok = true; return out; }
+        /**
+         * v3.40.2：**dev-api 机制也要能列目录**。此前这里只走 Tauri 原始桥 —— 于
+         *   `api.dev.<ns>` 形态的宿主（本地调试宿主 / 部分 TauriTavern 构建）下列目录**恒失败**，
+         *   而「按内容作用域找回本机副本」的兜底正依赖它（数据明明在盘上却列不出来）。
+         *   与 `diskWriteText` / `diskReadText` 的 dev-api 路由同口径：同命名空间、按方法名找列目录函数。
+         */
+        const c = localDiskCapability(false);
+        if (c && c.ok && c.mechanism === 'dev-api') {
+            const dev = (() => { try { return abi().api.dev[c.ns]; } catch (e) { return null; } })();
+            const m = ['readDir', 'listDir', 'listFiles', 'readdir', 'list'].filter((k) => dev && typeof dev[k] === 'function')[0];
+            if (!m) { out.error = 'no-list-method'; return out; }
+            const rr = await dev[m]({ path: dir });
+            const arr2 = Array.isArray(rr) ? rr : (rr && Array.isArray(rr.entries) ? rr.entries : (rr && Array.isArray(rr.files) ? rr.files : []));
+            out.entries = arr2.map((x) => ({
+                name: String((x && (x.name || x.path || x.fileName)) || ''),
+                isFile: !(x && (x.isDirectory === true || x.isDir === true)),
+                size: Number((x && (x.size || x.len)) || 0),
+            })).filter((x) => x.name);
+            out.names = out.entries.map((x) => x.name);
+            out.ok = true;
+            return out;
+        }
         const inv = tauriInvoke();
         if (!inv) { out.error = hasAnyMechanism() ? 'no-invoke' : String(localDiskCapability(false).note || 'no-capability'); return out; }
         const r = await inv('plugin:fs|read_dir', { path: dir, options: {} });
@@ -1182,4 +1231,6 @@ export default {
     localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn,
     // v3.34.0：宿主应用数据目录（相对目录名的落点）/ 名称解析 / 存在性判断
     localDiskBaseDir, localDiskResolveDir, localDiskExists,
+    // v3.40.2：本机副本的作用域 token 与文件名（写读唯一来源）
+    localScopeToken, localCopyFileName, LOCAL_COPY_PREFIX,
 };
