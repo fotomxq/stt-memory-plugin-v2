@@ -23,11 +23,12 @@ import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId, setChatHooks } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { handleFloorShrink, hashFloorText, scanPendingFloors, recordProcessedFloors, shrinkBaseline, processedStats, reconcileProcessedFloors, processedVerTag } from '../../host/floors.js';
+import { handleFloorShrink, hashFloorText, scanPendingFloors, recordProcessedFloors, shrinkBaseline, processedStats, reconcileProcessedFloors, processedVerTag, recheckOriginGone } from '../../host/floors.js';
 import { normalizeAtom } from '../../core/model/atom.js';
 import { mergeDelta } from '../../core/ingest.js';
 import { remapAfterTrim } from '../../core/floor-trim.js';
-import { currentFloorRange, meaningfulFloorRange, floorCoverage, originFloorRange, floorPositionLabel } from '../../core/floor-cover.js';
+import { dataHealthReport } from '../../core/data-health.js';
+import { currentFloorRange, meaningfulFloorRange, floorCoverage, originFloorRange, floorPositionLabel, markOriginGone, mergeEntryProvenance } from '../../core/floor-cover.js';
 
 const R = makeReporter('floor-provenance v3.7.0 楼层溯源不可变 + 原文已移除');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -306,5 +307,60 @@ A('J4 幂等：观察过一次之后，**没有新收缩**就不再触发（基�
     const r2 = handleFloorShrink({});
     return r1.skipped === 'no-shrink' && r2.skipped === 'no-shrink' && Number(state.lastChatFloor) === 19;
 })(), () => ({ r: handleFloorShrink({}), lastChatFloor: state.lastChatFloor }));
+
+// ---------- K 组（v3.40.5，真机取证）：打「原文已移除」必须**同时清掉当前位置** ----------
+// 真机数据：某作用域 466 条里 321 条 `originGone`，其中 **171 条仍带 `floorNow*`** → 体检成片报
+//   `origin-gone-with-floornow`（把真实异常淹没），且 `clearGone` 的 ④ 分支会把**陈旧位置洗白**成「位置有效」。
+A('K1 `markOriginGone()`：清掉 `floorNowStart/End`（不再占用楼层）、**保留 `floorNowHash`**（复核指纹）+ 写标记时刻', (() => {
+    const it = atom('k1', 20, 21, { floorNowStart: 8, floorNowEnd: 9, floorNowHash: 'fp-keep' });
+    const ok = markOriginGone(it, 1700000000000);
+    return ok === true && it.originGone === true && it.originGoneAt === 1700000000000
+        && it.floorNowStart === undefined && it.floorNowEnd === undefined
+        && it.floorNowHash === 'fp-keep'
+        && it.floorStart === 20 && it.floorEnd === 21
+        && currentFloorRange(it) === null;
+})(), '见断言');
+
+A('K2 `mergeEntryProvenance()`：**原文已移除**的条目不再被补回 `floorNow*`，且就地清掉自身陈旧位置；正常条目照旧补空', (() => {
+    // ① 已移除（target）⊕ 另一侧有位置（other）→ 不补、且清掉 target 自身残留
+    const target = { id: 'k2a', originGone: true, floorNowStart: 3, floorNowEnd: 4, floorNowHash: '' };
+    const out1 = mergeEntryProvenance(target, { floorNowStart: 9, floorNowEnd: 10, floorNowHash: 'fp-x' });
+    const ok1 = target.floorNowStart === undefined && target.floorNowEnd === undefined
+        && target.floorNowHash === 'fp-x'                       // 指纹仍补空（复核用）
+        && out1.indexOf('floorNowStart') < 0 && out1.indexOf('floorNowEnd') < 0;
+    // ② 另一侧带 originGone（① 只升不降先抬升）→ 同样不补位置
+    const target2 = { id: 'k2b' };
+    const out2 = mergeEntryProvenance(target2, { originGone: true, floorNowStart: 5, floorNowEnd: 6 });
+    const ok2 = target2.originGone === true && target2.floorNowStart === undefined && target2.floorNowEnd === undefined
+        && out2.indexOf('originGone') >= 0;
+    // ③ 正常条目（两侧都没有 originGone）→ 行为不变：补空
+    const target3 = { id: 'k2c' };
+    const out3 = mergeEntryProvenance(target3, { floorNowStart: 7, floorNowEnd: 8 });
+    const ok3 = target3.floorNowStart === 7 && target3.floorNowEnd === 8 && out3.indexOf('floorNowStart') >= 0;
+    return ok1 && ok2 && ok3;
+})(), '见断言');
+
+A('K3 体检口径：`markOriginGone()` 之后 **不再**出现 `origin-gone-with-floornow`（修复前该条必然报）', (() => {
+    // 「修复前」的形态：老存档里 originGone 与 floorNow* 并存（= 真机那 171 条）
+    const gone = atom('k3', 30, 31, { originGone: true, originGoneAt: 1, floorNowStart: 2, floorNowEnd: 3 });
+    boot(chatOf(6), { lastKnownFloor: 5, atoms: [gone] });
+    const before = dataHealthReport(state).findings.filter((f) => f.code === 'origin-gone-with-floornow').length;
+    markOriginGone(gone, 2);
+    const after = dataHealthReport(state).findings.filter((f) => f.code === 'origin-gone-with-floornow').length;
+    return before === 1 && after === 0;
+})(), () => ({ codes: dataHealthReport(state).findings.map((f) => f.code) }));
+
+A('K4 修复不破坏「可恢复」：`recheckOriginGone()` 仍能凭**保留下来的指纹**把原文找回来并重写当前位置', (() => {
+    const text = '这段原文后来又被放回第 5 楼：角色丁在驿站核对行囊与编号，记录清楚。';
+    boot(chatOf(10, { 5: text }), { lastKnownFloor: 9, atoms: [atom('k4', 40, 41)] });
+    state.atoms[0].floorNowHash = hashFloorText(5);      // 宿主就绪后再取哈希（哈希依赖当前聊天）
+    markOriginGone(state.atoms[0], 1);
+    const stillGoneBefore = state.atoms[0].originGone === true && state.atoms[0].floorNowStart === undefined;
+    const r = recheckOriginGone();
+    const a = state.atoms[0];
+    return stillGoneBefore && r.restored === 1 && a.originGone === undefined
+        && a.floorNowStart === 5 && a.floorNowEnd === 6
+        && J(currentFloorRange(a)) === J([5, 6]);
+})(), () => ({ atom: state.atoms[0], r: undefined }));
 
 R.done();
