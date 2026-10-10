@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.40.5",
+  "version": "3.40.6",
   "updatedAt": "2026-10-10",
   "generatedAt": "2026-10-10",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.40.6",
+      "date": "2026-10-10",
+      "title": "修调试桥大载荷读不到（WebSocket 分片消息未重组 → ftt.snapshot / sys.batch 必然超时）",
+      "points": [
+        "现象：（真机，可复现）：node tests/local/bridge.mjs --call ftt.snapshot 永远 E_TIMEOUT 30000ms，超时前先打两条 …",
+        "根因：大消息被对端拆成多个 WebSocket 帧（真机实测 ftt.snapshot = 2 片 / 130,313 字节、sys.batch = 3 片 / 141,410 …",
+        "修复：按 RFC 6455 做分片重组 —— 0x1 非 FIN 起头、0x0 续片累积、FIN 收尾后再解析；孤立续帧如实记日志并忽略；重组总量上限 64 MB（超出如实丢弃并…"
+      ]
+    },
     {
       "version": "3.40.5",
       "date": "2026-10-10",

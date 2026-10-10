@@ -1,6 +1,16 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.56 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.57 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.57 变更（随 **v3.40.6**：修**调试桥大载荷读不到** —— WebSocket 分片消息未重组）：
+>   ① **BUG（真机可复现）**：`ftt.snapshot`（**2 片 / 130,313 B**）与 `sys.batch`（**3 片 / 141,410 B**）**必然** `E_TIMEOUT` ——
+>      桥对每一片各自 `JSON.parse`，`0x1`（非 FIN 首片）与 `0x0`（续片）都不是完整 JSON → 逐片丢弃 → **无一帧**进入处理；
+>      **单个小方法全部正常**，故本轮前半程被误判为「插件侧某方法卡住」；
+>   ② **修复**：按 RFC 6455 **分片重组**（`0x1` 非 FIN 起首 + `0x0` 续片累积 + FIN 收尾后解析）· 64 MB 上限 · 非 JSON 帧日志带字节数 ·
+>      收帧抽成 `parseMessage()`；`--selftest` 新增**第 ⑤ 项**（raw socket 手工握手 + 手工造分片 hello，修前必 ❌）；
+>   ③ **只动调试工具**（`tests/local/bridge.mjs`），**不动插件运行时**；真机复测 `ftt.snapshot` / `sys.batch` 均 `ok:true`；
+>   ④ 文档：`D13` 新增 **§8.9**（取证通道 BUG + 判别口诀）· `docs/history/P10c74`（含 **v3.40.5 修复项上线后真机复核**：
+>      体检 `ok` / 0 条异常 · 落盘 `goneWithNow=0` · `技-1` `waitedMs` **464/934/482** 且**无安全阀告警**）；
+>   ⑤ §3 数字口径同步：表头与版本号 → **3.40.6**、历史批次档数 194 → **195**；§1 目录树 `history/` 计数 → **195 份**、`P10c*` 区间 → **`P10c74`**。
 > v2.56 变更（随 **v3.40.4**：`docs/D22` **W1 批次**（关键路径前置））：
 >   ① **`技-1` ready 守门落地**（本版唯一运行时行为变更，用户批准 `docs/D21` Q2「单独发版」）：载入完成前**禁止任何记忆数据落盘** ——
 >      内核守门 + 唯一漏斗（`saveStateNow`）+ 流水线外直调入口（`stateFileWrite`/`snapshotFilePushNow`）+ 20s 安全阀 + 放行后补跑 pending；
@@ -266,12 +276,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，193 份）
+└── history/                  # 历史批次层（只读留痕，195 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c73           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c74           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -324,9 +334,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.40.5） |
+| 口径 | 权威来源 | 当前值（v3.40.6） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.5` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.6` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -341,7 +351,7 @@ docs/
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 49 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`） |
-| 历史批次档数 | `docs/history/*.md` | 194 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 195 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
