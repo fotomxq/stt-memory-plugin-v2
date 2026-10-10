@@ -66,10 +66,12 @@
 import { state, cfg, saveState, dbgLog, warn, notifyHooks, timerHooks, getLastMessageId, getStoryNow } from './model/runtime.js';
 import { hashText, normText, normalizeList, clamp, extractJsonObject } from './util.js';
 import { dimCap, mergeTags } from './model/scalars.js';
-import { activeAtoms, tombEntry } from './merge.js';
+import { activeAtoms } from './merge.js';
 import { mergeDelta, scheduleParallelDecay } from './ingest.js';
 import { parallelExpired } from './recall.js';
-import { upsertEntry, deleteEntry } from './entries.js';
+import { deleteEntry } from './entries.js';
+// v3.41.0（`docs/D22` `业-3` / `docs/D6` §7 P0）：转正的七个环节抽到 `core/promote.js#promoteToAtom`
+import { promoteToAtom } from './promote.js';
 import { rumorMarkParallelChange } from './rumor-evolve.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 import { defaultCfg } from './config.js';
@@ -535,62 +537,16 @@ export async function runParallelAdvance(opts) {
  * **只由用户显式动作触发**：推演 ≠ 事实（Q20-A），转正生成/更新一条**情节**（走正常注入与知情约束）；
  * v1.196 起：**新情节落库后自动删除该平行事件**（留 id 墓碑，防跨端合并/快照还原把它带回来）。
  * 兼容：历史存档里仍带 `promotedTo`（旧软标记）的条目，载入时按 `prunePromotedParallels()` 清理。
+ *
+ * **v3.41.0（`docs/D22` `业-3` / `docs/D6` §7 P0）**：七个环节已抽成**通用提升契约**
+ *   `core/promote.js#promoteToAtom` —— 本函数退化为该契约在 `parallels` 维度上的**薄封装**，
+ *   行为**逐字不变**（`tests/unit/parallel-golden.test.js` P 组以真实 V1 oracle 锁定）。
  * @param {string} id 平行事件 id
  * @param {{text?:string, at?:string}} [opts] 可覆盖正文与转正时间
  * @returns {{ok:boolean, atomId?:string, updated?:boolean, removed?:boolean, promotedAt?:string, reason?:string}}
  */
 export function promoteParallelEvent(id, opts) {
-    try {
-        const p = ((state && state.parallels) || []).find(x => x && String(x.id) === String(id));
-        if (!p) return { ok: false, reason: '未找到该平行事件' };
-        const o = opts || {};
-        let text = String(o.text || p.text || '').trim();
-        const title0 = String(p.title || '').trim();
-        // 原子层要求正文 ≥8 字：过短时用标题补足（标题本身不重复进正文）
-        if (text.length < 8 && title0 && title0 !== text) text = `${title0}：${text}`.replace(/：$/, '').trim();
-        if (text.length < 8) return { ok: false, reason: '内容过短：情节正文需 ≥8 字（请先补全平行事件描述）' };
-        const title = String(p.title || '').trim();
-        const date = String(p.date || '').trim();
-        const prevId = String(p.promotedTo || '').trim();
-        const prevAtom = prevId ? (state.atoms || []).find(x => x && String(x.id) === prevId) : null;
-        const raw = {
-            title: (title && title !== text) ? title : '',
-            text,
-            type: String(p.type || '').trim() || '转折',
-            date: date || (prevAtom ? String(prevAtom.date || '') : ''),
-            time: String(p.time || '').trim(),
-            entities: normalizeList(p.characters),
-            locations: p.location ? [String(p.location).trim()] : [],
-            tags: mergeTags(Array.isArray(p.tags) ? p.tags.slice(0, 5) : [], []),
-            importance: Number(p.importance) || 0.6,
-        };
-        if (prevAtom) raw.id = prevAtom.id;             // 幂等：原地更新既有情节
-        if (!upsertEntry('atoms', raw)) return { ok: false, reason: '情节写入失败' };
-        const hit = ((state.atoms) || []).slice().reverse().find(x => x && String(x.text || '').trim() === text && (!raw.id || String(x.id) === String(raw.id)));
-        const atomId = hit ? String(hit.id) : (raw.id || prevId || '');
-        // v1.196：先留痕（写 promotedTo/promotedAt，供本次调用与迁移判断），再**从平行库中移除**该条
-        p.promotedTo = atomId || '情节';
-        let at = String(o.at || '').trim();
-        // ⚠ V1 怪癖逐字保留：`(getStoryNow() || {}).date` —— V1/V2 的 `getStoryNow()` 返回**字符串**，
-        //   取其 `.date` 恒为 undefined → 实际总是回落到 `state.state.date`。
-        if (!at) { try { at = String((typeof getStoryNow === 'function' ? (getStoryNow() || {}).date : '') || (state.state && state.state.date) || ''); } catch (e) { at = ''; } }
-        p.promotedAt = at || p.promotedAt || '';
-        p.updatedAt = Date.now();
-        // 自动移除平行记录：走 deleteEntry（与「删除条目」同口径的 id 墓碑，防跨端合并复活）
-        let removed = false;
-        try {
-            const before = (state.parallels || []).length;
-            if (typeof deleteEntry === 'function') removed = !!deleteEntry('parallels', p.id);
-            else {
-                // ⚠ V1 该兜底分支在真实路径上**不可达**（`deleteEntry` 恒为函数）；逐字保留以备移植对照
-                state.parallels = (state.parallels || []).filter(x => !(x && String(x.id) === String(p.id)));
-                try { tombEntry('parallels', p); } catch (e) { /* 忽略 */ }
-                removed = (state.parallels || []).length < before;
-            }
-        } catch (e) { warn('转正后移除平行记录失败', e); }
-        saveState();
-        return { ok: true, atomId: p.promotedTo, updated: !!prevAtom, removed: removed, promotedAt: p.promotedAt };
-    } catch (e) { return { ok: false, reason: '转正异常' }; }
+    return promoteToAtom({ dim: 'parallels', id: id }, opts);
 }
 /**
  * v1.196：历史存档清理 —— 旧版「转正」只写 `promotedTo`（软标记、条目仍在库），按新规则应移除；

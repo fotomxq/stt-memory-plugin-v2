@@ -63,13 +63,16 @@ function projectRows(html) {
     }
     return out;
 }
-function boot(parallels, extra) {
+function boot(parallels, extra, storyDate) {
     Object.assign(cfg, JSON.parse(JSON.stringify(defaultCfg)));
     Object.assign(cfg, extra || {});
     setScopeKey('甲');
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     const st = emptyState();
     st.parallels = parallels;
+    // v3.41.0（`docs/D22` `业-6`）：衰退基准已改**剧情时间**且「无剧情时钟不衰退」——
+    //   需要「已达衰退阈值」这类场景时，必须同时给剧情时钟与条目的剧情日期（见 B3）。
+    if (storyDate) st.state = Object.assign({}, st.state, { date: String(storyDate) });
     setKernelState(st);
     setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
     openPanel('parallels');
@@ -107,14 +110,15 @@ A('B2 操作按钮与 V1 同序：🚀 推进 → ⬆ 转正 → ✏️ 编辑 �
 A('B3 条件渲染与 V1 一致：已转正 → 无 ⬆；已达衰退阈值 → 无 🚀', (() => {
     const promoted = project(boot([P_PROMOTED]))[0].opsActions;
     const expired = project(boot([P_NORMAL], { parallelDecayCutoff: 0 }))[0].opsActions;
-    // 巨旧条目：与一条近期条目同列（V1 的衰退值含「类目内相对位置」，单条列表的相对位置恒为 0 —— 见 docs/P8 说明）
-    // 页面按「最近优先」排序 → 巨旧条目在末行；此处统计「没有 🚀」的行数（应恰为 1 行）
-    const agedRows = project(boot([P_OLD, P_NORMAL]));
+    // 巨旧条目：v3.41.0 起衰退基准＝**剧情时间**（`docs/D22` `业-6`）→ 必须给剧情时钟，
+    //   且类目内相对位置仍按「单条列表的相对位置恒为 0」的 V1 口径（页面按「最近优先」排序 → 巨旧条目在末行）；
+    //   此处统计「没有 🚀」的行数（应恰为 1 行）
+    const agedRows = project(boot([P_OLD, P_NORMAL], null, '1919-12-01'));
     const noAdvance = agedRows.filter((r) => r.opsActions.indexOf('parallelAdvance') < 0);
     return promoted.join(',') === 'parallelAdvance,editEntry,delEntry'
         && expired.join(',') === 'promoteParallel,editEntry,delEntry'
         && agedRows.length === 2 && noAdvance.length === 1 && noAdvance[0].opsCol === true;
-})(), J({ promoted: project(boot([P_PROMOTED]))[0].opsActions, aged: project(boot([P_OLD, P_NORMAL]))[0].opsActions }));
+})(), J({ promoted: project(boot([P_PROMOTED]))[0].opsActions, aged: project(boot([P_OLD, P_NORMAL], null, '1919-12-01')).map((r) => r.opsActions) }));
 
 A('B4 行主体仍在 `.ftt-grow` 里（内容顺序/九行结构未动），竖排只影响右侧操作区', (() => {
     const html = boot([P_NORMAL]);
