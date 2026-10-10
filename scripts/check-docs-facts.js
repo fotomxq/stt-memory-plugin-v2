@@ -312,8 +312,10 @@ for (const f of mdFiles) {
  *   行号会随任何一次代码改动漂移，文档不会自动跟着走；**新引用一律写 `文件#符号`**（C8 负责核）。
  *   把某处行号改成符号引用后，请把这里的预算**同步调小**（棘轮只允许下调）。
  *   冻结坐标（V1 源码行号、历史档）不在本仓库 → 不计入本预算。
+ *   **注意**：`tests/unit/version-rule.test.js` 的「C9 反向探针」会临时新增 12 条行号并要求门禁失败 ——
+ *   因此预算必须**紧贴实际存量**（留有富余会让该探针失效）。存量历史：301 → 211（v1.1）→ **160**（v1.2 文档一致性修订轮）。
  */
-const LINE_REF_BUDGET = 211;
+const LINE_REF_BUDGET = 160;
 if (lineRefChecked > LINE_REF_BUDGET) {
     problems.push('本仓库源码的绝对行号引用 ' + lineRefChecked + ' 处 > 预算 ' + LINE_REF_BUDGET
         + '（新增引用请写 `文件#符号`，见 开发守则 §2.3 / docs/D14 C9）· 例：' + lineRefSamples.join('、'));
