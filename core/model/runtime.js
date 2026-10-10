@@ -397,3 +397,95 @@ export function loadGateInfo() {
         note: loadGate.note || '', error: loadGate.error || '', timeout: loadGate.timeout === true,
     };
 }
+
+// ==================== v3.40.4：**落盘守门**（`docs/D22` `技-1` · `docs/D11` §3.2 第 1 条「对齐 R2」） ====================
+/**
+ * **载入流水线完成之前，禁止任何记忆数据落盘**（参考实现 R2：ready 之前只读不写）。
+ *
+ * 为什么必须有（`docs/D21` §3.1 K2）：`init()` 里**入口先于载入安装**，而宿主事件
+ *   （收到消息 → 自动提取 / 自动修复 / 时钟同步）是**页面级**的 —— 首屏还没读完就触发的保存，
+ *   会拿**未就绪或半份**的内核态去覆盖远端与本地副本（「载入未完成即保存可能覆盖远端」）。
+ *   UI 层的载入闸门（`loadBlocked()` / v3.14.0）只挡住了**用户动作**，挡不住宿主事件驱动的写入。
+ *
+ * 口径（三条）：
+ *   ① **载入开始 → 关；载入结束（成功**或**失败）→ 开** —— 失败也放行：绝不把用户永久锁在「不能保存」，
+ *      失败后的数据安全由既有的**异常缩水守卫**（`adapters/store.js#shrinkGuardCheck`）兜底；
+ *   ② **安全阀**：关闸超过 `WRITE_GATE_MAX_MS`（与载入闸门同为 20s）仍未开 → **自动放行并如实计数**
+ *      （`timeouts`），绝不静默卡死写入；载入真的挂住时也不该让用户丢掉保存能力；
+ *   ③ **不丢数据**：被挡下的保存请求会被**记住**（`pending`），由开闸方（`index.js`）在放行后**补跑一次**
+ *      （典型：载入期数据自愈的写回 —— 它由 `scheduleSave` 在载入过程中触发，若直接丢弃就等于「修了不落盘」）。
+ *
+ * 内核只维护状态与计数（零宿主依赖）；记账（读取台账 / 调试日志）由适配层在调用点完成。
+ */
+export const WRITE_GATE_MAX_MS = LOAD_GATE_MAX_MS;
+const writeGateState = {
+    closed: false, closedAt: 0, reason: '', releasedAt: 0,
+    blocked: 0, pending: 0, timeouts: 0, lastBlockedAt: 0, lastBlockedWhere: '',
+};
+/**
+ * 关闸 / 开闸（幂等）。
+ * @param {boolean} closed true = 载入中，禁止落盘；false = 放行
+ * @param {string} [reason] 关闸原因（进快照，便于诊断）
+ * @returns {object} 快照
+ */
+export function setWriteGate(closed, reason) {
+    const want = closed === true;
+    if (want && !writeGateState.closed) {
+        writeGateState.closed = true;
+        writeGateState.closedAt = Date.now();
+        writeGateState.reason = String(reason || '');
+    } else if (!want && writeGateState.closed) {
+        writeGateState.closed = false;
+        writeGateState.releasedAt = Date.now();
+        writeGateState.reason = '';
+    } else if (want && reason && !writeGateState.reason) {
+        writeGateState.reason = String(reason);
+    }
+    return writeGateInfo();
+}
+/** 是否处于「载入中，禁止落盘」（含安全阀：超时自动放行并计数） */
+export function writeGateClosed() {
+    if (!writeGateState.closed) return false;
+    const waited = writeGateState.closedAt ? (Date.now() - writeGateState.closedAt) : 0;
+    if (waited > WRITE_GATE_MAX_MS) {
+        writeGateState.closed = false;
+        writeGateState.releasedAt = Date.now();
+        writeGateState.timeouts += 1;
+        writeGateState.reason = '';
+        return false;
+    }
+    return true;
+}
+/**
+ * 记一次「被守门挡下的写入」：计数 + 记 pending（开闸方据此补跑一次）。
+ * @param {string} where 调用点标识（`文件#函数`）
+ */
+export function noteWriteBlocked(where) {
+    writeGateState.blocked += 1;
+    writeGateState.pending += 1;
+    writeGateState.lastBlockedAt = Date.now();
+    writeGateState.lastBlockedWhere = String(where || '');
+    return writeGateState.blocked;
+}
+/** 取走 pending（开闸方调用；取走即清零，天然幂等） */
+export function takeWriteGatePending() {
+    const n = writeGateState.pending;
+    writeGateState.pending = 0;
+    return n;
+}
+/** 守门快照（只读拷贝；诊断 / 测试 / 调试页用） */
+export function writeGateInfo() {
+    return {
+        closed: writeGateClosed(), closedAt: writeGateState.closedAt, reason: writeGateState.reason,
+        releasedAt: writeGateState.releasedAt, blocked: writeGateState.blocked, pending: writeGateState.pending,
+        timeouts: writeGateState.timeouts, lastBlockedAt: writeGateState.lastBlockedAt,
+        lastBlockedWhere: writeGateState.lastBlockedWhere, maxMs: WRITE_GATE_MAX_MS,
+    };
+}
+/** 复位守门（teardown / 测试用） */
+export function resetWriteGate() {
+    writeGateState.closed = false; writeGateState.closedAt = 0; writeGateState.reason = '';
+    writeGateState.releasedAt = Date.now(); writeGateState.blocked = 0; writeGateState.pending = 0;
+    writeGateState.timeouts = 0; writeGateState.lastBlockedAt = 0; writeGateState.lastBlockedWhere = '';
+    return writeGateInfo();
+}
