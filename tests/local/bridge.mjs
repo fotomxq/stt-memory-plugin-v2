@@ -33,6 +33,7 @@
 // ============================================================
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
+import net from 'node:net';   // v3.40.6：自检的「分片消息」用例需要 raw socket（手工造帧）
 import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 
@@ -145,15 +146,40 @@ server.on('upgrade', (req, socket) => {
                 const out = decodeFrame(client.buf);
                 if (!out) break;
                 client.buf = out.rest;
-                const { opcode, payload } = out.frame;
+                const { fin, opcode, payload } = out.frame;
                 if (opcode === 0x8) { closeClient(client); return; }
                 if (opcode === 0x9) { socket.write(Buffer.concat([Buffer.from([0x8a, payload.length]), payload])); continue; }
                 if (opcode === 0xa) continue;
+                /**
+                 * v3.40.6：**分片消息重组**（真机 BUG）。
+                 *
+                 * 现象：`ftt.snapshot` 这类**大载荷**只读方法在真机上永远 `E_TIMEOUT`，日志里先出现两条
+                 *   「收到非 JSON 帧，已忽略」，随后 30 s 超时 —— 因为大消息被对端拆成 `0x1`（首片）+
+                 *   `0x0`（续片…），旧实现**对每一片各自 `JSON.parse`**：首片必然失败（不是完整 JSON）、
+                 *   续片也不是 → 没有任何一帧进入 `handleIncoming` → 调用方永远等不到答复。
+                 * 修法：按 WebSocket 规范**按 FIN 位重组**（`0x1` 非 FIN 起头，`0x0` 续片，FIN 收尾），
+                 *   重组后再解析；孤立续帧与超限消息如实记日志并丢弃。
+                 */
                 if (opcode === 0x1 || opcode === 0x0) {
-                    let msg = null;
-                    try { msg = JSON.parse(payload.toString('utf8')); } catch (e) { log('[bridge] 收到非 JSON 帧，已忽略'); continue; }
-                    handleIncoming(msg);
+                    if (opcode === 0x1 && fin) { parseMessage(payload); continue; }
+                    if (opcode === 0x1) { client.frag = { chunks: [payload], bytes: payload.length }; continue; }
+                    if (!client.frag) { log('[bridge] 收到孤立续帧（无首片），已忽略'); continue; }
+                    client.frag.chunks.push(payload);
+                    client.frag.bytes += payload.length;
+                    if (client.frag.bytes > MAX_MSG_BYTES) {
+                        log('[bridge] 分片消息过大（>' + (MAX_MSG_BYTES / 1048576) + ' MB），已丢弃');
+                        client.frag = null;
+                        continue;
+                    }
+                    if (!fin) continue;
+                    const all = Buffer.concat(client.frag.chunks);
+                    const n = client.frag.chunks.length;
+                    client.frag = null;
+                    if (n > 1) log('[bridge] 已重组分片消息：' + n + ' 片 / ' + all.length + ' 字节');
+                    parseMessage(all);
+                    continue;
                 }
+                log('[bridge] 忽略未知 opcode=' + opcode);
             }
         } catch (e) {
             log('[bridge] 帧解析失败：' + String((e && e.message) || e));
@@ -168,6 +194,31 @@ function closeClient(client) {
     try { client.socket.write(encodeClose(1000)); } catch (e) { /* 忽略 */ }
     try { client.socket.destroy(); } catch (e) { /* 忽略 */ }
     clients.delete(client);
+}
+
+/** 造一个**带掩码的客户端帧**（自检用：手工模拟分片发送） */
+function encodeRawFrame(opcode, fin, text) {
+    const payload = Buffer.from(String(text == null ? '' : text), 'utf8');
+    const len = payload.length;
+    const head = [(fin ? 0x80 : 0) | (opcode & 0x0f)];
+    if (len < 126) head.push(0x80 | len);
+    else if (len < 65536) head.push(0x80 | 126, (len >> 8) & 0xff, len & 0xff);
+    else head.push(0x80 | 127, 0, 0, 0, 0, (len >>> 24) & 0xff, (len >>> 16) & 0xff, (len >>> 8) & 0xff, len & 0xff);
+    const mask = Buffer.from([0x11, 0x22, 0x33, 0x44]);
+    const body = Buffer.alloc(len);
+    for (let i = 0; i < len; i++) body[i] = payload[i] ^ mask[i % 4];
+    return Buffer.concat([Buffer.from(head), mask, body]);
+}
+
+/** 单条消息上限（含分片重组后的总量） */
+const MAX_MSG_BYTES = 64 * 1024 * 1024;
+
+/** 解析一帧（或重组后的整条消息）的载荷并分发；非 JSON 如实记日志、不抛 */
+function parseMessage(payload) {
+    let msg = null;
+    try { msg = JSON.parse(payload.toString('utf8')); } catch (e) { log('[bridge] 收到非 JSON 帧，已忽略（' + payload.length + ' 字节）'); return false; }
+    handleIncoming(msg);
+    return true;
 }
 
 function handleIncoming(msg) {
@@ -269,9 +320,39 @@ async function selftest() {
             log('  ② 调用回传（sys.info）：' + (r1.ok ? '✅' : '❌') + ' ' + JSON.stringify(r1.result));
             log('  ③ 调用回传（ftt.memoryShape）：' + (r2.ok ? '✅' : '❌') + ' ' + JSON.stringify(r2.result));
             log('  ④ 未登记方法被拒：' + (r3.ok === false && r3.error.code === 'E_METHOD' ? '✅' : '❌'));
-            log('\n' + (pass ? '✅ 自检通过（握手 / 帧编解码 / 调用回传 / 拒绝 全部正常）' : '❌ 自检失败'));
+
+            /**
+             * ⑤ 分片消息重组（v3.40.6 真机 BUG 的回归）：
+             *   浏览器 `WebSocket` 客户端**不会分片**，故这里必须**手造帧**（raw socket + 手工握手）：
+             *   把一条 hello 拆成 `0x1`（非 FIN）首片 + `0x0`（FIN）续片发出，断言桥重组后**认得 hello**。
+             *   修复前：逐片 JSON.parse → 两片都失败（日志「收到非 JSON 帧」）→ `helloInfo` 不会被 `frag` 版覆盖。
+             */
+            const fragOk = await (async () => {
+                try {
+                    const raw = net.connect(port, clientHost);
+                    await new Promise((res, rej) => { raw.once('connect', res); raw.once('error', rej); });
+                    raw.write(['GET / HTTP/1.1', 'Host: ' + clientHost + ':' + port, 'Upgrade: websocket',
+                        'Connection: Upgrade', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13', '', ''].join('\r\n'));
+                    await new Promise((r) => setTimeout(r, 150));                       // 等 101
+                    const body = JSON.stringify({
+                        type: 'hello', protocol: 1,
+                        plugin: { name: 'FTT记忆组件 V2', moduleName: 'ftt_memory_v2', version: 'frag' },
+                        host: { kind: 'vanilla', tauriTavern: false, abiVersion: null, devApi: false },
+                        methods: ['sys.info'],
+                    });
+                    const half = Math.floor(body.length / 2);
+                    raw.write(Buffer.concat([encodeRawFrame(0x1, false, body.slice(0, half)), encodeRawFrame(0x0, true, body.slice(half))]));
+                    await new Promise((r) => setTimeout(r, 250));
+                    try { raw.destroy(); } catch (e) { /* 忽略 */ }
+                    return !!(helloInfo && helloInfo.plugin && helloInfo.plugin.version === 'frag');
+                } catch (e) { return false; }
+            })();
+            log('  ⑤ 分片消息重组：' + (fragOk ? '✅' : '❌') + '（0x1 首片 + 0x0 续片 → 重组后认得 hello）');
+
+            const passAll = pass && fragOk;
+            log('\n' + (passAll ? '✅ 自检通过（握手 / 帧编解码 / 调用回传 / 拒绝 / 分片重组 全部正常）' : '❌ 自检失败'));
             try { ws.close(); } catch (e) { /* 忽略 */ }
-            srv.close(() => process.exit(pass ? 0 : 1));
+            srv.close(() => process.exit(passAll ? 0 : 1));
         } catch (e) {
             log('❌ 自检异常：' + String((e && e.message) || e));
             try { if (ws) ws.close(); } catch (e2) { /* 忽略 */ }
