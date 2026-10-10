@@ -44,7 +44,7 @@ import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
 import { auxStoreInit, auxStoreFlush, auxStoreInfo } from './adapters/aux-store.js';
 // v3.28.0（用户纠正设计）：「本地磁盘目录」= 真磁盘路径（替代浏览器本地存储），与「宿主扩展存储命名空间」分开
-import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskInvalid, localDiskClearInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts, localDiskEnsureResolved } from './adapters/local-disk.js';
+import { localDiskOn, localDiskInfo, localDiskRead, localDiskMarkInvalid, localDiskInvalid, localDiskClearInvalid, localDiskRaw, localDiskReadShards, localDiskReadParts, localDiskEnsureResolved, localDiskList, localCopyFileName, localScopeToken, LOCAL_COPY_PREFIX } from './adapters/local-disk.js';
 // v3.0.23（用户报告「初次激活插件读取的数据还是没有对齐」）：把 chatMetadata（随聊天走的载体）接进载入路径
 import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
@@ -576,21 +576,28 @@ export async function loadFromLocalDisk(opts) {
     const o = opts || {};
     const tries = Math.max(1, Math.floor(Number(o.tries)) || 2);
     const gapMs = Number.isFinite(Number(o.gapMs)) ? Math.max(0, Number(o.gapMs)) : LOCAL_DISK_LOAD_RETRY_MS;
-    const scope = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
-    const name = 'ftt2-local-' + String(scope || 'default').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
+    // v3.40.2（用户报告「刷新后大量已分析内容丢失、只留早期数据」）：**文件名与写侧同一个作用域 token**。
+    //   历史缺陷：这里用 `getScopeKey()`（宿主注入的 `char:<hash>`），而写侧用 `core/state.js#scopeId()`
+    //   （对 scopeKey 的**二次哈希**）→ 本机副本**写得进、读不回**，每次刷新都判「本机层没有副本」→
+    //   回退浏览器层 / 服务端旧副本。`localScopeToken()` 与写侧同源，从根上消除错位。
+    const scope = localScopeToken();
+    const name = localCopyFileName(scope);
     const once = async () => {
         try {
             const r = await localDiskRead(name);
             if (!r || !r.ok || !r.text) {
                 // v3.31.0（用户要求「拆碎了保存」）：单文件缺失时读**结构化分片**目录（逐维文件 + manifest）
-                try { const sh = await localDiskReadShards(scope || 'default'); if (sh && sh.ok && sh.data) return await recoverSnapParts(sh.data, scope || 'default'); } catch (e) { /* 忽略 */ }
+                try { const sh = await localDiskReadShards(scope); if (sh && sh.ok && sh.data) return await recoverSnapParts(sh.data, scope); } catch (e) { /* 忽略 */ }
+                // v3.40.2 兜底：**按内容作用域**在同目录里找回本角色的副本（防文件名口径再次漂移；
+                //   判据是信封里的 `payload.scope` 与本角色**精确相等**，不靠猜文件名）
+                try { const sib = await findLocalCopyByScope(scope); if (sib) return await recoverSnapParts(sib, scope); } catch (e) { /* 忽略 */ }
                 return null;
             }
             const env = JSON.parse(String(r.text));
             if (!env || !env.payload) return null;
             const h = (() => { try { return storageHash(env.payload); } catch (e) { return ''; } })();
             if (env.hash && h && env.hash !== h) return null;
-            return await recoverSnapParts(env.payload.data || null, scope || 'default');
+            return await recoverSnapParts(env.payload.data || null, scope);
         } catch (e) { return null; }
     };
     for (let i = 0; i < tries; i++) {
@@ -604,6 +611,50 @@ export async function loadFromLocalDisk(opts) {
         if (i + 1 < tries && gapMs > 0) await new Promise((res) => { try { timerHooks.set(res, gapMs); } catch (e) { setTimeout(res, gapMs); } });
     }
     return null;
+}
+
+/**
+ * v3.40.2：**按内容作用域在同目录里找回本角色的本机副本**（只读兜底，`loadFromLocalDisk` 单文件与分片都未命中时）。
+ *
+ * 动机：本机副本的文件名由作用域 token 派生，一旦派生口径变化（v3.40.2 修掉的正是这种漂移），
+ *   用户的数据明明在盘上却读不回来 —— 表现为「刷新后数据回退到早期」。
+ * 判据：信封 `payload.scope` 与本角色 token **精确相等**（同时容忍历史口径 `char:<hash>` 形态），
+ *   **绝不靠文件名猜测**；多份命中时取 `payload.updatedAt` 最新的一份。读取量有上限（`MAX`），失败一律静默。
+ * @param {string} scope `localScopeToken()` 的返回值
+ * @returns {Promise<object|null>} 命中的 state 或 null
+ */
+async function findLocalCopyByScope(scope) {
+    const MAX = 8;
+    try {
+        const want = String(scope || '');
+        const alt = (() => { try { return String(getScopeKey() || ''); } catch (e) { return ''; } })();
+        const lst = await localDiskList();
+        if (!lst || !lst.ok) return null;
+        let best = null, bestAt = -1, hitName = '', n = 0;
+        for (const nm of (lst.names || [])) {
+            const fname = String(nm || '');
+            if (fname.indexOf(LOCAL_COPY_PREFIX) !== 0 || !/\.json$/.test(fname)) continue;
+            if (fname.indexOf('probe') >= 0) continue;              // 探针文件不参与
+            if (n >= MAX) break;
+            n++;
+            const r = await localDiskRead(fname);
+            if (!r || !r.ok || !r.text) continue;
+            let env = null; try { env = JSON.parse(String(r.text)); } catch (e) { continue; }
+            const payload = env && env.payload;
+            if (!payload || !payload.data) continue;
+            const ps = String(payload.scope || '');
+            if (ps !== want && (!!alt && ps !== alt)) continue;     // 精确匹配，不猜
+            const h = (() => { try { return storageHash(payload); } catch (e) { return ''; } })();
+            if (env.hash && h && env.hash !== h) continue;          // 信封校验不通过 → 不用
+            const at = Number(payload.updatedAt) || 0;
+            if (at > bestAt) { bestAt = at; best = payload.data; hitName = fname; }
+        }
+        if (best) {
+            try { debugLogPush('载入', { action: '本机层：按内容作用域找回本机副本（文件名与当前 token 不一致）', file: hitName, scope: want, at: bestAt }); } catch (e) { /* 忽略 */ }
+            try { readLedgerRecord({ action: '本机层按内容作用域找回', src: 'local', ok: true, items: dimCountsOf(best).total, reason: 'name-drift-recover', note: '单文件与分片都未命中 → 在同目录按 `payload.scope` 精确找回（' + hitName + '）' }); } catch (e) { /* 忽略 */ }
+        }
+        return best;
+    } catch (e) { return null; }
 }
 
 

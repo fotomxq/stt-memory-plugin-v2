@@ -21,7 +21,7 @@ import { scopeId, emptyState } from '../core/state.js';
 import { stateFileName } from './user-file.js';
 // v2.77.0：文件通道统一走 `adapters/file-transport.js`（宿主原生存储 / 酒馆用户目录文件自动切换）
 import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
-import { scheduleStorageSync, writeStateFileContent, stateFileGzipOn, stateFileGzName } from './sync.js';
+import { scheduleStorageSync, writeStateFileContent, stateFileReadCandidates } from './sync.js';
 // v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
 import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
@@ -32,7 +32,9 @@ import { localFileEnabled, localFileWrite, localFileRead, localFileName, localFi
 import { chatMetaLoadState } from './chat-meta.js';
 import { auxLsGet, auxLsSet } from './aux-store.js';   // v3.30.0：跨刷新防回滚基线（跨层都留一份）
 // v3.28.0（用户纠正设计）：**本地磁盘目录**（真磁盘路径，替代浏览器本地存储）—— 与上面的「宿主扩展存储命名空间」语义不同
-import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo, localDiskWriteShards, localDiskWriteParts } from './local-disk.js';
+// v3.40.2：文件名 / 作用域 token 一律经 `localCopyFileName` / `localScopeToken`（**写读唯一来源**）——
+//   历史缺陷：写侧用 `scopeId()`、读侧用 `getScopeKey()`，二者是二次哈希关系 → 本机副本读不回来
+import { localDiskOn, localDiskWrite, localDiskRead, localDiskInfo, localDiskWriteShards, localDiskWriteParts, localCopyFileName, localScopeToken } from './local-disk.js';
 // v3.26.2（用户报告「本机缓冲超预算 → 本次跳过」会造成数据异常）：本机缓冲改**压缩留存**
 import { gzipToBase64, gunzipFromBytes, base64ToBytes, gzipAvailable } from './gzip.js';
 import { hydrateStorageData } from '../core/slim.js';
@@ -617,7 +619,7 @@ async function saveStateNowInner(o) {
             // v3.28.1（用户要求）：「写盘失败**回退浏览器层**，但必须**明显提醒**，且**标记该路径无效**」——
             //   于是这里失败时：① 标记无效（UI 红字告警 + 诊断可见）；② 弹一次醒目通知；③ 返回 false
             //   → 本次保存**自然落到下面的浏览器分支**（明文 / 压缩 + 预算判定），内存库也照写（回退口径）。
-            const dr = await localDiskWrite('ftt2-local-' + String(scopeId()).replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', text);
+            const dr = await localDiskWrite(localCopyFileName(localScopeToken()), text);
             if (dr && dr.ok) {
                 diskFellBack = false;
                 via.push('local-disk');
@@ -626,8 +628,8 @@ async function saveStateNowInner(o) {
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
                 // v3.31.0（用户要求）：同一份内容**再写一份结构化分片**（逐维文件 + manifest）—— best-effort，不阻塞保存
                 // v3.32.0（用户要求）：快照链也写**结构化分片**（snapshots/<id>.json + manifest）—— best-effort
-                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], scopeId(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPushCoalesced('存储', 'snap-parts|' + String(sp.dir || ''), { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
-                try { const sh = await localDiskWriteShards(envelope, scopeId()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPushCoalesced('存储', 'shards|' + String(sh.dir || ''), { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
+                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], localScopeToken(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPushCoalesced('存储', 'snap-parts|' + String(sp.dir || ''), { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
+                try { const sh = await localDiskWriteShards(envelope, localScopeToken()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPushCoalesced('存储', 'shards|' + String(sh.dir || ''), { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
                 return true;
             }
             // —— 失败：标记无效 + 醒目提醒（每个路径每次会话只弹一次，避免刷屏）+ 如实记账 ——
@@ -1256,8 +1258,35 @@ export function lastServerLoadInfo() { return Object.assign({}, lastServerLoad, 
 export async function loadFromServerFile() {
     // B9-d：`stateFileGzip` 关闭（默认）时**仅读规范明文名** —— 与 B7-2 的请求序列/时序逐字节一致（零额外请求）；
     //   开启时先试 `.json.gz` 再回退明文（V1 的候选顺序）。读取按**内容魔数**解压（`readStateFileAuto`）。
-    let r = await fileTransportReadAuto(stateFileName(scopeId()), { src: 'file', role: '主文件' });
-    if ((!r || !r.ok) && stateFileGzipOn()) r = await fileTransportReadAuto(stateFileGzName(), { src: 'file', role: '主文件(gz)' });
+    //
+    // v3.40.2（用户报告「刷新后大量已分析内容丢失、只留早期数据」）：**候选名按 `stateFileReadCandidates()`
+    //   的顺序全部读一遍，再按信封 `payload.updatedAt` 取最新的一份**。
+    //   历史缺陷：这里固定「先读明文 `.json`，只有明文读不到才试 `.json.gz`」—— 而写侧
+    //   `stateFileWriteName()` 在 gzip 开启时**只写 `.json.gz`**，于是盘上遗留的**旧明文文件永远压住新数据**
+    //   （明文读得到 → 根本不看 `.gz`）→ 每次刷新都回到早期那份。这是「读回了旧副本」这一类丢数据。
+    //   开关关闭（默认）时候选只有明文一个 → 请求序列与 B7-2 逐字节一致（单测 B2 锁定该口径）。
+    const scopeTok = scopeId();
+    const plainName = stateFileName(scopeTok);
+    const mainReads = [];
+    for (const cand of stateFileReadCandidates()) {
+        try {
+            const got = await fileTransportReadAuto(cand, { src: 'file', role: cand === plainName ? '主文件' : '主文件(gz)' });
+            if (got && got.ok && got.text) mainReads.push({ name: cand, r: got });
+        } catch (e) { /* 单个候选失败不影响其它候选 */ }
+    }
+    /** 信封时间戳（解析不了 → -1，排在所有可解析候选之后，仍保留交给既有分支如实报错） */
+    const envAt = (text) => { try { const e = JSON.parse(String(text)); return Number((e && e.payload && e.payload.updatedAt) || 0) || 0; } catch (e) { return -1; } };
+    let picked = null;
+    for (const it of mainReads) { if (picked === null || envAt(it.r.text) > envAt(picked.r.text)) picked = it; }
+    const r = picked ? picked.r : null;
+    if (mainReads.length > 1) {
+        try {
+            debugLogPush('对账', {
+                action: '载入：主文件多份候选并存 → 按信封时间戳取新（避免读回旧明文）',
+                names: mainReads.map((x) => x.name), picked: picked ? picked.name : '', ats: mainReads.map((x) => envAt(x.r.text)),
+            });
+        } catch (e) { /* 忽略 */ }
+    }
     if (!r || !r.ok) {
         // v3.0.23：**主文件缺失 → 仍有分片可用**（见 `loadStateFromShards`）
         const sr = await loadStateFromShards('main-file-missing');
