@@ -12,7 +12,7 @@
 // ============================================================
 import { makeReporter, makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '../harness/st-mock.js';
 import { setContextProvider } from '../../host/st-api.js';
-import { setKernelState, setScopeKey, setPersistHooks, cfg } from '../../core/model/runtime.js';
+import { setKernelState, setScopeKey, setPersistHooks, cfg, resetWriteGate } from '../../core/model/runtime.js';
 import { emptyState, scopeId } from '../../core/state.js';
 import { setStorageHooks } from '../../adapters/store.js';
 import { stateFileName } from '../../adapters/user-file.js';
@@ -56,6 +56,14 @@ const unFetch = installGlobalFetch((url, opts) => {
 });
 
 const entry = await import('../../index.js');
+
+// v3.40.4（`docs/D22` `技-1`）：`index.js` 的**模块级副作用**（多触发 + 有限轮询）会启动装配 → `init()`，
+//   而装配期间**落盘守门是关着的**（这正是 v3.40.4 的预期行为：载入未完成不写任何通道）。
+//   本用例**直接注入 state**、单测保存 / 清理 / 统计路径，**不复现首屏时序** → 先等这一次装配落定
+//   （`init()` 返回时载入结束、守门自动放行），再把守门复位一次，确保用例起点是「可写」。
+try { await entry.__internals.init(); } catch (e) { /* 桩宿主下可能失败，无妨 */ }
+try { resetWriteGate(); } catch (e) { /* 忽略 */ }
+
 
 function boot(st) {
     setScopeKey('角色甲');

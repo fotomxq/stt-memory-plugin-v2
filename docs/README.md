@@ -1,6 +1,14 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.55 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.56 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.56 变更（随 **v3.40.4**：`docs/D22` **W1 批次**（关键路径前置））：
+>   ① **`技-1` ready 守门落地**（本版唯一运行时行为变更，用户批准 `docs/D21` Q2「单独发版」）：载入完成前**禁止任何记忆数据落盘** ——
+>      内核守门 + 唯一漏斗（`saveStateNow`）+ 流水线外直调入口（`stateFileWrite`/`snapshotFilePushNow`）+ 20s 安全阀 + 放行后补跑 pending；
+>   ② **`技-7`**：`D13` §8 五项逐条裁决（新增 **§8.6**）—— 本环境无浏览器 / 无 jsdom / 无宿主 → **全部「无法复现 + 环境限制」**，逐条写明代码级事实与真值获取路径；
+>   ③ **`技-8`**：**参考实现细读完成**（实读 `ST-BaiBai-Book` 的 `settings.ts`/`store.ts`，产出 ready 守门形态 / 载体分工 / 迁移顺序三条结论）· **快照链收益成本已量化**（链 = 数据本体 83%–90%；全量恒为 1 根；增量未合并会超 `SNAP_CAP`）；H3 与现场复现**无法复现**；
+>   ④ **`数-18`**：黄金样本 `importancePct` 依赖**已清点**（黄金样本 0 处 / 2 用例 7 处）· 600→10 **单元级已复现** · 清扫面与阈值力度**合成基线**（收窄 3.5×/1.8×；重要度项 ×10.7 均值标定不变）· 陈旧比例写明方法；
+>   ⑤ **`docs/D21` Q2 裁决回填**（来源稿先行）+ `docs/D22` W1 四行销账 + `docs/D17` v1.8（**18 条**销账）；
+>   ⑥ §3 数字口径同步：表头与版本号 → **3.40.4**、单测 **173 文件 / 2633 断言**、历史批次档数 192 → **193**；§1 目录树 `history/` 计数 → **193 份**、`P10c*` 区间 → **`P10c72`**。
 > v2.55 变更（随 **v3.40.3**：`docs/D22` **W0 批次落地** —— 零风险机制与文档层）：
 >   ① **技-12**：C5 扩到「批次档前缀必须**唯一匹配**」+ C6 改**结构化解析**（此前 `block.indexOf('history/')` 裸子串截断）+ 修正 §2 过期指向（改指 `history/P10c68`）；判据抽到 `scripts/docs-facts-lib.js`，反向探针见 `version-rule` E1–E4；
 >   ② **技-13**：C9 预算抽到 `scripts/line-ref-budget.json`（baseline + margin），`--write-baseline` 收紧且**拒绝上调**；
@@ -258,12 +266,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，192 份）
+└── history/                  # 历史批次层（只读留痕，193 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c71           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c72           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -316,9 +324,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.40.3） |
+| 口径 | 权威来源 | 当前值（v3.40.4） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.3` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.40.4` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -326,14 +334,14 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 172 文件 / 2622 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 173 文件 / 2633 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 49 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`） |
-| 历史批次档数 | `docs/history/*.md` | 192 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 193 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

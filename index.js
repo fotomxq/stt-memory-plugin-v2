@@ -82,7 +82,7 @@ import { folderInfo } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState, lastHealInfo } from './core/migrate.js';   // v3.13.1：+lastHealInfo（载入期自愈留痕）
 import { emptyState } from './core/state.js';
-import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq, setLoadPhase, loadGateInfo } from './core/model/runtime.js';
+import { setLastMessageId, setNotifyHooks, setIdentityView, setTimerHooks, timerHooks, getScopeKey, cfg as cfgRef, kernelStateSeq, setLoadPhase, loadGateInfo, setWriteGate, takeWriteGatePending, writeGateInfo, resetWriteGate } from './core/model/runtime.js';
 import { hashText, fileStamp } from './core/util.js';
 import {
     clockManualState, setClockManual, clearClockManual,
@@ -804,6 +804,12 @@ export async function init() {
     //   入口**先于**载入安装 —— 用户在首屏读取期间点开面板时，闸门让界面只显示「⏳ 正在读取数据…」
     //   且拒绝一切动作（`ui/panel.js#panelAction`），读完后再自动重绘成真实内容。
     try { setLoadPhase('loading', { note: '首屏载入：读取本机缓冲 / 服务端文件 / 聊天元数据' }); } catch (e) { /* 忽略 */ }
+    /**
+     * v3.40.4（`docs/D22` `技-1` / `docs/D11` §3.2 R2）：**落盘守门同步关上** ——
+     *   UI 闸门（上一行）只挡**用户动作**；宿主事件（收到消息 → 自动提取 / 自动修复）是页面级的，
+     *   载入未完成时的写入会拿半份内核态覆盖远端与本地副本。这里从**落盘**这一侧再关一道。
+     */
+    try { setWriteGate(true, '首屏载入未完成'); } catch (e) { /* 忽略 */ }
     try { setPanelStatus(panelStatusSnapshot()); refreshPanelStatus(); } catch (e) { /* 忽略 */ }
     try {
         const loaded = await loadMemoryState();
@@ -824,6 +830,25 @@ export async function init() {
         // 失败也**解除拦截**并如实标注：绝不把用户永久挡在门外（面板照常可用，调试页可见原因）
         setLoadPhase('failed', { error: runtime.lastError, note: '首屏载入失败：已放行界面，请到「设定 → 调试」查看原因' });
     }
+    /**
+     * v3.40.4（`docs/D22` `技-1`）：**载入结束即开闸**（成功与失败都开 —— 失败也放行，
+     *   绝不把用户永久锁在「不能保存」；失败后的数据安全由既有的**异常缩水守卫**兜底）。
+     *   并把被挡下的保存**补跑一次**（典型：载入期数据自愈的写回由 `scheduleSave` 在载入过程中触发，
+     *   若直接丢弃就等于「修了不落盘」）。
+     */
+    try {
+        setWriteGate(false, '');
+        const pend = takeWriteGatePending();
+        const wg = writeGateInfo();
+        if (pend > 0) {
+            try { debugLogPush('存储', { action: '落盘守门放行 → 补跑被挡下的保存', blocked: wg.blocked, pending: pend, timeouts: wg.timeouts, lastWhere: wg.lastBlockedWhere }); } catch (e2) { /* 忽略 */ }
+            try { scheduleSave('落盘守门放行后补跑（被挡下 ' + pend + ' 次）'); } catch (e2) { /* 忽略 */ }
+        }
+        if (wg.timeouts > 0) {
+            try { debugLogPush('异常', { action: '落盘守门触发安全阀（关闸超时 → 自动放行写盘）', timeouts: wg.timeouts, maxMs: wg.maxMs, level: 'warning' }); } catch (e2) { /* 忽略 */ }
+            try { notifyHooks.toast('⚠️ 载入耗时过长，落盘守门已按安全阀自动放行（写入已恢复；请到「设定 → 调试」查看载入耗时）', 'warning'); } catch (e2) { /* 忽略 */ }
+        }
+    } catch (e2) { /* 忽略 */ }
     // 载入结束/失败后：把已经打开的界面（浮层面板 / 抽屉卡片）从「读取中」换成真实内容
     try { if (panelOpen()) renderPanel(); } catch (e) { /* 忽略 */ }
     try { setPanelStatus(panelStatusSnapshot()); refreshPanelStatus(); } catch (e) { /* 忽略 */ }
@@ -2436,6 +2461,7 @@ export function teardown() {
     try { cancelStartupUpdateDelay(); } catch (e) { /* noop */ }   // v2.46.0：撤销待执行的启动更新检查
     try { cancelScopeReload(); } catch (e) { /* noop */ }   // v3.0.23：撤销待执行的作用域延迟重载
     try { setLoadPhase('idle'); } catch (e) { /* noop */ }   // v3.14.0：卸载即解除载入闸门（避免把「读取中」留在下一次装配）
+    try { resetWriteGate(); } catch (e) { /* noop */ }       // v3.40.4（技-1）：卸载即开闸（下一次装配重新关）
     try { resetVectorCacheState(); } catch (e) { /* noop */ }   // v3.1.0：清空向量缓存内存副本（docs/D13 R2）
     runtime.ready = false;
     return true;

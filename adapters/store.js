@@ -10,7 +10,7 @@
 // ============================================================
 import { MODULE_NAME } from '../core/constants.js';
 import { getCtx } from '../host/st-api.js';
-import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn, notifyHooks } from '../core/model/runtime.js';
+import { state, cfg as cfgRef, setPersistHooks, setKernelState, log as kernelLog, warn as kernelWarn, notifyHooks, writeGateClosed, noteWriteBlocked } from '../core/model/runtime.js';
 import { saveSettings } from './settings.js';
 import { saveKernelCfg } from './config-store.js';
 import { entryIndexBuild, entryIndexInit, primeAtomIndex, tombstoneSweep, tombstoneSweepPause, tombstoneSweepResume } from '../core/sweep.js';
@@ -493,6 +493,18 @@ export async function saveStateNow(opts) {
     const o = opts || {};
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
+    /**
+     * v3.40.4（`docs/D22` `技-1` / `docs/D11` §3.2 R2）：**载入未完成 → 一律不写**（时序守门）。
+     *   这是记忆数据落盘的**唯一漏斗**（状态文件 / 分片 / 快照 / 原生通道都在 `saveStateNowInner` 里），
+     *   所以守门放在这一层就覆盖了全部通道。被挡下的请求**记账**（读取台账 + 调试日志）并
+     *   `noteWriteBlocked` 记 pending —— 开闸方（`index.js`）会补跑一次，**不丢**载入期自愈的写回。
+     */
+    if (writeGateClosed()) {
+        noteWriteBlocked('adapters/store.js#saveStateNow');
+        try { debugLogPush('存储', { action: '落盘守门：载入未完成 → 本次保存已挡下（不写任何通道）', reason: String(o.reason || ''), bytes: 0, gate: 'load-gate' }); } catch (e) { /* 忽略 */ }
+        try { readLedgerRecord({ action: '写记忆数据', src: 'memory', ok: false, miss: true, bytes: 0, reason: 'load-gate', note: '载入流水线未完成 → 守门挡下本次保存（不写状态文件 / 分片 / 快照 / 原生通道）；放行后自动补跑一次' }); } catch (e) { /* 忽略 */ }
+        return { ok: false, blocked: true, reason: 'load-gate', via: '', bytes: 0, error: '' };
+    }
     // v3.0.15：**合流** —— 同一时刻只允许一次完整保存（此前并发触发会各写一遍：1.3MB 信封 ×N，
     //   每次都阻塞主线程数百毫秒，正是用户看到的「特别卡顿 / 卡死」）。期间到达的请求在结束后补跑一次。
     if (saveInFlight) {

@@ -28,7 +28,11 @@
 // ============================================================
 import {
     cfg, state, setKernelState, saveState, log, warn, notifyHooks, identityView, getLastMessageId,
+    // v3.40.4（`docs/D22` `技-1`）：落盘时序守门（载入未完成 → 不写）
+    writeGateClosed, noteWriteBlocked,
 } from '../core/model/runtime.js';
+// v3.40.4（技-1）：被守门挡下的写入同样**记账**（读取台账）
+import { readLedgerRecord } from '../core/read-ledger.js';
 import { scopeId, emptyState } from '../core/state.js';
 import { auxLsGet, auxLsSet, auxLsRemove, auxMirrorFile } from './aux-store.js';   // v3.27.0：辅助数据（同步标记 / 快照与同步日志的目录副本）跟随本地目录统一收纳
 import { VERSION } from '../core/constants.js';
@@ -481,6 +485,16 @@ export async function writeStateFileContent(env, plainText) {
 export async function stateFileWrite(env, opts) {
     const o = opts || {};
     const out = { ok: false, uploaded: [], bak: false, name: '', reason: '', gz: false, slim: false };
+    // v3.40.4（`docs/D22` `技-1`）：**载入未完成 → 不写**。`stateFileWrite` 会被保存流水线**之外**的入口
+    //   直接调用（如 `crossSyncManual` / 恢复路径），所以守门不能只放在 `adapters/store.js`。
+    if (writeGateClosed()) {
+        noteWriteBlocked('adapters/sync.js#stateFileWrite');
+        out.reason = 'load-gate';
+        out.blocked = true;
+        try { debugLogPush('存储', { action: '落盘守门：载入未完成 → 服务端状态文件未写', gate: 'load-gate' }); } catch (e) { /* 忽略 */ }
+        try { readLedgerRecord({ action: '写状态文件', src: 'file', ok: false, miss: true, bytes: 0, reason: 'load-gate', note: '载入流水线未完成 → 时序守门挡下（放行后由调用方补跑）' }); } catch (e) { /* 忽略 */ }
+        return out;
+    }
     if (!stateFileEnabled()) { out.reason = 'off'; return out; }
     if (!env || !env.payload || !env.payload.data) { out.reason = 'no-env'; return out; }
     // B9-d：瘦身（剥快照内容 → 只留 snapIndex + 条目瘦身 + 重算哈希）。
@@ -547,6 +561,13 @@ export async function snapshotFileReadAny() {
     } catch (e) { return null; }
 }
 export async function snapshotFilePushNow() {
+    // v3.40.4（`docs/D22` `技-1`）：载入未完成 → 快照文件同样不写（快照链属于记忆数据）
+    if (writeGateClosed()) {
+        noteWriteBlocked('adapters/sync.js#snapshotFilePushNow');
+        try { debugLogPush('存储', { action: '落盘守门：载入未完成 → 快照文件未写', gate: 'load-gate' }); } catch (e) { /* 忽略 */ }
+        try { readLedgerRecord({ action: '写快照文件', src: 'file', ok: false, miss: true, bytes: 0, reason: 'load-gate', note: '载入流水线未完成 → 时序守门挡下' }); } catch (e) { /* 忽略 */ }
+        return { ok: false, reason: 'load-gate', blocked: true };
+    }
     if (!snapshotFileEnabled()) return { ok: false, reason: 'off' };
     try {
         // 快照文件同时承载 snapFp（删除指纹 —— 与链同源，随文件跨端）
