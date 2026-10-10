@@ -1,0 +1,7 @@
+{
+  "what": "设计稿结构合规（C10 / `技-19`）的**存量违规基线**（只减不增；「触及即合规」不回填）",
+  "why": "存量老稿未采用 9 块模板；基线把现状固化，只让**新增违规**与**基线该收窄**报出来",
+  "how": "node scripts/check-drafts.js --write-baseline",
+  "updatedAt": "2026-10-10",
+  "violations": []
+}
