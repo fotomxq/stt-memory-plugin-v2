@@ -21,19 +21,12 @@ import { mergeTags, scenePathArr } from './model/scalars.js';
 import { normalizeSnapshot, refreshAllSnapshotAges, snapshotBodySig, stampNowForState, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
 import { injectNameCore, parallelExpired } from './recall.js';
 import { clamp, normText, normalizeList } from './util.js';
+// v3.41.0（`docs/D22` `业-6` / `docs/D18` §4.1 P5）：时间衰退函数收敛为**单一实现**（叶子模块），
+//   本模块**再导出** `calcTimeDecay` —— `core/ingest.js#calcTimeDecay` 的既有引用形态与各调用方 import 均不变。
+import { calcTimeDecay } from './decay.js';
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
 function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { } }
-const DECAY_MS_HOUR = 3600 * 1000;
-
-const DECAY_MS_DAY = 24 * DECAY_MS_HOUR;
-
-const DECAY_MS_MONTH = 30.44 * DECAY_MS_DAY;
-
-const DECAY_MS_YEAR = 365.25 * DECAY_MS_DAY;
-// —— 通用 5 参数多级时间衰退（底层方法，供各大类复用）——
-// 入参：earliestAt 大类最早更新时间 / latestAt 大类最晚更新时间 / nowAt 总览当前时间 /
-//       itemAt 被判断原子自身时间 / count 大类条目数；返回衰退值 0..1
 
 let decayTimer = null;
 // 每次平行事件更新后延迟堆叠：3s 窗口内多次更新合并为一次统一衰退计算
@@ -507,39 +500,6 @@ function dbgExcerpt(text, max) {
     return t.length > max ? t.slice(0, max) + '…' : t;
 }
 
-function calcTimeDecay(earliestAt, latestAt, nowAt, itemAt, count) {
-    try {
-        const now = Number(nowAt) || Date.now();
-        const item = Number(itemAt);
-        // B8-5 修正（**有意偏差**，V1 为 `item <= 0`）：剧情日期以 2000 为基准换算，**1970 年之前的剧情日期
-        //   得到负毫秒值**，而 V1 的 `item <= 0` 会把它们当成「无时间信息」→ 状态衰退 / 记忆遗忘 / 平行事件衰退
-        //   对 19~20 世纪的剧情**整体失效**（用户常见设定恰好是 1919 一类年份）。V1 注释写的是「无时间信息视为新」，
-        //   故此处按注释语义只判「非有限数值」；负值（公元前 ~ 1969）是合法时间，正常参与衰减。
-        if (!Number.isFinite(item)) return 0;                              // 无时间信息视为新
-        const age = Math.max(0, now - item);
-        // 1) 多级时间尺度（小时→天→月→年，各占一段权重，1 年以上完全饱和）
-        const sHours = Math.min(1, age / DECAY_MS_HOUR);
-        const sDays = Math.min(1, age / DECAY_MS_DAY);
-        const sMonths = Math.min(1, age / DECAY_MS_MONTH);
-        const sYears = Math.min(1, age / DECAY_MS_YEAR);
-        const scale = 0.20 * sHours + 0.25 * sDays + 0.30 * sMonths + 0.25 * sYears;   // ≤1
-        // 2) 类别跨度相对位置：条目越接近「最早更新」越老（=1），接近「最新更新」越新（≈0）
-        let relFrac = 0;
-        const e = Number(earliestAt), l = Number(latestAt);
-        const spanBase = Math.max(1, (Number.isFinite(e) && Number.isFinite(l) ? l : now) - (Number.isFinite(e) ? e : now));
-        if (Number.isFinite(e) && now > e) {
-            relFrac = Math.min(1, Math.max(0, (now - item) / (now - e)));
-            // 条目晚于最新更新（正在被维护）则相对位置按 0 计（最活跃）
-            if (Number.isFinite(l) && item >= l) relFrac = 0;
-            relFrac = Math.min(1, Math.max(0, relFrac));
-        }
-        // 3) 条目拥挤度：同类条目越多，整体越易衰退（+2%/条，封顶 ×1.5）
-        const n = Math.max(1, Number(count) || 1);
-        const crowd = Math.min(1.5, 1 + 0.02 * (n - 1));
-        const base = Math.min(1, 0.55 * scale + 0.45 * relFrac);
-        return Math.min(1, Math.max(0, base * crowd));
-    } catch (e) { return 0; }
-}
 // 单条衰退值（平行事件专用包装，注入当前类目统计与当前时间）
 
 function scheduleParallelDecay() {

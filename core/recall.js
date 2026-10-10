@@ -20,16 +20,9 @@ import { cfg, dbgLog, getLastMessageId, getStoryNow, latestAiFloorText, saveStat
 import { normPhase } from './model/scalars.js';
 import { snapshotAge, snapshotAppearanceText, snapshotSocialFutureLine } from './model/snapshot.js';
 import { normalizeList, snapNameKey } from './util.js';
-const DECAY_MS_HOUR = 3600 * 1000;
-
-const DECAY_MS_DAY = 24 * DECAY_MS_HOUR;
-
-const DECAY_MS_MONTH = 30.44 * DECAY_MS_DAY;
-
-const DECAY_MS_YEAR = 365.25 * DECAY_MS_DAY;
-// —— 通用 5 参数多级时间衰退（底层方法，供各大类复用）——
-// 入参：earliestAt 大类最早更新时间 / latestAt 大类最晚更新时间 / nowAt 总览当前时间 /
-//       itemAt 被判断原子自身时间 / count 大类条目数；返回衰退值 0..1
+// v3.41.0（`docs/D22` `业-6` / `docs/D18` §4.1 P5）：本模块的**同名私有副本已删除**，
+//   时间衰退统一走单一实现 `core/decay.js#calcTimeDecay`（`core/ingest.js` 再导出同一件）。
+import { calcTimeDecay } from './decay.js';
 
 const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels'];
 
@@ -671,37 +664,6 @@ function recallQueryTokens(q) {
 }
 // 条目的可匹配特征文本（小写；标签/关键词/名称/标题/正文/描述/角色/地点/主体字段 等）
 
-function calcTimeDecay(earliestAt, latestAt, nowAt, itemAt, count) {
-    try {
-        const now = Number(nowAt) || Date.now();
-        const item = Number(itemAt);
-        if (!Number.isFinite(item) || item <= 0) return 0;                 // 无时间信息视为新
-        const age = Math.max(0, now - item);
-        // 1) 多级时间尺度（小时→天→月→年，各占一段权重，1 年以上完全饱和）
-        const sHours = Math.min(1, age / DECAY_MS_HOUR);
-        const sDays = Math.min(1, age / DECAY_MS_DAY);
-        const sMonths = Math.min(1, age / DECAY_MS_MONTH);
-        const sYears = Math.min(1, age / DECAY_MS_YEAR);
-        const scale = 0.20 * sHours + 0.25 * sDays + 0.30 * sMonths + 0.25 * sYears;   // ≤1
-        // 2) 类别跨度相对位置：条目越接近「最早更新」越老（=1），接近「最新更新」越新（≈0）
-        let relFrac = 0;
-        const e = Number(earliestAt), l = Number(latestAt);
-        const spanBase = Math.max(1, (Number.isFinite(e) && Number.isFinite(l) ? l : now) - (Number.isFinite(e) ? e : now));
-        if (Number.isFinite(e) && now > e) {
-            relFrac = Math.min(1, Math.max(0, (now - item) / (now - e)));
-            // 条目晚于最新更新（正在被维护）则相对位置按 0 计（最活跃）
-            if (Number.isFinite(l) && item >= l) relFrac = 0;
-            relFrac = Math.min(1, Math.max(0, relFrac));
-        }
-        // 3) 条目拥挤度：同类条目越多，整体越易衰退（+2%/条，封顶 ×1.5）
-        const n = Math.max(1, Number(count) || 1);
-        const crowd = Math.min(1.5, 1 + 0.02 * (n - 1));
-        const base = Math.min(1, 0.55 * scale + 0.45 * relFrac);
-        return Math.min(1, Math.max(0, base * crowd));
-    } catch (e) { return 0; }
-}
-// 单条衰退值（平行事件专用包装，注入当前类目统计与当前时间）
-
 function recallHay(e) {
     try {
         const o = e || {};
@@ -740,11 +702,17 @@ function recallEntryVotes(e, tokens) {
 // 姓名核 = 全名首段（用于状态主体与档案名归并/过滤）
 
 function parallelDecayScore(p) {
-    const list = st().parallels || [];
-    const ts = list.map(x => Number(x && x.updatedAt) || 0).filter(t => t > 0);
+    // v3.41.0（`docs/D22` `业-6` / `docs/D18` §4 P1–P3）：基准**一律剧情时间** ——
+    //   基准时刻 = 剧情时钟当前日期；条目时刻 = 条目自身的剧情日期；类目跨度同样取剧情日期。
+    //   无剧情时钟（或该条无剧情日期）→ 0 即**不衰退**（与 `core/forget.js#memoryForgetScore` 同口径）。
+    const s = st();
+    const list = (s && s.parallels) || [];
+    const ts = list.map(x => storyDateMsFromStr(x && x.date)).filter(t => !!t);   // 负年份（公元前）同样计入
     const earliest = ts.length ? Math.min.apply(null, ts) : 0;
-    const latest = ts.length ? Math.max.apply(null, ts) : (Number(p && p.updatedAt) || 0);
-    return calcTimeDecay(earliest, latest, Date.now(), Number(p && p.updatedAt) || 0, list.length);
+    const latest = ts.length ? Math.max.apply(null, ts) : 0;
+    const now = storyDateMsFromStr((s && s.state && s.state.date) || '');
+    if (!now) return 0;                                                          // 无剧情时钟 → 不衰退（P3）
+    return calcTimeDecay(earliest, latest, now, storyDateMsFromStr(p && p.date), list.length);
 }
 
 function injectNameCore(name) { return String(name || '').split(/[·・.．\s]+/)[0].trim(); }

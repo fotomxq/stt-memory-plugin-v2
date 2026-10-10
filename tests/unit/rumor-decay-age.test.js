@@ -14,6 +14,12 @@
 //     于是**久远传言即便墙钟上刚被刷新过也会被推向移除阈值**，新传言分数不变；
 //   · `rumorDecayBreakdown(r)` 暴露 `{base, speed, boost, add, score, date, ageDays}`，衰退日志逐条给出。
 //
+// **v3.41.0（`docs/D22` `业-6` / `docs/D18` §4）**：`base` 的**基准来源**已由**现实墙钟 `updatedAt`** 改为
+//   **剧情时间**（基准时刻 = 剧情时钟当前日期；条目时刻 = 该说法自身的剧情日期 `r.date`）。因此
+//   「无剧情时钟 → 整条衰老分为 0」成为硬口径，A5 随之**改判**（改前：无时钟与有时钟的差 ≤ 0.01；
+//   改后：无时钟 = 0，有时钟 = 剧情时间基准值）。三域统一的显式判据见
+//   `tests/unit/decay-story-time.test.js`。`speed`（剧情时间久远度）与阈值/比例/开关**均不变**（§4.1 P4）。
+//
 // 运行：node tests/unit/rumor-decay-age.test.js
 // ============================================================
 import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harness/st-mock.js';
@@ -37,6 +43,7 @@ installGlobalHost(makeHost({}), doc);
 
 /** 造一条传言（`updatedAt` 固定 1 天前，衬托「墙钟相同、只有发生时间不同」） */
 let rumorSeq = 0;
+let a5 = {};
 function rumor(date, extra) {
     rumorSeq += 1;
     return Object.assign({
@@ -91,15 +98,17 @@ A('A4 单调性：同一条列表中，发生时间越久远 → 系数越高（
     return scores[0] < scores[1] && scores[1] <= scores[2] && scores[2] <= scores[3] && scores[3] === 1;
 })(), J((() => { const l = [rumor('1919-11-27'), rumor('1919-01-01'), rumor('1915-01-01'), rumor('1900-01-01')]; boot('1919-11-29', l); return l.map((r) => Number(rumorDecayScore(r).toFixed(3))); })()));
 
-A('A5 新传言几乎不受影响：与「无剧情时钟」（= 关闭时间判断）相比，系数差 ≤ 0.01 且久远度 ≤ 0.01', (() => {
+A('A5 v3.41.0 基准变更（`docs/D18` §4 / `docs/D22` `业-6`）：base 已改**剧情时间** —— 有剧情时钟时新传言仍有 base；无剧情时钟则整条为 0', (() => {
     const r = rumor('1919-11-28');                       // 剧情当下 1919-11-29 → 距今 1 天
     boot('1919-11-29', [r]);
-    const withClock = rumorDecayScore(r);
+    const withClock = rumorDecayBreakdown(r);
     const speed = rumorAgeSpeed(r);
     boot('', [r]);
-    const without = rumorDecayScore(r);
-    return speed <= 0.01 && withClock >= without && (withClock - without) <= 0.01;
-})(), J({ withClock: rumorDecayScore(rumor('1919-11-28')), speed: rumorAgeSpeed(rumor('1919-11-28')) }));
+    const without = rumorDecayBreakdown(r);
+    a5 = { withClockBase: Number(withClock.base.toFixed(6)), withClockScore: Number(withClock.score.toFixed(6)), speed: speed, withoutBase: without.base, withoutScore: without.score };
+    return speed <= 0.01 && withClock.base > 0 && withClock.score > 0
+        && without.base === 0 && without.speed === 0 && without.score === 0;
+})(), J(a5));
 
 A('A6 无发生日期的传言完全保持原行为（不受时间判断影响）', (() => {
     const withDate = rumor('1900-01-01');

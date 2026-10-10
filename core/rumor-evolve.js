@@ -465,15 +465,20 @@ function rumorAgeSpeed(r) {
 
 /** 衰退系数拆解（诊断 / 测试 / 日志用）：base = V1 原口径，speed = 剧情时间久远度，score = base × (1 + speed) */
 function rumorDecayBreakdown(r) {
+    // v3.41.0（`docs/D22` `业-6` / `docs/D18` §4 P1–P3）：base 的**基准时刻与条目时刻一律改剧情时间** ——
+    //   基准 = 剧情时钟当前日期；**条目时刻 = 该说法自身的剧情日期 `r.date`**（与记忆 `m.date` / 平行 `p.date` 同口径，
+    //   即 §4.1 P1 的「条目自身的剧情日期」；载体 `media[].at` 是**强度侧**的久远度输入，仍只由 `rumorAgeSpeed` 使用，
+    //   本版不动强度）；类目跨度同样取各条的 `date`。无剧情时钟 → base = 0（与 speed = 0 一致 → 衰老分恒为 0，P3）。
     const list = state.rumors || [];
-    const ts = list.map(x => Number(x && x.updatedAt) || 0).filter(t => t > 0);
+    const ts = list.map(x => storyDateMsFromStr(clockDateTrim(String((x && x.date) || '')))).filter(t => !!t);   // 负年份（公元前）同样计入
     const earliest = ts.length ? Math.min.apply(null, ts) : 0;
-    const latest = ts.length ? Math.max.apply(null, ts) : (Number(r && r.updatedAt) || 0);
-    const base = calcTimeDecay(earliest, latest, Date.now(), Number(r && r.updatedAt) || 0, list.length);
-    const speed = rumorAgeSpeed(r);
+    const latest = ts.length ? Math.max.apply(null, ts) : 0;
     const now = storyDateMsFromStr(clockDateTrim(getStoryNow()));
-    const at = rumorStoryDateMs(r);
-    const ageDays = (Number.isFinite(now) && Number.isFinite(at)) ? Math.floor((now - at) / RUMOR_DAY_MS) : -1;
+    const at = storyDateMsFromStr(clockDateTrim(String((r && r.date) || '')));
+    const base = now ? calcTimeDecay(earliest, latest, now, at, list.length) : 0;
+    const speed = rumorAgeSpeed(r);
+    const atAge = rumorStoryDateMs(r);
+    const ageDays = (Number.isFinite(now) && Number.isFinite(atAge)) ? Math.floor((now - atAge) / RUMOR_DAY_MS) : -1;
     // v2.70.0 组合口径：**乘法加速**（系数随久远度放大，最多 ×2）+ **加法下限**（满额 +0.5）
     //   → 久远传言即便墙钟上刚被刷新过，也会被推到接近/达到移除阈值；新传言完全不变。
     const score = Math.min(1, Math.max(0, base * (1 + RUMOR_AGE_MAX_BOOST * speed) + RUMOR_AGE_MIN_ADD * speed));
