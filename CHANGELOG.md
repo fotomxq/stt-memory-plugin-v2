@@ -3,6 +3,30 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.40.5（2026-10-10）· `docs/D22` W0/W1 **实机复核**：真机体检修掉「原文已移除却仍声明当前位置」（171 条）+ 五项真机数字回填
+
+**用户要求**（原话）：「新版本v3.40.5 待开发事项中，有W0、W1需要结合实机测试，请与本地调试链接进行测试。如存在BUG请修复。」
+
+**实机口径**：用户在本机 TauriTavern 里开着**只读调试桥**（`ws://127.0.0.1:8791`，49 个只读方法），
+数据是**真实角色存档**（当前聊天 44 楼 / 466 条条目）；全部结论取自运行态 `ftt.*` / `sys.*` 与存档只读核算，**不含任何正文**。
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | `core/floor-cover.js#markOriginGone()` | **真机 BUG 修复**：打「原文已移除」时**同时清掉 `floorNowStart/floorNowEnd`**（该条目运行时本来就不覆盖任何楼层），**保留 `floorNowHash`**（`recheckOriginGone()` 靠它把位置找回来）。真机体检原有 **171 条** `origin-gone-with-floornow`（占 466 条的 37%）—— 既淹没真实异常，又让 `clearGone` ④ 分支把**删除前的陈旧位置洗白**成「位置有效」 |
+| ② | `core/floor-cover.js#mergeEntryProvenance()` | 同一 BUG 的**第二半根因**：跨层并集的「补空」会把 `floorNow*` **补回**已移除的条目，与载入期自愈（`core/migrate.js#healthSelfHeal` 会删）形成**死循环**（删掉 → 载入又补回）。现在 `originGone === true` 的条目**既不补、还就地清** |
+| ③ | `tests/unit/floor-provenance.test.js` | 新增 **K 组 4 项**：`markOriginGone` 清位置留指纹 · 合并口径（不补已移除条目 / 正常条目照旧补空）· 体检口径（修复前 1 条 → 修复后 0 条）· **可恢复性未被破坏**（`recheckOriginGone()` 仍能凭指纹找回并重写位置） |
+| ④ | `docs/D13` §8.7 / §8.8 | **五项真机数字回填** + 真机 BUG 记录：`localStorage` 计法**不适用**（本机层已是 OPFS：7.27 MB / 最大单文件 7.16 MB）· UI 动作耗时（`ui/tab` 33 ms avg / 52 ms max、`nsfwSoften` 171 ms、宿主钩子 ≤1 ms）· 原生通道（KV 上限 96 KB、写 1600 次 / 失败 0 / 最近 141 ms·7.5 MB / `lastSlow=null`）· embedding **本会话无调用**（5 条 LLM 日志全是 chat/completions）· 读取台账（415 次 / 均 35 ms / 服务端文件均 102 ms·max 533 ms / 本机缓冲累计 **1.27 GB**）；`技-8`：**H3 目录枚举宿主不支持**、`chatMetadata` 可用但为空；`数-18`：`originGone` **68.9%**、可清扫面 **88.5%（<0.7）/ 82.2%（<0.2）**（与合成基线的 3.5×/1.8× 严重不符 → 阈值无区分度）、快照链 **4.37 MB / 20 条**（≈ 再存一份，82%） |
+
+**为什么这条算 BUG 而不是「体检口径太严」**：残留的 `floorNow*` 真的会被复用 —— `host/floors.js` 的 `clearGone`
+在「有位置且台账有指纹」时直接解除「原文已移除」，于是**删除前算出的位置**变成了当前有效位置（v3.20.0 记过的
+「陈情情节被洗白成位置有效」同族路径）。修复后 `recheckOriginGone()` 仍按**内容指纹**复原，可恢复性不变。
+
+**契约变更（随本版，已写进测试）**：`mergeEntryProvenance()` 的「补空不覆盖」口径**收窄一条** ——
+**当合并结果处于「原文已移除」（`originGone === true`）时，`floorNowStart/End` 不补、且就地清除**；
+`originGoneAt` / `floorNowHash` / `chatKey` 仍照旧「补空不覆盖」。
+受影响的 5 条黄金断言（`tests/unit/entry-provenance-merge.test.js` A2 / A3 / B1 / B2 / B3）已按新契约更新并写明理由；
+`tests/unit/floor-provenance.test.js` 新增 K 组 4 项锁住新行为。
+
 ## v3.40.4（2026-10-10）· 完成 `docs/D22` **W1 批次**（关键路径前置）：**ready 守门落地**（载入完成前禁止落盘）+ 三项验证闭环
 
 **用户要求**（原话）：「新版本 / 开发待开发事项W1」+「新版本的版本号：v3.40.4」。

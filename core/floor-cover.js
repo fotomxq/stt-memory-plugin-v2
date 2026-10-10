@@ -71,12 +71,27 @@ export function originFloorRange(it) {
     } catch (e) { return null; }
 }
 
-/** 标记「原文已移除」（保留来源楼层与内容） */
+/**
+ * 标记「原文已移除」（保留来源楼层与内容指纹）
+ *
+ * v3.40.5（真机取证 + 体检项 `origin-gone-with-floornow` **171 条**）：打「原文已移除」时**必须同时清掉
+ *   `floorNowStart/floorNowEnd`** —— `currentFloorRange()` 对 `originGone === true` 本来就返回 `null`
+ *   （「不占用任何楼层」），把当前位置留在条目上只会带来两个后果：
+ *     ① 数据体检成片误报「已判「原文已移除」却仍声明当前位置」（真机 171 条，把真实异常淹没）；
+ *     ② 后续 `clearGone`（`host/floors.js` 的 ④ 分支：`hasNow` 为真 + 台账有指纹）会把**陈旧位置洗白** ——
+ *        即用「删除之前算出来的位置」冒充当前位置。
+ *   **保留 `floorNowHash`**（内容指纹）：`recheckOriginGone()` 靠它在内容重新出现时把位置算回来。
+ * @param {object} it 条目
+ * @param {number} [at] 标记时刻
+ * @returns {boolean}
+ */
 export function markOriginGone(it, at) {
     try {
         if (!it || typeof it !== 'object') return false;
         it.originGone = true;
         it.originGoneAt = Number(at) > 0 ? Number(at) : Date.now();
+        delete it.floorNowStart;
+        delete it.floorNowEnd;
         return true;
     } catch (e) { return false; }
 }
@@ -118,10 +133,25 @@ export function mergeEntryProvenance(target, other) {
         if (other.mergedSummary && !target.mergedSummary) { target.mergedSummary = JSON.parse(JSON.stringify(other.mergedSummary)); out.push('mergedSummary'); }
         // ② 补空类（不覆盖已有值）
         if (missing(target.originGoneAt) && !missing(other.originGoneAt)) { target.originGoneAt = other.originGoneAt; out.push('originGoneAt'); }
-        for (const k of ['floorNowStart', 'floorNowEnd']) {
-            const ok = Number.isInteger(target[k]) && target[k] >= 0;
-            const okOther = Number.isInteger(other[k]) && other[k] >= 0;
-            if (!ok && okOther) { target[k] = other[k]; out.push(k); }
+        /**
+         * v3.40.5（真机取证 `origin-gone-with-floornow` **171 条**）：「原文已移除」的条目不再补 `floorNow*`，
+         *   并且**就地清掉**已有的 `floorNow*` —— 否则「载入自愈删掉 → 跨层并集又补回」形成死循环：
+         *   体检永远在 warn，且陈旧位置会被 `clearGone` 洗白（`host/floors.js` ④ 分支用 `hasNow` 判据）。
+         *   `floorNowHash`（内容指纹）仍照常补空 —— 它是 `recheckOriginGone()` 把位置算回来的依据。
+         *   注：① 已先执行，故此处 `target.originGone === true` 就是「合并后的最终状态」。
+         */
+        if (target.originGone === true) {
+            if (target.floorNowStart !== undefined || target.floorNowEnd !== undefined) {
+                delete target.floorNowStart;
+                delete target.floorNowEnd;
+                out.push('floorNowCleared');
+            }
+        } else {
+            for (const k of ['floorNowStart', 'floorNowEnd']) {
+                const ok = Number.isInteger(target[k]) && target[k] >= 0;
+                const okOther = Number.isInteger(other[k]) && other[k] >= 0;
+                if (!ok && okOther) { target[k] = other[k]; out.push(k); }
+            }
         }
         if (!target.floorNowHash && other.floorNowHash) { target.floorNowHash = String(other.floorNowHash); out.push('floorNowHash'); }
         // v3.22.0：聊天归属 —— 有归属总比「归属未知」强，但**不覆盖**已有归属

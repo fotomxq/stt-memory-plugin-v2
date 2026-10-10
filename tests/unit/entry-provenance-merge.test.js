@@ -96,8 +96,12 @@ A('A2 **补空不覆盖**：`originGoneAt` / `floorNow*` / `floorNowHash` / `cha
     const changed = mergeEntryProvenance(t, {
         originGoneAt: 1, floorNowStart: 3, floorNowEnd: 4, floorNowHash: 'stale-hash', chatKey: 'other-chat',
     });
-    return changed.length === 0
-        && t.originGoneAt === 1791177002000 && t.floorNowStart === 25 && t.floorNowEnd === 25
+    // v3.40.5 契约变更（真机取证 171 条 origin-gone-with-floornow）：**合并结果处于「原文已移除」时，
+    //   `floorNow*` 既不补也不留**（该条目运行时本就不覆盖任何楼层；留着会被 clearGone ④ 洗白成「位置有效」）。
+    //   其余字段口径不变：originGoneAt / floorNowHash / chatKey 仍是「补空不覆盖」。
+    return J(changed) === J(['floorNowCleared'])
+        && t.floorNowStart === undefined && t.floorNowEnd === undefined
+        && t.originGoneAt === 1791177002000
         && t.floorNowHash === 'verified-in-this-chat' && t.chatKey === 'this-chat';
 })(), () => J(mergeEntryProvenance({ id: 'x' }, {})));
 
@@ -107,9 +111,11 @@ A('A3 **非法值视为缺失**：`NaN` / 负数 / 非整数 / 空串 → 从另
         originGone: true, originGoneAt: 1791177002000,
         floorNowStart: 25, floorNowEnd: 25, floorNowHash: 'h-25', chatKey: 'chat-A',
     });
+    // v3.40.5：目标被抬升为「原文已移除」→ 位置整对清掉（脏值不再补回），指纹 / 时刻 / 归属照旧补空
     return t.originGone === true && t.originGoneAt === 1791177002000
-        && t.floorNowStart === 25 && t.floorNowEnd === 25 && t.floorNowHash === 'h-25' && t.chatKey === 'chat-A'
-        && J(changed.sort()) === J(['chatKey', 'floorNowEnd', 'floorNowHash', 'floorNowStart', 'originGone', 'originGoneAt']);
+        && t.floorNowStart === undefined && t.floorNowEnd === undefined
+        && t.floorNowHash === 'h-25' && t.chatKey === 'chat-A'
+        && J(changed.slice().sort()) === J(['chatKey', 'floorNowCleared', 'floorNowHash', 'originGone', 'originGoneAt']);
 })(), () => J(mergeEntryProvenance({ id: 'x', originGoneAt: NaN }, { originGoneAt: 5 })));
 
 A('A4 非对象 / 缺参 → 静默返回空变更（不抛异常）', (() => {
@@ -129,7 +135,8 @@ A('B1 **同内容哈希分支（真机走的就是这条）**：基底是滞后�
     return atomContentHash('atoms', x.stale) === atomContentHash('atoms', x.fresh)   // 前提：标记不进内容哈希
         && x.arr.length === 1
         && x.first.originGone === true && x.first.originGoneAt === 1791177002000
-        && x.first.floorNowStart === 25 && x.first.floorNowEnd === 25;
+        // v3.40.5：合并后是「原文已移除」→ 位置不补（真机上正是这 171 条的来源）
+        && x.first.floorNowStart === undefined && x.first.floorNowEnd === undefined;
 })(), () => J(b1()));
 
 const b2 = () => {
@@ -150,7 +157,9 @@ A('B2 **冲突分支（按 updatedAt 取胜）**：胜出侧无标记、败者�
     return x.stat.conflictWinLocal === 1 && f.id === 'atom_dkr581'
         && atomContentHash('atoms', x.a) !== atomContentHash('atoms', x.b)
         && f.originGone === true && f.originGoneAt === 1791177002000 && f.hidden === true && f.summarizedBy === 'sum-9'
-        && f.floorNowStart === 21 && f.floorNowEnd === 21 && f.floorNowHash === 'h-21' && f.chatKey === 'other-chat';
+        // v3.40.5：标记抬升后位置不再落地；**内容指纹与归属照旧保住**（供 recheckOriginGone 找回）
+        && f.floorNowStart === undefined && f.floorNowEnd === undefined
+        && f.floorNowHash === 'h-21' && f.chatKey === 'other-chat';
 })(), () => J(b2()));
 
 const b3 = () => {
@@ -168,7 +177,10 @@ A('B3 胜出侧**已经核实**的 `floorNow*` / `floorNowHash` / `chatKey` 不�
     const x = b3();
     return x.stat.conflictWinLocal === 1
         && x.first.time === '下午'                                   // 内容确实是本地那份
-        && x.first.floorNowStart === 29 && x.first.floorNowEnd === 29 && x.first.floorNowHash === 'h-verified'
+        // v3.40.5：对端把标记抬升为「原文已移除」后，**位置失去意义**（不保留陈旧位置）；
+        //   指纹与归属仍按「补空不覆盖」保住（指纹是复核找回的依据）
+        && x.first.floorNowStart === undefined && x.first.floorNowEnd === undefined
+        && x.first.floorNowHash === 'h-verified'
         && x.first.chatKey === 'this-chat'
         && x.first.originGone === true;                              // 只升不降：对端的标记照样抬升
 })(), () => J(b3().first));

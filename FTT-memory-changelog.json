@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.40.4",
+  "version": "3.40.5",
   "updatedAt": "2026-10-10",
   "generatedAt": "2026-10-10",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.40.5",
+      "date": "2026-10-10",
+      "title": "docs/D22 W0/W1 实机复核：真机体检修掉「原文已移除却仍声明当前位置」（171 条）+ 五项真机数字回填",
+      "points": [
+        "实机口径：用户在本机 TauriTavern 里开着只读调试桥（ws://127.0.0.1:8791，49 个只读方法），数据是真实角色存档（当前聊天 44 楼 / 466 条…",
+        "契约变更（随本版，已写进测试）：mergeEntryProvenance() 的「补空不覆盖」口径收窄一条 ——",
+        "当合并结果处于「原文已移除」（originGone === true）时，floorNowStart/End 不补、且就地清除：；originGoneAt / floorNowH…"
+      ]
+    },
     {
       "version": "3.40.4",
       "date": "2026-10-10",
