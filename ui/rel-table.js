@@ -95,6 +95,30 @@ export function relDirty(dim, refId) { return relDrafts.has(draftKey(dim, refId)
 /** 丢弃草稿（放弃编辑） */
 export function relDiscard(dim, refId) { relDrafts.delete(draftKey(dim, refId)); return true; }
 
+/**
+ * v3.44.0（`docs/D22` W4 **`数-11`** ④）：**锚点标注** —— 这一行的依据齐不齐。
+ *
+ * 口径（与 `core/rel-maint.js#relAnchorGaps` 同源，判据只有一处）：
+ *   · `at`（知情时间）—— 亲历 / 目击 / 当事人 / 策划**应该有**（这些人在场）；
+ *   · `from`（告知者）—— 「被告知」**应该有**；
+ *   · `view`（差异）—— 各人看法不同才有，**没有不算缺**（故不计入「无依据」）。
+ * 标注只是**提醒**，不做任何拦截、不改任何数据：缺锚点的行照样能编辑与保存
+ *   （`数-11` 的处置是「提示 + 机械回填能确定的那部分」，不是「不许有」）。
+ * @returns {string} 提示文案（空串 = 依据齐全）
+ */
+function relAnchorNote(row) {
+    try {
+        const r = row || {};
+        const how = String(r.how || 'unspecified');
+        const miss = [];
+        const presentHows = ['participant', 'witness', 'author', 'involved'];
+        if (!String(r.at || '').trim() && presentHows.indexOf(how) >= 0) miss.push('知情时间');
+        if (!String(r.from || '').trim() && how === 'told') miss.push('告知者');
+        if (!miss.length) return '';
+        return '无依据（缺' + miss.join(' / ') + '）';
+    } catch (e) { return ''; }
+}
+
 /** 行 HTML（V1 `relRowHtml` 的结构与类名；平行为「相关」只读） */
 function relRowHtml(dim, row, idx) {
     const who = String((row && row.who) || '');
@@ -104,6 +128,13 @@ function relRowHtml(dim, row, idx) {
         ? '<span class="ftt-muted">相关</span>'
         : ('<select data-ftt-relf="how">' + (REL_HOW.default).map((o) => '<option value="' + attr(o.v) + '"' + (o.v === how ? ' selected' : '') + '>' + esc(o.t) + '</option>').join('') + '</select>');
     const isPublic = !!(row && row.public);
+    // v3.44.0（`数-11` ④）：行内「无依据」标注（只读提示，见 `relAnchorNote`）。
+    //   只用类名 + 文案，**不加** `data-ftt-*` 属性 —— 面板审计（`panel-audit` L5）要求每个
+    //   `data-ftt-*` 都被 dataset / 选择器真实读取，而这里没有任何代码读它（只是给人看的提示）。
+    const anchorNote = relAnchorNote(row);
+    const anchorCell = anchorNote
+        ? '<span class="ftt-muted ftt-rel-anchor-missing" title="这一行缺少知情锚点：' + attr(anchorNote) + '。亲历 / 目击 / 当事人 / 策划应填「知情时间」；「被告知」应填「告知者」。">⚠️ ' + esc(anchorNote) + '</span>'
+        : '<span class="ftt-muted ftt-rel-anchor-ok">依据齐全</span>';
     return '<tr data-ftt-rel-row data-ftt-rel-idx="' + attr(idx) + '">'
         + '<td class="ftt-rel-role"><input class="ftt-rel-who" data-ftt-relf="who" value="' + attr(who) + '" placeholder="角色名"></td>'
         + '<td>' + howCell + '</td>'
@@ -111,6 +142,7 @@ function relRowHtml(dim, row, idx) {
         + '<td><input class="ftt-rel-w-who" data-ftt-relf="from" value="' + attr(String((row && row.from) || '')) + '" placeholder="' + (how === 'told' ? '告知者' : '—') + '"></td>'
         + '<td><input class="ftt-rel-w-date" data-ftt-relf="at" value="' + attr(String((row && row.at) || '')) + '" placeholder="YYYY-MM-DD"></td>'
         + '<td><input data-ftt-relf="note" value="' + attr(String((row && row.note) || '')) + '" placeholder="备注"></td>'
+        + '<td class="ftt-rel-anchor">' + anchorCell + '</td>'
         + '<td><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="relRowDel" data-ftt-rel-idx="' + attr(idx) + '" title="删除这一行关系">🗑</button></td>'
         + '</tr>';
 }
@@ -131,7 +163,7 @@ export function relTableHtml(dim, refId, opts) {
     if (!on) {
         return '<div class="ftt-empty">通用知情关联层已关闭（设定 → 分析记忆 → 关联层：启用通用知情关联层）：不再读写关联行。</div>';
     }
-    const head = '<tr><th>角色</th><th>知情方式</th><th>公共</th><th>来源</th><th>日期</th><th>备注</th><th></th></tr>';
+    const head = '<tr><th>角色</th><th>知情方式</th><th>公共</th><th>来源（告知者）</th><th>知情时间</th><th>备注</th><th>依据</th><th></th></tr>';
     const picking = relPickingOf(d, r, isEd);
     return '<div class="ftt-rel-box" ' + body + '>'
         + '<div class="ftt-hint">关联 = 这条' + esc(dimLabel(d)) + '「谁知道 / 谁相关」；未列出的角色一律视为不知情（约束段据此点名）。</div>'

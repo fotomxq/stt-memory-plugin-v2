@@ -21,6 +21,15 @@
 //   体积类（info）：`field-too-long`（单字段超过该维度字数上限）
 //   文本类（warn）：`text-bad-token`（文本里混入 `undefined` / `NaN` / `[object Object]` 占位；v3.26.1）
 //   关联类（warn）：`link-bad-row` · `link-orphan`（引用的条目不存在）
+// v3.44.0 新增（`docs/D22` **W4**）：
+//   字段名类（info）：`field-legacy-name`（只带旧字段名而缺规范名；`数-10`）·
+//                     `attribution-missing`（缺聊天归属 `chatKey`；`数-10`，**不可回填**，见下）
+//   关联锚点（info）：`link-missing-anchor`（关联行缺知情锚点 `at` / `from` / `view`；`数-11`）
+//   计划悬念（info）：`plan-long-open`（长期未推进的 open 计划 / 悬念；`数-12`）
+//   空壳（info）：`entry-shell`（正文 < 12 字的存量空壳；`数-13`）
+//   越界（warn）：`field-out-of-range`（保留字段越界：`weaveLastFloor` / `parallelFloor` / `storyDay` / `floorStart`；`数-14`）
+//   槽位（info）：`state-slot-unregistered`（未登记的 state 顶层槽位；`数-15`）·
+//                 `state-slot-reserved`（已登记但**未接线**的保留槽位；`数-15`）
 //   台账类（warn）：`processed-not-array` · `ledger-bad-mark` · `ledger-dup-mark` · `lastknown-invalid` ·
 //                   `lastchatfloor-invalid` · `processedver-invalid`
 //   墓碑类（warn）：`tombstone-bad-ts`（时间戳非数字 → 该墓碑实际不生效，跨端可能被复活）
@@ -37,6 +46,13 @@ import { cfg, state as kernelState } from './model/runtime.js';
 import { NSFW_LEVEL_FIELD, nsfwLevelNorm } from './nsfw-level.js';
 // v3.26.1：坏占位 token（`undefined` / `NaN` / `[object Object]`）只读体检
 import { hasBadToken, walkStrings } from './util.js';
+// v3.44.0（`docs/D22` W4）：字段名规范 / 空壳 / 越界 / 槽位 / 关联锚点 / 计划悬念老化
+import { ATTRIBUTION_FIELD, LAST_SEEN_DATE_FIELD, LAST_SEEN_FLOOR_FIELD, attributionMissing, legacyNameGaps } from './field-names.js';
+import { isShellEntry, shellReport, SHELL_MIN_CHARS, DIM_FIELDS as SHELL_DIM_FIELDS } from './shell-guard.js';
+import { reservedRangeIssues } from './reserved-fields.js';
+import { stateSlotReport } from './state-slots.js';
+import { relAnchorGaps } from './rel-maint.js';
+import { planAgingReport, PLAN_AGING_STALE_DAYS } from './plan-aging.js';
 
 /** 体检发现的等级：`error` 计入 `ok=false`；`warn` / `info` 只提示 */
 export const HEALTH_LEVELS = Object.freeze(['error', 'warn', 'info']);
@@ -280,6 +296,86 @@ export function dataHealthReport(st, opts) {
         scanTree(s.deletedH, 'deletedH');
     } catch (e) { /* 忽略 */ }
 
+    // ==================== v3.44.0（`docs/D22` W4）：六项新口径 ====================
+    // **分两条通道**（这是本轮刻意的设计决定，不是省事）：
+    //   · `out.findings` / `out.counts` / `out.level` —— **异常**：结构坏、id 重复、墓碑失效、字段越界…
+    //     这些是「数据坏了，要处理」；`out.level` 只由它们决定（`error`/`warn`/`info`/`ok`）。
+    //   · `out.hygiene` —— **存量卫生计数**：缺归属、缺锚点、空壳、长期 open、未登记槽位…
+    //     这些是「数据没坏，但有可清理的面」，**数量级可能是几十上百**。
+    //   为什么不塞进 `findings`：① 会把 `level` 从 `ok` 抬成 `info`，让「体检干净」这个**可用信号**失效；
+    //   ② 明细会挤掉真正的 warn（v3.13.1 修过同类问题）；③ 计数才是这批的交付物（能降、能对账）。
+    //   `out.hygiene` 与 `findings` 同为**只读**、同样经三处出口（面板 / `FTT.dataHealth()` / 调试桥）可见。
+    out.hygiene = { counts: {}, findings: [] };
+    const hyg = (code, dim, n, extra) => {
+        if (!n) return;
+        out.hygiene.counts[code] = (out.hygiene.counts[code] || 0) + Number(n);
+        if (out.hygiene.findings.length < cap) out.hygiene.findings.push(Object.assign({ code: code, level: 'info', dim: dim, value: n }, extra || {}));
+    };
+    const hygOne = (code, extra) => { out.hygiene.counts[code] = (out.hygiene.counts[code] || 0) + 1; if (out.hygiene.findings.length < cap) out.hygiene.findings.push(Object.assign({ code: code, level: 'info' }, extra || {})); };
+
+    // ① `数-10`：字段名规范 —— 只带旧名而缺规范名 / 缺聊天归属（**不可回填**，见 `core/field-names.js` 头注）
+    try {
+        const gapsByDim = {}, attrByDim = {};
+        for (const dim of dims) {
+            const arr = s[dim];
+            if (!Array.isArray(arr)) continue;
+            for (const it of arr) {
+                if (!isObj(it)) continue;
+                const g = legacyNameGaps(dim, it);
+                if (g.date) gapsByDim[dim + '.' + LAST_SEEN_DATE_FIELD] = (gapsByDim[dim + '.' + LAST_SEEN_DATE_FIELD] || 0) + 1;
+                if (g.floor) gapsByDim[dim + '.' + LAST_SEEN_FLOOR_FIELD] = (gapsByDim[dim + '.' + LAST_SEEN_FLOOR_FIELD] || 0) + 1;
+                if (attributionMissing(it) && dim !== 'links') attrByDim[dim] = (attrByDim[dim] || 0) + 1;   // 关联层是引用行，本就没有归属
+            }
+        }
+        for (const k of Object.keys(gapsByDim)) {
+            hyg('field-legacy-name', k, gapsByDim[k], { field: k, detail: '只有旧字段名、缺规范名 —— 载入期迁移与写入期补写都会双写规范名；此项应恒为 0（不为 0 说明数据在迁移后被写回旧名）' });
+        }
+        for (const k of Object.keys(attrByDim)) {
+            hyg('attribution-missing', k, attrByDim[k], { field: ATTRIBUTION_FIELD, detail: '缺聊天归属 `chatKey`：**约定「只打不推断」**（`core/entry-meta.js#stampChatScope`）—— 历史条目属于哪条聊天无法从数据本身判定，猜错比不打标更危险，故**不回填**；新落库条目会自动带上' });
+        }
+    } catch (e) { /* 忽略 */ }
+
+    // ② `数-11`：关联行失锚（知情时间 / 告知者 / 差异）
+    try {
+        const g = relAnchorGaps(s);
+        if (g.at) hyg('link-missing-anchor', 'links.at', g.at, { field: 'at', detail: '关联行缺「知情时间」（共 ' + g.total + ' 行；其中「当时在场」的 ' + g.atPresent + ' 行由载入期/修复管道**机械回填**为归属条目的剧情日期）' });
+        if (g.from) hyg('link-missing-anchor', 'links.from', g.from, { field: 'from', detail: '关联行缺「告知者」（仅「被告知」需要有；**无法机械推断 → 不回填**，关系表标注「无依据」）' });
+        if (g.view) hyg('link-missing-anchor', 'links.view', g.view, { field: 'view', detail: '关联行缺「差异 / 看法」（各人视角不同时才需要；**无法机械推断 → 不回填**）' });
+    } catch (e) { /* 忽略 */ }
+
+    // ③ `数-12`：长期未推进的 open 计划 / 悬念（老化分档；**不自动了结**，交用户一键闭环）
+    try {
+        const nowDate = String((isObj(s.state) && s.state.date) || '');
+        const aging = planAgingReport(s, nowDate, {});
+        const staleN = (aging.dims.plans || {}).stale || 0;
+        const staleS = (aging.dims.suspense || {}).stale || 0;
+        if (staleN) hyg('plan-long-open', 'plans', staleN, { field: 'status', detail: '有 ' + staleN + ' 条计划已 ' + PLAN_AGING_STALE_DAYS + ' 天以上未被正文推动（按剧情时间；当前 ' + (nowDate || '无剧情时钟') + '）—— 可在计划页「⌛ 长期未推进」筛选后一键了结' });
+        if (staleS) hyg('plan-long-open', 'suspense', staleS, { field: 'status', detail: '有 ' + staleS + ' 条悬念已 ' + PLAN_AGING_STALE_DAYS + ' 天以上未被正文推动（按剧情时间；当前 ' + (nowDate || '无剧情时钟') + '）—— 可在悬念页「⌛ 长期未推进」筛选后一键了结' });
+    } catch (e) { /* 忽略 */ }
+
+    // ④ `数-13`：存量空壳条目（正文 < 12 字；**只报告**，出口是列表筛选视图）
+    try {
+        const sh = shellReport(s, { samples: 0 });
+        for (const dim of Object.keys(sh.byDim)) {
+            hyg('entry-shell', dim, sh.byDim[dim], { field: (SHELL_DIM_FIELDS[dim] || {}).body ? SHELL_DIM_FIELDS[dim].body.join('/') : '', detail: '正文不足 ' + SHELL_MIN_CHARS + ' 字（空壳）；**只报告不删** —— 用列表页筛选条「🫥 空壳」挑出来人工处理。新入库的空壳会被 `core/shell-guard.js` 拦下并计数（开关 `cfg.shellGuardEnabled`，默认关）' });
+        }
+    } catch (e) { /* 忽略 */ }
+
+    // ⑤ `数-14`：保留字段越界（楼层基线 / 剧情天数）—— 这条属**异常**（warn），留在 `findings` 里
+    try {
+        for (const it of reservedRangeIssues(s)) {
+            add(it.code, 'warn', { dim: it.dim || '', id: it.id || '', field: it.field, value: it.value, detail: it.detail });
+        }
+    } catch (e) { /* 忽略 */ }
+
+    // ⑥ `数-15`：state 顶层 / 内层槽位登记一致性（未登记 = 新的「看起来能用」位置）
+    try {
+        const sr = stateSlotReport(s);
+        if (sr.unregistered.length) hygOne('state-slot-unregistered', { dim: 'state', field: sr.unregistered.join(','), value: sr.unregistered.length, detail: '存档里有未登记的顶层槽位 —— 每个保留字段都必须有归属与出口说明，请登记进 `core/state-slots.js#STATE_SLOTS`／`RUNTIME_SLOTS`' });
+        if (sr.innerUnregistered.length) hygOne('state-slot-unregistered', { dim: 'state', field: sr.innerUnregistered.join(','), value: sr.innerUnregistered.length, detail: '`state` 容器里有未登记的内部槽位（同上，登记进 `core/state-slots.js#STATE_INNER_SLOTS`）' });
+        if (sr.reservedWithData && sr.reservedWithData.length) hygOne('state-slot-reserved', { dim: 'state', field: sr.reservedWithData.map((x) => x.key).join(','), value: sr.reservedWithData.length, detail: '保留但**未接线**（明确标注「未启用」）**且当前装着数据**：' + sr.reservedWithData.map((x) => x.key + '（' + x.label + '）').join(' · ') + '；另有死读配置键 ' + sr.cfgReads.map((x) => x.key).join(',') + '。空白槽位不报（避免噪声）' });
+    } catch (e) { /* 忽略 */ }
+
     // v3.13.1：等级由**累计到的最严重级别**决定（与 `counts` 一致，不受 `findings` 截断影响）；
     //   `error` 只可能来自结构类（容器类型 / 条目不是对象）。
     out.ok = worst < 3;
@@ -293,6 +389,21 @@ export function dataHealthText(report) {
     const parts = Object.keys(r.counts).sort().map((k) => k + ' ' + r.counts[k]);
     const head = r.ok ? (r.level === 'ok' ? '数据体检：未发现异常' : '数据体检：' + r.level + '（' + parts.length + ' 类）') : '数据体检：结构异常';
     return head + (parts.length ? ' · ' + parts.join(' · ') : '') + '（扫描 ' + r.scanned.items + ' 条 / ' + r.scanned.dims + ' 维）';
+}
+
+/**
+ * 一行**卫生摘要**（v3.44.0，`docs/D22` W4）：`out.hygiene` 的只读文案 —— 与 `dataHealthText`（异常）**分开**，
+ *   因为这两件事的处置动作不同：异常要修，卫生面要清（也可能永远不清）。
+ * @returns {string} 无卫生项时返回空串（调用方据此不显示这一行）
+ */
+export function dataHealthHygieneText(report) {
+    try {
+        const h = (report || {}).hygiene;
+        if (!h || !h.counts) return '';
+        const parts = Object.keys(h.counts).sort().map((k) => k + ' ' + h.counts[k]);
+        if (!parts.length) return '';
+        return '数据卫生：' + parts.join(' · ');
+    } catch (e) { return ''; }
 }
 
 export { DIMENSIONS };

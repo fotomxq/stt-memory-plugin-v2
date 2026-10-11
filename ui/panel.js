@@ -31,6 +31,8 @@ import { runItemRepair } from '../core/item-repair.js';
 import { runCharacterRepair } from '../core/character-repair.js';
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
+// v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
+import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
 import {
     runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
@@ -104,6 +106,9 @@ import { constraintPageHtml, constraintDimState, setConstraintDim, setLinkQuery 
 import { atomIsHidden } from '../core/merge.js';
 // v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」）—— 依赖勾选的工具行按钮的**唯一事实源**
 import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
+// v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
+import { entryAgeDays, agingBucketOf, PLAN_AGING_STALE_DAYS } from '../core/plan-aging.js';
+import { isShellEntry } from '../core/shell-guard.js';
 
 export const PANEL_ID = 'ftt-panel';
 /** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
@@ -246,6 +251,55 @@ function dataKindOf(kind) { return kind === 'states' ? 'currentStates' : String(
 /** 每页筛选态（V1 `pageFilter(kind)` = { field, sort, extra }；缺省 = 全部字段 / 默认排序 / 全部） */
 const LIST_FILTER_DEFAULT = Object.freeze({ field: 'all', sort: 'default', extra: 'all' });
 function listFilterOf(kind) { return Object.assign({}, LIST_FILTER_DEFAULT, (ps.f && ps.f[kind]) || {}); }
+
+/**
+ * v3.44.0（`docs/D22` W4 `数-12` ② / `数-13` ③）：**额外条件（筛选视图）**的选项表 —— 单一事实源。
+ * `数-13`：每个列表页都能筛「🫥 空壳」（正文不足 `SHELL_MIN_CHARS` 字；判据同体检，见 `core/shell-guard.js`）；
+ * `数-12`：计划 / 悬念还能筛「⌛ 长期未推进」（按**剧情时间**超过 `PLAN_AGING_STALE_DAYS` 天）。
+ * 为什么把它做成筛选而不是自动清理：这两类都**只降可见范围、不删数据**（`数-25` 采纳的「不删数据」边界）。
+ */
+function extraFilterOptsOf(kind) {
+    const opts = [['all', '全部']];
+    if (kind === 'plans' || kind === 'suspense') opts.push(['stale', '⌛ 长期未推进']);
+    if (kind !== 'parallels') opts.push(['shell', '🫥 空壳']);
+    return opts;
+}
+/** 当前额外条件（缺省 `all`） */
+function extraFilterOf(kind) { return String(listFilterOf(kind).extra || 'all'); }
+/** 额外条件下拉（与状态页筛选条同款标记：`data-ftt-filter` + `data-ftt-filter-key="extra"`） */
+function extraFilterSelectHtml(kind) {
+    const cur = extraFilterOf(kind);
+    const opts = extraFilterOptsOf(kind);
+    if (opts.length <= 1) return '';
+    return '<select class="ftt-select-sm" data-ftt-filter="' + attr(kind) + '" data-ftt-filter-key="extra" title="额外筛选条件">'
+        + opts.map(([v, l]) => '<option value="' + attr(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>').join('')
+        + '</select>';
+}
+/** 「⌛ 长期未推进」筛选：按剧情时间给该条目分档（无剧情时钟 → 不命中，避免用现实墙钟误判） */
+function staleFilterOn(kind, x) {
+    try {
+        const now = String((((state || {}).state) || {}).date || '');
+        if (!now) return false;
+        return agingBucketOf(entryAgeDays(x, now)) === 'stale';
+    } catch (e) { return false; }
+}
+/** 长期未推进的条目清单（只读；**判据的唯一来源**是 `core/plan-aging.js`） */
+function staleListOf(kind) {
+    try { return arrOf(kind).filter((x) => staleFilterOn(kind, x)); } catch (e) { return []; }
+}
+/**
+ * 一键闭环按钮（`数-12` ①）：仅计划 / 悬念页、且确实存在长期未推进条目时出现。
+ * 无剧情时钟时**不显示**（那时「多久没推进」不可判定 —— 宁可没有按钮，也不给一个按现实墙钟乱算的按钮）。
+ */
+function staleToolbarBtn(kind) {
+    if (kind !== 'plans' && kind !== 'suspense') return '';
+    const n = staleListOf(kind).length;
+    if (!n) return '';
+    const label = kind === 'plans' ? '计划' : '悬念';
+    return '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="closeStale" data-kind="' + attr(kind) + '"'
+        + ' title="把超过 ' + PLAN_AGING_STALE_DAYS + ' 天（按剧情时间）没有被正文推动的' + label + '一次性了结：'
+        + '原文删除、只计入「已了结」统计，并级联删除其关联行。此操作不可撤销，建议先备份。">⌛ 了结长期未推进（' + n + '）</button>';
+}
 /** 按字段取检索文本（V1 `fieldHay` 逐条等价：title/desc/tags/name 各一档，其余走通用 hay） */
 function fieldHayOf(it, field) {
     try {
@@ -309,6 +363,13 @@ function listOf(kind, q, limit) {
         try { base = base.filter((x) => !atomIsHidden(x)); } catch (e) { /* 忽略 */ }
     }
     if (statusWant) base = base.filter((x) => String((x && x.status) || 'open') === statusWant);
+    // v3.44.0（`docs/D22` W4）：**筛选视图**（额外条件）—— 只收窄**可见范围**，绝不删数据。
+    //   放在排序 / 文本匹配之前：先按语义筛，再排序与关键词匹配（与状态筛选同一位置）。
+    try {
+        const extra = extraFilterOf(kind);
+        if (extra === 'shell') base = base.filter((x) => isShellEntry(dataKind, x));
+        else if (extra === 'stale') base = base.filter((x) => staleFilterOn(kind, x));
+    } catch (e) { /* 筛选失败不改变默认视图 */ }
     try { base = sortRecentByStoryDate(base); } catch (e) { base = base.slice().reverse(); }
     const needle = q === undefined ? (ps.q[kind] || '') : q;
     const matched = base.filter((x) => entryMatches(x, needle));
@@ -1104,6 +1165,11 @@ function dimBodyList(kind) {
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="' + attr(kind) + '">清空选择</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + selectDepButtonParts('bulkDelete', sel.size).attr + '>' + selectDepButtonParts('bulkDelete', sel.size).text + '</button>') : '')
         + (kind === 'atoms' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="atomToggleHidden">' + (ps.showHidden ? '🙈 隐藏已总结' : ('👁 显示已总结（' + hiddenN + '）')) + '</button>') : '')
+        // v3.44.0（`docs/D22` W4 **`数-12`** ①）：**一键闭环** —— 计划 / 悬念页在有「长期未推进」条目时
+        //   出现「⌛ 了结长期未推进（N）」。它走的仍是既有「了结」语义（原文删除 + 计入 stats + 级联删关联），
+        //   故登记为**危险动作**（`DANGER_ACTION_PROMPTS`）→ 点击先二次确认，取消零副作用。
+        //   判据（谁算长期未推进）只在 `core/plan-aging.js`，按钮只显示数量、不自己判定。
+        + (staleToolbarBtn(kind))
         // V1 `memoriesHtml()`：记忆页新增「🔧 修复记忆」顶部按钮（融合同归属高相似记忆；与修复同管道）——
         //   仅在有记忆时显示（V1 `memList.length` 条件），文案与 title 逐字对齐
         + (kind === 'memories' && total ? '<button class="ftt-btn ftt-sm" data-ftt-action="memoryRepair" title="融合相似记忆并清理孤儿关联">🔧 修复记忆</button>' : '')
@@ -1133,8 +1199,12 @@ function dimBodyList(kind) {
         + (kind === 'rumors' ? ('<div class="ftt-hint">📢 按剧情时间机械演化（零 AI）：每 <b>' + rumorEveryRounds() + '</b> 楼一次、变化需 <b>' + rumorNeedRounds() + '</b> 轮生效（已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次）；传言未经证实，注入只作参考。</div>') : '')
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
+        // v3.44.0（`docs/D22` W4 `数-12` ② / `数-13` ③）：**筛选视图** —— 「额外条件」下拉（与状态页同款标记）。
+        //   `数-13`：所有维度都可筛「🫥 空壳」（正文不足 12 字）；`数-12`：计划 / 悬念可筛「⌛ 长期未推进」
+        //   （按剧情时间 > 120 天；见 `core/plan-aging.js`）。选项由 `extraFilterOptsOf(kind)` 单一给出。
+        + extraFilterSelectHtml(kind)
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
-        + '<span class="ftt-muted">' + (q ? '匹配 ' + list.length + ' / ' : '共 ') + total + ' 条</span></div>';
+        + '<span class="ftt-muted">' + (q || extraFilterOf(kind) !== 'all' ? '匹配 ' + list.length + ' / ' : '共 ') + total + ' 条</span></div>';
     // v2.80.0：列表页不再有子标签（关系表 / 约束自查已移入「设定 → 约束」）→ 此处分页正文只渲染列表。
     const ed = ps.editing && ps.editing.kind === kind
         ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '', { editor: true }) : ''))
@@ -2005,6 +2075,8 @@ const DANGER_ACTION_PROMPTS = {
     //   下列动作此前**没有任何确认**（部分 title 甚至写着「不弹确认」，沿袭 V1）；它们都会**不可逆地清空/覆盖用户数据**。
     'clearRumors': '清空全部传言？\n\n所有传言（含传播者 / 载体 / 裂变谱系）将被删除并留下删除墓碑（跨端同步时不会复活）。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'clearPlans': '清空全部计划？\n\n所有计划（含进度 / 步骤 / 阻碍 / 历史）将被删除并留下删除墓碑。此操作不可撤销，建议先备份。',
+    // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环 —— 与「了结」同一语义（原文删除、只留统计），故同样需二次确认
+    'closeStale': '把「长期未推进」的计划 / 悬念一次性了结？\n\n了结 = 原文直接删除（V1 口径：已了结只留统计），并级联删除它们的关联行。此操作不可撤销；确认前可先用上方「⌛ 长期未推进」筛选逐条查看。',
     'clearSuspense': '清空全部悬念？\n\n所有悬念（含线索 / 揭晓条件 / 历史）将被删除并留下删除墓碑。此操作不可撤销，建议先备份。',
     'delStateGroup': '删除该角色的全部状态记录？\n\n该角色下的所有状态字段都会被删除并留下墓碑。此操作不可撤销。',
     'snapshotClear': '清空全部快照？\n\n快照链是自动备份，清空后**无法再回滚到任何历史时刻**（记忆本体不受影响）。此操作不可撤销。',
@@ -2892,6 +2964,27 @@ export async function panelAction(action, payload) {
             const n = clearRumors();
             setNote(n ? ('已清空 ' + n + ' 条传言（留删除墓碑）') : '当前没有传言');
             result = Object.assign(result, { ok: true, action: a, cleared: n });
+        }
+        else if (a === 'closeStale') {
+            // v3.44.0（`docs/D22` W4 `数-12` ①）：**一键闭环** —— 只了结**当场重新判定**为「长期未推进」的条目。
+            //   二次确认由 `DANGER_ACTION_PROMPTS['closeStale']` 的**中央**分支负责（点击委托里统一 `confirmDialog`），
+            //   取消即零副作用 —— 这里不再自己弹确认（否则会重复问两次）。
+            //   注意：**重新取一次清单**（而不是用按钮渲染时的快照）—— 渲染与点击之间数据可能已变。
+            const k = String(p.kind || ps.tab);
+            if (k !== 'plans' && k !== 'suspense') {
+                setNote('该页面没有「长期未推进」的闭环入口');
+                result = Object.assign(result, { ok: false, action: a, reason: 'bad-kind' });
+            } else {
+                const list = staleListOf(k);
+                const r = closeEntries(k, list.map((x) => x.id));
+                if (r.ok) {
+                    setNote('已了结 ' + r.closed + ' 条' + (k === 'plans' ? '计划' : '悬念')
+                        + '（' + r.statKey + ' = ' + r.statValue + (r.links ? '，级联删除关联 ' + r.links + ' 行' : '') + '）');
+                } else {
+                    setNote('没有可了结的条目' + (list.length ? '（条目已不在库中）' : '（长期未推进清单已为空）'));
+                }
+                result = Object.assign(result, { ok: !!r.ok, action: a, closed: r.closed, links: r.links, statKey: r.statKey });
+            }
         }
         else if (a === 'memoryRepair') {
             // 「🔧 修复记忆」（V1 v1.140 记忆页专用）：机械去重 → 关系层维护 → 标签组聚类选组 → 窄契约 AI 梳理

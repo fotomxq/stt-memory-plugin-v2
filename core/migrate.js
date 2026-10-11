@@ -20,6 +20,12 @@ import { scenePathArr } from './model/scalars.js';
 import { plotSegmentId } from './model/segment.js';
 import { migrateSnapshotV1162, normalizeSnapshot } from './model/snapshot.js';
 import { hashText, normalizeList, hasBadToken, scrubBadToken, walkStrings } from './util.js';
+// v3.44.0（`docs/D22` W4 `数-10`）：字段名规范（「最后一次出现」的日期/楼层形态双写；只补不覆盖）
+import { canonicalizeEntryFields, FIELD_NAME_DIMS } from './field-names.js';
+// v3.44.0（`docs/D22` W4 `数-14`）：越界保留字段（楼层基线清零；只清「在本存档里永远达不到」的值）
+import { clampReservedBaselines } from './reserved-fields.js';
+// v3.44.0（`docs/D22` W4 `数-11`）：关联行锚点机械回填（只回填能确定的那一种；幂等、不覆盖）
+import { backfillRelLinkAnchors } from './rel-maint.js';
 function recallDateNum(s) {
     try {
         const p = clockDateParts(clockDateTrim(s));   // v1.193：负年份（公元前）→ 带符号数值
@@ -170,9 +176,11 @@ const HEAL_DIMS = (() => {
 })();
 
 /** 上一次载入期自愈的摘要（`index.js` 据此留痕 / 按需落盘；v3.13.1）
- *  `texts` = v3.26.1 新增：清掉坏占位 token（`undefined` / `NaN` / `[object Object]`）的条目数 */
+ *  `texts` = v3.26.1 新增：清掉坏占位 token（`undefined` / `NaN` / `[object Object]`）的条目数
+ *  `fields` = v3.44.0 新增（`docs/D22` W4 `数-10`）：补写「最后一次出现」规范字段的条目数；
+ *  `floors` = v3.44.0 新增（`数-14`）：越界楼层基线清零的处数；`anchors` = v3.44.0 新增（`数-11`）：回填的关联行锚点数 */
 let lastHeal = null;
-/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number, texts:number}|null} */
+/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number, texts:number, fields:number, floors:number, anchors:number}|null} */
 function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; }
 
 /**
@@ -192,7 +200,7 @@ function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; 
  */
 function healthSelfHeal(s) {
     let changed = false;
-    const stat = { ledger: 0, dropped: 0, entries: 0, texts: 0 };
+    const stat = { ledger: 0, dropped: 0, entries: 0, texts: 0, fields: 0, floors: 0, story: 0, anchors: 0 };
     try {
         if (!s || typeof s !== 'object') { lastHeal = null; return false; }
         // ① 台账（主 + 丢弃留痕）
@@ -283,6 +291,34 @@ function healthSelfHeal(s) {
                 if (hit) { changed = true; stat.texts++; }
             }
         }
+        // ⑦ v3.44.0（`docs/D22` W4 **`数-10`**）——**字段名规范化（双写规范名，只补不覆盖）**：
+        //   同一语义「最后一次出现」此前有 4 种字段名（`date` / `seenDate` / `floorSeen` / `lastSeenDate`）。
+        //   这里把旧名的值**双写**到规范名（`items.lastSeenDate` ← `seenDate`/`date`；
+        //   `scenes.lastSeenFloor` ← `floorSeen`），**旧名保留**（回退口径 = 双写，见 `docs/D20` §8 `数-10`），
+        //   规范名已有值一律不动 → 幂等、可回退、不改任何哈希（两个规范名都不在 `hashfields.js` 里）。
+        //   计数进 `lastHealInfo().fields`（体检的 `field-legacy-name` 据此归零）。
+        for (const dim of FIELD_NAME_DIMS) {
+            const arr = s[dim];
+            if (!Array.isArray(arr)) continue;
+            for (const it of arr) {
+                if (!it || typeof it !== 'object') continue;
+                try { if (canonicalizeEntryFields(dim, it).changed) { changed = true; stat.fields++; } } catch (e) { /* 单条失败不影响其余 */ }
+            }
+        }
+        // ⑧ v3.44.0（`docs/D22` W4 **`数-14`**）——**越界保留字段清零**：
+        //   `weaveLastFloor` / `parallelFloor` 超过「本存档观察到的最大楼层 + 余量」时，在本存档里
+        //   **永远不可能再被达到**（功能上的死值）→ 清零为 -1 并留痕。只动这两个顶层基线，不动任何条目、
+        //   不动台账（条目上的越界 `floorStart` **只报告不改写** —— 理由见 `core/reserved-fields.js` 头注）。
+        try {
+            const r = clampReservedBaselines(s);
+            if (r.changed) { changed = true; stat.floors = r.cleared.length; }
+        } catch (e) { /* 忽略 */ }
+        // ⑨ v3.44.0（`docs/D22` W4 **`数-11`**）——**关联行锚点机械回填**（幂等、绝不覆盖已有值）：
+        //   只回填「当时在场」四种知情方式的 `at`（= 归属条目的剧情日期）；`from` / `view` 不回填（无法机械推断）。
+        try {
+            const r = backfillRelLinkAnchors(s);
+            if (r.changed) { changed = true; stat.anchors = r.filled; }
+        } catch (e) { /* 忽略 */ }
     } catch (e) { /* 自愈失败不阻塞迁移 */ }
     lastHeal = Object.assign({ changed: changed }, stat);
     return changed;
@@ -477,7 +513,7 @@ function migrateState(s) {
     if (changed) s.version = VERSION;
     // v3.13.0：数据异常自愈（脏台账标记 / 非规范 NSFW / 负数 uses / 倒置与非法楼层区间 …）；
     //   v3.13.1 起补上丢弃留痕台账、lastChatFloor、processedVer，并把摘要经 `lastHealInfo()` 回传给调用方留痕。
-    try { if (healthSelfHeal(s)) changed = true; } catch (e) { /* 忽略 */ }
+    //   **v3.44.0 起本调用挪到函数末尾**（关联层归一之后）—— 理由见末尾那段注释（`数-11` 的锚点来源标记）。
     // 同内容跨端去重（情节 id 含楼层 → 两端/历史可能攒出「同文异 id」重复；载入即收敛，
     //   只保留较新/较全一条并并 floor 区间/uses）
     try {
@@ -495,6 +531,13 @@ function migrateState(s) {
     try { if (typeof migrateRelLinks === 'function' && migrateRelLinks(s)) changed = true; } catch (e) { }
     // v1.165：计划 / 悬念 / 平行事件结构化字段（幂等补默认）
     try { if (typeof migratePlanSuspV1165 === 'function' && migratePlanSuspV1165(s)) changed = true; } catch (e) { }
+    // v3.44.0（`docs/D22` W4 `数-11`）：**数据异常自愈挪到关联层归一之后** ——
+    //   自愈里的「关联行锚点机械回填」必须在 `migrateRelLinks` **之后**执行：那一遍会用 **V1 口径**
+    //   重写关联行（`core/model/rel.js#normalizeRelLink` 只产出规范字段，未知字段被丢弃），
+    //   在它之前写的来源标记（`atFrom`）会被整批抹掉 —— 回填的 `at` 会留下，但「这份 `at` 是插件推的」
+    //   这个证据会丢。其余自愈步骤（台账 / 条目字段 / 文本卫生 / 楼层基线 / 字段名）都在**条目与容器**上，
+    //   与关联层归一、内容去重互不影响，挪后不改变它们的结果。
+    try { if (healthSelfHeal(s)) changed = true; } catch (e) { /* 忽略 */ }
     if (changed) s.version = VERSION;
     return s;
 }

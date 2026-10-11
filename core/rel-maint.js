@@ -404,6 +404,101 @@ function relInvalidStats(st) {
     return { total: r.scanned, invalid: r.removed, reasons: r.reasons, details: r.details };
 }
 
+// ==================== v3.44.0（`docs/D22` W4 `数-11`）：关联行**锚点**（知情时间 / 告知者 / 差异） ====================
+//
+// 设计依据：`docs/D20` §3.4 / §8 `数-11` ——
+//   事实：「记忆类关联行 149/149 缺知情时间（`at` 空）、145/149 无告知人（`from` 空）、`view` 空 98/149」；
+//   步骤：① 提示词强制输出锚点；② 缺失项从归属条目**机械回填**；③ 体检增设「失锚关联」；
+//         ④ 关系表标注「无依据」；验收：「新入库关联行的 `at` / `from` 覆盖率显著上升；回填**幂等**且不覆盖已有值」。
+//
+// **回填口径（只回填能确定的那一种）**：`at`（知情时间）只在「这个人**当时在场**」时才等于条目自身的剧情日期 ——
+//   `participant`（亲历）/ `witness`（目击）/ `author`（策划，计划的作者就在现场）/ `involved`（当事人）。
+//   对 `told`（被告知）/ `inferred`（推断）/ `rumor`（传闻）**一律不回填** —— 他们的知情时间**晚于**事发时间，
+//   拿条目日期顶上就是**编数据**（本仓库的硬纪律）。
+//   `from`（告知者）与 `view`（各人差异）**无法从数据机械推出** → 不回填，只由体检如实计数、由关系表标注「无依据」。
+//   回填会写 `atFrom: 'entry-date'`（来源标记），使「AI 给的」与「插件推的」在数据里**可区分** ——
+//   将来若要撤销回填，`atFrom === 'entry-date'` 就是精确的撤销条件。
+
+/** 「当时在场」的知情方式（这些人的知情时间 = 条目自身的剧情时间） */
+const REL_ANCHOR_PRESENT_HOWS = Object.freeze(['participant', 'witness', 'author', 'involved']);
+
+/**
+ * 回填的**来源标记文案**（写进 `note`）。
+ * 为什么用 `note` 而不是新字段：`core/model/rel.js#normalizeRelLink` 是**逐字移植 V1** 的归一化器，
+ *   它只产出规范字段集 —— 新字段会在**每次载入**被丢掉，于是「回填 → 丢标记 → 下次再算」形成**非幂等**
+ *   的写盘循环（每载入一次都改一次 links）。`note` 是既有字段、被归一化保留、且**用户可见** ——
+ *   正好同时满足「可区分来源」与 `数-11` ④「关系表标注」两项要求。
+ * 只在 `note` **为空**时写入（有内容一律不动 —— 绝不覆盖既有说明）。
+ */
+export const REL_AT_BACKFILL_NOTE = '知情时间=归属条目日期（机械回填）';
+
+/** 归属条目的剧情日期（`plans` / `suspense` / `memories` / `parallels` / `atoms` 都有 `date` 字段） */
+function entryDateOf(src, dim, refId) {
+    try {
+        const arr = (src && src[dim]) || [];
+        const it = arr.find((x) => x && String(x.id) === String(refId));
+        return String((it && (it.date || it.time)) || '').trim().slice(0, 10);
+    } catch (e) { return ''; }
+}
+
+/**
+ * 关联行锚点缺口统计（**只读**；体检 `link-missing-anchor` 与关系表标注共用）。
+ * @param {object} [st] 存档（缺省用内核 state）
+ * @returns {{total:number, at:number, from:number, view:number, atPresent:number, byDim:object}}
+ *   `atPresent` = 「当时在场却没有知情时间」的条数（这一类的**子集**可由 `backfillRelLinkAnchors` 回填）
+ */
+function relAnchorGaps(st) {
+    const out = { total: 0, at: 0, from: 0, view: 0, atPresent: 0, byDim: {} };
+    try {
+        const src = st || state || {};
+        for (const l of (src.links || [])) {
+            if (!l || typeof l !== 'object') continue;
+            out.total++;
+            const dim = String(l.dim || '');
+            const how = String(l.how || '');
+            const noAt = !String(l.at || '').trim();
+            const noFrom = !String(l.from || '').trim();
+            const noView = !String(l.view || '').trim();
+            if (noAt) out.at++;
+            if (noFrom) out.from++;
+            if (noView) out.view++;
+            if (noAt && REL_ANCHOR_PRESENT_HOWS.indexOf(how) >= 0) {
+                out.atPresent++;
+                out.byDim[dim] = (out.byDim[dim] || 0) + 1;
+            }
+        }
+        return out;
+    } catch (e) { return out; }
+}
+
+/**
+ * **机械回填**关联行锚点（就地；幂等；**绝不覆盖已有值**）。
+ * 只回填 `at`（且在场所需的四种知情方式 + 归属条目有剧情日期）；`from` / `view` 不回填（见上方口径）。
+ * @param {object} [st] 存档（就地修改；缺省用内核 state）
+ * @returns {{changed:boolean, filled:number, byDim:object, skipped:number}}
+ */
+function backfillRelLinkAnchors(st) {
+    const out = { changed: false, filled: 0, byDim: {}, skipped: 0 };
+    try {
+        const src = st || state || {};
+        const list = Array.isArray(src.links) ? src.links : [];
+        for (const l of list) {
+            if (!l || typeof l !== 'object') continue;
+            if (String(l.at || '').trim()) continue;                                   // 已有值 → 一律不动
+            const how = String(l.how || '');
+            if (REL_ANCHOR_PRESENT_HOWS.indexOf(how) < 0) { out.skipped++; continue; }  // 知情时间晚于事发 → 不回填
+            const d = entryDateOf(src, String(l.dim || ''), String(l.refId || ''));
+            if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) { out.skipped++; continue; }      // 归属条目没有可用剧情日期 → 不回填
+            l.at = d;
+            if (!String(l.note || '').trim()) l.note = REL_AT_BACKFILL_NOTE;   // 只在注为空时标记来源（绝不覆盖既有说明）
+            out.filled++;
+            out.byDim[String(l.dim || '')] = (out.byDim[String(l.dim || '')] || 0) + 1;
+            out.changed = true;
+        }
+        return out;
+    } catch (e) { return out; }
+}
+
 /** 通知用摘要（只列实际发生的类别） */
 function relInvalidSummary(m) {
     const r = (m && m.reasons) || {};
@@ -426,4 +521,6 @@ function logRelInvalid(label, m) {
     } catch (e) { return false; }
 }
 
-export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint, capRelLinks, cleanInvalidRelLinks, relInvalidStats, relInvalidSummary, logRelInvalid };
+export { demoteRelLinkOrphans, relRepairMaint, relMaintCounts, relMaintTouched, relMaintSummary, logRelMaint, mergeRelMaint, capRelLinks, cleanInvalidRelLinks, relInvalidStats, relInvalidSummary, logRelInvalid,
+    // v3.44.0（`docs/D22` W4 `数-11`）：关联行锚点 —— 缺口统计（只读）与机械回填（幂等、不覆盖）
+    relAnchorGaps, backfillRelLinkAnchors, REL_ANCHOR_PRESENT_HOWS };

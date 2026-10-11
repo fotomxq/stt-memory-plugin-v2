@@ -374,4 +374,40 @@ function mergeSnapshotObjects(old, n, opts) {
     };
 }
 
-export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks, dropRelLinks, retargetRelRefs, sweepStatesForRemovedSnapshots };
+export { upsertEntry, deleteEntry, upsertRelLinks, sweepOrphanRelLinks, dropRelLinks, retargetRelRefs, sweepStatesForRemovedSnapshots, closeEntries };
+
+/**
+ * v3.44.0（`docs/D22` W4 **`数-12`** ①）：**批量了结**计划 / 悬念（「一键闭环」的写侧）。
+ *
+ * 语义与既有「了结」**完全一致**（不是新语义）：把条目移出容器、`stats` 计数 +N、级联删除其关联行。
+ *   · 原文**不留**（V1 口径：已了结的计划/悬念只留统计）→ 因此调用方**必须先二次确认**
+ *     （`ui/panel.js` 把它登记进 `DANGER_ACTION_PROMPTS`，`check-ui-spec` C7 会核）；
+ *   · 只接受**明确的 id 列表**（不在这里自己挑「谁该了结」）—— 「哪些算长期未推进」由
+ *     `core/plan-aging.js#planAgingReport` 判定，本函数只执行，两者分工与「读侧只报告、写侧才改数据」一致。
+ * @param {'plans'|'suspense'} kind
+ * @param {Array<string>} ids
+ * @returns {{ok:boolean, kind:string, closed:number, links:number, statKey:string, statValue:number}}
+ */
+function closeEntries(kind, ids) {
+    const out = { ok: false, kind: String(kind || ''), closed: 0, links: 0, statKey: '', statValue: 0 };
+    try {
+        if (kind !== 'plans' && kind !== 'suspense') return out;
+        const set = new Set((Array.isArray(ids) ? ids : [ids]).filter((x) => x !== undefined && x !== null && x !== '').map(String));
+        if (!set.size) return out;
+        const km = KIND_MAP[kind];
+        const arr = (km && typeof km.get === 'function') ? (km.get() || []) : [];
+        const gone = arr.filter((x) => x && set.has(String(x.id)));
+        if (!gone.length) return out;
+        km.set(arr.filter((x) => !(x && set.has(String(x.id)))));
+        state.stats = state.stats || { plansClosed: 0, suspenseResolved: 0 };
+        const statKey = kind === 'plans' ? 'plansClosed' : 'suspenseResolved';
+        state.stats[statKey] = Number(state.stats[statKey] || 0) + gone.length;
+        out.statKey = statKey;
+        out.statValue = state.stats[statKey];
+        out.closed = gone.length;
+        try { out.links = dropRelLinks(kind, gone.map((x) => x.id)); } catch (e) { /* 关联级联失败不影响了结 */ }
+        try { saveState(); } catch (e) { /* 落盘由调用方的保存流水线兜底 */ }
+        out.ok = true;
+        return out;
+    } catch (e) { return out; }
+}

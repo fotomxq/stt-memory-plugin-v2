@@ -3,6 +3,44 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.44.0（2026-10-10）· `docs/D22` **W4 数据维度主体**（第一批 6 行；2 行记 🟡 部分）
+
+**用户要求**（原话）：「新版本v.3.44.0 / 开发W4待开发事项。」
+**用户裁决**（本轮两条）：① 范围 = W4 中**「前置 = 无」的 6 行**（`数-10` / `数-11` / `数-12` / `数-13` / `数-14` / `数-15`）；
+② `docs/D20` **Q1–Q5 整批采纳建议默认**（→ `D22` §4.5 中 `数-1` / `数-3` / `数-4` / `数-9` 的前置由 `⛔ 需先裁决` 改为「✅ 裁决已定」，**状态仍 ⬜**：裁决 ≠ 实现）。
+
+| # | 条目 | 落点 | 改动 |
+| --- | --- | --- | --- |
+| ① | `数-10`（销 U97） | 新增 `core/field-names.js` · `core/migrate.js` · `core/entry-meta.js` · `core/slim.js` | 同一语义「**最后一次出现**」此前有 4 种字段名 → 收敛为**每形态一个规范名**：日期形态 **`lastSeenDate`**、楼层形态 **`lastSeenFloor`**（`D20` 把 `floorSeen` 也算作「日期字段名」是不精确的 —— 它是**楼层**）。**只补不覆盖、旧名双写保留**（回退口径就是双写）；载入期（`migrateState`）与写入期（`preserveEntryMeta`）**双写**，幂等；**两个规范名都刻意不进哈希白名单**（已在 `core/model/hashfields.js#NON_HASH_CANONICAL_FIELDS` 登记为**决定**）→ 跨端哈希与 `DATA_VERSION` 零影响 |
+| ② | `数-11`（销 U98，**🟡 部分**） | `core/rel-maint.js` · `core/data-health.js` · `ui/rel-table.js` · `core/prompt.js` | ② **机械回填**：`at`（知情时间）**只在「当时在场」的四种知情方式**下 = 归属条目的剧情日期（亲历 / 目击 / 策划 / 当事人）；`被告知 / 推断 / 传闻` **一律不回填**（知情晚于事发，顶上就是编数据）；来源写进 `note`（既有字段、被 V1 归一化器保留、**用户可见**），空注才写、绝不覆盖既有说明。③ 体检 `link-missing-anchor`（`at` / `from` / `view` 分别计数）。④ 关系表新增**「依据」列**（「依据齐全」/「⚠️ 无依据（缺知情时间 / 告知者）」）。**① 提示词强制锚点改为默认关的补丁位**（见下「两处默认关」） |
+| ③ | `数-12`（销 U99） | 新增 `core/plan-aging.js` · `core/entries.js#closeEntries` · `ui/panel.js` | ① **一键闭环**：计划 / 悬念页出现「⌛ 了结长期未推进（N）」→ **危险动作**（二次确认）→ `closeEntries` 按 id 了结（与既有「了结」**同一语义**：原文删除 + `stats.plansClosed` / `suspenseResolved` 计数 + **级联删除关联行**）。② **老化策略**：按**剧情时间**分档（≤30 天新鲜 / ≤120 天缓慢 / 更久「长期未推进」），列表页加「⌛ 长期未推进」筛选 —— **不自动了结、不删数据**（`D28` Q1「不删数据」边界的同一口径）。③ 体检 `plan-long-open`。**无剧情时钟 → 不分档、不给按钮**（不用现实墙钟替代） |
+| ④ | `数-13`（销 U100，**🟡 部分**） | 新增 `core/shell-guard.js` · `core/ingest.js` · `ui/panel.js` | ② 体检 `entry-shell`（**宽**口径：正文 < 12 字，按维度计数）。③ 列表页「🫥 空壳」筛选（每个维度都可用）。**① 入库拦截为默认关开关**（见下「两处默认关」），且判据**严于**体检：正文 < 12 字 **且 标识类也为空** **且** 无其它有值字段 |
+| ⑤ | `数-14`（销 U101） | 新增 `core/reserved-fields.js` · `core/migrate.js` · `core/ingest.js` · `core/clock-extract.js` | ① `weaveLastFloor` / `parallelFloor` **越界清零**（上界取**台账证据** `ledgerMaxFloor`：`lastKnownFloor` / `lastChatFloor` / 台账；**不含条目楼层** —— 否则越界条目会给越界基线作证，两者都判不出来）。② `floorStart` 上界改到**写入期**判（那里才有可信上界 = 本批楼层 + 基线 + 余量），且 **只报告不改写**（来源可追溯优先：它极可能来自另一条聊天）。③ `storyDay` **上界 20000** + **来源标记 `storyDaySrc`**；超界 → **0**（不夹到上界 —— 53143 天不是「略大」而是解析错了，夹上去等于把错值伪装成合理值）。体检 `field-out-of-range`（**warn 级，进 `findings`**） |
+| ⑥ | `数-15`（销 U102） | 新增 `core/state-slots.js` · `core/data-health.js` | 「**不留看起来能用实际无效的位置**」：新增**存档槽位登记表**（`STATE_SLOTS` 声明层 / `STATE_INNER_SLOTS` 内层 / `RUNTIME_SLOTS` + `STATE_INNER_RUNTIME_SLOTS` 运行期层 / `RESERVED_CFG_READS` 死读配置键），逐项给出 `label / semantics / wired / outlets / disposition(wired·reserved·legacy)`。**取「标注」而非「接线」**（`D20` 给的是二选一）：三个 `reserved` 槽位（`protagonist` / `varTemplates` / `state.sceneFocus`）**在界面上从不出现**（「从界面移除」无从做起），且「谁是主角」无法从数据机械判定 → 接线等于新造一个用户可见能力。验收「`state` 里每个保留字段都有明确归属与出口说明」由 `tests/unit/state-slots.test.js` 的**双向一致**断言**机械化**（新增槽位不登记就红） |
+
+**两处「默认关」——本轮最重要的判断，理由都是实测出来的（不是保守）**：
+
+| 开关 | 默认 | 为什么默认关 | 开启后 |
+| --- | --- | --- | --- |
+| `cfg.relAnchorRuleEnabled`（`数-11` ①） | **关** | 那段补丁文本要追加到「AI 摘要」提示词，而该提示词与 V1 **逐字符一致**（`tests/fixtures/v1-golden-prompt.json` 锁死）——它是**最高频路径**，改它等于改每次分析的行为。一个「数据卫生」批次不该顺手调整 AI 契约 | 给分析提示词追加锚点强制规则（文本是**常量** `REL_ANCHOR_RULE_DEFAULT`，与机械回填/体检的判据**同源**，故不开放编辑——开放会造成口径分叉） |
+| `cfg.shellGuardEnabled`（`数-13` ①） | **关** | **实测**：V1 黄金样本 `v1-golden-ingest.json` 里有一条 `{"content":"木箱断口之谜：来源不明"}`（11 字、无标题）—— **V1 接受它**；按「正文 < 12 字」拦会让 `ingest-golden` 的 M1/M2（与 V1 逐字一致）当场变红。V1 已接受的入库结果属**移植契约** | 丢弃「完全不承载信息」的新增条目并计数（面板提示 + 调试日志 + `lastShellDropInfo()`） |
+
+**一处设计判据的实测修正**（已写进 `docs/D20` §6.1）：设计稿里的「正文 < 12 字」是**体检口径**，第一版把它直接当**拦截口径**，结果「钥匙」（2 字但有 `name`）会被判为空壳 —— 那是**删真数据**。修正后拦截必须**严于**体检（要求标识也为空）。
+
+**体检新增「卫生」通道**（`out.hygiene`，与 `findings` **分开**）：`field-legacy-name` · `attribution-missing` · `link-missing-anchor` · `plan-long-open` · `entry-shell` · `state-slot-unregistered` · `state-slot-reserved` 七类**只计数不抬 `level`**（新增 `dataHealthHygieneText()` 出口）。
+为什么不塞进 `findings`：① 会把 `level` 从 `ok` 抬成 `info`，让「体检干净」这个**可用信号**失效；② 明细会挤掉真正的 warn（v3.13.1 修过同类问题）；③ 这批的交付物就是**计数**（能降、能对账）。而 `field-out-of-range` 属**真异常** → 留在 `findings`（warn）。
+
+**纪律遵守（逐条自查）**：`DATA_VERSION` **不变**（仍 1）；V1 黄金样本**零修改**（`extract-prompt-flow` P1 / `ingest-golden` M1-M2 / `config-clock-golden` C1-C6 / `slim-keeper` A2 全绿）；`docs/D15` §3 类别①（哈希 / 墓碑 / 合并口径 / 作用域键）**一律未动**；「不删数据」边界（`D28` Q1）未突破（老化只筛选与报告）。
+
+**测试**：新增 `tests/unit/field-names.test.js`（8）· `rel-anchors.test.js`（8）· `plan-aging.test.js`（8）· `shell-guard.test.js`（9）· `reserved-fields.test.js`（9）· `state-slots.test.js`（8）· `w4-ui.test.js`（8，界面出口：筛选 / 一键闭环 / 依据列）。
+同步更新既有测试的**口径计数**（新增两个控件与两个配置键）：`analyze-grouping` A1/A3/A4/A8/A9/A10 · `config-clock-golden` C1 · `settings-pages` P2/P2d · `settings-capacity` C7 · `constraint-page` A2 · `relation-layer` F1。
+**门禁**：`npm run gate` 全绿。
+
+**本轮文档**：`docs/D20` v1.1（§6 转**决策记录** + 新增 §6.1 判据修正 · §8 落地状态）· `docs/D22` v1.5（§4.5 销账 6 行 + 「本版口径」5 条）·
+`docs/D17` v1.15（U97–U102 销账，其中 U98 / U100 记 🟡 部分；新增 **§1.17** U185–U187；`D20` 入 §2 的 Q 汇总）· `docs/README` v2.65 ·
+`docs/05`（`core/` 73→78 · `tests/` 209→216）· `docs/history/P10c79`。
+**未开工**：W4 其余 20 行（下一批最自然的是 `数-16` —— 它的前置正是本轮这 6 行；`数-6/7/8` 属**高风险体积组**须先补测试；`数-1/2/17` 属 B3，须与旧数据迁移同批）。
+
 ## v3.43.1（2026-10-10）· 修复「列表多选**直接勾选**后顶部按钮无效，必须全选才激活」（用户报告）
 
 **用户要求**（原话）：「修正各大类的多选设计，当直接选择对应选项后，顶部的删除等按钮无效。必须选择全选才能激活，请修复该问题。」

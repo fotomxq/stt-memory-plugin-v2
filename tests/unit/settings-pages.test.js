@@ -32,7 +32,7 @@ R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户�
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 159', (() => {
+R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 161（v3.44.0 入库卫生 +2）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
@@ -43,7 +43,8 @@ R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定�
     // v2.83.0：关联层三项控件（relLinkEnabled / relLinkMax / relOrphanAction）落在「分析记忆」页 → 173 → 176
     // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 删 5 个逐维上限（forget）+1 总上限、删 1 个逐维上限（rumors）
     //   → 总数 176 → 171、forget 28 → 24、rumors 14 → 13
-    return info.totalControls === 159 && m.base === 9 && m.feed === 37 && m.analyze === 20 && m.extract === 25
+    // v3.44.0（`docs/D22` W4）：''分析记忆''页 +2（relAnchorRuleEnabled / shellGuardEnabled，入库卫生两开关）→ 159 → 161
+    return info.totalControls === 161 && m.base === 9 && m.feed === 37 && m.analyze === 22 && m.extract === 25
         && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 
@@ -118,7 +119,10 @@ R.assert('P2d v2.76.0：「各大类单条字数上限」10 个控件归入**分
     ];
     const ex = SETTINGS_CONTROLS.analyze.map((c) => [String(c.key), String(c.label)]);
     // v2.83.0：关联层三项（relLinkEnabled / relLinkMax / relOrphanAction）排在 dimCharLimits 之后 → 取它们之前的那一段
-    const relN = ex.filter((c) => /^rel/.test(String(c[0]))).length;
+    // v3.44.0：正则收窄为 `relLink|relOrphan` —— 新增的 `relAnchorRuleEnabled` 也以 `rel` 开头，
+    //   用宽正则 `/^rel/` 会把**页首**那个开关也算进来，导致切片整体错位（本断言当场变红，是测试的锅不是实现的锅）。
+    const REL_LAYER_KEYS = ['relLinkEnabled', 'relLinkMax', 'relOrphanAction'];
+    const relN = ex.filter((c) => REL_LAYER_KEYS.indexOf(String(c[0])) >= 0).length;
     const tail = ex.slice(ex.length - relN - want.length, ex.length - relN);
     // 点路径读写 + 内核真的用它做硬截断（long → 截到新上限）
     const before = readControl('dimCharLimits.atoms');

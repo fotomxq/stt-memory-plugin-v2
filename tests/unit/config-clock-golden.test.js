@@ -31,7 +31,10 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
-        'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose'];
+        'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose',
+        // v3.44.0（`docs/D22` W4）：入库卫生两开关（`数-11` ① 关联锚点强制补丁 · `数-13` ① 空壳入库拦截）——
+        //   两者**默认关**（默认值即「不改任何既有行为」），开启后才改变提示词 / 入库结果。
+        'relAnchorRuleEnabled', 'shellGuardEnabled'];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip',
     // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储」）：本机缓冲的本地文件目录（空 = 不开启）
     // v3.26.0（用户要求「增加选择目录，可手动选择目录」）：用过的目录清单（目录选择器的候选来源之一；

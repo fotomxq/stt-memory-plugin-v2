@@ -12,7 +12,7 @@
 //   延迟调度经 `timerHooks`、面板重绘由 UI 层负责；③ `clockDateValid` 等日期族复用 `core/clock.js`。
 // 一致性由 tests/unit/clock-extract-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
-import { state, cfg, saveState, dbgLog, timerHooks, latestAiFloorText, getLastMessageId } from './model/runtime.js';
+import { state, cfg, saveState, dbgLog, timerHooks, latestAiFloorText, getLastMessageId, warn } from './model/runtime.js';
 import {
     clockDateValid, clockDateParts, clockDateFromParts, clockParseDateText, clockNormTime, clockValNum,
     clockAddDays, clockMatchNotInline, clockNormBcText, clockYearOf, clockAnomalyJumpYears, clockDateAnomaly,
@@ -24,6 +24,8 @@ import { stampSnapshotsSeen } from './model/snapshot.js';
 import { scheduleStateDecay } from './ingest.js';
 // v2.44.0（用户报告）：「地点捕捉把 `<br>` 这种 HTML 标签也捕捉进来了」→ 正文/取值统一清洗（纯内核，见 docs/P10i）
 import { cleanText, cleanValue, hasHtmlTag, htmlStats } from './html-text.js';
+// v3.44.0（`docs/D22` W4 `数-14`）：`storyDay` 上界与来源标记
+import { STORY_DAY_MAX, STORY_DAY_SRC_FIELD, clampStoryDay } from './reserved-fields.js';
 // v2.37.0「时钟取值追踪」：把「值从哪来 / 为什么取它 / 还有什么没被采用」记成结构化追踪（纯记录，不参与判定）
 import {
     clockTraceStart, clockTraceText, clockTraceChain, clockTracePick, clockTraceReject,
@@ -158,8 +160,18 @@ function recordReservedStoryDay(node) {
         const txt = [node.title, node.text, node.content].filter(Boolean).join('\n');
         if (!txt) return 0;
         const hdr = extractClockFromHeader(txt);
-        const n = Number(hdr && hdr.storyDay) || 0;
-        if (n > 0 && Number(node.storyDay) !== n) { node.storyDay = n; return n; }
+        // v3.44.0（`docs/D22` W4 **`数-14`** ③）：**上界 + 来源标记**。
+        //   · 上界：`clampStoryDay` 把越界值收敛为 0（**不夹到上界** —— 53143 天不是「略大」而是解析错了，
+        //     夹到上界等于把错误数据伪装成合理数据）；越界时如实记一条 warn（不静默丢弃）。
+        //   · 来源标记 `storyDaySrc: 'ai'`：本函数的值**只**来自正文头的 `▶第 N 天`，标记后
+        //     「这个天数从哪来」可查（人工写入的路径不存在，故不做 'manual'）。
+        const raw = Number(hdr && hdr.storyDay) || 0;
+        const c = clampStoryDay(raw);
+        if (c.clamped) {
+            try { warn('情节「第 N 天」越界已忽略：' + raw + ' > ' + STORY_DAY_MAX + '（' + String(node.id || node.title || '') + '）'); } catch (e) { /* 忽略 */ }
+        }
+        const n = c.value;
+        if (n > 0 && Number(node.storyDay) !== n) { node.storyDay = n; node[STORY_DAY_SRC_FIELD] = 'ai'; return n; }
         return 0;
     } catch (e) { return 0; }
 }

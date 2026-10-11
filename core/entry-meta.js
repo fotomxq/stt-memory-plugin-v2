@@ -16,6 +16,8 @@ import { normalizeChatKey } from './chat-scope.js';
 import { preserveFloorProvenance } from './floor-cover.js';
 import { nsfwClassifyItem, nsfwLevelFromEntry, nsfwLevelMax, nsfwLevelOf, nsfwStampLevel } from './nsfw.js';
 import { state } from './model/runtime.js';
+// v3.44.0（`docs/D22` W4 `数-10`）：字段名规范 —— 新落库/更新的条目**当场**补写规范字段名
+import { canonicalizeEntryFields } from './field-names.js';
 
 /** 维度键 → 真实容器（`states` 实为 `currentStates`；与 `core/config.js#KIND_MAP` 同口径） */
 function entryListOf(dim) {
@@ -69,6 +71,9 @@ function stampChatScope(dim, norm) {
 export function preserveEntryMeta(dim, raw, norm) {
     try { preserveFloorProvenance(raw, norm); } catch (e) { /* 忽略 */ }
     try { stampChatScope(dim, norm); } catch (e) { /* 忽略 */ }
+    // v3.44.0（`数-10`）：规范化字段名 —— 这是**所有维度归一化结果**的唯一漏斗（新增与更新都经此），
+    //   所以放在这里 = 新写入的条目**立刻**带上规范名，不必等下一次载入期迁移。
+    try { canonicalizeEntryFields(dim, norm); } catch (e) { /* 忽略 */ }
     try {
         if (!norm || typeof norm !== 'object') return norm;
         const id = norm.id !== undefined ? String(norm.id) : '';
