@@ -1,6 +1,6 @@
 {
   "name": "ftt-memory-v2",
-  "version": "3.45.3",
+  "version": "3.45.4",
   "private": true,
   "type": "module",
   "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",
@@ -19,13 +19,17 @@
     "local:bridge:selftest": "node tests/local/bridge.mjs --selftest",
     "local:leak": "node scripts/check-local-leak.js",
     "docs:facts": "node scripts/check-docs-facts.js",
-    "gate": "node scripts/check-core-purity.js && node scripts/check-core-refs.js && node scripts/check-i18n.js && node scripts/check-version-sync.js && node scripts/check-docs.js && node scripts/check-docs-facts.js && node scripts/check-local-leak.js && node scripts/check-changelog-json.js && node scripts/check-ui-spec.js && node scripts/check-config-decl.js && node scripts/check-drafts.js && node scripts/check-ledger-sync.js && node tests/unit/run.js && node tests/smoke-test.js",
+    "gate": "node scripts/check-core-purity.js && node scripts/check-core-refs.js && node scripts/check-i18n.js && node scripts/check-version-sync.js && node scripts/check-docs.js && node scripts/check-docs-facts.js && node scripts/check-local-leak.js && node scripts/check-changelog-json.js && node scripts/check-ui-spec.js && node scripts/check-config-decl.js && node scripts/check-debug-coverage.js && node scripts/check-perf-baseline.js && node scripts/check-drafts.js && node scripts/check-ledger-sync.js && node tests/unit/run.js && node tests/smoke-test.js",
     "ui-spec": "node scripts/check-ui-spec.js",
     "ui-spec:strict": "node scripts/check-ui-spec.js --strict",
     "config:decl": "node scripts/check-config-decl.js",
     "config:decl:strict": "node scripts/check-config-decl.js --strict",
     "drafts": "node scripts/check-drafts.js",
-    "drafts:strict": "node scripts/check-drafts.js --strict"
+    "drafts:strict": "node scripts/check-drafts.js --strict",
+    "debug:coverage": "node scripts/check-debug-coverage.js",
+    "debug:coverage:strict": "node scripts/check-debug-coverage.js --strict",
+    "perf:baseline": "node scripts/check-perf-baseline.js",
+    "perf:baseline:write": "node scripts/perf-baseline.js --write"
   },
   "license": "AGPL-3.0",
   "author": "fotomxq"

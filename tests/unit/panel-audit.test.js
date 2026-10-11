@@ -224,6 +224,7 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'cact': '待确认条目的动作 id（**由委托透传为 `cact`**，见 L6）',
         // v3.45.1（`docs/D22` W6 `应-22`）：关于页版本更新状态行锚点（`data-ftt-about-status`）——
         //   文案由 `aboutStatusText()` 单源渲染，重绘即更新；供「🔄 重新获取」后就地核对与测试锚点。
+        'sec': '性能区块容器（v3.45.4：`data-ftt-sec="perf"` = `docs/D31` §3.2 固定序第 8 位锚点，样式与测试锚点）',
         'about-status': '关于页版本更新状态行锚点（v3.45.1：文案出自 `aboutStatusText()`，重绘即更新；样式与测试锚点）',
 };
     const unread = [];

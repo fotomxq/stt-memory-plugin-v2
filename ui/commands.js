@@ -7,6 +7,12 @@ import { getCtx } from '../host/st-api.js';
 import { updateStatusText } from '../host/update.js';
 // v2.42.0：命令/宏调用入流（『用户命令 → 底层调用 → 结果』可追溯，cat='cmd'）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite } from '../core/trace.js';
+// v3.45.4（`docs/D22` W10 `技-41` ⑥）：**只读清单的单一事实源** —— `/ftt-readonly` 与 `FTT.readonly()` 同源
+//   （`docs/D31` §8 Q4 裁决：清空型动作显式标注、永不进桥白名单）。
+import { readonlyOutletList, debugCapList, debugKindList, REQUIRED_CONTENT } from '../core/debug-catalog.js';
+// v3.45.4（W10 `技-41` ④ · `docs/D31` §3.2「命令 = `/ftt` 前缀 + 与桥方法**同名**」）：桥方法 `ftt.perf*`
+//   对应的命令是 `/ftt-perf`（同一读数两个入口不得异名）。
+import { perfReport, perfJankList, perfTargets, perfBaselineReport, perfReportText } from '../core/perf-probe.js';
 
 /**
  * v2.42.0：命令回调的追踪包装（cat='cmd'）—— 记录命令名 / 参数摘要 / 结果 / 耗时 / **站点**，
@@ -190,6 +196,80 @@ export function registerSlashCommand(getExtra, hooks) {
                 returns: '提取结果文本',
             });
         }
+        // v3.45.4（`docs/D22` W10 `技-41` ⑥）：**只读清单**命令 ——
+        //   把「调试面到底有哪些只读出口、哪些是清空型动作」一次列清楚，并与桥白名单**对齐**（同一份清单源）。
+        //   口径（`docs/D31` §8 Q4）：清空型动作保留在面板 / 命令里（走既有二次确认），**永不进桥白名单**，此处显式标注。
+        addCmd({
+            name: 'ftt-readonly',
+            callback: (named, unnamed) => {
+                const raw = String(unnamed || '').toLowerCase();
+                let list = [];
+                let caps = [];
+                let kinds = [];
+                try { list = readonlyOutletList(); } catch (e) { list = []; }
+                try { caps = debugCapList(); } catch (e) { caps = []; }
+                try { kinds = debugKindList(); } catch (e) { kinds = []; }
+                if (raw.indexOf('cap') >= 0) {
+                    return ['【CAP 汇总表（唯一事实源：core/debug-catalog.js）· ' + caps.length + ' 行】',
+                        '· 载体 ｜ 上限 ｜ 保留窗 ｜ 事实源',
+                    ].concat(caps.map((c) => '· ' + c.carrier + ' ｜ ' + c.cap + ' ｜ ' + c.window + ' ｜ ' + String(c.source || '')).slice(0, 60)).join('\n');
+                }
+                if (raw.indexOf('kind') >= 0) {
+                    return ['【业务调试日志 kind 枚举（冻结；新增需登记）· ' + kinds.length + ' 类】',
+                    ].concat(kinds.map((k) => '· ' + k.kind + ' —— ' + k.note).slice(0, 60)).join('\n');
+                }
+                const read = list.filter((x) => x.kind !== 'clear');
+                const clear = list.filter((x) => x.kind === 'clear');
+                const groups = [];
+                for (const x of read) if (groups.indexOf(x.group) < 0) groups.push(x.group);
+                const lines = ['【只读清单（与调试桥白名单同源）· 只读 ' + read.length + ' 项 / 清空型 ' + clear.length + ' 项】'];
+                for (const g of groups) lines.push('· ' + g + '：' + read.filter((x) => x.group === g).map((x) => x.name).join('、'));
+                lines.push('【清空型动作（永不进桥白名单；在面板 / 命令里走二次确认）】');
+                lines.push(clear.map((x) => x.name).join('、') || '（无）');
+                lines.push('【必要内容完整性】共 ' + REQUIRED_CONTENT.length + ' 类（明细见 设定 → 调试 的清单区块与 scripts/check-debug-coverage.js）');
+                lines.push('用法：`/ftt-readonly cap` 看 CAP 汇总表；`/ftt-readonly kind` 看 kind 枚举。');
+                return lines.join('\n');
+            },
+            helpString: 'FTT 只读清单：列出全部只读出口与清空型动作（与调试桥白名单同源）；`/ftt-readonly cap|kind` 另看 CAP 表 / kind 枚举',
+            returns: '只读清单文本',
+        });
+        // v3.45.4（W10 `技-40` / `技-41` ④）：`/ftt-perf` —— 与桥方法 `ftt.perf` / `ftt.perfJank` /
+        //   `ftt.perfTargets` / `ftt.perfBaseline` **同名同源**（同一批 core 函数，命令只做文本渲染）。
+        addCmd({
+            name: 'ftt-perf',
+            callback: (named, unnamed) => {
+                const raw = String(unnamed || '').toLowerCase();
+                if (raw.indexOf('jank') >= 0) {
+                    const list = (() => { try { return perfJankList({ limit: 30 }); } catch (e) { return []; } })();
+                    return ['【超阈段明细（后 30 条）· 只记 notice≥50ms / stall≥200ms / freeze≥1000ms】']
+                        .concat(list.map((x) => '· ' + String(x.at ? new Date(Number(x.at)).toLocaleString('zh-CN', { hour12: false }) : '') + ' ' + x.level + ' ' + Number(x.ms) + 'ms @ ' + String(x.site)).slice(0, 30))
+                        .join('\n');
+                }
+                if (raw.indexOf('target') >= 0) {
+                    const t = (() => { try { return perfTargets(); } catch (e) { return null; } })();
+                    const list = (t && Array.isArray(t.list)) ? t.list : [];
+                    return ['【潜在优化清单 · ' + list.length + ' 条（只输出候选，不自动开单）】']
+                        .concat(list.map((x, i) => '#' + (i + 1) + ' ' + String(x.title || x.id || '') + ' · 证据：' + String(x.evidence || '') + ' · 建议：' + String(x.suggest || '') + ' · 台账：' + String(x.u || '未立项')))
+                        .join('\n');
+                }
+                if (raw.indexOf('baseline') >= 0 || raw.indexOf('base') >= 0) {
+                    const b = (() => { try { return perfBaselineReport(); } catch (e) { return null; } })();
+                    if (!b || !b.available) return '【性能基线】未跑过基线（' + String((b && b.reason) || 'no-baseline') + '）—— 开发期可跑 `node scripts/perf-baseline.js --write` 生成，门禁脚本 `node scripts/check-perf-baseline.js`';
+                    return ['【性能基线对比 · 基线 ' + new Date(Number(b.baselineAt) || 0).toLocaleString('zh-CN', { hour12: false }) + '】',
+                        '· 回归 ' + (b.regressions || []).length + ' 项 · 可收紧 ' + (b.improvements || []).length + ' 项',
+                    ].concat((b.regressions || []).map((x) => '· 回归：' + String(x.key || '') + ' 基线 ' + String(x.baseline) + ' → 当前 ' + String(x.current)))
+                        .join('\n');
+                }
+                const r = (() => { try { return perfReport(); } catch (e) { return null; } })();
+                if (!r) return '性能探针不可用（读取失败）';
+                return ['【性能与卡顿 · 窗口 ' + Number(r.window || 0) + ' 条 · ' + String(r.ver || '') + '】',
+                    perfReportText(),
+                    '用法：`/ftt-perf jank` 看超阈段明细；`/ftt-perf targets` 看优化清单；`/ftt-perf baseline` 看与基线的差异。',
+                ].join('\n');
+            },
+            helpString: 'FTT 性能与卡顿：`/ftt-perf`（四类读数 + 卡顿摘要）· `/ftt-perf jank|targets|baseline`（与桥方法 `ftt.perf*` 同名同源）',
+            returns: '性能读数文本',
+        });
         return true;
     } catch (e) {
         return false;
