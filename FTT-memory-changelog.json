@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.45.3",
+  "version": "3.45.4",
   "updatedAt": "2026-10-11",
   "generatedAt": "2026-10-11",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.45.4",
+      "date": "2026-10-11",
+      "title": "docs/D22 W10 调试工具统一化与探针落地（整批 3 行）+ W9 的 技-39 / 技-40（解锁链）",
+      "points": [
+        "用户裁决：（本轮一条 + 一条默认）：① 范围 = 「解锁链」 —— 只做 W10 三行做不成，故一并销账 W9 的 技-39 / 技-40（详见下方「为什么动了 W9 的两行」…",
+        "新增守门单测 4 档（68 项）：tests/unit/perf-probe.test.js（15：无宿主不抛错且四类给 ok+reason · scan/size 与手工计数逐…",
+        "一次判据收窄（有意为之，非放宽）：tests/unit/coverage-tool.test.js#C8 原用子串判「覆盖率工具不得进 gate」（gate.indexOf('c…"
+      ]
+    },
     {
       "version": "3.45.3",
       "date": "2026-10-11",

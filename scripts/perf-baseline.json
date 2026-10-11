@@ -1,0 +1,177 @@
+{
+  "at": 1791726334908,
+  "ver": "3.45.4",
+  "readings": {
+    "write": {
+      "ok": true,
+      "reason": "",
+      "note": "",
+      "writes": 40,
+      "queued": 41,
+      "failed": 1,
+      "pending": 0,
+      "inFlight": 0,
+      "maxInFlight": 1,
+      "bytes": 265814,
+      "lastMs": 12,
+      "lastAt": 1700000000000,
+      "channel": "kv-put:SPreset_FTTMemory_<scope>",
+      "waitMs": null
+    },
+    "read": {
+      "ok": true,
+      "reason": "",
+      "note": "",
+      "count": 22,
+      "totalReads": 22,
+      "okReads": 19,
+      "fail": 1,
+      "miss": 2,
+      "totalMs": 163,
+      "avgMs": 7,
+      "totalBytes": 587000,
+      "bySrc": {
+        "file": {
+          "label": "服务端文件",
+          "n": 12,
+          "ok": 12,
+          "fail": 0,
+          "miss": 0,
+          "ms": 114,
+          "bytes": 564000,
+          "items": 3600,
+          "fields": 0,
+          "maxMs": 15,
+          "avgMs": 10
+        },
+        "shard": {
+          "label": "服务端分片",
+          "n": 4,
+          "ok": 4,
+          "fail": 0,
+          "miss": 0,
+          "ms": 26,
+          "bytes": 20800,
+          "items": 160,
+          "fields": 0,
+          "maxMs": 8,
+          "avgMs": 7
+        },
+        "meta": {
+          "label": "分片清单",
+          "n": 2,
+          "ok": 2,
+          "fail": 0,
+          "miss": 0,
+          "ms": 7,
+          "bytes": 1800,
+          "items": 16,
+          "fields": 0,
+          "maxMs": 4,
+          "avgMs": 4
+        },
+        "local": {
+          "label": "本机缓冲",
+          "n": 2,
+          "ok": 0,
+          "fail": 0,
+          "miss": 2,
+          "ms": 5,
+          "bytes": 0,
+          "items": 0,
+          "fields": 0,
+          "maxMs": 3,
+          "avgMs": 3
+        },
+        "idb": {
+          "label": "本机内存库",
+          "n": 1,
+          "ok": 0,
+          "fail": 1,
+          "miss": 0,
+          "ms": 9,
+          "bytes": 0,
+          "items": 0,
+          "fields": 0,
+          "maxMs": 9,
+          "avgMs": 9
+        },
+        "settings": {
+          "label": "扩展设置",
+          "n": 1,
+          "ok": 1,
+          "fail": 0,
+          "miss": 0,
+          "ms": 2,
+          "bytes": 400,
+          "items": 1,
+          "fields": 0,
+          "maxMs": 2,
+          "avgMs": 2
+        }
+      }
+    },
+    "scan": {
+      "ok": true,
+      "reason": "",
+      "note": "合成库全量点：条目数为真实计数，耗时未采集（不伪造）",
+      "items": {
+        "atoms": 300,
+        "memories": 120,
+        "currentStates": 30,
+        "snapshots": 40,
+        "items": 25,
+        "plans": 12,
+        "suspense": 8,
+        "concepts": 20,
+        "scenes": 15,
+        "npcs": 10,
+        "parallels": 6,
+        "rumors": 5,
+        "plotSegments": 20,
+        "links": 240,
+        "deleted": 80
+      },
+      "total": 931,
+      "points": [
+        {
+          "site": "scripts/perf-baseline-lib.js#scanAtoms",
+          "items": 300,
+          "ms": null
+        },
+        {
+          "site": "scripts/perf-baseline-lib.js#scanMemories",
+          "items": 120,
+          "ms": null
+        },
+        {
+          "site": "scripts/perf-baseline-lib.js#scanAll",
+          "items": 853,
+          "ms": null
+        }
+      ],
+      "ms": null,
+      "msNote": "未采集"
+    },
+    "size": {
+      "ok": true,
+      "reason": "",
+      "note": "mainBytes = JSON.stringify(state).length（字符数近似字节，不含宿主信封） · 合成分片 8 片 / 副本 2 份（真实序列化长度）",
+      "mainBytes": 96441,
+      "semanticBytes": 47347,
+      "derivedBytes": 49095,
+      "snapCount": 30,
+      "snapBytes": 31013,
+      "deletedKeys": 80,
+      "deletedDims": 2,
+      "deletedHKeys": 40,
+      "deletedHDims": 1,
+      "tombstoneKeys": 120,
+      "linkRows": 240,
+      "shardBytes": 39950,
+      "copyBytes": 98410,
+      "totalBytes": 234801
+    }
+  },
+  "note": "确定性合成库（无宿主）实测：条数 / 字节 / 计数参与棘轮；耗时（ms）为桩值，只记录、不判定"
+}

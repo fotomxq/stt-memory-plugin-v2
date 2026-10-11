@@ -1,6 +1,22 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.73 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.74 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.74 变更（随 **v3.45.4**：`docs/D22` **W10 调试工具统一化与探针落地（整批 3 行）+ W9 的 `技-39` / `技-40`**）：
+>   用户原话：「新版本v3.45.4 / 开发W10待开发事项。」用户裁决（一条 + 一条默认）：① 范围 = **「解锁链」**（W10 三行 + W9 的 `技-39` / `技-40`；**`技-42` 的硬前置含 `技-39`**，只做 W10 做不成）；② `docs/D31` **Q1–Q6 整批采纳建议默认**（§8 转「决策记录」）。
+>   ① **`技-39`（U191）性能与容量基线探针 + 只增不降门禁**：新增 `core/perf-probe.js`（四类读数 + 三级阈值 `notice/stall/freeze` · **只记超阈段** · 800ms 去重 · **环形 200** · 7 条机械判据的**优化清单**含「台账号 / 未立项」· 基线对比）+ `scripts/perf-baseline.js`（**只有 `--write` 才落盘**）/ `scripts/perf-baseline-lib.js` / `scripts/check-perf-baseline.js`（回归即 `exit 1`、改善只提示）+ `scripts/perf-baseline.json`（70 项确定性量）；
+>   ② **`技-40`（U196）卡顿与性能读数统一暴露、可追溯**：只读四件套 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline` 在 **`FTT.*` / 调试桥 / 调试导出三处同源**（`index.js#wirePerfHooks` + `loadPerfBaseline`）；
+>   ③ **`技-41`（U197）调试面口径统一**（**🟡 部分**，未闭环项见 ⑫）：新增 **唯一事实源** `core/debug-catalog.js` —— `DEBUG_KINDS`（日志 `kind` **冻结 18 类枚举**）· `DEBUG_CAPS`（**25 行** CAP 表）· `redactForOutlet` · `TRACE_FIELDS`（六字段）· `READONLY_OUTLETS`（**234 条** = 只读 211 + **清空型 23**，清空型**显式标注且永不进桥**）；`FTT.readonly()` / `/ftt-readonly` / 调试页清单**三处同源**；`core/debug-log.js` 加**未登记 `kind` 一次性提示**（照记不丢 + 计数 + 门禁可查）；
+>   ④ **`技-42`（U198）探针接入调试面**：调试页按 `docs/D31` §3.2 **固定序第 8 位**新增「📈 性能与卡顿」分节（锚点 `data-ftt-sec="perf"`）· **桥方法 52 → 58**（6 个全部只读）· 导出加 `perf` / `catalog` 区块；
+>   ⑤ **`技-43`（U199）必要性完整性门禁**：新增 `scripts/check-debug-coverage.js` + `scripts/debug-coverage-lib.js`（`docs/D31` §5 的 **12 类 × 出口**核对 + `kind` 登记核对；默认 warning、`--strict` 缺口即失败；**反向探针**齐备），**已进 `npm run gate`**；
+>   ⑥ **新增 6 个命令/桥出口**：`/ftt-readonly`（`cap` / `kind`）· `/ftt-perf`（`jank` / `targets` / `baseline`）· `ftt.readonly` · `ftt.catalog`；
+>   ⑦ **门禁链**：`package.json#gate` 接入 `check-debug-coverage.js` 与 `check-perf-baseline.js`，并新增 4 个独立入口（`debug:coverage` / `debug:coverage:strict` / `perf:baseline` / `perf:baseline:write`）；**一次判据收窄**：`coverage-tool.test.js#C8` 由「`gate` 里不得含子串 `coverage`」收窄为「不得含 `scripts/coverage.js`」（新脚本 `check-debug-coverage.js` 是另一件事，会被子串误伤）；
+>   ⑧ **文档**：`docs/D31` v1.1（§5 完整性 **12/12** · §6 补「实际落地」列并**当场登记本稿自身相位顺序矛盾** · §8 转「决策记录」 · §10 补落地状态 · **新增 §11 落地证据索引**）· `docs/D22` v1.14（**4 行销账 + `技-41` 记 🟡 部分** + 「本版口径」9 条）· `docs/D17` v1.24（**§1.25 U216–U217**）· `docs/05` §2 / §3 同步 · `docs/history/P10c84`；
+>   ⑨ **§3 数字口径同步**：表头与版本号 → **3.45.4**、调试桥只读方法数 52 → **58**、单测 **204 文件 / 3001 断言**、历史批次档数 204 → **205**；§1 目录树 `history/` 计数 → **205 份**、`P10c*` 区间 → **`P10c84`**；§2 目录地图 `core/` 78 → **80**、`tests/` 228 → **232**、`scripts/` 18 → **23**；
+>   ⑩ **未取得（如实登记）**：本机无真机存档 →「分节可见 / 桥 `ls` / 导出区块 / 两条命令」**未取得真机证据**；`perfMark` / `perfTime` **全仓无调用方** → 真机「卡顿 0 段」= **还没插桩，不是不卡**（`docs/D17` **U217**）；`write.bytes` / `write.waitMs` / `scan.ms` / `sizes` 真机无数据源 → 如实回 `null` + `reason`（**未造数**）；
+>   ⑪ **版本位说明**：本版由用户指定 **v3.45.4**（patch 位）；本轮**新增能力** → 按 `开发守则.md` §3.1 严格应记 `3.46.0`，沿用用户指定 patch 位处理并**显式登记偏离**（见 `CHANGELOG.md` v3.45.4 与 `docs/D22` §4.11 第 9 条）。
+>   ⑫ **`技-41` 为何记 🟡 部分（不静默标 ✅）**：口径面（命名契约 · `kind` 枚举 · CAP 表 · 只读清单与桥白名单**差异 0** · 未登记 `kind` 可被门禁查出）**全部落地**，
+>   但 §10 验收 **①「三处出口对同一读数返回同一形状（比对用例）」未闭环** —— `redactForOutlet` / `traceStamp` 只交付了**单源函数**（`core/debug-catalog.js`），
+>   **尚未被页面 / 桥 / 导出三处出口实际调用**，也没有跨出口的**同形状比对用例**（那要改 `ui/debug.js` / `devtools.js` 的既有出口，属下一轮口径收口）。已登记进 `docs/D22` §4.11 与 `docs/D17` U197 的**状态列**。
 > v2.73 变更（随 **v3.45.3**：**用户直接要求**「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
 >   ① **六个「每轮抽取量」默认值 3 → 6**：`cfg.repairCharacterBatch`（修复角色每轮条数）· `cfg.stateRepairBatch`（修复状态每轮主体数）·
 >      `cfg.conceptRepairMaxClusters` / `cfg.memoryRepairMaxClusters` / `cfg.suspenseRepairMaxClusters` / `cfg.itemRepairMaxClusters`（四域「每次核对组数」）；
@@ -418,17 +434,17 @@ docs/
 ├── D28-不删数据下的性能专项设计稿.md    # 设计层（**「无限容量」唯一基准**（标题：无限容量下的性能与容量设计稿）：§1.1 定义（无限容量三类增长 · **「功能不变」五条可测判据**）· **§3.2 A/B 案分界**（冷存过滤 / 上限不裁 / 衰退不删 = **B 案待裁决**）· **§3.3 写入与体积**（8 步保存流水线拆解 · 写放大与机理 · 读放大先定位 · 容量判据）· **§3.4 维护与体检扫描收敛且结论等价**（变更集 + 世代缓存 + 游标分批）· §3.5–3.8 冷热/索引/分区/节流在 A 案下的形态 · §3.9 与既有「删除」口径 10 行对账（逐行标 A/B 案）· **§3.10 卡顿检测 · 潜在优化清单 · 统一调试接口**（时钟分层 · 7 个采集点 · `notice/stall/freeze` 三级 + `jankRate` · 7 条机械判据 → 只读清单 · `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline` 三处同源 + 追溯字段））
 ├── D29-实机取证发现与修复设计稿.md    # 设计层（**实机取证新增 9 项**：主文件基准陈旧（`mainAt` ≈ 14 天前、每次载入靠分片覆盖）· 跨端合并自检判据不含去重/墓碑/上限裁剪 → 误报且真丢失无法区分 · 待确认项无只读出口 · 本机层对已废弃路径固定读失败 · 读取台账 `miss` 口径不一致 · 条数无单一事实源（465/488/482/479）· 陈旧快照分片不回收 · 无聊天归属存量数据 · 关于页更新状态陈旧；**P0 只读取证先行**）
 ├── D30-NSFW弱化详细设计稿.md    # 设计层（**NSFW 弱化的唯一设计基准**：入口与动作分发 · 12 维字段白名单与命中判据（词条库 / 英文误伤名单 / 签名预筛）· **三段式处理**（零 AI 固定规则替换 → AI 改写 → 强校验落地）· 提示词与调用接线（归 `main` 用途、`generateRaw` 一次性不可中断）· **NSFW 等级留档「只升不降」**（弱化只改文本、不改标签）· 🧠 词条分析（AI 找词 → 写转化库）· 转化库导出 / 导入（合并语义）· 覆盖矩阵 · 维护入口与影响面 · 测试与门禁；§8 实施规格 3 项（`应-23` / `数-30` / `技-36`））
-├── D31-调试工具统一设计稿.md    # 设计层（**调试工具的唯一基准**：现状测绘（运行时读面 8 项 + 外部工具 2 项 + 构建期边界）逐项给内容/上限/保留/出口/只读/开关 · **统一模型**（四层 + 命名/开关级别/上限保留/脱敏/只读五条口径 + **追溯六字段** `at/ver/window/cause/site/u`）· **探针并入并展开**（卡顿检测 `notice/stall/freeze` + `jankRate` · 7 条机械判据 → 潜在优化清单 · `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline` 三处同源 · 与时间线/管线/台账的接线）· **完整性核对**（插件必要内容 **12 类**：10 类已具备、2 类本次补）；§10 实施规格 `技-39`～`技-43`）
+├── D31-调试工具统一设计稿.md    # 设计层（**调试工具的唯一基准**：现状测绘（运行时读面 8 项 + 外部工具 2 项 + 构建期边界）逐项给内容/上限/保留/出口/只读/开关 · **统一模型**（四层 + 命名/开关级别/上限保留/脱敏/只读五条口径 + **追溯六字段** `at/ver/window/cause/site/u`）· **探针并入并展开**（卡顿检测 `notice/stall/freeze` + `jankRate` · 7 条机械判据 → 潜在优化清单 · `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline` 三处同源 · 与时间线/管线/台账的接线）· **完整性核对**（插件必要内容 **12 类**，v3.45.4 起 **12/12 全部具备**，门禁 `scripts/check-debug-coverage.js`）；§8 Q1–Q6 已裁决转「决策记录」· §10 实施规格 `技-39`～`技-43`（**v3.45.4 全部落地**）· §11 落地证据索引）
 ├── D32-传言计划悬念三域联动设计稿.md    # 设计层（**三域联动唯一基准**：关联特性矩阵（三域端点 × 边 × 载体三级；锚点白名单扩 `rumors`）· **联动规则表 3×3 十二条 + 五条硬边界** · 两个入口一个动作「🔗 联动构建」（传言页 / 计划悬念页）· **三段打包**（不读楼层）· 提示词全文（键 `triLink`）· 窄契约 JSON + **七条机械校验** · 预览确认 / 单轮不递归 / 快照回退 · 与提取、修复的**三通道边界**；§8 实施规格 `业-10` · `应-26` · `应-27` · `数-33`～`数-36` · `技-44`～`技-46`）
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，204 份）
+└── history/                  # 历史批次层（只读留痕，205 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c83           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c84           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -485,9 +501,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.45.3） |
+| 口径 | 权威来源 | 当前值（v3.45.4） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.3` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.4` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -495,15 +511,15 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 161（v3.44.0：分析记忆页 +2，入库卫生） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 200 文件 / 2933 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 204 文件 / 3001 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
-| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 52 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；**v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）**） |
+| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 58 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 204 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 205 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

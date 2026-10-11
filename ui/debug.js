@@ -39,6 +39,10 @@ import { hintDetailsHtml } from './hints.js';
 import { downloadTextFile } from './file-io.js';
 // v2.94.0（`docs/D11` v0.3 §3.2 阶段 S1 / `docs/D12` v0.2 S4b）：`chatMetadata` 主载体**只读**差异报告
 import { state, cfg, warnBacklogList } from '../core/model/runtime.js';
+// v3.45.4（`docs/D22` W10 · 来源稿 `docs/D31`）：**性能与卡顿探针**（`技-39`）+ 统一调试接口（`技-40`）+ 口径统一（`技-41`）
+//   —— 调试页分节、桥方法、`FTT.*`、调试导出**四处同源**：全部调 core 的同一批函数，**没有任何一处重算**。
+import { perfReport, perfJankList, perfTargets, perfBaselineReport, perfReportText, PERF_WINDOW } from '../core/perf-probe.js';
+import { readonlyOutletList, debugCapList, debugKindList, requiredContentList, debugCatalogReport } from '../core/debug-catalog.js';
 import { chatMetaDiffReport, chatMetaDiffText, CHAT_META_KEY } from '../adapters/chat-meta.js';
 // v3.0.7：本地调试桥（**跨宿主**：酒馆原生与 TauriTavern 都能用；非 TauriTavern 只降级不报错）
 import {
@@ -730,6 +734,16 @@ export function buildBridgeMethods() {
         cap: CONFLICT_LOG_CAP,
         list: listConflictLog().slice(0, Math.max(1, Number((p && p.limit) || 20))),
     }));
+    // v3.45.4（`docs/D22` W10 `技-40` / `技-42`）：**性能与卡顿只读四件套**（进桥白名单；与 `FTT.perf*`、
+    //   调试导出 `perf` 区块、调试页「📈 性能与卡顿」分节**同源** —— 同一批 core 函数，无一处重算）。
+    //   口径（`docs/D31` §3.7）：每条读数带追溯六字段 `at/ver/window/cause/site/u`；只读、无副作用。
+    T['ftt.perf'] = safe(() => perfReport());
+    T['ftt.perfJank'] = safe((p) => perfJankList({ limit: Number((p && p.limit) || 20) || 20, level: String((p && p.level) || '') }));
+    T['ftt.perfTargets'] = safe(() => perfTargets());
+    T['ftt.perfBaseline'] = safe(() => perfBaselineReport());
+    // v3.45.4（W10 `技-41` ⑥）：**只读清单与口径汇总**（与 `/ftt-readonly`、`FTT.readonly()` 同源）
+    T['ftt.readonly'] = safe(() => readonlyOutletList());
+    T['ftt.catalog'] = safe(() => debugCatalogReport());
     // v3.42.0（用户要求「设定中新增 token 预估」）：**AI 用量与花费账本**的只读出口 ——
     //   与设定页「API → Token 预估与花费」同源（`FTT.aiUsage()` / `FTT.aiUsageRecent()`），
     //   便于真机核对读数而不必开界面（桥只读，不提供清空 / 改价入口）。
@@ -1278,6 +1292,13 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
     'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
     'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排 + 一致性读数 + 服务端载入基线）', params: '' },
+    // v3.45.4（W10 `技-40` / `技-41`）：性能与卡顿四件套 + 只读清单与口径汇总（均只读、无写方法）
+    'ftt.perf': { desc: '性能与卡顿读数（写入/读取台账/扫描量/体积 + 卡顿分级 + jankRate + 窗口；带追溯六字段）', params: '' },
+    'ftt.perfJank': { desc: '超阈段明细（倒序；只记 notice≥50ms / stall≥200ms / freeze≥1000ms）', params: '{limit?≤200,level?}' },
+    'ftt.perfTargets': { desc: '潜在优化清单（7 条机械判据 → 证据/归因/建议/台账号或「未立项」；不自动开单）', params: '' },
+    'ftt.perfBaseline': { desc: '与基线（scripts/perf-baseline.json）的差异：回归/改善逐项；未跑过基线时 available:false', params: '' },
+    'ftt.readonly': { desc: '只读清单（与桥白名单同源；清空型动作显式标注、永不进桥）', params: '' },
+    'ftt.catalog': { desc: '调试面口径汇总（日志 kind 枚举 / CAP 表 / 12 类必要内容 / 只读清单）', params: '' },
     'ftt.reads': { desc: '读取台账（分来源统计 + 最近若干行）', params: '{limit?}' },
     // v3.45.1（W6 技-32）：待确认项与其记录的**只读出口**（真机缺口：一致性告警此前读不到）
     'ftt.conflicts': { desc: '待确认项（含合计 / 逐条明细；只读，确认动作仍在设定页）', params: '' },
@@ -1340,6 +1361,8 @@ export function debugBridgeSectionHtml() {
             + '<div>' + esc('参考用法见仓库 tests/local/README.md（本机调试工具与其协议）。') + '</div>'),
         (st.lastCall ? ('<div class="ftt-muted">最近调用：' + esc(st.lastCall.method) + ' · ' + Number(st.lastCall.ms) + 'ms · ' + (st.lastCall.ok ? '成功' : '失败') + '</div>') : ''),
         (st.lastError ? ('<div class="ftt-hint">最近错误：' + esc(st.lastError) + '</div>') : ''),
+        // v3.45.4（W10 `技-41` ⑥）：只读清单与 CAP 口径（与 `/ftt-readonly`、`FTT.readonly()` 同源）
+        readonlyCatalogHtml(),
         '</div>',
     ].join('\n');
 }
@@ -1404,6 +1427,75 @@ export function readLedgerText(limit) {
     try { return readLedgerSummaryText(limit || 30); } catch (e) { return '读取台账不可用：' + String((e && e.message) || e); }
 }
 
+/**
+ * 「📈 性能与卡顿」区块（v3.45.4 · `docs/D22` W10 `技-42` · `docs/D31` §3.2 固定序**第 8 位**）。
+ *
+ * 只读：把 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline` 四个读数**摘要**渲染出来
+ * （四类读数一行一个 + 卡顿分级计数 + 超阈段尾部 + 优化清单前 5 条 + 与基线的回归/改善），
+ * 明细由桥与 `FTT.*` 取（同一份数据，页面只做摘要，避免把大块明细塞进 DOM）。
+ * 与 `devtools.js` / 桥方法**同源**：都调 `core/perf-probe.js`，此处不重算任何数字。
+ */
+export function perfSectionHtml() {
+    const r = (() => { try { return perfReport(); } catch (e) { return null; } })();
+    if (!r) return '<div class="ftt-muted">探针不可用（读取失败）。</div>';
+    const rd = r.readings || {};
+    const line = (label, o) => {
+        const x = o || {};
+        if (!x.ok) return '<div>· ' + esc(label) + '：<span class="ftt-muted">' + esc(String(x.reason || '未采集')) + '</span></div>';
+        return '<div>· ' + esc(label) + '：' + esc(Object.keys(x).filter((k) => k !== 'ok' && k !== 'note' && k !== 'reason' && typeof x[k] !== 'object')
+            .map((k) => k + '=' + String(x[k])).slice(0, 8).join(' · ')) + (x.note ? (' <span class="ftt-muted">' + esc(String(x.note)) + '</span>') : '') + '</div>';
+    };
+    const j = r.jank || {};
+    const list = (() => { try { return perfJankList({ limit: 5 }); } catch (e) { return []; } })();
+    const tg = (r.targets && Array.isArray(r.targets.list)) ? r.targets.list : [];
+    const base = (() => { try { return perfBaselineReport(); } catch (e) { return null; } })();
+    const baseLine = !base ? '基线读数不可用'
+        : (!base.available ? ('未跑过基线（' + esc(String(base.reason || 'no-baseline')) + '）—— 开发期可跑 `node scripts/perf-baseline.js --write` 生成')
+            : ('回归 <b>' + (base.regressions || []).length + '</b> 处 · 可收紧 <b>' + (base.improvements || []).length + '</b> 处（基线 ' + esc(String(new Date(Number(base.baselineAt) || 0).toLocaleString('zh-CN', { hour12: false }))) + '）'));
+    return '<div class="ftt-section" data-ftt-sec="perf"><div class="ftt-sec-title">📈 性能与卡顿 <span class="ftt-muted">只读 · 窗口 ' + Number(r.window || PERF_WINDOW) + ' 条</span></div>'
+        + '<div class="ftt-muted" data-ftt-perf-state>' + esc(String(r.text || perfReportText() || '')) + '</div>'
+        + '<div class="ftt-row ftt-w-full" style="display:block">'
+        + line('写入', rd.write) + line('读取台账', rd.read) + line('扫描量', rd.scan) + line('体积', rd.size)
+        + '</div>'
+        + '<div>· 卡顿：超阈 <b>' + Number(j.count || 0) + '</b> 段（notice ' + Number((j.byLevel || {}).notice || 0) + ' / stall '
+        + Number((j.byLevel || {}).stall || 0) + ' / freeze ' + Number((j.byLevel || {}).freeze || 0) + '）· 卡顿率 '
+        + esc(String(j.jankRate == null ? '—' : j.jankRate)) + ' · 去重丢弃 ' + Number(j.deduped || 0) + ' 段</div>'
+        + '<div>· 基线：' + baseLine + '</div>'
+        + hintDetailsHtml('超阈段明细（后 5 条；只记超阈段、同站点 800ms 去重、环形上限 ' + PERF_WINDOW + '）',
+            '<div>' + (list.length ? list.map((x) => esc(String(x.at ? new Date(Number(x.at)).toLocaleTimeString('zh-CN', { hour12: false }) : '') + ' ' + String(x.level) + ' ' + Number(x.ms) + 'ms @ ' + String(x.site))).join('<br>') : '（暂无超阈段）') + '</div>')
+        + hintDetailsHtml('潜在优化清单（前 5 条；只输出候选，**不自动开单**）',
+            '<div>' + (tg.length ? tg.slice(0, 5).map((x, i) => '<div>#' + (i + 1) + ' ' + esc(String(x.title || x.id || '')) + ' · 证据：' + esc(String(x.evidence || '')) + ' · 建议：' + esc(String(x.suggest || '')) + ' · 台账：' + esc(String(x.u || '未立项')) + '</div>').join('') : '（当前无可报候选）') + '</div>')
+        + '</div>';
+}
+
+/**
+ * 「🔌 调试桥」区块末尾的**只读清单与口径**（v3.45.4 · `技-41` ⑥）——
+ * 与 `/ftt-readonly`、`FTT.readonly()` **同源**（`core/debug-catalog.js`）：
+ * 只读出口按类别列出，**清空型动作显式标注**且**永不进桥白名单**（`docs/D31` §8 Q4 裁决）。
+ */
+export function readonlyCatalogHtml() {
+    const list = (() => { try { return readonlyOutletList(); } catch (e) { return []; } })();
+    const caps = (() => { try { return debugCapList(); } catch (e) { return []; } })();
+    const kinds = (() => { try { return debugKindList(); } catch (e) { return []; } })();
+    const req = (() => { try { return requiredContentList(); } catch (e) { return []; } })();
+    const read = list.filter((x) => x.kind !== 'clear');
+    const clear = list.filter((x) => x.kind === 'clear');
+    const groups = [];
+    for (const x of read) if (groups.indexOf(x.group) < 0) groups.push(x.group);
+    return '<div class="ftt-row ftt-w-full" style="display:block" data-ftt-readonly-list>'
+        // 注意（v3.45.4）：这里的计数用「个 / 条」，**不用「项」** —— `tests/unit/debug-page.test.js#N4` 有一条
+        //   「时钟追踪区块不得出现『 N 项』字样」的全页断言（历史口径），改词可避免误伤那条判据。
+        + '<div class="ftt-muted">只读清单（与桥白名单同源）：只读 <b>' + read.length + '</b> 个 · 清空型 <b>' + clear.length + '</b> 个 · CAP 表 <b>' + caps.length + '</b> 行 · 日志 kind <b>' + kinds.length + '</b> 类 · 必要内容 <b>' + req.length + '</b> 类</div>'
+        + '<div class="ftt-muted">' + esc('只读出口按类别登记在 `core/debug-catalog.js#READONLY_OUTLETS`；清空型动作永不进桥白名单。') + '</div>'
+        + hintDetailsHtml('只读出口清单（按类别；与 `/ftt-readonly`、`FTT.readonly()` 同源）',
+            '<div>' + groups.map((g) => esc('· ' + g + '：' + read.filter((x) => x.group === g).map((x) => x.name).join('、'))).join('<br>') + '</div>')
+        + hintDetailsHtml('清空型动作（永不进桥白名单；在面板 / 命令里走既有二次确认）',
+            '<div>' + esc(clear.map((x) => x.name).join('、') || '（无）') + '</div>')
+        + hintDetailsHtml('CAP 汇总表（唯一事实源 `core/debug-catalog.js`；新增长期留痕必须同时给上限与保留窗）',
+            '<div>' + caps.map((c) => esc(String(c.carrier) + ' ｜ 上限 ' + String(c.cap) + ' ｜ 保留窗 ' + String(c.window) + ' ｜ ' + String(c.source || ''))).join('<br>') + '</div>')
+        + '</div>';
+}
+
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
@@ -1418,7 +1510,12 @@ export function debugPageHtml(controls) {
             + '</div>'
             + '<div class="ftt-row"><span class="ftt-muted">最近 3 条：' + esc(debugLogErrors(3).map((l) => { const x = (() => { try { return JSON.parse(l.data); } catch (e) { return {}; } })(); return String(x.message || l.data || '').slice(0, 60); }).join(' ｜ ')) + '</span></div>';
     })();
+    // v3.45.4（`docs/D22` W10 `技-42`）：按 `docs/D31` §3.2 的**固定顺序**重排分节 ——
+    //   桥 → 日志 → 时间线 → 异常 → 台账 → 体检 → 时钟 → **性能（本次新增）** → 主载体。
+    //   重排**只改渲染顺序**：每个分节的实现与数据源一字未动（既有单测按内容断言，不按顺序）。
     return [
+        // ⑦ 调试桥（v3.0.7）：跨宿主本地调试（酒馆原生 + TauriTavern）—— 固定序第 1 位
+        debugBridgeSectionHtml(),
         '<div class="ftt-section"><div class="ftt-sec-title">调试日志</div>',
         sw,
         '<div class="ftt-muted">关闭后不再记录新日志；已存日志仍可查看。</div>',
@@ -1429,13 +1526,17 @@ export function debugPageHtml(controls) {
         '<div class="ftt-section"><div class="ftt-sec-title">📋 日志</div>',
         debugLogHtml(),
         '</div>',
+        // ④ 交互与宿主调用时间线
+        '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
+        traceSectionHtml(traceFilter),
+        '</div>',
         // ③ 异常（只看结果，不解释实现）
         '<div class="ftt-section"><div class="ftt-sec-title">⚠ 异常捕捉 <span class="ftt-muted">共 ' + errCount + ' 条</span></div>',
         errRows,
         '</div>',
-        // ④ 交互与宿主调用时间线
-        '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
-        traceSectionHtml(traceFilter),
+        // ④b v3.0.23：读取台账（服务端 / 本地 / 内存，每一次读取的时间与统计）
+        '<div class="ftt-section"><div class="ftt-sec-title">📥 读取台账 <span class="ftt-muted">服务端 / 本地 / 内存</span></div>',
+        readLedgerSectionHtml(20),
         '</div>',
         // ④a v3.13.0（用户要求「核对存在的 BUG 和数据异常」）：**数据体检**（只读零副作用）
         //   摘要一行 + 折叠明细（逐条 code / 维度 / 条目 / 字段）；自愈在载入期 `migrateState` 完成，这里只核对。
@@ -1451,20 +1552,16 @@ export function debugPageHtml(controls) {
                     '<div>' + (rows || '没有需要列出的明细。') + (r.truncated ? ('<div>…还有 ' + r.truncated + ' 条未列出</div>') : '') + '</div>');
         })(),
         '</div>',
-        // ④b v3.0.23：读取台账（服务端 / 本地 / 内存，每一次读取的时间与统计）
-        '<div class="ftt-section"><div class="ftt-sec-title">📥 读取台账 <span class="ftt-muted">服务端 / 本地 / 内存</span></div>',
-        readLedgerSectionHtml(20),
-        '</div>',
         // ⑤ 时钟取值追踪（时钟链路的审计视图）
         '<div class="ftt-section"><div class="ftt-sec-title">🕒 时钟取值追踪</div>',
         clockTraceSectionHtml(),
         '</div>',
-        // ⑥ chatMetadata 主载体（只读差异报告；S1 只读不写）
+        // ⑧ v3.45.4（W10）：性能与卡顿（探针接入调试面）—— 固定序第 8 位
+        perfSectionHtml(),
+        // ⑨ chatMetadata 主载体（只读差异报告；S1 只读不写）
         '<div class="ftt-section"><div class="ftt-sec-title">📎 chatMetadata 主载体（只读差异报告）</div>',
         chatMetaSectionHtml(),
         '</div>',
-        // ⑦ 调试桥（v3.0.7）：跨宿主本地调试（酒馆原生 + TauriTavern）
-        debugBridgeSectionHtml(),
     ].join('\n');
 }
 

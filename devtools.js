@@ -15,6 +15,10 @@ import { updateStatusText, hasUpdate, updateConfig } from './host/update.js';
 // v3.18.0（用户要求）：已去世研判**干跑**（只读）—— 直接在调试导出里实现，无需宿主接线即可核对
 import { snapshotDeathVerdict } from './core/character-repair.js';
 import { state as kernelState } from './core/model/runtime.js';
+// v3.45.4（`docs/D22` W10 · 来源稿 `docs/D31`）：**性能与卡顿只读四件套**（`技-40`）与**只读清单 / 口径汇总**（`技-41`）
+//   —— `FTT.*` / 调试桥 / 调试导出**三处同源**：这里与 `ui/debug.js` 的桥方法调用**同一批** core 函数，不各算各的。
+import { perfReport, perfJankList, perfTargets, perfBaselineReport, perfReportText } from './core/perf-probe.js';
+import { readonlyOutletList, debugCatalogReport, debugCatalogText } from './core/debug-catalog.js';
 
 // v2.46.0：启动更新检查的**排期**信息由宿主侧注入（延迟毫秒/原因/排期时刻）
 let extraHooks = {};
@@ -42,6 +46,13 @@ export function buildSnapshot(extra) {
         },
         dimensions: DIMENSIONS.map(d => d.kind),
         hostEvents: HOST_EVENTS.slice(),
+        // v3.45.4（W10 `技-40` / `技-41`）：**导出区块** —— 性能与卡顿读数 + 调试面口径汇总。
+        //   与桥方法（`ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`）与 `FTT.*` **同源**：
+        //   都调 `core/perf-probe.js` 的同一批函数，**没有任何一处重算**（`技-41` ⑤ 的口径）。
+        perf: (() => { try { return perfReport(); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; } })(),
+        perfText: (() => { try { return perfReportText(); } catch (e) { return ''; } })(),
+        catalog: (() => { try { return debugCatalogReport(); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; } })(),
+        catalogText: (() => { try { return debugCatalogText(); } catch (e) { return ''; } })(),
         status: statusText(Object.assign({ host: hasHost(), probe, interceptor: interceptorStats() }, extra || {})),
     };
 }
@@ -64,6 +75,18 @@ export function installDevtools(hooks) {
             //   让真机核对「哪一档可用」只需一次控制台调用（本机无真机，故必须留这条出口）。
             inputBox: () => inputBoxCapability(),
             inputBoxSteps: () => inputBoxVerifySteps(),
+            // v3.45.4（`docs/D22` W10 `技-40`）：**性能与卡顿只读四件套**（与调试桥 `ftt.perf*`、调试导出 `perf` 区块同源）
+            //   · `FTT.perf()`：四类读数 + 卡顿分级计数 + `jankRate` + 采样窗口（每条带追溯六字段）；
+            //   · `FTT.perfJank()`：超阈段明细（倒序，可 `{limit, level}` 过滤）；
+            //   · `FTT.perfTargets()`：潜在优化清单（7 条机械判据 → 证据 / 归因 / 建议 / 台账号或「未立项」）；
+            //   · `FTT.perfBaseline()`：与 `scripts/perf-baseline.json` 的差异（未跑过基线时如实 `available:false`）。
+            perf: () => perfReport(),
+            perfJank: (opts) => perfJankList(opts || {}),
+            perfTargets: () => perfTargets(),
+            perfBaseline: () => perfBaselineReport(),
+            // v3.45.4（W10 `技-41` ⑥）：**只读清单**（与调试桥白名单同源；清空型动作显式标注、永不进桥）
+            readonly: () => readonlyOutletList(),
+            debugCatalog: () => debugCatalogReport(),
             update: () => buildSnapshot().update,
             // P2：V1 数据导入（默认干跑；apply:true 才写入）
             importV1: (opts) => (hooks && typeof hooks.importV1 === 'function' ? hooks.importV1(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),

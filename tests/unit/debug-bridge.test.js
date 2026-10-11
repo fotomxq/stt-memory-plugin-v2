@@ -130,6 +130,7 @@ function useTauriTavern(withDev = true) {
         setBridgeMethods(T);
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
+                'ftt.catalog',                                                             // v3.45.4（W10 技-41）：调试面口径汇总（kind 枚举 / CAP 表 / 12 类必要内容 / 只读清单）
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
                 'ftt.config', 'ftt.conflictLog', 'ftt.conflicts',                          // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要；v3.45.1（W6 技-32）：+待确认项与记录（只读出口）
                 'ftt.dataHealth', 'ftt.dataHealthText',
@@ -139,7 +140,11 @@ function useTauriTavern(withDev = true) {
                 'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors', 'ftt.ledger', 'ftt.loadDiag',
                 'ftt.localDir',                                              // v3.26.0：+本机缓冲目录模式体检
                 'ftt.memorySample', 'ftt.memoryShape',
-                'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.plotScope', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads',
+                'ftt.pendingFloors', 'ftt.pendingScan',
+                // v3.45.4（W10 技-40 / 技-42）：性能与卡顿只读四件套（与 `FTT.perf*`、调试导出 perf 区块、调试页第 8 分节同源）
+                'ftt.perf', 'ftt.perfBaseline', 'ftt.perfJank', 'ftt.perfTargets',
+                'ftt.plotScope', 'ftt.probe',
+                'ftt.readLedgerText', 'ftt.readonly', 'ftt.reads',                          // v3.45.4（W10 技-41 ⑥）：+只读清单（与白名单同源，清空型动作永不进桥）
                 'ftt.search', 'ftt.snapshot', 'ftt.stateSize', 'ftt.syncLog',              // v3.25.0：+搜索 / 楼层窗口 / 同步日志
                 'ftt.tokenCost',                                             // v3.42.0：AI 用量与花费账本（只读；与设定 → API 同源）
                 'ftt.trace', 'ftt.traceStats',

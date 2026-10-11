@@ -13,7 +13,10 @@
 //   ④ 合并语义（`debugLogMerge`）保留 V1 v1.49 的修复口径：以内存为基准，仅补入存储中**内存没有**的条目，
 //      再统一按时间降序截断到 `DEBUG_CAP`（避免旧存储倒灌打乱「最新在前/环形挤出」）。
 // ============================================================
-import { cfg } from './model/runtime.js';
+import { cfg, dbgLog } from './model/runtime.js';
+// v3.45.4（`docs/D22` W10 `技-41` ①）：**kind 枚举表的单一事实源**（`docs/D31` §3.2 / §3.8「枚举化」）——
+//   本模块只**消费**它（登记判定 + 注入「未登记」读取器），绝不反向被它依赖（否则成环）。
+import { debugKindRegistered, setUnregisteredKindReader } from './debug-catalog.js';
 
 /** V1 `DEBUG_CAP`：环形缓冲上限 */
 const DEBUG_CAP = 300;
@@ -35,6 +38,80 @@ let hooks = { load: () => [], save: () => undefined };
 function setDebugLogHooks(next) {
     hooks = Object.assign({ load: () => [], save: () => undefined }, hooks, next || {});
     return hooks;
+}
+
+// ============================================================
+// v3.45.4（`docs/D22` W10 `技-41` ①/④）：**kind 登记制**（`docs/D31` §3.2 统一命名 / §3.8「枚举化」）
+//
+// 口径：业务日志的 `kind` 由 `core/debug-catalog.js#DEBUG_KINDS` **冻结为枚举**，新增需登记。
+//   **但绝不因为「未登记」就把日志丢掉** —— 排障最忌讳「有事件、日志里却查不到」：
+//   丢日志等于把 `技-41` 要治的「口径漂移」换成了更严重的**信息缺失**（且是静默的）。
+//   所以未登记 kind 走三步：① **照记**（本缓冲行为逐字不变）；② **计数**（`debugLogStats().unregistered`
+//   与 `debugUnregisteredKinds()` 可读）；③ **一次性提示**（同一个 kind 只提示一次，避免刷屏）。
+//
+// 为什么提示走 `core/model/runtime.js#dbgLog`，而不是自己往环形缓冲里塞一条：
+//   ① 本环形缓冲是**业务日志流** —— 自塞一条非业务条目会污染既有口径（300 条环的逐字黄金比对、
+//      缓冲页 `debugLogStats()` 的逐类别计数都会多出一类）；
+//   ② `runtime#dbgLog` 正是**宿主接线后的既有出口**（`host/chat.js` 把它接回本函数）：
+//      真机上提示会作为 `kind='调试'` 的一条**真的进环**，而纯内核 / 未接线时自然静默 ——
+//      既满足「写一条 `dbgLog('调试', …)` 提示」，又让内核保持零宿主依赖；
+//   ③ 提示**先于**业务条目入环：`unshift` 在提示之后，所以 `debugLogList()[0]` 永远是业务条目自己。
+//
+// 读取器的**依赖倒置**：`core/debug-catalog.js` 不能反向 import 本模块（会成环），
+//   因此由本模块在装载时把读取器**注入**给它（`setUnregisteredKindReader`）。
+// ============================================================
+/** 未登记 kind 的登记表：kind → { kind, count, firstAt, lastAt, notified } */
+let unregistered = new Map();
+/** 重入保护：提示本身若被接回本函数，绝不能再触发一次提示（否则递归） */
+let inKindNotice = false;
+
+/**
+ * 记一次「未登记 kind」：计数 + 一次性提示（绝不抛错；返回是否命中未登记）。
+ * @param {string} kind 分类
+ * @param {number} at **复用业务条目已经取到的时刻** —— 本函数**绝不自己读时钟**，三个理由：
+ *   ① 观测设施不该有额外开销（少一次时钟读取）；
+ *   ② 与本条日志的 `at` 同值，事后能把「哪条日志踩了未登记 kind」一一对上；
+ *   ③ **关键**：`tests/unit/debug-log-golden.test.js` 用「固定基准 + 每次调用 +1ms」的**确定性时钟**
+ *      逐字节比对 V1 黄金样本 —— 观测设施多读一次时钟就会让整串 `at` 漂移 1ms，那正是「观测反噬被观测者」。
+ */
+function noteUnregisteredKind(kind, at) {
+    try {
+        const k = String(kind == null ? '' : kind);
+        if (!k || debugKindRegistered(k)) return false;
+        const t = Number(at) > 0 ? Number(at) : 0;
+        const rec = unregistered.get(k) || { kind: k, count: 0, firstAt: t, lastAt: t, notified: false };
+        rec.count += 1;
+        if (t > 0) rec.lastAt = t;
+        unregistered.set(k, rec);
+        if (!rec.notified && !inKindNotice) {
+            rec.notified = true;
+            inKindNotice = true;
+            try {
+                dbgLog('调试', {
+                    action: '遇到未登记的调试日志 kind → 已照记（绝不丢日志），但按 D31 §3.2 应登记进 core/debug-catalog.js#DEBUG_KINDS',
+                    kind: k, count: rec.count, seen: debugUnregisteredKinds().map((x) => x.kind), u: 'U197',
+                });
+            } catch (e) { /* 提示失败不影响记录 */ } finally { inKindNotice = false; }
+        }
+        return true;
+    } catch (e) { return false; }
+}
+
+/** 未登记 kind（**只读**副本；按出现次数降序，同次数按名字） */
+function debugUnregisteredKinds() {
+    try {
+        return Array.from(unregistered.values())
+            .map((r) => ({ kind: r.kind, count: r.count, firstAt: r.firstAt, lastAt: r.lastAt, notified: r.notified }))
+            .sort((a, b) => (b.count - a.count) || String(a.kind).localeCompare(String(b.kind)));
+    } catch (e) { return []; }
+}
+// 交给 `core/debug-catalog.js` 读取（它的 `debugCatalogReport().unregisteredKinds` 因此是**实时**的）
+try { setUnregisteredKindReader(() => debugUnregisteredKinds()); } catch (e) { /* 忽略 */ }
+/** 复位未登记登记表（清空日志时一并复位 —— 与 `n` / `kinds` 同口径：清空后统计归零） */
+function resetUnregisteredKinds() {
+    const n = unregistered.size;
+    unregistered = new Map();
+    return n;
 }
 
 /** 归一单条日志（V1：字符串原样，其余 JSON 截断 6000；`at`/`kind` 与 V1 同形） */
@@ -59,7 +136,12 @@ function debugLogMerge(base, extra) {
 function debugLogPush(kind, data) {
     try {
         if (cfg && cfg.debugEnabled === false) return false;
-        debugLogs.unshift(debugLogNormalize(kind, data));
+        // v3.45.4（`技-41` ④）：**先**归一（这一次 `Date.now()` 基线本来就要读，不多不少），
+        //   再登记判定（未登记 → 计数 + 一次性提示），**最后**才入环 —— 顺序不可颠倒：
+        //   提示走到 `dbgLog` 会先入环，业务条目后入环才能稳居 `debugLogList()[0]`。
+        const row = debugLogNormalize(kind, data);
+        noteUnregisteredKind(kind, row.at);
+        debugLogs.unshift(row);
         if (debugLogs.length > DEBUG_CAP) debugLogs = debugLogs.slice(0, DEBUG_CAP);
         try { hooks.save(debugLogs.slice()); } catch (e) { /* 落盘失败不影响内存态 */ }
         return true;
@@ -94,6 +176,8 @@ function debugLogPushCoalesced(kind, key, data, opts) {
         const k = String(key == null ? '' : key);
         const win = Number.isFinite(Number(o.windowMs)) ? Math.max(0, Number(o.windowMs)) : COALESCE_WINDOW_MS;
         const now = Date.now();
+        // 口径与 `debugLogPush` 一致：合并式记录同样受 kind 枚举约束（复用上面已经读到的 `now`，不多读时钟）
+        noteUnregisteredKind(kind, now);
         const ref = k ? coalesceRefs[k] : null;
         if (o.force !== true && win > 0 && ref && (now - Number(ref.at || 0)) <= win && debugLogs.indexOf(ref.row) >= 0) {
             const row = ref.row;
@@ -142,6 +226,9 @@ function debugLogClear() {
     const n = debugLogs.length;
     debugLogs = [];
     coalesceRefs = Object.create(null);   // v3.40.0：合并引用表一并清（否则下次会去改写已不存在的条目）
+    // v3.45.4（`技-41` ④）：未登记 kind 的登记表与统计同口径复位（清空后 `n` / `kinds` / `unregistered` 全部归零）；
+    //   代价是「同 kind 只提示一次」会重新武装 —— 可接受：清空是用户主动动作，且提示本身按会话计。
+    resetUnregisteredKinds();
     try { hooks.save([]); } catch (e) { /* 忽略 */ }
     return n;
 }
@@ -172,16 +259,28 @@ function debugLogErrorCount() { return debugLogErrors().length; }
 /** 最近一条异常（无则 null） */
 function debugLogLastError() { return debugLogErrors(1)[0] || null; }
 
-/** 统计（调试页只读行用） */
+/**
+ * 统计（调试页只读行用）
+ *
+ * v3.45.4（`技-41` ④）：新增 `unregistered` —— **既有字段一个都没动**（`n` / `cap` / `kinds` / `newestAt`
+ *   的口径与顺序逐字保持，既有单测与黄金样本逐字断言它们）。
+ * @returns {{n:number, cap:number, kinds:object, newestAt:number, unregistered:{count:number, kinds:string[]}}}
+ */
 function debugLogStats() {
     const list = debugLogList();
     const kinds = {};
     list.forEach((l) => { const k = String((l && l.kind) || ''); kinds[k] = (kinds[k] || 0) + 1; });
-    return { n: list.length, cap: DEBUG_CAP, kinds, newestAt: Number((list[0] && list[0].at) || 0) };
+    const un = debugUnregisteredKinds();
+    return {
+        n: list.length, cap: DEBUG_CAP, kinds, newestAt: Number((list[0] && list[0].at) || 0),
+        // `count` = 未登记 kind 的**出现次数**合计；`kinds` = 去重后的 kind 名（按次数降序）
+        unregistered: { count: un.reduce((s, x) => s + Number(x.count || 0), 0), kinds: un.map((x) => x.kind) },
+    };
 }
 
 export {
     DEBUG_CAP, DEBUG_KEY, DEBUG_DATA_MAX,
     setDebugLogHooks, debugLogPush, debugLogPushCoalesced, debugLogList, debugLogClear, debugLogSync, debugLogStats, debugLogMerge, debugLogNormalize,
     debugLogErrors, debugLogErrorCount, debugLogLastError,
+    debugUnregisteredKinds,
 };

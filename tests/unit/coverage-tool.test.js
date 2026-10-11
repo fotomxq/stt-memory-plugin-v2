@@ -100,8 +100,12 @@ A('C8 **先观测不阻断**（`技-11` 的硬口径）：CLI 恒以退出码 0 
     const cli = readFileSync(join(ROOT, 'scripts', 'coverage.js'), 'utf8');
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
     const gate = String(pkg.scripts.gate || '');
+    // v3.45.4：原判据用 `gate.indexOf('coverage') < 0`（子串）。W10 新增的 `scripts/check-debug-coverage.js`
+    //   是**另一件事**（调试面完整性门禁，故意进 gate），文件名里也含 "coverage" → 子串判据会误伤。
+    //   这里收窄为「gate 链里不得出现**覆盖率工具本体** `scripts/coverage.js`」，语义比原来更准。
+    const gateHasCoverageTool = /(?:^|&&)\s*node\s+scripts\/coverage\.js\s*(?=&&|$)/.test(gate);
     return /process\.exit\(0\)/.test(cli)
-        && gate.indexOf('coverage') < 0
+        && !gateHasCoverageTool
         && typeof pkg.scripts.coverage === 'string' && pkg.scripts.coverage.indexOf('scripts/coverage.js') >= 0;
 })(), '');
 

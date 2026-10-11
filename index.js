@@ -62,6 +62,9 @@ import { setDebugHooks as setDebugPageHooks, buildDebugExport, installDebugBridg
 import { showToast } from './ui/notify.js';
 // v2.42.0：交互/宿主/命令追踪（FTT 入口包装 + 诊断入口）
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceList, traceTimelineText, traceStats, traceContext, traceClear } from './core/trace.js';
+// v3.45.4（`docs/D22` W10 · 来源稿 `docs/D31`）：**性能与卡顿探针**（`技-39`）+ 统一调试接口（`技-40`）
+//   —— 探针本身在 `core/perf-probe.js`（纯净内核、只记超阈段），宿主侧只负责把「时钟 / 时间线 / 台账 / 写队列 / 基线」注入进去。
+import { setPerfHooks } from './core/perf-probe.js';
 // v2.35.0（B10-a API 页与按用途渠道）：内核 target 解析 + 宿主三通道适配
 import { resolveApiTarget, purposeOfLabel, apiChannelSummary, apiPresetSave, apiPresetLoad, apiPresetDelete } from './core/api-channel.js';
 // v2.37.0：时钟取值追踪（诊断入口）
@@ -80,7 +83,7 @@ import { calibrateBasics } from './host/preflight.js';
 import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump, kernelStateReady, markFloorsProcessed } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）；v3.24.1：+kernelStateReady（初始化顺序守卫）；v3.26.4：+markFloorsProcessed（用户登记未分析楼层为已分析）
 import { loadKernelCfg, saveKernelCfg } from './adapters/config-store.js';
 import { registerLocaleData, i18nStats, t } from './adapters/i18n.js';
-import { folderInfo } from './host/paths.js';
+import { folderInfo, extensionFolder } from './host/paths.js';
 import { state as kernelState } from './core/model/runtime.js';
 import { migrateState, lastHealInfo } from './core/migrate.js';   // v3.13.1：+lastHealInfo（载入期自愈留痕）
 import { emptyState } from './core/state.js';
@@ -229,7 +232,7 @@ import {
 import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipBytes } from './adapters/gzip.js';
 // v2.77.0：文件通道后端路由 + 宿主原生存储（官方契约）诊断入口
 import { fileTransportStatus, fileTransportListKeys, fileTransportKey, fileTransportDropCaches, resetFileTransportSession } from './adapters/file-transport.js';
-import { ttChannelInfo, ttMissStats, ttStoreOverview, TT_NS, TT_LEGACY_NS, TT_TABLE } from './adapters/tt-store.js';
+import { ttChannelInfo, ttMissStats, ttStoreOverview, ttWriteStats, TT_NS, TT_LEGACY_NS, TT_TABLE } from './adapters/tt-store.js';
 
 const runtime = {
     ready: false,
@@ -2182,6 +2185,45 @@ function wireNsfwSoftenHooks() {
     return true;
 }
 
+/**
+ * v3.45.4（`docs/D22` W10 · 来源稿 `docs/D31` §4）：**性能与卡顿探针**的宿主接线（只接一次、幂等）。
+ *
+ * 探针（`core/perf-probe.js`）是**纯净内核**：它只做「记超阈段 + 环形上限 + 分级」，四类读数（写入 / 读取台账 / 扫描量 / 体积）
+ * 与「基线」全部经这里注入 —— 内核不碰宿主、不读文件。注入内容与理由：
+ *   · `listTrace`：事件时间线（已有的站点 + 耗时）→ 探针据此取「最近有哪些慢段」，**不新增采集点开销**；
+ *   · `readLedger`：读取台账统计（`readLedgerStats`，**同一函数**，不重算 —— `技-41` ⑤ 的口径）；
+ *   · `writeStats`：原生写队列诊断（并发峰值恒为 1 / 最近一次写的标签与耗时）；
+ *   · `getBaseline`：**开发期产物** `scripts/perf-baseline.json`（`技-39` 的棘轮基线），由 `loadPerfBaseline()` 缓存；
+ *     取不到时探针如实回 `available:false`（**不编造**），用户没跑过基线脚本就是这个状态。
+ */
+let perfWired = false;
+function wirePerfHooks() {
+    if (perfWired) return true;
+    perfWired = true;
+    setPerfHooks({
+        now: () => Date.now(),
+        listTrace: () => { try { return traceList(); } catch (e) { return []; } },
+        readLedger: () => { try { return readLedgerStats(); } catch (e) { return null; } },
+        writeStats: () => { try { return ttWriteStats(); } catch (e) { return null; } },
+        getBaseline: () => perfBaselineCache,
+    });
+    return true;
+}
+/** 基线缓存（装配期 best-effort 取一次；`scripts/perf-baseline.json` 是开发期产物，缺失属正常） */
+let perfBaselineCache = null;
+async function loadPerfBaseline() {
+    try {
+        const base = String((() => { try { return extensionFolder() || ''; } catch (e) { return ''; } })() || '');
+        const url = (base ? (base.replace(/\/+$/, '') + '/') : './') + 'scripts/perf-baseline.json';
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r || !r.ok) return false;
+        const obj = await r.json();
+        if (!obj || typeof obj !== 'object') return false;
+        perfBaselineCache = obj;
+        return true;
+    } catch (e) { return false; }
+}
+
 /** 删楼钩子只接一次（幂等；账本落 ST 扩展设置 `floorTrimLog` —— 不进数据模型 → DATA_VERSION 不变） */
 let floorTrimWired = false;
 function wireFloorTrimHooks() {
@@ -2446,6 +2488,10 @@ function installHostBridges() {
     wireNsfwAnalyzeHooks();
     // v3.45.2（`docs/D22` W7 `应-23`）：**弱化运行账本**钩子（同上 —— 设定页「NSFW弱化」分节的「上次弱化」要立刻可读）
     wireNsfwSoftenHooks();
+    // v3.45.4（`docs/D22` W10 `技-39`/`技-40`）：**性能与卡顿探针**钩子（装配期接线，四类读数与基线都从这里注入；
+    //   基线文件 best-effort 异步取一次，**不 await** —— 不改变装配期微任务步数）
+    wirePerfHooks();
+    try { loadPerfBaseline(); } catch (e) { /* 基线属开发期产物，取不到就如实 available:false */ }
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages, opts) => {
