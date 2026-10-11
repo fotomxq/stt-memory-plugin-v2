@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.41.0",
+  "version": "3.42.0",
   "updatedAt": "2026-10-10",
   "generatedAt": "2026-10-10",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.42.0",
+      "date": "2026-10-10",
+      "title": "设定新增 Token 预估与花费（被动记账 · 价格清单 · 人民币估算）",
+      "points": [
+        "落点：设定 → API → 💰 Token 预估与花费（新增一节）。15 个设定子页与控件数不变 —— 该节用 data-ftt-token-* 自持标记，不进内核 cfg 控…",
+        "DATA_VERSION 不变：账本是运行账本，落 ST 扩展设置 aiUsage（与 syncConflicts / pipelineEta / floorTrimLog 同口…",
+        "记账口径：（写死在代码里，UI 与测试共用同一份）：| # | 口径 || --- | --- || ① | 被动：只在一次真实 AI 请求结束时落一条（成功与失败都记；失败只记…"
+      ]
+    },
     {
       "version": "3.41.0",
       "date": "2026-10-10",

@@ -3,6 +3,46 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.42.0（2026-10-10）· 设定新增 **Token 预估与花费**（被动记账 · 价格清单 · 人民币估算）
+
+**用户要求**（原话）：「在设定中新增token预估，尤其是请求token、接收、缓存等，并结合大模型价格清单预测花费了多少人民币。注意该功能不需要高频次，只需被动每次请求记录一下统计信息即可。」
+
+**落点**：**设定 → API → 💰 Token 预估与花费**（新增一节）。**15 个设定子页与控件数不变** —— 该节用 `data-ftt-token-*` 自持标记，**不进内核 `cfg` 控件引擎**（汇率与单价覆盖属「运行账本的本地偏好」，与 `panelMaxWidth` 同类）。
+**`DATA_VERSION` 不变**：账本是**运行账本**，落 ST 扩展设置 `aiUsage`（与 `syncConflicts` / `pipelineEta` / `floorTrimLog` 同口径），**不进记忆数据、不参与跨端记忆同步**（各端按自己的用量计费，合并会互相污染）。
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | **新增 `core/token-cost.js`** | 内核账本（零宿主依赖）：内置参考价目表 + `priceForModel`（**长匹配优先**）+ `costBreakdown`（纯函数）+ `recordAiUsage` / `aiUsageSummary` / `aiUsageRecent` / `resetAiUsage` + 单价与汇率写入口 + 展示格式化。**明细环保留 200 条，累计用微元整数不受上限影响**；分维度桶键数上限 40（超出并入「其它」） |
+| ② | **新增 `host/ai-usage.js`** | 宿主侧落账助手（算字符数 / 取宿主模型名 / 落一条账、**吞异常**）—— 单独成文件以避免 `generation ↔ api-channel` 互相引用 |
+| ③ | `host/api-channel.js` | `sendDirect`（**能拿真实 `usage`** → 实测记账，含响应回显的 `model`）· `sendViaProfile`（宿主给了 `data.usage` 就实测）· `sendWithTarget` 透传 `label`（只作归组标签，**不改发送语义**） |
+| ④ | `host/generation.js` | host 分支（`generateRaw` 只回文本）→ **按字符数估算** + 宿主模型名 best-effort；`rawGenerate({usageLabel})` 透传（`profile`/`direct` 由 ③ 记账，**不在上层重复计**） |
+| ⑤ | `index.js` | `wireTokenCostHooks()`（装配期即接线，第一次请求的账不会丢）· `callAi` 传 `usageLabel` · `apiSend` 透传 `label` · `FTT.aiUsage()` / `FTT.aiUsageRecent(n)`（**只读**） |
+| ⑥ | `devtools.js` + `ui/debug.js` | `FTT.aiUsage*` 两出口 + 调试桥只读方法 **`ftt.tokenCost`**（README §3 只读方法数 49 → **50**；清空与改价**只在设定页**，调试导出不做写入口） |
+| ⑦ | `adapters/settings.js` | `DEFAULT_SETTINGS` 新增 `aiUsage`（环形明细 + 累计聚合 + 单价覆盖 + 汇率）—— 运行账本键必须登记，否则 `setSetting` 静默失败（`P10bg` §6 的教训） |
+| ⑧ | `ui/api-page.js` | 新增 `tokenCostSectionHtml()` 与 5 个动作（`tokenRateSave` / `tokenPriceSave` / `tokenPriceReset` / `tokenDraftPrices` / `tokenReset`） |
+
+**记账口径**（写死在代码里，UI 与测试共用同一份）：
+
+| # | 口径 |
+| --- | --- |
+| ① | **被动**：只在一次真实 AI 请求**结束**时落一条（成功与失败都记；**失败只记次数，token 与花费记 0** —— 未发生的费用不算进去） |
+| ② | **估算** = `ceil(字符数 / 4)`（复用 `core/pipeline.js#estTokens`，与管线状态的 token 读数**同一件**）；**实测优先**：拿到响应 `usage` 就照抄并标「实测」 |
+| ③ | **两种 `usage` 形态归一到「总输入含缓存」**：OpenAI 的 `prompt_tokens` **含**缓存命中；Anthropic 的 `input_tokens` **不含** `cache_read_input_tokens` → 相加后再算。**未命中 = 总输入 − 缓存命中**（缓存部分按 `cachedIn` 单价计，**不重复收全价**） |
+| ④ | **缓存 token 只有 API 明确回报才算**（`prompt_tokens_details.cached_tokens` / `prompt_cache_hit_tokens` / `cache_read_input_tokens`）；估算通道记 0，**不猜** |
+| ⑤ | **花费** = `(未命中输入 × in + 命中输入 × cachedIn + 输出 × out) ÷ 100 万`；`USD` 条目按**可配置汇率**（默认 7.2）折人民币 |
+| ⑥ | **探针与「🧪 测试」不计入**（诊断请求不是记忆管线花费） |
+| ⑦ | **未定价的模型照样记 token**，花费显示「未定价」（**不显示 ¥0.00**），并在统计里单独计数 → 设定页可「🧩 为未定价模型建条目」一键生成 0 价模板 |
+
+**价格清单的诚实口径（不编价格）**：内置价目表**只收已核实来源**的条目，每条带 `src`（来源）与 `asOf`（采集日期）并在 UI 逐条展示；
+首版收 **DeepSeek 官方价目页**（`deepseek-flash` / `deepseek-v4-pro`，**峰时价** —— 非峰期为半价，故预估**偏保守**）。
+用户可用设定页的 **JSON 文本域**覆盖任意条目或新增（同名键 → 覆盖，新键 → 新增），并可改汇率、一键清空覆盖；**价格改动只影响之后的记账**（历史按当时单价留痕）。
+
+**测试**：新增 `tests/unit/token-cost.test.js`（**16 项**：价目表结构与来源 · 长匹配优先 · 估算口径同源 · USD/CNY/未定价折算 · 两种 `usage` 形态归一 · 缓存只在回报时计 · 微元累计与分维度聚合 · 环上限与累计无关 · 汇率非法值回落 · 覆盖写入/坏入参拒绝/覆盖内置/新增 · 清空保留单价与汇率 · **坏账本归一不抛异常** · 展示格式化）
+与 `tests/unit/token-cost-wiring.test.js`（**5 项**：三条通道各一条真实请求 → 账本落一条；`direct` HTTP 失败记 0 token；`probeTarget` 不落账；**三条通道返回键集逐一对齐** = 「不改返回形状」的硬证据）。
+`api-channel-golden`（16 项）与冒烟（223 项）**零改动通过**；`debug-bridge` 白名单同步新增 `ftt.tokenCost`。
+
+**未做（登记）**：Embedding / Rerank 用量（本版只记 chat 请求）· 价目表自动更新（插件不发额外请求，参考值 + 用户覆盖）· 流式通道的实测 token（宿主只回累计文本）· 账本跨端合并（明确不合并）。
+
 ## v3.41.0（2026-10-10）· `docs/D22` **W2 批次**（业务维度主体）：提升通道通用化 **P0** · 衰退基准统一为**剧情时间** · 「已就绪未暴露」清单 · i18n 与「不删数据」两项裁决落账
 
 **用户要求**（原话）：「请开发待开发事项，W2」。

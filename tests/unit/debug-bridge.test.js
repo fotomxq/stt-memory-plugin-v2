@@ -139,6 +139,7 @@ function useTauriTavern(withDev = true) {
                 'ftt.memorySample', 'ftt.memoryShape',
                 'ftt.pendingFloors', 'ftt.pendingScan', 'ftt.plotScope', 'ftt.probe', 'ftt.readLedgerText', 'ftt.reads',
                 'ftt.search', 'ftt.snapshot', 'ftt.stateSize', 'ftt.syncLog',              // v3.25.0：+搜索 / 楼层窗口 / 同步日志
+                'ftt.tokenCost',                                             // v3.42.0：AI 用量与花费账本（只读；与设定 → API 同源）
                 'ftt.trace', 'ftt.traceStats',
                 'ftt.writeStats',                                            // v3.15.1：原生写队列诊断（并发峰值 / 最近一次写）
                 'host.backendLogsTail', 'host.consoleCaptureGet', 'host.frontendLogsList',

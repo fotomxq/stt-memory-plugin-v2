@@ -11,6 +11,8 @@ import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRun
 import { getSettings, setSetting } from './adapters/settings.js';
 // v2.90.0（用户要求）：管线状态的历史耗时（预估倒计时样本）落 ST 扩展设置 —— 不进数据模型 → DATA_VERSION 不变
 import { setPipelineHooks } from './core/pipeline.js';
+// v3.42.0（用户要求「设定中新增 token 预估」）：AI 用量与花费账本（运行账本 → ST 扩展设置 `aiUsage`）
+import { setTokenCostHooks, aiUsageSummary, aiUsageRecent, tokenPriceList, tokenPriceOverrides, setTokenPriceOverrides, setUsdCnyRate, resetAiUsage } from './core/token-cost.js';
 // v2.92.0（用户要求）：需人工确认项（跨端冲突/自检异常）—— 设定 + 总览同时展示，落 ST 扩展设置
 import { setConflictHooks, migrateConflicts } from './core/conflicts.js';
 import { setFloorShrinkHook } from './host/floors.js';
@@ -1460,7 +1462,7 @@ function bootstrapDiagnostics() {
             apiPresetDelete: (name) => { const r = apiPresetDelete(name); if (r.ok) { try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ } } return r; },
             apiTest: (opts) => probeTarget(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose }), (opts && opts.kind) || 'chat'),
             apiModels: (opts) => probeModels(opts && opts.target ? opts.target : resolveApiTarget({ purpose: opts && opts.purpose })),
-            apiSend: (opts) => sendWithTarget((opts && opts.target) || resolveApiTarget({ purpose: opts && opts.purpose }), { systemPrompt: opts && opts.systemPrompt, prompt: opts && opts.prompt }),
+            apiSend: (opts) => sendWithTarget((opts && opts.target) || resolveApiTarget({ purpose: opts && opts.purpose }), { systemPrompt: opts && opts.systemPrompt, prompt: opts && opts.prompt, label: opts && opts.label }),
             // v2.58.0：提取记忆三层（向量 / JS / AI）—— 设置页测试、诊断与命令共用
             vectorLayerInfo: () => vectorLayerInfo(),
             vectorLayerStatus: () => vectorLayerStatus(),
@@ -1482,6 +1484,10 @@ function bootstrapDiagnostics() {
             worldbookLegacyEntryName: () => worldbookLegacyEntryName(),
             worldbookTotalBytes: (e) => worldbookTotalBytes(e),
             worldbookMemoryTotal: () => worldbookMemoryTotal(),
+            // v3.42.0（用户要求「设定中新增 token 预估」）：AI 用量与花费账本 —— **只读两出口**
+            //   （与设定页「API → Token 预估与花费」同源；清空 / 改价只在设定页，调试导出不做写入口）
+            aiUsage: () => aiUsageSummary(),
+            aiUsageRecent: (limit) => aiUsageRecent(limit),
             // v3.0.22（用户要求）：总览「💾 保存（对齐所有存储）」同源入口（命令 / devtools / 测试共用）
             saveAll: (o2) => runSaveAll(o2 || {}),
             worldbookSync: () => scheduleWorldbookSync(),
@@ -1881,6 +1887,7 @@ export async function openPanelPopup(tab) {
         //   v3.37.0（S3）：改走幂等 `wireConflictHooks()`（`init()` 也会调用 → 没开过面板也不丢记录）
         wireConflictHooks();
         wirePipelineHooks();
+        wireTokenCostHooks();      // v3.42.0：AI 用量与花费账本（与管线样本同批接线）
         setDebugPageHooks({
             dump: () => debugDumpSnapshot(),
             meta: () => ({
@@ -2026,6 +2033,23 @@ function wirePipelineHooks() {
         saveHistory: (h) => { try { setSetting('pipelineEta', (h && typeof h === 'object') ? h : {}); } catch (e) { /* 忽略 */ } },
         // v3.0.14：管线异常留痕（超时收尾 / 异常大的耗时样本不入账）→ 调试日志，便于事后核对
         log: (msg, detail) => { try { debugLogPush('管线', Object.assign({ action: String(msg || '') }, detail || {})); } catch (e) { /* 忽略 */ } },
+    });
+    return true;
+}
+
+/**
+ * v3.42.0（用户要求「设定中新增 token 预估…被动每次请求记录统计信息」）——**AI 用量与花费账本**的落地接线。
+ *
+ * 与 `wirePipelineHooks` 同款：账本属**运行账本**而非记忆数据，故落 ST 扩展设置（`aiUsage`）→ `DATA_VERSION` 不变；
+ * 与「面板是否开过」无关（在 `activate` 装配期就接线，避免第一次请求的账丢在内存里）。
+ */
+let tokenCostWired = false;
+function wireTokenCostHooks() {
+    if (tokenCostWired) return true;
+    tokenCostWired = true;
+    setTokenCostHooks({
+        load: () => { try { return getSettings().aiUsage || {}; } catch (e) { return {}; } },
+        save: (v) => { try { setSetting('aiUsage', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
     });
     return true;
 }
@@ -2398,6 +2422,7 @@ function installHostBridges() {
     //   ① 历史读写的接线此前**只在打开面板时**发生（`openPanelPopup`）→ 未开过面板就永远读不到/写不进样本；
     //   ② `pipelineEta` 一度不在 `DEFAULT_SETTINGS`（v2.94.0 已修），落盘静默失败。现在与其它内核钩子同批装配。
     wirePipelineHooks();
+    wireTokenCostHooks();      // v3.42.0：AI 用量与花费账本（装配期即接线，第一次请求的账不会丢）
     // v3.19.0：NSFW 词条分析账本钩子（设定页状态行要在装配期就能读到「上次分析」）
     wireNsfwAnalyzeHooks();
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
@@ -2409,7 +2434,8 @@ function installHostBridges() {
                 //   target.channel === 'host'，行为与 v2.34.0 **完全一致**。
                 const label = opts && opts.label;
                 const target = resolveApiTarget({ purpose: purposeOfLabel(label) });
-                const r = await rawGenerate(Object.assign(promptToGenerateArgs(messages), { target }));
+                // v3.42.0：`usageLabel` 供用量账本归组（与管线状态的 `label` 同源；不改变发送语义）
+                const r = await rawGenerate(Object.assign(promptToGenerateArgs(messages), { target, usageLabel: label }));
                 return r && r.ok ? { ok: true, text: String(r.text || '') } : { ok: false, error: String((r && r.error) || 'no-generate') };
             } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
         },

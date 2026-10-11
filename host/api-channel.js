@@ -20,6 +20,9 @@
 import { getCtx } from './st-api.js';
 // v3.0.0（用户要求「所有 AI 请求…都应该在管线出现提示信息」）：连通性测试 / 获取模型也进管线
 import { trackPipeline } from '../core/pipeline.js';
+// v3.42.0（用户要求「设定中新增 token 预估…被动每次请求记录统计信息」）：本文件的两个发送函数
+//   （`sendDirect` / `sendViaProfile`）是**最靠近真实请求**的落点，用量账本在这里落一条
+import { noteAiUsage } from './ai-usage.js';
 
 /** 直连请求超时（毫秒）：V1 无超时（靠用户中断），V2 加兜底避免界面挂死 */
 export const DIRECT_TIMEOUT_MS = 120000;
@@ -126,11 +129,24 @@ function withTimeout(timeoutMs) {
  * `temperature`/`topP` 经 `overridePayload` 覆盖（酒馆官方扩展 API 支持的按次覆盖）；
  * `maxTokens` 为 `sendRequest` 的独立形参。
  */
-export async function sendViaProfile({ profileId, systemPrompt, prompt, maxTokens, temperature, topP, onToken } = {}) {
+export async function sendViaProfile({ profileId, systemPrompt, prompt, maxTokens, temperature, topP, onToken, label } = {}) {
     const svc = connectionService();
     if (!svc) return { ok: false, error: '酒馆连接配置服务不可用（请在酒馆扩展里启用「连接管理」）' };
     const id = str(profileId);
     if (!id) return { ok: false, error: '未选择酒馆连接配置' };
+    // v3.42.0：本通道的模型名取「连接配置」里的 model（记账用；取不到 → (未识别)）
+    const prof = (() => {
+        try { const r = listConnectionProfiles(); return (r && r.ok ? r.profiles : []).filter((x) => x.id === id)[0] || null; } catch (e) { return null; }
+    })();
+    const usageModel = str(prof && prof.model) || str(prof && prof.name) || '(未识别)';
+    const t0 = Date.now();
+    /** 记账（成功 / 失败都记一条；`usage` 只有宿主给了才带；失败时 token 与花费记 0） */
+    const note = (r) => noteAiUsage({
+        label: label, model: usageModel, channel: 'profile',
+        systemPrompt: systemPrompt, prompt: prompt, promptChars: (r && r.ok !== false) ? undefined : 0,
+        respChars: String((r && r.text) || '').length,
+        usage: (r && r.usage) || null, ok: !!(r && r.ok !== false), ms: Date.now() - t0,
+    });
     const messages = [];
     if (str(systemPrompt)) messages.push({ role: 'system', content: String(systemPrompt) });
     messages.push({ role: 'user', content: String(prompt == null ? '' : prompt) });
@@ -145,6 +161,9 @@ export async function sendViaProfile({ profileId, systemPrompt, prompt, maxToken
     const once = async () => {
         const data = await svc.sendRequest(id, messages, maxOut, { stream: false, extractData: true, includePreset: true, includeInstruct: true }, override);
         const text = data && typeof data === 'object' ? String(data.content == null ? '' : data.content) : String(data == null ? '' : data);
+        // v3.42.0：**被动记账**（宿主若在返回体里带 `usage` 就按实测，否则按字符数估算）——
+        //   记账不改变本函数的返回形状（`note()` 的返回值被丢弃）
+        note({ ok: true, text: text, usage: (data && typeof data === 'object' && data.usage) || null });
         return { ok: true, text, via: 'profile', profileId: id, streamed: false };
     };
 
@@ -163,7 +182,11 @@ export async function sendViaProfile({ profileId, systemPrompt, prompt, maxToken
                     const cur = (chunk && typeof chunk === 'object') ? String(chunk.text == null ? '' : chunk.text) : String(chunk == null ? '' : chunk);
                     if (cur.length > acc.length) { const delta = cur.slice(acc.length); acc = cur; try { onToken(delta); } catch (e) { /* 回调失败不影响生成 */ } }
                 }
-                if (acc) return { ok: true, text: acc, via: 'profile', profileId: id, streamed: true };
+                if (acc) {
+                    // 流式通道拿不到 `usage` → 按字符数估算（账本如实标 `estimate`）
+                    note({ ok: true, text: acc, usage: null });
+                    return { ok: true, text: acc, via: 'profile', profileId: id, streamed: true };
+                }
                 // 生成器没吐出任何内容 → 交给一次性路径再试（部分后端不支持流式时会静默空返回）
             }
             // eslint-disable-next-line no-empty
@@ -174,16 +197,25 @@ export async function sendViaProfile({ profileId, systemPrompt, prompt, maxToken
     } catch (e) {
         const cause = e && e.cause ? String((e.cause && e.cause.message) || e.cause) : '';
         const msg = String((e && e.message) || e);
+        note({ ok: false, text: '', usage: null });          // v3.42.0：失败的请求同样记一条（token 记 0）
         return { ok: false, error: (msg + (cause ? '：' + cause : '')).slice(0, 300) };
     }
 }
 
 /** 自建连接直连（V1 `callChatCompletion` 的端点/鉴权/请求体语义逐条移植） */
-export async function sendDirect({ apiUrl, apiKey, model, systemPrompt, prompt, temperature, maxTokens, topP, timeoutMs } = {}) {
+export async function sendDirect({ apiUrl, apiKey, model, systemPrompt, prompt, temperature, maxTokens, topP, timeoutMs, label } = {}) {
     if (typeof globalThis.fetch !== 'function') return { ok: false, error: '当前环境没有 fetch' };
     const url = trimUrl(apiUrl);
     if (!url) return { ok: false, error: '未配置 API 地址' };
     if (!str(model)) return { ok: false, error: '未配置模型' };
+    const t0 = Date.now();
+    /** v3.42.0：**被动记账**（本通道能拿到 OpenAI 兼容的真实 `usage` → 账本按实测记）；
+     *  **失败时 token 与花费记 0**（请求未被计费，只计失败次数），避免把没发生的费用算进去。 */
+    const note = (ok, text, usage, modelUsed) => noteAiUsage({
+        label: label, model: str(modelUsed) || str(model) || '(未识别)', channel: 'direct',
+        systemPrompt: systemPrompt, prompt: prompt, promptChars: ok ? undefined : 0,
+        respChars: String(text || '').length, usage: usage || null, ok: !!ok, ms: Date.now() - t0,
+    });
     const messages = [];
     if (str(systemPrompt)) messages.push({ role: 'system', content: String(systemPrompt) });
     messages.push({ role: 'user', content: String(prompt == null ? '' : prompt) });
@@ -199,13 +231,17 @@ export async function sendDirect({ apiUrl, apiKey, model, systemPrompt, prompt, 
         const res = await globalThis.fetch(chatEndpoint(url), { method: 'POST', headers, body: JSON.stringify(body), ...t.init });
         if (!res || !res.ok) {
             const txt = res && typeof res.text === 'function' ? await res.text().catch(() => (res && res.statusText) || '') : '';
+            note(false, '', null, model);       // v3.42.0：HTTP 失败也记一条（token 记 0）
             return { ok: false, error: ('HTTP ' + ((res && res.status) || 0) + ': ' + String(txt).slice(0, 200)) };
         }
         const j = typeof res.json === 'function' ? await res.json() : null;
         const text = (j && j.choices && j.choices[0] && ((j.choices[0].message && j.choices[0].message.content) || j.choices[0].text)) || '';
+        // v3.42.0：自建连接是**唯一能拿到真实 `usage`** 的通道（`j.model` 回显也比配置值更可信）
+        note(true, String(text == null ? '' : text), (j && j.usage) || null, (j && j.model) || model);
         return { ok: true, text: String(text == null ? '' : text), via: 'direct', url: chatEndpoint(url) };
     } catch (e) {
         const msg = String((e && e.message) || e);
+        note(false, '', null, model);
         // 浏览器直连的常见失败：CORS / 网络不可达 —— 如实回报并给出可操作建议
         const hint = /Failed to fetch|NetworkError|Load failed/i.test(msg) ? '（浏览器直连失败：多为目标服务未开放 CORS，或网络不可达；可改用「酒馆连接配置」通道）' : '';
         return { ok: false, error: (msg + hint).slice(0, 300) };
@@ -213,7 +249,7 @@ export async function sendDirect({ apiUrl, apiKey, model, systemPrompt, prompt, 
 }
 
 /** 按 target 发送（host 通道不在此处理，由 `host/generation.js#rawGenerate` 走 `generateRaw`） */
-export async function sendWithTarget(target, { systemPrompt, prompt, onToken } = {}) {
+export async function sendWithTarget(target, { systemPrompt, prompt, onToken, label } = {}) {
     const t = target || {};
     const use = targetUsable(t);
     if (!use.ok) return { ok: false, error: use.error };
@@ -222,12 +258,14 @@ export async function sendWithTarget(target, { systemPrompt, prompt, onToken } =
             profileId: t.profileId, systemPrompt, prompt,
             maxTokens: t.maxTokens, temperature: t.temperature, topP: t.topP,
             onToken: onToken,          // v2.95.0：官方流式通道逐块回调（非流式/失败自动回落）
+            label: label,              // v3.42.0：用量账本的归组标签（不改变发送语义）
         });
     }
     if (t.channel === 'direct') {
         return await sendDirect({
             apiUrl: t.apiUrl, apiKey: t.apiKey, model: t.model, systemPrompt, prompt,
             temperature: t.temperature, maxTokens: t.maxTokens, topP: t.topP,
+            label: label,              // v3.42.0：用量账本的归组标签（不改变发送语义）
         });
     }
     return { ok: false, error: 'host 通道应由宿主 generateRaw 处理' };

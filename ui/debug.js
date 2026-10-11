@@ -658,6 +658,13 @@ export function buildBridgeMethods() {
     // v3.0.23（只读）：读取台账（每一次服务端/本地/内存读取的时间、体积、条数、结果）
     T['ftt.reads'] = safe((p) => ({ stats: readLedgerStats(), lines: readLedgerLines(Number((p && p.limit) || 20)) }));
     T['ftt.readLedgerText'] = safe(() => readLedgerSummaryText(30));
+    // v3.42.0（用户要求「设定中新增 token 预估」）：**AI 用量与花费账本**的只读出口 ——
+    //   与设定页「API → Token 预估与花费」同源（`FTT.aiUsage()` / `FTT.aiUsageRecent()`），
+    //   便于真机核对读数而不必开界面（桥只读，不提供清空 / 改价入口）。
+    T['ftt.tokenCost'] = needFtt(async (F, p) => ({
+        summary: await F.aiUsage(),
+        recent: await F.aiUsageRecent(Number((p && p.limit) || 10)),
+    }));
 
     // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
     T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
