@@ -137,7 +137,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "repairCharacterBatch",
-            "label": "每轮条数（1-10，默认 3）",
+            "label": "每轮条数（1-10，默认 6）",
             "type": "text"
         },
         {
@@ -154,19 +154,19 @@ export const SETTINGS_CONTROLS = {
         //    （B4 的自动提取只覆盖 `f(...)` / `switchField(...)`，手写 `data-ftt-cfg` 块被漏掉；键与标签按 V1 原样、顺序按 V1）
         //    概念 / 记忆 / 悬念 / 物品 四域「相关组聚类修复」各 4 项（相关性阈值 · 每次核对组数 · 每次提交条数 · 组规模上限）
         { "key": "conceptRepairSim", "label": "概念修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
-        { "key": "conceptRepairMaxClusters", "label": "概念修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "conceptRepairMaxClusters", "label": "概念修复每次核对组数（1-20，默认 6）", "type": "text" },
         { "key": "conceptRepairMaxItems", "label": "概念修复每次提交条数上限（2-120，默认 24）", "type": "text" },
         { "key": "conceptRepairMaxClusterSize", "label": "概念相关组规模上限（2-40，默认 8）", "type": "text" },
         { "key": "memoryRepairSim", "label": "记忆修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
-        { "key": "memoryRepairMaxClusters", "label": "记忆修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "memoryRepairMaxClusters", "label": "记忆修复每次核对组数（1-20，默认 6）", "type": "text" },
         { "key": "memoryRepairMaxItems", "label": "记忆修复每次提交条数上限（2-120，默认 24）", "type": "text" },
         { "key": "memoryRepairMaxClusterSize", "label": "记忆相关组规模上限（2-40，默认 8）", "type": "text" },
         { "key": "suspenseRepairSim", "label": "悬念修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
-        { "key": "suspenseRepairMaxClusters", "label": "悬念修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "suspenseRepairMaxClusters", "label": "悬念修复每次核对组数（1-20，默认 6）", "type": "text" },
         { "key": "suspenseRepairMaxItems", "label": "悬念修复每次提交条数上限（2-120，默认 24）", "type": "text" },
         { "key": "suspenseRepairMaxClusterSize", "label": "悬念相关组规模上限（2-40，默认 8）", "type": "text" },
         { "key": "itemRepairSim", "label": "物品修复相关性阈值（0.1-0.95，默认 0.45）", "type": "text" },
-        { "key": "itemRepairMaxClusters", "label": "物品修复每次核对组数（1-20，默认 3）", "type": "text" },
+        { "key": "itemRepairMaxClusters", "label": "物品修复每次核对组数（1-20，默认 6）", "type": "text" },
         { "key": "itemRepairMaxItems", "label": "物品修复每次提交条数上限（2-120，默认 24）", "type": "text" },
         { "key": "itemRepairMaxClusterSize", "label": "物品相关组规模上限（2-40，默认 8）", "type": "text" },
         //    物品「低调用清理」（零 AI）6 项：比例 / 物品数门槛 / 平均调用门槛 / 楼层门槛 / 清扫间隔 / 每轮最多删除
@@ -427,7 +427,7 @@ export const SETTINGS_CONTROLS = {
         {
             "key": "stateRepairBatch",
             "label": "修复每轮主体数",
-            "hint": "默认 3：每次「修复状态」处理的主体数量",
+            "hint": "默认 6：每次「修复状态」处理的主体数量（1-10）",
             "type": "text"
         },
         {
@@ -1341,19 +1341,19 @@ const FEED_GROUPS = Object.freeze([
 /** 组内短标签（只影响渲染文案；`SETTINGS_CONTROLS.feed` 的 V1 原标签不动） */
 const FEED_SHORT_LABELS = Object.freeze({
     conceptRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
-    conceptRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    conceptRepairMaxClusters: '每次核对组数（1-20，默认 6）',
     conceptRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
     conceptRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
     memoryRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
-    memoryRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    memoryRepairMaxClusters: '每次核对组数（1-20，默认 6）',
     memoryRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
     memoryRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
     suspenseRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
-    suspenseRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    suspenseRepairMaxClusters: '每次核对组数（1-20，默认 6）',
     suspenseRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
     suspenseRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
     itemRepairSim: '相关性阈值（0.1-0.95，默认 0.45）',
-    itemRepairMaxClusters: '每次核对组数（1-20，默认 3）',
+    itemRepairMaxClusters: '每次核对组数（1-20，默认 6）',
     itemRepairMaxItems: '每次提交条数上限（2-120，默认 24）',
     itemRepairMaxClusterSize: '相关组规模上限（2-40，默认 8）',
     itemLowUsesRatio: '比例（默认 0.05）',

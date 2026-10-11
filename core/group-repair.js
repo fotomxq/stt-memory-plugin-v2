@@ -61,7 +61,7 @@ const GROUP_REPAIR_SPECS = {
             };
         },
         cfgSim: function () { return repairClampNum(cfg && cfg.conceptRepairSim, 0.1, 0.95, 0.45); },
-        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.conceptRepairMaxClusters) || 3); },
+        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.conceptRepairMaxClusters) || 6); },   // v3.45.3：默认 3→6
         cfgMaxItems: function () { return Math.max(2, Number(cfg && cfg.conceptRepairMaxItems) || 24); },
         cfgMaxSize: function () { return Math.max(2, Math.min(40, Number(cfg && cfg.conceptRepairMaxClusterSize) || 8)); },
         defectOf: function (e) { return repairDefectOf('concepts', e); },
@@ -80,7 +80,7 @@ const GROUP_REPAIR_SPECS = {
             };
         },
         cfgSim: function () { return repairClampNum(cfg && cfg.memoryRepairSim, 0.1, 0.95, 0.45); },
-        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.memoryRepairMaxClusters) || 3); },
+        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.memoryRepairMaxClusters) || 6); },   // v3.45.3：默认 3→6
         cfgMaxItems: function () { return Math.max(2, Number(cfg && cfg.memoryRepairMaxItems) || 24); },
         cfgMaxSize: function () { return Math.max(2, Math.min(40, Number(cfg && cfg.memoryRepairMaxClusterSize) || 8)); },
         defectsAlways: true,   // 记忆：即使没有相关组，客观缺陷（超字数/模糊措辞/标签不合规/日期格式）也单独送修（有界）
@@ -113,7 +113,7 @@ const GROUP_REPAIR_SPECS = {
             };
         },
         cfgSim: function () { return repairClampNum(cfg && cfg.itemRepairSim, 0.1, 0.95, 0.45); },
-        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.itemRepairMaxClusters) || 3); },
+        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.itemRepairMaxClusters) || 6); },   // v3.45.3：默认 3→6
         cfgMaxItems: function () { return Math.max(2, Number(cfg && cfg.itemRepairMaxItems) || 24); },
         cfgMaxSize: function () { return Math.max(2, Math.min(40, Number(cfg && cfg.itemRepairMaxClusterSize) || 8)); },
         // 物品的 taggable=true → 「标签数量不合规（<3 个）」会被判为客观缺陷：无相关组时也送修，用于补齐标签
@@ -133,7 +133,7 @@ const GROUP_REPAIR_SPECS = {
             };
         },
         cfgSim: function () { return repairClampNum(cfg && cfg.suspenseRepairSim, 0.1, 0.95, 0.45); },
-        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.suspenseRepairMaxClusters) || 3); },
+        cfgMaxClusters: function () { return Math.max(1, Number(cfg && cfg.suspenseRepairMaxClusters) || 6); },   // v3.45.3：默认 3→6
         cfgMaxItems: function () { return Math.max(2, Number(cfg && cfg.suspenseRepairMaxItems) || 24); },
         cfgMaxSize: function () { return Math.max(2, Math.min(40, Number(cfg && cfg.suspenseRepairMaxClusterSize) || 8)); },
         defectsAlways: true,   // 悬念：缺陷条目同样单独送修
@@ -657,7 +657,7 @@ async function runMemoryRepair(opts) {
 //   ② 标签组聚类：按 v1.138 的相关性口径（标签 Jaccard；标签不足时退回「名称+内容」bigram 相似度）建图，
 //      边 = 相关度 ≥ `cfg.conceptRepairSim`（默认 0.45）→ **连通分量即相关组**；只保留 ≥2 条的组；
 //   ③ 选组轮询：组按（条数降序 → 组内最大相关度降序）排序，用 `state.repairCursor.concepts` 轮询选取，
-//      上限 `cfg.conceptRepairMaxClusters` 组（默认 3）、合计 `cfg.conceptRepairMaxItems` 条（默认 24）；
+//      上限 `cfg.conceptRepairMaxClusters` 组（默认 6；v3.45.3 起由 3 调整为 6）、合计 `cfg.conceptRepairMaxItems` 条（默认 24）；
 //   ④ 窄契约 AI：只发这些组的条目（组内编号 + 相关度），要求返回
 //      `{"合并":[{"保留":n,"并入":[m…],"名称":…,"内容":…,"来源":…,"日期":…,"标签":[…]}],
 //        "修订":[{"编号":n,"字段":…,"值":…}],"删除":[n…]}` —— **禁止新增**；JS 按编号精确应用。

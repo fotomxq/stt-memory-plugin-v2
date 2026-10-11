@@ -315,8 +315,12 @@ R.assert('U1 角色分页渲染 V1 同款「🔧 修复角色」按钮：有角�
     boot(G.inputs.scenario);
     openPanel('snapshots'); setPanelHooks2({});
     const html = panelBodyHtml('snapshots');
+    // v3.45.3（`docs/D22` 用户要求「各大类修复每次抽取 3 个 → 默认 6，且可在设定中修改」）**V1 文本偏离登记**：
+    //   按钮 title 里的条数由**写死 3**改为**现算 `cfg.repairCharacterBatch`**（默认 3→6）——
+    //   除这个数字外措辞与 V1 **逐字一致**；V1 样本未改，这里按当前生效值拼期望串（用户改过设定也必须对上）。
+    const batch = Math.max(1, Math.min(10, Number(cfg.repairCharacterBatch) || 6));
     const hasBtn = html.indexOf('data-ftt-action="characterRepair"') >= 0
-        && html.indexOf('title="出生日期倒挂者优先，其余按字数最薄弱 3 条"') >= 0
+        && html.indexOf('title="出生日期倒挂者优先，其余按字数最薄弱 ' + batch + ' 条"') >= 0
         && html.indexOf('🔧 修复角色（⚠️2 优先）') >= 0;      // 角色丁（格式非法）+ 已故者（年龄超 120）
     boot({ snapshots: [{ id: 'x1', name: '角色己', identity: { birthDate: '1990-01-01' }, tags: ['甲', '乙', '丙'], uses: 1 }] });
     openPanel('snapshots'); setPanelHooks2({});

@@ -55,7 +55,14 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     // v3.23.0（用户要求「全部AI摘要需支持分段处理，且默认采用 **3 个正文**进行切片，分批进行处理。避免一次性分析记忆。」）：
     //   「每段正文数」默认值 **10 → 3**（`core/chunk.js#SUMMARY_CHUNK_DEFAULT`，成为全部摘要入口的统一段长上界）——
     //   语义键不变、用户可改，属**默认值有意偏离**（样本一字不改，仅在此登记）。
-    const DEVIATED_KEYS = ['lowUseForgetProtectImportance', 'summaryChunkSize'];
+    // v3.45.3（用户要求「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
+    //   **六处「每轮抽取量」默认值 3 → 6** —— 角色修复条数 / 状态修复主体数 / 概念·记忆·悬念·物品四域的
+    //   「每次核对组数」（`*RepairMaxClusters`）。六个键在设定页都能改（用户要求的「可在设定中设置修改」），
+    //   故属**默认值有意偏离**，不是键语义变化；V1 样本一字未改，只在此登记并逐键复核（见下方 `deviated` 判据）。
+    //   **未动**：`maxAutoRepairRounds`（同楼层自动修复**轮次**上限）与 `repairMaxItems`（候选池 20 条）—— 都不是「每轮抽取量」。
+    const DEVIATED_KEYS = ['lowUseForgetProtectImportance', 'summaryChunkSize',
+        'repairCharacterBatch', 'stateRepairBatch',
+        'conceptRepairMaxClusters', 'memoryRepairMaxClusters', 'suspenseRepairMaxClusters', 'itemRepairMaxClusters'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
         && RAISED_CAP_KEYS.indexOf(k) < 0 && DEVIATED_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));

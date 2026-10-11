@@ -316,12 +316,12 @@ function removeStatesOfDeceased(opts) {
 }
 
 /** ③ 选最薄弱的主体（V1 `pickStateRepairTargets`）：规范字段填充少 → 更新时间旧 → 调用次数低；
- *  每轮 ≤ `cfg.stateRepairBatch`（默认 3，上限 10）；v1.205：已去世角色的状态不提交给 AI（固定规则已移除，
- *  此处再兜一道 —— 即使因称呼差异残留也不提交）。 */
+ *  每轮 ≤ `cfg.stateRepairBatch`（默认 **6**，上限 10；v3.45.3 起由 3 调整为 6，可在设定页改）；
+ *  v1.205：已去世角色的状态不提交给 AI（固定规则已移除，此处再兜一道 —— 即使因称呼差异残留也不提交）。 */
 function pickStateRepairTargets(limit) {
     const out = { list: [], total: 0, batch: 1 };
     try {
-        const batch = Math.max(1, Math.min(10, Number(limit) || Number(cfg && cfg.stateRepairBatch) || 3));
+        const batch = Math.max(1, Math.min(10, Number(limit) || Number(cfg && cfg.stateRepairBatch) || 6));
         out.batch = batch;
         const bySub = {};
         // v1.205：已去世角色的状态已由固定规则移除；这里再兜一道 —— 即使因称呼差异残留，也不提交给 AI
