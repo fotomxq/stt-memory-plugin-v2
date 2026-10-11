@@ -8,7 +8,7 @@
 //
 // 本批（`ui/settings-pages.js#feedPageHtml` + `style.css`）：按用途分节 + 组内短标签：
 //   ① 📥 投喂楼层 →（紧跟）🏷 投喂标签自动分析 / 投喂白名单标签 / 投喂黑名单标签（同属「投什么进分析」）
-//   ② 🛠 自动修复（总开关与节奏）③ 🎯 候选筛选 ④ 🧑 角色修复
+//   ② 🛠 自动修复（总开关与节奏）③ 🎯 候选筛选 ④ 🧑 角色修复 ⑤ 📜 履历（v3.45.5 +6 控件）
 //   ⑤ 🧩 各域相关组修复（概念 / 记忆 / 悬念 / 物品 四个**子组**，前缀挪进子组标题）
 //   ⑥ 🧹 低调用清理
 //   **控件键一个不少**（`SETTINGS_CONTROLS.feed` 与渲染结果双向一致）；控件表本身保持 V1 原样。
@@ -48,11 +48,11 @@ A('G1 分组结构：投喂楼层 → 标签范围（扫描/白/黑名单）→ 
     const t = secTitles(HTML);
     return J(t) === J(['📥 投喂楼层', '投喂标签自动分析', '投喂白名单标签（只保留含这些标签的行，每行一个标签名）',
         '投喂黑名单标签（屏蔽含这些标签的行，每行一个标签名）', '🛠 自动修复（总开关与节奏）',
-        '🎯 候选筛选（相关性阈值与抽查）', '🧑 角色修复', '🧩 各域相关组修复', '🧹 低调用清理（物品）']);
+        '🎯 候选筛选（相关性阈值与抽查）', '🧑 角色修复', '📜 履历', '🧩 各域相关组修复', '🧹 低调用清理（物品）']);
 })(), J(secTitles(HTML)));
 
 A('G2 五节顺序稳定：每节标题按用途先后出现（楼层 → 标签 → 修复三段 → 清理）', (() => {
-    const order = ['📥 投喂楼层', '投喂标签自动分析', '投喂白名单标签', '投喂黑名单标签', '🛠 自动修复', '🎯 候选筛选', '🧑 角色修复', '🧩 各域相关组修复', '🧹 低调用清理'];
+    const order = ['📥 投喂楼层', '投喂标签自动分析', '投喂白名单标签', '投喂黑名单标签', '🛠 自动修复', '🎯 候选筛选', '🧑 角色修复', '📜 履历', '🧩 各域相关组修复', '🧹 低调用清理'];
     const idx = order.map((s) => at(HTML, s));
     return idx.every((v) => v >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]);
 })(), '见断言');
@@ -66,12 +66,12 @@ A('G3 子组层次：「各域相关组修复」下按 概念 / 记忆 / 悬念 
         && at(HTML, '物品修复') < at(HTML, '🧹 低调用清理');
 })(), J(subTitles(HTML)));
 
-A('G4 控件一个不少：37 个控件键全部渲染且只出现一次（+ 白/黑名单两个文本域 = 39）', (() => {
+A('G4 控件一个不少：43 个控件键全部渲染且只出现一次（+ 白/黑名单两个文本域 = 45；v3.45.5：角色履历 +6）', (() => {
     const need = SETTINGS_CONTROLS.feed.map((c) => String(c.key));
     const got = cfgKeys(HTML);
     const miss = need.filter((k) => got.indexOf(k) < 0);
     const dup = need.filter((k) => got.filter((x) => x === k).length !== 1);
-    return need.length === 37 && miss.length === 0 && dup.length === 0 && got.length === 39;
+    return need.length === 43 && miss.length === 0 && dup.length === 0 && got.length === 45;
 })(), J({ need: SETTINGS_CONTROLS.feed.length, got: cfgKeys(HTML).length }));
 
 A('G5 组内短标签：子组的四个旋钮不再重复「概念/记忆/悬念/物品 修复」前缀（表内 V1 标签不动）', (() => {
@@ -94,17 +94,17 @@ A('G6 每节一句短提示（≤90 字），细节不再铺在页面上', (() =
     const re = /<div class="ftt-muted" data-ftt-short-hint>([\s\S]*?)<\/div>/g;
     let m;
     while ((m = re.exec(HTML)) !== null) hints.push(String(m[1]).replace(/<[^>]+>/g, '').trim());
-    // 六节各一句（楼层 / 自动修复 / 候选筛选 / 角色修复 / 各域修复 / 低调用清理）
-    return hints.length === 6 && hints.every((t) => t.length > 0 && t.length <= 90)
+    // 七节各一句（楼层 / 自动修复 / 候选筛选 / 角色修复 / 履历 / 各域修复 / 低调用清理）
+    return hints.length === 7 && hints.every((t) => t.length > 0 && t.length <= 90)
         && hints[0].indexOf('最近 N 楼') > 0 && hints.some((t) => t.indexOf('相关性') >= 0)
         && hints.some((t) => t.indexOf('清理') >= 0) && hints.every((t) => t.indexOf('V1') < 0);
 })(), '见断言');
 
-A('G7 危险/空映射兜底：未登记的键会落到末节「其它」（当前为零 —— 分组表已覆盖全部 37 项）', (() => {
+A('G7 危险/空映射兜底：未登记的键会落到末节「其它」（当前为零 —— 分组表已覆盖全部 43 项）', (() => {
     const extra = feedPageHtml([{ key: 'zzzNotMapped', label: '未知项', type: 'text' }], { tagSections: () => '' });
     const normal = feedPageHtml(SETTINGS_CONTROLS.feed, { tagSections: () => '' });
     return extra.indexOf('其它') > 0 && extra.indexOf('data-ftt-cfg="zzzNotMapped"') > 0
-        && normal.indexOf('其它') < 0 && cfgKeys(normal).length === 37;
+        && normal.indexOf('其它') < 0 && cfgKeys(normal).length === 43;
 })(), '见断言');
 
 A('G8 样式：`.ftt-group-title` 提供两级层次（左侧色条 + 紧凑间距），`.ftt-section` 仍是节容器', (() => {

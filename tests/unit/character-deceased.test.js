@@ -184,13 +184,15 @@ A('B5 用户核心要求回归：**超长寿命角色不被标记**（精灵 / �
 })(), () => markDeceasedByEvidence({ silent: true }));
 
 // ---------- C 组：机械总入口接线 ----------
-A('C1 `runCharacterMechanicalPass()` 返回结构键集固定（V1 黄金样本口径 + v1.205 `deceased` + v3.22.0 `immortal`），研判结果经 `lastDeceasedMark()` 读取', (() => {
+A('C1 `runCharacterMechanicalPass()` 返回结构键集固定（V1 黄金样本口径 + v1.205 `deceased` + v3.22.0 `immortal` + v3.45.5 `resume`），研判结果经 `lastDeceasedMark()` 读取', (() => {
     boot({ snapshots: [snap('角色甲', '角色甲在最后的战斗中阵亡。')] });
     const mech = runCharacterMechanicalPass();
     const keys = Object.keys(mech).sort();
     const death = lastDeceasedMark();
     // v3.22.0：「长生者」跳过计数进结构（与 v1.205 的 `deceased` 同款 —— 供通知如实说明跳过原因）
-    return J(keys) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'tags', 'total'])
+    // v3.45.5（`docs/D22` W4 `数-20`）：履历机械段读数 `resume` 进结构（遗弃 / 凝练计数）
+    return J(keys) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'resume', 'tags', 'total'])
+        && !!mech.resume && Number(mech.resume.dropped) === 0
         && mech.changed === true && Number(mech.immortal) === 0 && death && death.marked === 1 && death.markedNames[0] === '角色甲';
 })(), () => Object.keys(runCharacterMechanicalPass()).sort());
 

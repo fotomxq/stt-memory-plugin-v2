@@ -150,6 +150,45 @@ export const SETTINGS_CONTROLS = {
             "label": "角色修复强制补全出生日期（正文没写则合理推测，绝不留空）",
             "type": "checkbox"
         },
+        // v3.45.5（`docs/D22` W4 数据维度「履历」/ 设计稿 `docs/D26` §3.5）：「📜 履历」6 项。
+        //   口径与内核**同一份**（`core/resume.js#resumeOptsFromCfg`）：上限是**软阈值** ——
+        //   未超上限**从不**自动删除（手动添加的也一样），只有超限时才清算低留存条；比例项**只做提醒、不触发删除**。
+        {
+            "key": "snapshotResumeEnabled",
+            "label": "履历（关 = 不记录、界面不显示）",
+            "hint": "角色档案的「📜 履历」总开关：开启后按剧情时间为每个角色记录大事记。关闭后不再读写履历，角色行上的履历区块也不出现。",
+            "type": "checkbox"
+        },
+        {
+            "key": "snapshotResumeMax",
+            "label": "每个角色的履历条数上限（1-100，默认 30；超过上限才会自动遗弃，未超不会删）",
+            "hint": "这是软阈值：条数未超过它时一条都不会自动删；只有超过后，才把留存分最低（重要度 × 距今时间）的旧条目遗弃到该上限。",
+            "type": "number"
+        },
+        {
+            "key": "snapshotResumeTriggerRatio",
+            "label": "「接近上限」提醒的比例（0.1-1，默认 0.8；只是提醒，不会删除）",
+            "hint": "条数达到「上限 × 该比例」时在体检与列表里提示「接近上限」，方便提前整理；它本身不会删除任何履历。",
+            "type": "number"
+        },
+        {
+            "key": "snapshotResumeImmune",
+            "label": "重要性达到该值的履历永不自动遗弃（0-1，默认 0.7）",
+            "hint": "重要度 ≥ 该值的条目受保护，无论多久远都不会被自动遗弃；只有手动删除才会消失。",
+            "type": "number"
+        },
+        {
+            "key": "snapshotResumeSummaryMax",
+            "label": "单条履历简述的目标字数（10-200，默认 60；超出会在修复时压缩）",
+            "hint": "修复履历时把过长的简述压到该字数以内（优先在句末收口）；日期、时刻与重要度不受影响。",
+            "type": "number"
+        },
+        {
+            "key": "snapshotResumeCanonFill",
+            "label": "原作 / 史实人物：补「当前剧情日期之前」的履历（缺剧情日期时不补）",
+            "hint": "只对勾选过「原作 / 史实人物」的角色生效：补写当前剧情日期之前的既有生平；没有可用剧情日期时一律不补，以免写出剧情里还没发生的事。",
+            "type": "checkbox"
+        },
         // —— B8-6c 补齐：V1 设定④「质检维护」页里以**手写 div** 形式给出的 22 个控件
         //    （B4 的自动提取只覆盖 `f(...)` / `switchField(...)`，手写 `data-ftt-cfg` 块被漏掉；键与标签按 V1 原样、顺序按 V1）
         //    概念 / 记忆 / 悬念 / 物品 四域「相关组聚类修复」各 4 项（相关性阈值 · 每次核对组数 · 每次提交条数 · 组规模上限）
@@ -1322,6 +1361,8 @@ const FEED_GROUPS = Object.freeze([
     { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems'], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
     { id: 'pick', title: '🎯 候选筛选（相关性阈值与抽查）', keys: ['repairTagSimHigh', 'repairTagSimLow', 'repairSampleRatio', 'repairMinCandidates'], hint: '候选按同维度标签组相关性排序：过高优先核对、过低不列入、中间带按比例抽查。' },
     { id: 'character', title: '🧑 角色修复', keys: ['repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
+    // v3.45.5（`docs/D22` W4 数据维度「履历」）：「📜 履历」组（总开关 / 上限 / 提醒比例 / 免疫阈值 / 简述字数 / 原作补写）
+    { id: 'resume', title: '📜 履历', keys: ['snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio', 'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill'], hint: '履历 = 角色按剧情时间的大事记；超过上限才会自动遗弃低留存条。' },
     {
         id: 'domains', title: '🧩 各域相关组修复', hint: '相关度 = 标签相关性；每轮只核对最相关的几组，禁止新增条目，只做合并与补齐。',
         keys: ['conceptRepairSim', 'conceptRepairMaxClusters', 'conceptRepairMaxItems', 'conceptRepairMaxClusterSize',

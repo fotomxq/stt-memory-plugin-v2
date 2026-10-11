@@ -69,10 +69,41 @@ R.assert('M1 返回统计：ok / added / total 与 V1 一致（兼容布尔判�
 })(), { got: ret && { ok: ret.ok, added: ret.added, total: ret.total }, want: G.ret });
 
 const dims = ['atoms', 'currentStates', 'memories', 'items', 'plans', 'suspense', 'concepts', 'parallels', 'currencies', 'rumors', 'scenes', 'npcs', 'snapshots'];
+/**
+ * v3.45.5（`docs/D22` W4 `数-19`/`数-21`，设计稿 `docs/D26`）：**有意偏离 V1** ——
+ *   角色档案归一新增 `resume`（履历，缺省 `[]`）与 `identity.canon`（原作 / 史实人物三态标记）。
+ *   黄金样本 `tests/fixtures/v1-golden-ingest.json` **一字未改**，在此显式归一后再逐字符比对
+ *   （与 v2.86.0 的 `normSnapshotContent` 同一手法）；新字段的存在性另断言（归一 ≠ 删字段）。
+ */
+const stripV2Resume = (v) => {
+    if (Array.isArray(v)) return v.map(stripV2Resume);
+    if (v && typeof v === 'object') {
+        const o = {};
+        for (const k of Object.keys(v)) {
+            if (k === 'resume') continue;
+            o[k] = stripV2Resume(v[k]);
+        }
+        return o;
+    }
+    return v;
+};
+const stripV2Canon = (v) => {
+    if (Array.isArray(v)) return v.map(stripV2Canon);
+    if (v && typeof v === 'object') {
+        const o = {};
+        for (const k of Object.keys(v)) {
+            if (k === 'canon') continue;
+            o[k] = stripV2Canon(v[k]);
+        }
+        return o;
+    }
+    return v;
+};
 const diff = [];
 dims.forEach((k) => {
     const want = W[k] === undefined ? [] : W[k];
-    if (JT(res[k]) !== JT(want)) diff.push(k);
+    const got = (k === 'snapshots') ? stripV2Canon(stripV2Resume(res[k])) : res[k];
+    if (JT(got) !== JT(want)) diff.push(k);
 });
 R.assert('M2 十三类维度落库结果与 V1 逐字符一致（' + dims.join(' / ') + '）', (() => {
     return diff.length === 0;
@@ -81,6 +112,11 @@ R.assert('M2 十三类维度落库结果与 V1 逐字符一致（' + dims.join('
     firstAtom: diff.indexOf('atoms') >= 0 ? { got: tsNorm((res.atoms || [])[0]), want: (W.atoms || [])[0] } : undefined,
     firstItem: diff.indexOf('items') >= 0 ? { got: tsNorm((res.items || [])[0]), want: (W.items || [])[0] } : undefined,
 });
+R.assert('M2b v3.45.5 新增面确实存在（归一 ≠ 删字段）：入库后的角色档案 `resume` 一律为数组（缺省 `[]`）；未标记的档案不写 `identity.canon`', (() => {
+    const snap = res.snapshots || [];
+    return snap.length > 0 && snap.every((s) => Array.isArray(s.resume))
+        && snap.every((s) => !s.identity || s.identity.canon === undefined);
+})(), ((res.snapshots || [])[0] || {}).resume);
 
 R.assert('M3 情节更新：原地替换且保留 uses / 因果 log 字段；新增按时间排序；已存在条目不受影响', (() => {
     const a = (res.atoms || []);

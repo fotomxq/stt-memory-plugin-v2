@@ -70,7 +70,14 @@ function rowTokens(html, id) {
     if (at < 0) at = s.indexOf('data-id="' + id + '"');
     if (at < 0) return null;
     const start = s.lastIndexOf('<div class="ftt-item', at);
-    const row = balancedSlice(s, start < 0 ? at : start, 'div');
+    const raw = balancedSlice(s, start < 0 ? at : start, 'div');
+    // v3.45.5（`docs/D22` W4 `应-19`）：角色行的**V2 新增展示面**「📜 履历」区块在此**整块剔除**后再分词 ——
+    //   与 v2.80.0 states「取消冒号」同款的**有意偏离归一**（V1 黄金样本一字未改）：
+    //   履历区块是 V2 新功能（V1 无此区块），它不属于「V1 行正文口径」的比对范围；
+    //   区块自身的渲染与锚点由 `tests/unit/resume-ui.test.js` 专门锁死。
+    //   实现：从 `<div class="ftt-resume"` 起**截断**（该区块是角色行末尾追加的最后一块，其后没有别的内容）。
+    const rAt = raw.indexOf('<div class="ftt-resume"');
+    const row = (rAt >= 0 ? raw.slice(0, rAt) : raw);
     const text = row
         .replace(/<button[\s\S]*?<\/button>/g, ' ')
         .replace(/<input[^>]*>/g, ' ')

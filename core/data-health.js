@@ -34,6 +34,19 @@
 //                   `lastchatfloor-invalid` · `processedver-invalid`
 //   墓碑类（warn）：`tombstone-bad-ts`（时间戳非数字 → 该墓碑实际不生效，跨端可能被复活）
 //
+// v3.45.5 新增（`docs/D22` W4 `技-25` ①，设计稿 `docs/D26` §8 技-25 行；新增顶层键 `out.resume` = `resumeHealthReport(...)`）：
+//   履历类（info）：`resume-over-limit`（某角色履历条数**超过上限**；**软阈值** —— 只有超限才清算，`≤ 上限`一条不动）·
+//                   `resume-needs-condense`（超过凝练目标的简述条数）·
+//                   `resume-suspect-dup`（同一角色内「简述前 12 字相同」的**疑似**重复；**只提示，不改数据**）·
+//                   `resume-dup-with-history`（与 `background.history` 疑似重复，`docs/D26` §3.1 分工规则）·
+//                   `resume-clockless`（日期解析不出 → 该条排序会掉到最后）
+//   履历类（warn）：`resume-orphan-ref`（`refs` 指向不存在的记忆 id）
+//   口径：① 读数与遗弃 / 凝练**同源**（算法唯一源 `core/resume.js`，本文件只做「读数 → 发现」的翻译）；
+//        ② 明细**按角色聚合**（一个角色每个 code 至多一条 —— 否则「上限 30 条 × N 角色」会直接淹没 `findings`）；
+//        ③ `dim` 一律 `'snapshots'`；④ 只在**有履历**的角色上产生发现（老存档无 `resume` 字段 → 一条都不多）；
+//        ⑤ 开关 `cfg.snapshotResumeEnabled === false` → `out.resume.note = 'disabled'`（如实标注「未体检」，
+//           **不静默当作「健康」**），且不加任何履历发现。
+//
 // v3.13.1（用户要求「检查最新版 BUG」后修的四处口径缺陷）：
 //   ① `HEALTH_DIMS` 里 `plotSegments` 重复 → 该维被扫两遍，明细与计数**翻倍**、`scanned.dims` 虚高（现去重）；
 //   ② `level` 原先由被 `cap` 截断的 `findings` 推导 → 大量 info 会把 warn 挤出明细，摘要**低估严重度**
@@ -53,6 +66,11 @@ import { reservedRangeIssues } from './reserved-fields.js';
 import { stateSlotReport } from './state-slots.js';
 import { relAnchorGaps } from './rel-maint.js';
 import { planAgingReport, PLAN_AGING_STALE_DAYS } from './plan-aging.js';
+// v3.45.5（`docs/D22` W4 `技-25` ①，设计稿 `docs/D26` §8）：**履历**体检读数 ——
+//   算法唯一源在 `core/resume.js`（纯内核叶子模块；归一 / 遗弃 / 凝练 / 统计都在那里），
+//   本文件**只做「读数 → 发现」的翻译**，不重复实现任何算法（`resumeHealthReport` 内部已含缺省回落：
+//   配置非法时自动取默认值，所以这里直接把 `cfg` 的六个键透传即可）。
+import { RESUME_DEFAULT_SUMMARY_MAX, resumeHealthReport, resumeLedgerState } from './resume.js';
 
 /** 体检发现的等级：`error` 计入 `ok=false`；`warn` / `info` 只提示 */
 export const HEALTH_LEVELS = Object.freeze(['error', 'warn', 'info']);
@@ -121,7 +139,12 @@ function getByPath(o, path) {
  * 数据体检（只读）。
  * @param {object} [st] 状态快照（缺省用内核 state）
  * @param {{cap?:number, dims?:string[]}} [opts]
- * @returns {{ok:boolean, level:'ok'|'warn'|'error', findings:Array, counts:object, scanned:object, truncated:number, at:number}}
+ * @returns {{ok:boolean, level:'ok'|'warn'|'error', findings:Array, counts:object,
+ *            hygiene:{counts:object, findings:Array},
+ *            resume:object, scanned:{dims:number, items:number, fields:number, resumeItems:number},
+ *            truncated:number, at:number}}
+ *   · `resume`（v3.45.5）= `core/resume.js#resumeHealthReport` 的读数（顶层键；开关关闭时带 `note:'disabled'`）；
+ *   · `scanned.resumeItems` = 已扫描的**履历条数**（既有键语义不变，仅追加这一个）。
  */
 export function dataHealthReport(st, opts) {
     const s = st || kernelState || {};
@@ -374,6 +397,47 @@ export function dataHealthReport(st, opts) {
         if (sr.unregistered.length) hygOne('state-slot-unregistered', { dim: 'state', field: sr.unregistered.join(','), value: sr.unregistered.length, detail: '存档里有未登记的顶层槽位 —— 每个保留字段都必须有归属与出口说明，请登记进 `core/state-slots.js#STATE_SLOTS`／`RUNTIME_SLOTS`' });
         if (sr.innerUnregistered.length) hygOne('state-slot-unregistered', { dim: 'state', field: sr.innerUnregistered.join(','), value: sr.innerUnregistered.length, detail: '`state` 容器里有未登记的内部槽位（同上，登记进 `core/state-slots.js#STATE_INNER_SLOTS`）' });
         if (sr.reservedWithData && sr.reservedWithData.length) hygOne('state-slot-reserved', { dim: 'state', field: sr.reservedWithData.map((x) => x.key).join(','), value: sr.reservedWithData.length, detail: '保留但**未接线**（明确标注「未启用」）**且当前装着数据**：' + sr.reservedWithData.map((x) => x.key + '（' + x.label + '）').join(' · ') + '；另有死读配置键 ' + sr.cfgReads.map((x) => x.key).join(',') + '。空白槽位不报（避免噪声）' });
+    } catch (e) { /* 忽略 */ }
+
+    // ⑦ `数-19`…`技-25`（`docs/D26` §8 技-25 ①）：**履历**（角色档案第 9 区块 `snapshots[].resume`）——
+    //   条数 / 超限 / 待凝练 / 疑似重复 / 孤儿引用 / 无时钟。**只读**（不改任何字段、不落盘）。
+    //   顶层键 `out.resume` = `core/resume.js#resumeHealthReport` 的读数（面板 / `FTT` 导出 / 调试桥三处同源）；
+    //   本段只把读数翻成**按角色聚合**的发现（一个角色每个 code 至多一条），并追加 `scanned.resumeItems`。
+    out.scanned.resumeItems = 0;
+    try {
+        if (cfg.snapshotResumeEnabled === false) {
+            // 开关关闭 → 履历**未体检**：读数清零并如实打标（`note: 'disabled'`），
+            //   绝不能让「关掉开关」看起来像「体检干净」。
+            out.resume = resumeHealthReport([]);
+            out.resume.note = 'disabled';
+        } else {
+            const rOpts = {
+                max: cfg.snapshotResumeMax, triggerRatio: cfg.snapshotResumeTriggerRatio,
+                immune: cfg.snapshotResumeImmune, summaryMax: cfg.snapshotResumeSummaryMax,
+                memoryIds: (s.memories || []).map((m) => m && m.id).filter(Boolean).map(String),
+            };
+            out.resume = resumeHealthReport(s.snapshots, rOpts);
+            out.scanned.resumeItems = Number(out.resume.total) || 0;
+            // v3.45.5（`docs/D22` W4 `技-25` ① 的第四项读数）：**遗弃计数** ——
+            //   与「条数 / 超限 / 疑似重复」不同，遗弃数**不在数据里**（`docs/D26` Q2 裁决「不需要墓碑」→ 不落盘），
+            //   它只能来自履历机械段的**运行账本**（`core/resume.js#resumeLedgerState`，本会话内累计）。
+            //   放在**顶层键** `resumeLedger`（而不是并进 `out.resume`）有两个理由：
+            //     ① `out.resume` 保持与 `resumeHealthReport(...)` **逐字同源**（单测直接比对两者）；
+            //     ② 语义确实不同 —— 一个是「存档现状」，一个是「本次会话做过什么」，混在一起会让人误以为是持久读数。
+            out.resumeLedger = resumeLedgerState();
+            // 文案里的凝练目标：与 `core/resume.js#resumeStats` **同款归一**（非法配置回落默认；这里只为显示一个数）
+            const condenseMax = Math.max(8, Math.floor(Number(cfg.snapshotResumeSummaryMax) || RESUME_DEFAULT_SUMMARY_MAX));
+            // `resumeHealthReport.items` 只含**有履历**的角色（空履历 / 无 `resume` 字段的角色不在其中）
+            for (const it of out.resume.items) {
+                const id = String(it.id || '');
+                if (it.over) add('resume-over-limit', 'info', { dim: 'snapshots', id: id, field: 'resume.total', value: it.total, detail: '履历 ' + it.total + ' 条超过上限 ' + out.resume.max + ' 条（超出 ' + (it.total - out.resume.max) + ' 条）—— **软阈值**：只有超过上限才清算，未超（≤ 上限）时一条都不动；下次履历维护会按「重要度 × 剧情时间新鲜度」遗弃超出的条目（达到免疫线的条目不参与遗弃，故实际遗弃数只会更少）' });
+                if (it.toCondense > 0) add('resume-needs-condense', 'info', { dim: 'snapshots', id: id, field: 'resume.toCondense', value: it.toCondense, detail: '有 ' + it.toCondense + ' 条简述超过凝练目标 ' + condenseMax + ' 字（最长 ' + it.longest + ' 字）待凝练；凝练只压简述，不动日期 / 时刻 / 重要度 / 关联' });
+                if (it.dupSuspects > 0) add('resume-suspect-dup', 'info', { dim: 'snapshots', id: id, field: 'resume.dupSuspects', value: it.dupSuspects, detail: '有 ' + it.dupSuspects + ' 条简述「前 12 字」与同角色其它条目相同（疑似重复）；**只提示，不改数据** —— 请在角色页核对后手工合并' });
+                if (it.dupWithHistory > 0) add('resume-dup-with-history', 'info', { dim: 'snapshots', id: id, field: 'resume.dupWithHistory', value: it.dupWithHistory, detail: '有 ' + it.dupWithHistory + ' 条与 `background.history` 疑似重复（简述前 8 字已见于历史正文）；按 `docs/D26` §3.1 的分工：历史写「剧情前生平」、履历写「剧情内大事记」，同一件事应只留一处' });
+                if (it.orphanRefs > 0) add('resume-orphan-ref', 'warn', { dim: 'snapshots', id: id, field: 'resume.orphanRefs', value: it.orphanRefs, detail: '有 ' + it.orphanRefs + ' 条的 `refs` 指向不存在的记忆 id（记忆已被删除或从未入库）；关联只是软引用，不影响履历本身，但界面上的「关联记忆」点不开' });
+                if (it.clockless > 0) add('resume-clockless', 'info', { dim: 'snapshots', id: id, field: 'resume.clockless', value: it.clockless, detail: '有 ' + it.clockless + ' 条日期解析不出（不是 `YYYY-MM-DD` 这类剧情日期写法，含公元前负年份）；**这类条目不静默丢弃，但排序会掉到最后**，展示顺序会与预期不符' });
+            }
+        }
     } catch (e) { /* 忽略 */ }
 
     // v3.13.1：等级由**累计到的最严重级别**决定（与 `counts` 一致，不受 `findings` 截断影响）；
