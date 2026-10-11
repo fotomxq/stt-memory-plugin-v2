@@ -190,6 +190,8 @@ import {
     nsfwKeywordReset, nsfwRuleReset,
     // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
     nsfwLevelOf, nsfwLabelStats, nsfwBackfill, nsfwClassifyItem,
+    // v3.45.2（`docs/D22` W7 `应-23`）：弱化运行账本接线（落 ST 扩展设置 `nsfwSoftenLog`）
+    setNsfwSoftenHooks,
 } from './core/nsfw.js';
 // v3.18.0（用户要求）：「设定 → NSFW弱化 → 🧠 词条分析」—— 抽取**强留档**原子数据交 AI 找涉敏词与替换词，
 //   结果写入转化库（并同批补进识别词条库）；账本落 ST 扩展设置 `nsfwAnalyzeLog`（不进数据模型）。
@@ -2163,6 +2165,23 @@ function wireNsfwAnalyzeHooks() {
     return true;
 }
 
+/**
+ * v3.45.2（`docs/D22` W7 `应-23` / U179）：**弱化运行账本**钩子（只接一次、幂等）。
+ * 账本落 ST 扩展设置 `nsfwSoftenLog`（最近一次「🌶 立即弱化」的计数与时刻，**不存正文**）——
+ * 「运行账本」而非记忆数据，故不进数据模型（`DATA_VERSION` 不变）；与 `nsfwAnalyzeLog` 平行。
+ * 同样在装配期接线：设定页「NSFW弱化」分节的「上次弱化」要**立刻**能读到。
+ */
+let nsfwSoftenWired = false;
+function wireNsfwSoftenHooks() {
+    if (nsfwSoftenWired) return true;
+    nsfwSoftenWired = true;
+    setNsfwSoftenHooks({
+        getLog: () => { try { return getSettings().nsfwSoftenLog || null; } catch (e) { return null; } },
+        saveLog: (v) => { try { setSetting('nsfwSoftenLog', (v && typeof v === 'object') ? v : {}); } catch (e) { /* 忽略 */ } },
+    });
+    return true;
+}
+
 /** 删楼钩子只接一次（幂等；账本落 ST 扩展设置 `floorTrimLog` —— 不进数据模型 → DATA_VERSION 不变） */
 let floorTrimWired = false;
 function wireFloorTrimHooks() {
@@ -2425,6 +2444,8 @@ function installHostBridges() {
     wireTokenCostHooks();      // v3.42.0：AI 用量与花费账本（装配期即接线，第一次请求的账不会丢）
     // v3.19.0：NSFW 词条分析账本钩子（设定页状态行要在装配期就能读到「上次分析」）
     wireNsfwAnalyzeHooks();
+    // v3.45.2（`docs/D22` W7 `应-23`）：**弱化运行账本**钩子（同上 —— 设定页「NSFW弱化」分节的「上次弱化」要立刻可读）
+    wireNsfwSoftenHooks();
     // B8-3：时钟域 AI 管线钩子（AI 调用走 ST generateRaw；投喂文本走 host/floors；长任务在途即拒绝）
     setClockAiHooks({
         callAi: async (messages, opts) => {

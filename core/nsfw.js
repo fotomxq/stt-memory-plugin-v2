@@ -12,6 +12,15 @@
 //   ⑥ AI 弱化 `buildNsfwSoftenPrompt` / `applyNsfwSoftenResult`（强校验：不得仍含露骨关键词、不得膨胀、只写命中字段）/
 //      `runNsfwSoften`（先固定规则替换一次，再把剩余命中交 AI 二次弱化；忙位互斥；如实回报）；
 //   ⑦ 分析侧开关 `nsfwSoftenEnabledOn` / `nsfwSoftenRuleText`（供 `core/prompt.js#buildSummaryPrompt` 追加规则）。
+// v3.45.2（`docs/D22` W7，来源稿 `docs/D30`）：
+//   ⑧ **超限字段不得被片段结果覆盖**（`数-30` / U180）：投喂只看得到 `NSFW_TEXT_CAP` 个字符，而落地侧原先允许
+//      「不超过 `min(CAP, 原文×1.4)`」的整字段覆盖 → **原文更长时尾部会被静默截掉**。现打包侧**不入本批**并计入
+//      `oversize`，落地侧**写回前复核实测长度**，超限一律拒绝写回并计数（正文逐字不变）。
+//   ⑨ **弱化运行留痕**（`应-23` / U179）：每次跑完把「时间 / 提交 / 已弱化 / 丢弃 / 无法处理 / 余量 / 固定规则处理处数」
+//      写进**运行时账本**（`setNsfwSoftenHooks` 注入，落 ST 扩展设置 `nsfwSoftenLog`；不进数据模型 → `DATA_VERSION` 不变），
+//      经 `nsfwSoftenState().last` 与设定页「NSFW弱化」分节的只读行呈现（形态对齐同页「🧠 词条分析」的 `last`）。
+//   ⑩ 转化库**无重复匹配词**（`技-36` / U181）：删掉 `NSFW_REPLACE_PAIRS` 里的重复键 `'口交'`（V1 段已登记），
+//      并由单测锁死「`from` 无重复」与「每个识别词条都有转化词」。
 // 适配（与 V1 的差别）：AI 调用/占用判定经共用注入钩子 `core/ai-hooks.js`；提示经 `notifyHooks`；面板重绘由 UI 层负责；
 //   V1 的 `pipeStart/pipeUpdate/pipeEnd`/`abortTick`（任务管线 UI）未移植（V2 无该管线，见 docs/P8m §2）。
 // 一致性由 tests/unit/nsfw-golden.test.js 的真实 V1 黄金样本强制校验。
@@ -145,7 +154,11 @@ const NSFW_REPLACE_PAIRS = {
     // ==================== v3.10.0 追加（与 NSFW_KEYWORDS_V310 逐条对应） ====================
     // —— 性行为与状态 ——
     '性欲': '欲念', '情色': '成人内容', '色情': '成人内容', '泄欲': '纾解', '性高潮': '顶点', '潮吹': '失守',
-    '口爆': '释放', '内射': '结合', '中出': '结合', '深喉': '亲昵', '口交': '亲昵', '舔弄': '亲昵',
+    // ── v3.45.2（`docs/D22` W7 `技-36`）：**删掉这里的重复键 `'口交'`** ——
+    //   它已在上方 V1 段（`NSFW_KEYWORDS_V1` 里确有该词）登记为 `'亲昵'`，此处再写一遍属**重复键**：
+    //   对象字面量的后写覆盖先写，当前值恰好相同故无行为差异，但它是「看起来能用、实际埋雷」那一类
+    //   （一旦有人只改其中一处，改动会**静默失效**）。同时由单测锁死「`from` 无重复」与「每个识别词条都有转化词」。
+    '口爆': '释放', '内射': '结合', '中出': '结合', '深喉': '亲昵', '舔弄': '亲昵',
     '抚弄': '轻触', '手交': '亲昵', '足交': '亲昵', '乳交': '亲昵', '自渎': '独自纾解', '肉偿': '交易',
     '卖淫': '风尘之事', '嫖': '寻欢',
     // —— 器官与身体 ——
@@ -226,6 +239,53 @@ const NSFW_RULES = NSFW_KEYWORDS.map(k => ({ from: k, to: NSFW_REPLACE_PAIRS[k] 
 /** 英文误伤名单：这些普通词既不参与替换、也不计命中（`cum` 前缀类） */
 const NSFW_EN_INNOCENT = ['cumulative', 'cumulatively', 'cumbersome', 'cumbersomely', 'cumbersomeness', 'cumulus', 'cumin', 'cummerbund', 'cummerbunds', 'cummingtonite'];
 const NSFW_EN_INNOCENT_SET = new Set(NSFW_EN_INNOCENT);
+
+// ============================================================
+// v3.45.2（`docs/D22` W7 `应-23` / U179）：**弱化运行账本**（只读留痕）。
+// 背景（`docs/D30` §2.8 / §3.6）：弱化是**手动**动作，跑完只弹一条通知，**页面上不留痕** ——
+//   用户离开页面/刷新后就无法回答「上次弱化是什么时候、提交了几条、改了几条、丢了几条、还剩多少」。
+//   同页的「🧠 词条分析」早有 `last`（`core/nsfw-analyze.js#nsfwAnalyzeState`），弱化侧没有 → 本版补齐。
+// 口径：
+//   · 账本**只存计数与时刻**，不存正文（与读取台账同一纪律）；
+//   · 落 **ST 扩展设置** `nsfwSoftenLog`（`adapters/settings.js#DEFAULT_SETTINGS` 已登记）→ 刷新/重开面板仍在；
+//   · **不进数据模型**（不是记忆数据）→ `core/constants.js#DATA_VERSION` 不变、不参与跨端同步；
+//   · 未接线时退化为进程内账本（测试与无宿主场景可用）；
+//   · 「忙位被拒（`blocked`）」的运行**不记账** —— 那一次**没有真的跑**，记进去会让「上次弱化」指向一次空转。
+// ============================================================
+/** 账本读写钩子（宿主接线：`index.js` 把它接到 ST 扩展设置 `nsfwSoftenLog`） */
+let softenHooks = { getLog: null, saveLog: null };
+function setNsfwSoftenHooks(next) { softenHooks = Object.assign({}, softenHooks, next || {}); return softenHooks; }
+let localSoftenLog = { at: 0 };
+function readSoftenLog() {
+    try { if (typeof softenHooks.getLog === 'function') { const v = softenHooks.getLog(); if (v && typeof v === 'object') return v; } } catch (e) { /* 忽略 */ }
+    return localSoftenLog;
+}
+function writeSoftenLog(next) {
+    localSoftenLog = next;
+    try { if (typeof softenHooks.saveLog === 'function') softenHooks.saveLog(next); } catch (e) { /* 忽略 */ }
+}
+/** 清空弱化运行账本（测试钩子 / 诊断；不动任何记忆数据） */
+function nsfwSoftenLogReset() { writeSoftenLog({ at: 0 }); return true; }
+/**
+ * 记一次弱化运行（**只记计数与时刻**）。
+ * @param {{at?:number, total?:number, submitted?:number, applied?:number, unchanged?:number, unable?:number,
+ *   skipped?:number, failed?:number, oversize?:number, truncated?:number, fixedReplaced?:number, ok?:boolean, note?:string}} rec
+ */
+function logSoftenRun(rec) {
+    try {
+        const r = rec || {};
+        const next = Object.assign({}, readSoftenLog(), {
+            at: Number(r.at) || Date.now(),
+            total: Number(r.total) || 0, submitted: Number(r.submitted) || 0, applied: Number(r.applied) || 0,
+            unchanged: Number(r.unchanged) || 0, unable: Number(r.unable) || 0, skipped: Number(r.skipped) || 0,
+            failed: Number(r.failed) || 0, oversize: Number(r.oversize) || 0, truncated: Number(r.truncated) || 0,
+            fixedReplaced: Number(r.fixedReplaced) || 0,
+            ok: r.ok !== false, note: String(r.note || '').slice(0, 60),
+        });
+        writeSoftenLog(next);
+        return true;
+    } catch (e) { return false; }
+}
 
 // ==================== 识别词条库（v1.197） ====================
 /**
@@ -786,8 +846,18 @@ function nsfwScan(opts) {
 /** 打包本批（默认 12 条；命中关键词多者优先） */
 function nsfwSoftenPack(opts) {
     const scan = nsfwScan(opts);
-    const entries = scan.items.slice(0, NSFW_SOFTEN_BATCH).map((x, i) => Object.assign({ n: i + 1, label: NSFW_DIM_LABEL[x.dim] || x.dim }, x));
-    return { entries, total: scan.total, truncated: Math.max(0, scan.total - entries.length), byDim: scan.byDim, scannedItems: scan.scannedItems, scannedFields: scan.scannedFields };
+    // v3.45.2（`docs/D22` W7 `数-30` / U180）：**超限字段不入本批** ——
+    //   提示词每条只投喂 `NSFW_TEXT_CAP` 个字符（`buildNsfwSoftenPrompt`），而「改写后的完整文本」会被整字段写回；
+    //   原文长于上限时，AI 看到的只是**片段**，写回就等于**把尾部静默截掉**（原实现的落地校验允许
+    //   `txt.length ≤ min(CAP, 原文×1.4)`，恰好给这种截断放了行）。这里先按**实测长度**把超限字段排除出本批，
+    //   并在读数里如实计数（`oversize`）；落地侧另有一道复核（见 `applyNsfwSoftenResult`）。
+    const usable = scan.items.filter((x) => String(x.text).length <= NSFW_TEXT_CAP);
+    const oversize = scan.total - usable.length;
+    const entries = usable.slice(0, NSFW_SOFTEN_BATCH).map((x, i) => Object.assign({ n: i + 1, label: NSFW_DIM_LABEL[x.dim] || x.dim }, x));
+    return {
+        entries, total: scan.total, truncated: Math.max(0, usable.length - entries.length), oversize: oversize,
+        byDim: scan.byDim, scannedItems: scan.scannedItems, scannedFields: scan.scannedFields,
+    };
 }
 // ==================== v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档） ====================
 // 用户要求：「原子数据新增字段，用于标记该信息是否包含了 NSFW 内容，同时 NSFW 分等级，分别包括无、弱、强 3 个级别。
@@ -888,7 +958,9 @@ function buildNsfwSoftenPrompt(pack) {
         if (!p.entries.length) return null;
         const tpl = String((cfg.promptTemplates && cfg.promptTemplates.nsfwSoften) || (PROMPT_TEMPLATES_V2 && PROMPT_TEMPLATES_V2.nsfwSoften) || '').trim()
             || '把下列条目里的露骨描写改写成柔性、克制、留白的表述（不添加新事实、长度不超过原文）；只输出 JSON。';
-        const lines = p.entries.map(e => `#${e.n} ｜ ${e.label} ｜ 字段：${e.path}${e.title ? ` ｜ 条目：${e.title}` : ''} ｜ 命中：${e.hits.slice(0, 6).join('、')}${e.level && e.level !== 'none' ? ` ｜ 留档等级：${nsfwLevelLabel(e.level)}` : ''}\n   原文：${String(e.text).slice(0, 600)}`);
+        // v3.45.2（W7 `数-30`）：这里原先写死 `600`（与 `NSFW_TEXT_CAP` 同值但**重复了一个字面量**）——
+        //   改为引用常量，保证「投喂上限」只有一个事实源（打包侧的排除判据与这里的截断用的是同一个值）。
+        const lines = p.entries.map(e => `#${e.n} ｜ ${e.label} ｜ 字段：${e.path}${e.title ? ` ｜ 条目：${e.title}` : ''} ｜ 命中：${e.hits.slice(0, 6).join('、')}${e.level && e.level !== 'none' ? ` ｜ 留档等级：${nsfwLevelLabel(e.level)}` : ''}\n   原文：${String(e.text).slice(0, NSFW_TEXT_CAP)}`);
         return [
             { role: 'system', content: `${tpl}\n只输出 JSON，不要解释，不要复述原文。` },
             { role: 'user', content: `【待弱化清单（本次唯一工作对象，共 ${p.entries.length} 条）】\n${lines.join('\n')}\n\n输出：{"弱化":[{"编号":1,"文本":"改写后的完整文本","说明":"一句话说明改了什么"}],"无法处理":[2]}（按 #编号 引用；文本不得含露骨词汇、长度不超过原文；没有改动的条目放进「无法处理」或省略）。` },
@@ -900,7 +972,7 @@ function buildNsfwSoftenPrompt(pack) {
  * v3.8.0：与固定替换同口径 —— **不触碰 `nsfw` 留档等级**（弱化只改文本，标签永久留档）。
  */
 function applyNsfwSoftenResult(pack, delta) {
-    const out = { applied: 0, skipped: 0, unchanged: 0, unable: 0, failed: 0, details: [] };
+    const out = { applied: 0, skipped: 0, unchanged: 0, unable: 0, failed: 0, oversize: 0, details: [] };
     try {
         const p = pack || { entries: [] };
         const byN = new Map();
@@ -920,6 +992,16 @@ function applyNsfwSoftenResult(pack, delta) {
                 const txt = String((raw['文本'] !== undefined) ? raw['文本'] : (raw.text !== undefined ? raw.text : (raw.content || ''))).trim();
                 const note = String((raw['说明'] !== undefined) ? raw['说明'] : (raw.note || '')).replace(/\s+/g, ' ').slice(0, 40);
                 if (!txt || txt.length < 2) { out.skipped++; continue; }
+                // v3.45.2（`docs/D22` W7 `数-30` / U180）：**写回前按实测长度复核** ——
+                //   打包侧已把超限字段排除出本批，但 `pack` 可能是**旧一批**（例如上一次运行时生成的清单、
+                //   或测试/外部构造的清单），且字段长度可能在两次之间被改写。这里是**最后一道**闸门：
+                //   原文长于投喂上限 → 一律**拒绝写回**并计入 `oversize`（宁可少改，绝不把尾部截掉）。
+                const origLen = String(e.text).length;
+                if (origLen > NSFW_TEXT_CAP) {
+                    out.oversize++;
+                    out.details.push(`${e.label} #${n} → 跳过（原文 ${origLen} 字 > 投喂上限 ${NSFW_TEXT_CAP} 字：只看到片段，不得覆盖整段）`);
+                    continue;
+                }
                 if (txt === String(e.text).trim()) { out.unchanged++; continue; }
                 const still = nsfwKeywordHits(txt);
                 if (still.length) { out.skipped++; out.details.push(`${e.label} #${n} → 丢弃（结果仍含「${still.slice(0, 2).join('、')}」）`); continue; }
@@ -955,13 +1037,28 @@ function nsfwSoftenRuleText() {
 function nsfwSoftenState() {
     try {
         const scan = nsfwScan();
+        // v3.45.2（W7 `应-23`）：**上次弱化的只读留痕**（无记录 = `null`；形态对齐 `nsfwAnalyzeState().last`）。
+        //   只在有 `at` 时给出 —— 空账本不编造一条「全 0」的记录（否则界面会显示「上次弱化：提交 0」的假事实）。
+        const lg = readSoftenLog();
+        const last = (lg && Number(lg.at)) ? {
+            at: Number(lg.at) || 0,
+            total: Number(lg.total) || 0, submitted: Number(lg.submitted) || 0, applied: Number(lg.applied) || 0,
+            unchanged: Number(lg.unchanged) || 0, unable: Number(lg.unable) || 0, skipped: Number(lg.skipped) || 0,
+            failed: Number(lg.failed) || 0, oversize: Number(lg.oversize) || 0, truncated: Number(lg.truncated) || 0,
+            fixedReplaced: Number(lg.fixedReplaced) || 0,
+            ok: lg.ok !== false, note: String(lg.note || ''),
+        } : null;
         return {
             enabled: nsfwSoftenEnabledOn(),
             candidates: scan.total, byDim: scan.byDim, scannedItems: scan.scannedItems, scannedFields: scan.scannedFields,
+            // v3.45.2（W7 `数-30` ①）：**超长字段的只读计数** —— 回答真机「我这套存档里有没有原文长于投喂上限的字段」
+            //   （只读核实的那一步；这些字段**不参与弱化**，见 `nsfwSoftenPack` 与 `applyNsfwSoftenResult` 的两道闸门）
+            oversize: scan.items.filter((x) => String(x.text).length > NSFW_TEXT_CAP).length,
             batch: NSFW_SOFTEN_BATCH, keywords: nsfwKeywordList().length, custom: nsfwKeywordsCustomized(),
             rules: nsfwRuleList().length, rulesCustom: nsfwRulesCustomized(), ruleAuto: nsfwReplaceAutoOn(),
+            last: last,
         };
-    } catch (e) { return { enabled: false, candidates: 0, byDim: {}, scannedItems: 0, scannedFields: 0, batch: NSFW_SOFTEN_BATCH, keywords: 0, rules: 0, rulesCustom: false, ruleAuto: true }; }
+    } catch (e) { return { enabled: false, candidates: 0, byDim: {}, scannedItems: 0, scannedFields: 0, batch: NSFW_SOFTEN_BATCH, keywords: 0, rules: 0, rulesCustom: false, ruleAuto: true, oversize: 0, last: null }; }
 }
 /** 用户提示（V1 `notify(kind,{title,text})` → 宿主通知钩子） */
 function notify(kind, title, text) {
@@ -972,20 +1069,28 @@ function notify(kind, title, text) {
 }
 /**
  * 手动流程（总览「🌶 弱化NSFW」按钮 / 设定页同名按钮）。
+ * v3.45.2（`docs/D22` W7）：
+ *   · `应-23`：**每次跑完记一次运行时账本**（计数与时刻，不存正文）→ `nsfwSoftenState().last` / 设定页只读行；
+ *     「忙位被拒」的这一次**不记账**（没有真的跑）；
+ *   · `数-30`：超限字段**不入本批**（打包侧）并在落地侧**再次复核**，两处的 `oversize` 都如实回报与通知。
  * @param {object} [opts] silent / skipFixed（跳过固定规则阶段）/ aiText（显式 AI 返回，测试用）
  */
 async function runNsfwSoften(opts) {
     const o = opts || {};
+    // 账本收尾的统一入口：把「本次结果」按同一口径落账（字段缺省补 0；`note` 一句话说明这次是什么结局）
+    const commit = (fields) => { logSoftenRun(Object.assign({ fixedReplaced: fixedDoneSafe() }, fields || {})); };
+    let fixedDone = null;
+    const fixedDoneSafe = () => (fixedDone ? Number(fixedDone.replaced) || 0 : 0);
     try {
         const pre = nsfwSoftenPack();
         const autoFixed = nsfwReplaceAutoOn() && o.skipFixed !== true;
         if (!pre.total && !autoFixed) {
             if (o.silent !== true) notify('info', '弱化 NSFW：未发现需处理内容', `按 ${nsfwKeywordList().length} 个词条扫描 ${pre.scannedItems} 条原子 / ${pre.scannedFields} 个文本字段：没有命中露骨关键词。`);
-            return { made: 0, skipped: true, total: 0, scannedItems: pre.scannedItems, scannedFields: pre.scannedFields };
+            commit({ ok: true, note: '无命中', total: 0, submitted: 0, oversize: pre.oversize });
+            return { made: 0, skipped: true, total: 0, oversize: pre.oversize, scannedItems: pre.scannedItems, scannedFields: pre.scannedFields };
         }
         if (aiBusy()) { notify('warning', '任务进行中', '已有修复/摘要/同步任务在运行，请稍候再试。'); return { made: 0, blocked: true }; }
         // 先跑一次固定规则替换（零 AI、机械转化），再把剩余命中交 AI 二次弱化（默认开，可关）
-        let fixedDone = null;
         if (autoFixed) {
             const fx = nsfwFixedReplace({ silent: o.silent === true });
             if (fx.replaced) {
@@ -997,17 +1102,25 @@ async function runNsfwSoften(opts) {
         const pack = fixedDone ? nsfwSoftenPack() : pre;
         if (!pack.total) {
             if (o.silent !== true) notify('info', fixedDone ? '固定规则替换完成（无需 AI）' : '弱化 NSFW：未发现需处理内容', fixedDone ? `固定规则已处理 ${fixedDone.replaced} 处，其余无命中露骨关键词。` : `按 ${nsfwKeywordList().length} 个词条扫描 ${pack.scannedItems} 条原子 / ${pack.scannedFields} 个文本字段：没有命中露骨关键词。`);
-            return { made: 0, skipped: true, total: 0, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null, scannedItems: pack.scannedItems, scannedFields: pack.scannedFields };
+            commit({ ok: true, note: fixedDone ? '固定规则替换完成（无需 AI）' : '无命中', total: 0, submitted: 0, oversize: pack.oversize });
+            return { made: 0, skipped: true, total: 0, oversize: pack.oversize, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null, scannedItems: pack.scannedItems, scannedFields: pack.scannedFields };
         }
         const prompt = buildNsfwSoftenPrompt(pack);
-        if (!prompt) { notify('info', '弱化 NSFW：无待处理条目', '清单为空。'); return { made: 0, skipped: true }; }
+        if (!prompt) {
+            // v3.45.2（W7 `数-30`）：**只剩超限字段**时走这里 —— 如实说明「跳过 N 条超长」而不是笼统的「清单为空」
+            const why = pack.oversize ? `本批 ${pack.oversize} 条字段正文超过投喂上限 ${NSFW_TEXT_CAP} 字，已跳过（不得用片段结果覆盖整段）。` : '清单为空。';
+            notify('info', '弱化 NSFW：无待处理条目', why);
+            commit({ ok: true, note: pack.oversize ? '仅剩超长字段（已跳过）' : '清单为空', total: pack.total, submitted: 0, oversize: pack.oversize });
+            return { made: 0, skipped: true, total: pack.total, oversize: pack.oversize };
+        }
         const t0 = Date.now();
         const dimTxt = Object.keys(pack.byDim).map(k => `${NSFW_DIM_LABEL[k] || k} ${pack.byDim[k]}`).join(' · ');
-        notify('info', '开始弱化 NSFW…', `命中 ${pack.total} 处${dimTxt ? `（${dimTxt}）` : ''} · 本次提交 ${pack.entries.length} 条${pack.truncated ? `（余 ${pack.truncated} 条下次继续）` : ''}`);
+        notify('info', '开始弱化 NSFW…', `命中 ${pack.total} 处${dimTxt ? `（${dimTxt}）` : ''} · 本次提交 ${pack.entries.length} 条${pack.truncated ? `（余 ${pack.truncated} 条下次继续）` : ''}${pack.oversize ? ` · 超长跳过 ${pack.oversize} 条` : ''}`);
         const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '弱化NSFW'));
         if (!resp) {
             notify('warning', '弱化 NSFW：AI 无返回', 'AI 未返回内容（可能未配置模型或请求失败），未改动任何数据。');
-            return { made: 0, error: 'no-ai', total: pack.total, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
+            commit({ ok: false, note: 'AI 无返回', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, oversize: pack.oversize });
+            return { made: 0, error: 'no-ai', total: pack.total, oversize: pack.oversize, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
         }
         const delta = normalizeDeltaKeys(extractJsonObject(resp) || {});
         const r = applyNsfwSoftenResult(pack, delta);
@@ -1018,17 +1131,23 @@ async function runNsfwSoften(opts) {
         if (r.unable) parts.push(`AI 无法处理 ${r.unable} 条`);
         if (r.skipped) parts.push(`丢弃不合格 ${r.skipped} 条`);
         if (r.failed) parts.push(`写入失败 ${r.failed} 条`);
+        // v3.45.2（W7 `数-30` ④）：超限跳过**如实列出**（两条来源合并：打包侧排除的 + 落地侧复核拦下的）
+        const oversizeTotal = Number(pack.oversize || 0) + Number(r.oversize || 0);
+        if (oversizeTotal) parts.push(`超长跳过 ${oversizeTotal} 条（正文 > ${NSFW_TEXT_CAP} 字，改用整段覆盖会截掉尾部）`);
         if (o.silent !== true) {
             notify(parts.length ? (r.applied ? 'success' : 'warning') : 'warning', r.applied ? '弱化 NSFW 完成' : '弱化 NSFW：AI 未给出可用结果',
                 parts.length
                     ? `${parts.join(' · ')}；NSFW 等级标签为「永久留档」：弱化只改措辞、不改标签（原文是「强」的条目仍记为「强」）。${r.details.length ? '例：' + r.details.slice(0, 3).join('；') : ''}${pack.truncated ? ` · 余 ${pack.truncated} 条可再点一次` : ''}`
                     : 'AI 未返回可用的改写文本（结果若仍含露骨词汇会被丢弃）。可重试或先检查设定「NSFW弱化」页的提示词模板。');
         }
-        try { dbgLog('弱化', { action: '弱化 NSFW（v1.195）', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, byDim: pack.byDim, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, ms: Date.now() - t0, fixedBefore: fixedDone ? fixedDone.replaced : 0, levels: nsfwLabelStats() }); } catch (e) { /* 忽略 */ }
-        return { made: r.applied, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, details: r.details, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
+        try { dbgLog('弱化', { action: '弱化 NSFW（v1.195）', total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, oversize: oversizeTotal, byDim: pack.byDim, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, ms: Date.now() - t0, fixedBefore: fixedDone ? fixedDone.replaced : 0, levels: nsfwLabelStats() }); } catch (e) { /* 忽略 */ }
+        commit({ ok: true, note: r.applied ? '完成' : 'AI 未给出可用结果', total: pack.total, submitted: pack.entries.length, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, oversize: oversizeTotal, truncated: pack.truncated });
+        return { made: r.applied, applied: r.applied, unchanged: r.unchanged, unable: r.unable, skipped: r.skipped, failed: r.failed, oversize: oversizeTotal, total: pack.total, submitted: pack.entries.length, truncated: pack.truncated, details: r.details, fixed: fixedDone ? { fields: fixedDone.fields, replaced: fixedDone.replaced, items: fixedDone.items } : null };
     } catch (e) {
         const fx = null;
         notify('error', '弱化 NSFW 失败', String((e && e.message) || e).slice(0, 120));
+        // v3.45.2（W7 `应-23`）：异常也留痕（「上次弱化：失败」本身就是要能看见的事实）
+        try { commit({ ok: false, note: '失败：' + String((e && e.message) || e).slice(0, 40) }); } catch (e2) { /* 忽略 */ }
         return { made: 0, error: String((e && e.message) || e), fixed: fx };
     }
 }
@@ -1047,6 +1166,8 @@ export {
     nsfwGetByPath, nsfwSetByPath, nsfwMirrorKey, nsfwSyncMirror, nsfwMirrorGroup, nsfwTextFields, nsfwEntryTitle,
     nsfwScan, nsfwSoftenPack, buildNsfwSoftenPrompt, applyNsfwSoftenResult, nsfwSoftenEnabledOn, nsfwSoftenRuleText, nsfwSoftenState,
     runNsfwSoften,
+    // v3.45.2（`docs/D22` W7 `应-23`）：弱化运行账本（只读留痕）
+    setNsfwSoftenHooks, nsfwSoftenLogReset,
     // v3.8.0：NSFW 等级留档（无 / 弱 / 强 · 永久性留档）
     NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_LEVEL_HINTS, NSFW_LEVEL_FIELD, NSFW_AI_LEVEL_KEYS, NSFW_WEAK_SIGNALS,
     nsfwLevelNorm, nsfwLevelRank, nsfwLevelMax, nsfwLevelLabel, nsfwLevelHint, nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
