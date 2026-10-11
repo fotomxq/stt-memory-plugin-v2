@@ -1,6 +1,14 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.62 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.63 ｜ 日期：2026-10-10 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.63 变更（随 **v3.43.1**：**修复轮** —— 用户报告的「列表多选勾选后顶部按钮无效」）：
+>   用户原话：「修正各大类的多选设计，当直接选择对应选项后，顶部的删除等按钮无效。必须选择全选才能激活，请修复该问题。」
+>   ① **根因**：列表页勾选框（`data-ftt-select`）的 `change` 分支**只改内存集合**（`ui/panel.js#ps.sel`），既不重绘也不局部同步 → 顶部依赖勾选的按钮（`bulkDelete` / `atomMergeSummary` / `plotSegmentSummarySel`）的 `disabled` 与「（N）」计数**停在渲染快照**上；只有「全选」（`data-ftt-action` 动作 → 整页重绘）能激活 —— 与用户描述逐字吻合。**数据通路本身正常**（勾选后 `bulkDelete` 只删勾中的条目），缺陷纯在**按钮可用态**；
+>   ② **修复**：新增 `ui/select-bar.js` 作这类按钮「文案 + 可用态」的**唯一事实源**（`SELECT_DEP_LABELS` / `selectDepButtonState` / `selectDepButtonParts` / `syncSelectButtons`）；三处渲染（`ui/panel.js#dimBodyList`/`#statesBody`、`ui/scene-tree.js#scenesTreeHtml`）改用该表；勾选后**局部同步**（不整页重绘，勾选是高频动作）；
+>   ③ **规范**：`docs/D9` §5.1 新增**列表页勾选框**一行、§5.2 新增第 **5** 条（局部同步 + 「文案与可用态只能有一个来源」）；`docs/D19` v1.2 补 **§2 K14** / **§3.6 `应-24`** / §8 实施规格；`docs/D22` §4.4 新增 **`应-24`**（✅ v3.43.1）；`docs/D17` v1.13 新增 **§1.15 U182**（✅ 已落地）；
+>   ④ **门禁盲区（如实登记）**：v3.43.0 的 `应-5` 交互契约测试只覆盖**设定控件**的 `input`/`change` 分工，**不覆盖列表勾选链路**；`check-ui-spec` 是静态扫描，抓不到「渲染快照不随状态更新」。故本轮补的是**运行态**测试（`tests/unit/select-bar.test.js` 10 项 + **反向探针**：去掉同步调用 → 用户场景断言必须失败）；
+>   ⑤ **顺带更正一处 v3.43.0 漏更**：`docs/04` §5 的 **U11** 在 `应-4` 落地后仍标「⏳ 待落地」→ 改 ✅ 并写明 `C12` 守额度（同处把 `U12` 补上勾选链路的局部同步口径）；
+>   ⑥ §3 数字口径同步：表头与版本号 → **3.43.1**、单测 **182 文件 / 2710 断言**、历史批次档数 198 → **199**；§1 目录树 `history/` 计数 → **199 份**、`P10c*` 区间 → **`P10c78`**；§2 目录地图 `ui/` 30 → **31**、`tests/` 208 → **209**。
 > v2.62 变更（随 **v3.43.0**：`docs/D22` **W3 批次**（应用维度主体））：
 >   ① **`应-4`**（销 U52）：v3.42.0 引入的 **3 处真 `<table>`** 全部改回「列表行 + 折叠明细」；新增门禁 **C12**（`D9` §10 U11 真表格额度**只减不增**，唯一保留 = `ui/rel-table.js` 并登记为「真表格例外」）；
 >   ② **`应-5`**（销 U54）：新增 `tests/unit/ui-interaction-contract.test.js` 用**真实事件**核「`input` 只刷读数 / `change` 才写 + 落盘 + 重绘」的交互契约（`D9` §8 S3）；
@@ -320,12 +328,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，198 份）
+└── history/                  # 历史批次层（只读留痕，199 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c77           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c78           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -380,9 +388,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.43.0） |
+| 口径 | 权威来源 | 当前值（v3.43.1） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.43.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.43.1` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -390,7 +398,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 159 |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 181 文件 / 2700 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 182 文件 / 2710 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -398,7 +406,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 50 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 198 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 199 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -102,6 +102,8 @@ import { injectCheckAction } from './inject-check.js';
 // v2.80.0（用户要求：关系表 / 约束自查 收进设定页）：「设定 → 约束」子页正文 + 页内维度态
 import { constraintPageHtml, constraintDimState, setConstraintDim, setLinkQuery } from './constraint-page.js';
 import { atomIsHidden } from '../core/merge.js';
+// v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」）—— 依赖勾选的工具行按钮的**唯一事实源**
+import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
 
 export const PANEL_ID = 'ftt-panel';
 /** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
@@ -1090,12 +1092,17 @@ function dimBodyList(kind) {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="' + attr(kind) + '" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
         // V1 `bulkHtml()`（v1.206 术语）：情节页多选模式追加「🧷 情节总结（N）」（合并成一条 A~B 总结、
         //   原文保留并隐藏）与「🧩 分段总结（N）」（归档到分段总结子页，只归档不注入）——
-        //   文案 / title / disabled 条件与 V1 逐字一致（V1 用 `data-ftt-kind`，V2 统一用 `data-kind`）
-        + ((multi && kind === 'atoms') ? ('<button class="ftt-btn" data-ftt-action="atomMergeSummary" data-kind="atoms"' + (sel.size ? '' : ' disabled') + ' title="【情节总结】把勾选的情节交 AI 聚合成一条情节（标题标记「【A~B 总结】」）；原文保留并隐藏，不参与注入与淘汰，除非人工删除（可在总结上点 🧩 穿透查看）">🧷 情节总结（' + sel.size + '）</button>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="plotSegmentSummarySel" data-kind="atoms"' + (sel.size ? '' : ' disabled') + ' title="【分段总结】把勾选的情节按剧情时间打包交 AI 分成多段，归档到「🧩 分段总结」子页供人工管理（只归档、不注入、不参与任何自动动作）">🧩 分段总结（' + sel.size + '）</button>') : '')
+        //   文案 / title / disabled 条件与 V1 逐字一致（V1 用 `data-ftt-kind`，V2 统一用 `data-kind`）。
+        // v3.43.1：文案与 disabled **不再就地拼**，改由 `ui/select-bar.js` 统一给（勾选后同步同一张表）。
+        + ((multi && kind === 'atoms') ? (() => {
+            const ms = selectDepButtonParts('atomMergeSummary', sel.size);
+            const ss = selectDepButtonParts('plotSegmentSummarySel', sel.size);
+            return '<button class="ftt-btn" data-ftt-action="atomMergeSummary" data-kind="atoms"' + ms.attr + ' title="【情节总结】把勾选的情节交 AI 聚合成一条情节（标题标记「【A~B 总结】」）；原文保留并隐藏，不参与注入与淘汰，除非人工删除（可在总结上点 🧩 穿透查看）">' + ms.text + '</button>'
+                + '<button class="ftt-btn ftt-sm" data-ftt-action="plotSegmentSummarySel" data-kind="atoms"' + ss.attr + ' title="【分段总结】把勾选的情节按剧情时间打包交 AI 分成多段，归档到「🧩 分段总结」子页供人工管理（只归档、不注入、不参与任何自动动作）">' + ss.text + '</button>';
+        })() : '')
         + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="' + attr(kind) + '">全选</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="' + attr(kind) + '">清空选择</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="' + attr(kind) + '"' + selectDepButtonParts('bulkDelete', sel.size).attr + '>' + selectDepButtonParts('bulkDelete', sel.size).text + '</button>') : '')
         + (kind === 'atoms' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="atomToggleHidden">' + (ps.showHidden ? '🙈 隐藏已总结' : ('👁 显示已总结（' + hiddenN + '）')) + '</button>') : '')
         // V1 `memoriesHtml()`：记忆页新增「🔧 修复记忆」顶部按钮（融合同归属高相似记忆；与修复同管道）——
         //   仅在有记忆时显示（V1 `memList.length` 条件），文案与 title 逐字对齐
@@ -1386,7 +1393,7 @@ function statesBody() {
         + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="states" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
         + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="states">全选</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="states">清空选择</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="states"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>') : '')
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="states"' + selectDepButtonParts('bulkDelete', sel.size).attr + '>' + selectDepButtonParts('bulkDelete', sel.size).text + '</button>') : '')
         + repBtn + '</div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
     const head = '<div class="ftt-cat-stat ftt-chip">共 ' + all.length + ' 条状态（有效 ' + all.filter((x) => String((x && x.status) || 'active') !== 'inactive').length + '）· ' + groups.size + ' 个角色组</div>'
@@ -3649,6 +3656,13 @@ export function bindOverlay() {
                     const k = String(tg.dataset.fttSelect);
                     const set = selOf(k);
                     if (tg.checked) set.add(String(tg.dataset.fttId || '')); else set.delete(String(tg.dataset.fttId || ''));
+                    // v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」，`docs/D19` `应-24`）：
+                    //   此前这里**只改内存集合**，不重绘也不做局部同步 → 工具行按钮的 `disabled` 与
+                    //   「（N）」计数停在本次渲染的快照上（没勾选时渲染出的按钮带 `disabled`，之后永不变化）；
+                    //   只有「全选」是动作（走 `panelAction` → 整页重绘）才把它激活 —— 正是用户看到的现象。
+                    //   现在**当场局部同步**这两个按钮（`disabled` + 计数），不整页重绘（勾选是高频动作）。
+                    syncSelectButtons(el, (kind) => selOf(kind).size);
+                    return;
                 }
             });
         }
