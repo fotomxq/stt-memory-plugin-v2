@@ -11,6 +11,8 @@ import {
     listConflictLog, conflictLogCount, conflictLogSummary, conflictKindSpec, resolveConflict, CONFLICT_ACT, CONFLICT_KINDS, CONFLICT_LOG_CAP, migrateConflicts,
 } from '../../core/conflicts.js';
 import { panelAction, panelState } from '../../ui/panel.js';
+import { buildBridgeMethods } from '../../ui/debug.js';                        // v3.45.1（W6 技-32）：桥只读出口同源校验
+import { bridgeDispatch, setBridgeMethods } from '../../adapters/debug-bridge.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -198,5 +200,36 @@ A('A11 v3.37.0（S3）接线回归（源码级）：冲突 / 记录钩子由 `wi
     const migrates = src.indexOf('migrateConflicts()') >= 0;                                            // 装配时迁移老数据
     return hasFn && inInit && inPopup && migrates;
 })(), '见断言');
+
+// v3.45.1（`docs/D22` W6 `技-32`）：**桥只读出口**与内核读取出口**同源**，且桥里不得出现任何写动作。
+//   真机缺口（`docs/D29` §2 第 3 行）：`core/conflicts.js` 早有读取出口，`ui/debug.js` **零登记** →
+//   一致性告警（含 U171 那种误报）「是否仍挂着 / 是否被确认过」真机**读不到**。
+await (async () => {
+    boot();
+    noteConflict({ kind: '并集自检异常', detail: 'BR1', count: 2 });
+    noteConflict({ kind: '跨端合并冲突', detail: 'BR2', count: 1 });
+    noteConflict({ kind: '跨端分歧（已自动合并）', detail: 'BR3' });     // 记录类（mode=log，不计入待确认）
+    const T = buildBridgeMethods();
+    setBridgeMethods(T);
+    const call = async (m, p) => (await bridgeDispatch({ id: m, method: m, params: p || {} })).result;
+    const c = await call('ftt.conflicts');
+    const log = await call('ftt.conflictLog');
+    const limited = await call('ftt.conflictLog', { limit: 1 });
+    const info = await call('sys.info');
+    A('A12 桥只读出口与内核同源：`ftt.conflicts`（合计 + 逐条明细）/ `ftt.conflictLog`（记录 + 上限）/ `sys.info.pendingConflicts` 三处都取 `core/conflicts.js` 的同一批出口，且**桥登记里没有任何确认 / 清空 / 删除类动作**', (() => {
+        const names = Object.keys(T);
+        // 只读纪律：桥里不得出现写动词（用**明确的写动词表**，不用 'ack' 这类宽泛子串 —— 它会把 `host.backendLogsTail` 误判）
+        const WRITEISH = ['clear', 'delete', 'remove', 'dismiss', 'confirm', 'resolve', 'save', 'reset', 'set', 'approve', 'drop'];
+        const writeish = names.filter((n) => WRITEISH.some((w) => n.toLowerCase().indexOf(w) >= 0));
+        return c && c.pending === pendingConflictCount() && c.pending === 3                       // 待确认按权重（2 + 1）
+            && c.list.length === listConflicts().length && c.list.length === 2                     // 记录类不进待确认
+            && typeof c.summary === 'string' && c.summary.indexOf('并集自检异常') >= 0 && c.summary.indexOf('×') >= 0
+            && log && log.cap === CONFLICT_LOG_CAP && log.list.length === listConflictLog().length
+            && limited.list.length === 1                                                           // `limit` 夹取生效
+            && info && info.pendingConflicts === pendingConflictCount()
+            && names.indexOf('ftt.conflicts') >= 0 && names.indexOf('ftt.conflictLog') >= 0
+            && writeish.length === 0;
+    })(), () => ({ c: c, logCount: log && log.list && log.list.length, limitedCount: limited && limited.list && limited.list.length, info: info && info.pendingConflicts }));
+})();
 
 R.done();

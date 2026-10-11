@@ -222,6 +222,9 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'conflict-log-row': '只读记录行（`data-ftt-conflict-log-row="<id>"`，测试锚点）',
         'cid': '待确认条目 id（**由委托透传为 `cid`**，见 L6）',
         'cact': '待确认条目的动作 id（**由委托透传为 `cact`**，见 L6）',
+        // v3.45.1（`docs/D22` W6 `应-22`）：关于页版本更新状态行锚点（`data-ftt-about-status`）——
+        //   文案由 `aboutStatusText()` 单源渲染，重绘即更新；供「🔄 重新获取」后就地核对与测试锚点。
+        'about-status': '关于页版本更新状态行锚点（v3.45.1：文案出自 `aboutStatusText()`，重绘即更新；样式与测试锚点）',
 };
     const unread = [];
     for (const a of attrs) {

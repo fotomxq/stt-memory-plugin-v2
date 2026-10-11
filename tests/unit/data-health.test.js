@@ -23,6 +23,7 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { dataHealthReport, dataHealthText, HEALTH_FINDINGS_CAP } from '../../core/data-health.js';
 import { migrateState, healthSelfHeal, lastHealInfo } from '../../core/migrate.js';
+import { consistencyReading } from '../../core/cross-sync.js';   // v3.45.1（W6 技-35）：一致性读数并入体检出口的同源校验
 import { buildBridgeMethods } from '../../ui/debug.js';
 import { bridgeDispatch, setBridgeMethods } from '../../adapters/debug-bridge.js';
 
@@ -235,6 +236,16 @@ await (async () => {
         return limited.findings.length === 3 && limited.truncated >= 1
             && limited.counts['ledger-bad-mark'] === 4;
     })(), () => ({ findings: limited.findings.length, truncated: limited.truncated }));
+
+    // v3.45.1（W6 **技-35**）：一致性读数**并入现有出口**（`docs/D29` §6 Q2 裁决：不新开桥方法），
+    //   且读数与内核 `consistencyReading` 同源 —— 真机四个数字（465/488/482/479）从此有一个可比基准。
+    const mine = consistencyReading(state);
+    await A('C5 `ftt.dataHealth.consistency` 与内核读数同源（count / fingerprint 完全一致 + 口径说明齐全）', (() => {
+        const c = health && health.consistency;
+        return !!c && c.count === mine.count && c.fingerprint === mine.fingerprint
+            && !!c.semantics && Array.isArray(c.semantics.excludes) && c.semantics.excludes.indexOf('links') >= 0
+            && !!c.dims && Object.keys(c.dims).length === Object.keys(mine.dims).length;
+    })(), () => ({ got: health && health.consistency, mine: mine }));
 })();
 
 // ---------- D 组：v3.13.1 口径修复回归 ----------

@@ -33,6 +33,12 @@ npm run local -- --deploy --yes
 npm run local:sync                 # 只读检查：条件是否满足 / 两侧版本与提交是否一致
 npm run local:sync -- --yes        # 执行：git fetch + merge --ff-only（宿主在跑也能替换）
 
+# 3c) **一条命令**的自动化部署（推荐；见 §6c）：条件识别 → 产物门禁 → 快进 → 差异分类
+npm run local:deploy                          # 自动探测宿主；条件不足 → 报错退出（不写任何东西）
+npm run local:deploy -- --to "<插件目录>"      # 显式指定目标（本插件目录，或其父级「扩展目录」）
+npm run local:deploy -- --dry-run             # 只识别条件与出计划，不写
+npm run local:deploy -- --isolate-gate        # 工作区脏时：导出「已提交产物」到临时目录后跑门禁
+
 # 4) 机器可读输出 / 存报告（报告落在 tests/local/out/，已 gitignore）
 npm run local -- --json
 npm run local -- --save
@@ -235,6 +241,47 @@ npm run local:sync -- --adopt-untracked --yes   # 仅在你确认这些残留就
 `checkout -f` / `push`；插件用户数据与宿主配置一律不碰。**替换后必须刷新页面才生效**（插件在页面
 加载时装配；刷新后调试桥回到关闭属设计）。
 
+## 6c. 一条命令的自动化部署（`npm run local:deploy`）
+
+§6 与 §6b 是**两条可分别调用**的路；`local:deploy` 把它们串成**一条命令**，并把每轮都要人工判一遍的
+「宿主装了没 / 目标是不是本插件 / 能不能快进 / 多出来的差异是不是行尾假象」固化成脚本行为：
+
+```powershell
+npm run local:deploy                        # 条件识别 → 产物门禁 → git 快进 → 差异分类核对
+npm run local:deploy -- --to "<插件目录>"    # 显式指定目标路径（本插件目录，或含本插件子目录的「扩展目录」）
+npm run local:deploy -- --dry-run           # 只识别条件与出计划，不写任何东西
+npm run local:deploy -- --no-gate           # 跳过产物门禁
+npm run local:deploy -- --isolate-gate      # 工作区脏时：导出「已提交产物」到临时目录后跑门禁
+npm run local:deploy -- --show-paths        # 打全路径（默认脱敏）
+```
+
+**退出码**：`0` 成功（含「两侧已一致」）· `1` 部署或核对失败 · `2` **部署条件不足**（按约定只报错，不猜不做）。
+
+**逐项识别的部署条件**（任一不满足 → 打印 `❌ 哪一条 + 为什么`、`exit 2`，**不写任何东西**）：
+
+| 条件 | 判据 |
+| --- | --- |
+| 开发仓库是 git 检出 | 能直读到 `.git/HEAD` |
+| 目标可定位 | 自动探测到宿主扩展目录，**或** `--to` 指到本插件目录 / 其父级扩展目录 |
+| 目标含本插件 | 目标目录存在 `manifest.json` 且可解析 |
+| 部署副本可快进 | 是 git 检出、与开发仓库**同源**、**干净**（脏 / 异源 / 查不出 → 一律拒绝，见 §6b） |
+| 产物门禁 | 工作区**干净**时就地跑 `npm run gate`；**脏**时如实**跳过**并列出在途改动（门禁测的是工作区，不是要部署的提交），要校验提交产物就加 `--isolate-gate` |
+
+`--isolate-gate` 的隔离方式（**只读 git + 临时目录**，不碰开发仓库、不用 `reset/clean/checkout -f`）：
+把仓库连 `.git` 一起复制到临时目录 → 未跟踪文件删除、已跟踪文件用 `git show HEAD:<路径>` 回填成**提交内容**
+→ 在该副本里跑全量门禁 → 跑完即删。这样「另一个进程正在改工作区」不会污染对**要部署的那个提交**的判定。
+
+**差异分类核对**（每次跑完都打印，省掉人工逐项判读）：
+
+| 分类 | 含义 |
+| --- | --- |
+| 仅开发有 | 未提交/未跟踪文件 → **不随部署走**，属正常 |
+| 仅部署有 | 宿主侧多出的文件 → `--deploy` 只写不删，属预期 |
+| **仅行尾不同** | 去 BOM / 行尾后**逐字节相同** → **非漏部署**（开发工作区存了 CRLF，宿主按 `eol=lf` 检出） |
+| **真实内容不同** | 逐项标注：属「开发仓库**未提交**改动（部署副本持有的是已提交版本）」还是「需人工核对」 |
+
+> 分类用的改动清单在核对时**当场重取**：门禁 + 部署可能耗时数十秒，期间别的进程仍可能在改仓库。
+
 ## 7. 隐私与边界（硬性）
 
 1. **入库文件不得出现机器特有路径或主机名** —— 由 `scripts/check-local-leak.js` 强制（在 `npm run gate` 中）。
@@ -253,6 +300,7 @@ npm run local:sync -- --adopt-untracked --yes   # 仅在你确认这些残留就
 | `host.js` | ✅ | 宿主发现与逐项只读读取、漂移比对、部署计划（纯逻辑，可单测） |
 | `run.js` | ✅ | 自检入口（`npm run local`） |
 | `sync-host.mjs` | ✅ | 部署同步宿主副本（`npm run local:sync`）：探测调试端口 → `planHostSync()` 判定 → 只 `fetch` + `merge --ff-only` |
+| `deploy.mjs` | ✅ | **一条命令**的自动化部署（`npm run local:deploy`，§6c）：条件识别 → 产物门禁（可选隔离校验）→ git 快进 → 差异分类核对；**条件不足即 `exit 2`**，不写任何东西 |
 | `bridge.mjs` | ✅ | 调试桥服务：零依赖 WebSocket 服务端 + 交互/一次性调用 + `--selftest` + `--host`（默认回环） |
 | `launch-debug.cmd` | ✅ | 带 CDP / 代理启动 TauriTavern |
 | `local.config.example.json` | ✅ | 实参模板（占位符） |

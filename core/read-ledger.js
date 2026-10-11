@@ -118,6 +118,31 @@ export function readLedgerEnd(tok, res) {
 }
 
 /**
+ * v3.45.1（`docs/D22` §4.7 W6 `技-34`，台账 U174）：**一条记录只进一个桶**（纯函数）。
+ *
+ * 真机事实（`docs/D29` §2 第 5 行）：`ftt.reads.stats = {miss: 1}`，而同一次会话的文本台账里
+ *   明确有 ≥ 2 条 `通道读取失败 … reason: "miss"` —— 读数与台账对不上，
+ *   用 `miss` 判断「本机层是否可用」会得到**相反结论**。
+ * 根因：旧计数把「是否成功」与「是否未命中」当成两个**独立**维度
+ *   （`if (item.ok) s.ok++; else s.fail++;` 之后再无条件 `if (item.miss) s.miss++`），
+ *   于是 `{ok:false, miss:true}` 这类如实标记的未命中被**同时**计进 `fail` 与 `miss`。
+ * 口径（与 `readLedgerLine` 的结果词逐字同源 —— 读数与文本台账不允许各说一套）：
+ *   · `miss === true`（含「按预算跳过写入」「本机缓冲为空」这类如实标记）→ `miss`；
+ *   · 否则 `ok === false` → `fail`；
+ *   · 其余 → `ok`。
+ * 被否决的替代方案：只在 `readLedgerStats` 汇总处用 `miss` 覆盖 `fail`（不动入桶）——
+ *   那样 `stats.bySrc[k].fail`（调试页每一行的「失败 N」）会继续多算，逐来源读数仍与总数对不上。
+ * @param {object} item 台账条目
+ * @returns {'ok'|'miss'|'fail'}
+ */
+export function readLedgerBucket(item) {
+    const it = item || {};
+    if (it.miss === true) return 'miss';
+    if (it.ok === false) return 'fail';
+    return 'ok';
+}
+
+/**
  * 直接记一条（一次性读取 / 由宿主代记；`ms` 缺省用 `at` 推算）。
  * @param {object} rec `{action, src, target?, at?, ms?, ok?, miss?, bytes?, chars?, items?, fields?, hash?, reason?, note?, extra?}`
  */
@@ -156,8 +181,12 @@ export function readLedgerRecord(rec) {
         if (records.length > READ_LEDGER_CAP) records.length = READ_LEDGER_CAP;
         const s = bySrc[item.src] || (bySrc[item.src] = { n: 0, ok: 0, fail: 0, miss: 0, ms: 0, bytes: 0, items: 0, fields: 0, maxMs: 0 });
         s.n += 1;
-        if (item.ok) s.ok += 1; else s.fail += 1;
-        if (item.miss) s.miss += 1;
+        // v3.45.1（技-34）：**三桶互斥** —— 未命中进 `miss`、其余失败进 `fail`，一条记录绝不同时进两个桶
+        //   （旧写法 `if (ok) … else fail++` 之后再无条件 `if (miss) miss++`，与文本台账显示不一致）
+        const bucket = readLedgerBucket(item);
+        if (bucket === 'miss') s.miss += 1;
+        else if (bucket === 'fail') s.fail += 1;
+        else s.ok += 1;
         s.ms += item.ms;
         s.bytes += item.bytes;
         s.items += item.items;
@@ -206,6 +235,8 @@ export function readLedgerList(limit) {
 export function readLedgerStats() {
     const srcs = {};
     for (const k of Object.keys(bySrc)) srcs[k] = Object.assign({ label: readSrcLabel(k) }, bySrc[k], { avgMs: bySrc[k].n ? Math.round(bySrc[k].ms / bySrc[k].n) : 0 });
+    // v3.45.1（技-34）：`ok` / `miss` / `fail` 三桶互斥（各来源入桶处已保证），此处只做求和 ——
+    //   返回结构一字未改（`ok/fail/miss/totalMs/avgMs/…` 仍是同一组字段），只统一了「进哪个桶」的语义
     let fail = 0, miss = 0, ok = 0;
     for (const k of Object.keys(bySrc)) { ok += bySrc[k].ok; fail += bySrc[k].fail; miss += bySrc[k].miss; }
     const slowest = records.slice().sort((a, b) => b.ms - a.ms).slice(0, 5).map((r) => Object.assign({}, r));
@@ -215,7 +246,9 @@ export function readLedgerStats() {
     return {
         count: records.length, totalReads: Object.keys(bySrc).reduce((n, k) => n + bySrc[k].n, 0),
         ok: ok, fail: fail, miss: miss,
-        totalMs: Math.round(totalMs), avgMs: (ok + fail) ? Math.round(totalMs / (ok + fail)) : 0,
+        // 平均耗时分母 = 三桶之和（= 全部记录）：旧实现的 `ok + fail` 在三桶互斥后不再等于记录数
+        //   （未命中不进这两个桶），照旧算会把平均耗时系统性抬高（分子仍含未命中的耗时）
+        totalMs: Math.round(totalMs), avgMs: (ok + fail + miss) ? Math.round(totalMs / (ok + fail + miss)) : 0,
         totalBytes: totalBytes, lastAt: lastAt, cap: READ_LEDGER_CAP,
         bySrc: srcs, slowest: slowest, recent: recent,
     };
@@ -229,13 +262,19 @@ export function readLedgerLine(rec) {
     })();
     const parts = [hhmmss, r.srcLabel || readSrcLabel(r.src), String(r.action || '读取')];
     if (r.target) parts.push(String(r.target));
-    parts.push(r.miss ? '未命中' : (r.ok === false ? '失败' : '✓'));
+    // v3.45.1（技-34）：结果词与统计桶**同源**（都走 `readLedgerBucket`）——
+    //   旧实现这里显示「未命中」而统计把它计进 `fail`，正是「真机读数与文本台账对不上」的表象
+    const bucket = readLedgerBucket(r);
+    parts.push(bucket === 'miss' ? '未命中' : (bucket === 'fail' ? '失败' : '✓'));
     parts.push(fmtMs(r.ms));
     if (r.bytes) parts.push(fmtBytes(r.bytes));
     if (r.items) parts.push(Number(r.items) + ' 条');
     if (r.fields) parts.push(Number(r.fields) + ' 字段');
     if (r.hash) parts.push('#' + String(r.hash).slice(0, 8));
+    // 原因类别（复用既有 `原因：` 字段与格式，不新增格式）：有 reason 就写 reason；
+    //   非 ok 但没记 reason 时用桶名兜底 —— 保证「这条为什么不算成功」在本行里一定有迹可查
     if (r.reason) parts.push('原因：' + String(r.reason));
+    else if (bucket !== 'ok') parts.push('原因：' + (bucket === 'miss' ? '未命中（未记原因）' : '失败（未记原因）'));
     if (r.note) parts.push(String(r.note));
     return parts.join(' · ');
 }

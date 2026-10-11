@@ -42,10 +42,33 @@ R.assert('S2 差异统计 diffAtomData：same/onlyLocal/onlyRemote/conflict(+胜
     return J(diffAtomData(clone(G.local), clone(G.remote))) === J(G.diff);
 })(), { got: diffAtomData(clone(G.local), clone(G.remote)), want: G.diff });
 
-R.assert('S3 合并统计 mergeDataObjects：added/conflictWinLocal/conflictWinRemote/same 与 V1 一致', (() => {
+// v3.45.1（`docs/D22` W6 `技-31`）**V1 偏离登记（三件套：黄金样本未改 + 测试内显式归一 + 文档说明）**：
+//   `mergeDataObjects` 的 `stat` 在 V1 四键（added / conflictWinLocal / conflictWinRemote / same）之外**新增两键**：
+//   · `conflict` = conflictWinLocal + conflictWinRemote —— V1 的调用方在并集自检里读它，却**从未被赋值**
+//     （`adapters/sync.js` 的「跨端合并冲突」提示因此永不登记），本次一并补齐；
+//   · `reductions` = { dedupe, tombstone, byDim } —— 内容去重 / 墓碑过滤的**合法削减量**，供并集自检扣除
+//     （见 `core/cross-sync.js#unionSelfCheck`）。
+//   黄金样本 `G.mergeStat` **保持 V1 原样、一字未动**；此处**显式归一**：只取 V1 四键比对，新增键另外断言。
+//   文档说明见 `docs/D29` §3.2 与 §8 `技-31` 行。
+const V1_STAT_KEYS = ['added', 'conflictWinLocal', 'conflictWinRemote', 'same'];
+const statV1 = (st) => { const o = {}; for (const k of V1_STAT_KEYS) o[k] = st[k]; return o; };
+
+R.assert('S3 合并统计 mergeDataObjects：added/conflictWinLocal/conflictWinRemote/same 与 V1 一致（**显式归一**：只比 V1 四键）', (() => {
     const r = mergeDataObjects(clone(G.local), clone(G.remote));
-    return J(r.stat) === J(G.mergeStat);
-})(), (() => { const r = mergeDataObjects(clone(G.local), clone(G.remote)); return { got: r.stat, want: G.mergeStat }; })());
+    return J(statV1(r.stat)) === J(G.mergeStat);
+})(), (() => { const r = mergeDataObjects(clone(G.local), clone(G.remote)); return { got: statV1(r.stat), gotFull: r.stat, want: G.mergeStat }; })());
+
+// v3.45.1（`docs/D22` W6 `技-31`）：新增两键的行为断言（V1 黄金样本里没有它们，故不参与上面的归一比对）
+R.assert('S3b 合并统计**新增键**：`conflict` = 胜负合计（>0 才可能登记「跨端合并冲突」）；`reductions` 的**分维度明细与合计自洽**（并集自检据此扣减）', (() => {
+    const r = mergeDataObjects(clone(G.local), clone(G.remote));
+    const st = r.stat || {};
+    const red = st.reductions || {};
+    const dims = red.byDim || {};
+    const sumDim = Object.keys(dims).reduce((n, k) => n + (Number(dims[k].dedupe) || 0) + (Number(dims[k].tombstone) || 0), 0);
+    return Number(st.conflict) === Number(st.conflictWinLocal) + Number(st.conflictWinRemote)
+        && Number(red.dedupe) >= 0 && Number(red.tombstone) >= 0
+        && sumDim === Number(red.dedupe) + Number(red.tombstone);
+})(), (() => { const r = mergeDataObjects(clone(G.local), clone(G.remote)); return { conflict: r.stat.conflict, reductions: r.stat.reductions }; })());
 
 // 已处理楼层并集的判据是「该楼层当前正文哈希」——V1 直接调 hashFloorText（宿主），V2 由调用方注入同值解析器
 const hashFloor = (i) => (Number(i) === 3 ? G.floorHash3 : '');

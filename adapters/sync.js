@@ -40,7 +40,7 @@ import { hashText } from '../core/util.js';
 import { storageEnvelope, storageHash } from '../core/envelope.js';
 import {
     atomEntryCount, dataAggHash, diffAtomData, mergeDataObjects, mergeSnapshotStores,
-    snapshotSigOf, snapIndexFrom, mirrorPushSig,
+    snapshotSigOf, snapIndexFrom, mirrorPushSig, capReductionOf, unionSelfCheck,
 } from '../core/cross-sync.js';
 import {
     SYNC_LOG_MAX, syncLogMerge, syncLogPushRecord, syncLogStat, syncLogShortHash, syncLogSource,
@@ -50,6 +50,7 @@ import { migrateState } from '../core/migrate.js';
 import { noteConflict } from '../core/conflicts.js';
 import { debugLogPush } from './debug-log.js';
 import { ensureAtomHashes } from '../core/merge.js';
+import { storeCapFor } from '../core/ingest.js';   // v3.45.1（W6 技-31）：上限裁剪干跑用「该维度存储上限」
 import { mergeTombTrees, applyTombstonesToState } from '../core/sweep.js';
 import { hashFloorText } from '../host/floors.js';
 import { extractBusy } from '../host/extract.js';
@@ -674,20 +675,33 @@ export function applyRemoteMergeToState(remoteEnv) {
             return { mode: 'same', diff: diffStat, snaps: (state.snapStore || []).length, snapChanged: (state.snapStore || []).length !== before };
         }
         // v2.92.0（`docs/D10` Q10）：合并后做**并集自检**（条数不应减少）并登记需人工确认项
+        // v3.45.1（`docs/D22` W6 技-31）：判据修正 —— 旧判据拿「合并后」直接比「合并前较大者」，
+        //   而合并实现本身还会做**内容去重**（`contentDedupeArray`）、**墓碑过滤**（`applyDeletedToArray`）、
+        //   **上限裁剪**（`capAtomsKeepingHidden`，`core/ingest.js` 落库路径）→ 三者都让条数合法下降，
+        //   真机因此必然误报「并集自检异常」（`docs/D29` §2 第 2 行：115 → 20）。新下限逐个扣除三种削减，
+        //   且三个削减量**分别回报**（`docs/D29` R1：不合并成一个数），只有仍低于下限才登记待确认项。
         const beforeLocalAtoms = (state.atoms || []).length;
         const beforeRemoteAtoms = (rem && Array.isArray(rem.atoms)) ? rem.atoms.length : 0;
         const merged = mergeDataObjects(state, rem, { hashFloor: floorHashResolver });
         setKernelState(merged.data);
         state.snapStore = mergeSnapshotStores(state.snapStore || [], rem.snapStore || []);
+        let selfCheck = null;
         try {
             const st = (merged && merged.stat) || {};
             const after = (state.atoms || []).length;
-            const unionMin = Math.max(beforeLocalAtoms, beforeRemoteAtoms);
+            const byDim = (st.reductions && st.reductions.byDim) || {};
+            const dimRed = byDim.atoms || { dedupe: 0, tombstone: 0 };      // 自检比的是「情节」维度 → 只扣本维度削减量
+            const capRed = capReductionOf(state.atoms, storeCapFor('atoms'));   // 上限裁剪「干跑」：只读数，不裁剪
+            selfCheck = unionSelfCheck({
+                beforeLocal: beforeLocalAtoms, beforeRemote: beforeRemoteAtoms, after: after,
+                reductions: { dedupe: Number(dimRed.dedupe) || 0, tombstone: Number(dimRed.tombstone) || 0, cap: Number(capRed.hit) || 0 },
+            });
+            // 冲突合计（`stat.conflict` 此前从未被赋值 → 该提示在本版之前**永不登记**，本次一并修正）
             if (Number(st.conflict) > 0) noteConflict({ kind: '跨端合并冲突', detail: '本地与远端同 id 不同内容 ' + Number(st.conflict) + ' 条（已按时间取新，必要时人工核对）', count: Number(st.conflict) });
-            if (after < unionMin) noteConflict({ kind: '并集自检异常', detail: '合并后情节 ' + after + ' 条 < 合并前较大者 ' + unionMin + ' 条（可能被裁剪或墓碑过滤，请导出两份核对）' });
-            try { debugLogPush('同步', { action: '合并自检', atomsBeforeLocal: beforeLocalAtoms, atomsBeforeRemote: beforeRemoteAtoms, atomsAfter: after, conflict: Number(st.conflict) || 0, unionMin: unionMin }); } catch (e) { /* 忽略 */ }
+            if (selfCheck.anomaly) noteConflict({ kind: '并集自检异常', detail: selfCheck.detail, count: Math.max(1, selfCheck.unexplained) });
+            try { debugLogPush('同步', { action: '合并自检', atomsBeforeLocal: beforeLocalAtoms, atomsBeforeRemote: beforeRemoteAtoms, atomsAfter: selfCheck.after, conflict: Number(st.conflict) || 0, unionMin: selfCheck.unionMin, lowerBound: selfCheck.lowerBound, reductions: selfCheck.reductions, anomaly: selfCheck.anomaly, unexplained: selfCheck.unexplained }); } catch (e) { /* 忽略 */ }
         } catch (e) { /* 自检失败不影响合并 */ }
-        return { mode: 'merge', stat: merged.stat, diff: diffStat, snaps: (state.snapStore || []).length };
+        return { mode: 'merge', stat: merged.stat, diff: diffStat, snaps: (state.snapStore || []).length, selfCheck: selfCheck };
     } catch (e) { warn('远端合并应用失败', e); return null; }
 }
 

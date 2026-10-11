@@ -36,6 +36,11 @@ import { cfg, dbgLog, dbgLogCoalesced } from '../core/model/runtime.js';
 import { scopeId } from '../core/state.js';
 // v3.38.0（用户报告「PC 端不可用」）：**浏览器内置目录**（OPFS）—— 纯浏览器也能构造真文件（无需宿主接口）
 import { browserFsAvailable, browserFsNote, browserFsReset, browserFsWrite, browserFsRead, browserFsExists, browserFsRemove, browserFsList, browserFsProbe } from './browser-fs.js';
+// v3.45.1（`docs/D22` §4.7 W6 **`数-28`** · U176）：快照分片回收复用**仓库既有**的两条指纹定义，不新造第二种 ——
+//   · `hashText`：与 `adapters/local-parts.js#snapshotParts` 记进清单的逐条 `hash` **同一算法**；
+//   · `snapshotSigOf`（`core/cross-sync.js`）：**快照链级**指纹（跨端同步也用它）。
+import { hashText } from '../core/util.js';
+import { snapshotSigOf } from '../core/cross-sync.js';
 
 /**
  * **本机副本的作用域 token —— 写读两侧的唯一来源**（v3.40.2 数据丢失修复）。
@@ -64,6 +69,13 @@ export const LOCAL_COPY_PREFIX = 'ftt2-local-';
 
 /** 探测结果缓存（每次会话探一次；`localDiskReprobe()` 可强制重探） */
 let caps = null;
+/**
+ * v3.45.1（`数-28`）：**上一次已核对过的快照链指纹**（链级，来自 `core/cross-sync.js#snapshotSigOf`）。
+ *   作用 = 同一条链不必每次都列一遍快照目录（保存在频繁保存路径上要克制）；
+ *   链一变（新增/删除/重建快照）指纹就变 → 下一次写盘自然重新核对。
+ *   只作**省一次的短路**，判定与回收永远以当前链指纹集合为准，绝不用它代替比对。
+ */
+let lastRecycledSig = '';
 /** 最近一次读写统计（诊断 / UI） */
 const stats = { writes: 0, reads: 0, failures: 0, probes: 0, lastError: '', lastAt: 0, lastBytes: 0, mechanism: '' };
 /**
@@ -624,12 +636,25 @@ export async function localDiskExists(path) {
     if (!inv || !path) return false;
     try { return (await inv('plugin:fs|exists', { path: path, options: {} })) === true; } catch (e) { return false; }
 }
-/** 删一个文件（**只删自己写下的探针 / 过期文件**；失败只记诊断） */
+/** 删一个文件（**只删自己写下的探针 / 过期派生文件**；失败只记诊断） */
 async function diskRemove(path) {
     // v3.38.0：三个后端都要能删 —— 否则浏览器内置目录的探针文件会**留在**用户的目录里（清理失效）
     try {
         if (localDiskIsBrowserPath(path)) return !!(await browserFsRemove(browserRel(path))).ok;
         if (handleActive() && fsHandle) return !!(await handleRemovePath(relForHandle(path))).ok;
+        /**
+         * v3.45.1（`docs/D22` §4.7 W6 `数-28`）：**`api.dev` 形态的宿主也要能删自己写下的派生文件**。
+         *   此前这里只走 Tauri 原始桥 → `api.dev` 形态的宿主（本地调试宿主 / 部分 TauriTavern 构建）
+         *   上删除恒失败：探针文件清不掉，**陈旧快照分片也永远回收不了**（只能如实报 `remove-failed`）。
+         *   与 `localDiskList` 的 v3.40.2 同口径：同命名空间、按方法名发现「删除」方法；找不到 → 如实返回 false。
+         */
+        const c = localDiskCapability(false);
+        if (c && c.ok && c.mechanism === 'dev-api') {
+            const dev = (() => { try { return abi().api.dev[c.ns]; } catch (e) { return null; } })();
+            const m = ['removeFile', 'removeTextFile', 'deleteFile', 'remove', 'delete', 'unlink'].filter((k) => dev && typeof dev[k] === 'function')[0];
+            if (!m) return false;
+            try { const rr = await dev[m]({ path: path }); return !(rr && rr.ok === false); } catch (e) { return false; }
+        }
     } catch (e) { /* 落到宿主机制 */ }
     const inv = tauriInvoke();
     if (!inv || !path) return false;
@@ -854,13 +879,15 @@ async function diskReadText(path) {
 }
 
 /**
- * v3.29.0（用户要求「核对文件是否保存到本地了」）：**列出本地磁盘目录里的文件**（只读）。
- *   用 Tauri fs 插件的 `read_dir`（ACL 不放行 → 如实返回 `{ok:false}`，不假装）。
- * @returns {Promise<{ok:boolean, dir:string, names:string[], entries:Array<{name:string,isFile:boolean,size:number}>, error?:string}>}
+ * v3.45.1（`数-28`）：**列任意本地目录**（一层；只读）—— 三/四条后端路由抽成一处，
+ *   供 `localDiskList()`（列根目录）与「快照分片回收」（列 `<目录>/<scope>/snapshots`）共用。
+ *   为什么要抽出来：回收必须**先看见盘上有什么**再决定删谁；若各处自己再写一套后端分支，
+ *   迟早与写读路由漂移（本文件 v3.38.0 已因同类重复修过一次）。
+ * @param {string} dir 目录（绝对路径 / `@browser/…` 标记 / `@handle/…` 标记）
+ * @returns {Promise<{ok:boolean, dir:string, names:string[], entries:Array<{name:string,isFile:boolean,size:number}>, error:string}>}
  */
-export async function localDiskList() {
-    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
-    const out = { ok: false, dir: dir, names: [], entries: [], error: '' };
+async function diskListDir(dir) {
+    const out = { ok: false, dir: String(dir || ''), names: [], entries: [], error: '' };
     if (!dir) { out.error = 'off'; return out; }
     try {
         // v3.38.0：浏览器内置目录（OPFS）
@@ -906,6 +933,16 @@ export async function localDiskList() {
         out.ok = true;
         return out;
     } catch (e) { out.error = String((e && e.message) || e); return out; }
+}
+
+/**
+ * v3.29.0（用户要求「核对文件是否保存到本地了」）：**列出本地磁盘目录里的文件**（只读）。
+ *   用 Tauri fs 插件的 `read_dir`（ACL 不放行 → 如实返回 `{ok:false}`，不假装）。
+ * @returns {Promise<{ok:boolean, dir:string, names:string[], entries:Array<{name:string,isFile:boolean,size:number}>, error?:string}>}
+ */
+export async function localDiskList() {
+    const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
+    return diskListDir(dir);
 }
 
 /**
@@ -1085,16 +1122,160 @@ export async function localDiskReadShards(scope) {
 }
 
 /**
+ * v3.45.1（`docs/D22` §4.7 W6 **`数-28`** · U176）——**回收不属于当前链的快照分片**（只删本地派生文件）。
+ *
+ * 真机事实（`docs/D29` §2 第 7 行）：`parts.snapshots = {count 28, files 28}` 而内存链长 `snapshots = 27`
+ *   （更早时点还出现 `files 39` 对链长 25）—— 本地目录留着**不再属于当前链**的分片文件，
+ *   于是「还原口径」（清单里写的链）与「体积 / 文件口径」（目录里实际有几个文件）长期不一致。
+ *
+ * 纪律（`docs/D29` §5 **R3** / §6 **Q4**）：
+ *   · **只回收快照分片**（`snapshots/` 下的条目文件）；`logs/` 等日志类派生文件**本项一律不碰**（另行评估）；
+ *   · 判定基准 = **当前链指纹集合**：清单 `manifest.order`（= 当前链的条目文件集合）与逐条 `parts[].hash`
+ *     （由 `adapters/local-parts.js#snapshotParts` 用 `hashText` 写入，与 `core/cross-sync.js#snapshotSigOf`
+ *     同属**仓库既有**的链指纹定义 —— **本函数不新造第二种指纹**）；
+ *   · **回收前逐个比对**（`docs/D29` R3「宁可留下不删，也不要删掉仍被引用的文件」）：
+ *     读得到 → 解析得出 → 确认是快照条目文件 → 且**内容指纹不在当前链里** → 才删；任何一项判不出来就留下并报原因；
+ *   · 绝不删主文件 / 索引（`manifest.json`）/ 日志 / 辅助数据 / 用户自己放进来的文件；
+ *   · **如实回报**（删了几个、跳过几个、为什么跳过）并经 `dbgLog` 留痕 —— **不许静默删**。
+ *
+ * 保守闸门（缺一不可；宁可回到「堆积」也不误删）：
+ *   ① 当前链**非空**（链为空可能只是「本次载入到的是降级状态」→ 一个文件都不动）；
+ *   ② 本次写盘**全部成功**（`written !== true`）：清单没写成时盘上清单仍指向旧链，此时删文件会破坏还原。
+ * @param {string} scope 作用域（`localScopeToken()`）
+ * @param {{dir?:string, manifest?:object, snapList?:Array, written?:boolean}} [opts]
+ *   `dir` = 快照目录（`<目录>/<scope>/snapshots`）；`manifest` = 刚刚写上去的清单；`snapList` = 当前链（取链级指纹用）
+ * @returns {Promise<{ok:boolean, dir:string, chain:number, chainSig:string, scanned:number, removed:string[], skipped:Array<{name:string,reason:string}>, reason:string}>}
+ */
+export async function localDiskRecycleSnapParts(scope, opts) {
+    const o = opts || {};
+    const out = { ok: false, dir: String(o.dir || ''), chain: 0, chainSig: '', scanned: 0, removed: [], skipped: [], reason: '' };
+    try {
+        const mf = (o.manifest && typeof o.manifest === 'object') ? o.manifest : null;
+        if (!mf) { out.reason = 'no-manifest'; return out; }
+        out.chain = Number(mf.count || 0) || 0;
+        try { out.chainSig = String(snapshotSigOf(o.snapList) || ''); } catch (e) { out.chainSig = ''; }
+        if (!out.dir) { out.reason = 'no-dir'; return out; }
+        if (o.written !== true) { out.reason = 'write-incomplete'; return out; }   // ② 清单可能没写成 → 不删
+        if (out.chain <= 0) { out.reason = 'empty-chain'; return out; }            // ① 链为空 → 不删
+        const order = Array.isArray(mf.order) ? mf.order.map(String) : [];
+        if (!order.length) { out.reason = 'empty-chain'; return out; }
+        // 同一链**已核对过**就不必再列一次目录（链指纹是仓库既有定义；指到同一条链即等价）
+        if (out.chainSig && out.chainSig === lastRecycledSig) { out.ok = true; out.reason = 'unchanged'; return out; }
+        const authorized = Object.create(null);
+        const hashes = Object.create(null);
+        for (const n of order) {
+            authorized[n] = 1;
+            const p = (mf.parts && mf.parts[n]) || null;
+            if (p && p.hash) hashes[String(p.hash)] = 1;
+        }
+        const ls = await diskListDir(out.dir);
+        if (!ls.ok) { out.reason = 'list-failed:' + String(ls.error || ''); return out; }
+        out.scanned = ls.names.length;
+        for (const name of ls.names) {
+            if (name === 'manifest.json' || authorized[name]) continue;   // 索引 / 仍在当前链 → 绝不删
+            const why = await snapPartStaleReason(out.dir, name, hashes);
+            if (why !== '') { out.skipped.push({ name: name, reason: why }); continue; }
+            const full = localDiskJoin(out.dir, name);
+            const d = await diskRemove(full);
+            if (d) out.removed.push(name);
+            else out.skipped.push({ name: name, reason: 'remove-failed' });
+        }
+        out.ok = true;
+        if (out.chainSig) lastRecycledSig = out.chainSig;
+        // 如实回报（`docs/D29` §5 R3 / §6 Q4：删了几个、跳过几个、为什么跳过）——走仓库既有调试日志出口
+        if (out.removed.length || out.skipped.length) {
+            const reasons = {};
+            for (const s of out.skipped) reasons[s.reason] = (reasons[s.reason] || 0) + 1;
+            try {
+                dbgLog('存储', {
+                    action: '快照分片回收（不属于当前链的本地派生文件）',
+                    dir: out.dir, scope: String(scope || ''), chain: out.chain, chainSig: out.chainSig,
+                    scanned: out.scanned, removed: out.removed.length, skipped: out.skipped.length, reasons: reasons,
+                    removedNames: out.removed.slice(0, 20),
+                    note: '基准 = 当前链指纹集合（清单 order + 逐条 hash）；只回收快照分片，日志类不动；仍被引用的文件一律保留',
+                });
+            } catch (e) { /* 日志失败不影响回收结论 */ }
+        }
+        return out;
+    } catch (e) { out.reason = String((e && e.message) || e); return out; }
+}
+
+/**
+ * 判断一个**不在当前链清单里**的本地文件是否确实是「可重生成的陈旧快照分片」。
+ *   **返回空串才允许删**；返回任何非空串 = 拒绝删除的原因（宁可留下）。
+ * 四道闸门（逐条对应 `docs/D29` §5 R3 的「回收前逐个比对」）：
+ *   ① 名字形态：必须是 `adapters/local-parts.js#safePartName` 产出的那种（`[A-Za-z0-9_.-]{1,64}.json`）
+ *      —— 用户自己放进来的 `readme.txt` / `notes.json.bak` 一律不碰；
+ *   ② 读得到：读不出来（权限 / 竞态）→ 留下；
+ *   ③ **仍被引用**：内容 `hashText` 命中当前链任一条目的 `hash`（同名不同名都算）→ 留下（它仍被链引用着，删了就是丢数据）；
+ *   ④ 内容形态：能解析成对象、有非空 `id`、且带快照条目该有的键（`ts`/`kind`/`atomsHashes`/`data`/`deleted`）
+ *      → 否则当作「不是我们写的分片」留下。
+ * @param {string} dir 快照目录
+ * @param {string} name 文件名
+ * @param {Object<string,1>} hashes 当前链的内容指纹集合
+ * @returns {Promise<string>} 空串 = 可回收；否则 = 跳过原因
+ */
+async function snapPartStaleReason(dir, name, hashes) {
+    if (!/^[A-Za-z0-9_.-]{1,64}\.json$/.test(name)) return 'not-part-name';
+    const r = await diskReadText(localDiskJoin(dir, name));
+    if (!r || !r.ok || typeof r.text !== 'string') return 'unreadable';
+    const text = r.text;
+    if (hashes[String(hashText(text))]) return 'still-referenced';      // ③：仍被当前链引用，绝不删
+    let obj = null;
+    try { obj = JSON.parse(text); } catch (e) { return 'unparsable'; }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return 'not-snapshot-part';
+    if (!String(obj.id || '')) return 'not-snapshot-part';
+    const looksSnap = ('ts' in obj) || ('kind' in obj) || ('atomsHashes' in obj) || ('data' in obj) || ('deleted' in obj);
+    if (!looksSnap) return 'not-snapshot-part';
+    return '';
+}
+
+/**
+ * v3.45.1（`数-28` 步骤③）：快照分片的**只读读数**（把「链」与「文件」的差异来源写清楚，别让它看起来像 bug）。
+ *   `count`（链长）与 `files`（写到 / 读到的文件数）本来就不是同一个量：
+ *     · **写**侧 `localDiskWriteParts().files` = 条目分片数 **+ 1**（多出来的那 1 个是 `manifest.json` 索引）；
+ *     · **读**侧 `localDiskReadParts().files` = 清单 `order` 里**读得回来**的条目文件数（不含索引），
+ *       所以正常情况下它应当**等于链长**；
+ *     · `staleFiles` = 目录里**不属于当前链**的条目文件数（写盘时按链指纹集合回收）；
+ *       它非 0 就说明「上一次回收没跑成」或「目录里还躺着更早那一代」，**这才是 files/count 对不上的来源**。
+ * @param {string} absDir 快照目录（绝对路径 / 标记路径）
+ * @param {object} mf 清单
+ * @param {number} dataFiles 读回来的条目文件数
+ * @param {number} chain 链长
+ * @returns {Promise<{staleFiles:number|null, note:string}>} `staleFiles:null` = 列不出目录（判不出来就不臆断）
+ */
+async function snapPartsReadout(absDir, mf, dataFiles, chain) {
+    let staleFiles = null;
+    try {
+        const order = Array.isArray(mf && mf.order) ? mf.order.map(String) : [];
+        const auth = Object.create(null);
+        for (const n of order) auth[n] = 1;
+        const ls = await diskListDir(absDir);
+        if (ls.ok) {
+            staleFiles = ls.names.filter((n) => n !== 'manifest.json' && !auth[n] && /^[A-Za-z0-9_.-]{1,64}\.json$/.test(n)).length;
+        }
+    } catch (e) { staleFiles = null; }
+    return {
+        staleFiles: staleFiles,
+        note: '链长 count=' + chain + '（清单口径）· 读回的条目文件 files=' + dataFiles + '（不含 manifest.json 索引）'
+            + '· 本机**写**侧的 files 还要 +1（那份索引）'
+            + (staleFiles == null ? '；目录列不出来 → 是否有陈旧分片判不出来（不臆断）' : ('；目录里不属于当前链的陈旧分片 staleFiles=' + staleFiles + '（写盘时按链指纹集合回收）')),
+    };
+}
+
+/**
  * v3.32.0（用户要求「快照 / 日志也拆分结构化存储，避免单一文件聚合」）：
  *   把快照链与日志**按结构化小文件**写进本地目录：
  *     · 快照：`<目录>/<scope>/snapshots/<条目 id>.json` + `snapshots/manifest.json`；
  *     · 日志：`<目录>/<scope>/logs/<kind>-<YYYY-MM-DD>.json` + `logs/manifest.json`。
  *   best-effort：失败只记诊断，不阻塞主流程。
+ *   v3.45.1（`数-28`）：快照这一路**写成功后按当前链指纹集合回收陈旧分片**（只删本地派生文件；
+ *   日志类**不碰**，见 `localDiskRecycleSnapParts` 头注）。
  * @param {'snapshots'|'logs'} what
  * @param {Array<object>} list 快照链（`state.snapStore`）或日志条目
  * @param {string} scope 角色作用域
  * @param {{kind?:string, cap?:number}} [opts] 日志种类与每片条数上限
- * @returns {Promise<{ok:boolean, dir?:string, files?:number, count?:number, error?:string}>}
+ * @returns {Promise<{ok:boolean, dir?:string, files?:number, count?:number, failed?:number, chain?:number, dataFiles?:number, recycle?:object, note?:string, error?:string}>}
  */
 export async function localDiskWriteParts(what, list, scope, opts) {
     const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
@@ -1110,26 +1291,43 @@ export async function localDiskWriteParts(what, list, scope, opts) {
         if (!built || !built.ok) return { ok: false, error: (built && built.reason) || 'build-failed' };
         const dirName = (what === 'snapshots') ? LP.SNAP_DIR : LP.LOG_DIR;
         const mfName = (what === 'snapshots') ? LP.SNAP_MANIFEST : LP.LOG_MANIFEST;
+        // v3.45.1（`数-28`）：逐笔写回执**不再丢弃** —— 回收的门槛是「本次写盘全部成功」，
+        //   否则（尤其清单没写成时）盘上的清单仍指向旧链，删任何文件都会破坏还原能力。
+        let failed = 0;
         const writePair = async (write) => {
             let n = 0;
-            for (const name of Object.keys(built.files)) { await write(dirName + '/' + name, built.files[name]); n++; }
-            await write(dirName + '/' + mfName, JSON.stringify(built.manifest));
+            for (const name of Object.keys(built.files)) { const w = await write(dirName + '/' + name, built.files[name]); if (w && w.ok === false) failed++; n++; }
+            const wm = await write(dirName + '/' + mfName, JSON.stringify(built.manifest));
+            if (wm && wm.ok === false) failed++;
             return n + 1;
         };
         // v3.38.0：统一走 `diskWriteText` 路由（浏览器内置目录 / 会话句柄 / 宿主 fs）
         const base = localDiskJoin(localDiskJoin(dir, sub), dirName);
-        const files = await writePair(async (name, text) => { await diskWriteText(localDiskJoin(base, name.split('/').pop()), text); });
+        const files = await writePair(async (name, text) => await diskWriteText(localDiskJoin(base, name.split('/').pop()), text));
         stats.writes++;
-        return { ok: true, dir: base, files: files, count: Number(built.manifest.count || 0) };
+        const count = Number(built.manifest.count || 0) || 0;
+        const out = { ok: true, dir: base, files: files, count: count, failed: failed };
+        if (what === 'snapshots') {
+            out.recycle = await localDiskRecycleSnapParts(scope, { dir: base, manifest: built.manifest, snapList: list, written: failed === 0 });
+            out.chain = count;
+            out.dataFiles = Math.max(0, files - 1);
+            // 步骤③：把「链」与「文件」的差异来源写在读数字段上（files 含 manifest.json 索引）
+            out.note = '链长 count=' + count + ' 条 → 条目分片 ' + out.dataFiles + ' 个 + manifest.json 索引 1 个 = files ' + files
+                + '；差异来源就是那份索引（读回侧 files 只数清单 order 里的条目文件，不含索引）';
+            out.stale = Number((out.recycle && out.recycle.removed && out.recycle.removed.length) || 0);
+        }
+        return out;
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
 /**
  * v3.32.0：读回**快照 / 日志的结构化拆分**（逐条 / 按天小文件 + manifest），按清单校验逐片 hash。
  *   坏片只报坏片（`bad`），可用片照常返回 —— 与分片读同构，供载入兜底与诊断使用。
+ *   v3.45.1（`数-28`）：快照这一路额外给出**只读读数**（`chain` / `dataFiles` / `staleFiles` / `note`），
+ *   把 `count` 与 `files` 的差异来源说清楚（真机曾把 `files != count` 当成数据缺陷）。
  * @param {'snapshots'|'logs'} what
  * @param {string} scope 角色作用域
- * @returns {Promise<{ok:boolean, manifest?:object, files?:object, bad?:string[], snapStore?:Array, entries?:Array, count?:number, dir?:string, error?:string}>}
+ * @returns {Promise<{ok:boolean, manifest?:object, files?:object, bad?:string[], snapStore?:Array, entries?:Array, count?:number, chain?:number, dataFiles?:number, staleFiles?:number|null, note?:string, dir?:string, error?:string}>}
  */
 export async function localDiskReadParts(what, scope) {
     const dir = await effectiveDir();   // v3.34.0：只填目录名时当场解析到宿主应用数据目录
@@ -1139,9 +1337,10 @@ export async function localDiskReadParts(what, scope) {
         const { scopeSlug } = await import('./local-shards.js');
         const sub = scopeSlug(scope);
         const dirName = (what === 'snapshots') ? LP.SNAP_DIR : LP.LOG_DIR;
+        const absDir = localDiskJoin(localDiskJoin(dir, sub), dirName);
         const readOne = async (name) => {
             // v3.38.0：统一走 `diskReadText` 路由
-            const r = await diskReadText(localDiskJoin(localDiskJoin(localDiskJoin(dir, sub), dirName), name));
+            const r = await diskReadText(localDiskJoin(absDir, name));
             return (r && r.ok) ? String(r.text) : null;
         };
         const mfRaw = await readOne('manifest.json');
@@ -1154,12 +1353,20 @@ export async function localDiskReadParts(what, scope) {
             files[String(name)] = raw;
         }
         const j = (what === 'snapshots') ? LP.joinSnapshotParts(mf, files) : LP.joinLogParts(mf, files);
-        return {
+        const out = {
             ok: !!j.ok, manifest: mf, files: files, bad: j.bad || [],
             snapStore: j.snapStore || [], entries: j.entries || [],
             count: Number(mf.count || 0) || 0,
             dir: dir ? localDiskJoin(localDiskJoin(dir, sub), dirName) : (sub + '/' + dirName),
         };
+        if (what === 'snapshots') {   // Q4：日志类**不做**这一步（本项不碰日志派生文件）
+            const ro = await snapPartsReadout(absDir, mf, Object.keys(files).length, out.count);
+            out.chain = out.count;
+            out.dataFiles = Object.keys(files).length;
+            out.staleFiles = ro.staleFiles;
+            out.note = ro.note;
+        }
+        return out;
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
@@ -1212,6 +1419,7 @@ export function localDiskReset() {
     stats.lastError = ''; stats.lastAt = 0; stats.lastBytes = 0; stats.mechanism = '';
     localDiskClearInvalid();
     fsHandle = null;
+    lastRecycledSig = '';   // v3.45.1（数-28）：链核对短路缓存一并复位
     try { browserFsReset(); } catch (e) { /* 忽略 */ }
     return true;
 }
@@ -1226,6 +1434,8 @@ export default {
     localDiskCapability, localDiskReprobe, localDiskWrite, localDiskRead, localDiskProbeDir,
     localDiskInfo, localDiskReset, localDiskMarkInvalid, localDiskClearInvalid, localDiskInvalid, localDiskList,
     localDiskPickDir, localDiskHasHandle, localDiskWriteShards, localDiskReadShards, localDiskWriteParts, localDiskReadParts,
+    // v3.45.1（`docs/D22` §4.7 W6 `数-28` U176）：不属于当前链的快照分片回收（只删本地派生文件）
+    localDiskRecycleSnapParts,
     localDiskList, localDiskEnsureResolved,
     // v3.33.0：平台识别 / 路径形态冲突提示
     localDiskPlatform, localDiskPlatformAsync, localDiskPlatformLabel, localDiskPathWarn,

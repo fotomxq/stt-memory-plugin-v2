@@ -26,6 +26,11 @@ import { canonicalizeEntryFields, FIELD_NAME_DIMS } from './field-names.js';
 import { clampReservedBaselines } from './reserved-fields.js';
 // v3.44.0（`docs/D22` W4 `数-11`）：关联行锚点机械回填（只回填能确定的那一种；幂等、不覆盖）
 import { backfillRelLinkAnchors } from './rel-maint.js';
+// v3.45.1（`docs/D22` §4.7 W6 `数-29`）：无聊天归属的存量数据收口（只读判定 + 幂等补写；绝不猜）
+import { backfillChatAttribution } from './chat-scope.js';
+// v3.45.1（`数-29`）：楼层正文哈希解析器的**既有注入出口** —— `index.js#installHostBridges()` 装配时
+//   已 `setRepairHooks({ floorHash: host/floors.js#hashFloorText })`，内核不直接读宿主聊天（`check-core-purity`）。
+import { repairHookState } from './repair.js';
 function recallDateNum(s) {
     try {
         const p = clockDateParts(clockDateTrim(s));   // v1.193：负年份（公元前）→ 带符号数值
@@ -178,9 +183,12 @@ const HEAL_DIMS = (() => {
 /** 上一次载入期自愈的摘要（`index.js` 据此留痕 / 按需落盘；v3.13.1）
  *  `texts` = v3.26.1 新增：清掉坏占位 token（`undefined` / `NaN` / `[object Object]`）的条目数
  *  `fields` = v3.44.0 新增（`docs/D22` W4 `数-10`）：补写「最后一次出现」规范字段的条目数；
- *  `floors` = v3.44.0 新增（`数-14`）：越界楼层基线清零的处数；`anchors` = v3.44.0 新增（`数-11`）：回填的关联行锚点数 */
+ *  `floors` = v3.44.0 新增（`数-14`）：越界楼层基线清零的处数；`anchors` = v3.44.0 新增（`数-11`）：回填的关联行锚点数；
+ *  `scope` / `marks` / `legacyScope` / `legacyMarks` = v3.45.1 新增（`docs/D22` §4.7 W6 **`数-29`**）：
+ *    存量**无聊天归属**数据的收口读数 —— 前两个是**这一轮补上**归属的情节 / 台账标记条数，
+ *    后两个是**仍判不出归属**（= 「升级前历史数据」独立计数，`docs/D29` §6 Q3：不删、不掩盖）的条数。 */
 let lastHeal = null;
-/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number, texts:number, fields:number, floors:number, anchors:number}|null} */
+/** @returns {{changed:boolean, ledger:number, dropped:number, entries:number, texts:number, fields:number, floors:number, anchors:number, scope:number, marks:number, legacyScope:number, legacyMarks:number}|null} */
 function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; }
 
 /**
@@ -196,11 +204,12 @@ function lastHealInfo() { return lastHeal ? Object.assign({}, lastHeal) : null; 
  *      `floorNow*` 非法/倒置/只有一半、或已判「原文已移除」却仍带当前位置 → **整对删除**（派生数据，下次突变识别会重算）；
  *   ⑥ v3.26.1：**坏占位 token**（`undefined` / `NaN` / `[object Object]`，以「值」的形态出现时才清）→
  *      逐条深度清理（深 ≤4 / 字符串 ≤20000），计数进 `lastHealInfo().texts`。
+ *   ⑦⑧⑨（v3.44.0，`docs/D22` W4）与 ⑩（v3.45.1，W6 `数-29`）见函数体内各处注释。
  * 只报告不擅自改的（语义无法确定，交 `core/data-health.js` 体检列出）：缺 id / 重复 id / 超长字段 / 墓碑时间戳非法。
  */
 function healthSelfHeal(s) {
     let changed = false;
-    const stat = { ledger: 0, dropped: 0, entries: 0, texts: 0, fields: 0, floors: 0, story: 0, anchors: 0 };
+    const stat = { ledger: 0, dropped: 0, entries: 0, texts: 0, fields: 0, floors: 0, story: 0, anchors: 0, scope: 0, marks: 0, legacyScope: 0, legacyMarks: 0 };
     try {
         if (!s || typeof s !== 'object') { lastHeal = null; return false; }
         // ① 台账（主 + 丢弃留痕）
@@ -217,7 +226,20 @@ function healthSelfHeal(s) {
                 const k = f + ':' + h;
                 if (seen[k]) { dropped++; continue; }                        // 重复标记 → 丢弃
                 seen[k] = 1;
-                next.push({ f: f, h: h });
+                /**
+                 * v3.45.1（`docs/D22` §4.7 W6 **`数-29`** · U177）——**保留 v3.40.0 的归属与时刻**。
+                 * 缺陷（真机事实 `docs/D29` §2 第 8 行：台账 **32/34** 条标记「无 `chatKey` **与时间戳**」）：
+                 *   本函数是 v3.13.0 写的，那时标记只有 `{f, h}`；v3.40.0（`docs/D16` A1）给标记加了
+                 *   `ck`（聊天归属）与 `at`（时刻），但这里的重建仍是 `{f, h}` → **每次载入都把两者整批抹掉**：
+                 *   ① 归属丢了 → 跨聊天标记被当成「本聊天已处理」，别的聊天的楼层在本聊天里被跳过；
+                 *   ② 时刻丢了 → 一律计入 `marksNoTimestamp`；
+                 *   ③ 与 `数-29` 的纪律（「只补空值，**绝不覆盖已有值**」）直接矛盾 —— 这里不是覆盖，是删除。
+                 * 现在：`at` / `ck` **原样保留**（仅在源标记确有非空值时才带上 → 幂等，且不凭空造字段）。
+                 */
+                const kept = { f: f, h: h };
+                if (obj && Number(x.at) > 0) kept.at = Number(x.at);
+                if (obj && String(x.ck || '').trim()) kept.ck = String(x.ck).trim();
+                next.push(kept);
             }
             if (JSON.stringify(next) !== JSON.stringify(s[key])) { s[key] = next; changed = true; }
             return dropped;
@@ -319,6 +341,25 @@ function healthSelfHeal(s) {
             const r = backfillRelLinkAnchors(s);
             if (r.changed) { changed = true; stat.anchors = r.filled; }
         } catch (e) { /* 忽略 */ }
+        // ⑩ v3.45.1（`docs/D22` §4.7 W6 **`数-29`** · U177）——**无聊天归属的存量数据收口**
+        //   （`core/chat-scope.js#backfillChatAttribution`：只读判定 + 幂等补写，只补空值、绝不猜）。
+        //   双命中判据 = 「当前聊天键」+「内容指纹」（条目用 `atomContentHash`；台账标记用其自身的
+        //   楼层正文指纹 `h` 与注入的同一解析器）——见该模块头注；判不出来的一律不写，
+        //   并以 `legacyScope` / `legacyMarks` **保留独立计数**（`docs/D29` §6 Q3：不删、不掩盖）。
+        //   楼层哈希解析器走**既有注入出口** `core/repair.js#repairHookState().floorHash`
+        //   （`index.js#installHostBridges()` 装配时已接 `host/floors.js#hashFloorText`）；
+        //   未接线 → 只保留「同内容已有归属」这条证据（判不出就不写，绝不退回猜测）。
+        try {
+            const hashFloor = (() => {
+                try { const h = repairHookState(); return (h && typeof h.floorHash === 'function') ? h.floorHash : null; } catch (e) { return null; }
+            })();
+            const r = backfillChatAttribution(s, { hashFloor: hashFloor });
+            if (r && r.changed) changed = true;
+            stat.scope = Number((r && r.entries && r.entries.filled) || 0);
+            stat.marks = Number((r && r.marks && r.marks.filled) || 0);
+            stat.legacyScope = Number((r && r.entries && r.entries.legacy) || 0);
+            stat.legacyMarks = Number((r && r.marks && r.marks.legacy) || 0);
+        } catch (e) { /* 忽略：归属补写失败不影响其余自愈 */ }
     } catch (e) { /* 自愈失败不阻塞迁移 */ }
     lastHeal = Object.assign({ changed: changed }, stat);
     return changed;
