@@ -36,6 +36,10 @@ import { formatMoney, defaultCurrencyOwner, isTrackedCurrencyOwner } from '../co
 import { relLinksOf, relSummaryLine, relHowLabelOf, relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey } from '../core/model/rel.js';
 import { snapshotAge, snapshotAgeBasisText, snapshotAppearanceText, snapshotBirthAnomaly, snapshotBirthAnomalyShort, storyAnchorDate } from '../core/model/snapshot.js';   // v3.1.0：+storyAnchorDate（渲染期锚点，一次算好复用）
 import { importancePct, planPhaseLabel, parallelExpired, parallelDecayScore, relTag } from '../core/recall.js';
+import { hintDetailsHtml } from './hints.js';   // v3.45.5：履历逐条清单默认收起（复用既有折叠说明组件）
+// v3.45.5（`docs/D22` W4 `应-19` / 设计稿 `docs/D26` §3.5）：履历的**排序**与**单行文本**一律取自核心
+//   （`resumeSort` / `resumeEntryLine`），界面**不另写一份** —— 保证「界面所见 = 内核口径」。
+import { resumeSort, resumeEntryLine, resumeOptsFromCfg } from '../core/resume.js';
 
 const esc = (v) => escHtml(String(v == null ? '' : v));
 /** 文本裁剪（V1 各行的 `.slice()` 口径） */
@@ -345,6 +349,42 @@ function memoriesRow(m, now, ctx) {
         + '<div class="ftt-meta">' + when + ' · ' + cat + concept + ' · 调用' + (m.uses || 0) + '次 · 重要度' + importancePct(m) + '%</div>';
 }
 
+/**
+ * v3.45.5（`docs/D22` W4 `应-19` / 设计稿 `docs/D26` §3.5）——**角色行末尾的「📜 履历」区块**。
+ *
+ * 履历是**角色档案内的第 9 个区块**（不是新维度、不新开分页），随角色行一起显示。口径与核心同源：
+ *   · `cfg.snapshotResumeEnabled === false` → **整块不渲染**（不读不写，页面上一个字符都不占）；
+ *   · 条数上限取 `resumeOptsFromCfg(cfg).max`（缺省 30，与体检 / 修复同一份口径）；
+ *   · 逐条顺序 = `core/resume.js#resumeSort`（剧情时间倒序）；单行文本 = `resumeEntryLine`
+ *     （来源为原作 / 手填时行内自带「原作」「手填」字样，界面不另写拼接）；
+ *   · 逐条清单默认**收起**（`hintDetailsHtml`，标题写明条数），避免长清单挤占列表；
+ *   · `identity.canon === true`（原作 / 史实人物）在标题下单独一行标出，与纯剧情角色可区分。
+ *
+ * 按钮只提供**锚点**（`data-ftt-action="resumeRepair"` + `data-ftt-id`），动作路由在 `ui/panel.js`。
+ * @param {object} s 角色档案
+ * @returns {string} HTML 片段（开关关闭 / 无档案 → 空串）
+ */
+function resumeBlockHtml(s) {
+    try {
+        if (!s || cfg.snapshotResumeEnabled === false) return '';
+        const id = String(s.id || '');
+        const list = resumeSort(Array.isArray(s.resume) ? s.resume : []);
+        let max = 30;
+        try { max = Number(resumeOptsFromCfg(cfg).max) || 30; } catch (e) { max = 30; }
+        const canon = !!(s.identity && s.identity.canon === true);
+        const head = '<div class="ftt-sub">📜 履历 ' + list.length + ' / ' + max + '</div>';
+        const canonLine = canon ? '<div class="ftt-muted">原作人物（有独立于本剧情的既有生平）</div>' : '';
+        const body = list.length
+            ? hintDetailsHtml('履历 ' + list.length + ' 条（按剧情时间倒序）',
+                '<div>' + list.map((e) => esc(resumeEntryLine(e))).join('<br>') + '</div>')
+            : '<div class="ftt-muted">（暂无履历；点「📜 补全 / 修复履历」生成）</div>';
+        const btn = '<button class="ftt-btn ftt-sm" data-ftt-action="resumeRepair" data-ftt-id="' + esc(id) + '"'
+            + ' title="只修这一名角色的履历：按剧情时间排序 / 去重 / 超上限时遗弃低留存条 / 压缩过长的简述；勾选过「原作 / 史实人物」且剧情日期可用时，另补「当前剧情日期之前」的既有生平">📜 补全 / 修复履历</button>';
+        // 容器 = 整块（行锚点 `data-ftt-resume` 落在它身上，按钮也在其内；`data-ftt-resume-list` 只是区块标记）
+        return '<div class="ftt-resume" data-ftt-resume="' + esc(id) + '" data-ftt-resume-list>' + head + canonLine + body + btn + '</div>';
+    } catch (e) { return ''; }
+}
+
 /** V1 `snapshotsHtml()` 24040~24097 */
 function snapshotsRow(s, ctx) {
     const parts = [];
@@ -402,7 +442,9 @@ function snapshotsRow(s, ctx) {
     const drill = characterDrillHtml(s.name, ctx);
     return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + deadTag + immortalTag + birthTag + '</div>'
         + '<div class="ftt-snap-desc">' + body + '</div>' + drill + tags
-        + '<div class="ftt-meta">调用' + (s.uses || 0) + '次 · 重要度' + importancePct(s) + '%' + (times.length ? (' · ' + times.join(' · ')) : '') + '</div>';
+        + '<div class="ftt-meta">调用' + (s.uses || 0) + '次 · 重要度' + importancePct(s) + '%' + (times.length ? (' · ' + times.join(' · ')) : '') + '</div>'
+        // v3.45.5（`docs/D26` §3.5）：履历区块追加在**标签行 / 调用统计行之后**（角色行末尾）
+        + resumeBlockHtml(s);
 }
 
 /** V1 `itemsHtml()` 24151~24154 */

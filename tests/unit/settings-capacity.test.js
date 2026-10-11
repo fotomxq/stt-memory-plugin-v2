@@ -113,11 +113,11 @@ A('C6 分析记忆页对应分节与短提示：货币记录（记录口径）+ 
         && h.indexOf('决定「分析记忆」时是否抽取货币') > 0 && h.indexOf('入库时的硬截断') > 0;
 })(), '见断言');
 
-A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5 → 171 → v2.86.0 重要度口径改 +1 → v3.44.0 入库卫生 +2（base 9 / analyze 22 / extract 25 / forget 24 / rumors 13）', (() => {
+A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5 → 171 → v2.86.0 重要度口径改 +1 → v3.44.0 入库卫生 +2 → v3.45.5 角色履历 +6 = 167（base 9 / analyze 22 / extract 25 / forget 24 / rumors 13 / feed 43）', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 161 && m.analyze === 22 && m.extract === 25 && m.base === 9 && m.feed === 37
+    return info.totalControls === 167 && m.analyze === 22 && m.extract === 25 && m.base === 9 && m.feed === 43
         && m.forget === 24 && m.rumors === 13;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 

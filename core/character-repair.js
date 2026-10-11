@@ -40,18 +40,28 @@ import { normText, normalizeList, snapNameKey, extractJsonObject } from './util.
 import { mergeTags, clockDateTrim } from './model/scalars.js';
 import {
     stampSnapshotTime, ageAnchorDate, snapshotAgeIsLocked, snapshotBirthAnomaly, snapshotBirthAnomalyLabel,
-    snapshotFlag, parseBirthDateParts, calcAge, refreshAllSnapshotAges,
+    snapshotFlag, parseBirthDateParts, calcAge, refreshAllSnapshotAges, snapFindByName,
     ensureSnapshotBirthDate, birthDateInFuture, snapshotFutureOrigin, guessAgeFromCues,
     // v3.22.0（用户要求）：长生者开关 + 「不再处理」判据 + 超长年龄研判所需的年龄/年差
     snapshotImmortal, snapshotImmortalFlag, snapshotRepairSkip, snapshotLastSeenGapYears, snapshotAge,
+    snapshotCanon,   // v3.45.5（`docs/D26` §3.4 Q5）：「原作 / 史实人物」标记（履历预填的准入判据）
     SNAP_AGE_EXTREME_YEARS,
 } from './model/snapshot.js';
-import { clockDateStr } from './clock.js';
+import { clockDateStr, storyDateMsFromStr } from './clock.js';
 import { tombMany, atomIsHidden } from './merge.js';
 import { sweepStatesForRemovedSnapshots } from './entries.js';
 import { repairReport } from './repair.js';
 import { aiCallText, aiBusy, aiFeedText } from './ai-hooks.js';
 import { defaultCfg, normalizeDeltaKeys } from './config.js';
+// v3.45.5（`docs/D22` W4 `数-20` / `数-21` / `业-7`，设计稿 `docs/D26` §3.3 / §3.4 / §8）：
+//   履历（`snapshots[].resume`）的**算法唯一源** = `core/resume.js`（纯内核）—— 本文件只做**编排**：
+//   机械段（排序 / 去重 / 遗弃 / 凝练）+ 预填护栏 + 提示词契约 + 结果应用 + 个体按钮入口。
+import {
+    resumeNormList, resumeCull, resumeCondense, resumeSort, resumeStats, resumeOptsFromCfg,
+    resumeCanonGuard, resumeToPromptText, resumeEntryLine,
+    // v3.45.5：履历机械段的**运行账本**（会话内计数；体检的「遗弃计数」读数源）—— 归属 `core/resume.js`
+    resumeLedgerRecord, resumeLedgerState, resumeLedgerReset,
+} from './resume.js';
 
 /** 用户提示（经宿主钩子；与 core/repair.js / core/group-repair.js 既有写法一致） */
 function notify(kind, title, text) {
@@ -598,8 +608,22 @@ function buildCharacterRepairQueue() {
                 birthDate: String((s.identity && s.identity.birthDate) || '').trim(),
                 age: Number.isFinite(ageNum) ? ageNum : null,
                 staleYears: Number.isFinite(gap) ? Math.round(gap * 10) / 10 : null,
+                // v3.45.5（`docs/D26` §3.4；`数-21`）：历史 / 同人预填的**准入信息** ——
+                //   `canon` = 该角色是否被标为「原作 / 史实人物」；`canonFill` = 本轮是否允许补「剧情前」履历；
+                //   `canonBlocked` = 不允许的原因（`no-clock` = 没有剧情时钟 → 无上界，**一律不补**）。
+                canon: (() => { try { return snapshotCanon(s); } catch (e) { return false; } })(),
+                resumeCount: Array.isArray(s.resume) ? s.resume.length : 0,
             });
         });
+    } catch (e) { }
+    // v3.45.5：把履历预填的准入结论补到每条目标上（需要 `cfg` 与剧情时钟，故在收集后统一算一次）
+    try {
+        const rcfg = resumeOptsFromCfg(cfg || {});
+        const clockDate = resumeClockDate();
+        for (const x of all) {
+            x.canonFill = !!(x.canon && rcfg.enabled && rcfg.canonFill && clockDate);
+            x.canonBlocked = (!x.canon || !rcfg.canonFill || !rcfg.enabled) ? '' : (clockDate ? '' : 'no-clock');
+        }
     } catch (e) { }
     // v3.22.0：`age-extreme`（超长年龄待研判）排在其后 —— 它不是「数据自相矛盾」，而是「疑似长期未出场/误判长生」
     const anomalyRank = { future: 0, 'after-record': 1, overage: 2, 'age-extreme': 3, 'bad-format': 4 };
@@ -825,6 +849,22 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
             }
             if (!shown) out.push('    （全部为空）');
             out.push(`  缺失字段清单（**每一项都要在本次给出值**；路径逐字照抄）：${t.missing.join('、') || '（无）'}`);
+            // v3.45.5（`docs/D26` §3.5 Q6；`业-7` 步骤①）：履历现状（**已有条目 = 去重依据**，避免 AI 重复输出同一件事）。
+            //   只在 `opts.resumeGuide` 为真时追加 —— 默认调用（V1 逐字黄金样本）的提示词因而**一字不变**。
+            if (o.resumeGuide) {
+                try {
+                    const rl = resumeSort(Array.isArray(s.resume) ? s.resume : []);
+                    if (rl.length) {
+                        out.push(`  已有履历（${rl.length} 条，按剧情时间倒序；**不要重复输出这些事**）：`);
+                        for (const e of rl.slice(0, 30)) out.push(`    ${resumeEntryLine(e)}`);
+                    } else {
+                        // 注意：这里**不得**写「【近期正文】」这类**方括号小节名** —— 它是提示词的节标记，
+                        //   而 `tests/smoke-test.js` 的 AC1/AC1b 正是按 `【待修复角色` … `【近期正文` 截取目标块；
+                        //   在目标块内引入同样的字面量会把块**提前截断**（v3.45.5 实测撞到并改掉）。
+                        out.push('  已有履历：（无）—— 只补「相关记忆原子数据」与「近期正文」里**属于该角色本人**的大事记。');
+                    }
+                } catch (e) { /* 忽略 */ }
+            }
             // v1.177：相关记忆原子数据（AI 补全的**首选依据** —— 不再只依赖近期正文）
             try {
                 const ev = characterEvidencePack(t.name);
@@ -862,9 +902,35 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
         const ageClause = o.immortalGuide
             ? '；**标了 ⚠️ 超长年龄 的角色：不要改出生日期，按上方①②③研判「身份.长生者」/「身份.已去世」**'
             : '';
+        // v3.45.5（`docs/D26` §3.4 / §3.5 Q6；`业-7` 步骤①）：履历契约与历史·同人预填的**硬护栏**。
+        //   仅在 `opts.resumeGuide` 为真时追加（默认调用 → V1 逐字黄金样本一字不变）。
+        const rClock = o.resumeGuide ? resumeClockDate() : '';
+        const canonTargets = o.resumeGuide ? targets.filter(t => t && t.canonFill) : [];
+        const canonNoClock = o.resumeGuide ? targets.filter(t => t && t.canon && t.canonBlocked === 'no-clock') : [];
+        const resumeLine = o.resumeGuide
+            ? ('【履历维护】已在每个角色的「已有履历」下列出他现有的履历条目（按剧情时间倒序）—— **只输出新增条目，不要重复已有的事**。'
+                + '每条格式 `{"日期":"YYYY-MM-DD","简述":"≤60 字","重要性":0-1,"来源":"剧情"}`；'
+                + '「日期」与「简述」**必填**（缺一即不入库）；`来源` 只能是 `剧情` / `原作` / `手填`。'
+                + '「履历」与「背景资料.经历」**分工不同**：经历是一生的概览自由文本，履历是逐条大事记，同一件事不得两边都写全文。'
+                + (canonTargets.length
+                    ? (`本轮清单里标了「原作人物」的：${canonTargets.map(t => t.name).join('、')} —— `
+                        + (rClock
+                            ? `可以补他们**在原作 / 史实中已经成立、且早于【当前剧情日期】${rClock}** 的经历，「来源」一律写「原作」；`
+                            : '')
+                        + '**禁止**写入当前剧情日期之后的事（含结局、死亡、后续剧情）。')
+                    : '')
+                + (canonNoClock.length
+                    ? (`⚠️ 本轮**没有**可用的【当前剧情日期】 → ${canonNoClock.map(t => t.name).join('、')} 这些「原作人物」**不要**补任何 \`原作\` 来源的履历`
+                        + '（没有上界就无法保证不写未来）；只补剧情内已发生的事。')
+                    : '')
+                + '无法确证的**不要写**（宁缺勿编）。\n\n')
+            : '';
+        const resumeOutClause = o.resumeGuide
+            ? '；**「履历」数组（可选）**：只放**新增**履历条目（格式 `{"日期":"…","简述":"…","重要性":0.8,"来源":"剧情"}`），已有条目已在上方列出、不要重复输出；没有可补的就**不要输出该键**'
+            : '';
         return [
             { role: 'system', content: `${tpl}\n只输出 JSON，不要解释文字。` },
-            { role: 'user', content: `${strictLine}${deathLine}${immortalLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomHead}：${anomTail}，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）${ageClause}；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
+            { role: 'user', content: `${strictLine}${deathLine}${immortalLine}${resumeLine}${clockLine}\n\n【待修复角色（本轮共 ${targets.length} 条${anomHead}：${anomTail}，其余按现有字数由少到多）】\n${blocks.join('\n')}\n\n【近期正文（补充依据之一）】\n${ctxText || '（无正文）'}\n\n输出：{"角色档案":{"更新":[{"姓名":"…","补全":{"字段路径":"值"}}],"推断":["…"],"无依据":[],"删除":[]}}。**清单里每个角色都要出现在「更新」中，且每个缺失字段都要给出值**（首选依据 = 上方「相关记忆原子数据」，其次是近期正文与档案已有字段）；依据不足时给出**保守推断**并把姓名写进「推断」，「无依据」只在连推断都无法进行时才用。**每个角色必须给出「标签」（3-5 个）**；**「身份.出生日期」必须给出**（没写就按年龄/年代/身份与剧情日期合理推测），**且不得晚于当前剧情日期**（未来人 / 穿越者除外）；**标了 ⚠️ 出生日期异常 的角色：允许并需要改写「身份.出生日期」**（这是唯一允许改写的已填字段，格式必须是 年-月-日）${ageClause}；相关原子数据或正文明确写出死亡 / 牺牲 / 被杀害时可输出 {"身份.已去世":"是"}（没写就不要输出该字段）${resumeOutClause}；不要输出「年龄」「年龄备注」与任何空话（未知 / 不详 / 待定 / 暂无）。` },
         ];
     } catch (e) { return [{ role: 'system', content: '补全角色档案的缺失字段，输出「角色档案」的更新。' }, { role: 'user', content: '请输出角色档案补全结果（JSON）。' }]; }
 }
@@ -892,8 +958,33 @@ function applyCharacterRepairResult(delta, targets) {
             const nm = String(u['姓名'] !== undefined ? u['姓名'] : (u.name || '')).trim();
             const s = findSnap(nm);
             if (!s) { out.unknownRole++; continue; }
-            const fill = u['补全'] || u.fill || null;
-            if (!fill || typeof fill !== 'object') { out.invalid++; continue; }
+            const fill0 = u['补全'] || u.fill || null;
+            const hasFill = !!(fill0 && typeof fill0 === 'object');
+            // v3.45.5（`docs/D26` §3.4 / §3.5 Q6；`数-21`）：履历条目（可选键，唯一允许的**新增**字段）——
+            //   AI 只输出**新增**条目；应用时一律过 `resumeCanonGuard`/`resumeNormList` 复核：
+            //   · 必填 `date`/`summary` 缺失 → 丢弃条目；· 该角色是「原作人物」且本轮给了上界 → 拒收上界之后的条目；
+            //   · 该角色**不是**原作人物而 AI 却标了 `原作` → 强制回落 `story`（防误标批量编造，`docs/D26` R6）。
+            const resumeIn = u['履历'] || u.resume || null;
+            let resumeApplied = false;
+            if (Array.isArray(resumeIn) && resumeIn.length) {
+                try {
+                    const isCanon = (() => { try { return snapshotCanon(s); } catch (e) { return false; } })();
+                    const rClock = resumeClockDate();
+                    const guarded = isCanon ? resumeCanonGuard(resumeIn, rClock) : { kept: resumeNormList(resumeIn), rejected: [] };
+                    const added = (guarded.kept || []).map(e => (isCanon ? e : Object.assign({}, e, { source: e.source === 'canon' ? 'story' : e.source })));
+                    out.resumeAdded = (out.resumeAdded || 0);
+                    out.resumeRejected = (out.resumeRejected || 0) + (guarded.rejected || []).length;
+                    if (added.length) {
+                        const prev = Array.isArray(s.resume) ? s.resume : [];
+                        const merged = resumeNormList(prev.concat(added));
+                        const grew = merged.length - prev.length;
+                        s.resume = merged;
+                        if (grew > 0) { out.resumeAdded += grew; roleChanged++; resumeApplied = true; }
+                    }
+                } catch (e) { /* 履历应用失败不影响档案其它字段 */ }
+            }
+            if (!hasFill && !resumeApplied) { out.invalid++; continue; }
+            const fill = hasFill ? fill0 : {};
             // v1.172：本轮目标若被判定为「出生日期倒挂 / 异常」，允许 AI **改写**该字段（唯一例外）
             const tgt = byName[snapNameKey(nm)] || null;
             const allowBirthRewrite = !!(tgt && tgt.anomaly);
@@ -964,6 +1055,149 @@ function applyCharacterRepairResult(delta, targets) {
     return out;
 }
 
+/**
+ * 履历修复的**窄契约提示词**（角色页「📜 补全 / 修复履历」按钮；`docs/D26` §3.5）。
+ *   与 `buildCharacterRepairPrompt` 的分工：那个补**档案全部缺失字段**（履历只是顺带），本函数**只做履历**。
+ *   模板取 `cfg.promptTemplates.resumeRepair`（可在设定 → 提示词里改）。
+ * @param {object} s 角色档案
+ * @param {{aiCondense?:boolean}} [opts]
+ * @returns {Array<{role:string, content:string}>}
+ */
+function buildResumeRepairPrompt(s, opts) {
+    try {
+        const o = opts || {};
+        const tpl = String((cfg.promptTemplates && cfg.promptTemplates.resumeRepair) || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.resumeRepair) || '').trim()
+            || '补全该角色的履历条目；输出 {"履历":{"新增":[…]}}。';
+        const rcfg = resumeOptsFromCfg(cfg || {});
+        const rClock = resumeClockDate();
+        const isCanon = (() => { try { return snapshotCanon(s); } catch (e) { return false; } })();
+        const list = resumeSort(Array.isArray(s && s.resume) ? s.resume : []);
+        const lines = [];
+        lines.push(`【角色】姓名「${String((s && s.name) || '')}」${isCanon ? '（**原作人物**：有独立于本剧情的既有生平）' : ''}`
+            + `；现有履历 ${list.length} / ${rcfg.max} 条（简述目标 ≤${rcfg.summaryMax} 字）`);
+        const bg = (s && s.background) || {};
+        if (bg.origin) lines.push(`【出身】${String(bg.origin).slice(0, 80)}`);
+        if (bg.history) lines.push(`【背景资料.经历（一生概览，**不要**在这里重复它的全文）】${String(bg.history).slice(0, 200)}`);
+        lines.push(rClock
+            ? `【当前剧情日期】${rClock}（**不得**写入此日之后的事）`
+            : '【当前剧情日期】未知 —— **不要**补任何「原作」来源的履历（没有上界就无法保证不写未来），只补剧情内已发生的事。');
+        lines.push(list.length
+            ? ('【已有履历（按剧情时间倒序；**不要重复**，凝练时按「日期 + 原简述前 12 字」定位）】\n'
+                + list.map((e) => '- ' + resumeEntryLine(e)).join('\n'))
+            : '【已有履历】（无）');
+        if (o.aiCondense !== false) {
+            const long = list.filter((e) => String(e.summary || '').length > rcfg.summaryMax);
+            if (long.length) lines.push(`【需要凝练的条目（${long.length} 条，>${rcfg.summaryMax} 字）】\n`
+                + long.slice(0, 20).map((e) => '- ' + e.date + ' ｜ 原简述：' + String(e.summary)).join('\n'));
+        }
+        try {
+            const ev = characterEvidencePack(String((s && s.name) || ''));
+            if (ev.lines.length) {
+                lines.push(`【相关记忆原子数据（首选依据 · 命中 ${ev.total} 条，前 ${ev.lines.length} 条）】`);
+                for (const ln of ev.lines) lines.push('  ' + ln);
+            } else {
+                lines.push('【相关记忆原子数据】（无命中）—— 依据退回「近期正文 + 档案已有字段」。');
+            }
+        } catch (e) { /* 忽略 */ }
+        return [
+            { role: 'system', content: `${tpl}\n只输出 JSON，不要解释文字。` },
+            { role: 'user', content: lines.join('\n') },
+        ];
+    } catch (e) {
+        return [{ role: 'system', content: '补全该角色的履历条目；输出 {"履历":{"新增":[…]}}。' }, { role: 'user', content: '请输出履历补全结果（JSON）。' }];
+    }
+}
+
+/**
+ * **角色页「📜 补全 / 修复履历」**（针对**该个体**；`docs/D26` §3.5 · `docs/D22` W4 `应-19` ②）。
+ *   ① 机械段（零 AI）：归一 / 去重 / 排序 / 遗弃 / 凝练；② 需要时一段**窄契约 AI**（补全 + 凝练）；
+ *   ③ 复核（`resumeCanonGuard` / `resumeNormList`）→ 落盘 → **如实回报**四类计数与跳过原因。
+ * @param {string} name 角色姓名
+ * @param {{aiText?:string, noAi?:boolean}} [opts] `aiText` = 测试注入点（与 `runCharacterRepair` 同约定）
+ * @returns {Promise<object>} `{ok, name, added, condensed, dropped, before, after, total, max, canon, clockDate, rejected, aiUsed, reason?}`
+ */
+async function runResumeRepair(name, opts) {
+    const o = opts || {};
+    const nm = String(name == null ? '' : name).trim();
+    const out = { ok: true, name: nm, added: 0, condensed: 0, dropped: 0, before: 0, after: 0, total: 0, max: 0, canon: false, clockDate: '', rejected: 0, aiUsed: false, aiSkipped: '' };
+    try {
+        const rcfg = resumeOptsFromCfg(cfg || {});
+        out.max = rcfg.max;
+        if (!rcfg.enabled) { out.ok = false; out.reason = 'disabled'; return out; }
+        const s = snapFindByName(nm);
+        if (!s) { out.ok = false; out.reason = 'no-role'; return out; }
+        out.canon = (() => { try { return snapshotCanon(s); } catch (e) { return false; } })();
+        out.clockDate = resumeClockDate();
+        // ① 机械段（零 AI，先做 —— AI 看到的是整理后的清单）
+        const mech = resumeMechanicalPassFor(s, { max: rcfg.max, triggerRatio: rcfg.triggerRatio, immune: rcfg.immune, summaryMax: rcfg.summaryMax, nowMs: resumeNowMs() });
+        out.before = mech.before;
+        out.dropped = mech.dropped;
+        out.condensed += mech.condensed;
+        let changed = mech.changed;
+        // ② 窄契约 AI（补全 + 凝练）；`noAi` 或 AI 忙 → 只做机械段并**如实标注为什么没调 AI**
+        let aiTextOut = '';
+        if (o.noAi === true) { out.aiSkipped = 'no-ai'; }
+        else if (aiBusy()) { out.aiSkipped = 'busy'; }
+        else {
+            try {
+                const prompt = buildResumeRepairPrompt(s, {});
+                aiTextOut = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '履历修复'));
+                out.aiUsed = true;
+            } catch (e) { out.aiSkipped = 'error'; }
+        }
+        // ③ 复核与应用
+        if (aiTextOut) {
+            const delta = (() => { try { return extractJsonObject(aiTextOut) || {}; } catch (e) { return {}; } })();
+            const box = (delta && (delta['履历'] || delta.resume)) || {};
+            const addRaw = Array.isArray(box['新增']) ? box['新增'] : (Array.isArray(box.add) ? box.add : []);
+            const guard = out.canon ? resumeCanonGuard(addRaw, out.clockDate) : { kept: resumeNormList(addRaw), rejected: [] };
+            const kept = (guard.kept || []).map((e) => (out.canon ? e : Object.assign({}, e, { source: e.source === 'canon' ? 'story' : e.source })));
+            out.rejected += (guard.rejected || []).length;
+            if (kept.length) {
+                const prev = Array.isArray(s.resume) ? s.resume : [];
+                const merged = resumeNormList(prev.concat(kept));
+                const grew = merged.length - prev.length;
+                if (grew > 0) { s.resume = merged; out.added += grew; changed = true; }
+            }
+            // AI 凝练：只接受「更短且非空」的版本，**绝不改** date / importance / refs（`docs/D26` §3.3）
+            const cond = Array.isArray(box['凝练']) ? box['凝练'] : (Array.isArray(box.condense) ? box.condense : []);
+            for (const c of cond) {
+                if (!c || typeof c !== 'object') continue;
+                const newText = String(c['简述'] != null ? c['简述'] : (c.summary || '')).trim();
+                if (!newText) continue;
+                const key = String(c['原简述'] || c.origin || '').slice(0, 12);
+                const dkey = String(c['日期'] || c.date || '').trim();
+                const hit = (Array.isArray(s.resume) ? s.resume : []).find((e) => (!dkey || e.date === dkey)
+                    && (!key || String(e.summary || '').indexOf(key) === 0 || String(e.summary || '').slice(0, 12) === key));
+                if (!hit) continue;
+                const oldLen = String(hit.summary || '').length;
+                if (newText.length >= oldLen || newText.length > rcfg.summaryMax) continue;
+                hit.summary = newText;
+                out.condensed++;
+                changed = true;
+            }
+        }
+        // ④ 落盘 + 回报
+        if (changed) { try { stampSnapshotTime(s, 'update'); } catch (e) { } try { saveState(); } catch (e) { } }
+        const after = resumeStats(Array.isArray(s.resume) ? s.resume : [], { max: rcfg.max, triggerRatio: rcfg.triggerRatio, immune: rcfg.immune, summaryMax: rcfg.summaryMax });
+        out.after = after.total;
+        out.total = after.total;
+        try {
+            dbgLog('摘要', {
+                action: '履历修复（个体）', name: String(s.name || ''), canon: out.canon, clockDate: out.clockDate,
+                before: out.before, added: out.added, dropped: out.dropped, condensed: out.condensed, after: out.after,
+                rejected: out.rejected, aiUsed: out.aiUsed, aiSkipped: out.aiSkipped || '', reason: out.reason || '',
+            });
+        } catch (e) { /* 忽略 */ }
+        // 跳过原因只反映「为什么没调 AI」；`reason` 只反映「这次有没有产生变化」（界面据此如实回报四类计数）
+        if (!changed) out.reason = 'no-change';
+        return out;
+    } catch (e) {
+        out.ok = false; out.reason = 'error'; out.error = String((e && e.message) || e);
+        return out;
+    }
+}
+
 /** 全局机械处理（AI 前，零 AI，V1 `correctSnapshotBirthDates`）：出生日期校正 ——
  *  缺失（跳过，交 AI 不臆造）/ 占位（`birthSource='fallback'`）/ 未来出生（非未来来客）/ 格式非法 → 按线索重推；
  *  v1.205：已去世角色出生日期与年龄**一律不动**（年龄锁定在死亡那一刻）。
@@ -991,9 +1225,119 @@ function correctSnapshotBirthDates(opts) {
     } catch (e) { }
     return stat;
 }
+// ==================== v3.45.5：角色履历（`docs/D22` W4 `数-20` / `数-21` / `业-7`） ====================
+// 设计稿 `docs/D26`：履历挂在角色档案内（第 9 区块 `resume`），算法唯一源 = `core/resume.js`。
+//   本段只做**编排**：① 机械段（归一 / 去重 / 排序 / 遗弃 / 凝练，零 AI，覆盖全部档案）；
+//   ② 历史·同人预填的**准入与护栏**（上界 = 剧情当下，无时钟不预填）；③ 提示词里的履历契约；
+//   ④ AI 结果应用；⑤ 角色页「📜 补全 / 修复履历」按钮的个体入口。
+//
+// 履历机械段的**运行账本**（`技-25` 的「遗弃计数」读数来源）：
+//   `docs/D26` Q2 明确「不需要复活抑制 / 不需要墓碑」→ 本模块**不新增任何持久字段**，
+//   遗弃与凝练的计数由 `core/resume.js#resumeLedgerRecord` 记在**本次会话内存**里（界面上如实写成「本会话内」），
+//   重启即归零；账本同时被只读体检读取（`data-health` 只依赖纯内核 `resume.js`，不反向依赖修复管道）。
+/** 履历的**剧情当下毫秒**（留存判据的时间基准）。一律剧情时间：剧情日期 → 最近记录日期；都没有 → `NaN`（不判） */
+function resumeNowMs() {
+    try {
+        const direct = clockDateTrim(getStoryNow());
+        if (/^-?\d{1,4}/.test(direct)) { const ms = storyDateMsFromStr(direct); if (Number.isFinite(ms)) return ms; }
+        const ref = ageAnchorDate();
+        if (/^-?\d{1,4}/.test(String(ref || ''))) { const ms = storyDateMsFromStr(ref); if (Number.isFinite(ms)) return ms; }
+    } catch (e) { /* 忽略 */ }
+    return NaN;
+}
+/** 剧情当下日期（`YYYY-MM-DD`；无 → 空串）。**预填上界**与提示词里【当前剧情日期】共用同一取值，避免两处口径漂移 */
+function resumeClockDate() {
+    try {
+        const direct = clockDateTrim(getStoryNow());
+        if (/^-?\d{1,4}/.test(direct)) return direct;
+        const ref = String(ageAnchorDate() || '');
+        if (/^-?\d{1,4}/.test(ref)) return clockDateTrim(ref);
+    } catch (e) { /* 忽略 */ }
+    return '';
+}
+/**
+ * 单条档案的履历**机械段**（零 AI）：归一 → 遗弃清算 → 凝练（`docs/D26` §3.3；`数-20` 的三条验收全覆盖）。
+ * 幂等：同一档案连跑两次，第二次 `changed === false`（归一无变化 / 未超限不遗弃 / 凝练已达标）。
+ * @param {object} s 角色档案（就地改写 `s.resume`）
+ * @param {{max?:number, triggerRatio?:number, immune?:number, summaryMax?:number, nowMs?:number}} [opts]
+ * @returns {{changed:boolean, before:number, after:number, dropped:number, condensed:number, over:boolean, nearLimit:boolean, immuneKept:number}}
+ */
+export function resumeMechanicalPassFor(s, opts) {
+    const o = opts || {};
+    const out = { changed: false, before: 0, after: 0, dropped: 0, condensed: 0, over: false, nearLimit: false, immuneKept: 0 };
+    try {
+        if (!s || typeof s !== 'object') return out;
+        const before = Array.isArray(s.resume) ? s.resume : [];
+        out.before = before.length;
+        const norm = resumeNormList(before);
+        const nowMs = Number.isFinite(Number(o.nowMs)) ? Number(o.nowMs) : resumeNowMs();
+        const cull = resumeCull(norm, { max: o.max, immune: o.immune, triggerRatio: o.triggerRatio, nowMs: nowMs });
+        const cond = resumeCondense(cull.list, { summaryMax: o.summaryMax });
+        out.over = cull.checked && cull.list.length >= (Number(o.max) || 0);
+        out.nearLimit = !!cull.nearLimit;
+        out.immuneKept = cull.immuneKept || 0;
+        out.dropped = cull.dropped.length;
+        out.condensed = cond.condensed;
+        out.after = cond.list.length;
+        const same = (JSON.stringify(before) === JSON.stringify(cond.list));
+        if (!same) { s.resume = cond.list; out.changed = true; }
+        else if (!Array.isArray(s.resume)) { s.resume = cond.list; out.changed = true; }
+    } catch (e) { /* 履历机械段失败不得影响角色修复主流程 */ }
+    return out;
+}
+/**
+ * **全局**履历机械段（覆盖全部档案；由 `runCharacterMechanicalPass` 调用，零 AI）。
+ * 已去世 / 长生者的档案**同样整理**（履历是历史事实，不因年龄锁定而失效）—— 与出生日期校正的跳过口径不同，故单列说明。
+ * @param {{max?:number, triggerRatio?:number, immune?:number, summaryMax?:number}} [opts]
+ * @returns {{total:number, changed:number, snapshots:number, dropped:number, condensed:number, normalized:number, items:Array, ledger:object}}
+ */
+export function resumeMechanicalPass(opts) {
+    const o = opts || {};
+    const stat = { total: 0, changed: 0, snapshots: 0, dropped: 0, condensed: 0, normalized: 0, items: [], ledger: null };
+    try {
+        const rcfg = resumeOptsFromCfg(cfg || {});
+        if (!rcfg.enabled) { stat.ledger = resumeLedgerState(); return stat; }
+        const nowMs = resumeNowMs();
+        const list = (state && state.snapshots) || [];
+        stat.total = list.length;
+        for (const s of list) {
+            if (!s || typeof s !== 'object') continue;
+            if (!Array.isArray(s.resume) || !s.resume.length) continue;
+            stat.snapshots++;
+            const r = resumeMechanicalPassFor(s, {
+                max: o.max != null ? o.max : rcfg.max,
+                triggerRatio: o.triggerRatio != null ? o.triggerRatio : rcfg.triggerRatio,
+                immune: o.immune != null ? o.immune : rcfg.immune,
+                summaryMax: o.summaryMax != null ? o.summaryMax : rcfg.summaryMax,
+                nowMs: nowMs,
+            });
+            stat.normalized += Math.max(0, r.before - r.after);
+            stat.dropped += r.dropped;
+            stat.condensed += r.condensed;
+            if (r.changed) {
+                stat.changed++;
+                stat.items.push({ name: String(s.name || ''), before: r.before, after: r.after, dropped: r.dropped, condensed: r.condensed });
+                try { stampSnapshotTime(s, 'update'); } catch (e) { /* 忽略 */ }
+            }
+        }
+        resumeLedgerRecord(stat);
+        stat.ledger = resumeLedgerState();
+        if (stat.changed) {
+            try {
+                dbgLog('摘要', {
+                    action: '履历机械处理（AI 前全局）', snapshots: stat.snapshots,
+                    changed: stat.changed, dropped: stat.dropped, condensed: stat.condensed,
+                    items: stat.items.slice(0, 8),
+                });
+            } catch (e) { /* 忽略 */ }
+        }
+    } catch (e) { /* 忽略 */ }
+    return stat;
+}
+
 /** 机械处理总入口（V1 `runCharacterMechanicalPass`）：出生日期校正 + 标签补充 + 年龄刷新（全部零 AI） */
 function runCharacterMechanicalPass(opts) {
-    const out = { total: 0, birth: null, ages: null, tags: null, anomalies: 0, changed: false, deceased: 0, immortal: 0 };
+    const out = { total: 0, birth: null, ages: null, tags: null, resume: null, anomalies: 0, changed: false, deceased: 0, immortal: 0 };
     try {
         const list = (state && state.snapshots) || [];
         out.total = list.length;
@@ -1005,12 +1349,16 @@ function runCharacterMechanicalPass(opts) {
         // v1.177：关键词（标签）自动补充 —— 用户要求「除了补全信息，关键词也应该自动补充」
         try { out.tags = ensureAllSnapshotTags(); } catch (e) { }
         try { out.ages = refreshAllSnapshotAges(); } catch (e) { }
+        // v3.45.5（`docs/D26` §3.3；`数-20`）：履历机械段（排序 / 去重 / 遗弃 / 凝练，零 AI）——
+        //   放在年龄刷新之后：履历的留存判据用**剧情时间**，与年龄同源，此时锚点已是本轮最终值。
+        try { out.resume = resumeMechanicalPass(); } catch (e) { out.resume = null; }
         // v1.205：已去世角色被跳过的数量（出生日期与年龄都不动）—— 供通知与调试如实说明
         try { out.deceased = (out.birth && out.birth.skippedDeceased) || 0; } catch (e) { out.deceased = 0; }
         // v3.22.0：被跳过的「长生者」数量（用户要求「标记了长生者则无需被分析」）
         try { out.immortal = (out.birth && out.birth.skippedImmortal) || 0; } catch (e) { out.immortal = 0; }
         out.changed = !!((lastDeathMark && lastDeathMark.marked) || (out.birth && out.birth.corrected) || (out.tags && out.tags.filled)
-            || (out.ages && (out.ages.fixed || out.ages.cleared)));
+            || (out.ages && (out.ages.fixed || out.ages.cleared))
+            || (out.resume && out.resume.changed));   // v3.45.5：履历机械段（遗弃 / 凝练）也算「有改动」→ 需要落盘
         if (out.changed) { try { saveState(); } catch (e) { } }
         try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { }
         if (out.changed || out.deceased || out.immortal) {
@@ -1029,6 +1377,10 @@ function runCharacterMechanicalPass(opts) {
                     anomalies: out.anomalies,
                     deathMarked: lastDeathMark ? lastDeathMark.marked : 0,
                     deathUncertain: lastDeathMark ? lastDeathMark.uncertain : 0,
+                    // v3.45.5：履历机械段（遗弃 / 凝练）—— 只报计数，不报正文
+                    resumeSnapshots: out.resume ? out.resume.snapshots : 0,
+                    resumeDropped: out.resume ? out.resume.dropped : 0,
+                    resumeCondensed: out.resume ? out.resume.condensed : 0,
                 });
             } catch (e) { }
         }
@@ -1080,7 +1432,7 @@ async function runCharacterRepair(opts) {
         const deathStat = lastDeceasedMark();
         const deathText = (deathStat && (deathStat.marked || deathStat.uncertain)) ? (deceasedMarkText(deathStat) + '；') : '';
         const mechText = (mech.changed
-            ? `全局机械处理 ${mech.total} 名：出生日期校正 ${mech.birth ? mech.birth.corrected : 0} 名 · 标签补充 ${mech.tags ? mech.tags.filled : 0} 名 · 年龄刷新 ${mech.ages ? mech.ages.fixed : 0} 名${mech.ages && mech.ages.cleared ? `（清无效值 ${mech.ages.cleared}）` : ''}`
+            ? `全局机械处理 ${mech.total} 名：出生日期校正 ${mech.birth ? mech.birth.corrected : 0} 名 · 标签补充 ${mech.tags ? mech.tags.filled : 0} 名 · 年龄刷新 ${mech.ages ? mech.ages.fixed : 0} 名${mech.ages && mech.ages.cleared ? `（清无效值 ${mech.ages.cleared}）` : ''}${mech.resume && (mech.resume.dropped || mech.resume.condensed) ? ` · 履历整理 ${mech.resume.changed} 名（遗弃 ${mech.resume.dropped} · 凝练 ${mech.resume.condensed}）` : ''}`
             : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deathText}${deadText}${immText}`;
         const q = buildCharacterRepairQueue();
         if (!q.list.length) {
@@ -1099,7 +1451,7 @@ async function runCharacterRepair(opts) {
         const maxAttempts = 2;
         while (attempts < maxAttempts) {
             attempts++;
-            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1, deathGuide: true, immortalGuide: true });   // v3.18.0：已去世守则；v3.22.0：长生者守则
+            const prompt = buildCharacterRepairPrompt(targets, { strict: attempts > 1, deathGuide: true, immortalGuide: true, resumeGuide: true });   // v3.18.0：已去世守则；v3.22.0：长生者守则；v3.45.5：履历契约（Q6 默认连修）
             const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '角色修复'));
             r = applyCharacterRepairResult(normalizeDeltaKeys(extractJsonObject(resp) || {}), targets);
             if (r.changed || r.removed) break;
@@ -1167,4 +1519,8 @@ export {
     markDeceasedByEvidence, deceasedMarkText, lastDeceasedMark,
     // v3.22.0：长生者（跳过修复）+ 超长年龄研判
     characterAgeScan,
+    // v3.45.5（`docs/D22` W4 `数-19`/`数-20`/`数-21`；`docs/D26`）：履历（角色档案第 9 区块）的编排入口
+    //   账本（`resumeLedgerState` / `resumeLedgerReset`）归属 `core/resume.js` —— 此处**再导出**保持既有引用形态
+    resumeLedgerState, resumeLedgerReset,
+    buildResumeRepairPrompt, runResumeRepair,
 };

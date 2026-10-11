@@ -34,7 +34,11 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose',
         // v3.44.0（`docs/D22` W4）：入库卫生两开关（`数-11` ① 关联锚点强制补丁 · `数-13` ① 空壳入库拦截）——
         //   两者**默认关**（默认值即「不改任何既有行为」），开启后才改变提示词 / 入库结果。
-        'relAnchorRuleEnabled', 'shellGuardEnabled'];
+        'relAnchorRuleEnabled', 'shellGuardEnabled',
+        // v3.45.5（`docs/D22` W4 · `docs/D26` 履历链）：角色履历的 6 个口径键（V1 无「履历」概念）——
+        //   总开关 / 条数上限（软阈值）/ 接近上限预警比例 / 重要性免疫阈值 / 凝练目标字数 / 原作人物预填开关。
+        'snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio',
+        'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill'];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip',
     // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储」）：本机缓冲的本地文件目录（空 = 不开启）
     // v3.26.0（用户要求「增加选择目录，可手动选择目录」）：用过的目录清单（目录选择器的候选来源之一；
@@ -92,19 +96,23 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
 R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP) === J(G.cnKeyMap), Object.keys(CN_KEY_MAP).length);
 R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',
     J(I.DELTAS.map(d => normalizeDeltaKeys(d))) === J(G.deltaCases), I.DELTAS.map(d => normalizeDeltaKeys(d)));
+/** v3.19.0 / v3.45.5：**V2 专用提示词键**（V1 无）—— 模板键集合与分组结构比对时两者都要剔除 */
+const V2_PROMPT_ONLY = ['nsfwAnalyze', 'resumeRepair'];
 R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一致',
     J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
     && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion
     // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 → 模板键集合 = V1 键集合减去它
     // v3.19.0：`nsfwAnalyze`（NSFW 词条分析）是 **V2 专用新增键**（V1 无）→ 比对时同样剔除
-    && J(Object.keys(PROMPT_TEMPLATES_V2).filter((k) => k !== 'nsfwAnalyze').sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
+    // v3.45.5：`resumeRepair`（角色履历的窄契约提示词，`docs/D22` W4）同为 **V2 专用新增键** → 一并剔除
+    && J(Object.keys(PROMPT_TEMPLATES_V2).filter((k) => V2_PROMPT_ONLY.indexOf(k) < 0).sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
     [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
 // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 —— 比对时两侧同步剔除该键与对应文案
 // v2.60.0（用户要求：去罗嗦/去历史）：分组**描述**已重写为 V2 文案，故此处的 V1 逐字比对只保留
 //   「标题 + keys」结构（描述另在 C5b 做 V2 自检：非空、≤ 60 字、与模板条数一致）。
 const normPromptGroup = (g) => Object.assign({}, g, {
     desc: undefined,
-    keys: (g.keys || []).filter((k) => k !== 'clockRegexGen' && k !== 'nsfwAnalyze'),   // v3.19.0：`nsfwAnalyze` 为 V2 专用键
+    // v3.19.0：`nsfwAnalyze`、v3.45.5：`resumeRepair` —— 两者都是 V2 专用键（V1 分组里没有）
+    keys: (g.keys || []).filter((k) => k !== 'clockRegexGen' && V2_PROMPT_ONLY.indexOf(k) < 0),
 });
 R.assert('C5 提示词分组 / 旧默认签名表 / 破甲预设默认值一致（剔除已移除的时钟正则生成项）',
     J(PROMPT_GROUPS.map(normPromptGroup)) === J((G.promptGroups || []).map(normPromptGroup))

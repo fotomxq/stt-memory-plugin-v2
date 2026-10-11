@@ -59,13 +59,36 @@ setPersistHooks({
 //   样本本身一字不改；新字段的存在性与默认值单独断言。
 const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
 const stripV2Ledger = (o) => { const c = clone(o); V2_LEDGER_KEYS.forEach((k) => { delete c[k]; }); return c; };
+/**
+ * v3.45.5（`docs/D22` W4 `数-19`/`数-21`，设计稿 `docs/D26`）：**同一手法的第三例** ——
+ *   角色档案归一新增 `resume`（履历，缺省 `[]`）与 `identity.canon`（原作 / 史实人物三态标记，未提及不写）；
+ *   迁移链会对账内档案跑 `normalizeSnapshot` → 老数据会被补上 `resume: []`。
+ *   黄金样本 `tests/fixtures/v1-golden-migrate-entries.json` **一字未改**，在此显式归一后再逐字符比对；
+ *   新字段的**存在性与形态**在 M1 里单独断言（归一 ≠ 删字段）。
+ */
+const stripV2Snapshot = (o) => {
+    const c = clone(o);
+    (c.snapshots || []).forEach((s) => {
+        if (!s || typeof s !== 'object') return;
+        delete s.resume;
+        if (s.identity) delete s.identity.canon;
+    });
+    return c;
+};
 R.assert('M1 migrateState 脏数据归一与 V1 逐字符一致（容器/条目清洗 + 版本迁移链）', (() => {
     const d = clone(I.DIRTY);
     setKernelState(d);
     const out = migrateState(d);
     setKernelState(null);
-    return JT(stripV2Ledger(out)) === JT(G.migrate.dirty)
-        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor));
+    const snaps = out.snapshots || [];
+    return JT(stripV2Snapshot(stripV2Ledger(out))) === JT(G.migrate.dirty)
+        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor))
+        // v3.45.5：履历字段的边界如实登记 —— 走过档案归一链的条目被补 `resume: []`；
+        //   **没走过归一的条目保持原样（不凭空加键）**；两者都不得出现「非数组的 resume」。
+        //   未标记的档案不写 `canon` 键。
+        && snaps.every((s) => !('resume' in s) || Array.isArray(s.resume))
+        && snaps.some((s) => Array.isArray(s.resume))
+        && snaps.every((s) => !s.identity || s.identity.canon === undefined);
 })(), 'dirty');
 R.assert('M2 migrateState 干净数据幂等（不改动、version 保持当前）', (() => {
     const c = clone(I.CLEAN);

@@ -1,6 +1,18 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.74 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.75 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.75 变更（随 **v3.45.5**：`docs/D22` **W0–W7 未完成项 · D26 履历链**（整批 6 行：`数-19` / `数-20` / `数-21` / `业-7` / `应-19` / `技-25`））：
+>   用户原话：「新版本v3.45.5 / W0到W7有部分没完成开发的工作，请开发。」用户裁决：范围 = **D26 履历链**（6 行，一条完整的「数据 → 界面 → 业务口径 → 体检」链）。
+>   ① **`数-19`（U149）履历数据模型**：`snapshots` 新增**第 9 区块** `resume: ResumeEntry[]`（`{date, time, summary, importance, refs?, source?}`；`date`/`summary` **必填**，缺一不入库）；**`DATA_VERSION` 不变**（加可选字段 + 归一补 `[]`，老存档读到 `undefined` 视为空）；`identity.canon` 为**新增三态标记**（原作 / 史实人物，形态同 `immortal`）；
+>   ② **`数-20`（U150）留存与凝练**：上限 **30（软阈值）** · 判据「**重要性 × 剧情时间新鲜度**」· **重要性 ≥0.7 免疫**（永不自动遗弃）· 同输入**确定性** · **凝练 ≤60 字且幂等**（只压 `summary`，不动 `date`/`time`/`importance`/`refs`/`source`）；
+>   ③ **`数-21`（U151）历史 / 同人预填**：`identity.canon === true` 且**有剧情时钟**才允许补「**剧情当下之前**」的经历；**硬护栏**：晚于上界的条目**一律拒收**、每条强制 `source: 'canon'`、**无剧情时钟时不预填**并如实提示；
+>   ④ **`业-7`（U148）与记忆呼应**：履历 `refs` 指向 `memories` 的 id（**引用不进哈希**）；「🔧 修复角色」在 `resumeGuide` 下**一并维护履历**（Q6 默认连修）并从相关记忆回填**长期性事实**；与 `background.history` 的分工（概览 vs 逐条）写进提示词与体检；
+>   ⑤ **`应-19`（U152）界面与个体按钮**：角色页档案卡片新增「📜 履历」区块（**剧情时间倒序** · 条数「N / 30」 · `canon` 可区分 · **折叠**）+ 按钮「📜 补全 / 修复履历」（针对该个体，含忙位与**如实回报**：新增 N · 凝练 M · 遗弃 K · 拒收 Q · 跳过原因）+ 编辑器新增「原作 / 史实人物」勾选框；设定页新增「📜 履历」**6 项控件**；
+>   ⑥ **`技-25`（U153）体检与测试**：体检新增 `resume` 读数（条数 / 超限 / 疑似重复 / 与「经历」重复，另加关联失效与日期不可解析）与 `resumeLedger`（**本会话内**的遗弃 / 凝练计数 —— Q2 裁决「不需要墓碑」→ **不落盘**），**面板 / `FTT.dataHealth` / 调试桥 `ftt.dataHealth` / 调试导出四处同源**；新增 4 档单测（`resume` 24 · `resume-health` 14 · `resume-ui` 8 · `resume-repair` 21 = **67 项**）；
+>   ⑦ **算法唯一源**：新增 **`core/resume.js`**（纯内核叶子模块：归一 / 排序 / 去重 / 留存分 / 遗弃 / 凝练 / 预填护栏 / 统计 / 体检读数 / 人读行）—— 与 `docs/D26` §8 的落点写法有**一处有意差异**（设计稿把留存函数写在 `core/model/snapshot.js`），理由与登记见 `docs/D26` v1.2 §8；
+>   ⑧ **同轮登记两条设计稿自身问题**：`docs/D17` **U218**（`D26` §3.3「超上限×比例即清算」与 §6 Q3「≤30 从不自动遗弃」**不能同真** → 取 Q3 优先，`triggerRatio` 降级为**预警线**）· **U219**（体检的「遗弃计数」在只读体检里**不可能从数据推出** → 改由**本会话运行账本**提供，语义已在四处写明「本会话」）；
+>   ⑨ **§3 数字口径同步**：表头与版本号 → **3.45.5**、内核配置键数 223 → **229**（+6 履历键）、提示词模板数 33 → **34**（+`resumeRepair`）、设定控件数 161 → **167**（+6 履历控件）、单测 **208 文件 / 3070 断言**、历史批次档数 205 → **206**；§1 目录树 `history/` 计数 → **206 份**、`P10c*` 区间 → **`P10c85`**；§2 目录地图 `core/` 80 → **81**（+`core/resume.js`）、`tests/` 232 → **236**；
+>   ⑩ **未取得（如实登记）**：本机**无真机存档** → 「履历区块在真机可见 / 按钮可点 / 原作人物预填真的只补剧情前」**未取得真机证据**（只有无宿主单测）；**生产采集点**（谁在什么时候调 `runResumeRepair`）由用户点击触发，未做自动埋点。
 > v2.74 变更（随 **v3.45.4**：`docs/D22` **W10 调试工具统一化与探针落地（整批 3 行）+ W9 的 `技-39` / `技-40`**）：
 >   用户原话：「新版本v3.45.4 / 开发W10待开发事项。」用户裁决（一条 + 一条默认）：① 范围 = **「解锁链」**（W10 三行 + W9 的 `技-39` / `技-40`；**`技-42` 的硬前置含 `技-39`**，只做 W10 做不成）；② `docs/D31` **Q1–Q6 整批采纳建议默认**（§8 转「决策记录」）。
 >   ① **`技-39`（U191）性能与容量基线探针 + 只增不降门禁**：新增 `core/perf-probe.js`（四类读数 + 三级阈值 `notice/stall/freeze` · **只记超阈段** · 800ms 去重 · **环形 200** · 7 条机械判据的**优化清单**含「台账号 / 未立项」· 基线对比）+ `scripts/perf-baseline.js`（**只有 `--write` 才落盘**）/ `scripts/perf-baseline-lib.js` / `scripts/check-perf-baseline.js`（回归即 `exit 1`、改善只提示）+ `scripts/perf-baseline.json`（70 项确定性量）；
@@ -439,12 +451,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，205 份）
+└── history/                  # 历史批次层（只读留痕，206 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c84           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c85           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -501,17 +513,17 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.45.4） |
+| 口径 | 权威来源 | 当前值（v3.45.5） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.4` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.5` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
-| 内核配置键数 | `core/config.js#defaultCfg` | 223（v3.44.0：入库卫生两开关 `relAnchorRuleEnabled` / `shellGuardEnabled`） |
-| 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
-| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 161（v3.44.0：分析记忆页 +2，入库卫生） |
+| 内核配置键数 | `core/config.js#defaultCfg` | 229（v3.44.0：入库卫生两开关；**v3.45.5：角色履历 6 键** `snapshotResumeEnabled` / `snapshotResumeMax` / `snapshotResumeTriggerRatio` / `snapshotResumeImmune` / `snapshotResumeSummaryMax` / `snapshotResumeCanonFill`） |
+| 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 34（v3.45.5：+`resumeRepair` 角色履历的窄契约） |
+| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 167（v3.44.0：分析记忆页 +2，入库卫生；**v3.45.5：投喂范围页 +6，履历**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 204 文件 / 3001 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 208 文件 / 3070 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -519,7 +531,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 58 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 205 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 206 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -239,8 +239,39 @@ export function buildDebugExport() {
         readsText: (() => { try { return readLedgerText(30); } catch (e) { return String((e && e.message) || e); } })(),
         reads: (() => { try { return readLedgerStats(); } catch (e) { return { error: String((e && e.message) || e) }; } })(),
         // v3.13.0：数据体检（只读；摘要 + 明细计数，便于「导出调试包」一并交给开发核对）
-        dataHealth: (() => { try { const r = dataHealthReport(); return { ok: r.ok, level: r.level, counts: r.counts, scanned: r.scanned, truncated: r.truncated, text: dataHealthText(r) }; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
+        //   v3.45.5（`docs/D22` W4 `技-25` ②）：一并带上履历读数（`resume` 四项 + 本会话运行账本 `resumeLedger`），
+        //   使「面板 / 桥 / 调试导出」三处出口对履历**同源可见**（都来自 `dataHealthReport()`）。
+        dataHealth: (() => { try { const r = dataHealthReport(); return { ok: r.ok, level: r.level, counts: r.counts, scanned: r.scanned, truncated: r.truncated, resume: r.resume, resumeLedger: r.resumeLedger, text: dataHealthText(r) }; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
     };
+}
+
+/**
+ * v3.45.5（`docs/D22` W4 `技-25` ②；设计稿 `docs/D26` §8 技-25 行）：**履历体检的一行人读**
+ *   —— 与桥方法 `ftt.dataHealth`、调试导出的 `dataHealth`、`/ftt` 共用 `dataHealthReport()` 的同一份读数。
+ *   四项读数（条数 / 超限 / 遗弃 / 疑似重复）各自**独立可见**，不合并成一个「有问题 / 没问题」。
+ *   · 「遗弃 / 凝练」来自**本会话运行账本**（`core/resume.js#resumeLedgerState`）：`docs/D26` Q2 裁决
+ *     「不需要墓碑」→ 不落盘，故这里**如实写成「本会话」**，不当成存档现状；
+ *   · 开关关闭时报告带 `note:'disabled'` → 这里如实说「未体检」，不静默显示成「0 条」。
+ */
+function resumeHealthLineHtml(r) {
+    try {
+        const rr = r && r.resume;
+        if (!rr) return '';
+        const led = r.resumeLedger || {};
+        if (rr.note === 'disabled') return '<div class="ftt-muted" data-ftt-resume-health>履历：功能已关闭（未体检）</div>';
+        // 状态行保持**短**（页面提示 ≤90 字的判据）；细项一律进折叠区（`ui-wording` L1 的纪律）
+        const head = '履历：' + Number(rr.withResume || 0) + ' 名角色 · 共 ' + Number(rr.total || 0) + ' 条 · 超限 '
+            + Number(rr.overCount || 0) + ' 名';
+        const detail = [
+            '上限 ' + Number(rr.max || 0) + ' 条 · 接近上限 ' + Number(rr.nearCount || 0) + ' 名',
+            '疑似重复 ' + Number(rr.dupSuspects || 0) + ' 条 · 与「经历」重复 ' + Number(rr.dupWithHistory || 0) + ' 条',
+            '关联失效（引用的记忆不存在）' + Number(rr.orphanRefs || 0) + ' 条 · 日期无法解析 ' + Number(rr.clockless || 0) + ' 条',
+            '本次会话已完成：遗弃 ' + Number(led.dropped || 0) + ' 条 · 凝练 ' + Number(led.condensed || 0) + ' 条'
+            + '（遗弃数只在本次会话内计数 —— 履历按设计不留删除记录）',
+        ].join('<br>');
+        return '<div class="ftt-muted" data-ftt-resume-health>' + esc(head) + '</div>'
+            + hintDetailsHtml('履历体检细项（四项读数与「本会话已做」的计数）', '<div>' + detail + '</div>');
+    } catch (e) { return ''; }
 }
 
 /**
@@ -1548,6 +1579,9 @@ export function debugPageHtml(controls) {
                 + (f.id ? (' · <b>' + esc(String(f.id)) + '</b>') : '') + (f.field ? (' · ' + esc(String(f.field))) : '')
                 + '：' + esc(String(f.detail || '')) + '</div>').join('');
             return '<div class="ftt-muted" data-ftt-data-health>' + esc(dataHealthText(r)) + '</div>'
+                // v3.45.5（`docs/D22` W4 `技-25` ②）：**履历读数**在面板出口也可见 ——
+                //   与桥方法 `ftt.dataHealth`、调试导出的 `dataHealth.resume` **同源**（三处都读 `dataHealthReport()`）。
+                + resumeHealthLineHtml(r)
                 + hintDetailsHtml('明细（前 40 条；自愈在载入时完成，重复 id / 超长字段 / 非法墓碑时间戳只报告不擅自改）',
                     '<div>' + (rows || '没有需要列出的明细。') + (r.truncated ? ('<div>…还有 ' + r.truncated + ' 条未列出</div>') : '') + '</div>');
         })(),

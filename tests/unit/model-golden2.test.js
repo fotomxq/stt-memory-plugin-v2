@@ -52,9 +52,32 @@ function cmp(list, got) {
 }
 
 // ---------- 角色档案 ----------
-const normSnaps = I.SNAPSHOTS.map(x => normalizeSnapshot(x));
-R.assert('N1 normalizeSnapshot 与 V1 逐字符一致（含扁平字段折叠 / 外貌聚合 / 已去世三态 / 标签并集）',
-    cmp(G.snapshots, normSnaps).ok === true, cmp(G.snapshots, normSnaps));
+/**
+ * v3.45.5（`docs/D22` W4 `数-19`/`数-21`，设计稿 `docs/D26`）：**有意偏离 V1** ——
+ *   `normalizeSnapshot` 新增两个字段：`resume`（履历，第 9 区块，缺省 `[]`）与 `identity.canon`
+ *   （原作 / 史实人物三态标记，未提及时不写）。
+ *   按 `开发守则.md` §2.4 三件套：黄金样本 `tests/fixtures/v1-golden-model*.json` **一字未改**，
+ *   在此**显式归一**后再比对（归一 ≠ 删功能：另在 N1b 单独断言新字段确实存在且形态正确）。
+ */
+const v1Proj = (s) => {
+    if (!s || typeof s !== 'object') return s;      // 无姓名的样本被归一为 null —— 原样返回（与原比对口径一致）
+    const o = JSON.parse(JSON.stringify(s));
+    delete o.resume;
+    if (o.identity) delete o.identity.canon;
+    return o;
+};
+const normRaw = I.SNAPSHOTS.map(x => normalizeSnapshot(x));
+const normSnaps = normRaw.map(v1Proj);
+R.assert('N1 normalizeSnapshot 与 V1 逐字符一致（含扁平字段折叠 / 外貌聚合 / 已去世三态 / 标签并集）', () => {
+    const r = cmp(G.snapshots, normSnaps);
+    return r.ok === true;
+}, cmp(G.snapshots, normSnaps));
+R.assert('N1b v3.45.5 新增面确实存在（归一 ≠ 删字段）：有姓名的样本 `resume` 一律为数组（缺省 `[]`）、未被标记的档案**不写** `identity.canon` 键', () => {
+    const live = normRaw.filter((s) => s && typeof s === 'object');
+    return live.length > 0 && live.every((s) => Array.isArray(s.resume))
+        && live.every((s) => s.identity && s.identity.canon === undefined)
+        && live.every((s) => Object.keys(s).indexOf('resume') >= 0);
+}, normRaw.map((s) => [s && s.name, s && Array.isArray(s.resume) ? s.resume.length : 'NOT-ARRAY', s && s.identity && s.identity.canon]));
 R.assert('N2 年龄信息 snapshotAgeInfo（出生日期精度 / 剧情日期锚点 / 已去世锁定）',
     cmp(G.ageInfo, normSnaps.map(x => snapshotAgeInfo(x))).ok === true, cmp(G.ageInfo, normSnaps.map(x => snapshotAgeInfo(x))));
 R.assert('N3 锁定判定 snapshotAgeIsLocked', J(normSnaps.map(x => snapshotAgeIsLocked(x))) === J(G.ageLocked), normSnaps.map(x => snapshotAgeIsLocked(x)));

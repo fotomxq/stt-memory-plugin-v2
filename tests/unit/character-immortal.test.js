@@ -251,8 +251,12 @@ A('F1 `characterAgeScan()` 只读：给出年龄 / 是否超长 / 是否长生 /
 A('F2 `runCharacterMechanicalPass()` 如实回报长生者跳过数（通知/日志用），且不影响既有键', (() => {
     boot([SNAP('长生乙', { immortal: true, birthDate: '约300年' }), SNAP('常人甲', { birthDate: '约300年' })]);
     const mech = runCharacterMechanicalPass();
+    // v3.45.5（`docs/D22` W4 `数-20`）：机械处理新增 `resume`（履历机械段读数）→ 键集同步加一项；
+    //   「不影响既有键」的判据仍成立（既有 8 个键都在）。
     return Number(mech.immortal) === 1 && Number(mech.deceased) === 0
-        && mech.birth && Number(mech.birth.skippedImmortal) === 1 && J(Object.keys(mech).sort()) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'tags', 'total']);
+        && mech.birth && Number(mech.birth.skippedImmortal) === 1
+        && J(Object.keys(mech).sort()) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'resume', 'tags', 'total'])
+        && !!mech.resume && Number(mech.resume.snapshots) === 0;   // 本场景无履历 → 0 个档案参与整理
 })(), () => J(runCharacterMechanicalPass()));
 
 // ---------- G 组：编辑器字段（可编辑） ----------

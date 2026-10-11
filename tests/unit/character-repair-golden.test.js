@@ -103,8 +103,14 @@ const setP = (mut, path, val, opts) => {
  *   `mech.birth.skippedImmortal`，与 v1.205 的 `deceased` 同款：供通知如实说明「为什么跳过了谁」）。
  *   按 `开发守则.md` §4「黄金样本不可手改」：**在测试里显式归一**后再与 V1 黄金投影比对
  *   （样本本身一字不改），并单独断言新计数确实存在（归一 ≠ 删字段）。
+ *
+ * v3.45.5（`docs/D22` W4 `数-19`/`数-20`，设计稿 `docs/D26`）：**同一手法的第三例** ——
+ *   履历机械段给 `runCharacterMechanicalPass` 的返回结构加了 `resume`（本轮履历统计：snapshots / dropped /
+ *   condensed / changed）；`snapshot` 投影里也多了 `resume` 字段（V1 无此区块）。
+ *   黄金样本 `tests/fixtures/v1-golden-character-repair.json` **一字未改**，在此显式归一掉 `resume`，
+ *   并在 C3 末尾单独断言 `mech.resume` 确实存在（守卫「归一 → 把功能删干净了也能过」）。
  */
-const v2StripMech = (m) => JSON.parse(JSON.stringify(m, (k, v) => ((k === 'immortal' || k === 'skippedImmortal') ? undefined : v)));
+const v2StripMech = (m) => JSON.parse(JSON.stringify(m, (k, v) => ((k === 'immortal' || k === 'skippedImmortal' || k === 'resume') ? undefined : v)));
 
 // ============================================================
 // C 组：角色修复内核 —— 与 V1 逐项比对
@@ -134,17 +140,23 @@ R.assert('C2 buildCharacterRepairQueue：字数门限筛选 + 出生日期异常
 R.assert('C3 机械处理（零 AI）：correctSnapshotBirthDates（缺失跳过 / 已就绪不动 / 格式非法重推 / 已去世跳过）与 runCharacterMechanicalPass（出生日期校正 + 标签补充 + 年龄刷新）逐字段与 V1 一致', (() => {
     boot(G.inputs.scenario);
     const mech = runCharacterMechanicalPass();
-    const mechSnaps = (state.snapshots || []).map(x => ({ name: x.name, identity: x.identity, tags: x.tags }));
+    const mechSnaps = (state.snapshots || []).map(x => ({ name: x.name, identity: x.identity, tags: x.tags, resume: Array.isArray(x.resume) ? x.resume : null }));
     boot(G.inputs.scenario);
     const cb = correctSnapshotBirthDates();
     boot(G.inputs.scenario);
     runCharacterMechanicalPass();
     const after = buildCharacterRepairQueue().list.map(x => [x.name, x.size, x.filled, x.anomaly]);
-    return J(v2StripMech(mech)) === J(G.mechPass) && J(mechSnaps) === J(G.mechSnapshots)
+    return J(v2StripMech(mech)) === J(G.mechPass) && J(mechSnaps.map(x => ({ name: x.name, identity: x.identity, tags: x.tags }))) === J(G.mechSnapshots)
         && J(v2StripMech(cb)) === J(G.correctBirth) && J(after) === J(G.afterMechQueue)
         && mech.deceased === 1 && mech.birth.corrected === 1 && mech.tags.filled === 1 && after[1][3] === ''
         // v3.22.0：新计数确实存在（本场景无长生者 → 为 0）
-        && Number(mech.immortal) === 0 && Number(mech.birth.skippedImmortal) === 0;
+        && Number(mech.immortal) === 0 && Number(mech.birth.skippedImmortal) === 0
+        // v3.45.5：履历机械段确实跑过（本场景档案都没有履历 → 0 个档案、0 条遗弃/凝练）——「归一 ≠ 删功能」
+        && !!mech.resume && Number(mech.resume.snapshots) === 0 && Number(mech.resume.dropped) === 0
+        && Number(mech.resume.condensed) === 0
+        // 且**不得**给从未有履历的老档案凭空加字段（空数组由 `normalizeSnapshot` 在载入/合并时补，机械段不越权）——
+        //   这是「老存档读到 undefined 视为 []」的边界：存储侧不新增字段，读取侧按空处理。
+        && mechSnaps.every((x) => x.resume === null);
 })(), G.mechPass);
 
 R.assert('C4 setSnapshotByPath 类型分支：str 只填空（已填不改）· 空话占位拒收 · 英文别名还原 · arr 只填空 · tags 并集 · rel 拒收 · bool 只「标记为已去世」 · 非法路径 —— 与 V1 逐字段一致', (() => {

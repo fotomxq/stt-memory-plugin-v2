@@ -3,6 +3,57 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.45.5（2026-10-11）· 角色履历落地（`docs/D22` W0–W7 未完成项 · `docs/D26` 履历链整批 6 行）
+
+**用户要求**（原话）：「新版本v3.45.5 / W0到W7有部分没完成开发的工作，请开发。」
+**用户裁决**：范围 = **`docs/D26` 履历链**（6 行：`数-19` / `数-20` / `数-21` / `业-7` / `应-19` / `技-25`）—— 一条完整的「数据 → 界面 → 业务口径 → 体检」链。
+**W0–W7 的其余未完成行状态一律不变**（本批不做；「W0 到 W7 有部分没完成」这个更大的范围留待后续轮次按同样方式逐链推进）。
+
+| # | 条目 | 落点 | 改动 |
+| --- | --- | --- | --- |
+| ① | `数-19`（U149） | 新增 `core/resume.js` · `core/model/snapshot.js` · `core/config.js` | **履历数据模型**：角色档案新增**第 9 区块** `resume: ResumeEntry[]`（`{date, time, summary, importance?, refs?, source?}`；`date`/`summary` **必填**，缺一**不入库**）；归一闪（逐条校验 → `date+summary` 去重 → **剧情时间倒序**）；内容副本新增「履历：」段（`date`+`summary`+`source` **进身份指纹**，`importance`/`refs` **不进**）；**`DATA_VERSION` 仍为 1**（老存档读到 `undefined` 视为 `[]`）；`core/config.js` 新增 **6 个口径键** |
+| ② | `数-20`（U150） | `core/resume.js`（算法）· `core/character-repair.js#resumeMechanicalPassFor` / `#resumeMechanicalPass`（编排） | **留存与凝练**：上限 `snapshotResumeMax`（默认 **30**，**软阈值**：`≤ 上限` **从不**自动遗弃）· 判据 `keep = importance × 剧情时间新鲜度`（复用 `core/decay.js#calcTimeDecay`）· `importance ≥ snapshotResumeImmune`（默认 **0.7**）**永不**自动遗弃 · 同分先遗弃更久远者、再按 `summary` 字典序（**确定性**）· 凝练 `≤ snapshotResumeSummaryMax`（默认 **60** 字）且**幂等**（只压 `summary`，句读边界优先，不动 `date`/`time`/`importance`/`refs`/`source`）；机械段折进 `runCharacterMechanicalPass`（有改动才落盘） |
+| ③ | `数-21`（U151） | `core/resume.js#resumeCanonGuard` · `core/model/snapshot.js`（`identity.canon`）· `core/character-repair.js#buildResumeRepairPrompt` | **历史 / 同人人物预填**：新增可编辑**三态**标记 `identity.canon`（原作 / 史实人物，形态同 `immortal`；**也进内容副本**，与 `immortal` 同口径）；预填**只补「剧情当下之前」**（`date > 剧情当下` → **拒收**，`reason:'future'`）；每条强制 `source: 'canon'`；**无剧情时钟 → 一律不预填**（`'no-clock'`，提示词明确禁止写「原作」来源）；**非原作角色**即使被 AI 标了「原作」也**强制回落 `'story'`**（防误标批量编造） |
+| ④ | `业-7`（U148） | `core/config.js#PROMPT_TEMPLATES_V2`（新增 `resumeRepair`）· `core/character-repair.js#buildCharacterRepairPrompt` | **与记忆呼应**：履历 `refs` 指向 `memories` 的 id（**引用不进哈希**）；「🔧 修复角色」在 `opts.resumeGuide` 下**一并维护履历**（`docs/D26` Q6 **默认连修**）并从相关记忆（`characterEvidencePack`）**回填长期性事实**；与 `background.history` 的**分工**（概览 vs 逐条）与「**只输出新增**」写进提示词契约；新增**窄契约模板** `resumeRepair`（个体按钮用，含上界与护栏）—— 契约段**仅在 `resumeGuide`/本模板内出现** → **V1 逐字提示词黄金样本一字未变** |
+| ⑤ | `应-19`（U152） | `ui/list-rows.js` · `ui/fields.js` · `ui/settings-pages.js` · `ui/panel.js` | **界面与个体按钮**：角色行新增「**📜 履历**」区块（`data-ftt-resume="<id>"`；条数「N / 上限」· **剧情时间倒序** · `canon` 可区分 · **折叠**（默认收起）· 行文本与 `core/resume.js#resumeEntryLine` **同源**，界面零重算 · 空态一行）；新增按钮「**📜 补全 / 修复履历**」（`data-ftt-action="resumeRepair"` + `data-ftt-id`）→ 面板动作 `resumeRepair` → `runResumeRepair`（**如实回报**：新增 / 凝练 / 遗弃 / 拒收 / 跳过原因）；编辑器新增「原作 / 史实人物」勾选框；设定页新增「📜 履历」**6 项控件**；**开关关闭时整块不渲染** |
+| ⑥ | `技-25`（U153） | `core/data-health.js` · `core/resume.js`（运行账本）· `ui/debug.js` · 4 档单测 | **体检与测试**：体检新增顶层键 `resume`（条数 / 超限 / 接近上限 / **疑似重复** / 与「经历」重复 / 关联失效 / 日期不可解析；**按角色聚合**，一个角色每个码至多一条）与 `resumeLedger`（**本会话内**的遗弃 / 凝练计数 —— 见下「不落盘」）；开关关闭时 `resume.note = 'disabled'`（**不伪装成健康**）；**面板区块 / `FTT.dataHealth` / 调试桥 `ftt.dataHealth` / 调试导出四处同源**（都读 `dataHealthReport()`） |
+
+**新增守门单测 4 档（67 项）**：`tests/unit/resume.test.js`（**24**：归一幂等 · 必填缺失丢弃 · `source` 中英文别名 · `refs` 去重 ≤8 · `importance` 夹取 · 40 条裁到 30 且高重要全留 · `dropped` 两次逐字相同 · `≤max` 不删 · `immune` 边界 · `null` 按 0 参与但不免疫 · 凝练幂等与「不动其它字段」· 预填上界/`'future'`/`'no-clock'` · 排序倒序与 tie-break）·
+`tests/unit/resume-health.test.js`（**14**：干净存档零 `resume-*` 且 `ok/level` 不变 · `resume:[]` 等价缺字段 · 2 角色 × 31 条 → 6 码**各 2 条**（按角色聚合）· 与 `resumeHealthReport(...)` **逐字同源** · 开关关闭 → `note:'disabled'` · 调用前后 `state` 深拷贝**逐字段相同**）·
+`tests/unit/resume-ui.test.js`（**8**：区块锚点 / 倒序 / `canon` 可区分 / 折叠 / 开关关闭不渲染 / 空态 + 按钮 / 真实面板路径 / 6 键控件与默认值 / 字段表与 `identity`）·
+`tests/unit/resume-repair.test.js`（**21**：机械段（遗弃 / 免疫 / 幂等 / 凝练不动其它字段 / 修脏数据 / 折进 `mech.changed` / 账本 / 开关关闭不执行）· 准入（`canonFill` / `no-clock`）· 提示词契约 · `runResumeRepair` 全链路（拒收未来 / 强制来源 / 凝练只接受更短 / `disabled` / `no-role` / `ai-busy` / `no-ai` / 空手 AI 不虚报）· **面板动作可达 + 失败路径如实回报**）。
+
+**落点与设计稿 §8 的差异（如实登记）**：`数-20` 原写「`core/model/snapshot.js`（新留存函数）」，实际把**全部履历算法**放进新的纯内核叶子模块 **`core/resume.js`** ——
+`core/model/snapshot.js` 是**逐字移植自 V1** 且被 `model-golden*` / `snapshot-golden` **逐字符锁定**的档案模块，把约 300 行新算法塞进去会让「移植面被改坏」与「新增面写错」无法区分；
+且履历算法要被**四处** import（归一 / 编排 / 体检 / 展示）→ 独立叶子模块耦合最小。`core/model/snapshot.js` 只保留**接线**（`resume` 归一 + 内容副本登记 + `canon` 三态）。已同批写进 `docs/D26` v1.2 与 `docs/D22` §4.6。
+
+**同轮登记两条设计稿自身问题**（`docs/D17` **§1.26 U218–U219**，均按「对用户数据更安全」的一条落地）：
+- **U218**：`docs/D26` §3.3「条数 > 上限 × 触发比例（0.8 → 24 条起）即清算」与 §6 决策记录 Q3「**≤30 时从不自动遗弃**」在 `25..30` 区间**不能同真** →
+  取 **Q3 优先**：**只有 `len > 上限` 才真的遗弃**；`snapshotResumeTriggerRatio` 保留**非破坏性**语义（体检/面板的「接近上限」**预警线**，也是「进入清算检查」的阈值，此时检查必为空操作）。设计稿原文按「只增不改」留档，差异写在其 v1.2 头部。
+- **U219**：`技-25` ① 要的「**遗弃计数**」**不在数据里**（Q2 裁决「不需要墓碑」→ 遗弃 = 数组变短、**不落盘**），只读体检**不可能**从存档推出 →
+  改由**本会话运行账本**（`core/resume.js#resumeLedgerState`，由 `resumeMechanicalPass` 记账，重启即归零）提供，作为体检报告的顶层键 `resumeLedger`（与 `resume` 并列：前者是「本次会话做过什么」，后者是「存档现状」），并在**面板 / 调试导出 / 设计稿 / `docs/D22`** 四处写明「**本会话内**」。
+
+**V1 偏离登记（三件套 · `开发守则.md` §2.4）**：`snapshots` 新增 `resume` 区块与 `identity.canon` 字段（外加 `ui/fields.js` 字段表 +1）→
+① 黄金样本（`v1-golden-model*` / `-ingest` / `-migrate-entries` / `-character-repair` / `-config-clock`）**一字未改**；
+② 测试内**显式归一 + 单独断言新字段存在**：`model-golden2#N1`(+新增 N1b) · `ingest-golden#M2`(+M2b) · `migrate-entries-golden#M1` · `character-repair-golden#C3` · `config-clock-golden#C1/C4/C5` · `character-deceased#C1` · `character-immortal#F2` · `panel#B2-1` · `list-rows-golden#V1` · `feed-grouping` · `settings-capacity#C7` · `constraint-page#A2` · `relation-layer#F1`；
+③ 文档说明：`docs/D26` v1.2 · `docs/D22` §4.6 本版口径第 5/6 条 · `docs/02` §1.1/§5 · `docs/history/P10c85`。
+
+**本轮文档**：`docs/D26` v1.2（落点差异 + U218/U219 + `canon` 进指纹的显式补记）· `docs/D22` v1.15（§4.3/§4.4/§4.5/§4.6 六行销账 + 「本版口径（v3.45.5）」8 条）·
+`docs/D17` v1.25（**§1.26 U218–U219**，销账 U148–U153）· `docs/README` v2.75 · `docs/02` §1.1/§5（履历口径表）· `docs/04` §2.1 + 新增「附：角色页『📜 履历』」· `docs/05` §2 ·
+`docs/history/P10c85-角色履历落地.md` · `docs/history/README` v1.22。
+**数字口径**：单测 **208 文件 / 3070 断言**（新增 4 档 67 项）· 内核配置键数 223 → **229** · 提示词模板数 33 → **34** · 设定控件数 161 → **167** ·
+`docs/05` §2 的 `core/` 80 → **81**、`tests/` 232 → **236** · 历史批次档数 205 → **206** ·
+`scripts/config-decl-baseline.json` 的 `uncovered` 手加 `promptTemplates.resumeRepair`（该键本来就无控件，模板由提示词页动态编辑；`--write-baseline` 只减不增，不会自动加）。
+
+**未取得（如实登记）**：
+① **真机未取得** —— 本机**无 SillyTavern 真机存档** → 「履历区块在真机可见 / 按钮可点 / 原作人物预填真的只补剧情前 / 遗弃与凝练按预期发生」**未取得真机证据**（只有无宿主单测 + 静态核对）；
+② **不做自动埋点** —— `runResumeRepair` 由**用户点击**触发（角色页按钮），**未**在提取 / 修复管线里自动插桩调用（与 `docs/D26` §3.5 的两个入口一致）；
+③ **不加墓碑 / 不改 Q2** —— 遗弃**不留任何持久痕迹**（见 U219）；若要「历史累计遗弃数」，须先重新裁决 `docs/D26` Q2；
+④ **`技-29` 仍留 ⬜** —— `docs/D28` §3.7 里「`D26` 遗弃改移出热集」是**草案口径**，与本轮落地的 Q3 软阈值（超限才遗弃）冲突，本轮**未**按它改（已在 `docs/D17` U167 登记）。
+
+**版本位说明（如实记录判断，不静默）**：本版由用户指定 **v3.45.5**（patch 位）。本轮**新增了能力**（新数据区块与 6 个配置键 · 1 个提示词模板 · 新界面区块与按钮 · 6 项设定控件 · 4 档新单测 · 新体检读数），
+按 `开发守则.md` §3.1 的规则**严格说应记 `3.46.0`**（新增能力 → minor+1）；沿用 v3.45.1–v3.45.4 的**用户指定 patch 位**处理：**记 v3.45.5 并显式登记该偏离**（与 `docs/D22` §4.6「本版口径（v3.45.5）」第 8 条同口径）。
+
 ## v3.45.4（2026-10-11）· `docs/D22` **W10 调试工具统一化与探针落地**（整批 3 行）+ **W9 的 `技-39` / `技-40`**（解锁链）
 
 **用户要求**（原话）：「新版本v3.45.4 / 开发W10待开发事项。」

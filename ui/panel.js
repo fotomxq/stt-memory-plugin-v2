@@ -28,7 +28,7 @@ import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
 import { runItemRepair } from '../core/item-repair.js';
-import { runCharacterRepair } from '../core/character-repair.js';
+import { runCharacterRepair, runResumeRepair } from '../core/character-repair.js';   // v3.45.5：+runResumeRepair（角色页「📜 补全 / 修复履历」）
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
 // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
@@ -3112,6 +3112,32 @@ export async function panelAction(action, payload) {
             setNote('角色修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, characterRepair: r, made: r.made || 0 });
         }
+        else if (a === 'resumeRepair') {
+            // v3.45.5（`docs/D22` W4 `应-19` ②；设计稿 `docs/D26` §3.5）：角色页「📜 补全 / 修复履历」——
+            //   针对**该个体**：机械段（排序 / 去重 / 遗弃 / 凝练，零 AI）→ 需要时窄契约 AI（补全 + 凝练）
+            //   → 复核（原作人物补「剧情前」履历的硬护栏）→ **如实回报四类计数与跳过原因**。
+            //   入参：`id`（行内按钮的 `data-ftt-id`，由通用分发透传）优先；缺失时按 `name` 兜底。
+            const snapId = String(p.id || '');
+            const target = (state.snapshots || []).find((x) => x && String(x.id) === snapId)
+                || (state.snapshots || []).find((x) => x && String(x.name) === String(p.name || ''));
+            const r = await runResumeRepair(target ? String(target.name) : '', {});
+            const parts = [];
+            if (r.ok === false) {
+                parts.push(r.reason === 'disabled' ? '履历功能已关闭（可在 设定 → 投喂范围 打开「履历」）'
+                    : (r.reason === 'no-role' ? '找不到该角色档案' : ('失败：' + String(r.reason || ''))));
+            } else {
+                parts.push('新增 ' + Number(r.added || 0) + ' 条');
+                parts.push('凝练 ' + Number(r.condensed || 0) + ' 条');
+                parts.push('遗弃 ' + Number(r.dropped || 0) + ' 条');
+                if (Number(r.rejected || 0)) parts.push('拒收 ' + Number(r.rejected) + ' 条（晚于当前剧情日期，未写入）');
+                if (r.aiSkipped === 'busy') parts.push('AI 正忙，本轮只做了整理');
+                else if (r.aiSkipped === 'error') parts.push('AI 调用失败，本轮只做了整理');
+                else if (r.aiSkipped === 'no-ai') parts.push('未调用 AI（只整理）');
+                parts.push('现有 ' + Number(r.total || 0) + ' / ' + Number(r.max || 0) + ' 条');
+            }
+            setNote('履历：' + parts.join('；'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, resumeRepair: r, added: r.added || 0 });
+        }
         else if (a === 'stateRepair') {
             // 「🔧 修复状态」（V1 v1.158 状态页专用）：① 已去世固定规则移除 → ① 匹配角色（未匹配整组删除）
             //   → ② 机械清理与字段规范化 → ③ 最薄弱主体交 AI 整理；无主体可提交时**零 AI**，如实回报。
@@ -3544,7 +3570,11 @@ export function bindOverlay() {
             //   而这里此前只读 `data-kind` → `kind` 恒为空串 → 点「＋黑」被 `feedScanAction` 归一为 `white`
             //   （**实际加进了白名单**）、点类别筛选恒为「全部」（点了没反应）。V1 的 `rxAddTag` 直接读 `ds.fttKind`。
             const kind = ds.kind || ds.fttKind || '';
-            const id = ds.id || '';
+            // v3.45.5（`docs/D22` W4 `应-19` ② 的落地依赖）：V1/V2 的行内按钮约定一直是
+            //   `data-ftt-action` + **`data-ftt-id`**（如「📜 补全 / 修复履历」），而这里此前**只读 `ds.id`**
+            //   → `data-ftt-id` 上的条目 id 到不了动作入参（`atomPeek` 同款历史问题：那个动作只按 `p.id` 找，
+            //   命中不了就静默不生效）。按 v2.45.0 修 `ds.fttKind` 的同一手法补齐 `ds.fttId` 回落。
+            const id = ds.id || ds.fttId || '';
             const floor = ds.fttFloor || '';
             const subject = ds.fttSubject || '';
             if (act === 'save') {

@@ -2094,9 +2094,10 @@ await assert('AC1 v3.18.0 角色修复 · 已去世研判（端到端）：明�
         // 名单判定：已去世者**不在待修复队列**（跳过后续处理），且本轮确实把在册角色交给了 AI
         const skipOk = q.deceasedList.indexOf('角色甲') >= 0 && q.list.every((x) => x.name !== '角色甲')
             && q.list.some((x) => x.name === '角色丁') && acAiCalls === 1 && acPrompt.indexOf('角色丁') > 0;
-        // ④ 机械返回结构键集固定（V1 字段集 + v1.205 `deceased` + v3.22.0 `immortal`），研判结果经内部记录读取
+        // ④ 机械返回结构键集固定（V1 字段集 + v1.205 `deceased` + v3.22.0 `immortal` + v3.45.5 `resume`），研判结果经内部记录读取
         const mech = globalThis.FTT.characterMechanicalPass();
-        const structOk = Object.keys(mech).sort().join(',') === 'ages,anomalies,birth,changed,deceased,immortal,tags,total'
+        const structOk = Object.keys(mech).sort().join(',') === 'ages,anomalies,birth,changed,deceased,immortal,resume,tags,total'
+            && !!mech.resume && Number(mech.resume.dropped) === 0
             && (st.snapshots.filter((x) => x.name === '角色甲')[0].identity || {}).deceased === true;
         // ⑤ 通知如实说明「新标记已去世 N 名」与「待确认」；不再对已去世者做出生日期 / 年龄处理
         // 通知文案：从**调试日志**（`dbgLog('修复', …)`）核对（不接管 notifyHooks，避免影响后续小节的 toastr 断言）

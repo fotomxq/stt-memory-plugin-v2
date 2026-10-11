@@ -9,6 +9,9 @@ import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText,
 import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyDateMsFromStr } from '../clock.js';
 import { atomIsHidden } from '../merge.js';
 import { atomLatestDated } from '../recall.js';
+// v3.45.5（`docs/D22` W4 `数-19`，设计稿 `docs/D26` §3.2）：履历（`snapshots[].resume`）的**唯一算法源**
+//   在 `core/resume.js`（纯内核叶子模块）—— 本文件只负责「把字段接进归一与内容副本」，不重复实现算法。
+import { resumeNormList, resumeEntryLine } from '../resume.js';
 
 /**
  * 状态/记忆条目的「最后更新时刻」采样（**只取剧情时间**）。
@@ -297,6 +300,27 @@ function snapshotImmortalFlag(v) {
 /** 是否已标记「长生者」（`identity.immortal === true`） */
 function snapshotImmortal(s) {
     try { return snapshotImmortalFlag(s && s.identity ? s.identity.immortal : undefined) === true; } catch (e) { return false; }
+}
+// ==================== v3.45.5：「原作 / 史实人物」标记（`docs/D26` §3.4 Q5） ====================
+// 设计稿要求：新增**可编辑的三态标记** `identity.canon`（形态同 `identity.immortal`）——
+//   `true` = 该角色是**史实 / 原作人物**（有独立于本剧情的既有生平）→ 允许补「剧情时间之前」的履历；
+//   `false` = 明确不是；`undefined` = 未提及（**默认不写**，`docs/D26` R6：避免被 AI 误标后批量编造）。
+// 为什么另立词表而不复用 `snapshotImmortalFlag()`：语义完全不同（长生 ≠ 原作人物），
+//   复用会把「原作的」判成「长生」或反之 —— 与 v3.22.0 另立 immortal 词表同一个理由。
+function snapshotCanonFlag(v) {
+    try {
+        if (v === undefined || v === null || v === '') return undefined;
+        if (v === true || v === 1) return true;
+        if (v === false || v === 0) return false;
+        const s = String(v).trim().toLowerCase();
+        if (/^(true|yes|y|1|是|原作|原作人物|史实|史实人物|历史人物|真实人物|官方|原著|canon|canonical)$/.test(s)) return true;
+        if (/^(false|no|n|0|否|非原作|不是原作|原创|原创人物|虚构|虚构人物|非史实|不是史实|original|fictional)$/.test(s)) return false;
+        return undefined;
+    } catch (e) { return undefined; }
+}
+/** 是否已标记「原作 / 史实人物」（`identity.canon === true`） */
+function snapshotCanon(s) {
+    try { return snapshotCanonFlag(s && s.identity ? s.identity.canon : undefined) === true; } catch (e) { return false; }
 }
 /**
  * v3.22.0：**角色修复的「不再处理」判据**（用户要求「标记了长生者的无需在修复角色中被分析」）。
@@ -696,6 +720,9 @@ function snapshotContentCopy(s) {
         if (id.deceased !== undefined) idParts.push('已去世:' + (id.deceased ? '是' : '否'));
         // v3.22.0：「长生者」开关同样进内容副本（用户可编辑的字段 → 参与身份指纹/跨端合并口径）
         if (id.immortal !== undefined) idParts.push('长生者:' + (id.immortal ? '是' : '否'));
+        // v3.45.5（`docs/D26` §3.4 Q5）：「原作 / 史实人物」标记 —— 与 `immortal` **同构**（用户可编辑的三态），
+        //   故同口径**进内容副本**：它是「这个角色有没有独立于本剧情的既有生平」这一身份属性，跨端必须一致。
+        if (id.canon !== undefined) idParts.push('原作人物:' + (id.canon ? '是' : '否'));
         if (idParts.length) seg.push('身份：' + idParts.join('，'));
         if (s.appearance) seg.push('外貌：' + s.appearance);
         const p = s.personality || {};
@@ -710,6 +737,15 @@ function snapshotContentCopy(s) {
         if (b.origin) bParts.push('出身:' + b.origin);
         if (b.history) bParts.push('经历:' + b.history);
         if (bParts.length) seg.push('背景：' + bParts.join('，'));
+        // v3.45.5（`docs/D26` §3.2 一致性清单第 1 项 · Q1 **部分进**）：履历段 —— 只放
+        //   `date` + `summary` + `source`（**进身份指纹**）；`importance` / `refs` **不进**（与 `importance`/`uses` 先例一致）。
+        //   顺序固定为「已排好的剧情时间倒序」，条数与内容确定 → 跨端同内容必得同哈希。
+        {
+            const rs = (Array.isArray(s.resume) ? s.resume : [])
+                .map((e) => ({ date: String((e && e.date) || ''), summary: String((e && e.summary) || ''), source: String((e && e.source) || 'story') }))
+                .filter((e) => e.date && e.summary);
+            if (rs.length) seg.push('履历：' + rs.map((e) => e.date + '|' + e.summary + '|' + e.source).join('；'));
+        }
         const rels = (Array.isArray(s.relationships) ? s.relationships : [])
             .map((r) => ({ name: String((r && r.name) || ''), relation: String((r && r.relation) || ''), attitude: String((r && r.attitude) || '') }))
             .filter((r) => r.name)
@@ -759,6 +795,15 @@ function normalizeSnapshot(e0) {
                 : ((e?.identity && e.identity['长生者'] !== undefined) ? e.identity['长生者']
                     : ((e?.profile && e.profile['长生者'] !== undefined) ? e.profile['长生者'] : e?.['长生者']))));
     const immortal = snapshotImmortalFlag(immortalRaw);
+    // v3.45.5（`docs/D26` §3.4 Q5）：「原作 / 史实人物」三态标记 —— 与「长生者」同构（吃三种输入位置 + 中文别名），
+    //   未提及时**不写字段**（增量合并保持旧值）。
+    const canonRaw = (e?.identity && e.identity.canon !== undefined) ? e.identity.canon
+        : ((e?.profile && e.profile.canon !== undefined) ? e.profile.canon
+            : (e?.canon !== undefined ? e.canon
+                : ((e?.identity && e.identity['原作人物'] !== undefined) ? e.identity['原作人物']
+                    : ((e?.profile && e.profile['原作人物'] !== undefined) ? e.profile['原作人物']
+                        : (e?.['原作人物'] !== undefined ? e['原作人物'] : e?.['原作']))))); 
+    const canon = snapshotCanonFlag(canonRaw);
     const identity = {
         gender: normText(src?.gender || e?.gender || '', 10),
         birthDate, age,
@@ -769,6 +814,7 @@ function normalizeSnapshot(e0) {
     };
     if (deceased !== undefined) identity.deceased = deceased;
     if (immortal !== undefined) identity.immortal = immortal;   // v3.22.0：长生者开关
+    if (canon !== undefined) identity.canon = canon;            // v3.45.5：原作 / 史实人物标记
     const out = {
         id: String(e?.id || `snapshot_${hashText(name.toLowerCase())}`),
         name,
@@ -789,6 +835,10 @@ function normalizeSnapshot(e0) {
         // v1.162：删除「内心（情绪 / 当前目标 / 担忧）」与「位置（城市 / 区域 / 建筑 / 室内）」两组高动态字段
         social: { relationToUser: normText(e?.social?.relationToUser, 60), attitudeToUser: normText(e?.social?.attitudeToUser, 60) },
         future: { todos: normalizeList(e?.future?.todos), commitments: normalizeList(e?.future?.commitments) },
+        // v3.45.5（`docs/D26` §3.2 / Q1）：**履历**（第 9 区块）—— 归一闪在 `core/resume.js`：
+        //   逐条校验（`date` / `summary` 必填，缺则不入库）→ `date+summary` 去重 → 剧情时间倒序。
+        //   老存档读到 `undefined` → `[]`（`DATA_VERSION` **不递增**，见 Q6/§3.2 第 6 项）。
+        resume: resumeNormList(e?.resume),
         // 角色（档案/快照）条目承载 标签组（列表统计上一行展示 + 编辑器/AI 可写）
         tags: mergeTags(Array.isArray(e?.tags) ? e?.tags : splitListText(e?.tags), e?.keywords),
         keywords: [],
@@ -822,7 +872,7 @@ function normalizeSnapshot(e0) {
 // 显示：`formatMoney(n)` —— 千分位 + 中文数量级（万 1e4 / 亿 1e8 / 兆 1e12 / 京 1e16；≥1e20 用「垓」），
 //   保留 2 位小数并去尾零；负数（净支出/负债）保留符号；非数字 → ''。
 
-export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, snapshotImmortalFlag, snapshotImmortal, snapshotRepairSkip, snapshotLastSeenGapYears, SNAP_AGE_EXTREME_YEARS, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference };
+export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, snapshotImmortalFlag, snapshotImmortal, snapshotCanonFlag, snapshotCanon, snapshotRepairSkip, snapshotLastSeenGapYears, SNAP_AGE_EXTREME_YEARS, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference, resumeEntryLine };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,4}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
