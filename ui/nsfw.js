@@ -17,6 +17,8 @@ import {
     nsfwSoftenState, nsfwKeywordList, nsfwKeywordsCustomized, nsfwKeywordAdd, nsfwKeywordUpdate, nsfwKeywordDelete, nsfwKeywordReset,
     nsfwRuleList, nsfwRulesCustomized, nsfwRuleAdd, nsfwRuleUpdate, nsfwRuleDelete, nsfwRuleReset, nsfwReplaceAutoOn,
     nsfwFixedReplace, runNsfwSoften, NSFW_DIM_LABEL,
+    // v3.45.2（`docs/D22` W7 `数-30`）：投喂上限（超长字段的判据口径，UI 只读展示用）
+    NSFW_TEXT_CAP,
     // v3.21.0（用户要求）：转化库导出 / 导入
     nsfwRulesExportText, nsfwRulesImportText,
     nsfwLabelStats, nsfwBackfill, nsfwClassifyItem, nsfwLevelLabel, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS,   // v3.8.0：NSFW 等级留档
@@ -130,6 +132,21 @@ export function nsfwPageHtml() {
             + ' · 已分析进度 ' + Number(az.seen || 0) + ' 处')
         : '尚未分析（进度 0 处）';
     const azItems = (Array.isArray(az.items) ? az.items : []).map((x) => `「${esc(String(x && x.from))}」→「${esc(String(x && x.to))}」`).join(' · ');
+    // v3.45.2（`docs/D22` W7 `应-23`）：**弱化运行留痕**（账本里的「上次弱化」，形态对齐同页「🧠 词条分析」）——
+    //   弱化是手动动作，跑完原本只弹一条通知、页面不留痕 → 刷新后无法回答「上次什么时候跑的、提交几条、改了几条、丢了几条」。
+    //   计数为 0 的项**不显示**（避免「丢弃 0 · 余 0」这类噪声）；`ok:false` 的记录额外标出「未完成」与原因。
+    const swWhen = st.last
+        ? (() => { try { return new Date(Number(st.last.at) || 0).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return ''; } })()
+        : '';
+    const swState = st.last
+        ? ('上次弱化 ' + esc(swWhen) + '：提交 ' + Number(st.last.submitted || 0) + ' 条 → 已弱化 <b>' + Number(st.last.applied || 0) + '</b> 条'
+            + (Number(st.last.skipped || 0) ? ' · 丢弃 ' + Number(st.last.skipped) : '')
+            + (Number(st.last.oversize || 0) ? ' · 超长跳过 ' + Number(st.last.oversize) : '')
+            + (Number(st.last.unable || 0) ? ' · 无法处理 ' + Number(st.last.unable) : '')
+            + (Number(st.last.truncated || 0) ? ' · 余 ' + Number(st.last.truncated) : '')
+            + (Number(st.last.fixedReplaced || 0) ? ' · 固定规则 ' + Number(st.last.fixedReplaced) + ' 处' : '')
+            + (st.last.ok === false ? ' · <b>未完成</b>' + (st.last.note ? '（' + esc(String(st.last.note)) + '）' : '') : ''))
+        : '尚未弱化（无记录）';
     return [
         // v3.8.0（用户要求）：「NSFW 等级留档」——无/弱/强三级，弱化后不变（永久性留档）
         '<div class="ftt-section" data-ftt-nsfw-labels><div class="ftt-sec-title">📌 NSFW 等级留档（无 / 弱 / 强）</div>',
@@ -164,7 +181,11 @@ export function nsfwPageHtml() {
         switchRow('nsfwSoftenEnabled', '分析记忆时弱化露骨内容（默认关）', '追加提示词模板「NSFW弱化」'),
         '<div class="ftt-muted ftt-w-full">开启后：分析记忆时追加「NSFW弱化」模板，让新记忆不产生露骨描写（剧情与因果照实保留）。</div>',
         '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="nsfwSoften" title="按词条库扫描已有原子数据并交 AI 逐条弱化（与总览「🌶 弱化NSFW」同一套核心）">🌶 立即弱化（按词条库扫描）</button>',
-        '<span class="ftt-muted" data-ftt-nsfw-state>扫描：原子 ' + st.scannedItems + ' 条 / 文本字段 ' + st.scannedFields + ' 个 → 命中 <b>' + st.candidates + '</b> 处（每批最多 ' + st.batch + ' 条，可反复运行）</span></div>',
+        '<span class="ftt-muted" data-ftt-nsfw-state>扫描：原子 ' + st.scannedItems + ' 条 / 文本字段 ' + st.scannedFields + ' 个 → 命中 <b>' + st.candidates + '</b> 处（每批最多 ' + st.batch + ' 条，可反复运行）'
+            // v3.45.2（W7 `数-30`）：**超长字段只读计数**（> 投喂上限 600 字）—— 这些字段不参与弱化，写明原因，避免用户以为「漏了」
+            + (Number(st.oversize || 0) ? ' · 其中<b>超长 ' + Number(st.oversize) + ' 处</b>（正文 > ' + NSFW_TEXT_CAP + ' 字，不参与弱化：只看到片段，整段覆盖会截掉尾部）' : '') + '</span></div>',
+        // v3.45.2（W7 `应-23`）：上次弱化的**只读留痕**（时间 / 提交 / 已弱化 / 丢弃 / 超长跳过 / 余量 / 固定规则处数）
+        '<div class="ftt-row"><span class="ftt-muted" data-ftt-nsfw-soften-state>' + swState + '</span></div>',
         '</div>',
 
         '<div class="ftt-section"><div class="ftt-sec-title">固定规则替换（不调用 AI 的机械转化）</div>',

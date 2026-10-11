@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.45.1",
+  "version": "3.45.2",
   "updatedAt": "2026-10-11",
   "generatedAt": "2026-10-11",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.45.2",
+      "date": "2026-10-11",
+      "title": "docs/D22 W7 NSFW 弱化留存与加固（整批 3 行）",
+      "points": [
+        "用户裁决：（本轮三条）：① 范围 = W7 全部 3 行（应-23 / 数-30 / 技-36，三行前置均为「无」）；② docs/D30 Q1–Q3 整批采纳建议默认（§6「待…",
+        "同轮新发现：（docs/D17 §1.23 U214，🟡 部分 / P3）：core/nsfw.js#NSFW_TEXT_CAP 一词两用 —— 既当「投喂截断上限」（提示词每…",
+        "测试：tests/unit/nsfw-golden.test.js 由 22 项扩到 28 项（新增 W1–W6：转化库三条守门 · 打包侧超限 · 落地侧复核旧清单 · 端到端…"
+      ]
+    },
     {
       "version": "3.45.1",
       "date": "2026-10-11",
