@@ -23,7 +23,7 @@
 //   关联类（warn）：`link-bad-row` · `link-orphan`（引用的条目不存在）
 // v3.44.0 新增（`docs/D22` **W4**）：
 //   字段名类（info）：`field-legacy-name`（只带旧字段名而缺规范名；`数-10`）·
-//                     `attribution-missing`（缺聊天归属 `chatKey`；`数-10`，**不可回填**，见下）
+//                     `attribution-missing`（缺聊天归属 `chatKey`；`数-10`，v3.45.1 `数-29` 起**仅双命中时回填**，见下）
 //   关联锚点（info）：`link-missing-anchor`（关联行缺知情锚点 `at` / `from` / `view`；`数-11`）
 //   计划悬念（info）：`plan-long-open`（长期未推进的 open 计划 / 悬念；`数-12`）
 //   空壳（info）：`entry-shell`（正文 < 12 字的存量空壳；`数-13`）
@@ -331,7 +331,7 @@ export function dataHealthReport(st, opts) {
             hyg('field-legacy-name', k, gapsByDim[k], { field: k, detail: '只有旧字段名、缺规范名 —— 载入期迁移与写入期补写都会双写规范名；此项应恒为 0（不为 0 说明数据在迁移后被写回旧名）' });
         }
         for (const k of Object.keys(attrByDim)) {
-            hyg('attribution-missing', k, attrByDim[k], { field: ATTRIBUTION_FIELD, detail: '缺聊天归属 `chatKey`：**约定「只打不推断」**（`core/entry-meta.js#stampChatScope`）—— 历史条目属于哪条聊天无法从数据本身判定，猜错比不打标更危险，故**不回填**；新落库条目会自动带上' });
+            hyg('attribution-missing', k, attrByDim[k], { field: ATTRIBUTION_FIELD, detail: '缺聊天归属 `chatKey`：**约定「只打不推断」**（`core/entry-meta.js#stampChatScope`）。v3.45.1（`docs/D22` W6 `数-29`）起改为：**只在「当前聊天键 + 内容指纹」双命中时幂等回填空值**（`core/chat-scope.js#backfillChatAttribution`），其余登记为「升级前历史数据」并保留**独立计数**（`plotScopeSnapshot().legacy` / `ledgerHealth().marksLegacyNoChat`），**不删一条**；仍不做的：按楼层范围或 AI 推断归属（猜错比不打标更危险）。新落库条目会自动带上' });
         }
     } catch (e) { /* 忽略 */ }
 

@@ -25,6 +25,10 @@ import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogL
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 // v3.13.0：**数据体检**（只读）—— 调试桥 `ftt.dataHealth` / 面板与 `/ftt` 共用同一份报告
 import { dataHealthReport, dataHealthText } from '../core/data-health.js';
+// v3.45.1（`docs/D22` W6 `技-32`）：待确认项与其记录的**只读**出口（不给写入口）
+import { conflictsSummary, listConflictLog, listConflicts, pendingConflictCount, CONFLICT_LOG_CAP } from '../core/conflicts.js';
+// v3.45.1（W6 技-35）：一致性单一事实源读数（四处诊断共用同一个数字）
+import { consistencyReading } from '../core/cross-sync.js';
 // v2.77.0：文件通道（宿主原生存储 / 酒馆用户目录文件）现状 —— 排障时先看这一项
 import { fileTransportStatus } from '../adapters/file-transport.js';
 import { settingsControlHtml } from './settings-pages.js';
@@ -44,11 +48,13 @@ import {
 } from '../adapters/debug-bridge.js';
 import { ttAbi, ttWriteStats } from '../adapters/tt-store.js';
 // v3.26.0：「选择目录」的只读体检（模式 / 候选 / 真实落盘位置 / 宿主枚举能力）
-import { localLayerInfo, localLayerReadProbe } from '../adapters/store.js';
+// v3.45.1（W6 技-30）：`serverLoadBaselineInfo` —— 服务端主文件载入基线读数（谁在当基线 / 落后多少天）
+import { localLayerInfo, localLayerReadProbe, serverLoadBaselineInfo } from '../adapters/store.js';
 import { localFilePathAudit } from '../adapters/local-file.js';   // v3.27.1：路径审计（绝对路径 → 命名空间名 + 真实落点）
 import { auxStoreInfo } from '../adapters/aux-store.js';
 import { localDiskInfo, localDiskProbeDir, localDiskList, localDiskReadParts } from '../adapters/local-disk.js';   // v3.28.0/3.29.0：本地磁盘目录状态 + 探针 + 文件列举 + v3.32.0 快照/日志分片清单         // v3.27.0/1：辅助数据落点（目录 / 浏览器）
-import { localFileDirCandidates, localFileRealLocation } from '../adapters/local-file.js';
+// v3.45.1（W6 技-33）：`localFileDeprecatedPaths` —— 本机层「已停用旧路」只读清单（旧命名空间迁移读取保留、不参与判定）
+import { localFileDirCandidates, localFileRealLocation, localFileDeprecatedPaths } from '../adapters/local-file.js';
 // v3.33.0：设备本地键（本机路径等「不随服务端同步」的配置项）事实
 import { deviceLocalCfgSnapshot } from '../adapters/config-store.js';
 // v3.0.9：台账 / 未摘要清单的**只读诊断**（回答「为什么这楼被判为未摘要」）
@@ -464,6 +470,10 @@ export function buildBridgeMethods() {
         host: bridgeHost(),
         bridge: bridgeState(),
         methods: bridgeMethodNames(),
+        // v3.45.1（`docs/D22` W6 `技-32`）：**待确认数**并进 `sys.info` —— 一致性告警挂没挂着，
+        //   一次 `sys.info` 就能看到（不必先知道有 `ftt.conflicts` 这个方法）。
+        //   计数取 `core/conflicts.js#pendingConflictCount`（唯一来源），不在这里重算。
+        pendingConflicts: (() => { try { return pendingConflictCount(); } catch (e) { return null; } })(),
         note: '只读调试桥；默认关闭、刷新即关',
     });
     /**
@@ -533,6 +543,38 @@ export function buildBridgeMethods() {
             aux: (() => { try { const a = auxStoreInfo(); return { mode: a.mode, path: a.path, pending: a.pending, lastError: a.lastError, items: (a.items || []).map((x) => ({ key: x.key, file: x.file, where: x.where, bytes: x.bytes })) }; } catch (e) { return null; } })(),
             hostEnumeration: cand && cand.host ? cand.host : { supported: false, api: '' },
             candidates: cand && Array.isArray(cand.items) ? cand.items.map((x) => ({ path: x.path, source: x.source, current: x.current })) : [],
+            // v3.45.1（`docs/D22` W6 **`技-33`**）：**只报真实生效层**。
+            //   真机缺口（`docs/D29` §2 第 4 行）：本块顶部的 `writes 0 / reads 0 / misses 1 / fileBytes 0` 全部来自
+            //   **已停用的旧路**（酒馆文件通道里的 `<目录>/ftt2-local-*.json` 两个名字），而真实本机层是
+            //   **浏览器内置目录（OPFS）**（`writes 198 / 机制 browser-opfs`）→ 用户按上面那组 0 判断「本机层坏了」。
+            //   这里把**生效层**单列出来（层 / 机制 / 真实目录 / 写读失败计数），旧路只作对照。
+            effective: (() => {
+                try {
+                    const disk = localDiskInfo();
+                    const mech = String((disk && disk.capability && disk.capability.mechanism) || '');
+                    const st = (disk && disk.stats) || {};
+                    const enabled = !!(disk && disk.enabled);
+                    const layer = !enabled ? 'localStorage'
+                        : (disk.kind === 'handle' ? 'local-disk(浏览器选中的文件夹)'
+                            : (disk.kind === 'browser' ? 'local-disk(浏览器内置目录 OPFS)' : 'local-disk'));
+                    return {
+                        layer: layer, mechanism: mech, dir: String((disk && disk.dir) || ''), kind: String((disk && disk.kind) || ''),
+                        writes: Number(st.writes || 0), reads: Number(st.reads || 0), failures: Number(st.failures || 0),
+                        lastBytes: Number(st.lastBytes || 0), lastAt: Number(st.lastAt || 0),
+                        note: enabled
+                            ? '生效层 = 本地存储路径所在层（上表 `writes/reads/misses` 是**旧路探针**的计数，不代表本层）'
+                            : '未设置本地存储路径 → 本机层即变量层（localStorage）',
+                    };
+                } catch (e) { return { error: String((e && e.message) || e) }; }
+            })(),
+            // 「已停用旧路」清单（**只读**）：名字 + 命名空间 + 是否已判定为「本会话不再探测」 + 探测/命中计数 + 口径说明。
+            //   注意：不变量 —— 旧路**一旦命中过就永不停止探测**（旧存档每次载入都仍能捞回，`docs/D29` §6 R2）。
+            deprecatedPaths: (() => {
+                try {
+                    const d = localFileDeprecatedPaths(scopeId(), String((info && info.path) || ''));
+                    return { names: d.names, ns: d.ns, legacyNs: d.legacyNs, tried: !!d.tried, probes: Number(d.probes || 0), hits: Number(d.hits || 0), note: String(d.note || '') };
+                } catch (e) { return { error: String((e && e.message) || e) }; }
+            })(),
         };
     });
     // v3.29.0（用户要求「核对文件是否保存到本地了，可以用调试端口测试」）：
@@ -558,6 +600,13 @@ export function buildBridgeMethods() {
                 parts[key] = {
                     ok: !!r.ok, error: String(r.error || ''), count: Number(r.count || 0),
                     files: Object.keys(r.files || {}).length, bad: (r.bad || []).length, dir: String(r.dir || ''),
+                    // v3.45.1（`docs/D22` W6 **`数-28`** 步骤③）：**「链 / 文件」差异必须可解释** ——
+                    //   真机 `parts.snapshots = {count 28, files 28}` 对链长 27、更早 `files 39/39` 对 25：
+                    //   差异来源是「写侧 files 含 manifest 索引，读侧只数 order 内条目文件」，另外还有**不属于当前链**的陈旧派生分片。
+                    //   这四个字段由 `adapters/local-disk.js#localDiskReadParts` 给出（**不在本文件重算**）：
+                    //   `chain` = 当前链长 · `dataFiles` = 盘上条目分片数 · `staleFiles` = 其中**不属于当前链**的（待回收）· `note` = 口径说明。
+                    chain: Number(r.chain || 0), dataFiles: Number(r.dataFiles || 0),
+                    staleFiles: Number(r.staleFiles || 0), note: String(r.note || ''),
                 };
             }
         } catch (e) { parts.error = String((e && e.message) || e); }
@@ -645,7 +694,16 @@ export function buildBridgeMethods() {
     // —— 数据体检（v3.13.0，**只读零副作用**）：把存档里的数据异常逐条列出 ——
     //   脏台账标记 / 非规范 NSFW 等级 / 负数 uses / 倒置或非法的楼层区间 / 缺 id · 重复 id /
     //   孤儿关联行 / 非法墓碑时间戳 / 超长字段 …（自愈在载入期 `migrateState`，这里只核对）
-    T['ftt.dataHealth'] = safe((p) => dataHealthReport(undefined, { cap: Number((p && p.cap) || 0) || undefined }));
+    // v3.45.1（`docs/D22` W6 **`技-35`**）：体检报告里**并入一致性读数**（`docs/D29` §6 Q2 裁决：
+    //   口径并入**现有出口**，不新开桥方法）。真机事实（`docs/D29` §2 第 6 行）：同一份状态同时存在**四个数字**
+    //   （同步 465 / 体检 items 488 / 本机层与主文件 482 / 读取台账内存态 479）→ 无法一眼判断「两边是否一致」。
+    //   这里给**唯一读数** `consistency = {at, count, fingerprint, dims, semantics}`（同一状态、同一口径、同一时点），
+    //   与 `ftt.loadDiag.consistency` 同源；`semantics` 里写明四个旧口径各自「计入了什么」，便于真机对齐。
+    T['ftt.dataHealth'] = safe((p) => {
+        const rep = dataHealthReport(undefined, { cap: Number((p && p.cap) || 0) || undefined });
+        try { rep.consistency = consistencyReading(state); } catch (e) { rep.consistency = { error: String((e && e.message) || e) }; }
+        return rep;
+    });
     T['ftt.dataHealthText'] = safe(() => dataHealthText(dataHealthReport()));
     // v3.15.1（闪退取证）：**原生写队列**诊断 —— 队列计数 / 历史峰值并发（应恒为 1）/ 最近一次原生写的标签与耗时。
     //   用途：真机核对「是否还有并发写」，以及崩溃前最后一次原生写是什么、花了多久。
@@ -658,6 +716,20 @@ export function buildBridgeMethods() {
     // v3.0.23（只读）：读取台账（每一次服务端/本地/内存读取的时间、体积、条数、结果）
     T['ftt.reads'] = safe((p) => ({ stats: readLedgerStats(), lines: readLedgerLines(Number((p && p.limit) || 20)) }));
     T['ftt.readLedgerText'] = safe(() => readLedgerSummaryText(30));
+    // v3.45.1（`docs/D22` W6 **`技-32`**）：**待确认项与其记录的只读出口**。
+    //   真机缺口的原样（`docs/D29` §2 第 3 行）：`core/conflicts.js` 早有 `listConflicts` / `conflictsSummary` /
+    //   `pendingConflictCount`，但 `ui/debug.js` **一个相关只读方法都没登记** → 一致性告警（含 `技-31` 那种误报）
+    //   「是否仍挂着 / 是否被确认过」在真机上**读不到**。
+    //   **只读**：只调用读取出口，不提供任何确认 / 清空动作（写入口仍只在「设定 → 存储」的待确认区）。
+    T['ftt.conflicts'] = safe(() => ({
+        pending: pendingConflictCount(),
+        summary: conflictsSummary(),
+        list: listConflicts(),
+    }));
+    T['ftt.conflictLog'] = safe((p) => ({
+        cap: CONFLICT_LOG_CAP,
+        list: listConflictLog().slice(0, Math.max(1, Number((p && p.limit) || 20))),
+    }));
     // v3.42.0（用户要求「设定中新增 token 预估」）：**AI 用量与花费账本**的只读出口 ——
     //   与设定页「API → Token 预估与花费」同源（`FTT.aiUsage()` / `FTT.aiUsageRecent()`），
     //   便于真机核对读数而不必开界面（桥只读，不提供清空 / 改价入口）。
@@ -1091,6 +1163,17 @@ async function loadDiag() {
     } catch (e) { out.file = { ok: false, error: String((e && e.message) || e) }; }
     // ③ 台账相关调试日志（回答「谁在什么时候把台账弄没了」）
     out.ledgerLog = ledgerLogEntries(40);
+    // ④ v3.45.1（`docs/D22` W6 **`技-35`**）：**一致性单一事实源读数** —— 与 `ftt.dataHealth.consistency`
+    //    同一函数（`core/cross-sync.js#consistencyReading`），保证「同一状态 → 同一数字」。
+    //    用法：先在这里取 `count` / `fingerprint`，再去比对主文件 / 分片 / 本机层的条数 ——
+    //    差异才有意义（否则四个口径各说各话，`技-31` 那类判据分歧无从裁决）。
+    try { out.consistency = consistencyReading(state); } catch (e) { out.consistency = { error: String((e && e.message) || e) }; }
+    // ⑤ v3.45.1（W6 **`技-30`**）：**服务端主文件的载入基线读数** —— 回答「主文件到底何时被服务端刷新过」。
+    //    真机事实（`docs/D29` §2 第 4/5 行）：`mainAt` 比环境时间旧约 **14.07 天**，而分片一直在前进
+    //    → 「主文件是否/何时被刷新」在真机上**不是已知项**；本读数把「谁在当基线、落后多少天」如实报出来
+    //    （`role: main-file | shards | none | unknown`，含 `mainFileBehindDays` / `roleUndetermined`）。
+    //    注意：**只读数、不改进程** —— `docs/D29` §6 Q1 裁决不预设「主文件本该刷新」（定性探针，不改写入时机）。
+    try { out.serverLoad = serverLoadBaselineInfo(); } catch (e) { out.serverLoad = { error: String((e && e.message) || e) }; }
     return out;
 }
 
@@ -1194,8 +1277,11 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.chunkPlan': { desc: '分段切片体检（生效段长 / 未摘要段数 / 预览）', params: '' },
     'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
     'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
-    'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排）', params: '' },
+    'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排 + 一致性读数 + 服务端载入基线）', params: '' },
     'ftt.reads': { desc: '读取台账（分来源统计 + 最近若干行）', params: '{limit?}' },
+    // v3.45.1（W6 技-32）：待确认项与其记录的**只读出口**（真机缺口：一致性告警此前读不到）
+    'ftt.conflicts': { desc: '待确认项（含合计 / 逐条明细；只读，确认动作仍在设定页）', params: '' },
+    'ftt.conflictLog': { desc: '只读**记录**清单（已自动处理完，无需确认）', params: '{limit?≤20}' },
     'ftt.writeStats': { desc: '原生写队列诊断（并发峰值 / 最近一次写）', params: '' },
     'ftt.localDir': { desc: '本机缓冲目录模式体检（目录 / 真实落盘 / 候选 / 宿主枚举能力 / 内存库是否停用）', params: '' },
     'ftt.snapshot': { desc: '插件运行态快照', params: '' },

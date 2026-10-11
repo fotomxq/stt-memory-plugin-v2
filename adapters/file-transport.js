@@ -131,14 +131,26 @@ export function fileTransportReadAuto(name, opts) {
     const key = String(name || '');
     const src = String(o.src || 'file');
     const role = String(o.role || '');
+    // v3.45.1（技-33 · `docs/D29` §6 R2 裁决「**保留一次性迁移读取、但不参与判定**」）：
+    //   本机层在 v3.16.0/v3.26.0 留下的两条兼容读取 —— **平铺兜底名**与**旧命名空间同名文件** ——
+    //   是**已停用旧路**的探测：真机上每次载入都成对产生
+    //   `通道读取失败 · <路径>-ftt2-local-<作用域>.json · 原因：miss` 与
+    //   `通道读取失败 · <路径>/ftt2-local-<作用域>.json · 原因：miss`（取证见 `docs/D29` §2 行 4），
+    //   把「服务端文件 失败 N」灌满、真失败被淹没。故旧路探测传 `noLedger: true`：**不再进读取台账**，
+    //   改由 `adapters/local-file.js` 单独计数（`legacyProbes` / `legacyHits`）并在诊断
+    //   （`localFileDeprecatedPaths`）里列出。此处**直接返回同一个 Promise** —— 连 `.then` 都不挂，
+    //   比正常路径更省一层，绝不多一层微任务（`adapters/user-file.js` 文件头的时序口径不受影响）。
+    const noLedger = o.noLedger === true;
     if (!ttNativeOn()) {
         const p = readStateFileAuto(String(o.stName || name));
+        if (noLedger) return p;
         return bookkeep(p, (r) => {
             if (r && r.ok) readRoute[key] = 'st-files';
             ledgerFileRead(key, src, t0, r, role);
         });
     }
     const p = readAutoRouted(name, o);
+    if (noLedger) return p;
     return bookkeep(p, (r) => ledgerFileRead(key, src, t0, r, role));
 }
 

@@ -640,7 +640,10 @@ async function saveStateNowInner(o) {
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
                 // v3.31.0（用户要求）：同一份内容**再写一份结构化分片**（逐维文件 + manifest）—— best-effort，不阻塞保存
                 // v3.32.0（用户要求）：快照链也写**结构化分片**（snapshots/<id>.json + manifest）—— best-effort
-                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], localScopeToken(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }; try { debugLogPushCoalesced('存储', 'snap-parts|' + String(sp.dir || ''), { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
+                // v3.45.1（`docs/D22` W6 `数-28`）：读数字段补 `chain` / `stale` / `failed` / `note` ——
+                //   「链长」与「写出的文件数」本来就不相等（files 含 `manifest.json` 索引），且写盘后还会**回收**
+                //   不属于当前链的陈旧派生分片；把这些如实带上，界面与诊断才不必猜差异来源（真机曾把 `files != count` 当数据缺陷）。
+                try { const sp = await localDiskWriteParts('snapshots', (st && Array.isArray(st.snapStore)) ? st.snapStore : [], localScopeToken(), {}); if (sp && sp.ok) { localBuffer.snapParts = { dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0), chain: Number(sp.chain || 0), stale: Number(sp.stale || 0), failed: Number(sp.failed || 0), note: String(sp.note || '') }; try { debugLogPushCoalesced('存储', 'snap-parts|' + String(sp.dir || ''), { action: '快照链结构化分片已写入', dir: String(sp.dir || ''), files: Number(sp.files || 0), count: Number(sp.count || 0), chain: Number(sp.chain || 0), stale: Number(sp.stale || 0), failed: Number(sp.failed || 0) }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
                 try { const sh = await localDiskWriteShards(envelope, localScopeToken()); if (sh && sh.ok) { localBuffer.shards = { dir: String(sh.dir || ''), files: Number(sh.files || 0) }; try { debugLogPushCoalesced('存储', 'shards|' + String(sh.dir || ''), { action: '本机层结构化分片已写入', dir: String(sh.dir || ''), files: Number(sh.files || 0), counts: sh.counts || {} }); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略：分片副本失败不影响单文件副本 */ }
                 return true;
             }
@@ -1715,4 +1718,67 @@ export function storeStatus() {
     let relCap = null;
     try { relCap = Object.assign({}, lastRelCap); } catch (e) { relCap = null; }
     return { scope: scopeId(), module: MODULE_NAME, last: lastSaveInfo(), indexReady, reads: reads, serverLoad: serverLoad, localBuffer: local, relCap: relCap };
+}
+
+/**
+ * v3.45.1（`docs/D22` W6 **`技-30`**）：**主文件基准的「角色可判定」读数**（只读）。
+ *
+ * 真机事实（`docs/D29` §2 第 1 行）：三次载入（相隔约 50 分钟）的对账记录**都是**
+ *   「主文件滞后 → 用 14 个更新的分片覆盖对应维度」；`mainAt = 1790434998045`（≈ **14.07 天前**）
+ *   而 `shardAt` 持续推进；`解析主文件` 三次的 payload 指纹完全一致 —— **基准不刷新、分片成了唯一真相**。
+ *   危害：分片缺失/损坏时该维度会**静默回落 14 天前的版本**（载入只提示「主文件滞后」，**不提示「维度退版」**）。
+ *
+ * `lastServerLoadInfo()` 里其实**早就有** `via` / `mainAt` / `applied` / `reason` —— 缺的不是数据，
+ *   而是「**让人一眼判定这次基准是谁**」的派生读数与语义说明。本函数只做三件事（**纯派生、零副作用**）：
+ *   ① 给出 `role`：本次载入的基准是**主文件**、**分片（派生真相）**、还是**都没有**；
+ *   ② 给出 `mainFileBehindMs` / `mainFileBehindDays`：主文件时间距**本次载入时刻**滞后多少（真机上按天算）；
+ *   ③ 明确标注 `roleUndetermined`：**Q1（主文件是「基准」还是「快照之一」）必须由真机跑一轮载入定性**，
+ *      本机没有真机 → 只能给出读数、**不得**替用户下结论；未定性前**不改写入时序**（`docs/D29` §8 `技-30` 的硬要求）。
+ *
+ * @param {{info?:object, now?:number}} [opts] 可注入（测试用；缺省取最近一次载入与当前时刻）
+ * @returns {object} 只读读数（字段齐全、缺数据处为 0 / ''，不抛）
+ */
+export function serverLoadBaselineInfo(opts) {
+    const o = opts || {};
+    let info = null;
+    try { info = o.info || lastServerLoadInfo(); } catch (e) { info = null; }
+    const now = Number(o.now) || Date.now();
+    if (!info || typeof info !== 'object') {
+        return {
+            ok: false, via: 'none', role: 'unknown', mainAt: 0, applied: [], appliedCount: 0,
+            reason: 'no-load-record', reasonText: '本次会话还没有服务端载入记录（只读读数）',
+            at: 0, bytes: 0, mainFileBehindMs: 0, mainFileBehindDays: 0,
+            roleUndetermined: true,
+            note: '定性需在真机跑一轮载入后读本读数（本机无真机）；未定性前不改写入时序',
+        };
+    }
+    const via = String(info.via || 'none');
+    const mainAt = Number(info.mainAt) || 0;
+    const applied = Array.isArray(info.applied) ? info.applied.slice() : [];
+    const at = Number(info.at) || 0;
+    // 基准角色：只有「文件 + 无分片接替」才是主文件当基准；分片接替 → 分片是派生真相
+    const role = (via === 'file' && !applied.length) ? 'main-file'
+        : (via === 'shards' || applied.length) ? 'shards'
+            : (via === 'file' ? 'main-file' : 'none');
+    const behind = (mainAt > 0 && at > 0) ? Math.max(0, at - mainAt) : 0;
+    return {
+        ok: !!info.ok,
+        via: via,
+        role: role,
+        mainAt: mainAt,
+        at: at,
+        bytes: Number(info.bytes) || 0,
+        applied: applied,
+        appliedCount: applied.length,
+        reason: String(info.reason || ''),
+        reasonText: String(info.reasonText || ''),
+        mainFileBehindMs: behind,
+        mainFileBehindDays: behind ? Math.round((behind / 86400000) * 100) / 100 : 0,
+        // 分片接替 = 「主文件滞后」这条**已知**结论；但「主文件应当刷新还是本就只写基准」**未定性**
+        roleUndetermined: true,
+        note: role === 'shards'
+            ? '本次基准来自分片（主文件滞后 ' + (behind ? (Math.round(behind / 86400000 * 100) / 100 + ' 天') : '未知') + '）；'
+              + '「刷新基准」还是「分片为唯一真相 + 维度退版告警」需真机定性后二选一（本机无真机）'
+            : '本次基准来自主文件；未定性前不改写入时序',
+    };
 }

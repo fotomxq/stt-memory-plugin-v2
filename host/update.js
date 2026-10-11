@@ -15,7 +15,7 @@ import { VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH, DEFAULT_UPDATE_INT
 import { judgeUpdate, repoRawUrls, shouldAutoCheck, updateReport, summarizeCheck, extractChangelogHead } from '../core/update.js';
 import { getCtx, hasHost } from './st-api.js';
 import { getSettings, setSetting } from '../adapters/settings.js';
-import { readUpdateState, writeUpdateState, ensureFirstRun } from '../adapters/update-state.js';
+import { readUpdateState, writeUpdateState, ensureFirstRun, judgeUpdateState } from '../adapters/update-state.js';
 import { extensionFolder } from './paths.js';
 
 /** 当前更新配置（设置项优先，缺省用常量） */
@@ -261,10 +261,17 @@ export function updateStatusText(result) {
     return (when ? when + ' · ' : '') + text;
 }
 
-/** 是否已有可用更新（供 UI 高亮） */
+/**
+ * 是否已有可用更新（供 UI 高亮）。
+ *
+ * v3.45.1（`docs/D22` §4.7 W6 `应-22`，台账 U178）：判定口径统一到
+ *   `adapters/update-state.js#judgeUpdateState` —— 旧实现只看记录里的 `status === 'newer'`，
+ *   那是**记录产生时**的结论，本机升到更高版本后它不变，界面（关于页 / 桥诊断）就会长期
+ *   回报「有新版本」（真机：记录说 3.40.0→3.40.1，运行版本已是 3.40.6）。
+ * 现在：陈旧记录一律不算有更新；非陈旧记录用**当前运行版本**与远端比较，远端更高才算。
+ * @param {object} [result] 一次检查结果（缺省读宿主持久化状态）
+ */
 export function hasUpdate(result) {
-    const r = result || readUpdateState().lastResult || null;
-    if (!r || !r.ok) return false;
-    if (r.status === 'newer') return true;                       // summarizeCheck 输出
-    return !!(r.judge && r.judge.status === 'newer');            // runUpdateCheck 原始输出
+    const st = result ? { lastResult: result, lastCheckAt: Number(result.at) || 0 } : readUpdateState();
+    try { return judgeUpdateState(st).status === 'newer'; } catch (e) { return false; }
 }

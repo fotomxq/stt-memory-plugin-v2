@@ -20,6 +20,7 @@ import { buildBridgeMethods, installDebugBridge, debugBridgeInstalled, debugBrid
 import { state, setKernelState, setLastMessageId } from '../../core/model/runtime.js';
 import { emptyState } from '../../core/state.js';
 import { DIMENSIONS } from '../../core/constants.js';
+import { consistencyReading } from '../../core/cross-sync.js';   // v3.45.1（W6 技-35）：一致性读数同源校验
 import { hashFloorText, processedVerTag } from '../../host/floors.js';
 
 const R = makeReporter('debug-bridge v3.0.10 本地调试桥（跨宿主 / 只读 / 台账与载入链路诊断）');
@@ -130,7 +131,8 @@ function useTauriTavern(withDev = true) {
         A('B6 内置白名单方法名齐备（快照式断言，新增/删除需同步本断言）',
             names.join(',') === [
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
-                'ftt.config', 'ftt.dataHealth', 'ftt.dataHealthText',                      // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要
+                'ftt.config', 'ftt.conflictLog', 'ftt.conflicts',                          // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要；v3.45.1（W6 技-32）：+待确认项与记录（只读出口）
+                'ftt.dataHealth', 'ftt.dataHealthText',
                 'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
                 'ftt.diskFiles', 'ftt.diskProbe',                                         // v3.29.0：本地存储路径写探针 / 目录文件列举（用调试端口核对文件是否落到本地）
                 'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
@@ -395,6 +397,31 @@ function useTauriTavern(withDev = true) {
 
         A('F12 loadDiag 也不改动台账（内存标记数前后一致）',
             ld.result.memory.marks === state.processedFloors.length, { got: ld.result.memory.marks, now: state.processedFloors.length });
+
+        // v3.45.1（W6 **技-35 / 技-30**）：载入诊断并入「一致性单一事实源读数」与「服务端主文件载入基线」。
+        //   技-35：读数必须与 `core/cross-sync.js#consistencyReading` **同源**（同一状态 → 同一数字），否则
+        //     真机那四个互不一致的条数（465/488/482/479，`docs/D29` §2 第 6 行）还是无从裁决。
+        //   技-30：`role` 必须落在登记集合内（`main-file | shards | none | unknown`），并给出「主文件落后多少」。
+        const mine = consistencyReading(state);
+        A('F13 loadDiag 并入一致性读数（与内核同源：count/fingerprint 完全一致）+ 服务端载入基线（role 受控、含落后天数）',
+            ld.result.consistency && ld.result.consistency.count === mine.count
+            && ld.result.consistency.fingerprint === mine.fingerprint
+            && !!ld.result.consistency.semantics && !!ld.result.consistency.dims
+            && !!ld.result.serverLoad
+            && ['main-file', 'shards', 'none', 'unknown'].indexOf(String(ld.result.serverLoad.role)) >= 0,
+            { consistency: ld.result.consistency, serverLoad: ld.result.serverLoad });
+
+        // v3.45.1（W6 **技-33**）：`ftt.localDir` **只报真实生效层** + 附「已停用路」清单。
+        //   真机缺口（`docs/D29` §2 第 4 行）：本块顶部的读数是**已停用旧路**的（`writes 0 / misses 1`），
+        //   而真实本机层是浏览器内置目录（`writes 198`）→ 必须并列给出「生效层」与「旧路」两组事实。
+        const ldir = await call('ftt.localDir');
+        A('F14 本机层只读体检报「生效层 + 已停用路」：`effective.layer` 受控、`deprecatedPaths` 带旧路名与「不参与判定」口径',
+            ldir.ok === true && !!ldir.result.effective && !!ldir.result.deprecatedPaths
+            && ['localStorage', 'local-disk', 'local-disk(浏览器内置目录 OPFS)', 'local-disk(浏览器选中的文件夹)'].indexOf(String(ldir.result.effective.layer)) >= 0
+            && typeof ldir.result.deprecatedPaths.note === 'string' && ldir.result.deprecatedPaths.note.indexOf('已停用') >= 0
+            && Array.isArray(ldir.result.deprecatedPaths.names)
+            && Number(ldir.result.deprecatedPaths.probes) >= 0,
+            { effective: ldir.result.effective, deprecatedPaths: ldir.result.deprecatedPaths });
     }
 
     try { unHost(); } catch (e) { /* 忽略 */ }

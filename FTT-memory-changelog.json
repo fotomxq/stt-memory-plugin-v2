@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.45.0",
-  "updatedAt": "2026-10-10",
-  "generatedAt": "2026-10-10",
+  "version": "3.45.1",
+  "updatedAt": "2026-10-11",
+  "generatedAt": "2026-10-11",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.45.1",
+      "date": "2026-10-11",
+      "title": "docs/D22 W6 实机取证修复（整批 9 行，P0+P1+P2；1 行记 🟡 部分）",
+      "points": [
+        "用户裁决：（本轮两条）：① 范围 = W6 全部 9 行（P0 + P1 + P2 整批）；② docs/D29 Q1–Q4 整批采纳建议默认 → 其 §6「待确认问题清单」转正…",
+        "同轮新发现（docs/D17 §1.21，已登记并处置/待修）：U200（已处置）：adapters/sync.js 读的 stat.conflict 从未被 mergeData…",
+        "验不了的部分：是「真机跑一轮载入后，主文件是基准还是快照之一」——这决定「刷新基准」还是「分片为唯一真相 + 维度退版告警」，属高危决策（会改写入时序），故 ②③ 与 P3 不做…"
+      ]
+    },
     {
       "version": "3.45.0",
       "date": "2026-10-10",

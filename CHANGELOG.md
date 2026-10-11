@@ -3,6 +3,47 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.45.1（2026-10-11）· `docs/D22` **W6 实机取证修复**（整批 9 行，P0+P1+P2；1 行记 🟡 部分）
+
+**用户要求**（原话）：「新版本v3.45.1 / 开发W6待开发事项。」
+**用户裁决**（本轮两条）：① 范围 = **W6 全部 9 行**（P0 + P1 + P2 整批）；② `docs/D29` **Q1–Q4 整批采纳建议默认** → 其 §6「待确认问题清单」**转正为决策记录**。
+
+| # | 条目 | 落点 | 改动 |
+| --- | --- | --- | --- |
+| ① | `技-30`（销 U170，**🟡 部分**） | `adapters/store.js` · `ui/debug.js#loadDiag` | **主文件基准的角色可判定（只读数）**：新增 `serverLoadBaselineInfo()` → `role`（`main-file` / `shards` / `none` / `unknown`）· `mainAt` · `mainFileBehindMs` / `mainFileBehindDays` · `applied` / `appliedCount` · `reason` / `reasonText` · `roleUndetermined` + 一句口径说明，经 `ftt.loadDiag.serverLoad` 只读暴露 —— 真机那组「主文件滞后 ≈14.07 天 + 14 个分片接替」现在**一个读数就能判定基准是谁**。**②③ 未做**（真机定性 / 刷新基准或退版告警）：本机**没有真机** → 按 `docs/D29` §4 的 **P3 另行立项**；**写入时序零改动**（Q1 裁决：不假定「主文件应当刷新」） |
+| ② | `技-31`（销 U171） | `core/cross-sync.js` · `adapters/sync.js` | **并集自检不再误报、真丢失仍报**：新增 `unionSelfCheck()`（纯函数判据：`下限 = 并集下限 − 墓碑命中 − 内容去重命中 − 上限裁剪命中`，三个削减量**分别回报**）· `capReductionOf()`（上限裁剪**干跑**读数：只算「若此刻裁剪会削掉几条」，**不改**入参、不代替 ingest 做决定）· `mergeDataObjects.stat.reductions`（按维度分列去重 / 墓碑削减量）；`applyRemoteMergeToState` 只在**修正后仍低于下限**时登记，文案附该维度削减明细。**同步语义零改动**：V1 黄金样本**一字未动**，`stat` 新增两键由测试内**显式归一**（只比 V1 四键）+ 新增 S3b 断言承接（`开发守则.md` §2.4 三件套） |
+| ③ | `技-32`（销 U172） | `ui/debug.js` · `docs/04-应用架构.md` | **待确认项与记录有只读出口**：桥登记 `ftt.conflicts`（`pending` 合计 + `summary` + 逐条 `list`）与 `ftt.conflictLog`（`cap` + `limit` 夹取）；`sys.info` 增 `pendingConflicts`；**不含任何确认 / 清空动作**（写入口仍只在「设定 → 存储」）。方法说明进 `BRIDGE_METHOD_DOCS`，方法数 **50 → 52** 三处同批更新（`docs/README` §3 · `docs/04` · `tests/unit/debug-bridge.test.js` B6 快照） |
+| ④ | `技-33`（销 U173） | `adapters/local-file.js` · `adapters/file-transport.js` · `ui/debug.js#ftt.localDir` | **本机层诊断只报生效层**：旧路（`<目录>/ftt2-local-*.json` 与平铺名）加「探测门」——**全部未命中才在本会话停探**，**命中过就永不停止**（旧存档照旧能捞回，R2）；两条旧路读取走新增 `noLedger` 出口（**不进读取台账**，零额外微任务），改由 `legacyProbes` / `legacyHits` 单独计数、`localFileDeprecatedPaths()` 列出「旧路径 · 已停用 · 不参与判定」；`ftt.localDir` 新增 `effective`（真实生效层 / 机制 / 目录 / 写读失败计数）与 `deprecatedPaths` |
+| ⑤ | `技-34`（销 U174） | `core/read-ledger.js` | **读取台账未命中口径唯一**：新增 `readLedgerBucket()` 作**唯一入桶口径**（`miss` / `fail` / `ok` **三桶互斥**）——旧实现「先 `if (ok) ok++ else fail++`，再**无条件**执行 `if (miss) miss++`」让一条 `reason:'miss'` 记录**同时**进两桶（真机 `stats.miss=1` 而台账里 ≥2 条「未命中」，据此判断「本机层是否可用」会得到**相反结论**）；文本行改由同一函数产生（**与统计同源**），`avgMs` 分母由 `ok+fail` 改为三桶之和（旧分母在互斥后会把均值抬高）；**返回结构逐键未变** |
+| ⑥ | `技-35`（销 U175） | `core/cross-sync.js` · `ui/debug.js` · `docs/D13` §8.10.4 | **一致性条数与指纹有单一事实源**：新增 `consistencyReading()` → `{at, count, fingerprint, dims, semantics}`（口径写死在函数内：原子层各大类条数合计；**不含**墓碑 / `links` / `vars` / 快照链，**含**货币与名册），**并入现有出口**（Q2 裁决：`ftt.dataHealth.consistency` 与 `ftt.loadDiag.consistency` **同源同值**，不新开桥方法）；四个旧口径（同步 465 / 体检 488 / 本机层与主文件 482 / 内存态 479）逐个标注语义 |
+| ⑦ | `数-28`（销 U176） | `adapters/local-disk.js` · `ui/debug.js#ftt.diskFiles` · `adapters/store.js` | **本地快照分片与链长一致**：新增 `localDiskRecycleSnapParts()`（唯一回收入口）——基准 = **当前链**清单 `order` + 逐条 `parts[].hash`，写盘后**逐个比对**再删；四道闸门（命名形态 → 可读 → **仍被引用绝不删** → 快照内容形态）+ 链空不删 / 写盘不完整不删 / 同链指纹短路；只删 `snapshots/` 下的派生条目文件（`manifest.json` / 日志 / 辅助数据 / 用户文件一律不删）；读数侧给出 `chain` / `dataFiles` / `staleFiles` / `note`（写明「链长 → 条目分片 + 索引 = files」的等式与差异来源），`ftt.diskFiles.parts.snapshots` 与 `localBuffer.snapParts` 同批带上；`diskRemove` 补 `api.dev` 删除路由 |
+| ⑧ | `数-29`（销 U177） | `core/chat-scope.js` · `core/migrate.js` | **无聊天归属的存量数据收口**：新增 `backfillChatScope()` / `backfillMarkScope()` / `backfillChatAttribution()` —— **只在「当前聊天键 + 内容指纹」双命中**时幂等补写（条目用 `atomContentHash`，台账标记用 `h` ↔ 注入的楼层哈希）；**只补空值**、判不出不写、**不删一条**；判不出的保留「升级前历史数据」**独立计数**（Q3，`plotScopeSnapshot().legacyNote`）；载入期接线 = `healthSelfHeal` 第 ⑩ 步，`lastHealInfo()` 增 `scope` / `marks` / `legacyScope` / `legacyMarks` |
+| ⑨ | `应-22`（销 U178） | `adapters/update-state.js` · `host/update.js` · `ui/about.js` | **关于页不再显示过期更新状态**：新增 `judgeUpdateState()`（唯一显示判定）——①「是否真的更新」用**当前运行版本**（`core/constants.js#VERSION`）比 `lastResult.remote`（复用 `core/update.js#compareVersions`，不写第二套）；② 陈旧 = 记录 `current` ≠ 运行版本 **或** 超过 `UPDATE_RESULT_STALE_MS`（= 自动检查间隔 24h，同源）；`hasUpdate` 随之收口；关于页陈旧时只显示「已过期（<时间>）· 当时记录：远端 X / 本机 Y」，**不出现**「发现新版本」；时间取 `lastResult.at`（兜底 `lastCheckAt`，都没有则「时间未知」）——**不用当前时间冒充检查时刻** |
+
+**同轮新发现（`docs/D17` §1.21，已登记并处置/待修）**：
+- **U200（已处置）**：`adapters/sync.js` 读的 `stat.conflict` **从未被 `mergeDataObjects` 赋值**（只写 `conflictWinLocal` / `conflictWinRemote`）→ `Number(undefined) > 0` 恒假，「跨端合并冲突」提示**永不登记**（与 U171 的误报叠加 = 两个提示一个误报、一个从不出现）。随 `技-31` 补 `stat.conflict = 胜负合计` 并由单测断言。
+- **U202（已处置）**：`core/migrate.js#healthSelfHeal` 每次载入把台账标记**重建**成 `{f,h}`，把 v3.40.0 起的 `ck` / `at` **整批抹掉** —— 这正是真机「台账 **32/34 条**标记无 `chatKey` **与时间戳**」的**直接成因**，也让 `数-29`「只补空值」自相矛盾（刚补上、下次载入又被抹掉）。现按非空原样保留。
+- **U201（待修）**：设定页 `updateStatusText` / `ui/settings-panel.js` 仍按 `lastResult` 原样渲染（自带记录时间，不算「冒充当前」，但与关于页不同口径）；改动须连 `tests/unit/update-host.test.js` 的逐字断言一起，**不在本批落点内**。
+- **U203（🟡 部分）**：`localDiskWriteParts().files` 的语义一直是「打算写的文件数」（历史实现丢弃逐笔回执）；本版只补 `failed` / `chain` / `stale` / `note` 如实回报，**未改**该字段口径（属读数语义变更，需单独评估）。
+
+**为什么记 🟡（`技-30`，如实登记，不含糊）**：本机**没有真机**（SillyTavern / TauriTavern 页面）。能确定的部分（读数派生、口径说明、`role` 判定、只读出口）已全部落成并由单测锁住；
+**验不了的部分**是「真机跑一轮载入后，主文件是**基准**还是**快照之一**」——这决定「刷新基准」还是「分片为唯一真相 + 维度退版告警」，属**高危决策**（会改写入时序），故 ②③ 与 P3 **不做**。
+同样的环境限制也适用于 `技-33`（真机「成对失败消失」复读）与 `数-28`（真机 `files ≠ count` 复读）：**用桩证明请求不再发出 / 残留分片被回收**，但不声称真机已验证。
+
+**版本位偏离登记（一次有意的偏离，不静默）**：本版含**新增能力**（两个只读桥方法 `ftt.conflicts` / `ftt.conflictLog`），按 `开发守则.md` §3.1「新增能力 → `3.<minor+1>.0`」**应为 `3.46.0`**；用户明确指定 **v3.45.1**（patch 位）→ 按用户口径发版，并把该偏离同批记录在此条目与 `docs/D22` §4.7「本版口径」第 7 条。
+
+**测试**：新增 `tests/unit/union-self-check.test.js`（7）· `local-file-legacy-probe.test.js`（7）· `read-ledger-miss.test.js`（9）· `shard-recycle.test.js`（7）· `chatkey-backfill.test.js`（11）· `about-update-stale.test.js`（11）；
+既有测试扩断言：`conflicts.test.js` **A12**（桥只读出口与内核同源 + 无写动词）· `debug-bridge.test.js` **B6/F13/F14** · `data-health.test.js` **C5** · `cross-sync-golden.test.js` **S3 归一 + S3b** · `panel-audit.test.js` MARKERS 补 `about-status`。
+**反向探针**（逐条实跑）：`技-31` 三类合法削减 → 不登记 / 真丢失 → 必须登记；`技-34` 回退旧计数 → 6 项失败；`数-28` 去掉「仍被引用」闸门 → 改名副本被误删（A2 红）；`数-29` 改成「有聊天键就写」→ 4 项失败；`应-22` 回退成「直接信记录 status」→ 7 项失败；`技-33` 全 miss 后第二次读只剩主名 1 个请求。
+**门禁**：`npm run gate` 全绿；同步更新数字口径（`README` §3 · `05` §2 · `history/README` §2）。
+
+**本轮文档**：`docs/D29` v1.1（§6 转**决策记录** + §4 阶段落地状态 + **§8.1 落地状态**）· `docs/D22` v1.10（§4.7 销账 9 行 + 「本版口径」7 条）·
+`docs/D17` v1.20（U170–U178 销账 + **§1.21 U200–U203**）· `docs/D13` **§8.10.4**（四口径语义 + 九项处置 + 未取得项）· `docs/04` §2.2 调试桥行 +「调试 · 一致性与受控只读出口」行 · `docs/README` v2.71 · `docs/history/P10c81-W6实机取证修复落地.md`。
+**过程留痕（如实登记）**：恢复轮曾**误用 PowerShell 文本改写** `docs/D17`（`Get-Content` 以 ANSI/GBK 解码 → `Set-Content -Encoding utf8` 回写），造成该文件**双向编码损坏**；
+已按「HEAD 版本 + 按时间顺序**重放**会话转录里的 `edit` 调用 + 重做两处非 `edit` 工具改的改动」完整恢复并复核（`check-docs` / `check-ledger-sync` 均通过）。
+**纪律**：本仓库文本文件**一律不用 PowerShell 改写**（中文与反引号模式会静默失配，编码往返不可逆）——只用 `edit` 工具或 Node 脚本（`Buffer.from(text,'utf8')` 落盘，不带 BOM）。
+**本批未动**：`DATA_VERSION`（仍 1）· 任何数据契约（`docs/D15` §3 类别①）· `tests/local/` 的门禁边界 · `parts.logs` 回收（Q4）· `adapters/shards.js`（它写的是**服务端**分片）。
+
 ## v3.45.0（2026-10-10）· `docs/D22` **W5 技术维度主体**（第一批 6 行；1 行记 🟡 部分）
 
 **用户要求**（原话）：「新版本v3.45.0 / 开发W5待开发事项。」

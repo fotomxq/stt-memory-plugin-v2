@@ -31,6 +31,7 @@ import { VERSION, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_BRANCH } from '../core/con
 import { getSettings } from '../adapters/settings.js';
 import { escHtml } from '../core/util.js';
 import { auxFacade } from '../adapters/aux-store.js';   // v3.27.0：版本清单缓存跟随本地目录统一收纳
+import { judgeUpdateState } from '../adapters/update-state.js';   // v3.45.1（应-22）：更新状态判定口径的唯一落点
 import { extensionFolder } from '../host/paths.js';
 
 const esc = (v) => escHtml(v == null ? '' : v);
@@ -289,6 +290,53 @@ export function aboutStatusText() {
 }
 
 /**
+ * v3.45.1（`docs/D22` §4.7 W6 `应-22`，台账 U178）：**更新检查状态行（只读）**。
+ *
+ * 真机事实（`docs/D29` §2 第 9 行）：`update.state.lastResult = {current:"3.40.0", remote:"3.40.1",
+ *   status:"newer"}`、`hasUpdate true`，而运行版本已是 **3.40.6** —— 关于页在版本已最新时仍显示
+ *   「有新版本」，直到下一次 24h 检查。
+ * 为什么这里要重新判定（而不是直接用 `lastResult.status`）：`status` 是**记录产生时**的结论，
+ *   它不随运行版本升级而变；只按它渲染，界面就会长期说假话。
+ * 口径（`docs/D29` §8 `应-22`；判定与版本比较器都在 `adapters/update-state.js#judgeUpdateState` /
+ *   `core/update.js#compareVersions`，本文件**不**另写一套）：
+ *   ① 用**当前运行版本**（`core/constants.js#VERSION`）与远端比较：本地不低于远端 → 不说「有新版本」；
+ *   ② 记录陈旧（其 `current` ≠ 当前运行版本，或超过一个检查周期）→ 只说「已过期（<时间>）」并列出
+ *      当时的原始记录（只读），不把它当作当前结论。
+ * 时间取记录自己的时间字段（`lastResult.at`，缺字段时兜底同一状态里的 `lastCheckAt`；
+ *   两者都没有则如实写「时间未知」）—— 用 `Date.now()` 冒充会把「多久以前查的」变成「刚刚查的」。
+ * @returns {{status:string, stale:boolean, at:number, atKnown:boolean, text:string}|null}
+ *          无可用记录（从未检查 / 记录不可解析）时返回 `null`（此时不渲染该行，不编造状态）
+ */
+export function aboutUpdateLine() {
+    try {
+        const v = judgeUpdateState();
+        if (v.status === 'none' || v.status === 'unknown' || v.status === 'error') return null;
+        // 时间标注：找不到时间字段就如实说「时间未知」（不拿 Date.now() 充数）
+        const when = v.atKnown ? new Date(Number(v.at)).toLocaleString('zh-CN', { hour12: false }) : '';
+        if (v.stale) {
+            // ② 陈旧：只标注「已过期」+ 原始记录（只读），**不**显示「有新版本」
+            return {
+                status: 'stale', stale: true, at: Number(v.at) || 0, atKnown: !!v.atKnown,
+                text: '更新检查：已过期' + (when ? '（' + when + '）' : '（时间未知）')
+                    + ' · 当时记录：远端 ' + (v.remote || '—') + ' / 本机 ' + (v.current || '—')
+                    + '（旧记录仅存档，请点「重新获取」或到设置里重新检查）',
+            };
+        }
+        if (v.status === 'newer') {
+            return { status: 'newer', stale: false, at: Number(v.at) || 0, atKnown: !!v.atKnown,
+                text: '更新检查：发现新版本 ' + v.remote + '（当前 ' + VERSION + '）' + (when ? ' · ' + when : '') };
+        }
+        if (v.status === 'same') {
+            // ① 本地 == 远端：说「本机已是最新」，绝不说「有新版本」
+            return { status: 'same', stale: false, at: Number(v.at) || 0, atKnown: !!v.atKnown,
+                text: '更新检查：本机已是最新（' + VERSION + '）' + (when ? ' · ' + when : '') };
+        }
+        return { status: 'older', stale: false, at: Number(v.at) || 0, atKnown: !!v.atKnown,
+            text: '更新检查：本机版本（' + VERSION + '）高于远端（' + v.remote + '）' + (when ? ' · ' + when : '') };
+    } catch (e) { return null; }
+}
+
+/**
  * 关于页正文（V1 `aboutHtml()` 逐字结构：关于节 / 它是什么节 / 版本更新节）
  * @returns {string}
  */
@@ -302,6 +350,8 @@ export function aboutHtml() {
     const mismatch = !!(!isFallback && d && d.version && String(d.version) !== String(VERSION));
     const intro = (d && d.intro) ? d.intro : {};
     const repoPage = aboutRepoPageUrl();
+    // v3.45.1（应-22）：更新检查状态（只读；陈旧记录只说「已过期」，不再冒充「有新版本」）
+    const upLine = aboutUpdateLine();
     const h = [];
     // ① 关于（一句话定位 + 版本 + 重新获取 + 状态）—— 不再平铺开发/历史说明
     h.push('<div class="ftt-section"><div class="ftt-sec-title">关于 · FTT记忆组件</div>'
@@ -310,6 +360,7 @@ export function aboutHtml() {
         + (d && d.version && !isFallback ? (' · 最新版本 ' + esc(String(d.version)) + (d.updatedAt ? ('（' + esc(String(d.updatedAt)) + '）') : '')) : '')
         + (repoPage ? (' · <a href="' + esc(repoPage) + '" target="_blank" rel="noopener">代码库</a>') : '') + '</div>'
         + (mismatch ? '<div class="ftt-note ftt-note-warn ftt-mt-4">⚠️ 代码库清单（' + esc(String(d.version)) + '）与本插件版本（' + esc(VERSION) + '）不一致，请更新插件。</div>' : '')
+        + (upLine ? '<div class="ftt-muted ftt-mt-4">' + esc(upLine.text) + '</div>' : '')
         + '<div class="ftt-row ftt-mt-2"><button class="ftt-btn ftt-sm" data-ftt-action="aboutReload">🔄 重新获取</button></div>'
         + '<div class="ftt-hint ftt-mt-4" data-ftt-about-status>' + esc(statusText) + '</div>'
         + '</div>');

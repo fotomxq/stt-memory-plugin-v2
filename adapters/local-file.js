@@ -144,7 +144,7 @@ export function localFileNsLegacy(override) {
 //   `Object.assign(事实, 本对象)`，本对象里的 `backend:''` 会把「真实后端」覆盖成空串，
 //   于是存储页长期显示「后端 —」、任何按后端分支的显示都失真（真机实测 `ftt.localDir.backend` 恒为 `''`，
 //   而同一时刻 `ftt.fileTransport.backend` 明明是 `tt-native`）。后端一律由 `localFileBackend()` 现算。
-const localFileStats = { writes: 0, reads: 0, misses: 0, failures: 0, migrated: 0, restored: 0, probes: 0, lastReason: '', lastBytes: 0, lastAt: 0, lastReadAt: 0, lastWriteAt: 0, lastChannel: '' };
+const localFileStats = { writes: 0, reads: 0, misses: 0, failures: 0, migrated: 0, restored: 0, probes: 0, legacyProbes: 0, legacyHits: 0, lastReason: '', lastBytes: 0, lastAt: 0, lastReadAt: 0, lastWriteAt: 0, lastChannel: '' };
 export function localFileStatsGet() {
     return Object.assign({}, localFileStats, {
         enabled: localFileEnable(), raw: localFileRawPath(), path: localFilePath(),
@@ -154,11 +154,75 @@ export function localFileStatsGet() {
 /** 重置统计（测试 / 诊断） */
 export function localFileStatsReset() {
     localFileStats.writes = 0; localFileStats.reads = 0; localFileStats.misses = 0; localFileStats.failures = 0;
-    localFileStats.migrated = 0; localFileStats.restored = 0; localFileStats.probes = 0; localFileStats.lastReason = '';
+    localFileStats.migrated = 0; localFileStats.restored = 0; localFileStats.probes = 0;
+    localFileStats.legacyProbes = 0; localFileStats.legacyHits = 0; localFileStats.lastReason = '';
     localFileStats.lastBytes = 0; localFileStats.lastAt = 0; localFileStats.lastReadAt = 0; localFileStats.lastWriteAt = 0;
     localFileStats.lastChannel = '';
     return true;
 }
+
+// ============================================================
+// v3.45.1（技-33 · `docs/D29` §3.2 判定口径簇 / §6 R2 风险对策）：**已停用旧路的探测门**。
+//
+// 真机取证（`docs/D29` §2 行 4）：本机层**每次载入**都成对读失败 ——
+//   `通道读取失败 · fft_v2_store-ftt2-local-<作用域>.json · 原因：miss`（平铺兜底名）与
+//   `通道读取失败 · fft_v2_store/ftt2-local-<作用域>.json · 原因：miss`（旧命名空间同名文件），
+//   于是固定失败被计进「服务端文件 失败 N」，真失败被淹没。
+//
+// 裁决（§6 R2）：**只停「读判定」，保留一次性迁移读取** —— 旧路径确实有数据时仍必须能载入。
+// 故本表只在「这个作用域 + 这个路径」的旧路**全部未命中**之后才置位；某条旧路一旦**命中**，
+// **永不置位**（同会话后续载入仍会去捞旧存档，回归用例 A1 锁住这条）。置位后同会话不再探测旧路，
+// 返回结果与「未命中」同形，只多一个 `legacySkipped: true` 标记。
+// key = `String(scope) + '|' + String(path)`（归一后的路径，与 `localFileRead` 实际使用的一致）。
+// ============================================================
+const legacyProbeMissed = Object.create(null);
+
+/** 旧路探测门的键（`localFileRead` 与 `localFileDeprecatedPaths` 共用同一口径） */
+function localFileProbeKey(scope, path) { return String(scope) + '|' + String(path); }
+
+/**
+ * v3.45.1（技-33）：清掉「旧路已全部未命中」的记忆并归零两个旧路计数（**测试钩子**）。
+ *   只影响探测门与计数，**不动**任何文件、任何读写语义。
+ */
+export function resetLocalFileLegacyProbe() {
+    for (const k of Object.keys(legacyProbeMissed)) delete legacyProbeMissed[k];
+    localFileStats.legacyProbes = 0; localFileStats.legacyHits = 0;
+    return true;
+}
+
+/**
+ * v3.45.1（技-33 · `docs/D29` §3.2 / §8）：**已停用旧路清单**（只读取证；`ftt.localDir` 与
+ *   存储页据此明说「哪些路已停用、不参与判定」，而不是把它们混进失败计数）。
+ *
+ * 返回的 `names` 是本机层这些**旧路候选文件名**（去重）：
+ *   · 平铺兜底名 `<路径转横线>-ftt2-local-<作用域>.json`（宿主不接受子目录时的旧落点）；
+ *   · 斜杠名 `<路径>/ftt2-local-<作用域>.json` —— 旧命名空间那次只读兼容读用的**就是这个名字**
+ *     （只是命名空间不同，见 `ns` / `legacyNs`），真机噪声里它与平铺名成对出现。
+ * @param {string} scope 角色作用域
+ * @param {string} [override] 显式路径（缺省用配置里的路径）
+ * @returns {{names:string[], ns:string, legacyNs:string, tried:boolean, probes:number, hits:number, note:string}}
+ *   `tried` = 本会话是否已确认「这个作用域 + 这个路径」的旧路全部未命中（= 不再探测）；
+ *   `probes` / `hits` = 旧路探测次数 / 旧路命中次数。
+ */
+export function localFileDeprecatedPaths(scope, override) {
+    const path = localFilePath(override);
+    const ns = path ? localFileNs(override) : '';
+    const legacyNs = path ? localFileNsLegacy(override) : '';
+    const names = [];
+    if (path) {
+        for (const n of [localFileFlatName(scope, override), localFileName(scope, override)]) {
+            if (n && names.indexOf(n) < 0) names.push(n);
+        }
+    }
+    return {
+        names: names, ns: ns, legacyNs: legacyNs,
+        tried: legacyProbeMissed[localFileProbeKey(scope, path)] === true,
+        probes: Number(localFileStats.legacyProbes) || 0,
+        hits: Number(localFileStats.legacyHits) || 0,
+        note: '旧路径 · 已停用 · 不参与判定（保留一次性迁移读取）',
+    };
+}
+
 function localFileBackend() { try { return fileTransportBackend(); } catch (e) { return ''; } }
 
 /** 传输参数：原生走自定义命名空间；酒馆文件通道走「目录 + 文件名」 */
@@ -207,15 +271,21 @@ export async function localFileWrite(text, scope, override) {
 
 /**
  * 读本地文件（信封文本）。
+ *
+ * v3.45.1（技-33 · `docs/D29` §3.2 / §6 R2）：读取顺序仍是「主名 → 平铺兜底名 → 旧命名空间同名文件」，
+ *   但后两条**已停用旧路**只在「本会话尚未确认它们全空」时才探测（见 `legacyProbeMissed`），
+ *   且都走 `noLedger: true`（不进读取台账、不参与判定）；主名读取与所有命中返回口径**一字未改**。
  * @param {string} scope 角色作用域
  * @param {string} [override] 显式路径（关闭模式后按「上次路径」迁回时用）
- * @returns {Promise<{ok:boolean, text?:string, miss?:boolean, error?:string}>}
+ * @returns {Promise<{ok:boolean, text?:string, miss?:boolean, error?:string, legacySkipped?:boolean}>}
  */
 export async function localFileRead(scope, override) {
     const path = localFilePath(override);
     if (!path) return { ok: false, reason: 'off' };
     const o = localFileOpts(scope, override);
+    const probeKey = localFileProbeKey(scope, path);
     try {
+        // ① **主名**（生效层）：读取语义与微任务形状**一字未改** —— 照旧进读取台账、参与判定
         const r = await fileTransportReadAuto(localFileName(scope, override), o);
         if (r && r.ok && r.text) {
             localFileStats.reads += 1;
@@ -225,9 +295,21 @@ export async function localFileRead(scope, override) {
             localFileStats.lastChannel = String((r && r.channel) || r.backend || '');
             return { ok: true, text: String(r.text), backend: String(r.backend || ''), channel: String(r.channel || ''), path: path, key: localFileFileKey(scope, override) };
         }
-        // 主名未命中 → 试平铺兜底名（可能上次是用它写成功的）
-        const r2 = await fileTransportReadAuto(localFileFlatName(scope, override), Object.assign({}, o, { ns: undefined, stName: localFileFlatName(scope, override) }));
+        // ② v3.45.1（技-33 · `docs/D29` §6 R2）：本会话已确认「这个作用域 + 这个路径」的旧路**全空** →
+        //   两条已停用旧路都不再探测（真机上那对 `通道读取失败 … 原因：miss` 从此不再产生）。
+        //   返回与「未命中」同形，只多 `legacySkipped: true`；`error` 仍是普通字符串
+        //   （读 `.error` 的调用方不受影响）。
+        if (legacyProbeMissed[probeKey] === true) {
+            localFileStats.misses += 1;
+            return { ok: false, miss: true, legacySkipped: true, error: String((r && r.error) || 'miss') };
+        }
+        // ③ **平铺兜底名**（可能上次是用它写成功的）—— 已停用旧路：`noLedger` 不进读取台账，只计数
+        localFileStats.legacyProbes += 1;
+        const r2 = await fileTransportReadAuto(localFileFlatName(scope, override), Object.assign({}, o, { ns: undefined, stName: localFileFlatName(scope, override), noLedger: true }));
         if (r2 && r2.ok && r2.text) {
+            localFileStats.legacyHits += 1;
+            // 旧路命中是**一次性迁移读取**：如实留痕（中文动作名直接说明它已停用）
+            try { dbgLog('存储', { action: '本机层：命中已停用旧路（一次性迁移读取）', name: localFileFlatName(scope, override) }); } catch (e) { /* 忽略 */ }
             localFileStats.reads += 1;
             localFileStats.lastBytes = String(r2.text).length;
             localFileStats.lastAt = Date.now();
@@ -236,11 +318,15 @@ export async function localFileRead(scope, override) {
         }
         // v3.26.0：**旧命名空间只读兼容** —— v3.16.0~v3.25.x 把非 ASCII 目录名一律映射成 `_`（无哈希），
         //   升级后命名空间会带哈希 → 老数据若只按新命名空间找会被判为「本机层没数据」。此处补一次只读回退。
+        //   这条同样是**已停用旧路**（`noLedger`）：保留一次性迁移读取，但不进读取台账、不参与判定。
         const legacyNs = localFileNsLegacy(override);
         if (legacyNs && legacyNs !== o.ns) {
-            const o2 = { ns: legacyNs, table: 'local', stName: localFileName(scope, override) };
+            localFileStats.legacyProbes += 1;
+            const o2 = { ns: legacyNs, table: 'local', stName: localFileName(scope, override), noLedger: true };
             const r3 = await fileTransportReadAuto(localFileName(scope, override), o2);
             if (r3 && r3.ok && r3.text) {
+                localFileStats.legacyHits += 1;
+                try { dbgLog('存储', { action: '本机层：命中已停用旧路（一次性迁移读取）', name: localFileName(scope, override), ns: legacyNs }); } catch (e) { /* 忽略 */ }
                 localFileStats.reads += 1;
                 localFileStats.lastBytes = String(r3.text).length;
                 localFileStats.lastAt = Date.now();
@@ -248,6 +334,9 @@ export async function localFileRead(scope, override) {
                 return { ok: true, text: String(r3.text), backend: String(r3.backend || ''), legacyNs: true, path: path };
             }
         }
+        // ⑤ 两条旧路**全部未命中** → 才记住「本会话不必再探」（下次直接走 ② 的短路分支）。
+        //   **只有走到这里才置位**：任一旧路命中都不会到这里 → 旧路径确有数据时每次载入都仍能捞回（§6 R2）。
+        legacyProbeMissed[probeKey] = true;
         localFileStats.misses += 1;
         return { ok: false, miss: true, error: String((r2 && r2.error) || (r && r.error) || 'miss') };
     } catch (e) {
@@ -507,6 +596,8 @@ export default {
     localFileEnable, localFileEnabled, localFileRawPath, localFilePath, localFilePathSanitize,
     localFileName, localFileFlatName, localFileFileKey, localFileFlatKey, localFileNs, localFileNsLegacy, localFileWrite, localFileRead, localFileDelete,
     localFileStatsGet, localFileStatsReset,
+    // v3.45.1（技-33）：已停用旧路的只读取证出口 + 探测门复位钩子
+    localFileDeprecatedPaths, resetLocalFileLegacyProbe,
     localFileDirCandidates, localFileDirHistory, localFileDirRemember, localFileDirScanHost,
     localFileProbeDir, localFileRealLocation, localFileDirHostCapability,
 };

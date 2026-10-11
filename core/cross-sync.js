@@ -4,6 +4,10 @@
 //   `mergeSnapshotStores`（快照链并集重建）/ `dataAggHash`（聚合指纹）/ `atomEntryCount`（条目计数）/
 //   `mirrorPushSig`（镜像推送签名门控）/ `snapshotSigOf`（快照链签名）/ `snapIndexFrom`（轻量快照索引）/
 //   `mergeProcessedFloors`（已处理楼层并集，楼层正文哈希经 `opts.hashFloor` 注入）。
+// v3.45.1（`docs/D22` W6 技-31 / 技-35）新增：
+//   `consistencyReading`（一致性单一事实源读数：状态 → `{at, count, fingerprint}`，四处诊断共用）、
+//   `capReductionOf`（上限裁剪**干跑**读数，只算不改）、`unionSelfCheck`（并集自检判据：下限扣除三类合法削减）。
+//   `mergeDataObjects` 的 `stat` 同时新增 `conflict`（冲突合计）与 `reductions`（去重 / 墓碑削减量，按维度分列）。
 // 适配（与 V1 的唯一差别）：
 //   ① 纯内核化 —— V1 直接读写 `state`/`hashFloorText`，此处全部改为**纯函数入参**（数据 + 注入的楼层哈希）；
 //   ② 逐维度业务合并钩子保留（传言走 `core/model/rumor.js#mergeRumorObjects`，与 V1 `DIM_ENTRY_MERGERS` 同口径）。
@@ -18,8 +22,61 @@ import { hashText } from './util.js';
 import { contentDedupeArray } from './migrate.js';
 import { applyDeletedToArray } from './sweep.js';
 import { mergeRumorObjects } from './model/rumor.js';
+import { capAtomsKeepingHidden } from './merge.js';   // v3.45.1（W6 技-31）：上限裁剪**干跑**（只读数，不改语义）
 
-/** 条目计数（各大类原子合计；V1 `atomEntryCount`） */
+/**
+ * v3.45.1（`docs/D22` W6 **`技-35`**）：**一致性的单一事实源读数**（只读、纯函数）。
+ *
+ * 真机事实（`docs/D29` §2 第 6 行）：同一份状态同时存在**四个数字** ——
+ *   同步口径 **465** · 体检 `items` **488** · 本机层 `localItems` 与主文件解析 **482** · 读取台账「内存态」**479**；
+ *   用户与开发者都**无法用一眼读数**判断「两边是否一致」，而 `技-31` 的判据分歧正源于此。
+ *
+ * 本函数给出**一个**读数（**同一份状态、同一口径、同一时点**）：`{ at, fingerprint, count }`。
+ *   口径（写死在这里，四处诊断都必须引用本函数而不是各算各的）：
+ *   · `count` = `atomEntryCount` = **原子层各大类条数合计**（`ATOM_DIM_KEYS`：情节 / 状态 / 角色 / 记忆 / 物品 /
+ *     计划 / 悬念 / 场景 / 概念 / 平行 / 分段 / 传言 / 名册 …**按该常量自身顺序**）；
+ *   · **不含**：墓碑（`deleted` / `deletedH`，它们是 id/内容哈希映射不是条目）、`links` 关联行（引用行）、
+ *     `vars` / `vars` 类对象容器、快照链（`snapStore`）；**含**货币与名册（它们在 `ATOM_DIM_KEYS` 里）。
+ *   · `fingerprint` = `dataAggHash`（各原子 `id + 内容哈希` 排序聚合 + 非原子容器「货币」）；
+ *   · `at` = 取值时刻 —— **四处读数必须在同一时点取**才有可比性（这也是「同一时点」写进返回值的原因）。
+ *
+ * **四个旧口径的语义标注**（`docs/D13` §8.10 与 `04` 里那四个数字的来历，逐个写明差异来源）：
+ * | 旧口径 | 计入什么 | 与 `count` 的差 |
+ * | --- | --- | --- |
+ * | 同步口径（`atomEntryCount`） | 原子层各大类 | **就是本读数**（基准） |
+ * | 体检 `scanned.items` | **所有被扫容器**的条目数，**含 `links` 关联行**、含非原子容器 | 比 `count` 大（关联行被算了进去） |
+ * | 本机层 `localItems` / 主文件解析条数 | **信封里存了什么就数什么**（含墓碑审计字段、含 `links`） | 与落盘内容相关，可能比 `count` 大或小 |
+ * | 读取台账「内存态」 | **读取动作**的统计（哪一层读到多少条），不是状态快照 | 反映「哪次读了什么」，本身不构成一致性判据 |
+ * `docs/D29` §6 **Q2 已裁决**：读数**并入现有出口**（`ftt.dataHealth` / `ftt.loadDiag`），不新开桥方法。
+ * @param {object} st 状态（缺省调用方传入；本函数不读全局，保持内核纯净）
+ * @returns {{at:number, count:number, fingerprint:string, dims:object, semantics:object}}
+ */
+function consistencyReading(st) {
+    const s = (st && typeof st === 'object') ? st : {};
+    const dims = {};
+    let count = 0;
+    for (const c of ATOM_DIM_KEYS) {
+        let n = 0;
+        try { n = Array.isArray(s[c]) ? s[c].length : 0; } catch (e) { n = 0; }
+        dims[c] = n;
+        count += n;
+    }
+    return {
+        at: Date.now(),
+        count: count,
+        fingerprint: String(dataAggHash(s) || ''),
+        dims: dims,
+        semantics: {
+            scope: '原子层各大类条数合计（ATOM_DIM_KEYS）',
+            excludes: ['deleted', 'deletedH', 'links', 'vars', 'snapStore'],
+            includes: ['currencies', 'npcs'],
+            note: '四处诊断必须引用本读数（同一状态、同一口径、同一时点）；旧口径的差异来源见 docs/D13 §8.10',
+        },
+    };
+}
+
+/**
+ * 条目计数（各大类原子合计；V1 `atomEntryCount`） */
 function atomEntryCount(d) {
     let n = 0;
     for (const c of ATOM_DIM_KEYS) { try { n += ((d && d[c]) || []).length; } catch (e) { /* 忽略 */ } }
@@ -121,7 +178,15 @@ const DIM_ENTRY_MERGERS = { rumors: (a, b, ctx) => mergeRumorObjects(a, b, ctx) 
  */
 function mergeDataObjects(baseData, remoteData, opts) {
     const out = JSON.parse(JSON.stringify(baseData || {}));
-    const stat = { added: 0, conflictWinLocal: 0, conflictWinRemote: 0, same: 0 };
+    const stat = { added: 0, conflictWinLocal: 0, conflictWinRemote: 0, same: 0, conflict: 0, reductions: { dedupe: 0, tombstone: 0, byDim: {} } };
+    const red = stat.reductions;
+    const redBump = (cat, key, n) => {
+        const v = Math.max(0, Number(n) || 0);
+        if (!v) return;
+        red[key] += v;
+        const d = red.byDim[cat] || (red.byDim[cat] = { dedupe: 0, tombstone: 0 });
+        d[key] += v;
+    };
     const baseTs = Number((baseData && baseData.updatedAt) || 0) || 0;
     const remTs = Number((remoteData && remoteData.updatedAt) || 0) || 0;
     const copyVal = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
@@ -163,7 +228,8 @@ function mergeDataObjects(baseData, remoteData, opts) {
             }
             for (const id of Object.keys(R)) { if (id in L) continue; merged.push(copyVal(R[id])); stat.added++; }
             // 合并后按内容哈希去重（同内容异 id 只留较新一条，防条数/体积跨端漂移）
-            if (merged.length > 1) merged = contentDedupeArray(cat, merged);
+            // v3.45.1（W6 技-31）：**去重削减量入账** —— 它会让条数合法地下降，必须与「真丢失」区分开
+            if (merged.length > 1) { const n0 = merged.length; merged = contentDedupeArray(cat, merged); redBump(cat, 'dedupe', n0 - merged.length); }
             if (merged.length || (out[cat] || []).length) out[cat] = merged;
         }
         // 跨端删除墓碑应用（id + 内容哈希；合并后过滤，删除跨端传播、不复活）
@@ -176,6 +242,7 @@ function mergeDataObjects(baseData, remoteData, opts) {
             for (const cat of ATOM_DIM_KEYS) {
                 const arr = Array.isArray(out[cat]) ? out[cat] : [];
                 const r = applyDeletedToArray(cat, arr, delBase, delRem, delHBase, delHRem, true);
+                redBump(cat, 'tombstone', arr.length - r.arr.length);   // 墓碑命中（跨端删除传播，合法削减）
                 if (r.arr.length || (out[cat] && out[cat].length)) out[cat] = r.arr;
                 else if (Array.isArray(out[cat]) && !out[cat].length && (delBase[cat] || delRem[cat])) out[cat] = r.arr;
                 if (r.del && Object.keys(r.del).length) delOut[cat] = r.del;
@@ -199,7 +266,66 @@ function mergeDataObjects(baseData, remoteData, opts) {
         }
         out.updatedAt = Math.max(baseTs, remTs);
     } catch (e) { /* 忽略 */ }
+    stat.conflict = stat.conflictWinLocal + stat.conflictWinRemote;   // v3.45.1（W6 技-31）：冲突**合计**（旧代码在自检里读 `stat.conflict`，而它此前从未被赋值 → 「跨端合并冲突」永远不登记）
     return { data: out, stat };
+}
+
+/**
+ * v3.45.1（`docs/D22` W6 **`技-31`**）：**上限裁剪干跑读数**（纯函数，只算不改）。
+ *
+ * 真机事实（`docs/D29` §2 第 2 行）：合并自检登记「并集自检异常」（`115 → 20`），而合并实现本身还会做
+ * 内容去重（`contentDedupeArray`）、墓碑过滤（`applyDeletedToArray`）与**上限裁剪**
+ * （`core/merge.js#capAtomsKeepingHidden`，真正落库点在 `core/ingest.js` 的 ingest 路径）；
+ * 三者都会让 `after < unionMin` —— 旧判据必然误报，且**真丢失无法与误报区分**。
+ *
+ * 本函数给出「若此刻执行上限裁剪会削掉几条」的**只读**估计（隐藏条目永不裁剪，与 `capAtomsKeepingHidden` 同口径），
+ * 供 `adapters/sync.js` 的自检**扣减**用 —— 它**不修改**入参数组，也不改变任何保存语义。
+ * @param {Array} arr 候选条目（通常 `state.atoms`）
+ * @param {number} cap 该维度存储上限（`core/ingest.js#storeCapFor('atoms')`）
+ * @returns {{cap:number, before:number, after:number, hit:number}}
+ */
+function capReductionOf(arr, cap) {
+    try {
+        const list = Array.isArray(arr) ? arr : [];
+        const n = Math.max(1, Number(cap) || 1);
+        const kept = capAtomsKeepingHidden(list, n);
+        const after = Array.isArray(kept) ? kept.length : list.length;
+        return { cap: n, before: list.length, after: after, hit: Math.max(0, list.length - after) };
+    } catch (e) { return { cap: 0, before: 0, after: 0, hit: 0 }; }
+}
+
+/**
+ * v3.45.1（`docs/D22` W6 **`技-31`**）：**并集自检判据**（纯函数，可单测；`docs/D29` §3.2 与 §8 `技-31` 行）。
+ *
+ * 修正后的下限：`并集下限 = max(本端合并前条数, 远端合并前条数) − 墓碑命中 − 内容去重命中 − 上限裁剪命中`
+ *   —— 三个削减量**分别回报**（`docs/D29` R1 明确要求「不合并成一个数」），只有**修正后仍低于下限**才判异常。
+ * 如此：三类合法削减不再误报；而「同 id 被丢弃且无墓碑 / 无去重 / 无裁剪可解释」的**真丢失**仍然报警
+ *   （`unexplained` = 差多少条没有解释，用于待确认项文案）。
+ *
+ * 反向探针（`docs/D29` R1）：构造真丢失用例 → `anomaly === true`；构造三类合法削减用例 → `anomaly === false`。
+ * @param {{beforeLocal:number, beforeRemote:number, after:number, reductions?:{dedupe?:number,tombstone?:number,cap?:number}}} input
+ * @returns {{unionMin:number, after:number, lowerBound:number, reductions:{dedupe:number,tombstone:number,cap:number,total:number}, anomaly:boolean, unexplained:number, detail:string}}
+ */
+function unionSelfCheck(input) {
+    const i = (input && typeof input === 'object') ? input : {};
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; };
+    const beforeLocal = num(i.beforeLocal);
+    const beforeRemote = num(i.beforeRemote);
+    const after = num(i.after);
+    const r = (i.reductions && typeof i.reductions === 'object') ? i.reductions : {};
+    const dedupe = num(r.dedupe), tombstone = num(r.tombstone), cap = num(r.cap);
+    const total = dedupe + tombstone + cap;
+    const unionMin = Math.max(beforeLocal, beforeRemote);
+    const lowerBound = Math.max(0, unionMin - total);
+    const anomaly = after < lowerBound;
+    const unexplained = anomaly ? (lowerBound - after) : 0;
+    const detail = anomaly
+        ? '仍有 ' + unexplained + ' 条无解释地消失（下限 ' + lowerBound + ' 条 = 合并前较大者 ' + unionMin
+          + '〔本端 ' + beforeLocal + ' / 远端 ' + beforeRemote + '〕− 合法削减 ' + total
+          + '〔墓碑 ' + tombstone + ' / 去重 ' + dedupe + ' / 裁剪 ' + cap + '〕，合并后 ' + after + ' 条）'
+        : '通过：合并后 ' + after + ' 条 ≥ 下限 ' + lowerBound + ' 条（合并前较大者 ' + unionMin
+          + ' − 合法削减 ' + total + '〔墓碑 ' + tombstone + ' / 去重 ' + dedupe + ' / 裁剪 ' + cap + '〕）';
+    return { unionMin, after, lowerBound, reductions: { dedupe, tombstone, cap, total }, anomaly, unexplained, detail };
 }
 
 /**
@@ -256,4 +382,5 @@ function mirrorPushSig(d) {
 export {
     atomEntryCount, dataAggHash, diffAtomData, mergeDataObjects, mergeProcessedFloors,
     mergeSnapshotStores, snapshotSigOf, snapIndexFrom, mirrorPushSig, DIM_ENTRY_MERGERS,
+    consistencyReading, capReductionOf, unionSelfCheck,
 };
