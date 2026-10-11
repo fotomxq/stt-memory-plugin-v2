@@ -88,6 +88,28 @@ const i18nEn = Object.keys(readJson('i18n/en.json')).length;
 const goldens = readdirSync(join(ROOT, 'tests', 'fixtures')).filter((f) => /^v1-golden.*\.json$/.test(f)).length;
 const unitFiles = readdirSync(join(ROOT, 'tests', 'unit')).filter((f) => f.endsWith('.test.js')).length;
 const historyFiles = readdirSync(join(ROOT, 'docs', 'history')).filter((f) => f.endsWith('.md') && f !== 'README.md').length;
+/**
+ * v3.43.0（`docs/D22` `应-11` / `docs/D17` U56–U57）——**UI 类名计数**（唯一事实源 = 本函数）。
+ *
+ * 口径（与 `docs/README.md` §3 的表格逐字对应，改口径必须同时改两处）：
+ *   · `<style.css>` 里按 `.ftt-[A-Za-z0-9_-]+` 匹配并**去重**；
+ *   · 列① = **含 `--modifier` 变体**的去重数（如 `.ftt-badge--abandoned` 与 `.ftt-badge` 各算一个）；
+ *   · 列② = **剥离 `--modifier` 后**的去重数（= 基类个数）。
+ * 登记动机：`docs/D9` 长期写「226 个类名 · 未登记口径 · 未验证」（实测 230/201，无法复现 226）——
+ *   本判据把它变成**实测值**并交给门禁核对，`D9` 正文只留指向。
+ */
+function uiClassNameCounts() {
+    let css = '';
+    try { css = readFileSync(join(ROOT, 'style.css'), 'utf8'); } catch (e) { return [0, 0]; }
+    const all = new Set();
+    const re = /\.ftt-[A-Za-z0-9_-]+/g;
+    let m;
+    while ((m = re.exec(css)) !== null) all.add(m[0].slice(1));
+    const base = new Set();
+    for (const n of all) base.add(n.replace(/--[A-Za-z0-9_-]+$/, ''));
+    return [all.size, base.size];
+}
+const uiClassCounts = uiClassNameCounts();
 
 /** 口径名 → 实测值数组（顺序与表内声明一致）；返回 `[]` = 该行由别处强制（本脚本跳过） */
 const FACTS = {
@@ -106,6 +128,7 @@ const FACTS = {
     'NSFW 识别词条 / 转化词': () => [nsfwMod.NSFW_KEYWORDS.length, nsfwMod.NSFW_RULES.length],
     'NSFW 弱级信号词': () => [levelMod.NSFW_WEAK_SIGNALS.length],
     '调试桥只读方法数': () => [bridgeCount],
+    'UI 类名数': () => [uiClassCounts[0], uiClassCounts[1]],
     '历史批次档数': () => [historyFiles],
     '每段正文数（分段口径）': () => [Number(chunkMod.SUMMARY_CHUNK_DEFAULT)],
 };

@@ -81,7 +81,8 @@ export function scenesTreeHtml(opts) {
     const sceneBar = '<div class="ftt-addbar ftt-toolbar">' + addBtn + multiBtn + bulk
         + '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button></div>';
     if (!all0.length) {
-        return statChip(0) + search + sceneBar + '<div class="ftt-empty">（该类目暂无条目）</div>';
+        // v3.43.0（`docs/D22` `应-12` ① / `docs/D9` §10 U3）：空态补「下一步做什么」（此前只有一句占位）
+        return statChip(0) + search + sceneBar + '<div class="ftt-empty">该类目暂无条目。点上方「⚡ 立即 AI 摘要」从楼层提取，或用「添加」手动创建。</div>';
     }
     if (q && !all.length) {
         return statChip(all0.length) + search + sceneBar + '<div class="ftt-empty">无匹配结果（搜索：' + esc(q) + '）</div>';

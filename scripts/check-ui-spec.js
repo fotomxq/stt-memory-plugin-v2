@@ -203,10 +203,30 @@ const hit = (id, file, line, msg) => hits.push({ id, file, line, msg });
     if (!hasAbort) hit('C11', 'ui/panel.js', 0, '未发现中断入口（abort /「中断」）');
 }
 
+// ---------- C12（U11）：不引入真表格（表格类数据一律「列表行 + 折叠明细」） ----------
+// v3.43.0（`docs/D22` `应-4` / `docs/D9` §10 U11）：新增本判据 —— 此前 U11 **没有任何机械判据**，
+//   结果 v3.42.0 的「Token 预估与花费」一次就引入了 3 个真 `<table>`（本轮已改回列表行）。
+//   规则：`ui/*.js` 里 `<table` 的出现次数**不得超过已登记额度**；额度只允许「可编辑表单网格」这一处
+//   （`ui/rel-table.js` 的关联行编辑网格：7 列输入 + 保存，不是表格类数据展示；已在 `docs/D9` §4 归属表登记为例外）。
+{
+    const ALLOW = { 'ui/rel-table.js': 1 };
+    const found = [];
+    let total = 0, allowTotal = 0;
+    for (const rel of uiFiles) {
+        const n = (read(rel).match(/<table\b/g) || []).length;
+        if (!n) continue;
+        total += n;
+        allowTotal += Number(ALLOW[rel]) || 0;
+        if (n > (Number(ALLOW[rel]) || 0)) found.push(rel + '×' + n);
+    }
+    if (found.length) hit('C12', 'ui/*.js', 0, `真表格超出已登记额度（U11：表格类数据改「列表行 + 折叠明细」）：${found.join('、')}`);
+    if (total < allowTotal) hit('C12', 'ui/rel-table.js', 0, `真表格已消失但额度仍登记在册（应把 ${allowTotal} 收紧为 0）`);
+}
+
 // ---------- 输出 ----------
 const byId = {};
 for (const h of hits) byId[h.id] = (byId[h.id] || 0) + 1;
-console.log('UI 规范一致性检查（docs/D9 §9 C1–C11；' + (strict ? 'strict' : 'warning') + ' 模式）');
+console.log('UI 规范一致性检查（docs/D9 §9 C1–C11 + C12【U11 真表格额度】；' + (strict ? 'strict' : 'warning') + ' 模式）');
 if (!hits.length) console.log('  ✅ 全部通过（0 命中）');
 else {
     if (!quiet) for (const h of hits.slice(0, 40)) console.log(`  ⚠️ ${h.id} ${h.file}${h.line ? ':' + h.line : ''} — ${h.msg}`);

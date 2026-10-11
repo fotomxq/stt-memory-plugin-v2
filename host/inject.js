@@ -189,11 +189,13 @@ export function injectInFlight() { return !!inFlight; }
 /** 实际的构建与推送（由 `pushMemoryInject` 单飞包装调用） */
 async function buildAndPushInject(o) {
     const t0 = Date.now();
-    // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：提取记忆（召回 + 注入构建）进管线状态。
+    // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：召回 + 注入构建进管线状态。
     //   内部若走向量检索，会**再出现一条「向量检索（embedding）」行** —— 嵌套/并行都看得见。
     //   登记**直接嵌在本函数内**（不新增 async 层）→ `pushMemoryInject` 的完成时序与观察窗保持逐字不变。
+    // v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.3 **C4**）：行名由「提取记忆（召回 + 注入）」改为
+    //   「**召回 + 注入（刷新注入）**」—— 名字与「⚡ 立即 AI 摘要」（真正的提取 / 写库）对齐口径，避免名实不符。
     let pipeRun = {};
-    try { pipeRun = beginPipeline('提取记忆（召回 + 注入）', { kind: 'task', phase: '召回候选' }) || {}; } catch (e) { pipeRun = {}; }
+    try { pipeRun = beginPipeline('召回 + 注入（刷新注入）', { kind: 'task', phase: '召回候选' }) || {}; } catch (e) { pipeRun = {}; }
     try {
         injectStats.builds += 1;
         if (!injectGateOpen()) return { ok: true, reason: 'gate-closed', chars: 0, injected: false, method: { key: '', label: '', note: '注入开关关闭（未召回）', keywords: [] } };

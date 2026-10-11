@@ -121,14 +121,28 @@ await A('P1 runRepairMech：第 1 段五步编排（机械合并 → 遗忘清�
     const after = repairTotalCount();
     const log = Array.isArray(state.repairLog) ? state.repairLog : [];
     const rm = r.relMaint || {};
+    /**
+     * v3.43.0 **有意偏离 V1**（`docs/D22` `应-18` / `docs/D25` §3.6 U146）——**显式归一**（不是改样本）：
+     *   第 ① 段第 8 / 9 步（楼层突变识别 / 剧情时钟刷新）在**钩子未接线**时新增两条「跳过原因」note
+     *   （V1 oracle 里这两步是 `if (fn) {}` 之外无 else → 既无 note 也无日志，无法分辨"没跑"与"无变化"）。
+     *   本单元测试**不接线**这两个钩子，故比对前把这两条**逐字剥离**，并单独断言各恰好出现一次。
+     */
+    const SKIP_NOTES = [
+        '楼层突变识别：跳过原因 —— 钩子未接线（无宿主取楼层能力）',
+        '剧情时钟刷新：跳过原因 —— 钩子未接线（无宿主时钟同步能力）',
+    ];
+    const allNotes = (r.stage1.notes || []).slice();
+    const notes = allNotes.filter((n) => SKIP_NOTES.indexOf(n) < 0);
+    const skipNotesOk = SKIP_NOTES.every((n) => allNotes.indexOf(n) >= 0) && (allNotes.length - notes.length) === SKIP_NOTES.length;
     const got = {
         before: r.before, after: r.after,
         merged: r.stage1.merged, sweepSwept: Number((r.sweep || {}).swept) || 0, capCut: Number((r.caps || {}).cut) || 0,
         pruned: Number((r.pruned || {}).deleted) || 0, decayed: Number((r.decay || {}).deleted) || 0,
-        notes: (r.stage1.notes || []).slice(),
+        notes: notes,
         relMaint: { swept: Number(rm.swept) || 0, deduped: Number(rm.deduped) || 0, renamed: Number(rm.renamed) || 0, staleRefs: Number(rm.staleRefs) || 0, normalized: Number(rm.normalized) || 0, demoted: Number(rm.demoted) || 0, orphanItems: Number(rm.orphanItems) || 0, publicized: Number(rm.publicized) || 0, action: String(rm.action || '') },
     };
-    return before === G.mechFlow.before && after === G.mechFlow.after && J(got) === J(G.mechFlow)
+    return before === G.mechFlow.before && after === G.mechFlow.after && J(got) === J(G.mechFlow) && skipNotesOk
+        && r.floorJumpSkipped === 'no-hook' && r.clockSyncSkipped === 'no-hook'
         && r.report.indexOf('修复前 ' + before + ' 条 → 修复后 ' + after + ' 条') >= 0
         && log.length === 1 && log[0].cause === '单元测试' && Number(log[0].ms) >= 0 && log[0].merged === G.mechFlow.merged;
 }, (() => ({ mech: G.mechFlow })));
@@ -182,15 +196,16 @@ R.assert('P4 修复日志 repairLogPush：新→旧、上限 5 条', (() => {
 // ============================================================
 // U 组：界面接线（总览「🛠 自动修复」→ 第 1 段执行 + 第 2/3 段如实说明）
 // ============================================================
-await A('U1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧）', async () => {
+await A('U1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧；v3.43.0：其右邻「📤 提取记忆」已按 `docs/D22` `应-14` 删除）', async () => {
     boot(G.inputs.scenario);
     openPanel('overview');
     setPanelHooks2({});
     const html = panelBodyHtml('overview');
     const iSummary = html.indexOf('data-ftt-action="summary"');
     const iRepair = html.indexOf('data-ftt-action="repair"');
-    const iExtract = html.indexOf('data-ftt-action="extractNow"');
-    return iSummary >= 0 && iRepair > iSummary && iExtract > iRepair && html.indexOf('🛠 自动修复') >= 0;
+    const iInject = html.indexOf('data-ftt-action="inject"');
+    return iSummary >= 0 && iRepair > iSummary && iInject > iRepair && html.indexOf('🛠 自动修复') >= 0
+        && html.indexOf('data-ftt-action="extractNow"') < 0 && html.indexOf('📤 提取记忆') < 0;
 }, '');
 
 await A('U2 面板动作 repair：三段式编排（机械清理 → 候选筛选 → AI 修订）；无 AI 可用时如实回报', async () => {

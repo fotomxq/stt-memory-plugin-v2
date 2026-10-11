@@ -194,18 +194,19 @@ A('F2 显式级别优先于推断（也接受 error/warning/success 近义写法
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     openPanel('overview');
     setPanelHooks2({ pending: () => [] });        // 所有钩子都不接 → 走早退分支
-    const r = await panelAction('extractNow', {});
+    const r = await panelAction('inject', {});
     const st = panelState();
     const html = String(r.html || panelBodyHtml('overview'));
 
-    A('F3 真实早退路径（`提取入口未就绪`）自动判为错误级：`panelState().noteLevel === "err"`，且渲染出的提示行带 `ftt-note--err`（**改动前这条类从未出现过**）', (() => {
-        return st.note === '提取入口未就绪' && st.noteLevel === 'err'
+    A('F3 真实早退路径（`注入入口未就绪`）自动判为错误级：`panelState().noteLevel === "err"`，且渲染出的提示行带 `ftt-note--err`（**改动前这条类从未出现过**）'
+        + ' —— v3.43.0：早退入口由「📤 提取记忆」改为「📤 立即注入」（`docs/D22` `应-14`）', (() => {
+        return st.note === '注入入口未就绪' && st.noteLevel === 'err'
             && html.indexOf('data-ftt-note') >= 0 && html.indexOf('ftt-note--err') >= 0;
     })(), () => J({ note: st.note, level: st.noteLevel, hasClass: html.indexOf('ftt-note--err') >= 0 }));
 
     A('F4 成功路径判为 ok 级：渲染带 `ftt-note--ok`（与失败一眼可辨），且提示行仍是同一个 `data-ftt-note` 节点形状（既有断言不破）', (async () => {
-        setPanelHooks2({ recall: async () => ({ ok: true, count: 3, chars: 120, ms: 8, hitLayer: 'js' }) });
-        const r2 = await panelAction('extractNow', {});
+        setPanelHooks2({ inject: async () => ({ ok: true, count: 3, chars: 120, ms: 8, hitLayer: 'js' }) });
+        const r2 = await panelAction('inject', {});
         const st2 = panelState();
         const html2 = String(r2.html || '');
         return st2.noteLevel === 'ok' && html2.indexOf('ftt-note--ok') >= 0
