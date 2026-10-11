@@ -339,42 +339,50 @@ function tokenCostSectionHtml() {
         + '⑤ 本账本属<b>运行账本</b>（落插件设置），不参与记忆数据同步。<br>'
         + '本次读数：成功 ' + fmtInt(s.okN) + ' · 失败 ' + fmtInt(s.failN) + ' · 实测 ' + fmtInt(s.measuredN) + ' / 估算 ' + fmtInt(s.estimatedN) + ' 次 · 最近一次 ' + esc(fmtWhen(s.lastAt) || '（暂无）') + '。'
         + '</div>');
-    // ② 按标签（按 token 总量排序，取前 8）
+    // ② 按标签（按 token 总量排序，取前 8）—— **列表行**（`docs/D9` §10 **U11**：不引入真表格）
     const labels = Object.keys(s.byLabel || {}).map((k) => ({ k: k, v: s.byLabel[k] }))
         .sort((a, b) => (b.v.promptTokens + b.v.respTokens) - (a.v.promptTokens + a.v.respTokens)).slice(0, 8);
-    const labelTable = labels.length ? '<table class="ftt-table"><thead><tr><th>行为</th><th>次数</th><th>输入</th><th>输出</th><th>缓存</th><th>花费</th></tr></thead><tbody>'
-        + labels.map((x) => '<tr><td>' + esc(x.k) + '</td><td>' + fmtInt(x.v.n) + '</td><td>' + fmtInt(x.v.promptTokens) + '</td><td>'
-            + fmtInt(x.v.respTokens) + '</td><td>' + fmtInt(x.v.cachedTokens) + '</td><td>' + esc(fmtCny(x.v.costMicro / 1e6))
-            + (x.v.unpricedN ? ' <span class="ftt-muted">(未定价 ' + fmtInt(x.v.unpricedN) + ')</span>' : '') + '</td></tr>').join('')
-        + '</tbody></table>' : '<div class="ftt-empty">还没有记账（发出一次 AI 请求后这里会出现按行为的统计）</div>';
-    // ③ 最近明细
+    const labelRows = labels.length ? labels.map((x) => '<div class="ftt-item ftt-inline">'
+        + '<span class="ftt-grow">' + esc(x.k) + '</span>'
+        + '<span class="ftt-muted">' + fmtInt(x.v.n) + ' 次 · 入 ' + fmtInt(x.v.promptTokens) + ' · 出 ' + fmtInt(x.v.respTokens)
+        + ' · 缓存 ' + fmtInt(x.v.cachedTokens) + '</span>'
+        + '<span class="ftt-badge">' + esc(fmtCny(x.v.costMicro / 1e6))
+        + (x.v.unpricedN ? ' <span class="ftt-muted">(未定价 ' + fmtInt(x.v.unpricedN) + ')</span>' : '') + '</span></div>').join('')
+        : '<div class="ftt-empty">还没有记账（发出一次 AI 请求后这里会出现按行为的统计）</div>';
+    // ③ 最近明细 —— **列表行 + 折叠明细**（行摘要：时间 · 行为 · 花费；点开看模型 / 渠道 / 各类 token / 口径）
     let recent = [];
     try { recent = aiUsageRecent(10); } catch (e) { recent = []; }
-    const recentTable = recent.length ? '<table class="ftt-table"><thead><tr><th>时间</th><th>行为</th><th>模型</th><th>渠道</th><th>输入</th><th>输出</th><th>缓存</th><th>花费</th><th>口径</th></tr></thead><tbody>'
-        + recent.map((r) => '<tr><td>' + esc(fmtWhen(r.at)) + '</td><td>' + esc(r.label) + (r.ok ? '' : ' <span class="ftt-muted">(失败)</span>') + '</td><td>'
-            + esc(r.model) + '</td><td>' + esc(r.channel || '—') + '</td><td>' + fmtInt(r.promptTokens) + '</td><td>' + fmtInt(r.respTokens)
-            + '</td><td>' + fmtInt(r.cachedTokens) + '</td><td>' + esc(fmtCny(r.costCny)) + '</td><td>'
-            + (r.usageSource === 'usage' ? '实测' : '估算') + '</td></tr>').join('') + '</tbody></table>' : '';
+    const recentRows = recent.length ? recent.map((r, i) => '<div class="ftt-item ftt-inline">'
+        + '<span class="ftt-grow">' + esc(fmtWhen(r.at)) + ' · ' + esc(r.label) + (r.ok ? '' : ' <span class="ftt-muted">(失败)</span>') + '</span>'
+        + '<span class="ftt-muted">入 ' + fmtInt(r.promptTokens) + ' · 出 ' + fmtInt(r.respTokens) + (r.cachedTokens ? ' · 缓存 ' + fmtInt(r.cachedTokens) : '') + '</span>'
+        + '<span class="ftt-badge">' + esc(fmtCny(r.costCny)) + '</span>'
+        + hintDetailsHtml('明细', '<div>模型：' + esc(r.model) + ' · 渠道：' + esc(r.channel || '—') + ' · 口径：'
+            + (r.usageSource === 'usage' ? '实测 usage' : '估算（字符 ÷ 4）') + ' · 耗时：' + fmtInt(r.ms) + 'ms'
+            + ' · 输入字符：' + fmtInt(r.promptChars) + ' · 输出字符：' + fmtInt(r.respChars)
+            + (r.priced ? '' : ' · <b>该模型未定价</b>（只在设定页补齐单价后才会计入花费）') + '</div>')
+        + '</div>').join('') : '';
     // ④ 价格与汇率（两处可写：汇率输入 + 价格覆盖 JSON；都用 data-ftt-token-* 标记，不走 cfg 控件引擎）
     let overridesText = '{}';
     try { overridesText = JSON.stringify(tokenPriceDraft || tokenPriceOverrides(), null, 2) || '{}'; } catch (e) { overridesText = '{}'; }
     let priceTable = '';
     try {
-        priceTable = '<details class="ftt-details"><summary>内置价目表（' + fmtInt(tokenPriceList().length) + ' 条 · 参考价 ' + esc(s.priceAsOf) + '）</summary>'
-            + '<table class="ftt-table"><thead><tr><th>条目</th><th>匹配模型名</th><th>输入</th><th>缓存输入</th><th>输出</th><th>币种</th><th>来源</th></tr></thead><tbody>'
-            + tokenPriceList().map((e) => '<tr><td>' + esc(e.label) + (e.builtin ? '' : ' <span class="ftt-muted">(自定义)</span>') + '</td><td><code>'
-                + esc((e.match || []).join(' / ')) + '</code></td><td>' + esc(String(e.in)) + '</td><td>' + esc(String(e.cachedIn)) + '</td><td>'
-                + esc(String(e.out)) + '</td><td>' + esc(e.cur) + '</td><td>' + esc(e.src || '—') + (e.asOf ? ' · ' + esc(e.asOf) : '') + '</td></tr>').join('')
-            + '</tbody></table>'
-            + '<div class="ftt-hint">单价按 <b>每 100 万 token</b> 计；「输入」= 未命中缓存的输入价，「缓存输入」= 命中缓存的输入价。'
-            + '内置条目只收 <b>已核实来源</b> 的价目（见「来源」列），价格会变 —— 以官方账单为准，可覆盖。</div></details>';
+        // 价目表同样是**列表行**（U11）；整块仍在折叠说明里（默认收起，不挤占版面）
+        const priceRows = tokenPriceList().map((e) => '<div class="ftt-item ftt-inline">'
+            + '<span class="ftt-grow">' + esc(e.label) + (e.builtin ? '' : ' <span class="ftt-muted">(自定义)</span>') + '</span>'
+            + '<span class="ftt-muted">匹配 <code>' + esc((e.match || []).join(' / ')) + '</code> · 入 ' + esc(String(e.in))
+            + ' · 缓存 ' + esc(String(e.cachedIn)) + ' · 出 ' + esc(String(e.out)) + ' · ' + esc(e.cur) + '</span>'
+            + '<span class="ftt-muted">' + esc(e.src || '—') + (e.asOf ? ' · ' + esc(e.asOf) : '') + '</span></div>').join('');
+        priceTable = '<details class="ftt-details ftt-hint-details"><summary class="ftt-hint">ⓘ 内置价目表（' + fmtInt(tokenPriceList().length) + ' 条 · 参考价 ' + esc(s.priceAsOf) + '）</summary>'
+            + '<div class="ftt-hint ftt-hint-body">单价按 <b>每 100 万 token</b> 计；「入」= 未命中缓存的输入价，「缓存」= 命中缓存的输入价。'
+            + '内置条目只收 <b>已核实来源</b> 的价目（见每行末尾的来源与日期），价格会变 —— 以官方账单为准，可在下方覆盖。</div>'
+            + priceRows + '</details>';
     } catch (e) { priceTable = ''; }
 
     return '<div class="ftt-sec" data-ftt-token-section>' + head
         + lines.join('\n')
         + detailFold
-        + labelTable
-        + (recentTable ? '<div class="ftt-muted ftt-my-1">最近 10 次明细</div>' + recentTable : '')
+        + labelRows
+        + (recentRows ? '<div class="ftt-muted ftt-my-1">最近 10 次明细（点开看细节）</div>' + recentRows : '')
         + '<div class="ftt-row ftt-my-1">'
         + '<label class="ftt-grow">美元兑人民币汇率</label>'
         + '<input type="number" step="0.01" min="0.01" max="999" data-ftt-token-rate value="' + esc(String(s.usdCny)) + '" title="用于把 USD 价目折算成人民币（参考值，可改）">'

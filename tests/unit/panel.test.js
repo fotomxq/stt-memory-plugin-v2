@@ -140,13 +140,12 @@ await A('P5 删除：留 id 墓碑并从容器移除（与数据台同一实现�
 }, (state.deleted || {}).atoms);
 
 // ---------- 动作 ----------
-await A('A1 工具行动作：⚡ 批量摘要 / 📤 提取（单楼）/ 📤 立即注入 各自走对应钩子并回填提示', async () => {
+await A('A1 工具行动作：⚡ 批量摘要 / 单楼 / 📤 立即注入 各自走对应钩子并回填提示（v3.43.0：`extractNow` 已收为注入的同义动作，见 `docs/D22` `应-14`）', async () => {
     boot();
-    // B3 起：`summary` 走批量分段摘要钩子（autoSummary）、`extractNow` 走逐楼提取钩子（extract）
     setPanelHooks2({
         autoSummary: async (o) => ({ ok: true, segments: 2, floors: '4-9', added: 3, aborted: 0, chunkSize: 3, silent: o && o.silent }),
         extract: async () => ({ ok: true, done: 1, results: [{ floor: 4, ok: true, added: 2 }] }),
-        inject: async () => ({ ok: true, chars: 12 }),
+        inject: async () => ({ ok: true, chars: 12, count: 1, ms: 3 }),
         clearInject: () => true,
     });
     const all = await panelAction('summary', {});
@@ -155,12 +154,13 @@ await A('A1 工具行动作：⚡ 批量摘要 / 📤 提取（单楼）/ 📤 �
     const noteOne = panelState().note;
     const inj = await panelAction('inject', {});
     const noteInj = panelState().note;
-    const batch = await panelAction('extractNow', {});
-    const noteBatch = panelState().note;
-    return all.ok === true && one.ok === true && inj.ok === true && batch.ok === true
+    // `extractNow` 现在是**同义动作**：走同一个注入分支（不再回落 AI 摘要）
+    const alias = await panelAction('extractNow', {});
+    const noteAlias = panelState().note;
+    return all.ok === true && one.ok === true && inj.ok === true && alias.ok === true
         && noteAll.indexOf('摘要完成：2 段（每段 ≤3 个正文） · 读取楼层 4-9 · 新增 3 条') >= 0
         && noteOne.indexOf('第 4 楼：新增 2 条') >= 0
-        && noteInj.indexOf('已注入 12 字') >= 0 && noteBatch.indexOf('分析完成') >= 0;
+        && noteInj.indexOf('已注入：召回 1 条 · 12 字') >= 0 && noteAlias.indexOf('已注入：召回 1 条 · 12 字') >= 0;
 }, panelState().note);
 
 await A('A2 切页与关闭动作：tab 切换更新面板状态并重渲染；close 关闭浮层', async () => {

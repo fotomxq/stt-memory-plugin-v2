@@ -694,12 +694,13 @@ await A('U1 FTT.* 入口齐备（16 项）且无 hook 时按约定降级不抛�
     return missing.length === 0 && enabled && match === 1 && seed > 0 && pr.removed === 0 && gone && noHook;
 }, '');
 
-await A('U2 总览「🧭 推演世界」按钮：位于「📤 提取记忆」右侧，文案 / title / id 与 V1 逐字一致', async () => {
+await A('U2 总览「🧭 推演世界」按钮：文案 / title / id 与 V1 逐字一致（v3.43.0：左邻由已删除的「📤 提取记忆」变为「🛠 自动修复」，见 `docs/D22` `应-14`）', async () => {
     boot();
     const h = String(panelBodyHtml('overview') || '');
-    const a = h.indexOf('data-ftt-action="extractNow"');
+    const a = h.indexOf('data-ftt-action="repair"');
     const b = h.indexOf('data-ftt-action="parallelWeaveNow"');
-    return a >= 0 && b > a && h.indexOf('id="ftt-weave-btn"') >= 0 && h.indexOf('>🧭 推演世界</button>') >= 0
+    return a >= 0 && b > a && h.indexOf('data-ftt-action="extractNow"') < 0
+        && h.indexOf('id="ftt-weave-btn"') >= 0 && h.indexOf('>🧭 推演世界</button>') >= 0
         && h.indexOf('title="手动触发平行事件推演（独立交织管线）"') >= 0;
 }, '');
 

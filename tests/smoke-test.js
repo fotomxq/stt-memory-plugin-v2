@@ -1317,13 +1317,14 @@ await assert('S4 状态衰退与遗忘汇总入口：FTT.stateDecay / forgetStat
 })(), '');
 
 // ---------- T 修复管线第 1 段（B8-6a：JS 机械清理，零 AI） ----------
-await assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧）', (async () => {
+await assert('T1 总览工具行含 V1 同款「🛠 自动修复」按钮（紧贴「⚡ 立即 AI 摘要」右侧；v3.43.0：右邻改为「📤 立即注入」，`docs/D22` `应-14` 已删「📤 提取记忆」）', (async () => {
     const r = await entry.popupAction('tab', { tab: 'overview' });
     const html = String(r.html || '');
     const a = html.indexOf('data-ftt-action="summary"');
     const b = html.indexOf('data-ftt-action="repair"');
-    const c = html.indexOf('data-ftt-action="extractNow"');
-    return a >= 0 && b > a && c > b && html.indexOf('🛠 自动修复') >= 0;
+    const c = html.indexOf('data-ftt-action="inject"');
+    return a >= 0 && b > a && c > b && html.indexOf('🛠 自动修复') >= 0
+        && html.indexOf('data-ftt-action="extractNow"') < 0 && html.indexOf('📤 提取记忆') < 0;
 })(), '');
 
 await assert('T2 点击「自动修复」：机械清理生效（同内容合并 + 垃圾清理 + 墓碑），提示如实回报机械段与 AI 段（B8-6b 已实现 AI 段）', (async () => {
@@ -2520,9 +2521,10 @@ await assert('AD1 平行事件接线齐备：FTT.* 入口（15 项）+ 总览「
     ];
     await entry.popupAction('tab', { tab: 'overview' });
     let h = String((await entry.popupAction('refresh', {})).html || '');
-    const a = h.indexOf('data-ftt-action="extractNow"');
+    const a = h.indexOf('data-ftt-action="repair"');
     const b = h.indexOf('data-ftt-action="parallelWeaveNow"');
     const overviewOk = a >= 0 && b > a && h.indexOf('id="ftt-weave-btn"') >= 0
+        && h.indexOf('data-ftt-action="extractNow"') < 0
         && h.indexOf('>🧭 推演世界</button>') >= 0 && h.indexOf('title="手动触发平行事件推演（独立交织管线）"') >= 0;
     await entry.popupAction('tab', { tab: 'parallels' });
     h = String((await entry.popupAction('refresh', {})).html || '');
@@ -6722,7 +6724,8 @@ await assert('BY1 v3.26.1「undefined 脏数据」修复（端到端）：真实
 // 用户要求（原话）：「总览的召回完成提示，应增加用什么方式召回的。」
 // 口径：方式词表 = **向量召回 / 本地关键词召回 / AI 分析召回**，并带降级/跳过原因；
 //   未进入三层流程（向量与 AI 都未启用）时也必须说清「用的是本地关键词召回」。
-await assert('BZ1 v3.26.3 召回方式如实告知（端到端）：总览点「提取记忆」→ 提示行写明**用什么方式召回**（本地关键词召回 + 「向量未启用」；向量开启但未配置 → 「向量未配置 → 已降级」）；注入账目同源', (async () => {
+await assert('BZ1 v3.26.3 召回方式如实告知（端到端）：总览点「📤 立即注入」→ 提示行写明**用什么方式召回**（本地关键词召回 + 「向量未启用」；向量开启但未配置 → 「向量未配置 → 已降级」）；注入账目同源'
+    + '（v3.43.0：承载该提示的入口由已删除的「📤 提取记忆」迁到「📤 立即注入」，`docs/D22` `应-14`）', (async () => {
     const RT8 = await import('../core/model/runtime.js');
     const INJ2 = await import('../host/inject.js');
     const keepVec = RT8.cfg.useVector, keepKw = RT8.cfg.useKeywordFlow, keepUrl = RT8.cfg.embeddingUrl;
@@ -6730,13 +6733,13 @@ await assert('BZ1 v3.26.3 召回方式如实告知（端到端）：总览点「
         // ① 向量与 AI 层都未启用 → 只能走本地关键词召回，提示必须说明「向量未启用」（而不是留空）
         RT8.cfg.useVector = false; RT8.cfg.useKeywordFlow = false;
         await entry.popupAction('tab', { tab: 'overview' });
-        await entry.popupAction('extractNow', {});
+        await entry.popupAction('inject', {});
         const page1 = String((await entry.popupAction('refresh', {})).html || '');
         const note1 = String((page1.match(/data-ftt-note>([^<]*)</) || [])[1] || '');
-        const localOk = note1.indexOf('召回完成：') >= 0 && note1.indexOf('本地关键词召回') > 0 && note1.indexOf('向量未启用') > 0;
+        const localOk = note1.indexOf('已注入：') >= 0 && note1.indexOf('本地关键词召回') > 0 && note1.indexOf('向量未启用') > 0;
         // ② 开着向量但没配置地址 → 走本地兜底，提示必须说明是**降级**
         RT8.cfg.useVector = true; RT8.cfg.embeddingUrl = '';
-        await entry.popupAction('extractNow', {});
+        await entry.popupAction('inject', {});
         const page2 = String((await entry.popupAction('refresh', {})).html || '');
         const note2 = String((page2.match(/data-ftt-note>([^<]*)</) || [])[1] || '');
         const degradeOk = note2.indexOf('本地关键词召回') > 0 && note2.indexOf('已降级') > 0;

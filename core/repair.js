@@ -402,6 +402,7 @@ async function runRepairMech(opts) {
     //   判据与修正都在宿主层（`host/floors.js#fixFloorJump`）：按内容哈希归位台账 + 越界区间降级 + 收紧基线；
     //   **只改编号，绝不删除条目**；幂等（同一对「情节楼层 / 当前末楼」已处理过且无新改动时只报告不写盘）。
     let floorJump = null;
+    let floorJumpSkipped = '';
     try {
         const fn = (typeof repairHooks.floorJump === 'function') ? repairHooks.floorJump : null;
         if (fn) {
@@ -415,13 +416,21 @@ async function runRepairMech(opts) {
                 stage1.notes.push(txt);
                 try { dbgLog('楼层', { action: '楼层突变（自动修复识别）', gap: floorJump.gap, lastFloor: floorJump.lastFloor, plotFloor: floorJump.plotFloor, acted: floorJump.acted, marks: floorJump.marks, stale: floorJump.staleEntries }); } catch (e) { /* 忽略 */ }
             }
+        } else {
+            // v3.43.0（`docs/D22` `应-18` / `docs/D25` §3.6 U146）：**钩子未接线时如实写跳过原因** ——
+            //   此前这里是 `if (fn)` 之外无 else，"这一步没跑"与"跑了但无变化"在通知与日志上**无法区分**。
+            floorJumpSkipped = 'no-hook';
+            stage1.notes.push('楼层突变识别：跳过原因 —— 钩子未接线（无宿主取楼层能力）');
+            try { dbgLog('楼层', { action: '修复步骤：楼层突变识别', skipped: floorJumpSkipped }); } catch (e) { /* 忽略 */ }
         }
     } catch (e) { /* 忽略：突变修正失败不影响修复本身 */ }
     stage1.floorJump = floorJump;
+    stage1.floorJumpSkipped = floorJumpSkipped;
     // ②e v3.6.0（用户要求）：**按最新情节刷新时间 / 地点 / 人物**（零 AI；「最新情节」按内置天数判断）。
     //   与 v2.81.0「分析后按最新情节同步」调用的是**同一条处理**；手工锁定（`cfg.clockManualLock`）时如实跳过刷新，
     //   只继续维护「在场」与来源说明。
     let clockSync = null;
+    let clockSyncSkipped = '';
     try {
         const fn = (typeof repairHooks.clockSync === 'function') ? repairHooks.clockSync : null;
         if (fn) {
@@ -439,9 +448,15 @@ async function runRepairMech(opts) {
                 stage1.notes.push('剧情时钟：' + head + (bits.length ? ('（' + bits.join(' · ') + '）') : ''));
                 try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', changed: !!clockSync.changed, manualLock: !!clockSync.manualLock, storyDay: Number(clockSync.storyDay) || 0, date: clockSync.date, time: clockSync.time, location: clockSync.location, present: clockSync.present, source: clockSync.source, plotId: clockSync.plotId }); } catch (e) { /* 忽略 */ }
             }
+        } else {
+            // v3.43.0（`docs/D22` `应-18` / `docs/D25` §3.6 U146）：同 ②d —— 未接线时如实写跳过原因
+            clockSyncSkipped = 'no-hook';
+            stage1.notes.push('剧情时钟刷新：跳过原因 —— 钩子未接线（无宿主时钟同步能力）');
+            try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', skipped: clockSyncSkipped }); } catch (e) { /* 忽略 */ }
         }
     } catch (e) { /* 忽略：时钟刷新失败不影响修复本身 */ }
     stage1.clockSync = clockSync;
+    stage1.clockSyncSkipped = clockSyncSkipped;
     const after = repairTotalCount();
     const swept = Number(sweepRes.swept) || 0;
     const cut = Number(capRes.cut) || 0;
@@ -468,7 +483,9 @@ async function runRepairMech(opts) {
         notify('success', '机械清理完成（零 AI）',
             `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条${relTxt}；${report}`);
     }
-    return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0 };
+    return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0,
+        // v3.43.0（`docs/D22` `应-18`）：第 ① 段第 8 / 9 步的**跳过原因**（`''` = 已接线）—— 与 `planSuspSkipped` 同款
+        floorJumpSkipped: stage1.floorJumpSkipped || '', clockSyncSkipped: stage1.clockSyncSkipped || '' };
 }
 
 // ==================== 第 2 段：候选筛选（客观缺陷 + 标签组相关性 + 按比例抽查轮询） ====================
@@ -830,8 +847,8 @@ async function runRepair(opts) {
     try {
         dbgLog('修复', {
             action: '数据修复完成（v1.137 三段式 · v1.138 相关性抽查 · v3.5.0 追加计划悬念修复与楼层突变识别）', auto: isAuto, cause: String(o.cause || '').slice(0, 40),
-            floorJump: (stage1.floorJump ? { jumped: stage1.floorJump.jumped, gap: stage1.floorJump.gap, acted: stage1.floorJump.acted } : null),
-            clockSync: (stage1.clockSync ? { changed: !!stage1.clockSync.changed, manualLock: !!stage1.clockSync.manualLock, storyDay: Number(stage1.clockSync.storyDay) || 0 } : null),
+            floorJump: (stage1.floorJump ? { jumped: stage1.floorJump.jumped, gap: stage1.floorJump.gap, acted: stage1.floorJump.acted } : (stage1.floorJumpSkipped ? { skipped: stage1.floorJumpSkipped } : null)),
+            clockSync: (stage1.clockSync ? { changed: !!stage1.clockSync.changed, manualLock: !!stage1.clockSync.manualLock, storyDay: Number(stage1.clockSync.storyDay) || 0 } : (stage1.clockSyncSkipped ? { skipped: stage1.clockSyncSkipped } : null)),
             planSusp: (planSusp ? { made: planSusp.made, skipped: planSusp.skipped, blocked: planSusp.blocked, error: planSusp.error || '' } : (psSkipWhy ? { skipped: psSkipWhy } : null)),
             merged: stage1.merged, deleted: stage1.deleted, revised: ai.revised, aiDeleted: ai.deleted,
             candidates: cands.length, aiUsed: ai.used, aiSkipped: ai.skipped, ms,
@@ -848,7 +865,7 @@ async function runRepair(opts) {
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
             + `；${report}`);
     }
-    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump };
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped };
 }
 /** 提取合并失败后延迟自动修复一次（V1 `scheduleAutoRepairOnMergeFail`；默认 15s，可用 `cfg.repairFailDelaySec` 调） */
 let autoRepairFailTimer = null;

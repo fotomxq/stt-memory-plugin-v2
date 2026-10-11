@@ -17,7 +17,7 @@ import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, load
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
-import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS } from './settings-pages.js';
+import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS, findSettingsControls, setCfgFlashKey, cfgFlashKeyNow } from './settings-pages.js';
 import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.0 折叠说明；v2.60.0 统一富文本（`**x**` → 粗体）
 import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
@@ -134,6 +134,8 @@ const ps = {
     tab: 'overview', open: false, q: {}, editing: null, note: '', noteLevel: '', opened: 0,
     busy: false,        // 批量分析进行中（头部 busy 文案 + 楼层脉冲）
     settingsSub: 'base', // 设定页当前子页（V1 的 14 组子页 + v2.80.0 新增「约束」= 15 组）
+    cfgFind: '',         // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的关键词（空 = 不出结果）
+    cfgFlash: '',        // v3.43.0：定位跳转后要高亮的控件键（渲染时消费一次）
     // 注：关系表「按角色筛选」「跳转定位」「选角色态」自 B9-b 起由 `ui/rel-table.js` 持有（V1 同款闭包变量口径），
     //   面板只经 `relFilterState()/setRelFilter()` 读写；`panelState().relWho` 仍透出该筛选值。
     //   关系表的**当前维度**自 v2.80.0 起由 `ui/constraint-page.js` 持有（`constraintDimState()`），
@@ -220,6 +222,8 @@ export function panelState() {
         filter: JSON.parse(JSON.stringify(ps.f || {})),
         selCount: Object.keys(ps.sel).reduce((n, k) => n + (ps.sel[k] ? ps.sel[k].size : 0), 0),
         showHidden: ps.showHidden, peek: ps.peek, settingsSub: ps.settingsSub, atomSub: ps.atomSub,
+        // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的检索词与当前高亮键（只读快照，供测试与诊断）
+        cfgFind: String(ps.cfgFind || ''), cfgFlash: String(ps.cfgFlash || ''),
         constraintDim: constraintDimState(), relWho: String(relFilterState().who || ''),
         exportChars: String(ps.exportText || '').length,
         // v3.0.13：本次「🆕 本次新增」标记的平行事件 id（空数组 = 无标记）
@@ -578,7 +582,7 @@ function overviewBody() {
         const out = [];
         const le = (typeof hooks.lastExtract === 'function') ? hooks.lastExtract() : null;
         const line = (() => {
-            if (!le || !le.at) return '尚无提取记录（点上方「📤 提取记忆」或等自动提取后会在这里显示）';
+            if (!le || !le.at) return '尚无提取记录（点上方「⚡ 立即 AI 摘要」或等自动提取后会在这里显示）';
             const t = new Date(Number(le.at)).toLocaleString('zh-CN', { hour12: false });
             const viaLabel = { floor: '单楼分析', segment: '分段分析', batch: '批量摘要' }[String(le.via || '')] || '提取';
             const trig = String(le.trigger || '') === 'auto' ? '自动' : '手动';
@@ -645,10 +649,14 @@ function overviewBody() {
     lines.push('<div class="ftt-row">'
         + summaryBtn
         + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订">🛠 自动修复</button>'
-        + '<button class="ftt-btn" data-ftt-action="extractNow" id="ftt-extract-btn" title="按向量 / JS 抽取召回相关记忆并刷新注入（零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 提取记忆</button>'
+        // v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.1）：**「📤 提取记忆」按钮已删除**（用户裁决：写库只有
+        //   「⚡ 立即 AI 摘要」、读库只有「📤 立即注入」）；它的召回 + 刷新注入能力由右侧「立即注入」承担
+        //   （`extractNow` 动作名保留为同义入口，供命令 / 调试导出调用）。
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
         + nsfwBtn
-        + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn">📤 立即注入</button>'
+        // v3.43.0（`docs/D23` §3.3 **C5**）：原「📤 提取记忆」的 title 说明**迁移到本按钮** ——
+        //   「不占分析管道、可与长任务并行、发送前也会自动刷新」这三条语义仍成立（同一个 `pushMemoryInject`）。
+        + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn" title="召回相关记忆并刷新提示词注入（向量 / JS / AI 三层，按「提取记忆」页开关；零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 立即注入</button>'
         // v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储，包括内存、浏览器本地变量、服务端等，全部对齐数据。」
         + '<button class="ftt-btn' + (saveAllBusy ? ' ftt-loading' : '') + '" type="button"'
         + ' data-ftt-action="saveAll" id="ftt-saveall-btn"' + (saveAllBusy ? ' disabled' : '')
@@ -1135,7 +1143,15 @@ function dimBodyList(kind) {
     const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
     const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
-    if (!list.length) return curTop + toolbar + curPick + curRepair + ptb + head + ed + peek + '<div class="ftt-empty">（' + (q ? '没有匹配的条目' : '该类目暂无条目') + '）</div>';
+    // v3.43.0（`docs/D22` `应-12` ① / `docs/D9` §10 **U3**）——**空态必须是「为什么空 + 下一步做什么」两段式**：
+    //   此前这里是 `（该类目暂无条目）` / `（没有匹配的条目）`（9 字、无下一步），`check-ui-spec` **C4** 只数
+    //   `.ftt-empty` 的**处数**（≥11）故一直没暴露 —— 十来个列表页共用这一句无信息量的占位。
+    if (!list.length) {
+        const emptyTxt = q
+            ? '没有匹配的条目。换个关键词，或点「✕ 清除」重置筛选条件。'
+            : '该类目暂无条目。点上方「⚡ 立即 AI 摘要」从楼层提取，或用「添加」手动创建。';
+        return curTop + toolbar + curPick + curRepair + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
+    }
     // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
     //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
     const rowCtx = (() => { try { return buildRowCtx(); } catch (e) { return null; } })();
@@ -1400,6 +1416,11 @@ function settingsBody() {
     const cur = SETTINGS_TABS.some((t) => t.id === ps.settingsSub) ? ps.settingsSub : SETTINGS_TABS[0].id;
     const label = (SETTINGS_TABS.filter((t) => t.id === cur)[0] || {}).label || cur;
     return [
+        // v3.43.0（`docs/D22` `应-7` / `docs/D19` §3.1）——**设定页控件定位器**：
+        //   15 子页 / 159 控件此前只能一页页翻；这里给一个**全站控件索引检索**（`ui/settings-pages.js#findSettingsControls`），
+        //   输入关键词 → 出结果（控件名 · 所在子页）→ 点一下即跳到该子页并高亮该控件（`cfgGoto`）。
+        //   验收口径：**任一控件名可在 3 次操作内定位**（打开设定 → 输入 → 点结果）。
+        cfgFinderHtml(),
         '<div class="ftt-row ftt-settings-subtabs">' + settingsSubTabsHtml(cur) + '</div>',
         // v2.55.0（用户要求：页面上不要开发/历史内容）：标题行只留「设定 · <页名>」，
         //   不再展示「N 个配置项 · 共 X 项 / 13 页 · 结构与 V1 同名同序」这类实现与沿革说明。
@@ -1419,6 +1440,29 @@ function settingsBody() {
                 + '<textarea data-ftt-export="1" rows="6">' + esc(ps.exportText) + '</textarea></div>')
             : ''),
     ].join('\n');
+}
+
+/**
+ * v3.43.0（`docs/D22` `应-7`）——**设定页控件定位器的检索行与结果列表**。
+ *
+ * 交互：输入关键词后按 **Enter / 失焦**（`change` 事件，与列表页搜索同款 —— `docs/D9` §10 U12：
+ *   `input` 只刷读数、`change` 才提交）→ `cfgFind` 动作写 `ps.cfgFind` 并重绘 → 结果列表出现。
+ * 结果项 `data-ftt-action="cfgGoto"` + `data-ftt-page` / `data-ftt-cfg-goto`：跳到该子页并高亮该控件。
+ */
+function cfgFinderHtml() {
+    const q = String(ps.cfgFind || '');
+    const results = (() => { try { return q ? findSettingsControls(q, 12) : []; } catch (e) { return []; } })();
+    const rows = results.map((r) => '<button class="ftt-btn ftt-sm ftt-cfgfind-hit" type="button"'
+        + ' data-ftt-action="cfgGoto" data-ftt-page="' + attr(r.page) + '" data-ftt-cfg-goto="' + attr(r.key) + '"'
+        + ' title="跳到「' + attr(r.pageLabel) + '」页并高亮该控件">' + esc(r.label)
+        + '<span class="ftt-muted"> · ' + esc(r.pageLabel) + '</span></button>').join('');
+    const empty = q && !results.length ? '<span class="ftt-muted">没有匹配的控件（试试更短的关键词，如「重要度」「超时」）</span>' : '';
+    return '<div class="ftt-field ftt-cfgfind"><label>🔎 找设置项（输入后回车）</label>'
+        + '<input type="text" data-ftt-cfgfind="1" value="' + attr(q) + '" placeholder="控件名 / 配置键 / 说明关键词…">'
+        + (q ? '<button class="ftt-btn ftt-sm" data-ftt-action="cfgFindClear" title="清除搜索">✕</button>' : '')
+        + '</div>'
+        + (results.length ? '<div class="ftt-row ftt-cfgfind-list">' + rows + '</div>' : '')
+        + (empty ? '<div class="ftt-hint">' + empty + '</div>' : '');
 }
 
 /**
@@ -1541,17 +1585,68 @@ export function panelModalInnerHtml(opts) {
         + '<button class="ftt-close" data-ftt-action="close" title="关闭面板（Esc 同效）" aria-label="关闭 FTT记忆组件面板">✕</button></div>';
     // v3.24.0（UI 优化）：标签条给出**标签语义**（`role=tablist` + `role=tab` + `aria-selected`），
     //   读屏软件能听出「这是第几个页签、当前选中哪个」；纯新增属性，不改类名与结构（既有断言不受影响）。
-    const tabs = '<div class="ftt-tabs" role="tablist" aria-label="FTT记忆组件分页">' + PANEL_TABS.map(([t, l]) =>
-        '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '"'
-        + ' role="tab" aria-selected="' + (t === active ? 'true' : 'false') + '" title="' + esc(String(l)) + '">' + esc(l) + '</a>').join('') + '</div>';
+    // v3.43.0（`docs/D22` `应-10` / `docs/D9` §10 U8）：补 WAI-ARIA tabs 的**最小可用集** ——
+    //   选中页签 `tabindex="0"`、其余 `tabindex="-1"`（Tab 键只落一处），并配合 `bindEscClose` 里的 `←/→` 处理。
+    const tabs = '<div class="ftt-tabs" role="tablist" aria-label="FTT记忆组件分页"' + ' data-ftt-tablist="1">'
+        + PANEL_TABS.map(([t, l]) =>
+            '<a href="javascript:void(0)" class="ftt-tab' + (t === active ? ' ftt-on' : '') + '" data-ftt-tab="' + attr(t) + '"'
+            + ' role="tab" aria-selected="' + (t === active ? 'true' : 'false') + '"'
+            + ' tabindex="' + (t === active ? '0' : '-1') + '"'
+            + ' title="' + esc(String(l)) + '">' + esc(l) + '</a>').join('') + '</div>';
     const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">'
         + ((all || t === active) ? panelBodyHtml(t) : '') + '</div>').join('\n');
     return head + tabs + bodies;
 }
 
+/**
+ * v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.3 **C1**）——**「📤 立即注入」的结果提示**。
+ *
+ * 迁移自被删除的「📤 提取记忆」按钮：`host/inject.js#pushMemoryInject` **本来就返回 `method`**
+ *   （词表 = `host/extract-flow.js#recallMethodInfo`：**向量召回 / 本地关键词召回 / AI 分析召回** + 降级或跳过原因），
+ *   而原 `inject` 分支只写「已注入 N 字」→ v3.26.3「召回方式如实告知」的成果在总览上**白丢**。
+ *
+ * 口径：`kept-last`（本次未重新命中）与正常命中分开写；注入开关关闭 / 预算太小 / 状态未就绪等
+ *   **如实回报原因 + 该原因下未召回**（原因文案来自 `method.note`）。宿主未提供 `method` 时回落旧的 `hitLayer` 映射。
+ * @param {object} r `pushMemoryInject` 的返回值
+ * @returns {string} 状态行文案
+ */
+export function injectResultNote(r) {
+    try {
+        const mk = (r && r.method) || null;
+        const layerLabel = (mk && mk.label)
+            ? String(mk.label)
+            : ({ vector: '向量层', js: 'JS 抽取层', ai: 'AI 分析层' }[String((r && r.hitLayer) || '')] || '');
+        const methodNote = (mk && mk.note) ? String(mk.note) : '';
+        const methodTxt = (layerLabel || methodNote)
+            ? ('（' + [layerLabel, methodNote].filter(Boolean).join(' · ') + '）')
+            : '';
+        const ms = Number((r && r.ms) || 0);
+        if (!r || r.ok === false) return '注入失败：' + String((r && r.reason) || '未知') + methodTxt;
+        if (String(r.reason || '') === 'kept-last') {
+            return '已注入：本次未重新命中 → 沿用上次 ' + Number((r && r.chars) || 0) + ' 字' + methodTxt + ' · ' + ms + 'ms';
+        }
+        return '已注入：召回 ' + Number((r && r.count) || 0) + ' 条 · ' + Number((r && r.chars) || 0) + ' 字'
+            + methodTxt + ' · ' + ms + 'ms';
+    } catch (e) { return '注入完成'; }
+}
+
+/** v3.43.0（`docs/D22` `应-7`）：定位器跳转后把高亮的控件滚进视野（渲染后调用；纯 DOM，失败不影响渲染） */
+function scrollCfgFlash(el) {
+    try {
+        if (!cfFlashPending) return;
+        cfFlashPending = false;
+        const doc = docEl();
+        const root = (el && typeof el.querySelector === 'function') ? el : doc;
+        const hit = root && typeof root.querySelector === 'function' ? root.querySelector('.ftt-cfg-flash') : null;
+        if (!hit) return;
+        if (typeof hit.scrollIntoView === 'function') hit.scrollIntoView({ block: 'center' });
+    } catch (e) { /* 忽略 */ }
+}
+/** 是否有一笔「待滚到视野」的定位跳转（`cfgGoto` 置真，`scrollCfgFlash` 消费） */
+let cfFlashPending = false;
+
 /** 整个浮层 HTML（与 V1 同名同层级；V1 样式挂在 #ftt-panel 上） */
-export function panelHtml(opts) {
-    // v3.24.0（UI 优化）：浮层给出**对话框语义**（`role=dialog` + `aria-modal` + 可读标题）——
+export function panelHtml(opts) {    // v3.24.0（UI 优化）：浮层给出**对话框语义**（`role=dialog` + `aria-modal` + 可读标题）——
     //   读屏软件不再把面板当成一坨普通文本；纯新增属性，不改类名与结构。
     return '<div class="ftt-modal" role="dialog" aria-modal="true" aria-label="FTT记忆组件">' + panelModalInnerHtml(opts) + '</div>';
 }
@@ -1751,7 +1846,7 @@ export function renderPanel() {
     const html = '<div class="ftt-modal" role="dialog" aria-modal="true" aria-label="FTT记忆组件">' + innerHtml + '</div>';
     lastRenderedHtml = html;
     applyPanelWidth(el);
-    if (!el) return html;
+    if (!el) { cfFlashPending = false; return html; }
     // v2.80.1（用户报告「每次点击按钮，页面闪一下」）：**复用既有 `.ftt-modal` 节点**，
     //   只替换其内部 —— 节点不被重建，CSS 入场动画（`fttModalIn`）就不会每次点击重放。
     //   仅在「已有模态节点」时走该路径；首次打开 / 关闭后再打开 / 桩 DOM 一律回落整树替换，
@@ -1763,6 +1858,7 @@ export function renderPanel() {
             hardenButtonTypes(el);
             applyPanelScroll(el, scroll);      // ③ 渲染后同步恢复
             scheduleScrollRestore(el, scroll); // ④ 布局落定后再补一次
+            scrollCfgFlash(el);                // v3.43.0（`应-7`）：定位跳转把高亮控件滚进视野（写 DOM 之后）
             return finish(html);
         } catch (e) { /* 落回整树替换 */ }
     }
@@ -1772,6 +1868,7 @@ export function renderPanel() {
             hardenButtonTypes(el);
             applyPanelScroll(el, scroll);      // ③ 渲染后同步恢复
             scheduleScrollRestore(el, scroll); // ④ 布局落定后再补一次
+            scrollCfgFlash(el);                // v3.43.0（`应-7`）
             return finish(html);
         }
     } catch (e) { /* 落到桩路径 */ }
@@ -1977,6 +2074,19 @@ export async function panelAction(action, payload) {
             return done({ ok: false, reason: 'loading' });
         }
         if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; ps.flash = null; }   // v3.0.13：切页清「本次新增」标记   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
+        // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器 —— 检索 / 清除 / 跳转并高亮
+        else if (a === 'cfgFind') { ps.cfgFind = String(p.q == null ? '' : p.q); ps.cfgFlash = ''; setCfgFlashKey(''); ps.settingsSub = ps.settingsSub; }
+        else if (a === 'cfgFindClear') { ps.cfgFind = ''; ps.cfgFlash = ''; setCfgFlashKey(''); }
+        else if (a === 'cfgGoto') {
+            const page = String(p.page || '');
+            const key = String(p.cfgGoto || p.key || '');
+            if (SETTINGS_TABS.some((t) => t.id === page)) ps.settingsSub = page;
+            ps.cfgFind = '';
+            ps.cfgFlash = key;
+            setCfgFlashKey(key);       // 渲染时给该控件加 `.ftt-cfg-flash`
+            cfFlashPending = !!key;    // 渲染后把高亮控件滚进视野
+            result = Object.assign(result, { ok: true, action: a, page: page, cfgKey: key });
+        }
         else if (a === 'close') { closePanel(); }
         else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }
         else if (a === 'edit' || a === 'editEntry') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: p.preset || null }; }
@@ -2271,42 +2381,6 @@ export async function panelAction(action, payload) {
                     ? ('AI 摘要完成：' + Number(r.segments || 0) + ' 段 · 新增 ' + Number(r.added || 0) + ' 条' + (r.aborted ? ('（已中断：剩 ' + r.aborted + ' 段）') : ''))
                     : ('AI 摘要未完成：' + String((r && r.reason) || '未知')));
             } catch (e) { /* 忽略 */ }
-        } else if (a === 'extractNow') {
-            // v2.74.0（用户要求）：「提取记忆」= **发送前召回**（向量 → JS 抽取 → AI 分析，前两层零 AI 为主）——
-            //   **不占分析管道**、可与摘要等长任务并行；结果按开关（`提取记忆`页各层 + 注入开关）写入提示词注入。
-            //   `hooks.recall` 未接线时回落到旧的 AI 摘要入口（`hooks.extract`），保证任何宿主形态都可用。
-            if (typeof hooks.recall === 'function') {
-                setNote('召回中…（向量 / JS 为主，不占用分析管道）');
-                const r = await hooks.recall({});
-                // v3.26.3（用户要求「总览的召回完成提示，应增加用什么方式召回的」）：
-                //   方式来自 `host/inject.js` 的 `method`（`recallMethodInfo()` 统一词表：
-                //   **向量召回 / 本地关键词召回 / AI 分析召回** + 降级/跳过原因，如「向量无命中 → 已降级」）；
-                //   宿主未提供 `method` 时（旧接线 / 测试桩）回落旧的 `hitLayer` 映射，行为不变。
-                const mk = (r && r.method) || null;
-                const layerLabel = (mk && mk.label)
-                    ? String(mk.label)
-                    : ({ vector: '向量层', js: 'JS 抽取层', ai: 'AI 分析层' }[String((r && r.hitLayer) || '')] || '');
-                const methodNote = (mk && mk.note) ? String(mk.note) : '';
-                const methodTxt = (layerLabel || methodNote)
-                    ? ('（' + [layerLabel, methodNote].filter(Boolean).join(' · ') + '）')
-                    : '';
-                setNote(r && r.ok
-                    ? (String((r && r.reason) || '') === 'kept-last'
-                        ? ('召回完成：本次未重新命中 → 沿用上次注入 ' + Number((r && r.chars) || 0) + ' 字' + methodTxt + ' · ' + Number((r && r.ms) || 0) + 'ms')
-                        : ('召回完成：' + Number((r && r.count) || 0) + ' 条' + methodTxt
-                            + ' · 注入 ' + Number((r && r.chars) || 0) + ' 字 · ' + Number((r && r.ms) || 0) + 'ms'
-                            + (r && r.busy ? '（与在途长任务并行）' : '')))
-                    : ('召回未完成：' + String((r && r.reason) || '未知') + methodTxt));
-            } else if (typeof hooks.extract === 'function') {
-                setNote('分析中…');
-                const r = await hooks.extract({});
-                setNote(r && Array.isArray(r.results)
-                    ? ('分析完成：成功 ' + r.done + ' / ' + r.results.length + (r.note ? '（' + r.note + '）' : ''))
-                    : (r && r.ok ? ('新增 ' + r.added + ' 条（共 ' + r.total + '）') : ('未完成：' + String((r && r.reason) || '未知'))));
-            } else {
-                setNote('提取入口未就绪');
-                return done({ ok: false, reason: 'no-hook' });
-            }
         } else if (a === 'saveAll') {
             // v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储…全部对齐数据。」
             //   立即进入忙态并重绘（按钮转圈禁用），完成后按**逐层结果**写提示与通知。
@@ -2510,10 +2584,28 @@ export async function panelAction(action, payload) {
                 else panelNotify('warning', '第 ' + floor + ' 楼未完成：' + why);
             } catch (e) { /* 忽略 */ }
             result = Object.assign(result, { ok: !!ok, floor: floor, added: Number(added) || 0 });
-        } else if (a === 'inject') {
+        } else if (a === 'inject' || a === 'extractNow') {
+            /**
+             * v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.1–§3.4）——**读库入口收敛为「📤 立即注入」**。
+             *
+             * 用户裁决（`docs/D23`）：**写库只有「⚡ 立即 AI 摘要」（+ 单楼），读库只有「📤 立即注入」**；
+             *   「📤 提取记忆」按钮**删除**（它的名字与写库撞车，且 `hooks.recall` 未接线时还回落去跑 AI 摘要
+             *   —— 同一个按钮在两种接线形态下做两件事）。故：
+             *   · 本分支**同时承载** `inject` 与 `extractNow` 两个动作名（后者保留为**同义动作**，
+             *     供命令 / 调试导出 / 冒烟调用；总览**不再有**它的按钮）；
+             *   · **取消** `hooks.recall` → `hooks.extract` 的回落（`docs/D23` §3.3 **C2**）：未接线时如实提示，
+             *     提取由「⚡ 立即 AI 摘要」承担；
+             *   · **接收迁移来的「召回方式」提示**（§3.3 **C1**）：`pushMemoryInject` 本就返回 `method`
+             *     （词表 = `host/extract-flow.js#recallMethodInfo`），此前 `inject` 分支只报「已注入 N 字」→ 白丢。
+             */
             if (typeof hooks.inject !== 'function') { setNote('注入入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
+            setNote('召回中…（向量 / JS / AI 三层，按「提取记忆」页开关）');
             const r = await hooks.inject();
-            setNote(r && r.ok ? ('已注入 ' + r.chars + ' 字') : ('注入失败：' + String((r && r.reason) || '未知')));
+            setNote(injectResultNote(r));
+            result = Object.assign(result, {
+                ok: !!(r && r.ok), action: a, reason: String((r && r.reason) || ''),
+                chars: Number((r && r.chars) || 0), count: Number((r && r.count) || 0),
+            });
         } else if (a === 'clear-inject') {
             if (typeof hooks.clearInject === 'function') hooks.clearInject();
             setNote('已清空注入');
@@ -3028,6 +3120,9 @@ export async function panelAction(action, payload) {
         else if (a === 'settingsSub') {
             const id = String(p.sub || p.kind || '');
             ps.settingsSub = SETTINGS_TABS.some((t) => t.id === id) ? id : ps.settingsSub;
+            // v3.43.0（`应-7`）：手动换子页即清掉定位高亮（否则残留的 `.ftt-cfg-flash` 会让人以为"就是这一项"）
+            ps.cfgFlash = '';
+            setCfgFlashKey('');
         }
         else if (a === 'exportState') {
             if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
@@ -3408,6 +3503,10 @@ export function bindOverlay() {
                 // v3.36.0：待确认项的单条差异化动作（`data-ftt-cid` = 条目 id；`data-ftt-cact` = 动作 id）
                 cid: ds.fttCid || '',
                 cact: ds.fttCact || '',
+                // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的结果项
+                //   （`data-ftt-page` = 目标子页；`data-ftt-cfg-goto` = 目标控件键）
+                page: ds.fttPage || '',
+                cfgGoto: ds.fttCfgGoto || '',
             });
         });
         if (typeof el.addEventListener === 'function') {
@@ -3456,6 +3555,12 @@ export function bindOverlay() {
                     // B9-c：货币「👥 指定角色」选择器的搜索框（V1 `data-ftt-search="currencyTrackPick"`）沿用**页面搜索词槽**
                     //   （V2 = `ps.q['currencyTrackPick']`，与 V1 `pageSearchQuery['currencyTrackPick']` 同口径）
                     void panelAction('search', { kind: tg.dataset.fttSearch, q: tg.value });
+                    return;
+                }
+                if (tg.dataset.fttCfgfind !== undefined) {
+                    // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的检索框 —— 与列表页搜索同款走 `change`
+                    //   （`docs/D9` §10 U12：`input` 只刷读数、`change` 才提交并重绘）
+                    void panelAction('cfgFind', { q: tg.value });
                     return;
                 }
                 if (tg.dataset.fttRelWho !== undefined) { void panelAction('relWho', { who: tg.value }); return; }
@@ -3570,17 +3675,71 @@ export function bindOverlay() {
     return true;
 }
 
-/** Esc 关闭（V1 同款） */
+/** Esc 关闭（V1 同款）+ v3.43.0 标签条 `←/→` 键盘切换（`docs/D22` `应-10`） */
 export function bindEscClose() {
     if (escBound) return true;
     const doc = docEl();
     try {
         if (doc && typeof doc.addEventListener === 'function') {
-            doc.addEventListener('keydown', (e) => { if (e && (e.key === 'Escape' || e.keyCode === 27)) closePanel(); });
+            doc.addEventListener('keydown', (e) => {
+                if (e && (e.key === 'Escape' || e.keyCode === 27)) { closePanel(); return; }
+                try { tabArrowKey(e); } catch (e2) { /* 键盘处理失败不影响 Esc */ }
+            });
             escBound = true;
         }
     } catch (e) { /* 忽略 */ }
     return escBound;
+}
+
+/**
+ * v3.43.0（`docs/D22` `应-10` / `docs/D9` §10 U8）——**标签条的 `←/→` 键盘切换**（WAI-ARIA tabs 最小可用集）。
+ *
+ * 口径：
+ *   · 只在焦点**位于某个页签**时生效（其它位置的左右键不受影响）；`←/→` 循环切换，`Home/End` 跳首尾；
+ *   · 切换 = 走既有 `panelAction('tab')`（与点击同一条路径，含忙态拒绝与重绘），随后把焦点移入**新选中**的页签
+ *     —— 重绘会换掉 DOM 节点，故焦点在重绘后再设一次；页签自身 `tabindex` 由渲染按选中态给出。
+ *   · 类名与 DOM 层级不变（只多两个属性），既有「按类名/结构定位」的审计与冒烟不受影响。
+ * @returns {boolean} 是否消费了该按键
+ */
+export function tabArrowKey(e) {
+    try {
+        if (!e) return false;
+        const key = String(e.key || '');
+        const code = Number(e.keyCode) || 0;
+        const isLeft = key === 'ArrowLeft' || code === 37;
+        const isRight = key === 'ArrowRight' || code === 39;
+        const isHome = key === 'Home' || code === 36;
+        const isEnd = key === 'End' || code === 35;
+        if (!isLeft && !isRight && !isHome && !isEnd) return false;
+        const doc = docEl();
+        if (!doc || typeof doc.querySelectorAll !== 'function') return false;
+        const target = e.target || null;
+        const curEl = target && target.closest ? target.closest('[data-ftt-tab]') : null;
+        if (!curEl) return false;                                  // 焦点不在页签上 → 不处理
+        const nodes = Array.prototype.slice.call(doc.querySelectorAll('[data-ftt-tablist] [data-ftt-tab]'));
+        if (nodes.length < 2) return false;
+        let idx = nodes.indexOf(curEl);
+        if (idx < 0) return false;
+        if (isLeft) idx = (idx - 1 + nodes.length) % nodes.length;
+        else if (isRight) idx = (idx + 1) % nodes.length;
+        else if (isHome) idx = 0;
+        else idx = nodes.length - 1;
+        const next = String(nodes[idx].getAttribute('data-ftt-tab') || '');
+        if (!next) return false;
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        // 与点击同一条路径（含忙态拒绝与重绘）；异步拒绝在这里吞掉，避免键盘事件里冒出未处理拒绝
+        try {
+            const pr = panelAction('tab', { tab: next });
+            if (pr && typeof pr.catch === 'function') pr.catch(() => undefined);
+        } catch (e4) { /* 忽略：切换失败不影响焦点移动 */ }
+        // 重绘后把焦点移到新选中的页签（同一渲染路径内的节点已被替换，故重新查询一次）
+        try {
+            const after = doc.querySelector('[data-ftt-tablist] [data-ftt-tab="' + next + '"]');
+            if (after && typeof after.focus === 'function') after.focus();
+        } catch (e3) { /* 忽略：焦点移不动不影响切换本身 */ }
+        return true;
+    } catch (e) { return false; }
 }
 
 /** 卸载（disable / delete） */

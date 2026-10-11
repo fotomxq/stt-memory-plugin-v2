@@ -1021,8 +1021,10 @@ export function rangeControlHtml(c, spec) {
     const cur = Number.isFinite(num) ? num : (Number.isFinite(Number(def)) ? Number(def) : spec.min);
     const pos = defPosOf(def, spec);
     const unit = String(spec.unit || '');
+    // v3.43.0（`docs/D22` `应-7`）：定位器跳转过来的控件加一次高亮类（滚动条型控件也覆盖到）
+    const flash = (key && key === cfgFlashKey) ? ' ftt-cfg-flash' : '';
     const show = (v) => (unit === '%' ? (fmtRatio(v) + '%') : fmtRatio(v));
-    return '<div class="ftt-field ftt-field-range"' + tip + '><label>' + esc(label) + mark + '</label>'
+    return '<div class="ftt-field ftt-field-range' + flash + '"' + tip + '><label>' + esc(label) + mark + '</label>'
         + '<input type="range" data-ftt-cfg="' + esc(key) + '" min="' + attr2(spec.min) + '" max="' + attr2(spec.max) + '" step="' + attr2(spec.step) + '"'
         + ' value="' + attr2(cur) + '"' + (pos === null ? '' : (' style="--ftt-range-def:' + pos + '%"')) + tip + '>'
         + '<output class="ftt-range-out" data-ftt-range-out="' + esc(key) + '">' + esc(show(cur)) + '</output>'
@@ -1039,11 +1041,14 @@ export function settingsControlHtml(c) {
     const hint = String(c.hint || '');
     const tip = hint ? (' title="' + esc(hint) + '"') : '';
     const mark = hint ? (' <span class="ftt-hint-mark"' + tip + '>ⓘ</span>') : '';
+    // v3.43.0（`docs/D22` `应-7`）：由「设定页控件定位器」跳转过来时，给该控件加一次高亮类
+    //   （`cfgGoto` 设置、渲染时消费；**只加类名，不改结构与控件语义**）
+    const flash = (key && key === cfgFlashKey) ? ' ftt-cfg-flash' : '';
     if (type === 'checkbox') {
         // V1 `swForce`：被强制项（如「及时分析」开启时的 autoExtract/autoSummary/injectCurrentPrompt）显示为强制开启且禁用
         const forced = !!(c.forceWhen && (() => { try { return readControl(String(c.forceWhen)) === true; } catch (e) { return false; } })());
         const on = forced || (v !== false && v !== undefined && v !== null && v !== '' && v !== 0);
-        return '<div class="ftt-field"><label' + tip + '>' + esc(label) + mark + '</label>'
+        return '<div class="ftt-field' + flash + '"><label' + tip + '>' + esc(label) + mark + '</label>'
             + '<label class="ftt-switch"' + tip + '><input type="checkbox" data-ftt-cfg="' + esc(key) + '"' + (on ? ' checked' : '') + (forced ? ' disabled' : '') + '><span class="ftt-slider"></span></label>'
             + '<span class="ftt-muted">' + (on ? '已开启' : '已关闭') + (forced ? '（由「及时分析」强制开启）' : '') + '</span></div>';
     }
@@ -1060,15 +1065,15 @@ export function settingsControlHtml(c) {
         const cur = String(v == null ? '' : v);
         const items = (list.length ? list : [cur]).map(norm);
         const opts = items.map((o) => '<option value="' + esc(o.v) + '"' + (cur === o.v ? ' selected' : '') + '>' + esc(o.label) + '</option>').join('');
-        return '<div class="ftt-field"><label' + tip + '>' + esc(label) + mark + '</label><select data-ftt-cfg="' + esc(key) + '"' + tip + '>' + opts + '</select></div>';
+        return '<div class="ftt-field' + flash + '"><label' + tip + '>' + esc(label) + mark + '</label><select data-ftt-cfg="' + esc(key) + '"' + tip + '>' + opts + '</select></div>';
     }
     if (type === 'textarea') {
-        return '<div class="ftt-field ftt-field-col"><label' + tip + '>' + esc(label) + mark + '</label><textarea data-ftt-cfg="' + esc(key) + '"' + tip + ' rows="4">' + esc(v == null ? '' : v) + '</textarea></div>';
+        return '<div class="ftt-field ftt-field-col' + flash + '"><label' + tip + '>' + esc(label) + mark + '</label><textarea data-ftt-cfg="' + esc(key) + '"' + tip + ' rows="4">' + esc(v == null ? '' : v) + '</textarea></div>';
     }
     // v2.84.0：比例 / 阈值 / 概率 / 占比 → 统一滚动条（含默认值刻度与文字提示）
     if (type === 'text' && RANGE_SPECS[key]) return rangeControlHtml(c, RANGE_SPECS[key]);
     const missing = (v === undefined);
-    return '<div class="ftt-field"><label' + tip + '>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + mark + '</label>'
+    return '<div class="ftt-field' + flash + '"><label' + tip + '>' + esc(label) + (missing ? ' <span class="ftt-muted">（未定义）</span>' : '') + mark + '</label>'
         + '<input type="' + (type === 'number' ? 'number' : 'text') + '" data-ftt-cfg="' + esc(key) + '"' + tip + ' value="' + esc(v == null ? '' : v) + '"></div>';
 }
 
@@ -1586,3 +1591,51 @@ export function settingsPagesInfo() {
         totalControls: Object.keys(SETTINGS_CONTROLS).reduce((n, k) => n + SETTINGS_CONTROLS[k].length, 0),
     };
 }
+
+/**
+ * v3.43.0（`docs/D22` `应-7` / `docs/D19` §3.1）——**设定页控件定位：全站控件索引检索**（纯函数）。
+ *
+ * 背景（`D19` §2 K3）：设定页有 **15 个子页 / 159 个控件**，而列表页早有搜索、**设定页没有** ——
+ *   要改某个参数只能一页页翻；`D19` §3.1 的验收是「**任一控件名可在 3 次操作内定位**」。
+ *
+ * 检索口径：对**全部子页**的控件按 `label` / `key` / `hint` 做**大小写不敏感子串**匹配；
+ *   排序 = ① `label` 前缀命中 > ② `label` 包含 > ③ `key` 包含 > ④ `hint` 包含（同级按子页序）。
+ *   空查询 → 空数组（不返回全量，避免被当成"浏览模式"）。
+ *
+ * @param {string} query 关键词
+ * @param {number} [limit] 返回上限（默认 12，最多 50）
+ * @returns {Array<{key:string, label:string, page:string, pageLabel:string, hint:string, rank:number}>}
+ */
+export function findSettingsControls(query, limit) {
+    const q = String(query == null ? '' : query).trim().toLowerCase();
+    if (!q) return [];
+    const cap = Math.max(1, Math.min(50, Math.round(Number(limit) || 12)));
+    const out = [];
+    for (const t of SETTINGS_TABS) {
+        const controls = Array.isArray(SETTINGS_CONTROLS[t.id]) ? SETTINGS_CONTROLS[t.id] : [];
+        for (const c of controls) {
+            if (!c || !c.key) continue;
+            const label = String(c.label || c.key);
+            const key = String(c.key);
+            const hint = String(c.hint || '');
+            const l = label.toLowerCase(), k = key.toLowerCase(), h = hint.toLowerCase();
+            let rank = -1;
+            if (l.indexOf(q) === 0) rank = 0;
+            else if (l.indexOf(q) >= 0) rank = 1;
+            else if (k.indexOf(q) >= 0) rank = 2;
+            else if (h.indexOf(q) >= 0) rank = 3;
+            if (rank < 0) continue;
+            out.push({ key: key, label: label, page: t.id, pageLabel: String(t.label || t.id), hint: hint, rank: rank });
+        }
+    }
+    const pageIdx = (id) => SETTINGS_TABS.findIndex((x) => x.id === id);
+    out.sort((a, b) => (a.rank - b.rank) || (pageIdx(a.page) - pageIdx(b.page)));
+    return out.slice(0, cap);
+}
+
+/** 跳转后要高亮的控件键（渲染时给该控件加 `.ftt-cfg-flash`；换页/清除时置空） */
+let cfgFlashKey = '';
+/** 设置高亮键（`ui/panel.js` 的 `cfgGoto` 用） */
+export function setCfgFlashKey(key) { cfgFlashKey = String(key == null ? '' : key); return cfgFlashKey; }
+/** 读当前高亮键（渲染与测试用） */
+export function cfgFlashKeyNow() { return cfgFlashKey; }

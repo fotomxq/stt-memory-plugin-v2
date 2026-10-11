@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.42.0",
+  "version": "3.43.0",
   "updatedAt": "2026-10-10",
   "generatedAt": "2026-10-10",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.43.0",
+      "date": "2026-10-10",
+      "title": "docs/D22 W3 应用维度主体（9 行 + 顺带 1 行；1 行记 🟡 部分）",
+      "points": [
+        "用户裁决：（本轮两条）：① 范围 = W3 中无前置的 9 行（应-4 / 应-5 / 应-7 / 应-10 / 应-11 / 应-12 / 应-13 / 应-14 / 应-18…",
+        "同一份口径被两处写死的地方，本轮一律收归一处：类名计数（⑤）→ README §3 + check-docs-facts；危险动作清单 → ui/panel.js#DANGER_…",
+        "有意偏离 V1 的一处：core/repair.js 的跳过提示是「可观测性增强」，V1 golden oracle（tests/fixtures/v1-golden-*.jso…"
+      ]
+    },
     {
       "version": "3.42.0",
       "date": "2026-10-10",

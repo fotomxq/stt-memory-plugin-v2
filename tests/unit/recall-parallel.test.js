@@ -200,39 +200,42 @@ A('E2 拦截器按开关注入：`injectCurrentPrompt`/`timelyAnalysis` 都关�
 // ---------- F 组：面板按钮与诊断 ----------
 await (async () => {
     boot({ injectCurrentPrompt: true, useVector: false, jsExtractEnabled: true });
-    const calls = { recall: 0, extract: 0 };
-    setPanelHooks2({ recall: async () => { calls.recall += 1; return { ok: true, count: 3, chars: 120, ms: 7, hitLayer: 'js', busy: false }; }, extract: async () => { calls.extract += 1; return { ok: true }; } });
+    const calls = { inject: 0, extract: 0 };
+    setPanelHooks2({ inject: async () => { calls.inject += 1; return { ok: true, count: 3, chars: 120, ms: 7, hitLayer: 'js' }; }, extract: async () => { calls.extract += 1; return { ok: true }; } });
     openPanel('overview');
-    await panelAction('extractNow', {});
+    await panelAction('inject', {});
     const note = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
-    A('F1 「📤 提取记忆」走**召回**入口（不是 AI 摘要）：note 给出条数/层级/字数/耗时，且未调用旧 extract 入口',
-        calls.recall === 1 && calls.extract === 0 && note.indexOf('召回完成：3 条（JS 抽取层）') >= 0
-        && note.indexOf('注入 120 字') >= 0 && note.indexOf('7ms') >= 0,
+    A('F1 读库入口是「📤 立即注入」：note 给出条数 / 层级 / 字数 / 耗时，且**不走** AI 摘要入口（`extractNow` 已收为同义动作）',
+        calls.inject === 1 && calls.extract === 0 && note.indexOf('已注入：召回 3 条') >= 0
+        && note.indexOf('120 字') >= 0 && note.indexOf('JS 抽取层') > 0 && note.indexOf('7ms') >= 0,
         J({ calls: calls, note: note }));
 
     // F1b v3.26.3（用户要求「总览的召回完成提示，应增加用什么方式召回的」）：
-    //   宿主给出 `method`（统一词表 + 降级原因）时，提示行必须把它写出来；`kept-last` 也要如实说明。
-    setPanelHooks2({ recall: async () => ({ ok: true, count: 5, chars: 300, ms: 9, hitLayer: 'js', busy: false, method: { key: 'local', label: '本地关键词召回', note: '关键词 3 个 · 向量无命中 → 已降级', keywords: ['甲', '乙', '丙'] } }) });
-    await panelAction('extractNow', {});
+    //   v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.3 **C1**）：提示的**承载位置**由被删除的
+    //   「📤 提取记忆」按钮**迁移到「📤 立即注入」** —— 宿主给出 `method` 时必须写出来；`kept-last` 也要如实说明。
+    setPanelHooks2({ inject: async () => ({ ok: true, count: 5, chars: 300, ms: 9, hitLayer: 'js', method: { key: 'local', label: '本地关键词召回', note: '关键词 3 个 · 向量无命中 → 已降级', keywords: ['甲', '乙', '丙'] } }) });
+    await panelAction('inject', {});
     const noteM = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
-    A('F1b 召回提示带**召回方式**（v3.26.3）：`method.label` + 降级原因写进总览提示行',
-        noteM.indexOf('召回完成：5 条') >= 0 && noteM.indexOf('本地关键词召回') > 0
-        && noteM.indexOf('向量无命中 → 已降级') > 0 && noteM.indexOf('注入 300 字') > 0,
+    A('F1b 注入提示带**召回方式**（v3.26.3 的成果随 `应-14` 迁移而保留）：`method.label` + 降级原因写进总览提示行',
+        noteM.indexOf('已注入：召回 5 条') >= 0 && noteM.indexOf('本地关键词召回') > 0
+        && noteM.indexOf('向量无命中 → 已降级') > 0 && noteM.indexOf('300 字') > 0,
         J({ note: noteM }));
 
-    setPanelHooks2({ recall: async () => ({ ok: true, reason: 'kept-last', count: 0, chars: 512, ms: 4, hitLayer: '', busy: false, method: { key: 'local', label: '本地关键词召回', note: '关键词 1 个', keywords: ['甲'] } }) });
-    await panelAction('extractNow', {});
+    setPanelHooks2({ inject: async () => ({ ok: true, reason: 'kept-last', count: 0, chars: 512, ms: 4, hitLayer: '', method: { key: 'local', label: '本地关键词召回', note: '关键词 1 个', keywords: ['甲'] } }) });
+    await panelAction('inject', {});
     const noteK = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
     A('F1c 「沿用上次注入」（kept-last）如实说明：不再谎报条数，并保留召回方式',
-        noteK.indexOf('沿用上次注入 512 字') > 0 && noteK.indexOf('本地关键词召回') > 0,
+        noteK.indexOf('沿用上次 512 字') > 0 && noteK.indexOf('本地关键词召回') > 0,
         J({ note: noteK }));
 
-    // 回落：未接线 recall（显式置空，避免上一次注入的钩子残留）→ 仍可用旧入口
-    setPanelHooks2({ recall: undefined, extract: async () => { calls.extract += 1; return { ok: true, added: 1, total: 1 }; } });
-    await panelAction('extractNow', {});
-    A('F2 回落：宿主未接线 `hooks.recall` 时仍走旧提取入口（不报「入口未就绪」）',
-        calls.extract === 1 && String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '').indexOf('新增 1 条') >= 0,
-        J(calls));
+    // F2 v3.43.0 **契约变更**（`docs/D23` §3.3 **C2**）：**取消** `hooks.recall` → `hooks.extract` 的回落 ——
+    //   「一个按钮做两件事」的来源被消除；未接线时如实提示「注入入口未就绪」，提取由「⚡ 立即 AI 摘要」承担。
+    setPanelHooks2({ inject: undefined, extract: async () => { calls.extract += 1; return { ok: true, added: 1, total: 1 }; } });
+    const rNoHook = await panelAction('inject', {});
+    A('F2 未接线 `hooks.inject` 时**如实拒绝**（不再回落到 AI 摘要入口）：reason=no-hook 且提示写明「注入入口未就绪」',
+        rNoHook && rNoHook.ok === false && rNoHook.reason === 'no-hook' && calls.extract === 0
+        && String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '').indexOf('注入入口未就绪') >= 0,
+        J({ ret: rNoHook, calls: calls }));
 })();
 
 A('F3 诊断：`pushStats()` 给出 joined / lastMs / lastLayer / **lastMethod（召回方式）**，`injectInFlight()` 完成后为 false', (() => {
@@ -262,12 +265,15 @@ A('G1 `recallMethodInfo` 六种情形：向量 / 本地（降级）/ 本地（�
         && noflow.note.indexOf('未进入三层流程') >= 0 && noflow.note.indexOf('AI 层未启用') > 0;
 })(), J({ vec: recallMethodInfo({ hitLayer: 'vector', keywords: ['甲'], vectorEnabled: true }), loc: recallMethodInfo({ hitLayer: 'js', flowEntered: false, vectorEnabled: false }) }));
 
-A('F4 按钮文案与 title 说明「不占分析管道、可与摘要并行、发送前自动刷新」', (() => {
-    boot({});
-    openPanel('overview');
-    const h = panelBodyHtml('overview');
-    return h.indexOf('📤 提取记忆') > 0 && h.indexOf('不占用分析管道') > 0
-        && h.indexOf('可与 AI 摘要并行') > 0 && h.indexOf('发送前也会自动刷新一次') > 0;
-})(), '见断言');
+A('F4 v3.43.0（`docs/D23` §3.1 / §3.3 C5）：总览**不再有**「📤 提取记忆」按钮；其「不占分析管道 / 可与 AI 摘要并行 / 发送前自动刷新」的说明**迁移到「📤 立即注入」**',
+    (() => {
+        boot({});
+        openPanel('overview');
+        const h = panelBodyHtml('overview');
+        return h.indexOf('📤 提取记忆') < 0 && h.indexOf('data-ftt-action="extractNow"') < 0
+            && h.indexOf('📤 立即注入') > 0 && h.indexOf('data-ftt-action="inject"') > 0
+            && h.indexOf('不占用分析管道') > 0
+            && h.indexOf('可与 AI 摘要并行') > 0 && h.indexOf('发送前也会自动刷新一次') > 0;
+    })(), '见断言');
 
 R.done();

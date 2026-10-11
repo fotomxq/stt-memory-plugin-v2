@@ -3,6 +3,41 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.43.0（2026-10-10）· `docs/D22` **W3 应用维度主体**（9 行 + 顺带 1 行；1 行记 🟡 部分）
+
+**用户要求**（原话）：「新版本 / 开发W3待开发事项」。
+**用户裁决**（本轮两条）：① 范围 = W3 中**无前置的 9 行**（`应-4` / `应-5` / `应-7` / `应-10` / `应-11` / `应-12` / `应-13` / `应-14` / `应-18`）；
+② `docs/D19` Q1–Q5 **整批采纳建议默认**、`docs/D25` Q1/Q2 **采纳建议默认**。
+
+| # | 条目 | 落点 | 改动 |
+| --- | --- | --- | --- |
+| ① | `应-4`（销 U52） | `ui/api-page.js` · `scripts/check-ui-spec.js` | v3.42.0 引入的 **3 处真 `<table>` 全部改回「列表行 + 折叠明细」**（标签行 / 最近明细 / 价格清单 → `.ftt-item ftt-inline` + `hintDetailsHtml('明细'…)`）；新增门禁 **C12**（`docs/D9` §10 **U11** 真表格额度，**只减不增**），唯一保留 = `ui/rel-table.js` 的可编辑表单网格（已在 `D9` §4 登记为**真表格例外**） |
+| ② | `应-5`（销 U54） | 新增 `tests/unit/ui-interaction-contract.test.js` | 用**真实事件**核「`input` 只刷读数（不写配置 / 不落盘 / 不重绘）、`change` 才写 + 落盘 + 重绘」的**交互契约**（`docs/D9` §8 **S3**）—— 7 项 |
+| ③ | `应-7`（销 U122） | `ui/settings-pages.js` · `ui/panel.js` | 设定子页新增**控件定位器**（`findSettingsControls` 全站索引：label / key / hint 三路命中 + 前缀优先排序）+ 跳转高亮（`cfgGoto` → 新键 `ftt-cfg-flash`，改子页 / 改检索词即清）—— **15 页 / 159 控件不必再翻页找** |
+| ④ | `应-10`（销 U125） | `ui/panel.js` | 补齐 **ARIA tabs**：选中页签 `tabindex="0"` / 其余 `-1`，`←` / `→`（+ `Home` / `End`）切页并把**焦点移入新页签**（`tabArrowKey`，与 `Esc` 同一绑定）—— 新增 `tests/unit/panel-aria-tabs.test.js` 6 项 |
+| ⑤ | `应-11`（销 U56 · U57） | `docs/README.md` §3 · `scripts/check-docs-facts.js` · `docs/D9` | `.ftt-*` 类名计数收归**唯一事实源**（README §3「UI 类名数」= **230 / 201**，由 `check-docs-facts.js#uiClassNameCounts` **逐次实测**，不再手写）；**逐类名归属明确不登记**（理由写进 `D9` 附·核实边界）—— 无从复现的 **226** 一并不再流传 |
+| ⑥ | `应-12`（销 U58–U60） | `ui/panel.js` · `ui/scene-tree.js` · 新增 `tests/unit/list-empty-states.test.js` | ① 逐页核 **11 个列表页空态**并**当场修掉一处真缺陷**：通用空态原为「（该类目暂无条目）」（9 字、无下一步，10 页共用）→ 改**两段式**（「没有匹配的条目…」/「该类目暂无条目。点上方『⚡ 立即 AI 摘要』…」）；② 危险动作覆盖已由 `check-ui-spec` **C7** 机械保证；③ 移动端真机**如实登记「未复现（环境限制）」** |
+| ⑦ | `应-13`（销 U86） | `docs/D9` §4 · `docs/D12` §7 | `D12` Q7 的**「楼层信息已失效」展示状态**登记进 `D9` §4「页私有件」—— 实际形态 = `core/floor-cover.js#floorPositionLabel` 的 `原文已移除（原 N-M楼）` / `N-M楼（原 X-Y楼）` |
+| ⑧ | `应-14`（销 U139） | `ui/panel.js` · `host/inject.js` | **补偿先行**：先把「不占用分析管道 / 可与 AI 摘要并行 / 发送前也会自动刷新一次」迁到「📤 立即注入」，**再删**总览 `data-ftt-action="extractNow"` 按钮；同轮**删掉 `hooks.recall` 未接线时回退 `hooks.extract` 的旧路径**（召回与注入本就是同一条通路）→ 缺入口时改出 `注入入口未就绪` 早退说明；管线标签改「召回 + 注入（刷新注入）」，注入结果读数改「已注入：召回 N 条 · X 字（…）· Yms」 |
+| ⑨ | `应-18`（销 U146） | `core/repair.js` | 自动修复第 ① 段第 8 / 9 步（楼层突变识别、剧情时钟刷新）**钩子未接线时不再静默跳过** → 补 `else` 分支写「跳过原因 —— 钩子未接线（无宿主取楼层 / 时钟同步能力）」note + 调试日志；返回值新增 `floorJumpSkipped` / `clockSyncSkipped` |
+| ⑩ | `应-2`（W0，顺带；销 U120） | `docs/D9` §10 U1 · `docs/D13` §7 Q8 | 两处「大列表怎么展示」的裁决**互引并写明分工**（50 条/屏渐进展示 vs 渲染成本控制「暂不做」），前置正是 `D19` Q1（本轮已裁决） |
+
+**同一份口径被两处写死的地方，本轮一律收归一处**：类名计数（⑤）→ `README` §3 + `check-docs-facts`；危险动作清单 → `ui/panel.js#DANGER_ACTION_PROMPTS` + `check-ui-spec` C7；
+真表格额度 → `check-ui-spec` C12 + `D9` §4 例外登记；**本 `CHANGELOG` 与本轮台账（`docs/D22` §4.4 / `docs/D17`）都不写死这些条数**。
+
+**有意偏离 V1 的一处**：`core/repair.js` 的跳过提示是「**可观测性增强**」，V1 golden oracle（`tests/fixtures/v1-golden-*.json`）里没有这两条 note。
+按 `开发守则.md` §2.4 处理 —— **不改编 golden**，而在 `tests/unit/repair-golden.test.js` 里做**显式归一**（`SKIP_NOTES` 剥离后再比对）+ 另设一条断言锁住 `floorJumpSkipped === 'no-hook'`；`docs/D25` §3.2 / §8 与 `docs/D17` U146 同步写明。
+
+**测试**：新增 `tests/unit/panel-aria-tabs.test.js`（6）· `tests/unit/list-empty-states.test.js`（3）· `tests/unit/settings-locator.test.js`（10）· `tests/unit/ui-interaction-contract.test.js`（7）；
+同步改写 `tests/unit/recall-parallel.test.js`（F1/F1b/F1c 改指 `inject`；**F2 反转为「不得回退」**；F4 断言按钮已删 + 提示已迁）、`tests/unit/repair-golden.test.js`（P1 显式归一 + 新断言）、`tests/unit/panel.test.js` · `tests/unit/notify.test.js` · `tests/unit/parallel-golden.test.js` · `tests/smoke-test.js`。
+**门禁**：`npm run gate` 全绿（含新 C12）。
+
+**本轮**：`docs/D19` v1.1（§6 转**决策记录**：Q1–Q5 逐条落地状态）· `docs/D25`（Q1/Q2 标已裁决、Q3 标已落地）· `docs/D9`（§4 页私有件 + 真表格例外 · §9 新增 C12 · §10 U1 互引 · 附·核实边界改写）·
+`docs/D12`（Q7 指回 `D9` §4）· `docs/04`（总览按钮 / 召回方式 / 无障碍语义三行）· `docs/README`（§3 新增「UI 类名数」行 + 计数同步）·
+`docs/D22` §4.4（W3 状态回填 + 「本版口径」4 条）· `docs/D17` v1.12（U52 / U54 / U56 / U57 / U58 / U59 / U60🟡 / U86 / U120 / U122 / U125 / U139 / U146）。
+**剩余未开工**（如实登记）：`应-1`（50 条/屏，裁决已定但不在本轮范围）· `应-6`（`check-ui-spec` 升阻断，`D19` Q4 定为**下一实现轮**）·
+`应-8` / `应-9`（已裁决，不在本轮范围）· `应-17`（自动修复触发与闸门修正）· `应-19` / `应-20` / `应-21`（前置 `数-19` / `数-20` / `数-22` / `技-26` 未落地）。
+
 ## v3.42.0（2026-10-10）· 设定新增 **Token 预估与花费**（被动记账 · 价格清单 · 人民币估算）
 
 **用户要求**（原话）：「在设定中新增token预估，尤其是请求token、接收、缓存等，并结合大模型价格清单预测花费了多少人民币。注意该功能不需要高频次，只需被动每次请求记录一下统计信息即可。」
