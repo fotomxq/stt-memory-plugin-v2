@@ -140,6 +140,10 @@ export function installDevtools(hooks) {
             reads: (opts) => (hooks && typeof hooks.reads === 'function' ? hooks.reads(opts || {}) : null),
             readsText: (limit) => (hooks && typeof hooks.readsText === 'function' ? hooks.readsText(limit) : ''),
             readsClear: () => (hooks && typeof hooks.readsClear === 'function' ? hooks.readsClear() : false),
+            // v3.42.0（用户要求「设定中新增 token 预估」）：AI 用量与花费账本（**只读**两出口；
+            //   清空 / 改价只在设定页，避免调试导出被误用成写入口）
+            aiUsage: () => (hooks && typeof hooks.aiUsage === 'function' ? hooks.aiUsage() : null),
+            aiUsageRecent: (limit) => (hooks && typeof hooks.aiUsageRecent === 'function' ? hooks.aiUsageRecent(limit) : []),
             loadInfo: () => (hooks && typeof hooks.loadInfo === 'function' ? hooks.loadInfo() : null),
             // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
             clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),

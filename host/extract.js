@@ -187,6 +187,9 @@ async function genTracked(gen, args, label, phase, callLabel) {
     try { runId = (beginPipeline(label, { chars: chars, phase: phase || '请求 AI', kind: 'ai' }) || {}).runId; } catch (e) { /* 忽略 */ }
     const args2 = Object.assign({}, a, {
         onToken: (chunk) => { try { addStreamChunk(chunk, { id: runId }); } catch (e) { /* 忽略 */ } },
+        // v3.42.0（用量账本）：把本次调用的**归组标签**透传给 `rawGenerate` —— 记账用，不改变发送语义
+        //   （`o.ai` 注入的测试桩忽略未知键；`rawGenerate` 只把它当 `usageLabel`）
+        usageLabel: callLabel === undefined ? label : callLabel,
     });
     let resp;
     try {

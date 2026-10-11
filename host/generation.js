@@ -6,6 +6,10 @@
 import { getCtx } from './st-api.js';
 import { extractJsonObject } from '../core/util.js';
 import { sendWithTarget } from './api-channel.js';
+// v3.42.0（用户要求「设定中新增 token 预估…被动每次请求记录统计信息」）：
+//   `profile` / `direct` 通道的记账由 `host/api-channel.js` 的发送函数内部完成（那里能拿到真实 `usage`）；
+//   本文件只补 **`host` 通道**（`generateRaw` 不回报 `usage` → 按字符数估算）。
+import { noteAiUsage, hostModelName } from './ai-usage.js';
 
 function ctxHas(name) {
     const ctx = getCtx();
@@ -25,12 +29,13 @@ function ctxHas(name) {
  *   `temperature` / `top_p` 在 `generateRaw` 签名里**没有**对应形参（`public/script.js:4109`），
  *   该通道下**不生效**（UI 已如实标注）。
  */
-export async function rawGenerate({ systemPrompt, prompt, prefill, jsonSchema, target, onToken } = {}) {
+export async function rawGenerate({ systemPrompt, prompt, prefill, jsonSchema, target, onToken, usageLabel } = {}) {
     const t = target && typeof target === 'object' ? target : null;
     if (t && (t.channel === 'profile' || t.channel === 'direct')) {
         // v2.95.0：`onToken` 透传给「连接配置」通道 → 走酒馆**官方流式**（`custom.stream=true` 的生成器）；
         //   direct（自建连接）与 host（`generateRaw`）暂不支持逐块回调 —— 两者都只做一次性返回。
-        const r = await sendWithTarget(t, { systemPrompt, prompt, onToken: onToken });
+        // v3.42.0：`usageLabel` 只作**用量账本的归组标签**透传（不改变发送语义与返回形状）。
+        const r = await sendWithTarget(t, { systemPrompt, prompt, onToken: onToken, label: usageLabel });
         return r.ok ? { ok: true, text: String(r.text == null ? '' : r.text), via: t.channel } : { ok: false, error: String(r.error || 'api-error') };
     }
     const ctx = getCtx();
@@ -43,10 +48,22 @@ export async function rawGenerate({ systemPrompt, prompt, prefill, jsonSchema, t
     // host 通道的 max_tokens：经 responseLength 临时覆盖（仅当配置了上限且为正数）
     const mt = t ? Number(t.maxTokens) : NaN;
     if (Number.isFinite(mt) && mt > 0) payload.responseLength = mt;
+    const t0 = Date.now();
     try {
         const text = await ctx.generateRaw(payload);
+        // v3.42.0：宿主通道**拿不到 `usage`** → 按 `systemPrompt + prompt` 字符数估算（账本标 `estimate`）
+        noteAiUsage({
+            label: usageLabel, model: (t && t.model) || hostModelName() || '(未识别)', channel: 'host',
+            systemPrompt: systemPrompt, prompt: prompt, respChars: String(text == null ? '' : text).length,
+            ok: true, ms: Date.now() - t0,
+        });
         return { ok: true, text: String(text == null ? '' : text), via: 'host' };
     } catch (e) {
+        // v3.42.0：失败的请求**只记次数**（token 与花费记 0 —— 请求未被计费）
+        noteAiUsage({
+            label: usageLabel, model: (t && t.model) || hostModelName() || '(未识别)', channel: 'host',
+            systemPrompt: systemPrompt, prompt: prompt, promptChars: 0, respChars: 0, ok: false, ms: Date.now() - t0,
+        });
         return { ok: false, error: String((e && e.message) || e) };
     }
 }

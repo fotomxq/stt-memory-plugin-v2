@@ -47,6 +47,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
     //   已分析字段的内容指纹（上限 300，超出淘汰最旧）+ 最近一次结果与最近 10 条新增明细；
     //   同为「运行账本」而非记忆数据，故留在 extensionSettings（`DATA_VERSION` 不变）。
     nsfwAnalyzeLog: {},
+    // v3.42.0（用户要求「设定中新增 token 预估，尤其是请求 token、接收、缓存等，并结合大模型价格清单
+    //   预测花费了多少人民币。该功能不需要高频次，只需被动每次请求记录一下统计信息」）：
+    //   **AI 用量与花费账本** —— 环形明细（最近 200 条）+ 累计聚合 + 单价覆盖 + 汇率。
+    //   同为「运行账本」而非记忆数据，故留在 extensionSettings（`DATA_VERSION` 不变）；
+    //   也**不进跨端记忆同步**（各端按自己的用量计费，合并会互相污染）。
+    aiUsage: {},
     // 迁移
     migratedFrom: '',
 });
