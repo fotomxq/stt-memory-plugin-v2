@@ -44,9 +44,11 @@ const cfgKeys = (h) => Array.from(String(h).matchAll(/data-ftt-cfg="([^"]+)"/g))
 const at = (h, s) => String(h).indexOf(s);
 // v2.83.0：关联层（谁知道 / 谁相关）三项控件落在本页 → 第 6 节（在「货币记录」之后、「各大类单条字数上限」之前）
 const TITLES = ['维度分组（总开关）', '各维度独立子开关与分组（独立分组时生效）', '分析范围', '情节分段总结（情节页「🧩 分段总结」）',
-    '货币记录', '关联层（谁知道 / 谁相关）', '各大类单条字数上限'];
+    '货币记录', '关联层（谁知道 / 谁相关）', '各大类单条字数上限',
+    // v3.44.0（`docs/D22` W4）：入库卫生两开关（`数-11` ① / `数-13` ①，都默认关）独立成节，排在字数上限之后
+    '入库卫生（两个补丁 · 默认关）'];
 
-A('A1 七节结构：维度分组 → 各维度子开关 → 分析范围 → 情节分段总结 → 货币记录 → 关联层 → 各大类单条字数上限', (() => {
+A('A1 八节结构：维度分组 → 各维度子开关 → 分析范围 → 情节分段总结 → 货币记录 → 关联层 → 各大类单条字数上限 → 入库卫生', (() => {
     const idx = TITLES.map((t) => at(HTML, t));
     return J(secTitles(HTML)) === J(TITLES) && idx.every((v) => v >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1]);
 })(), J(secTitles(HTML)));
@@ -65,12 +67,12 @@ A('A2 最底部一组已归位：「分析范围」只含分段读取楼层数�
         && cfgKeys(HTML.slice(iSeg, at(HTML, '货币记录'))).join(',') === 'plotSegmentBatchAtoms,plotSegmentProtectManual,plotSegmentIncremental,plotSegmentTextLimit';
 })(), J({ scope: cfgKeys(HTML.slice(at(HTML, '分析范围'), at(HTML, TITLES[3]))) }));
 
-A('A3 控件一个不少：20 个控件 + 代理键 `dimensionSeparate` = 21，且各出现一次（v2.83.0 关联层 +3）', (() => {
+A('A3 控件一个不少：22 个控件 + 代理键 `dimensionSeparate` = 23，且各出现一次（v2.83.0 关联层 +3；v3.44.0 入库卫生 +2）', (() => {
     const need = SETTINGS_CONTROLS.analyze.map((c) => String(c.key));
     const got = cfgKeys(HTML);
     const miss = need.filter((k) => got.indexOf(k) < 0);
     const dup = need.filter((k) => got.filter((x) => x === k).length !== 1);
-    return need.length === 20 && miss.length === 0 && dup.length === 0 && got.length === 21
+    return need.length === 22 && miss.length === 0 && dup.length === 0 && got.length === 23
         && got.indexOf('dimensionSeparate') === 0;
 })(), J({ need: SETTINGS_CONTROLS.analyze.length, got: cfgKeys(HTML).length }));
 
@@ -79,10 +81,12 @@ A('A4 两节各一句短提示（≤90 字、无历史版本字样）；长解�
     const re = /<div class="ftt-muted" data-ftt-short-hint>([\s\S]*?)<\/div>/g;
     let m;
     while ((m = re.exec(HTML)) !== null) hints.push(String(m[1]).replace(/<[^>]+>/g, '').trim());
-    return hints.length === 5 && hints.every((t) => t.length > 0 && t.length <= 90)
+    return hints.length === 6 && hints.every((t) => t.length > 0 && t.length <= 90)
         // v3.23.0：默认段长 10 → **3 个正文/段**（全部 AI 摘要入口共用；文案随之更新）
         && hints[0].indexOf('默认 3') > 0 && hints[0].indexOf('全部 AI 摘要入口共用') > 0 && hints[1].indexOf('不注入') > 0
         && hints[2].indexOf('货币') > 0 && hints[3].indexOf('关联层') >= 0 && hints[4].indexOf('硬截断') > 0
+        // v3.44.0：入库卫生节的短提示必须写清「默认关闭」（否则用户会以为已经在拦空壳 / 已经在强制锚点）
+        && hints[5].indexOf('默认关闭') >= 0
         && hints.every((t) => t.indexOf('V1') < 0)
         && HTML.indexOf('<details') > 0 && HTML.indexOf('ftt-hint-body') > 0
         && HTML.indexOf('**') < 0;
@@ -113,18 +117,22 @@ A('A7 兜底：未登记的控件键落入末节「其它」（当前分析页�
         && HTML.indexOf('<div class="ftt-sec-title">其它</div>') < 0;
 })(), '见断言');
 
-A('A8 控件表仍是 V1 原标签（渲染层未改文案）：5 项标签逐字一致', (() => {
-    const labels = SETTINGS_CONTROLS.analyze.slice(0, 5).map((c) => String(c.label));
+A('A8 控件表仍是 V1 原标签（渲染层未改文案）：V1 来源的 5 项标签逐字一致（v3.44.0 新增的两项另行断言）', (() => {
+    // v3.44.0：新增的两项（入库卫生）排在控件表最前 → 先滤掉再取前 5 项，保持本断言「V1 原标签未被动过」的原意
+    const V2_ONLY = ['relAnchorRuleEnabled', 'shellGuardEnabled'];
+    const v1Controls = SETTINGS_CONTROLS.analyze.filter((c) => V2_ONLY.indexOf(String(c.key)) < 0);
+    const labels = v1Controls.slice(0, 5).map((c) => String(c.label));
     const want = ['分段读取楼层数（每段分析量）', '每次打包给 AI 的情节条数（默认 30）',
         '保护已存在的时间范围（不覆盖）', '只整理未覆盖的情节（增量）', '单条剧情线概述字数上限（默认 400）'];
-    return J(SETTINGS_CONTROLS.analyze.slice(0, 5).map((c) => String(c.label))) === J(want)
-        && want.every((l) => HTML.indexOf(l) > 0);
+    return J(v1Controls.slice(0, 5).map((c) => String(c.label))) === J(want)
+        && want.every((l) => HTML.indexOf(l) > 0)
+        && SETTINGS_CONTROLS.analyze.filter((c) => V2_ONLY.indexOf(String(c.key)) >= 0).length === 2;
 })(), J(SETTINGS_CONTROLS.analyze.map((c) => c.label)));
 
-A('A9 节容器完整：四个 `.ftt-section` 都闭合，且每节内至少一个控件或内容块', (() => {
+A('A9 节容器完整：八个 `.ftt-section` 都闭合，且每节内至少一个控件或内容块', (() => {
     const opens = (HTML.match(/<div class="ftt-section">/g) || []).length;
     const closes = (HTML.match(/<\/div>\n?<div class="ftt-section">|<\/div>$/g) || []).length;
-    return opens === 7 && closes >= 6 && secTitles(HTML).length === 7
+    return opens === 8 && closes >= 7 && secTitles(HTML).length === 8
         && HTML.indexOf('ftt-section"><div class="ftt-sec-title">分析范围') > 0;
 })(), '见断言');
 
@@ -142,7 +150,7 @@ A('A10 v2.76.0 归纳：货币记录与「各大类单条字数上限」两组�
     return moved.every((k) => an.indexOf(k) >= 0 && ex.indexOf(k) < 0)
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms')
         && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 25
-        && SETTINGS_CONTROLS.analyze.length === 20;      // v2.83.0：关联层 +3
+        && SETTINGS_CONTROLS.analyze.length === 22;      // v2.83.0：关联层 +3；v3.44.0：入库卫生 +2
 })(), J({ analyze: SETTINGS_CONTROLS.analyze.length, extract: SETTINGS_CONTROLS.extract.length }));
 
 R.done();

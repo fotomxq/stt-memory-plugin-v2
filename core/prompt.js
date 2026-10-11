@@ -4,7 +4,7 @@
 //   提示词模板全部取自 `cfg.promptTemplates`（默认值在 core/config.js），仅读 cfg/state，零宿主依赖。
 // ============================================================
 
-import { defaultCfg } from './config.js';
+import { defaultCfg, REL_ANCHOR_RULE_DEFAULT } from './config.js';   // v3.44.0：+REL_ANCHOR_RULE_DEFAULT（`数-11` ① 补丁文本）
 import { DIMENSIONS } from './constants.js';
 import { defaultCurrencyOwner, formatMoney, isTrackedCurrencyOwner, trackedCurrencyRoles } from './model/money.js';
 import { cfg, dbgLog, log, state, warn, worldbookHooks } from './model/runtime.js';
@@ -289,6 +289,14 @@ async function buildSummaryPrompt(floorsText, dims) {        const pt = cfg.prom
     // v1.195：内容弱化（NSFW）—— 开关开启（默认关）时把共用规则追加进系统提示词，
     //   让「读正文 → 分析成记忆」这一步就不产生露骨内容；关闭时**完全不追加**（既有行为不变）。
     try { const nsfwRule = nsfwSoftenRuleText(); if (nsfwRule) lines.push(nsfwRule); } catch (e) { }
+    // v3.44.0（`docs/D22` W4 `数-11` ①）：**关联锚点强制补丁**（开关 `relAnchorRuleEnabled`，**默认关**）。
+    //   与上一条同形态：只有开关开启才追加 → **默认输出与 V1 逐字节相同**
+    //   （`tests/unit/extract-prompt-flow.test.js` P1 的黄金样本因此不受影响）。
+    //   文本是**常量**（`REL_ANCHOR_RULE_DEFAULT`）而不是可编辑模板 —— 理由见 `core/config.js` 该常量注释
+    //   （必须与 `core/rel-maint.js#REL_ANCHOR_PRESENT_HOWS` 的判据逐字对齐，避免口径分叉）。
+    try {
+        if (cfg && cfg.relAnchorRuleEnabled === true) lines.push(REL_ANCHOR_RULE_DEFAULT);
+    } catch (e) { /* 忽略 */ }
     // v1.17：用户输入不作分析对象——记忆只从 AI 回复中提取，用户楼仅作参考上下文
     lines.push('【提取规则】以下【本轮对话】中，只有标记为「AI」的楼层是记忆提取对象；标记为「用户」的楼层仅作为理解语境的参考，**绝对不要从用户输入中提取记忆**。');
     const wbFeed = await buildWorldbookFeedText();

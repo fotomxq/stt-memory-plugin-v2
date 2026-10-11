@@ -24,9 +24,29 @@ import { clamp, normText, normalizeList } from './util.js';
 // v3.41.0（`docs/D22` `业-6` / `docs/D18` §4.1 P5）：时间衰退函数收敛为**单一实现**（叶子模块），
 //   本模块**再导出** `calcTimeDecay` —— `core/ingest.js#calcTimeDecay` 的既有引用形态与各调用方 import 均不变。
 import { calcTimeDecay } from './decay.js';
+// v3.44.0（`docs/D22` **W4**）：`数-13` 空壳入库拦截 / `数-14` 保留字段上界
+import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
+import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
 function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { } }
+
+/**
+ * v3.44.0（`docs/D22` W4 **`数-13`**）：**上一次空壳入库拦截的留痕**。
+ * 为什么要有这个出口：`docs/D20` §8 `数-13` 的验收是「构造空壳 → 被丢弃**且计数可见**」——
+ *   只丢不记等于静默降级。此对象经 `lastShellDropInfo()` 供面板提示 / 调试日志 / 单元测试读取。
+ */
+let lastShellDrop = null;
+/** @returns {{dropped:number, byDim:object, samples:Array}|null} 上次拦截摘要（无拦截时为 null） */
+function lastShellDropInfo() { return lastShellDrop ? JSON.parse(JSON.stringify(lastShellDrop)) : null; }
+
+/**
+ * v3.44.0（`docs/D22` W4 **`数-14`**）：**上一次来源楼层越界留痕**（只报告、不改写）。
+ * 与 `lastShellDrop` 同一纪律 —— 「如实报告」而不是「静默改写」。
+ */
+let lastRangeIssues = null;
+/** @returns {{checked:number, limit:number, bad:Array, at:number}|null} */
+function lastRangeIssuesInfo() { return lastRangeIssues ? JSON.parse(JSON.stringify(lastRangeIssues)) : null; }
 
 let decayTimer = null;
 // 每次平行事件更新后延迟堆叠：3s 窗口内多次更新合并为一次统一衰退计算
@@ -71,6 +91,45 @@ function mergeDelta(delta0, floorRange) {
         const beforeTotal = totalMemoryCount();
         const storyNow = getStoryNow();
         const fb = floorRange || {};
+        // v3.44.0（`docs/D22` W4 **`数-13`**）：**空壳条目入库拦截**（**开关 `cfg.shellGuardEnabled`，默认关**）。
+        //   默认关的实测理由见 `core/config.js#shellGuardEnabled` 注释（V1 黄金样本里有一条 11 字悬念，
+        //   V1 接受它 → 新守卫不能单方面改掉移植契约）。开启后：把「完全不承载信息」的新增条目从各维
+        //   `add` 里剔除并计数（只动新增；`update` / `remove` / `close` 一律不碰）。判据见 `core/shell-guard.js`。
+        let shellDropped = null;
+        try {
+            if (cfg && cfg.shellGuardEnabled === true) {
+                const st = filterShellAdds(delta);
+                if (st.dropped) {
+                    shellDropped = st;
+                    lastShellDrop = st;
+                    try { dbgLog('摘要', { action: '空壳条目入库拦截', dropped: st.dropped, byDim: st.byDim, samples: st.samples }); } catch (e) { /* 忽略 */ }
+                    try { notifyHooks.toast('已丢弃 ' + st.dropped + ' 条空壳条目（正文与标识都不足 ' + SHELL_MIN_CHARS + ' 字）', 'warning'); } catch (e) { /* 忽略 */ }
+                }
+            }
+        } catch (e) { /* 拦截失败不阻塞写入（宁可入库也不因守卫抛错丢整批） */ }
+        // v3.44.0（`docs/D22` W4 **`数-14`** ②）：**写入期楼层上界校验** —— 条目声明的来源楼层若超过
+        //   「本批楼层 + 存档基线 + 余量」，极可能来自**另一条聊天**（跨聊天污染为既知现象）。
+        //   此处**只报告不改写**：改写会把真实来源夹成本聊天楼层，而「来源可追溯」是 `D12`/`D16` 修复的基础。
+        try {
+            const batch = [];
+            for (const dim of Object.keys(delta)) {
+                const node = delta[dim];
+                if (!node || typeof node !== 'object') continue;
+                for (const k of ['add', 'update']) {
+                    for (const e of (Array.isArray(node[k]) ? node[k] : [])) {
+                        if (e && typeof e === 'object') batch.push(Object.assign({ dim: dim }, e));
+                    }
+                }
+            }
+            if (batch.length) {
+                const rg = checkFloorRange(fb, batch, { lastKnownFloor: state.lastKnownFloor, lastChatFloor: state.lastChatFloor });
+                if (rg.bad.length) {
+                    lastRangeIssues = { checked: batch.length, limit: rg.limit, bad: rg.bad.slice(0, 20), at: Date.now() };
+                    try { warn('来源楼层越界（可能来自另一条聊天）：' + rg.bad.length + ' 处，上界 ' + rg.limit + '，例如 ' + rg.bad[0].dim + '#' + rg.bad[0].id + ' ' + rg.bad[0].field + '=' + rg.bad[0].value); } catch (e) { /* 忽略 */ }
+                    try { dbgLog('摘要', { action: '来源楼层越界', limit: rg.limit, bad: rg.bad.slice(0, 10) }); } catch (e) { /* 忽略 */ }
+                }
+            }
+        } catch (e) { /* 校验失败不影响落库 */ }
         for (const a of delta.atoms?.add || []) {
             const n = normalizeAtom(a, fb);
             if (n) {
@@ -1709,4 +1768,6 @@ export {
     // B8-6c-4：状态修复复用「同人同字段」判据与历史归并（`core/state-repair.js` 与测试复用，避免重复实现）
     stateSubjectSamePerson, mergeStateHistory,
     runParallelDecay, scheduleParallelDecay, applyStateBounds,
+    // v3.44.0（`docs/D22` W4）：`数-13` 空壳拦截留痕 · `数-14` 来源楼层越界留痕（都只报告、计数可见）
+    lastShellDropInfo, lastRangeIssuesInfo,
 };

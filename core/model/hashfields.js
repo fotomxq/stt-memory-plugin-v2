@@ -86,3 +86,22 @@ export function hashPrefixOf(h) {
     const i = s.indexOf(':');
     return i > 0 ? s.slice(0, i + 1) : '';
 }
+
+/**
+ * **非哈希的规范字段**（v3.44.0，`docs/D22` W4 `数-10`）—— 登记在这里 = 「**刻意不进白名单**」有据可查。
+ *
+ * 背景：`数-10` 把「最后一次出现」的旧字段名收敛为规范名（`items.lastSeenDate` ← `seenDate`/`date`；
+ *   `scenes.lastSeenFloor` ← `floorSeen`，见 `core/field-names.js`）。收敛后**旧名保留**（双写回退口径）。
+ *
+ * 为什么**不**把它们加进 `HASH_FIELDS` 或 `slimWhitelistOf`：
+ *   · 加进 `HASH_FIELDS` = **改内容哈希** → 跨端会把它当「内容变了」而重复计条目、快照会误判差异；
+ *     那属 `docs/D15` §3 **类别① 数据契约**，须 `DATA_VERSION` 递增 + 双端兼容，不在本批范围。
+ *   · 加进「同义字段组」也不成立：`SLIM_SYNONYM_GROUPS` 的不变量（R3）是「keeper 必须落在白名单内」，
+ *     而这两个字段都不是哈希字段 → 组内没有合法 keeper（`tests/unit/slim-keeper.test.js` A2 会当场变红）。
+ *   · 于是它们**两个名字都存**（各是一个短字符串 / 整数，体积可忽略；空值由 `isSlimDefault` 丢弃）。
+ * 这份登记的作用：下次有人看到「有规范字段却不在白名单里」，能一眼看到这是**决定**而不是漏改。
+ */
+export const NON_HASH_CANONICAL_FIELDS = Object.freeze({
+    items: Object.freeze(['lastSeenDate']),
+    scenes: Object.freeze(['lastSeenFloor']),
+});

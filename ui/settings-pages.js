@@ -180,6 +180,25 @@ export const SETTINGS_CONTROLS = {
     "api": [],
     "analyze": [
         {
+            // v3.44.0（`docs/D22` W4 `数-11` ①）：**关联锚点强制补丁**（默认**关**）。
+            //   为什么默认关：开启后会给「AI 摘要」提示词**追加一段**要求（知情时间 / 告知者 / 差异的必填规则）——
+            //   那是**最高频路径**的行为变更，而 V2 的该提示词与 V1 **逐字符一致**（`tests/fixtures/v1-golden-prompt.json`）。
+            //   默认关 = 默认输出与 V1 逐字节相同；勾选即生效（模板文本见 `cfg.promptTemplates.relAnchorRule`，可在提示词面板改）。
+            "key": "relAnchorRuleEnabled",
+            "label": "关联锚点强制（补丁）",
+            "hint": "开启后给分析提示词追加一段：亲历/目击/当事人/策划必须写「知情时间」、被告知必须写「告知者」、看法不同必须写「差异」。默认关（保持与 V1 逐字符一致）。",
+            "type": "checkbox"
+        },
+        {
+            // v3.44.0（`docs/D22` W4 `数-13` ①）：**空壳条目入库拦截**（默认**关**）。
+            //   默认关的实测理由见 `core/config.js#shellGuardEnabled` 注释（V1 黄金样本里有一条 11 字悬念被 V1 接受）。
+            //   关闭时仍有 **② 体检 `entry-shell`** 与 **③ 列表筛选「🫥 空壳」** 两条零行为变更的出口。
+            "key": "shellGuardEnabled",
+            "label": "空壳条目入库拦截",
+            "hint": "开启后，正文与标识合计不足 12 字、且没有其它有值字段的新增条目会被丢弃并计数。默认关：V1 接受过这类条目，单方面拦截会改变移植契约；存量空壳请用列表页「🫥 空壳」筛选处理。",
+            "type": "checkbox"
+        },
+        {
             "key": "summaryChunkSize",
             "label": "分段读取楼层数（每段分析量）",
             "type": "text"
@@ -1195,6 +1214,10 @@ export function analyzePageHtml(controls) {
     const caps = capKeys.map(row).filter(Boolean).join('\n');
     // v2.83.0：关联层（谁知道 / 谁相关）—— 通用知情关联层的总开关与维护口径
     const links = ['relLinkEnabled', 'relLinkMax', 'relOrphanAction'].map(row).filter(Boolean).join('\n');
+    // v3.44.0（`docs/D22` W4）：**入库卫生**两开关 —— `数-11` ① 关联锚点强制补丁 / `数-13` ① 空壳入库拦截。
+    //   两者都**默认关**（理由见 `core/config.js` 同名键注释），所以单独成一节、并在文案里写清「默认不会发生」，
+    //   避免用户看到「空壳条目入库拦截」以为已经在拦。
+    const hygiene = ['relAnchorRuleEnabled', 'shellGuardEnabled'].map(row).filter(Boolean).join('\n');
     const rest = list.filter((c) => !used[String(c.key)]).map((c) => settingsControlHtml(c));
     return [
         '<div class="ftt-section"><div class="ftt-sec-title">维度分组（总开关）</div>',
@@ -1233,6 +1256,12 @@ export function analyzePageHtml(controls) {
             ? '<div class="ftt-section"><div class="ftt-sec-title">各大类单条字数上限</div>' + caps
             + shortHintHtml('入库时的硬截断：AI 写超了按上限截断，同时是提示词里的字数要求依据。')
             + hintDetailsHtml('说明', '<div>' + esc('这些上限作用于入库（`dimCap`）：情节正文、状态值、角色档案累计、记忆正文、物品说明、计划内容、悬念内容、场景描述、概念内容与平行事件推演正文。它们不影响注入体大小 —— 注入体由「提取记忆」页的注入预算（charBudget）决定；条数上限也在该页。') + '</div>')
+            + '</div>'
+            : ''),
+        (hygiene
+            ? '<div class="ftt-section"><div class="ftt-sec-title">入库卫生（两个补丁 · 默认关）</div>' + hygiene
+            + shortHintHtml('两项都<b>默认关闭</b>：开启会改变入库或提示词行为，请按需打开。')
+            + hintDetailsHtml('说明', '<div>' + esc('① 「关联锚点强制（补丁）」：开启后给分析提示词追加一段 —— 亲历 / 目击 / 当事人 / 策划必须写「知情时间」、被告知必须写「告知者」、看法不同必须写「差异」。默认关是因为该提示词与 V1 逐字符一致（改它等于改每次分析的行为）。补丁文本是固定常量（与机械回填 / 体检的判据同源，不开放编辑）。② 「空壳条目入库拦截」：开启后，正文与标识合计不足 12 字且没有其它有值字段的新增条目会被丢弃并计数（面板提示 + 调试日志）。默认关是因为 V1 接受过这类条目（黄金样本里就有一条 11 字悬念），单方面拦截会改变移植契约。关闭时存量空壳仍可见：列表页有「🫥 空壳」筛选，数据体检的 `entry-shell` 会给出分维计数。') + '</div>')
             + '</div>'
             : ''),
         (rest.length ? '<div class="ftt-section"><div class="ftt-sec-title">其它</div>' + rest.join('\n') + '</div>' : ''),
