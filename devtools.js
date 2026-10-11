@@ -8,6 +8,8 @@ import { interceptorStats } from './host/interceptor.js';
 import { readInject, injectAvailable } from './host/inject.js';
 import { getSettings } from './adapters/settings.js';
 import { statusText } from './ui/commands.js';
+// v3.45.0（`docs/D22` W5 `技-26`）：宿主输入框探针与降级链（只读探针经 `FTT.inputBox()` 暴露）
+import { inputBoxCapability, inputBoxVerifySteps } from './host/input-box.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { updateStatusText, hasUpdate, updateConfig } from './host/update.js';
 // v3.18.0（用户要求）：已去世研判**干跑**（只读）—— 直接在调试导出里实现，无需宿主接线即可核对
@@ -58,6 +60,10 @@ export function installDevtools(hooks) {
             probe: () => probeCapabilities(),
             interceptor: () => interceptorStats(),
             injectLength: () => readInject().length,
+            // v3.45.0（`docs/D22` W5 `技-26`）：**宿主输入框可写性探针**（只读：不写 DOM、不写数据）——
+            //   让真机核对「哪一档可用」只需一次控制台调用（本机无真机，故必须留这条出口）。
+            inputBox: () => inputBoxCapability(),
+            inputBoxSteps: () => inputBoxVerifySteps(),
             update: () => buildSnapshot().update,
             // P2：V1 数据导入（默认干跑；apply:true 才写入）
             importV1: (opts) => (hooks && typeof hooks.importV1 === 'function' ? hooks.importV1(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),

@@ -938,7 +938,8 @@ const defaultCfg = {
     apiTemperature: 0.2,
     apiMaxTokens: '',
     apiTopP: '',
-    // v1.19：三层提取结构 —— 第一层向量检索(useVector) / 第二层浏览器JS抽取(jsExtractEnabled) / 第三层AI分析(memApi)
+    // v1.19：三层**召回**结构（发送前；v3.45.0 正名，见 `docs/D22` W5 `技-20`）—— 第一层向量检索(useVector) / 第二层浏览器JS抽取(jsExtractEnabled) / 第三层AI分析(**useKeywordFlow**)
+//   注：`memApiEnabled`/`memApi` 是第三层走哪条**API 通道**的配置，不是该层的开关（两个轴，别混）。
     useVector: false,
     jsExtractEnabled: true,
     embeddingUrl: '',
