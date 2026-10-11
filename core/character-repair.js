@@ -11,7 +11,7 @@
 //        size < `cfg.repairCharacterMinSize` 者列入待修复名单，按 size 升序（最薄弱最前）；
 //        **出生日期倒挂/异常者（`snapshotBirthAnomaly`）无视字数门限一律入列**并排最前；
 //        **已去世角色整批跳过**（年龄锁定，档案不再补全）；
-//     ② 每次只提取 `cfg.repairCharacterBatch` 条（默认 3）；
+//     ② 每次只提取 `cfg.repairCharacterBatch` 条（默认 **6**；v3.45.3 起由 3 调整为 6，可在设定页改）；
 //     ③ 提示词 = 窄契约 + 可见现状 + 字段闭集 + 变化校验：只发本轮目标的**完整字段级现状**、缺失字段清单、
 //        相关记忆原子数据（`characterEvidencePack`）与聚焦正文；要求按**中文点路径**回填；
 //        JS 按路径精确写值（只填空、不改写）并逐字段比对，未产生真实变化即如实上报。
@@ -753,7 +753,7 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
     try {
         const o = opts || {};
         const strict = !!o.strict;
-        const batch = Math.max(1, Math.min(10, Number(cfg && cfg.repairCharacterBatch) || 3));
+        const batch = Math.max(1, Math.min(10, Number(cfg && cfg.repairCharacterBatch) || 6));
         let targets = Array.isArray(targetsIn) ? targetsIn : null;
         if (!targets) targets = buildCharacterRepairQueue().list.slice(0, batch);
         const tpl = String((cfg.promptTemplates && cfg.promptTemplates.characterRepair) || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.characterRepair) || '').trim() || '补全角色档案的缺失字段；输出「角色档案」的更新。';
@@ -1087,7 +1087,7 @@ async function runCharacterRepair(opts) {
             notify('success', '角色修复：无需修复', `${mechText}可修复的 ${q.total} 名角色档案有效字数都已达到门限（≥ ${q.minSize} 字）${q.deceasedCount ? ` · 另有 ${q.deceasedCount} 名已去世角色按固定规则跳过（年龄锁定）` : ''}${q.immortalCount ? ` · 另有 ${q.immortalCount} 名长生者跳过（已按剧情标记，不再分析）` : ''}。如需重查更完整的档案，可在 设定 → 自动修复 调低「角色修复字数门限」。`);
             return { made: 0, skipped: true, total: q.total, queue: 0, deceased: q.deceasedCount || 0, mech: mech };
         }
-        const batch = Math.max(1, Math.min(10, Number(cfg.repairCharacterBatch) || 3));
+        const batch = Math.max(1, Math.min(10, Number(cfg.repairCharacterBatch) || 6));
         const targets = q.list.slice(0, batch);
         const beforeCount = snaps.length;
         const floors = Math.max(1, Number(cfg.repairFloors) || Number(cfg.feedFloors) || 10);

@@ -814,7 +814,10 @@ function clearPSButtons() {
 
 /**
  * 角色页「🔧 修复角色」按钮（V1 `snapshotsHtml()`）：v1.172 出生日期倒挂 / 异常的角色数进优先档，
- * 按钮文案带「（⚠️N 优先）」角标；title 与 V1 逐字一致。
+ * 按钮文案带「（⚠️N 优先）」角标。
+ * v3.45.3（用户要求「每次限定可能抽取 3 个数据 → 改为默认 6，且可在设定中修改」）：title 里的条数改为
+ * **现算** `cfg.repairCharacterBatch` —— 此前写死「3 条」，改了默认值或用户在设定页调过之后，按钮提示会**说谎**。
+ * **V1 文本偏离登记**：除这个数字外，其余措辞与 V1 **逐字一致**（`docs/D22` §4.8「本版口径」· 样本一字未改）。
  */
 function characterRepairButton() {
     let anomCount = 0;
@@ -823,7 +826,8 @@ function characterRepairButton() {
         const anchor = (() => { try { return storyAnchorDate() || null; } catch (e) { return null; } })();
         anomCount = (state.snapshots || []).filter((x) => snapshotBirthAnomaly(x, anchor)).length;
     } catch (e) { /* 忽略 */ }
-    return '<button class="ftt-btn ftt-sm" data-ftt-action="characterRepair" title="出生日期倒挂者优先，其余按字数最薄弱 3 条">🔧 修复角色'
+    const batch = (() => { try { return Math.max(1, Math.min(10, Number(cfg.repairCharacterBatch) || 6)); } catch (e) { return 6; } })();
+    return '<button class="ftt-btn ftt-sm" data-ftt-action="characterRepair" title="出生日期倒挂者优先，其余按字数最薄弱 ' + batch + ' 条">🔧 修复角色'
         + (anomCount ? '（⚠️' + anomCount + ' 优先）' : '') + '</button>';
 }
 

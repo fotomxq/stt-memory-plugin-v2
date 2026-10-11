@@ -70,22 +70,22 @@ R.assert('P2b v2.94.0（D11 §3.4/§3.5）存储页只留世界书 12 项 + v3.1
         && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.worldbookMode')).indexOf('<select') >= 0;
 })(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));
 
-R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签按 V1 原样、顺序与 V1 源码一致', (() => {
+R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与顺序按 V1 原样；标签除 v3.45.3 明示的「组数默认 3→6」外与 V1 一致', (() => {
     const want = [
         ['conceptRepairSim', '概念修复相关性阈值（0.1-0.95，默认 0.45）'],
-        ['conceptRepairMaxClusters', '概念修复每次核对组数（1-20，默认 3）'],
+        ['conceptRepairMaxClusters', '概念修复每次核对组数（1-20，默认 6）'],
         ['conceptRepairMaxItems', '概念修复每次提交条数上限（2-120，默认 24）'],
         ['conceptRepairMaxClusterSize', '概念相关组规模上限（2-40，默认 8）'],
         ['memoryRepairSim', '记忆修复相关性阈值（0.1-0.95，默认 0.45）'],
-        ['memoryRepairMaxClusters', '记忆修复每次核对组数（1-20，默认 3）'],
+        ['memoryRepairMaxClusters', '记忆修复每次核对组数（1-20，默认 6）'],
         ['memoryRepairMaxItems', '记忆修复每次提交条数上限（2-120，默认 24）'],
         ['memoryRepairMaxClusterSize', '记忆相关组规模上限（2-40，默认 8）'],
         ['suspenseRepairSim', '悬念修复相关性阈值（0.1-0.95，默认 0.45）'],
-        ['suspenseRepairMaxClusters', '悬念修复每次核对组数（1-20，默认 3）'],
+        ['suspenseRepairMaxClusters', '悬念修复每次核对组数（1-20，默认 6）'],
         ['suspenseRepairMaxItems', '悬念修复每次提交条数上限（2-120，默认 24）'],
         ['suspenseRepairMaxClusterSize', '悬念相关组规模上限（2-40，默认 8）'],
         ['itemRepairSim', '物品修复相关性阈值（0.1-0.95，默认 0.45）'],
-        ['itemRepairMaxClusters', '物品修复每次核对组数（1-20，默认 3）'],
+        ['itemRepairMaxClusters', '物品修复每次核对组数（1-20，默认 6）'],
         ['itemRepairMaxItems', '物品修复每次提交条数上限（2-120，默认 24）'],
         ['itemRepairMaxClusterSize', '物品相关组规模上限（2-40，默认 8）'],
         ['itemLowUsesRatio', '低调用清理·比例（默认 0.05）'],
@@ -97,9 +97,9 @@ R.assert('P2c 质检维护页补齐 V1 手写块的 22 个控件：键与标签�
     ];
     const feed = SETTINGS_CONTROLS.feed.map((c) => [String(c.key), String(c.label)]);
     const tail = feed.slice(feed.length - want.length);
-    // 每个键在配置里的默认值与 V1 默认一致（阈值 0.45 / 组数 3 / 条数 24 / 组规模 8 / 比例 0.05 / 门槛 100 / 均值 5 / 楼层 200 / 间隔 40 / 删除 1）
+    // 每个键在配置里的默认值与生效默认一致（阈值 0.45 / **组数 6（v3.45.3 由 3 调整为 6，用户要求「每次抽取 3 → 默认 6，可在设定中修改」）** / 条数 24 / 组规模 8 / 比例 0.05 / 门槛 100 / 均值 5 / 楼层 200 / 间隔 40 / 删除 1）
     const defs = { conceptRepairSim: 0.45, memoryRepairSim: 0.45, suspenseRepairSim: 0.45, itemRepairSim: 0.45,
-        conceptRepairMaxClusters: 3, memoryRepairMaxClusters: 3, suspenseRepairMaxClusters: 3, itemRepairMaxClusters: 3,
+        conceptRepairMaxClusters: 6, memoryRepairMaxClusters: 6, suspenseRepairMaxClusters: 6, itemRepairMaxClusters: 6,
         conceptRepairMaxItems: 24, memoryRepairMaxItems: 24, suspenseRepairMaxItems: 24, itemRepairMaxItems: 24,
         conceptRepairMaxClusterSize: 8, memoryRepairMaxClusterSize: 8, suspenseRepairMaxClusterSize: 8, itemRepairMaxClusterSize: 8,
         itemLowUsesRatio: 0.05, itemLowUsesMinItems: 100, itemLowUsesMinAvg: 5, itemLowUsesMinFloors: 200,

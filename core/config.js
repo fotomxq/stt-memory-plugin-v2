@@ -994,19 +994,24 @@ const defaultCfg = {
     repairTagSimLow: 0.15,       // 相关性「过低」阈值：≤ 该值 → 不列入（同维度孤例，无重复风险）
     repairSampleRatio: 0.2,      // 每次抽查比例（占中间带条目数；0.05-1）—— 不做全量盘点
     repairMinCandidates: 5,      // 每轮候选下限：不足时按相关性从高到低补足（保证每轮都有足量数据可修）
+    // v3.45.3（用户要求「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
+    //   下面 6 个「每轮抽取量」默认由 **3 → 6**（`repairCharacterBatch` / `stateRepairBatch` 与四域的
+    //   `*RepairMaxClusters`）；**改的是默认值，不是上限** —— 六个键在设定页都能改（角色修复 / 遗忘·修复状态 /
+    //   各域相关组修复），且各处的读取兜底同步为 6（`core/character-repair.js` / `core/state-repair.js` / `core/group-repair.js`）。
+    //   **未动**：`maxAutoRepairRounds`（同楼层自动修复**轮次**上限，不是抽取量）与 `repairMaxItems`（候选池 20 条）。
     // v1.139：概念修复（概念页专用）—— 标签组聚类 → 高相关一组提交 AI 梳理合并
     conceptRepairSim: 0.45,      // 概念「同一概念」相关性阈值（标签 Jaccard / 名称+内容相似度 ≥ 该值即连成一组）
-    conceptRepairMaxClusters: 3, // 每次最多核对的相关组数（轮询推进，多轮覆盖全部组）
+    conceptRepairMaxClusters: 6, // 每次最多核对的相关组数（轮询推进，多轮覆盖全部组；v3.45.3 默认 3→6）
     conceptRepairMaxItems: 24,   // 每次最多提交给 AI 的概念条数（跨组合计上限）
     conceptRepairMaxClusterSize: 8, // 相关组规模上限（2-40）—— 防止「链式传递」把互不相关的条目串成一大团
     // v1.140：记忆修复（记忆页专用）—— 同一策略（标签组聚类 → 打包高相关组交 AI 梳理/合并/修正）
     memoryRepairSim: 0.45,          // 记忆「同一件事」相关性阈值（标签 Jaccard / 标题+正文相似度 ≥ 该值即连成一组；同归属内判定）
-    memoryRepairMaxClusters: 3,     // 每次最多核对的记忆组数（轮询推进，多轮覆盖全部组）
+    memoryRepairMaxClusters: 6,     // 每次最多核对的记忆组数（轮询推进，多轮覆盖全部组；v3.45.3 默认 3→6）
     memoryRepairMaxItems: 24,       // 每次最多提交给 AI 的记忆条数（跨组合计上限）
     memoryRepairMaxClusterSize: 8,  // 记忆相关组规模上限（2-40，防链式串联）
     // v1.140：悬念修复（计划悬念页专用）—— 同一策略（计划保持原样，仅悬念改打包核对）
     suspenseRepairSim: 0.45,        // 悬念「同一悬念」相关性阈值（标签 Jaccard / 标题+内容相似度）
-    suspenseRepairMaxClusters: 3,   // 每次最多核对的悬念组数（轮询推进）
+    suspenseRepairMaxClusters: 6,   // 每次最多核对的悬念组数（轮询推进；v3.45.3 默认 3→6）
     suspenseRepairMaxItems: 24,     // 每次最多提交给 AI 的悬念条数（跨组合计上限）
     suspenseRepairMaxClusterSize: 8,// 悬念相关组规模上限（2-40，防链式串联）
     // v1.143：通用「低使用长期未现」遗忘清扫 —— 补齐概念/场景/名册/计划/悬念/角色档案的遗忘机制
@@ -1020,7 +1025,7 @@ const defaultCfg = {
     lowUseForgetProtectImportance: 0.2, // v2.86.0：0.7→0.2 —— 重要度已改为「窗口调用占比」（均匀分布均值≈1/21≈4.8%），0.2≈4 倍平均，与旧「0.7 属高重要度」的筛除力度同量级（`docs/D7` §4.9 C1）
     // v1.142：物品修复（物品页专用）—— 标签/名称相关性聚类 → 打包交 AI 判断融合 + 低调用固定规则清理
     itemRepairSim: 0.45,            // 物品相关度阈值（相关度 = max(标签组 Jaccard, 名称相似度) ≥ 该值成组）
-    itemRepairMaxClusters: 3,       // 每次最多核对的物品组数（轮询推进）
+    itemRepairMaxClusters: 6,       // 每次最多核对的物品组数（轮询推进；v3.45.3 默认 3→6）
     itemRepairMaxItems: 24,         // 每次最多提交给 AI 的物品条数（跨组合计上限）
     itemRepairMaxClusterSize: 8,    // 物品相关组规模上限（2-40，防链式串联）
     itemLowUsesRatio: 0.05,         // v1.153：0.1→0.05（只清极端低使用的物品）
@@ -1033,9 +1038,9 @@ const defaultCfg = {
     characterBirthInfer: true,      // v1.152：角色修复强制补全出生日期（正文无则合理推测，绝不留空）
     characterBirthDefaultAge: 25,    // v1.152：无任何年龄线索时的默认成人年龄（用于推算出生日期）
     repairCharacterMinSize: 120, // 待修复门限：角色档案有效字数 < 该值 → 列入待修复名单（10-400；0=不按尺寸筛，全部入列）
-    repairCharacterBatch: 3,     // 每次修复只提取的条数（1-10）—— 目标收敛、质量优先
+    repairCharacterBatch: 6,     // 每次修复只提取的条数（1-10；v3.45.3 默认 3→6）—— 目标收敛、质量优先
     // v1.158：状态记录修复（状态页「🔧 修复状态」）—— 自动匹配角色 → 删无主状态组 → 机械清理/规范化 → 交 AI 整理
-    stateRepairBatch: 3,             // 每轮交给 AI 的主体（角色）数（1-10）—— 目标收敛、质量优先
+    stateRepairBatch: 6,             // 每轮交给 AI 的主体（角色）数（1-10；v3.45.3 默认 3→6）—— 目标收敛、质量优先
     stateRepairMatchSim: 0.72,       // 主体 ↔ 角色档案/名册 的名称相似度阈值（0.5-0.95）—— 低于该值视为「无档案主体」
     // ==================== v1.165：通用知情关联层 + 计划悬念结构化 + 固定注入约束（docs/11） ====================
     relLinkEnabled: true,            // 通用知情关联层总开关（记忆/计划/悬念/平行事件；关 = 退回 owner / characters 口径 = 现状行为）

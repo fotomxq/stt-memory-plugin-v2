@@ -1,6 +1,18 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.72 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.73 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.73 变更（随 **v3.45.3**：**用户直接要求**「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
+>   ① **六个「每轮抽取量」默认值 3 → 6**：`cfg.repairCharacterBatch`（修复角色每轮条数）· `cfg.stateRepairBatch`（修复状态每轮主体数）·
+>      `cfg.conceptRepairMaxClusters` / `cfg.memoryRepairMaxClusters` / `cfg.suspenseRepairMaxClusters` / `cfg.itemRepairMaxClusters`（四域「每次核对组数」）；
+>   ② **三处模块内读取兜底 `|| 3` → `|| 6`**（`core/character-repair.js` 2 处 · `core/state-repair.js` 1 处 · `core/group-repair.js` 4 处）——
+>      否则「配置缺键时仍回落 3」，默认值改了而兜底没改属**隐性分歧**；
+>   ③ **设定页 10 处文案**「默认 3」→「默认 6」（六键**本就在设定页有控件** → 「可在设定中修改」是现状能力；本轮对齐默认值与文案）；
+>   ④ **角色页按钮 tooltip** 由写死「最薄弱 3 条」改为**现算** `cfg.repairCharacterBatch`（用户改过设定后提示不再说谎）；
+>   ⑤ **未动**：`maxAutoRepairRounds`（同楼层自动修复**轮次**上限，仍 3）· `repairMaxItems`（候选池，仍 20）· `summaryChunkSize`（分段长度，仍 3 个正文/段）· 任何数据契约（`DATA_VERSION` 仍 1）；
+>   ⑥ **文档**：`docs/04` 新增「附：各大类修复的『每轮抽取量』」（六键 × 默认 6 × 设定页位置 × 与「条数上限 / 轮次上限」的区别）· `docs/D25` v1.2（§8 补登 `应-28`）· `docs/D22` v1.13（§4.9 新增 `应-28` + 「本版口径」6 条）· `docs/D17` v1.23（**§1.24 U215**）· `docs/history/P10c83`；
+>   ⑦ **V1 偏离登记（三件套）**：六默认值有意偏离 V1（均为 3）→ 黄金样本 `v1-golden-config-clock.json` **一字未动**、`config-clock-golden.test.js#C1` 的 `DEVIATED_KEYS` 显式登记并逐键复核、`settings-pages.test.js#P2c` 与 `character-repair-golden.test.js#U1` 同步归一；
+>   ⑧ **新增守门单测** `tests/unit/repair-batch-default.test.js`（7 项：默认值 · 有控件且标签写「默认 6」 · 三条**行为**断言 · 可改且生效 · 上限夹取与未波及项）；§3 数字口径同步：单测 **200 文件 / 2933 断言**、历史批次档数 203 → **204**；§1 目录树 `history/` 计数 → **204 份**、`P10c*` 区间 → **`P10c83`**。
+>   ⑨ **版本位说明**：本版由用户指定 **v3.45.3**（patch 位）；改动是默认值与文案（不新增键、不改数据契约、不改算法）→ 按 `开发守则.md` §3.1 属「行为口径调整」，若后续认定「默认值变更属能力变更」则应为 `3.46.0`（判断记在 `CHANGELOG.md` v3.45.3 与 `docs/D22` §4.9 第 6 条，**不静默**）。
 > v2.72 变更（随 **v3.45.2**：`docs/D22` **W7 批次 · NSFW 弱化留存与加固（整批 3 行）**）：
 >   用户原话：「新版本v3.45.2 / 开发W7待开发事项。」用户裁决（三条）：① 范围 = **W7 全部 3 行**；② `docs/D30` **Q1–Q3 整批采纳建议默认**（§6 转「决策记录」）；③ **超限判据 = 正文长度 > `NSFW_TEXT_CAP`(600)**（不采用「分段提交」）。
 >   ① **`应-23`**（销 U179）：**弱化运行留痕** —— `core/nsfw.js` 新增运行账本（`setNsfwSoftenHooks` / `logSoftenRun` / `nsfwSoftenLogReset` · `nsfwSoftenState().last`），`runNsfwSoften` **五处收尾都记账**（完成 / 无命中 / 仅剩超长 / AI 无返回 / 异常）；
@@ -411,12 +423,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，203 份）
+└── history/                  # 历史批次层（只读留痕，204 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c82           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c83           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -473,9 +485,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.45.2） |
+| 口径 | 权威来源 | 当前值（v3.45.3） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.2` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.3` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -483,7 +495,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 33 |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 161（v3.44.0：分析记忆页 +2，入库卫生） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 199 文件 / 2926 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 200 文件 / 2933 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -491,7 +503,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 52 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；**v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 203 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 204 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -1965,7 +1965,11 @@ const aa2 = await (async () => {
     const c1 = String((await entry.popupAction('tab', { tab: 'snapshots' })).html || '');
     st.snapshots = [];
     const c0 = String((await entry.popupAction('tab', { tab: 'snapshots' })).html || '');
-    const charOk = c1.indexOf('data-ftt-action="characterRepair"') >= 0 && c1.indexOf('title="出生日期倒挂者优先，其余按字数最薄弱 3 条"') >= 0
+    // v3.45.3（用户要求「各大类修复每次抽取 3 个 → 默认 6，且可在设定中修改」）**V1 文本偏离登记**：
+    //   按钮 title 的条数改为**现算 `cfg.repairCharacterBatch`**（默认 3→6）—— 除该数字外措辞与 V1 逐字一致，
+    //   故这里按当前生效值拼期望串（用户改过设定也必须对上）。
+    const charBatch = Math.max(1, Math.min(10, Number(rtMod.cfg.repairCharacterBatch) || 6));
+    const charOk = c1.indexOf('data-ftt-action="characterRepair"') >= 0 && c1.indexOf('title="出生日期倒挂者优先，其余按字数最薄弱 ' + charBatch + ' 条"') >= 0
         && c1.indexOf('🔧 修复角色（⚠️1 优先）') >= 0
         && c0.indexOf('data-ftt-action="characterRepair"') < 0;  // 无角色 → 按钮隐藏
     st.state = Object.assign({}, st.state, { date: savedDate2 });
