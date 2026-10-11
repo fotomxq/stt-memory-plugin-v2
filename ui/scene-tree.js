@@ -16,6 +16,8 @@ import { state } from '../core/model/runtime.js';
 import { escHtml } from '../core/util.js';
 import { entryMatches } from './console.js';
 import { importancePct } from '../core/recall.js';
+// v3.43.1（`docs/D19` `应-24`）：场景页的「🗑 删除选中」同样依赖勾选 → 文案与 disabled 取同一张表
+import { selectDepButtonParts } from './select-bar.js';
 
 const esc = (v) => escHtml(String(v == null ? '' : v));
 const trim = (v) => String(v == null ? '' : v).trim();
@@ -76,7 +78,7 @@ export function scenesTreeHtml(opts) {
     const bulk = multi
         ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="scenes">全选</button>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="scenes">清空选择</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="scenes"' + (sel.size ? '' : ' disabled') + '>🗑 删除选中（' + sel.size + '）</button>')
+            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="scenes"' + selectDepButtonParts('bulkDelete', sel.size).attr + '>' + selectDepButtonParts('bulkDelete', sel.size).text + '</button>')
         : '';
     const sceneBar = '<div class="ftt-addbar ftt-toolbar">' + addBtn + multiBtn + bulk
         + '<button class="ftt-btn ftt-sm" data-ftt-action="sceneRepair" title="复用「立即修复」管道，修正场景树错乱的结构/用词不当">🔧 修复结构/用词</button></div>';
