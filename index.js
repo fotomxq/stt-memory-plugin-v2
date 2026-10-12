@@ -4,6 +4,8 @@
 // P0 范围：可安装骨架 + 能力探测 + 设置面板 + 事件绑定 + 生成前钩子（空实现） + 调试导出
 // ============================================================
 import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS, ATOM_DIM_KEYS } from './core/constants.js';   // v3.0.23：+ATOM_DIM_KEYS（载入记账的逐维条数）
+// v3.45.7（用户报告「数据导出功能会直接卡死」）：导出改为**分段组装**（不深拷贝 / 不大存档美化 / 不拼一整串）
+import { EXPORT_FORMAT, EXPORT_PRETTY_MAX, exportChunks, exportParts, exportSectionKeys, exportEnvelopeValue } from './core/export.js';
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
@@ -1070,18 +1072,56 @@ export async function runV1Import(opts) {
 /**
  * 导出当前记忆为 JSON 文本（V1「⬇ 导出」的 V2 版）：内容 = 当前内核容器 + 版本与作用域元信息。
  * 只读操作，不修改任何数据。
+ *
+ * v3.45.7（用户报告「数据导出功能会直接卡死，可能和数据量有一定关系」）——**三处性能修**：
+ *   ① **不再深拷贝**（旧实现 `JSON.parse(JSON.stringify(state))` 会把 10 MB 的存档整份克隆一遍）；
+ *   ② **大存档不再美化**（2 空格缩进让体积翻倍且显著变慢；`EXPORT_PRETTY_MAX` 以内仍给人读格式 —— 历史行为不变）；
+ *   ③ 新增**分段模式**（`{ stream:true }` / `{ parts:true }`）—— 见 `core/export.js`：分片可直接交给 `Blob(parts)`，
+ *      于是调用方**不需要**先把整份拼成一整串（省一份等量内存与一次全量拷贝），且可逐段让出主线程。
+ *
+ * @param {{stream?:boolean, parts?:boolean, pretty?:boolean}} [opts]
+ *   · `stream:true` → `{ source, total, chars, format }`（`source` 为**生成器**，由调用方逐段驱动；用于 UI 大存档导出）
+ *   · `parts:true`  → `{ parts, chars, total }`（已分段、**未拼接**；用于只读读数，如桥方法 `ftt.stateSize`）
+ *   · 缺省 / 其它 → **字符串**（历史契约不变：devtools / 命令 / 测试都用它）
  */
-export function exportStateJson() {
+export function exportStateJson(opts) {
+    const o = (opts && typeof opts === 'object') ? opts : {};
     try {
         const st = kernelState || {};
-        return JSON.stringify({
-            format: 'ftt-memory-v2-export',
-            version: VERSION,
-            scope: (runtime.store && runtime.store.scope) || '',
-            at: Date.now(),
-            state: JSON.parse(JSON.stringify(st)),
-        }, null, 2);
+        // ① 分段「源」：不做任何序列化，只交出生成器（真正的活由调用方按段驱动）
+        if (o.stream === true) {
+            const keys = exportSectionKeys(st);
+            return {
+                format: EXPORT_FORMAT, source: exportChunks(st, exportStateMeta()),
+                total: keys.length + 3, chars: null,
+            };
+        }
+        // ② 已分段（不拼接）
+        if (o.parts === true) {
+            const r = exportParts(st, exportStateMeta());
+            return { format: EXPORT_FORMAT, parts: r.parts, chars: r.chars, total: r.total };
+        }
+        // ③ 字符串（默认路径）
+        const env = exportEnvelopeValue(st, exportStateMeta());
+        const compact = JSON.stringify(env);
+        if (o.pretty === false) return compact;
+        // 小存档保留 2 空格美化（人读友好，历史行为）；大存档一律紧凑（美化 = 体积翻倍 + 明显变慢）。
+        // `{pretty:true}` 是**显式**要求美化（诊断 / 测试量化「美化到底多贵」用），不受上限约束。
+        if (o.pretty === true || String(compact).length <= EXPORT_PRETTY_MAX) {
+            try { return JSON.stringify(env, null, 2); } catch (e) { return compact; }
+        }
+        return compact;
     } catch (e) { return ''; }
+}
+
+/** 导出信封的元信息（版本 / 作用域 / 时刻）——`exportStateJson` 与分段导出共用同一处取值 */
+function exportStateMeta() {
+    return {
+        format: EXPORT_FORMAT,
+        version: VERSION,
+        scope: (runtime.store && runtime.store.scope) || '',
+        at: Date.now(),
+    };
 }
 
 /**

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.45.6",
+  "version": "3.45.7",
   "updatedAt": "2026-10-12",
   "generatedAt": "2026-10-12",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.45.7",
+      "date": "2026-10-12",
+      "title": "数据导出卡死修复（分段导出 / 大存档不内联）",
+      "points": [
+        "版本位：缺陷修复 + 性能优化（无新增数据字段、无新设置项）→ 3.45.6 → 3.45.7（开发守则.md §3.1「纯修复 → 3.<minor>.<patch+1>」）。",
+        "数据契约零改动：DATA_VERSION 仍为 1；导出文件格式与文件名不变（ftt-memory-v2-export / FTT记忆_<hash>_<日期>_<时间>.json…",
+        "真机取证：（本机 TauriTavern + 只读调试桥）：ftt.fileTransport.lastWrite.bytes = 10432694 → 同一份存档的导出文本约 …"
+      ]
+    },
     {
       "version": "3.45.6",
       "date": "2026-10-12",

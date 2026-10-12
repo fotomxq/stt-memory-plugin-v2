@@ -3,6 +3,70 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.45.7（2026-10-12）· 数据导出卡死修复（分段导出 / 大存档不内联）
+
+**用户要求**（原话）：「新版本，小版本更新。数据导出功能会直接卡死，可能和数据量有一定关系。建议本地保存时，应考虑动态注入备份的形式，或其他优化措施提高导出效率。」
+
+**版本位**：缺陷修复 + 性能优化（无新增数据字段、无新设置项）→ `3.45.6 → 3.45.7`（`开发守则.md` §3.1「纯修复 → `3.<minor>.<patch+1>`」）。
+**数据契约零改动**：`DATA_VERSION` 仍为 1；导出文件**格式与文件名不变**（`ftt-memory-v2-export` / `FTT记忆_<hash>_<日期>_<时间>.json`），既有备份照旧可导入。
+
+### ① 缺陷：点「⬇ 导出 JSON 文件」直接卡死（与数据量正相关）
+
+**真机取证**（本机 TauriTavern + 只读调试桥）：`ftt.fileTransport.lastWrite.bytes = **10432694**` → **同一份存档的导出文本约 10 MB**。
+旧实现（`index.js#exportStateJson` + `ui/panel.js#exportState`）在这份数据上连做四件重活：
+
+| # | 旧实现 | 代价 | 落点 |
+| --- | --- | --- | --- |
+| ① | `JSON.parse(JSON.stringify(state))` **整份深拷贝** | 一次全量序列化 + 一次全量解析（另加等量临时内存） | `index.js#exportStateJson` |
+| ② | `JSON.stringify(envelope, null, 2)` **2 空格美化** | 体积再涨约 1.3×（实测 872 KB → 1.13 MB）且逐键缩进显著变慢 | 同上 |
+| ③ | 整串塞进 `<textarea>` 渲染 | 页内渲染 MB 级文本 = 布局/绘制灾难（**真卡死主因**） | `ui/panel.js#settingsBody`（`ps.exportText` → `data-ftt-export`） |
+| ④ | 整串写剪贴板 | MB 级写入长时间阻塞、且多半失败 | `ui/panel.js`（`exportState` 动作） |
+
+附带发现：只读桥方法 `ftt.stateSize` 是「**跑一遍完整导出再量长度**」→ 一个只读诊断动作也会把页面卡住（本版一并修掉）。
+
+### ② 修复：分段导出（= 用户建议的「动态注入」形态）
+
+| # | 落点 | 改动 |
+| --- | --- | --- |
+| ① | **`core/export.js`（新，纯内核）** | `exportChunks()` 生成器逐段产出 JSON 片段（`{section, part, index, total}`）· `exportParts()`（收集为片段数组，**不拼接**）· `exportTextOf()` / `exportEnvelopeValue()` / `exportSectionKeys()`；常量 `EXPORT_INLINE_MAX`（1 MB 页内内联上限）· `EXPORT_PRETTY_MAX`（512 KB 保留美化的上限）· `EXPORT_YIELD_CHARS`（256 KB 分批让出的粒度） |
+| ② | `index.js#exportStateJson(opts)` | **不再深拷贝**；**大存档不再美化**（`> EXPORT_PRETTY_MAX` 一律紧凑；`{pretty:true}` 才显式美化）；新增 `{parts:true}`（已分段、不拼接）与 `{stream:true}`（交出**生成器** `{source,total,chars:null}`）；**缺省仍是字符串**（devtools / 命令 / 既有测试契约不变） |
+| ③ | `ui/file-io.js#downloadTextParts`（新） | `new Blob(parts)` **直接吃片段数组** → **不需要**先把片段拼成一整串（省一份等量内存与一次全量拷贝）；与 `downloadTextFile` 共用同一个下载实现 `downloadBlob`（行为与返回值形状不变） |
+| ④ | `ui/panel.js#exportState` 动作 | 经 `{stream:true}` 拿生成器 → **逐段组装**（累计 ≥ `EXPORT_YIELD_CHARS` 才 `await` 一次宏任务；**小存档一次组装即结束**，零额外延迟）→ 片段直接进 `Blob` → **超过 `EXPORT_INLINE_MAX` 时不进文本框、不写剪贴板**并如实说明原因 → 无分段能力时回落整串路径 |
+| ⑤ | `ui/panel.js#panelState` | `exportChars` 改为「上次导出字符数」（不再由 `exportText` 反推）—— 大存档不内联时读数仍如实可见 |
+| ⑥ | `ui/debug.js#ftt.stateSize` | 改走 `{parts:true}`（只累计片段长度、**不拼接**），并回报 `parts` / `via` —— 只读探针不再触发整串导出 |
+| ⑦ | `devtools.js` | `FTT.exportState(opts)` **转传 opts**（`{stream:true}` / `{parts:true}` 经调试导出可用） |
+
+**语义等价（硬判据）**：`parts.join('') === JSON.stringify(exportEnvelopeValue(state, meta))` —— 由单测逐形态强制；
+导入侧只认 JSON，故「紧凑 vs 美化」不影响兼容。
+
+### ③ 测试与反向探针
+
+- 新增 `tests/unit/export-chunks.test.js`（**9 项**）：分段拼接**逐字节等价**（普通对象 / 空 / `null` / `undefined` / 数组 / 含 `undefined` 值的键 / 转义字符 / 嵌套）· 可 `JSON.parse` · 段结构 · 不拼接 · **不修改入参** · 内联上限判据 · `index.js` 三模式（字符串 / `parts` / `stream`）· **小存档仍美化、大存档紧凑**；
+- `tests/unit/file-io.test.js` **+3 项**：`F3b` 分段数组直接进 `Blob`；`E3` 生成器路径 → 分段下载（小数据仍内联 + 剪贴板）；`E4` **大存档不内联、不写剪贴板、仍成功下载**且 note 如实说明；
+- **反向探针（实测会失败）**：① 内联判据写死为「总是内联」→ `file-io` **E4** 红（15/1）；② 默认导出改回「总是美化」→ `export-chunks` **D3** 红（8/1）；
+- **顺带修掉一处时序风险**：分段组装最初「每 6 段让出一次」，在小存档上引入了可感知延迟、并让既有冒烟断言 AY1 在 20 ms 窗口内看不到结果 → 改为「**只有累计 ≥ 256 KB 才让出**」（小存档零额外延迟、大存档才分批让出）；
+- **门禁**：`npm run gate` 全绿（单测 **210 文件 / 3098 断言**、冒烟 **223** 项）；`core/export.js` 过内核纯净度与标识符门禁；
+- **门禁盲区修正（同一提交）**：`scripts/check-core-refs.js#declared()` 的「函数声明」正则不支持**生成器语法**（`function*` / `function *name`）→
+  生成器名不被登记为「已声明」，却在同一文件内被引用 → **误报「未定义标识符」**（本轮 `core/export.js#exportChunks` 实测踩到）。
+  已改为 `/\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)/g`（反向探针 = 改回旧正则即报 `core/export.js → exportChunks`）。
+
+### ④ 未做 / 有意不动
+
+1. **不改导出格式与文件名**（既有备份与导入不受影响）；
+2. **不改 `exportStateJson()` 的默认返回类型**（仍是字符串；devtools / 命令 / 测试契约不变）；
+3. **不把导出写进本机数据层**：用户建议的「动态注入备份」本版落在**下载通道**（片段直接进 Blob、不拼整串）；
+   「导出同时落一份到本机目录」属新增能力（会动数据管理页文案与存储路径语义）→ **未做**，如需另行立项；
+4. **不动 `importStateJson`**：如实登记「粘贴路径（`<textarea data-ftt-import>`）同样存在页内渲染大文本的隐患」，
+   后续若要做，应与导出的内联上限共用同一判据 `core/export.js#exportInlineAllowed`；
+5. **未取得真机证据**：本机宿主页面运行 v3.45.5（部署副本已更新但未刷新）→「10 MB 存档点导出不再卡死」只有**无宿主单测 + 体量推算**，
+   真机复测口径见 `docs/history/P10c87` §1（`ftt.fileTransport.lastWrite.bytes`）。
+
+**本轮文档**：`core/export.js`（新）· `docs/04`（数据管理 · 导出一行补 v3.45.7 口径）· `docs/05` §2（`core/` 81 → **82**、`tests/` 237 → **238**）·
+`docs/README` v2.77（§1 目录树 / §2 目录地图 / §3 数字口径）· `docs/history/P10c87-导出卡死修复与分段导出.md`。
+
+**数字口径**：单测 **210 文件 / 3098 断言**（+1 档 9 项、file-io +3 项）· 历史批次档数 207 → **208** · `docs/05` §2 的 `core/` 81 → **82**、`tests/` 237 → **238** ·
+`DATA_VERSION` 仍 **1** · 调试桥只读方法数仍 **58**（本次不新增桥方法）· 内核配置键数仍 **229**（不新增设置项）。
+
 ## v3.45.6（2026-10-12）· 货币跨端同步修复 + 本地 / 局域网调试端口核对
 
 **用户要求**（原话）：「新版本，小版本BUG更新。请核对本地和局域网开启调试的端口，其中货币总是没有同步，可能存在BUG，请修复。」

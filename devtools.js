@@ -114,7 +114,8 @@ export function installDevtools(hooks) {
             summary: (opts) => (hooks && typeof hooks.summary === 'function' ? hooks.summary(opts || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             abort: () => (hooks && typeof hooks.abort === 'function' ? hooks.abort() : { ok: false, reason: 'no-hook' }),
             clearFloors: () => (hooks && typeof hooks.clearFloors === 'function' ? hooks.clearFloors() : Promise.resolve({ ok: false, reason: 'no-hook' })),
-            exportState: () => (hooks && typeof hooks.exportState === 'function' ? hooks.exportState() : ''),
+            // v3.45.7：转传 opts —— `{stream:true}` 拿**分段生成器** / `{parts:true}` 拿**已分段**（都不拼成一整串）
+            exportState: (opts) => (hooks && typeof hooks.exportState === 'function' ? hooks.exportState(opts) : ''),
             importState: (text) => (hooks && typeof hooks.importState === 'function' ? hooks.importState(text) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             popupAction: (a, p) => (hooks && typeof hooks.popupAction === 'function' ? hooks.popupAction(a, p || {}) : Promise.resolve({ ok: false, reason: 'no-hook' })),
             // B7-2 跨端同步（与 V1 `FTT.*` 同名能力）

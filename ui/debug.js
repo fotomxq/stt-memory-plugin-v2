@@ -530,9 +530,15 @@ export function buildBridgeMethods() {
     T['ftt.snapshot'] = needFtt((F) => F.snapshot());
     T['ftt.probe'] = needFtt((F) => F.probe());
     //   `ftt.stateSize`：只回导出文本的字节数（**不回正文**）—— 正名以避免看起来像「导出/写盘」动作
+    //   v3.45.7：改走**分段模式**（`{parts:true}`）—— 只累计片段长度、**不拼成一整串**；
+    //     真机主文件约 10 MB，旧实现（深拷贝 + 美化 + 整串）会在只读探针里把页面卡住。
     T['ftt.stateSize'] = needFtt((F) => {
-        const t = String(F.exportState() || '');
-        return { available: true, bytes: t.length };
+        const r = (typeof F.exportState === 'function') ? F.exportState({ parts: true }) : null;
+        if (r && typeof r === 'object' && Number.isFinite(Number(r.chars))) {
+            return { available: true, bytes: Number(r.chars) || 0, parts: Number(r.total) || 0, via: 'parts' };
+        }
+        const t = String((typeof F.exportState === 'function' ? F.exportState() : '') || '');
+        return { available: true, bytes: t.length, via: 'text' };
     });
     T['ftt.debugLogStats'] = safe(() => debugLogStats());
     T['ftt.debugPageInfo'] = safe(() => debugPageInfo());

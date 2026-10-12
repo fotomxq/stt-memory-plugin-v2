@@ -84,7 +84,11 @@ import { sortRecentByStoryDate } from '../core/clock.js';
 import { scenesTreeHtml } from './scene-tree.js';
 // v2.49.0（用户报告：「导出和导入…应正确触发导出及下载文件，以及导入存档文件」）：
 //   真实文件下载（Blob + `<a download>`）与文件选择器读取（`<input type=file>` + FileReader），与 V1 同口径
-import { downloadTextFile, pickTextFile, fileIoCapabilities } from './file-io.js';
+import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities } from './file-io.js';
+// v3.45.7（用户报告「数据导出功能会直接卡死」，真机主文件约 10 MB）：
+//   导出的**分段组装**与「页内内联上限」判据来自 `core/export.js`（纯内核，唯一事实源）——
+//   大存档不再拼成一整串、不进文本框、不写剪贴板（三件事都会把 WebView 卡死）。
+import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../core/export.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
 import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, nsfwLegendHtml } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
@@ -219,6 +223,50 @@ export function singleFloorBusyState() { return Array.from(singleFloorBusy).sort
 
 /** 注入动作钩子（index.js：提取 / 清单 / 更新 / 清空注入） */
 export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
+
+/**
+ * v3.45.7：**分段组装导出内容**（面板专用；与 `hooks.exportState({stream:true})` 单钩子对接）。
+ *
+ * 为什么要分段：真机主文件约 **10 MB** —— 旧实现（深拷贝 + 2 空格美化 + 整串进文本框/剪贴板）会直接卡死 WebView。
+ * 三条通道按优先级：
+ *   ① 宿主给出**生成器**（`{source}`）→ 逐段驱动，每 6 段 `await` 一次宏任务（界面始终可响应）；
+ *   ② 宿主给出**已分段**（`{parts, chars}`）→ 直接用（仍不拼成一整串）；
+ *   ③ 字符串（旧钩子 / 测试桩）→ 整串路径（此时数据必然小到可以内联）。
+ * @returns {Promise<{parts:string[], chars:number, total:number, text:string|null}>}
+ */
+async function buildExportPartsForPanel() {
+    let r = null;
+    try { r = await hooks.exportState({ stream: true }); } catch (e) { r = null; }
+    // ① 生成器
+    try {
+        const src = (r && typeof r === 'object' && r.source) ? r.source : null;
+        if (src && typeof src[Symbol.iterator] === 'function') {
+            const parts = []; let chars = 0, total = Number(r.total) || 0, sinceYield = 0;
+            for (const c of src) {
+                const part = String((c && c.part !== undefined) ? c.part : c);
+                parts.push(part); chars += part.length; sinceYield += part.length;
+                total = Number(c && c.total) || total;
+                // **只在真的攒够活时才让出**：小存档（一次组装就完）不需要让出，
+                //   否则「点了没立刻落文件」会变成新的观感问题（也让既有测试的时序假设失效）。
+                if (sinceYield >= EXPORT_YIELD_CHARS) { sinceYield = 0; await yieldToUi(); }
+            }
+            return { parts: parts, chars: chars, total: total || parts.length, text: null };
+        }
+    } catch (e) { /* 落到②/③ */ }
+    // ② 已分段
+    if (r && typeof r === 'object' && Array.isArray(r.parts)) {
+        const parts = r.parts.map(String);
+        const chars = Number(r.chars) || parts.reduce((x, s) => x + s.length, 0);
+        return { parts: parts, chars: chars, total: Number(r.total) || parts.length, text: null };
+    }
+    // ③ 整串（旧钩子 / 测试桩 / 宿主未提供分段能力）
+    const text = String(r == null ? '' : r);
+    return { parts: text ? [text] : [], chars: text.length, total: text ? 1 : 0, text: text };
+}
+/** v3.45.7：让出一帧（宏任务）—— 导出分段组装期间保持界面可响应（面板层做，内核不碰定时器） */
+function yieldToUi() {
+    return new Promise((resolve) => { try { setTimeout(resolve, 0); } catch (e) { resolve(); } });
+}
 /** 面板状态（诊断/测试） */
 export function panelState() {
     return {
@@ -232,7 +280,8 @@ export function panelState() {
         // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的检索词与当前高亮键（只读快照，供测试与诊断）
         cfgFind: String(ps.cfgFind || ''), cfgFlash: String(ps.cfgFlash || ''),
         constraintDim: constraintDimState(), relWho: String(relFilterState().who || ''),
-        exportChars: String(ps.exportText || '').length,
+        // v3.45.7：大存档导出**不在页内内联**（`ps.exportText` 为空）→ 读数改由 `ps.exportChars` 提供（不再恒为 0）
+        exportChars: (Number(ps.exportChars) > 0 ? Number(ps.exportChars) : String(ps.exportText || '').length),
         // v3.0.13：本次「🆕 本次新增」标记的平行事件 id（空数组 = 无标记）
         flashIds: (ps.flash && Array.isArray(ps.flash.ids)) ? ps.flash.ids.slice() : [],
     };
@@ -3256,24 +3305,54 @@ export async function panelAction(action, payload) {
         }
         else if (a === 'exportState') {
             if (typeof hooks.exportState !== 'function') { setNote('导出入口未就绪'); return done({ ok: false, reason: 'no-hook' }); }
-            const text = String((await hooks.exportState()) || '');
-            ps.exportText = text;
-            // ① **真实下载文件**（V1 `export` 动作同款：Blob + `<a download>`）
             const fname = (() => {
                 try { return String((typeof hooks.exportFileName === 'function' ? hooks.exportFileName() : '') || '') || defaultExportFileName(); } catch (e) { return defaultExportFileName(); }
             })();
-            const dl = text ? downloadTextFile(fname, text, 'application/json') : { ok: false, reason: 'empty' };
-            // ② 复制到剪贴板（保留，便于直接粘贴）
+            /**
+             * v3.45.7（用户报告「数据导出功能会直接卡死，可能和数据量有一定关系」）：
+             *   旧实现 = 深拷贝 + `JSON.stringify(…, null, 2)` 美化 + 把**整串**放进文本框 / 剪贴板；
+             *   真机主文件约 **10 MB** → 美化后 ~15–25 MB，任何一环都够把 WebView 卡死。
+             *
+             * 现口径（**分段导出**，即用户建议的「动态注入」形态）：
+             *   ① **逐段组装**（宿主经 `{stream:true}` 交出生成器）—— 累计到 `EXPORT_YIELD_CHARS` 就 `await` 一次
+             *      宏任务（主线程始终有机会处理输入 / 绘制，不再出现「无响应」）；小存档一次组装即结束（零额外延迟）；
+             *   ② 片段**直接交给 `Blob(parts)`** 落文件（不拼一整串）；
+             *   ③ 超过 `EXPORT_INLINE_MAX` 时**不进文本框、不写剪贴板**，并如实说明原因；
+             *   ④ 宿主不支持下载时，才回落到「整串 + 文本框」（此时数据必然小于上限）。
+             */
+            const built = await buildExportPartsForPanel();
+            const chars = Number(built.chars) || 0;
+            const inline = exportInlineAllowed(chars);
+            // ① **真实下载文件**（大存档走分段 Blob；无分段能力时回落整串）
+            let dl;
+            if (built.parts && built.parts.length > 1) dl = downloadTextParts(fname, built.parts, 'application/json');
+            else {
+                const whole = built.text != null ? String(built.text) : String((built.parts || []).join(''));
+                dl = whole ? downloadTextFile(fname, whole, 'application/json') : { ok: false, reason: 'empty' };
+            }
+            // ② 复制到剪贴板（**仅小数据**：MB 级文本写剪贴板会长时间阻塞、且多半失败）
             let copied = false;
-            try {
-                const nav = globalThis.navigator;
-                if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(text); copied = true; }
-            } catch (e) { copied = false; }
-            const bits = ['已导出 ' + text.length + ' 字符（备份 / 迁移用）'];
+            if (inline) {
+                try {
+                    const whole = built.text != null ? String(built.text) : String((built.parts || []).join(''));
+                    const nav = globalThis.navigator;
+                    if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') { await nav.clipboard.writeText(whole); copied = true; }
+                } catch (e) { copied = false; }
+            }
+            // ③ 文本框兜底（**仅小数据**：把 MB 级文本塞进 <textarea> 会让页面卡死）
+            ps.exportText = inline ? (built.text != null ? String(built.text) : String((built.parts || []).join(''))) : '';
+            ps.exportChars = chars;
+            const kb = chars >= 1024 * 1024 ? ((chars / 1048576).toFixed(2) + ' MB') : (Math.round(chars / 1024) + ' KB');
+            const bits = ['已导出 ' + chars + ' 字符（' + kb + '）' + (!inline && built.total > 2 ? (' · 分段 ' + built.total + ' 段') : '')];
             bits.push(dl.ok ? ('已下载文件 ' + dl.filename) : ('未下载文件（' + dl.reason + '）—— 可从下方文本框手动复制保存'));
             if (copied) bits.push('已复制到剪贴板');
+            if (!inline) bits.push('内容较大（超过 ' + Math.round(EXPORT_INLINE_MAX / 1024) + ' KB）：**未在页内显示、未复制剪贴板**（两者都会卡住界面），请用下载的文件');
             setNote(bits.join(' · '));
-            result = Object.assign(result, { ok: true, chars: text.length, copied: copied, downloaded: !!dl.ok, filename: dl.ok ? dl.filename : '', downloadReason: dl.reason || '' });
+            result = Object.assign(result, {
+                ok: true, chars: chars, copied: copied, downloaded: !!dl.ok,
+                filename: dl.ok ? dl.filename : '', downloadReason: dl.reason || '',
+                parts: Number(built.total) || 0, inline: inline,
+            });
         }
         else if (a === 'importStateOpen') {
             // **真实选择存档文件**（V1 `import` 动作同款：`<input type=file>` → 读取 → 增量合并）
