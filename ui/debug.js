@@ -26,7 +26,11 @@ import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 // v3.13.0：**数据体检**（只读）—— 调试桥 `ftt.dataHealth` / 面板与 `/ftt` 共用同一份报告
 import { dataHealthReport, dataHealthText } from '../core/data-health.js';
 // v3.45.1（`docs/D22` W6 `技-32`）：待确认项与其记录的**只读**出口（不给写入口）
-import { conflictsSummary, listConflictLog, listConflicts, pendingConflictCount, CONFLICT_LOG_CAP } from '../core/conflicts.js';
+import { conflictsSummary, listConflictLog, listConflicts, pendingConflictCount, conflictLogCount, CONFLICT_LOG_CAP } from '../core/conflicts.js';
+// v3.45.8（用户要求「最近记录明明是日志……不要在这里体现」）：同步日志与「记录」从 **设定 → 存储** 迁到本页
+//   （与调试日志**同页统一归纳**）—— 列表 / 状态行 / 刷新与清空按钮都来自 `ui/sync.js` 的同名出口，界面零重算。
+import { syncLogHtml, syncLogServerStatusHtml } from './sync.js';
+import { SYNC_LOG_MAX } from '../core/sync-log.js';
 // v3.45.1（W6 技-35）：一致性单一事实源读数（四处诊断共用同一个数字）
 import { consistencyReading } from '../core/cross-sync.js';
 // v2.77.0：文件通道（宿主原生存储 / 酒馆用户目录文件）现状 —— 排障时先看这一项
@@ -1533,6 +1537,44 @@ export function readonlyCatalogHtml() {
         + '</div>';
 }
 
+/**
+ * v3.45.8（用户要求）——「📋 记录（无需确认）」：从 **设定 → 存储** 迁到 **设定 → 调试 → 📋 日志**。
+ *
+ * 用户原话：「设定-存储-最近记录，这些明明是日志，请和日志合并统一归纳，不要在这里体现。」
+ * 口径：这些类别（删楼 / 楼层收缩 / 跨端分歧已自动合并 / 已确认：X）在 `core/conflicts.js` 里就是 `mode:'log'`
+ *   —— **每条都同时写一条调试日志**（`index.js#wireConflictHooks` 的 `log` 钩子）→ 这里按**类别聚合**展示，
+ *   与上方日志列表**同页同区**（日志列表是逐条流水，本区是同类累计，二者同源、互补）。
+ * 锚点保持不变（`data-ftt-conflict-log` / `data-ftt-conflict-log-row="<id>"`），便于测试与外部核对。
+ */
+function conflictRecordSectionHtml() {
+    const rows = (() => { try { return listConflictLog(); } catch (e) { return []; } })();
+    const n = (() => { try { return conflictLogCount(); } catch (e) { return 0; } })();
+    // 始终渲染本节（含空态）：它现在是「记录」的**唯一**去处 → 空的时候也要让用户看得到「这里就是记录」。
+    if (!rows.length) {
+        return '<div class="ftt-section" data-ftt-conflict-log><div class="ftt-sec-title">📋 记录（无需确认）</div>'
+            + '<div class="ftt-empty">暂无记录。自动处理完的事（删楼 / 楼层收缩 / 跨端分歧已自动合并 / 已确认）会在这里留痕，并同时写一条上方日志。</div></div>';
+    }
+    return '<div class="ftt-section" data-ftt-conflict-log><div class="ftt-sec-title">📋 记录（' + rows.length + ' 类 · 共 ' + n + ' 次 · 无需确认）</div>'
+        + '<div class="ftt-muted">这些<b>已经自动处理完</b>，只是留个记录（每条都同时写了一条日志，见上方列表）—— 不需要确认。</div>'
+        + rows.slice(0, 8).map((x) => '<div class="ftt-muted" data-ftt-conflict-log-row="' + esc(String(x.id || '')) + '">· '
+            + esc(String(x.kind || '')) + '：' + esc(String(x.detail || '')).slice(0, 130) + '（×' + Math.max(1, Number(x.count) || 1) + '）</div>').join('')
+        + '</div>';
+}
+
+/**
+ * v3.45.8（用户要求）——「🔄 同步日志」：从 **设定 → 存储** 迁到本页（与调试日志统一归纳）。
+ * 列表 / 服务端状态行 / 刷新 / 清空都复用 `ui/sync.js` 的同名出口（同一份数据、同一套动作，界面零重算）；
+ * 「日志写不写到服务端」属**存储配置** → 开关仍留在 设定 → 存储（那里只留设置与指路，不再列日志内容）。
+ */
+function syncLogSectionHtml() {
+    return '<div class="ftt-section" data-ftt-sync-log-sec><div class="ftt-sec-title">🔄 同步日志（最近 ' + Number(SYNC_LOG_MAX) + ' 条 · 本角色）</div>'
+        + '<div class="ftt-muted">每次对账 / 同步 / 镜像推送记一条（本地 → 对端 → 同步后），用于追溯不同步。</div>'
+        + '<div class="ftt-muted ftt-mb-1" data-ftt-sync-log-status>' + syncLogServerStatusHtml() + '</div>'
+        + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="syncLogRefresh">🔄 刷新日志（与服务端合并）</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="syncLogClear">🧹 清空日志</button><span class="ftt-muted">（仅本聊天角色）</span></div>'
+        + '<div data-ftt-sync-log style="max-height:280px;overflow-y:auto;margin-top:6px">' + syncLogHtml() + '</div></div>';
+}
+
 export function debugPageHtml(controls) {
     const list = Array.isArray(controls) ? controls : [];
     const sw = list.filter((c) => String(c.key) === 'debugEnabled').map((c) => settingsControlHtml(c)).join('\n');
@@ -1563,6 +1605,10 @@ export function debugPageHtml(controls) {
         '<div class="ftt-section"><div class="ftt-sec-title">📋 日志</div>',
         debugLogHtml(),
         '</div>',
+        // v3.45.8（用户要求）：**记录**与**同步日志**从 设定 → 存储 迁来 —— 与日志同页统一归纳
+        //   （用户原话：「这些明明是日志，请和日志合并统一归纳，不要在这里体现」）。
+        conflictRecordSectionHtml(),
+        syncLogSectionHtml(),
         // ④ 交互与宿主调用时间线
         '<div class="ftt-section"><div class="ftt-sec-title">🧭 交互与宿主调用时间线</div>',
         traceSectionHtml(traceFilter),

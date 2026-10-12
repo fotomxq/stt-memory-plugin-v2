@@ -51,15 +51,19 @@ function hintTexts(html) {
 }
 
 // ---- S 组：结构仍在（精简不能把功能删掉） ----
-A('S1 七个分节与全部动作入口保持不变（只精简文案）', (() => {
+A('S1 六个分节与存储侧动作入口保持不变；**日志内容不再在存储页**（v3.45.8：同步日志 / 记录统一收进 设定 → 调试 → 日志）', (() => {
     const h = page();
     const sections = ['记忆文件（服务端 · 核心基准）', '本机缓冲（仅缓冲 · 权威=记忆文件）', '一致性',
-        '世界书存储（单向写入 · 由下方开关联动）', '状态与操作', '🔄 同步日志（最近 30 条 · 本角色）'];
-    const actions = ['storageStatusRefresh', 'storageSync', 'storageVerify', 'syncLogRefresh', 'syncLogClear', 'worldbookRefresh'];
+        '世界书存储（单向写入 · 由下方开关联动）', '状态与操作', '日志与留痕'];
+    const actions = ['storageStatusRefresh', 'storageSync', 'storageVerify', 'worldbookRefresh'];
     return sections.every((s) => h.indexOf(s) >= 0)
         && actions.every((a) => h.indexOf('data-ftt-action="' + a + '"') >= 0)
-        && h.indexOf('data-ftt-state-file-status') >= 0 && h.indexOf('data-ftt-sync-log') >= 0
-        && h.indexOf('data-ftt-sync-log-status') >= 0;
+        && h.indexOf('data-ftt-state-file-status') >= 0
+        // 日志本体（列表 / 状态行 / 两个动作）与「记录」区都已移出本页；仅保留「写到服务端」这一个设置与一行指路
+        && h.indexOf('data-ftt-sync-log') < 0 && h.indexOf('data-ftt-sync-log-status') < 0
+        && h.indexOf('data-ftt-action="syncLogRefresh"') < 0 && h.indexOf('data-ftt-action="syncLogClear"') < 0
+        && h.indexOf('data-ftt-conflict-log') < 0 && h.indexOf('最近记录') < 0
+        && h.indexOf('设定 → 调试 → 📋 日志') >= 0;                     // 只留一行指路（日志本体在调试页）
 })(), page().slice(0, 160));
 
 A('S2 记忆文件状态行只渲染一份（旧版在「记忆文件」与「状态与操作」各渲染一次）', (() => {

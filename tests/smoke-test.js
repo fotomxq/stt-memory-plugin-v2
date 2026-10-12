@@ -737,23 +737,28 @@ endpointDown = false;
 
 // ---------- N 跨端同步（B7-2：文件通道 / 清单预判 / 快照文件 / 同步日志 / 刷新与立即同步） ----------
 const syncMod = await import('../adapters/sync.js');
-await assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与操作/同步日志 + V1 同名动作按钮齐备', (async () => {
+await assert('N1 存储页（V1 分节）：记忆文件/一致性/世界书/状态与操作/日志与留痕 + V1 同名动作按钮齐备；**日志本体在 设定 → 调试 → 日志**（v3.45.8）', (async () => {
     await entry.popupAction('tab', { tab: 'settings' });
     const r = await entry.popupAction('settingsSub', { sub: 'storage' });
     const html = String(r.html || '');
-    return html.indexOf('记忆文件（服务端 · 核心基准）') >= 0 && html.indexOf('一致性') >= 0
+    const storageOk = html.indexOf('记忆文件（服务端 · 核心基准）') >= 0 && html.indexOf('一致性') >= 0
         && html.indexOf('世界书存储（单向写入 · 由下方开关联动）') >= 0 && html.indexOf('状态与操作') >= 0
-        && html.indexOf('🔄 同步日志（最近 30 条 · 本角色）') >= 0
+        && html.indexOf('日志与留痕') >= 0
         && html.indexOf('data-ftt-action="storageStatusRefresh"') >= 0 && html.indexOf('data-ftt-action="storageSync"') >= 0
-        && html.indexOf('data-ftt-action="storageVerify"') >= 0 && html.indexOf('data-ftt-action="syncLogRefresh"') >= 0
-        && html.indexOf('data-ftt-action="syncLogClear"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0;
+        && html.indexOf('data-ftt-action="storageVerify"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0
+        && html.indexOf('data-ftt-sync-log') < 0 && html.indexOf('data-ftt-action="syncLogClear"') < 0;
+    const d = await entry.popupAction('settingsSub', { sub: 'debug' });
+    const dhtml = String(d.html || '');
+    return storageOk && dhtml.indexOf('🔄 同步日志（最近 30 条 · 本角色）') >= 0
+        && dhtml.indexOf('data-ftt-sync-log') >= 0 && dhtml.indexOf('data-ftt-sync-log-status') >= 0
+        && dhtml.indexOf('data-ftt-action="syncLogRefresh"') >= 0 && dhtml.indexOf('data-ftt-action="syncLogClear"') >= 0;
 })(), '');
 
-await assert('N2 同步日志：记录入队（本端源头 + ts）→ 面板渲染「本地 → 对端 → 同步后」→ 清空即空', (async () => {
+await assert('N2 同步日志：记录入队（本端源头 + ts）→ **调试页**日志区渲染「本地 → 对端 → 同步后」→ 清空即空', (async () => {
     globalThis.FTT.syncLogClear();
     globalThis.FTT.syncLogPush({ action: '冒烟记录', mode: '推送', changed: true, localN: 1, remoteN: 2, afterN: 2, localHash: 'abcdef0123456789', remoteHash: 'ffeeddccbbaa9988', afterHash: 'abcdef0123456789', note: '冒烟' });
     const list = globalThis.FTT.syncLog();
-    const r = await entry.popupAction('settingsSub', { sub: 'storage' });
+    const r = await entry.popupAction('settingsSub', { sub: 'debug' });
     const html = String(r.html || '');
     const ok = list.length === 1 && list[0].action === '冒烟记录' && String(list[0].src || '').length > 0
         && html.indexOf('冒烟记录') >= 0 && html.indexOf('本地 1 条') >= 0 && html.indexOf('→ 对端') >= 0 && html.indexOf('→ 同步后') >= 0;
@@ -6936,7 +6941,7 @@ await assert('CA1 v3.35.0 修复「选择文件夹后本地存储路径不显示
 // ---------- CB 待确认区（v3.36.0：差异化动作 + 记录分离） ----------
 // 用户报告（原话）：「设定-存储-待确认，点击全部已确认会报错。而且这里设计非常不合理，只能确认无法改其他内容，
 //   那和日志没任何区别了。请重新设计该位置的逻辑，如果是确认，应该有差异化处理的机制；如果不需要确认，则只是一种日志。」
-await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / 确认留痕（端到端）：待确认项一栏一项并带**该类自己的动作按钮**、「记录」类只进只读区且不计入待确认；真实点击「✅ 全部已确认」不再报 unknown-action（清待确认、留记录）；真实点击单条动作「✅ 知道了」销账；「🔀 重新同步」经白名单路由；总览「去处理」跳到设定→存储', (async () => {
+await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / 确认留痕（端到端）：待确认项一栏一项并带**该类自己的动作按钮**、「记录」类**不进待确认、也不在存储页**（v3.45.8 起记录区在 设定 → 调试 → 日志）；真实点击「✅ 全部已确认」不再报 unknown-action（清待确认、留记录）；真实点击单条动作「✅ 知道了」销账；「🔀 重新同步」经白名单路由；总览「去处理」跳到设定→存储', (async () => {
     const CF = await import('../core/conflicts.js');
     const PM = await import('../ui/panel.js');
     const keepHooks = CF.conflictHooks();
@@ -6958,14 +6963,19 @@ await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / �
         await entry.popupAction('tab', { tab: 'settings' });
         await entry.popupAction('settingsSub', { sub: 'storage' });
         const page = String(((await entry.popupAction('refresh', {})).html) || '');
+        // v3.45.8（用户要求「这些明明是日志……不要在这里体现」）：记录区移出存储页 → 改在 设定 → 调试 断言
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const dbgPage = String(((await entry.popupAction('refresh', {})).html) || '');
+        await entry.popupAction('settingsSub', { sub: 'storage' });
         const pageOk = n0 === 4 && log0 === 1
             && page.indexOf('待确认（共 4 项 · 2 类）') > 0
             && page.indexOf('data-ftt-conflict-item=') > 0
             && page.indexOf('data-ftt-cact="dismiss"') > 0 && page.indexOf('data-ftt-cact="verify"') > 0
             && page.indexOf('data-ftt-cact="resync"') > 0
             && page.indexOf('✅ 全部已确认（4）') > 0
-            && page.indexOf('data-ftt-conflict-log') > 0 && page.indexOf('无需确认') > 0
-            && page.indexOf('data-ftt-conflict-log-row="删楼|') > 0;
+            && page.indexOf('data-ftt-conflict-log') < 0 && page.indexOf('最近记录') < 0     // 存储页不再有记录区
+            && dbgPage.indexOf('data-ftt-conflict-log') > 0 && dbgPage.indexOf('无需确认') > 0
+            && dbgPage.indexOf('data-ftt-conflict-log-row="删楼|') > 0;
         // ② 真实点击「✅ 全部已确认」——修复前是 unknown-action 报错、且什么都不会发生
         const all = await entry.popupAction('resolveConflicts', {});
         // v3.37.0（S2）：批量确认给**每一类**都留一条「已确认：<类别>」记录 → 1（删楼）+ 2 = 3
@@ -7000,9 +7010,12 @@ await assert('CB1 v3.36.0 待确认区重新设计 + v3.37.0 旧数据迁移 / �
         const mig = CF.migrateConflicts();
         const page2 = String(((await entry.popupAction('refresh', {})).html) || '');
         const seg2 = page2.slice(page2.indexOf('data-ftt-conflicts'));
+        await entry.popupAction('settingsSub', { sub: 'debug' });
+        const dbg2 = String(((await entry.popupAction('refresh', {})).html) || '');
+        await entry.popupAction('settingsSub', { sub: 'storage' });
         const migOk = mig.moved === 1 && mig.kept === 1
             && page2.indexOf('data-ftt-conflict-item="删楼|旧的删楼通知"') < 0
-            && page2.indexOf('data-ftt-conflict-log-row="删楼|旧的删楼通知"') > 0
+            && dbg2.indexOf('data-ftt-conflict-log-row="删楼|旧的删楼通知"') > 0     // 记录区在调试页
             && seg2.indexOf('data-ftt-conflict-item="跨端合并冲突|F"') > 0
             && seg2.indexOf('data-ftt-cact="dismiss"') > 0
             && CF.migrateConflicts().moved === 0;                       // 幂等

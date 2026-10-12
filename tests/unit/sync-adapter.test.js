@@ -19,6 +19,7 @@ import {
     stateFileEnabled, snapshotFileEnabled, syncLogServerEnabled, fileCacheStats, fileCacheDropAll,
 } from '../../adapters/sync.js';
 import { storagePageHtml, syncLogHtml, stateFileStatusHtml, syncAction, SYNC_ACTIONS } from '../../ui/sync.js';
+import { debugPageHtml } from '../../ui/debug.js';   // v3.45.8：同步日志迁到 设定 → 调试 → 日志
 import { SETTINGS_CONTROLS } from '../../ui/settings-pages.js';
 import { panelAction, openPanel, panelBodyHtml, setPanelHooks2 } from '../../ui/panel.js';
 
@@ -428,15 +429,20 @@ R.assert('H2 storageStatusInfo：作用域/文件/快照/日志/远端指纹/门
 // ============================================================
 // I 组：UI（存储页分节 + 动作分发）
 // ============================================================
-R.assert('I1 存储页：V1 分节（记忆文件/原生存储/本机缓冲/一致性/世界书/状态与操作/同步日志）+ V1 同名动作按钮', (() => {
+R.assert('I1 存储页：V1 分节（记忆文件/本机缓冲/一致性/世界书/状态与操作/日志与留痕）+ V1 同名动作按钮；**日志本体已移到 设定 → 调试 → 日志**（v3.45.8，用户要求「这些明明是日志……不要在这里体现」）', (() => {
     const html = storagePageHtml(SETTINGS_CONTROLS.storage);
+    const dbg = String(debugPageHtml(SETTINGS_CONTROLS.debug || []) || '');
     return html.indexOf('记忆文件（服务端 · 核心基准）') >= 0 && html.indexOf('本机缓冲（仅缓冲 · 权威=记忆文件）') >= 0
         && html.indexOf('一致性') >= 0 && html.indexOf('世界书存储（单向写入 · 由下方开关联动）') >= 0
-        && html.indexOf('状态与操作') >= 0 && html.indexOf('🔄 同步日志（最近 30 条 · 本角色）') >= 0
+        && html.indexOf('状态与操作') >= 0 && html.indexOf('日志与留痕') >= 0
         && html.indexOf('data-ftt-action="storageStatusRefresh"') >= 0 && html.indexOf('data-ftt-action="storageSync"') >= 0
-        && html.indexOf('data-ftt-action="storageVerify"') >= 0 && html.indexOf('data-ftt-action="syncLogRefresh"') >= 0
-        && html.indexOf('data-ftt-action="syncLogClear"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0
-        && html.indexOf('data-ftt-sync-log-status') >= 0 && html.indexOf('data-ftt-sync-log') >= 0;
+        && html.indexOf('data-ftt-action="storageVerify"') >= 0 && html.indexOf('data-ftt-state-file-status') >= 0
+        // 存储页只留「写到服务端」这一个设置与指路；日志列表 / 状态行 / 刷新与清空动作都在调试页
+        && html.indexOf('data-ftt-sync-log') < 0 && html.indexOf('data-ftt-sync-log-status') < 0
+        && html.indexOf('data-ftt-action="syncLogRefresh"') < 0 && html.indexOf('data-ftt-action="syncLogClear"') < 0
+        && dbg.indexOf('🔄 同步日志（最近 30 条 · 本角色）') >= 0 && dbg.indexOf('data-ftt-sync-log') >= 0
+        && dbg.indexOf('data-ftt-sync-log-status') >= 0
+        && dbg.indexOf('data-ftt-action="syncLogRefresh"') >= 0 && dbg.indexOf('data-ftt-action="syncLogClear"') >= 0;
 })(), '');
 
 await A('I2 面板动作接线：syncLogClear / syncLogRefresh / storageVerify / storageSync / storageStatusRefresh / worldbookRefresh 均经 panelAction 可达并回填提示', async () => {

@@ -27,7 +27,8 @@ import { dataAggHash } from '../core/cross-sync.js';
 import { settingsControlHtml } from './settings-pages.js';
 import { hintDetailsHtml } from './hints.js';   // v3.16.0：本地文件模式的折叠说明
 // v2.92.0（用户要求）：需人工确认项 —— 设定 → 存储 展示同一份清单（总览亦有醒目提示）
-import { listConflicts, pendingConflictCount, clearConflicts, listConflictLog, conflictLogCount,
+// v3.45.8（用户要求）：只读**记录**区已迁往 `ui/debug.js`（设定 → 调试 → 日志）→ 本文件不再读它
+import { listConflicts, pendingConflictCount, clearConflicts,
     conflictKindSpec, resolveConflict, CONFLICT_ACT } from '../core/conflicts.js';   // v3.36.0：待确认（差异化动作）/ 只读记录 分离
 import { refreshWorldbookNames, worldbookNames } from '../host/worldbook.js';
 // v2.77.0：文件通道后端（宿主原生存储 / 酒馆用户目录文件）—— 状态行 + 折叠详情
@@ -214,8 +215,6 @@ export function storagePageHtml(controls) {
         try {
             const n = pendingConflictCount();
             const rows = listConflicts();
-            const logRows = listConflictLog();
-            const logN = conflictLogCount();
             // ① 待确认（差异化动作）
             let head;
             if (rows.length) {
@@ -242,15 +241,12 @@ export function storagePageHtml(controls) {
             } else {
                 head = '<div class="ftt-hint" data-ftt-conflicts>无待确认项（跨端合并冲突与并集自检均正常）</div>';
             }
-            // ② 记录（只读，不需要确认）
-            const logBlock = logRows.length
-                ? ('<div class="ftt-section" data-ftt-conflict-log><div class="ftt-sec-title">📋 最近记录（' + logRows.length + ' 类 · 共 ' + logN + ' 次 · 无需确认）</div>'
-                    + '<div class="ftt-muted">这些**已经自动处理完**，只是留个记录（同时已写进调试日志）—— 不需要确认。</div>'
-                    + logRows.slice(0, 8).map((x) => '<div class="ftt-muted" data-ftt-conflict-log-row="' + esc(String(x.id || '')) + '">· '
-                        + esc(String(x.kind || '')) + '：' + esc(String(x.detail || '').slice(0, 130)) + '（×' + Math.max(1, Number(x.count) || 1) + '）</div>').join('')
-                    + '</div>')
-                : '';
-            return head + logBlock;
+            // v3.45.8（用户要求）：「📋 最近记录」**移出存储页** —— 原话：
+            //   「设定-存储-最近记录，这些明明是日志，请和日志合并统一归纳，不要在这里体现。」
+            //   该区本来就是日志（`core/conflicts.js#noteConflict` 对 `mode:'log'` 的类别**每条都同时写一条调试日志**），
+            //   故不再在此重复一份：统一收在 **设定 → 调试 → 📋 日志** 下的「📋 记录（无需确认）」。
+            //   **待确认**（`mode:'decide'`）仍需人做决定 → 留在本页（它不是日志）。
+            return head;
         } catch (e) { return ''; }
     })();
     return [
@@ -300,14 +296,12 @@ export function storagePageHtml(controls) {
         '</div>',
         slimGzipInfoHtml() + '</div>',
 
-        '<div class="ftt-section"><div class="ftt-sec-title">🔄 同步日志（最近 30 条 · 本角色）</div>',
-        '<div class="ftt-muted ftt-mb-1">每次对账 / 同步 / 镜像推送记一条（本地 → 对端 → 同步后），用于追溯不同步。</div>',
-        box(['storage.syncLogServer']),
-        '<div class="ftt-muted ftt-mb-1">开启后日志随账号存到服务端（双端可见），关闭则只存本机。</div>',
-        '<div class="ftt-muted ftt-mb-1" data-ftt-sync-log-status>' + syncLogServerStatusHtml() + '</div>',
-        '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="syncLogRefresh">🔄 刷新日志（与服务端合并）</button>'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="syncLogClear">🧹 清空日志</button><span class="ftt-muted">（仅本聊天角色）</span></div>',
-        '<div data-ftt-sync-log style="max-height:280px;overflow-y:auto;margin-top:6px">' + syncLogHtml() + '</div></div>',
+        // v3.45.8（用户要求「这些明明是日志……不要在这里体现」）：**日志内容不再在存储页列出** ——
+        //   「🔄 同步日志」列表（连同刷新 / 清空 / 服务端状态行）与「📋 记录」统一收进 **设定 → 调试 → 📋 日志**；
+        //   本页只留一行指路。（注：日志是否镜像到服务端由 `cfg.storage.syncLogServer` 决定，其控件在 v2.94.0
+        //   已按当时的口径从设置页剔除 → 此处**不新增控件**，只说明去处。）
+        '<div class="ftt-section"><div class="ftt-sec-title">日志与留痕</div>',
+        '<div class="ftt-muted">调试日志 · 记录（无需确认）· 同步日志统一在 <b>设定 → 调试 → 📋 日志</b> 查看与清理（本页不再重复列出）。</div></div>',
 
         (other.length ? ('<div class="ftt-section"><div class="ftt-sec-title">其它</div>' + other.map((c) => settingsControlHtml(c)).join('\n') + '</div>') : ''),
     ].join('\n');
@@ -660,7 +654,7 @@ export async function syncAction(action, payload) {
         if (a === 'resolveConflicts') {
             const r = clearConflicts();
             const note = r.cleared
-                ? ('已全部确认 ' + r.cleared + ' 类待确认项（只清提示，不动数据' + (r.keptLog ? ('；最近记录仍有 ' + r.keptLog + ' 类（无需确认）') : '') + '）')
+                ? ('已全部确认 ' + r.cleared + ' 类待确认项（只清提示，不动数据' + (r.keptLog ? ('；记录区仍有 ' + r.keptLog + ' 类（无需确认，见 设定 → 调试 → 📋 日志）') : '') + '）')
                 : '当前没有待确认项';
             try { syncToast('success', '待确认', note); } catch (e) { /* 忽略 */ }
             return { ok: true, action: a, note: note, cleared: r.cleared, keptLog: r.keptLog };

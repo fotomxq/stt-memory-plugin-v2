@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 import { storagePageHtml } from '../../ui/sync.js';
+import { debugPageHtml } from '../../ui/debug.js';   // v3.45.8：记录区迁到「设定 → 调试 → 日志」
 
 const R = makeReporter('conflicts v2.92.0 待人工确认项（设定 + 总览）');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -57,12 +58,13 @@ A('A2 上限 ' + CONFLICT_CAP + ' 条（最新在前）+ 全清', (() => {
     return capped && r.cleared === before && pendingConflictCount() === 0;
 })(), () => ({ kinds: pendingConflictKinds() }));
 
-A('A3 设定 → 存储「待确认」区（v3.36.0 新设计）：待确认项**一栏一项**并带**该类自己的动作按钮**（如「🔀 重新同步（并集）」+「✅ 知道了」）；「记录」类只进只读区、不计入待确认', (() => {
+A('A3 设定 → 存储「待确认」区（v3.36.0 新设计）：待确认项**一栏一项**并带**该类自己的动作按钮**（如「🔀 重新同步（并集）」+「✅ 知道了」）；「记录」类**不在存储页**、只在 设定 → 调试 → 日志（v3.45.8）', (() => {
     boot();
     const empty = String(storagePageHtml([]) || '');
     noteConflict({ kind: '跨端合并冲突', detail: '本地与远端同 id 不同内容 3 条', count: 3 });
     noteConflict({ kind: '删楼', detail: '删除 10 层（保留最近 10 层）；备份 bk.json', count: 1 });
     const html = String(storagePageHtml([]) || '');
+    const dbg = String(debugPageHtml([]) || '');
     return empty.indexOf('无待确认项') >= 0
         // 待确认：计数只算 decide（跨端合并冲突 ×3），记录不计入
         && html.indexOf('data-ftt-conflicts') >= 0 && html.indexOf('待确认（共 3 项 · 1 类）') >= 0
@@ -70,11 +72,12 @@ A('A3 设定 → 存储「待确认」区（v3.36.0 新设计）：待确认项*
         && html.indexOf('data-ftt-action="conflictAct"') >= 0
         && html.indexOf('data-ftt-cact="resync"') >= 0 && html.indexOf('data-ftt-cact="dismiss"') >= 0
         && html.indexOf('🔀 重新同步（并集）') >= 0 && html.indexOf('✅ 全部已确认（3）') >= 0
-        // 记录：只读区（无需确认），不以「待确认」名义出现
-        && html.indexOf('data-ftt-conflict-log') >= 0 && html.indexOf('无需确认') >= 0
-        && html.indexOf('data-ftt-conflict-log-row="删楼|') >= 0
+        // v3.45.8（用户要求「这些明明是日志……不要在这里体现」）：记录区**移出存储页** → 只在调试页（与日志同页）
+        && html.indexOf('data-ftt-conflict-log') < 0 && html.indexOf('最近记录') < 0
+        && dbg.indexOf('data-ftt-conflict-log') >= 0 && dbg.indexOf('无需确认') >= 0
+        && dbg.indexOf('data-ftt-conflict-log-row="删楼|') >= 0
         && pendingConflictCount() === 3 && conflictLogCount() === 1;
-})(), () => ({ pending: pendingConflictCount(), log: conflictLogCount() }));
+})(), () => ({ pending: pendingConflictCount(), log: conflictLogCount(), storageHasLog: String(storagePageHtml([]) || '').indexOf('data-ftt-conflict-log') >= 0 }));
 
 A('A4 **总览**横幅（源码级）：`overviewBody` 调用 `conflictBannerHtml()`，横幅含 `⚠️ 待确认` 与「去处理 / 已确认」两个动作', (() => {
     // 说明：总览整页渲染依赖较多宿主钩子（单测环境不便全量注入），故此处核对**渲染路径接线**与横幅模板本身；
@@ -164,7 +167,8 @@ A('A9 v3.37.0（S1 兜底）界面绝不出现「待确认但无动作」的行�
     boot();
     store = [{ id: '删楼|旧的', kind: '删楼', detail: '旧的删楼通知', count: 1, firstAt: 1, lastAt: 1, seq: 1 }];
     const html = String(storagePageHtml([]) || '');
-    const seg = html.slice(html.indexOf('data-ftt-conflicts'), html.indexOf('data-ftt-conflict-log') > 0 ? html.indexOf('data-ftt-conflict-log') : undefined);
+    // v3.45.8：记录区已移出存储页 → 「待确认」段就是整页里那一块（不再用记录区锚点切段）
+    const seg = html.slice(html.indexOf('data-ftt-conflicts'));
     return conflictKindSpec('删楼').actions.length === 0
         && seg.indexOf('data-ftt-conflict-item="删楼|旧的"') > 0
         && seg.indexOf('data-ftt-action="conflictAct"') > 0 && seg.indexOf('data-ftt-cact="dismiss"') > 0
