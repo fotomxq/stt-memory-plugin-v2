@@ -116,6 +116,8 @@ export const RUNTIME_SLOTS = Object.freeze({
     processedVer: { label: '台账版本标签', evidence: 'host/floors.js', disposition: 'runtime' },
     weaveLastFloor: { label: '上次被动推演楼层', evidence: 'core/parallel.js（`数-14` 加上界）', disposition: 'runtime' },
     parallelFloor: { label: '上次平行演化楼层', evidence: 'core/rumor-evolve.js（`数-14` 加上界）', disposition: 'runtime' },
+    // v3.46.1（`docs/D22` W11 `数-36` / `docs/D32` §3.9）：三域联动记录（末 5 条；**不参与跨端同步**）
+    triLinkLog: { label: '联动记录（末 5 条）', evidence: 'core/tri-link.js#triLogPush', disposition: 'runtime' },
 });
 
 /**

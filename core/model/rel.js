@@ -159,7 +159,9 @@ function relOrphanStats() {
     const out = { rows: 0, items: 0, byDim: {}, itemDims: {} };
     try {
         const links = (state && state.links) || [];
-        const dims = (typeof REL_LINK_DIMS !== 'undefined' && REL_LINK_DIMS.length) ? REL_LINK_DIMS : ['memories', 'plans', 'suspense', 'parallels'];
+        // `rows`（**行**孤儿：关联行指向的条目已不存在）随 `REL_LINK_DIMS` 扩维（含 rumors）；
+        // `items`（**条目**孤儿：一条关联都没有）**固定 4 维** —— 传言不计入（`docs/D32` §3.1 注）。
+        const dims = (typeof REL_ORPHAN_ITEM_DIMS !== 'undefined' && REL_ORPHAN_ITEM_DIMS.length) ? REL_ORPHAN_ITEM_DIMS : ['memories', 'plans', 'suspense', 'parallels'];
         const exists = (dim, refId) => ((state && state[dim]) || []).some(x => x && String(x.id) === String(refId));
         for (const r of links) {
             if (!r) continue;
@@ -181,7 +183,7 @@ function relOrphanStats() {
 //   public = 先 clean，再给「一条关联都没有」的条目补锚行 public=true（转公开事实/公开计划；
 //            平行事件恒不可见，不参与转公开）。
 
-const REL_LINK_KINDS = ['fact', 'plan', 'suspense', 'parallel'];
+const REL_LINK_KINDS = ['fact', 'plan', 'suspense', 'parallel', 'rumor'];   // v3.46.1（W11 数-33）：+`rumor`（与 fact/plan/suspense/parallel 并列；只影响展示与 require 语义）
 // 关联行稳定 id：同维度 + 同条目 + 同角色唯一（跨端去重键）
 
 function relLinkHowOutOfRange(v, dim) {
@@ -224,6 +226,10 @@ const REL_LINK_HOW_LEGAL = {
     plans: ['author', 'join', 'told', 'inferred', 'investigating', 'unspecified'],
     suspense: ['involved', 'investigating', 'witness', 'told', 'inferred', 'rumor', 'unspecified'],
     parallels: ['related'],
+    // v3.46.1（`docs/D22` W11 `数-33` / `docs/D32` §3.1）：**传言（`rumors`）扩维** —— 传言的「谁知道」子表是
+    //   「听到 / 传开 / 被告知 / 推断 / 传闻 / 未指明」，与记忆的知情子表**刻意不同**（`participant` 这种"亲历"
+    //   对传言没有意义：传言的语义就是"二手"）。新增值同时登记进 `REL_LINK_HOW_RANK`（可靠度）与 `REL_LINK_HOW_LABEL`（展示）。
+    rumors: ['heard', 'spread', 'told', 'inferred', 'rumor', 'unspecified'],
 };
 // 可靠度（合并 / 上限截断取更可靠者；数值越大越可靠）
 
@@ -259,9 +265,15 @@ function relLinkHow(v, dim) {
 
 function relHowLabelOf(how) { try { return REL_LINK_HOW_LABEL[how] || '知情'; } catch (e) { return '知情'; } }
 
-const REL_LINK_HOW_RANK = { author: 9, involved: 9, participant: 8, witness: 7, join: 7, investigating: 6, told: 5, unspecified: 4, inferred: 3, rumor: 2, related: 1 };
+const REL_LINK_HOW_RANK = { author: 9, involved: 9, participant: 8, witness: 7, join: 7, spread: 7, investigating: 6, told: 5, heard: 5, unspecified: 4, inferred: 3, rumor: 2, related: 1 };
 
-const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels'];
+// v3.46.1（`docs/D22` W11 `数-33` / `docs/D32` §3.1）：关联锚点**第 5 维 `rumors`** —— 传言的锚行因此可以
+//   携带 `planRef` / `suspenseRef`（R→P / R→S），这是「三域联动」的载体（Q1 裁决：扩维 + 锚行引用，不新增私有字段）。
+//   **孤儿统计口径不变**：`relOrphanStats().items`（条目存在但没有任何关联）仍只数原 **4 维**（见其实现）——
+//   传言本来就可能"谁都不知道"，把它算成孤儿会一夜之间冒出上百条（`docs/D32` §3.1 注）。
+const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels', 'rumors'];
+/** 孤儿**条目**统计只数这 4 维（v3.46.1 起与 `REL_LINK_DIMS` 分离；口径见上一行注释与 `docs/D32` §3.1） */
+const REL_ORPHAN_ITEM_DIMS = ['memories', 'plans', 'suspense', 'parallels'];
 
 const REL_LINK_HOW_CN = {
     '亲历': 'participant', '目击': 'witness', '被告知': 'told', '推断': 'inferred', '传闻': 'rumor', '知情': 'unspecified',
@@ -337,7 +349,7 @@ const REL_LINK_DEVIATION = ['accurate', 'partial', 'misconception', 'denial', 'u
 
 const REL_LINK_DEVIATION_CN = { '准确': 'accurate', '片面': 'partial', '有误': 'misconception', '误解': 'misconception', '不信': 'denial', '否认': 'denial', '存疑': 'unaware', '未知': 'unknown' };
 
-const REL_LINK_HOW_LABEL = { participant: '亲历', witness: '目击', told: '被告知', inferred: '推断', rumor: '传闻', unspecified: '知情', author: '策划', join: '参与', involved: '当事人', investigating: '在查', related: '相关' };
+const REL_LINK_HOW_LABEL = { participant: '亲历', witness: '目击', told: '被告知', inferred: '推断', rumor: '传闻', unspecified: '知情', author: '策划', join: '参与', involved: '当事人', investigating: '在查', related: '相关', heard: '听说', spread: '传开' };   // v3.46.1（W11 数-33）：+传言的两个新 how（heard / spread）
 
 const SNAP_GROUP_MAP = {
     gender: 'identity', birthDate: 'identity', ageNote: 'identity', species: 'identity', occupation: 'identity', title: 'identity', family: 'identity',
@@ -387,7 +399,7 @@ export {
     normalizeRelRefList, normalizeRelLink, relSummaryLine, relLinksOf, relOrphanStats, relHowLabelOf,
     // v3.1.0：关联行索引（渲染热路径用；纯函数、无跨渲染缓存）
     relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey,
-    REL_LINK_KINDS, REL_LINK_DIMS, REL_LINK_HOW_RANK,
+    REL_LINK_KINDS, REL_LINK_DIMS, REL_LINK_HOW_RANK, REL_ORPHAN_ITEM_DIMS, REL_LINK_HOW_LEGAL, REL_LINK_HOW_LABEL,
     relLinkId, relLinkHow, relLinkDeviation,
     // v3.40.0（`docs/D16` A2）：条目被删时**级联**清理它的关联行
     purgeLinksForGoneEntries,

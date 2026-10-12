@@ -110,6 +110,33 @@ export const SETTINGS_CONTROLS = {
             "label": "每次交给 AI 的候选条目上限（1-60）",
             "type": "text"
         },
+        // v3.46.1（`docs/D22` W11 数-35 / `docs/D32` §3.4 · §3.3 · Q2）：**三域联动（🔗 联动构建）**的五个键
+        //   —— 与 `core/config.js#defaultCfg` 同批（`scripts/check-config-decl.js` 要求「新增 cfg 键必须同批加控件」）。
+        {
+            "key": "triLinkEnabled",
+            "label": "启用「🔗 联动构建」（传言 / 计划 / 悬念三域）",
+            "type": "checkbox"
+        },
+        {
+            "key": "triLinkStateAdvance",
+            "label": "联动时允许 AI 推进受限状态字段（关闭＝只建关联与留痕）",
+            "type": "checkbox"
+        },
+        {
+            "key": "triLinkMaxItems",
+            "label": "联动打包每域条数上限（1-200，默认 60）",
+            "type": "text"
+        },
+        {
+            "key": "triLinkPackMaxChars",
+            "label": "联动打包总字数上限（1000-80000，默认 20000）",
+            "type": "text"
+        },
+        {
+            "key": "triLinkMaxOps",
+            "label": "联动单轮动作数上限（1-120，默认 40）",
+            "type": "text"
+        },
         {
             "key": "repairTagSimHigh",
             "label": "相关性「过高」阈值（≥ 优先核对，0.05-0.95）",
@@ -1360,6 +1387,13 @@ const FEED_GROUPS = Object.freeze([
     { id: 'floor', title: '📥 投喂楼层', keys: ['feedFloors'], hint: '摘要与修复各用各自最近 N 楼；修复留空跟随摘要值（默认 10）。调大更全面，也更费 token。' },
     { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems'], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
     { id: 'pick', title: '🎯 候选筛选（相关性阈值与抽查）', keys: ['repairTagSimHigh', 'repairTagSimLow', 'repairSampleRatio', 'repairMinCandidates'], hint: '候选按同维度标签组相关性排序：过高优先核对、过低不列入、中间带按比例抽查。' },
+    // v3.46.1（`docs/D22` W11 数-35）：**三域联动（🔗 联动构建）**五键独立成组 ——
+    //   本功能不读楼层、不新增/不删除条目，只建关联 + 推进受限字段（`docs/D32` §3.8）。
+    {
+        id: 'trilink', title: '🔗 三域联动（传言 / 计划 / 悬念）',
+        keys: ['triLinkEnabled', 'triLinkStateAdvance', 'triLinkMaxItems', 'triLinkPackMaxChars', 'triLinkMaxOps'],
+        hint: '传言页与计划悬念页的「🔗 联动构建」：先出方案、确认后落库；只建关联 / 追加留痕 / 推进受限字段，不读楼层正文。',
+    },
     { id: 'character', title: '🧑 角色修复', keys: ['repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
     // v3.45.5（`docs/D22` W4 数据维度「履历」）：「📜 履历」组（总开关 / 上限 / 提醒比例 / 免疫阈值 / 简述字数 / 原作补写）
     { id: 'resume', title: '📜 履历', keys: ['snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio', 'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill'], hint: '履历 = 角色按剧情时间的大事记；超过上限才会自动遗弃低留存条。' },
