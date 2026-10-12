@@ -6,6 +6,9 @@
 // 生成方式：**显式清单**（不用闭包）+ 以「下一个顶层声明」为界并在顶层收尾行截断（避免吃到后续语句）。
 // 一致性由 tests/unit/config-golden.test.js 的黄金样本强制校验。
 // ============================================================
+// v3.46.1（`docs/D22` W11 技-44）：三域联动的**默认提示词全文**落在新模块（`docs/05` §5 C11 + 体量棘轮）——
+//   本文件只在 `PROMPT_TEMPLATES_V2.triLink` **引用**它（键与分组仍在 config，文案唯一事实源在那边）。
+import { TRI_LINK_PROMPT } from './tri-link-prompt.js';
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
 // v3.23.0：「每段正文数」默认值唯一事实源（`3`）—— 全部 AI 摘要入口共用同一段长口径
@@ -84,7 +87,7 @@ const PROMPT_GROUPS = [
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
     { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
-    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
+    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
 ];
 
 const PROMPT_TEMPLATES_V2 = {
@@ -606,6 +609,11 @@ const PROMPT_TEMPLATES_V2 = {
         '输出：只输出一个合法 JSON 对象：{"悬念库":{"合并":[{"保留":1,"并入":[2],"标题":"…","正文":"…","日期":"YYYY-MM-DD","标签":["…"]}],"修订":[{"编号":3,"字段":"内容","值":"…"}],"了结":[4],"删除":[5]},"计划库":{"了结":["计划原文或标题"],"合并":[{"保留编号":0,"合并编号":[2],"合并后正文":"…"}]}}；无改动就给空数组。',
         '禁止：不新增悬念或计划，不改动清单外的编号，不输出其它维度，不解释，只输出合法 JSON，不加代码块标记。',
     ].join('\n'),
+    // ---------- ④ 三域联动（v3.46.1 `docs/D22` W11 技-44 · 全文取自 `docs/D32` §3.5） ----------
+    //   与 `planSuspRepair` 同组（质检维护）；「设定 → 提示词」页自动列出、可编辑、可恢复默认。
+    //   **提示词全文落在新模块** `core/tri-link-prompt.js`（`docs/05` §5 **C11**「新功能一律落新模块」+ 体量棘轮
+    //   `scripts/check-file-size.js`）：本文件只**引用**（键与分组在这里，文案的唯一事实源在那边）。
+    triLink: TRI_LINK_PROMPT,
     // ---------- ④ 状态修复（状态页专用 · v1.158） ----------
     statesRepair: [
         '【状态修复】任务：整理与规范化【待修复状态】中列出的各主体状态记录。**只处理清单内列出的主体**。',
@@ -1016,6 +1024,13 @@ const defaultCfg = {
     repairTagSimLow: 0.15,       // 相关性「过低」阈值：≤ 该值 → 不列入（同维度孤例，无重复风险）
     repairSampleRatio: 0.2,      // 每次抽查比例（占中间带条目数；0.05-1）—— 不做全量盘点
     repairMinCandidates: 5,      // 每轮候选下限：不足时按相关性从高到低补足（保证每轮都有足量数据可修）
+    // v3.46.1（`docs/D22` W11 数-35 / `docs/D32` §3.4 + §3.3 + Q2）：**三域联动（🔗 联动构建）**的五个键。
+    //   口径：本功能**不读楼层**（不调 aiFeedText）、**不新增/不删除条目**、只建关联 + 推进受限字段（`docs/D32` §3.8）。
+    triLinkEnabled: true,        // 总开关（false = 两个入口按钮隐藏 + 程序化调用返回 `disabled`）
+    triLinkStateAdvance: true,   // 是否允许 AI 改受限状态字段（false = 只建关联 + 留痕；Q2 的退档开关）
+    triLinkMaxItems: 60,         // 每域打包条数上限（1-200）
+    triLinkPackMaxChars: 20000,  // 打包总字数上限（1000-80000；超限按"视野优先级"从段①末尾截断并如实计数）
+    triLinkMaxOps: 40,           // 单轮应用的动作数上限（1-120；超出即拒收该条）
     // v3.45.3（用户要求「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
     //   下面 6 个「每轮抽取量」默认由 **3 → 6**（`repairCharacterBatch` / `stateRepairBatch` 与四域的
     //   `*RepairMaxClusters`）；**改的是默认值，不是上限** —— 六个键在设定页都能改（角色修复 / 遗忘·修复状态 /

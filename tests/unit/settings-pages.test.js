@@ -32,7 +32,7 @@ R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户�
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 161（v3.44.0 入库卫生 +2）→ v3.45.5 履历 +6 / 总 167', (() => {
+R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 161（v3.44.0 入库卫生 +2）→ v3.45.5 履历 +6 / 总 167 → v3.46.1 三域联动 +5 / 总 172', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
@@ -46,7 +46,10 @@ R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定�
     // v3.44.0（`docs/D22` W4）：''分析记忆''页 +2（relAnchorRuleEnabled / shellGuardEnabled，入库卫生两开关）→ 159 → 161
     // v3.45.5（`docs/D22` W4 数据维度「履历」）：''投喂范围''页 +6（📜 履历组：总开关 / 上限 / 提醒比例 /
     //   重要性免疫 / 简述字数 / 原作补写；插在「🧑 角色修复」之后、B8-6c 那 22 项手写控件**之前**）→ 161 → 167、feed 37 → 43
-    return info.totalControls === 167 && m.base === 9 && m.feed === 43 && m.analyze === 22 && m.extract === 25
+    // v3.46.1（`docs/D22` W11 数-35）：''遗忘''页 +5（三域联动五键：triLinkEnabled / triLinkStateAdvance /
+    //   triLinkMaxItems / triLinkPackMaxChars / triLinkMaxOps —— 与 `core/config.js#defaultCfg` 同批，
+    //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172、feed 43 → 48
+    return info.totalControls === 172 && m.base === 9 && m.feed === 48 && m.analyze === 22 && m.extract === 25
         && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 

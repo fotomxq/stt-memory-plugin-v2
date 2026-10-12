@@ -84,7 +84,7 @@ function relLinkDefaultMax() { const n = Number(cfg && cfg.relLinkMax); return (
 
 function relLinkDimOk(dim) { return REL_LINK_DIMS.indexOf(String(dim || '')) >= 0; }
 
-const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels'];
+const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels', 'rumors'];   // v3.46.1（W11 数-33）：四处同批之一（+rumors）
 
 function deleteEntry(kind, id) {
     const km = KIND_MAP[kind];

@@ -1,6 +1,18 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.82 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.83 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.83 变更（随 **v3.46.1**：**W11 传言 · 计划 · 悬念三域联动（🔗 联动构建）**）：
+>   用户原话：「新版本，v3.46.1 / 开发待开发的W11」；**前置**：`docs/D32` §6 的 **Q1–Q8 八条由用户当轮整批采纳建议默认**。
+>   ① **一句话口径**：本功能**既不读楼层**（不调 `aiFeedText`）、**也不删不合并** —— 只做「在既有条目之间建立可解释的关联 + 按规则推进留痕与受限字段」（`docs/D32` §3.8 三通道边界表）。
+>   ② **关联层扩维（`数-33`，四处同批）**：`REL_LINK_DIMS` 收 `rumors`（`core/model/rel.js` + `core/entries.js` + `core/recall.js` 三处重复常量 + 维护侧引用同常量）· 传言专属 how 子表（`heard` / `spread` / …，**刻意不用 `participant`**）· `kind` + `rumor` ·
+>      **孤儿口径显式分离**：`rows` 随扩维、**`items` 固定 4 维**（新增 `REL_ORPHAN_ITEM_DIMS`，否则传言会一夜之间全成"孤儿条目"）。
+>   ③ **新内核 `core/tri-link.js`**：三段打包（**不含情节正文**、超限按视野优先级截断并**如实计数**）· 13 条规则表（L1–L13）· **七条机械校验**（端点 / 跨域 / 白名单 / 关联齐备 / 上限钳制 / 知情边界 / 单调性）· 幂等签名 · 应用（R→P / R→S 写源锚行结构化引用、**P↔S 双向镜像**、`knows` 写人行、受限字段 + 留痕封顶）· 槽位 `state.triLinkLog`（末 5 条，runtime）。
+>   ④ **新界面模块 `ui/tri-link.js`**：「🔗 联动构建」在传言页与计划悬念页各一个（**同一动作** `triLinkBuild`，`data-ftt-kind` 只决定打包的视野优先级）· **只读预览区**（源→目标 · 边 · 效果 · 字段变化 · 理由 · 证据）· 应用 / 取消 · 应用前**自动落一次快照**（可整轮回退）· 五种终止原因。
+>   ⑤ **五键与提示词**：`triLinkEnabled` / `triLinkStateAdvance` / `triLinkMaxItems` / `triLinkPackMaxChars` / `triLinkMaxOps`（设定页「🔗 三域联动」独立成组）· 提示词 `triLink`（全文落 `core/tri-link-prompt.js`，入「④ 质检维护」组）。
+>   ⑥ **两处落点差异（C11 + 体量棘轮逼出来的，如实登记）**：第一版直接写进单体文件 → `check-file-size` 当场报错（`ui/panel.js` +139、`core/config.js` +59，宽限仅 40）→ 拆成 `core/tri-link.js` / `core/tri-link-prompt.js` / `ui/tri-link.js` 三个新模块，`ui/panel.js` 只剩 **+23 行**接线。
+>   ⑦ **数字口径**：单测 **216 文件 / 3145 断言** · 冒烟 **223** · 提示词模板数 34 → **35** · 设定控件数 167 → **172** · 内核配置键数 229 → **234** · 调试桥只读方法数仍 **60** · `DATA_VERSION` 仍 **1**（零迁移）· 历史批次档数 212 → **213**；§1 目录树 `history/` 计数 → **213 份**、`P10c*` 区间 → **`P10c92`**。
+>   ⑧ **V1 偏离登记（三件套）**：扩维属 `docs/D15` §3 类别②（老存档无此类行、V1 读到即丢弃，不破坏 V1 可读性）→ 黄金样本**一字未改** + 测试显式登记（`config-clock-golden#V2_PROMPT_ONLY` 收 `triLink`）+ `docs/勘误-历史档过时条目.md`。
+>   ⑨ **版本位**：本版由用户指定 **v3.46.1**（patch）；本批新增能力，按守则 §3.1 应记 **3.47.0** → **按用户指定发 patch 位并显式登记偏离**。
 > v2.82 变更（随 **v3.46.0**：**W9 写入收敛（保存物理写清单）+ 快照链保留窗**）：
 >   用户原话：「新版本，v3.46.0 / 开发待开发的W9」
 >   ① **本批 = W9 剩余三行**：`数-31`（**✅ 整行**）· `数-32`（**🟡 部分**：保留窗）· `技-38`（**⬜ 硬前置未满足** —— `数-26`/`技-28` 均未落地，而它们的前置仍在 ⛔ 需裁决）。
@@ -551,12 +563,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，212 份）
+└── history/                  # 历史批次层（只读留痕，213 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c91           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c92           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -614,17 +626,17 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.46.0） |
+| 口径 | 权威来源 | 当前值（v3.46.1） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.46.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.46.1` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
-| 内核配置键数 | `core/config.js#defaultCfg` | 229（v3.44.0：入库卫生两开关；**v3.45.5：角色履历 6 键** `snapshotResumeEnabled` / `snapshotResumeMax` / `snapshotResumeTriggerRatio` / `snapshotResumeImmune` / `snapshotResumeSummaryMax` / `snapshotResumeCanonFill`） |
-| 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 34（v3.45.5：+`resumeRepair` 角色履历的窄契约） |
-| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 167（v3.44.0：分析记忆页 +2，入库卫生；**v3.45.5：投喂范围页 +6，履历**） |
+| 内核配置键数 | `core/config.js#defaultCfg` | 234（v3.44.0：入库卫生两开关；v3.45.5：角色履历 6 键；**v3.46.1：三域联动 5 键** `triLinkEnabled` / `triLinkStateAdvance` / `triLinkMaxItems` / `triLinkPackMaxChars` / `triLinkMaxOps`） |
+| 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 35（v3.45.5：+`resumeRepair`；**v3.46.1：+`triLink`** 三域联动的窄契约，全文在 `core/tri-link-prompt.js`） |
+| 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 172（v3.44.0：分析记忆页 +2；v3.45.5：投喂范围页 +6；**v3.46.1：投喂范围页 +5（🔗 三域联动独立成组）**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 215 文件 / 3136 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 216 文件 / 3145 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -632,7 +644,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 60 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 212 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 213 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

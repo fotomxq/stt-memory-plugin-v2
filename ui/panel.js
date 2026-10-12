@@ -31,6 +31,8 @@ import { runItemRepair } from '../core/item-repair.js';
 import { runCharacterRepair, runResumeRepair } from '../core/character-repair.js';   // v3.45.5：+runResumeRepair（角色页「📜 补全 / 修复履历」）
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
+// v3.46.1（`docs/D22` W11 应-26）：三域联动（🔗 联动构建）—— **实现与编排在 `ui/tri-link.js`**（新模块，`docs/05` §5 C11），此处只接线
+import { triLinkButton, triLinkPanelHtml, triLinkRun, triLinkCommit, triLinkClose } from './tri-link.js';
 // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
 import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
@@ -890,6 +892,7 @@ function planSuspRepairButton() {
     return hasOpenPS ? '<button class="ftt-btn ftt-sm" data-ftt-action="planSuspRepair" title="了结已完成/已揭晓，合并重复并归并关联">🔧 修复计划/悬念</button>' : '';
 }
 
+
 /**
  * 情节页子标签状态（V1 `atomSubState` / `setAtomSub`）：'list' = 📜 情节列表 / 'segments' = 🧩 分段总结。
  * 非 'segments' 一律回落 'list'（与 V1 同口径）。
@@ -1241,16 +1244,19 @@ function dimBodyList(kind) {
         + (kind === 'snapshots' && total ? characterRepairButton() : '')
         // V1 `plansHtml()`：计划悬念页「🔧 修复计划/悬念」（有进行中计划或未解悬念才显示）+
         //   「🧹 清理计划」「🧹 清理悬念」（各自库非空才显示）——文案与 title 逐字对齐；V1 不弹确认
-        + (kind === 'plans' ? (planSuspRepairButton() + clearPSButtons()) : '')
+        + (kind === 'plans' ? (planSuspRepairButton() + triLinkButton('plans') + clearPSButtons()) : '')
         // V1 `rumorsHtml()`：传言页工具条 —— 「🧪 立即演化」恒显、「🧹 清理传言」仅在有传言时显示（文案与 title 逐字对齐）
-        + (kind === 'rumors' ? ('<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
+        // v3.46.1（W11 应-26）：传言页工具行**紧随「🧪 立即演化」**加「🔗 联动构建」（`docs/D32` §3.3 入口 1）
+        + (kind === 'rumors' ? (triLinkButton('rumors') + '<button class="ftt-btn ftt-sm" data-ftt-action="rumorEvolve" title="立即执行一次机械演化（载体老化 / 发酵消退 / 平行联动 / 裂变）">🧪 立即演化</button>'
             + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
         // V1 `currenciesHtml()`：货币页「👥 指定角色（N）」（恒显，开启选择器时加 ftt-primary）与
         //   「✖ 清空标定」（仅在有标定角色时显示）—— 文案与 title 逐字对齐（B9-c）
         + (kind === 'currencies' ? currencyTrackButtons() : '')
         + '</div>'
         + (kind === 'rumors' ? ('<div class="ftt-hint">📢 按剧情时间机械演化（零 AI）：每 <b>' + rumorEveryRounds() + '</b> 楼一次、变化需 <b>' + rumorNeedRounds() + '</b> 轮生效（已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次）；传言未经证实，注入只作参考。</div>') : '')
-        + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '');
+        + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '')
+        // v3.46.1（W11 应-26）：三域联动的**预览区**（传言页 / 计划悬念页同款；`docs/D32` §3.7 ④ 原地展开、只读）
+        + ((kind === 'rumors' || kind === 'plans') ? triLinkPanelHtml() : '');
     const head = '<div class="ftt-row"><input class="ftt-input" type="text" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="搜索（标题 / 正文 / 标签 / 归属）">'
         // v3.44.0（`docs/D22` W4 `数-12` ② / `数-13` ③）：**筛选视图** —— 「额外条件」下拉（与状态页同款标记）。
         //   `数-13`：所有维度都可筛「🫥 空壳」（正文不足 12 字）；`数-12`：计划 / 悬念可筛「⌛ 长期未推进」
@@ -3231,6 +3237,23 @@ export async function panelAction(action, payload) {
             }
             setNote('计划/悬念修复：' + parts.join('；'));
             result = Object.assign(result, { ok: true, action: a, planSuspRepair: r, made: r.made || 0 });
+        }
+        // ==================== v3.46.1（`docs/D22` W11 `应-26`）：三域联动（🔗 联动构建） ====================
+        else if (a === 'triLinkBuild') {
+            // 打包 → **一次** AI 请求 → 七条机械校验 → 只读预览（**不改任何数据**）；用户确认后走 `triLinkApply`
+            const r = await triLinkRun(String(p.kind || 'rumors'));
+            setNote(String(r.note || '联动构建：已完成'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, triLink: r, reason: r.reason || '' });
+        }
+        else if (a === 'triLinkApply') {
+            const r = triLinkCommit();
+            setNote(String(r.note || '联动构建：已应用'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, triLinkApply: r, made: Number((r.applied && r.applied.fields) || 0) + Number((r.applied && r.applied.links) || 0) });
+        }
+        else if (a === 'triLinkClose') {
+            const r = triLinkClose();
+            setNote(String(r.note || '联动构建：已取消'));
+            result = Object.assign(result, { ok: true, action: a });
         }
         // ==================== B9-c：投喂标签自动分析（V1 同名动作） ====================
         else if (FEED_SCAN_ACTIONS.indexOf(a) >= 0) {

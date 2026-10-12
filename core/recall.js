@@ -24,9 +24,9 @@ import { normalizeList, snapNameKey } from './util.js';
 //   时间衰退统一走单一实现 `core/decay.js#calcTimeDecay`（`core/ingest.js` 再导出同一件）。
 import { calcTimeDecay } from './decay.js';
 
-const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels'];
+const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels', 'rumors'];   // v3.46.1（W11 数-33）：四处同批之一（+rumors）
 
-const REL_LINK_HOW_RANK = { author: 9, involved: 9, participant: 8, witness: 7, join: 7, investigating: 6, told: 5, unspecified: 4, inferred: 3, rumor: 2, related: 1 };
+const REL_LINK_HOW_RANK = { author: 9, involved: 9, participant: 8, witness: 7, join: 7, spread: 7, investigating: 6, told: 5, heard: 5, unspecified: 4, inferred: 3, rumor: 2, related: 1 };
 
 const REL_LINK_HOW_LABEL = { participant: '亲历', witness: '目击', told: '被告知', inferred: '推断', rumor: '传闻', unspecified: '知情', author: '策划', join: '参与', involved: '当事人', investigating: '在查', related: '相关' };
 
