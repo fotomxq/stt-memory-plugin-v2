@@ -33,6 +33,8 @@ import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
 // v3.46.1（`docs/D22` W11 应-26）：三域联动（🔗 联动构建）—— **实现与编排在 `ui/tri-link.js`**（新模块，`docs/05` §5 C11），此处只接线
 import { triLinkButton, triLinkPanelHtml, triLinkRun, triLinkCommit, triLinkClose } from './tri-link.js';
+// v3.46.2（`docs/D22` §4.14 W13 应-30）：货币融合（🔀 AI 融合货币）—— 实现与编排在 `ui/currency-merge.js`（同上，只接线）
+import { currencyMergeButton, currencyMergePanelHtml, currencyMergeRun, currencyMergeCommit, currencyMergeOpen, currencyMergeClose, CUR_MERGE_ACTIONS, runCurrencyMergeAction } from './currency-merge.js';
 // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
 import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
@@ -1096,7 +1098,9 @@ function currencyTrackButtons() {
     return '<button class="ftt-btn' + (trackPickState() ? ' ftt-primary' : '') + '" data-ftt-action="curTrackPick" title="从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）">👥 指定角色' + (tracked.length ? '（' + tracked.length + '）' : '') + '</button>'
         + (tracked.length ? '<button class="ftt-btn ftt-err" data-ftt-action="curTrackClear" title="取消全部标定角色">✖ 清空标定</button>' : '')
         // v3.15.0（用户要求「货币增加修正按钮，剔除不应该被记录的角色，以及修正错乱的单位计价和冗余的数据合并问题」）
-        + '<button class="ftt-btn ftt-sm' + (currencyRepairOpen ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepair" title="修正货币数据（纯机械、零 AI、可预览）：① 剔除不应该被记录的角色（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）；② 修正错乱的单位计价（单位写法归一、额度缺省用流水净额补齐）；③ 合并冗余条目（同归属同币种的别名合并，如 金子/赤金→黄金）。删除与合并都会留墓碑，跨端不会复活。">🧹 修正货币</button>';
+        + '<button class="ftt-btn ftt-sm' + (currencyRepairOpen ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepair" title="修正货币数据（纯机械、零 AI、可预览）：① 剔除不应该被记录的角色（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）；② 修正错乱的单位计价（单位写法归一、额度缺省用流水净额补齐）；③ 合并冗余条目（同归属同币种的别名合并，如 金子/赤金→黄金）。删除与合并都会留墓碑，跨端不会复活。">🧹 修正货币</button>'
+        // v3.46.2（`docs/D22` §4.14 W13 应-30）：AI 档「🔀 AI 融合货币」—— 与机械档**并列**（实现在 `ui/currency-merge.js`）
+        + currencyMergeButton();
 }
 
 /**
@@ -1251,8 +1255,7 @@ function dimBodyList(kind) {
             + (total ? '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="clearRumors" title="清空全部传言（留删除墓碑）">🧹 清理传言</button>' : '')) : '')
         // V1 `currenciesHtml()`：货币页「👥 指定角色（N）」（恒显，开启选择器时加 ftt-primary）与
         //   「✖ 清空标定」（仅在有标定角色时显示）—— 文案与 title 逐字对齐（B9-c）
-        + (kind === 'currencies' ? currencyTrackButtons() : '')
-        + '</div>'
+        + (kind === 'currencies' ? currencyTrackButtons() : '')        + '</div>'
         + (kind === 'rumors' ? ('<div class="ftt-hint">📢 按剧情时间机械演化（零 AI）：每 <b>' + rumorEveryRounds() + '</b> 楼一次、变化需 <b>' + rumorNeedRounds() + '</b> 轮生效（已演化 ' + (Number((rumorTickState() || {}).runs) || 0) + ' 次）；传言未经证实，注入只作参考。</div>') : '')
         + (kind === 'atoms' ? '<div class="ftt-hint">已总结的情节不参与注入 / 淘汰 / 修复 / 质检等任何自动动作（持久保留，除非人工删除）。</div>' : '')
         // v3.46.1（W11 应-26）：三域联动的**预览区**（传言页 / 计划悬念页同款；`docs/D32` §3.7 ④ 原地展开、只读）
@@ -1279,6 +1282,8 @@ function dimBodyList(kind) {
     const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
     const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
+    // v3.46.2（W13 应-30）：货币融合（🔀）的**只读预览区**（选角色 → 出方案 → 确认 / 取消；未确认零写入）
+    const curMerge = (kind === 'currencies') ? currencyMergePanelHtml() : '';
     // v3.43.0（`docs/D22` `应-12` ① / `docs/D9` §10 **U3**）——**空态必须是「为什么空 + 下一步做什么」两段式**：
     //   此前这里是 `（该类目暂无条目）` / `（没有匹配的条目）`（9 字、无下一步），`check-ui-spec` **C4** 只数
     //   `.ftt-empty` 的**处数**（≥11）故一直没暴露 —— 十来个列表页共用这一句无信息量的占位。
@@ -1286,7 +1291,7 @@ function dimBodyList(kind) {
         const emptyTxt = q
             ? '没有匹配的条目。换个关键词，或点「✕ 清除」重置筛选条件。'
             : '该类目暂无条目。点上方「⚡ 立即 AI 摘要」从楼层提取，或用「添加」手动创建。';
-        return curTop + toolbar + curPick + curRepair + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
+        return curTop + toolbar + curPick + curRepair + curMerge + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
     }
     // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
     //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
@@ -1326,7 +1331,7 @@ function dimBodyList(kind) {
     }).join('\n');
     // v3.9.0（用户要求）：每个分类列表顶部给出 NSFW 留档汇总（弱 / 强 各有几条），行首逐条标注
     const nsfwLegend = nsfwLegendHtml(list);
-    return curTop + toolbar + curPick + curRepair + ptb + head + ed + nsfwLegend + peek + rows;
+    return curTop + toolbar + curPick + curRepair + curMerge + ptb + head + ed + nsfwLegend + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -3254,6 +3259,14 @@ export async function panelAction(action, payload) {
             const r = triLinkClose();
             setNote(String(r.note || '联动构建：已取消'));
             result = Object.assign(result, { ok: true, action: a });
+        }
+        // ==================== v3.46.2（`docs/D22` §4.14 W13 `应-30`）：货币融合（🔀 AI 语义合并） ====================
+        // 四个动作（开面板 / 选角色出方案 / 应用 / 取消）统一走 `ui/currency-merge.js#runCurrencyMergeAction`
+        //   —— 新功能实现全在新模块，此处只留**一个**分支（`docs/05` §5 C11 的"必要接线"）。
+        else if (CUR_MERGE_ACTIONS.indexOf(a) >= 0) {
+            const r = await runCurrencyMergeAction(a, p);
+            setNote(String(r.note || '货币融合：已完成'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, currencyMerge: r, reason: r.reason || '', made: Number((r.applied && r.applied.mergedRemoved) || 0) });
         }
         // ==================== B9-c：投喂标签自动分析（V1 同名动作） ====================
         else if (FEED_SCAN_ACTIONS.indexOf(a) >= 0) {

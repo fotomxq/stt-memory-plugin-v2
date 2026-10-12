@@ -73,6 +73,7 @@
     "promptTemplates.currencies",
     "promptTemplates.currenciesDynamic",
     "promptTemplates.currenciesTracked",
+    "promptTemplates.currencyMerge",
     "promptTemplates.general",
     "promptTemplates.injectGuide",
     "promptTemplates.itemRepair",
