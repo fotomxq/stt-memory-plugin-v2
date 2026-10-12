@@ -41,6 +41,7 @@ import { storageEnvelope, storageHash } from '../core/envelope.js';
 import {
     atomEntryCount, dataAggHash, diffAtomData, mergeDataObjects, mergeSnapshotStores,
     snapshotSigOf, snapIndexFrom, mirrorPushSig, capReductionOf, unionSelfCheck,
+    diffCurrencyData, mergeCurrencyArrays,   // v3.45.6：货币差异统计 + 逐条并集（用户报告「货币总是没有同步」）
 } from '../core/cross-sync.js';
 import {
     SYNC_LOG_MAX, syncLogMerge, syncLogPushRecord, syncLogStat, syncLogShortHash, syncLogSource,
@@ -51,7 +52,7 @@ import { noteConflict } from '../core/conflicts.js';
 import { debugLogPush } from './debug-log.js';
 import { ensureAtomHashes } from '../core/merge.js';
 import { storeCapFor } from '../core/ingest.js';   // v3.45.1（W6 技-31）：上限裁剪干跑用「该维度存储上限」
-import { mergeTombTrees, applyTombstonesToState } from '../core/sweep.js';
+import { mergeTombTrees, applyTombstonesToState, applyDeletedToArray } from '../core/sweep.js';
 import { hashFloorText } from '../host/floors.js';
 import { extractBusy } from '../host/extract.js';
 import { getCtx } from '../host/st-api.js';
@@ -647,11 +648,31 @@ export function adoptRemoteEnvelope(env) {
         if (!env || !env.payload || !env.payload.data) return false;
         const prevSnaps = Array.isArray(state.snapStore) ? state.snapStore.slice() : [];
         const prevDel = state.deleted || {}, prevDelH = state.deletedH || {};
+        // v3.45.6：**整体采用对端**时也要保住本端独有的货币（用户报告「货币总是没有同步」）—— 见下方并集段
+        const prevCur = Array.isArray(state.currencies) ? state.currencies.slice() : [];
+        const prevTs = Number(state.updatedAt) || 0;
         const next = migrateState(Object.assign(emptyState(), env.payload.data));
         if (!Array.isArray(next.snapStore)) next.snapStore = [];
         next.snapStore = mergeSnapshotStores(prevSnaps, next.snapStore.concat((env.payload.data.snapStore) || []));
         next.deleted = mergeTombTrees(prevDel, next.deleted || {});
         next.deletedH = mergeTombTrees(prevDelH, next.deletedH || {});
+        /**
+         * v3.45.6（用户报告「货币总是没有同步」）：货币**不在** `ATOM_DIM_KEYS` 内 → 不参与 `mergeDataObjects`
+         * 的原子逐条合并，也不参与「谁是谁的超集」的判定；旧实现里「整体采用对端」= 整维替换
+         * → **本端独有的货币条目（以及未被推送到对端的较新额度）被直接丢掉**。
+         * 这里改为与原子维度同口径：**逐条并集**（同「归属 + 币种」一条；冲突取「条目 `updatedAt` →
+         *   信封时间较新的一侧」—— 与 `mergeDataObjects` 的规则一致，**不因为「采用对端」就无条件改掉账本**）
+         *   + **同一套 id/内容双墓碑**（删除不复活）。
+         * 失败只影响这一处，整体替换照旧（**不因为合并失败而放弃替换**）。
+         */
+        try {
+            const preferRemote = (Number(env.payload.updatedAt) || 0) > prevTs;
+            next.currencies = mergeCurrencyArrays(prevCur, Array.isArray(next.currencies) ? next.currencies : [], { preferRemote: preferRemote });
+            const rc = applyDeletedToArray('currencies', next.currencies, next.deleted, next.deleted, next.deletedH, next.deletedH, true);
+            next.currencies = rc.arr;
+            if (rc.del && Object.keys(rc.del).length) next.deleted.currencies = rc.del; else delete next.deleted.currencies;
+            if (rc.delH && Object.keys(rc.delH).length) next.deletedH.currencies = rc.delH; else delete next.deletedH.currencies;
+        } catch (e) { /* 忽略：货币并集失败不阻断整体替换 */ }
         setKernelState(next);
         applyTombstonesToState(true);            // 采纳进来的条目按并集墓碑过滤（删除保持删除）
         ensureAtomHashes();
@@ -984,18 +1005,32 @@ export function crossComputeInfo(localData, remoteData, remoteTs) {
         const rts = Number(remoteTs) || Number((remoteData && remoteData.updatedAt) || 0) || 0;
         const aggSame = dataAggHash(localData) === dataAggHash(remoteData);
         const diff = diffAtomData(localData, remoteData);
+        /**
+         * v3.45.6（用户报告「货币总是没有同步」）：货币**参与 `dataAggHash` 但不参与 `diffAtomData`**
+         *   （后者按 `ATOM_DIM_KEYS` 遍历，货币不在其中；为保住 V1 黄金样本不改它）→ 旧实现遇到
+         *   「两端只差货币」时：`aggSame=false` 而 `diff` 全零 → 被判成 `replace-remote` / `replace-local`
+         *   （**整体替换**），本端独有货币与较新额度被顺带丢掉，而对端货币也永不被并入。
+         *   这里单独算一份货币差异，并**并入「是否超集」的判据**（字段名与 `diffAtomData` 完全同口径）；
+         *   原子差异的数值与判定顺序**保持不变**（V1 逐项比对见 `tests/unit/sync-pick-golden.test.js#R1`）。
+         */
+        const curDiff = diffCurrencyData(localData, remoteData);
         const localN = atomEntryCount(localData), remoteN = atomEntryCount(remoteData);
+        // 「原子层完全一致、差异只落在非原子容器（货币等）」→ **不做整体替换**（替换只会顺带丢掉本端独有
+        //   的非原子数据，却换不来任何原子数据），改走并集融合：货币逐条并集、其余非原子容器取较新一侧。
+        const onlyNonAtomDiff = diff.onlyLocal === 0 && diff.onlyRemote === 0 && diff.conflict === 0;
         let mode = 'same';
         if (!aggSame) {
-            const remoteSup = diff.onlyLocal === 0 && diff.conflictWinLocal === 0;
-            const localSup = diff.onlyRemote === 0 && diff.conflictWinRemote === 0;
-            if (remoteSup) mode = 'replace-remote';
+            const remoteSup = diff.onlyLocal === 0 && diff.conflictWinLocal === 0
+                && curDiff.onlyLocal === 0 && curDiff.conflictWinLocal === 0;
+            const localSup = diff.onlyRemote === 0 && diff.conflictWinRemote === 0
+                && curDiff.onlyRemote === 0 && curDiff.conflictWinRemote === 0;
+            if (remoteSup && !onlyNonAtomDiff) mode = 'replace-remote';
             else if (localSup) mode = 'replace-local';
-            else if (diff.conflict > 0) mode = 'divergence';
+            else if (diff.conflict > 0 || curDiff.conflict > 0) mode = 'divergence';
             else mode = 'merge';
         }
         return {
-            aggSame, diff, mode, localTs, remoteTs: rts, tsDiff: Math.abs(rts - localTs),
+            aggSame, diff, curDiff, mode, localTs, remoteTs: rts, tsDiff: Math.abs(rts - localTs),
             localN, remoteN, newer: rts > localTs ? 'remote' : (localTs > rts ? 'local' : 'tie'),
         };
     } catch (e) { return { mode: 'error', error: String((e && e.message) || e).slice(0, 120) }; }

@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.45.5",
-  "updatedAt": "2026-10-11",
-  "generatedAt": "2026-10-11",
+  "version": "3.45.6",
+  "updatedAt": "2026-10-12",
+  "generatedAt": "2026-10-12",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.45.6",
+      "date": "2026-10-12",
+      "title": "货币跨端同步修复 + 本地 / 局域网调试端口核对",
+      "points": [
+        "版本位：纯缺陷修复 → 3.45.5 → 3.45.6（开发守则.md §3.1「纯修复 → 3.<minor>.<patch+1>」）。数据契约零改动：DATA_VERSION…",
+        "根因（三条同源，缺一都不会有「总是」这个观感）：—— 前提：currencies 不在 core/constants.js#ATOM_DIM_KEYS 内（13 项；docs/D…",
+        "修复（与其它原子维度同口径）：| 落点 | 改动 || --- | --- || core/cross-sync.js#mergeCurrencyArrays（新增，导出） | …"
+      ]
+    },
     {
       "version": "3.45.5",
       "date": "2026-10-11",

@@ -3,6 +3,71 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.45.6（2026-10-12）· 货币跨端同步修复 + 本地 / 局域网调试端口核对
+
+**用户要求**（原话）：「新版本，小版本BUG更新。请核对本地和局域网开启调试的端口，其中货币总是没有同步，可能存在BUG，请修复。」
+
+**版本位**：纯缺陷修复 → `3.45.5 → 3.45.6`（`开发守则.md` §3.1「纯修复 → `3.<minor>.<patch+1>`」）。**数据契约零改动**：`DATA_VERSION` 仍为 1，**无迁移**；`dataAggHash` 算法、`atomEntryCount` 维度集合、`diffAtomData` 字段集**一字未改**（V1 黄金样本 `v1-golden-sync.json` / `v1-golden-sync-pick.json` **一字未动**）。
+
+### ① 缺陷：货币（`currencies`）跨端**总是没有同步**（用户报告）
+
+**根因（三条同源，缺一都不会有「总是」这个观感）** —— 前提：`currencies` **不在** `core/constants.js#ATOM_DIM_KEYS` 内（13 项；`docs/D8` R11「货币暂不纳入哈希」）：
+
+| # | 环节 | 旧行为 | 后果 |
+| --- | --- | --- | --- |
+| 1 | `core/cross-sync.js#mergeDataObjects` | 货币只在「非原子容器」名单里 → **整侧取较新**（`remTs > baseTs` 才取对端） | 远端较新 → **本端独有货币被整维丢掉**；本端较新 → **对端货币永不并入** |
+| 2 | `adapters/sync.js#crossComputeInfo` | `dataAggHash` **计入**货币（原始 JSON，含 `uses` / `floor*` 等易变字段）而 `diffAtomData` 看不见货币 → 「两端只差货币」时 `aggSame=false` 且 `diff` 全零 | 判成 `replace-remote` / `replace-local`（**整体替换**）→ 本端较新账本被对端旧账本整体盖掉 |
+| 3 | `adapters/sync.js#adoptRemoteEnvelope` | 「采用对端 / 立即同步」= 整信封替换，**不带任何货币并集** | 本端货币**整维丢弃**（连未被推送到对端的条目一起） |
+
+**修复（与其它原子维度同口径）**：
+
+| 落点 | 改动 |
+| --- | --- |
+| `core/cross-sync.js#mergeCurrencyArrays`（新增，导出） | **逐条并集**：身份键优先「归属 + 币种」（= `core/ingest.js` 与 `core/model/money.js#normalizeCurrency` 的唯一性口径；兼容 V1 原始字段名 `who` / `kind`），二者不全才退回 `id`，都没有则**原样保留不合并**；冲突取「条目 `updatedAt` → 信封时间」较新的一侧（与原子冲突同口径）；**收支流水并集**（复用 `core/model/money.js#mergeMoneyHistory`：同日期 + 同额 + 同说明去重、最近 12 笔）；NSFW 与溯源标记「只升不降 + 补空」（复用 `nsfwMergeLevel` / `mergeEntryProvenance`）；**无收支时逐字段取自胜出一侧**（与 V1 结果逐字段一致） |
+| `core/cross-sync.js#diffCurrencyData`（新增，导出） | 货币差异统计 `same / onlyLocal / onlyRemote / conflict(+胜负)`；「内容」比较用**内容签名**（`归属/币种/单位/额度/备注/日期/标签/流水`），**`uses` / `floor*` 不算内容差异**（否则会永远判冲突） |
+| `core/cross-sync.js#mergeDataObjects` | 货币从「非原子容器整侧取较新」名单**移出**，改走逐条并集 + `core/sweep.js#applyDeletedToArray('currencies', …)`（**id / 内容双墓碑**：跨端删除不复活；削减量进 `stat.reductions.byDim.currencies`）。**其余非原子容器（`summaries` / `npcs` / `protagonist` / `vars` / `varTemplates` / `state`）行为不变** |
+| `adapters/sync.js#crossComputeInfo` | 新增 `curDiff` 字段，并把**货币差异并入「是否超集」判据**；另加一条判据：**原子层完全一致、差异只落在非原子容器时不整体替换**（整体替换只会顺带丢掉本端独有非原子数据，却换不来任何原子数据） |
+| `adapters/sync.js#adoptRemoteEnvelope` | 整体替换**之前**先 `mergeCurrencyArrays` 并入本端货币（并列冲突按「信封较新的一侧」，与合并路径同规则），再过同一套双墓碑；该段失败只影响货币并集，**不阻断整体替换** |
+
+**反向探针（证明守门单测有效）**：① 把 `currencies` 放回非原子名单 → `currency-sync` **C1 / C3 必须失败**（已实测）；② 去掉 `crossComputeInfo` 的货币判据 → **D1 必须失败**（已实测）。
+
+### ② 口径更正：`consistencyReading` 的 `semantics` 与两处文档（**按代码实测**）
+
+`core/cross-sync.js#consistencyReading` 的 `semantics` 原先写「**不含** `links` 关联行」与「**含**货币与名册（它们在 `ATOM_DIM_KEYS` 里）」——
+与 `ATOM_DIM_KEYS` 的实际内容**正好相反**（`links` / `plotSegments` **在**该常量内，`currencies` / `npcs` **不在**）。该说法一度让人以为
+「货币已按原子口径逐条合并」，是本次缺陷长期未被定位的原因之一。本版：
+
+- `semantics.includes` → `['links', 'plotSegments']`；`semantics.excludes` → `['deleted', 'deletedH', 'vars', 'snapStore', 'currencies', 'npcs']`；
+- 守门单测 `tests/unit/data-health.test.js#C5` 的断言口径随之更正（旧断言要求 `excludes` 含 `links`）；
+- 文档同步：`docs/D13` §8.10.4（含 / 不含两行）、`docs/04`（一致性读数那一行）、`docs/02` §1.2 / §6（货币的合入口径）。
+- **`count` / `fingerprint` 的算法零改动**（仍是 `atomEntryCount` / `dataAggHash`），只改**说明文字**。
+
+### ③ 本地 / 局域网调试端口核对（只核对 + 如实登记，**不改端口约定**）
+
+| 通道 | 端口 / 地址 | 权威来源 | 核对结论 |
+| --- | --- | --- | --- |
+| 只读调试桥（本地） | `ws://127.0.0.1:8791` | `adapters/debug-bridge.js#BRIDGE_DEFAULT_HOST` / `#BRIDGE_DEFAULT_PORT`（插件侧）· `tests/local/bridge.mjs`（工具侧，默认同值） | **一致**；工具侧 `--port` 与插件侧「目标主机 + 端口」输入框均可改（插件侧**只存内存**、刷新回默认） |
+| 只读调试桥（局域网） | 工具侧 `--host 0.0.0.0`（**同一端口 8791**）+ 插件侧目标主机 = **运行工具那台机器的局域网地址** | `tests/local/bridge.mjs#HOST`（默认 `127.0.0.1`，非回环即打印安全提示）· `tests/local/README.md` §5.4 · `docs/04` 调试行 | **一致**；无鉴权属**已知取舍**（只读面暴露给同网设备，用完即停） |
+| CDP 远程调试（WebView2 DevTools） | `127.0.0.1:9222` | `tests/local/launch-debug.cmd`（默认 9222）· `tests/local/local.config.example.json#debugPort`（默认 9222）· `tests/local/sync-host.mjs#--port` | **一致**；`launch-debug.cmd` 依赖 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`，历史上标注「可能被 wry 自带参数忽略」→ 仍按「**未取得真机证据**」登记 |
+
+**如实登记（未取得 / 已发现的口径差异）**：
+
+1. **未取得**：本机未跑真机宿主 → 「局域网（手机端）拨入 8791 成功」「CDP 9222 真的起得来」两条**无真机证据**（工具侧自检 `npm run local:bridge:selftest` 只覆盖回环与 0.0.0.0 绑定 + 帧编解码，不覆盖真机 WebView）；
+2. **口径差异（如实登记，不改行为）**：`开发守则.md` §6.4 的触发条件是「本地运行 **且** 调试端口已启动」，`npm run local:sync` **会**探端口（CDP `debugPort` 或短听 8791），而 `npm run local:deploy` **不探**（其 5 条条件见 `tests/local/README.md` §6c）—— 两条入口的**条件判定不同源**，本版只登记、不合并（属工具设计取舍，需用户裁决）；
+3. **工具自身的边界**：`tests/local/sync-host.mjs#probeBridge` 的「短听」只绑 `127.0.0.1` → 若插件侧目标被填成**本机局域网地址**且工具侧没有在监听，则该次探测看不到插件拨入（本地默认回环时不受影响）。
+
+### ④ 测试与门禁
+
+- 新增 `tests/unit/currency-sync.test.js`（**16 项**）：逐条并集（双端独有各保留）· 冲突仲裁（条目时间 → 信封时间）· 身份键（归属 + 币种优先，兼容 V1 `who`/`kind`）· 收支流水并集与 12 笔上限 · `diffCurrencyData`（含「`uses` 不同不算冲突」）· 合并路径三种场景（对端较新 / 本端较新 / 墓碑不复活）· 与 V1 逐字段同形 · 幂等与入参只读 · `crossComputeInfo` 三态 · `adoptRemoteEnvelope` 两态 · 非法输入兜底；
+- **门禁**：`npm run gate` 全绿（208 → **209** 文件 / 3070 → **3086** 断言）；V1 黄金样本**一字未动**，`cross-sync-golden` S1–S14 与 `sync-pick-golden` R1 照旧通过。
+
+**本轮文档**：`docs/02` §1.2（两层划分改写为「货币按原子口径处置」+ 为何不并进 `ATOM_DIM_KEYS`）与 §6（新增两行：货币逐条合并 / 整体替换下也不丢）·
+`docs/D13` §8.10.4（一致性读数口径更正）· `docs/04`（一致性读数那一行的含 / 不含）· `docs/README` v2.76（§1 目录树 / §2 目录地图 / §3 数字口径）·
+`docs/05` §2（`tests/` 236 → 237）· `docs/history/P10c86-货币跨端同步修复.md`。
+
+**数字口径**：单测 **209 文件 / 3086 断言**（+1 档 16 项）· 历史批次档数 206 → **207** · `docs/05` §2 的 `tests/` 236 → **237** ·
+维度数 / 原子层维度数仍 **14 / 13**（**货币不并入 `ATOM_DIM_KEYS`**）· 调试桥只读方法数仍 **58**（本次不新增桥方法）· `DATA_VERSION` 仍 **1**。
+
 ## v3.45.5（2026-10-11）· 角色履历落地（`docs/D22` W0–W7 未完成项 · `docs/D26` 履历链整批 6 行）
 
 **用户要求**（原话）：「新版本v3.45.5 / W0到W7有部分没完成开发的工作，请开发。」

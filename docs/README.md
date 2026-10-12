@@ -1,6 +1,28 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.75 ｜ 日期：2026-10-11 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.76 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.76 变更（随 **v3.45.6**：**货币跨端同步修复**（用户报告「货币总是没有同步」）+ 本地 / 局域网调试端口核对）：
+>   用户原话：「新版本，小版本BUG更新。请核对本地和局域网开启调试的端口，其中货币总是没有同步，可能存在BUG，请修复。」
+>   ① **根因（三条同源，逐条取证）**：`currencies` **不在** `ATOM_DIM_KEYS` 内 → ①`mergeDataObjects` 的逐条合并**根本不处理货币**，
+>      只按「非原子容器整侧取较新」（远端较新 → 本端独有货币被整维丢掉；本端较新 → 对端货币**永不并入**）；
+>      ②`dataAggHash` **计入**货币（含 `uses` / `floor*` 等易变字段）而 `diffAtomData` 看不见货币 →
+>      `crossComputeInfo` 把「只差货币」误判成 `replace-remote` / `replace-local`（**整体替换**）；
+>      ③「采用对端 / 立即同步」的 `adoptRemoteEnvelope` 直接整维丢弃本端货币。
+>   ② **修复口径**（与其它原子维度同口径，`core/cross-sync.js`）：新增 `mergeCurrencyArrays`（**逐条并集**：同一「归属 + 币种」一条 ·
+>      冲突取「条目 `updatedAt` → 信封时间」较新的一侧 · **收支流水并集**（同日期 + 同额 + 同说明去重，最近 12 笔））与
+>      `diffCurrencyData`（same / onlyLocal / onlyRemote / conflict + 胜负）；`mergeDataObjects` 的货币改为**逐条并集 + id/内容双墓碑**
+>      （删除不复活）并从「非原子容器整侧取较新」名单**移除**；`crossComputeInfo` 把货币差异并入「是否超集」判据，
+>      且**原子层完全一致、差异只在非原子容器时不再整体替换**；`adapters/sync.js#adoptRemoteEnvelope` 整体替换前先做货币并集 + 墓碑过滤。
+>   ③ **有意保持不动**（V1 黄金样本锁定）：`dataAggHash` 算法、`atomEntryCount` 维度集合、`diffAtomData` 字段集 ——
+>      `cross-sync-golden` S1–S14 与 `sync-pick-golden` R1 全部照旧通过（**黄金样本一字未动**）。
+>   ④ **口径更正**（同一提交）：`consistencyReading` 的 `semantics` 按**代码实测**更正 —— 旧文案写「不含 `links`、含货币与名册」，
+>      实际相反（`links` / `plotSegments` 就在 `ATOM_DIM_KEYS` 里，`currencies` / `npcs` 不在）→ 同步修正 `docs/D13` §8.10.4 与 `docs/04`；
+>      守门单测 `data-health.test.js#C5` 的断言口径随之更正。
+>   ⑤ **调试端口核对**（只核对 + 如实登记，**不改端口约定**）：本地 `127.0.0.1:8791`（只读调试桥）· CDP `9222`（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`）；
+>      局域网 = 工具侧 `node tests/local/bridge.mjs --host 0.0.0.0`（同一端口 8791）+ 插件侧「目标主机」填**运行工具那台机器的局域网地址、端口一致**；
+>      逐处核对结论与两处**未取得真机证据**的项见 `docs/history/P10c86`（含 `local:deploy` **不探调试端口**这一与 §6.4 触发条件的差异）。
+>   ⑥ §3 数字口径同步：表头与版本号 → **3.45.6**、单测 **209 文件 / 3086 断言**、历史批次档数 206 → **207**；§1 目录树 `history/` 计数 → **207 份**、
+>      `P10c*` 区间 → **`P10c86`**；§2 目录地图 `tests/` 236 → **237**（+`tests/unit/currency-sync.test.js`）；`docs/05` §2 的 `tests/` 计数同步。
 > v2.75 变更（随 **v3.45.5**：`docs/D22` **W0–W7 未完成项 · D26 履历链**（整批 6 行：`数-19` / `数-20` / `数-21` / `业-7` / `应-19` / `技-25`））：
 >   用户原话：「新版本v3.45.5 / W0到W7有部分没完成开发的工作，请开发。」用户裁决：范围 = **D26 履历链**（6 行，一条完整的「数据 → 界面 → 业务口径 → 体检」链）。
 >   ① **`数-19`（U149）履历数据模型**：`snapshots` 新增**第 9 区块** `resume: ResumeEntry[]`（`{date, time, summary, importance, refs?, source?}`；`date`/`summary` **必填**，缺一不入库）；**`DATA_VERSION` 不变**（加可选字段 + 归一补 `[]`，老存档读到 `undefined` 视为空）；`identity.canon` 为**新增三态标记**（原作 / 史实人物，形态同 `immortal`）；
@@ -451,12 +473,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，206 份）
+└── history/                  # 历史批次层（只读留痕，207 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c85           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c86           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -513,9 +535,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.45.5） |
+| 口径 | 权威来源 | 当前值（v3.45.6） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.5` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.6` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -523,7 +545,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 34（v3.45.5：+`resumeRepair` 角色履历的窄契约） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 167（v3.44.0：分析记忆页 +2，入库卫生；**v3.45.5：投喂范围页 +6，履历**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 208 文件 / 3070 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 209 文件 / 3086 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -531,7 +553,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 58 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 206 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 207 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
