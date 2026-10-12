@@ -1,6 +1,6 @@
 {
-  "at": 1791726334908,
-  "ver": "3.45.4",
+  "at": 1791814847972,
+  "ver": "3.45.10",
   "readings": {
     "write": {
       "ok": true,
@@ -12,7 +12,7 @@
       "pending": 0,
       "inFlight": 0,
       "maxInFlight": 1,
-      "bytes": 265814,
+      "bytes": 265815,
       "lastMs": 12,
       "lastAt": 1700000000000,
       "channel": "kv-put:SPreset_FTTMemory_<scope>",
@@ -157,8 +157,8 @@
       "ok": true,
       "reason": "",
       "note": "mainBytes = JSON.stringify(state).length（字符数近似字节，不含宿主信封） · 合成分片 8 片 / 副本 2 份（真实序列化长度）",
-      "mainBytes": 96441,
-      "semanticBytes": 47347,
+      "mainBytes": 96442,
+      "semanticBytes": 47348,
       "derivedBytes": 49095,
       "snapCount": 30,
       "snapBytes": 31013,
@@ -170,7 +170,7 @@
       "linkRows": 240,
       "shardBytes": 39950,
       "copyBytes": 98410,
-      "totalBytes": 234801
+      "totalBytes": 234802
     }
   },
   "note": "确定性合成库（无宿主）实测：条数 / 字节 / 计数参与棘轮；耗时（ms）为桩值，只记录、不判定"

@@ -347,31 +347,111 @@ function notify(kind, title, text) {
     } catch (e) { /* 忽略 */ }
 }
 
+// ---------- 第 ① 段「9 步」的逐步留痕（`docs/D22` W8 `技-37` / `docs/D17` U184） ----------
+/**
+ * **逐步留痕的九步名单**（顺序即 `docs/04-应用架构.md` §2.2 与 `docs/D25` §3.2 的固定顺序）。
+ * 为什么要有一份**名单常量**：`技-37` 要求「正常时 9 步全 ok」这句话能被机械核对 ——
+ *   名单与实际跑的步**同源**（跑的时候按这张表记），测试再按这张表断言，避免「文档说九步、代码跑了八步」。
+ */
+export const REPAIR_MECH_STEPS = Object.freeze([
+    Object.freeze({ step: 1, name: '机械去重', note: 'repairMergeDedupe（10 维去重与并集）' }),
+    Object.freeze({ step: 2, name: '遗忘清扫', note: 'sweepLowUseForget' }),
+    Object.freeze({ step: 3, name: '条数裁剪', note: 'enforceDimCaps（配额裁剪）' }),
+    Object.freeze({ step: 4, name: '垃圾清理', note: 'repairPruneGarbage' }),
+    Object.freeze({ step: 5, name: '衰退清扫', note: 'repairDecayPass（四域衰退）' }),
+    Object.freeze({ step: 6, name: '关联层维护', note: 'relRepairMaint（孤儿行清理等）' }),
+    Object.freeze({ step: 7, name: '清理无效关系', note: 'cleanInvalidRelLinks（写墓碑）' }),
+    Object.freeze({ step: 8, name: '楼层突变识别', note: '钩子 repairHooks.floorJump；未接线 → skipped=no-hook' }),
+    Object.freeze({ step: 9, name: '剧情时钟刷新', note: '钩子 repairHooks.clockSync；未接线 → skipped=no-hook' }),
+]);
+
+/** 错误文本截断长度（日志与返回值都不外送长栈） */
+export const REPAIR_STEP_ERR_CAP = 160;
+
+/**
+ * **一条步骤记录**（纯函数；`ok:false` 时 `err` 有值）。`ms` 由调用方给的起止时刻算。
+ * @param {number} step 1–9
+ * @param {number} t0 `Date.now()`
+ * @param {*} err 抛出的异常（无则传 null）
+ */
+export function repairStepRecord(step, name, t0, err) {
+    const ok = !err;
+    return {
+        step: Number(step) || 0,
+        name: String(name == null ? '' : name),
+        ok: ok,
+        ms: Math.max(0, Date.now() - (Number(t0) || Date.now())),
+        err: ok ? '' : String((err && err.message) || err).slice(0, REPAIR_STEP_ERR_CAP),
+    };
+}
+
+/**
+ * **跑一步并留痕**（`技-37` 的核心）：抛错**不中断**后续步（与既有 `try/catch` 口径一致），
+ *   但把 `{step, ok, ms, err}` 记进 `steps` —— 于是「哪一步失败」第一次变成可判定的事实。
+ * @param {Array} steps 累积数组（就地 push）
+ * @param {{step:number,name:string}} spec 见 `REPAIR_MECH_STEPS`
+ * @param {() => any} fn 该步的实现（可 async）
+ * @returns {Promise<{ok:boolean, val:any, err:string}>}
+ */
+export async function runRepairStep(steps, spec, fn) {
+    const t0 = Date.now();
+    let val = null, err = null;
+    try { val = await fn(); } catch (e) { err = e; }
+    const rec = repairStepRecord(spec && spec.step, spec && spec.name, t0, err);
+    if (Array.isArray(steps)) steps.push(rec);
+    return { ok: rec.ok, val: val, err: rec.err };
+}
+
+/** 只列**非 ok** 的步骤（日志口径：正常不占地方，失败才出现） */
+export function repairStepFailures(steps) {
+    return (Array.isArray(steps) ? steps : []).filter((s) => s && s.ok !== true)
+        .map((s) => ({ step: s.step, name: s.name, err: s.err, ms: s.ms }));
+}
+
+/** 步骤留痕的一行摘要（通知 / 报告用：「9/9 步 ok」或「第 N 步失败：…」） */
+export function repairStepsSummary(steps) {
+    const list = Array.isArray(steps) ? steps : [];
+    const bad = repairStepFailures(list);
+    if (!list.length) return '';
+    if (!bad.length) return '机械清理 ' + list.length + '/' + REPAIR_MECH_STEPS.length + ' 步 ok';
+    return '机械清理 ' + (list.length - bad.length) + '/' + list.length + ' 步 ok · 失败：'
+        + bad.map((b) => '第 ' + b.step + ' 步 ' + b.name + '（' + String(b.err).slice(0, 60) + '）').join('；');
+}
+
 /**
  * 第 1 段：JS 机械清理（零 AI、确定性）—— V1 `runAutoRepair` 的第 1 段逐行等价。
  * @param {object} [opts] silent（不提示）
- * @returns {Promise<{before:number, after:number, stage1:object, sweep:object, caps:object, pruned:object, decay:object, report:string, fixed:number}>}
+ * @returns {Promise<{before:number, after:number, stage1:object, sweep:object, caps:object, pruned:object, decay:object, report:string, fixed:number, steps:Array}>}
  */
 async function runRepairMech(opts) {
     const o = opts || {};
     const t0 = Date.now();
     const before = repairTotalCount();
-    const m1 = repairMergeDedupe();
-    let sweepRes = { swept: 0, dims: {}, skipped: [] };
-    try { sweepRes = sweepLowUseForget(); } catch (e) { /* 忽略 */ }
-    let capRes = { cut: 0, dims: {} };
-    try { capRes = enforceDimCaps(); } catch (e) { /* 忽略 */ }
+    // `技-37`（U184）：九步逐步留痕 —— 每步 `{step, ok, ms, err}`；抛错的步**不中断**后续步
+    const steps = [];
+    const S = (n) => REPAIR_MECH_STEPS[n - 1];
+    // ① 机械去重（v3.45.9 起：本步也进 try/catch —— 此前若它抛错会直接中断整段机械清理，
+    //   与 `docs/04` §2.2「每步独立 try/catch」的口径不符，且「哪一步失败」不可判定）
+    const r1 = await runRepairStep(steps, S(1), () => repairMergeDedupe());
+    const m1 = r1.val || { merged: 0, notes: [] };
+    const r2 = await runRepairStep(steps, S(2), () => sweepLowUseForget());
+    const sweepRes = r2.val || { swept: 0, dims: {}, skipped: [] };
+    const r3 = await runRepairStep(steps, S(3), () => enforceDimCaps());
+    const capRes = r3.val || { cut: 0, dims: {} };
     if (m1.merged > 0 || sweepRes.swept > 0 || capRes.cut > 0) { try { saveState(); } catch (e) { /* 忽略 */ } }
-    let pruned = { deleted: 0, notes: [] };
-    try { pruned = repairPruneGarbage(); if (pruned.deleted > 0) { try { saveState(); } catch (e) { /* 忽略 */ } } } catch (e) { /* 忽略 */ }
-    let decay = { deleted: 0, notes: [] };
-    try { decay = await repairDecayPass(); } catch (e) { /* 忽略 */ }
+    const r4 = await runRepairStep(steps, S(4), () => {
+        const pruned = repairPruneGarbage();
+        if (pruned.deleted > 0) { try { saveState(); } catch (e) { /* 忽略 */ } }
+        return pruned;
+    });
+    const pruned = r4.val || { deleted: 0, notes: [] };
+    const r5 = await runRepairStep(steps, S(5), () => repairDecayPass());
+    const decay = r5.val || { deleted: 0, notes: [] };
     // v1.168：关系层机械维护（零 AI）—— 与修复联动：始终清理孤儿关联行（写墓碑）+ 去重 / 角色名归一 / 悬空引用清理 /
     //   how·偏差归一；孤儿条目按 `cfg.relOrphanAction` 处置（默认 keep 只提示）—— V1 在第 1 段收尾处调用。
     const stage1 = { merged: m1.merged, deleted: pruned.deleted + decay.deleted, notes: m1.notes.concat(pruned.notes, decay.notes) };
-    let relMaint = null;
-    try {
-        relMaint = relRepairMaint();
+    const r6 = await runRepairStep(steps, S(6), () => {
+        const relMaint = relRepairMaint();
         if (relMaint && relMaint.changed) {
             try { saveState(); } catch (e) { /* 忽略 */ }
             const txt = relMaintSummary(relMaint);
@@ -380,81 +460,86 @@ async function runRepairMech(opts) {
             stage1.notes.push(`关联维护：无孤儿关联需清理；${relMaint.orphanItems} 条无关联条目按「${relMaint.action}」处置（可在「记忆 → 关系表」查看）`);
         }
         logRelMaint('立即修复', relMaint);
-    } catch (e) { /* 忽略 */ }
+        return relMaint;
+    });
+    const relMaint = r6.val;
     stage1.relMaint = relMaint;
     // v3.2.0（用户要求）：「设定的关系表，需要在自动修复中补充一个步骤，自动清理无效关系。」
     //   紧接关联维护之后：清掉**结构上就没有意义**的关联行 —— 目标条目不存在的孤儿行、非法维度 / 空指向、
     //   无角色的纯空行，以及**幽灵角色行**（`who` 不在任何已知名册：档案被删 / 改名残留 / AI 幻觉名）。
     //   被清行**写删除墓碑**（跨端不复活），并逐条记调试日志；`relRepairMaint` 的 V1 口径完全不动。
-    let relInvalid = null;
-    try {
-        relInvalid = cleanInvalidRelLinks();
+    const r7 = await runRepairStep(steps, S(7), () => {
+        const relInvalid = cleanInvalidRelLinks();
         if (relInvalid && relInvalid.removed > 0) {
             try { saveState(); } catch (e) { /* 忽略 */ }
             const txt = relInvalidSummary(relInvalid);
             if (txt) stage1.notes.push(txt);
             logRelInvalid('立即修复', relInvalid);
         }
-    } catch (e) { /* 忽略 */ }
+        return relInvalid;
+    });
+    const relInvalid = r7.val;
     stage1.relInvalid = relInvalid;
     // ②d v3.5.0（用户要求）：「增加识别楼层突变，常见的主要就是当前楼层与最新情节对应楼层不一致且
     //   存在跨度达到 9 层以上，说明楼层出现大幅手动删减。需修正已处理记录，避免无法正常分析楼层。」
     //   判据与修正都在宿主层（`host/floors.js#fixFloorJump`）：按内容哈希归位台账 + 越界区间降级 + 收紧基线；
     //   **只改编号，绝不删除条目**；幂等（同一对「情节楼层 / 当前末楼」已处理过且无新改动时只报告不写盘）。
-    let floorJump = null;
     let floorJumpSkipped = '';
-    try {
+    const r8 = await runRepairStep(steps, S(8), async () => {
         const fn = (typeof repairHooks.floorJump === 'function') ? repairHooks.floorJump : null;
-        if (fn) {
-            floorJump = await fn();
-            if (floorJump && floorJump.jumped) {
-                const txt = '楼层突变：最新情节在第 ' + Number(floorJump.plotFloor) + ' 楼、当前只有第 ' + Number(floorJump.lastFloor)
-                    + ' 楼（相差 ' + Number(floorJump.gap) + ' 层，疑为大幅手动删减）→ '
-                    + (floorJump.acted
-                        ? ('已按内容哈希修正已处理记录（台账 ' + Number(floorJump.marks || 0) + ' 条 · 越界区间 ' + Number(floorJump.staleEntries || 0) + ' 条降级）')
-                        : '记录已修正过（本次无新改动）');
-                stage1.notes.push(txt);
-                try { dbgLog('楼层', { action: '楼层突变（自动修复识别）', gap: floorJump.gap, lastFloor: floorJump.lastFloor, plotFloor: floorJump.plotFloor, acted: floorJump.acted, marks: floorJump.marks, stale: floorJump.staleEntries }); } catch (e) { /* 忽略 */ }
-            }
-        } else {
+        if (!fn) {
             // v3.43.0（`docs/D22` `应-18` / `docs/D25` §3.6 U146）：**钩子未接线时如实写跳过原因** ——
             //   此前这里是 `if (fn)` 之外无 else，"这一步没跑"与"跑了但无变化"在通知与日志上**无法区分**。
             floorJumpSkipped = 'no-hook';
             stage1.notes.push('楼层突变识别：跳过原因 —— 钩子未接线（无宿主取楼层能力）');
             try { dbgLog('楼层', { action: '修复步骤：楼层突变识别', skipped: floorJumpSkipped }); } catch (e) { /* 忽略 */ }
+            return null;
         }
-    } catch (e) { /* 忽略：突变修正失败不影响修复本身 */ }
+        const floorJump = await fn();
+        if (floorJump && floorJump.jumped) {
+            const txt = '楼层突变：最新情节在第 ' + Number(floorJump.plotFloor) + ' 楼、当前只有第 ' + Number(floorJump.lastFloor)
+                + ' 楼（相差 ' + Number(floorJump.gap) + ' 层，疑为大幅手动删减）→ '
+                + (floorJump.acted
+                    ? ('已按内容哈希修正已处理记录（台账 ' + Number(floorJump.marks || 0) + ' 条 · 越界区间 ' + Number(floorJump.staleEntries || 0) + ' 条降级）')
+                    : '记录已修正过（本次无新改动）');
+            stage1.notes.push(txt);
+            try { dbgLog('楼层', { action: '楼层突变（自动修复识别）', gap: floorJump.gap, lastFloor: floorJump.lastFloor, plotFloor: floorJump.plotFloor, acted: floorJump.acted, marks: floorJump.marks, stale: floorJump.staleEntries }); } catch (e) { /* 忽略 */ }
+        }
+        return floorJump;
+    });
+    const floorJump = r8.val;                       // v3.45.9（`技-37`）：本步抛错 → 由 `steps` 如实记 `ok:false/err`（不再只有"计数是 0"这一条线索）
     stage1.floorJump = floorJump;
     stage1.floorJumpSkipped = floorJumpSkipped;
     // ②e v3.6.0（用户要求）：**按最新情节刷新时间 / 地点 / 人物**（零 AI；「最新情节」按内置天数判断）。
     //   与 v2.81.0「分析后按最新情节同步」调用的是**同一条处理**；手工锁定（`cfg.clockManualLock`）时如实跳过刷新，
     //   只继续维护「在场」与来源说明。
-    let clockSync = null;
     let clockSyncSkipped = '';
-    try {
+    const r9 = await runRepairStep(steps, S(9), async () => {
         const fn = (typeof repairHooks.clockSync === 'function') ? repairHooks.clockSync : null;
-        if (fn) {
-            clockSync = await fn();
-            if (clockSync) {
-                const bits = [];
-                const dayShown = Number(clockSync.plotStoryDay) || Number(clockSync.storyDay) || 0;
-                if (dayShown > 0) bits.push('第 ' + dayShown + ' 天');
-                if (clockSync.date) bits.push('日期 ' + String(clockSync.date));
-                if (clockSync.time) bits.push('时间 ' + String(clockSync.time));
-                if (clockSync.location) bits.push('地点 ' + String(clockSync.location));
-                if (Array.isArray(clockSync.present) && clockSync.present.length) bits.push('在场 ' + clockSync.present.slice(0, 6).join('/'));
-                const head = clockSync.manualLock ? '已跳过（手工锁定，不覆盖日期/时间/地点）'
-                    : (clockSync.changed ? '已按最新情节刷新' : '已是最新（本轮无改动）');
-                stage1.notes.push('剧情时钟：' + head + (bits.length ? ('（' + bits.join(' · ') + '）') : ''));
-                try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', changed: !!clockSync.changed, manualLock: !!clockSync.manualLock, storyDay: Number(clockSync.storyDay) || 0, date: clockSync.date, time: clockSync.time, location: clockSync.location, present: clockSync.present, source: clockSync.source, plotId: clockSync.plotId }); } catch (e) { /* 忽略 */ }
-            }
-        } else {
+        if (!fn) {
             // v3.43.0（`docs/D22` `应-18` / `docs/D25` §3.6 U146）：同 ②d —— 未接线时如实写跳过原因
             clockSyncSkipped = 'no-hook';
             stage1.notes.push('剧情时钟刷新：跳过原因 —— 钩子未接线（无宿主时钟同步能力）');
             try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', skipped: clockSyncSkipped }); } catch (e) { /* 忽略 */ }
+            return null;
         }
-    } catch (e) { /* 忽略：时钟刷新失败不影响修复本身 */ }
+        const clockSync = await fn();
+        if (clockSync) {
+            const bits = [];
+            const dayShown = Number(clockSync.plotStoryDay) || Number(clockSync.storyDay) || 0;
+            if (dayShown > 0) bits.push('第 ' + dayShown + ' 天');
+            if (clockSync.date) bits.push('日期 ' + String(clockSync.date));
+            if (clockSync.time) bits.push('时间 ' + String(clockSync.time));
+            if (clockSync.location) bits.push('地点 ' + String(clockSync.location));
+            if (Array.isArray(clockSync.present) && clockSync.present.length) bits.push('在场 ' + clockSync.present.slice(0, 6).join('/'));
+            const head = clockSync.manualLock ? '已跳过（手工锁定，不覆盖日期/时间/地点）'
+                : (clockSync.changed ? '已按最新情节刷新' : '已是最新（本轮无改动）');
+            stage1.notes.push('剧情时钟：' + head + (bits.length ? ('（' + bits.join(' · ') + '）') : ''));
+            try { dbgLog('时钟', { action: '修复步骤：按最新情节刷新时间/地点/人物', changed: !!clockSync.changed, manualLock: !!clockSync.manualLock, storyDay: Number(clockSync.storyDay) || 0, date: clockSync.date, time: clockSync.time, location: clockSync.location, present: clockSync.present, source: clockSync.source, plotId: clockSync.plotId }); } catch (e) { /* 忽略 */ }
+        }
+        return clockSync;
+    });
+    const clockSync = r9.val;
     stage1.clockSync = clockSync;
     stage1.clockSyncSkipped = clockSyncSkipped;
     const after = repairTotalCount();
@@ -476,6 +561,8 @@ async function runRepairMech(opts) {
             action: '第 1 段 机械清理（零 AI）', before, after, merged: stage1.merged, deleted: stage1.deleted, swept, cut,
             relInvalid: (relInvalid ? { removed: relInvalid.removed, reasons: relInvalid.reasons } : null),
             notes: stage1.notes, ms: Date.now() - t0,
+            // v3.45.9（`技-37`）：**只列非 ok 的步**（正常时这一项为空 —— 不占日志地方，失败时才出现）
+            stepsFailed: repairStepFailures(steps), stepsOk: steps.filter((s) => s.ok === true).length, stepsTotal: steps.length,
         });
     } catch (e) { /* 忽略 */ }
     if (o.silent !== true) {
@@ -484,6 +571,8 @@ async function runRepairMech(opts) {
             `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条${relTxt}；${report}`);
     }
     return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0,
+        // v3.45.9（`docs/D22` W8 `技-37` / `docs/D17` U184）：**九步逐步留痕**
+        steps: steps, stepsSummary: repairStepsSummary(steps),
         // v3.43.0（`docs/D22` `应-18`）：第 ① 段第 8 / 9 步的**跳过原因**（`''` = 已接线）—— 与 `planSuspSkipped` 同款
         floorJumpSkipped: stage1.floorJumpSkipped || '', clockSyncSkipped: stage1.clockSyncSkipped || '' };
 }
@@ -855,6 +944,8 @@ async function runRepair(opts) {
             total: pickStat.total || 0, defects: pickStat.defects || 0, corrHigh: pickStat.corrHigh || 0,
             sampled: pickStat.sampled || 0, topped: pickStat.topped || 0,
             notes: stage1.notes.slice(0, 10), aiError: ai.error || undefined,
+            // v3.45.9（`技-37`）：第 ① 段九步的失败项（正常时为空数组）
+            mechStepsFailed: repairStepFailures(mech.steps), mechStepsOk: (mech.steps || []).filter((s) => s.ok === true).length,
             entries: repairTotalCount(),
         });
     } catch (e) { /* 忽略 */ }
@@ -865,7 +956,9 @@ async function runRepair(opts) {
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
             + `；${report}`);
     }
-    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped };
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped,
+        // v3.45.9（`docs/D22` W8 `技-37` / `docs/D17` U184）：**第 ① 段九步的逐步留痕透出**
+        steps: (mech && mech.steps) || [], stepsSummary: (mech && mech.stepsSummary) || '' };
 }
 /** 提取合并失败后延迟自动修复一次（V1 `scheduleAutoRepairOnMergeFail`；默认 15s，可用 `cfg.repairFailDelaySec` 调） */
 let autoRepairFailTimer = null;
@@ -901,3 +994,5 @@ export {
     repairBatchTags, repairReport, repairLogPush, repairTotalCount,
     runRepairMech,
 };
+// v3.45.9（`docs/D22` W8 `技-37`）：第 ① 段九步的逐步留痕四件（`REPAIR_MECH_STEPS` / `repairStepRecord` /
+//   `runRepairStep` / `repairStepFailures` / `repairStepsSummary`）在**声明处**已 `export`（见上方 §「9 步的逐步留痕」）。
