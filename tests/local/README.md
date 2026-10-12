@@ -147,6 +147,21 @@ node tests/local/bridge.mjs --host 0.0.0.0
 **为什么端口在本机工具这边**：WebView 页面无法监听端口，TauriTavern 也没有 http-server 类 Tauri
 插件，所以「插件自己暴露端口」做不到。这里端口由 `bridge.mjs` 监听、插件**拨出**连接 —— 数据面等价。
 
+### 5.5 只读数据核对（不经插件，直接读宿主原生存储）
+
+有些核对不必连调试桥 —— 直接读宿主的扩展存储更快、且完全不依赖页面是否加载：
+
+```powershell
+node tests/local/currency-audit.mjs      # v3.46.2：按归属汇总真实货币数据（名字|单位 / 条数 / 合计额度 / 疑似同义）
+# 换库：$env:FTT_AUDIT_ROOT='<extension-store 目录>'
+```
+
+- 默认扫 `%APPDATA%\com.tauritavern.client\data\_tauritavern\extension-store` 下的 `ftt2-files` / `ftt-files` / `fft_v2_store` / `ftt2-local`
+  （**只读**，不写任何宿主文件；路径由 `%APPDATA%` 拼出，**不写死用户目录** —— `scripts/check-local-leak.js` 会拦）；
+- 输出：每个归属的「名字|单位」组合清单 + 条数 + 合计额度 + 疑似同义别名粗筛（互相包含 / 共字）；
+- **用途示例（v3.46.2）**：为「🔀 AI 融合货币」定口径 —— 实测某角色 37 种「名字|单位」组合里，
+  金 / 银 / 票据 / 铜 四簇同义而机械档一个都合不了；顺带核出单位写法混乱、复合名与负额度三类噪声。
+
 **跨宿主**（硬要求）：
 
 | 层 | 酒馆原生（浏览器） | TauriTavern |
