@@ -21,6 +21,13 @@ import { entryIndexInit, tombstoneSweepPause, tombstoneSweepResume } from './swe
 const SNAP_CAP = 30;
 const SNAP_BATCH = 15;
 const SNAP_INCR_DELAY = 400;
+/**
+ * **保留窗**（天）—— v3.46.0（`docs/D22` W9 `数-32` / U189）：超窗的增量在整理时**并入根快照**
+ *   （内容一个字节不丢，只是不再作为独立"可回滚档位"）。`0` = 关闭保留窗（只按 `SNAP_CAP` 整理）。
+ * 为什么不做成设定项：`SNAP_CAP` / `SNAP_BATCH` 本来就是这个模块的常量，且 v2.94.0 已定「存储页不再暴露
+ *   同步与存储类开关」（`docs/D11` §3.4/§3.5）→ 与既有口径保持一致（差异已登记在批次档）。
+ */
+const SNAP_RETAIN_DAYS = 30;
 /** 快照自身写库期间抑制再次调度（V1 同名变量语义） */
 let snapSaving = false;
 /** 存储策略（V1 `storePolicy('snapshot')`：上限 30 / 并入批次 15） */
@@ -74,11 +81,14 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     // 快照整理：
     //   R3 全局只允许一个根快照 —— 出现多个按 ts 合并为一个（后根内容覆盖先根，含 deleted 账本）；
     //   R2 总量 > SNAP_CAP(30) —— 每次把「最早 15 个增量」并入根快照（可多轮至 ≤30 或仅剩根）；
-    //   发生变更后落库（saveStateRaw，不触发快照递归）。返回 {roots, folded, changed}
+    //   **R2b v3.46.0（`docs/D22` W9 `数-32` / U189）：保留窗** —— 超窗（`SNAP_RETAIN_DAYS`）的增量也并入根。
+    //     语义：**只减少"能回滚到哪些历史点"的档位数，不删任何数据**（内容被并进根，回滚到根仍完好）；
+    //     UI 与文档如实说明「可回滚范围 = 保留窗内的快照点 + 根」。
+    //   发生变更后落库（saveStateRaw，不触发快照递归）。返回 {roots, folded, aged, changed}
     function snapshotConsolidate() {
         try {
             const snaps0 = state.snapStore = state.snapStore || [];
-            if (!snaps0.length) return { roots: 0, folded: 0, changed: false };
+            if (!snaps0.length) return { roots: 0, folded: 0, aged: 0, changed: false };
             const byTs = (a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
             let changed = false;
             // R3：多根合并为一个
@@ -93,6 +103,21 @@ function renderPanel() { /* no-op：UI 层负责 */ }
                 roots = [state.snapStore.find(s => s.id === baseId) || base];
             }
             const root = roots[0] || null;
+            // R2b（v3.46.0）：**保留窗** —— 超窗增量并入根（内容不丢，只并掉"档位"）
+            let aged = 0;
+            if (root && SNAP_RETAIN_DAYS > 0) {
+                const cutoff = Date.now() - SNAP_RETAIN_DAYS * 24 * 3600 * 1000;
+                const oldIncr = state.snapStore.filter(s => s.kind !== 'root' && s.id !== root.id)
+                    .filter(s => { const t = Date.parse(String(s.ts || '')); return Number.isFinite(t) && t < cutoff; })
+                    .sort(byTs);
+                if (oldIncr.length) {
+                    for (const s of oldIncr) snapshotMergeSnap(root, s);
+                    const dropIds = new Set(oldIncr.map(s => s.id));
+                    state.snapStore = state.snapStore.filter(s => !dropIds.has(s.id));
+                    aged = oldIncr.length;
+                    changed = true;
+                }
+            }
             // R2：总量超限 → 最早 15 个增量并入根（可多轮）
             let folded = 0;
             // v1.151：上限/批次由「统一存储抽象」的 snapshot 分类策略给出（缺省回退原常量）
@@ -111,8 +136,8 @@ function renderPanel() { /* no-op：UI 层负责 */ }
                 changed = true;
             }
             if (changed) saveStateRaw();
-            return { roots: root ? 1 : 0, folded, changed };
-        } catch (e) { warn('快照整理失败', e); return { roots: -1, folded: 0, changed: false }; }
+            return { roots: root ? 1 : 0, folded, aged: aged, changed };
+        } catch (e) { warn('快照整理失败', e); return { roots: -1, folded: 0, aged: 0, changed: false }; }
     }
     function snapshotTs() { return new Date().toISOString(); }
     function snapshotId(kind) { return `${kind}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`; }
@@ -278,7 +303,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     // 自动补记 id + 内容哈希墓碑（同内容仍在＝去重/换 id，不算删除）。删除点无需各自改造。
 
 export {
-    SNAP_CAP, SNAP_BATCH, SNAP_INCR_DELAY,
+    SNAP_CAP, SNAP_BATCH, SNAP_INCR_DELAY, SNAP_RETAIN_DAYS,
     snapshotCreateFull, snapshotCreateIncr, snapshotConsolidate, snapshotMergeSnap,
     snapshotRestore, snapshotClear, snapshotStats, snapshotFind, atomSerialize,
     scheduleSnapshotIncr,

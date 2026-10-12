@@ -22,6 +22,8 @@ import { stateFileName } from './user-file.js';
 // v2.77.0：文件通道统一走 `adapters/file-transport.js`（宿主原生存储 / 酒馆用户目录文件自动切换）
 import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
 import { scheduleStorageSync, writeStateFileContent, stateFileReadCandidates } from './sync.js';
+// v3.46.0（`docs/D22` W9 `数-31`）：物理写清单（新模块；本文件只留六处一行接线）
+import { saveLedgerBegin, saveLedgerNote, saveLedgerEnd, saveLedgerNoop } from './save-ledger.js';
 // v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
 import { writeStateShards, applyNewerShards, shardManifestName, META_SHARD, SHARD_DIMS } from './shards.js';
 import { scheduleWorldbookSync } from './worldbook.js';
@@ -52,6 +54,9 @@ const LASTGOOD_KEY = 'ftt2_LastGoodCounts';   // v3.30.0：上次成功写盘的
 let diskWarnedFor = '';             // v3.28.1：磁盘写失败已提醒过的路径（同路径每次会话只弹一次）
 let saveTimer = null;
 let lastSave = { at: 0, ok: false, via: '', bytes: 0, error: '' };
+// v3.46.0（`docs/D22` W9 `数-31` / U188）：**本次保存的物理写清单** —— 实现落在**新模块**
+//   `adapters/save-ledger.js`（`docs/05` §5 C11「新功能一律落新模块」）；本文件只留接线与六处一行调用。
+export { saveLedgerInfo } from './save-ledger.js';
 let indexReady = false;
 
 /** 保存记录（调试与 /ftt 输出） */
@@ -522,6 +527,9 @@ export async function saveStateNow(opts) {
     void touchedBefore;
     const inFlightForced = (o.force === true);      // 本次在途保存是否已「强制完整保存」（供合流补跑判定复用）
     if (noopSaveOk(o, st)) {
+        // v3.46.0（`数-31`）：**短路的那一次也要留痕** —— 否则读数里 `last` 会停留在上一次真正写盘的那次，
+        //   读者会以为"我刚点保存，怎么写了 7.5MB"，而事实是**本次一个字节都没写**。
+        try { saveLedgerNoop(scopeId(), '内容无变化 → 短路（本次未写任何通道）'); } catch (e) { /* 忽略 */ }
         return { ok: true, via: 'noop', bytes: lastFullPushBytes, error: '', skipped: 'no-change' };
     }
     const mine = trackPipeline('保存记忆文件', { kind: 'io', phase: '写入存储', join: true }, async () => saveStateNowInner(o))
@@ -555,6 +563,8 @@ export async function saveStateNow(opts) {
 async function saveStateNowInner(o) {
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
+    // v3.46.0（`数-31`）：开本次保存的**物理写清单**账本（只读数；各通道在下面各自 `saveLedgerNote`）
+    try { saveLedgerBegin(scopeId()); } catch (e) { /* 忽略 */ }
     // ⑤b v3.0.21（用户要求「修复存储异常，当退出应用后，插件的数据大量回滚…建议一劳永逸」）——
     //   **无墓碑的大规模缩水 → 拒绝写盘覆盖**。
     //   回滚的真实成因：内存里偶然拿到一份**残缺状态**（聊天未就绪 / 作用域切换 / 载入竞态）时，
@@ -625,6 +635,7 @@ async function saveStateNowInner(o) {
             localStats.unchanged += 1;
             localStats.lastSkipReason = 'unchanged';
             localBuffer = { at: Date.now(), ok: true, skipped: 'unchanged', chars: text.length, budget: budget, reason: '与上次写入内容相同 → 跳过', layer: localViaDisk ? 'local-disk' : (localViaFile ? 'local-file' : 'localStorage') };
+            try { saveLedgerNote(localViaDisk ? 'local-disk' : (localViaFile ? 'local-file' : 'localStorage'), { skipped: 1, reason: 'unchanged（与上次逐字节同源，不重复写整份载荷）' }); } catch (e) { /* 忽略 */ }
             try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, miss: true, bytes: 0, reason: 'unchanged', note: '与上次写入内容相同 → 跳过（不重复写 1MB）', extra: { layer: localViaFile ? 'local-file' : 'localStorage' } }); } catch (e) { /* 忽略 */ }
         } else if (localViaDisk && (await (async () => {
             // v3.28.0（用户纠正设计）：**本地磁盘目录** = 用真文件替代浏览器本地存储（localStorage 变量）。
@@ -637,6 +648,7 @@ async function saveStateNowInner(o) {
                 via.push('local-disk');
                 markLocalWritten(sig, text.length);
                 localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-disk', path: String(dr.path || '') };
+                try { saveLedgerNote('local-disk', { writes: 1, bytes: text.length, reason: '整份信封（本机层按作用域键存，非增量）' }); } catch (e) { /* 忽略 */ }
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-disk', path: String(dr.path || ''), mechanism: String(dr.mechanism || '') } }); } catch (e) { /* 忽略 */ }
                 // v3.31.0（用户要求）：同一份内容**再写一份结构化分片**（逐维文件 + manifest）—— best-effort，不阻塞保存
                 // v3.32.0（用户要求）：快照链也写**结构化分片**（snapshots/<id>.json + manifest）—— best-effort
@@ -676,6 +688,7 @@ async function saveStateNowInner(o) {
                 markLocalWritten(sig, text.length);
                 lastPathMemory = String(wr.path || localFilePath());
                 localBuffer = { at: Date.now(), ok: true, skipped: '', chars: text.length, budget: budget, reason: '', layer: 'local-file', backend: String(wr.backend || '') };
+                try { saveLedgerNote('local-file', { writes: 1, bytes: text.length, reason: '整份信封（本地文件模式取代变量层）' }); } catch (e) { /* 忽略 */ }
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: text.length, extra: { budget: budget, layer: 'local-file', path: String(localFileStatsGet().path || '') } }); } catch (e) { /* 忽略 */ }
             } else {
                 // v3.26.0（用户要求「设置了本地缓冲目录则不再使用内存或变量存储，只保留本地目录和服务端存储」）：
@@ -721,6 +734,7 @@ async function saveStateNowInner(o) {
                 } catch (e) { /* 忽略 */ }
                 try { debugLogPush('存储', { action: '本机缓冲超预算 → 跳过写入（压缩未能解决）', chars: text.length, budget: budget, gzTried: gzTried, gzStoredChars: rec.length, gzAvailable: gzipAvailable() }); } catch (e) { /* 忽略 */ }
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: false, miss: true, bytes: text.length, reason: 'over-budget', extra: { budget: budget, gzTried: gzTried, gzStoredChars: rec.length }, note: '超过字符预算且压缩未能解决 → 跳过（服务端文件与 IndexedDB 不受影响）' }); } catch (e) { /* 忽略 */ }
+                try { saveLedgerNote('localStorage', { skipped: 1, reason: 'over-budget（超字符预算且压缩未能解决）' }); } catch (e) { /* 忽略 */ }
                 localStaleMark(text.length, budget, 'over-budget');
                 localSkipHintOnce(text.length, budget);
             } else if (storageHooks.setItem(key, stored)) {
@@ -731,6 +745,7 @@ async function saveStateNowInner(o) {
                     at: Date.now(), ok: true, skipped: '', gz: useGz, gzTried: gzTried,
                     chars: text.length, storedChars: stored.length, budget: budget, reason: '', layer: 'localStorage',
                 };
+                try { saveLedgerNote(useGz ? 'localStorage-gz' : 'localStorage', { writes: 1, bytes: stored.length, reason: useGz ? ('压缩留存（明文 ' + text.length + ' → 存 ' + stored.length + ' 字符）') : '整份信封（明文）' }); } catch (e) { /* 忽略 */ }
                 try { readLedgerRecord({ action: '写本机缓冲', src: 'local', ok: true, bytes: stored.length, extra: { budget: budget, gz: useGz, plainChars: text.length, layer: 'localStorage' } }); } catch (e) { /* 忽略 */ }
                 if (useGz) {
                     try { debugLogPush('存储', { action: '本机缓冲已压缩留存', plainChars: text.length, storedChars: stored.length, budget: budget }); } catch (e) { /* 忽略 */ }
@@ -757,6 +772,7 @@ async function saveStateNowInner(o) {
     // v3.28.1：磁盘写失败已回退浏览器层 → 内存库这次**照写**（回退口径要一致，否则回退只回了一半）
     if (localViaFile || (localViaDisk && !diskFellBack)) {
         localStats.idbSkipped += 1;
+        try { saveLedgerNote('indexedDB', { skipped: 1, reason: localViaFile ? 'local-file（本层整体停用）' : 'local-disk 已写成功（本层不重复）' }); } catch (e) { /* 忽略 */ }
     } else {
         try {
             const lf = await localforageLib();
@@ -764,6 +780,7 @@ async function saveStateNowInner(o) {
                 await lf.setItem('ftt2_state_' + scopeId(), envelope);
                 localStats.idbWrites += 1;
                 via.push('indexedDB');
+                try { saveLedgerNote('indexedDB', { writes: 1, bytes: text.length, reason: '整份信封（异步写，不做等值跳过）' }); } catch (e) { /* 忽略 */ }
             }
         } catch (e) { /* 忽略 */ }
     }
@@ -774,18 +791,31 @@ async function saveStateNowInner(o) {
         //   注：`force` **不**透传给分片 —— 分片靠**内容哈希**判断要不要重传，内容没变的片一个字节都不发
         //   （`force` 只用于「必须写主文件（提交点）」的语义：清空 / 导入 / 退出前落盘）。
         try {
-            await writeStateShards(st, {
+            const shRes = await writeStateShards(st, {
                 force: o.shardsForce === true,      // v3.0.22：「对齐所有存储」时强制重传全部片（确保分片与内存完全一致）
                 at: Number(envelope && envelope.payload && envelope.payload.updatedAt) || 0,
             });
+            // v3.46.0（`数-31` ①）：**分片是本路径唯一"与变化量同阶"的通道** —— 把"写了几片 / 多少字节"如实入账
+            try {
+                const w = Number((shRes && shRes.written) || 0);
+                const b = Number((shRes && shRes.bytes) || 0);
+                saveLedgerNote('shards', {
+                    writes: w, bytes: b,
+                    skipped: w === 0 ? 1 : 0,
+                    reason: w === 0 ? '内容未变化 → 一个片都不重传' : ('只写变化片 ' + w + ' 个（按内容哈希）'),
+                });
+            } catch (e) { /* 忽略 */ }
         } catch (e) { /* 分片失败不影响主文件写入 */ }
     }
     if (o.skipFile !== true) {
         try {
             // B9-d：与 `adapters/sync.js#stateFileWrite` 同源的内容写入（瘦身/gzip 开关关闭时行为与 B7-2 一致）
             const r = await writeStateFileContent(envelope, text);
-            if (r.ok) via.push('file');
-            else if (r.error) kernelLog('保存：服务端文件不可用（' + r.error + '）');
+            if (r.ok) {
+                via.push('file');
+                // v3.46.0（`数-31`）：**主文件是提交点，天然全量** —— 读数里如实标出，不让"整份载荷"看起来像增量
+                try { saveLedgerNote('main-file', { writes: 1, bytes: Number(r.bytes) || text.length, reason: '提交点全量（整份信封；分片已先写增量）' }); } catch (e) { /* 忽略 */ }
+            } else if (r.error) kernelLog('保存：服务端文件不可用（' + r.error + '）');
         } catch (e) { /* 忽略 */ }
     }
     lastSave = { at: Date.now(), ok: via.length > 0, via: via.join('+'), bytes, error: '' };
@@ -808,11 +838,17 @@ async function saveStateNowInner(o) {
     try { saveSettings(); } catch (e) { /* 忽略 */ }
     // ⑦ 保存后镜像（V1 `saveState` 末尾的 scheduleStorageSync）：防抖 3s + 楼层/签名双门控
     //   （`cfg.storage.syncOnSave === false` 时不调度；手动「立即同步」不受此开关影响）
-    try { if (!mirrorOnSaveDisabled()) scheduleStorageSync(false); } catch (e) { /* 忽略 */ }
+    try {
+        if (!mirrorOnSaveDisabled()) { saveLedgerNote('mirror', { skipped: 1, reason: '已调度（防抖 3s，本次保存不写）' }); scheduleStorageSync(false); }
+        else saveLedgerNote('mirror', { skipped: 1, reason: 'syncOnSave 关闭' });
+    } catch (e) { /* 忽略 */ }
     // ⑧ 世界书单向镜像（V1 `storageWriteAll` 末尾同款）：原子数据落主存储后**延迟 8s 防抖**推送词条。
     //   未开启 `cfg.storage.worldbook` 时零行为（不排定时器、不触宿主 API）；失败静默（下次数据变更再试）。
     try { scheduleWorldbookSync(); } catch (e) { /* 忽略 */ }
-    return { ok: lastSave.ok, via: lastSave.via, bytes, error: '' };
+    // v3.46.0（`数-31`）：归档本次账本（只读数；`lastSave` 之外**新增**一份可读的逐通道清单）
+    let ledger = null;
+    try { ledger = saveLedgerEnd(); } catch (e) { /* 忽略 */ }
+    return { ok: lastSave.ok, via: lastSave.via, bytes, error: '', ledger: ledger };
 }
 
 /** 防抖保存（V1 `syncOnSave` 同款） */

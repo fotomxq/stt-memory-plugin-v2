@@ -373,6 +373,8 @@ const BRIDGE_FTT = Object.freeze([
     'ftt.writeStats', 'ftt.loadDiag', 'ftt.reads', 'ftt.readLedgerText', 'ftt.conflicts', 'ftt.conflictLog',
     // v3.45.4（`技-40` / `技-41` ⑥）：性能卡顿只读四件套 + 只读清单 / 口径汇总（同样**只读**）
     'ftt.perf', 'ftt.perfJank', 'ftt.perfTargets', 'ftt.perfBaseline', 'ftt.readonly', 'ftt.catalog',
+    // v3.46.0（`docs/D22` W9 `数-31`）：本次保存的物理写清单（只读；逐通道 次数/字节/跳过原因）
+    'ftt.writeLedger',
     // v3.45.9（`docs/D22` W5 `技-26` 真机核对）：宿主输入框写入能力的**只读**出口（探针 + 候选 DOM 事实 + 克隆体演练）
     'ftt.inputBox',
     'ftt.tokenCost', 'ftt.debugLog', 'ftt.trace', 'ftt.errors', 'ftt.entries', 'ftt.search', 'ftt.config',

@@ -42,7 +42,7 @@ import { startupDelayPlan, UPDATE_STARTUP_DELAY_MS } from './core/update.js';
 import { setUpdateStatusLine } from './ui/settings-panel.js';
 import { readUpdateState } from './adapters/update-state.js';
 import { wireKernelChatHooks, attachKernelState, latestAiMessageText, noteChatKey } from './host/chat.js';
-import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys, localLayerInfo } from './adapters/store.js';   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
+import { wirePersistHooks, loadFromLocalStorage, loadFromLocalStorageGz, localBufferGzPending, localStaleInfo, loadFromLocalFile, loadFromIndexedDB, loadFromServerFile, lastServerLoadInfo, storeStatus, scheduleSave, saveStateNow, primeStateIndex, resetState, flushStateNow, primeShrinkBaseline, localBufferState, LOCAL_BUFFER_MAX_CHARS, localKeyStats, localCopyStats, clearLocalCopy, removeLocalKeys, localLayerInfo, saveLedgerInfo } from './adapters/store.js';   // v3.46.0（W9 数-31）：+saveLedgerInfo（本次保存的物理写清单，只读）   // v3.26.2：+压缩留存的本机缓冲读路径（loadFromLocalStorageGz / localBufferGzPending / localStaleInfo）   // v3.1.0：+本机缓冲诊断；v3.3.0：+本机缓冲清点与清理   // v3.0.18：+flushStateNow（退出/切后台前落盘）；v3.0.23：+loadFromIndexedDB / lastServerLoadInfo（载入全层对齐）；v3.16.0：+loadFromLocalFile（本地文件模式）
 // v3.16.0（用户要求「本地文件存储模式替代变量存储，避免超出限制」）：路径约定在设定-存储；留空 = 不开启
 import { localFileEnabled } from './adapters/local-file.js';
 // v3.27.0（用户要求）：辅助数据（快照 / 日志 / 时间线 / 标记 / 版本清单）跟随本地目录统一收纳
@@ -1364,6 +1364,9 @@ function bootstrapDiagnostics() {
             readsText: (limit) => readLedgerSummaryText(Number(limit) || 30),
             readsClear: () => resetReadLedger(),
             loadInfo: () => (() => { try { return { server: lastServerLoadInfo(), store: storeStatus(), ledger: readLedgerStats() }; } catch (e) { return null; } })(),
+            // v3.46.0（`docs/D22` W9 `数-31` / U188）：**本次保存的物理写清单**（通道 / 次数 / 字节 / 跳过原因，环形最近 5 次）。
+            //   只读出口，与调试桥 `ftt.writeLedger`、调试导出 `writeLedger` **同源**（都读 `adapters/save-ledger.js#saveLedgerInfo`）。
+            writeLedger: () => { try { return saveLedgerInfo(); } catch (e) { return null; } },
             // v3.1.0（性能观测 / 容量诊断，docs/D13 S0/S2/S3）：面板渲染观测 · 本机缓冲预算 · 向量缓存容量
             // v3.3.0（用户要求）：数据管理 →「本地缓冲」全面补充（本机副本 / 命名缓存 / 同步标记 / V1 遗留）
             localCopyInfo: () => (() => { try { return localCopyStats(); } catch (e) { return null; } })(),
