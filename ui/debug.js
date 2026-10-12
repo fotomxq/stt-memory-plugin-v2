@@ -27,6 +27,8 @@ import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 import { dataHealthReport, dataHealthText } from '../core/data-health.js';
 // v3.45.1（`docs/D22` W6 `技-32`）：待确认项与其记录的**只读**出口（不给写入口）
 import { conflictsSummary, listConflictLog, listConflicts, pendingConflictCount, conflictLogCount, CONFLICT_LOG_CAP } from '../core/conflicts.js';
+// v3.45.9（`docs/D22` W5 `技-26` 真机核对）：宿主输入框写入能力的**只读**出口（探针 + 候选 DOM 事实 + 克隆演练）
+import { inputBoxCapability, inputBoxCandidates, inputBoxDryRun, inputBoxVerifySteps } from '../host/input-box.js';
 // v3.45.8（用户要求「最近记录明明是日志……不要在这里体现」）：同步日志与「记录」从 **设定 → 存储** 迁到本页
 //   （与调试日志**同页统一归纳**）—— 列表 / 状态行 / 刷新与清空按钮都来自 `ui/sync.js` 的同名出口，界面零重算。
 import { syncLogHtml, syncLogServerStatusHtml } from './sync.js';
@@ -792,6 +794,23 @@ export function buildBridgeMethods() {
         summary: await F.aiUsage(),
         recent: await F.aiUsageRecent(Number((p && p.limit) || 10)),
     }));
+    /**
+     * v3.45.9（`docs/D22` W5 `技-26` 的**真机核对**）：宿主输入框写入能力的**只读**出口。
+     * 为什么加它：v3.45.0 只留了控制台出口 `FTT.inputBox()`（要开 DevTools 才能取数）→ 真机核对一直没做；
+     *   本方法让「能不能写上宿主输入框」可以在**没有 DevTools** 的情况下取到证据（与桥的只读纪律一致）。
+     * **只读纪律（逐条）**：① `capability` 只 `querySelector`，不写值、不派发事件；
+     *   ② `candidates` 只报「每个候选命中没命中 / 是什么元素」——回答「为什么命中」；
+     *   ③ `dryRun` 的写入演练**只碰 `cloneNode` 克隆体**，真实输入框一字不动（因此本方法可以安全地留在只读白名单里）；
+     *   ④ `verifySteps` 给出仍需人工做的那一步（真实写入），不假装已经做过。
+     */
+    T['ftt.inputBox'] = safe(() => ({
+        available: true,
+        capability: inputBoxCapability(),
+        candidates: inputBoxCandidates(),
+        dryRun: inputBoxDryRun(),
+        verifySteps: inputBoxVerifySteps(),
+        note: '只读：capability 只查询；dryRun 在克隆体上演练（不动真实输入框）；真实写入需 FTT.insertText()（不在桥白名单）',
+    }));
 
     // —— TauriTavern 宿主调试 ABI（酒馆原生下全部降级）——
     T['host.frontendLogsList'] = needDev('前端日志', 'frontendLogs', 'list');
@@ -1340,6 +1359,8 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.perfBaseline': { desc: '与基线（scripts/perf-baseline.json）的差异：回归/改善逐项；未跑过基线时 available:false', params: '' },
     'ftt.readonly': { desc: '只读清单（与桥白名单同源；清空型动作显式标注、永不进桥）', params: '' },
     'ftt.catalog': { desc: '调试面口径汇总（日志 kind 枚举 / CAP 表 / 12 类必要内容 / 只读清单）', params: '' },
+    // v3.45.9（W5 技-26 真机核对）：宿主输入框写入能力的只读出口（探针 + 候选 DOM 事实 + 克隆演练 + 仍待人工的那一步）
+    'ftt.inputBox': { desc: '宿主输入框可写性（只读：capability / candidates / cloneNode 演练；真实写入不在桥内）', params: '' },
     'ftt.reads': { desc: '读取台账（分来源统计 + 最近若干行）', params: '{limit?}' },
     // v3.45.1（W6 技-32）：待确认项与其记录的**只读出口**（真机缺口：一致性告警此前读不到）
     'ftt.conflicts': { desc: '待确认项（含合计 / 逐条明细；只读，确认动作仍在设定页）', params: '' },

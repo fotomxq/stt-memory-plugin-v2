@@ -1,0 +1,7 @@
+{
+  "note": "零依赖静态检查的**告警**基线（`docs/D22` W5 `技-10`）。错误（eval/debugger/with/导入名/syntax）**永远必须为 0**，不进基线；本文件只记告警，且只减不增。",
+  "warnings": 218,
+  "byRule": {
+    "empty-catch": 218
+  }
+}

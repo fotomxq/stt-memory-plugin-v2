@@ -137,7 +137,9 @@ function useTauriTavern(withDev = true) {
                 'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
                 'ftt.diskFiles', 'ftt.diskProbe',                                         // v3.29.0：本地存储路径写探针 / 目录文件列举（用调试端口核对文件是否落到本地）
                 'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
-                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors', 'ftt.ledger', 'ftt.loadDiag',
+                'ftt.fileTransport', 'ftt.floorDiag', 'ftt.floors',
+                'ftt.inputBox',                                              // v3.45.9（W5 技-26）：+宿主输入框写入能力（只读：探针 / 候选 DOM 事实 / 克隆体演练）
+                'ftt.ledger', 'ftt.loadDiag',
                 'ftt.localDir',                                              // v3.26.0：+本机缓冲目录模式体检
                 'ftt.memorySample', 'ftt.memoryShape',
                 'ftt.pendingFloors', 'ftt.pendingScan',

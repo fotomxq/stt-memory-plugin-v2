@@ -54,6 +54,8 @@ import { chatMetaLoadState } from './adapters/chat-meta.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账
 import { setReadLedgerHooks, readLedgerRecord, readLedgerStats, readLedgerList, readLedgerLines, readLedgerSummaryText, resetReadLedger, READ_LEDGER_CAP } from './core/read-ledger.js';
 import { wireDebugLog, debugLogPush, debugLogList, debugLogClear, debugLogStats } from './adapters/debug-log.js';
+// v3.45.9（`docs/D22` W5 `技-26` 真机核对）：宿主输入框写入能力 —— 加载时自检一次并留痕（只读 + 克隆演练）
+import { inputBoxCapability, inputBoxDryRun } from './host/input-box.js';
 import { wireTraceStore, traceStoreLoad, traceStoreSave, traceStoreClear } from './adapters/trace-store.js';
 import { debugLogErrors, debugLogErrorCount, debugLogLastError } from './core/debug-log.js';
 // v2.83.0（用户要求「开发之前设计的原子层之上的关联层」）：关联层派生视图 + 反向索引（只读）
@@ -777,6 +779,24 @@ export async function init() {
         });
     } catch (e) { /* 忽略 */ }
     try { installHostBridges(); } catch (e) { /* 桥接失败不阻塞 */ }
+    /**
+     * v3.45.9（`docs/D22` W5 `技-26` 的**真机核对**）：宿主输入框写入能力 —— **每次页面加载自检一次并留痕**。
+     *
+     * 为什么要在加载时自检：v3.45.0 交付了探针与降级链，但真机核对一直没做（本机当时没有真机；
+     *   `docs/D17` U160 因此停在 🟡）。自检把「本机到底走哪一档」写进调试日志（并带**克隆体演练**结果），
+     *   于是**不需要 DevTools**：用户看 设定 → 调试 → 日志 就能看到，外部工具也能经 `ftt.debugLog` / `ftt.inputBox` 读到。
+     * 纪律：**只读**（探针只 `querySelector`；演练只在 `cloneNode` 克隆体上做）→ 绝不改动用户的输入框，
+     *   也绝不写任何数据；失败一律静默（不影响加载）。
+     */
+    try {
+        const cap = inputBoxCapability();
+        const dry = inputBoxDryRun();
+        debugLogPush('宿主', {
+            action: '输入框写入能力自检', via: cap.via, selector: cap.selector || '', errors: cap.errors,
+            clipboard: cap.clipboard, dryRunOk: !!(dry && dry.ok), dryRunEvent: !!(dry && dry.eventDispatched),
+            reason: String(cap.reason || '').slice(0, 120), dryNote: String((dry && dry.reason) || '').slice(0, 120),
+        });
+    } catch (e) { /* 忽略：自检失败不影响加载 */ }
     // v3.39.0（用户报告「本地召回失败 Cannot read properties of null (reading 'state')」）：
     //   内核态初始为 `null`（`core/model/runtime.js`），而**生成拦截器是页面级全局钩子**（manifest 的
     //   `generate_interceptor`）—— 首屏载入还没结束就发送时，召回会在 `state.state` 上抛错。
