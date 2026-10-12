@@ -19,7 +19,8 @@ import { cfg, state, setKernelState, setScopeKey, setLastMessageId, setPersistHo
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { panelAction, panelBodyHtml, panelState, setPanelHooks2, openPanel, bindOverlay } from '../../ui/panel.js';
-import { downloadTextFile, pickTextFile, fileIoCapabilities, readFileText } from '../../ui/file-io.js';
+import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities, readFileText } from '../../ui/file-io.js';
+import { exportChunks, EXPORT_INLINE_MAX } from '../../core/export.js';
 
 const R = makeReporter('file-io v2.49.0 导出下载 / 导入存档文件');
 const J = (v) => JSON.stringify(v);
@@ -115,6 +116,21 @@ A('F3 下载：无 URL.createObjectURL → 如实返回 no-download（调用方�
     try { const r = downloadTextFile('x.json', '{}'); return r.ok === false && r.reason === 'no-download'; } finally { env.restore(); }
 })(), '');
 
+// v3.45.7（用户报告「数据导出功能会直接卡死」，真机主文件约 10 MB）：
+//   **分段下载** —— `new Blob(parts)` 直接吃片段数组，**不先拼成一整串**（省一份等量内存与一次全量拷贝）。
+A('F3b `downloadTextParts`：分段数组直接进 Blob（不拼接）、`chars` = 各段之和、下载行为与整串路径一致', (() => {
+    const env = makeDownloadEnv({});
+    try {
+        const parts = ['{"a":', '1', ',"b":"中文"}'];
+        const r = downloadTextParts('x.json', parts, 'application/json');
+        const a = env.log.clicked[0];
+        const blob = env.log.blobs.filter((b) => b && b.type === 'application/json')[0];
+        return r.ok === true && r.parts === 3 && r.chars === parts.join('').length
+            && !!blob && Array.isArray(blob.parts) && blob.parts.length === 3 && blob.parts.join('') === parts.join('')
+            && !!a && a.download === 'x.json' && a.calls === 1 && a.removed === true;
+    } finally { env.restore(); }
+})(), (() => { const env = makeDownloadEnv({}); try { const r = downloadTextParts('x.json', ['a', 'b']); return J({ r, blobs: env.log.blobs.length }); } finally { env.restore(); } })());
+
 await (async () => {
     // 选择文件：点击后 `onchange` 注入一个文件 → 读到 text/name/size
     const env = makeDownloadEnv({ realTimers: true });
@@ -194,6 +210,65 @@ await (async () => {
             && Number(st2.exportChars) > 10,
             J({ note: st2.note }));
     } finally { env2.restore(); }
+
+    // ============================================================
+    // E3（v3.45.7 · 用户报告「数据导出功能会直接卡死」）：
+    //   ① 宿主给出**分段生成器**（`{stream:true}` → `{source}`）→ 逐段组装、分段下载；
+    //   ② 数据超过 `EXPORT_INLINE_MAX` → **不进文本框、不写剪贴板**（这两件事都会把 WebView 卡死），
+    //      并如实说明「内容较大」；下载仍**照常成功**（这是大存档唯一的可用出口）。
+    //   反向探针：把 `ui/panel.js` 的内联判据去掉（无论多大都内联）→ 本组必须失败。
+    // ============================================================
+    let clipCalls = 0;
+    // Node ≥ 20 的 `globalThis.navigator` 是**只读访问器**（不能整体替换）→ 就地打桩它自己的 `clipboard`
+    const navObj = (() => { try { return globalThis.navigator; } catch (e) { return null; } })();
+    const prevClip = navObj ? navObj.clipboard : undefined;
+    try { if (navObj) navObj.clipboard = { writeText: async () => { clipCalls += 1; } }; } catch (e) { /* 忽略：无法打桩时下面的断言会失败并暴露 */ }
+
+    // ① 生成器路径（小数据）：分段组装 + 分段下载 + 页内显示
+    const env3 = makeDownloadEnv({});
+    try {
+        setPanelHooks2({
+            exportState: (opts) => ((opts && opts.stream === true)
+                ? { source: exportChunks({ atoms: [{ id: 'a1' }, { id: 'a2' }] }, { version: '3.45.7' }), total: 5, chars: null }
+                : ''),
+        });
+        await fire({ fttAction: 'exportState' });
+        const st3 = panelState();
+        const html3 = String(panelBodyHtml('settings') || '');
+        const blob3 = env3.log.blobs.filter((b) => b && b.type === 'application/json')[0];
+        const joined3 = (blob3 && Array.isArray(blob3.parts)) ? blob3.parts.join('') : '';
+        const parsed3 = (() => { try { return JSON.parse(joined3); } catch (e) { return null; } })();
+        A('E3 宿主给出**分段生成器** → 逐段组装后**分段下载**（Blob 吃片段数组），小数据仍进文本框并复制剪贴板',
+            env3.log.clicked.length === 1 && !!blob3 && Array.isArray(blob3.parts) && blob3.parts.length >= 4
+            && !!parsed3 && parsed3.format === 'ftt-memory-v2-export' && parsed3.state.atoms.length === 2
+            && html3.indexOf('data-ftt-export') >= 0 && Number(st3.exportChars) > 10 && clipCalls === 1,
+            J({ parts: blob3 && blob3.parts && blob3.parts.length, note: st3.note, clipCalls, exportChars: st3.exportChars }));
+    } finally { env3.restore(); }
+
+    // ② 大存档路径：超过内联上限 → 不内联、不剪贴板
+    const env4 = makeDownloadEnv({});
+    const beforeClip = clipCalls;
+    try {
+        const big = 'x'.repeat(EXPORT_INLINE_MAX + 1024);
+        setPanelHooks2({
+            exportState: (opts) => ((opts && opts.stream === true)
+                ? { source: [{ section: '@meta', part: '{"format":"ftt-memory-v2-export","state":' }, { section: '@state-open', part: '{' }, { section: 'atoms', part: '"atoms":' + J(big) }, { section: '@end', part: '}}' }], total: 4, chars: null }
+                : ''),
+        });
+        await fire({ fttAction: 'exportState' });
+        const st4 = panelState();
+        const html4 = String(panelBodyHtml('settings') || '');
+        A('E4 **大存档导出不再卡死**：超过 `EXPORT_INLINE_MAX` → 仍成功下载分段文件，但**不进文本框、不写剪贴板**，note 如实说明',
+            env4.log.clicked.length === 1
+            && html4.indexOf('data-ftt-export') < 0                  // 页内不再渲染巨型文本框（卡死主因之一）
+            && clipCalls === beforeClip                             // 不写剪贴板（另一个卡死主因）
+            && Number(st4.exportChars) > EXPORT_INLINE_MAX          // 读数仍如实给出体积
+            && String(st4.note).indexOf('内容较大') >= 0 && String(st4.note).indexOf('已下载文件') >= 0,
+            J({ note: st4.note, clipCalls, beforeClip, exportChars: st4.exportChars, hasTextarea: html4.indexOf('data-ftt-export') >= 0 }));
+    } finally {
+        env4.restore();
+        try { if (navObj) { if (prevClip === undefined) delete navObj.clipboard; else navObj.clipboard = prevClip; } } catch (e) { /* 忽略 */ }
+    }
 })();
 
 // ---------- I 组：面板导入（真实点击 → 选择文件） ----------

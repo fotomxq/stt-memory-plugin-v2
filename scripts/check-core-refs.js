@@ -96,7 +96,9 @@ function looksLikeRegex(out) {
 /** 本文件声明的名字（函数 / 变量 / 类 / 参数 / catch / import 与 export 名） */
 function declared(code) {
     const names = new Set();
-    for (const m of code.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+    // v3.45.7：`\*?` —— **生成器声明**（`export function* exportChunks(...)` / `function *name()`）此前不匹配
+    //   → 该函数名不被登记为「已声明」，却在文件内被引用 → 误报「未定义标识符」（`core/export.js` 实测踩到）。
+    for (const m of code.matchAll(/\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     for (const m of code.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
     // for 循环声明（含数组/对象解构）：for (const [k, v] of …) / for (let i = 0; …)
     // v2.95.0：同时识别 `for await (const chunk of gen)`（宿主流式响应的异步迭代）——

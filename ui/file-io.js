@@ -46,6 +46,42 @@ function detach(node) {
 }
 
 /**
+ * 下载实现的**唯一出口**（`downloadTextFile` 与 `downloadTextParts` 共用）。
+ * @param {string} name 文件名
+ * @param {function} makeBlob `(BlobCtor) => Blob` —— 由调用方决定「一整串」还是「分段数组」
+ * @param {number} chars 字符数（只用于回报）
+ * @returns {{ ok:boolean, reason:string, filename:string, chars:number, attached?:boolean }}
+ */
+function downloadBlob(name, makeBlob, chars) {
+    const nm = str(name) || 'FTT-memory.json';
+    const n = Number(chars) || 0;
+    try {
+        const g = globalThis;
+        const doc = g && g.document;
+        const caps = fileIoCapabilities();
+        if (!caps.download) return { ok: false, reason: 'no-download', filename: nm, chars: n };
+        const blob = makeBlob(g.Blob);
+        const url = g.URL.createObjectURL(blob);
+        const a = doc.createElement('a');
+        try { a.href = url; } catch (e) { /* 忽略 */ }
+        try { a.download = nm; } catch (e) { /* 忽略 */ }
+        try { a.rel = 'noopener'; } catch (e) { /* 忽略 */ }
+        try { if (a.style) a.style.display = 'none'; } catch (e) { /* 忽略 */ }
+        const attached = attach(a);
+        try { a.click(); } catch (e) { detach(a); return { ok: false, reason: 'click-failed', filename: nm, chars: n }; }
+        // 立即摘除节点；URL 稍后回收（太早回收会让部分宿主下载失败）
+        detach(a);
+        try {
+            if (typeof g.setTimeout === 'function') g.setTimeout(() => { try { g.URL.revokeObjectURL(url); } catch (e) { /* 忽略 */ } }, 5000);
+            else g.URL.revokeObjectURL(url);
+        } catch (e) { /* 忽略 */ }
+        return { ok: true, reason: '', filename: nm, chars: n, attached: attached };
+    } catch (e) {
+        return { ok: false, reason: 'error:' + str(e && e.message), filename: nm, chars: n };
+    }
+}
+
+/**
  * **下载文本为文件**（V1 `export` 动作同款）。
  * @param {string} filename 文件名（如 `FTT记忆_ab12cd.json`）
  * @param {string} text 文件内容
@@ -53,32 +89,27 @@ function detach(node) {
  * @returns {{ ok: boolean, reason: string, filename: string, chars: number }}
  */
 export function downloadTextFile(filename, text, mime) {
-    const name = str(filename) || 'FTT-memory.json';
     const body = str(text);
-    try {
-        const g = globalThis;
-        const doc = g && g.document;
-        const caps = fileIoCapabilities();
-        if (!caps.download) return { ok: false, reason: 'no-download', filename: name, chars: body.length };
-        const blob = new g.Blob([body], { type: str(mime) || 'application/json' });
-        const url = g.URL.createObjectURL(blob);
-        const a = doc.createElement('a');
-        try { a.href = url; } catch (e) { /* 忽略 */ }
-        try { a.download = name; } catch (e) { /* 忽略 */ }
-        try { a.rel = 'noopener'; } catch (e) { /* 忽略 */ }
-        try { if (a.style) a.style.display = 'none'; } catch (e) { /* 忽略 */ }
-        const attached = attach(a);
-        try { a.click(); } catch (e) { detach(a); return { ok: false, reason: 'click-failed', filename: name, chars: body.length }; }
-        // 立即摘除节点；URL 稍后回收（太早回收会让部分宿主下载失败）
-        detach(a);
-        try {
-            if (typeof g.setTimeout === 'function') g.setTimeout(() => { try { g.URL.revokeObjectURL(url); } catch (e) { /* 忽略 */ } }, 5000);
-            else g.URL.revokeObjectURL(url);
-        } catch (e) { /* 忽略 */ }
-        return { ok: true, reason: '', filename: name, chars: body.length, attached: attached };
-    } catch (e) {
-        return { ok: false, reason: 'error:' + str(e && e.message), filename: name, chars: body.length };
-    }
+    const m = str(mime) || 'application/json';
+    return downloadBlob(filename, (BlobCtor) => new BlobCtor([body], { type: m }), body.length);
+}
+
+/**
+ * v3.45.7（用户报告「数据导出功能会直接卡死」，宿主主文件约 10 MB）：
+ * **按分段下载** —— `new Blob(parts)` 直接吃**片段数组**，于是**不需要**先把片段拼成一整串
+ * （省掉一份等量内存与一次全量拷贝）。片段来自 `core/export.js#exportChunks`。
+ * @param {string} filename 文件名
+ * @param {string[]} parts 文本片段（按顺序拼接即为完整文件内容）
+ * @param {string} [mime] 默认 `application/json`
+ * @returns {{ ok:boolean, reason:string, filename:string, chars:number, parts:number }}
+ */
+export function downloadTextParts(filename, parts, mime) {
+    const list = (Array.isArray(parts) ? parts : [parts]).map(str);
+    let chars = 0;
+    for (const p of list) chars += p.length;
+    const m = str(mime) || 'application/json';
+    const r = downloadBlob(filename, (BlobCtor) => new BlobCtor(list, { type: m }), chars);
+    return Object.assign({}, r, { parts: list.length });
 }
 
 /**
