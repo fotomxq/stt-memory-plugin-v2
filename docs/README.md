@@ -1,6 +1,19 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.81 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.82 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.82 变更（随 **v3.46.0**：**W9 写入收敛（保存物理写清单）+ 快照链保留窗**）：
+>   用户原话：「新版本，v3.46.0 / 开发待开发的W9」
+>   ① **本批 = W9 剩余三行**：`数-31`（**✅ 整行**）· `数-32`（**🟡 部分**：保留窗）· `技-38`（**⬜ 硬前置未满足** —— `数-26`/`技-28` 均未落地，而它们的前置仍在 ⛔ 需裁决）。
+>   ② **`数-31`**：新增 **`adapters/save-ledger.js`**（本次保存的物理写清单：逐通道 `{ch, writes, bytes, skipped, reason}`，环形 5 次，含**无变化短路的 `no-op` 留痕**）——
+>      落在新模块是 `docs/05` §5 **C11** 的字面要求（`adapters/store.js` 只留六处一行接线，体量棘轮 +36 行，在 40 行宽限内）；`adapters/shards.js` 回报新增 `written`/`bytes`；
+>      **三处同源**：`FTT.writeLedger()` · 调试桥 **`ftt.writeLedger`**（桥只读 **59 → 60**）· 调试导出 `writeLedger`（命名**不叫 `saveWrites`** —— 桥的写动词守门会把含 `save` 的名字判成写方法，实测踩到已改正）。
+>      **实测定位（`docs/D28` §3.3.5）**：一次「只改 1 条 → 保存 + 载入」= **写 3 次 / 192.1KB** · **读 11 次 / 316.9KB**（`file` 52% / `local` 26% / `shard` 22% / `meta` 1%）→ **读放大集中在载入期**，保存路径**无多余回读**；按纪律**只定位不收敛**。
+>      **新发现**：分片是**维度级**增量（1 条目变化 → 只重传 1 片，但那片是**整维重写** 27.9KB）→ 设计稿验收②「写字节与变化量同阶」**只在维度粒度成立**（条目级要等 `数-27`），已写成回归判据。`[契约]` 项（主文件基准化）按原文**只评估不实施**。
+>   ③ **`数-32`**：`core/snapshots.js` 新增 **`SNAP_RETAIN_DAYS = 30`** —— 整理时把**超窗增量并入根快照**（**内容一个字节不丢**，只并掉"独立档位"；新增 `aged` 计数），
+>      `ui/snapshots.js` 如实写明**可回滚范围**；等价性由 `tests/unit/snapshot-retain.test.js#A3`（`atomsHashes` 并集逐键不变）锁死。**未做**：`atomsHashes` 字面去重（= `D10` **R2**，归属与 **`技-4`** 冲突须裁决）·
+>      副本收敛（触碰四套副本的灾难恢复路径）· 墓碑保留窗（与 `数-29`/`数-25` 口径强耦合）。
+>   ④ **数字口径**：单测 **215 文件 / 3136 断言** · 冒烟 **223** · 调试桥只读方法数 59 → **60**（写方法仍 0）· `adapters/` 26 → **27**（+`save-ledger.js`）· `tests/` 241 → **244** · 历史批次档数 211 → **212**；§1 目录树 `history/` 计数 → **212 份**、`P10c*` 区间 → **`P10c91`**。
+>   ⑤ **版本位**：本版由用户指定 **v3.46.0**，与 `开发守则.md` §3.1 一致（新增能力 → `3.<minor+1>.0`），**不涉及**前几轮「用户指定 patch 位」的偏离。
 > v2.81 变更（随 **v3.45.10**：**W8 自动修复定义化与九步留痕**）：
 >   用户原话：「新版本，v3.45.10 / 开发待开发的W8」
 >   ① **本批 = W8 整批两行**（前置都是「无」）：`应-25`（U183：现状层把 G3 的键写成 `cfg.maxAutoRepairPerFloor` —— **该键全仓不存在**）与
@@ -538,12 +551,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，211 份）
+└── history/                  # 历史批次层（只读留痕，212 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c90           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c91           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -601,9 +614,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.45.10） |
+| 口径 | 权威来源 | 当前值（v3.46.0） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.45.10` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.46.0` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -611,15 +624,15 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 34（v3.45.5：+`resumeRepair` 角色履历的窄契约） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 167（v3.44.0：分析记忆页 +2，入库卫生；**v3.45.5：投喂范围页 +6，履历**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 213 文件 / 3123 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 215 文件 / 3136 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
-| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 59 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）—— 全部只读，写方法 0 个**） |
+| 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 60 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 211 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 212 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -760,6 +760,14 @@ export function buildBridgeMethods() {
     //   把「内存台账 / 本机缓冲 / 服务端文件 / 台账相关调试日志」四处并排读出来，
     //   用于回答「为什么重载后内存台账是空的」。只做 getItem 与只读读取，不写任何存储。
     T['ftt.loadDiag'] = safe(() => loadDiag());
+    /**
+     * v3.46.0（`docs/D22` W9 `数-31` / U188）：**本次保存的物理写清单**（只读）。
+     * 回答的是真机上一直答不出的那个问题：**「这次保存到底写了几份载荷、各多少字节、为什么写」**。
+     * 与 `FTT.writeLedger()`、调试导出 `writeLedger` 区块**同源**（都读 `adapters/store.js#saveLedgerInfo`，无一处重算）。
+     * 命名注：**不叫 `saveWrites`** —— 桥的只读纪律用「写动词表」机械守门（`tests/unit/conflicts.test.js#A12`），
+     *   方法名里含 `save` 会被判成写方法（实测踩到）；叫 `writeLedger`（**台账读数**）既达意又不触发该守门。
+     */
+    T['ftt.writeLedger'] = needFtt(async (F) => F.writeLedger());
     // v3.0.23（只读）：读取台账（每一次服务端/本地/内存读取的时间、体积、条数、结果）
     T['ftt.reads'] = safe((p) => ({ stats: readLedgerStats(), lines: readLedgerLines(Number((p && p.limit) || 20)) }));
     T['ftt.readLedgerText'] = safe(() => readLedgerSummaryText(30));
@@ -1352,6 +1360,8 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
     'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
     'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排 + 一致性读数 + 服务端载入基线）', params: '' },
+    // v3.46.0（W9 数-31）：本次保存的物理写清单（通道/次数/字节/跳过原因；环形最近 5 次）
+    'ftt.writeLedger': { desc: '本次保存的物理写清单（逐通道 次数 / 字节 / 跳过原因；只读）', params: '' },
     // v3.45.4（W10 `技-40` / `技-41`）：性能与卡顿四件套 + 只读清单与口径汇总（均只读、无写方法）
     'ftt.perf': { desc: '性能与卡顿读数（写入/读取台账/扫描量/体积 + 卡顿分级 + jankRate + 窗口；带追溯六字段）', params: '' },
     'ftt.perfJank': { desc: '超阈段明细（倒序；只记 notice≥50ms / stall≥200ms / freeze≥1000ms）', params: '{limit?≤200,level?}' },

@@ -86,7 +86,7 @@ export async function writeStateShards(st, opts) {
     const s = st || kernelState() || {};
     const slug = scopeId();
     const at = Number(o.at) > 0 ? Number(o.at) : Date.now();
-    const out = { ok: true, wrote: [], skipped: [], failed: {}, manifest: shardManifestName(slug), at: at };
+    const out = { ok: true, wrote: [], skipped: [], failed: {}, manifest: shardManifestName(slug), at: at, written: 0, bytes: 0 };
     const marks = Object.create(null);
     for (const dim of SHARD_DIMS.concat([META_SHARD])) {
         const sig = shardSig(s, dim);
@@ -95,7 +95,7 @@ export async function writeStateShards(st, opts) {
         const body = JSON.stringify({ v: 1, scope: slug, dim: dim, at: at, hash: sig.hash, payload: shardValue(s, dim) });
         let r = null;
         try { r = await fileTransportUploadText(shardName(slug, dim), body); } catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
-        if (r && r.ok) { lastHashes[dim] = sig.hash; out.wrote.push(dim); }
+        if (r && r.ok) { lastHashes[dim] = sig.hash; out.wrote.push(dim); out.written += 1; out.bytes += body.length; }   // v3.46.0（`数-31`）：如实回报「写了几片 / 多少字节」
         else { out.ok = false; out.failed[dim] = String((r && (r.error || r.reason)) || 'write-failed'); }
     }
     // 清单最后写（它是「哪些片是新的」的唯一索引；写失败只影响恢复能力，不影响主文件）。

@@ -9,7 +9,10 @@
 // 口径：内核快照函数逐字移植（core/snapshots.js），本模块只做渲染与动作转发（可在无 DOM 环境完整测）。
 // ============================================================
 import { state, saveState } from '../core/model/runtime.js';   // v3.0.18：删快照后立即落盘（不再只改内存）
-import { snapshotCreateFull, snapshotConsolidate, snapshotRestore, snapshotClear, snapshotStats, SNAP_CAP } from '../core/snapshots.js';
+import { snapshotCreateFull, snapshotConsolidate, snapshotRestore, snapshotClear, snapshotStats, SNAP_CAP, SNAP_RETAIN_DAYS } from '../core/snapshots.js';
+
+/** 保留窗天数（v3.46.0 `数-32`；读内核常量，界面不自己写死） */
+const snapRetainDays = () => Number(SNAP_RETAIN_DAYS) || 0;
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = esc;
@@ -114,6 +117,9 @@ export function snapshotSectionHtml() {
     return [
         '<h4 class="ftt-h4-inline">🧬 快照链 <span class="ftt-muted" data-ftt-snap-stat>' + esc(snapshotStatText()) + '</span></h4>',
         '<div class="ftt-hint">保存时自动做的本地备份，用于回滚到某个时刻；清空快照不影响记忆本体。</div>',
+        // v3.46.0（`docs/D22` W9 `数-32` / U189 ⑤）：**如实说明可回滚范围** —— 保留窗把超窗增量并入根后，
+        //   「能回滚到的档位」= 保留窗内的快照点 + 根；**内容一个字节不丢**（并入根）。
+        '<div class="ftt-hint">可回滚范围 = <b>最近 ' + snapRetainDays() + ' 天</b>内的快照点 + 根快照（超窗的增量会被<b>并入根</b>：档位变少，内容不丢）。</div>',
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="snapCreate" title="立即把当前全部原子备份成一份全量快照">📸 立即建根快照</button>',
         '<button class="ftt-btn ftt-sm" data-ftt-action="snapConsolidate" title="多个根合并为一个；总量超上限时把最早 15 个增量并入根">🧹 整理快照链</button>',

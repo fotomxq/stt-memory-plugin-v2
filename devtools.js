@@ -86,6 +86,8 @@ export function installDevtools(hooks) {
             perfBaseline: () => perfBaselineReport(),
             // v3.45.4（W10 `技-41` ⑥）：**只读清单**（与调试桥白名单同源；清空型动作显式标注、永不进桥）
             readonly: () => readonlyOutletList(),
+            // v3.46.0（`docs/D22` W9 `数-31` / U188）：**本次保存的物理写清单**（只读；逐通道 次数 / 字节 / 跳过原因）
+            writeLedger: () => (hooks && typeof hooks.writeLedger === 'function' ? hooks.writeLedger() : null),
             debugCatalog: () => debugCatalogReport(),
             update: () => buildSnapshot().update,
             // P2：V1 数据导入（默认干跑；apply:true 才写入）
@@ -175,6 +177,8 @@ export function installDevtools(hooks) {
             aiUsage: () => (hooks && typeof hooks.aiUsage === 'function' ? hooks.aiUsage() : null),
             aiUsageRecent: (limit) => (hooks && typeof hooks.aiUsageRecent === 'function' ? hooks.aiUsageRecent(limit) : []),
             loadInfo: () => (hooks && typeof hooks.loadInfo === 'function' ? hooks.loadInfo() : null),
+        // v3.46.0（`docs/D22` W9 `数-31`）：**本次保存的物理写清单**（与 `FTT.writeLedger()`、调试桥 `ftt.writeLedger` 同源）
+        writeLedger: () => (hooks && typeof hooks.writeLedger === 'function' ? hooks.writeLedger() : null),
             // B8-1 剧情时钟（巡检 / 锚点 / 手工改写）
             clockUi: () => (hooks && typeof hooks.clockUi === 'function' ? hooks.clockUi() : null),
             clockTrace: (stage) => (hooks && typeof hooks.clockTrace === 'function' ? hooks.clockTrace(stage) : null),
