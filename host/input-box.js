@@ -166,14 +166,88 @@ export async function insertTextToHost(text, opts) {
 }
 
 /**
+ * **候选选择器的只读 DOM 事实**（v3.45.9，`技-26` 真机核对用）：逐个候选报「找没找到 / 是什么元素」——
+ *   回答的是「**为什么**命中或没命中」，而不是只给一个 via。**只读**：不写值、不派发事件。
+ * @param {{doc?:object}} [opts]
+ * @returns {Array<{selector:string, found:boolean, tag:string, id:string, name:string, placeholder:string, hasValue:boolean, thrown:string}>}
+ */
+export function inputBoxCandidates(opts) {
+    const out = [];
+    try {
+        const doc = docOf(opts);
+        for (const sel of INPUT_BOX_SELECTORS) {
+            const row = { selector: sel, found: false, tag: '', id: '', name: '', placeholder: '', hasValue: false, thrown: '' };
+            try {
+                const el = (doc && typeof doc.querySelector === 'function') ? doc.querySelector(sel) : null;
+                if (el && typeof el === 'object') {
+                    row.found = true;
+                    row.tag = String(el.tagName || '').toLowerCase();
+                    row.id = String(el.id || '');
+                    row.name = String(el.name || '');
+                    row.placeholder = String(el.placeholder || '').slice(0, 40);
+                    row.hasValue = ('value' in el);
+                }
+            } catch (e) { row.thrown = String((e && e.message) || e).slice(0, 80); }
+            out.push(row);
+        }
+        return out;
+    } catch (e) { return out; }
+}
+
+/**
+ * **写入演练（dry-run，只碰克隆节点）** —— v3.45.9（`技-26`）：真机上验「写入机制」而**不动用户的输入框**。
+ *
+ * 做法：取命中的宿主输入框 → `cloneNode(true)` → 在**克隆体**上按与 `appendToHostInput` **同一套写法**
+ *   （`el.value = prev + s` + `dispatchEvent({type:'input'})`）演练一次 → 如实回报前后字数与事件是否派发成功。
+ * 口径（为什么这样也算证据）：本项要证的是「宿主输入框元素**接受 value 赋值**且能派发 `input`」——
+ *   这正是真实写入路径唯一依赖的两件事；而**真实写入**由用户点一次功能触发（不在此处代做）。
+ * @param {string} [text] 演练用文本（默认一段标记文本）
+ * @param {{doc?:object}} [opts]
+ * @returns {{ok:boolean, selector:string, tag:string, clone:boolean, initialChars:number, afterChars:number, appended:number, eventDispatched:boolean, reason:string}|null}
+ */
+export function inputBoxDryRun(text, opts) {
+    try {
+        const s = String(text == null ? '（FTT 输入框写入演练 · 不写入真实输入框）' : text);
+        const doc = docOf(opts);
+        if (!doc || typeof doc.querySelector !== 'function') return null;
+        let el = null, sel = '';
+        for (const cand of INPUT_BOX_SELECTORS) {
+            let hit = null;
+            try { hit = doc.querySelector(cand); } catch (e) { hit = null; }
+            if (hit && typeof hit === 'object' && 'value' in hit) { el = hit; sel = cand; break; }
+        }
+        if (!el) return { ok: false, selector: '', tag: '', clone: false, initialChars: 0, afterChars: 0, appended: 0, eventDispatched: false, reason: '候选选择器都没命中 → 无克隆对象可演练' };
+        if (typeof el.cloneNode !== 'function') return { ok: false, selector: sel, tag: String(el.tagName || '').toLowerCase(), clone: false, initialChars: 0, afterChars: 0, appended: 0, eventDispatched: false, reason: '宿主元素不支持 cloneNode → 拒绝在真实输入框上演练' };
+        // 用**克隆体**：真实输入框一字不动（本函数因此可安全用于只读出口）
+        const clone = el.cloneNode(true);
+        if (!clone || !('value' in clone)) return { ok: false, selector: sel, tag: String(el.tagName || '').toLowerCase(), clone: true, initialChars: 0, afterChars: 0, appended: 0, eventDispatched: false, reason: '克隆体不接受 value 赋值' };
+        const prev = String(clone.value == null ? '' : clone.value);
+        clone.value = prev + s;
+        let dispatched = false;
+        try { if (typeof clone.dispatchEvent === 'function') { clone.dispatchEvent({ type: 'input' }); dispatched = true; } } catch (e) { dispatched = false; }
+        const after = String(clone.value == null ? '' : clone.value);
+        const appended = Math.max(0, after.length - prev.length);
+        return {
+            ok: after === prev + s && appended === s.length,
+            selector: sel, tag: String(el.tagName || '').toLowerCase(), clone: true,
+            initialChars: prev.length, afterChars: after.length, appended: appended, eventDispatched: dispatched,
+            reason: '在**克隆体**上演练：' + prev.length + ' 字 → ' + after.length + ' 字' + (dispatched ? '；input 事件已派发' : '；input 事件未派发'),
+        };
+    } catch (e) {
+        return { ok: false, selector: '', tag: '', clone: false, initialChars: 0, afterChars: 0, appended: 0, eventDispatched: false, reason: '演练异常：' + String((e && e.message) || e).slice(0, 80) };
+    }
+}
+
+/**
  * **真机验证步骤**（纯文本，供文档与调试页共用 —— 让「怎么验」只有一处）。
- * 本机没有真机，故把步骤写成可复制的形式，而不是声称已经验过。
+ * v3.45.9：真机（TauriTavern）已跑过只读探针与克隆演练（结论见 `docs/D17` U160 与 `docs/03` §4）；
+ *   下面第 ③ 步（**真实写入**）仍需用户点一次功能或手动执行一次，故步骤保留完整、不因已核对而删减。
  */
 export function inputBoxVerifySteps() {
     return [
-        '① 在真机（SillyTavern 页面）打开扩展，进入任意聊天；',
-        '② 控制台执行 `FTT.inputBox()` → 记录 `via` 与 `reason`（决定默认走哪一档）；',
-        '③ 执行 `FTT.insertText("测试尾部追加")` → 观察宿主输入框：既有内容**保留**、新文本在**尾部**；',
+        '① 在真机（SillyTavern / TauriTavern 页面）打开扩展，进入任意聊天；',
+        '② 只读探针：`FTT.inputBox()`（或调试桥 `ftt.inputBox`）→ 记录 `via` / `reason` / 命中的选择器；',
+        '③ 真实写入：`FTT.insertText("测试尾部追加")` → 观察宿主输入框：既有内容**保留**、新文本在**尾部**；',
         '④ 把输入框清空后再执行一次 → 只应出现新文本；',
         '⑤ 关掉剪贴板权限（或换不支持剪贴板的浏览器）再执行 → 应落到 `manual` 并给出可读原因；',
         '⑥ 把结论回填 `docs/D17` U160 与 `docs/03-技术架构.md` §4（**未验证前不得写成已验证**）。',

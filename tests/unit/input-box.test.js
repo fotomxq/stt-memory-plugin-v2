@@ -19,6 +19,7 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import {
     INPUT_BOX_SELECTORS, INPUT_FALLBACK_CHAIN, appendToHostInput, inputBoxCapability, inputBoxVerifySteps, insertTextToHost, writeClipboard,
+    inputBoxCandidates, inputBoxDryRun,   // v3.45.9（技-26 真机核对）：候选 DOM 事实 + 克隆体演练
 } from '../../host/input-box.js';
 
 const R = makeReporter('input-box v3.45.0 宿主输入框探针与降级链（D22 W5 技-26）');
@@ -127,6 +128,44 @@ A('K8 **真机边界如实**：验证步骤由函数给出（含选择器假设�
     return steps.indexOf('FTT.inputBox()') > 0 && steps.indexOf('#send_textarea') < 0        // 步骤里不硬编码选择器
         && steps.indexOf('未验证前不得写成已验证') > 0
         && steps.indexOf('尾部') > 0 && steps.indexOf('manual') > 0;
+})(), '');
+
+// ---------- v3.45.9（`技-26` **真机核对**）：候选 DOM 事实 + 克隆体演练 ----------
+/** 伪输入框元素（带 `cloneNode`：克隆演练需要；`tagName`/`id` 供候选事实断言） */
+function makeCloneableTextarea(value) {
+    const el = makeTextarea(value);
+    el.tagName = 'TEXTAREA';
+    el.id = 'send_textarea';
+    el.name = 'message';
+    el.placeholder = '输入消息…';
+    el.cloneNode = function () { const c = makeCloneableTextarea(el.value); c.events = []; return c; };
+    return el;
+}
+
+A('K9 v3.45.9 候选 DOM 事实（只读）：逐个候选报「命中没命中 / 是什么元素」，作为「为什么命中」的取证', (() => {
+    const ta = makeCloneableTextarea('既有');
+    const rows = inputBoxCandidates({ doc: makeDoc({ '#send_textarea': ta }) });
+    const first = rows[0] || {};
+    const rest = rows.slice(1);
+    return rows.length === INPUT_BOX_SELECTORS.length
+        && first.found === true && first.tag === 'textarea' && first.id === 'send_textarea' && first.hasValue === true
+        && rest.every((r) => r.found === false);
+})(), '');
+
+A('K10 v3.45.9 **克隆体写入演练**（真机核对用；不碰真实输入框）：命中时在**克隆体**上试写成功，真实元素**一字未动、零事件**', (() => {
+    const ta = makeCloneableTextarea('甲的话：');
+    const r = inputBoxDryRun('（演练）', { doc: makeDoc({ '#send_textarea': ta }) });
+    return r && r.ok === true && r.clone === true && r.selector === INPUT_BOX_SELECTORS[0]
+        && r.initialChars === 4 && r.appended === 4 && r.eventDispatched === true
+        && ta.value === '甲的话：' && ta.events.length === 0;                 // **真实输入框未被触碰**
+})(), '');
+
+A('K11 v3.45.9 演练的**安全边界**：没命中 → 不演练；元素不支持 `cloneNode` → **拒绝退化成真写**', (() => {
+    const miss = inputBoxDryRun('x', { doc: makeDoc({}) });
+    const noClone = inputBoxDryRun('x', { doc: makeDoc({ '#send_textarea': makeTextarea('真值') }) });
+    return miss && miss.ok === false && String(miss.reason).indexOf('都没命中') > 0
+        && noClone && noClone.ok === false && noClone.clone === false && String(noClone.reason).indexOf('cloneNode') > 0
+        && inputBoxDryRun('x', { doc: null }) === null;
 })(), '');
 
 R.done();

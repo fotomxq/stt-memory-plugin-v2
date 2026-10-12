@@ -55,6 +55,8 @@ export const DEBUG_KINDS = Object.freeze([
     Object.freeze({ kind: '管线', note: '**长任务管线**阶段与超时收尾、异常耗时样本（`core/pipeline.js` 的日志钩子）' }),
     Object.freeze({ kind: '异常', note: '**错误与异常**：全局 error / unhandledrejection / 面板动作失败 / 内核告警（**逐条不合并**，避免掩盖问题）' }),
     Object.freeze({ kind: '调试', note: '**调试设施自身的提示**：遇到未登记的 `kind` 时的一次性提示（本枚举的唯一「自指」类别）' }),
+    // v3.45.9（`docs/D22` W5 `技-26`）：宿主侧事实的自检留痕（如「宿主输入框写入能力自检」——探针 + 克隆体演练结论）
+    Object.freeze({ kind: '宿主', note: '**宿主侧事实的自检**：页面加载时对宿主能力的只读自检结论（如输入框写入能力 —— 走哪一档、克隆演练是否成功）' }),
 ]);
 
 /** 未登记 kind 的实时读取器（由 `core/debug-log.js` 注入；内核默认无） */
@@ -371,6 +373,8 @@ const BRIDGE_FTT = Object.freeze([
     'ftt.writeStats', 'ftt.loadDiag', 'ftt.reads', 'ftt.readLedgerText', 'ftt.conflicts', 'ftt.conflictLog',
     // v3.45.4（`技-40` / `技-41` ⑥）：性能卡顿只读四件套 + 只读清单 / 口径汇总（同样**只读**）
     'ftt.perf', 'ftt.perfJank', 'ftt.perfTargets', 'ftt.perfBaseline', 'ftt.readonly', 'ftt.catalog',
+    // v3.45.9（`docs/D22` W5 `技-26` 真机核对）：宿主输入框写入能力的**只读**出口（探针 + 候选 DOM 事实 + 克隆体演练）
+    'ftt.inputBox',
     'ftt.tokenCost', 'ftt.debugLog', 'ftt.trace', 'ftt.errors', 'ftt.entries', 'ftt.search', 'ftt.config',
     'ftt.floors', 'ftt.syncLog',
 ]);

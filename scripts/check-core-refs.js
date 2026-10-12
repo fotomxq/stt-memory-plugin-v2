@@ -36,8 +36,10 @@ const GLOBALS = new Set(('globalThis undefined null true false NaN Infinity Math
     'btoa atob escape unescape Uint8Array Int8Array Uint16Array Int32Array Float64Array ArrayBuffer DataView ReadableStream WritableStream ' +
     'File FileReader FormData Headers crypto navigator').split(/\s+/).filter(Boolean));
 
-/** 剔除注释、字符串与模板字面量的「非代码」部分（模板里的 ${…} 保留为代码） */
-function codeOnly(src) {
+/** 剔除注释、字符串与模板字面量的「非代码」部分（模板里的 ${…} 保留为代码）
+ *  v3.45.9（`docs/D22` W5 `技-10`）：**改为导出**（+ 主体收进 `isMain`）—— 新增的零依赖静态检查
+ *    `scripts/static-lib.js` 要复用**同一个**剔除器（两套实现必然漂移；`check-version-sync.js` 已有同款先例）。 */
+export function codeOnly(src) {
     let out = '';
     let i = 0;
     const n = src.length;
@@ -186,6 +188,10 @@ function walk(dir, acc = []) {
     return acc;
 }
 
+/** v3.45.9（`技-10`）：本文件被 `scripts/static-lib.js` import 时**只提供纯函数**，不跑门禁主体 */
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+
 const files = LAYERS.map((d) => join(ROOT, d)).filter((p) => { try { return statSync(p).isDirectory(); } catch (e) { return false; } })
     .flatMap((d) => walk(d))
     .concat(ENTRY_FILES.map((f) => join(ROOT, f)).filter((p) => { try { return statSync(p).isFile(); } catch (e) { return false; } }))
@@ -223,3 +229,4 @@ if (violations.length) {
     process.exit(1);
 }
 console.log('✅ 标识符门禁通过（0 未定义标识符）');
+}   // ← 结束 `if (isMain)`（被 import 时只导出 `codeOnly`）
