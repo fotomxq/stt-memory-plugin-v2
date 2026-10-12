@@ -8,6 +8,8 @@
 // 纪律：**只读**，不写任何宿主文件；不打印与货币无关的正文。
 // 用法：node tests/local/currency-audit.mjs   （换库：环境变量 `FTT_AUDIT_ROOT=<extension-store 目录>`）
 //
+// 路径纪律：**不写死用户目录**（`check-no-user-paths` 会拦）—— 默认由 `%APPDATA%` 拼出宿主数据目录。
+//
 // 该脚本给出的实测结论（写进 `docs/D36` §2 与本轮批次档 `docs/history/P10c93`）：
 //   李瑶 **37 种「名字|单位」组合 / 125 条** —— 金（黄金 / 天然碎金 / 碎金子 / 赤金条 / 诺米斯玛金币…）·
 //   银（碎银 / 碎银子 / 雪花银 / 银角子与碎银饼 / 官铸雪花大银）· 票据（飞钱 / 飞钱凭证 / 通兑飞钱凭证）·
@@ -15,8 +17,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+const APPDATA = String(process.env.APPDATA || process.env.HOME || '.').replace(/\\/g, '/');
 const ROOT = process.env.FTT_AUDIT_ROOT
-    || 'C:/Users/rog/AppData/Roaming/com.tauritavern.client/data/_tauritavern/extension-store';
+    || join(APPDATA, 'com.tauritavern.client', 'data', '_tauritavern', 'extension-store');
 const STORES = ['ftt2-files', 'ftt-files', 'fft_v2_store', 'ftt2-local'];
 
 function walk(dir, out = [], depth = 0) {
