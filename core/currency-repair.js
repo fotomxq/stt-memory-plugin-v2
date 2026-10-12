@@ -325,7 +325,11 @@ function currencyRepairPlan(opts) {
  */
 function runCurrencyRepair(opts) {
     const o = opts || {};
-    const plan = currencyRepairPlan(o);
+    // v3.46.2（W13 货币融合）：允许**注入 plan** —— AI 融合（`core/currency-merge.js#runCurrencyMerge`）把
+    //   「机械修正 + AI 语义合并组」合成一份同形 plan 后走**同一个应用与墓碑路径**（口径一致：保留最新额度不累加、
+    //   id 墓碑 + 内容哈希墓碑）。不传 `plan` 时行为与本版之前**逐字相同**。
+    const plan = (o.plan && typeof o.plan === 'object' && Array.isArray(o.plan.drop) && Array.isArray(o.plan.merge) && o.plan.counts)
+        ? o.plan : currencyRepairPlan(o);
     const before = (Array.isArray(state.currencies) ? state.currencies.length : 0);
     const empty = {
         ok: true, changed: false, before: before, after: before, dropped: 0, merged: 0, mergedRemoved: 0, fixed: 0,
@@ -359,6 +363,11 @@ function runCurrencyRepair(opts) {
                 const ends = members.map((x) => Number((x && x.floorEnd) || 0) || 0).filter((n) => n > 0);
                 const dates = members.map((x) => String((x && x.date) || '')).filter(Boolean).sort();
                 next.push(Object.assign({}, c, {
+                    // v3.46.2（W13 货币融合）：`m.amount` 由 plan 给出（机械档 = 保留最新额度，与本版之前逐字相同；
+                    //   AI 档默认给出**求和**）。未给则原样保留本条目额度。
+                    amount: (m.amount != null && Number.isFinite(Number(m.amount))) ? roundMoney(m.amount) : c.amount,
+                    // AI 组要求把保留条目改名成**规范名**（`m.setName === true`）；机械档不带该标记 → 名字逐字不变
+                    name: (m.setName === true && m.canonical) ? m.canonical : c.name,
                     unit: m.unit || c.unit || '',
                     note: note,
                     tags: tags,
@@ -367,7 +376,7 @@ function runCurrencyRepair(opts) {
                     date: dates.length ? dates[dates.length - 1] : c.date,
                     floorStart: starts.length ? Math.min.apply(null, starts) : (c.floorStart || 0),
                     floorEnd: ends.length ? Math.max.apply(null, ends) : (c.floorEnd || 0),
-                    title: c.title || c.name,
+                    title: (m.setName === true && m.canonical) ? m.canonical : (c.title || c.name),
                     content: note || c.content || '',
                 }));
                 continue;

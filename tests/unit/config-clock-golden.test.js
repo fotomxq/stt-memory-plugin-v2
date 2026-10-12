@@ -30,6 +30,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount',
         // v3.46.1（`docs/D22` W11 数-35）：三域联动五键（V2 专有；V1 无此功能）
         'triLinkEnabled', 'triLinkStateAdvance', 'triLinkMaxItems', 'triLinkPackMaxChars', 'triLinkMaxOps',
+        // v3.46.2（W13 应-30）：货币融合三键（V2 专有）
+        'currencyMergeEnabled', 'currencyMergeMaxItems', 'currencyMergeSumAmount',
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
@@ -99,7 +101,7 @@ R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP
 R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',
     J(I.DELTAS.map(d => normalizeDeltaKeys(d))) === J(G.deltaCases), I.DELTAS.map(d => normalizeDeltaKeys(d)));
 /** v3.19.0 / v3.45.5：**V2 专用提示词键**（V1 无）—— 模板键集合与分组结构比对时两者都要剔除 */
-const V2_PROMPT_ONLY = ['nsfwAnalyze', 'resumeRepair', 'triLink'];   // v3.46.1（W11 技-44）：+triLink（三域联动，V2 专有）
+const V2_PROMPT_ONLY = ['nsfwAnalyze', 'resumeRepair', 'triLink', 'currencyMerge'];   // v3.46.1（W11 技-44）：+triLink（三域联动，V2 专有）
 R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一致',
     J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
     && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion

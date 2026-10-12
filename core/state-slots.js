@@ -118,6 +118,8 @@ export const RUNTIME_SLOTS = Object.freeze({
     parallelFloor: { label: '上次平行演化楼层', evidence: 'core/rumor-evolve.js（`数-14` 加上界）', disposition: 'runtime' },
     // v3.46.1（`docs/D22` W11 `数-36` / `docs/D32` §3.9）：三域联动记录（末 5 条；**不参与跨端同步**）
     triLinkLog: { label: '联动记录（末 5 条）', evidence: 'core/tri-link.js#triLogPush', disposition: 'runtime' },
+    // v3.46.2（`docs/D22` §4.14 W13 `应-30`）：货币融合记录（末 5 条；**不参与跨端同步**）
+    currencyMergeLog: { label: '货币融合记录（末 5 条）', evidence: 'core/currency-merge.js#curMergeLogPush', disposition: 'runtime' },
 });
 
 /**

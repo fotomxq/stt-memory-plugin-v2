@@ -9,6 +9,8 @@
 // v3.46.1（`docs/D22` W11 技-44）：三域联动的**默认提示词全文**落在新模块（`docs/05` §5 C11 + 体量棘轮）——
 //   本文件只在 `PROMPT_TEMPLATES_V2.triLink` **引用**它（键与分组仍在 config，文案唯一事实源在那边）。
 import { TRI_LINK_PROMPT } from './tri-link-prompt.js';
+// v3.46.2（W13 应-30）：货币融合的默认提示词全文（新模块；见 PROMPT_TEMPLATES_V2.currencyMerge）
+import { CURRENCY_MERGE_PROMPT } from './currency-merge-prompt.js';
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
 // v3.23.0：「每段正文数」默认值唯一事实源（`3`）—— 全部 AI 摘要入口共用同一段长口径
@@ -87,7 +89,7 @@ const PROMPT_GROUPS = [
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
     { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
-    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
+    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'currencyMerge', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
 ];
 
 const PROMPT_TEMPLATES_V2 = {
@@ -614,6 +616,10 @@ const PROMPT_TEMPLATES_V2 = {
     //   **提示词全文落在新模块** `core/tri-link-prompt.js`（`docs/05` §5 **C11**「新功能一律落新模块」+ 体量棘轮
     //   `scripts/check-file-size.js`）：本文件只**引用**（键与分组在这里，文案的唯一事实源在那边）。
     triLink: TRI_LINK_PROMPT,
+    // ---------- ④ 货币融合（v3.46.2 `docs/D22` §4.14 W13 `应-30`） ----------
+    //   用户直接要求：「指定一个角色的所有货币交给AI去整理规整，尤其是叫法不同的应合并」。
+    //   与「🧹 修正货币」（机械档）同组（质检维护）；**提示词全文**在新模块 `core/currency-merge-prompt.js`（C11 + 体量棘轮）。
+    currencyMerge: CURRENCY_MERGE_PROMPT,
     // ---------- ④ 状态修复（状态页专用 · v1.158） ----------
     statesRepair: [
         '【状态修复】任务：整理与规范化【待修复状态】中列出的各主体状态记录。**只处理清单内列出的主体**。',
@@ -1031,6 +1037,11 @@ const defaultCfg = {
     triLinkMaxItems: 60,         // 每域打包条数上限（1-200）
     triLinkPackMaxChars: 20000,  // 打包总字数上限（1000-80000；超限按"视野优先级"从段①末尾截断并如实计数）
     triLinkMaxOps: 40,           // 单轮应用的动作数上限（1-120；超出即拒收该条）
+    // v3.46.2（`docs/D22` §4.14 W13 `应-30`，用户直接要求）：**货币融合（🔀 AI 语义合并）**的三个键。
+    //   口径：指定一个角色的全部货币交给 AI 整理 —— 只做「语义同义的合并」，不读楼层、不跨角色、不凭空换算。
+    currencyMergeEnabled: true,     // 总开关（false = 货币页按钮隐藏 + 程序化调用返回 `disabled`）
+    currencyMergeMaxItems: 120,     // 单次打包条数上限（1-400；超出按名字序截断并如实计数）
+    currencyMergeSumAmount: true,   // 额度策略：**默认 true = 合并时求和**（用户裁决 v3.46.2）；false = 保留最新额度、不累加（与机械修正同口径）
     // v3.45.3（用户要求「各大类现有修复功能，每次限定可能抽取 3 个数据，改为默认抽取 6 个。且该约定可在设定中设置修改」）：
     //   下面 6 个「每轮抽取量」默认由 **3 → 6**（`repairCharacterBatch` / `stateRepairBatch` 与四域的
     //   `*RepairMaxClusters`）；**改的是默认值，不是上限** —— 六个键在设定页都能改（角色修复 / 遗忘·修复状态 /
