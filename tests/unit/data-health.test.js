@@ -242,8 +242,12 @@ await (async () => {
     const mine = consistencyReading(state);
     await A('C5 `ftt.dataHealth.consistency` 与内核读数同源（count / fingerprint 完全一致 + 口径说明齐全）', (() => {
         const c = health && health.consistency;
+        // v3.45.6：口径说明按**代码实测**更正 —— 旧断言要求 `excludes` 含 `links`，而 `links` 就在
+        //   `ATOM_DIM_KEYS` 里（**计入**本数）；真正不计入的是 `currencies` / `npcs`（不在该常量内）。
         return !!c && c.count === mine.count && c.fingerprint === mine.fingerprint
-            && !!c.semantics && Array.isArray(c.semantics.excludes) && c.semantics.excludes.indexOf('links') >= 0
+            && !!c.semantics && Array.isArray(c.semantics.excludes)
+            && c.semantics.excludes.indexOf('deleted') >= 0 && c.semantics.excludes.indexOf('currencies') >= 0
+            && Array.isArray(c.semantics.includes) && c.semantics.includes.indexOf('links') >= 0
             && !!c.dims && Object.keys(c.dims).length === Object.keys(mine.dims).length;
     })(), () => ({ got: health && health.consistency, mine: mine }));
 })();

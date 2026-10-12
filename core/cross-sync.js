@@ -8,6 +8,13 @@
 //   `consistencyReading`（一致性单一事实源读数：状态 → `{at, count, fingerprint}`，四处诊断共用）、
 //   `capReductionOf`（上限裁剪**干跑**读数，只算不改）、`unionSelfCheck`（并集自检判据：下限扣除三类合法削减）。
 //   `mergeDataObjects` 的 `stat` 同时新增 `conflict`（冲突合计）与 `reductions`（去重 / 墓碑削减量，按维度分列）。
+// v3.45.6（用户报告「货币总是没有同步」）新增：
+//   `mergeCurrencyArrays`（货币**逐条并集**：同「归属 + 币种」一条、冲突取新、收支流水并集）、
+//   `diffCurrencyData`（货币差异统计：same / onlyLocal / onlyRemote / conflict + 胜负）。
+//   一并改动三处口径：① `mergeDataObjects` 的货币从「非原子容器整侧取较新」改为**逐条并集 + 双墓碑**
+//   （此前只单向覆盖 → 只差货币时永远丢一侧）；② `crossComputeInfo` 把货币差异并入「是否超集」判据
+//   （此前货币差异在差异统计里不可见 → 误判 `replace-remote` / `replace-local` 整体替换）；
+//   ③ `consistencyReading` 的口径说明按实测更正（`currencies` / `npcs` **不在** `ATOM_DIM_KEYS` 内）。
 // 适配（与 V1 的唯一差别）：
 //   ① 纯内核化 —— V1 直接读写 `state`/`hashFloorText`，此处全部改为**纯函数入参**（数据 + 注入的楼层哈希）；
 //   ② 逐维度业务合并钩子保留（传言走 `core/model/rumor.js#mergeRumorObjects`，与 V1 `DIM_ENTRY_MERGERS` 同口径）。
@@ -22,6 +29,8 @@ import { hashText } from './util.js';
 import { contentDedupeArray } from './migrate.js';
 import { applyDeletedToArray } from './sweep.js';
 import { mergeRumorObjects } from './model/rumor.js';
+// v3.45.6：货币收支流水并集（同日期 + 同额 + 同说明视为同一笔，保留最近 12 笔）—— 与入库路径同一个函数
+import { mergeMoneyHistory } from './model/money.js';
 import { capAtomsKeepingHidden } from './merge.js';   // v3.45.1（W6 技-31）：上限裁剪**干跑**（只读数，不改语义）
 
 /**
@@ -33,10 +42,11 @@ import { capAtomsKeepingHidden } from './merge.js';   // v3.45.1（W6 技-31）�
  *
  * 本函数给出**一个**读数（**同一份状态、同一口径、同一时点**）：`{ at, fingerprint, count }`。
  *   口径（写死在这里，四处诊断都必须引用本函数而不是各算各的）：
- *   · `count` = `atomEntryCount` = **原子层各大类条数合计**（`ATOM_DIM_KEYS`：情节 / 状态 / 角色 / 记忆 / 物品 /
- *     计划 / 悬念 / 场景 / 概念 / 平行 / 分段 / 传言 / 名册 …**按该常量自身顺序**）；
- *   · **不含**：墓碑（`deleted` / `deletedH`，它们是 id/内容哈希映射不是条目）、`links` 关联行（引用行）、
- *     `vars` / `vars` 类对象容器、快照链（`snapStore`）；**含**货币与名册（它们在 `ATOM_DIM_KEYS` 里）。
+ *   · `count` = `atomEntryCount` = **原子层各大类条数合计**（`ATOM_DIM_KEYS`：情节 / 状态记录 / 角色档案 / 记忆 /
+ *     物品 / 计划 / 悬念 / 场景 / 概念 / 平行事件 / 关联层 / 分段总结 / 传言 —— **按该常量自身顺序**，共 13 项）；
+ *   · **不含**：墓碑（`deleted` / `deletedH`，它们是 id/内容哈希映射不是条目）、`vars` 一类对象容器、
+ *     快照链（`snapStore`）；**另有 `currencies`（货币）与 `npcs`（名册）不计入本数** ——
+ *     二者**不在** `ATOM_DIM_KEYS` 内（货币的指纹另由 `dataAggHash` 计入）。
  *   · `fingerprint` = `dataAggHash`（各原子 `id + 内容哈希` 排序聚合 + 非原子容器「货币」）；
  *   · `at` = 取值时刻 —— **四处读数必须在同一时点取**才有可比性（这也是「同一时点」写进返回值的原因）。
  *
@@ -67,10 +77,12 @@ function consistencyReading(st) {
         fingerprint: String(dataAggHash(s) || ''),
         dims: dims,
         semantics: {
-            scope: '原子层各大类条数合计（ATOM_DIM_KEYS）',
-            excludes: ['deleted', 'deletedH', 'links', 'vars', 'snapStore'],
-            includes: ['currencies', 'npcs'],
-            note: '四处诊断必须引用本读数（同一状态、同一口径、同一时点）；旧口径的差异来源见 docs/D13 §8.10',
+            scope: '原子层各大类条数合计（ATOM_DIM_KEYS 共 13 项，按该常量自身顺序）',
+            // v3.45.6：本块**按代码实测更正**（旧文案写「不含 links、含货币与名册」—— 与 `ATOM_DIM_KEYS`
+            //   的实际内容相反：`links` / `plotSegments` 就在该常量里，`currencies` / `npcs` 不在）。
+            includes: ['links', 'plotSegments'],
+            excludes: ['deleted', 'deletedH', 'vars', 'snapStore', 'currencies', 'npcs'],
+            note: '四处诊断必须引用本读数（同一状态、同一口径、同一时点）；`currencies` / `npcs` **不在** `ATOM_DIM_KEYS` 内故不计入本数（货币另由 `dataAggHash` 计入聚合指纹）；旧口径的差异来源见 docs/D13 §8.10.4',
         },
     };
 }
@@ -135,6 +147,162 @@ function diffAtomData(localData, remoteData) {
             }
             for (const id of Object.keys(R)) if (!(id in L)) stat.onlyRemote++;
         }
+    } catch (e) { /* 忽略 */ }
+    return stat;
+}
+
+// ==================== v3.45.6：货币（非原子容器）的**逐条合并** ====================
+// 用户报告：「货币总是没有同步。」
+// 原因（三条同源）：
+//   ① `currencies` **不在** `ATOM_DIM_KEYS` 内（见 `core/constants.js`；`docs/D8` R11 裁定「货币暂不纳入哈希」）
+//      → `mergeDataObjects` 的原子逐条合并**根本不处理货币**，只把它当作「非原子容器」整侧取较新；
+//   ② `dataAggHash` **计入**货币原始 JSON（含 `uses` / `floor*` 等易变字段）→ 两端「只差货币」时 `aggSame=false`，
+//      而 `diffAtomData` 又看不见货币 → `crossComputeInfo` 判成 `replace-remote` / `replace-local`（**整体替换**）；
+//   ③ 于是：远端信封较新 → 本端独有货币被整维丢掉；本端较新 → 对端货币**永远不被并入**；
+//      「立即同步」的 `adoptRemoteEnvelope`（整体替换）更是直接丢弃本端全部货币。
+// 本版把货币收敛为与其它维度同口径的处置：**逐条并集 + 冲突取新 + 收支流水并集 + id/内容双墓碑**。
+// 有意保持不动的部分（V1 逐字一致，`tests/unit/cross-sync-golden.test.js` 锁定）：
+//   `dataAggHash` 的算法与 `atomEntryCount` 的维度集合**一字未改**（改它们会让 V1 黄金样本失效）。
+
+/** 货币比较用的文本归一（去空白 + 小写，与 `core/model/money.js` 的归属 / 币种归一同比） */
+function curKeyText(v) { try { return String(v == null ? '' : v).replace(/\s+/g, '').toLowerCase(); } catch (e) { return ''; } }
+/** 货币比较用的数值归一（`'5'` 与 `5` 视为同值；非法值回原文，避免把 `NaN` 归一成同一个数） */
+function curNumText(v) {
+    try { const n = Number(v); return Number.isFinite(n) ? String(n) : String(v == null ? '' : v); } catch (e) { return ''; }
+}
+/** 从条目里取「归属」原文（兼容 V1 原始字段名 `who` / `持有者`） */
+function curOwnerOf(it) {
+    if (!it || typeof it !== 'object') return '';
+    const v = (it.owner !== undefined) ? it.owner : (it['归属'] !== undefined ? it['归属'] : (it.holder !== undefined ? it.holder : it.who));
+    return curKeyText(v);
+}
+/** 从条目里取「币种」原文（兼容 V1 原始字段名 `kind` / `币种` / `currency`） */
+function curNameOf(it) {
+    if (!it || typeof it !== 'object') return '';
+    const v = (it.name !== undefined) ? it.name : (it['币种'] !== undefined ? it['币种'] : (it.currency !== undefined ? it.currency : it.kind));
+    return curKeyText(v);
+}
+/**
+ * 货币条目**身份键**：优先「归属 + 币种」（= `core/ingest.js` 与 `core/model/money.js#normalizeCurrency`
+ * 的唯一性口径：同一归属 + 同一币种只保留一条；id 本身就是由它派生的 `cur_<hash>`），
+ * 二者不全时退回 `id`；再没有 → 空串（**永不合并**，原样保留）。
+ */
+function currencyIdentityKey(it) {
+    try {
+        if (!it || typeof it !== 'object') return '';
+        const owner = curOwnerOf(it), name = curNameOf(it);
+        if (owner && name) return 'on:' + owner + '|' + name;
+        const id = String(it.id == null ? '' : it.id);
+        return id ? ('id:' + id) : '';
+    } catch (e) { return ''; }
+}
+/**
+ * 货币条目**内容签名**（判断「同一条是否内容相同」）：与**账本语义**有关的字段；
+ * **不含** `id` / `uses` / `floor*` / `updatedAt` / `nsfw` / 溯源标记等易变或非内容字段 ——
+ * 与 `atomContentHash` 的「看变化」口径同理（引用类 / 运行态字段不进哈希）。
+ */
+function currencyContentSig(it) {
+    try {
+        if (!it || typeof it !== 'object') return '';
+        const hist = (Array.isArray(it.history) ? it.history : []).map(f => String((f && f.date) || '') + '|' + curNumText(f && f.delta) + '|' + String((f && f.note) || ''));
+        const tags = (Array.isArray(it.tags) ? it.tags.map(String) : []).slice().sort();
+        return [
+            'o=' + curOwnerOf(it), 'n=' + curNameOf(it),
+            'u=' + curKeyText(it.unit), 'a=' + curNumText(it.amount),
+            'note=' + String(it.note == null ? '' : it.note),
+            'd=' + String(it.date == null ? '' : it.date),
+            't=' + tags.join(','), 'h=' + hist.join(';'),
+        ].join('|');
+    } catch (e) { return ''; }
+}
+/**
+ * 单条货币冲突仲裁：**条目 `updatedAt` 较新者胜**；并列（多见于两端都没有墙钟的 AI 写入）
+ * → **信封时间较新的一侧胜**（`preferRemote` = 远端信封更新）—— 与 `mergeDataObjects` 的原子冲突同口径。
+ * @returns {boolean} true = 远端胜
+ */
+function currencyRemoteWins(l, r, preferRemote) {
+    const lw = Number(l && l.updatedAt) || 0;
+    const rw = Number(r && r.updatedAt) || 0;
+    if (rw !== lw) return rw > lw;
+    return !!preferRemote;
+}
+/**
+ * 同一条货币的两份拷贝合并（胜出方为基底；收支流水并集；NSFW / 溯源标记「只升不降 + 补空」）。
+ * 口径：**额度 / 单位 / 备注等账本值取胜出方**（它们是「当前持有额」，不是可累加的量）；
+ *   **收支流水并集**（`core/model/money.js#mergeMoneyHistory`：同日期 + 同额 + 同说明视为同一笔，保留最近 12 笔），
+ *   否则只报收支的那一端流水会被整条覆盖掉。
+ */
+function mergeCurrencyEntry(l, r, preferRemote) {
+    const remoteWins = currencyRemoteWins(l, r, preferRemote);
+    const win = JSON.parse(JSON.stringify(remoteWins ? r : l));
+    const lose = remoteWins ? l : r;
+    try { nsfwMergeLevel(win, lose); } catch (e) { /* 忽略 */ }
+    try { mergeEntryProvenance(win, lose); } catch (e) { /* 忽略 */ }
+    try {
+        const lh = Array.isArray(l && l.history) ? l.history : [];
+        const rh = Array.isArray(r && r.history) ? r.history : [];
+        if (lh.length || rh.length) {
+            const merged = mergeMoneyHistory(lh, rh);
+            const cur = Array.isArray(win.history) ? win.history : [];
+            // 只有真的并入/变化才写回 `history` —— 让「无收支」的条目与 V1 结果**逐字段一致**
+            if (JSON.stringify(merged) !== JSON.stringify(cur)) win.history = merged;
+        }
+    } catch (e) { /* 忽略 */ }
+    return win;
+}
+/**
+ * **货币逐条并集**（纯函数；本地在前、远端在后 → 冲突仲裁取「更新的那一侧」）。
+ * @param {Array} localArr 本端货币
+ * @param {Array} remoteArr 对端货币
+ * @param {{preferRemote?:boolean}} [opts] 冲突并列时是否远端优先（调用方传「远端信封更新」）
+ * @returns {Array} 并集后的货币数组（**不修改入参**；无身份键的条目原样保留）
+ */
+function mergeCurrencyArrays(localArr, remoteArr, opts) {
+    try {
+        const preferRemote = !!(opts && opts.preferRemote);
+        const out = [];
+        const idx = Object.create(null);
+        const put = (it, isRemote) => {
+            if (!it || typeof it !== 'object') return;
+            const k = currencyIdentityKey(it);
+            if (!k) { out.push(JSON.parse(JSON.stringify(it))); return; }
+            const i = idx[k];
+            if (i === undefined) { idx[k] = out.length; out.push(JSON.parse(JSON.stringify(it))); return; }
+            if (isRemote) out[i] = mergeCurrencyEntry(out[i], it, preferRemote);
+        };
+        for (const it of (Array.isArray(localArr) ? localArr : [])) put(it, false);
+        for (const it of (Array.isArray(remoteArr) ? remoteArr : [])) put(it, true);
+        return out;
+    } catch (e) { return (Array.isArray(localArr) ? localArr.slice() : []); }
+}
+/**
+ * **货币差异统计**（与 `diffAtomData` 同口径，供 `crossComputeInfo` 判定「是否超集」用）：
+ * `same` / `onlyLocal` / `onlyRemote` / `conflict`(+ 胜负)。
+ * 注意：`diffAtomData` **不含**货币（它按 `ATOM_DIM_KEYS` 遍历，为保持与 V1 逐字一致不改），
+ *   故货币差异必须**单独算一份**，否则「只差货币」会被误判成超集 → 整体替换。
+ */
+function diffCurrencyData(localData, remoteData) {
+    const stat = { same: 0, onlyLocal: 0, onlyRemote: 0, conflict: 0, conflictWinLocal: 0, conflictWinRemote: 0 };
+    try {
+        const localTs = Number((localData && localData.updatedAt) || 0) || 0;
+        const remoteTs = Number((remoteData && remoteData.updatedAt) || 0) || 0;
+        const preferRemote = remoteTs > localTs;
+        const L = Object.create(null), R = Object.create(null);
+        const fill = (d, side) => {
+            for (const it of (Array.isArray(d && d.currencies) ? d.currencies : [])) {
+                if (!it || typeof it !== 'object') continue;
+                const k = currencyIdentityKey(it);
+                if (k) side[k] = it;
+            }
+        };
+        fill(localData, L); fill(remoteData, R);
+        for (const k of Object.keys(L)) {
+            if (!(k in R)) { stat.onlyLocal++; continue; }
+            if (currencyContentSig(L[k]) === currencyContentSig(R[k])) { stat.same++; continue; }
+            stat.conflict++;
+            if (currencyRemoteWins(L[k], R[k], preferRemote)) stat.conflictWinRemote++; else stat.conflictWinLocal++;
+        }
+        for (const k of Object.keys(R)) if (!(k in L)) stat.onlyRemote++;
     } catch (e) { /* 忽略 */ }
     return stat;
 }
@@ -248,6 +416,22 @@ function mergeDataObjects(baseData, remoteData, opts) {
                 if (r.del && Object.keys(r.del).length) delOut[cat] = r.del;
                 if (r.delH && Object.keys(r.delH).length) delHOut[cat] = r.delH;
             }
+            // v3.45.6：**货币逐条并集**（用户报告「货币总是没有同步」）——
+            //   旧口径把 `currencies` 归入「非原子容器整侧取较新」（见下方列表），于是：
+            //   远端较新 → 本端独有货币被整维丢掉；本端较新 → 对端货币永不并入。此处改为与其它维度同口径：
+            //   逐条并集（同「归属 + 币种」一条、冲突取新、收支流水并集）+ **同一套 id/内容双墓碑**。
+            try {
+                const cl = Array.isArray(out.currencies) ? out.currencies : [];
+                const cr = Array.isArray(remoteData && remoteData.currencies) ? remoteData.currencies : [];
+                if (cl.length || cr.length) {
+                    const mergedCur = mergeCurrencyArrays(cl, cr, { preferRemote: remTs > baseTs });
+                    const rc = applyDeletedToArray('currencies', mergedCur, delBase, delRem, delHBase, delHRem, true);
+                    redBump('currencies', 'tombstone', mergedCur.length - rc.arr.length);   // 货币删除同样跨端生效（合法削减）
+                    out.currencies = rc.arr;
+                    if (rc.del && Object.keys(rc.del).length) delOut.currencies = rc.del;
+                    if (rc.delH && Object.keys(rc.delH).length) delHOut.currencies = rc.delH;
+                }
+            } catch (e) { /* 忽略 */ }
             const hadAny = ((delBase && Object.keys(delBase).length) || (delRem && Object.keys(delRem).length));
             const hadAnyH = ((delHBase && Object.keys(delHBase).length) || (delHRem && Object.keys(delHRem).length));
             if (Object.keys(delOut).length || hadAny) out.deleted = delOut;
@@ -259,8 +443,9 @@ function mergeDataObjects(baseData, remoteData, opts) {
             if (pa.length || pb.length) out.processedFloors = mergeProcessedFloors(pa, pb, hashFloor);
         } catch (e) { /* 忽略 */ }
         // 非原子维度：整体取较新一侧（时间相同保留本地）
+        // v3.45.6：`currencies` **已移出本列表** —— 它在上面走逐条并集（整侧覆盖正是「货币不同步」的成因）
         if (remTs > baseTs && remoteData) {
-            for (const k of ['summaries', 'npcs', 'protagonist', 'vars', 'varTemplates', 'state', 'currencies']) {
+            for (const k of ['summaries', 'npcs', 'protagonist', 'vars', 'varTemplates', 'state']) {
                 if (remoteData[k] !== undefined) out[k] = copyVal(remoteData[k]);
             }
         }
@@ -383,4 +568,6 @@ export {
     atomEntryCount, dataAggHash, diffAtomData, mergeDataObjects, mergeProcessedFloors,
     mergeSnapshotStores, snapshotSigOf, snapIndexFrom, mirrorPushSig, DIM_ENTRY_MERGERS,
     consistencyReading, capReductionOf, unionSelfCheck,
+    // v3.45.6：货币逐条合并（并集）与货币差异统计（`adapters/sync.js` 与单测共用）
+    mergeCurrencyArrays, diffCurrencyData, currencyIdentityKey,
 };
