@@ -174,57 +174,45 @@ export function currencyMergeValidate(ai, pack) {
         }
         if (members.length < 2) why.push('too-few-members');
         /**
-         * v3.46.5（用户报告「金子 / 赤条金 / 黄金 明明都可以融合却被忽略了」）：**单位冲突不再整组丢弃**。
+         * v3.47.1（用户报告「货币通过 AI 融合后，**记录是分散的，没有合并**」）：**一个 AI 组 = 一条合并结果**。
          *
-         * 旧实现：只要组内出现**两个**不同单位 → 整组判 `unit-conflict` 丢掉 —— 于是 AI 常犯的「把同一物的
-         *   各种叫法提成一组、但其中一条单位不同」（如 `赤条金/条` 与 `金子·黄金/两`）会让**同单位的那几条**
-         *   一起被忽略（实测：`金子(两) + 赤条金(条) + 黄金(两)` → 组数 0，金子与黄金也没合并）。
+         * 历史：v3.46.2 遇单位冲突整组拒 → v3.46.5 改成「按单位拆成同单位子组」（同单位 ≥2 条才合、单条只报告）。
+         *   连起来看：`黄金/两 · 碎金子/两 · 赤金条/贯 · 赤条金/条` 是**同一种金**，却因为单位写法不统一被拆成 **2–3 条**
+         *   → 用户看到的仍然是「记录分散」。
          *
-         * 新口径（「**禁凭空换算**」不变）：按单位**拆成同单位子组** ——
-         *   · 同单位且 ≥2 条 → 照常合并（该求和就求和，单位一致才安全）；
-         *   · 某单位只有 1 条（无法与其它单位合并，且不许凭空换算）→ **只报告、不合并**（进 `keep`，原因写明）。
-         *   「发生过拆分」如实记进 `reasons['unit-split']`，预览里看得见。
+         * 新口径（**「禁凭空换算」仍然成立**）：
+         *   · 一组**只产出一条**：主单位 = 组内**成员最多的单位**（并列时取 AI 的 `canonical.unit`，再退第一个成员的单位）；
+         *   · 额度：**主单位成员**求和（`currencyMergeSumAmount` 关时取其中最新那条的额度）—— 分量纲的相加一律不做；
+         *   · **其它单位的成员不参与任何算术**：原额如实记进 `otherAmounts`，落库时写进该条**备注**（`core/currency-repair.js`），
+         *     并在预览里逐条列出 —— 「记录合起来、金额不丢、不臆造汇率」；
+         *   · 发生过「跨单位并成一条」时记 `reasons['unit-mixed']`（预览与日志里看得见，不再无声处理）。
          */
-        const units = [...new Set(members.map((m) => canonicalUnit(m.unit) || str(m.unit).trim()).filter(Boolean))];
-        const unitGroups = [];                       // [ [unit, members[]], … ]
-        if (units.length <= 1) unitGroups.push([units[0] || '', members]);
-        else {
-            const buckets = new Map();
-            for (const m of members) {
-                const u = canonicalUnit(m.unit) || str(m.unit).trim();
-                if (!buckets.has(u)) buckets.set(u, []);
-                buckets.get(u).push(m);
-            }
-            for (const [u, arr] of buckets) unitGroups.push([u, arr]);
-            bump('unit-split');
-        }
         if (why.length) {
             rejected.push({ group: { canonical: { name: name, unit: unit }, members: members.map((m) => m.id) }, reasons: [...new Set(why)] });
             for (const r of [...new Set(why)]) bump(r);
             continue;
         }
-        for (const [u, arr] of unitGroups) {
-            if (arr.length < 2) {
-                // 单条子组：**只报告不合并**（同组内单位与其它条目不同，且不允许凭空换算）
-                for (const m of arr) keep.push({ id: m.id, name: m.name, unit: m.unit, amount: m.amount, why: '同组内单位与其它条目不同（不可凭空换算）→ 只报告、不合并' });
-                bump('unit-split-singleton');
-                continue;
-            }
-            if (groups.length >= CUR_MERGE_DEFAULTS.groupsMax) { bump('over-max-groups'); continue; }
-            for (const m of arr) used.add(m.id);
-            // 规范名：既尊重 AI 的选择，也过一遍既有别名归一（与机械档口径一致）
-            const finalName = canonicalName(name) || name;
-            const keepRow = arr.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (Number(b.uses) || 0) - (Number(a.uses) || 0))[0];
-            groups.push({
-                key: 'ai|' + pack.owner + '|' + finalName + '|' + u, owner: pack.owner,
-                canonical: finalName, unit: u, keepId: keepRow.id, removedIds: arr.filter((m) => m.id !== keepRow.id).map((m) => m.id),
-                members: arr, why: clip(g && g.why, CUR_MERGE_DEFAULTS.whyMax),
-                setName: true,                                     // AI 组要把保留条目的**名字**改成规范名（机械档不动名字）
-                sumAmount: round2(arr.reduce((s, m) => s + (Number(m.amount) || 0), 0)),
-                newestAmount: Number(keepRow.amount) || 0, newestDate: keepRow.date,
-            });
-        }
-    }
+        // 主单位：成员最多者优先（并列 → AI 给的 canonical.unit，再退第一个成员）
+        const tally = new Map();
+        for (const m of members) { const u = canonicalUnit(m.unit) || str(m.unit).trim(); tally.set(u, (tally.get(u) || 0) + 1); }
+        let mainUnit = (unit && tally.has(unit)) ? unit : '';
+        if (!mainUnit) { let best = -1; for (const [u, n] of tally) { if (n > best) { best = n; mainUnit = u; } } }
+        const mainMembers = members.filter((m) => (canonicalUnit(m.unit) || str(m.unit).trim()) === mainUnit);
+        const otherMembers = members.filter((m) => (canonicalUnit(m.unit) || str(m.unit).trim()) !== mainUnit);
+        if (otherMembers.length) bump('unit-mixed');
+        for (const m of members) used.add(m.id);
+        const finalName = canonicalName(name) || name;
+        const keepRow = mainMembers.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || (Number(b.uses) || 0) - (Number(a.uses) || 0))[0];
+        groups.push({
+            key: 'ai|' + pack.owner + '|' + finalName + '|' + mainUnit, owner: pack.owner,
+            canonical: finalName, unit: mainUnit, keepId: keepRow.id,
+            removedIds: members.filter((m) => m.id !== keepRow.id).map((m) => m.id),
+            members: mainMembers, otherAmounts: otherMembers.map((m) => ({ name: m.name, unit: m.unit, amount: round2(m.amount) })),
+            why: clip(g && g.why, CUR_MERGE_DEFAULTS.whyMax),
+            setName: true,                                     // AI 组要把保留条目的**名字**改成规范名（机械档不动名字）
+            sumAmount: round2(mainMembers.reduce((s, m) => s + (Number(m.amount) || 0), 0)),
+            newestAmount: Number(keepRow.amount) || 0, newestDate: keepRow.date,
+        });    }
     for (const k of (Array.isArray(ai && ai.keep) ? ai.keep : [])) {
         const id = str(k && (k.id || k)).trim();
         const row = inPack.get(id);
@@ -267,9 +255,11 @@ export function currencyMergePlan(opts) {
             key: g.key, owner: g.owner, canonical: g.canonical, unit: g.unit, keepId: g.keepId, removedIds: g.removedIds,
             amount: round2(amount), newestDate: g.newestDate, uses: uses, members: g.members, ai: true,
             setName: true,                                  // 保留条目改名为**规范名**（机械档不带此标记）
+            otherAmounts: g.otherAmounts || [],              // v3.47.1：其它单位的成员原额（不换算、落库写进备注）
             why: g.why, sumAmount: g.sumAmount, newestAmount: g.newestAmount,
-            detail: 'AI 语义合并 ' + g.members.length + ' 条 → 「' + g.canonical + '」（' + (g.unit || '无单位') + '，'
+            detail: 'AI 语义合并 ' + (g.members.length + (g.otherAmounts || []).length) + ' 条 → 「' + g.canonical + '」（主单位 ' + (g.unit || '无单位') + '，'
                 + (conf.sumAmount ? ('求和 ' + round2(g.sumAmount)) : ('保留最新额度 ' + g.newestAmount + '，不累加')) + '）'
+                + ((g.otherAmounts || []).length ? ('；另 ' + g.otherAmounts.length + ' 条单位不同 → 原额记入备注（不换算）') : '')
                 + (g.why ? ('：' + g.why) : ''),
         });
         for (const id of g.removedIds) drop.push({ id: id, owner: g.owner, name: (g.members.filter((m) => m.id === id)[0] || {}).name || '', unit: g.unit, amount: (g.members.filter((m) => m.id === id)[0] || {}).amount || 0, reason: 'merged-ai', detail: '并入「' + g.canonical + '」（' + id + ' → ' + g.keepId + '）' });
@@ -286,6 +276,7 @@ export function currencyMergePlan(opts) {
         mergeRemoved: merge.reduce((s, m) => s + (m.removedIds || []).length, 0),
         fix: fix.length, report: report.length + v.rejected.length,
         aiGroups: v.groups.length, aiRejected: v.rejected.length, kept: v.keep.length, truncated: pack.truncated,
+        unitMerged: v.groups.reduce((s, g) => s + ((g.otherAmounts || []).length), 0),   // v3.47.1：跨单位并成一条的成员数
         total: drop.length + fix.length + merge.length,
     };
     return { ok: true, owner: pack.owner, pack: pack, ai: ai, validate: v, drop: drop, fix: fix, merge: merge, report: report, counts: counts, sumAmount: conf.sumAmount };
