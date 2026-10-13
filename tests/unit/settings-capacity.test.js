@@ -117,7 +117,7 @@ A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 180 && m.analyze === 22 && m.extract === 25 && m.base === 9 && m.feed === 55
+    return info.totalControls === 181 && m.analyze === 22 && m.extract === 25 && m.base === 10 && m.feed === 55
         && m.forget === 24 && m.rumors === 14;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 

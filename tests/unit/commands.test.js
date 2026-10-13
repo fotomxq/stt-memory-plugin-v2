@@ -48,10 +48,10 @@ setContextProvider(() => bare.ctx);
 R.assert('C4 缺命令/宏能力时返回 false 而不抛异常', registerSlashCommand(() => ({})) === false && registerMacros(() => ({})) === false, '');
 
 setContextProvider(() => makeHost().ctx);
-R.assert('C5 buildSnapshot 结构完整（版本/宿主/14 维/九事件）', (() => {
+R.assert('C5 buildSnapshot 结构完整（版本/宿主/15 维/九事件）', (() => {
     const s = buildSnapshot();
     return s.version === VERSION && s.moduleName === MODULE_NAME && s.host === true
-        && s.dimensions.length === 14 && s.hostEvents.length === 9 && !!s.probe && !!s.settings;
+        && s.dimensions.length === 15 && s.hostEvents.length === 9   /* v3.47.0（W16 数-22）：+maps（15 维） */ && !!s.probe && !!s.settings;
 })(), buildSnapshot().dimensions.length);
 R.assert('C6 installDevtools 暴露 window.FTT（快照函数可用）', (() => {
     const ok = installDevtools();

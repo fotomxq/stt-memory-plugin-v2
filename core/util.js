@@ -1,6 +1,7 @@
 // ============================================================
 // core/util.js —— 纯工具函数（零宿主依赖，Node 可直接单测）
 // ============================================================
+import { DATA_VERSION, DIMENSIONS } from './constants.js';
 
 /**
  * 稳定短哈希（**与 V1 完全一致**：djb2 → base36）。
@@ -224,10 +225,15 @@ export function extractJsonObject(text) {
     return null;
 }
 
-/** 构造空状态（与 V1 state 容器对齐，V2 增加 dataVersion） */
+/**
+ * 构造空状态（**轻量投影**：只给容器骨架 + 双墓碑，供工具层与单测使用）。
+ * v3.47.0（`docs/D22` W16 `数-22`）：容器列表与 `dataVersion` 改由 `core/constants.js` **派生**
+ *   （此前手写 14 个键、`dataVersion` 写死 1 —— 新增 `maps` 维度时会静默漂移；现不可能再漂）。
+ *   **注意**：真正的运行时空状态是 `core/state.js#emptyState()`（本函数只是它的最小子集）。
+ */
 export function emptyState() {
-    const st = { dataVersion: 1, charScope: '', deleted: {}, deletedH: {} };
-    for (const k of ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors', 'currencies']) st[k] = [];
+    const st = { dataVersion: DATA_VERSION, charScope: '', deleted: {}, deletedH: {} };
+    for (const d of DIMENSIONS) st[d.kind] = [];
     st.state = { date: '', time: '', location: '', present: [] };
     return st;
 }

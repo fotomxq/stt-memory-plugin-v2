@@ -17,6 +17,7 @@ import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory
 import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney } from './model/money.js';
 import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildId, rumorStageByFerment, rumorSubjectKey } from './model/rumor.js';
 import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, persistNow, state, timerHooks, warn } from './model/runtime.js';
+import { applyMapDelta, mapDeltaText } from './map-ingest.js';   // v3.47.0（W16 数-23）：地图库的入库护栏
 import { mergeTags, scenePathArr } from './model/scalars.js';
 import { normalizeSnapshot, refreshAllSnapshotAges, snapshotBodySig, stampNowForState, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
 import { injectNameCore, parallelExpired } from './recall.js';
@@ -71,7 +72,8 @@ const STORE_LIMITS = {
     snapshots: ['storeMinSnapshots', 'storeMaxSnapshots', 400, '角色档案', 8],
     items:     ['storeMinItems', 'storeMaxItems', 500, '物品', 9],
     concepts:  ['storeMinConcepts', 'storeMaxConcepts', 700, '概念', 13],
-    scenes:    ['storeMinScenes', 'storeMaxScenes', 400, '场景', 8],
+    scenes:    ['storeMinScenes', 'storeMaxScenes', 400, '场景', 4],   // v3.47.0（W16 数-22）：8 → 4（拆 4 个点给 maps）
+    maps:      ['storeMinMaps', 'storeMaxMaps', 400, '地图', 4],       // v3.47.0（W16 数-22）：地图（空间单元 + 路径）
     plans:     ['storeMinPlans', 'storeMaxPlans', 300, '计划', 6],
     suspense:  ['storeMinSuspense', 'storeMaxSuspense', 300, '悬念', 6],
     npcs:      ['storeMinNpcs', 'storeMaxNpcs', 300, '名册', 6],
@@ -434,6 +436,20 @@ function mergeDelta(delta0, floorRange) {
             if (node) { const pa = scenePathArr(r); if (pa.length) { node.pathArr = pa; node.pathStr = pa.join('>'); } }
         }
         for (const id of delta.scenes?.remove || []) { state.scenes = (state.scenes || []).filter(x => x.id !== id && x.name !== id); }
+        // ==================== v3.47.0（`docs/D22` W16 `数-22` / `数-23`）：地图库 ====================
+        // 「空间单元 + 路径」的统一落点与**全部护栏**在 `core/map-ingest.js`（纯函数，可单测）：
+        //   ① 只在剧情走过时建路径；② 自动分析必带 evidence；③ 同对地点只一条、重复走过只更新不累加；
+        //   ④ 抽不到就留空不估算；⑤ 场所 / 上层 / 端点解析不到就跳过并计数（绝不凭空造场景）。
+        // 放在 `scenes` 之后：场所锚点要靠本批刚写入的场景解析出 id。
+        if (delta.maps) {
+            try {
+                const ms = applyMapDelta(state, delta, { floorStart: fb.start, floorEnd: fb.end });
+                if (ms.places || ms.routes || ms.anchors || ms.untraversed || ms.noEnds || ms.unknownScene || ms.unknownParent) {
+                    try { dbgLog('地图', { action: '入库', ...ms }); } catch (e) { /* 忽略 */ }
+                    try { log(mapDeltaText(ms)); } catch (e) { /* 忽略 */ }
+                }
+            } catch (e) { /* 地图入库失败不影响其它维度 */ }
+        }
         for (const c of delta.concepts?.add || []) {
             const n = preserveEntryMeta('concepts', c, normalizeConcept(c));
             if (n) { const i = state.concepts.findIndex(x => x.id === n.id); if (i >= 0) state.concepts[i] = n; else state.concepts.push(n); }

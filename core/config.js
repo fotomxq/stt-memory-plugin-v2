@@ -12,6 +12,7 @@ import { TRI_LINK_PROMPT } from './tri-link-prompt.js';
 // v3.46.2（W13 应-30）：货币融合的默认提示词全文（新模块；见 PROMPT_TEMPLATES_V2.currencyMerge）
 import { CURRENCY_MERGE_PROMPT } from './currency-merge-prompt.js';
 import { RESUME_BATCH_PROMPT } from './resume-batch-prompt.js';   // v3.47.0（W16 应-33）：履历批量完善的提示词全文在新模块
+import { MAP_PROMPT } from './map-prompt.js';   // v3.47.3（W17 数-22）：地图抽取模板默认全文（新模块；见 PROMPT_TEMPLATES_V2.maps）
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
 // v3.23.0：「每段正文数」默认值唯一事实源（`3`）—— 全部 AI 摘要入口共用同一段长口径
@@ -22,6 +23,7 @@ const CN_KEY_MAP = {
     '记忆库': 'memories', '物品库': 'items', '计划库': 'plans', '悬念库': 'suspense',
     '概念库': 'concepts', '概念': 'concepts', '平行事件': 'parallels',
     '名册': 'npcs', '场景库': 'scenes', '变量': 'vars',
+    '地图库': 'maps', '地图': 'maps', '空间单元': 'place', '所属场所': 'sceneRef', '上层': 'parentId', '起点': 'fromId', '终点': 'toId', '距离': 'distance', '耗时': 'timeCost', '所需时间': 'timeCost', '走过': 'traversed', '方向': 'direction', '别名': 'aliases', '证据': 'evidence',   // v3.47.3（W18 数-22）：地图库键与字段名；`层级` 已在下方既有映射（→ level），不重复登记
     // v1.14 修复：SNAP_GROUP_MAP 必须在 loadState/migrateState 调用前初始化（TDZ），故置于此处
     '新增': 'add', '更新': 'update', '删除': 'remove', '重建': 'rebuild', '了结': 'close',
     '内容': 'text', '类型': 'type', '日期': 'date', '时间': 'time',
@@ -88,7 +90,7 @@ const PROMPT_DEFAULT_VERSION = 'v1.195';   // v1.195：新增「内容弱化（N
 const PROMPT_GROUPS = [
     { title: '⓪ 破限提示词（分析记忆前置）', desc: '分析记忆时贴在系统提示词最前面的自定义文本，用于约束口径与风格；开关关闭即不生效。', keys: ['armorPreset'], switchKey: 'armorPresetEnabled', switchLabel: '启用破限提示词', extra: 'armorPresetFile' },
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
-    { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
+    { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'maps', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
     { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'currencyMerge', 'resumeBatch', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
 ];
@@ -336,6 +338,7 @@ const PROMPT_TEMPLATES_V2 = {
         '负例（不要记）：「地点丁发生了枪战」（事件 → 情节库）；「物品庚放在地点丁」（物品 → 物品库）；「城市甲>街区乙」已存在时又新增一条同路径节点；已有「纽约」却又新增「纽约市」（同一地点 → 应「更新」而非「新增」）。',
         '示例：{"场景库": {"新增": [{"名称": "地点丁", "路径": "城市甲>街区乙>地点丁", "描述": "半废弃建筑，二楼阁楼用于作画"}]}}',
     ].join('\n'),
+    maps: MAP_PROMPT,   // v3.47.3（W18 数-22）：全文在 `core/map-prompt.js`（C11 + 体量棘轮），此处只引用
     concepts: ['【概念库】世界客观存在的理念、规律、发现与领悟，按标签识别与检索。',
         '记录什么：正文中出现的理念、观点、发现、领悟、规律、世界观设定级知识（如「等价交换」「石头里的信仰」）；不确定是否算概念时也先记录（本维度宁多勿漏）。',
         '不记录什么（边界）：不写概念引发的事件经过（情节库）；不写某角色的个人记忆（记忆库）；不写某角色的临时状态（状态记录）；不写物品本体（物品库）；不写对未来的推演（平行事件）。',
@@ -854,13 +857,14 @@ const defaultCfg = {
     //     某维有效上限 = 四舍五入(总上限 × 占比 / 100)，且不低于该维保底（`storeMin*`）。
     //   · 旧的逐维 `storeMax*` 键**保留兼容**（仅在 `storeTotalMax` 缺失时作为回落口径），设定页不再暴露。
     storeTotalMax: 3000,             // 所有原子数据合计上限（条）
-    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 8, plans: 6, suspense: 6, npcs: 6, rumors: 6 },
+    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 4, maps: 4, plans: 6, suspense: 6, npcs: 6, rumors: 6 },   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100
     storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100（上限见 storeTotalMax × storeShare.atoms）
     storeMinMemories: 200, storeMaxMemories: 800,    // 记忆：保底 200
     storeMinSnapshots: 100, storeMaxSnapshots: 400,  // 角色档案：保底 100
     storeMinItems: 150, storeMaxItems: 500,          // 物品：保底 150
     storeMinConcepts: 200, storeMaxConcepts: 700,    // 概念：保底 200
     storeMinScenes: 0, storeMaxScenes: 400,          // 场景（无硬保底）
+    storeMinMaps: 0, storeMaxMaps: 400, mapTrailPhrase: '前往{path}',   // v3.47.3（W18 数-22/应-21）：地图（无硬保底，与场景同口径）+ 「前往」套话模板（{place}/{room}/{path}；设定 → 基础 → 地图套话 可改）
     storeMinPlans: 0, storeMaxPlans: 300,            // 计划
     storeMinSuspense: 0, storeMaxSuspense: 300,      // 悬念
     storeMinNpcs: 0, storeMaxNpcs: 300,              // 名册
@@ -1104,12 +1108,8 @@ const defaultCfg = {
     snapshotResumeImmune: 0.7,          // 重要性免疫阈值（≥ 该值的条目不参与自动遗弃；`docs/D26` §3.3）
     snapshotResumeSummaryMax: 60,       // 凝练目标长度（单条简述 ≤ 该字数；`docs/D26` Q4，幂等）
     snapshotResumeCanonFill: true,      // 历史 / 同人人物「剧情前」履历预填开关（`docs/D26` §3.4；上界 = 剧情当下）
-    // v3.47.0（`docs/D22` §4.16 W16 `应-33`，用户直接要求）：**履历批量完善**（📜 批量完善履历）四键。
-    //   口径：按「近期更新的记忆」抽角色 → 一批角色放进**一次** AI 请求（与个体档「📜 补全 / 修复履历」共用机械段与复核）。
-    resumeBatchEnabled: true,           // 批量档总开关（false = 角色页按钮隐藏 + 程序化调用返回 `disabled`）
-    resumeBatchDays: 30,                // 「近期」窗口天数（按剧情日期回看；1-3650）
-    resumeBatchMaxRoles: 8,             // 一次请求最多处理几个角色（1-30；超出按命中数降序截断并如实计数）
-    resumeBatchMemoryPerRole: 6,        // 每个角色带入几条近期记忆（1-30；首选依据）
+    resumeBatchEnabled: true, resumeBatchDays: 30,                // 批量档总开关（false = 按钮隐藏 + 程序化调用返回 `disabled`）· 「近期」窗口天数（按剧情日期回看；1-3650） // v3.47.0（`docs/D22` §4.16 W16 `应-33`）：**履历批量完善**四键 —— 按「近期更新的记忆」抽角色 → 一批放进**一次** AI 请求（与个体档共用机械段与复核）
+    resumeBatchMaxRoles: 8, resumeBatchMemoryPerRole: 6,          // 一次请求最多几个角色（1-30；超出按命中数降序截断并计数）· 每角色带入几条近期记忆（1-30）
     // v1.158：状态记录修复（状态页「🔧 修复状态」）—— 自动匹配角色 → 删无主状态组 → 机械清理/规范化 → 交 AI 整理
     stateRepairBatch: 6,             // 每轮交给 AI 的主体（角色）数（1-10；v3.45.3 默认 3→6）—— 目标收敛、质量优先
     stateRepairMatchSim: 0.72,       // 主体 ↔ 角色档案/名册 的名称相似度阈值（0.5-0.95）—— 低于该值视为「无档案主体」
@@ -1292,6 +1292,7 @@ const KIND_MAP = {
     currencies: { get: () => state.currencies, set: (v) => { state.currencies = v; } },   // v1.181：货币大类
     plotSegments: { get: () => state.plotSegments, set: (v) => { state.plotSegments = v; } },   // v1.182：情节分段总结（只归档，不注入）
     rumors: { get: () => state.rumors, set: (v) => { state.rumors = v; } },   // v1.192：传言（记录 + 机械演化 + 注入）
+    maps: { get: () => state.maps, set: (v) => { state.maps = v; } },   // v3.47.3（W18 数-22）：地图（空间单元 + 路径）
 };
 
 function normalizeDeltaKeys(delta) {

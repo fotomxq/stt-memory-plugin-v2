@@ -13,6 +13,7 @@ import { ATOM_DIM_KEYS } from './constants.js';
 import { releaseMergedSources, tombEntries, tombMany, tombSet } from './merge.js';
 import { normalizeAtom } from './model/atom.js';
 import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory, normalizeNpc, normalizeParallel, normalizePlan, normalizeScene, normalizeSuspense } from './model/dims.js';
+import { normalizeMap } from './model/map.js';   // v3.47.0（W16 数-22）：地图（两 kind 分派）
 import { normalizeCurrency } from './model/money.js';
 import { normalizeRelLink, relLinkId } from './model/rel.js';
 import { normalizeRumor } from './model/rumor.js';
@@ -308,6 +309,7 @@ function kindNormalize(kind, raw, floor) {
         case 'currencies': return normalizeCurrency(raw);   // v1.181：货币大类
         case 'plotSegments': return normalizePlotSegment(raw);   // v1.182：情节分段总结
         case 'rumors': return normalizeRumor(raw);   // v1.192：传言
+        case 'maps': return normalizeMap(raw);   // v3.47.0（W16 数-22）：地图（place / route 两 kind）
         default: return null;
     }
 }

@@ -46,8 +46,11 @@ R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账�
     //   按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再比较，样本本身一字不改；
     //   同时**单独断言新字段确实存在**（归一 ≠ 删字段）。
     const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
+    // v3.47.0（`docs/D22` W16 `数-22`）：**再新增一个 V2 专有容器** `maps`（V1 无此维度）—— 同款显式归一，
+    //   并在下面单独断言它确实是数组（归一 ≠ 删字段）。
+    const V2_ONLY_CONTAINERS = ['maps'];
     const got = {
-        keys: Object.keys(e).filter(k => V2_LEDGER_KEYS.indexOf(k) < 0), scope: e.scope,
+        keys: Object.keys(e).filter(k => V2_LEDGER_KEYS.indexOf(k) < 0 && V2_ONLY_CONTAINERS.indexOf(k) < 0), scope: e.scope,
         dims: ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'links', 'currencies', 'plotSegments', 'rumors'].map(k => Array.isArray(e[k]) ? k : k + ':' + typeof e[k]),
         hasDeleted: !!e.deleted, hasDeletedH: !!e.deletedH, vars: e.vars, snapStore: e.snapStore, state: e.state,
     };
@@ -55,6 +58,7 @@ R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账�
     const want = JSON.parse(J(G.empty)); delete want.version;
     return JT(got) === JT(want) && e.version === VERSION
         && V2_LEDGER_KEYS.every(k => Object.prototype.hasOwnProperty.call(e, k))
+        && V2_ONLY_CONTAINERS.every(k => Array.isArray(e[k]))
         && Array.isArray(e.processedDropped) && Number(e.lastChatFloor) === -1
         && e.chatKey === '';
 })(), Object.keys(emptyState()));

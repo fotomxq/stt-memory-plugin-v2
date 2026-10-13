@@ -64,7 +64,7 @@ boot();
 
 // ---------- A 组：占比归一 ----------
 A('A1 `normStoreShares`：四舍五入到整数、**合计恒为 100**（余数补给最大项），覆盖全部参与维度', (() => {
-    const raw = { atoms: 22.4, memories: 15.5, snapshots: 7.6, items: 9.4, concepts: 13.2, scenes: 7.5, plans: 5.7, suspense: 5.7, npcs: 5.7, rumors: 5.7 };
+    const raw = { atoms: 22.4, memories: 15.5, snapshots: 7.6, items: 9.4, concepts: 13.2, scenes: 7.5, plans: 5.7, suspense: 5.7, npcs: 5.7, rumors: 5.7, maps: 0.4 };   // v3.47.0：+maps（四舍五入后 = 0，保持本用例「取整后合计恰为 100」的前提）
     const n = normStoreShares(raw);
     return J(Object.keys(n)) === J(STORE_SHARE_DIMS) && sumOf(n) === 100
         && Object.values(n).every((v) => Number.isInteger(v) && v >= 0 && v <= 100)
@@ -96,11 +96,11 @@ A('B1 拖动一条 → 其余按**原比例**补齐，四舍五入后合计恒 1
 
 A('B2 边界：拖到 100 → 其余归 0；拖到 0 → 其余按比例占满 100；原本全 0 时按均分补齐', (() => {
     boot();
-    cfg.storeShare = { atoms: 0, memories: 0, snapshots: 0, items: 0, concepts: 0, scenes: 0, plans: 0, suspense: 0, npcs: 0, rumors: 0 };
+    cfg.storeShare = { atoms: 0, memories: 0, snapshots: 0, items: 0, concepts: 0, scenes: 0, plans: 0, suspense: 0, npcs: 0, rumors: 0, maps: 0 };   // v3.47.0：+maps
     const full = setStoreShare('atoms', 100);
     const zero = setStoreShare('atoms', 0);
     const evenOk = STORE_SHARE_DIMS.filter((d) => d !== 'atoms').every((d) => even_d(d) === 1);
-    function even_d(d) { return (zero[d] === 11 || zero[d] === 12) ? 1 : 0; }   // 100/9 ≈ 11，余数给一项 → 12
+    function even_d(d) { return zero[d] === 10 ? 1 : 0; }   // v3.47.0：维度数 10 → 11，`100/10 = 10` 整除了（原 100/9 ≈ 11 的余数项不再存在）
     return full.atoms === 100 && sumOf(full) === 100 && STORE_SHARE_DIMS.filter((d) => d !== 'atoms').every((d) => full[d] === 0)
         && zero.atoms === 0 && sumOf(zero) === 100 && evenOk;
 })(), () => ({ full: setStoreShare('atoms', 100), zero: setStoreShare('atoms', 0) }));

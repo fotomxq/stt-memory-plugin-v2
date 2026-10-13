@@ -15,6 +15,7 @@ import { clamp } from './util.js';
 import { activeAtoms, atomIsHidden } from './merge.js';
 import { recallDateNum } from './migrate.js';
 import { defaultCurrencyOwner, formatMoney, isTrackedCurrencyOwner } from './model/money.js';
+import { mapInjectLines, mapInjectStats } from './model/map.js';   // v3.47.0（W16 数-24）：地图子块（**只挂在** [场景地点] 小节下）
 import { relLinksOf } from './model/rel.js';
 import { cfg, dbgLog, getLastMessageId, getStoryNow, latestAiFloorText, saveState, state, warn } from './model/runtime.js';
 import { normPhase } from './model/scalars.js';
@@ -1139,6 +1140,8 @@ function buildMemoryBodyForInject(queryText, opts) {
         cats.push({ head: '[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', md: mdHeadOf('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）'), rows: parRows });
         // [场景地点]：树整体作为一块（保持层级；预算放不下整块则跳过）
         let sceneText = '';
+        const mapRows = [];   // v3.47.0（W16 数-24）：地图子块（追加在场景整块**之后**）
+        let mapInjectInfo = null;   // v3.47.0：注入自查读数（如实列出「未注入」的原因）
         const scenes = (st().scenes || []).slice();
         if (scenes.length) {
             // 场景按路径和名称识别（q 非空时只保留路径/名称命中的节点）；最多 maxScenes 个场景条目构树
@@ -1148,8 +1151,35 @@ function buildMemoryBodyForInject(queryText, opts) {
                 filteredScenes.forEach(s => { if (countUses) markUsed('scenes', s); });
                 sceneText = sceneLines.join('\n');
             }
+            // v3.47.0（`docs/D22` W16 `数-24` / `docs/D27` §3.5）：**地图从属注入** ——
+            //   第 1 行仍是场景整块（**内容与口径逐字不变**）；地图子块是**同一大类里追加的行**：
+            //   · 预算不够时**先丢地图行、场景整块保留**（同一大类按 `rows` 顺序取，场景行在前）；
+            //   · 场景未入选 → 整个 `[场景地点]` 大类没有行 → 地图**完全不出现**（禁止单独注入）；
+            //   · **不新增** `[地图]` 小节；`maps` 也不进任何候选池。
+            mapRows.length = 0;
+            if (sceneText && filteredScenes.length) {
+                filteredScenes.forEach((s) => {
+                    try {
+                        const lines = mapInjectLines(st(), s && s.id);
+                        if (lines.length) mapRows.push({ text: lines.join('\n') });
+                    } catch (e) { /* 单个场景的子块失败不影响其余 */ }
+                });
+            }
+            // v3.47.0（W16 数-24）④：**注入自查如实列出** —— 挂了几块 / 共几行 / 未注入的原因
+            try {
+                const stt = mapInjectStats(st(), filteredScenes.map((x) => x && x.id));
+                mapInjectInfo = {
+                    units: stt.units, routes: stt.routes, blocks: mapRows.length, lines: stt.lines,
+                    reason: mapRows.length ? '' : (sceneText ? '本场次场景下没有地图数据' : '场景未入选（地图不单独注入）'),
+                };
+            } catch (e) { mapInjectInfo = null; }
+        } else {
+            try { const stt = mapInjectStats(st(), []); mapInjectInfo = { units: stt.units, routes: stt.routes, blocks: 0, lines: 0, reason: '场景未入选（地图不单独注入）' }; } catch (e) { mapInjectInfo = null; }
         }
-        cats.push({ head: '[场景地点]', md: mdHeadOf('[场景地点]'), rows: sceneText ? [{ text: sceneText }] : [] });
+        cats.push({
+            head: '[场景地点]', md: mdHeadOf('[场景地点]'),
+            rows: (sceneText ? [{ text: sceneText }] : []).concat(mapRows),
+        });
         // [概念]（命中候选按优先级取 maxConcepts 条）
         const conceptRows = [];
         const conceptCands = [];
@@ -1246,6 +1276,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             bodyText, constraintText: cText || '', constraintClipped: !!clipped,
             totalText: totalText || '', injected: injectedIds, candidates: candIds,
             catHeads: cats.map(c => c.head),
+            mapInject: mapInjectInfo,   // v3.47.0（W16 数-24）：地图子块读数（未注入时带原因）
         });
         // v1.165：固定约束段（机械生成、与关键词召回解耦）—— 按本轮实际注入的条目逐条点名，
         //   未被召回 / 被截断的条目以聚合计数出现，保证「约束不随召回丢失」

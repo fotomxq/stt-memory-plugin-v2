@@ -72,7 +72,9 @@ export const SETTINGS_CONTROLS = {
         { "key": "injectCurrentPrompt", "label": "注入当前提示词", "type": "checkbox", "forceWhen": "timelyAnalysis" },
         { "key": "clockExtractEnabled", "label": "消息后自动同步时钟（只取最新情节）", "type": "checkbox" },
         { "key": "clockRepairBatch", "label": "AI 结合正文修复：单次提交条数（默认 20）", "type": "text" },
-        { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" }
+        { "key": "uiEffects", "label": "界面特效（动画 / 过渡 / 脉冲）", "type": "checkbox" },
+        // v3.47.0（`docs/D22` W16 `应-21` / `docs/D27` §3.6 ④「套话文案可配置」）：地图子页点节点时插入输入框尾部的文本
+        { "key": "mapTrailPhrase", "label": "地图「前往」套话模板", "type": "text", "hint": "在地图子页点节点时插入到用户输入框尾部的文本。占位符：{place} 场所名 / {room} 房间或陈设名 / {path} 完整路径（场所 > 房间 > 陈设）。默认「前往{path}」——只追加、绝不覆盖既有输入。" }
     ],
     "feed": [
         {
@@ -1262,6 +1264,13 @@ export function basePageHtml(controls, extrasHtml) {
         '<div class="ftt-section"><div class="ftt-sec-title">界面特效</div>',
         rows(['uiEffects']),
         '<div class="ftt-muted">关闭后面板与消息弹窗不再播放动画/过渡（适合低配设备）；系统「减少动态效果」自动按关闭处理。</div></div>',
+
+        // v3.47.0（`docs/D22` W16 `应-21` / `docs/D27` §3.6 ④）：地图子页「点节点 → 输入框尾部插套话」的**文案模板**（可改）
+        '<div class="ftt-section"><div class="ftt-sec-title">地图套话</div>',
+        rows(['mapTrailPhrase']),
+        '<div class="ftt-muted">在「场景 → 🗺 地图」里点任意节点，就把这句插到<b>用户输入框尾部</b>（只追加、绝不覆盖既有输入）。</div>',
+        hintDetailsHtml('说明', '<div>' + esc('占位符：{place} = 场所名；{room} = 房间或陈设名；{path} = 完整路径（场所 > 房间 > 陈设）。宿主输入框不可写时自动降级：先复制到剪贴板，再退化为「面板内可复制文本」，并如实说明原因 —— 绝不静默失败。点击只插文本，不写任何记忆数据。') + '</div>'),
+        '</div>',
 
         // v2.43.0：V2 独有分节（更新检查 / V1 数据导入 / 维度开关 / 面板宽度）生在**基础页内**，
         //   由调用方注入（本模块不得反向依赖 ui/panel.js，避免循环依赖）。
