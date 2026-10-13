@@ -9,3 +9,7 @@ node_modules/
 tests/local/local.config.json
 # 本地自检产物（npm run local -- --save）
 tests/local/out/
+
+# ---- git 同步（见 scripts/git-sync.js）----
+# 本机配置：含私钥路径等本机信息，**永不入库**（模板见 scripts/git-sync.config.example.json）
+scripts/git-sync.config.json

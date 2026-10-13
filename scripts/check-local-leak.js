@@ -45,6 +45,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'out']);
 const SKIP_REL = new Set([
     'tests/local/local.config.json',
+    // git 同步脚本的本机配置：按设计含私钥路径（本机信息），永不入库
+    'scripts/git-sync.config.json',
 ]);
 /** 二进制/超大文件跳过阈值 */
 const MAX_BYTES = 4 * 1024 * 1024;
