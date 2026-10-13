@@ -1419,7 +1419,11 @@ export function debugBridgeSectionHtml() {
             + '<input class="ftt-input" type="text" data-ftt-bridge-port value="' + esc(String(bridgePort())) + '" placeholder="端口">'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="bridgeTargetSet" title="只改内存中的目标；刷新后回到默认值">保存目标</button>'
             + '<button class="ftt-btn ftt-sm' + (st.running ? ' ftt-err' : '') + '" data-ftt-action="bridgeToggle">' + (st.running ? '⏹ 关闭调试桥' : '▶ 开启调试桥') + '</button></div>',
+        // v3.46.7（`docs/D22` §4.4 W15 `应-9` / `docs/D19` §8 实施规格 `应-9`）：把「刷新即失效」讲明白 ——
+        //   该开关**默认关闭且不落盘**（取 Q3 裁决的建议①：只补提示，**不改**任何存储写入）。
+        //   理由：目标非回环时只读面会对局域网开放，持久化会扩大暴露窗口（`docs/D19` §3.4 / §7 R3）。
         '<div class="ftt-hint">只读白名单 · 默认关闭、刷新即关 · 不含清空/删除类动作</div>',
+        '<div class="ftt-hint">「刷新页面后需重新开启」：本开关不落盘（也不写 localStorage / sessionStorage），刷新或换页即失效；同理，「保存目标」只改内存，刷新后回到默认值。</div>',
         (!st.supported ? '<div class="ftt-hint">本环境不支持 WebSocket，调试桥无法启用（其余功能不受影响）</div>'
             : (!st.tauriTavern ? '<div class="ftt-hint">酒馆原生：宿主日志类方法不可用，调用只回原因、不报错</div>' : '')),
         (!st.loopback ? '<div class="ftt-hint">⚠ 目标不是本机：只读调试面将对局域网开放，同网设备可读</div>' : ''),
