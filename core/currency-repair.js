@@ -351,7 +351,14 @@ function runCurrencyRepair(opts) {
             const m = mergeKeep.get(id);
             if (m) {
                 const members = src.filter((x) => x && (String(x.id) === id || m.removedIds.indexOf(String(x.id)) >= 0));
-                const note = members.map((x) => String((x && x.note) || '')).sort((a, b) => b.length - a.length)[0] || '';
+                let note = members.map((x) => String((x && x.note) || '')).sort((a, b) => b.length - a.length)[0] || '';
+                // v3.47.1（用户报告「货币通过 AI 融合后，记录是分散的，没有合并」）：主单位之外的成员**不参与算术**，
+                //   但其原额如实记入备注（不换算、不丢失）——「记录合成一条，金额看得见」。
+                if (Array.isArray(m.otherAmounts) && m.otherAmounts.length) {
+                    const seg = m.otherAmounts.map((x) => String(x.name || '') + '(' + String(x.unit || '—') + ') ' + roundMoney(x.amount)).join('、');
+                    note = (note ? (note + '；') : '') + '并入：' + seg;
+                    if (note.length > 160) note = note.slice(0, 159) + '…';
+                }
                 const tags = (() => {
                     const seen = new Set(); const outTags = [];
                     for (const x of members) for (const t of (Array.isArray(x && x.tags) ? x.tags : [])) { const k = String(t); if (!k || seen.has(k)) continue; seen.add(k); outTags.push(k); }

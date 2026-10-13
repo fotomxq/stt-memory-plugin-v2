@@ -85,6 +85,9 @@ export function currencyMergePanelHtml() {
             + '<b>' + esc(m.canonical) + '</b>' + (m.unit ? ('（' + esc(m.unit) + '）') : '')
             + ' ← ' + members
             + '<br>额度：' + (pending.sumAmount ? ('求和 <b>' + num(m.amount) + '</b>（各组员原额见上）') : ('保留最新 <b>' + num(m.amount) + '</b>，不累加（各组员原额见上）'))
+            + ((m.otherAmounts || []).length
+                ? ('<br>并入其它单位（<b>不换算</b>，原额记入备注）：' + (m.otherAmounts || []).map((x) => esc(String(x.name)) + '(' + esc(String(x.unit || '—')) + ') ' + num(x.amount)).join('、'))
+                : '')
             + (m.why ? ('<br>依据：' + esc(String(m.why))) : '')
             + '</div>';
     }).join('');
