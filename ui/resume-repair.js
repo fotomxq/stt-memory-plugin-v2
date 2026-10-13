@@ -13,6 +13,9 @@
 // ============================================================
 import { state } from '../core/model/runtime.js';
 import { runResumeRepair } from '../core/character-repair.js';
+// v3.47.0（`docs/D22` §4.16 W16 `应-33`）：**同族出口** —— 批量档（`ui/resume-batch.js`）的界面件由此转出
+//   （panel.js 的 import 行数与体量棘轮都受限；个体档与批量档同属「履历」面，放一处更清楚）
+export { resumeBatchButton, resumeBatchPanelHtml, RESUME_BATCH_ACTIONS, runResumeBatchAction } from './resume-batch.js';
 
 /**
  * 执行「📜 补全 / 修复履历」。

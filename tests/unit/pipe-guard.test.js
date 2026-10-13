@@ -239,14 +239,14 @@ A('E1 登记表里**每个动作都真实可调度**（防写错名字 → 守�
     return missing.length === 0;
 })(), () => J({ missing: Object.keys(PIPE_ACTIONS).filter((a) => !collectDispatchActions().has(a)) }));
 
-A('E2 登记表**恰好**是这 24 项（显式快照：增删都必须是有意为之）', (() => {
+A('E2 登记表**恰好**是这 25 项（显式快照：增删都必须是有意为之；v3.47.0 +resumeBatchRun）', (() => {
     const want = ['plotSegmentSummarySel', 'repair', 'characterRepair', 'resumeRepair',
         'stateRepair', 'memoryRepair', 'conceptRepair', 'sceneRepair', 'itemRepair', 'planSuspRepair',
         'atomCompactNow', 'atomMergeSummary', 'parallelAdvance', 'parallelAdvanceAll', 'parallelCustomRun',
         'parallelWeaveNow', 'triLinkBuild', 'currencyMergePick', 'nsfwSoften', 'nsfwAnalyze', 'clockRepair',
-        'apiTest', 'apiModels', 'testLayer'];
+        'resumeBatchRun', 'apiTest', 'apiModels', 'testLayer'];
     const got = Object.keys(PIPE_ACTIONS);
-    return want.length === 24 && got.length === 24 && PIPE_ACTION_COUNT === 24 && want.every((a) => got.indexOf(a) >= 0);
+    return want.length === 25 && got.length === 25 && PIPE_ACTION_COUNT === 25 && want.every((a) => got.indexOf(a) >= 0);
 })(), () => J(Object.keys(PIPE_ACTIONS)));
 
 A('E3 每条登记都有**面向用户的动作名**（label 非空且不等于动作名本身，提示才不会露出英文标识符）', (() => {

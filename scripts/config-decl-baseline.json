@@ -90,6 +90,7 @@
     "promptTemplates.plans",
     "promptTemplates.plotSegment",
     "promptTemplates.repair",
+    "promptTemplates.resumeBatch",
     "promptTemplates.resumeRepair",
     "promptTemplates.rumors",
     "promptTemplates.sceneRepair",

@@ -1523,4 +1523,8 @@ export {
     //   账本（`resumeLedgerState` / `resumeLedgerReset`）归属 `core/resume.js` —— 此处**再导出**保持既有引用形态
     resumeLedgerState, resumeLedgerReset,
     buildResumeRepairPrompt, runResumeRepair,
+    // v3.47.0（`docs/D22` §4.16 W16 `应-33`）：**批量档**（`core/resume-batch.js`）与个体档共用同一套
+    //   「剧情日期」口径 —— 导出它，避免批量档另造一套时钟（那会让原作人物的硬护栏口径分叉）。
+    //   注：`resumeMechanicalPassFor` 本身已是 `export function`（本行不再重复导出，否则 ESM 报 Duplicate export）。
+    resumeClockDate,
 };

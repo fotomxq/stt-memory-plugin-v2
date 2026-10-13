@@ -32,9 +32,9 @@ R.assert('P1 promptSig 与 V1 逐字一致：FNV-1a(32) → hex + 长度（空�
         && typeof promptSig(String(PROMPT_TEMPLATES_V2.general)) === 'string';
 })(), promptSig('abc'));
 
-R.assert('P2 模板与分组：36 条 / 5 组、无未分组键、默认版本正确、模板文本非空（v3.46.1：+triLink）', (() => {
+R.assert('P2 模板与分组：37 条 / 5 组、无未分组键、默认版本正确、模板文本非空（v3.46.1：+triLink）', (() => {
     const st = promptStats();
-    return st.templates === 36 && st.groups === 5 && st.grouped === 36 && st.ungrouped.length === 0
+    return st.templates === 37 && st.groups === 5 && st.grouped === 37 && st.ungrouped.length === 0
         && PROMPT_DEFAULT_VERSION === 'v1.195'
         && Object.keys(PROMPT_TEMPLATES_V2).every((k) => String(PROMPT_TEMPLATES_V2[k]).length > 0)
         && promptGroupOf('injectGuide').indexOf('③') === 0 && promptGroupOf('nsfwSoften').indexOf('④') === 0;
@@ -98,7 +98,7 @@ R.assert('P6 编辑写回：保存单条 → 内核 cfg + ST 配置容器；恢�
     return s1.ok === true && s1.chars === 6 && customized1 === true
         && storeVal === '我的注入说明'
         && r1.ok === true && isPromptCustomized('injectGuide') === false
-        && g.ok === true && g.reset >= 10 && all.ok === true && all.reset === 36
+        && g.ok === true && g.reset >= 10 && all.ok === true && all.reset === 37
         && promptText('general') === String(PROMPT_TEMPLATES_V2.general) && promptStats().customized === 0;
 })(), (() => { try { return J(globalThis.__p6 || {}); } catch (e) { return String(e.message); } })());
 
@@ -106,9 +106,9 @@ R.assert('P7 提示词页渲染：5 组标题 + 35 个编辑块（含 key/组名
     applyPrompt('memorySend', '改过的发送模板');
     const html = promptsPageHtml();
     const boxes = (html.match(/data-ftt-prompt-box="/g) || []).length;
-    return html.indexOf('提示词模板 36 条 / 5 组') >= 0
+    return html.indexOf('提示词模板 37 条 / 5 组') >= 0
         && PROMPT_GROUPS.every((g) => html.indexOf(g.title) >= 0)
-        && boxes === 36 && html.indexOf('data-ftt-action="promptResetAll"') >= 0
+        && boxes === 37 && html.indexOf('data-ftt-action="promptResetAll"') >= 0
         && html.indexOf('data-ftt-action="promptGroupReset"') >= 0
         && html.indexOf('data-ftt-action="promptSave"') >= 0 && html.indexOf('data-ftt-armor-import="1"') >= 0
         && html.indexOf('已自定义') >= 0 && html.indexOf('data-ftt-prompt="memorySend"') >= 0;
@@ -132,7 +132,7 @@ await (async () => {
             && save.ok === true && save.chars === 7
             && resetOne.ok === true && isPromptCustomized('injectGuide') === false
             && armor.ok === true && armor.imported === 9 && armorVal === '粘贴进来的破甲预设'
-            && group.ok === true && group.reset === 3 && all.ok === true && all.reset === 36;
+            && group.ok === true && group.reset === 3 && all.ok === true && all.reset === 37;
     })(), (() => { try { return J(globalThis.__p8); } catch (e) { return String(e.message); } })());
 })();
 
