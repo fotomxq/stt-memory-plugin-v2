@@ -121,6 +121,10 @@ import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
 // v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
 import { entryAgeDays, agingBucketOf, PLAN_AGING_STALE_DAYS } from '../core/plan-aging.js';
 import { isShellEntry } from '../core/shell-guard.js';
+// v3.46.7（`应-1`/`应-8`）：分页状态 `ui/list-pager.js` · 可见范围查询 `ui/list-of.js` · 最近删除 `ui/recycle-bin.js`
+import { pageShowMore, pageReset } from './list-pager.js';
+import { listOfInfoWith } from './list-of.js';
+import { RECYCLE_BIN_ACTIONS, recycleBinAction } from './recycle-bin.js';
 
 export const PANEL_ID = 'ftt-panel';
 /** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
@@ -407,32 +411,18 @@ function listFilterBarHtml(kind, opts) {
 }
 /** 某维度的多选集合（缺省即建） */
 function selOf(kind) { if (!ps.sel[kind]) ps.sel[kind] = new Set(); return ps.sel[kind]; }
-/** 当前列表（含隐藏过滤） */
-function listOf(kind, q, limit) {
-    // v2.47.0：排序与可见范围对齐 V1 ——
-    //   ① `sortRecent`（剧情日期倒序 → floorEnd 倒序；V1 `sortRecent` 逐字，见 core/clock.js）；
-    //   ② 情节：隐藏已总结项（在排序/截断**之前**过滤，V1 `atomShowHidden ? state.atoms : activeAtoms()`）；
-    //   ③ 计划/悬念：只列 `status === 'open'`（V1 `plansHtml` 的 `openPlansAll/openSuspAll`）。
-    const dataKind = dataKindOf(kind);
-    const statusWant = listStatusFilter(kind);
-    let base = arrOf(dataKind);
-    if (kind === 'atoms' && !ps.showHidden) {
-        try { base = base.filter((x) => !atomIsHidden(x)); } catch (e) { /* 忽略 */ }
-    }
-    if (statusWant) base = base.filter((x) => String((x && x.status) || 'open') === statusWant);
-    // v3.44.0（`docs/D22` W4）：**筛选视图**（额外条件）—— 只收窄**可见范围**，绝不删数据。
-    //   放在排序 / 文本匹配之前：先按语义筛，再排序与关键词匹配（与状态筛选同一位置）。
-    try {
-        const extra = extraFilterOf(kind);
-        if (extra === 'shell') base = base.filter((x) => isShellEntry(dataKind, x));
-        else if (extra === 'stale') base = base.filter((x) => staleFilterOn(kind, x));
-    } catch (e) { /* 筛选失败不改变默认视图 */ }
-    try { base = sortRecentByStoryDate(base); } catch (e) { base = base.slice().reverse(); }
-    const needle = q === undefined ? (ps.q[kind] || '') : q;
-    const matched = base.filter((x) => entryMatches(x, needle));
-    const n = Number(limit) > 0 ? Number(limit) : matched.length;
-    return matched.slice(0, n);
+/** 当前列表 + 匹配总数 + 渐进展示读数（`应-1`；实现体在 `ui/list-of.js#listOfInfoWith`） */
+function listOfInfo(kind, q, limit) {
+    // v2.47.0：排序与可见范围对齐 V1（`sortRecent` 剧情日期倒序 → floorEnd 倒序；情节隐藏已总结；计划/悬念只列 open）
+    return listOfInfoWith({
+        arr: arrOf, statusOf: listStatusFilter, extraOf: extraFilterOf, match: entryMatches,
+        isShell: (x) => isShellEntry(dataKindOf(kind), x), isStale: (x) => staleFilterOn(kind, x),
+        hidden: () => ((kind === 'atoms' && !ps.showHidden) ? hiddenRowFilter : null),
+        sort: (a) => { try { return sortRecentByStoryDate(a); } catch (e) { return a.slice().reverse(); } },   // 原实现的兜底逐字保留
+    }, kind, q === undefined ? (ps.q[kind] || '') : q, limit);
 }
+/** 情节页「已总结（隐藏）」过滤谓词（抽出来复用，避免每次渲染新建闭包） */
+function hiddenRowFilter(x) { try { return atomIsHidden(x); } catch (e) { return false; } }
 function hiddenCount() { try { return arrOf('atoms').filter((x) => atomIsHidden(x)).length; } catch (e) { return 0; } }
 export function panelInfo() {
     const doc = docEl();
@@ -1204,10 +1194,9 @@ export function currencyRepairState() { return { open: currencyRepairOpen, inclu
 
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
-    const list = listOf(kind, q, 300);
-    const total = arrOf(kind).length;
-    const sel = selOf(kind);
-    const multi = ps.multi[kind] === true;
+    // v3.46.7（`docs/D22` §4.4 W15 `应-1` / `docs/D9` §10 **U1**）：**渐进展示** —— 一屏 `pageLimitOf()` 条（首屏 50），
+    //   超出由「显示更多」按屏追加；搜索 / 筛选变更即重置首屏（见 `ui/list-pager.js`）。外框仍是 `LIST_PAGE_MAX`。
+    const info = listOfInfo(kind, q), list = info.list, pager = info.pager, total = arrOf(kind).length, sel = selOf(kind), multi = ps.multi[kind] === true;
     const hiddenN = kind === 'atoms' ? hiddenCount() : 0;
     const toolbar = '<div class="ftt-addbar ftt-toolbar">'
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="' + attr(kind) + '">➕ 新增</button>'
@@ -1267,7 +1256,11 @@ function dimBodyList(kind) {
         //   （按剧情时间 > 120 天；见 `core/plan-aging.js`）。选项由 `extraFilterOptsOf(kind)` 单一给出。
         + extraFilterSelectHtml(kind)
         + '<button class="ftt-btn ftt-sm" data-ftt-action="searchClear" data-ftt-search-kind="' + attr(kind) + '" title="清除搜索与筛选">✕ 清除</button>'
-        + '<span class="ftt-muted">' + (q || extraFilterOf(kind) !== 'all' ? '匹配 ' + list.length + ' / ' : '共 ') + total + ' 条</span></div>';
+        // v3.46.7（`应-1`）：超出一屏时给「显示更多」（按屏追加；点一次重绘一次，不做跨条件的隐式累积）
+        + (pager.hasMore ? ('<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="showMore" data-kind="' + attr(kind) + '" title="再显示 ' + pager.step + ' 条（还有 ' + pager.remaining + ' 条）">显示更多（+' + pager.step + '）</button>') : '')
+        + '<span class="ftt-muted">' + (q || extraFilterOf(kind) !== 'all' ? '匹配 ' + info.total + ' / ' : '共 ') + total + ' 条'
+        // v3.46.7（`应-1`）：超出一屏时同时报「已显示 N 条」（分子用**匹配总数**，不用截断后的行数）
+        + (pager.hasMore ? (' · 已显示 ' + pager.shown + ' 条') : '') + '</span></div>';
     // v2.80.0：列表页不再有子标签（关系表 / 约束自查已移入「设定 → 约束」）→ 此处分页正文只渲染列表。
     const ed = ps.editing && ps.editing.kind === kind
         ? (editorHtml(kind, ps.editing.id, ps.editing.preset) + (REL_TABDS[kind] ? relTableHtml(kind, ps.editing.id || '', { editor: true }) : ''))
@@ -2167,6 +2160,8 @@ const DANGER_ACTION_PROMPTS = {
     // ── v3.26.4（用户报告「突然冒出来大量未分析的楼层，实际早已分析」）──
     //   登记为已分析 = **写台账**（会改变「哪些楼层待分析」的判定）→ 二次确认并写明可撤销路径。
     'markPending': '把当前未分析清单登记为「已分析」？\n\n只写**楼层记账**：不调用 AI、不删除也不修改任何记忆条目、不改聊天正文。\n用途：这些楼层当初确实分析过、只是「已处理」记账丢了（删楼 / 部分载入会把低楼层标记丢掉），登记后它们不会再被列入待分析、也不会被重复分析（重复分析会重复落库、白花 token）。\n撤销：数据管理页「🧹 清除已处理楼层记录」。',
+    // v3.46.7（`应-8`）：恢复 = **清墓碑**（对端可见），**不是**「把条目搬回来」→ 二次确认里先说清这件事
+    'rbRestore': '清除选中条目的墓碑记录？\n\n「最近删除」里列出的是**墓碑记录**（按条目 id 与按内容哈希两处）。清除它们 = 解除「这条不许在跨端同步里复活」的约束。\n条目正文在删除时就已经移除了，**这里不会把它搬回来**；此后它可以从备份导入或 AI 提取重新写入。\n注意：其它设备仍保留自己的墓碑记录；换 id 写回的同内容条目在合并后可能再次消失。',
     // ── v3.15.0（用户要求「货币增加修正按钮…」）──
     //   货币修正是**纯机械**的批量删改：会剔除条目、合并冗余、改写单位/额度 → 属不可逆的批量数据操作，必须二次确认。
     'currencyRepairApply': '应用货币修正计划？\n\n将按预览里逐条列出的内容执行：① 剔除不应该被记录的角色货币（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）② 合并冗余条目（同归属同币种的别名合并，保留最新额度、不累加）③ 修正计价（单位写法归一、额度缺省用流水净额补齐）。\n\n被剔除与被合并掉的条目都会留删除墓碑（跨端同步不会复活），操作**只减不增**、不可撤销 —— 建议先「⬇ 导出 JSON 文件」备份。',
@@ -2242,7 +2237,9 @@ export async function panelAction(action, payload) {
             result = Object.assign(result, { ok: true, action: a, page: page, cfgKey: key });
         }
         else if (a === 'close') { closePanel(); }
-        else if (a === 'search') { ps.q[String(p.kind || '')] = String(p.q == null ? '' : p.q); }
+        // v3.46.7（`应-1`）：搜索变更 / 「显示更多」都只动 `ui/list-pager.js` 的分页状态（渲染与提示由收尾统一给）
+        else if (a === 'search') { const k = String(p.kind || ''); ps.q[k] = String(p.q == null ? '' : p.q); pageReset(k); }
+        else if (a === 'showMore') { pageShowMore(String(p.kind || ps.tab)); }
         else if (a === 'edit' || a === 'editEntry') { ps.editing = { kind: String(p.kind || ''), id: String(p.id || ''), preset: p.preset || null }; }
         else if (a === 'edit-cancel' || a === 'editCancel' || a === 'closeEntry' || a === 'cancelEntry') { ps.editing = null; }
         else if (a === 'add' || a === 'addEntry') { ps.editing = { kind: String(p.kind || ps.tab), id: '', preset: p.preset || null }; }
@@ -2261,10 +2258,12 @@ export async function panelAction(action, payload) {
                 const cur = listFilterOf(k);
                 cur[key] = val;
                 ps.f[k] = cur;
+                // v3.46.7（`应-1` / `docs/D9` §10 U1）：筛选变更**重置首屏**（与搜索同口径）
+                pageReset(k);
                 setNote('筛选：' + k + ' ' + key + ' = ' + val);
             }
         }
-        else if (a === 'selectAll') { const k = String(p.kind || ps.tab); const set = selOf(k); listOf(k, ps.q[k], 300).forEach((x) => set.add(String(x.id || ''))); }
+        else if (a === 'selectAll') { const k = String(p.kind || ps.tab); const set = selOf(k); listOfInfo(k, ps.q[k], 300).list.forEach((x) => set.add(String(x.id || ''))); }
         else if (a === 'selectNone') { selOf(String(p.kind || ps.tab)).clear(); }
         else if (a === 'bulkDelete') {
             const k = String(p.kind || ps.tab);
@@ -2276,7 +2275,7 @@ export async function panelAction(action, payload) {
             setNote('已删除 ' + n + ' 条（多选批量删除 · 含跨端墓碑）');
             result = Object.assign(result, { ok: true, deleted: n });
         }
-        else if (a === 'searchClear') { const k = String(p.searchKind || p.kind || ps.tab); ps.q[k] = ''; selOf(k).clear(); delete (ps.f || {})[k]; }   // v2.62.0：与 V1 同义（清除搜索与筛选）
+        else if (a === 'searchClear') { const k = String(p.searchKind || p.kind || ps.tab); ps.q[k] = ''; selOf(k).clear(); delete (ps.f || {})[k]; pageReset(k); }   // v2.62.0：与 V1 同义（清除搜索与筛选）；v3.46.7：一并重置首屏
         else if (a === 'atomToggleHidden') { ps.showHidden = !ps.showHidden; }
         else if (a === 'atomPeek') { const id = String(p.id || ''); ps.peek = (ps.peek === id) ? '' : id; }
         else if (a === 'atomPeekClose') { ps.peek = ''; }
@@ -3259,6 +3258,8 @@ export async function panelAction(action, payload) {
             setNote(String(r.note || '货币融合：已完成'));
             result = Object.assign(result, { ok: r.ok !== false, action: a, currencyMerge: r, reason: r.reason || '', made: Number((r.applied && r.applied.mergedRemoved) || 0) });
         }
+        // v3.46.7（`应-8`）：最近删除（勾选 / 全选 / 恢复）—— 形状与提示留在 `ui/recycle-bin.js`
+        else if (RECYCLE_BIN_ACTIONS.indexOf(a) >= 0) { const rb = recycleBinAction(a, p); setNote(rb.note); result = Object.assign(result, rb.result); }
         // ==================== B9-c：投喂标签自动分析（V1 同名动作） ====================
         else if (FEED_SCAN_ACTIONS.indexOf(a) >= 0) {
             // V1 `case 'rxScanTags'` / `'rxAddTag'` / `'rxScanClear'`（约 27087~27103）：
@@ -3849,6 +3850,10 @@ export function bindOverlay() {
                 }
                 if (tg.dataset.fttDim !== undefined) {
                     void panelAction('dimToggle', { kind: String(tg.dataset.fttDim), on: !!tg.checked });
+                    return;
+                }
+                if (tg.dataset.fttRbDim !== undefined) {   // v3.46.7（`应-8`）：最近删除的勾选框
+                    void panelAction('rbToggle', { rbDim: String(tg.dataset.fttRbDim), rbId: String(tg.dataset.fttRbId || ''), on: !!tg.checked });
                     return;
                 }
                 if (tg.dataset.fttCfg !== undefined) {

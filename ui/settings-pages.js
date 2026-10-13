@@ -957,6 +957,8 @@ import { ENTRY_LOCATIONS, ENTRY_LABELS, ENTRY_DEFAULTS, FORCED_ENTRIES } from '.
 import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-page.js';
 // v2.94.0（`docs/D12` v0.2 §8-E，用户约定）：「设定 → 数据管理」删除到最近 6/10/12 层 —— 只读诊断行取自宿主层
 import { floorTrimStatus, floorTrimPrecheck, FLOOR_TRIM_PRESETS } from '../host/floor-trim.js';
+// v3.46.7（`docs/D22` §4.4 W15 `应-8`）：数据管理页的「🕳 最近删除 + ♻ 恢复」区块（实现全在 `ui/recycle-bin.js`）
+import { recycleBinSectionHtml } from './recycle-bin.js';
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -1673,6 +1675,9 @@ function pageExtraHtml(pid) {
             //   IndexedDB 副本是异步统计 → 渲染出占位，随后 fire-and-forget 取一次并**就地**更新占位文本
             '<div class="ftt-section">', bufferSectionHtml(), '</div>',
             (() => { try { void refreshLocalCopy(); } catch (e) { /* 忽略 */ } return ''; })(),
+            // v3.46.7（`docs/D22` §4.4 W15 `应-8`）：**最近删除 + 恢复** —— 按设计稿原文放在**危险区之前**
+            //   （它本身不是危险动作：只清墓碑记录、不动任何条目；恢复入口就该在用户还没走到「不可恢复」区时就看见）
+            recycleBinSectionHtml(),
 
             // ── v2.96.0（用户要求「危险操作放到最后」）：**危险操作区**永远在页面末尾 ──
             //   开场横幅复用公共件 `.ftt-item--warn`（D9 §4 归属表内，无新增 CSS），把「不可逆」先讲清楚；
