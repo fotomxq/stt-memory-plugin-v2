@@ -256,27 +256,10 @@ export function appendBadgeToLastLine(html, badge) {
 }
 
 /**
- * v3.9.0：**分类级 NSFW 留档汇总**（列表页顶部一行）——告诉用户「这一类里有多少条是弱 / 强」。
- *   没有已留档的条目时返回空串（不占位、不加噪声）。
- * @param {Array} items 当前列表展示的条目
- * @returns {string} HTML 片段（可空）
+ * v3.47.2（用户要求「各大类顶部的「NSFW 留档」统计信息，完全没意义，请去掉」）：**
+ *   `nsfwLegendHtml()`（分类级「弱 N · 强 M」汇总行，v3.9.0 引入）**已删除**；
+ *   每条末行的 **NSFW 等级留档徽标**（`nsfwBadgeHtml`，含级别释义 tooltip）**保留** —— 那才是留档本身。
  */
-export function nsfwLegendHtml(items) {
-    try {
-        const arr = Array.isArray(items) ? items : [];
-        let weak = 0, strong = 0;
-        for (const it of arr) {
-            const l = nsfwLevelOf(it);
-            if (l === 'strong') strong++; else if (l === 'weak') weak++;
-        }
-        if (!weak && !strong) return '';
-        const parts = [];
-        if (weak) parts.push('弱 <b>' + weak + '</b>');
-        if (strong) parts.push('强 <b>' + strong + '</b>');
-        return '<div class="ftt-muted" data-ftt-nsfw-legend>NSFW 留档：' + parts.join(' · ')
-            + '（按原文判定，弱化后不变；标记见每条末行，与楼层等信息同段）</div>';
-    } catch (e) { return ''; }
-}
 
 export function listRowMainHtml(kind, e, ctx) {
     const now = (() => { try { return getStoryNow() || ''; } catch (x) { return ''; } })();
