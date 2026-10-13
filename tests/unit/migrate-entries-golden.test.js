@@ -58,7 +58,15 @@ setPersistHooks({
 //   迁移时对老数据补齐。按 `开发守则.md` §4「黄金样本不可手改」：在测试里**显式归一**后再与 V1 黄金逐字符比较，
 //   样本本身一字不改；新字段的存在性与默认值单独断言。
 const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
-const stripV2Ledger = (o) => { const c = clone(o); V2_LEDGER_KEYS.forEach((k) => { delete c[k]; }); return c; };
+// v3.47.0（`docs/D22` W16 `数-22`）：**再新增一个 V2 专有容器** `maps`（V1 无此维度）——
+//   迁移会对老存档补 `[]`；与上款同口径：比较 V1 黄金时**显式归一**（样本一字不改），存在性单独断言。
+const V2_ONLY_CONTAINERS = ['maps'];
+const stripV2Ledger = (o) => {
+    const c = clone(o);
+    V2_LEDGER_KEYS.forEach((k) => { delete c[k]; });
+    V2_ONLY_CONTAINERS.forEach((k) => { delete c[k]; });
+    return c;
+};
 /**
  * v3.45.5（`docs/D22` W4 `数-19`/`数-21`，设计稿 `docs/D26`）：**同一手法的第三例** ——
  *   角色档案归一新增 `resume`（履历，缺省 `[]`）与 `identity.canon`（原作 / 史实人物三态标记，未提及不写）；
@@ -83,6 +91,7 @@ R.assert('M1 migrateState 脏数据归一与 V1 逐字符一致（容器/条目�
     const snaps = out.snapshots || [];
     return JT(stripV2Snapshot(stripV2Ledger(out))) === JT(G.migrate.dirty)
         && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor))
+        && Array.isArray(out.maps)   // v3.47.0：新容器由迁移补齐（归一 ≠ 删字段）
         // v3.45.5：履历字段的边界如实登记 —— 走过档案归一链的条目被补 `resume: []`；
         //   **没走过归一的条目保持原样（不凭空加键）**；两者都不得出现「非数组的 resume」。
         //   未标记的档案不写 `canon` 键。
@@ -96,7 +105,8 @@ R.assert('M2 migrateState 干净数据幂等（不改动、version 保持当前�
     const out = migrateState(c);
     setKernelState(null);
     return JT(stripV2Ledger(out)) === JT(G.migrate.clean) && out.version === VERSION
-        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor));
+        && Array.isArray(out.processedDropped) && Number.isFinite(Number(out.lastChatFloor))
+        && Array.isArray(out.maps);   // v3.47.0：干净数据也补齐 `maps: []`（幂等）
 })(), 'clean');
 R.assert('M3 迁移关键点抽查（present 去脏 / items 补空数组 / deleted 补对象 / currentStates 只留有效条目）', (() => {
     const d = clone(I.DIRTY);

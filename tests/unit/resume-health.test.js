@@ -97,7 +97,7 @@ A('A1 无履历的存档：**不含任何 `resume-*` 码**，`ok` / `level` 仍�
         && CLEAN_REP.findings.length === 0 && J(CLEAN_REP.counts) === J({})
         && Object.keys(CLEAN_REP.counts).filter(isResumeCode).length === 0
         && CLEAN_REP.findings.filter((f) => isResumeCode(f.code)).length === 0
-        && CLEAN_REP.scanned.dims === 15 && CLEAN_REP.scanned.items === 2;
+        && CLEAN_REP.scanned.dims === 16 /* v3.47.0（W16 数-22）：14 ATOM_DIM_KEYS(+maps) + currencies + npcs */ && CLEAN_REP.scanned.items === 2;
 })(), () => ({ level: CLEAN_REP.level, counts: CLEAN_REP.counts, scanned: CLEAN_REP.scanned }));
 
 A('A2 新增顶层键 `resume` 恒在：老存档给出全零读数（`withResume: 0`）且**不打** `note`，`scanned.resumeItems` 为 0', (() => {

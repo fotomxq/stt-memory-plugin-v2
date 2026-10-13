@@ -7,13 +7,13 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.47.2';
+export const VERSION = '3.47.3';   // 本轮（地图维度）在远端 v3.47.2 之上续版
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';
 
 /** 数据模型版本（与代码版本解耦：只在需要数据迁移时递增） */
-export const DATA_VERSION = 1;
+export const DATA_VERSION = 2;
 
 /** 注入键（setExtensionPrompt 的 key，禁用/关闭时必须显式置空避免残留） */
 export const INJECT_ID = 'ftt_memory_v2';
@@ -47,6 +47,9 @@ export const DIMENSIONS = Object.freeze([
     { kind: 'plotSegments', part: 'plotSegments', label: '分段总结' },
     { kind: 'rumors', part: 'rumors', label: '传言' },
     { kind: 'currencies', part: 'currencies', label: '货币' },
+    // v3.47.0（`docs/D22` W16 `数-22` / `docs/D27` §3.1）：**地图**（第 15 维）——
+    //   在既有 `scenes`（场所）之上做空间结构化：场所锚点 → 房间 → 陈设，三级 `place` + `route` 路径。
+    { kind: 'maps', part: 'maps', label: '地图' },
 ]);
 
 /** 更新检查默认仓库地址（用户要求：以 GitHub 项目地址作为更新检查地址；可在设置里改） */
@@ -73,7 +76,7 @@ export const DIM_CHAR_LIMITS = Object.freeze({
 });
 
 /** 参与「原子层」内容哈希 / 快照链 / 跨端逐条合并的维度键（**逐字取自 V1**） */
-export const ATOM_DIM_KEYS = Object.freeze(['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors']);
+export const ATOM_DIM_KEYS = Object.freeze(['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors', 'maps']);   // v3.47.0（W16 数-22）：+maps（原子层 13 → 14）
 
 /** 绑定到宿主的酒馆事件（与 V1 九事件对齐） */
 export const HOST_EVENTS = Object.freeze([

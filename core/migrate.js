@@ -378,7 +378,7 @@ function migrateState(s) {
     //   （幂等：干净数据不会置位 changed）。
     {
         // 注意：snapStore 是**数组**（快照链：root/incr 条目），不是对象 —— 必须按数组归一
-        const ARR_KEYS = ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'snapStore', 'links', 'currencies', 'plotSegments', 'rumors'];   // v1.192：补 currencies / plotSegments / rumors（此前三个容器未纳入健壮性清洗名单）
+        const ARR_KEYS = ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'snapStore', 'links', 'currencies', 'plotSegments', 'rumors', 'maps'];   // v1.192：补 currencies / plotSegments / rumors（此前三个容器未纳入健壮性清洗名单）；v3.47.0（W16 数-22）：补 maps
         for (const k of ARR_KEYS) {
             const v = s[k];
             if (!Array.isArray(v)) { s[k] = []; changed = true; continue; }
@@ -521,6 +521,10 @@ function migrateState(s) {
     if (Array.isArray(s.concepts)) {
         for (const c of s.concepts) { if (c && c.tags === undefined) { c.tags = []; changed = true; } }
     }
+    // v3.47.0（`docs/D22` W16 `数-22` / `docs/D27` §3.3 ⑤）：**新容器补齐** ——
+    //   老存档读不到 `maps` → 补 `[]`（`DATA_VERSION` 1 → 2 的唯一迁移动作：**只补容器 + 归一，不解释旧数据**，见 R7）。
+    //   注意：**不做 `maps` 的字段级回填**（本维度是新增的，老存档里不存在任何地图数据）。
+    if (!Array.isArray(s.maps)) { s.maps = []; changed = true; }
     // tags 与 keywords 统一为 tags —— 历史条目 keywords 自动合并进 tags（去重，避免数据丢失）
     const mergeKwHist = (arr) => {
         if (!Array.isArray(arr)) return;

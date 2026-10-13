@@ -36,6 +36,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'resumeBatchEnabled', 'resumeBatchDays', 'resumeBatchMaxRoles', 'resumeBatchMemoryPerRole',
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
+        // v3.47.0（`docs/D22` W16 `数-22`）：地图维度的两个存储键（V2 专有 —— V1 无 `maps` 维度）
+        'storeMinMaps', 'storeMaxMaps', 'mapTrailPhrase',   // v3.47.0（W16 应-21）：地图套话模板（V2 专有）
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled）
         'debugLevel', 'debugTraceUi', 'debugTraceHost', 'debugTraceVerbose',
         // v3.44.0（`docs/D22` W4）：入库卫生两开关（`数-11` ① 关联锚点强制补丁 · `数-13` ① 空壳入库拦截）——
@@ -99,17 +101,26 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         storageDiff: Object.keys(v1s).filter((k) => J(v1s[k]) !== J(cur[k])), storageExtra: Object.keys(cur).filter((k) => !(k in v1s)),
     };
 })());
-R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（174 项）', J(CN_KEY_MAP) === J(G.cnKeyMap), Object.keys(CN_KEY_MAP).length);
+// v3.47.0（`docs/D22` W16 `数-22`）：**V2 专有中文键**（V1 无地图维度）—— 与 V1 黄金逐项比对时显式剔除，
+//   并**单独断言**这些键确实在册（归一 ≠ 删键）。样本一字未改（`开发守则.md` §4）。
+const V2_CN_ONLY = ['地图库', '地图', '空间单元', '所属场所', '上层', '起点', '终点', '距离', '耗时', '所需时间', '走过', '方向', '别名', '证据'];
+R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（V1 的 174 项逐项相同；V2 专有键另列白名单）', (() => {
+    const got = {};
+    Object.keys(CN_KEY_MAP).forEach((k) => { if (V2_CN_ONLY.indexOf(k) < 0) got[k] = CN_KEY_MAP[k]; });
+    return J(got) === J(G.cnKeyMap) && V2_CN_ONLY.every((k) => CN_KEY_MAP[k] !== undefined);
+})(), Object.keys(CN_KEY_MAP).length);
 R.assert('C3 normalizeDeltaKeys 与 V1 一致（嵌套对象 / 数组 / vars 原样保留）',
     J(I.DELTAS.map(d => normalizeDeltaKeys(d))) === J(G.deltaCases), I.DELTAS.map(d => normalizeDeltaKeys(d)));
 /** v3.19.0 / v3.45.5：**V2 专用提示词键**（V1 无）—— 模板键集合与分组结构比对时两者都要剔除 */
-const V2_PROMPT_ONLY = ['nsfwAnalyze', 'resumeRepair', 'triLink', 'currencyMerge', 'resumeBatch'];   // v3.46.1（W11 技-44）：+triLink（三域联动，V2 专有）
+const V2_PROMPT_ONLY = ['nsfwAnalyze', 'resumeRepair', 'triLink', 'currencyMerge', 'resumeBatch', 'maps'];   // v3.46.1：+triLink；v3.47.0（W16 应-33）：+resumeBatch；v3.47.3（W17 数-22）：+maps（地图抽取模板）
 R.assert('C4 维度清单与标签、提示词默认版本、模板键集合一致',
+    // v3.47.0（`docs/D22` W16 `数-22`）：`core/config.js#DIMENSIONS` 是 **V1 摘要维度清单**（10 项，逐字对齐），
+    //   地图不是 V1 维度 → **不进这份清单**（它进的是 `core/constants.js#DIMENSIONS` 的容器清单）；
+    //   新增的只是**模板键** `maps` → 已在 `V2_PROMPT_ONLY` 里登记。
     J(DIMENSIONS) === J(G.dimensions) && J(DIM_LABELS) === J(G.dimLabels)
     && PROMPT_DEFAULT_VERSION === G.promptDefaultVersion
     // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 → 模板键集合 = V1 键集合减去它
-    // v3.19.0：`nsfwAnalyze`（NSFW 词条分析）是 **V2 专用新增键**（V1 无）→ 比对时同样剔除
-    // v3.45.5：`resumeRepair`（角色履历的窄契约提示词，`docs/D22` W4）同为 **V2 专用新增键** → 一并剔除
+    // v3.19.0 / v3.45.5 / v3.47.0：`nsfwAnalyze` / `resumeRepair` / `triLink` / `currencyMerge` / `maps` 都是 V2 专用键 → 一并剔除
     && J(Object.keys(PROMPT_TEMPLATES_V2).filter((k) => V2_PROMPT_ONLY.indexOf(k) < 0).sort()) === J((G.promptTemplateKeys || []).filter((k) => k !== 'clockRegexGen').sort()),
     [PROMPT_DEFAULT_VERSION, Object.keys(PROMPT_TEMPLATES_V2).length]);
 // v2.51.0：`clockRegexGen`（AI 生成时钟正则）随「正文直取」一并移除 —— 比对时两侧同步剔除该键与对应文案
@@ -131,11 +142,12 @@ R.assert('C5b 提示词分组描述为 V2 精简文案（非空、≤ 60 字、�
 
 R.assert('C6 模板并入默认配置（defaultCfg.promptTemplates 与 PROMPT_TEMPLATES_V2 同值）',
     J(defaultCfg.promptTemplates) === J(PROMPT_TEMPLATES_V2), Object.keys(defaultCfg.promptTemplates).length);
-R.assert('C7 KIND_MAP 维度键：V1 的 14 键齐全且 get/set 读写注入 state + V2 别名 currentStates（白名单）', (() => {
+R.assert('C7 KIND_MAP 维度键：V1 的 14 键齐全且 get/set 读写注入 state + V2 别名 currentStates / 新维度 maps（白名单）', (() => {
     // 口径：V1 的 14 个维度键必须存在且可读写注入 state；
     //   V2 追加 `currentStates` 别名（与 'states' 同容器，用于以规范维度键写墓碑）→ 白名单内允许。
     const V1_KEYS = ['atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'npcs', 'scenes', 'concepts', 'parallels', 'currencies', 'plotSegments', 'rumors'];
-    const V2_ALIAS = ['currentStates'];
+    // v3.47.0（`docs/D22` W16 `数-22`）：V2 新增的**维度键**（V1 无 `maps` 维度）—— 与 `currentStates` 别名同列白名单
+    const V2_ALIAS = ['currentStates', 'maps'];
     const keys = Object.keys(KIND_MAP);
     const missing = V1_KEYS.filter((x) => keys.indexOf(x) < 0);
     const extra = keys.filter((x) => V1_KEYS.indexOf(x) < 0);

@@ -56,6 +56,8 @@ export const SLIM_SYNONYM_GROUPS = {
     plotSegments: [['lines', 'items'], ['header', '时间范围'], ['header', 'title']],
     // 传言（主体 ↔ 标题同值时只留哈希字段）
     rumors: [['subject', 'title'], ['content', 'text']],
+    // v3.47.0（W16 数-22）：地图（同义组与 items/scenes 同口径：`name`↔`title`、`desc`↔`content`）
+    maps: [['name', 'title'], ['desc', 'content']],
 };
 
 /** 空值 / 默认值判定（V1 `isSlimDefault`：'' / null / undefined / [] / {} / 0 / false） */

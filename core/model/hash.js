@@ -66,6 +66,14 @@ function atomContentHash(cat, a) {
             o.pend = (a.pending && typeof a.pending === 'object') ? S((a.pending.kind || '') + ':' + N(a.pending.need)) : '';
             o.lin = S((a.lineage && a.lineage.rootId) || '') + '|' + S((a.lineage && a.lineage.parentId) || '') + '|' + A((a.lineage && a.lineage.children) || []);
         }
+        // v3.47.0（W16 数-22）：地图 —— **内容类字段进、引用类不进**（`docs/D27` §3.3 ③ / `02` §2 I3）。
+        //   度量只取「规整值 + 单位 + 原话」（`value`/`unit`/`raw`），三种形态都参与，避免「原话改了但哈希没变」。
+        else if (cat === 'maps') {
+            o.k = S(a.kind); o.level = S(a.level); o.name = S(a.name); o.desc = S(a.desc);
+            o.dir = S(a.direction);
+            const M = (m) => (m && typeof m === 'object') ? (S(m.value) + '|' + S(m.unit) + '|' + S(m.raw)) : '';
+            o.dist = M(a.distance); o.time = M(a.timeCost);
+        }
         else { return ''; }
         return storageHash(o);
     } catch (e) { return ''; }

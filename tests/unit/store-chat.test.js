@@ -215,6 +215,8 @@ const localKey = () => 'ftt2_state_' + scopeId();
             //   按 `开发守则.md` §4：在测试里显式归一后再与 V1 黄金投影深比较（样本本身不改）；
             //   它们的存在性由下面 S10 单独断言。
             delete c.processedDropped; delete c.lastChatFloor; delete c.chatKey;
+            // v3.47.0（`docs/D22` W16 `数-22`）：V2 专有容器 `maps`（V1 无此维度）—— 同款显式归一
+            delete c.maps;
             return c;
         };
         // 与 oracle 同款富状态种子（每个容器都有数据 + 双墓碑 + 台账 + 时钟）
@@ -261,7 +263,8 @@ const localKey = () => 'ftt2_state_' + scopeId();
         const after = snap(kernelState());
         // v3.11.1：V2 专有台账辅助字段（V1 无）—— 比较 V1 黄金键集时显式归一，并单独断言存在性
         const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
-        const afterKeys = Object.keys(kernelState()).filter((k) => V2_LEDGER_KEYS.indexOf(k) < 0).sort();
+        const V2_ONLY_CONTAINERS = ['maps'];   // v3.47.0（W16 数-22）
+        const afterKeys = Object.keys(kernelState()).filter((k) => V2_LEDGER_KEYS.indexOf(k) < 0 && V2_ONLY_CONTAINERS.indexOf(k) < 0).sort();
 
         R.assert('S8 resetState 前置状态与 oracle 种子逐项一致（计数 / 双墓碑 / 台账 / 时钟 / 游标）',
             J(before) === J(G.before), { before: before, want: G.before });
@@ -273,7 +276,8 @@ const localKey = () => 'ftt2_state_' + scopeId();
 
         R.assert('S10 resetState 复位后的容器键集与 V1 逐项一致（29 键，含 V1 `saveState()` 收尾 materialize 的 `snapStore`）',
             J(afterKeys) === J(G.afterKeys) && afterKeys.length === G.afterKeys.length
-            && V2_LEDGER_KEYS.every((k) => Object.prototype.hasOwnProperty.call(kernelState(), k)),
+            && V2_LEDGER_KEYS.every((k) => Object.prototype.hasOwnProperty.call(kernelState(), k))
+            && V2_ONLY_CONTAINERS.every((k) => Array.isArray(kernelState()[k])),   // v3.47.0：新容器确实存在
             { keys: afterKeys, want: G.afterKeys });
 
         R.assert('S11 resetState 复位后的内存态（version/scope 归一为占位符）与 V1 `emptyState()` 深比较一致',

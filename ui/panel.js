@@ -90,6 +90,7 @@ import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from
 import { sortRecentByStoryDate } from '../core/clock.js';
 // v2.47.0：场景页 = V1 的**聚合树**（虚节点 + 当前位置高亮 + 折叠），此前 V2 是平铺列表
 import { scenesTreeHtml } from './scene-tree.js';
+import { SCENE_MAP_ACTIONS, runSceneMapAction, scenePageBodyHtml, sceneMapSub } from './scene-map.js';   // v3.47.0（W16 应-20/应-21）：场景页「🗺 地图」子页全在新模块
 // v2.49.0（用户报告：「导出和导入…应正确触发导出及下载文件，以及导入存档文件」）：
 //   真实文件下载（Blob + `<a download>`）与文件选择器读取（`<input type=file>` + FileReader），与 V1 同口径
 import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities } from './file-io.js';
@@ -1239,7 +1240,8 @@ function dimBodyList(kind) {
         : '';
     // 场景页（V1 `scenesHtml()`）：**聚合树**（虚节点 / 当前位置高亮 / 折叠），不是平铺列表；
     //   树自带统计/搜索/工具条（含 ➕ 添加顶层场景、🔧 修复结构），编辑器仍由面板侧提供。
-    if (kind === 'scenes') return ed + scenesTreeHtml({ q: q, multi: multi, sel: sel });
+    // v3.47.0（W16 应-20 / Q3）：**不新开面板分页** —— 场景页用与「情节 / 分段总结」同款双子标签（场景 | 地图）
+    if (kind === 'scenes') return scenePageBodyHtml(sceneMapSub(), ed + scenesTreeHtml({ q: q, multi: multi, sel: sel }));
     const peek = (kind === 'atoms' && ps.peek) ? peekHtml(ps.peek) : '';
     // B8-7-b：平行页顶部「🚀 全部推进」条（V1 `parallelsHtml()` 的 topBar；空库时同样显示）
     const ptb = (kind === 'parallels') ? parallelTopBar() : '';
@@ -3236,6 +3238,8 @@ export async function panelAction(action, payload) {
         }
         // v3.46.7（`应-8`）：最近删除（勾选 / 全选 / 恢复）—— 形状与提示留在 `ui/recycle-bin.js`
         else if (RECYCLE_BIN_ACTIONS.indexOf(a) >= 0) { const rb = recycleBinAction(a, p); setNote(rb.note); result = Object.assign(result, rb.result); }
+        // v3.47.0（应-20/应-21）：场景页地图子页（切换 / 下钻 / 回退 / 点击插套话）—— 全在 `ui/scene-map.js`
+        else if (SCENE_MAP_ACTIONS.indexOf(a) >= 0) { const mr = await runSceneMapAction(a, p); if (a === 'mapInsert') setNote(mr.ok ? '已把套话插到输入框尾部' : ('未能自动插入：' + String(mr.reason || ''))); result = Object.assign(result, { ok: mr.ok !== false, action: a, sceneMap: mr, reason: mr.reason || '' }); }
         // ==================== B9-c：投喂标签自动分析（V1 同名动作） ====================
         else if (FEED_SCAN_ACTIONS.indexOf(a) >= 0) {
             // V1 `case 'rxScanTags'` / `'rxAddTag'` / `'rxScanClear'`（约 27087~27103）：
@@ -3645,6 +3649,7 @@ export function bindOverlay() {
                     if (ds.fttSubtab !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSubtab || '') }); return; }
                     if (ds.fttCdim !== undefined) { void panelAction('constraintDim', { dim: String(ds.fttCdim || '') }); return; }
                     if (ds.fttAsub !== undefined) { void panelAction('atomSub', { sub: String(ds.fttAsub || '') }); return; }
+                    if (ds.fttMapsub !== undefined) { void panelAction('mapSub', { sub: String(ds.fttMapsub || '') }); return; }   // v3.47.0（应-20）
                     if (ds.fttSettings !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSettings || '') }); return; }   // 旧标记兼容
                 }
                 if (tg === el) void panelAction('close', {});
@@ -3722,6 +3727,7 @@ export function bindOverlay() {
                 // v3.36.0：待确认项的单条差异化动作（`data-ftt-cid` = 条目 id；`data-ftt-cact` = 动作 id）
                 cid: ds.fttCid || '',
                 cact: ds.fttCact || '',
+                mapScene: ds.fttMapScene || '', mapPlace: ds.fttMapPlace || '', mapRoute: ds.fttMapRoute || '',   // v3.47.0（应-20/应-21）：地图子页引用（dataset 驼峰直读）
                 // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的结果项
                 //   （`data-ftt-page` = 目标子页；`data-ftt-cfg-goto` = 目标控件键）
                 page: ds.fttPage || '',

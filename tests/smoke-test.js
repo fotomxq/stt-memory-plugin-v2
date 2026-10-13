@@ -217,11 +217,11 @@ assert('B6 宏注册（fttVersion / fttStatus）', (() => {
     return names.indexOf('fttVersion') >= 0 && names.indexOf('fttStatus') >= 0;
 })(), host.ctx.macrosRegistered);
 
-assert('B7 window.FTT 调试导出可用（快照含 14 维与探测结果）', (() => {
+assert('B7 window.FTT 调试导出可用（快照含 15 维与探测结果）', (() => {   // v3.47.0（W16 数-22）：14 → 15（+maps）
     const F = globalThis.FTT;
     if (!F || typeof F.snapshot !== 'function') return false;
     const snap = F.snapshot();
-    return snap.version === VERSION && snap.dimensions.length === 14 && snap.probe.ok === true;
+    return snap.version === VERSION && snap.dimensions.length === 15 && snap.probe.ok === true;
 })(), typeof globalThis.FTT);
 
 // ---------- C 生成前钩子（永不 abort） ----------
@@ -586,7 +586,7 @@ assert('J1 数据台已随面板渲染：维度标签 + 搜索框 + 条目行 + 
     const sum = con.consoleSummary();
     return html.indexOf('数据台 · 共') >= 0 && html.indexOf('data-ftt-console="tab"') >= 0
         && html.indexOf('ftt_con_search') >= 0 && html.indexOf('注入 ') >= 0
-        && sum.dims.length === 14 && sum.total >= 1 && typeof sum.injectChars === 'number';
+        && sum.dims.length === 15 && sum.total >= 1 && typeof sum.injectChars === 'number';   // v3.47.0（W16 数-22）：14 → 15
 })(), (() => { try { return con.consoleSummary(); } catch (e) { return String(e.message); } })());
 
 assert('J2 搜索与列表：按正文/标签命中过滤，未命中返回空；标签行取维度容器', (() => {
@@ -843,8 +843,8 @@ await assert('O4 设定「基础」页（v2.51.0）：时钟两节按新设计�
     await entry.popupAction('tab', { tab: 'settings' });
     await entry.popupAction('settingsSub', { sub: 'base' });
     const h = String(panelBodyHtml('settings') || '');
-    // v2.78.0：「重要性计算」两项迁到「提取记忆」页（召回打分）→ base 11 → 9
-    return keys.length === 9 && removed.every((k) => keys.indexOf(k) < 0)
+    // v2.78.0：「重要性计算」两项迁到「提取记忆」页（召回打分）→ base 11 → 9；v3.47.0（W16 应-21）：+地图套话模板 → 10
+    return keys.length === 10 && keys.indexOf('mapTrailPhrase') >= 0 && removed.every((k) => keys.indexOf(k) < 0)
         && keys.indexOf('importanceBase') < 0 && keys.indexOf('importancePerUse') < 0
         && h.indexOf('剧情时钟（总览 日期/时间/地点）') >= 0 && h.indexOf('最新一条「情节」') >= 0
         && h.indexOf('只检查') >= 0 && h.indexOf('格式非法') >= 0;   // v2.60.0：提示精简（长解释移入折叠说明）
@@ -1190,11 +1190,11 @@ await assert('S1 遗忘设定页：四分节（存储节改「总上限 + 各大
         && html.indexOf('data-ftt-cfg="stateDecayEnabled"') >= 0 && html.indexOf('data-ftt-cfg="memoryForgetEnabled"') >= 0
         && html.indexOf('data-ftt-cfg="lowUseForgetEnabled"') >= 0 && html.indexOf('data-ftt-forget-state') >= 0
         // v2.84.0（用户要求）：总上限滑块 + 10 条占比滚动条（含默认刻度）+ 旧的逐维上限不再暴露
-        && html.indexOf('data-ftt-cfg="storeTotalMax"') >= 0 && (html.match(/data-ftt-share=/g) || []).length === 10
+        && html.indexOf('data-ftt-cfg="storeTotalMax"') >= 0 && (html.match(/data-ftt-share=/g) || []).length === 11   // v3.47.0（W16 数-22）：+maps 占比
         && html.indexOf('--ftt-range-def:') >= 0 && html.indexOf('data-ftt-cfg="storeMaxAtoms"') < 0;
 })(), '');
 
-await assert('BS1 v2.84.0 存储上限与百分比滚动条：遗忘页渲染「总上限滑块 + 10 条占比滚动条」；真实拖动（change）→ 占比写入配置且其余按比例补齐到 100%；拖动中（input）→ 读数实时刷新', (async () => {
+await assert('BS1 v2.84.0 存储上限与百分比滚动条：遗忘页渲染「总上限滑块 + 11 条占比滚动条」；真实拖动（change）→ 占比写入配置且其余按比例补齐到 100%；拖动中（input）→ 读数实时刷新', (async () => {
     const RTB = await import('../core/model/runtime.js');
     const { defaultCfg: DCFG } = await import('../core/config.js');
     const keepShares = JSON.parse(JSON.stringify(RTB.cfg.storeShare || {}));
@@ -1221,7 +1221,7 @@ await assert('BS1 v2.84.0 存储上限与百分比滚动条：遗忘页渲染「
         fire('input', { dataset: { fttCfg: 'conceptRepairSim' }, value: '0.72', type: 'range', closest: () => box, max: '0.95' });
         outText = out.textContent;
         const page2 = String(panelBodyHtml('settings') || '');
-        return totalOk && rows === 10 && Number(sh.atoms) === 40 && sum === 100
+        return totalOk && rows === 11 && Number(sh.atoms) === 40 && sum === 100   // v3.47.0：11 条占比（+maps）
             && note.indexOf('已调整「情节」占比为 40%') >= 0
             && outText === '0.72'
             && page2.indexOf('合计 <b>100%</b>') >= 0;

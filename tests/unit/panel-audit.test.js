@@ -180,6 +180,8 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         // v3.0.0：管线状态块的**行锚点**（心跳只重写块内 HTML；行 id 供测试与「哪一路」区分，不需读者）
         'pipeline-row': '管线状态行的运行 id 锚点（v3.0.0：并行时一行一条，心跳整块重写）',
         'asub-body': '情节子标签容器（`atomSub` 动作重绘切显隐）',
+        // v3.47.0（`docs/D22` W16 `应-20`）：场景页双子标签容器（`mapSub` 动作切换「🌳 场景 / 🗺 地图」两块的显隐）
+        'scenesub-body': '场景页双子标签容器（`data-ftt-scenesub-body="scene|map"`；`mapSub` 重绘切显隐）',
         'body': '分页内容容器（面板渲染与滚动恢复用 `.ftt-body[data-ftt-body=…]`）',
         'cur-list': '货币选择器列表容器（重绘即更新）',
         'curpick-name': '选择器点名标记（测试/高亮锚点）',
@@ -226,6 +228,11 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         //   文案由 `aboutStatusText()` 单源渲染，重绘即更新；供「🔄 重新获取」后就地核对与测试锚点。
         'sec': '性能区块容器（v3.45.4：`data-ftt-sec="perf"` = `docs/D31` §3.2 固定序第 8 位锚点，样式与测试锚点）',
         'about-status': '关于页版本更新状态行锚点（v3.45.1：文案出自 `aboutStatusText()`，重绘即更新；样式与测试锚点）',
+        // v3.47.0（`docs/D22` W16 `应-20`/`应-21`）：地图子页的四个**结构 / 测试锚点**（重绘即更新，不参与动作分发）
+        'map-node': '地图节点行容器（`data-ftt-map-node="<place id>"`；下钻与测试锚点，重绘即更新）',
+        'map-route': '地图路径行容器（`data-ftt-map-route="<route id>"`；测试锚点，重绘即更新）',
+        'map-edge': '路径「走过 / 未走过」视觉标记（`traversed` / `inferred`；配色由 CSS 按该属性选择，测试锚点）',
+        'map-copy': '地图套话的**手动复制**文本框（自动插入降级时渲染给用户复制，不需读者）',
         // v3.45.5（`docs/D22` W4 `应-19`）：角色行「📜 履历」区块的**行锚点**（`data-ftt-resume="<档案 id>"`）——
         //   由 `ui/list-rows.js#resumeBlockHtml` 随角色行一起重绘，供「📜 补全 / 修复履历」定位与测试锚点，不需读者。
         'resume': '角色行「📜 履历」区块的行锚点（v3.45.5：`data-ftt-resume="<档案 id>"`，重绘即更新；样式与测试锚点）',

@@ -146,9 +146,11 @@ export function summaryDimsForPrompt(dimsOverride) {
         const keys = [];
         for (const k of on) {
             const v1 = KIND_TO_SUMMARY_DIM[k] || String(k);
-            if (V1_SUMMARY_DIM_KEYS.indexOf(v1) >= 0 && keys.indexOf(v1) < 0) keys.push(v1);
+            if ((V1_SUMMARY_DIM_KEYS.indexOf(v1) >= 0 || V2_SUMMARY_DIM_KEYS.indexOf(v1) >= 0) && keys.indexOf(v1) < 0) keys.push(v1);
         }
-        return keys.length ? V1_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) >= 0) : V1_SUMMARY_DIM_KEYS.slice();
+        const base = keys.length ? V1_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) >= 0) : V1_SUMMARY_DIM_KEYS.slice();
+        // v3.47.0（W16 数-22）：V2 增量维度**追加在 V1 清单之后** —— 未启用时不追加（V1 路径逐字不变）
+        return base.concat(V2_SUMMARY_DIM_KEYS.filter((d) => keys.indexOf(d) >= 0));
     } catch (e) { return V1_SUMMARY_DIM_KEYS.slice(); }
 }
 
@@ -219,6 +221,12 @@ async function genTracked(gen, args, label, phase, callLabel) {
  *   V2 扩展容器），故分组前需做 kind → 本表键的投影（见 `KIND_TO_SUMMARY_DIM`）。`core/constants.js` 本批不改。
  */
 export const V1_SUMMARY_DIM_KEYS = ['atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'scenes', 'concepts', 'currencies', 'rumors'];
+/**
+ * v3.47.0（`docs/D22` W16 `数-22` / `docs/D27` §3.4）：**V2 新增的摘要维度**（V1 无此维度）——
+ *   与 `V1_SUMMARY_DIM_KEYS` 分开列出：前者是「与 V1 逐字对齐」的清单（P1 黄金样本据此保护），
+ *   本表是 V2 增量。`summaryDimsForPrompt()` 把启用的 V2 维度**追加在 V1 清单之后**（V1 顺序与内容不变）。
+ */
+export const V2_SUMMARY_DIM_KEYS = ['maps'];
 /** V2 容器键 → 摘要维度键（仅 `currentStates` 是 V1 `states` 的别名；其余同名；`links`/`plotSegments`/`parallels`/`suspense` 不参与分组） */
 const KIND_TO_SUMMARY_DIM = { currentStates: 'states' };
 

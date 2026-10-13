@@ -40,6 +40,11 @@ export const IDENTITY_FIELDS = Object.freeze({
     links: { title: ['refId'] },
     // 货币（D8 R11：暂不纳入身份哈希）
     currencies: {},
+    // 地图（v3.47.0 W16 数-22 / `docs/D27` §3.3 ③）：**与货币同口径，不纳入身份哈希** ——
+    //   本维度 id 由内容派生（`mp_<层级|场所|上层|名称>` / `mr_<两端>`），跨端同一条算得**同一 id** → 以 **id 墓碑**为准；
+    //   把 `sceneRef`/`parentId`/`fromId`/`toId` 塞进身份槽会把**引用**带进指纹（违反 `02` §2 I3），
+    //   且 `route` 无 `name`/`desc` —— 空身份会让**两条不同路径算出同一 hash**、删除墓碑互相误伤。故登记为「不进」。
+    maps: {},
 });
 
 /**
@@ -60,6 +65,10 @@ export const HASH_FIELDS = Object.freeze({
     links: ['dim', 'refId', 'who', 'how', 'from', 'at', 'view', 'deviation', 'note', 'kind', 'public'],
     plotSegments: ['header', 'start', 'end', 'lines'],
     rumors: ['subject', 'content', 'objectivity', 'stage', 'ferment', 'carriers', 'media', 'chain', 'source', 'tags', 'parallelRefs', 'pending', 'lineage'],
+    // v3.47.0（W16 数-22）：**内容类字段进哈希**（`docs/D27` §3.3 ③ 原文列出的六项 + `kind` 判别位）；
+    //   **引用类不进**（`sceneRef` / `parentId` / `fromId` / `toId` / `evidence`）—— 否则场景改名 / 重挂父级
+    //   会引发跨端抖动（`02` §2 I3）。`traversed` / `inferred` 亦**不在**本表（见 `core/model/map.js` 头部口径③）。
+    maps: ['kind', 'level', 'name', 'desc', 'distance', 'timeCost', 'direction'],
 });
 
 /**
