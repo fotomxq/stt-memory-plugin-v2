@@ -23,7 +23,7 @@ import { normalizeMemory, normalizeCurrentState } from '../../core/model/dims.js
 import { contentDedupeArray } from '../../core/migrate.js';
 import { mergeDataObjects } from '../../core/cross-sync.js';
 import { preserveEntryMeta } from '../../core/entry-meta.js';
-import { nsfwBadgeHtml, nsfwLegendHtml, listRowMainHtml, stateRowMainHtml, appendBadgeToLastLine } from '../../ui/list-rows.js';
+import { nsfwBadgeHtml, listRowMainHtml, stateRowMainHtml, appendBadgeToLastLine } from '../../ui/list-rows.js';
 import {
     NSFW_LEVELS, NSFW_LEVEL_LABELS, NSFW_WEAK_SIGNALS, nsfwLevelNorm, nsfwLevelMax, nsfwLevelLabel,
     nsfwLevelOf, nsfwLevelFromEntry, nsfwWeakHit, nsfwStampLevel, nsfwMergeLevel,
@@ -203,10 +203,11 @@ await A('F1 列表行徽标（v3.9.0：写明等级的文字标签）：强 → 
         && nsfwBadgeHtml({}) === '' && nsfwBadgeHtml(null) === '';
 })(), '见断言');
 
-await A('F1b 分类级留档汇总（`nsfwLegendHtml`）：统计当前列表的弱/强条数；没有已留档条目时返回空串（不占位）', (() => {
-    const g = nsfwLegendHtml([{ nsfw: 'strong' }, { nsfw: 'weak' }, {}, { nsfw: 'weak' }]);
-    return g.indexOf('data-ftt-nsfw-legend') > 0 && g.indexOf('弱 <b>2</b>') > 0 && g.indexOf('强 <b>1</b>') > 0
-        && nsfwLegendHtml([{}, {}]) === '' && nsfwLegendHtml(null) === '';
+await A('F1b（v3.47.2 反向锁）分类级留档汇总行**已按用户要求移除**：面板渲染里不再出现 `data-ftt-nsfw-legend`，而**每条末行的等级徽标保留**', (() => {
+    const list = [{ id: 'a1', text: '正文', nsfw: 'strong', date: '1919-11-29' }];
+    const rows = list.map((e) => listRowMainHtml('atoms', e, null)).join('');
+    return listRowMainHtml('atoms', list[0], null).indexOf('data-ftt-nsfw-level="strong"') > 0   // 徽标仍在
+        && rows.indexOf('data-ftt-nsfw-legend') < 0;
 })(), '见断言');
 
 await A('F1c 用户点名的各分类**均有**行内标签提示：情节 / 记忆 / 状态（状态行）/ 物品 / 传言 / 计划 / 悬念 / 概念', (() => {

@@ -6560,7 +6560,7 @@ await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情�
             suspense: (RT.state.suspense[0] || {}).nsfw, concepts: (RT.state.concepts[0] || {}).nsfw,
         };
         const labelOk = Object.keys(want).every((k) => got[k] === want[k]);
-        // 逐个分类页：末行标签 + 分类汇总（v3.11.0：标签从行首移到末行，与楼层等信息同段）
+        // 逐个分类页：末行标签保留；**分类顶部的 NSFW 留档汇总行已按用户要求移除**（v3.47.2）
         const label = { strong: 'NSFW·强', weak: 'NSFW·弱' };
         const perKind = {};
         for (const kind of ['atoms', 'memories', 'states', 'items', 'rumors', 'plans', 'concepts']) {
@@ -6569,7 +6569,7 @@ await assert('BO2 v3.9.0 各分类均有 NSFW 标签提示（端到端）：情�
             const lv = want[kind];
             perKind[kind] = h.indexOf('data-ftt-nsfw-level="' + lv + '"') >= 0
                 && h.indexOf(label[lv]) >= 0
-                && h.indexOf('data-ftt-nsfw-legend') >= 0;
+                && h.indexOf('data-ftt-nsfw-legend') < 0;          // v3.47.2：顶部汇总行不再出现
             if (kind === 'plans') {                       // 计划悬念页 = 计划 + 悬念 两块，两行都要带标签
                 perKind[kind] = perKind[kind] && h.indexOf('data-ftt-nsfw-level="weak"') >= 0;
             }

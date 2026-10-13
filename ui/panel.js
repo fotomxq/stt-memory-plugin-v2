@@ -99,7 +99,7 @@ import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities }
 import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../core/export.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
-import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, nsfwLegendHtml } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
@@ -1295,9 +1295,8 @@ function dimBodyList(kind) {
             + ops
             + '</div>';
     }).join('\n');
-    // v3.9.0（用户要求）：每个分类列表顶部给出 NSFW 留档汇总（弱 / 强 各有几条），行首逐条标注
-    const nsfwLegend = nsfwLegendHtml(list);
-    return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + nsfwLegend + peek + rows;
+    // v3.47.2（用户要求）：**去掉**分类顶部的「NSFW 留档」统计行（每条末行的等级徽标保留）
+    return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -1497,7 +1496,7 @@ function statesBody() {
         + repBtn + '</div>';
     const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
     const head = '<div class="ftt-cat-stat ftt-chip">共 ' + all.length + ' 条状态（有效 ' + all.filter((x) => String((x && x.status) || 'active') !== 'inactive').length + '）· ' + groups.size + ' 个角色组</div>'
-        + filterBar + toolbar + ed + nsfwLegendHtml(matched);   // v3.9.0：状态分类的 NSFW 留档汇总
+        + filterBar + toolbar + ed;   // v3.47.2：状态分类同样不再显示 NSFW 留档统计行
     // 文案与 V1 逐字一致（空库 / 有库但筛选无命中）
     if (!all.length) return head + '<div class="ftt-empty">暂无状态记录。运行「AI 摘要」或点「添加状态」创建。</div>';
     if (!matched.length) return head + '<div class="ftt-empty">无匹配结果（搜索/筛选：' + esc(String(q)) + '）</div>';
