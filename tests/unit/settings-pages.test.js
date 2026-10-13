@@ -46,12 +46,13 @@ R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定�
     // v3.44.0（`docs/D22` W4）：''分析记忆''页 +2（relAnchorRuleEnabled / shellGuardEnabled，入库卫生两开关）→ 159 → 161
     // v3.45.5（`docs/D22` W4 数据维度「履历」）：''投喂范围''页 +6（📜 履历组：总开关 / 上限 / 提醒比例 /
     //   重要性免疫 / 简述字数 / 原作补写；插在「🧑 角色修复」之后、B8-6c 那 22 项手写控件**之前**）→ 161 → 167、feed 37 → 43
+    // v3.46.6（`docs/D18` 业-7 / 用户报告）：''传言''页 +1（rumorFermentWindowDays = 发酵度剧情节奏窗口）→ 总 175 → 176、rumors 13 → 14
     // v3.46.2（`docs/D22` §4.14 W13 应-30）：''投喂范围''页 +3（货币融合三键）→ 172 → 175、feed 48 → 51
     // v3.46.1（`docs/D22` W11 数-35）：''遗忘''页 +5（三域联动五键：triLinkEnabled / triLinkStateAdvance /
     //   triLinkMaxItems / triLinkPackMaxChars / triLinkMaxOps —— 与 `core/config.js#defaultCfg` 同批，
     //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172 → **v3.46.2 货币融合 +3 / 总 175**、feed 43 → 48 → **51**
-    return info.totalControls === 175 && m.base === 9 && m.feed === 51 && m.analyze === 22 && m.extract === 25
-        && m.forget === 24 && m.rumors === 13 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
+    return info.totalControls === 176 && m.base === 9 && m.feed === 51 && m.analyze === 22 && m.extract === 25
+        && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 
 R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {

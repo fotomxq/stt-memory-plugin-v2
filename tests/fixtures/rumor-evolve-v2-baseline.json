@@ -525,6 +525,7 @@
       "list": 4,
       "aged": 1,
       "ferment": 6,
+      "fermentSkipped": 0,
       "links": 2,
       "changes": 0,
       "committed": 3,
@@ -540,7 +541,8 @@
       "fissionsIds": [
         "rum_13mb7va",
         "rum_h0vs4n"
-      ]
+      ],
+      "lastFermentDelta": 1
     },
     "rumors": [
       {
@@ -885,7 +887,8 @@
       "reason": "manual",
       "list": 6,
       "aged": 0,
-      "ferment": 6,
+      "ferment": 0,
+      "fermentSkipped": 6,
       "links": 2,
       "changes": 0,
       "committed": 0,
@@ -906,8 +909,8 @@
         "subject": "传言rum_c1",
         "content": "说法rum_c1",
         "objectivity": "主观",
-        "stage": "异变",
-        "ferment": 90,
+        "stage": "发酵",
+        "ferment": 87,
         "pending": null,
         "carriers": [
           {
@@ -948,14 +951,6 @@
             "from": "",
             "to": "平行事件甲",
             "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ **推动平行世界发生新的变化**（已写入其预演）"
-          },
-          {
-            "at": "2020-06-01",
-            "round": 9,
-            "kind": "发酵",
-            "from": "",
-            "to": "",
-            "note": "阶段：发酵 → 异变（发酵度 90）"
           }
         ],
         "lineage": {
@@ -982,7 +977,7 @@
         "content": "说法rum_c2（说法演变为：添油加醋）",
         "objectivity": "主观",
         "stage": "发酵",
-        "ferment": 85,
+        "ferment": 79,
         "pending": null,
         "carriers": [
           {
@@ -1030,7 +1025,7 @@
             "kind": "发酵",
             "from": "",
             "to": "",
-            "note": "阶段：异变 → 发酵（发酵度 85）"
+            "note": "阶段：异变 → 发酵（发酵度 79）"
           }
         ],
         "lineage": {
@@ -1055,7 +1050,7 @@
         "content": "说法rum_c3",
         "objectivity": "主观",
         "stage": "发酵",
-        "ferment": 82,
+        "ferment": 81,
         "pending": {
           "kind": "裂变",
           "need": 3,
@@ -1103,7 +1098,7 @@
         "content": "说法rum_c4",
         "objectivity": "主观",
         "stage": "萌芽",
-        "ferment": 20,
+        "ferment": 19,
         "pending": null,
         "carriers": [
           {
@@ -1147,7 +1142,7 @@
         "content": "说法rum_c1（夸大版）",
         "objectivity": "主观",
         "stage": "萌芽",
-        "ferment": 23,
+        "ferment": 20,
         "pending": null,
         "carriers": [
           {
@@ -1224,7 +1219,7 @@
         "content": "说法rum_c4（not-a-variant）",
         "objectivity": "主观",
         "stage": "消退",
-        "ferment": 14,
+        "ferment": 13,
         "pending": null,
         "carriers": [
           {
@@ -1364,8 +1359,8 @@
         "subject": "传言rum_c1",
         "content": "说法rum_c1",
         "objectivity": "主观",
-        "stage": "异变",
-        "ferment": 93,
+        "stage": "发酵",
+        "ferment": 87,
         "pending": null,
         "carriers": [
           {
@@ -1406,14 +1401,6 @@
             "from": "",
             "to": "平行事件甲",
             "note": "与平行事件「平行事件甲」标签高度关联（1.00）→ **推动平行世界发生新的变化**（已写入其预演）"
-          },
-          {
-            "at": "2020-06-01",
-            "round": 9,
-            "kind": "发酵",
-            "from": "",
-            "to": "",
-            "note": "阶段：发酵 → 异变（发酵度 90）"
           }
         ],
         "lineage": {
@@ -1439,8 +1426,8 @@
         "subject": "传言rum_c2",
         "content": "说法rum_c2（说法演变为：添油加醋）",
         "objectivity": "主观",
-        "stage": "异变",
-        "ferment": 93,
+        "stage": "发酵",
+        "ferment": 79,
         "pending": {
           "kind": "变异",
           "need": 2,
@@ -1494,7 +1481,7 @@
             "kind": "发酵",
             "from": "",
             "to": "",
-            "note": "阶段：异变 → 发酵（发酵度 85）"
+            "note": "阶段：异变 → 发酵（发酵度 79）"
           },
           {
             "at": "2020-06-01",
@@ -1503,14 +1490,6 @@
             "from": "",
             "to": "",
             "note": "变化过程开始：变异「反转为辟谣」（需 2 轮，不会立刻生效）"
-          },
-          {
-            "at": "2020-06-01",
-            "round": 10,
-            "kind": "发酵",
-            "from": "",
-            "to": "",
-            "note": "阶段：发酵 → 异变（发酵度 93）"
           }
         ],
         "lineage": {
@@ -1535,7 +1514,7 @@
         "content": "说法rum_c3",
         "objectivity": "主观",
         "stage": "发酵",
-        "ferment": 83,
+        "ferment": 81,
         "pending": {
           "kind": "裂变",
           "need": 2,
@@ -1601,7 +1580,7 @@
         "content": "说法rum_c4",
         "objectivity": "主观",
         "stage": "萌芽",
-        "ferment": 21,
+        "ferment": 19,
         "pending": null,
         "carriers": [
           {
@@ -1645,7 +1624,7 @@
         "content": "说法rum_c1（夸大版）",
         "objectivity": "主观",
         "stage": "萌芽",
-        "ferment": 26,
+        "ferment": 20,
         "pending": null,
         "carriers": [
           {
@@ -1721,8 +1700,8 @@
         "subject": "传言rum_c4",
         "content": "说法rum_c4（not-a-variant）",
         "objectivity": "主观",
-        "stage": "萌芽",
-        "ferment": 15,
+        "stage": "消退",
+        "ferment": 13,
         "pending": null,
         "carriers": [
           {
@@ -1740,14 +1719,6 @@
             "from": "传言rum_c4",
             "to": "传言rum_c4",
             "note": "由「传言rum_c4」裂变而来（not-a-variant）"
-          },
-          {
-            "at": "2020-06-01",
-            "round": 10,
-            "kind": "发酵",
-            "from": "",
-            "to": "",
-            "note": "阶段：消退 → 萌芽（发酵度 15）"
           }
         ],
         "lineage": {

@@ -649,6 +649,12 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "rumorFermentWindowDays",
+            "label": "发酵度剧情节奏窗口（剧情天）",
+            "hint": "默认 1：发酵度只在**剧情时间推进**时增减，且按经过的剧情天数归一化 —— 同一剧情节奏内反复点「立即演化」不再重复扣/涨热度",
+            "type": "text"
+        },
+        {
             "key": "rumorFissionFerment",
             "label": "裂变发酵度",
             "hint": "默认 80：达到该发酵度才可能裂变",

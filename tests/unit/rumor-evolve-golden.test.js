@@ -496,8 +496,16 @@ await A('Z18 runRumorEvolveNow（v3.26.1 改判）：默认 reason=manual、`sil
         && J(g1.evolveNow).indexOf('undefined') < 0,
     [g1.evolveNow.out, B && B.evolveNow && B.evolveNow.out]);
 
-await A('Z19 rumorEnabled=false → runRumorEvolve 直接 disabled 短路（列表不变）',
-    () => J(g1.evolveDisabled) === J(G.evolveDisabled) && g1.evolveDisabled.disabled === true && g1.evolveDisabled.list === 4,
+await A('Z19 rumorEnabled=false → runRumorEvolve 直接 disabled 短路（列表不变）；与 V1 黄金样本逐字一致（**剔除 v3.46.6 新增的 V2 专有计数**）',
+    () => {
+        // v3.46.6（`docs/D18` 业-7）：返回值新增 V2 专有计数 `fermentSkipped`（V1 oracle 不追认，**不得**改 V1 黄金样本）
+        //   → 比对前显式剔除，其余字段仍与 V1 黄金样本逐字一致；并单独断言新字段的取值。
+        const V2_ONLY = ['fermentSkipped'];
+        const strip = (o) => { const c = clone(o === undefined ? null : o); V2_ONLY.forEach((k) => { if (c && typeof c === 'object') delete c[k]; }); return c; };
+        return J(strip(g1.evolveDisabled)) === J(strip(G.evolveDisabled))
+            && g1.evolveDisabled.disabled === true && g1.evolveDisabled.list === 4
+            && g1.evolveDisabled.fermentSkipped === 0;
+    },
     [g1.evolveDisabled, G.evolveDisabled]);
 
 // Z20 v3.26.1 改判（有意偏离 V1）：通知里的计数来自掷骰决策 → 与 V2 自基线比对（文案模板与出口仍是 V1 口径）。
