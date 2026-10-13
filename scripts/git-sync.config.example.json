@@ -1,0 +1,13 @@
+{
+  "_说明": "模板：复制本文件为 scripts/git-sync.config.json 后按需修改。后者已被 .gitignore 忽略，永不入库。",
+  "_sshKey": "私钥路径。推荐用 ~ 或环境变量形式（~/.ssh/id_ed25519 或 %USERPROFILE%/.ssh/id_ed25519），既便携又不含真实用户名。留空 = 交给 git 默认身份发现。",
+  "_remote": "远端名，默认 origin。",
+  "_tags": "true = 默认顺带推送新增标签；默认 false。",
+  "_autostash": "true = 默认在工作区脏时自动 stash → 拉取 → stash pop；默认 false。",
+  "_strategy": "分叉时的收口方式：\"\" = 拒绝（推荐）· \"rebase\" = 自动 rebase。",
+  "sshKey": "~/.ssh/id_ed25519",
+  "remote": "origin",
+  "tags": false,
+  "autostash": false,
+  "strategy": ""
+}
