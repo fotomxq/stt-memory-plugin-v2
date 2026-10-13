@@ -28,7 +28,11 @@ import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
 import { runItemRepair } from '../core/item-repair.js';
-import { runCharacterRepair, runResumeRepair } from '../core/character-repair.js';   // v3.45.5：+runResumeRepair（角色页「📜 补全 / 修复履历」）
+import { runCharacterRepair } from '../core/character-repair.js';   // v3.45.5（`runResumeRepair` 已随动作外移到 `ui/resume-repair.js`，v3.46.4）
+// v3.46.4（`docs/D22` `应-31` / `docs/D9` §10 U15）：**管道请求守门**（排重 + 开工弹窗 + 在途禁用）；
+//   角色页「📜 补全 / 修复履历」的动作实现同时外移（`技-14` 体量棘轮：腾出接线空间，不上调基线）
+import { pipeEnter, pipeLeave, pipeDisableInFlightHtml } from './pipe-guard.js';
+import { resumeRepairAction } from './resume-repair.js';
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
 // v3.46.1（`docs/D22` W11 应-26）：三域联动（🔗 联动构建）—— **实现与编排在 `ui/tri-link.js`**（新模块，`docs/05` §5 C11），此处只接线
@@ -1736,7 +1740,7 @@ export function panelModalInnerHtml(opts) {
     // v3.46.3：提示行移到**面板外壳**（原先只在 `overviewBody()` 里 → 其它 12 页看不见动作结果；三条用户报告同源）
     const noteLine = ps.note ? ('<div class="ftt-hint ftt-note ftt-note-line' + (ps.noteLevel ? (' ftt-note--' + ps.noteLevel) : '')
         + '" role="status" aria-live="polite" data-ftt-note>' + esc(ps.note) + '</div>') : '';
-    return head + noteLine + tabs + bodies;
+    return pipeDisableInFlightHtml(head + noteLine + tabs + bodies);
 }
 
 /**
@@ -2216,6 +2220,13 @@ export async function panelAction(action, payload) {
             try { panelNotify('info', '数据仍在读取中，请稍候（读完会自动刷新）'); } catch (e) { /* 忽略 */ }
             return done({ ok: false, reason: 'loading' });
         }
+        // v3.46.4（`docs/D9` §10 U15）：**管道请求排重 + 开工弹窗**。放在载入闸门**之后**：
+        //   载入未完成时动作本就会被拒，不该再"预告"一次发不出去的 AI 请求。
+        //   同一动作上一次未结束前再点 → 挡下并**明说**（写提示行 + 弹 warning，不静默忽略）；
+        //   释放点在 `finalizePanelAction`（成功 / 失败 / 异常 / 早退**都**过那里）。
+        const pg = pipeEnter(a);
+        if (!pg.ok) { setNote(pg.note); try { panelNotify('warning', pg.notice || pg.note); } catch (e) { /* 忽略 */ } return done({ ok: false, reason: pg.reason, note: pg.note }); }
+        if (pg.notice) { try { panelNotify('info', pg.notice); } catch (e) { /* 忽略 */ } }
         if (a === 'tab') { ps.tab = String(p.tab || 'overview'); ps.editing = null; ps.peek = ''; ps.flash = null; }   // v3.0.13：切页清「本次新增」标记   // v2.63.0：读秒计时器随本次动作末尾的重绘启停（见 renderPanel）
         // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器 —— 检索 / 清除 / 跳转并高亮
         else if (a === 'cfgFind') { ps.cfgFind = String(p.q == null ? '' : p.q); ps.cfgFlash = ''; setCfgFlashKey(''); ps.settingsSub = ps.settingsSub; }
@@ -3173,30 +3184,10 @@ export async function panelAction(action, payload) {
             result = Object.assign(result, { ok: true, action: a, characterRepair: r, made: r.made || 0 });
         }
         else if (a === 'resumeRepair') {
-            // v3.45.5（`docs/D22` W4 `应-19` ②；设计稿 `docs/D26` §3.5）：角色页「📜 补全 / 修复履历」——
-            //   针对**该个体**：机械段（排序 / 去重 / 遗弃 / 凝练，零 AI）→ 需要时窄契约 AI（补全 + 凝练）
-            //   → 复核（原作人物补「剧情前」履历的硬护栏）→ **如实回报四类计数与跳过原因**。
-            //   入参：`id`（行内按钮的 `data-ftt-id`，由通用分发透传）优先；缺失时按 `name` 兜底。
-            const snapId = String(p.id || '');
-            const target = (state.snapshots || []).find((x) => x && String(x.id) === snapId)
-                || (state.snapshots || []).find((x) => x && String(x.name) === String(p.name || ''));
-            const r = await runResumeRepair(target ? String(target.name) : '', {});
-            const parts = [];
-            if (r.ok === false) {
-                parts.push(r.reason === 'disabled' ? '履历功能已关闭（可在 设定 → 投喂范围 打开「履历」）'
-                    : (r.reason === 'no-role' ? '找不到该角色档案' : ('失败：' + String(r.reason || ''))));
-            } else {
-                parts.push('新增 ' + Number(r.added || 0) + ' 条');
-                parts.push('凝练 ' + Number(r.condensed || 0) + ' 条');
-                parts.push('遗弃 ' + Number(r.dropped || 0) + ' 条');
-                if (Number(r.rejected || 0)) parts.push('拒收 ' + Number(r.rejected) + ' 条（晚于当前剧情日期，未写入）');
-                if (r.aiSkipped === 'busy') parts.push('AI 正忙，本轮只做了整理');
-                else if (r.aiSkipped === 'error') parts.push('AI 调用失败，本轮只做了整理');
-                else if (r.aiSkipped === 'no-ai') parts.push('未调用 AI（只整理）');
-                parts.push('现有 ' + Number(r.total || 0) + ' / ' + Number(r.max || 0) + ' 条');
-            }
-            setNote('履历：' + parts.join('；'));
-            result = Object.assign(result, { ok: r.ok !== false, action: a, resumeRepair: r, added: r.added || 0 });
+            // v3.46.4：实现外移到 `ui/resume-repair.js`（§5 C11 + `技-14` 体量棘轮；口径与搬家前逐字一致）
+            const rr = await resumeRepairAction(p);
+            setNote(rr.note);
+            result = Object.assign(result, { ok: rr.ok !== false, action: a, resumeRepair: rr.resumeRepair, added: rr.added || 0 });
         }
         else if (a === 'stateRepair') {
             // 「🔧 修复状态」（V1 v1.158 状态页专用）：① 已去世固定规则移除 → ① 匹配角色（未匹配整组删除）
@@ -3460,6 +3451,8 @@ export async function panelAction(action, payload) {
  */
 function finalizePanelAction(result, traceOp, traceT0, action, params) {
     const p = params || {};
+    // v3.46.4（U15）：**统一出闸** —— 这里是全部返回路径（含早退与异常）的唯一收尾，故放这里最稳
+    try { pipeLeave(action); } catch (e) { /* 忽略 */ }
     // v2.87.0：动作**被拒绝**（ok:false，例如未知动作 / 前置条件缺失）也要可见 —— 走节流（同文案 60s 一次）
     try {
         if (result && result.ok === false) {

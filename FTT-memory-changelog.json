@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.46.3",
+  "version": "3.46.4",
   "updatedAt": "2026-10-13",
   "generatedAt": "2026-10-13",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.46.4",
+      "date": "2026-10-13",
+      "title": "管道请求守门：开工弹窗提示 + 同动作排重 + 在途按钮禁用（docs/D22 §4.15 W14）",
+      "points": [
+        "用户裁决（本轮）：① 弹窗形式 = 开工弹窗提示（沿用仓内既有 panelNotify('info', '…开始…') 惯例，不加二次确认）；② 覆盖面 = 全部管道请求类动作统…",
+        "登记表 PIPE_ACTIONS = 唯一事实源，24 个管道请求类动作：summary · summaryFloor · plotSegmentSummarySel ·repa…",
+        "顺带的外移（docs/05 §5 C11 + 技-14 体量棘轮）：ui/panel.js 在 v3.46.3 已到 4019 / 上限 4023（仅剩 4 行）。本轮要在调度层…"
+      ]
+    },
     {
       "version": "3.46.3",
       "date": "2026-10-13",
