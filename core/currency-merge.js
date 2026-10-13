@@ -173,30 +173,62 @@ export function currencyMergeValidate(ai, pack) {
             members.push({ id: id, name: row.name, unit: row.unit, amount: row.amount, date: row.date, uses: row.uses, net: row.net });
         }
         if (members.length < 2) why.push('too-few-members');
+        /**
+         * v3.46.5（用户报告「金子 / 赤条金 / 黄金 明明都可以融合却被忽略了」）：**单位冲突不再整组丢弃**。
+         *
+         * 旧实现：只要组内出现**两个**不同单位 → 整组判 `unit-conflict` 丢掉 —— 于是 AI 常犯的「把同一物的
+         *   各种叫法提成一组、但其中一条单位不同」（如 `赤条金/条` 与 `金子·黄金/两`）会让**同单位的那几条**
+         *   一起被忽略（实测：`金子(两) + 赤条金(条) + 黄金(两)` → 组数 0，金子与黄金也没合并）。
+         *
+         * 新口径（「**禁凭空换算**」不变）：按单位**拆成同单位子组** ——
+         *   · 同单位且 ≥2 条 → 照常合并（该求和就求和，单位一致才安全）；
+         *   · 某单位只有 1 条（无法与其它单位合并，且不许凭空换算）→ **只报告、不合并**（进 `keep`，原因写明）。
+         *   「发生过拆分」如实记进 `reasons['unit-split']`，预览里看得见。
+         */
         const units = [...new Set(members.map((m) => canonicalUnit(m.unit) || str(m.unit).trim()).filter(Boolean))];
-        if (units.length > 1) why.push('unit-conflict');                    // 禁凭空换算：不同单位不得合组
+        const unitGroups = [];                       // [ [unit, members[]], … ]
+        if (units.length <= 1) unitGroups.push([units[0] || '', members]);
+        else {
+            const buckets = new Map();
+            for (const m of members) {
+                const u = canonicalUnit(m.unit) || str(m.unit).trim();
+                if (!buckets.has(u)) buckets.set(u, []);
+                buckets.get(u).push(m);
+            }
+            for (const [u, arr] of buckets) unitGroups.push([u, arr]);
+            bump('unit-split');
+        }
         if (why.length) {
             rejected.push({ group: { canonical: { name: name, unit: unit }, members: members.map((m) => m.id) }, reasons: [...new Set(why)] });
             for (const r of [...new Set(why)]) bump(r);
             continue;
         }
-        for (const m of members) used.add(m.id);
-        // 规范名：既尊重 AI 的选择，也过一遍既有别名归一（与机械档口径一致）
-        const finalName = canonicalName(name) || name;
-        const keepRow = members.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (Number(b.uses) || 0) - (Number(a.uses) || 0))[0];
-        groups.push({
-            key: 'ai|' + pack.owner + '|' + finalName, owner: pack.owner,
-            canonical: finalName, unit: units[0] || '', keepId: keepRow.id, removedIds: members.filter((m) => m.id !== keepRow.id).map((m) => m.id),
-            members: members, why: clip(g && g.why, CUR_MERGE_DEFAULTS.whyMax),
-            setName: true,                                     // AI 组要把保留条目的**名字**改成规范名（机械档不动名字）
-            sumAmount: round2(members.reduce((s, m) => s + (Number(m.amount) || 0), 0)),
-            newestAmount: Number(keepRow.amount) || 0, newestDate: keepRow.date,
-        });
+        for (const [u, arr] of unitGroups) {
+            if (arr.length < 2) {
+                // 单条子组：**只报告不合并**（同组内单位与其它条目不同，且不允许凭空换算）
+                for (const m of arr) keep.push({ id: m.id, name: m.name, unit: m.unit, amount: m.amount, why: '同组内单位与其它条目不同（不可凭空换算）→ 只报告、不合并' });
+                bump('unit-split-singleton');
+                continue;
+            }
+            if (groups.length >= CUR_MERGE_DEFAULTS.groupsMax) { bump('over-max-groups'); continue; }
+            for (const m of arr) used.add(m.id);
+            // 规范名：既尊重 AI 的选择，也过一遍既有别名归一（与机械档口径一致）
+            const finalName = canonicalName(name) || name;
+            const keepRow = arr.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (Number(b.uses) || 0) - (Number(a.uses) || 0))[0];
+            groups.push({
+                key: 'ai|' + pack.owner + '|' + finalName + '|' + u, owner: pack.owner,
+                canonical: finalName, unit: u, keepId: keepRow.id, removedIds: arr.filter((m) => m.id !== keepRow.id).map((m) => m.id),
+                members: arr, why: clip(g && g.why, CUR_MERGE_DEFAULTS.whyMax),
+                setName: true,                                     // AI 组要把保留条目的**名字**改成规范名（机械档不动名字）
+                sumAmount: round2(arr.reduce((s, m) => s + (Number(m.amount) || 0), 0)),
+                newestAmount: Number(keepRow.amount) || 0, newestDate: keepRow.date,
+            });
+        }
     }
     for (const k of (Array.isArray(ai && ai.keep) ? ai.keep : [])) {
         const id = str(k && (k.id || k)).trim();
         const row = inPack.get(id);
-        if (row && !used.has(id)) keep.push({ id: id, name: row.name, unit: row.unit, amount: row.amount, why: clip(k && k.why, 40) });
+        if (row && !used.has(id) && !keep.some((x) => x.id === id)) keep.push({ id: id, name: row.name, unit: row.unit, amount: row.amount, why: clip(k && k.why, 40) });
     }
     return { groups: groups, rejected: rejected, keep: keep, reasons: reasons };
 }

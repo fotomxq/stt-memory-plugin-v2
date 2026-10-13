@@ -98,13 +98,14 @@ A('A2 截断**如实计数**（`currencyMergeMaxItems` 调小后按名字序截�
 })(), (() => { cfg.currencyMergeMaxItems = 2; return J(currencyMergePack({ owner: '李瑶' }).counts); })());
 
 // ==================== B 组：窄契约校验（反向探针） ====================
-A('B1 合法组通过；**反例逐条被拒且原因可分**：成员不在打包集 / 单位冲突（禁凭空换算）/ 复合名（含「及」）/ 负额度 / 同一 id 进两组 / 规范名带「及」', (() => {
+A('B1 合法组通过；**反例逐条被拒且原因可分**：成员不在打包集 / 复合名（含「及」）/ 负额度 / 同一 id 进两组 / 规范名带「及」；**不同单位不再整组被拒**（v3.46.5：拆成单条子组，见 I 组）', (() => {
     boot(seed());
     const p = currencyMergePack({ owner: '李瑶' });
     const base = { canonical: { name: '黄金', unit: '两' }, members: [{ id: 'cur_gold' }, { id: 'cur_powder' }], why: '' };
+    //   v3.46.5 口径变更：**单位冲突不再整组拒绝**（改按单位拆分，见 I 组）—— 故 `unit-conflict` 不再是拒因，
+    //   这里换成「不同单位 + 每单位各 1 条 → 无组可合并、两条都进 keep」的等价断言。
     const cases = {
         'member-not-packed': { canonical: { name: '黄金', unit: '两' }, members: [{ id: 'cur_gold' }, { id: 'nope' }] },
-        'unit-conflict': { canonical: { name: '金', unit: '两' }, members: [{ id: 'cur_gold' }, { id: 'cur_bar' }] },        // 两 vs 贯
         'compound-member': { canonical: { name: '金', unit: '贯' }, members: [{ id: 'cur_bar' }, { id: 'cur_comp' }] },     // 复合条目
         'compound-canonical': { canonical: { name: '黄金及赤金', unit: '两' }, members: [{ id: 'cur_gold' }, { id: 'cur_powder' }] },
         'too-few-members': { canonical: { name: '黄金', unit: '两' }, members: [{ id: 'cur_gold' }] },
@@ -114,8 +115,13 @@ A('B1 合法组通过；**反例逐条被拒且原因可分**：成员不在打�
         const v = currencyMergeValidate({ groups: [g] }, p);
         res[want] = v.groups.length === 0 && (v.reasons[want] || 0) > 0;
     }
+    // v3.46.5：不同单位各 1 条 → **拆成单条子组**（零组、两条都进 keep），而不是整组被拒
+    const split = currencyMergeValidate({ groups: [{ canonical: { name: '金', unit: '两' }, members: [{ id: 'cur_gold' }, { id: 'cur_bar' }] }] }, p);
+    const splitOk = split.groups.length === 0 && split.rejected.length === 0
+        && split.keep.map((x) => x.id).sort().join(',') === 'cur_bar,cur_gold'
+        && split.reasons['unit-split'] === 1 && split.reasons['unit-split-singleton'] === 2;
     const ok = currencyMergeValidate({ groups: [base] }, p);
-    return Object.keys(res).every((k) => res[k] === true) && ok.groups.length === 1 && ok.reasons && !Object.keys(ok.reasons).length;
+    return Object.keys(res).every((k) => res[k] === true) && splitOk && ok.groups.length === 1 && ok.reasons && !Object.keys(ok.reasons).length;
 })(), (() => {
     boot(seed());
     const p = currencyMergePack({ owner: '李瑶' });
@@ -306,6 +312,70 @@ const AX = async (n, fn, e) => {
         const s2 = uiCurMergeState();
         return s2.open === false && s2.pending === null && (state.currencies || []).length === n0;
     }, () => J(uiCurMergeState()));
+}
+
+
+// ==================== I 组：v3.46.5 —— **单位冲突不再整组丢弃**（用户报告「金子 / 赤条金 / 黄金 明明可以融合却被忽略」）===
+{
+    /** 用户报告那一簇：同一物的不同叫法，但其中一条单位不同 */
+    function seedMixedUnit() {
+        return {
+            snapshots: [{ id: 's1', name: '李瑶' }],
+            currencies: [
+                { id: 'g1', owner: '李瑶', name: '金子', unit: '两', amount: 10, date: '1919-11-20', uses: 1, flows: [] },
+                { id: 'g2', owner: '李瑶', name: '赤条金', unit: '条', amount: 2, date: '1919-11-21', uses: 1, flows: [] },
+                { id: 'g3', owner: '李瑶', name: '黄金', unit: '两', amount: 120, date: '1919-11-22', uses: 2, flows: [] },
+            ],
+            state: { date: '1919-12-01' },
+        };
+    }
+    const aiOneGroup = () => ({ groups: [{ canonical: { name: '黄金', unit: '两' }, members: [{ id: 'g1' }, { id: 'g2' }, { id: 'g3' }] }] });
+
+    await AX('I1 **整组不再因单位冲突被丢**：同单位的那两条（金子 / 黄金，均为「两」）照样合并成 1 组；`reasons` 如实记录 `unit-split`', async () => {
+        const st = boot(seedMixedUnit());
+        const pack = currencyMergePack({ owner: '李瑶' });
+        const v = currencyMergeValidate(aiOneGroup(), pack);
+        const g = v.groups[0];
+        return v.groups.length === 1 && v.rejected.length === 0
+            && !!g && g.unit === '两' && g.members.length === 2
+            && g.members.map((m) => m.id).sort().join(',') === 'g1,g3'
+            && Number(g.sumAmount) === 130                                  // 10 + 120
+            && v.reasons['unit-split'] === 1 && v.reasons['unit-split-singleton'] === 1
+            && (st.currencies || []).length === 3;                          // 校验阶段**零写入**
+    }, () => { boot(seedMixedUnit()); const v = currencyMergeValidate(aiOneGroup(), currencyMergePack({ owner: '李瑶' })); return J({ groups: v.groups.map((g) => g.unit + ':' + g.members.length), rejected: v.rejected, reasons: v.reasons }); });
+
+    await AX('I2 单位不同的那条（赤条金 / 条）**只报告不合并**（不凭空换算），并写明原因进 `keep`', async () => {
+        boot(seedMixedUnit());
+        const v = currencyMergeValidate(aiOneGroup(), currencyMergePack({ owner: '李瑶' }));
+        const k = v.keep.filter((x) => x.id === 'g2')[0];
+        return !!k && k.unit === '条' && String(k.why || '').indexOf('不可凭空换算') >= 0
+            && v.groups.every((g) => g.members.map((m) => m.id).indexOf('g2') < 0);
+    }, () => { boot(seedMixedUnit()); return J(currencyMergeValidate(aiOneGroup(), currencyMergePack({ owner: '李瑶' })).keep); });
+
+    await AX('I3 **旧行为回归锁**：若整组单位一致，行为与从前完全一致（1 组、求和、保留最新条目）—— 拆分逻辑不改变正常路径', async () => {
+        boot(seedMixedUnit());
+        const ai = { groups: [{ canonical: { name: '黄金', unit: '两' }, members: [{ id: 'g1' }, { id: 'g3' }] }] };
+        const v = currencyMergeValidate(ai, currencyMergePack({ owner: '李瑶' }));
+        return v.groups.length === 1 && v.groups[0].members.length === 2
+            && v.groups[0].keepId === 'g3'                                  // 日期最新 → 保留它
+            && v.groups[0].removedIds.join(',') === 'g1'
+            && v.reasons['unit-split'] === undefined;
+    }, '');
+
+    await AX('I4 端到端（应用后）：合并真的落库 —— 金子与黄金合成 1 条（额度求和 130），赤条金原样保留', async () => {
+        const st = boot(seedMixedUnit());
+        setPanelHooks2({});
+        openPanel('currencies');
+        setAiHooks({ callAi: async () => ({ ok: true, text: JSON.stringify(aiOneGroup()) }), busy: () => false });
+        await panelAction('currencyMergeOpen', {});
+        await panelAction('currencyMergePick', { name: '李瑶' });
+        const r = await panelAction('currencyMergeApply', {});
+        const rows = (state.currencies || []).filter((c) => c.owner === '李瑶');
+        const gold = rows.filter((c) => String(c.name).indexOf('黄金') >= 0);
+        const bar = rows.filter((c) => String(c.name).indexOf('赤条金') >= 0);
+        return r.ok !== false && rows.length === 2 && gold.length === 1 && Number(gold[0].amount) === 130
+            && String(gold[0].unit) === '两' && bar.length === 1 && Number(bar[0].amount) === 2;
+    }, 'I4：合并后应为 2 条（黄金 130 两 + 赤条金 2 条）');
 }
 
 R.done();
