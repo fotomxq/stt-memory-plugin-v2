@@ -820,11 +820,8 @@ function overviewBody() {
     const covered = (() => { try { return floorCoverage(state, { maxFloor: liveFloorTail() }).floors; } catch (e) { return 0; } })();
     lines.push('<div class="ftt-hint">✅ 已处理 ' + pf.length + ' 楼' + (pending.length ? (' · 待摘要 ' + pending.length + ' 楼') : ' · 最近楼层均已摘要')
         + (covered ? (' · 已有记忆数据 ' + covered + ' 楼') : '') + '</div>');
-    // v3.24.0：状态提示行带**级别配色**（复用既有的 `.ftt-note--err/--warn/--ok` 语义色；
-    //   级别由 `setNote()` 推断或显式给出，见 `noteLevelOf`）。
-    //   同时给出**状态播报语义**（`role=status` + `aria-live=polite`）—— 读屏软件会念出「刚才那步的结果」，
-    //   与本次「提示行分级」配对（看得见 / 听得见，两路都要有）。
-    if (ps.note) lines.push('<div class="ftt-hint ftt-note ftt-note-line' + (ps.noteLevel ? (' ftt-note--' + ps.noteLevel) : '') + '" role="status" aria-live="polite" data-ftt-note>' + esc(ps.note) + '</div>');
+    // 状态提示行（级别配色 + `role=status` 播报语义，v3.24.0）自 **v3.46.3 起移到面板外壳**（见 `panelModalInnerHtml`）：
+    //   原先只在这里渲染 → 只有总览页看得见，其它分页的动作结果一律不可见（用户报告缺提示的根因）。
     // ⑧ v2.66.0：最后一次提取放**最末端**（回顾性质，不占首屏；折叠内容给足高度）
     if (lastExtractLines) lines.push(lastExtractLines);
     // v2.66.0：总览统一容器（布局微调锚点：收紧区块间距、限高可滚的未摘要列表，见 style.css）
@@ -1736,7 +1733,10 @@ export function panelModalInnerHtml(opts) {
             + ' title="' + esc(String(l)) + '">' + esc(l) + '</a>').join('') + '</div>';
     const bodies = PANEL_TABS.map(([t]) => '<div class="ftt-body" data-ftt-body="' + attr(t) + '" style="' + (t === active ? '' : 'display:none') + '">'
         + ((all || t === active) ? panelBodyHtml(t) : '') + '</div>').join('\n');
-    return head + tabs + bodies;
+    // v3.46.3：提示行移到**面板外壳**（原先只在 `overviewBody()` 里 → 其它 12 页看不见动作结果；三条用户报告同源）
+    const noteLine = ps.note ? ('<div class="ftt-hint ftt-note ftt-note-line' + (ps.noteLevel ? (' ftt-note--' + ps.noteLevel) : '')
+        + '" role="status" aria-live="polite" data-ftt-note>' + esc(ps.note) + '</div>') : '';
+    return head + noteLine + tabs + bodies;
 }
 
 /**

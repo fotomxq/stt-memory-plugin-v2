@@ -26,6 +26,11 @@ import {
     currencyMergeSig, curMergeOwners, curMergeLogPush, curMergeLogList, curMergeNoteText, curMergeBlockReason,
     CUR_MERGE_LOG_MAX,
 } from '../../core/currency-merge.js';
+// v3.46.3（用户报告「无法正常使用 / 没有任何提醒信息」的回归）：**UI 层**也要测 —— v3.46.2 只测了内核，
+//   于是「开面板没生效」这种纯界面缺陷逃过了门禁。
+import { panelAction, openPanel, panelModalInnerHtml, setPanelHooks2 } from '../../ui/panel.js';
+import { currencyMergeButton, currencyMergePanelHtml, currencyMergeState as uiCurMergeState } from '../../ui/currency-merge.js';
+import { setAiHooks } from '../../core/ai-hooks.js';
 
 const R = makeReporter('currency-merge v3.46.2 W13（货币融合：只读打包 / 窄契约校验 / 复用机械应用路径 / 墓碑）');
 const J = (v) => JSON.stringify(v);
@@ -226,5 +231,81 @@ A('D3 机械档的既有口径**未被改动**：不传 `plan` 时 `currencyRepa
     const merged = (plan.merge || []).some((m) => (m.removedIds || []).indexOf('cur_ghost1') >= 0 || m.keepId === 'cur_ghost1');
     return merged === true && plan.counts.mergeGroups >= 1;
 })(), (() => { boot(seed()); return J(currencyRepairPlan({}).counts); })());
+
+
+
+/**
+ * v3.46.3（新增组专用）：本文件的 `A` 是**同步**断言 —— 它先做 `!!c` 再交给 reporter，于是
+ *   **传入 Promise / 函数都会恒为真**（假绿；reporter 的 thenable 防呆在这里已被 `!!` 提前吃掉）。
+ *   凡**异步**用例一律用这个：传**函数**进来、`await` 之后再断言（与 `tests/unit/aux-store.test.js` 同款防呆）。
+ */
+const AX = async (n, fn, e) => {
+    let c = false, x = e;
+    try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); }
+    R.assert(n, c === true, (typeof x === 'function') ? x() : x);
+};
+// ==================== H 组：v3.46.3 UI 回归（用户报告的两条） ====================
+//   ①「🔀 AI 融合货币**无法正常使用**」：`currencyMergeOpen` 动作此前**只返回文案、没置 `open`**
+//     → 预览区恒为空 → 角色列表不出现、无法选角色。
+//   ②「点击后**没有任何提醒信息**」：动作结果提示行只渲染在总览正文里 → 其它分页看不见。
+{
+    /** UI 组装配：起干净环境 + 装桩 AI + 打开面板停在货币页 */
+    async function uiBoot() {
+        const st = boot(seed());
+        setPanelHooks2({});
+        openPanel('currencies');
+        setAiHooks({ callAi: async () => ({ ok: true, text: JSON.stringify(goodAi()) }), busy: () => false });
+        return st;
+    }
+
+    await AX('H1 货币页出现「🔀 AI 融合货币」按钮，且动作名登记为 `currencyMergeOpen`', async () => {
+        await uiBoot();
+        const btn = String(currencyMergeButton());
+        return btn.indexOf('data-ftt-action="currencyMergeOpen"') >= 0 && btn.indexOf('🔀 AI 融合货币') >= 0;
+    }, '');
+
+    await AX('H2 **开面板真的生效**（v3.46.3 修复点）：`currencyMergeOpen` → `open === true` 且预览区非空', async () => {
+        await uiBoot();
+        const before = String(currencyMergePanelHtml()).length;
+        await panelAction('currencyMergeOpen', {});
+        const st = uiCurMergeState();
+        return before === 0 && st.open === true && String(currencyMergePanelHtml()).length > 0;
+    }, () => J(uiCurMergeState()));
+
+    await AX('H3 **在货币页也能看到提示信息**（v3.46.3 修复点）：结果 HTML 的外壳里含 `data-ftt-note`', async () => {
+        await uiBoot();
+        const r = await panelAction('currencyMergeOpen', {});
+        const html = String(r.html || panelModalInnerHtml({ tab: 'currencies' }));
+        return html.indexOf('data-ftt-note') >= 0 && /货币融合：请选择要整理的角色/.test(html);
+    }, '');
+
+    await AX('H4 **端到端（UI 层）**：开面板 → 选角色（桩 AI 出方案）→ 应用 → 同义黄金合 1 组、条数 -1、额度按求和、留墓碑', async () => {
+        const st = await uiBoot();
+        const n0 = (st.currencies || []).length;
+        await panelAction('currencyMergeOpen', {});
+        const rPick = await panelAction('currencyMergePick', { name: '李瑶' });
+        const pend = uiCurMergeState().pending;
+        const rApply = await panelAction('currencyMergeApply', {});
+        const left = (state.currencies || []);
+        const gold = left.filter((c) => c.owner === '李瑶' && String(c.name).indexOf('黄金') >= 0);
+        // 墓碑是**按 id 的映射**（`deleted.currencies = { <id>: <at> }`），不是数组 —— 两种形状都兼容地数
+        const tombBag = (state.deleted && state.deleted.currencies) || null;
+        const hasTomb = !!(tombBag && ((Array.isArray(tombBag) ? tombBag.length : Object.keys(tombBag).length) >= 1));
+        return !!pend && pend.groups === 1
+            && rPick.ok !== false && rApply.ok !== false
+            && left.length === n0 - 1
+            && gold.length === 1 && Number(gold[0].amount) === 150        // 120 + 30（默认求和）
+            && hasTomb;
+    }, () => J({ n0: (state.currencies || []).length, gold: (state.currencies || []).filter((c) => c.owner === '李瑶' && String(c.name).indexOf('黄金') >= 0).map((c) => c.name + '/' + c.unit + '/' + c.amount), names: (state.currencies || []).map((c) => c.name) }));
+
+    await AX('H5 取消：`currencyMergeClose` → 面板关闭 + 待确认方案清空（零写入）', async () => {
+        const st = await uiBoot();
+        const n0 = (st.currencies || []).length;
+        await panelAction('currencyMergeOpen', {});
+        await panelAction('currencyMergeClose', {});
+        const s2 = uiCurMergeState();
+        return s2.open === false && s2.pending === null && (state.currencies || []).length === n0;
+    }, () => J(uiCurMergeState()));
+}
 
 R.done();

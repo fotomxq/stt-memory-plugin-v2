@@ -20,7 +20,7 @@ import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessag
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import {
-    openPanel, panelState, panelAction, panelBodyHtml, setPanelHooks2, singleFloorBusyState, unmountPanel,
+    openPanel, panelState, panelAction, panelBodyHtml, panelModalInnerHtml, setPanelHooks2, singleFloorBusyState, unmountPanel,
 } from '../../ui/panel.js';
 
 const R = makeReporter('floor-click v2.96.0 单楼分析点击修复');
@@ -112,10 +112,10 @@ A('B1 点击后**立刻**可见：AI 还在途时提示行已是「正在分析�
         && String((r.state || {}).note || '').indexOf('第 4 楼：新增 2 条') >= 0;
 })(), () => panelState().note);
 
-A('B2 在途期间总览正文里带 `data-ftt-note` 的提示节点存在（用户不必等 AI 返回就能看到反馈）', (() => {
+A('B2 在途期间**面板外壳**里带 `data-ftt-note` 的提示节点存在（用户不必等 AI 返回就能看到反馈；v3.46.3 起提示行是面板级、每页可见）', (() => {
     boot();
     wire({});
-    const h = String(panelBodyHtml('overview') || '');
+    const h = String(panelModalInnerHtml({ tab: 'overview' }) || '');
     return h.indexOf('data-ftt-note') >= 0;
 })(), '');
 

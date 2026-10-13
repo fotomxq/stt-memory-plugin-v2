@@ -32,7 +32,7 @@ import { analyzeFloors, extractBusy, extractStats } from '../../host/extract.js'
 import { recallMethodInfo, RECALL_METHOD_LABELS } from '../../host/extract-flow.js';
 import { buildMemoryBodyForInject } from '../../core/recall.js';
 import { fttGenerateInterceptor, interceptorStats, resetInterceptorStats } from '../../host/interceptor.js';
-import { panelAction, panelBodyHtml, openPanel, setPanelHooks2 } from '../../ui/panel.js';
+import { panelAction, panelBodyHtml, panelModalInnerHtml, openPanel, setPanelHooks2 } from '../../ui/panel.js';
 
 const R = makeReporter('recall-parallel v2.74.0 提取记忆并行与预注入');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -204,7 +204,7 @@ await (async () => {
     setPanelHooks2({ inject: async () => { calls.inject += 1; return { ok: true, count: 3, chars: 120, ms: 7, hitLayer: 'js' }; }, extract: async () => { calls.extract += 1; return { ok: true }; } });
     openPanel('overview');
     await panelAction('inject', {});
-    const note = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+    const note = String((panelModalInnerHtml({ tab: 'overview' }).match(/data-ftt-note>([^<]*)</) || [])[1] || '');
     A('F1 读库入口是「📤 立即注入」：note 给出条数 / 层级 / 字数 / 耗时，且**不走** AI 摘要入口（`extractNow` 已收为同义动作）',
         calls.inject === 1 && calls.extract === 0 && note.indexOf('已注入：召回 3 条') >= 0
         && note.indexOf('120 字') >= 0 && note.indexOf('JS 抽取层') > 0 && note.indexOf('7ms') >= 0,
@@ -215,7 +215,7 @@ await (async () => {
     //   「📤 提取记忆」按钮**迁移到「📤 立即注入」** —— 宿主给出 `method` 时必须写出来；`kept-last` 也要如实说明。
     setPanelHooks2({ inject: async () => ({ ok: true, count: 5, chars: 300, ms: 9, hitLayer: 'js', method: { key: 'local', label: '本地关键词召回', note: '关键词 3 个 · 向量无命中 → 已降级', keywords: ['甲', '乙', '丙'] } }) });
     await panelAction('inject', {});
-    const noteM = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+    const noteM = String((panelModalInnerHtml({ tab: 'overview' }).match(/data-ftt-note>([^<]*)</) || [])[1] || '');
     A('F1b 注入提示带**召回方式**（v3.26.3 的成果随 `应-14` 迁移而保留）：`method.label` + 降级原因写进总览提示行',
         noteM.indexOf('已注入：召回 5 条') >= 0 && noteM.indexOf('本地关键词召回') > 0
         && noteM.indexOf('向量无命中 → 已降级') > 0 && noteM.indexOf('300 字') > 0,
@@ -223,7 +223,7 @@ await (async () => {
 
     setPanelHooks2({ inject: async () => ({ ok: true, reason: 'kept-last', count: 0, chars: 512, ms: 4, hitLayer: '', method: { key: 'local', label: '本地关键词召回', note: '关键词 1 个', keywords: ['甲'] } }) });
     await panelAction('inject', {});
-    const noteK = String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '');
+    const noteK = String((panelModalInnerHtml({ tab: 'overview' }).match(/data-ftt-note>([^<]*)</) || [])[1] || '');
     A('F1c 「沿用上次注入」（kept-last）如实说明：不再谎报条数，并保留召回方式',
         noteK.indexOf('沿用上次 512 字') > 0 && noteK.indexOf('本地关键词召回') > 0,
         J({ note: noteK }));
@@ -234,7 +234,7 @@ await (async () => {
     const rNoHook = await panelAction('inject', {});
     A('F2 未接线 `hooks.inject` 时**如实拒绝**（不再回落到 AI 摘要入口）：reason=no-hook 且提示写明「注入入口未就绪」',
         rNoHook && rNoHook.ok === false && rNoHook.reason === 'no-hook' && calls.extract === 0
-        && String((panelBodyHtml('overview').match(/data-ftt-note>([^<]*)</) || [])[1] || '').indexOf('注入入口未就绪') >= 0,
+        && String((panelModalInnerHtml({ tab: 'overview' }).match(/data-ftt-note>([^<]*)</) || [])[1] || '').indexOf('注入入口未就绪') >= 0,
         J({ ret: rNoHook, calls: calls }));
 })();
 

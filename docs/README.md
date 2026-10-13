@@ -1,6 +1,18 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.84 ｜ 日期：2026-10-12 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.85 ｜ 日期：2026-10-13 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.85 变更（随 **v3.46.3**：**小版本修复** —— 三处用户报告，两条根因）：
+>   ① **动作结果提示行「每页可见」**（`ui/panel.js#panelModalInnerHtml`）：提示行 `data-ftt-note` 原先**只渲染在 `overviewBody()` 里**
+>      → 只有「总览」页看得见，其余 12 个分页的动作结果**一律不可见**（用户报告「履历补全 / 联动构建点击后缺少提示信息」**同源**）；
+>      现移到**面板外壳**（头部之下、页签之上）→ **13 个分页全部可见**，渲染位置唯一，`role=status` / `aria-live` / 级别配色**不变**；
+>   ② **货币融合「无法正常使用」**（`ui/currency-merge.js#runCurrencyMergeAction`）：`currencyMergeOpen` 分支**只回文案、没置 `open`**
+>      → 预览区恒空 → 角色列表不出现、无法选角色；现改走真正的 `currencyMergeOpen()`（置 `open = true`）；
+>   ③ **测试补 UI 层 + 反向验证**：`currency-merge` 新增 H 组 5 项（**UI 层**：开面板生效 / 货币页可见提示 / 端到端合并 + 求和 + 墓碑 / 取消零写入）、
+>      `notify` 新增 G 组 4 项（13 页全可见 / 每页仅一次 / 无障碍语义保留 / 总览正文不再含）；2 个既有用例契约随位置更新（判据不变）；
+>      **反向验证**：回退两处修复 → 6 项新用例立刻变红（H2/H3 + G1–G4）；
+>   ④ **体量棘轮**（`docs/D22` W5 `技-14`）：`ui/panel.js` HEAD 已 4019 行（上限 4023，仅剩 4 行）→ 本次修复**压到净零增长**，**未上调基线**；
+>   ⑤ **数字口径**：单测 **217 文件 / 3164 断言**（+9）· 冒烟 **223**（不变）· 历史批次档数 214 → **215**（+`P10c94`）；
+>      §1 目录树 `history/` → **215 份**、`P10c*` 区间 → **`P10c94`**。
 > v2.84 变更（随 **v3.46.2**：**W13 货币融合（🔀 AI 语义合并）** —— 用户直接要求）：
 >   用户原话：「新增货币融合，指定一个角色的所有货币交给AI去整理规整，尤其是一些只是叫法不同的货币应该合并。具体你可以参考本地的调试接口，调取数据核对。」
 >   ① **数据先行**：新增**只读**工具 `tests/local/currency-audit.mjs`，直接读宿主原生存储核对 —— 实测**李瑶 37 种「名字\|单位」组合 / 125 条**里：
@@ -576,12 +588,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，214 份）
+└── history/                  # 历史批次层（只读留痕，215 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c93           # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c94           # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -639,9 +651,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.46.2） |
+| 口径 | 权威来源 | 当前值（v3.46.3） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.46.2` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.46.3` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `1` |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 14 / 13 |
@@ -649,7 +661,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 36（v3.45.5：+`resumeRepair`；**v3.46.1：+`triLink`** 三域联动的窄契约，全文在 `core/tri-link-prompt.js`） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 175（v3.44.0：分析记忆页 +2；v3.45.5：投喂范围页 +6；**v3.46.1：投喂范围页 +5（🔗 三域联动独立成组）**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 217 文件 / 3155 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 217 文件 / 3164 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -657,7 +669,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 60 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **230 / 201**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 214 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 215 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
