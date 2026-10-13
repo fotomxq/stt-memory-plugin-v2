@@ -26,7 +26,7 @@ import {
     NOTIFY_KINDS, NOTIFY_TEXT_MAX, normalizeNotifyKind, notifyClassOf, notifyMethodOf,
     notifyTimeoutOf, notifyTextOf, notifyOptionsOf, applyToastClass, showToast,
 } from '../../ui/notify.js';
-import { noteLevelOf, panelAction, panelBodyHtml, panelState, openPanel, setPanelHooks2 } from '../../ui/panel.js';
+import { noteLevelOf, panelAction, panelBodyHtml, panelModalInnerHtml, panelState, openPanel, setPanelHooks2, PANEL_TABS } from '../../ui/panel.js';
 
 const R = makeReporter('notify v3.24.0 通知出口统一 + 面板提示行分级');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -213,6 +213,69 @@ A('F2 显式级别优先于推断（也接受 error/warning/success 近义写法
             && /data-ftt-note>已注入|data-ftt-note>召回完成/.test(html2.replace(/<[^>]*>/g, '')) === false
             && html2.indexOf('data-ftt-note>') >= 0;
     })(), () => J({ note: panelState().note, level: panelState().noteLevel }));
+}
+
+
+/** v3.46.3（G 组用）：本文件无公共 `boot()`，这里按 F 组的同款口径就地起一个干净装配 */
+function gBoot() {
+    const doc = makeDocument(['ftt-panel', 'extensions_settings2']);
+    doc.body = { insertAdjacentHTML() { }, addEventListener() { } };
+    installGlobalHost(makeHost({ chat: [] }), doc);
+    Object.assign(cfg, JSON.parse(JSON.stringify(defaultCfg)));
+    setScopeKey('char:notify-note-g');
+    setKernelState(emptyState());
+    setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
+    openPanel('overview');
+    return true;
+}
+/** v3.46.3（G 组用）：**经真实动作**写入一条提示（不直接改面板内部状态） */
+async function setNoteViaAction() { await panelAction('currencyMergeOpen', {}); }
+
+// ============================================================
+
+/**
+ * v3.46.3（新增组专用）：本文件的 `A` 是**同步**断言 —— 它先做 `!!c` 再交给 reporter，于是
+ *   **传入 Promise / 函数都会恒为真**（假绿；reporter 的 thenable 防呆在这里已被 `!!` 提前吃掉）。
+ *   凡**异步**用例一律用这个：传**函数**进来、`await` 之后再断言（与 `tests/unit/aux-store.test.js` 同款防呆）。
+ */
+const AX = async (n, fn, e) => {
+    let c = false, x = e;
+    try { c = await fn(); } catch (err) { c = false; x = String((err && err.message) || err); }
+    R.assert(n, c === true, (typeof x === 'function') ? x() : x);
+};
+// G 组：v3.46.3（用户报告）—— 动作结果提示行必须**每一个分页都可见**
+//   缺陷：提示行此前只渲染在 `overviewBody()` 里 → 只有总览页看得见；在货币 / 角色 / 传言等页点动作
+//   写了 `ps.note` 却**界面上什么都没有**（用户原话：「点击后缺少提示信息」「没有任何提醒信息」）。
+//   修复：提示行移入**面板外壳**（`panelModalInnerHtml()`，头部之下、页签之上）。
+// ============================================================
+{
+    await AX('G1 提示行在**全部 13 个分页**的面板外壳里都可见（不再是"只有总览"）', async () => {
+        gBoot();
+        await setNoteViaAction();                       // 走真实动作写入提示（不是直接塞 ps.note）
+        const missing = PANEL_TABS.filter(([id]) => String(panelModalInnerHtml({ tab: id })).indexOf('data-ftt-note') < 0).map(([id]) => id);
+        return panelState().note.length > 0 && missing.length === 0;
+    }, () => J({ note: panelState().note, tabs: PANEL_TABS.length }));
+
+    await AX('G2 提示行**每个分页只出现一次**（移出总览正文后不得重复渲染）', async () => {
+        gBoot();
+        await setNoteViaAction();
+        const counts = PANEL_TABS.map(([id]) => (String(panelModalInnerHtml({ tab: id })).match(/data-ftt-note/g) || []).length);
+        return counts.every((n) => n === 1);
+    }, () => J({ counts: PANEL_TABS.map(([id]) => (String(panelModalInnerHtml({ tab: id })).match(/data-ftt-note/g) || []).length) }));
+
+    await AX('G3 提示行仍带 `role=status` + `aria-live=polite`（读屏播报语义不因移位而丢），且保留 `ftt-note-line` 节点形状', async () => {
+        gBoot();
+        await setNoteViaAction();
+        const html = String(panelModalInnerHtml({ tab: 'currencies' }));
+        return html.indexOf('data-ftt-note') >= 0 && html.indexOf('role="status"') >= 0
+            && html.indexOf('aria-live="polite"') >= 0 && html.indexOf('ftt-note-line') >= 0;
+    }, '');
+
+    await AX('G4 总览正文（单页渲染）不再含提示行 —— 渲染位置唯一（外壳），避免同节点出现两次', async () => {
+        gBoot();
+        await setNoteViaAction();
+        return String(panelBodyHtml('overview')).indexOf('data-ftt-note') < 0;
+    }, '');
 }
 
 R.done();

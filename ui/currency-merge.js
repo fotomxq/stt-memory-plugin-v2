@@ -152,7 +152,14 @@ export const CUR_MERGE_ACTIONS = Object.freeze(['currencyMergeOpen', 'currencyMe
 export async function runCurrencyMergeAction(action, payload) {
     const a = String(action || '');
     const p = payload || {};
-    if (a === 'currencyMergeOpen') return { ok: true, note: '货币融合：请选择要整理的角色（不会立刻改动数据）', action: a };
+    /**
+     * v3.46.3 修复（用户报告「🔀 AI 融合货币**无法正常使用**」）：此分支原先**只返回提示文案**、
+     *   没有把 `open` 置真 —— 于是点「🔀 AI 融合货币」时：提示有了、**预览区却始终是空的**
+     *   （`currencyMergePanelHtml()` 在 `!open` 时返回空串）→ 角色列表不出现、无法选角色 → 功能等于不可用。
+     *   现在改为**走真正的开面板函数**（`currencyMergeOpen()` 置 `open = true`），与 `currencyMergePick`
+     *   在 `currencyMergeRun()` 里置真同口径。
+     */
+    if (a === 'currencyMergeOpen') return Object.assign({ action: a }, currencyMergeOpen());
     if (a === 'currencyMergePick') { const r = await currencyMergeRun(String(p.name || '')); return Object.assign({ action: a }, r); }
     if (a === 'currencyMergeApply') { const r = currencyMergeCommit(); return Object.assign({ action: a }, r); }
     if (a === 'currencyMergeClose') { const r = currencyMergeClose(); return Object.assign({ action: a }, r); }
