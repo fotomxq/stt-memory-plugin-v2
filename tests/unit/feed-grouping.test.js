@@ -66,12 +66,12 @@ A('G3 子组层次：「各域相关组修复」下按 概念 / 记忆 / 悬念 
         && at(HTML, '物品修复') < at(HTML, '🧹 低调用清理');
 })(), J(subTitles(HTML)));
 
-A('G4 控件一个不少：51 个控件键全部渲染且只出现一次（+ 白/黑名单两个文本域 = 53；v3.46.2 货币融合 +3）', (() => {
+A('G4 控件一个不少：55 个控件键全部渲染且只出现一次（+ 白/黑名单两个文本域 = 57；v3.47.0 履历批量 +4）', (() => {
     const need = SETTINGS_CONTROLS.feed.map((c) => String(c.key));
     const got = cfgKeys(HTML);
     const miss = need.filter((k) => got.indexOf(k) < 0);
     const dup = need.filter((k) => got.filter((x) => x === k).length !== 1);
-    return need.length === 51 && miss.length === 0 && dup.length === 0 && got.length === 53;
+    return need.length === 55 && miss.length === 0 && dup.length === 0 && got.length === 57;
 })(), J({ need: SETTINGS_CONTROLS.feed.length, got: cfgKeys(HTML).length }));
 
 A('G5 组内短标签：子组的四个旋钮不再重复「概念/记忆/悬念/物品 修复」前缀（表内 V1 标签不动）', (() => {
@@ -100,11 +100,11 @@ A('G6 每节一句短提示（≤90 字），细节不再铺在页面上', (() =
         && hints.some((t) => t.indexOf('清理') >= 0) && hints.every((t) => t.indexOf('V1') < 0);
 })(), '见断言');
 
-A('G7 危险/空映射兜底：未登记的键会落到末节「其它」（当前为零 —— 分组表已覆盖全部 51 项）', (() => {
+A('G7 危险/空映射兜底：未登记的键会落到末节「其它」（当前为零 —— 分组表已覆盖全部 55 项）', (() => {
     const extra = feedPageHtml([{ key: 'zzzNotMapped', label: '未知项', type: 'text' }], { tagSections: () => '' });
     const normal = feedPageHtml(SETTINGS_CONTROLS.feed, { tagSections: () => '' });
     return extra.indexOf('其它') > 0 && extra.indexOf('data-ftt-cfg="zzzNotMapped"') > 0
-        && normal.indexOf('其它') < 0 && cfgKeys(normal).length === 51;
+        && normal.indexOf('其它') < 0 && cfgKeys(normal).length === 55;
 })(), '见断言');
 
 A('G8 样式：`.ftt-group-title` 提供两级层次（左侧色条 + 紧凑间距），`.ftt-section` 仍是节容器', (() => {

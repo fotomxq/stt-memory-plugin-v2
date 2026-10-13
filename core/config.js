@@ -11,6 +11,7 @@
 import { TRI_LINK_PROMPT } from './tri-link-prompt.js';
 // v3.46.2（W13 应-30）：货币融合的默认提示词全文（新模块；见 PROMPT_TEMPLATES_V2.currencyMerge）
 import { CURRENCY_MERGE_PROMPT } from './currency-merge-prompt.js';
+import { RESUME_BATCH_PROMPT } from './resume-batch-prompt.js';   // v3.47.0（W16 应-33）：履历批量完善的提示词全文在新模块
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
 // v3.23.0：「每段正文数」默认值唯一事实源（`3`）—— 全部 AI 摘要入口共用同一段长口径
@@ -89,7 +90,7 @@ const PROMPT_GROUPS = [
     { title: '① 通用总则', desc: '所有维度抽取的顶层规范（最前置投喂：输出格式 / 日期 / 维度边界 / 推断与编造 / 标签 / 上限）', keys: ['general'] },
     { title: '② 维度抽取模板', desc: '各维度的抽取骨架：记录什么 / 边界 / 字段 / 上限 / 输出 / 示例（货币维度另有动态识别与标定跟踪模板）。', keys: ['state', 'atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'npcs', 'scenes', 'concepts', 'currencies', 'currenciesDynamic', 'currenciesTracked', 'rumors', 'vars', 'parallels'] },
     { title: '③ 召回与注入辅助', desc: '关键词提取 / 记忆筛选发送 / 注入使用说明 —— 决定「查什么、发什么、怎么用」', keys: ['keywordExtract', 'memorySend', 'injectGuide'] },
-    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'currencyMerge', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
+    { title: '④ 质检维护', desc: '质检修复规则 + 各维专用修复 + 角色履历补全 + 分段总结 + 内容弱化与词条分析（与「NSFW弱化」页共用）。', keys: ['repair', 'sceneRepair', 'conceptRepair', 'memoryRepair', 'itemRepair', 'characterRepair', 'resumeRepair', 'planSuspRepair', 'triLink', 'currencyMerge', 'resumeBatch', 'statesRepair', 'plotSegment', 'clockRepair', 'nsfwSoften', 'nsfwAnalyze'] },
 ];
 
 const PROMPT_TEMPLATES_V2 = {
@@ -620,6 +621,7 @@ const PROMPT_TEMPLATES_V2 = {
     //   用户直接要求：「指定一个角色的所有货币交给AI去整理规整，尤其是叫法不同的应合并」。
     //   与「🧹 修正货币」（机械档）同组（质检维护）；**提示词全文**在新模块 `core/currency-merge-prompt.js`（C11 + 体量棘轮）。
     currencyMerge: CURRENCY_MERGE_PROMPT,
+    resumeBatch: RESUME_BATCH_PROMPT,   // v3.47.0（W16 应-33）：履历批量完善（全文在新模块 `core/resume-batch-prompt.js`）
     // ---------- ④ 状态修复（状态页专用 · v1.158） ----------
     statesRepair: [
         '【状态修复】任务：整理与规范化【待修复状态】中列出的各主体状态记录。**只处理清单内列出的主体**。',
@@ -1102,6 +1104,12 @@ const defaultCfg = {
     snapshotResumeImmune: 0.7,          // 重要性免疫阈值（≥ 该值的条目不参与自动遗弃；`docs/D26` §3.3）
     snapshotResumeSummaryMax: 60,       // 凝练目标长度（单条简述 ≤ 该字数；`docs/D26` Q4，幂等）
     snapshotResumeCanonFill: true,      // 历史 / 同人人物「剧情前」履历预填开关（`docs/D26` §3.4；上界 = 剧情当下）
+    // v3.47.0（`docs/D22` §4.16 W16 `应-33`，用户直接要求）：**履历批量完善**（📜 批量完善履历）四键。
+    //   口径：按「近期更新的记忆」抽角色 → 一批角色放进**一次** AI 请求（与个体档「📜 补全 / 修复履历」共用机械段与复核）。
+    resumeBatchEnabled: true,           // 批量档总开关（false = 角色页按钮隐藏 + 程序化调用返回 `disabled`）
+    resumeBatchDays: 30,                // 「近期」窗口天数（按剧情日期回看；1-3650）
+    resumeBatchMaxRoles: 8,             // 一次请求最多处理几个角色（1-30；超出按命中数降序截断并如实计数）
+    resumeBatchMemoryPerRole: 6,        // 每个角色带入几条近期记忆（1-30；首选依据）
     // v1.158：状态记录修复（状态页「🔧 修复状态」）—— 自动匹配角色 → 删无主状态组 → 机械清理/规范化 → 交 AI 整理
     stateRepairBatch: 6,             // 每轮交给 AI 的主体（角色）数（1-10；v3.45.3 默认 3→6）—— 目标收敛、质量优先
     stateRepairMatchSim: 0.72,       // 主体 ↔ 角色档案/名册 的名称相似度阈值（0.5-0.95）—— 低于该值视为「无档案主体」

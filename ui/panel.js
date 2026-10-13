@@ -32,7 +32,7 @@ import { runCharacterRepair } from '../core/character-repair.js';   // v3.45.5�
 // v3.46.4（`docs/D22` `应-31` / `docs/D9` §10 U15）：**管道请求守门**（排重 + 开工弹窗 + 在途禁用）；
 //   角色页「📜 补全 / 修复履历」的动作实现同时外移（`技-14` 体量棘轮：腾出接线空间，不上调基线）
 import { pipeEnter, pipeLeave, pipeDisableInFlightHtml } from './pipe-guard.js';
-import { resumeRepairAction } from './resume-repair.js';
+import { resumeRepairAction, resumeBatchButton, resumeBatchPanelHtml, RESUME_BATCH_ACTIONS, runResumeBatchAction } from './resume-repair.js';   // v3.47.0：批量档同族转出
 import { runStateRepair } from '../core/state-repair.js';
 import { runPlanSuspRepair } from '../core/plan-repair.js';
 // v3.46.1（`docs/D22` W11 应-26）：三域联动（🔗 联动构建）—— **实现与编排在 `ui/tri-link.js`**（新模块，`docs/05` §5 C11），此处只接线
@@ -102,6 +102,8 @@ import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../c
 import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, nsfwLegendHtml } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
+// v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
+import { currencyPickPanelHtml } from './currency-pick.js';
 // B9-c：货币追踪（标定角色名单与选择器开关；V1 `currencyTrackPicking` + `curTrack*` 同名能力）
 import {
     trackedCurrencyRoles, isTrackedCurrencyOwner, addTrackedCurrencyRole, removeTrackedCurrencyRole,
@@ -1148,38 +1150,7 @@ function currencyRepairPanelHtml() {
         + '<div class="ftt-row">' + toggle + '</div>' + body + ops + '</div>';
 }
 
-/**
- * 「👥 指定跟踪角色」选择器（V1 `currenciesHtml` 的 `picker` 段逐字；角色来源 = 角色档案）。
- * 适配差异（登记）：V1 的搜索框是通用筛选条（`searchBoxHtml`：字段/排序/额外条件/模式 4 个下拉）；
- *   V2 沿用「选角色」面板的既有约定（单输入框，`data-ftt-search="currencyTrackPick"`），
- *   搜索词仍走 V1 同源的**页面搜索词槽**（V2 = `ps.q['currencyTrackPick']`）。
- */
-function currencyPickPanelHtml() {
-    if (!trackPickState()) return '';
-    const names = knownCharacterNames();
-    const tracked = trackedCurrencyRoles();
-    const key = (nm) => String(nm).replace(/\s+/g, '').toLowerCase();
-    const isOn = (nm) => tracked.some((t) => key(t) === key(nm));
-    const q = String(ps.q.currencyTrackPick || '').trim().toLowerCase();
-    const shown = q ? names.filter((nm) => String(nm).toLowerCase().indexOf(q) >= 0) : names;
-    let body;
-    if (!names.length) body = '<div class="ftt-empty">「角色」大类暂无已知角色：先运行「AI 摘要」生成角色档案，或在角色页添加角色。</div>';
-    else if (!shown.length) body = '<div class="ftt-empty">无匹配角色（搜索：' + esc(ps.q.currencyTrackPick || '') + '）</div>';
-    else {
-        body = shown.map((nm) => {
-            const on = isOn(nm);
-            return '<div class="ftt-item" data-ftt-curpick-name="' + attr(nm) + '"><div class="ftt-item-main"><b>' + esc(nm) + '</b>'
-                + (on ? ' <span class="ftt-badge ftt-badge--fact">已标定</span>' : '') + '</div>'
-                + '<div class="ftt-item-ops"><button class="ftt-op' + (on ? ' ftt-ok' : '') + '" data-ftt-action="curTrackToggle" data-name="' + attr(nm) + '" title="' + (on ? '取消标定' : '标定为跟踪对象') + '">' + (on ? '✅' : '➕') + '</button></div></div>';
-        }).join('\n');
-    }
-    return '<div class="ftt-editor"><div class="ftt-editor-title">👥 指定跟踪角色 · 从「角色」大类选择（已标定 ' + tracked.length + ' 名）</div>'
-        + '<div class="ftt-muted ftt-w-full">被标定的角色：后续<b>分析记忆</b>会恒定把他们的货币纳入考虑（追加「货币 · 标定跟踪」提示词 + 投喂当前货币账本作为更新参照），<b>注入</b>时与主角一样恒定列出（行尾标 ⭐已标定）。</div>'
-        + '<input class="ftt-input" type="text" data-ftt-search="currencyTrackPick" value="' + attr(ps.q.currencyTrackPick || '') + '" placeholder="搜索角色名…">'
-        + '<div class="ftt-hint">角色档案 ' + names.length + ' 名 · 显示 ' + shown.length + ' 名</div>'
-        + '<div data-ftt-cur-list="currencyTrackPick">' + body + '</div>'
-        + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="curTrackClose">关闭</button></div></div>';
-}
+
 
 /** 货币页专属顶部（统计/说明/标定胶囊）—— 选择器另经 `currencyPickPanelHtml()` 渲染在工具行之后 */
 function currenciesTopHtml() {
@@ -1235,7 +1206,8 @@ function dimBodyList(kind) {
         // V1 `snapshotsHtml()`：角色页顶部「🔧 修复角色」按钮（结合正文补全档案 / 保守删除明显错误）——
         //   v1.172：出生日期倒挂 / 异常的角色数进优先档，按钮文案带「（⚠️N 优先）」角标；
         //   仅在有角色时显示（V1 `snapList.length` 条件），文案与 title 逐字对齐
-        + (kind === 'snapshots' && total ? characterRepairButton() : '')
+        // v3.47.0（W16 应-33）：角色页两个平行入口 —— 「🧹 修复角色」与「📜 批量完善履历」
+        + (kind === 'snapshots' && total ? (characterRepairButton() + resumeBatchButton()) : '')
         // V1 `plansHtml()`：计划悬念页「🔧 修复计划/悬念」（有进行中计划或未解悬念才显示）+
         //   「🧹 清理计划」「🧹 清理悬念」（各自库非空才显示）——文案与 title 逐字对齐；V1 不弹确认
         + (kind === 'plans' ? (planSuspRepairButton() + triLinkButton('plans') + clearPSButtons()) : '')
@@ -1274,7 +1246,7 @@ function dimBodyList(kind) {
     // B9-c：货币页顶部（统计胶囊 + 说明 + 已标定胶囊）与「👥 指定跟踪角色」选择器
     //   位置：胶囊在工具行之前（V1 `currenciesHtml` 的 head/trackChips），选择器在工具行之后（V1 的 addBtn 之后）
     const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
-    const curPick = (kind === 'currencies') ? currencyPickPanelHtml() : '';
+    const curPick = (kind === 'currencies') ? currencyPickPanelHtml(ps.q.currencyTrackPick) : '';   // 搜索词走页面槽（v3.47.0 外移后作为入参）
     const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
     // v3.46.2（W13 应-30）：货币融合（🔀）的**只读预览区**（选角色 → 出方案 → 确认 / 取消；未确认零写入）
     const curMerge = (kind === 'currencies') ? currencyMergePanelHtml() : '';
@@ -1285,7 +1257,7 @@ function dimBodyList(kind) {
         const emptyTxt = q
             ? '没有匹配的条目。换个关键词，或点「✕ 清除」重置筛选条件。'
             : '该类目暂无条目。点上方「⚡ 立即 AI 摘要」从楼层提取，或用「添加」手动创建。';
-        return curTop + toolbar + curPick + curRepair + curMerge + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
+        return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
     }
     // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
     //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
@@ -1325,7 +1297,7 @@ function dimBodyList(kind) {
     }).join('\n');
     // v3.9.0（用户要求）：每个分类列表顶部给出 NSFW 留档汇总（弱 / 强 各有几条），行首逐条标注
     const nsfwLegend = nsfwLegendHtml(list);
-    return curTop + toolbar + curPick + curRepair + curMerge + ptb + head + ed + nsfwLegend + peek + rows;
+    return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + nsfwLegend + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -3187,6 +3159,11 @@ export async function panelAction(action, payload) {
             const rr = await resumeRepairAction(p);
             setNote(rr.note);
             result = Object.assign(result, { ok: rr.ok !== false, action: a, resumeRepair: rr.resumeRepair, added: rr.added || 0 });
+        }
+        else if (RESUME_BATCH_ACTIONS.indexOf(a) >= 0) {   // v3.47.0（W16 应-33）：履历批量（实现全在 `ui/resume-batch.js`）
+            const r = await runResumeBatchAction(a, p);
+            setNote(String(r.note || '履历批量：已完成'));
+            result = Object.assign(result, { ok: r.ok !== false, action: a, resumeBatch: r, reason: r.reason || '', added: Number(r.added || 0) });
         }
         else if (a === 'stateRepair') {
             // 「🔧 修复状态」（V1 v1.158 状态页专用）：① 已去世固定规则移除 → ① 匹配角色（未匹配整组删除）

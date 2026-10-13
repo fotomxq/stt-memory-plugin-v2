@@ -120,6 +120,8 @@ export const RUNTIME_SLOTS = Object.freeze({
     triLinkLog: { label: '联动记录（末 5 条）', evidence: 'core/tri-link.js#triLogPush', disposition: 'runtime' },
     // v3.46.2（`docs/D22` §4.14 W13 `应-30`）：货币融合记录（末 5 条；**不参与跨端同步**）
     currencyMergeLog: { label: '货币融合记录（末 5 条）', evidence: 'core/currency-merge.js#curMergeLogPush', disposition: 'runtime' },
+    // v3.47.0（`docs/D22` §4.16 W16 `应-33`）：履历批量完善记录（末 5 条；**不参与跨端同步**）
+    resumeBatchLog: { label: '履历批量记录（末 5 条）', evidence: 'core/resume-batch.js#resumeBatchLogPush', disposition: 'runtime' },
 });
 
 /**

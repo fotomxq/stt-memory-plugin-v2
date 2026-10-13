@@ -233,6 +233,11 @@ export const SETTINGS_CONTROLS = {
             "hint": "只对勾选过「原作 / 史实人物」的角色生效：补写当前剧情日期之前的既有生平；没有可用剧情日期时一律不补，以免写出剧情里还没发生的事。",
             "type": "checkbox"
         },
+        // v3.47.0（`docs/D22` §4.16 W16 应-33，用户直接要求）：**履历批量完善**四键
+        { "key": "resumeBatchEnabled", "label": "启用「📜 批量完善履历」（按近期记忆抽角色）", "type": "checkbox" },
+        { "key": "resumeBatchDays", "label": "「近期」窗口天数（默认 30）", "type": "text" },
+        { "key": "resumeBatchMaxRoles", "label": "一次请求最多处理几个角色（1-30，默认 8）", "type": "text" },
+        { "key": "resumeBatchMemoryPerRole", "label": "每角色带入几条近期记忆（1-30，默认 6）", "type": "text" },
         // —— B8-6c 补齐：V1 设定④「质检维护」页里以**手写 div** 形式给出的 22 个控件
         //    （B4 的自动提取只覆盖 `f(...)` / `switchField(...)`，手写 `data-ftt-cfg` 块被漏掉；键与标签按 V1 原样、顺序按 V1）
         //    概念 / 记忆 / 悬念 / 物品 四域「相关组聚类修复」各 4 项（相关性阈值 · 每次核对组数 · 每次提交条数 · 组规模上限）
@@ -1427,7 +1432,7 @@ const FEED_GROUPS = Object.freeze([
     },
     { id: 'character', title: '🧑 角色修复', keys: ['repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
     // v3.45.5（`docs/D22` W4 数据维度「履历」）：「📜 履历」组（总开关 / 上限 / 提醒比例 / 免疫阈值 / 简述字数 / 原作补写）
-    { id: 'resume', title: '📜 履历', keys: ['snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio', 'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill'], hint: '履历 = 角色按剧情时间的大事记；超过上限才会自动遗弃低留存条。' },
+    { id: 'resume', title: '📜 履历', keys: ['snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio', 'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill', 'resumeBatchEnabled', 'resumeBatchDays', 'resumeBatchMaxRoles', 'resumeBatchMemoryPerRole'], hint: '履历 = 角色按剧情时间的大事记；超过上限才会自动遗弃低留存条。批量档＝按近期记忆抽角色、一批一次 AI 请求（与「修复角色」平行）。' },
     {
         id: 'domains', title: '🧩 各域相关组修复', hint: '相关度 = 标签相关性；每轮只核对最相关的几组，禁止新增条目，只做合并与补齐。',
         keys: ['conceptRepairSim', 'conceptRepairMaxClusters', 'conceptRepairMaxItems', 'conceptRepairMaxClusterSize',

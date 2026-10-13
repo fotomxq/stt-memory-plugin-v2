@@ -67,6 +67,7 @@ export const PIPE_ACTIONS = Object.freeze({
     // ── 三域联动 / 货币融合 ──
     triLinkBuild: { label: '联动构建（三域）' },
     currencyMergePick: { label: 'AI 融合货币' },
+    resumeBatchRun: { label: '批量完善履历（一次请求一批角色）' },
     // ── NSFW / 时钟 ──
     nsfwSoften: { label: 'NSFW 弱化' },
     nsfwAnalyze: { label: 'NSFW 分析' },
