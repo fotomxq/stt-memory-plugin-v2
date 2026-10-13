@@ -166,6 +166,37 @@ function rumorFermentDelta(r) {
         return gain - loss;
     } catch (e) { return 0; }
 }
+/**
+ * v3.46.6（用户报告「立即演化可以连续点击、发酵度也会连续递减」）——**发酵度增减的剧情时间归一化**。
+ *
+ * 缺陷：`rumorFermentDelta()` 的「时间压力」项按**条目日期（`r.date`）到当前剧情日期**的天数计，
+ *   而每次演化结束都会把 `r.date` 跟新为当前剧情日期 → 于是**同一个剧情节奏内每点一次**
+ *   都重新施加一次「无载体 -3 / 久未变化」的扣减（实测：6 次连点 60 → 54，**线性掉**，可掉到 0），
+ *   反之有载体时连点也会**线性涨**。即：一个**按剧情时间度量**的量，被**按调用次数**施加了。
+ *
+ * 口径（本函数）：把「距上次发酵度变化经过的**剧情时间**」归一化为 `f ∈ [0,1]`，作为增减的**乘子**：
+ *   · 剧情时间没推进（同一节奏）→ `f = 0` → **不施加**（如实计 `out.fermentSkipped`，不静默）；
+ *   · 推进满一个窗口（`cfg.rumorFermentWindowDays`，默认 1 剧情天）→ `f = 1` → 施加完整增减；
+ *   · 中间按比例（至少 1 点，方向不变 —— 避免取整把小幅变化抹成 0）。
+ * 无剧情时钟时**退化为墙钟节流**（同一节奏内不重复施加），避免「没有时钟就整个冻结」。
+ * @returns {{f:number, basis:'story'|'wall', days?:number, ms?:number, window?:number}}
+ */
+function rumorFermentFactor(r) {
+    try {
+        const now = rumorStoryDate();
+        const last = String((r && r.fermentAt) || '');
+        if (now && last) {
+            const win = Math.max(0.25, Number(cfg && cfg.rumorFermentWindowDays) || 1);
+            const days = rumorDayDiff(last, now);
+            return { f: Math.min(1, days / win), basis: 'story', days: days, window: win };
+        }
+        const el = Date.now() - (Number(r && r.fermentAtMs) || 0);
+        return { f: el >= RUMOR_FERMENT_WALL_MIN_MS ? 1 : 0, basis: 'wall', ms: el };
+    } catch (e) { return { f: 1, basis: 'wall', ms: 0 }; }
+}
+// 无剧情时钟时的墙钟节流下限（同一节奏内不重复施加发酵度变化）
+const RUMOR_FERMENT_WALL_MIN_MS = 10 * 60 * 1000;
+
 // 与平行事件的「标签高度关联」相似度（标签 Jaccard；无标签 = 0）
 function rumorParallelLinkScore(r, p) {
     try { return repairJaccard(repairTagSetOf(r), repairTagSetOf(p)); } catch (e) { return 0; }
@@ -326,7 +357,7 @@ function rumorMaybeStartChange(r, idx) {
 // 机械演化主流程（纯 JS，零 AI 调用）：返回统计供通知 / 调试 / 测试使用
 async function runRumorEvolve(opts) {
     const o = opts || {};
-    const out = { ok: true, reason: String(o.reason || 'manual'), list: (state.rumors || []).length, aged: 0, ferment: 0, links: 0, changes: 0, committed: 0, fissions: 0, decay: null, disabled: false, fissionsIds: [] };
+    const out = { ok: true, reason: String(o.reason || 'manual'), list: (state.rumors || []).length, aged: 0, ferment: 0, fermentSkipped: 0, links: 0, changes: 0, committed: 0, fissions: 0, decay: null, disabled: false, fissionsIds: [] };
     try {
         if (!rumorEnabledOn()) { out.disabled = true; return out; }
         const tick = rumorTickState();
@@ -345,9 +376,24 @@ async function runRumorEvolve(opts) {
                     if (committed.childId) { out.fissions++; out.fissionsIds.push(committed.childId); }
                 }
                 // ② 发酵度（沉寂且无载体的传言不再回涨）
+                //   v3.46.6：按**剧情时间**归一化 —— 同一剧情节奏内反复触发不再重复扣/涨（见 `rumorFermentFactor`）
                 if (String(r.stage) !== '沉寂' || rumorActiveMediaCount(r) > 0) {
-                    const delta = rumorFermentDelta(r);
-                    if (delta) { r.ferment = Math.max(0, Math.min(100, (Number(r.ferment) || 0) + delta)); out.ferment++; }
+                    const fac = rumorFermentFactor(r);
+                    const raw = rumorFermentDelta(r);
+                    if (fac.f > 0 && raw) {
+                        const delta = (raw > 0 ? 1 : -1) * Math.max(1, Math.round(Math.abs(raw) * fac.f));
+                        const before = Number(r.ferment) || 0;
+                        const after = Math.max(0, Math.min(100, before + delta));
+                        if (after !== before) {
+                            r.ferment = after;
+                            out.ferment++;
+                            out.lastFermentDelta = delta;
+                            // 记「上次发酵度变化」的**剧情时刻**（主）+ 墙钟（无剧情时钟时的退化基准）
+                            const nowStr = rumorStoryDate();
+                            if (nowStr) r.fermentAt = nowStr;
+                            r.fermentAtMs = Date.now();
+                        }
+                    } else out.fermentSkipped++;          // 同一剧情节奏 → 如实计数（不静默）
                 }
                 // ③ 平行联动（发酵 / 消退 / 推动平行世界变化）
                 if (rumorParallelLink(r, tick.runs)) out.links++;
@@ -367,7 +413,7 @@ async function runRumorEvolve(opts) {
         try { out.decay = await runRumorDecay({ force: false }); } catch (e) { out.decay = null; }
         try { saveState(); } catch (e) { }
         try {
-            dbgLog('摘要', { action: '传言演化（机械 · 零 AI）', reason: out.reason, runs: tick.runs, list: out.list, aged: out.aged, ferment: out.ferment, links: out.links, changes: out.changes, committed: out.committed, fissions: out.fissions, decay: out.decay });
+            dbgLog('摘要', { action: '传言演化（机械 · 零 AI）', reason: out.reason, runs: tick.runs, list: out.list, aged: out.aged, ferment: out.ferment, fermentSkipped: out.fermentSkipped, links: out.links, changes: out.changes, committed: out.committed, fissions: out.fissions, decay: out.decay });
         } catch (e) { }
         if (!o.silent && (out.aged || out.links || out.changes || out.committed)) {
             try {

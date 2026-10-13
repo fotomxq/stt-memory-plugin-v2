@@ -117,8 +117,8 @@ A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
-    return info.totalControls === 175 && m.analyze === 22 && m.extract === 25 && m.base === 9 && m.feed === 51
-        && m.forget === 24 && m.rumors === 13;
+    return info.totalControls === 176 && m.analyze === 22 && m.extract === 25 && m.base === 9 && m.feed === 51
+        && m.forget === 24 && m.rumors === 14;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 
 A('C8 兜底口径（v2.84.0）：默认配置走**新口径**（总上限 3000 → 情节 3000×23% = 690）；把总上限置 0 或删掉该键则走旧的逐维 `storeMax*` 兼容口径（老存档 / V1 黄金样本可用）', (() => {

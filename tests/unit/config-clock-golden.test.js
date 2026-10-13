@@ -25,7 +25,7 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     // B9-d 例外（显式白名单）：`storage.stateFileSlim` / `storage.stateFileGzip` 为 V2 专有开关
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
     // V2 专有键（V1 无）：界面形态 3 项 + API 三通道 2 项（v2.35.0 起；`''` = 未显式选择，按旧数据迁移推断）
-    const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'apiChannel', 'apiProfileId',
+    const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'rumorFermentWindowDays', 'apiChannel', 'apiProfileId',
         // v2.86.0（`docs/D7` v0.5）：重要度改「窗口调用占比」→ 三个 V2 专有参数（V1 只有 importanceBase/importancePerUse，键保留兼容）
         'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount',
         // v3.46.1（`docs/D22` W11 数-35）：三域联动五键（V2 专有；V1 无此功能）

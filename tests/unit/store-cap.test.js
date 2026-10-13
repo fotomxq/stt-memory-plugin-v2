@@ -252,10 +252,10 @@ A('G4 滚动条控件含实时读数容器（`output[data-ftt-range-out]`）与�
         && h.indexOf('min="0.1"') >= 0 && h.indexOf('max="0.95"') >= 0 && h.indexOf('step="0.01"') >= 0;
 })(), () => settingsControlHtml({ key: 'conceptRepairSim', label: 'x', type: 'text' }));
 
-A('G5 控件总数口径（v2.84.0）：逐维上限控件被总上限取代 → forget 24、rumors 13；比例类控件仍在册（只改呈现形态）', (() => {
+A('G5 控件总数口径（v2.84.0；v3.46.6 传言页 +1）：逐维上限控件被总上限取代 → forget 24、rumors 14；比例类控件仍在册（只改呈现形态）', (() => {
     const forgetKeys = SETTINGS_CONTROLS.forget.map((c) => String(c.key));
     const rumorKeys = SETTINGS_CONTROLS.rumors.map((c) => String(c.key));
-    return forgetKeys.length === 24 && rumorKeys.length === 13
+    return forgetKeys.length === 24 && rumorKeys.length === 14
         && forgetKeys.indexOf('storeTotalMax') >= 0 && forgetKeys.indexOf('storeMaxAtoms') < 0
         && rumorKeys.indexOf('storeMaxRumors') < 0 && rumorKeys.indexOf('storeMinRumors') >= 0
         && forgetKeys.indexOf('stateDecayRatio') >= 0 && rumorKeys.indexOf('rumorFissionChance') >= 0;
