@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.46.4",
+  "version": "3.46.5",
   "updatedAt": "2026-10-13",
   "generatedAt": "2026-10-13",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.46.5",
+      "date": "2026-10-13",
+      "title": "修复货币没注入（一条坏数据让整份注入变空）+ 货币融合忽略可合并项（单位冲突整组丢弃）",
+      "points": [
+        "修复（三层）：| # | 落点 | 改动 || --- | --- | --- || ① | core/recall.js 货币区块 | 逐条清洗：收支只保留对象元素（filte…",
+        "实测复现：金子(两) + 赤条金(条) + 黄金(两) 被 AI 提成一组（它们确实是同一物的不同叫法）→ 旧 currencyMergeValidate 判 unit-conf…",
+        "修复：（core/currency-merge.js#currencyMergeValidate，口径细化而非推翻）：| 口径 | 处理 || --- | --- || 「禁凭空…"
+      ]
+    },
     {
       "version": "3.46.4",
       "date": "2026-10-13",

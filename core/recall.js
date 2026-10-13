@@ -842,10 +842,10 @@ function buildMemoryBodyForInject(queryText, opts) {
         const constraintCap = Math.max(120, Number(cfg && cfg.injectConstraintMaxChars) || 400);
         const reserve = constraintOn ? Math.min(constraintCap, Math.max(0, Math.floor(budget * 0.4))) : 0;
         const itemBudget = Math.max(0, budget - reserve);
-        const injectedIds = { memories: [], plans: [], suspense: [], parallels: [], rumors: [] };   // v1.192：传言纳入注入自查
+        const injectedIds = { memories: [], plans: [], suspense: [], parallels: [], rumors: [], currencies: [] };   // v1.192：传言纳入；v3.46.5：货币纳入
         // v1.169：候选记录（用于「注入自查」面板解释「为什么某条没进注入」：未进候选 = 关键词未命中；
         //   进了候选但未注入 = 条数上限 / 预算不足）
-        const candIds = { memories: [], plans: [], suspense: [], parallels: [], rumors: [] };
+        const candIds = { memories: [], plans: [], suspense: [], parallels: [], rumors: [], currencies: [] };   // v3.46.5：货币纳入（「看到几条 / 注入几条」让归属不匹配可诊断）
         const markCand = (dim, id) => {
             try {
                 if (dim && candIds[dim] && id !== undefined && id !== null && candIds[dim].indexOf(String(id)) < 0) candIds[dim].push(String(id));
@@ -1030,15 +1030,20 @@ function buildMemoryBodyForInject(queryText, opts) {
         cats.push({ head: '[物品]', md: mdHeadOf('[物品]'), rows: itemRows });
         // [货币]（v1.181）：**主角的货币恒定注入**（不受关键词门槛限制）；其他角色的货币只在「被关键词/在场命中」时注入
         //   —— 符合用户要求「默认只记主角，涉及其他角色必须明确指定」；额度用 formatMoney 动态适配（万/亿/兆/京）。
+        //   v3.46.5：**本区块单独兜错**（区块级隔离）—— 一条坏数据只丢「货币」，不再让**整份注入**变空
+        //     （实测旧行为：`history:[null]` → TypeError → 全局 catch → 返回空串 → 货币与其它全部记忆都没注入）。
         //   v1.183：用户在货币页**标定跟踪**的角色（`currencyTrackedRoles`）与主角同等待遇 —— **恒定注入**，
         //   并在行尾标「⭐已标定」，便于 AI 与用户都看得出这是被明确跟踪的对象。
+        //   v3.46.5（用户报告「货币根本没注入成功」）：**本区块单独兜错 + 逐条清洗** —— 见下方注释。
         if (cfg.currencyEnabled !== false) {
+          try {
             const curRows = [];
             const me = String((typeof defaultCurrencyOwner === 'function' ? defaultCurrencyOwner() : '') || '');
             const presentSet = (present && present.length) ? present : null;
             const curCands = [];
             for (const cu of (st().currencies || []).slice().reverse()) {
                 if (!cu || !cu.name) continue;
+                markCand('currencies', cu.id);                    // v3.46.5：**看到就算候选** —— 自查里「看到 N / 注入 M」直接暴露归属不匹配
                 const owner = String(cu.owner || '');
                 const isTracked = (typeof isTrackedCurrencyOwner === 'function') && !!owner && isTrackedCurrencyOwner(owner);
                 const isMine = !owner || owner === me || owner === '主角' || owner === '我' || isTracked;
@@ -1048,7 +1053,6 @@ function buildMemoryBodyForInject(queryText, opts) {
                     const hay = `${owner} ${cu.name} ${cu.note || ''}`.toLowerCase();
                     const hitKw = q ? (nameMatch(owner, q) || hay.includes(q) || tagMatch(cu.tags, q)) : false;
                     if (!hitPresent && !hitKw) continue;
-                    markCand('currencies', cu.id);
                 }
                 curCands.push({ e: cu, score: rcScore('items')(cu), tracked: isTracked });
             }
@@ -1059,15 +1063,23 @@ function buildMemoryBodyForInject(queryText, opts) {
                 if (countUses) markUsed('currencies', cu);
                 const amtTxt = formatMoney(cu.amount);
                 const unit = cu.unit ? String(cu.unit) : '';
-                const hist = Array.isArray(cu.history) ? cu.history.slice(-2) : [];
+                // v3.46.5：**逐条清洗** —— 收支数组里可能出现非对象元素（历史数据 / 导入 / 早期版本写入），
+                //   此前 `f.date` 会抛 `Cannot read properties of null`；由于整个注入体构建共用一个 try，
+                //   一处抛错会让**整份注入**（不只是货币）变成空串 —— 用户看到的就是「货币根本没注入成功」。
+                const hist = (Array.isArray(cu.history) ? cu.history : [])
+                    .filter((f) => f && typeof f === 'object').slice(-2);
                 const histTxt = hist.length
-                    ? `（近期：${hist.map(f => `${f.date ? f.date + ' ' : ''}${f.delta >= 0 ? '收入' : '支出'}${formatMoney(Math.abs(f.delta))}${f.note ? '·' + String(f.note).slice(0, 20) : ''}`).join('；')}）`
+                    ? `（近期：${hist.map(f => `${f.date ? f.date + ' ' : ''}${Number(f.delta) >= 0 ? '收入' : '支出'}${formatMoney(Math.abs(Number(f.delta) || 0))}${f.note ? '·' + String(f.note).slice(0, 20) : ''}`).join('；')}）`
                     : '';
                 const note = cu.note ? `（${String(cu.note).slice(0, 40)}）` : '';
                 const mark = c.tracked ? ' ⭐已标定' : '';
                 curRows.push({ text: `- ${owner || me}·${cu.name}${unit ? '' : ''} ${amtTxt}${unit ? ` ${unit}` : ''}${note}${histTxt}${mark}`, ref: { dim: 'currencies', id: cu.id }, score: c.score });
             }
             if (curRows.length) cats.push({ head: '[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）', md: mdHeadOf('[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）'), rows: curRows });
+          } catch (e) {
+            // v3.46.5：**只降级货币区块**（其余大类照常注入）—— 并把原因写进调试日志，便于「为什么没注入」有据可查。
+            try { warn('货币区块注入失败（已跳过该区块，其余照常）', e); } catch (e2) { /* 忽略 */ }
+          }
         }
         // [传言]（v1.192）：正在流传的**说法**（未经证实）—— 开关 `rumorEnabled`（默认开）；
         //   排序 = 「与在场/关键词相关」优先 + 发酵度；沉寂条目不注入；行文本自带客观性与阶段，便于 AI 以
