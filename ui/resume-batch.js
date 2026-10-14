@@ -20,7 +20,7 @@ import { PROMPT_TEMPLATES_V2 } from '../core/config.js';
 import {
     resumeBatchCfg, resumeBatchCandidates, resumeBatchPack, resumeBatchParse, resumeBatchValidate,
     resumeBatchSig, resumeBatchApply, resumeBatchLogPush, resumeBatchNoteText, resumeBatchBlockReason,
-    RESUME_BATCH_REASON_TEXT,
+    resumeBatchWindowInfo, RESUME_BATCH_REASON_TEXT,
 } from '../core/resume-batch.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -62,18 +62,54 @@ function effectivePicked() {
 
 /**
  * 角色页工具行的「📜 批量完善履历」按钮（与「🧹 修复角色」**平行**：同一行、紧邻）。
- * 显隐：`cfg.resumeBatchEnabled !== false` 且履历总开关开着 且**近期窗口内有候选角色**。
+ *
+ * **显隐口径（v3.48.1 修复）**：只看 `cfg.resumeBatchEnabled !== false` 与履历总开关 ——
+ *   **不再**依据「窗口内有没有候选角色」隐藏。
+ *
+ *   为什么改（用户报告「批量补全履历功能发版后消失了」）：候选要求「记忆**有日期** 且落在
+ *   **当前剧情日期**往前 `resumeBatchDays` 天内」；剧情日期为空 / 记忆没日期 / 剧情推进超出窗口 /
+ *   记忆被遗忘清理 —— 任一情况都会让候选为空，于是**入口按钮自己消失**，
+ *   而它背后那个「说明为什么没有候选、怎么调窗口」的面板**永远打不开**（空态文案写了却到不了）→
+ *   用户的体感就是「功能没了」。改为**入口恒定可见**：有候选时带条数角标，没候选时点进去看原因与调法。
  */
 export function resumeBatchButton() {
     try {
         const conf = resumeBatchCfg();
         if (!conf.enabled) return '';
         if (cfg && cfg.snapshotResumeEnabled === false) return '';
-        const cands = resumeBatchCandidates({});
-        if (!cands.length) return '';
+        let n = 0;
+        try { n = resumeBatchCandidates({}).length; } catch (e) { n = 0; }
+        const badge = n ? ('（' + n + '）') : '';
+        const title = n
+            ? ('按「近期更新的记忆」抽出 ' + n + ' 名相关角色，把一批角色**合并成一次 AI 请求**补全 / 凝练履历（与「修复角色」平行；先出方案、确认后落库）')
+            : '按「近期更新的记忆」抽角色并**合并成一次 AI 请求**补全 / 凝练履历（与「修复角色」平行）。当前**没有**落在窗口内的候选角色：点开可见原因与调法（窗口天数 / 剧情日期 / 记忆日期）';
         return '<button class="ftt-btn ftt-sm' + (open ? ' ftt-primary' : '') + '" data-ftt-action="resumeBatchOpen"'
-            + ' title="按「近期更新的记忆」抽出相关角色，把一批角色**合并成一次 AI 请求**补全 / 凝练履历（与「修复角色」平行；先出方案、确认后落库）">📜 批量完善履历</button>';
+            + ' data-ftt-swipe-n="1" title="' + esc(title) + '">📜 批量完善履历' + badge + '</button>';
     } catch (e) { return ''; }
+}
+
+/**
+ * 「窗口内没有候选角色」时到底卡在哪（v3.48.1）—— 成因码由内核给（`core/resume-batch.js#resumeBatchWindowInfo`），
+ * 文案在本层写（core 不碰用户措辞）。用户报告「功能消失」后补：入口恒定可见，但**必须如实说明为什么没有候选**。
+ */
+function emptyCandsHtml(conf) {
+    let info = null;
+    try { info = resumeBatchWindowInfo({}); } catch (e) { info = null; }
+    const days = num((info && info.days) || (conf && conf.days));
+    const texts = {
+        'no-memories': '记忆库是空的 → 先跑「⚡ 立即 AI 摘要」把正文提取成记忆，再回来。',
+        'no-story-date': '**剧情日期为空**（记忆无法判定「近期」）→ 先在总览页跑一次「🕒 时钟巡检」或手工设定剧情日期。',
+        'undated-memories': '有 **' + num((info && info.memories) - (info && info.dated)) + ' 条记忆没有日期**（' + num(info && info.dated) + ' / ' + num(info && info.memories) + ' 条有日期）—— 无日期的记忆不计入窗口（避免把远古条目当"近期"）；跑一次「⚡ 立即 AI 摘要」可补上日期。',
+        'out-of-window': '有日期的记忆都**落在窗口外**（当前窗口 **' + days + '** 天，剧情日期 ' + String((info && info.storyDate) || '未设') + '）→ 在 设定 → 投喂范围 → 「📜 履历批量」把**窗口天数**调大，或先推进 / 回看剧情日期。',
+        'no-name-hit': '窗口内没有**与角色档案同名 / 同 owner** 的记忆命中 → 确认记忆的「归属角色」写的是角色名，或调大窗口天数。',
+    };
+    const codes = (info && Array.isArray(info.codes) && info.codes.length) ? info.codes : ['no-name-hit'];
+    const lines = codes.map((c) => texts[c]).filter(Boolean);
+    if (!lines.length) lines.push(texts['no-name-hit']);
+    return '<div class="ftt-empty">窗口内没有候选角色（窗口 <b>' + days + '</b> 天 · 记忆 ' + num(info && info.memories) + ' 条 / 有日期 '
+        + num(info && info.dated) + ' 条 / 窗口内 ' + num(info && info.inWindow) + ' 条）。'
+        + '<div class="ftt-hint">' + lines.join('<br>') + '</div>'
+        + '<div class="ftt-hint">本入口**恒显**（不再因「暂无候选」而消失）；这些参数在 设定 → 投喂范围 → 「📜 履历批量」。</div></div>';
 }
 
 /** 预览区（**只读**：勾角色 → 列方案 → 确认 / 取消；未确认零写入） */
@@ -96,7 +132,7 @@ export function resumeBatchPanelHtml() {
         + '先跑零 AI 的机械整理，再交给 AI 补全 / 凝练，逐角色复核后落库。**不读楼层正文**、**不得**写当前剧情日期之后的事（原作人物可写剧情前生平）、'
         + '**不重复**已有条目、凝练只允许更短。应用前会自动落一次快照，可整轮回退。</div>'
         + '<div class="ftt-hint">点角色右侧 ➕ / ✅ 勾选；下方「🚀 生成方案」会等一次 AI 返回（未确认前不写任何数据）。</div>'
-        + '<div>' + (cands.length ? rows : '<div class="ftt-empty">近期窗口内没有「被记忆命中」的角色：可调大窗口天数，或先用「⚡ 立即 AI 摘要」更新记忆。</div>') + '</div>';
+        + '<div>' + (cands.length ? rows : emptyCandsHtml(conf)) + '</div>';
     if (!pending) {
         return '<div class="ftt-editor">' + head
             + '<div class="ftt-row">'
