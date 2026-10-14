@@ -43,7 +43,7 @@ import {
     snapshotFlag, parseBirthDateParts, calcAge, refreshAllSnapshotAges, snapFindByName,
     ensureSnapshotBirthDate, birthDateInFuture, snapshotFutureOrigin, guessAgeFromCues,
     // v3.22.0（用户要求）：长生者开关 + 「不再处理」判据 + 超长年龄研判所需的年龄/年差
-    snapshotImmortal, snapshotImmortalFlag, snapshotRepairSkip, snapshotLastSeenGapYears, snapshotAge,
+    snapshotImmortal, snapshotImmortalFlag, snapshotRepairSkip, snapshotLastSeenGapYears, snapshotAge, snapshotAgeInfo,
     snapshotCanon,   // v3.45.5（`docs/D26` §3.4 Q5）：「原作 / 史实人物」标记（履历预填的准入判据）
     SNAP_AGE_EXTREME_YEARS,
 } from './model/snapshot.js';
@@ -482,15 +482,97 @@ function snapshotDeathVerdict(s, opts) {
 }
 
 /**
+ * v3.49.1（用户要求「角色修复中…需增加对年龄异常的处理。当没有标记长生者，且年龄明显达到平均高寿的，需主动标记去世」）：
+ * **年龄高寿的默认阈值**（岁）—— 可被 `cfg.repairDeceasedAge` 覆盖。
+ *   取 75：中文语境「高寿」的常见门槛区间是 70–80，取中值以免误伤刚过七十的角色；如你的世界观偏古代 / 偏低寿，可在设定里调小。
+ */
+const SNAP_LONGEVITY_DEFAULT_YEARS = 75;
+
+/**
+ * **年龄高寿研判**（机械、只读、零 AI；v3.49.1）。
+ *
+ * 判据（**保守**：任一不满足即**不标记**）——
+ *   ① **未标记已去世**（`snapshotAgeIsLocked` 短路：已标记的不再反复处理）；
+ *   ② **没有长生者标记**（`snapshotImmortal`）且档案里**没有**长生类措辞（`LONG_LIFE_WORDS`）—— 用户口径「没有标记长生者」；
+ *   ③ 年龄**可算且可信**：出生日期异常若是 `future` / `bad-format` / `after-record` / `overage`（算出来的年龄本身就不可信）→ 不动；
+ *   ④ 年龄 ≥ 阈值（`cfg.repairDeceasedAge`，默认 75 岁）——「**明显达到平均高寿**」；
+ *   ⑤ 年龄 **< 200**（`SNAP_AGE_EXTREME_YEARS`）：达到 200 说明出生日期与剧情锚点自相矛盾（多半是长生者没标或数据错）
+ *      → 只**报告**（`verdict: 'report'`）**不标记**，交 AI / 人工处置。
+ *
+ * @param {object} s 角色档案
+ * @param {{threshold?:number}} [opts]
+ * @returns {{verdict:'dead'|'report'|'none', reason:string, age:number|null, threshold:number, evidence:string, immortal:boolean, anomaly:string, blocked:string}}
+ */
+function snapshotLongevityVerdict(s, opts) {
+    const o = opts || {};
+    const raw = (o.threshold != null) ? o.threshold : (cfg && cfg.repairDeceasedAge);
+    const num = Number(raw);
+    const off = Number.isFinite(num) && num <= 0;                       // **0 = 关闭规则**（用户可用设定关掉）
+    const threshold = off ? 0 : (Number.isFinite(num) && num > 0 ? num : SNAP_LONGEVITY_DEFAULT_YEARS);
+    const out = { verdict: 'none', reason: 'no-age', age: null, threshold: threshold, evidence: '', immortal: false, anomaly: '', blocked: '' };
+    try {
+        if (off) { out.blocked = 'disabled'; return out; }
+        if (!s || typeof s !== 'object' || !s.name) { out.blocked = 'no-name'; return out; }
+        if (snapshotAgeIsLocked(s)) { out.blocked = 'already-marked'; return out; }
+        const immortal = (() => { try { return snapshotImmortal(s); } catch (e) { return false; } })();
+        out.immortal = immortal;
+        if (immortal) { out.blocked = 'immortal'; return out; }
+        // 档案里的长生类措辞（长生 / 不死 / 精灵 / 修真 / 神明 …）→ 与「已标记长生者」同一档，保守不动
+        const blob = (() => {
+            try { return SNAP_REPAIR_FIELDS.filter((f) => f.t !== 'bool').map((f) => snapValueText(snapGetByPath(s, f.g))).join(' '); } catch (e) { return ''; }
+        })();
+        if (LONG_LIFE_WORDS.some((w) => blob.indexOf(w) >= 0)) { out.blocked = 'long-life-words'; return out; }
+        const anomaly = (() => { try { return snapshotBirthAnomaly(s) || ''; } catch (e) { return ''; } })();
+        out.anomaly = anomaly;
+        // ① `future` / `bad-format` / `after-record`：算出来的年龄**方向或格式就不可信** → 一律不动；
+        // ② `overage`（年龄超常，多半是长生者没标或出生日期记错）**不在此拦** —— 它是「该报告、不该静默」的那一类，
+        //    下面与「≥ 200 岁」合并处理为 `report`（只报告不标记）。
+        if (anomaly === 'future' || anomaly === 'bad-format' || anomaly === 'after-record') { out.blocked = 'birth-untrusted'; return out; }
+        const age = (() => { try { const a = Number(snapshotAge(s)); return Number.isFinite(a) ? a : null; } catch (e) { return null; } })();
+        out.age = age;
+        if (age == null) { out.blocked = 'no-age'; return out; }
+        // ③ **年龄必须来自真实出生日期**（而不是「沿用存档值」）—— 否则等于拿一个猜出来的数字判人生死：
+        //   `snapshotAgeInfo().basis`：`story` / `timeline` = 按剧情锚点由出生日期算出（可信）；`stored` = 无锚点沿用存档值（不可信）；
+        //   `locked*` 已在上面短路。缺出生日期 / 精度不可解析 → 一律不动。
+        const info = (() => { try { return snapshotAgeInfo(s); } catch (e) { return null; } })();
+        const basis = String((info && info.basis) || '');
+        const precision = String((info && info.precision) || '');
+        if (!info || !info.birth || !precision) { out.blocked = 'no-birth-date'; return out; }
+        if (basis !== 'story' && basis !== 'timeline') { out.blocked = 'age-not-derived'; return out; }
+        // 「明显达到」留一格余量：只写到「年」的出生日期误差 ±1 岁 → 该档要求 ≥ 阈值 + 1
+        const effThreshold = threshold + (precision === 'year' ? 1 : 0);
+        if (age < effThreshold) { out.reason = 'below-threshold'; return out; }
+        const clock = (() => { try { return String(resumeClockDate() || ''); } catch (e) { return ''; } })();
+        out.evidence = '按剧情日期' + (clock ? (' ' + clock) : '') + '计，年龄 ' + Math.round(age) + ' 岁 ≥ 高寿阈值 ' + effThreshold
+            + ' 岁（出生日期精度 ' + precision + '），且未标记长生者';
+        // ③ 年龄本身**荒谬**（异常码 `overage` 或 ≥ 200 岁）→ 只报告、不标记：多半是长生者没标 / 出生日期错
+        if (anomaly === 'overage' || age >= SNAP_AGE_EXTREME_YEARS) { out.verdict = 'report'; out.reason = 'implausible-age'; return out; }
+        out.verdict = 'dead';
+        out.reason = 'age-longevity';
+        return out;
+    } catch (e) { out.blocked = 'error'; return out; }
+}
+
+/**
  * **批量已去世研判与标记**（机械、零 AI）：把「明显已去世」的角色标记 `身份.已去世 = true`，
  *   此后由既有固定规则接管 —— 修复名单跳过（`buildCharacterRepairQueue`）、年龄锁定、状态记录清除（`state-repair`）。
  *   纪律：**只标记、从不取消**（取消请到编辑器取消勾选）；判不出的一律不动。
- * @param {object} [opts] `max` / `silent`（不写调试日志）
- * @returns {{scanned:number, marked:number, uncertain:number, skipped:number, markedNames:Array, uncertainDetail:Array, items:Array}}
+ * @param {object} [opts] `max` / `silent`（不写调试日志）/ `ageRule`（**默认开**：v3.49.1 的年龄高寿规则，`false` 可关）
+ * @returns {{scanned:number, marked:number, markedByEvidence:number, markedByAge:number, ageReported:number, uncertain:number, skipped:number, markedNames:Array, ageMarkedNames:Array, ageReportedDetail:Array, uncertainDetail:Array, items:Array, ageThreshold:number}}
  */
 function markDeceasedByEvidence(opts) {
     const o = opts || {};
-    const stat = { scanned: 0, marked: 0, uncertain: 0, skipped: 0, markedNames: [], uncertainDetail: [], items: [] };
+    const ageRule = o.ageRule !== false;                       // v3.49.1：年龄高寿规则默认开
+    // 阈值口径与 `snapshotLongevityVerdict` **一致**：`cfg.repairDeceasedAge = 0`（或显式 `ageRule:false`）= **关闭规则**。
+    //   修复：此前这里独立算了一次 `Math.max(1, …)` → 0 会被兜回默认 75 → 「设定里关掉了却仍在标记」。
+    const rawAge = (o.threshold != null) ? o.threshold : (cfg && cfg.repairDeceasedAge);
+    const numAge = Number(rawAge);
+    const ageOff = (Number.isFinite(numAge) && numAge <= 0);
+    const ageThreshold = ageOff ? 0 : (Number.isFinite(numAge) && numAge > 0 ? numAge : SNAP_LONGEVITY_DEFAULT_YEARS);
+    const stat = {
+        scanned: 0, marked: 0, markedByEvidence: 0, markedByAge: 0, ageReported: 0,
+        uncertain: 0, skipped: 0, markedNames: [], ageMarkedNames: [], ageReportedDetail: [], uncertainDetail: [], items: [], ageThreshold: ageThreshold,
+    };
     try {
         for (const s of ((state && state.snapshots) || [])) {
             if (!s || typeof s !== 'object' || !s.name) continue;
@@ -501,18 +583,40 @@ function markDeceasedByEvidence(opts) {
                 s.identity = s.identity || {};
                 s.identity.deceased = true;
                 stat.marked++;
+                stat.markedByEvidence++;
                 stat.markedNames.push(String(s.name));
-                stat.items.push({ name: String(s.name), verdict: 'dead', reason: v.reason, evidence: v.evidence });
-            } else if (v.verdict === 'uncertain') {
+                stat.items.push({ name: String(s.name), verdict: 'dead', source: 'evidence', reason: v.reason, evidence: v.evidence });
+                continue;
+            }
+            if (v.verdict === 'uncertain') {
                 stat.uncertain++;
                 stat.uncertainDetail.push({ name: String(s.name), reason: v.reason, evidence: v.evidence });
             }
+            // v3.49.1（用户要求）：**年龄高寿 → 主动标记去世**（未标记长生者 / 年龄可信 / ≥ 阈值）
+            if (ageRule && !ageOff) {
+                const a = snapshotLongevityVerdict(s, { threshold: ageThreshold });
+                if (a.verdict === 'dead') {
+                    s.identity = s.identity || {};
+                    s.identity.deceased = true;
+                    stat.marked++;
+                    stat.markedByAge++;
+                    stat.markedNames.push(String(s.name));
+                    stat.ageMarkedNames.push(String(s.name));
+                    stat.items.push({ name: String(s.name), verdict: 'dead', source: 'age', reason: a.reason, age: a.age, evidence: a.evidence });
+                } else if (a.verdict === 'report') {
+                    stat.ageReported++;
+                    stat.ageReportedDetail.push({ name: String(s.name), reason: a.reason, age: a.age, evidence: a.evidence });
+                }
+            }
         }
         if (stat.marked) { try { saveState(); } catch (e) { /* 忽略 */ } }
-        if ((stat.marked || stat.uncertain) && o.silent !== true) {
+        if ((stat.marked || stat.uncertain || stat.ageReported) && o.silent !== true) {
             try {
                 dbgLog('修复', {
-                    action: '已去世研判（机械，v3.18.0）', scanned: stat.scanned, marked: stat.marked,
+                    action: '已去世研判（机械，v3.18.0；v3.49.1 + 年龄高寿规则）', scanned: stat.scanned, marked: stat.marked,
+                    markedByEvidence: stat.markedByEvidence, markedByAge: stat.markedByAge, ageThreshold: stat.ageThreshold,
+                    ageMarkedNames: stat.ageMarkedNames.slice(0, 8), ageReported: stat.ageReported,
+                    ageReportedDetail: stat.ageReportedDetail.slice(0, 5),
                     markedNames: stat.markedNames.slice(0, 8), uncertain: stat.uncertain,
                     uncertainDetail: stat.uncertainDetail.slice(0, 5), skippedAliveOrMarked: stat.skipped,
                 });
@@ -560,6 +664,8 @@ function characterAgeScan() {
                 age: age,
                 extreme: anomaly === 'age-extreme',
                 immortal: snapshotImmortal(s),
+                // v3.49.1：年龄高寿研判（只读干跑）—— 界面/调试可先看到"谁会被年龄规则标记"
+                longevity: (() => { try { return snapshotLongevityVerdict(s, {}); } catch (e) { return null; } })(),
                 skip: snapshotRepairSkip(s).reason,
                 anomaly: anomaly,
                 anomalyLabel: anomaly ? snapshotBirthAnomalyLabel(anomaly) : '',
@@ -1337,7 +1443,9 @@ export function resumeMechanicalPass(opts) {
 
 /** 机械处理总入口（V1 `runCharacterMechanicalPass`）：出生日期校正 + 标签补充 + 年龄刷新（全部零 AI） */
 function runCharacterMechanicalPass(opts) {
-    const out = { total: 0, birth: null, ages: null, tags: null, resume: null, anomalies: 0, changed: false, deceased: 0, immortal: 0 };
+    const out = { total: 0, birth: null, ages: null, tags: null, resume: null, anomalies: 0, changed: false, deceased: 0, immortal: 0,
+        // v3.49.1（用户要求）：年龄高寿规则的读数（与文字证据分列，如实回报）
+        ageMarked: 0, ageReported: 0, ageThreshold: 0, deceasedByEvidence: 0 };
     try {
         const list = (state && state.snapshots) || [];
         out.total = list.length;
@@ -1361,10 +1469,20 @@ function runCharacterMechanicalPass(opts) {
             || (out.resume && out.resume.changed));   // v3.45.5：履历机械段（遗弃 / 凝练）也算「有改动」→ 需要落盘
         if (out.changed) { try { saveState(); } catch (e) { } }
         try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { }
-        if (out.changed || out.deceased || out.immortal) {
+        // v3.49.1：把「已去世研判」的两类来源分列回报（文字证据 / 年龄高寿），面板据此写明"按年龄标记去世 N 名"
+        try {
+            if (lastDeathMark) {
+                out.ageMarked = Number(lastDeathMark.markedByAge) || 0;
+                out.ageReported = Number(lastDeathMark.ageReported) || 0;
+                out.ageThreshold = Number(lastDeathMark.ageThreshold) || 0;
+                out.deceasedByEvidence = Number(lastDeathMark.markedByEvidence) || 0;
+            }
+        } catch (e) { /* 忽略 */ }
+        if (out.changed || out.deceased || out.immortal || out.ageMarked || out.ageReported) {
             try {
                 dbgLog('摘要', {
-                    action: '角色机械处理（AI 前全局）', total: out.total,
+                    action: '角色机械处理（AI 前全局；v3.49.1 + 年龄高寿规则）', total: out.total,
+                    ageMarked: out.ageMarked, ageReported: out.ageReported, ageThreshold: out.ageThreshold,
                     birthCorrected: out.birth ? out.birth.corrected : 0,
                     birthSkippedEmpty: out.birth ? out.birth.skippedEmpty : 0,
                     birthSkippedDeceased: out.deceased || 0,
@@ -1429,11 +1547,15 @@ async function runCharacterRepair(opts) {
             } catch (e) { return ''; }
         };
         // v3.18.0：机械已去世研判结果（新标记 / 待确认）—— 进通知与文案
+        // v3.49.1：**年龄高寿规则**的标记数与阈值单列写明（用户要求「当没有标记长生者，且年龄明显达到平均高寿的，需主动标记去世」）
         const deathStat = lastDeceasedMark();
+        const ageText = (mech.ageMarked || mech.ageReported)
+            ? `年龄规则（≥ ${mech.ageThreshold || 0} 岁且未标长生者）标记去世 ${mech.ageMarked || 0} 名${mech.ageReported ? ` · 另 ${mech.ageReported} 名年龄异常（≥ 200 岁）只报告不标记` : ''}；`
+            : '';
         const deathText = (deathStat && (deathStat.marked || deathStat.uncertain)) ? (deceasedMarkText(deathStat) + '；') : '';
         const mechText = (mech.changed
             ? `全局机械处理 ${mech.total} 名：出生日期校正 ${mech.birth ? mech.birth.corrected : 0} 名 · 标签补充 ${mech.tags ? mech.tags.filled : 0} 名 · 年龄刷新 ${mech.ages ? mech.ages.fixed : 0} 名${mech.ages && mech.ages.cleared ? `（清无效值 ${mech.ages.cleared}）` : ''}${mech.resume && (mech.resume.dropped || mech.resume.condensed) ? ` · 履历整理 ${mech.resume.changed} 名（遗弃 ${mech.resume.dropped} · 凝练 ${mech.resume.condensed}）` : ''}`
-            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${deathText}${deadText}${immText}`;
+            : `全局机械处理 ${mech.total} 名：无需改动（出生日期 / 标签 / 年龄均已就绪）`) + `；${ageText}${deathText}${deadText}${immText}`;
         const q = buildCharacterRepairQueue();
         if (!q.list.length) {
             notify('success', '角色修复：无需修复', `${mechText}可修复的 ${q.total} 名角色档案有效字数都已达到门限（≥ ${q.minSize} 字）${q.deceasedCount ? ` · 另有 ${q.deceasedCount} 名已去世角色按固定规则跳过（年龄锁定）` : ''}${q.immortalCount ? ` · 另有 ${q.immortalCount} 名长生者跳过（已按剧情标记，不再分析）` : ''}。如需重查更完整的档案，可在 设定 → 自动修复 调低「角色修复字数门限」。`);
@@ -1517,6 +1639,8 @@ export {
     DEATH_WORDS, DEATH_TERMINAL, LONG_LIFE_WORDS, DEATH_NEGATE, DEATH_THIRD_PARTY,
     deathSplitSentences, deathSentenceJudge, snapshotDeathEvidence, snapshotDeathVerdict,
     markDeceasedByEvidence, deceasedMarkText, lastDeceasedMark,
+    // v3.49.1（用户要求）：年龄高寿研判（机械、只读）+ 默认阈值
+    snapshotLongevityVerdict, SNAP_LONGEVITY_DEFAULT_YEARS,
     // v3.22.0：长生者（跳过修复）+ 超长年龄研判
     characterAgeScan,
     // v3.45.5（`docs/D22` W4 `数-19`/`数-20`/`数-21`；`docs/D26`）：履历（角色档案第 9 区块）的编排入口

@@ -59,6 +59,9 @@ let aiCalls = 0;
 function boot(stateLike) {
     Object.assign(cfg, clone(defaultCfg));
     // oracle 固定门限/批次/楼层数/字数上限 → V2 同值，保证确定可比
+    // v3.49.1：本档校验的是 **V1 平价**（逐字段与黄金样本一致）—— 年龄高寿规则属**有意偏离 V1**，
+    //   在此显式关闭（0 = 关闭）；该规则本身由 `tests/unit/character-longevity.test.js` 专项覆盖。
+    cfg.repairDeceasedAge = 0;
     cfg.repairCharacterMinSize = 30; cfg.repairCharacterBatch = 3; cfg.repairFloors = 10;
     setScopeKey('甲');
     setLastMessageId(3);                       // oracle mock env：getLastMessageId() === 3
@@ -109,8 +112,14 @@ const setP = (mut, path, val, opts) => {
  *   condensed / changed）；`snapshot` 投影里也多了 `resume` 字段（V1 无此区块）。
  *   黄金样本 `tests/fixtures/v1-golden-character-repair.json` **一字未改**，在此显式归一掉 `resume`，
  *   并在 C3 末尾单独断言 `mech.resume` 确实存在（守卫「归一 → 把功能删干净了也能过」）。
+ *
+ * v3.49.1（用户要求「角色修复中…需增加对年龄异常的处理。当没有标记长生者，且年龄明显达到平均高寿的，需主动标记去世」）：
+ *   **同一手法的第四例** —— 年龄高寿规则给 `runCharacterMechanicalPass` 的返回结构加了四个读数
+ *   （`ageMarked` / `ageReported` / `ageThreshold` / `deceasedByEvidence`）；黄金样本仍**一字未改**，在此显式归一掉，
+ *   并在 C3 末尾单独断言这四键确实存在。
  */
-const v2StripMech = (m) => JSON.parse(JSON.stringify(m, (k, v) => ((k === 'immortal' || k === 'skippedImmortal' || k === 'resume') ? undefined : v)));
+const v2StripMech = (m) => JSON.parse(JSON.stringify(m, (k, v) => ((k === 'immortal' || k === 'skippedImmortal' || k === 'resume'
+    || k === 'ageMarked' || k === 'ageReported' || k === 'ageThreshold' || k === 'deceasedByEvidence') ? undefined : v)));
 
 // ============================================================
 // C 组：角色修复内核 —— 与 V1 逐项比对

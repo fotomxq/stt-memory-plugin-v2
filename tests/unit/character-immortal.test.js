@@ -150,6 +150,9 @@ A('C2 待修复名单：长生者**整批跳过**（分别计数，不进 AI 名
         SNAP('长生乙', { immortal: true, occupation: '修士' }),
         SNAP('故人丙', { deceased: true }),
     ]);
+    // v3.49.1：本档校验的是 **V1 平价**（逐字段与黄金样本一致）—— 年龄高寿规则属**有意偏离 V1**，
+    //   在此显式关闭（0 = 关闭）；该规则本身由 `tests/unit/character-longevity.test.js` 专项覆盖。
+    cfg.repairDeceasedAge = 0;
     cfg.repairCharacterMinSize = 0;
     const q = buildCharacterRepairQueue();
     const scan = characterAgeScan();
@@ -255,7 +258,8 @@ A('F2 `runCharacterMechanicalPass()` 如实回报长生者跳过数（通知/日
     //   「不影响既有键」的判据仍成立（既有 8 个键都在）。
     return Number(mech.immortal) === 1 && Number(mech.deceased) === 0
         && mech.birth && Number(mech.birth.skippedImmortal) === 1
-        && J(Object.keys(mech).sort()) === J(['ages', 'anomalies', 'birth', 'changed', 'deceased', 'immortal', 'resume', 'tags', 'total'])
+        // v3.49.1：年龄高寿规则给机械段加了四个读数（与 v1.205 `deceased` / v3.22.0 `immortal` / v3.45.5 `resume` 同款）
+        && J(Object.keys(mech).sort()) === J(['ageMarked', 'ageReported', 'ageThreshold', 'ages', 'anomalies', 'birth', 'changed', 'deceased', 'deceasedByEvidence', 'immortal', 'resume', 'tags', 'total'])
         && !!mech.resume && Number(mech.resume.snapshots) === 0;   // 本场景无履历 → 0 个档案参与整理
 })(), () => J(runCharacterMechanicalPass()));
 

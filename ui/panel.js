@@ -3160,6 +3160,8 @@ export async function panelAction(action, payload) {
                 if (Number(r.removed || 0)) parts.push('删除明显错误 ' + Number(r.removed) + ' 条');
                 if (Number(r.inferred || 0)) parts.push('保守推断 ' + Number(r.inferred) + ' 名');
                 if (Number(r.noBasis || 0)) parts.push('无依据 ' + Number(r.noBasis) + ' 名');
+                // v3.49.1（用户要求）：机械段的**年龄高寿规则**标记数（与文字证据分列，如实回报）
+                if (Number((r.mech && r.mech.ageMarked) || 0)) parts.push('按年龄标记去世 ' + Number(r.mech.ageMarked) + ' 名（未标长生者 ' + Number((r.mech && r.mech.ageThreshold) || 0) + ' 岁 + 主动标记）');
                 if (Number(r.queueLeft || 0)) parts.push('剩余待修 ' + Number(r.queueLeft) + ' 名');
             }
             setNote('角色修复：' + parts.join('；'));
