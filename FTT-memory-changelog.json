@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.47.3",
+  "version": "3.48.0",
   "updatedAt": "2026-10-14",
   "generatedAt": "2026-10-14",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.48.0",
+      "date": "2026-10-14",
+      "title": "列表行右侧按钮改滑动 / 悬停触发（docs/D22 §4.19 W19 应-35）",
+      "points": [
+        "登记：docs/D9 §3.2 + §3.2.1（UI 契约长期归属处，含常量与阈值）｜ docs/D22 §4.19（应-35）｜ docs/D17 U236 ｜ 批次档 do…",
+        "同步更新的既有断言：（行标记有意变更，非回归）：panel.test.js / parallels-layout.test.js（改断新结构，",
+        "并新增 B6 断言锁住滑动结构：）/ list-pager.test.js（行计数改以 .ftt-swipe-body 为锚点，与标记细节解耦）。parallels-layout…"
+      ]
+    },
     {
       "version": "3.47.3",
       "date": "2026-10-14",

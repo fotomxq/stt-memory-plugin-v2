@@ -121,6 +121,8 @@ import { constraintPageHtml, constraintDimState, setConstraintDim, setLinkQuery 
 import { atomIsHidden } from '../core/merge.js';
 // v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」）—— 依赖勾选的工具行按钮的**唯一事实源**
 import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
+// v3.48.0（`docs/D22` §4.19 W19 `应-35`）：列表行右侧按钮改**滑动 / 悬停**触发（标记 + 手势 + 实测宽度全在新模块）
+import { swipeRowHtml, applySwipeRows } from './swipe-rows.js';
 // v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
 import { entryAgeDays, agingBucketOf, PLAN_AGING_STALE_DAYS } from '../core/plan-aging.js';
 import { isShellEntry } from '../core/shell-guard.js';
@@ -1285,17 +1287,16 @@ function dimBodyList(kind) {
         //   平行行 = 一个**竖排操作列**（🚀 推进 / ⬆ 转正 / ✏️ 编辑 / 🗑 删除 + 选中态的多选由左侧方框承担），
         //   行主体仍占满剩余宽度（`.ftt-grow`），不再被按钮横向挤压。
         const opsInner = (par ? par.ops : '') + peekBtn + editBtn + delBtn;
-        const ops = (kind === 'parallels')
-            ? ('<div class="ftt-item-ops ftt-ops-col">' + opsInner + '</div>')
-            : opsInner;
         // v3.0.13：本次刚推演落库的平行事件 → 行上带定位锚点 + 「🆕 本次新增」标记（重绘后自动滚入视野）
         const flashed = (kind === 'parallels' && ps.flash && Array.isArray(ps.flash.ids) && ps.flash.ids.indexOf(id) >= 0);
         const flashAttr = flashed ? (' data-ftt-flash-id="' + attr(id) + '"') : '';
         const flashBadge = flashed ? '<b class="ftt-ok">🆕 本次新增</b>' : '';
-        return '<div class="ftt-item ftt-inline"' + flashAttr + '>' + box
-            + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + '</span>'
-            + ops
-            + '</div>';
+        // v3.48.0（W19 应-35）：行 = 内容块 + 右侧按钮组（滑动 / 悬停展开；宽度实测后左移；按钮多则折行网格）
+        return swipeRowHtml(
+            box + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + '</span>',
+            opsInner,
+            { attrs: flashAttr, opsCol: kind === 'parallels', count: (opsInner.match(/data-ftt-action=/g) || []).length }
+        );
     }).join('\n');
     // v3.47.2（用户要求）：**去掉**分类顶部的「NSFW 留档」统计行（每条末行的等级徽标保留）
     return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + rows;
@@ -1507,9 +1508,11 @@ function statesBody() {
         const rows = items.map((e) => {
             const id = String(e.id || '');
             const box = multi ? ('<input type="checkbox" data-ftt-select="states" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
-            return '<div class="ftt-item ftt-inline">' + box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>'
-                + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '" title="编辑这条状态记录">✏️</button>'
-                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '" title="删除这条状态记录">🗑</button></div>';
+            // v3.48.0（W19 应-35）：状态行同款（内容块 + 右侧按钮组，滑动 / 悬停展开）
+            return swipeRowHtml(box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>',
+                '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '" title="编辑这条状态记录">✏️</button>'
+                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '" title="删除这条状态记录">🗑</button>',
+                { count: 2 });
         }).join('\n');
         return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + groups.get(subj).length + ')</span>'
             + '<button class="ftt-btn ftt-sm" data-ftt-action="addStateFor" data-ftt-subject="' + attr(subj) + '">➕ 添加</button>'
@@ -1927,6 +1930,7 @@ export function renderPanel() {
     const el = overlayEl || ensureOverlay();
     // v2.63.0：DOM 写完后启停「管线状态」读秒计时器（此刻那一行才真的存在；切页/关闭/空闲则停表）
     const finish = (html) => {
+        try { applySwipeRows(el); } catch (e) { /* v3.48.0（W19）：滑动行绑定失败不影响渲染（按钮照旧可点） */ }
         try { syncPipelineTick(); } catch (e) { /* 计时器启停失败不影响渲染 */ }
         try { syncBridgeTick(); } catch (e) { /* v3.25.0：调试页驻留时刷新调试桥状态行 */ }
         try { flashScrollIntoView(el); } catch (e) { /* 定位失败不影响渲染 */ }   // v3.0.13：把「本次新增」条目滚入视野

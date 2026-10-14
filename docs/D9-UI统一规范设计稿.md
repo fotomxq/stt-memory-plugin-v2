@@ -83,7 +83,7 @@
 | 表单行 | `.ftt-field`（`label` + 控件 + `.ftt-muted` 说明） | `style.css:129-132`（移动端自动换行）；`:177-180`（`label` / 控件基础规则） |
 | 范围型控件 | `.ftt-field-range`（`input[type=range]` + `<output>` + 默认刻度） | `style.css:719` 起（`.ftt-field-range`）、`ui/settings-pages.js#RANGE_SPECS`、`ui/settings-pages.js#rangeControlHtml`（`:1012`） |
 | 开关 | `.ftt-switch` | `style.css:181` |
-| 列表行 | `.ftt-item` + `.ftt-item-main` + `.ftt-item-ops` + `.ftt-title-row` + `.ftt-meta` + `.ftt-desc` + `.ftt-tags` | `style.css:133-135`（移动端换行）；`:167,170-171`（基础规则）；行内容由 `ui/list-rows.js`（`listRowMainHtml` / `stateRowMainHtml` / `tagsLine`）装配 |
+| 列表行 | `.ftt-item`（+ `.ftt-swipe` 滑动行）+ `.ftt-item-main` + `.ftt-item-ops`（按钮组外壳 `.ftt-swipe-ops`）+ `.ftt-swipe-body` + `.ftt-title-row` + `.ftt-meta` + `.ftt-desc` + `.ftt-tags` | `style.css:133-135`（移动端换行）；`:167,170-171`（基础规则）；行内容由 `ui/list-rows.js`（`listRowMainHtml` / `stateRowMainHtml` / `tagsLine`）装配；滑动行标记与展开态由 `ui/swipe-rows.js`（§3.2.1） |
 | 空态 | `.ftt-empty` | `style.css:176`（斜体灰字） |
 | 徽标 / 胶囊 | `.ftt-badge`（含 `--abandoned` / `--blocked` / `--immortal` 变体）、`.ftt-stat` | `ui/list-rows.js`（已去世 / 长生者 / 出生日期异常 / 超长年龄徽标）、顶栏统计 |
 | 按钮 | `.ftt-btn`（含危险操作样式） | `ui/panel.js#ensureButtonTypes`（`:1594`）统一补 `type="button"`；`ui/panel.js#hardenButtonTypes`（`:1600`）DOM 层兜底 |
@@ -131,11 +131,27 @@
 | --- | --- | --- |
 | 工具行 | 搜索框 + 筛选条（字段 / 排序 / 额外条件）+ 批量操作按钮 | `data-ftt-search` / `data-ftt-filter`（`ui/panel.js`） |
 | 统计行 | `📚 共 N 条` + 各维度徽标 | 总览胶囊（`PANEL_TABS` + 类目统计） |
-| 列表 | 每行 `.ftt-item`：标题行（`.ftt-title-row`）→ 正文/描述（`.ftt-desc`）→ 标签行（`.ftt-tags`）→ 元信息（`.ftt-meta`：日期 · 楼层 · 调用次数 · 重要度）→ 操作（`.ftt-item-ops`） | `ui/list-rows.js`（逐维行装配） |
+| 列表 | 每行 `.ftt-item ftt-swipe`：**内容块 `.ftt-swipe-body`**（标题行 `.ftt-title-row` → 正文 `.ftt-desc` → 标签 `.ftt-tags` → 元信息 `.ftt-meta`）→ **按钮组 `.ftt-swipe-ops`**（`.ftt-item-ops`，**滑动 / 悬停 / 聚焦才展开**，见 §3.2.1） | `ui/list-rows.js`（逐维行装配）+ `ui/swipe-rows.js`（标记与展开态） |
 | 分页/裁剪 | 列表按内核顺序与筛选条件；超长列表给「显示更多」或滚动容器 | 现状各页自定（**Q1**：是否统一分页步长） |
 | 空态 | `.ftt-empty` + 引导动作 | 各页现有文案 |
 
 **行内元素顺序固定**（V1 对齐）：标题 → 正文 → 标签 → 元信息 → 操作；元信息顺序 = `日期 · 类型 · 楼层 · 调用次数 · 重要度 · 位置`（`ui/list-rows.js`）。
+
+#### 3.2.1 行右侧按钮的展开方式（v3.48.0 · 用户直接要求 `应-35`）
+
+**用户原话**：「列表右侧按钮，改为滑动方式触发。即滑动后展示按钮，且按钮布局做好适配。pc端自适应，鼠标放上去也会显示按钮组。」
+
+| 项 | 口径 |
+| --- | --- |
+| **结构** | 行 = `.ftt-item ftt-inline ftt-swipe`（`data-ftt-swipe="1"` + `data-ftt-swipe-n="<按钮数>"`）→ 内容块 `.ftt-swipe-body` + 按钮组 `.ftt-swipe-ops.ftt-item-ops`（平行页仍带 `.ftt-ops-col` 竖排） |
+| **展开态** | **只有一个**：行上打 `.ftt-open`。触屏左滑 / PC 悬停 / 键盘聚焦**三条入口写同一个类** → 三端观感一致，**不存在第二套视觉** |
+| **触屏** | 左滑过阈值（`SWIPE_OPEN_THRESHOLD = -26px`）→ 展开；右滑过阈值 → 收起；**横向意图判定**（位移 > 10px 且横向大于纵向）→ 纵向滚动不受影响；拖动期间 `.ftt-drag` 关过渡（跟手） |
+| **PC** | `mouseenter` 即展开、`mouseleave` 收起（用户要求）；焦点进入同理（`focusin` / `focusout`，收起前先问 `hasFocusInside`，绝不把键盘用户正在操作的按钮收走） |
+| **互斥** | **同一时刻只展开一行**（打开新的即收起旧的）；点行外空白 → 全部收起；点**行内按钮**不收起（否则点了按钮就跳走） |
+| **布局适配** | 按钮组宽度**实测**（`ops.scrollWidth`）后写入行级 `--ftt-swipe-w` → 行内容按需左移**恰好那么多**；过宽（> 行宽 × `SWIPE_MAX_RATIO = 0.72`）→ 加 `.ftt-swipe-wide`：按钮组**折行成多行网格**、宽度夹到上限（不吃掉整行） |
+| **降级** | 拿不到 DOM / 量不到宽度（面板未挂载）→ 只跳过动画与左移，**按钮保持可点**；`classList` 缺失 / 对象冻结一律不抛错（`ui/swipe-rows.js` 全部 try/catch 兜底） |
+| **动效** | 过渡 0.18s；系统「减少动态效果」（`prefers-reduced-motion`）下**无过渡**（瞬时切换） |
+| **常量与选择器** | 唯一事实源 `ui/swipe-rows.js`（`SWIPE_ROW_SELECTOR` / 阈值 / 比例）；`ui/panel.js` 只留「两处渲染助手 + 渲染后一次绑定（`finish()` 内）」 |
 
 ### 3.3 设定页（15 子页）
 

@@ -755,3 +755,51 @@ body.ftt-no-effects #toast-container *::before {
   #ftt-panel .ftt-field-range > label { min-width: 100%; }
   #ftt-panel .ftt-range-out { min-width: 70px; }
 }
+
+/* ============================================================
+   v3.48.0（`docs/D22` §4.19 W19 `应-35` / `docs/D9` §3.2）：**列表行右侧按钮改滑动 / 悬停触发**
+   用户要求：「列表右侧按钮，改为滑动方式触发。即滑动后展示按钮，且按钮布局做好适配。
+             pc端自适应，鼠标放上去也会显示按钮组。」
+   结构（`.ftt-swipe` = 行 · `.ftt-swipe-body` = 内容 · `.ftt-swipe-ops` = 按钮组）：
+     · 桌面/触屏**同一套展开态**（`.ftt-open` 由 `ui/swipe-rows.js` 打上），左移量 = JS 实测的 `--ftt-swipe-w`；
+     · 悬停（PC）与聚焦（键盘）走同一条 JS 入口 → 视觉与触屏完全一致，不引入第二套观感；
+     · 按钮组 `flex-wrap` 折行且**不超过行宽 72%**；超过时由 JS 打 `ftt-swipe-wide`（按钮组吃满可用宽度、多行网格）。
+   ============================================================ */
+#ftt-panel .ftt-swipe { position: relative; overflow: hidden; }
+#ftt-panel .ftt-swipe-body {
+  display: flex; align-items: flex-start; gap: 6px; width: 100%; min-width: 0;
+  transition: transform .18s ease;
+  will-change: transform;
+}
+#ftt-panel .ftt-swipe-ops {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  padding-left: 10px; max-width: 100%; box-sizing: border-box;
+  transform: translateX(100%);
+  transition: transform .18s ease;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0) 0, var(--ftt-bg-3, #20242b) 12px, var(--ftt-bg-3, #20242b) 100%);
+}
+/* 展开态（JS 打类；触屏滑动 / PC 悬停 / 键盘聚焦三条入口共用） */
+#ftt-panel .ftt-swipe.ftt-open > .ftt-swipe-ops { transform: translateX(0); }
+#ftt-panel .ftt-swipe.ftt-open > .ftt-swipe-body { transform: translateX(calc(-1 * var(--ftt-swipe-w, 0px))); }
+/* 拖动跟手：关掉过渡，否则手指移动会滞后 */
+#ftt-panel .ftt-swipe.ftt-drag > .ftt-swipe-body,
+#ftt-panel .ftt-swipe.ftt-drag > .ftt-swipe-ops { transition: none; }
+/* 按钮多 / 文案长 → 折行网格（宽度已由 JS 夹到行宽的 72%） */
+#ftt-panel .ftt-swipe-wide > .ftt-swipe-ops { flex-wrap: wrap; align-content: center; max-width: 72%; }
+#ftt-panel .ftt-swipe-wide > .ftt-swipe-body { transform: translateX(calc(-1 * var(--ftt-swipe-w, 0px))); }
+#ftt-panel .ftt-swipe:not(.ftt-open) > .ftt-swipe-ops { pointer-events: none; }
+#ftt-panel .ftt-swipe.ftt-open > .ftt-swipe-ops { pointer-events: auto; }
+/* 桌面端细则：悬停时行底纹微亮，暗示「这里可以划出按钮」；触屏无悬停概念，靠滑动 */
+@media (hover: hover) {
+  #ftt-panel .ftt-swipe:hover { background: var(--ftt-bg-3, #20242b); }
+}
+/* 窄屏（≤760px，与面板紧凑模式同断点）：行内容允许折行，按钮组继续折行网格 */
+@media (max-width: 760px) {
+  #ftt-panel .ftt-swipe-body { flex-wrap: wrap; }
+  #ftt-panel .ftt-swipe-wide > .ftt-swipe-ops { max-width: 78%; }
+}
+/* 系统「减少动态效果」：只留瞬时切换（与 v2.x 既有口径一致） */
+@media (prefers-reduced-motion: reduce) {
+  #ftt-panel .ftt-swipe-body, #ftt-panel .ftt-swipe-ops { transition: none; }
+}

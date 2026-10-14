@@ -103,7 +103,8 @@ R.assert('P1（v2.52.0）总览：剧情时钟三行 + 在场 + **管线状态�
 R.assert('P2 维度分页：V1 行样式（.ftt-item/.ftt-inline/.ftt-btn）+ 搜索框 + 编辑/删除按钮；计划页含悬念', (() => {
     const atoms = panelBodyHtml('atoms');
     const plans = panelBodyHtml('plans');
-    return atoms.indexOf('data-ftt-search="atoms"') >= 0 && atoms.indexOf('class="ftt-item ftt-inline"') >= 0
+    // v3.48.0（W19 应-35）：行容器保持 V1 的 `.ftt-item` / `.ftt-inline`，另加 `ftt-swipe`（滑动/悬停展开按钮组）
+    return atoms.indexOf('data-ftt-search="atoms"') >= 0 && atoms.indexOf('class="ftt-item ftt-inline ftt-swipe"') >= 0
         && atoms.indexOf('data-ftt-action="edit" data-kind="atoms" data-id="a1"') >= 0
         && atoms.indexOf('data-ftt-action="delete" data-kind="atoms" data-id="a1"') >= 0
         && atoms.indexOf('码头木箱') >= 0
