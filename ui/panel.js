@@ -39,7 +39,7 @@ import { runPlanSuspRepair } from '../core/plan-repair.js';
 // v3.46.1（`docs/D22` W11 应-26）：三域联动（🔗 联动构建）—— **实现与编排在 `ui/tri-link.js`**（新模块，`docs/05` §5 C11），此处只接线
 import { triLinkButton, triLinkPanelHtml, triLinkRun, triLinkCommit, triLinkClose } from './tri-link.js';
 // v3.46.2（`docs/D22` §4.14 W13 应-30）：货币融合（🔀 AI 融合货币）—— 实现与编排在 `ui/currency-merge.js`（同上，只接线）
-import { currencyMergeButton, currencyMergePanelHtml, currencyMergeRun, currencyMergeCommit, currencyMergeOpen, currencyMergeClose, CUR_MERGE_ACTIONS, runCurrencyMergeAction } from './currency-merge.js';
+import { currencyMergeButton, currencyMergePanelHtml, currencyMergeRun, currencyMergeCommit, currencyMergeOpen, currencyMergeClose, CUR_MERGE_ACTIONS, runCurrencyMergeAction, currencyMergeBegin } from './currency-merge.js';
 // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
 import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
@@ -3244,6 +3244,11 @@ export async function panelAction(action, payload) {
         // 四个动作（开面板 / 选角色出方案 / 应用 / 取消）统一走 `ui/currency-merge.js#runCurrencyMergeAction`
         //   —— 新功能实现全在新模块，此处只留**一个**分支（`docs/05` §5 C11 的"必要接线"）。
         else if (CUR_MERGE_ACTIONS.indexOf(a) >= 0) {
+            // v3.49.2（用户要求「点击图标触发后，该条目应有滚动或加载效果，同时显示提交 AI 的提示状态」）：
+            //   点「🔧」的**一瞬间**就写提示并重绘（该条目转圈 + 按钮禁用 + ⏳ 已提交 AI…），不等 AI 返回；
+            //   模式与 v2.96.0 的单楼分析修复一致（`setNote` + `renderPanel()` 再 await）。
+            const pre = currencyMergeBegin(a, p);
+            if (pre) { setNote(pre.note); renderPanel(); }
             const r = await runCurrencyMergeAction(a, p);
             setNote(String(r.note || '货币融合：已完成'));
             result = Object.assign(result, { ok: r.ok !== false, action: a, currencyMerge: r, reason: r.reason || '', made: Number((r.applied && r.applied.mergedRemoved) || 0) });

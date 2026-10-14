@@ -29,7 +29,8 @@ import {
 // v3.46.3（用户报告「无法正常使用 / 没有任何提醒信息」的回归）：**UI 层**也要测 —— v3.46.2 只测了内核，
 //   于是「开面板没生效」这种纯界面缺陷逃过了门禁。
 import { panelAction, openPanel, panelModalInnerHtml, setPanelHooks2 } from '../../ui/panel.js';
-import { currencyMergeButton, currencyMergePanelHtml, currencyMergeState as uiCurMergeState } from '../../ui/currency-merge.js';
+import { currencyMergeButton, currencyMergePanelHtml, currencyMergeState as uiCurMergeState,
+    currencyMergeBegin, currencyMergeRunning, runCurrencyMergeAction, currencyMergeOpen } from '../../ui/currency-merge.js';
 import { setAiHooks } from '../../core/ai-hooks.js';
 
 const R = makeReporter('currency-merge v3.46.2 W13（货币融合：只读打包 / 窄契约校验 / 复用机械应用路径 / 墓碑）');
@@ -445,4 +446,53 @@ const AX = async (n, fn, e) => {
     }, 'I4：合并后应为 2 条（黄金 130 两 + 赤条金 2 条）');
 }
 
+/** 打开货币融合面板（F 组用） */
+function boot2() { try { currencyMergeOpen(); } catch (e) { /* 忽略 */ } }
+
+// ==================== F 组（v3.49.2）：面板交互 —— 修复图标 / 在途禁用 / 加载与「已提交 AI」状态 ====================
+A('F1 图标语义：角色行右侧是**修复含义**的 🔧（不再是 ➕），title 写明「按 AI 生成…融合方案」；提示行同步改口径', (() => {
+    boot(seed()); boot2();
+    const h = currencyMergePanelHtml();
+    return h.indexOf('data-ftt-action="currencyMergePick"') > 0
+        && h.indexOf('🔧') > 0 && h.indexOf('➕') < 0 && h.indexOf('✅ 应用融合') < 0
+        && h.indexOf('货币融合方案（整理同义叫法') > 0
+        && h.indexOf('点角色右侧 <b>🔧</b> 出方案') > 0;
+})(), '')
+
+A('F2 点击瞬间：`currencyMergeBegin()` 置在途归属并给出**提交 AI 的提示文案**；面板随即渲染该条目的**转圈 + 禁用 + ⏳ 已提交 AI…** 与顶部状态行', (() => {
+    boot(seed()); boot2();
+    const pre = currencyMergeBegin('currencyMergePick', { name: '李瑶' });
+    const h = currencyMergePanelHtml();
+    const rowStart = h.indexOf('李瑶');
+    const row = h.slice(Math.max(0, rowStart - 60), rowStart + 700);
+    return !!pre && String(pre.note).indexOf('已提交 AI 分析') > 0 && String(pre.note).indexOf('李瑶') > 0
+        && currencyMergeRunning() === '李瑶'
+        && h.indexOf('⏳ 已提交 AI 分析') > 0                       // 顶部状态行
+        && h.indexOf('⏳ 已提交 AI…') > 0                           // 该条目的徽标
+        && row.indexOf('ftt-loading') > 0                          // 该条目 + 按钮转圈
+        && row.indexOf(' disabled') > 0                            // 在途禁用，避免重复点击
+        && row.indexOf('正在整理这个角色的货币') > 0;               // 状态说明
+})(), () => { boot(seed()); boot2(); currencyMergeBegin('currencyMergePick', { name: '李瑶' }); return String(currencyMergePanelHtml()).slice(0, 900); })
+
+A('F3 非 pick 动作不受影响：`currencyMergeBegin()` 对其余三个动作返回 null（不改变任何状态）', (() => {
+    boot(seed()); boot2();
+    return currencyMergeBegin('currencyMergeOpen', {}) === null
+        && currencyMergeBegin('currencyMergeApply', {}) === null
+        && currencyMergeBegin('currencyMergeClose', {}) === null
+        && currencyMergeRunning() === '';
+})(), '')
+
+A('F4 收尾清位：一轮真跑（AI 桩）结束后**在途归属清空**，面板不再有转圈 / 禁用 / 已提交徽标；失败路径同样清位', (() => {
+    boot(seed()); boot2();
+    return (async () => {
+        setAiHooks({ callAi: async () => ({ ok: true, text: JSON.stringify({ groups: [] }) }), busy: () => false });
+        await runCurrencyMergeAction('currencyMergePick', { name: '李瑶' });
+        const afterOk = currencyMergeRunning() === '' && String(currencyMergePanelHtml()).indexOf('⏳ 已提交 AI…') < 0;
+        // 失败路径（AI 抛错 → 内核返回失败）也清位
+        setAiHooks({ callAi: async () => { throw new Error('boom'); }, busy: () => false });
+        await runCurrencyMergeAction('currencyMergePick', { name: '李瑶' });
+        const afterFail = currencyMergeRunning() === '';
+        return afterOk && afterFail;
+    })();
+})(), '')
 R.done();
