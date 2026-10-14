@@ -34,6 +34,12 @@ let appliedSig = '';
 /** 预览里被拒绝的组（供展示原因分布） */
 let rejected = [];
 let reasons = {};
+/**
+ * v3.49.2（用户要求「点击图标触发后，该条目应有滚动或加载效果，同时显示提交 AI 的提示状态」）：
+ * **正在跑 AI 的角色名** —— 点击瞬间由 `currencyMergeBegin()` 置位（`ui/panel.js` 随即 `setNote` + **立刻重绘**），
+ * 该条目渲染为「转圈 + 按钮禁用 + ⏳ 已提交 AI…」；AI 返回后由收尾重绘复原（成功 / 失败 / 异常都清位）。
+ */
+let runningOwner = '';
 
 /** 状态快照（面板 / 调试 / 测试用） */
 export function currencyMergeState() {
@@ -65,16 +71,26 @@ export function currencyMergePanelHtml() {
     const picked = pending ? pending.owner : String((owners[0] || {}).owner || '');
     const rows = owners.map((o) => {
         const on = o.owner === picked;
-        return '<div class="ftt-item"><div class="ftt-item-main">'
-            + '<b>' + esc(o.owner) + '</b> <span class="ftt-muted">' + num(o.n) + ' 条 · ' + num(o.names) + ' 种叫法</span></div>'
-            + '<div class="ftt-item-ops"><button class="ftt-op' + (on ? ' ftt-ok' : '') + '" data-ftt-action="currencyMergePick" data-name="' + esc(o.owner) + '"'
-            + ' title="' + (on ? '已选' : '选择这个角色并出方案') + '">' + (on ? '✅' : '➕') + '</button></div></div>';
+        const run = !!(runningOwner && o.owner === runningOwner);      // v3.49.2：正在为该角色请求 AI
+        return '<div class="ftt-item' + (run ? ' ftt-loading' : '') + '"><div class="ftt-item-main">'
+            + '<b>' + esc(o.owner) + '</b>'
+            + (run ? ' <span class="ftt-badge">⏳ 已提交 AI…</span>' : (on ? ' <span class="ftt-badge">当前目标</span>' : ''))
+            + ' <span class="ftt-muted">' + num(o.n) + ' 条 · ' + num(o.names) + ' 种叫法</span></div>'
+            + (run ? '<div class="ftt-muted ftt-w-full">正在整理这个角色的货币（同义叫法合并）—— AI 返回后本区就地展开方案。</div>' : '')
+            + '<div class="ftt-item-ops"><button class="ftt-op' + (on ? ' ftt-ok' : '') + (run ? ' ftt-loading' : '') + '" data-ftt-action="currencyMergePick" data-name="' + esc(o.owner) + '"'
+            + (run ? ' disabled' : '')                                                      // v3.49.2：在途禁用，避免重复点击
+            + ' title="' + (run ? '正在整理：已提交 AI，等返回（避免重复点击）' : ('按 AI 生成「' + esc(o.owner) + '」的货币融合方案（整理同义叫法；先出方案、确认后落库）')) + '">'
+            + (run ? '⏳' : '🔧') + '</button></div></div>';       // v3.49.2：图标改为**修复含义**的 🔧（原先 ➕ 读起来像「新增」）
     }).join('\n');
+    const runTip = runningOwner
+        ? ('<div class="ftt-muted ftt-w-full"><b>⏳ 已提交 AI 分析</b>：正在整理「' + esc(runningOwner) + '」的货币（同义叫法合并）—— 返回后本区就地展开只读方案，未确认前不改任何数据。</div>')
+        : '';
     const head = '<div class="ftt-editor-title">🔀 AI 融合货币 · 共 ' + owners.length + ' 个角色名下有货币</div>'
+        + runTip
         + '<div class="ftt-muted ftt-w-full">一次只处理**一个角色**：AI 只做「语义同义的合并」（同一物品的不同叫法），'
         + '<b>不读楼层正文</b>、不跨角色、**不凭空换算**（单位不同的只报告不合并）；额度默认<b>求和</b>'
         + '（可在设定里改为「保留最新额度、不累加」）。应用前会自动落一次快照，可整轮回退。</div>'
-        + '<div class="ftt-hint">点角色右侧 ➕ 出方案（会等一次 AI 返回）。</div>'
+        + '<div class="ftt-hint">点角色右侧 <b>🔧</b> 出方案（会等一次 AI 返回；点击后该条目转圈并禁用，避免重复点击）。</div>'
         + '<div>' + (owners.length ? rows : '<div class="ftt-empty">还没有任何角色的货币记录。</div>') + '</div>';
     if (!pending) return '<div class="ftt-editor">' + head
         + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="currencyMergeClose">取消</button></div></div>';
@@ -102,6 +118,27 @@ export function currencyMergePanelHtml() {
         + (groups.length ? '<button class="ftt-btn ftt-primary" data-ftt-action="currencyMergeApply" title="按上面的方案落库（会再次弹确认框；应用前自动落快照）">✅ 应用融合</button>' : '')
         + '<button class="ftt-btn" data-ftt-action="currencyMergeClose">取消</button></div></div>';
 }
+
+/**
+ * v3.49.2（用户要求「点击图标触发，则图标自动禁用，避免重复点击」「该条目应有滚动或加载效果，
+ *   同时显示提交 AI 的提示状态」）：**点击瞬间**的可见反馈 —— 置在途归属并给出提示文案。
+ *   `ui/panel.js` 拿到 `note` 后 `setNote()` + **立刻重绘**（重绘时该条目带 `.ftt-loading` 转圈、
+ *   按钮被渲染为 `disabled`；**管道守门** `pipeDisableInFlightHtml()` 另会对在途动作注入 `disabled`）。
+ *   AI 返回后由收尾的那次重绘复原。
+ * @param {string} action 动作名（非 `currencyMergePick` → 返回 null，不打扰其它动作）
+ * @param {{name?:string}} [payload]
+ * @returns {{note:string}|null}
+ */
+export function currencyMergeBegin(action, payload) {
+    const a = String(action || '');
+    const q = payload || {};
+    if (a !== 'currencyMergePick') return null;
+    const nm = String(q.name || '').trim();
+    runningOwner = nm;
+    return { note: '⏳ 已提交 AI 分析：正在整理「' + (nm || '当前角色') + '」的货币（同义叫法合并）…请等本次返回' };
+}
+/** 正在跑 AI 的角色名（渲染在途态 / 调试 / 测试用） */
+export function currencyMergeRunning() { return runningOwner; }
 
 /** 跑一轮：打包 → **一次** AI 请求 → 窄契约校验 → 出方案（**不改任何数据**） */
 export async function currencyMergeRun(owner) {
@@ -163,7 +200,11 @@ export async function runCurrencyMergeAction(action, payload) {
      *   在 `currencyMergeRun()` 里置真同口径。
      */
     if (a === 'currencyMergeOpen') return Object.assign({ action: a }, currencyMergeOpen());
-    if (a === 'currencyMergePick') { const r = await currencyMergeRun(String(p.name || '')); return Object.assign({ action: a }, r); }
+    if (a === 'currencyMergePick') {
+        runningOwner = String(p.name || '').trim();                                 // v3.49.2：跑之前置位（渲染在途态）
+        try { const r = await currencyMergeRun(String(p.name || '')); return Object.assign({ action: a }, r); }
+        finally { runningOwner = ''; }                                              // 收尾清位（成功 / 失败 / 异常都要清）
+    }
     if (a === 'currencyMergeApply') { const r = currencyMergeCommit(); return Object.assign({ action: a }, r); }
     if (a === 'currencyMergeClose') { const r = currencyMergeClose(); return Object.assign({ action: a }, r); }
     return { ok: false, note: '货币融合：未知动作 ' + a, action: a };
@@ -171,10 +212,10 @@ export async function runCurrencyMergeAction(action, payload) {
 
 /** 打开 / 取消（零写入） */
 export function currencyMergeOpen() {
-    open = true;
+    open = true; runningOwner = '';
     return { ok: true, note: '货币融合：请选择要整理的角色（不会立刻改动数据）' };
 }
 export function currencyMergeClose() {
-    open = false; pending = null; rejected = []; reasons = {};
+    open = false; pending = null; rejected = []; reasons = {}; runningOwner = '';
     return { ok: true, note: '货币融合：已取消（数据未改动）' };
 }
