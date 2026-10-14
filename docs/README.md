@@ -1,6 +1,6 @@
 # docs 文档索引 · FTT记忆组件 V2
 
-> 文档版本：v2.94 ｜ 日期：2026-10-14 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> 文档版本：v2.95 ｜ 日期：2026-10-14 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
 > v2.92 变更（随 **v3.47.2**：去掉各大类顶部的「NSFW 留档」统计行）：
 >   用户原话：「各大类顶部的"NSFW 留档"统计信息，完全没意义，请去掉。」
 >   ① **只去统计行、不去留档本事**：删掉 `ui/list-rows.js#nsfwLegendHtml`（分类页顶部「弱 N · 强 M」汇总行，v3.9.0 引入）与 `ui/panel.js` 的两处调用点（通用列表 + 状态分类）；
@@ -35,6 +35,19 @@
 >   ⑦ **版本位**：用户只说「新版本」→ 按守则 §3.1 **新增能力 → minor+1** 取 **v3.47.0**（3.46.7 → 3.47.0），**无偏离登记**。
 > 文档版本：v2.89 ｜ 日期：2026-10-13 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
  ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v2.95 变更（随 **v3.48.1**：**「📜 批量完善履历」入口发版后消失的修复** + 新增功能清单基线锁 —— 用户报告）：
+>   用户原话：「请核对之前已经有的功能，例如修改角色旁批量补全履历功能，发版后消失了，需修复。其他类似被错误移除的功能也需核对，如是被误操作移除的也需恢复。」
+>   ① **全量审计结论：零静默移除** —— v3.46.7 → v3.48.0 逐版比对七类用户可见清单（动作锚点 181→190 · 设定控件 176→181 ·
+>      内核配置键 238→245 · 面板分页 13 · 维度 14→15 · 按钮文案 · 单测文件），**消失项均为 0**；
+>   ② **真根因 = 入口随数据条件自隐**：`resumeBatchButton()` 里 `if (!cands.length) return ;`，而候选要求「记忆有日期且落在
+>      当前剧情日期近 30 天内」→ 剧情日期空 / 记忆无日期 / 推进出窗 / 记忆被清理 任一即入口整块消失，
+>      且写着原因的**空态面板永远打不开**（要靠这个按钮才能开）→ 用户体感 = 功能没了；
+>   ③ **修法**：入口恒显（只看开关；开关关掉仍不出现）· 有候选带条数角标「（N）」· 无候选进面板看 **成因码 → 人读原因 + 下一步**
+>      （内核新增纯函数 `core/resume-batch.js#resumeBatchWindowInfo` 给事实，文案留在界面层）；
+>   ④ **新增兜底**：`scripts/feature-inventory.json` + `tests/unit/feature-inventory.test.js` —— 七类用户可见清单**基线锁**，
+>      **只对「基线有、现状没有」判红**并**指名报出消失项**（新增项不挡），以后合并/压缩若顺手删掉按钮或控件会当场变红；
+>   ⑤ 新增 `tests/unit/resume-batch-visible.test.js`（15 项）；设计稿 `docs/D38` **v1.1**（新增 `应-36` + 附录版本变更史）；
+>   ⑥ **数字口径**：单测 **229 文件 / 3414 断言** · 历史批次档数 224 → **225** · `tests/` 257 → **259**；§1 目录树 `history/` → **225 份**、`P10c*` → **`P10c104`**。
 > v2.94 变更（随 **v3.48.0**：**列表行右侧按钮改滑动 / 悬停触发** —— 用户直接要求）：
 >   用户原话：「列表右侧按钮，改为滑动方式触发。即滑动后展示按钮，且按钮布局做好适配。pc端自适应，鼠标放上去也会显示按钮组。」
 >   ① **一份状态机三端共用**：触屏左滑展开 / PC 鼠标悬停展开 / 键盘聚焦展开 —— 同一个 `.ftt-open` 展开态，**不引入第二套视觉**；
@@ -691,12 +704,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，224 份）
+└── history/                  # 历史批次层（只读留痕，225 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c103          # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c104          # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -754,9 +767,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.48.0） |
+| 口径 | 权威来源 | 当前值（v3.48.1） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.48.0` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.48.1` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `2`（v3.47.3：新增 `maps` 容器 → 迁移只补容器 + 归一，`docs/D27` §3.3 ⑤） |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 15 / 14（v3.47.3：+`maps` 地图 —— 场所锚点 / 房间 / 陈设三级 + 路径） |
@@ -764,7 +777,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 38（v3.45.5：+`resumeRepair`；v3.46.1：+`triLink`；v3.47.0：+`resumeBatch`；**v3.47.3：+`maps`** 地图抽取模板，全文在 `core/map-prompt.js`） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 181（v3.44.0：分析记忆页 +2；v3.45.5：投喂范围页 +6；v3.46.1：投喂范围页 +5；v3.47.0：投喂范围页 +4；**v3.47.3：基础页 +1（地图套话模板）**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 227 文件 / 3384 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） | 229 文件 / 3414 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 223 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -772,7 +785,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 60 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **235 / 206**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` | 224 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` | 225 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

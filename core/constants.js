@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.48.0';   // v3.48.0：列表行按钮改滑动/悬停触发（新增能力 → minor+1，守则 §3.1）
+export const VERSION = '3.48.1';   // v3.48.1：履历批量入口恒显（缺陷修复 → patch+1，守则 §3.1）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

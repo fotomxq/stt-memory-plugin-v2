@@ -74,6 +74,43 @@ export function resumeBatchRoster() {
  * @param {{days?:number, limit?:number, nowDate?:string}} [opts]
  * @returns {Array<{name:string, hits:number, lastDate:string, memoryIds:string[], lines:string[], hasResume:boolean, resumeLen:number, canon:boolean}>}
  */
+/**
+ * **候选窗口自检**（v3.48.1，纯函数）—— 回答「为什么窗口内没有候选角色」。
+ *
+ * 背景（用户报告「批量补全履历功能发版后消失了」）：候选要求「记忆**有日期** 且落在
+ *   **当前剧情日期**往前 `days` 天内」；任一条件不满足 → 候选为空。此前 UI 把入口按钮
+ *   也跟着隐藏了，于是用户既看不到入口、也看不到原因。修法 = **入口恒显 + 内核给出成因码**：
+ *   内核只说事实（计数 + 成因码），文案由界面层写（分层：core 不碰用户措辞）。
+ *
+ * @param {{days?:number, nowDate?:string}} [opts] 覆盖窗口天数 / 剧情日期（缺省取 `cfg` 与时钟）
+ * @returns {{days:number, storyDate:string, memories:number, dated:number, inWindow:number, candidates:number, codes:string[]}}
+ *   `codes` 取值：`no-memories` / `no-story-date` / `undated-memories` / `out-of-window` / `no-name-hit`
+ *   （按「先因后果」顺序给出，可能多条同时成立）
+ */
+export function resumeBatchWindowInfo(opts) {
+    const o = opts || {};
+    const conf = resumeBatchCfg();
+    const days = Math.max(1, Number(o.days) || conf.days);
+    const storyDate = str(o.nowDate || resumeClockDate());
+    const nowD = dayNum(storyDate);
+    const all = (Array.isArray(state && state.memories) ? state.memories : []).filter((m) => m && typeof m === 'object');
+    let dated = 0, inWindow = 0;
+    for (const m of all) {
+        const d = dayNum(m.date);
+        if (d != null) dated += 1;
+        if (nowD != null && d != null && (nowD - d) <= days && (nowD - d) >= 0) inWindow += 1;
+    }
+    let candidates = 0;
+    try { candidates = resumeBatchCandidates({ days: days, nowDate: storyDate }).length; } catch (e) { candidates = 0; }
+    const codes = [];
+    if (!all.length) codes.push('no-memories');
+    if (!storyDate) codes.push('no-story-date');
+    if (all.length && dated < all.length) codes.push('undated-memories');
+    if (dated > 0 && inWindow === 0) codes.push('out-of-window');
+    if (!candidates && codes.length === 0) codes.push('no-name-hit');
+    return { days: days, storyDate: storyDate, memories: all.length, dated: dated, inWindow: inWindow, candidates: candidates, codes: codes };
+}
+
 export function resumeBatchCandidates(opts) {
     const o = opts || {};
     const conf = resumeBatchCfg();
