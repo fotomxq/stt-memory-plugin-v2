@@ -12,6 +12,9 @@ import { makeHost, makeDocument, installGlobalHost, installGlobalFetch } from '.
 import { VERSION, MODULE_NAME, INJECT_ID } from '../core/constants.js';
 import { readUpdateState } from '../adapters/update-state.js';
 import { panelState, panelBodyHtml, setPanelHooks2 } from '../ui/panel.js';
+// v3.49.0（W21 `技-49`）：管道完成 → 弱化NSFW 计数信号（CN1 断言用）
+import * as nsfwTickMod from '../ui/nsfw-count-tick.js';
+import * as pipeMod from '../core/pipeline.js';
 import * as fttPanelMod from '../ui/panel.js';   // v2.38.0：按钮 type 加固 / 滚动保持断言用（避免与既有 panelMod 重名）   // v2.34.0：子标签点击/异常区断言用
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -3991,6 +3994,22 @@ await assert('AO2 端到端：真实点击 → 重渲染（滚动归零）后**�
     }
     return ok;
 })(), '');
+
+// ---------- v3.49.0（W21 技-49）：管道完成 → 弱化NSFW 计数信号（10s 延迟去抖）----------
+await assert('CN1（v3.49.0）管道完成**发信号**、且**排除弱化NSFW 自身**：普通管道 → 排一次延迟检查；弱化NSFW → excluded（不排）', (() => {
+    const P = pipeMod;                                       // 顶部已 import 的 core/pipeline.js
+    const T = nsfwTickMod;                                   // v3.49.0 的延迟检查模块
+    T.resetNsfwCountTick();
+    const r1 = P.beginPipeline('提取记忆', { kind: 'ai' });
+    P.endPipeline(true, r1 && r1.runId);
+    const st1 = T.nsfwCountTickState();
+    const r2 = P.beginPipeline('弱化NSFW', { kind: 'ai' });
+    P.endPipeline(true, r2 && r2.runId);
+    const st2 = T.nsfwCountTickState();
+    T.resetNsfwCountTick();
+    return st1.stats.signals === 1 && st1.scheduled === true && st1.stats.excluded === 0
+        && st2.stats.excluded === 1 && st2.stats.signals === 1;   // 弱化NSFW 不额外发信号
+})(), '见断言');
 
 // ---------- AP 时钟不得取真实日期（v2.39.0：剧情时间字段只取剧情时间） ----------
 await assert('AP1 端到端：**无剧情时钟**时写入记忆/状态 → 剧情时间字段留空（不写今天），注入体不含今日年份；手工录入缺年份**只沿用语剧情年份或拒绝**（绝不用现实年份）', (async () => {

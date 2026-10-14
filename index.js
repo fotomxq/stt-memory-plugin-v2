@@ -13,6 +13,7 @@ import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRun
 import { getSettings, setSetting } from './adapters/settings.js';
 // v2.90.0（用户要求）：管线状态的历史耗时（预估倒计时样本）落 ST 扩展设置 —— 不进数据模型 → DATA_VERSION 不变
 import { setPipelineHooks } from './core/pipeline.js';
+import { signalNsfwCountRefresh } from './ui/nsfw-count-tick.js';   // v3.49.0（W21 技-49）：管道完成信号 → 弱化NSFW 计数延迟检查
 // v3.42.0（用户要求「设定中新增 token 预估」）：AI 用量与花费账本（运行账本 → ST 扩展设置 `aiUsage`）
 import { setTokenCostHooks, aiUsageSummary, aiUsageRecent, tokenPriceList, tokenPriceOverrides, setTokenPriceOverrides, setUsdCnyRate, resetAiUsage } from './core/token-cost.js';
 // v2.92.0（用户要求）：需人工确认项（跨端冲突/自检异常）—— 设定 + 总览同时展示，落 ST 扩展设置
@@ -2101,6 +2102,9 @@ function wirePipelineHooks() {
         saveHistory: (h) => { try { setSetting('pipelineEta', (h && typeof h === 'object') ? h : {}); } catch (e) { /* 忽略 */ } },
         // v3.0.14：管线异常留痕（超时收尾 / 异常大的耗时样本不入账）→ 调试日志，便于事后核对
         log: (msg, detail) => { try { debugLogPush('管线', Object.assign({ action: String(msg || '') }, detail || {})); } catch (e) { /* 忽略 */ } },
+        // v3.49.0（W21 `技-49`）：管道完成 → 给「总览 🌶 弱化NSFW 计数」发一个信号
+        //   （界面层自己做 10 秒延迟 + 窗口内合并；`弱化NSFW` 自身在信号函数里被排除）
+        onRunEnd: (info) => { try { signalNsfwCountRefresh(info && info.label); } catch (e) { /* 忽略 */ } },
     });
     return true;
 }

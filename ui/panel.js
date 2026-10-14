@@ -23,7 +23,8 @@ import { promptAction } from './prompts.js';
 import { snapshotAction } from './snapshots.js';
 import { refreshLocalCopy } from './buffer-manage.js';   // v3.3.0：清理后刷新本机副本统计
 import { currencyRepairPlan, runCurrencyRepair } from '../core/currency-repair.js';   // v3.15.0：货币修正（机械、可预览）
-import { nsfwSoftenState, NSFW_DIM_LABEL, nsfwLabelStats, nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';
+// v3.49.0（W21 技-49）：`nsfwSoftenState` / `nsfwLabelStats` 的调用已收口到 `ui/nsfw-count-tick.js`（本文件不再直接全库扫描）
+import { NSFW_DIM_LABEL, nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';
 import { runRepair } from '../core/repair.js';
 import { runMemoryRepair, runConceptRepair } from '../core/group-repair.js';
 import { runSceneRepair } from '../core/scene-repair.js';
@@ -82,6 +83,8 @@ import { debugLogPush } from '../adapters/debug-log.js';
 import { traceEvent, traceOpStart, traceOpEnd, traceSite, traceCurrentOp } from '../core/trace.js';
 import { syncAction, SYNC_ACTIONS } from './sync.js';
 import { nsfwAction, NSFW_ACTIONS } from './nsfw.js';
+// v3.49.0（W21 `技-49`）：总览「🌶 弱化NSFW」计数的缓存与延迟检查（全在新模块）
+import { nsfwCountSnapshot, invalidateNsfwCount } from './nsfw-count-tick.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
 import { debugAction, DEBUG_ACTIONS, updateBridgeStatusDom } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
@@ -739,9 +742,12 @@ function overviewBody() {
     })();
 
     // ⑤ 工具行（v2.52.0：移出「清除已处理记录」—— 该动作属 设定 → 数据管理；提示合并为一句话）
-    const nsfwSt = (() => { try { return nsfwSoftenState(); } catch (e) { return null; } })();
-    // v3.8.0：弱化按钮的提示里带上**留档等级**分布（无/弱/强 · 弱化不改标签，永久性留档）
-    const nsfwLabs = (() => { try { return nsfwLabelStats(); } catch (e) { return null; } })();
+    // v3.49.0（W21 `技-49`）：**不再每次渲染都全库扫描**（旧实现两次同步全库扫描：candidates + 留档分布）——
+    //   改读界面层缓存（`ui/nsfw-count-tick.js`）：管道完成后发信号 → **延迟 10 秒**检查一次，窗口内多余信号合并；
+    //   缓存缺失/过期时这里**就地算一次**（用户在看着它，必须给对的数）。
+    const nsfwSnap = (() => { try { return nsfwCountSnapshot(); } catch (e) { return { candidates: 0, labels: null }; } })();
+    const nsfwSt = { candidates: nsfwSnap.candidates };
+    const nsfwLabs = nsfwSnap.labels;
     const nsfwBtn = '<button class="ftt-btn" data-ftt-action="nsfwSoften" id="ftt-nsfw-btn" title="按关键词找出露骨内容并交 AI 弱化（分析侧开关在设定「NSFW弱化」页）'
         + '｜NSFW 等级留档：无 ' + (nsfwLabs ? nsfwLabs.none : 0) + ' · 弱 ' + (nsfwLabs ? nsfwLabs.weak : 0) + ' · 强 ' + (nsfwLabs ? nsfwLabs.strong : 0) + '（按原文判定，弱化后不变）'
         + '">🌶 弱化NSFW' + (nsfwSt && nsfwSt.candidates ? '（' + nsfwSt.candidates + '）' : '') + '</button>';
@@ -3280,6 +3286,9 @@ export async function panelAction(action, payload) {
         else if (NSFW_ACTIONS.indexOf(a) >= 0) {
             // NSFW弱化动作（V1 同名：立即弱化 / 固定规则替换 / 词条库与转化库增删改恢复）
             const nr = await nsfwAction(a, p);
+            // v3.49.0（W21 技-49）：弱化NSFW 自身的完成**不发**延迟信号（用户口径）→ 这里直接作废缓存，
+            //   让紧接着的这次重绘**就地算一次**（点完立刻看到新数字，且只算这一次）
+            if (a === 'nsfwSoften') { try { invalidateNsfwCount(); } catch (e2) { /* 忽略 */ } }
             setNote(nr.note || '');
             result = Object.assign(result, nr);
         }

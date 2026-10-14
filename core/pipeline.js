@@ -49,6 +49,10 @@ let hooks = {
     now: () => Date.now(),
     // v3.0.14：诊断留痕（宿主注入 → 调试日志）；默认 no-op，内核保持零宿主依赖
     log: () => undefined,        // (msg, detail) => void
+    // v3.49.0（W21 `技-49`）：**一次管道运行结束**的信号（宿主注入；默认 no-op）。
+    //   用途：总览「🌶 弱化NSFW」计数改「事件触发 + 延迟去抖」后，需要知道「刚刚完成了一次操作」——
+    //   内核只负责**如实广播一件事发生了**（带标签），要不要扫全库、延迟多久、合并多少信号，全在界面层决定。
+    onRunEnd: () => undefined,   // (info: {label, ms, ok, at}) => void
 };
 export function setPipelineHooks(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
 export function pipelineHooks() { return Object.assign({}, hooks); }
@@ -265,6 +269,8 @@ export function endPipeline(ok, id) {
         promptTokens: estTokens(r.promptChars), respTokens: estTokens(r.respChars),
     };
     runs = runs.filter((x) => x.id !== r.id);
+    // v3.49.0（W21 `技-49`）：广播「本次运行结束」（失败静默 —— 观测钩子绝不能影响管道本身）
+    try { hooks.onRunEnd({ label: String(r.label || ''), ms: ms, ok: ok !== false, at: Date.now() }); } catch (e) { /* 忽略 */ }
     return Object.assign(s, { ms: ms, ok: ok !== false });
 }
 
