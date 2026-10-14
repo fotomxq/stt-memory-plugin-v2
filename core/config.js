@@ -11,7 +11,10 @@
 import { TRI_LINK_PROMPT } from './tri-link-prompt.js';
 // v3.46.2（W13 应-30）：货币融合的默认提示词全文（新模块；见 PROMPT_TEMPLATES_V2.currencyMerge）
 import { CURRENCY_MERGE_PROMPT } from './currency-merge-prompt.js';
-import { RESUME_BATCH_PROMPT } from './resume-batch-prompt.js';   // v3.47.0（W16 应-33）：履历批量完善的提示词全文在新模块
+import { RESUME_BATCH_PROMPT } from './resume-batch-prompt.js';
+// v3.49.1（技-14 体量棘轮）：角色修复族 / 履历的默认键外移到独立模块，在此**原位置展开**（键值顺序不变）
+import { CHARACTER_DEFAULTS } from './config-character.js';
+import { RESUME_DEFAULTS } from './config-resume.js';   // v3.47.0（W16 应-33）：履历批量完善的提示词全文在新模块
 import { MAP_PROMPT } from './map-prompt.js';   // v3.47.3（W17 数-22）：地图抽取模板默认全文（新模块；见 PROMPT_TEMPLATES_V2.maps）
 import { normText, normalizeList, clamp, hashText } from './util.js';
 import { cfg, state } from './model/runtime.js';
@@ -1093,21 +1096,9 @@ const defaultCfg = {
     itemLowUsesMinFloors: 200,      // v1.153：0→200（默认缓慢处理：只动 ≥200 楼未再出现的旧物品）
     itemLowUsesMaxDelete: 1,        // v1.153：3→1（每轮最多 1 件：缓慢滴灌）
     itemLowUsesEveryFloors: 40,     // v1.153：清扫间隔（楼层）—— 距上次清扫不足该值则跳过（0=不限制）
-    // v1.139：角色修复提取策略（用户三条要求）—— 按「该分类下原子数据的尺寸」挑最薄弱的档案修复
-    characterBirthInfer: true,      // v1.152：角色修复强制补全出生日期（正文无则合理推测，绝不留空）
-    characterBirthDefaultAge: 25,    // v1.152：无任何年龄线索时的默认成人年龄（用于推算出生日期）
-    repairCharacterMinSize: 120, // 待修复门限：角色档案有效字数 < 该值 → 列入待修复名单（10-400；0=不按尺寸筛，全部入列）
-    repairCharacterBatch: 6,     // 每次修复只提取的条数（1-10；v3.45.3 默认 3→6）—— 目标收敛、质量优先
-    // ==================== v3.45.5：角色履历（`snapshots[].resume`，`docs/D22` W4 `数-19`/`数-20`/`数-21`） ====================
-    // 设计稿 `docs/D26`（§3.2 / §3.3 / §3.4 / §6 决策记录）：履历是角色档案内的第 9 区块，
-    //   「上限 30 条 + 重要性 × 剧情时间 的遗弃 + ≤60 字凝练 + 历史/同人预填」四项都可配置。
-    //   算法唯一源：`core/resume.js`（纯内核）；本组键只提供口径，不重复实现算法。
-    snapshotResumeEnabled: true,        // 履历总开关（关 = 不读不写、界面隐藏区块；`docs/D26` §3.5）
-    snapshotResumeMax: 30,              // 单角色履历条数上限（**软阈值**：≤ 上限从不自动遗弃，仅超限时清算；`docs/D26` Q3）
-    snapshotResumeTriggerRatio: 0.8,    // 「接近上限」预警比例（达到 上限×比例 起在体检/面板提示；**不触发删除**，见 `core/resume.js` 头注）
-    snapshotResumeImmune: 0.7,          // 重要性免疫阈值（≥ 该值的条目不参与自动遗弃；`docs/D26` §3.3）
-    snapshotResumeSummaryMax: 60,       // 凝练目标长度（单条简述 ≤ 该字数；`docs/D26` Q4，幂等）
-    snapshotResumeCanonFill: true,      // 历史 / 同人人物「剧情前」履历预填开关（`docs/D26` §3.4；上界 = 剧情当下）
+    ...CHARACTER_DEFAULTS,   // v3.49.1：角色修复族默认键（外移 `core/config-character.js`；含年龄高寿规则）
+    ...RESUME_DEFAULTS,      // v3.49.1：履历默认键（外移 `core/config-resume.js`；键/值/顺序逐字不变）
+
     resumeBatchEnabled: true, resumeBatchDays: 30,                // 批量档总开关（false = 按钮隐藏 + 程序化调用返回 `disabled`）· 「近期」窗口天数（按剧情日期回看；1-3650） // v3.47.0（`docs/D22` §4.16 W16 `应-33`）：**履历批量完善**四键 —— 按「近期更新的记忆」抽角色 → 一批放进**一次** AI 请求（与个体档共用机械段与复核）
     resumeBatchMaxRoles: 8, resumeBatchMemoryPerRole: 6,          // 一次请求最多几个角色（1-30；超出按命中数降序截断并计数）· 每角色带入几条近期记忆（1-30）
     // v1.158：状态记录修复（状态页「🔧 修复状态」）—— 自动匹配角色 → 删无主状态组 → 机械清理/规范化 → 交 AI 整理

@@ -34,6 +34,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'currencyMergeEnabled', 'currencyMergeMaxItems', 'currencyMergeSumAmount',
         // v3.47.0（W16 应-33）：履历批量四键（V2 专有）
         'resumeBatchEnabled', 'resumeBatchDays', 'resumeBatchMaxRoles', 'resumeBatchMemoryPerRole',
+        // v3.49.1（用户要求）：年龄高寿 → 主动标记去世的阈值键（V2 专有）
+        'repairDeceasedAge',
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
         // v3.47.0（`docs/D22` W16 `数-22`）：地图维度的两个存储键（V2 专有 —— V1 无 `maps` 维度）

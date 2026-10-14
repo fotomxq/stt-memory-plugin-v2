@@ -51,7 +51,7 @@ R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定�
     // v3.46.1（`docs/D22` W11 数-35）：''遗忘''页 +5（三域联动五键：triLinkEnabled / triLinkStateAdvance /
     //   triLinkMaxItems / triLinkPackMaxChars / triLinkMaxOps —— 与 `core/config.js#defaultCfg` 同批，
     //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172 → **v3.46.2 货币融合 +3 / 总 175**、feed 43 → 48 → **51**
-    return info.totalControls === 181 && m.base === 10 && m.feed === 55 && m.analyze === 22 && m.extract === 25
+    return info.totalControls === 182 && m.base === 10 && m.feed === 56 && m.analyze === 22 && m.extract === 25
         && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 

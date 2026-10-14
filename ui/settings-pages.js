@@ -177,6 +177,11 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "repairDeceasedAge",
+            "label": "年龄高寿阈值（岁；≥ 该值且未标长生者 → 主动标记去世；0＝关闭）",
+            "type": "text"
+        },
+        {
             "key": "repairCharacterMinSize",
             "label": "角色修复字数门限（档案有效字数 < 该值 → 列入待修复名单，10-400，0=不筛）",
             "type": "text"
@@ -1439,7 +1444,7 @@ const FEED_GROUPS = Object.freeze([
         keys: ['currencyMergeEnabled', 'currencyMergeMaxItems', 'currencyMergeSumAmount'],
         hint: '货币页「🔀 AI 融合」：选一个角色 → AI 只合并语义同义的叫法（同单位才可合，不凭空换算）；先出方案、确认后落库。',
     },
-    { id: 'character', title: '🧑 角色修复', keys: ['repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
+    { id: 'character', title: '🧑 角色修复', keys: ['repairDeceasedAge', 'repairCharacterMinSize', 'repairCharacterBatch', 'characterBirthDefaultAge', 'characterBirthInfer'], hint: '按档案有效字数筛出最薄弱的几条，只填空不改写；出生日期必给（没线索时按年龄与身份推测）。' },
     // v3.45.5（`docs/D22` W4 数据维度「履历」）：「📜 履历」组（总开关 / 上限 / 提醒比例 / 免疫阈值 / 简述字数 / 原作补写）
     { id: 'resume', title: '📜 履历', keys: ['snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio', 'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill', 'resumeBatchEnabled', 'resumeBatchDays', 'resumeBatchMaxRoles', 'resumeBatchMemoryPerRole'], hint: '履历 = 角色按剧情时间的大事记；超过上限才会自动遗弃低留存条。批量档＝按近期记忆抽角色、一批一次 AI 请求（与「修复角色」平行）。' },
     {
