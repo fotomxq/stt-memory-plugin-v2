@@ -36,6 +36,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'resumeBatchEnabled', 'resumeBatchDays', 'resumeBatchMaxRoles', 'resumeBatchMemoryPerRole',
         // v3.49.1（用户要求）：年龄高寿 → 主动标记去世的阈值键（V2 专有）
         'repairDeceasedAge',
+        // v3.49.3（用户报告「情节自动分段统计提交巨量数据」）：情节分段的**体量上界**与**一次一批**（V2 专有）
+        'plotSegmentMaxChars', 'plotSegmentMaxBatches',
         // v2.84.0（用户要求）：存储上限改「总上限 + 各大类占比」→ 两个 V2 专有键（V1 只有逐维 storeMax*，键仍保留兼容）
         'storeTotalMax', 'storeShare',
         // v3.47.0（`docs/D22` W16 `数-22`）：地图维度的两个存储键（V2 专有 —— V1 无 `maps` 维度）
@@ -74,9 +76,14 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     //   「每次核对组数」（`*RepairMaxClusters`）。六个键在设定页都能改（用户要求的「可在设定中设置修改」），
     //   故属**默认值有意偏离**，不是键语义变化；V1 样本一字未改，只在此登记并逐键复核（见下方 `deviated` 判据）。
     //   **未动**：`maxAutoRepairRounds`（同楼层自动修复**轮次**上限）与 `repairMaxItems`（候选池 20 条）—— 都不是「每轮抽取量」。
+    // v3.49.3（用户报告「情节的自动分段统计存在设计缺陷，会提交巨量数据」）：
+    //   `plotSegmentIncremental` 默认值 **false → true** —— 语义键不变、用户可改（设定页有开关），属**默认值有意偏离**：
+    //   实测（`tests/local/plot-segment-audit.mjs`）真实存档 800+ 条情节时，旧默认「每次全量重跑」会让**每次点击都重复提交整库**；
+    //   改为默认增量（只整理尚未被现有段落覆盖的批次）后不再重复提交。V1 样本一字未改，只在此登记。
     const DEVIATED_KEYS = ['lowUseForgetProtectImportance', 'summaryChunkSize',
         'repairCharacterBatch', 'stateRepairBatch',
-        'conceptRepairMaxClusters', 'memoryRepairMaxClusters', 'suspenseRepairMaxClusters', 'itemRepairMaxClusters'];
+        'conceptRepairMaxClusters', 'memoryRepairMaxClusters', 'suspenseRepairMaxClusters', 'itemRepairMaxClusters',
+        'plotSegmentIncremental'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
         && RAISED_CAP_KEYS.indexOf(k) < 0 && DEVIATED_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));

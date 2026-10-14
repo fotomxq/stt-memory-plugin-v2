@@ -43,6 +43,8 @@ import { currencyMergeButton, currencyMergePanelHtml, currencyMergeRun, currency
 // v3.44.0（`docs/D22` W4 `数-12` ①）：一键闭环的**写侧**（语义与既有「了结」完全一致）
 import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
+// v3.49.3（C11）：分段总结子页的**提交前体量预告**渲染在独立模块，此处只接线
+import { plotSegmentForecastHtml } from './plot-segment-forecast.js';
 import {
     runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
 } from '../core/plot-segment.js';
@@ -937,6 +939,8 @@ function plotSegmentsBodyHtml() {
     const view = sortPlotSegments(segs, 'desc');        // v1.190：默认按时间范围倒序（最新在最上、早期靠后）
     const out = [];
     out.push('<div class="ftt-cat-stat ftt-chip">共 ' + segs.length + ' 段分段总结</div>');
+    // v3.49.3（C11 + 体量棘轮）：预告行的渲染在 `ui/plot-segment-forecast.js`，此处只留一行调用
+    out.push(plotSegmentForecastHtml());
     out.push(shortHintHtml('分段总结：把情节打包交 AI 拆成多段归档（只归档、不注入）。'));
     out.push(hintDetailsHtml('说明', '<div>' + esc('每段以「### 时间范围」为头，段内按剧情线逐条列出。内容只作人工查阅，不参与注入 / 召回 / 遗忘；只有手动删除才会消失。列表默认按时间范围倒序。两个入口：①「生成分段总结」= 全部有效情节按时间切批；②「情节列表」多选后点「分段总结（N）」= 只归档勾选的那些。') + '</div>'));
     out.push('<div class="ftt-addbar ftt-toolbar"><button class="ftt-btn" data-ftt-action="summary" data-ftt-summary="plotSegments" title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）">🧩 生成分段总结</button><button class="ftt-btn" data-ftt-action="addEntry" data-kind="plotSegments">➕ 手动补一段</button>'
