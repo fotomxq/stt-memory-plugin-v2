@@ -41,21 +41,28 @@ installGlobalHost(makeHost({}), doc);
 const ACT_MAP = { edit: 'editEntry', delete: 'delEntry' };
 function projectRows(html) {
     const out = [];
-    const parts = String(html).split('<div class="ftt-item ftt-inline">').slice(1);
+    const parts = String(html).split('<div class="ftt-item ftt-inline ftt-swipe"').slice(1);
     for (const seg of parts) {
         // 行文本取到「下一行 / 工具栏 / 结尾」为止（不能在第一个 `</div>` 处截断 —— 那会切在行主体内部）
-        const cut = [seg.indexOf('<div class="ftt-item ftt-inline">'), seg.indexOf('<div class="ftt-addbar'), seg.indexOf('<div class="ftt-row')]
+        const cut = [seg.indexOf('<div class="ftt-item ftt-inline ftt-swipe"'), seg.indexOf('<div class="ftt-addbar'), seg.indexOf('<div class="ftt-row')]
             .filter((i) => i >= 0).sort((a, b) => a - b)[0];
         const row = (cut === undefined) ? seg : seg.slice(0, cut);
-        const opsAt = row.indexOf('<div class="ftt-item-ops');
-        const opsClass = opsAt >= 0 ? ((row.slice(opsAt).match(/^<div class="([^"]*)"/) || [])[1] || '') : '';
+        // v3.48.0（W19 应-35）：操作区外壳改为「滑动容器 + 原操作区」→ 外壳多一个 `ftt-swipe-ops` 标记。
+        //   与 V1 oracle 比对时**显式归一掉这个新标记**（样本一字不改），并在 B6 单独断言它确实在。
+        const opsAt = row.indexOf('<div class="ftt-item-ops') >= 0 || row.indexOf('<div class="ftt-swipe-ops') >= 0
+            ? Math.min(...['<div class="ftt-item-ops', '<div class="ftt-swipe-ops'].map((k) => row.indexOf(k)).filter((x) => x >= 0))
+            : -1;
+        const rawOpsCls = opsAt >= 0 ? ((row.slice(opsAt).match(/^<div class="([^"]*)"/) || [])[1] || '') : '';
+        const hasSwipeMarker = /\bftt-swipe-ops\b/.test(rawOpsCls);
+        const opsClass = rawOpsCls.replace(/\bftt-swipe-ops\s*/, '').trim();
         const opsHtml = opsAt >= 0 ? row.slice(opsAt) : '';
         const actions = [];
         const re = /data-ftt-action="([^"]*)"/g;
         let m;
         while ((m = re.exec(opsHtml)) !== null) actions.push(ACT_MAP[m[1]] || m[1]);
         out.push({
-            opsClass: opsClass, opsActions: actions, opsCol: /ftt-ops-col/.test(opsClass),
+            opsClass: opsClass, rawOpsClass: rawOpsCls, swipeMarker: hasSwipeMarker,
+            opsActions: actions, opsCol: /ftt-ops-col/.test(opsClass),
             opsIsLastChild: opsAt >= 0 && row.trim().endsWith('</div></div>'),
             mainInGrow: row.indexOf('<span class="ftt-grow">') >= 0,
             hasMultiCheckboxInOps: /data-ftt-select="/.test(opsHtml),
@@ -122,13 +129,23 @@ A('B3 条件渲染与 V1 一致：已转正 → 无 ⬆；已达衰退阈值 →
 
 A('B4 行主体仍在 `.ftt-grow` 里（内容顺序/九行结构未动），竖排只影响右侧操作区', (() => {
     const html = boot([P_NORMAL]);
-    const i = html.indexOf('<div class="ftt-item ftt-inline">');
+    const i = html.indexOf('<div class="ftt-item ftt-inline ftt-swipe"');
     const after = html.slice(i + 30);
-    const cut = [after.indexOf('<div class="ftt-item ftt-inline">'), after.indexOf('<div class="ftt-addbar')].filter((x) => x >= 0).sort((a, b) => a - b)[0];
+    const cut = [after.indexOf('<div class="ftt-item ftt-inline ftt-swipe"'), after.indexOf('<div class="ftt-addbar')].filter((x) => x >= 0).sort((a, b) => a - b)[0];
     const row = html.slice(i, (cut === undefined) ? undefined : i + 30 + cut);
     return html.indexOf('<span class="ftt-grow">') > 0 && row.indexOf('ftt-item-ops ftt-ops-col') > 0
         && row.indexOf('ftt-grow') < row.indexOf('ftt-item-ops ftt-ops-col')
         && html.indexOf('☯ 乾') > 0 && html.indexOf('🎯 目标：') > 0;
+})(), '见断言');
+
+A('B6（v3.48.0 W19 应-35）滑动结构在位：行 = `ftt-swipe` + 内容块 `ftt-swipe-body` + 按钮组 `ftt-swipe-ops`，且按钮组仍带 V1 的操作区类', (() => {
+    const html = boot([P_NORMAL]);
+    const rows = projectRows(html);
+    return rows.length === 1 && rows[0].swipeMarker === true
+        && html.indexOf('class="ftt-item ftt-inline ftt-swipe"') >= 0
+        && html.indexOf('<div class="ftt-swipe-body">') > 0
+        && html.indexOf('data-ftt-swipe="1"') > 0
+        && rows[0].opsClass === 'ftt-item-ops ftt-ops-col';
 })(), '见断言');
 
 A('B5 其余维度**保持横向**（V1 口径：只有平行页竖向）：情节 / 记忆 / 传言页都不出现 `ftt-ops-col`', (() => {

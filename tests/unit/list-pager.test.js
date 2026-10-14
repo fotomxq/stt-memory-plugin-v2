@@ -116,7 +116,8 @@ function bootAtoms(n) {
 /** 渲染当前情节页并返回 HTML */
 function body() { return panelBodyHtml('atoms'); }
 /** 数渲染出来的行数（情节列表行 = `.ftt-item.ftt-inline`） */
-function rowCount(html) { return (String(html).match(/class="ftt-item ftt-inline"/g) || []).length; }
+// v3.48.0（W19 应-35）：行容器加了 `ftt-swipe`（滑动/悬停展开按钮组）→ 计数改用「行内容块」锚点，与标记细节解耦
+function rowCount(html) { return (String(html).match(/class="ftt-swipe-body"/g) || []).length; }
 
 bootAtoms(300);
 openPanel('atoms');
