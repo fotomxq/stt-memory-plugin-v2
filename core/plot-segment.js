@@ -61,6 +61,43 @@ function plotSegmentBatchSize() {
     return Math.max(1, Math.min(200, Number.isFinite(n) && n > 0 ? Math.round(n) : 30));
 }
 
+/**
+ * v3.49.3（用户报告「情节的自动分段统计存在设计缺陷，会提交巨量数据」）：**每批的字符预算**（默认 8000，夹在 [500, 60000]；`0` = 关闭字符预算）。
+ *   实测（`tests/local/plot-segment-audit.mjs` 只读核对真实存档）：824 条可见情节 → 28 批，最重一批 11275 字符；
+ *   旧实现**只按条数**切批（30 条/批），没有任何体量上界 —— 情节正文均值 ~236 字符时尚可，一旦出现长条目就会单批失控。
+ *   现在切批同时受「条数」与「字符」两个上界约束（取先到者），每批的估算字符数记在 `batch.chars`，供预告与测试读数。
+ */
+function plotSegmentMaxChars() {
+    const n = Number(cfg && cfg.plotSegmentMaxChars);
+    if (Number.isFinite(n) && n === 0) return 0;                       // 显式 0 = 关闭
+    return Math.max(500, Math.min(60000, Number.isFinite(n) && n > 0 ? Math.round(n) : 8000));
+}
+/**
+ * **一次点击最多提交几批**（v3.49.3；默认 1）。
+ *   用户口径「需要统计的 30 个情节不可能这么大的数据量」→ 一次点击只交**一批**（≤ `plotSegmentBatchAtoms` 条 / ≤ `plotSegmentMaxChars` 字符），
+ *   余下批次由用户自己决定是否继续（提示里如实写明还剩几批）。调用方仍可用 `opts.maxBatches` 显式放大（测试 / 特殊场景）。
+ */
+function plotSegmentMaxBatchesDefault() {
+    const n = Number(cfg && cfg.plotSegmentMaxBatches);
+    return Math.max(1, Math.min(40, Number.isFinite(n) && n > 0 ? Math.round(n) : 1));
+}
+/**
+ * 一条情节在提示词里的**正文行**（单一事实源）：`buildPlotSegmentPrompt` 与切批的字符预算**共用**它，
+ *   避免「预算按 A 口径算、真正发送按 B 口径算」的两套口径。
+ */
+function plotSegmentLineText(a) {
+    const it = a || {};
+    let title = '';
+    try { title = String(atomTitle(it) || ''); } catch (e) { title = String(it.title || ''); }
+    const body = String(it.text || it.content || '').replace(/\s+/g, ' ').slice(0, 300);
+    const who = (Array.isArray(it.entities) ? it.entities : []).slice(0, 6).filter(Boolean).join('、');
+    const loc = (Array.isArray(it.locations) ? it.locations : []).slice(0, 3).filter(Boolean).join('、');
+    const fl = (Number(it.floorStart) || 0) && (Number(it.floorEnd) || 0) ? `第 ${it.floorStart}-${it.floorEnd} 楼` : '';
+    return `${it.date ? `[${it.date}] ` : '[日期未知] '}${title && title !== body ? `${title} ｜ ` : ''}${body}${who ? ` ｜ 角色：${who}` : ''}${loc ? ` ｜ 地点：${loc}` : ''}${fl ? `（${fl}）` : ''}`;
+}
+/** 一条情节的估算字符数（行文本长度 + 换行） */
+function plotSegmentLineCost(a) { try { return plotSegmentLineText(a).length + 1; } catch (e) { return 1; } }
+
 /** 情节清单（V1 `plotSegmentAtomList`）：有效（`validity !== 'inactive'`、有正文或标题、未隐藏）
  *  且按剧情时间从早到晚排序。v1.203：已总结隐藏的不再进入分段总结批次。 */
 function plotSegmentAtomList() {
@@ -83,9 +120,11 @@ function plotSegmentCoveredIds() {
 
 /** 切批公共核心（V1 `plotSegmentBatchesFrom`）：把「已按剧情时间从早到晚排好序」的情节切成 ≤ size 的批次。
  *  每批附 `ids / dateStart / dateEnd / floorStart / floorEnd`（**不含 `index`**，V1 原样）。 */
-function plotSegmentBatchesFrom(list, size) {
+function plotSegmentBatchesFrom(list, size, maxChars) {
+    const limit = (maxChars == null) ? plotSegmentMaxChars() : Math.max(0, Number(maxChars) || 0);
     const batches = [];
     let cur = [];
+    let curChars = 0;                                   // v3.49.3：本批累计估算字符
     const flush = () => {
         if (!cur.length) return;
         const dates = cur.map(a => (atomDateValid(a.date) ? clockDateTrim(a.date) : '')).filter(Boolean).sort(dateStrCmp);
@@ -97,12 +136,16 @@ function plotSegmentBatchesFrom(list, size) {
             dateStart: dates[0] || '', dateEnd: dates[dates.length - 1] || '',
             floorStart: floors.length ? Math.min.apply(null, floors) : 0,
             floorEnd: floorsEnd.length ? Math.max.apply(null, floorsEnd) : 0,
+            chars: curChars,                            // v3.49.3：该批的估算字符数（预告 / 读数用）
         });
         cur = [];
+        curChars = 0;
     };
     for (const a of (Array.isArray(list) ? list : [])) {
         cur.push(a);
-        if (cur.length >= size) flush();
+        curChars += plotSegmentLineCost(a);
+        // v3.49.3：**条数与字符取先到者**（limit = 0 表示不限字符；至少保留 1 条，避免空批死循环）
+        if (cur.length >= size || (limit > 0 && curChars >= limit && cur.length >= 1)) flush();
     }
     flush();
     return batches;
@@ -118,7 +161,9 @@ function plotSegmentPlan() {
         b.index = i + 1;
         b.covered = b.ids.length > 0 && b.ids.every(id => covered.has(id));
     });
-    return { batches, total: list.length, covered: covered.size };
+    // v3.49.3：计划级读数（供「提交前预告」与测试）——本次待整理条数 / 字符 / 批数 / 每批上界
+    const chars = batches.reduce((s, b) => s + (Number(b.chars) || 0), 0);
+    return { batches, total: list.length, covered: covered.size, chars: chars, batchAtoms: plotSegmentBatchSize(), batchChars: plotSegmentMaxChars() };
 }
 
 /** 手动勾选计划（V1 v1.201 `plotSegmentPlanForIds`）：只针对勾选 id 切批；
@@ -128,7 +173,8 @@ function plotSegmentPlanForIds(ids) {
     const list = want.size ? plotSegmentAtomList().filter(a => want.has(String(a.id || ''))) : [];
     const batches = plotSegmentBatchesFrom(list, plotSegmentBatchSize());
     batches.forEach((b, i) => { b.index = i + 1; b.covered = false; });
-    return { batches, total: list.length, selected: want.size };
+    const chars = batches.reduce((s, b) => s + (Number(b.chars) || 0), 0);
+    return { batches, total: list.length, selected: want.size, chars: chars, batchAtoms: plotSegmentBatchSize(), batchChars: plotSegmentMaxChars() };
 }
 
 /** 提示词（V1 `buildPlotSegmentPrompt`）：system = 提示词面板「④ 质检维护 → 情节分段总结」模板
@@ -138,16 +184,8 @@ function buildPlotSegmentPrompt(batch) {
     if (!b.atoms || !b.atoms.length) return null;
     const tpl = String((cfg.promptTemplates && cfg.promptTemplates.plotSegment) || (defaultCfg.promptTemplates && defaultCfg.promptTemplates.plotSegment) || '').trim()
         || '把下面的情节按剧情线拆成多段总结，每段以 `### 时间范围` 为头，段内逐条列出剧情线（`1. 线路名: 概述`）；言简意赅、只陈述结论事实与数据。';
-    const lines = [];
-    for (const a of b.atoms) {
-        let title = '';
-        try { title = String(atomTitle(a) || ''); } catch (e) { title = String(a.title || ''); }
-        const body = String(a.text || a.content || '').replace(/\s+/g, ' ').slice(0, 300);
-        const who = (Array.isArray(a.entities) ? a.entities : []).slice(0, 6).filter(Boolean).join('、');
-        const loc = (Array.isArray(a.locations) ? a.locations : []).slice(0, 3).filter(Boolean).join('、');
-        const fl = (Number(a.floorStart) || 0) && (Number(a.floorEnd) || 0) ? `第 ${a.floorStart}-${a.floorEnd} 楼` : '';
-        lines.push(`${a.date ? `[${a.date}] ` : '[日期未知] '}${title && title !== body ? `${title} ｜ ` : ''}${body}${who ? ` ｜ 角色：${who}` : ''}${loc ? ` ｜ 地点：${loc}` : ''}${fl ? `（${fl}）` : ''}`);
-    }
+    // v3.49.3：行文本改由 `plotSegmentLineText` 产出（与切批的字符预算**同一口径**）
+    const lines = b.atoms.map((a) => plotSegmentLineText(a));
     const dates = [b.dateStart, b.dateEnd].filter(Boolean);
     return [
         { role: 'system', content: tpl },
@@ -194,6 +232,28 @@ function applyPlotSegmentResult(batch, segments) {
                     hit.raw = plotSegmentsToText([hit]);
                     hit.updatedAt = Date.now();
                 }
+                /**
+                 * v3.49.3（**只读核对时发现的真缺陷**，`tests/local/plot-segment-audit.mjs` 的增量演练）：
+                 *   「同时间范围 → 跳过」这条路径**没有把本批的 `atomIds` 并进已存在的那一段** ——
+                 *   于是「增量模式」下该批永远处于**未被覆盖**状态 → 每点一次都重新提交同一批（**永不收敛**）。
+                 *   实测：2 批的库第一轮跑 1 批后，第 2 批因为解析出的区间与已有段相同而只记 `dup`，
+                 *   它的 `atomIds` 从未被登记 → 之后每次点击都在重复提交第 2 批。
+                 *
+                 * 现在：命中同段时，把本批 ids **并入**该段（并集，只增不减）——覆盖判定从此收敛；
+                 *   段的**正文与时间范围仍不被改写**（保护手动编辑的口径不变）。
+                 */
+                try {
+                    const ids = Array.isArray(hit.atomIds) ? hit.atomIds.slice() : [];
+                    const add = (b.ids || []).map((x) => String(x)).filter((x) => x && ids.indexOf(x) < 0);
+                    if (add.length) {
+                        hit.atomIds = ids.concat(add);
+                        hit.atomCount = hit.atomIds.length;
+                        if (b.floorStart && (!hit.floorStart || b.floorStart < hit.floorStart)) hit.floorStart = b.floorStart;
+                        if (b.floorEnd && (Number(b.floorEnd) || 0) > (Number(hit.floorEnd) || 0)) hit.floorEnd = b.floorEnd;
+                        hit.updatedAt = Date.now();
+                        // 注意：**不**往 `out.ids` 里塞 —— 那是「本次新增段」的 V1 语义（dup 不产新段），保持返回结构逐字一致
+                    }
+                } catch (e) { /* 并集失败不影响既有口径 */ }
                 out.skipped++; out.dup++;
                 continue;
             }
@@ -234,12 +294,17 @@ async function runPlotSegmentSummary(opts) {
             notify('info', '情节分段总结：已是最新', `当前 ${plan.total} 条情节已全部被现有段落覆盖（增量模式）。`);
             return { made: 0, skipped: true, total: plan.total, batches: 0 };
         }
-        const maxBatches = Math.max(1, Math.min(40, Number(o.maxBatches) || 12));
+        // v3.49.3（用户报告「会提交巨量数据」）：默认**一次点击只提交一批**（每批 ≤ `plotSegmentBatchAtoms` 条 / ≤ `plotSegmentMaxChars` 字符）——
+        //   实测（`tests/local/plot-segment-audit.mjs`）：824 条情节 = 28 批，旧默认 12 批/次 → 单击 12 次请求・10.3 万字符。
+        const maxBatches = Math.max(1, Math.min(40, Number(o.maxBatches) || plotSegmentMaxBatchesDefault()));
         const run = batches.slice(0, maxBatches);
         const t0 = Date.now();
         try {
             const stat = { added: 0, skipped: 0, dup: 0, empty: 0, batches: run.length };
+            const runChars = run.reduce((s, b) => s + (Number(b.chars) || 0), 0);
+            // v3.49.3：**开工通知的措辞保持 V1 逐字不变**（黄金样本口径）——体量预告改放**调试日志**与**界面**（分段总结子页统计行）
             notify('warning', '开始生成情节分段总结…', `情节 ${plan.total} 条 → 本批 ${run.length} 批（每批 ≤ ${plotSegmentBatchSize()} 条）${plan.covered ? ` · 已被现有段落覆盖 ${plan.covered} 条` : ''}`);
+            try { dbgLog('摘要', { action: '情节分段总结：体量预告（v3.49.3）', 待整理: plan.total, 共几批: batches.length, 本次提交几批: run.length, 本次条数: run.reduce((s, b) => s + b.atoms.length, 0), 本次估算字符: runChars, 每批条数上限: plotSegmentBatchSize(), 每批字符预算: plotSegmentMaxChars(), 增量模式: cfg.plotSegmentIncremental === true }); } catch (e) { /* 忽略 */ }
             for (let i = 0; i < run.length; i++) {
                 const b = run[i];
                 const prompt = buildPlotSegmentPrompt(b);
@@ -283,12 +348,14 @@ async function runPlotSegmentSummarySelected(ids, opts) {
             return { made: 0, skipped: true, total: 0, selected: plan.selected };
         }
         if (aiBusy()) { notify('warning', '当前任务占用中', '摘要/情节总结/推演/推进结束后再生成。'); return { made: 0, blocked: true }; }
-        const maxBatches = Math.max(1, Math.min(40, Number(o.maxBatches) || 12));
+        const maxBatches = Math.max(1, Math.min(40, Number(o.maxBatches) || plotSegmentMaxBatchesDefault()));
         const run = plan.batches.slice(0, maxBatches);
         const t0 = Date.now();
         try {
             const stat = { added: 0, skipped: 0, dup: 0, empty: 0, batches: run.length };
+            const runChars = run.reduce((s, b) => s + (Number(b.chars) || 0), 0);
             notify('warning', '开始总结所选情节…', `已勾选 ${plan.selected} 条 · 其中有效 ${plan.total} 条 → 本次 ${run.length} 批（每批 ≤ ${plotSegmentBatchSize()} 条）`);
+            try { dbgLog('摘要', { action: '总结所选情节：体量预告（v3.49.3）', 已勾选: plan.selected, 有效: plan.total, 共几批: plan.batches.length, 本次提交几批: run.length, 本次估算字符: runChars, 每批字符预算: plotSegmentMaxChars() }); } catch (e) { /* 忽略 */ }
             for (let i = 0; i < run.length; i++) {
                 const b = run[i];
                 const prompt = buildPlotSegmentPrompt(b);
@@ -358,7 +425,8 @@ function flattenPlotSegment(item) {
 }
 
 export {
-    plotSegmentBatchSize, plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
+    plotSegmentBatchSize, plotSegmentMaxChars, plotSegmentMaxBatchesDefault, plotSegmentLineText, plotSegmentLineCost,
+    plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
     plotSegmentPlan, plotSegmentPlanForIds, buildPlotSegmentPrompt, plotSegmentSameRange,
     applyPlotSegmentResult, runPlotSegmentSummary, runPlotSegmentSummarySelected,
     clearPlotSegments, deletePlotSegment, flattenPlotSegment,
