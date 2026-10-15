@@ -1,5 +1,15 @@
 # docs 文档索引 · FTT记忆组件 V2
 
+> 文档版本：v3.04 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v3.04 变更（随 **v3.50.5**：修 `docs/D22` §4.25 待开发清单里**应用维度两条 P1**）：
+>   用户原话：「新版本v3.50.5 修正待开发中标记的缺陷，选取一组修复。」
+>   ① **`应-40` 注入体区块级隔离**：`core/recall.js#buildMemoryBodyForInject` 加 `stSafe`（容器键「非数组 → 空数组；`null` 元素丢弃」，非容器键原样透传）+ `pushCat`（13 个区块各自的**行构建错误边界**）；**不改拼接 / 排序 / 预算逻辑**，正常路径逐字节不变；
+>   ② **`应-41` 修复键口径错配**：`CN_KEY_MAP` 补「合并」→ `merge`；计划合并 / 状态删除两处应用器**同时接受中英两键**（此前 AI 的中文键指令在生产路径**永不命中**）；
+>   ③ **偏离登记**：`应-41` 是类别②有意偏离 V1 → 黄金样本**一字未动**，测试内显式归一 + 另行断言 V2 真实值（`I8` / `I10b` 反向断言；`I10` 加「剥掉删除段后逐字段等于黄金样本」的证伪）；
+>   ④ **测试**：新增 `tests/unit/recall-inject-isolation.test.js`（**N 组 5 项**，含 15 维 × 2 种脏数据的逐维探针）；
+>   ⑤ **数字口径**：单测 **233 文件 / 3491 断言** · 冒烟 **224** · 其余不变（内核配置键 249 · 控件 185 · 模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）；批次档 → `P10c114`；
+>   ⑥ **未做**：`docs/D22` §4.25 其余 5 条（`技-52`～`技-56`）本轮不动；
+>   ⑦ **版本位**：用户指定 **v3.50.5**（行为修正）→ 守则 §3.1 patch 位，**偏离登记见 CHANGELOG**。
 > 文档版本：v3.03 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
 > v3.03 变更（随 **v3.50.4**：分段总结**保留最近 ≥10 条（强制兜底）** + 双总结入口禁止并行）：
 >   用户原话：「请链接调试，测试修复问题。1. 错误的把最近情节总结了，这里要核对一下总结逻辑，不能频繁总结，只能当超出N条情节再去总结。
@@ -807,12 +817,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，234 份）
+└── history/                  # 历史批次层（只读留痕，235 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c113          # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c114          # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -871,9 +881,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.50.4） |
+| 口径 | 权威来源 | 当前值（v3.50.5） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.4` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.5` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `2`（v3.47.3：新增 `maps` 容器 → 迁移只补容器 + 归一，`docs/D27` §3.3 ⑤） |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 15 / 14（v3.47.3：+`maps` 地图 —— 场所锚点 / 房间 / 陈设三级 + 路径） |
@@ -881,7 +891,7 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 38（v3.45.5：+`resumeRepair`；v3.46.1：+`triLink`；v3.47.0：+`resumeBatch`；**v3.47.3：+`maps`** 地图抽取模板，全文在 `core/map-prompt.js`） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 185（v3.44.0：分析记忆页 +2；v3.45.5：投喂范围页 +6；v3.46.1：投喂范围页 +5；v3.47.0：投喂范围页 +4；**v3.47.3：基础页 +1（地图套话模板）**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  232 文件 / 3485 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  233 文件 / 3491 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 224 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -889,7 +899,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 61 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **238 / 209**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` |  234 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` |  235 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

@@ -885,6 +885,45 @@ function buildMemoryBodyForInject(queryText, opts) {
         // 各大类候选行：{head, rows:[{text}]}，行文本即最终输出的整条（含内部换行），顺序=类别输出顺序
         // （rows 在各类内已按 优先级评分（含关键词投票）降序并截取到该类上限；预算分配见函数尾部全局择优）
         const cats = [];
+        /**
+         * v3.50.5（`docs/D45` §2.2 F1 · `应-40`；用户要求「修正待开发中标记的缺陷，选取一组修复」）：
+         * **注入前的只读清洗** —— 每个大类容器按「**非数组 → 空数组**；元素里的 `null`/`undefined` → 丢弃」处理。
+         *   为什么：此前整个函数**共用一个兜错**（函数末尾 `catch` → 返回空串），任一维度只要有一条坏数据
+         *   （导入 / 早期版本写入 / 跨端合并留下的脏数据）就会让 `buildMemoryBodyForInject` 抛错 →
+         *   **AI 一条记忆都看不到**。v3.46.5 用户报告过同款现象，当时只给 `[货币]` 区块补了隔离。
+         *   清洗是**纯读**：不改 `state`、不改任何拼接 / 排序 / 预算逻辑；正常数据下与清洗前逐字节一致。
+         */
+        /**
+         * 注入体参与构建的**容器键**（这些键的脏数据形态有两种：元素含 `null` / 整个值不是数组）
+         *   → 统一按「非数组 → 空数组；元素里的 `null`/`undefined` → 丢弃」清洗。
+         *   非容器键（`state` / `vars` / `stats` / `deleted` …）**原样透传**，不改语义。
+         */
+        const INJECT_ARR_KEYS = ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense',
+            'parallels', 'rumors', 'currencies', 'npcs', 'scenes', 'concepts', 'maps', 'links', 'plotSegments'];
+        const stSafe = (() => {
+            const s = (() => { try { return st(); } catch (e) { return null; } })();
+            const out = {};
+            try {
+                for (const k of Object.keys(s || {})) {
+                    const v = s[k];
+                    if (INJECT_ARR_KEYS.indexOf(k) >= 0) out[k] = Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : [];
+                    else out[k] = Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : v;
+                }
+            } catch (e) { return s || {}; }        // 清洗失败 → 交回原对象（下面的区块边界仍会兜住）
+            return out;
+        })();
+        /**
+         * **区块级错误边界**：任一维度的**行构建**抛错 → 只丢该区块的行（标题仍在但无行 ⇒ 不渲染该块），
+         *   其余维度照常注入。**始终 push**（哪怕 0 行）—— 保持 `catHeads` 等诊断读数与改动前一致。
+         */
+        const pushCat = (head, md, rowsThunk) => {
+            let rows = [];
+            try { rows = rowsThunk() || []; } catch (e) {
+                try { warn('注入区块构建失败（已丢该区块，其余照常）', { head: head, err: String((e && e.message) || e) }); } catch (e2) { }
+                rows = [];
+            }
+            cats.push({ head: head, md: md, rows: rows });   // ⚠️ 此处必须直接 push（写成 pushCat 会自递归）
+        };
         // [当前状态]（日期/时间/地点/在场角色 锚点，很短，总是优先）
         // 四要素合并为同一块分别成行 —— 任一存在即整块输出；修复 仅日期 时整块被 time||location 门槛隐藏
         const curParts = [];
@@ -901,12 +940,12 @@ function buildMemoryBodyForInject(queryText, opts) {
         // 在场角色（顿号分割）；与 日期/时间/地点 同行块输出，正常应四行齐全
         if (present && present.length) curParts.push(`- **在场角色**：${present.slice(0, 10).join('、')}`);
         const curLines = curParts.length ? [curParts.join('\n')] : [];
-        cats.push({ head: '[当前状态]', md: mdHeadOf('[当前状态]'), rows: curLines.map(t => ({ text: t })) });
+        pushCat('[当前状态]', mdHeadOf('[当前状态]'), () => (curLines.map(t => ({ text: t }))));
         // [情节记忆]（v1.175：**两段配额切分** —— 近期档（比例 `atomsRecentRatio`，默认 0.4）只按剧情时间取最新、
         //   不受关键词门槛限制，保证 AI 一定看到最近发了什么；机制档（其余配额）按原优先级评分/关键词投票择优，
         //   平局按「最新在前」稳定序；合并去重后 **输出顺序一律按剧情时间从早到晚**（预算消费顺序仍按优先级，渲染时重排））
         const atomRows = [];
-        const activeAtoms = (st().atoms || []).filter(a => a && !atomIsHidden(a) && a.validity !== 'inactive');   // v1.203：已总结隐藏的不参与注入（局部名遮蔽同名函数，故此处直接判隐藏态）
+        const activeAtoms = (stSafe.atoms || []).filter(a => a && !atomIsHidden(a) && a.validity !== 'inactive');   // v1.203：已总结隐藏的不参与注入（局部名遮蔽同名函数，故此处直接判隐藏态）
         const ratioRaw = (o.atomsRecentRatio != null) ? o.atomsRecentRatio : ((cfg && cfg.atomsRecentRatio != null) ? cfg.atomsRecentRatio : 0.4);
         const ratioRecent = Math.max(0, Math.min(1, Number(ratioRaw) || 0));
         const quotaRecent = Math.min(activeAtoms.length, Math.round(maxAtoms * ratioRecent));
@@ -944,9 +983,9 @@ function buildMemoryBodyForInject(queryText, opts) {
         const atomRowCands = recentCands.sort((a, b) => (b.score || 0) - (a.score || 0) || atomTimeDesc(a.e, b.e))
             .concat(mechCands.sort((a, b) => (b.score || 0) - (a.score || 0) || atomTimeDesc(a.e, b.e)));
         for (const c of atomRowCands) { if (countUses) markUsed('atoms', c.e); atomRows.push({ text: c.text, score: c.score, sort: c.e }); }
-        cats.push({ head: '[情节记忆]', md: mdHeadOf('[情节记忆]'), rows: atomRows });
+        pushCat('[情节记忆]', mdHeadOf('[情节记忆]'), () => (atomRows));
         // [状态记录]：匹配的 当前状态 按优先级取最近 maxStates 条 → 按角色分组输出（分组行仍为一个候选行）
-        const activeStates = (st().currentStates || []).slice().reverse().filter(s => s.status !== 'inactive');
+        const activeStates = (stSafe.currentStates || []).slice().reverse().filter(s => s.status !== 'inactive');
         const stateCands = [];
         for (const s of activeStates) {
             // 注入时只保留最新在场角色 的状态记录
@@ -965,11 +1004,11 @@ function buildMemoryBodyForInject(queryText, opts) {
             for (const s of list) { if (countUses) markUsed('states', s); const sc = rcScore('states')(s); if (sc > bestS) bestS = sc; items.push(`- **${s.field}**：${s.value}`); }   // v2.88.0：markdown 二级列表 + 粗体字段名
             stateGroupRows.push({ score: Number(bestS.toFixed(4)), text: `- **${subj}**\n${items.map(x => `  ${x}`).join('\n')}` });
         }
-        cats.push({ head: '[状态记录]', md: mdHeadOf('[状态记录]'), rows: stateGroupRows });
+        pushCat('[状态记录]', mdHeadOf('[状态记录]'), () => (stateGroupRows));
         // [角色档案]（按姓名命中后按优先级取 maxSnapshots 名；无剧情日期 → 楼层/活跃度主导）
         const snapRows = [];
         const snapCands = [];
-        for (const sn of (st().snapshots || []).slice().reverse()) {
+        for (const sn of (stSafe.snapshots || []).slice().reverse()) {
             // 注入时只保留最新在场角色 的档案
             if (present && !injectPresentHit(present, sn.name)) continue;
             // 角色按角色姓名识别
@@ -995,11 +1034,11 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         snapCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of snapCands.slice(0, maxSnapshots)) { if (countUses) markUsed('snapshots', c.e); snapRows.push({ text: c.text }); }
-        cats.push({ head: '[角色档案]', md: mdHeadOf('[角色档案]'), rows: snapRows });
+        pushCat('[角色档案]', mdHeadOf('[角色档案]'), () => (snapRows));
         // [长期记忆]（匹配候选按优先级取 maxMemories 条；平局按「最新在前」）
         const memRows = [];
         const memCands = [];
-        for (const m of (st().memories || []).slice().reverse()) {
+        for (const m of (stSafe.memories || []).slice().reverse()) {
             // 记忆按标签相关性识别（tags/keywords）
             if (!q || tagMatch(m.tags, q) || tagMatch(m.keywords, q)) {
                 // v1.165：关联感知渲染（角色 + 内容；有差异按角色分行；无关联时回退归属者口径）
@@ -1011,11 +1050,11 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         memCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of memCands.slice(0, maxMemories)) { if (countUses) markUsed('memories', c.e); memRows.push({ text: c.text, ref: c.ref }); }
-        cats.push({ head: '[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）', md: mdHeadOf('[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）'), rows: memRows });
+        pushCat('[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）', mdHeadOf('[长期记忆]（说明：以下条目按角色给出，已标注知情方式与差异；未列出的角色对相应内容不知情。）'), () => (memRows));
         // [物品]（命中的物品按优先级取 maxItems 件）—— 标签作为触发关键词与记忆一致
         const itemRows = [];
         const itemCands = [];
-        for (const it of (st().items || []).slice().reverse()) {
+        for (const it of (stSafe.items || []).slice().reverse()) {
             if (q) {
                 const hay = `${it.name || ''} ${it.location || ''} ${it.desc || ''}`.toLowerCase();
                 if (!(tagMatch(it.tags, q) || tagMatch(it.keywords, q) || (it.name && q.includes(String(it.name).toLowerCase())) || hay.includes(q))) continue;
@@ -1028,7 +1067,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         itemCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of itemCands.slice(0, maxItems)) { if (countUses) markUsed('items', c.e); itemRows.push({ text: c.text }); }
-        cats.push({ head: '[物品]', md: mdHeadOf('[物品]'), rows: itemRows });
+        pushCat('[物品]', mdHeadOf('[物品]'), () => (itemRows));
         // [货币]（v1.181）：**主角的货币恒定注入**（不受关键词门槛限制）；其他角色的货币只在「被关键词/在场命中」时注入
         //   —— 符合用户要求「默认只记主角，涉及其他角色必须明确指定」；额度用 formatMoney 动态适配（万/亿/兆/京）。
         //   v3.46.5：**本区块单独兜错**（区块级隔离）—— 一条坏数据只丢「货币」，不再让**整份注入**变空
@@ -1042,7 +1081,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             const me = String((typeof defaultCurrencyOwner === 'function' ? defaultCurrencyOwner() : '') || '');
             const presentSet = (present && present.length) ? present : null;
             const curCands = [];
-            for (const cu of (st().currencies || []).slice().reverse()) {
+            for (const cu of (stSafe.currencies || []).slice().reverse()) {
                 if (!cu || !cu.name) continue;
                 markCand('currencies', cu.id);                    // v3.46.5：**看到就算候选** —— 自查里「看到 N / 注入 M」直接暴露归属不匹配
                 const owner = String(cu.owner || '');
@@ -1076,7 +1115,7 @@ function buildMemoryBodyForInject(queryText, opts) {
                 const mark = c.tracked ? ' ⭐已标定' : '';
                 curRows.push({ text: `- ${owner || me}·${cu.name}${unit ? '' : ''} ${amtTxt}${unit ? ` ${unit}` : ''}${note}${histTxt}${mark}`, ref: { dim: 'currencies', id: cu.id }, score: c.score });
             }
-            if (curRows.length) cats.push({ head: '[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）', md: mdHeadOf('[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）'), rows: curRows });
+            if (curRows.length) pushCat('[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）', mdHeadOf('[货币]（说明：主角与**已标定跟踪角色**的货币恒定列出；其他角色的货币仅在其被提及/在场时列出。）'), () => (curRows));
           } catch (e) {
             // v3.46.5：**只降级货币区块**（其余大类照常注入）—— 并把原因写进调试日志，便于「为什么没注入」有据可查。
             try { warn('货币区块注入失败（已跳过该区块，其余照常）', e); } catch (e2) { /* 忽略 */ }
@@ -1089,7 +1128,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             const rumorRows = [];
             const presentSet = (present && present.length) ? present : null;
             const rumCands = [];
-            for (const r of (st().rumors || []).slice().reverse()) {
+            for (const r of (stSafe.rumors || []).slice().reverse()) {
                 if (!r || !r.subject) continue;
                 if (String(r.stage || '') === '沉寂') continue;
                 const hay = `${r.subject} ${r.content || ''} ${(r.tags || []).join(' ')} ${(r.carriers || []).map(c => (c && c.who) || '').join(' ')}`;
@@ -1104,27 +1143,27 @@ function buildMemoryBodyForInject(queryText, opts) {
                 if (countUses) markUsed('rumors', c.e);
                 rumorRows.push({ text: `- ${rumorInjLine(c.e)}`, ref: { dim: 'rumors', id: c.e.id } });
             }
-            if (rumorRows.length) cats.push({ head: '[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）', md: mdHeadOf('[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）'), rows: rumorRows });
+            if (rumorRows.length) pushCat('[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）', mdHeadOf('[传言]（说明：民间流传、**未经证实**的说法，可能不实或被夸大；客观/主观与传播者、载体一并给出，不得当作事实。）'), () => (rumorRows));
         }
         // [计划]：进行中（匹配）按优先级取 maxPlans 条 —— 注入必带 时间/角色/标题/描述
-        const planCands = (st().plans || []).slice().reverse().filter(p => p.status === 'open' && (!q || rawMatch(p.content, q) || rawMatch(p.title || '', q) || tagMatch(p.tags, q) || (p.characters || []).some(c => nameMatch(c, q))));
+        const planCands = (stSafe.plans || []).slice().reverse().filter(p => p.status === 'open' && (!q || rawMatch(p.content, q) || rawMatch(p.title || '', q) || tagMatch(p.tags, q) || (p.characters || []).some(c => nameMatch(c, q))));
         planCands.forEach(p => markCand('plans', p.id));
         planCands.sort((a, b) => (rcScore('plans')(b) || 0) - (rcScore('plans')(a) || 0));
         const openPlans = planCands.slice(0, maxPlans);
-        cats.push({ head: '[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）', md: mdHeadOf('[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）'), rows: openPlans.map(p => { if (countUses) markUsed('plans', p); return { score: rcScore('plans')(p), text: `- ${planSuspRelPrefix('plans', p, 'plan')}${planSuspLine(p, 'plan')}`, ref: { dim: 'plans', id: p.id } }; }) });
+        pushCat('[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）', mdHeadOf('[计划]（说明：以下计划按知情范围给出；未列出的角色不知道计划存在，不得配合、不得提及。）'), () => (openPlans.map(p => { if (countUses) markUsed('plans', p); return { score: rcScore('plans')(p), text: `- ${planSuspRelPrefix('plans', p, 'plan')}${planSuspLine(p, 'plan')}`, ref: { dim: 'plans', id: p.id } }; })));
         // [悬念]：未解（匹配）按优先级取 maxSuspense 条 —— 注入必带 时间/角色/标题/描述
-        const suspCands = (st().suspense || []).slice().reverse().filter(s => s.status === 'open' && (!q || rawMatch(s.content, q) || rawMatch(s.title || '', q) || tagMatch(s.tags, q) || (s.characters || []).some(c => nameMatch(c, q))));
+        const suspCands = (stSafe.suspense || []).slice().reverse().filter(s => s.status === 'open' && (!q || rawMatch(s.content, q) || rawMatch(s.title || '', q) || tagMatch(s.tags, q) || (s.characters || []).some(c => nameMatch(c, q))));
         suspCands.forEach(s => markCand('suspense', s.id));
         suspCands.sort((a, b) => (rcScore('suspense')(b) || 0) - (rcScore('suspense')(a) || 0));
         const openSusp = suspCands.slice(0, maxSuspense);
-        cats.push({ head: '[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）', md: mdHeadOf('[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）'), rows: openSusp.map(s => { if (countUses) markUsed('suspense', s); return { score: rcScore('suspense')(s), text: `- ${planSuspRelPrefix('suspense', s, 'suspense')}${planSuspLine(s, 'suspense')}`, ref: { dim: 'suspense', id: s.id } }; }) });
+        pushCat('[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）', mdHeadOf('[悬念]（说明：以下悬念按知情范围给出；未列出的角色连「有这回事」都不知道，不得察觉、不得议论。）'), () => (openSusp.map(s => { if (countUses) markUsed('suspense', s); return { score: rcScore('suspense')(s), text: `- ${planSuspRelPrefix('suspense', s, 'suspense')}${planSuspLine(s, 'suspense')}`, ref: { dim: 'suspense', id: s.id } }; })));
         // 平行事件 —— 标题+描述与其他原子数据一致，按关键词触发并入提取记忆用于注入
         //   触发匹配：标签相关性 / 标题/描述/类型/角色/地点包含关键词；已达衰退阈值（💀 待清理）的不注入；
         //   注入正文 = 纯内容（标题：描述），不带卦象/因果线/概率等检索性字段（可在「平行」页查看）
         //   按「现实更新时间」近度 + 命中度 评分取 maxParallelsInj 条
         const parRows = [];
         const parCands = [];
-        for (const p of (st().parallels || []).slice().reverse()) {
+        for (const p of (stSafe.parallels || []).slice().reverse()) {
             // v1.166：已转正为情节的平行事件不再作为平行事件注入（内容已由情节承载）
             if (p && p.promotedTo) continue;
             let expired = false;
@@ -1137,12 +1176,12 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         parCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of parCands.slice(0, maxParallelsInj)) { if (countUses) markUsed('parallels', c.e); parRows.push({ text: c.text, ref: c.ref }); }
-        cats.push({ head: '[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', md: mdHeadOf('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）'), rows: parRows });
+        pushCat('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）', mdHeadOf('[平行事件]（说明：以下为正文之外推演，任何角色都不知情，仅作幕后参考。）'), () => (parRows));
         // [场景地点]：树整体作为一块（保持层级；预算放不下整块则跳过）
         let sceneText = '';
         const mapRows = [];   // v3.47.0（W16 数-24）：地图子块（追加在场景整块**之后**）
         let mapInjectInfo = null;   // v3.47.0：注入自查读数（如实列出「未注入」的原因）
-        const scenes = (st().scenes || []).slice();
+        const scenes = (stSafe.scenes || []).slice();
         if (scenes.length) {
             // 场景按路径和名称识别（q 非空时只保留路径/名称命中的节点）；最多 maxScenes 个场景条目构树
             const filteredScenes = (q ? scenes.filter(s => nameMatch(s.name, q) || String(s.pathStr || '').includes(q.toLowerCase()) || (Array.isArray(s.pathArr) ? s.pathArr.some(seg => nameMatch(seg, q)) : false)) : scenes).slice(0, maxScenes);
@@ -1176,14 +1215,11 @@ function buildMemoryBodyForInject(queryText, opts) {
         } else {
             try { const stt = mapInjectStats(st(), []); mapInjectInfo = { units: stt.units, routes: stt.routes, blocks: 0, lines: 0, reason: '场景未入选（地图不单独注入）' }; } catch (e) { mapInjectInfo = null; }
         }
-        cats.push({
-            head: '[场景地点]', md: mdHeadOf('[场景地点]'),
-            rows: (sceneText ? [{ text: sceneText }] : []).concat(mapRows),
-        });
+        pushCat('[场景地点]', mdHeadOf('[场景地点]'), () => ((sceneText ? [{ text: sceneText }] : []).concat(mapRows)));
         // [概念]（命中候选按优先级取 maxConcepts 条）
         const conceptRows = [];
         const conceptCands = [];
-        for (const c of (st().concepts || []).slice().reverse()) {
+        for (const c of (stSafe.concepts || []).slice().reverse()) {
             // 概念按标签相关性识别（tags/keywords）
             if (!q || tagMatch(c.tags, q) || tagMatch(c.keywords, q) || nameMatch(c.name, q)) {
                 // v1.170：概念日期同样附相对时间标注
@@ -1193,7 +1229,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         }
         conceptCands.sort((a, b) => (b.score || 0) - (a.score || 0));
         for (const c of conceptCands.slice(0, maxConcepts)) { if (countUses) markUsed('concepts', c.e); conceptRows.push({ text: c.text }); }
-        cats.push({ head: '[概念]', md: mdHeadOf('[概念]'), rows: conceptRows });
+        pushCat('[概念]', mdHeadOf('[概念]'), () => (conceptRows));
 
         // 预算分配 = 全局按优先级择优 —— 每次取「当前各类剩余候选里优先级最高」的一条尝试加入；
         //   大类条数上限已在各类 rows 截取时保证（硬约束）；单条放不下（超剩余预算）则整条跳过不截断。

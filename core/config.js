@@ -29,6 +29,7 @@ const CN_KEY_MAP = {
     '地图库': 'maps', '地图': 'maps', '空间单元': 'place', '所属场所': 'sceneRef', '上层': 'parentId', '起点': 'fromId', '终点': 'toId', '距离': 'distance', '耗时': 'timeCost', '所需时间': 'timeCost', '走过': 'traversed', '方向': 'direction', '别名': 'aliases', '证据': 'evidence',   // v3.47.3（W18 数-22）：地图库键与字段名；`层级` 已在下方既有映射（→ level），不重复登记
     // v1.14 修复：SNAP_GROUP_MAP 必须在 loadState/migrateState 调用前初始化（TDZ），故置于此处
     '新增': 'add', '更新': 'update', '删除': 'remove', '重建': 'rebuild', '了结': 'close',
+    '合并': 'merge',   // v3.50.5（`应-41`）：计划修复合同的中文键「合并」此前不在表内 → 应用器永不命中（`D45` §2.3 F2）
     '内容': 'text', '类型': 'type', '日期': 'date', '时间': 'time',
     '角色': 'entities', '地点': 'locations', '标签': 'tags', '关键词': 'keywords',
 // v1.58 平行事件专属字段中文键：因果线/卦象/涉及角色姓名/发生地点/更新时间/演化目标可能性

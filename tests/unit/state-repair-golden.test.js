@@ -188,7 +188,15 @@ R.assert('I9 buildStateRepairPrompt：system + user 两条消息**逐字符**与
 R.assert('I10 applyStateRepair 全量应用（归一化 delta）：更新现有值 / 非规范字段按该主体已有条目保留 / 新建补齐（added，`normalizeCurrentState` 生成 id 与楼层）/ 未变（unchanged）/ 非法字段·占位值·非对象（invalid）/ 未知主体（unknownRole）/ 值超长截断 / 无依据计数 —— counts + states + 墓碑与 V1 逐字段一致', (() => {
     boot(G.inputs.scenarioTargets);
     const pick = pickStateRepairTargets();
-    const r = applyStateRepair(normalizeDeltaKeys(clone(G.inputs.aiA)), pick);
+    /**
+     * v3.50.5（`docs/D45` §2.3 F2 · `应-41`，**有意偏离 V1**）：删除段现在**真的命中**（`remove` 被接受）→
+     *   `deleted` 0→1、`changed` 5→6、`invalid` 3→4、`unknownRole` 1→2。为**证伪「顺手改了别的」**：
+     *   本档先把归一化 delta 里的删除段剥掉，再与黄金样本**逐字段比对**（其余必须一字不差）；
+     *   删除段本身由紧随其后的 **I10b**（反向断言）锁定。黄金样本文件一字未动。
+     */
+    const dNorm = normalizeDeltaKeys(clone(G.inputs.aiA));
+    if (dNorm && dNorm.states && dNorm.states.remove) delete dNorm.states.remove;
+    const r = applyStateRepair(dNorm, pick);
     const got = { r, states: stateView(), tombs: tombIds(), hashes: tombHashes() };
     const t2 = (state.currentStates || []).find(x => x.id === 't2') || {};
     const t4 = (state.currentStates || []).find(x => x.id === 't4') || {};
@@ -196,6 +204,20 @@ R.assert('I10 applyStateRepair 全量应用（归一化 delta）：更新现有�
         && r.changed === 5 && r.added === 3 && r.unchanged === 1 && r.invalid === 3 && r.unknownRole === 1 && r.noBasis === 2
         && t2.value === '在码头边' && t4.value === '改后的值' && String(t4.updatedAt) === '2020-06-01';
 })(), G.apply.r);
+
+// v3.50.5（`应-41` **反向断言**）：生产路径的 delta 已过 `normalizeDeltaKeys`（「删除」→ `remove`）——
+//   修复前应用器只认 `ops['删除']` / `ops.delete` → 该分支**永不命中**；现在必须真的删掉且计数可见。
+R.assert('I10b（`应-41` 反向断言 · v3.50.5 修）归一化后的 `remove` 段必须真的命中：字段级记录被删（`deleted === 1`）+ 双墓碑 + `after` 少一条', (() => {
+    boot(G.inputs.scenarioTargets);
+    const pick2 = pickStateRepairTargets();
+    const beforeN = (state.currentStates || []).length;
+    const r = applyStateRepair(normalizeDeltaKeys(clone(G.inputs.aiA)), pick2);
+    const afterN = (state.currentStates || []).length;
+    const tombed = Object.keys(tombIds()).length > 0 || tombHashes().length > 0;
+    const gone = (state.currentStates || []).every((x) => !(x && x.subject === '角色乙' && x.field === '杂项'));
+    // 计数：本 delta 新增 3 条、删除 1 条 → 净 +2（V1 时删除不生效 → 净 +3）
+    return r.deleted === 1 && r.added === 3 && r.changed === 6 && afterN === beforeN + 2 && gone && tombed;
+})(), 'V2 修正：归一化后的 `remove` 段已命中（V1 时为 deleted=0）');
 
 R.assert('I11 applyStateRepair 删除段（V1 原样：只认 `ops["删除"]`/`ops.delete`，中文键未归一才命中）：对象写法 {主体,字段} 与文本写法「主体·字段」都按目标主体名**前缀**匹配 → 字段级删除 + 双墓碑；未知主体计入 unknownRole —— 与 V1 oracle 逐字段一致', (() => {
     boot(G.inputs.scenarioTargets);
@@ -251,13 +273,44 @@ await A('P1 runStateRepair 全链路：⓪ 已去世固定规则移除 → ① �
     const r = await runStateRepair();
     const got = {
         res: {
-            made: r.made, before: r.before, after: r.after, targets: r.targets, queueLeft: r.queueLeft,
-            match: r.match, clean: r.clean, ai: r.ai, keys: Object.keys(r).sort(),
+            // v3.50.5（`应-41`，**有意偏离 V1**）：删除段命中 → ai 计数与 after 变化 → 比对黄金样本时**显式归一回 V1 形态**
+            made: r.made, before: r.before, after: 7, targets: r.targets, queueLeft: r.queueLeft,
+            match: r.match, clean: r.clean,
+            ai: Object.assign({}, r.ai, { changed: 5, deleted: 0, invalid: 3, unknownRole: 1 }),
+            keys: Object.keys(r).sort(),
         },
-        states: stateView(), tombs: tombIds(), toasts, aiCalls,
+        // states 视图：V2 会少掉那条被删的记录 → 从严格比对里摘出，由下方**显式断言**覆盖
+        tombs: tombIds(), toasts, aiCalls,
     };
+    /**
+     * v3.50.5（`应-41`）：完成通知多出「· 删除 1 条」（删除段命中）→ 比对黄金样本时**从 V2 文案里归一掉**；
+     *   V2 真实文案另行断言（下面 `hasDel`）。
+     */
+    const v2Toasts = got.toasts.map((x) => {
+        const t0 = String((x && x[1]) || '')
+            .replace('修复前 5 条 → 修复后 6 条', '修复前 5 条 → 修复后 7 条')   // V2：删了 1 条（V1 未删）
+            .replace('修复后 修订 6 条', '修复后 修订 5 条')
+            .replace('AI 更新 6 条', 'AI 更新 5 条')
+            .replace(' · AI 删除 1 条', '')                                        // V2 新增段
+            .replace(' 修订 5 条 · 删除 1 条', ' 修订 5 条')                       // V2 新增「删除 1 条」
+            .replace('无效字段 4 条', '无效字段 3 条')
+            .replace('主体不在本轮目标 2 条', '主体不在本轮目标 1 条');
+        return [x && x[0], t0];
+    });
     const want = Object.assign({}, clone(G.run), { toasts: wfToasts(G.run.toasts) });
-    return J(got) === J(want) && aiCalls === 1 && r.made === 1 && r.before === 5 && r.after === 7
+    want.toasts = wfToasts(G.run.toasts);
+    // v3.50.5（`应-41`）：V2 多出「被删记录 t4」的墓碑 → 比对黄金样本时归一掉；V2 真实值由 `v2` 断言
+    const gotForCompare = Object.assign({}, got, { toasts: v2Toasts, tombs: got.tombs.filter((x) => x !== 't4') });
+    delete want.states;                         // 同上：states 视图单独断言（V2 少一条被删记录）
+    /**
+     * v3.50.5（`应-41`）：V2 真实值 —— 删除段命中（`ai.deleted === 1`）、`changed` 5→6、`after` 7→6，
+     *   且被删的那条字段级记录确实不在 `state.currentStates` 里（黄金样本一字未动）。
+     */
+    const v2 = r.ai && r.ai.deleted === 1 && r.ai.changed === 6 && r.after === 6
+        && got.tombs.indexOf('t4') >= 0
+        && (state.currentStates || []).every((x) => !(x && x.subject === '状态甲' && x.field === '心情'));
+    const hasDel = String((toasts[1] || [])[1] || '').indexOf('删除 1 条') >= 0;
+    return J(gotForCompare) === J(want) && aiCalls === 1 && r.made === 1 && r.before === 5 && v2 && hasDel
         && toasts[0][0] === 'warning' && String(toasts[0][1]).indexOf('本轮只提交最薄弱的 2 名') >= 0;
 }, G.run.res);
 
@@ -325,7 +378,8 @@ await A('U2 面板动作 stateRepair 可达：走 runStateRepair 全链路并把
     const r = await panelAction('stateRepair', {});
     const note = String(panelState().note || '');
     return r.ok === true && !!r.stateRepair && r.made === 1 && r.action === 'stateRepair' && aiCalls === 1
-        && note.indexOf('状态修复：') >= 0 && note.indexOf('目标 2 名') >= 0 && note.indexOf('AI 更新 5 条') >= 0;
+        && note.indexOf('状态修复：') >= 0 && note.indexOf('目标 2 名') >= 0 && note.indexOf('AI 更新 6 条') >= 0   // v3.50.5（应-41）：删除段命中后计数 5→6
+        && note.indexOf('删除 1 条') >= 0;
 }, '');
 
 R.assert('U3 FTT 调试入口齐备：stateRepairFields / stateCanonField / stateRepairRoster / stateSubjectMatch / stateRepairMatch / stateRepairClean / removeStatesOfDeceased / stateRepairTargets / stateRepairPrompt / stateRepairApply / stateRepair', (() => {
@@ -374,7 +428,7 @@ await A('U4 FTT.stateRepair 无 hook 时按约定降级（不抛错），有 hoo
     installDevtools({ stateRepair: (o) => runStateRepair(o) });
     const r = await globalThis.FTT.stateRepair({ aiText: JSON.stringify(G.inputs.aiA) });
     uninstallDevtools();
-    return degraded && r.made === 1 && r.ai && r.ai.changed === 5;
+    return degraded && r.made === 1 && r.ai && r.ai.changed === 6 && r.ai.deleted === 1;   // v3.50.5（应-41）：删除段命中 → changed 5→6
 }, '');
 
 un();
