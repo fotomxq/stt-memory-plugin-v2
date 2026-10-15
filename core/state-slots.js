@@ -125,6 +125,9 @@ export const RUNTIME_SLOTS = Object.freeze({
     currencyMergeLog: { label: '货币融合记录（末 5 条）', evidence: 'core/currency-merge.js#curMergeLogPush', disposition: 'runtime' },
     // v3.47.0（`docs/D22` §4.16 W16 `应-33`）：履历批量完善记录（末 5 条；**不参与跨端同步**）
     resumeBatchLog: { label: '履历批量记录（末 5 条）', evidence: 'core/resume-batch.js#resumeBatchLogPush', disposition: 'runtime' },
+    // v3.50.3（用户要求「如发现已提交则避免重复提交」）：情节分段总结的**提交账本**（末 10 条，仅存批次指纹与 id 组；
+    //   **不参与跨端同步**）—— 同一批重复提交可被识别；用户在段落被删除 / 清空时释放名额。
+    plotSegmentLog: { label: '情节分段提交账本（末 10 条）', evidence: 'core/plot-segment.js#plotSegmentLogPush', disposition: 'runtime' },
 });
 
 /**

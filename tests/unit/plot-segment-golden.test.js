@@ -29,6 +29,7 @@ import {
     plotSegmentBatchSize, plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
     plotSegmentPlan, plotSegmentPlanForIds, buildPlotSegmentPrompt, plotSegmentSameRange,
     plotSegmentMaxChars, plotSegmentMaxBatchesDefault, plotSegmentLineText, plotSegmentLineCost,
+    plotSegmentBusy, plotSegmentLogList,
     applyPlotSegmentResult, runPlotSegmentSummary, runPlotSegmentSummarySelected,
     clearPlotSegments, deletePlotSegment, flattenPlotSegment,
 } from '../../core/plot-segment.js';
@@ -118,6 +119,14 @@ const segsView = () => (state.plotSegments || []).map(segView);
  *   故 V1 平价投影（P11/P12/P13）**排除这 5 个字段**；它们的新口径由 **Q5** 单独锁定。
  */
 /** 把并集所改的 5 个字段从**黄金样本侧**剥掉（两侧同口径，才是 V1 平价） */
+/** v3.50.3：返回体新增 `pending` / `threshold` / `skippedSubmitted`（V1 无）→ V1 平价投影里剥掉（R 组另行锁定这些读数） */
+const v1StripRes = (v) => {
+    const o = clone(v);
+    if (o && o.res && typeof o.res === 'object') {
+        delete o.res.pending; delete o.res.threshold; delete o.res.skippedSubmitted;
+    }
+    return o;
+};
 const v1StripUnion = (v) => {
     const o = clone(v);
     if (Array.isArray(o && o.segments)) {
@@ -283,9 +292,9 @@ await A('P11 全量运行 runPlotSegmentSummary：按批调 AI（2 批 2 次）�
         aiContent = SAMPLE;
         // v3.49.3：本档校验 **V1 平价**（一次跑完全部批次）—— 新口径默认「一次一批」是**有意偏离**，
         //   故此处显式放开批数上限；新口径本身由 Q 组覆盖。
-        const res = await runPlotSegmentSummary({ maxBatches: 40 });
+        const res = await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });   // v3.50.3：本档验证 V1 平价，显式越过「未总结 ≥ 每批条数」门槛
         const mine = { res: res, calls: aiCalls, segments: segsViewV1(), toasts: clone(toasts) };
-        ok = deq(mine, v1StripUnion(F.runAll));
+        ok = deq(v1StripRes(mine), v1StripUnion(F.runAll));
     });
     return ok;
 }, '');
@@ -297,10 +306,10 @@ await A('P12 增量运行 / 空库 / 忙位：plotSegmentIncremental 只跑未�
         state.plotSegments = [];
         cfg.plotSegmentBatchAtoms = 3;
         aiContent = SAMPLE;
-        await runPlotSegmentSummary({ maxBatches: 40 });
+        await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });
         cfg.plotSegmentIncremental = true;
         aiCalls = 0; toasts = [];
-        const inc = await runPlotSegmentSummary({ maxBatches: 40 });
+        const inc = await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });
         cfg.plotSegmentIncremental = false;
         const mineInc = { res: inc, calls: aiCalls, toasts: clone(toasts) };
         /**
@@ -316,18 +325,19 @@ await A('P12 增量运行 / 空库 / 忙位：plotSegmentIncremental 只跑未�
             const g = clone(F.runIncremental);
             g.calls = 0;                                                        // V1: 1（重复提交未被覆盖的第 2 批）
             g.res = { made: 0, skipped: true, total: 5, batches: 0 };   // V1: { made:0, added:0, dup:2, empty:0, batches:1, total:5, segments:2 }（V1 无「已是最新」早退路径：它每次都要重跑一批）
-            g.toasts = [["info", "情节分段总结：已是最新 当前 5 条情节已全部被现有段落覆盖（增量模式）。"]];   // V1: warning 开工 + success 完成（新增 0 / 跳过 2）
+            // v3.50.3：早退文案扩写为「（或未凑满一批）—— 未总结 N 条，凑满 T 条后即可继续」（本场景 T = 3）
+            g.toasts = [["info", "情节分段总结：已是最新 当前 5 条情节已全部被现有段落覆盖（或未凑满一批）—— 未总结 0 条，凑满 3 条后即可继续。"]];   // v3.49.3 版文案: 「…已全部被现有段落覆盖（增量模式）。」
             return g;
         })();
-        ok = deq(mineInc, v1StripUnion(expectedInc));
+        ok = deq(v1StripRes(mineInc), v1StripUnion(expectedInc));
         boot({ atoms: [] });
         aiCalls = 0; toasts = [];
-        const empty = await runPlotSegmentSummary({ maxBatches: 40 });
-        ok = ok && deq({ res: empty, calls: aiCalls, toasts: clone(toasts) }, F.runEmpty);
+        const empty = await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });
+        ok = ok && deq(v1StripRes({ res: empty, calls: aiCalls, toasts: clone(toasts) }), F.runEmpty);
         boot({ atoms: seedAtoms() });
         busyFlag = true;
         aiCalls = 0; toasts = [];
-        const busy = await runPlotSegmentSummary({ maxBatches: 40 });
+        const busy = await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });
         busyFlag = false;
         ok = ok && deq({ res: busy, calls: aiCalls, toasts: clone(toasts) }, F.runBusy);
     });
@@ -344,7 +354,7 @@ await A('P13 总结所选 runPlotSegmentSummarySelected：只处理勾选的有�
         aiCalls = 0; toasts = [];
         const sel = await runPlotSegmentSummarySelected(['p1', 'p2', 'p3', 'nope'], { maxBatches: 40 });   // v3.49.3：V1 平价 → 显式放开批数
         const mine = { res: sel, calls: aiCalls, segments: segsViewV1(), toasts: clone(toasts) };
-        ok = deq(mine, v1StripUnion(F.runSelected));
+        ok = deq(v1StripRes(mine), v1StripUnion(F.runSelected));
         aiCalls = 0; toasts = [];
         const e1 = await runPlotSegmentSummarySelected([], { maxBatches: 40 });
         const mine2 = { res: e1, calls: aiCalls, toasts: clone(toasts) };
@@ -415,7 +425,7 @@ await A('Q1 默认**一次点击只提交一批**（`cfg.plotSegmentMaxBatches` 
         boot({ atoms: many }, { plotSegmentBatchAtoms: 3 });
         setChatHooks({ dbgLog: (k, v) => dbg.push([String(k), v]) });
         aiContent = SAMPLE;
-        const res = await runPlotSegmentSummary({});
+        const res = await runPlotSegmentSummary({ ignoreThreshold: true });   // v3.50.3：本项验证"一次一批"，显式越过门槛
         calls = aiCalls;
         toastText = toasts.map((x) => x[1]).join(' ');
         return res.batches === 1 && Number(res.total) === 9;
@@ -449,14 +459,14 @@ await A('Q3 **增量默认开**（`cfg.plotSegmentIncremental` 默认 true）：
     await withFixedNow(async () => {
         boot({ atoms: seedAtoms() }, { plotSegmentBatchAtoms: 3 });
         aiContent = SAMPLE;
-        const first = await runPlotSegmentSummary({});
+        const first = await runPlotSegmentSummary({ ignoreThreshold: true });
         const c1 = aiCalls;
         aiCalls = 0;
-        const second = await runPlotSegmentSummary({});     // 第二批（未被覆盖）→ 仍会发 1 次，但**不重复**已覆盖的时间范围
+        const second = await runPlotSegmentSummary({ ignoreThreshold: true });     // 第二批（未被覆盖）→ 仍会发 1 次，但不重复已覆盖的时间范围
         const c2 = aiCalls;
         aiCalls = 0;
-        await runPlotSegmentSummary({ maxBatches: 40 });     // 跑完全部批次
-        const allCovered = await runPlotSegmentSummary({});  // 全被覆盖 → 0 次
+        await runPlotSegmentSummary({ maxBatches: 40, ignoreThreshold: true });     // 跑完全部批次
+        const allCovered = await runPlotSegmentSummary({ ignoreThreshold: true });  // 全被覆盖 → 0 次
         ok = c1 === 1 && first.batches === 1 && c2 === 1 && second.added === 0 && second.dup === 2
             && aiCalls === 0 && allCovered.skipped === true;
         return ok;
@@ -486,16 +496,112 @@ await A('Q5（**只读核对发现的真缺陷**）同区间命中的段会**并
     await withFixedNow(async () => {
         boot({ atoms: seedAtoms() }, { plotSegmentBatchAtoms: 3 });
         aiContent = SAMPLE;
-        await runPlotSegmentSummary({});                       // 第 1 批（p7/p1/p2）
-        await runPlotSegmentSummary({});                       // 第 2 批（p3/p4）——解析出的区间与已有段同名 → 只记 dup，但 ids 现在会并进去
+        await runPlotSegmentSummary({ ignoreThreshold: true });                       // 第 1 批（p7/p1/p2）
+        await runPlotSegmentSummary({ ignoreThreshold: true });                       // 第 2 批（p3/p4）——区间同名 → 只记 dup，但 ids 会并进去
         const seg = (state.plotSegments || []).filter((s) => String(s.header).indexOf('1899-03-01') >= 0)[0] || {};
         const unioned = (seg.atomIds || []).slice().sort().join(',');
         const headerBefore = String(seg.header || '');
         aiCalls = 0;
-        const third = await runPlotSegmentSummary({});         // 全部已覆盖 → 0 次 AI（收敛）
+        const third = await runPlotSegmentSummary({ ignoreThreshold: true });         // 全部已覆盖 → 0 次 AI（收敛）
         const stillSame = String((state.plotSegments || [])[0].header || '') === headerBefore;
         ok = unioned === 'p1,p2,p3,p4,p7' && Number(seg.atomCount) === 5 && aiCalls === 0
             && third.skipped === true && third.batches === 0 && stillSame;
+        return ok;
+    });
+    return ok;
+}, '');
+// ==================== R 组（v3.50.3）：门槛 · 满批 · 不重叠 · 已提交去重 ====================
+await A('R1 **门槛**：未总结条数 < 「每次打包给 AI 的情节条数」时**不提交**（0 次 AI），提示写明还差几条', async () => {
+    let ok = false;
+    await withFixedNow(async () => {
+        const few = [];
+        for (let i = 1; i <= 5; i++) few.push({ id: 's' + i, title: 'S' + i, text: '第 ' + i + ' 条情节正文。', date: '1919-11-0' + i, validity: 'active', tags: [], floorStart: i, floorEnd: i });
+        boot({ atoms: few }, { plotSegmentBatchAtoms: 30 });
+        aiContent = SAMPLE;
+        const res = await runPlotSegmentSummary({});
+        const plan = plotSegmentPlan();
+        ok = aiCalls === 0 && res.skipped === true && res.reason === 'below-threshold'
+            && Number(res.pending) === 5 && Number(res.threshold) === 30 && Number(res.need) === 25
+            && plan.pending === 5 && plan.eligible === 0
+            && toasts.map((x) => x[1]).join(' ').indexOf('还差 25 条') > 0;
+        return ok;
+    });
+    return ok;
+}, '');
+
+await A('R2 **只提交满批**：31 条 / 每批 30 → 可提交 1 批（30 条），尾部那 1 条**不提交**（`plan.pending` 仍为 31，等凑满）', async () => {
+    let ok = false;
+    await withFixedNow(async () => {
+        const many = [];
+        for (let i = 1; i <= 31; i++) many.push({ id: 'm' + i, title: 'M' + i, text: '第 ' + i + ' 条情节正文。', date: '1919-11-' + String((i % 28) + 1).padStart(2, '0'), validity: 'active', tags: [], floorStart: i, floorEnd: i });
+        boot({ atoms: many }, { plotSegmentBatchAtoms: 30 });
+        aiContent = SAMPLE;
+        const plan = plotSegmentPlan();
+        const full = plan.batches.filter((b) => b.full === true).length;
+        const res = await runPlotSegmentSummary({});
+        ok = plan.batches.length === 2 && full === 1 && plan.eligible === 1
+            && plan.pending === 31 && plan.pendingEligible === 30
+            && aiCalls === 1 && res.batches === 1;
+        return ok;
+    });
+    return ok;
+}, '');
+
+await A('R3 **执行不重叠**：在上一次提交未返回期间再点 → 被在途闸挡下（`reason:inflight`、0 次新 AI）；跑完闸自动复位', async () => {
+    let ok = false;
+    await withFixedNow(async () => {
+        boot({ atoms: seedAtoms() }, { plotSegmentBatchAtoms: 3 });
+        aiContent = SAMPLE;
+        /**
+         * 用**真定时器**把第一次请求挂在在途（`boot()` 只接管了 `Date.now`，`setTimeout` 仍是真的）——
+         *   这样"第一次未返回"是确定的事实，不需要靠微任务计数；第一次调用在**同步阶段**就置了在途闸。
+         */
+        setAiHooks({
+            callAi: async () => { aiCalls++; await new Promise((r) => setTimeout(r, 5)); return { ok: true, text: aiContent }; },
+            feedText: () => '', busy: () => false,
+        });
+        const first = runPlotSegmentSummary({ ignoreThreshold: true });
+        const second = await runPlotSegmentSummary({ ignoreThreshold: true });   // 第一次还挂着 → 必须被挡
+        const r1 = await first;
+        const third = await runPlotSegmentSummary({ ignoreThreshold: true });    // 闸已复位 → 可再跑（是否提交取决于覆盖 / 账本）
+        ok = second.blocked === true && second.reason === 'inflight' && aiCalls === 2
+            && r1.batches === 1 && plotSegmentBusy() === false && third.blocked !== true;
+        return ok;
+    });
+    return ok;
+}, '');
+
+await A('R4 **已提交不重复提交**：同一批（同一组 id）再跑 → 走账本跳过（`skippedSubmitted`）且 0 次新 AI；清空段落后名额释放、可重新生成', async () => {
+    let ok = false;
+    await withFixedNow(async () => {
+        boot({ atoms: seedAtoms() }, { plotSegmentBatchAtoms: 3 });
+        aiContent = '';                                     // 让 AI「空手而归」→ 批次未被覆盖，第二次点击才会撞上账本
+        const first = await runPlotSegmentSummary({ ignoreThreshold: true });
+        const c1 = aiCalls;
+        aiCalls = 0;
+        const second = await runPlotSegmentSummary({ ignoreThreshold: true });
+        const logged = plotSegmentLogList().length;
+        const blockedByLog = aiCalls === 0 && second.skippedSubmitted === 1;
+        clearPlotSegments();                                // 用户显式清空 → 释放账本
+        const released = plotSegmentLogList().length === 0;
+        aiCalls = 0;
+        const third = await runPlotSegmentSummary({ ignoreThreshold: true });
+        ok = c1 === 1 && logged === 1 && blockedByLog && released && aiCalls === 1 && third.batches === 1;
+        return ok;
+    });
+    return ok;
+}, '');
+
+await A('R5 **所选路径不受「凑满一批」门槛限制**（用户显式勾选），但同样受在途闸与账本约束', async () => {
+    let ok = false;
+    await withFixedNow(async () => {
+        boot({ atoms: seedAtoms() }, { plotSegmentBatchAtoms: 30 });   // 单批都不到 30 条
+        aiContent = SAMPLE;
+        const sel = await runPlotSegmentSummarySelected(['p1', 'p2'], { maxBatches: 40 });
+        ok = aiCalls === 1 && Number(sel.total) === 2;
+        aiCalls = 0;
+        const again = await runPlotSegmentSummarySelected(['p1', 'p2'], { maxBatches: 40 });   // 同一批 → 账本挡下
+        ok = ok && aiCalls === 0 && again.skippedSubmitted === 1;
         return ok;
     });
     return ok;
@@ -512,8 +618,11 @@ await A('U2 面板情节页「🧩 分段总结」子页：子标签（含计数
     const tabsOk = h.indexOf('data-ftt-asub="list"') >= 0 && h.indexOf('📜 情节列表（7）') >= 0
         && h.indexOf('data-ftt-asub="segments"') >= 0 && h.indexOf('🧩 分段总结（0）') >= 0
         && h.indexOf('分段总结只归档、不注入 —— 唯一消失途径是手动删除') >= 0;
+    // v3.50.3（用户要求「必须满足『每次打包给 AI 的情节条数』后方可执行 1 次」）：本场景可见情节仅 5 条（< 30）
+    //   → 按钮**禁用** + 明写「未总结 5 条，需凑满 30 条一批（还差 25 条）」（title 也随之改口径，属有意变更）
     const emptyOk = h.indexOf('data-ftt-action="summary" data-ftt-summary="plotSegments"') >= 0
-        && h.indexOf('title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）"') >= 0
+        && h.indexOf('未达门槛：未总结 5 条，需凑满 30 条一批（还差 25 条）') >= 0
+        && h.indexOf('plotSegments" disabled') >= 0 && h.indexOf('ftt-btn-off') >= 0
         && h.indexOf('🧩 生成分段总结') >= 0
         && h.indexOf('data-ftt-action="addEntry" data-kind="plotSegments"') >= 0
         && h.indexOf('data-ftt-action="clearPlotSegments"') < 0
