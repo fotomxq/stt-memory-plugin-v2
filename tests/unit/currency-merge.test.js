@@ -33,6 +33,11 @@ import { currencyMergeButton, currencyMergePanelHtml, currencyMergeState as uiCu
     currencyMergeBegin, currencyMergeRunning, runCurrencyMergeAction, currencyMergeOpen } from '../../ui/currency-merge.js';
 import { setAiHooks } from '../../core/ai-hooks.js';
 
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const ROOT2 = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
 const R = makeReporter('currency-merge v3.46.2 W13（货币融合：只读打包 / 窄契约校验 / 复用机械应用路径 / 墓碑）');
 const J = (v) => JSON.stringify(v);
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -459,19 +464,25 @@ A('F1 图标语义：角色行右侧是**修复含义**的 🔧（不再是 ➕�
         && h.indexOf('点角色右侧 <b>🔧</b> 出方案') > 0;
 })(), '')
 
-A('F2 点击瞬间：`currencyMergeBegin()` 置在途归属并给出**提交 AI 的提示文案**；面板随即渲染该条目的**转圈 + 禁用 + ⏳ 已提交 AI…** 与顶部状态行', (() => {
+A('F2 点击瞬间：`currencyMergeBegin()` 置在途归属并给出**提交 AI 的提示文案**；面板随即渲染该条目的**行级加载态 + 转圈 + 禁用 + ⏳ 已提交 AI…** 与顶部状态行（**状态行在 main 内**，不挤压右侧按钮，v3.50.2）', (() => {
     boot(seed()); boot2();
     const pre = currencyMergeBegin('currencyMergePick', { name: '李瑶' });
     const h = currencyMergePanelHtml();
     const rowStart = h.indexOf('李瑶');
-    const row = h.slice(Math.max(0, rowStart - 60), rowStart + 700);
+    const row = h.slice(Math.max(0, rowStart - 60), rowStart + 1200);   // v3.50.2：窗口放宽 —— 按钮的 disabled 属性在按钮末尾
     return !!pre && String(pre.note).indexOf('已提交 AI 分析') > 0 && String(pre.note).indexOf('李瑶') > 0
         && currencyMergeRunning() === '李瑶'
         && h.indexOf('⏳ 已提交 AI 分析') > 0                       // 顶部状态行
         && h.indexOf('⏳ 已提交 AI…') > 0                           // 该条目的徽标
-        && row.indexOf('ftt-loading') > 0                          // 该条目 + 按钮转圈
+        && row.indexOf('ftt-item-loading') > 0                     // v3.50.2：行级加载态（CSS 已定义，可见）
+        && row.indexOf('ftt-spin') > 0                             // v3.50.2：通用转圈元素
+        && row.indexOf('ftt-op ftt-ok ftt-loading') > 0            // 按钮自身的转圈态（.ftt-op.ftt-loading）
         && row.indexOf(' disabled') > 0                            // 在途禁用，避免重复点击
-        && row.indexOf('正在整理这个角色的货币') > 0;               // 状态说明
+        && row.indexOf('正在整理这个角色的货币') > 0                // 状态说明
+        // v3.50.2（用户报告「挤压到了一起」）：状态行必须在 .ftt-item-main **内部**，
+        //   否则它会成为行的第三个 flex 子项，把右侧 🔧 挤到下一行。
+        && row.indexOf('ftt-item-main') < row.indexOf('正在整理这个角色的货币')
+        && row.indexOf('正在整理这个角色的货币') < row.indexOf('ftt-item-ops');
 })(), () => { boot(seed()); boot2(); currencyMergeBegin('currencyMergePick', { name: '李瑶' }); return String(currencyMergePanelHtml()).slice(0, 900); })
 
 A('F3 非 pick 动作不受影响：`currencyMergeBegin()` 对其余三个动作返回 null（不改变任何状态）', (() => {
@@ -494,5 +505,15 @@ A('F4 收尾清位：一轮真跑（AI 桩）结束后**在途归属清空**，�
         const afterFail = currencyMergeRunning() === '';
         return afterOk && afterFail;
     })();
+})(), '')
+A('F5（v3.50.2 反向锁）**动效类必须有 CSS 定义**：`.ftt-item.ftt-item-loading` / `.ftt-op.ftt-loading::before` / `.ftt-spin` / `.ftt-item-sub` 四者都在 `style.css` 里 —— 此前 `.ftt-loading` 只给 `.ftt-floor-btn` 写过，挂到行上等于没效果', (() => {
+    const css = readFileSync(join(ROOT2, 'style.css'), 'utf8');
+    return /\.ftt-item\.ftt-item-loading\s*\{/.test(css)
+        && /\.ftt-op\.ftt-loading::before\s*\{/.test(css)
+        && /\.ftt-spin\s*\{/.test(css)
+        && /\.ftt-item-sub\s*\{/.test(css)
+        && css.indexOf('@keyframes fttSpin') > 0
+        // 关掉特效（设定→界面特效）或 prefers-reduced-motion 时动画被全局禁用 → 行级加载态仍靠**底色 + 左侧强调条**可见
+        && /\.ftt-item\.ftt-item-loading[^}]*background:/.test(css) && /\.ftt-item\.ftt-item-loading[^}]*box-shadow:/.test(css);
 })(), '')
 R.done();

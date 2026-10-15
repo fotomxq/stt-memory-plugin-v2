@@ -72,11 +72,21 @@ export function currencyMergePanelHtml() {
     const rows = owners.map((o) => {
         const on = o.owner === picked;
         const run = !!(runningOwner && o.owner === runningOwner);      // v3.49.2：正在为该角色请求 AI
-        return '<div class="ftt-item' + (run ? ' ftt-loading' : '') + '"><div class="ftt-item-main">'
+        /**
+         * v3.50.2（用户报告「AI 融合货币的列表内动效、布局设计存在缺陷，挤压到了一起，且没有看到动效」）：
+         *   ① **布局**：状态行曾在 `.ftt-item-main` **之外**（且用了当时并不存在的 `.ftt-w-full`）→ 它成了行的第三个
+         *      flex 子项，把 `.ftt-item-ops`（🔧）挤到下一行。现在状态行放在 `.ftt-item-main` **内部**（`.ftt-item-sub`），
+         *      于是「名称 + 徽标 + 计数 + 状态」占满剩余宽度，🔧 始终留在**同一行右侧**。
+         *   ② **动效**：`.ftt-loading` 此前只给 `.ftt-floor-btn` 写过样式 → 挂在行/`.ftt-op` 上什么都不显示。
+         *      现在行用 `.ftt-item-loading`（底色 + 左侧强调条 + 呼吸，**关掉动画也看得见状态**），
+         *      并配一个通用 `.ftt-spin` 转圈；按钮仍是 `.ftt-op.ftt-loading`（转圈 + 禁用）。
+         */
+        return '<div class="ftt-item' + (run ? ' ftt-item-loading' : '') + '"><div class="ftt-item-main">'
             + '<b>' + esc(o.owner) + '</b>'
             + (run ? ' <span class="ftt-badge">⏳ 已提交 AI…</span>' : (on ? ' <span class="ftt-badge">当前目标</span>' : ''))
-            + ' <span class="ftt-muted">' + num(o.n) + ' 条 · ' + num(o.names) + ' 种叫法</span></div>'
-            + (run ? '<div class="ftt-muted ftt-w-full">正在整理这个角色的货币（同义叫法合并）—— AI 返回后本区就地展开方案。</div>' : '')
+            + ' <span class="ftt-muted">' + num(o.n) + ' 条 · ' + num(o.names) + ' 种叫法</span>'
+            + (run ? '<div class="ftt-item-sub ftt-muted"><span class="ftt-spin" aria-hidden="true"></span> 正在整理这个角色的货币（同义叫法合并）—— AI 返回后本区就地展开方案。</div>' : '')
+            + '</div>'
             + '<div class="ftt-item-ops"><button class="ftt-op' + (on ? ' ftt-ok' : '') + (run ? ' ftt-loading' : '') + '" data-ftt-action="currencyMergePick" data-name="' + esc(o.owner) + '"'
             + (run ? ' disabled' : '')                                                      // v3.49.2：在途禁用，避免重复点击
             + ' title="' + (run ? '正在整理：已提交 AI，等返回（避免重复点击）' : ('按 AI 生成「' + esc(o.owner) + '」的货币融合方案（整理同义叫法；先出方案、确认后落库）')) + '">'

@@ -8,7 +8,17 @@
 >   ③ **顺带修台账头部漂移**（守则 §2.8 R3 例外②：台账自身维护）：`D17` §1 标题区间 `U1–U227` → **`U1–U248`**、两处条目数 → **248**、两处「事实基准」→ **v3.50.1**；
 >   ④ **本轮只动 `docs/`**：不改代码、不动版本号（程序仍 **v3.50.1**）、不打 tag、不写 `CHANGELOG.md`；
 >   ⑤ 门禁自证：`scripts/check-ledger-sync.js`（C12）**146 ↔ 146 双向一致**、**195** 个 `U` 引用全部已登记；`check-docs` 288 文件 0 违规。
-> v2.99 变更（**`D22` 已完成项归档**，用户直接要求「对待开发事项中的已完成部分进行归档；**其编号禁止做改变**」）：
+> 文档版本：v3.01 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v3.01 变更（随 **v3.50.2**：货币融合列表的**布局挤压**与**动效不可见**修复）：
+>   用户原话：「AI 融合货币的列表内动效、布局设计存在缺陷，挤压到了一起，且没有看到动效，需修复。」
+>   ① **根因一（挤压）**：v3.49.2 的状态行写在 `.ftt-item-main` **之外** → 成为 `.ftt-item`（横向 flex：`main` `flex:1` + `ops` 不收缩）的**第三个子项**，把右侧 🔧 挤到下一行；
+>   ② **根因二（无动效）**：`.ftt-loading` 在本仓**只**为 `.ftt-floor-btn` 写过样式 → 挂到行 / `.ftt-op` 上等于**空样式**；
+>   ③ **修法**：状态行移入 `.ftt-item-main`（新类 `.ftt-item-sub`）· 行级 `.ftt-item.ftt-item-loading`（底色 + 左侧强调条 + 呼吸；**关掉特效 / 系统减动效时仍看得见状态**）· 通用 `.ftt-spin` · 按钮 `.ftt-op.ftt-loading`；
+>   ④ **测试**：F2 扩展（四类齐全 + **位置有序** `main < 状态 < ops`）· **F5 反向锁**（`style.css` 真的定义了那四个类与 `@keyframes fttSpin`）→ 货币融合档 **28 项**；
+>   ⑤ **数字口径**：单测 **232 文件** · 冒烟 **224** · UI 类名数 235/206 → **238/209**（本轮 +3 类）· 其余不变（键 248 · 控件 184 · 模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）；批次档 → `P10c111`。
+>   ⑥ **版本位**：用户指定 **v3.50.2**（纯界面缺陷修复）→ 守则 §3.1 patch 位，**无偏离登记**。
+> 文档版本：v2.99 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+变更（**`D22` 已完成项归档**，用户直接要求「对待开发事项中的已完成部分进行归档；**其编号禁止做改变**」）：
 >   ① `docs/D22` 升 **v1.32**：**新增 §9 归档（已完成）** —— 全表 **103 行** `✅ 已开发` 由 §4 移入，按批次分 **23** 个小节；**§4 标题改「清单（未完成）」，只留 44 行**；
 >   ② **编号零改动**：`业-n`/`应-n`/`数-n`/`技-n` 与 `U<n>` 原样保留、不重排不复用；**`§4.x` 章节号原地不动**（`docs/04`/`docs/D13`/`docs/D17` 有 **20+ 处**指向 `D22 §4.x`，整段搬家会断链）；
 >   ③ 顺带修 `§4.15`/`§4.18–§4.24` 被追加在 `§8` 之后的结构漂移（现按 W 序回归 §4 连续）；
@@ -775,12 +785,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，231 份）
+└── history/                  # 历史批次层（只读留痕，232 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c110          # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c111          # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -839,9 +849,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.50.1） |
+| 口径 | 权威来源 | 当前值（v3.50.2） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.1` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.2` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `2`（v3.47.3：新增 `maps` 容器 → 迁移只补容器 + 归一，`docs/D27` §3.3 ⑤） |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 15 / 14（v3.47.3：+`maps` 地图 —— 场所锚点 / 房间 / 陈设三级 + 路径） |
@@ -849,15 +859,15 @@ docs/
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 38（v3.45.5：+`resumeRepair`；v3.46.1：+`triLink`；v3.47.0：+`resumeBatch`；**v3.47.3：+`maps`** 地图抽取模板，全文在 `core/map-prompt.js`） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | 15 / 184（v3.44.0：分析记忆页 +2；v3.45.5：投喂范围页 +6；v3.46.1：投喂范围页 +5；v3.47.0：投喂范围页 +4；**v3.47.3：基础页 +1（地图套话模板）**） |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  232 文件 / 3475 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  232 文件 / 3476 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 224 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
 | NSFW 识别词条 / 转化词 | `core/nsfw.js#NSFW_KEYWORDS` / `#NSFW_RULES` | 329 / 329（V1 的 63 条原样在前 + v3.10.0 追加 81 条 + v3.12.0 追加 185 条） |
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 61 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
-| UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **235 / 206**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` |  231 份（不含本层 `README.md`） |
+| UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **238 / 209**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
+| 历史批次档数 | `docs/history/*.md` |  232 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；
