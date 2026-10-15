@@ -44,7 +44,7 @@ import { currencyMergeButton, currencyMergePanelHtml, currencyMergeRun, currency
 import { closeEntries } from '../core/entries.js';
 import { runAtomCompact, runAtomMergeSummary } from '../core/atom-compact.js';
 // v3.49.3（C11）：分段总结子页的**提交前体量预告**渲染在独立模块，此处只接线
-import { plotSegmentForecastHtml } from './plot-segment-forecast.js';
+import { plotSegmentForecastHtml, plotSegmentButtonHtml, plotSegmentBodyListHtml } from './plot-segment-forecast.js';   // v3.50.3：分段总结子页整块渲染外移（C11）
 import {
     runPlotSegmentSummary, runPlotSegmentSummarySelected, clearPlotSegments,
 } from '../core/plot-segment.js';
@@ -933,36 +933,21 @@ function atomsBody() {
         + '<div data-ftt-asub-body="segments" style="' + (cur === 'segments' ? '' : 'display:none') + '">' + plotSegmentsBodyHtml() + '</div>';
 }
 
-/** 🧩 分段总结子页正文（V1 `atomsHtml` 的第二子页）：说明 + 工具栏 + 段落列表 */
+/**
+ * 🧩 分段总结子页正文（V1 `atomsHtml` 的第二子页）：说明 + 工具栏 + 段落列表。
+ *   v3.50.3（`docs/05` §5 C11 + 体量棘轮）：**渲染整块搬进 `ui/plot-segment-forecast.js`**（同族四函数，
+ *   含 v3.50.3 的门槛禁用与「已提交」禁用态），本文件只留**一行装配**。
+ */
 function plotSegmentsBodyHtml() {
     const segs = (() => { try { return Array.isArray(state.plotSegments) ? state.plotSegments : []; } catch (e) { return []; } })();
-    const view = sortPlotSegments(segs, 'desc');        // v1.190：默认按时间范围倒序（最新在最上、早期靠后）
-    const out = [];
-    out.push('<div class="ftt-cat-stat ftt-chip">共 ' + segs.length + ' 段分段总结</div>');
-    // v3.49.3（C11 + 体量棘轮）：预告行的渲染在 `ui/plot-segment-forecast.js`，此处只留一行调用
-    out.push(plotSegmentForecastHtml());
-    out.push(shortHintHtml('分段总结：把情节打包交 AI 拆成多段归档（只归档、不注入）。'));
-    out.push(hintDetailsHtml('说明', '<div>' + esc('每段以「### 时间范围」为头，段内按剧情线逐条列出。内容只作人工查阅，不参与注入 / 召回 / 遗忘；只有手动删除才会消失。列表默认按时间范围倒序。两个入口：①「生成分段总结」= 全部有效情节按时间切批；②「情节列表」多选后点「分段总结（N）」= 只归档勾选的那些。') + '</div>'));
-    out.push('<div class="ftt-addbar ftt-toolbar"><button class="ftt-btn" data-ftt-action="summary" data-ftt-summary="plotSegments" title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）">🧩 生成分段总结</button><button class="ftt-btn" data-ftt-action="addEntry" data-kind="plotSegments">➕ 手动补一段</button>'
-        + (segs.length ? '<button class="ftt-btn ftt-err" data-ftt-action="clearPlotSegments" title="清空全部分段总结（不弹确认）">🧹 清理分段</button>' : '') + '</div>');
-    if (!segs.length) out.push('<div class="ftt-empty">暂无分段总结。点「🧩 生成分段总结」把情节交 AI 分段整理。</div>');
-    else out.push(view.map((s) => {
-        const lines = Array.isArray(s.lines) ? s.lines : [];
-        const body = lines.map((ln, i) => '<div class="ftt-seg-line"><span class="ftt-seg-no">' + (i + 1) + '.</span> <b>' + esc(ln && ln.label) + '</b>：' + esc(ln && ln.text) + '</div>').join('');
-        const rangeTxt = (s.start || s.end) ? (esc(s.start || '?') + (s.end && s.end !== s.start ? ' ~ ' + esc(s.end) : '')) : '';
-        const meta = [
-            s.atomCount ? '覆盖情节 ' + Number(s.atomCount) + ' 条' : '',
-            (s.floorStart && s.floorEnd) ? '第 ' + s.floorStart + '-' + s.floorEnd + ' 楼' : '',
-            s.manual ? '手动编辑' : 'AI 生成',
-        ].filter(Boolean).join(' · ');
-        return '<div class="ftt-item ftt-item--col"><div class="ftt-title-row"><b>### ' + esc(s.header || '未标注时间范围') + '</b></div>'
-            + (rangeTxt ? '<div class="ftt-meta">🗓 ' + rangeTxt + '</div>' : '') + body
-            + '<div class="ftt-meta">' + esc(meta) + '</div>'
-            + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="编辑该段（时间范围与剧情线）">✏️ 编辑</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="删除该段（唯一的手动删除入口）">🗑 删除</button></div></div>';
-    }).join('\n'));
-    out.push('<div class="ftt-muted ftt-w-full">共 ' + segs.length + ' 段 · 该内容不注入、不参与遗忘，可随时编辑或删除。</div>');
-    return out.join('\n');
+    return [
+        '<div class="ftt-cat-stat ftt-chip">共 ' + segs.length + ' 段分段总结</div>',
+        plotSegmentForecastHtml(),
+        shortHintHtml('分段总结：把情节打包交 AI 拆成多段归档（只归档、不注入）。'),
+        hintDetailsHtml('说明', '<div>' + esc('每段以「### 时间范围」为头，段内按剧情线逐条列出。内容只作人工查阅，不参与注入 / 召回 / 遗忘；只有手动删除才会消失。列表默认按时间范围倒序。两个入口：①「生成分段总结」= 全部有效情节按时间切批；②「情节列表」多选后点「分段总结（N）」= 只归档勾选的那些。') + '</div>'),
+        plotSegmentButtonHtml(segs.length),
+        plotSegmentBodyListHtml(),
+    ].join('\n');
 }
 
 /**

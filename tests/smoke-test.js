@@ -2414,7 +2414,10 @@ await assert('AC1 情节总结 + 分段总结接线齐备：FTT.* 入口（25 �
     h = String((await entry.popupAction('refresh', {})).html || '');
     const segTabOk = F.atomSubState() === 'segments' && h.indexOf('data-ftt-asub="segments"') >= 0
         && h.indexOf('data-ftt-action="summary" data-ftt-summary="plotSegments"') >= 0
-        && h.indexOf('title="把情节按时间打包交 AI 拆成多段总结（言简意赅、只陈述事实与数据）"') >= 0
+        // v3.50.3（用户要求「必须满足『每次打包给 AI 的情节条数』后方可执行 1 次」）：本场景 3 条情节 < 30
+        //   → 按钮**禁用**（`disabled` + `ftt-btn-off`），title 写明还差多少条
+        && h.indexOf('未达门槛：未总结 3 条，需凑满 30 条一批（还差 27 条）') >= 0
+        && h.indexOf('plotSegments" disabled') >= 0 && h.indexOf('ftt-btn-off') >= 0
         && h.indexOf('🧩 生成分段总结') >= 0
         && h.indexOf('data-ftt-action="clearPlotSegments"') < 0;
     st.plotSegments = [{ id: 'smoke-ac-seg', header: '1899-03-01 ~ 1899-04-10', start: '1899-03-01', end: '1899-04-10', lines: [{ label: '感情线', text: '一段测试概述' }], raw: '### 1899-03-01 ~ 1899-04-10\n1. 感情线：一段测试概述', atomIds: [], atomCount: 0, floorStart: 0, floorEnd: 0, manual: false, uses: 0, createdAt: 1, updatedAt: 1 }];
@@ -2517,6 +2520,9 @@ await assert('AC3 分段总结端到端：面板「🧩 生成分段总结」（
         await entry.popupAction('tab', { tab: 'atoms' });
         await entry.popupAction('multiToggle', { kind: 'atoms' });
         await entry.popupAction('selectAll', { kind: 'atoms' });
+        // v3.50.3（用户要求「如发现已提交则避免重复提交」）：自动跑过的那一批已进**提交账本**，同一批（同一组 id）会被拦。
+        //   本步模拟「用户在界面里删掉段落 → 名额释放」（`clearPlotSegments()` 内部正是这么做的）→ 手动清账本后再走所选路径。
+        st.plotSegmentLog = [];
         payload = NEXT;
         const b2 = calls;
         const r2 = await entry.popupAction('plotSegmentSummarySel', {});
