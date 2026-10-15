@@ -21,10 +21,10 @@ import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { dataHealthReport, dataHealthText, HEALTH_FINDINGS_CAP } from '../../core/data-health.js';
+import { dataHealthReport, dataHealthText, dataHealthHygieneText, TOMBSTONE_RATIO_SPIKE, HEALTH_FINDINGS_CAP } from '../../core/data-health.js';
 import { migrateState, healthSelfHeal, lastHealInfo } from '../../core/migrate.js';
 import { consistencyReading } from '../../core/cross-sync.js';   // v3.45.1（W6 技-35）：一致性读数并入体检出口的同源校验
-import { buildBridgeMethods } from '../../ui/debug.js';
+import { buildBridgeMethods, debugPageHtml } from '../../ui/debug.js';
 import { bridgeDispatch, setBridgeMethods } from '../../adapters/debug-bridge.js';
 
 const R = makeReporter('data-health v3.13.0–v3.13.1 数据体检 + 载入期数据异常自愈');
@@ -314,5 +314,111 @@ A('D5 自愈留痕回传：`lastHealInfo()` 在干净数据上给出 `changed:fa
     const info = lastHealInfo();
     return changed === false && info && info.changed === false && info.ledger === 0 && info.dropped === 0 && info.entries === 0;
 })(), () => ({ info: lastHealInfo() }));
+
+// ---------- H 组（v3.50.1 · `数-16` 体检四项：归属缺失 / 失锚关联 / 空壳 / 墓碑比）----------
+//   全部用**构造数据**覆盖；四项都落在 `hygiene`（info，不抬 `level`）——「卫生面」与「异常」分开处置。
+const HYG = (() => {
+    const st = boot({
+        state: Object.assign({}, emptyState().state, { chatKey: 'char:HOME' }),
+        // 归属缺失：一条没有 chatKey（缺）+ 一条带**别的聊天**的 chatKey（异）
+        memories: [
+            { id: 'm1', owner: '甲', title: '有归属', content: '内容足够长用于避免空壳判定。', chatKey: 'char:HOME' },
+            { id: 'm2', owner: '甲', title: '缺归属', content: '内容足够长用于避免空壳判定。' },
+            { id: 'm3', owner: '甲', title: '异归属', content: '内容足够长用于避免空壳判定。', chatKey: 'char:OTHER' },
+        ],
+        // 失锚关联：记忆类关联行，所有引用锚点都空；对照一条**有锚点**的 + 一条**非记忆类**的
+        links: [
+            { id: 'l1', dim: 'memories', refId: 'm2', who: '甲' },
+            { id: 'l2', dim: 'memories', refId: 'm3', who: '甲', atomRef: 'a1' },
+            { id: 'l3', dim: 'atoms', refId: 'a1', who: '甲' },
+        ],
+        // 空壳：正文不足 12 字（并补一条情节，避免无关的 `link-orphan` warn 干扰「只报卫生面」的判据）
+        atoms: [{ id: 'a1', title: '正常情节', text: '正常情节正文足够长用于测试。', tags: [] }],
+        scenes: [{ id: 'sc1', name: '短', pathArr: ['城', '短'], pathStr: '城>短', desc: '短' }],
+        // 墓碑比：3 个墓碑 / 1 条存活（3×）
+        deleted: { memories: { x: 1, y: 2, z: 3 } },
+    });
+    void st;
+    return dataHealthReport();
+})();
+const hygCount = (code) => Number((HYG.hygiene && HYG.hygiene.counts && HYG.hygiene.counts[code]) || 0);
+
+A('H1 **归属缺失**：既统计「没有 chatKey」也统计「与当前 chatKey 不同」—— 两段分别出数（`attribution-missing` / `attribution-foreign`）', (() => {
+    return hygCount('attribution-missing') >= 1 && hygCount('attribution-foreign') >= 1
+        && HYG.hygiene.findings.some((f) => f.code === 'attribution-foreign' && String(f.dim) === 'memories');
+})(), () => J(HYG.hygiene.counts));
+
+A('H2 **失锚关联**：记忆类关联行「所有引用锚点都空」才计入；有锚点的、非记忆类的**都不计**', (() => {
+    const rows = HYG.hygiene.findings.filter((f) => f.code === 'link-ref-missing');
+    return rows.length === 1 && String(rows[0].dim) === 'memories' && Number(rows[0].value) === 1;
+})(), () => J(HYG.hygiene.findings.filter((f) => f.code === 'link-ref-missing')));
+
+A('H3 失锚关联与「悬空关联」**是两件事**：引用不存在（`link-orphan`）与「锚点全空」（`link-ref-missing`）各自独立上报', (() => {
+    // (a) 有锚点 + 引用不存在的条目 → **只**报悬空；(b) 无锚点 + 引用有效 → **只**报失锚
+    const r = dataHealthReport(boot({
+        memories: [{ id: 'm1', owner: '甲', title: 't', content: '内容足够长用于避免空壳判定。', chatKey: 'char:HOME' }],
+        links: [
+            { id: 'l_a', dim: 'memories', refId: '不存在', who: '甲', atomRef: 'a1' },
+            { id: 'l_b', dim: 'memories', refId: 'm1', who: '甲' },
+        ],
+    }));
+    const refMissing = (r.hygiene.findings || []).filter((f) => f.code === 'link-ref-missing');
+    return (r.counts['link-orphan'] || 0) === 1            // 只有 l_a（引用不存在）
+        && refMissing.length === 1 && Number(refMissing[0].value) === 1;   // 只有 l_b（锚点全空）
+})(), 'n/a');
+
+A('H4 **空壳条目**：正文 < 12 字计入 `entry-shell`（存量口径，只报告不删）', (() => {
+    return hygCount('entry-shell') >= 1;
+})(), () => J(HYG.hygiene.findings.filter((f) => f.code === 'entry-shell')));
+
+A('H5 **墓碑比**：逐维给出「墓碑 / 存活」的比值与两端计数，并落在只读读数 `tombstone`', (() => {
+    const m = (HYG.tombstone.dims || []).filter((x) => x.dim === 'memories')[0] || {};
+    return m.dead === 3 && m.live === 3 && Math.round(m.ratio * 100) / 100 === 1
+        && hygCount('tombstone-ratio') >= 1;
+})(), () => J(HYG.tombstone));
+
+A('H6 墓碑比「明显偏高」点名：比值 ≥ 阈值时在 detail 里给出可执行出口（含阈值常量）', (() => {
+    const r = dataHealthReport(boot({ memories: [{ id: 'm1', owner: '甲', title: 't', content: '内容足够长用于避免空壳判定。' }], deleted: { memories: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 } } }));
+    const f = (r.hygiene.findings || []).filter((x) => x.code === 'tombstone-ratio' && String(x.dim) === 'memories')[0] || {};
+    return TOMBSTONE_RATIO_SPIKE === 5 && r.tombstone.spike.indexOf('memories') >= 0
+        && String(f.detail).indexOf('≥ 5×') >= 0 && String(f.detail).indexOf('墓碑回收') > 0;
+})(), () => J({ spike: 5 }));
+
+A('H7 四项都在**卫生面**（info）而不抬 `level`：「体检干净」这个可用信号不被卫生项污染', (() => {
+    return HYG.ok === true && HYG.level === 'ok'
+        && HYG.hygiene.findings.every((f) => f.level === 'info');
+})(), () => J({ ok: HYG.ok, level: HYG.level }));
+
+// ---------- I 组：三处出口同源可见（面板 / `FTT` 导出 / 调试桥）----------
+A('I1 **调试桥 / `FTT` 导出**：`ftt.dataHealth` 带 `hygiene` 计数、`tombstone` 与一行 `hygieneText`（四项由此可读）', (async () => {
+    boot({ memories: [{ id: 'm1', owner: '甲', title: 't', content: '内容足够长用于避免空壳判定。', chatKey: 'x' }], deleted: { memories: { a: 1 } } });
+    setBridgeMethods(buildBridgeMethods());
+    const out = (await bridgeDispatch({ id: 'ftt.dataHealth', method: 'ftt.dataHealth', params: {} })).result;
+    return !!out && !!out.hygiene && out.hygiene.counts['tombstone-ratio'] >= 1
+        && !!out.tombstone && String(out.hygieneText).indexOf('数据卫生：') === 0;
+})(), 'n/a');
+
+A('I2 **调试桥只读方法**：新增 `ftt.dataHealthHygiene`（一行卫生面文本；四项计数都在其中）', (async () => {
+    boot({ memories: [{ id: 'm1', owner: '甲', title: 't', content: '短' }], deleted: { memories: { a: 1 } } });
+    setBridgeMethods(buildBridgeMethods());
+    const dirty = (await bridgeDispatch({ id: 'ftt.dataHealthHygiene', method: 'ftt.dataHealthHygiene', params: {} })).result;
+    boot({ memories: [{ id: 'm1', owner: '甲', title: 't', content: '内容足够长用于避免空壳判定。', chatKey: 'char:HOME' }] });
+    setBridgeMethods(buildBridgeMethods());
+    const clean = (await bridgeDispatch({ id: 'ftt.dataHealthHygiene', method: 'ftt.dataHealthHygiene', params: {} })).result;
+    return typeof dirty === 'string' && typeof clean === 'string'
+        && dirty.indexOf('entry-shell') > 0 && dirty.indexOf('tombstone-ratio') > 0;
+})(), 'n/a');
+
+A('I3 **一行卫生摘要**（`dataHealthHygieneText`）：按 code 聚合并可读；四项计数都在其中', (() => {
+    const txt = dataHealthHygieneText(HYG);
+    return txt.indexOf('数据卫生：') === 0 && txt.indexOf('tombstone-ratio') > 0
+        && txt.indexOf('attribution') > 0 && txt.indexOf('entry-shell') > 0;
+})(), () => dataHealthHygieneText(HYG));
+
+A('I4 **调试页面板**：渲染出 `data-ftt-data-hygiene` 那一行（与桥同源；此前面板只显示异常面）', (() => {
+    boot({ memories: [{ id: 'm1', owner: '甲', title: 't', content: '短' }], deleted: { memories: { a: 1 } } });
+    const html = (() => { try { return debugPageHtml({}); } catch (e) { return ''; } })();
+    return String(html).indexOf('data-ftt-data-hygiene') >= 0;
+})(), 'n/a');
 
 R.done();

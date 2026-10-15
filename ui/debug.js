@@ -24,7 +24,7 @@ import { getCtx } from '../host/st-api.js';
 import { DEBUG_CAP, debugLogStats, debugLogErrors, debugLogErrorCount, debugLogLastError } from '../core/debug-log.js';
 import { debugLogList, debugLogClear } from '../adapters/debug-log.js';
 // v3.13.0：**数据体检**（只读）—— 调试桥 `ftt.dataHealth` / 面板与 `/ftt` 共用同一份报告
-import { dataHealthReport, dataHealthText } from '../core/data-health.js';
+import { dataHealthReport, dataHealthText, dataHealthHygieneText } from '../core/data-health.js';
 // v3.45.1（`docs/D22` W6 `技-32`）：待确认项与其记录的**只读**出口（不给写入口）
 import { conflictsSummary, listConflictLog, listConflicts, pendingConflictCount, conflictLogCount, CONFLICT_LOG_CAP } from '../core/conflicts.js';
 // v3.45.9（`docs/D22` W5 `技-26` 真机核对）：宿主输入框写入能力的**只读**出口（探针 + 候选 DOM 事实 + 克隆演练）
@@ -247,7 +247,10 @@ export function buildDebugExport() {
         // v3.13.0：数据体检（只读；摘要 + 明细计数，便于「导出调试包」一并交给开发核对）
         //   v3.45.5（`docs/D22` W4 `技-25` ②）：一并带上履历读数（`resume` 四项 + 本会话运行账本 `resumeLedger`），
         //   使「面板 / 桥 / 调试导出」三处出口对履历**同源可见**（都来自 `dataHealthReport()`）。
-        dataHealth: (() => { try { const r = dataHealthReport(); return { ok: r.ok, level: r.level, counts: r.counts, scanned: r.scanned, truncated: r.truncated, resume: r.resume, resumeLedger: r.resumeLedger, text: dataHealthText(r) }; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
+        //   v3.50.1（`docs/D22` W4 `数-16`）：一并带上**卫生面**（`hygiene` 计数 + 四项明细 + 墓碑比 + 一行文案）——
+        //     此前 hygiene 只在 `dataHealthReport()` 里，**三处出口都看不到**（D16 §5 要求的四项因此无法被用户
+        //     与调试包读到）；现在面板 / 桥 / 调试导出同源可见。
+        dataHealth: (() => { try { const r = dataHealthReport(); return { ok: r.ok, level: r.level, counts: r.counts, scanned: r.scanned, truncated: r.truncated, resume: r.resume, resumeLedger: r.resumeLedger, hygiene: r.hygiene, tombstone: r.tombstone, hygieneText: dataHealthHygieneText(r), text: dataHealthText(r) }; } catch (e) { return { error: String((e && e.message) || e) }; } })(),
     };
 }
 
@@ -752,6 +755,8 @@ export function buildBridgeMethods() {
         return rep;
     });
     T['ftt.dataHealthText'] = safe(() => dataHealthText(dataHealthReport()));
+    // v3.50.1（`docs/D22` W4 `数-16`）：卫生面单列一行（四项计数；没有卫生项时返回空串）
+    T['ftt.dataHealthHygiene'] = safe(() => dataHealthHygieneText(dataHealthReport()));
     // v3.15.1（闪退取证）：**原生写队列**诊断 —— 队列计数 / 历史峰值并发（应恒为 1）/ 最近一次原生写的标签与耗时。
     //   用途：真机核对「是否还有并发写」，以及崩溃前最后一次原生写是什么、花了多久。
     T['ftt.writeStats'] = safe(() => ttWriteStats());
@@ -1359,6 +1364,7 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.chunkPlan': { desc: '分段切片体检（生效段长 / 未摘要段数 / 预览）', params: '' },
     'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
     'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
+    'ftt.dataHealthHygiene': { desc: '数据**卫生面**的人读文本（`数-16` 四项：归属缺失 / 失锚关联 / 空壳 / 墓碑比；无卫生项时为空串）', params: '' },
     'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排 + 一致性读数 + 服务端载入基线）', params: '' },
     // v3.46.0（W9 数-31）：本次保存的物理写清单（通道/次数/字节/跳过原因；环形最近 5 次）
     'ftt.writeLedger': { desc: '本次保存的物理写清单（逐通道 次数 / 字节 / 跳过原因；只读）', params: '' },
@@ -1665,7 +1671,15 @@ export function debugPageHtml(controls) {
             const rows = r.findings.slice(0, 40).map((f) => '<div>' + esc(f.code) + ' · ' + esc(String(f.dim || ''))
                 + (f.id ? (' · <b>' + esc(String(f.id)) + '</b>') : '') + (f.field ? (' · ' + esc(String(f.field))) : '')
                 + '：' + esc(String(f.detail || '')) + '</div>').join('');
+            const hygText = (() => { try { return dataHealthHygieneText(r); } catch (e) { return ''; } })();
+            const hygRows = ((r.hygiene && r.hygiene.findings) || []).slice(0, 30).map((f) => '<div>' + esc(String(f.code || ''))
+                + (f.dim ? (' · ' + esc(String(f.dim))) : '') + (f.field ? (' · ' + esc(String(f.field))) : '')
+                + (f.value !== undefined ? (' · <b>' + esc(String(f.value)) + '</b>') : '')
+                + '：' + esc(String(f.detail || '')) + '</div>').join('');
             return '<div class="ftt-muted" data-ftt-data-health>' + esc(dataHealthText(r)) + '</div>'
+                // v3.50.1（`数-16`）：卫生面（四项）在**面板出口**也可见 —— 与桥 / 调试导出同源
+                + (hygText ? ('<div class="ftt-muted" data-ftt-data-hygiene>' + esc(hygText) + '</div>') : '')
+                + (hygRows ? hintDetailsHtml('卫生面明细（前 30 条）', '<div>' + hygRows + '</div>') : '')
                 // v3.45.5（`docs/D22` W4 `技-25` ②）：**履历读数**在面板出口也可见 ——
                 //   与桥方法 `ftt.dataHealth`、调试导出的 `dataHealth.resume` **同源**（三处都读 `dataHealthReport()`）。
                 + resumeHealthLineHtml(r)

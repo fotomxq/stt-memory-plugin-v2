@@ -59,6 +59,15 @@ import { cfg, state as kernelState } from './model/runtime.js';
 import { NSFW_LEVEL_FIELD, nsfwLevelNorm } from './nsfw-level.js';
 // v3.26.1：坏占位 token（`undefined` / `NaN` / `[object Object]`）只读体检
 import { hasBadToken, walkStrings } from './util.js';
+
+/** 是否有值（与 `core/field-names.js#nonEmpty` 同口径：非空串 / 有限数 / 布尔；`数-16` 失锚关联判定用） */
+function nonEmpty(v) {
+    if (v === null || v === undefined) return false;
+    if (typeof v === 'string') return v.trim().length > 0;
+    if (typeof v === 'number') return Number.isFinite(v);
+    if (typeof v === 'boolean') return true;
+    return false;
+}
 // v3.44.0（`docs/D22` W4）：字段名规范 / 空壳 / 越界 / 槽位 / 关联锚点 / 计划悬念老化
 import { ATTRIBUTION_FIELD, LAST_SEEN_DATE_FIELD, LAST_SEEN_FLOOR_FIELD, attributionMissing, legacyNameGaps } from './field-names.js';
 import { isShellEntry, shellReport, SHELL_MIN_CHARS, DIM_FIELDS as SHELL_DIM_FIELDS } from './shell-guard.js';
@@ -146,6 +155,9 @@ function getByPath(o, path) {
  *   · `resume`（v3.45.5）= `core/resume.js#resumeHealthReport` 的读数（顶层键；开关关闭时带 `note:'disabled'`）；
  *   · `scanned.resumeItems` = 已扫描的**履历条数**（既有键语义不变，仅追加这一个）。
  */
+/** 墓碑比「明显偏高」阈值（`数-16` 体检四项之一；**只影响文案里的点名**，不影响任何行为） */
+export const TOMBSTONE_RATIO_SPIKE = 5;
+
 export function dataHealthReport(st, opts) {
     const s = st || kernelState || {};
     const o = opts || {};
@@ -389,6 +401,66 @@ export function dataHealthReport(st, opts) {
         for (const it of reservedRangeIssues(s)) {
             add(it.code, 'warn', { dim: it.dim || '', id: it.id || '', field: it.field, value: it.value, detail: it.detail });
         }
+    } catch (e) { /* 忽略 */ }
+
+    // ⑦ `数-16`（`docs/D16` §5）：**体检四项** —— 归属缺失（含「与当前不同」）· 失锚关联 · 空壳 · **墓碑比**
+    //   口径（四项逐条落在这里，供面板 / `FTT` 导出 / 调试桥三处同源引用）：
+    //     · **归属缺失**：条目**没有** `chatKey`，**或**与当前 `state.chatKey` **不同**的条数（两段分别计数）
+    //     · **失锚关联**：记忆类关联行的 `atomRef` / `conceptRef` / `planRef` **全空**（无法指回依据条目）——
+    //       与 `link-orphan`（**悬空**：引用的条目不存在）是两件事，D16 §5 分列两行
+    //     · **空壳条目**：正文 < `SHELL_MIN_CHARS`（12 字）—— 复用上面的 `entry-shell`（`数-13`）
+    //     · **墓碑比**：该维 `deleted` 键数 / 该维**存活**条数（比值只读；比值 ≥ `TOMBSTONE_RATIO_SPIKE` 时在 detail 里点名）
+    //   全部落在 `hygiene`（info，不抬 `level`）：它们是**卫生面**而非异常 —— 处置动作是「清」而不是「修」，
+    //   让 `level` 保持 `ok` 才有「体检干净」这个可用信号（与 ①–⑥ 同款裁量）。
+    try {
+        const curChatKey = String((isObj(s.state) && s.state[ATTRIBUTION_FIELD]) || '');
+        const attrForeign = {};
+        const anchorMissing = {};
+        const tombRatio = [];
+        for (const dim of dims) {
+            const arr = s[dim];
+            if (Array.isArray(arr)) {
+                for (const it of arr) {
+                    if (!isObj(it)) continue;
+                    const k = String(it[ATTRIBUTION_FIELD] || '');
+                    if (k && curChatKey && k !== curChatKey) attrForeign[dim] = (attrForeign[dim] || 0) + 1;
+                }
+            }
+        }
+        for (const dim of Object.keys(attrForeign)) {
+            hyg('attribution-foreign', dim, attrForeign[dim], { field: ATTRIBUTION_FIELD, detail: '有 ' + attrForeign[dim] + ' 条带**其它聊天**的归属（`chatKey` ≠ 当前 `' + (curChatKey || '（空）') + '`）—— 按设计**保留不动**（换聊天不丢数据）：本条只做可见性，不迁移、不改写' });
+        }
+        // 失锚关联：关联行（`s.links`）里 `dim` ∈ 记忆类，且三个 ref 全空
+        try {
+            const links = Array.isArray(s.links) ? s.links : [];
+            const MEM_DIMS = ['memories'];
+            for (const row of links) {
+                if (!isObj(row)) continue;
+                const target = String(row.dim || '');
+                if (MEM_DIMS.indexOf(target) < 0) continue;
+                const empty = !nonEmpty(row.atomRef) && !nonEmpty(row.conceptRef) && !nonEmpty(row.planRef)
+                    && !nonEmpty(row.itemRef) && !nonEmpty(row.rumorRef) && !nonEmpty(row.sceneRef) && !nonEmpty(row.stateRef) && !nonEmpty(row.parallelRef);
+                if (empty) anchorMissing[target] = (anchorMissing[target] || 0) + 1;
+            }
+        } catch (e) { /* 忽略 */ }
+        for (const dim of Object.keys(anchorMissing)) {
+            hyg('link-ref-missing', dim, anchorMissing[dim], { field: 'atomRef/conceptRef/planRef', detail: '记忆类关联行有 ' + anchorMissing[dim] + ' 行的**所有引用锚点都为空**（无法指回依据条目 —— 与 `link-orphan`「引用的条目不存在」不同）；**只报告不推断**：不按楼层 / 不按 AI 猜锚点（猜错比空着更危险）' });
+        }
+        // 墓碑比（逐维）：`deleted[dim]` 键数 / 存活条数
+        const delTree = isObj(s.deleted) ? s.deleted : {};
+        for (const dim of dims) {
+            const live = Array.isArray(s[dim]) ? s[dim].length : 0;
+            const dead = isObj(delTree[dim]) ? Object.keys(delTree[dim]).length : 0;
+            if (!dead && !live) continue;
+            const ratio = live > 0 ? (dead / live) : (dead > 0 ? Infinity : 0);
+            tombRatio.push({ dim: dim, live: live, dead: dead, ratio: ratio });
+        }
+        for (const t of tombRatio) {
+            const ratioText = Number.isFinite(t.ratio) ? (Math.round(t.ratio * 100) / 100) + '×' : '∞（无存活条目）';
+            const spike = !Number.isFinite(t.ratio) || t.ratio >= TOMBSTONE_RATIO_SPIKE;
+            hyg('tombstone-ratio', t.dim, t.dead, { field: 'deleted.' + t.dim, value: t.dead, detail: '墓碑比 ' + ratioText + '（墓碑 ' + t.dead + ' / 存活 ' + t.live + '）' + (spike ? (' —— **≥ ' + TOMBSTONE_RATIO_SPIKE + '×**：墓碑已明显多于存活条目，可在「设定 → 数据管理」用墓碑回收清理（只清墓碑，不动存活条目）') : '') });
+        }
+        out.tombstone = { dims: tombRatio, spike: tombRatio.filter((x) => !Number.isFinite(x.ratio) || x.ratio >= TOMBSTONE_RATIO_SPIKE).map((x) => x.dim) };
     } catch (e) { /* 忽略 */ }
 
     // ⑥ `数-15`：state 顶层 / 内层槽位登记一致性（未登记 = 新的「看起来能用」位置）

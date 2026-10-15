@@ -208,6 +208,8 @@
     "analyze:dimCharLimits.suspense",
     "analyze:plotSegmentBatchAtoms",
     "analyze:plotSegmentIncremental",
+    "analyze:plotSegmentMaxBatches",
+    "analyze:plotSegmentMaxChars",
     "analyze:plotSegmentProtectManual",
     "analyze:plotSegmentTextLimit",
     "analyze:relAnchorRuleEnabled",
@@ -286,6 +288,7 @@
     "feed:repairAutoAi",
     "feed:repairCharacterBatch",
     "feed:repairCharacterMinSize",
+    "feed:repairDeceasedAge",
     "feed:repairFailDelaySec",
     "feed:repairMaxItems",
     "feed:repairMinCandidates",
@@ -515,6 +518,8 @@
     "planStructEnabled",
     "plotSegmentBatchAtoms",
     "plotSegmentIncremental",
+    "plotSegmentMaxBatches",
+    "plotSegmentMaxChars",
     "plotSegmentProtectManual",
     "plotSegmentTextLimit",
     "promptTemplates",
@@ -528,6 +533,7 @@
     "repairAutoAi",
     "repairCharacterBatch",
     "repairCharacterMinSize",
+    "repairDeceasedAge",
     "repairFailDelaySec",
     "repairFloors",
     "repairMaxItems",
@@ -656,7 +662,7 @@
     "suspense"
   ],
   "bridge": [
-    "count:60"
+    "count:61"
   ],
   "i18n": [
     "FTT记忆组件 V2",

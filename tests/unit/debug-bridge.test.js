@@ -133,7 +133,7 @@ function useTauriTavern(withDev = true) {
                 'ftt.catalog',                                                             // v3.45.4（W10 技-41）：调试面口径汇总（kind 枚举 / CAP 表 / 12 类必要内容 / 只读清单）
                 'ftt.chatMeta', 'ftt.chatReady', 'ftt.chunkPlan', 'ftt.clockTraceInfo', 'ftt.clockTraceSummary',
                 'ftt.config', 'ftt.conflictLog', 'ftt.conflicts',                          // v3.11.0：数据体检（只读）；v3.25.0：+生效配置摘要；v3.45.1（W6 技-32）：+待确认项与记录（只读出口）
-                'ftt.dataHealth', 'ftt.dataHealthText',
+                'ftt.dataHealth', 'ftt.dataHealthHygiene', 'ftt.dataHealthText',      // v3.50.1（W4 数-16）：+卫生面一行（体检四项）
                 'ftt.debugLog', 'ftt.debugLogStats', 'ftt.debugPageInfo',                 // v3.25.0：+调试日志条目（不止统计）
                 'ftt.diskFiles', 'ftt.diskProbe',                                         // v3.29.0：本地存储路径写探针 / 目录文件列举（用调试端口核对文件是否落到本地）
                 'ftt.entries', 'ftt.errors',                                              // v3.25.0：+条目清单/单条 + 一站式异常排查
