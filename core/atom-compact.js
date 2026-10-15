@@ -46,6 +46,9 @@ import { hashText, normText, normalizeList, clamp, extractJsonObject } from './u
 import { clockDateParts, clockDateTrim, clockYearStr, clockDateStr, dateStrCmp } from './clock.js';
 import { atomDateValid } from './recall.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
+// v3.50.4（用户要求「总结还是存在并行情况…禁止并行第二个请求」）：与「🧩 分段总结」（`core/plot-segment.js`）
+//   **互相**禁止并行发请求。循环导入安全：两边都只在**运行期函数内**调用对方的读数，模块初始化期不触碰。
+import { plotSegmentBusy } from './plot-segment.js';
 
 /** 用户提示（V1 `toast(msg, type)` 的 V2 等价：文本原样、类型透传） */
 function toast(text, kind) {
@@ -104,10 +107,19 @@ function grainStartDateStr(key) {
 
 /** 情节总结计划（纯计算，V1 `atomCompactPlan`）：体量 / 保护窗口 / 目标 / 早期池。
  *  v1.203：已总结隐藏的情节不参与再聚合（`activeAtoms()` 取数）。 */
-function atomCompactPlan() {
+function atomCompactPlan(planOpts) {
     const c = cfg || {};
+    const po = planOpts || {};
     const all = activeAtoms().slice();
-    const recentN = Math.max(0, Number(c.atomCompactRecent) != null ? Math.floor(Number(c.atomCompactRecent)) : 20);
+    /**
+     * v3.50.4（用户要求「必须保留至少 10 条最近的情节，这个强制兜底」）：保护窗口**强制下限 10** ——
+     *   即便 `cfg.atomCompactRecent` 被设成 0 / 更小，也至少保留 10 条最近情节不被聚合隐藏。
+     *   上限 200（用户确有需要时可调大）。V1 默认 20，故正常配置下**行为不变**。
+     */
+    // `planOpts.recentN` 仅供**内部核算 / 测试**显式覆盖（生产路径永远走「强制 ≥10」）
+    const recentN = (po.recentN != null && Number.isFinite(Number(po.recentN)))
+        ? Math.max(0, Math.min(200, Math.round(Number(po.recentN))))
+        : Math.max(10, Math.min(200, Number(c.atomCompactRecent) != null ? Math.floor(Number(c.atomCompactRecent)) : 20));
     const sorted = all.slice().sort((a, b) => ((Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0)) || (String(b.date || '') < String(a.date || '') ? -1 : String(b.date || '') > String(a.date || '') ? 1 : 0));
     const recent = sorted.slice(0, recentN);
     const recentIds = new Set(recent.map(x => x && x.id));
@@ -119,8 +131,8 @@ function atomCompactPlan() {
 }
 
 /** 某粒度的可融合分组（V1 `atomGroupPlan`）：组 = 同 key 且 ≥2 条；`ratio` = 可归组原子 / 早期池原子。 */
-function atomGroupPlan(grain) {
-    const { pool } = atomCompactPlan();
+function atomGroupPlan(grain, planOpts) {
+    const { pool } = atomCompactPlan(planOpts);
     const byKey = {};
     for (const a of pool) { const k = atomDateGrainKey(a.date, grain); if (!k) continue; (byKey[k] = byKey[k] || []).push(a); }
     const groups = Object.keys(byKey).map(k => ({ key: k, items: byKey[k] })).filter(g => g.items.length >= 2);
@@ -209,6 +221,15 @@ function applyCompactGroup(g, out, grain) {
 // V1 `compactTimer` / `compactWaitDeadline`（延迟重试窗口）
 let compactTimer = null;
 let compactWaitDeadline = 0;
+/**
+ * v3.50.4（用户要求「总结还是存在并行情况，应严格限制总结的频次，如若触发则禁止并行第二个请求」）：
+ *   **模块级在途闸** —— 与「🧩 分段总结」（`core/plot-segment.js`）**互相**禁止并行发请求。
+ *   此前只有 `aiBusy()`（宿主忙位）+ 4s 定时器去重：定时器只能防"排两次队"，防不住
+ *   「手动点了分段总结 / 半自动到期」这类**跨入口**同时发两条请求。
+ */
+let atomCompactInFlight = false;
+/** 是否正在跑半自动情节总结（互斥读数 / 界面禁用 / 调试 / 测试用） */
+function atomCompactBusy() { return atomCompactInFlight; }
 
 /** 摘要/提取完成后的检查点：防抖调度（体量未达标内部自动跳过）。
  *  V1：禁用时直接返回；已有排程则忽略；窗口截止 = now + 120000；4 秒后 `runAtomCompact({})`。
@@ -233,6 +254,12 @@ function scheduleAtomCompact() {
  *  @returns {Promise<object>} V1 同形返回结构 */
 async function runAtomCompact(opts) {
     const o = opts || {};
+    // v3.50.4：**禁止并行** —— 自身已在途 → 直接拒绝（不排队）；另一个总结入口在途 → 也拒绝
+    if (atomCompactInFlight) return { ok: true, skipped: 'inflight' };
+    try {
+        if (plotSegmentBusy && plotSegmentBusy()) return { ok: true, skipped: 'segment-inflight' };
+    } catch (e) { /* 忽略 */ }
+    atomCompactInFlight = true;
     try {
         if (!cfg || cfg.atomCompactEnabled === false) return { ok: true, skipped: 'disabled' };
         if (aiBusy()) {   // v1.148：长任务 **或** 存储同步在途 → 同样延迟重试
@@ -245,7 +272,7 @@ async function runAtomCompact(opts) {
             }
             return { ok: true, skipped: 'busy' };
         }
-        const plan = atomCompactPlan();
+        const plan = atomCompactPlan({ recentN: o.recentN });   // v3.50.4：`recentN` 仅内部/测试用；生产强制保留 ≥10 条
         if (activeAtoms().length <= storeMinFor('atoms')) return { ok: true, skipped: 'floor', before: plan.before, floor: plan.floor };   // v1.147：已达保底 → 不聚合
         if (!o.force && plan.totalChars < plan.threshold) return { ok: true, skipped: 'below-threshold', totalChars: plan.totalChars, threshold: plan.threshold };
         if (plan.pool.length < 2 || activeAtoms().length <= plan.target) return { ok: true, skipped: 'nothing-early', before: plan.before, target: plan.target };
@@ -258,7 +285,7 @@ async function runAtomCompact(opts) {
             for (const grain of COMPACT_GRAINS) {
                 // v1.206：原文保留隐藏 → 条数不减；终止条件改看「参与运作（未隐藏）的情节数」
                 if (activeAtoms().length <= plan.target) break;
-                const gp = atomGroupPlan(grain);
+                const gp = atomGroupPlan(grain, { recentN: o.recentN });
                 if (!gp.groups.length) continue;
                 if (gp.ratio < ratioTh) continue;          // 可融合占比不足 → 降级（日期不足降月、月不足降年）
                 const chosen = gp.groups.slice().sort((a, b) => (a.items[0].date < b.items[0].date ? -1 : a.items[0].date > b.items[0].date ? 1 : 0)).slice(0, maxGroups);
@@ -297,6 +324,8 @@ async function runAtomCompact(opts) {
         warn('情节总结（半自动）异常', e);
         return { ok: false, error: String((e && e.message) || e).slice(0, 120) };
     }
+    // v3.50.4：**任何出口都清在途闸**（成功 / 失败 / 异常 / 早退），否则之后再也跑不动
+    finally { atomCompactInFlight = false; }
 }
 
 // ==================== 情节批量「合并总结」（多选 → 合并为一条 A~B 总结） ====================
@@ -490,6 +519,8 @@ export {
     COMPACT_GRAINS, COMPACT_GROUPS_PER_CALL,
     atomBodyChars, atomDateGrainKey, grainStartDateStr, atomCompactPlan, atomGroupPlan,
     buildAtomCompactPrompt, compactGrainLabel, applyCompactGroup, scheduleAtomCompact, runAtomCompact,
+    // v3.50.4：在途闸读数（互斥 / 界面禁用 / 调试 / 测试用）
+    atomCompactBusy,
     atomMergeRange, buildAtomMergePrompt, parseAtomMergeResult, atomMergeSummary, runAtomMergeSummary,
     atomHiddenCount,
 };

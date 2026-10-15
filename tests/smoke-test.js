@@ -2416,7 +2416,10 @@ await assert('AC1 情节总结 + 分段总结接线齐备：FTT.* 入口（25 �
         && h.indexOf('data-ftt-action="summary" data-ftt-summary="plotSegments"') >= 0
         // v3.50.3（用户要求「必须满足『每次打包给 AI 的情节条数』后方可执行 1 次」）：本场景 3 条情节 < 30
         //   → 按钮**禁用**（`disabled` + `ftt-btn-off`），title 写明还差多少条
-        && h.indexOf('未达门槛：未总结 3 条，需凑满 30 条一批（还差 27 条）') >= 0
+        //   v3.50.4：再叠加「必须保留至少 10 条最近的情节」——本场景 3 条全在保留窗口内 → **池内未总结 0 条**
+        //   （批大小可能被前序 smoke 步骤改过 → 只断言形状，不写死数字）
+        && /未达门槛：未总结 0 条，需凑满 \d+ 条一批（还差 \d+ 条）/.test(h)
+        && h.indexOf('保留最近 10 条') >= 0
         && h.indexOf('plotSegments" disabled') >= 0 && h.indexOf('ftt-btn-off') >= 0
         && h.indexOf('🧩 生成分段总结') >= 0
         && h.indexOf('data-ftt-action="clearPlotSegments"') < 0;
@@ -2431,7 +2434,8 @@ await assert('AC1 情节总结 + 分段总结接线齐备：FTT.* 入口（25 �
     const okMech = F.atomBodyChars() > 0 && plan.before === 3
         && F.plotSegmentBatchSize() === Number(rtMod.cfg.plotSegmentBatchAtoms || 30)
         && F.atomMergeRange([{ id: 'x', date: '1919-11-29' }, { id: 'y', date: '1919-12-01' }]).label === '1919-11-29 ~ 1919-12-01'
-        && segPlan.total === 3 && segPlan.batches.length === 1
+        // v3.50.4（用户要求「必须保留至少 10 条最近的情节」）：本场景只有 3 条情节 → **全在保留窗口内** → 无批次可切
+        && segPlan.total === 3 && segPlan.reserveN === 10 && segPlan.poolTotal === 0 && segPlan.batches.length === 0
         && F.parseAtomMergeResult('{"标题":"T","内容":"正文内容"}').title === 'T';
     F.setAtomSub('list');
     st.plotSegments = [];
@@ -2502,6 +2506,11 @@ await assert('AC3 分段总结端到端：面板「🧩 生成分段总结」（
             { id: 'smoke-ac-p3', title: 'P3', text: '丙在城外等待。', date: '1919-12-01', validity: 'active', tags: [], floorStart: 3, floorEnd: 3 },
             { id: 'smoke-ac-p4', title: 'P4', text: '丁在城里打听。', date: '', validity: 'active', tags: [], floorStart: 4, floorEnd: 4 },
             { id: 'smoke-ac-p5', title: 'P5', text: '戊已失效。', date: '1919-12-02', validity: 'inactive', tags: [], floorStart: 5, floorEnd: 5 },
+            // v3.50.4：自动路径**强制保留最新 10 条** → 夹具补 12 条更旧的情节，池内才有可提交的满批
+            ...Array.from({ length: 12 }, (_, k) => ({
+                id: 'smoke-ac-old' + k, title: 'O' + k, text: '旧情节 ' + (k + 1) + '。',
+                date: '1900-01-' + String(k + 1).padStart(2, '0'), validity: 'active', tags: [], floorStart: 100 + k, floorEnd: 100 + k,
+            })),
         ];
         st.plotSegments = []; st.deleted = {}; st.deletedH = {};
         sweepMod.entryIndexInit();

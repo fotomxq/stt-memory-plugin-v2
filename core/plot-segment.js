@@ -46,6 +46,10 @@ import { normalizePlotSegment, parsePlotSegmentText, plotSegmentsToText } from '
 import { clockDateTrim, storyDateMsFromStr, dateStrCmp } from './clock.js';
 import { defaultCfg } from './config.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
+// v3.50.4（用户要求「总结还是存在并行情况…禁止并行第二个请求」）：与「情节总结（半自动）」
+//   （`core/atom-compact.js`，由提取成功后 4s 定时触发）**互斥** —— 两者都会发 AI 请求，同时跑就是用户看到的「并行」。
+//   循环导入是安全的：这里只在**运行期函数内**调用（模块初始化期不触碰）。
+import { atomCompactBusy } from './atom-compact.js';
 
 /** 用户提示（V1 `notify(kind, {title, text})` 的 V2 等价；与 core/repair.js 既有写法一致） */
 function notify(kind, title, text) {
@@ -81,6 +85,18 @@ function plotSegmentMaxBatchesDefault() {
     const n = Number(cfg && cfg.plotSegmentMaxBatches);
     return Math.max(1, Math.min(40, Number.isFinite(n) && n > 0 ? Math.round(n) : 1));
 }
+/**
+ * v3.50.4（用户要求「必须保留至少 10 条最近的情节，这个强制兜底」）：**最新 N 条永不进入分段总结** ——
+ *   口径与「情节总结（半自动）」的 `atomCompactRecent` 同源，但这里**强制下限 10**（用户口径「强制兜底」）：
+ *   即便 `cfg.plotSegmentReserveRecent` 被设成 0 / 更小，也至少保留 10 条最近情节。
+ *   为什么：分段总结是**归档**动作，一旦把"刚发生的剧情"也归档掉，用户回头看不到最近发生了什么。
+ * @returns {number} 至少 10，最多 200（超出则视为用户确有需要）
+ */
+function plotSegmentReserveRecent() {
+    const n = Number(cfg && cfg.plotSegmentReserveRecent);
+    return Math.max(10, Math.min(200, Number.isFinite(n) ? Math.round(n) : 10));
+}
+
 /**
  * 一条情节在提示词里的**正文行**（单一事实源）：`buildPlotSegmentPrompt` 与切批的字符预算**共用**它，
  *   避免「预算按 A 口径算、真正发送按 B 口径算」的两套口径。
@@ -206,10 +222,18 @@ function plotSegmentBatchesFrom(list, size, maxChars) {
 
 /** 自动分段计划（V1 `plotSegmentPlan`）：`{ batches:[{index,…,covered}], total, covered }`；
  *  `covered` = 该批情节**全部**已被现有段落覆盖（供增量模式跳过）。 */
-function plotSegmentPlan() {
+function plotSegmentPlan(planOpts) {
+    const po = planOpts || {};
     const list = plotSegmentAtomList();
     const covered = plotSegmentCoveredIds();
-    const batches = plotSegmentBatchesFrom(list, plotSegmentBatchSize());
+    // v3.50.4：**保留窗口**——最新 `reserveN` 条不进池（列表按剧情时间升序 → 池 = 去掉末尾 reserveN 条）
+    //   `planOpts.reserveN` 仅供**内部核算 / 测试**显式覆盖（生产路径永远走强制下限 10 的默认值）
+    const reserveN = (po.reserveN != null && Number.isFinite(Number(po.reserveN)))
+        ? Math.max(0, Math.min(200, Math.round(Number(po.reserveN))))
+        : plotSegmentReserveRecent();
+    const reserveKept = Math.min(reserveN, list.length);
+    const pool = list.slice(0, Math.max(0, list.length - reserveN));
+    const batches = plotSegmentBatchesFrom(pool, plotSegmentBatchSize());
     batches.forEach((b, i) => {
         b.index = i + 1;
         b.covered = b.ids.length > 0 && b.ids.every(id => covered.has(id));
@@ -221,8 +245,9 @@ function plotSegmentPlan() {
      *   未总结条数（`pending`）= 可见情节里**尚未被任何段落覆盖**的条数 —— 用户口径「最近必须至少有 N 条情节是未总结的，才能加入总结」。
      *   `eligible` = 可提交的批数，`full` = 满批数（供预告与机会提示）。
      */
-    const pending = list.filter(a => !covered.has(String(a.id || ''))).length;
-    const eligibleBatches = batches.filter(b => !b.covered && b.full === true);
+    // v3.50.4：`pending` **只统计池内**（保留窗口内的最近情节不计入"可总结"）——用户口径「必须走到 N+10 以上，才考虑总结 10 条之外的 N 条」
+    const pending = pool.filter(a => !covered.has(String(a.id || ''))).length;
+    const eligibleBatches = batches.filter(b => !b.covered && b.full === true);   // 池内满批（保留窗口已在 pool 里排除）
     const eligible = eligibleBatches.length;
     const pendingEligible = eligibleBatches.reduce((s, b) => s + b.atoms.length, 0);
     return {
@@ -230,6 +255,8 @@ function plotSegmentPlan() {
         batchAtoms: plotSegmentBatchSize(), batchChars: plotSegmentMaxChars(),
         pending: pending, eligible: eligible, pendingEligible: pendingEligible,
         fullBatches: batches.filter(b => b.full === true).length,
+        // v3.50.4：保留窗口读数（界面预告 / 调试核对用）
+        reserveN: reserveN, reserveKept: reserveKept, poolTotal: pool.length,
     };
 }
 
@@ -353,9 +380,17 @@ async function runPlotSegmentSummary(opts) {
         notify('warning', '情节分段总结进行中', '上一次提交还没返回 —— 本次点击已忽略（避免重复提交）。');
         return { made: 0, blocked: true, reason: 'inflight' };
     }
+    // v3.50.4（用户要求「总结还是存在并行情况，应严格限制总结的频次，如若触发则禁止并行第二个请求」）：
+    //   与**另一个总结入口**（「情节总结（半自动）」，提取成功后 4s 定时触发）互斥 —— 两者都发 AI 请求。
+    try {
+        if (atomCompactBusy && atomCompactBusy()) {
+            notify('info', '情节总结（半自动）进行中', '等它结束再生成分段总结（避免两个总结并行发请求）。');
+            return { made: 0, blocked: true, reason: 'compact-inflight' };
+        }
+    } catch (e) { /* 忽略：互斥读不到就按不互斥 */ }
     plotSegmentInFlight = true;
     try {
-        const plan = plotSegmentPlan();
+        const plan = plotSegmentPlan({ reserveN: o.reserveN });   // v3.50.4：`reserveN` 仅内部/测试用；生产不传 → 强制保留 10 条
         if (!plan.total) {
             notify('info', '情节分段总结：暂无可整理情节', '当前没有有效情节原子（或全部已失效）。请先运行「AI 摘要」生成情节。');
             return { made: 0, skipped: true, total: 0 };
@@ -459,6 +494,13 @@ async function runPlotSegmentSummarySelected(ids, opts) {
         notify('warning', '情节分段总结进行中', '上一次提交还没返回 —— 本次点击已忽略（避免重复提交）。');
         return { made: 0, blocked: true, reason: 'inflight' };
     }
+    // v3.50.4：与「情节总结（半自动）」互斥（两个总结入口禁止并行）
+    try {
+        if (atomCompactBusy && atomCompactBusy()) {
+            notify('info', '情节总结（半自动）进行中', '等它结束再总结所选（避免两个总结并行发请求）。');
+            return { made: 0, blocked: true, reason: 'compact-inflight' };
+        }
+    } catch (e) { /* 忽略 */ }
     plotSegmentInFlight = true;
     try {
         const plan = plotSegmentPlanForIds(ids);
@@ -563,6 +605,8 @@ export {
     plotSegmentBatchSize, plotSegmentMaxChars, plotSegmentMaxBatchesDefault, plotSegmentLineText, plotSegmentLineCost,
     // v3.50.3（用户要求）：在途闸读数 + 提交账本（只读）+ 批次指纹
     plotSegmentBusy, plotSegmentSubmitSig, plotSegmentLogList,
+    // v3.50.4（用户要求「必须保留至少 10 条最近的情节」）：保留窗口读取器（强制下限 10）
+    plotSegmentReserveRecent,
     plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
     plotSegmentPlan, plotSegmentPlanForIds, buildPlotSegmentPrompt, plotSegmentSameRange,
     applyPlotSegmentResult, runPlotSegmentSummary, runPlotSegmentSummarySelected,

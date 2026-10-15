@@ -1,4 +1,7 @@
 // ============================================================
+// v3.50.4（用户要求「必须保留至少 10 条最近的情节，这个强制兜底」）：本档部分用例**显式**把
+//   `atomCompactRecent` 设为 0 来验证「无保护窗口」的 V1 口径 —— 生产路径的强制下限 10 由 `recentN: 0`
+//   （**仅内部 / 测试**可传）显式覆盖，等价于旧行为。该兜底本身由只读核对脚本与 plot-segment 的 S 组锁定。
 // 单元测试 · B8-7-a 情节总结（半自动聚合早期情节 + 手动多选合并）
 //   （与**真实 V1 插件 v1.206** 逐项比对 + V2 编排/接线）
 // 黄金样本（oracle = 真实 V1 插件 v1.206，经 `tests/unit/helpers.js#loadPlugin` 直调 `__FTT` 同名导出）：
@@ -280,7 +283,7 @@ await A('H7 粒度降级：日占比不足 → 月聚合（2 组 → 2 条总结
             { key: '1919-11', 标题: '十一月总结', 内容: '整月事件过程总括ABC', 标签: ['旧'], 重要度: 0.7 },
             { key: '1920-01', 标题: '一月总结', 内容: '一月事件总括DEF', 标签: ['旧'], 重要度: 0.6 },
         ] });
-        const r = await runAtomCompact({});
+        const r = await runAtomCompact({ recentN: 0 });
         ok = deq({ result: r, atoms: (state.atoms || []).map(atomView) }, f.runMonth);
     });
     return ok;
@@ -299,7 +302,7 @@ await A('H8 粒度降级：月不足 → 年聚合（3 条同年情节合 1 条�
             ],
         }, { atomCompactRecent: 0, atomCompactChars: 50 });
         aiContent = JSON.stringify({ groups: [{ key: '1919', 标题: '一九一九年总结', 内容: '全年事件过程总括GHI', 标签: ['旧'], 重要度: 0.9 }] });
-        const r = await runAtomCompact({});
+        const r = await runAtomCompact({ recentN: 0 });
         ok = deq({ result: r, atoms: (state.atoms || []).map(atomView) }, f.runYear);
     });
     return ok;
@@ -324,7 +327,7 @@ await A('H9 单轮组数上限 atomCompactBatch=1：只处理 1 组即达目标�
             { key: '1919-12-01', 标题: '十二月一日总结', 内容: '当日过程总括STU', 标签: ['旧'], 重要度: 0.6 },
             { key: '1920-01-01', 标题: '一月一日总结', 内容: '当日过程总括VWX', 标签: ['旧'], 重要度: 0.5 },
         ] });
-        const r = await runAtomCompact({ force: true });
+        const r = await runAtomCompact({ force: true, recentN: 0 });
         ok = deq({ result: r, atoms: (state.atoms || []).map(atomView) }, f.runBatchCap);
     });
     return ok;
@@ -364,7 +367,17 @@ await A('H10 定时调度 scheduleAtomCompact：窗口 4 秒单次排程（重�
             active: state.atoms.filter(a => !(a.hidden === true || a.summarizedBy)).length,
             hidden: state.atoms.filter(a => a.hidden === true || a.summarizedBy).length,
         };
-        ok = ok && deq(mine, f.scheduled);
+        /**
+         * v3.50.4（**有意偏离 V1**，用户要求「必须保留至少 10 条最近的情节，这个强制兜底」）：
+         *   本用例的夹具只有 3 条情节且把 `atomCompactRecent` 设为 0（想模拟"无保护窗口"），
+         *   但 v3.50.4 起**生产路径强制保留最新 ≥10 条** → 3 条全在保留窗口内 → 早期池为空 → **无可聚合**：
+         *   `summaries` 空、`hidden` 0、`active` 仍为 3（V1 黄金样本此处会聚合出 1 条并隐藏 3 条）。
+         *   调度机制本身（4 秒单次排程 / 重复忽略 / 禁用不排 / 回调执行）仍按 V1 逐条断言。
+         */
+        const forcedReserve = { ret: null, sig: sigView(), summaries: [], active: 3, hidden: 0 };
+        ok = ok && deq(mine, forcedReserve);
+        ok = ok && atomCompactPlan().recentN >= 10;                 // 强制下限 10（夹具只有 3 条 → 池空）
+        ok = ok && atomCompactPlan({ recentN: 0 }).pool.length === 3;   // 显式覆盖（仅内部 / 测试）→ 池 = 3（旧行为）
     });
     return ok;
 }, '');

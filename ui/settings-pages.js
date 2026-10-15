@@ -304,6 +304,11 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         {
+            "key": "plotSegmentReserveRecent",
+            "label": "保留最近的情节条数（至少 10；最新 N 条永不进分段总结）",
+            "type": "text"
+        },
+        {
             "key": "plotSegmentMaxChars",
             "label": "每批提交的字符预算（默认 8000；与条数取先到者；0＝不限）",
             "type": "text"
@@ -1319,7 +1324,7 @@ export function analyzePageHtml(controls) {
     const row = (k) => { const c = byKey[k]; if (!c) return ''; used[k] = true; return settingsControlHtml(c); };
     const scope = ['summaryChunkSize'].map(row).filter(Boolean).join('\n');
     // v3.49.3（用户报告「情节的自动分段统计…会提交巨量数据」）：本组新增两项**体量上界**（每批字符预算 / 一次最多几批）
-    const segKeys = ['plotSegmentBatchAtoms', 'plotSegmentMaxChars', 'plotSegmentMaxBatches', 'plotSegmentProtectManual', 'plotSegmentIncremental', 'plotSegmentTextLimit'];
+    const segKeys = ['plotSegmentBatchAtoms', 'plotSegmentMaxChars', 'plotSegmentMaxBatches', 'plotSegmentReserveRecent', 'plotSegmentProtectManual', 'plotSegmentIncremental', 'plotSegmentTextLimit'];   // v3.50.4：+ 保留最近 N 条
     const seg = segKeys.map(row).filter(Boolean).join('\n');
     // v2.76.0（用户要求）：「设定-提取记忆中很多设置根本不是召回处理用的，请正确归纳到对应设定中。」
     //   以下两类**不是召回参数**，本批从「提取记忆」页搬到本页（分析/入库口径）：

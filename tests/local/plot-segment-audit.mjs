@@ -158,3 +158,20 @@ console.log('存档里可见情节正文总量 ' + sum + ' 字符（' + plan.tot
 console.log('一次点击提交：旧 ' + sumOf(pick(OLD_BATCHES)) + ' 字符 → 新 ' + sumOf(pick(NEW_BATCHES)) + ' 字符（' +
     (sumOf(pick(NEW_BATCHES)) ? ('降低到 ' + Math.round(sumOf(pick(NEW_BATCHES)) / sumOf(pick(OLD_BATCHES)) * 100) + '%') : '-') + '）');
 
+
+
+// ---------- v3.50.4：保留窗口（最新 N 条永不总结）与「半自动情节总结」核对 ----------
+const reserve = ps.plotSegmentReserveRecent();
+console.log('\n=== v3.50.4 核对：保留窗口与双总结入口 ===');
+console.log('保留最近情节（强制兜底） = ' + reserve + ' 条 —— 最新这 ' + reserve + ' 条永不进分段总结');
+console.log('计划读数：可见 ' + plan.total + ' 条 · 池内 ' + (plan.poolTotal != null ? plan.poolTotal : '(旧版无此读数)')
+    + ' 条 · 池内未总结 ' + plan.pending + ' 条 · 保留 ' + (plan.reserveKept != null ? plan.reserveKept : '-') + ' 条');
+console.log('门槛：池内未总结 ≥ ' + plan.batchAtoms + ' 条才提交；当前可提交 ' + plan.eligible + ' 批'
+    + (plan.eligible ? '' : '（还差 ' + Math.max(0, plan.batchAtoms - plan.pending) + ' 条）'));
+try {
+    const ac = await import('../../core/atom-compact.js');
+    const cp = ac.atomCompactPlan();
+    console.log('半自动情节总结（另一入口）：参与运作 ' + cp.before + ' 条 · 保护窗口 ' + cp.recentN + ' 条（强制 ≥10）· 早期池 ' + cp.pool.length
+        + ' 条 · 目标 ≤ ' + cp.target + ' · 体量阈值 ' + cp.threshold + ' 字符');
+    console.log('并行限制：分段总结在途 = ' + ps.plotSegmentBusy() + ' · 半自动在途 = ' + ac.atomCompactBusy() + '（任一在途时另一入口直接拒绝）');
+} catch (e) { console.log('半自动读数不可用：' + String((e && e.message) || e)); }
