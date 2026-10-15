@@ -16,6 +16,8 @@
 //   面板只留「子标签切换 + 子页渲染 + 动作分发」三处接线。
 // ============================================================
 import { MAP_LEVEL_LABELS, mapPlaces, mapRoutes, mapTreeOf, mapsOf, mapRouteStatusText, mapRouteMeasureText } from '../core/model/map.js';
+// v3.50.6（用户报告「场景地图是图，不是列表」+ `docs/D27` §8 `应-45`）：网状图渲染落**新模块**（C11 + 体量棘轮）
+import { sceneMapGraphSvg } from './scene-map-graph.js';
 import { insertTextToHost, inputBoxCapability } from '../host/input-box.js';
 import { state, cfg } from '../core/model/runtime.js';
 
@@ -218,7 +220,13 @@ export function sceneMapBodyHtml() {
     // 跨场所路径（两端属于不同场所）—— 只在根层列出，避免每层重复
     const sceneOf = (pid) => String((byId[String(pid)] || {}).sceneRef || '');
     const cross = routes.filter((r) => sceneOf(r.fromId) !== sceneOf(r.toId));
+    /**
+     * v3.50.6（用户报告：「场景地图是图，不是列表」）：**网状图放最前**（图为主），
+     *   逐行明细退居其后的「明细（可下钻 / 可插入）」小节 —— 图形本身也可点（节点带 `data-ftt-map-node`）。
+     */
+    const graph = sceneMapGraphSvg(places, routes, { title: '网状图：节点 ' + places.length + ' · 路径 ' + routes.length + '（实线 = 剧情走过 · 虚线 = 未走过）' });
     return head + ins
+        + (graph ? ('<h4 class="ftt-h4-inline">🕸 网状图</h4>' + graph) : '')
         + '<h4 class="ftt-h4-inline">📍 场所有地图数据的（' + scenes.filter((s) => mapTreeOf(state, String(s.id)).total).length + ' / ' + scenes.length + '）</h4>'
         + (anchorRows || '<div class="ftt-empty">场景库还是空的。先在「🌳 场景」页或 AI 摘要里建立地点树。</div>')
         + (cross.length ? ('<h4 class="ftt-h4-inline">🧭 跨场所路径（' + cross.length + '）</h4>' + cross.map((r) => routeRowHtml(r, byId, null)).join('\n')) : '');
