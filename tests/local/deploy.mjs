@@ -223,25 +223,49 @@ if (!cond.every((c) => c.ok)) reportAndBail();
 
 // ============================================================
 // ② 产物门禁
+//
+// 就地跑门禁存在 **TOCTOU 竞态**：检查「工作区干净」与门禁跑完之间有 ~1–2 分钟窗口，
+//   期间别的进程若改了工作区，门禁就会对**一个从未存在过的中间态**报红（真机上已踩到：
+//   `core/recall.js` 在门禁运行中被改，6 个用例假红）。故：
+//   · 就地跑的门禁**失败时**，重新取一次改动清单；与开跑前不同 → 就地结果不可信 →
+//     **自动改走隔离验证**（在 HEAD 的纯净导出上重跑），而不是把假红当成「产物有问题」。
 // ============================================================
 const devStatus = worktreeRows(devRoot);
 let gate = { state: 'skipped', note: '--no-gate' };
+
+/** 在「HEAD 的纯净导出」上跑门禁（只读 git + 临时目录，跑完即删） */
+function gateIsolated() {
+    console.log('  → 导出「已提交产物」到临时目录后跑 ' + GATE_CMD + ' …');
+    const ex = exportCommittedToTmp();
+    if (ex.error) return { state: 'unknown', note: ex.error };
+    const g = runGate(ex.tmp, join(ex.tmp, 'gate.log'));
+    rmSync(ex.tmp, { recursive: true, force: true });
+    return g.ok
+        ? { state: 'passed', note: '隔离验证（HEAD ' + String(devHead.sha).slice(0, 8) + ' 的纯净导出）' }
+        : { state: 'failed', note: '隔离验证失败', tail: g.tail };
+}
+
 if (!NO_GATE) {
     if (!devStatus.ok) {
         gate = { state: 'unknown', note: 'git status 失败：' + devStatus.err };
     } else if (devStatus.rows.length === 0) {
+        const before = devStatus.rows.join('\n');
         console.log('\n[产物门禁] 工作区干净 → 就地跑 ' + GATE_CMD + ' …');
         const g = runGate(devRoot, join(tmpdir(), 'ftt-deploy-gate.log'));
-        gate = g.ok ? { state: 'passed', note: '就地（工作区干净）' } : { state: 'failed', note: '就地失败', tail: g.tail };
-    } else if (ISOLATE_GATE) {
-        console.log('\n[产物门禁] 工作区有 ' + devStatus.rows.length + ' 处未提交改动 → 导出「已提交产物」到临时目录后跑 ' + GATE_CMD + ' …');
-        const ex = exportCommittedToTmp();
-        if (ex.error) gate = { state: 'unknown', note: ex.error };
+        if (g.ok) gate = { state: 'passed', note: '就地（工作区干净）' };
         else {
-            const g = runGate(ex.tmp, join(ex.tmp, 'gate.log'));
-            rmSync(ex.tmp, { recursive: true, force: true });
-            gate = g.ok ? { state: 'passed', note: '隔离验证（HEAD ' + String(devHead.sha).slice(0, 8) + ' 的纯净导出）' } : { state: 'failed', note: '隔离验证失败', tail: g.tail };
+            const afterRows = worktreeRows(devRoot);
+            const after = afterRows.ok ? afterRows.rows.join('\n') : '(读取失败)';
+            if (after !== before) {
+                console.log('\n[产物门禁] ⚠️ 门禁运行期间工作区发生了变化（并发写入）→ 就地结果不可信，自动改走隔离验证 …');
+                gate = gateIsolated();
+            } else {
+                gate = { state: 'failed', note: '就地失败', tail: g.tail };
+            }
         }
+    } else if (ISOLATE_GATE) {
+        console.log('\n[产物门禁] 工作区有 ' + devStatus.rows.length + ' 处未提交改动 →');
+        gate = gateIsolated();
     } else {
         gate = { state: 'skipped', note: '工作区有 ' + devStatus.rows.length + ' 处未提交改动 —— 门禁测的是工作区、不是要部署的提交；如需校验提交产物请加 --isolate-gate' };
     }

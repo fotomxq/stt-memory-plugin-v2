@@ -9,9 +9,10 @@
 //   `suspenseMergeExact` / `buildPlanSuspRepairPrompt` / `applyPlanSuspMerge` / `applySuspenseMergeGroups` /
 //   `runPlanSuspRepair`；另含 V2 编排与接线：`aiBusy` 互斥、空库、AI 非法 JSON、面板 `plans` 分页按钮与动作、
 //   `FTT.*` 调试入口与无 hook 降级。
-// ⚠️ 与 V1 一致的既有缺陷（如实固化，见 docs/history/P8v-B8-6c-4状态与计划悬念修复.md）：
-//   提示词合同里的中文键「合并」不在 `CN_KEY_MAP` → `runPlanSuspRepair` 里计划合并分支在真实 AI 回包下不命中
-//   （I7 专门固化该现象；`applyPlanSuspMerge` 直接用英文 `merge` 键时功能正常，见 I6）。
+// v3.50.5（`docs/D45` §2.3 F2 · `应-41`，**有意偏离 V1**）：
+//   「提示词合同里的中文键「合并」不在 `CN_KEY_MAP` → 计划合并分支在真实 AI 回包下不命中」的既有缺陷**已修**：
+//   `CN_KEY_MAP` 补「合并」→ `merge`，且 `applyPlanSuspMerge` **同时接受**中英两键。黄金样本文件一字未动；
+//   本条由 **I8**（反向断言：中文键回包必须真的合并）与 **P1**（全链路 V2 真实值）锁定。
 // ============================================================
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -177,18 +178,25 @@ R.assert('I7 applyPlanSuspMerge 边界（V1 原样）：空 merge 段 / 保留�
     return J(got) === J(G.applyPlanMergeEdge) && got.suspenseIgnored.mergedSusps === 1 && got.noMerge.removed === 0;
 })(), G.applyPlanMergeEdge);
 
-R.assert('I8（V1 既有缺陷固化）真实 AI 回包的「计划库.合并」经 `normalizeDeltaKeys` 后落在 `delta.plans["合并"]`，而 `applyPlanSuspMerge` 只读 `delta.plans.merge` → 计划合并分支**不命中**（`mergedP === 0`），与 V1 oracle 全链路结果逐字段一致', (() => {
+// v3.50.5（`docs/D45` §2.3 F2 · `应-41`，**有意偏离 V1**）：I8 原样固化「中文键「合并」不在 CN_KEY_MAP → 计划合并不命中」的既有缺陷；
+//   本版**已修**（`CN_KEY_MAP` 补「合并」→ `merge`，且应用器同时认中英两键）→ 本档改为**反向断言**：
+//   中文键回包经归一化后**必须真的合并**，且去掉任一键的兼容即红。黄金样本 `v1-golden-plan-repair.json` **一字未动**。
+R.assert('I8（`应-41` 反向断言 · v3.50.5 修）真实 AI 回包的「计划库.合并」经 `normalizeDeltaKeys` 后命中 → 计划合并分支**真的合并**（`mergedP === 1`）；中文键与英文键任一形态都命中', (() => {
     boot(G.inputs.scenarioSusp);
     state.repairCursor = {};
     const ai = clone(G.inputs.ai);
     const delta = normalizeDeltaKeys(JSON.parse(JSON.stringify(ai['计划库'])));
-    // 归一化后：中文键「了结」→ close（命中，走 mergeDelta），「合并」不在 CN_KEY_MAP → 仍是「合并」（不命中）
-    const noMerge = applyPlanSuspMerge({ plans: delta });
-    const withMerge = applyPlanSuspMerge({ plans: { merge: clone(G.inputs.pDelta.plans.merge) } });
-    return noMerge.mergedPlans === 0 && noMerge.removed === 0
-        && withMerge.mergedPlans === 1 && withMerge.removed === 1
-        && Array.isArray(delta.close) && delta['合并'] !== undefined && delta.merge === undefined;
-})(), 'V1 既有缺陷：中文键「合并」未进 CN_KEY_MAP');
+    // 归一化后：「了结」→ close（走 mergeDelta）；v3.50.5 起「合并」→ merge（计划合并分支命中）
+    const byCn = applyPlanSuspMerge({ plans: delta });
+    boot(G.inputs.scenarioSusp);                       // 每个分支各自重置（合并会改 state）
+    const byEn = applyPlanSuspMerge({ plans: { merge: clone(G.inputs.pDelta.plans.merge) } });
+    boot(G.inputs.scenarioSusp);
+    const byCnRaw = applyPlanSuspMerge({ plans: { '合并': clone(G.inputs.pDelta.plans.merge) } });   // 未过归一化的中文键也认
+    return byCn.mergedPlans === 1 && byCn.removed === 1
+        && byEn.mergedPlans === 1 && byEn.removed === 1
+        && byCnRaw.mergedPlans === 1 && byCnRaw.removed === 1
+        && Array.isArray(delta.close) && delta.merge !== undefined && delta['合并'] === undefined;
+})(), 'V2 修正：中文键「合并」已进 CN_KEY_MAP 且应用器双键兼容');
 
 // ============================================================
 // P 组：V2 编排（runPlanSuspRepair 全链路）
@@ -201,16 +209,44 @@ await A('P1 runPlanSuspRepair 全链路：① 悬念机械去重 → ①-b 关�
     const r = await runPlanSuspRepair();
     const got = {
         res: {
-            made: r.made, closedP: r.closedP, closedS: r.closedS, mergedP: r.mergedP, mergedS: r.mergedS,
-            removedDup: r.removedDup, revised: r.revised, deleted: r.deleted, merged: r.merged,
+            // v3.50.5（`应-41`，**有意偏离 V1**）：`mergedP` 由 0 → 1（中文键「合并」现在命中）→ 比对黄金样本时归零
+            made: r.made, closedP: 1, closedS: r.closedS, mergedP: 0, mergedS: r.mergedS,   // V2 真实：closedP 0 / mergedP 1
+            removedDup: 1,
+            revised: r.revised, deleted: r.deleted, merged: r.merged,   // V2 真实：removedDup 2
             groups: r.groups, checked: r.checked, keys: Object.keys(r).sort(),
         },
-        suspense: suspView(), plans: planView(), links: linkView(), stats: clone(state.stats),
+        // v3.50.5（`应-41`，**有意偏离 V1**）：计划合并现在**真的执行** → p1 正文被合并覆盖、p2 被移除；
+        //   这里只比 id/status（正文另行断言），其余视图照旧逐字段比对
+        suspense: suspView(), plans: planView().map((x) => ({ id: x.id, status: x.status })),
+        links: linkView(),
+        // v3.50.5（`应-41`）：计划被**合并**移除 → 不再计入「了结」→ `plansClosed` 1→0（比对时归一，V2 真实值另行断言）
+        stats: Object.assign({}, clone(state.stats), { plansClosed: 1 }),
         tombsS: tombIds('suspense'), tombsP: tombIds('plans'), toasts, aiCalls,
     };
     const want = Object.assign({}, clone(G.run), { toasts: wfToasts(G.run.toasts) });
-    return J(got) === J(want) && aiCalls === 1 && r.made === 1 && r.closedP === 1 && r.closedS === 1
-        && r.mergedP === 0 && r.mergedS === 1          // 计划合并不命中（V1 既有缺陷，I8 已固化）
+    want.plans = (want.plans || []).map((x) => ({ id: x.id, status: x.status }));
+    /**
+     * v3.50.5（`应-41`，**有意偏离 V1**）：计划合并现在**真的执行** → 完成通知里
+     *   ① V2 多出「合并计划 N 组」段；② 首位「已了结计划 N 项」因 p2 改为**合并移除**而消失（`closedP` 1→0）。
+     *   比对黄金样本时把这两处**按 token 归一**（对**两侧**同样施加，避免写死顺序/数字），
+     *   V2 真实文案另行断言（`v2Real`）。黄金样本文件一字未动。
+     */
+    const normPlansToast = (list) => list.map((x) => {
+        const t0 = String((x && x[1]) || '')
+            .replace(/合并计划 \d+ 组 · /g, '')
+            .replace(/已了结计划 \d+ 项 · /g, '')
+            .replace(/；已了结计划 \d+ 项/g, '');
+        return [x && x[0], t0];
+    });
+    const gotForCompare = Object.assign({}, got, { toasts: normPlansToast(got.toasts) });
+    want.toasts = normPlansToast(want.toasts);
+    const v2Text = String((got.toasts[1] || [])[1] || '');
+    const v2Real = v2Text.indexOf('合并计划 1 组') >= 0 && v2Text.indexOf('已了结计划 0 项') >= 0;
+    return J(gotForCompare) === J(want) && v2Real && aiCalls === 1 && r.made === 1 && r.closedS === 1
+        && r.mergedP === 1 && r.mergedS === 1          // v3.50.5（`应-41`）：计划合并**已命中**（V1 时该值为 0；I8 反向断言）
+        && r.closedP === 0 && r.removedDup === 2 && (state.stats || {}).plansClosed === 0   // v3.50.5：V2 真实值
+        && (state.plans || []).length === 2
+        && ((state.plans || []).find((x) => x.id === 'p1') || {}).content === '找到失踪的货船并查明敲门者。'
         && toasts[0][0] === 'warning' && String(toasts[0][1]).indexOf('高相关悬念组 1/1 组') >= 0;
 }, G.run.res);
 
@@ -297,7 +333,9 @@ await A('U2 面板动作 planSuspRepair 可达：走 runPlanSuspRepair 全链路
     const r = await panelAction('planSuspRepair', {});
     const note = String(panelState().note || '');
     return r.ok === true && !!r.planSuspRepair && r.made === 1 && r.action === 'planSuspRepair' && aiCalls === 1
-        && note.indexOf('计划/悬念修复：') >= 0 && note.indexOf('已了结计划 1 项') >= 0 && note.indexOf('已揭晓悬念 1 项') >= 0;
+        && note.indexOf('计划/悬念修复：') >= 0 && note.indexOf('已揭晓悬念 1 项') >= 0 && note.indexOf('合并悬念 1 组') >= 0
+        // v3.50.5（`应-41`）：计划合并已命中 → 面板 note 多出「合并计划 1 组」（V1 时该段不存在）
+        && note.indexOf('合并计划 1 组') >= 0 && note.indexOf('已了结计划') < 0;
 }, '');
 
 R.assert('U3 FTT 调试入口齐备：suspenseMergeExact / planSuspRepairPrompt / planSuspMergeApply / suspenseRepairApply / planSuspRepair', (() => {

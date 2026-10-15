@@ -31,10 +31,13 @@
 //      V1 `notify('repair', …)` 的 toastr 类型是 warning → V2 传 'warning'；
 //   ⑤ `runPlanSuspRepair(opts)` 增设可选 `opts.aiText` 注入点（与 `runRepair`/`runMemoryRepair` 同约定）。
 //
-// ⚠️ 与 V1 一致的**既有缺陷**（如实保留、不擅自修正，黄金样本已固化）：
-//   · `applyPlanSuspMerge` 只读 `delta[cat].merge`，而提示词合同里的中文键「合并」**不在 `CN_KEY_MAP`** 内
-//     → 真实 AI 回包经 `normalizeDeltaKeys` 后落在 `delta.plans['合并']`，计划合并分支在**生产路径不会命中**；
-//     V2 逐字保留同一写法（`applySuspenseMergeGroups` 对悬念域同时兼容「合并」/`merge` 两种形态，不受影响）。
+// v3.50.5（`docs/D45` §2.3 F2 · `应-41`，**有意偏离 V1**）：
+//   · 上述「`applyPlanSuspMerge` 只读 `delta[cat].merge` → 生产路径永不命中」的既有缺陷**已修**：
+//     `core/config.js#CN_KEY_MAP` 补上「合并」→ `merge`，且本函数**同时接受**中文「合并」与英文 `merge` 两种形态。
+//     黄金样本 `tests/fixtures/v1-golden-plan-repair.json` **一字未改**（该档直接用 `merge` 键构造 delta，不受影响），
+//     新口径由 `tests/unit/plan-repair-golden.test.js` 的 **M 组**反向断言锁定（中文键回包 → 真的合并）。
+//   · `runPlanSuspRepair` 里「无高相关悬念组且无进行中计划」的早退分支实际**不可达**（首个空库判据已先行返回）——
+//     该条**照旧保留**（与本轮无关）。
 //   · `runPlanSuspRepair` 里「无高相关悬念组且无进行中计划」的早退分支实际**不可达**（首个空库判据已先行返回）——
 //     V2 逐字保留该分支（后续若调整判据顺序即按 V1 语义生效）。
 // 一致性由 tests/unit/plan-repair-golden.test.js 的真实 V1 黄金样本强制校验。
@@ -145,7 +148,10 @@ function applyPlanSuspMerge(delta) {
     const out = { mergedPlans: 0, mergedSusps: 0, removed: 0 };
     try {
         for (const cat of ['plans', 'suspense']) {
-            const groups = (delta && delta[cat] && Array.isArray(delta[cat].merge)) ? delta[cat].merge : [];
+            // v3.50.5（`应-41`）：**同时接受中文键「合并」与英文 `merge`**（`CN_KEY_MAP` 已补「合并」→ merge；
+            //   这里再兜一层：未过 `normalizeDeltaKeys` 的调用方 / 手工构造的 delta 也能命中）。
+            const groups = (delta && delta[cat]
+                && (Array.isArray(delta[cat].merge) ? delta[cat].merge : (Array.isArray(delta[cat]['合并']) ? delta[cat]['合并'] : []))) || [];
             if (!groups.length) continue;
             const list = (state[cat] || []).filter(x => x && x.status === 'open');   // 与修复提示词清单同序
             if (!list.length) continue;

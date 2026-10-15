@@ -318,8 +318,11 @@ A('G4 预算紧张时**先丢地图、场景保留**（同一大类内地图行�
     bootInject(MAPS_FULL);
     try {
         const src = readFileSync(join(ROOT, 'core', 'recall.js'), 'utf8');
-        const i = src.indexOf("rows: (sceneText ? [{ text: sceneText }] : []).concat(mapRows)");
-        return i > 0 && src.indexOf('mapRows.push') > 0;
+        // v3.50.5（`应-40`）：该区块的行构建被包进 pushCat 的 thunk → 源码形态变为
+        //   `() => ((sceneText ? [{ text: sceneText }] : []).concat(mapRows))`；语义（场景整块在前、地图行随后）不变。
+        const i = src.indexOf('(sceneText ? [{ text: sceneText }] : []).concat(mapRows)');
+        const after = src.indexOf('mapRows.push');
+        return i > 0 && after > 0 && src.indexOf('pushCat(\'[场景地点]\'') > 0;
     } catch (e) { return false; }
 })(), 'n/a');
 

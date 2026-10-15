@@ -415,8 +415,9 @@ function buildStateRepairPrompt(pickIn) {
  *    无对应条目 → 新建条目（`normalizeCurrentState`，`added`）；值超限按 `cfg.dimCharLimits.states` 截断；
  *  - 删除（`ops['删除']` / `ops.delete`）：对象写法 `{主体,字段}` 或文本写法「主体·字段」/「主体 字段」
  *    （按本轮目标主体名做**前缀**匹配 —— 长名本身含「·」，不能简单 split）；整组删除走双墓碑；
- *  - 注意（V1 原样）：生产路径的 delta 已过 `normalizeDeltaKeys`（「删除」→ `remove`），而本函数只认
- *    `ops['删除']` / `ops.delete` → 该分支在真实 AI 回包下**不会命中**（既有行为，如实保留、不擅自修正）。 */
+ *  - v3.50.5（`docs/D45` §2.3 F2 · `应-41`，**有意偏离 V1**）：上述「永不命中」的既有缺陷**已修** ——
+ *    删除分支现在**同时接受** `remove`（归一化后的键）/ `删除` / `delete`；黄金样本一字未改，新口径由
+ *    `tests/unit/state-repair-golden.test.js` 的 **M 组**反向断言锁定（中文键回包 → 记录真的被删、计数可见）。 */
 function applyStateRepair(delta, pickIn) {
     const out = { changed: 0, added: 0, deleted: 0, unchanged: 0, invalid: 0, unknownRole: 0, noBasis: 0, renamedField: 0 };
     try {
@@ -459,7 +460,10 @@ function applyStateRepair(delta, pickIn) {
             }
         }
         // 删除（字段级）
-        const dels = Array.isArray(ops['删除']) ? ops['删除'] : (Array.isArray(ops.delete) ? ops.delete : []);
+        // v3.50.5（`应-41`）：**同时接受 `remove`** —— 生产路径的 delta 已过 `normalizeDeltaKeys`（「删除」→ `remove`），
+        //   此前只认 `ops['删除']` / `ops.delete` → 该分支在真实 AI 回包下**永不命中**（AI 要求删的状态记录不会被删，且计数上看不出）。
+        const dels = Array.isArray(ops['删除']) ? ops['删除']
+            : (Array.isArray(ops.delete) ? ops.delete : (Array.isArray(ops.remove) ? ops.remove : []));
         for (const d of dels) {
             let nmRaw = '', fRaw = '';
             if (d && typeof d === 'object') { nmRaw = (d['主体'] !== undefined) ? d['主体'] : (d.subject || ''); fRaw = repairNormText((d['字段'] !== undefined) ? d['字段'] : (d.field || '')); }
