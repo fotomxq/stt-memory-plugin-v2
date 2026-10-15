@@ -25,7 +25,9 @@ const attr = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"
 export function plotSegmentForecastHtml() {
     try {
         const plan = plotSegmentPlan();
-        if (!plan || !plan.total || !plan.batches.length) return '';
+        // v3.50.4：**只要有情节就给出读数** —— 池为空（全部落在保留窗口内）时也要让用户看到「保留最近 N 条 / 还差几条」，
+        //   而不是让预告行整块消失（那正是「不知道为什么点不动」的由来）。
+        if (!plan || !plan.total) return '';
         const per = Math.max(1, Math.min(40, Number(cfg && cfg.plotSegmentMaxBatches) || 1));
         const n = Math.min(per, plan.eligible || 0);
         const chars = (plan.batches.filter((b) => b.covered !== true && b.full === true).slice(0, per))
@@ -39,13 +41,20 @@ export function plotSegmentForecastHtml() {
         const threshold = Number(plan.batchAtoms) || 30;
         const pending = Number(plan.pending) || 0;
         const eligible = Number(plan.eligible) || 0;
+        /**
+         * v3.50.4（用户要求「错误的把最近情节总结了…必须保留至少 10 条最近的情节，这个强制兜底」）：
+         *   预告行如实写明**保留窗口** —— 最新 `plan.reserveN` 条永不进总结；门槛与批数都按**窗口外**的池计算。
+         */
+        const reserveN = Number(plan.reserveN) || 10;
+        const poolTotal = (plan.poolTotal != null) ? Number(plan.poolTotal) : Math.max(0, Number(plan.total) - reserveN);
         const gate = eligible > 0
             ? ('<b>可提交 ' + esc(eligible) + ' 批</b>（本次点一次提交 ' + esc(n) + ' 批 · 约 ' + esc(chars) + ' 字符）'
                 + (eligible > n ? '；余下可再点继续' : ''))
             : ('<b class="ftt-busy">未达门槛</b>：未总结 ' + esc(pending) + ' 条，需凑满 <b>' + esc(threshold)
                 + '</b> 条一批才能提交（还差 <b>' + esc(Math.max(0, threshold - pending)) + '</b> 条）');
         return '<div class="ftt-muted ftt-w-full" data-ftt-seg-forecast>'
-            + '可见情节 <b>' + esc(plan.total) + '</b> 条 · 未总结 <b>' + esc(pending) + '</b> 条 → 共 <b>' + esc(plan.batches.length) + '</b> 批（合计约 <b>' + esc(totalChars) + '</b> 字符，每批 ≤ '
+            + '可见情节 <b>' + esc(plan.total) + '</b> 条（其中**保留最近 ' + esc(reserveN) + ' 条**不总结 · 参与总结 ' + esc(poolTotal) + ' 条）'
+            + ' · 未总结 <b>' + esc(pending) + '</b> 条 → 共 <b>' + esc(plan.batches.length) + '</b> 批（合计约 <b>' + esc(totalChars) + '</b> 字符，每批 ≤ '
             + esc(plan.batchAtoms) + ' 条 / ≤ ' + esc(plan.batchChars || '不限') + ' 字符）；' + gate
             + '。<b>增量模式</b>下已被现有段落覆盖的批次不再重复提交；同一批**已提交过**（含上次失败）也不会重复提交。</div>';
     } catch (e) { return ''; }
