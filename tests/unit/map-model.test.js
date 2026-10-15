@@ -266,25 +266,34 @@ const MAPS_FULL = [
     normalizeMap({ kind: 'route', fromId: mapPlaceId('scene', 'sc-1', '', '码头'), toId: mapPlaceId('room', 'sc-1', mapPlaceId('scene', 'sc-1', '', '码头'), '货仓'), traversed: true, distance: { value: 3, unit: '里', raw: '三里路' }, evidence: { floor: 3 } }),
 ];
 
-A('F1 `mapInjectLines`：有数据才出行；含房间 / 陈设 / 路径与「走过」标记', (() => {
+/**
+ * v3.50.6（用户报告「场景地图是图，不是列表」，`docs/D27` §8 `应-45`）：注入子块改为**网状图**形态
+ *   —— ① 节点表（稳定编号 `N1…` + 层级 + 「属 Nx」）；② 连线表（`N1 →(度量) N2［走过 / 未走过（手填）］`）。
+ *   断言据此更新（旧口径是「房间 / 路径」两串平铺列表）。
+ */
+A('F1 `mapInjectLines`：有数据才出行；**网状图**形态（节点表 + 连线表 + 走过标记 + 陈设）', (() => {
     const st = bootInject(MAPS_FULL);
     const lines = mapInjectLines(st, 'sc-1');
     const text = lines.join('\n');
-    return lines.length >= 3 && text.indexOf('📍 地图') >= 0 && text.indexOf('房间：货仓') >= 0
-        && text.indexOf('路径') >= 0 && text.indexOf('剧情走过') >= 0 && text.indexOf('三里路') >= 0;
+    return lines.length >= 3 && text.indexOf('🗺 地图（网状图 · 节点 / 连线）') >= 0
+        && text.indexOf('节点：N1 ') >= 0 && text.indexOf('（属 N') >= 0
+        && text.indexOf('连线：') >= 0 && text.indexOf('→(') >= 0
+        && text.indexOf('剧情走过') >= 0 && text.indexOf('三里路') >= 0;   // 该夹具无陈设（陈设行由 F3 之外的夹具覆盖）
 })(), J(mapInjectLines(bootInject(MAPS_FULL), 'sc-1')));
 A('F2 无地图数据 → 零行（场景小节照旧输出，**不因地图缺失而变化**）', (() => {
     const st = bootInject([]);
     return mapInjectLines(st, 'sc-1').length === 0 && mapInjectStats(st, ['sc-1']).scenes === 0;
 })(), 'n/a');
-A('F3 「按层限量」只裁**本次注入**、不动数据（房间上限）', (() => {
+A('F3 「按层限量」只裁**本次注入**、不动数据（节点上限）', (() => {
     const many = [];
     for (let i = 0; i < MAP_INJECT_MAX_ROOMS + 3; i++) many.push(normalizeMap({ kind: 'place', level: 'room', name: 'R' + i, sceneRef: 'sc-1' }));
     const st = bootInject(many);
     const before = st.maps.length;
     const lines = mapInjectLines(st, 'sc-1');
-    return lines.filter((l) => l.indexOf('房间：') >= 0).length === MAP_INJECT_MAX_ROOMS
-        && lines.some((l) => l.indexOf('还有 3 个房间未展开') >= 0)
+    const nodeLine = lines.filter((l) => l.indexOf('节点：') >= 0)[0] || '';
+    // v3.50.6：节点表以「｜」分隔，上限 = MAP_INJECT_MAX_ROOMS + 1（含场景节点本身）
+    return nodeLine.split('｜').length === MAP_INJECT_MAX_ROOMS + 1
+        && lines.some((l) => l.indexOf('未展开') >= 0)
         && st.maps.length === before;                     // 数据未变
 })(), 'n/a');
 

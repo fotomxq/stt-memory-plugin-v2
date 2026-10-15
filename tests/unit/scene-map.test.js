@@ -97,9 +97,17 @@ A('B1 切到地图子页：场所列表（每个场所一行）+ 单元 / 路径
     const s = String(h1);
     return s.indexOf('地图：单元 3 / 路径 2') >= 0 && s.indexOf('📍 码头') >= 0 && s.indexOf('存储上限') >= 0;
 })(), 'n/a');
-A('B2 **不做坐标图**（N2）：没有画布 / 瓦片 / 寻路几何，只有分层节点与边；文案明确「不是坐标地图」', (() => {
+/**
+ * v3.50.6（用户报告「场景地图是图，不是列表」+ `docs/D27` §8 `应-45`）：**网状图 SVG 成为主视图**。
+ *   设计稿 N2 禁的是**坐标图**（瓦片 / 经纬 / 寻路几何），不是「不许画图」——本项据此更新：
+ *   仍然禁坐标类词汇，同时**要求**出现网状图（`<svg data-ftt-map-graph>` + 节点 / 边标记）。
+ */
+A('B2 **是网状图、不是坐标图**（N2）：无瓦片 / canvas / 寻路 / 经纬；有 `<svg data-ftt-map-graph>` + 节点 / 边标记 + 图例；文案明确「不是坐标地图」', (() => {
     const s = String(h1);
-    return ['瓦片', 'canvas', '<svg', '寻路', '经纬', 'lat', 'lng'].every((w) => s.indexOf(w) < 0)
+    return ['瓦片', 'canvas', '寻路', '经纬', 'lat', 'lng'].every((w) => s.indexOf(w) < 0)
+        && s.indexOf('<svg') >= 0 && s.indexOf('data-ftt-map-graph="1"') >= 0
+        && s.indexOf('data-ftt-map-node=') >= 0 && s.indexOf('data-ftt-map-edge=') >= 0
+        && s.indexOf('ftt-map-legend') >= 0
         && s.indexOf('分层关联网图') >= 0 && s.indexOf('不是坐标地图') >= 0;
 })(), 'n/a');
 

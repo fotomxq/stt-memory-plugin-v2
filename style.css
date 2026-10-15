@@ -825,3 +825,34 @@ body.ftt-no-effects #toast-container *::before {
 @media (prefers-reduced-motion: reduce) {
   #ftt-panel .ftt-swipe-body, #ftt-panel .ftt-swipe-ops { transition: none; }
 }
+
+/* ============================================================
+   v3.50.6（用户报告「场景地图是图，不是列表」+ `docs/D27` §8 `应-45`）：**网状图**（SVG）
+   —— 空间单元 = 节点，路径 = 有向边（实线 = 剧情走过 / 虚线 = 未走过手填），「属 Nx」= 细虚线；
+   节点可点（`data-ftt-map-node`，复用既有下钻 / 插入套话分发）；**不是坐标地图**（无瓦片 / 经纬 / 寻路）。
+   ============================================================ */
+#ftt-panel .ftt-map-svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  background: var(--ftt-bg-2, #1b1f26);
+  border: 1px solid var(--ftt-line, #2a3038);
+  border-radius: 8px;
+}
+#ftt-panel .ftt-map-svg-title { fill: var(--ftt-fg-2, #9aa4b2); font-size: 11px; }
+#ftt-panel .ftt-map-svg-link { stroke: var(--ftt-line, #2a3038); stroke-width: 1; }
+#ftt-panel .ftt-map-svg-edge { stroke-width: 2; }
+#ftt-panel .ftt-map-svg-edge.ftt-walked { stroke: var(--ftt-ok, #4caf7d); }
+#ftt-panel .ftt-map-svg-edge.ftt-inferred { stroke: var(--ftt-warn, #d8a13a); }
+#ftt-panel .ftt-map-svg-elabel { fill: var(--ftt-fg-2, #9aa4b2); font-size: 10px; text-anchor: middle; }
+#ftt-panel .ftt-map-svg-dangling { fill: var(--ftt-err, #d9534f); text-anchor: start; }
+#ftt-panel .ftt-map-svg-node rect { fill: var(--ftt-bg-3, #20242b); stroke: var(--ftt-line, #2a3038); }
+#ftt-panel .ftt-map-svg-node.ftt-lv-scene rect { stroke: var(--ftt-accent, #6aa9ff); }
+#ftt-panel .ftt-map-svg-node:hover rect { fill: var(--ftt-bg-4, #262c35); }
+#ftt-panel .ftt-map-svg-node { cursor: pointer; }
+#ftt-panel .ftt-map-svg-nlabel { fill: var(--ftt-fg, #e6e9ee); font-size: 12px; }
+#ftt-panel .ftt-map-svg-ntag { fill: var(--ftt-fg-3, #6b7480); font-size: 10px; }
+#ftt-panel .ftt-map-legend { margin: 4px 0 8px; font-size: 11px; color: var(--ftt-fg-2, #9aa4b2); }
+#ftt-panel .ftt-map-lg.ftt-walked { color: var(--ftt-ok, #4caf7d); }
+#ftt-panel .ftt-map-lg.ftt-inferred { color: var(--ftt-warn, #d8a13a); }
+

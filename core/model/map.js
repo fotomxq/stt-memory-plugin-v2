@@ -297,29 +297,53 @@ export function mapInjectLines(st, sceneId) {
         const places = mapPlaces(st, { sceneRef: sid });
         const ids = places.map((p) => String(p.id));
         const routes = mapRoutes(st, { placeIds: ids });
-        const roomLines = [];
-        tree.rooms.slice(0, MAP_INJECT_MAX_ROOMS).forEach((r) => {
-            const fs = (tree.fixturesOf[String(r.id)] || []).slice(0, MAP_INJECT_MAX_FIXTURES).map((f) => String(f.name || '')).filter(Boolean);
-            const desc = r.desc ? ('：' + String(r.desc)) : '';
-            roomLines.push('  - 房间：' + String(r.name || '') + desc + (fs.length ? ('（陈设：' + fs.join('、') + '）') : ''));
-        });
-        const moreRooms = Math.max(0, tree.rooms.length - MAP_INJECT_MAX_ROOMS);
+        /**
+         * v3.50.6（用户报告：「场景地图是图，不是列表，请修正该问题。这个图建议采用网状图为主。」）：
+         *   注入子块改为**网状图**形态 —— ① **节点表**（每个空间单元一个稳定编号 `N1…`，带层级与「属 Nx」）；
+         *   ② **连线表**（`N1 →(度量) N2［走过 / 未走过（手填）］`）。
+         *   为什么：旧形态是「房间 / 路径」两串**平铺列表**，AI 读到的是一维清单，看不出「谁与谁相连」；
+         *   网表形态把**拓扑**（节点 + 有向边）直接交给模型，与设计稿 `docs/D27` §1.1「分层关联网图」一致。
+         *   限额与从属注入口径**不变**（仍挂在 `[场景地点]` 小节下，仍受房间 / 路径 / 陈设上限约束）。
+         */
         const byId = {};
         places.forEach((p) => { byId[String(p.id)] = p; });
+        // 节点顺序：场景 → 房间（按剧情顺序）→ 陈设（保证「属 Nx」指向的节点已先编号）
+        const ordered = [];
+        if (tree.scene) ordered.push(tree.scene);
+        tree.rooms.forEach((r) => ordered.push(r));
+        places.filter((p) => p.level === 'fixture').forEach((f) => ordered.push(f));
+        const label = {};
+        ordered.forEach((p, i) => { label[String(p.id)] = 'N' + (i + 1); });
+        const shown = ordered.slice(0, MAP_INJECT_MAX_ROOMS + 1);          // 场景 + 前若干房间 / 陈设（沿用既有上限口径）
+        const nodeTxt = shown.map((p) => {
+            const nm = String(p.name || '') || '（未命名）';
+            if (p.level === 'scene') return label[String(p.id)] + ' ' + nm + '（场景）';
+            const pid = String(p.parentId || '');
+            const up = label[pid] ? ('属 ' + label[pid] + ' · ') : '';
+            const lv = p.level === 'fixture' ? '陈设' : '房间';
+            return label[String(p.id)] + ' ' + nm + '（' + up + lv + '）';
+        });
+        const moreNodes = Math.max(0, ordered.length - shown.length);
         const routeLines = routes.slice(0, MAP_INJECT_MAX_ROUTES).map((rt) => {
-            const nm = (id) => String((byId[String(id)] || {}).name || '（未知）');
+            const from = label[String(rt.fromId)] || String((byId[String(rt.fromId)] || {}).name || '（未知）');
+            const to = label[String(rt.toId)] || String((byId[String(rt.toId)] || {}).name || '（未知）');
             const m = mapRouteMeasureText(rt);
-            return '  - 路径：' + nm(rt.fromId) + ' → ' + nm(rt.toId)
-                + (m ? ('（' + m + '）') : '') + '［' + mapRouteStatusText(rt) + '］';
+            return from + ' →(' + (m || '正文未给距离 / 耗时') + ') ' + to + '［' + mapRouteStatusText(rt) + '］';
         });
         const moreRoutes = Math.max(0, routes.length - MAP_INJECT_MAX_ROUTES);
-        if (!roomLines.length && !routeLines.length) return [];
+        if (!nodeTxt.length && !routeLines.length) return [];
         const sceneName = String((((st.scenes || []) || []).filter((s) => s && String(s.id) === sid)[0] || {}).name || '');
-        const out = ['  📍 地图' + (sceneName ? ('（' + sceneName + '）') : '') + '：'];
-        roomLines.forEach((l) => out.push(l));
-        if (moreRooms) out.push('  - （还有 ' + moreRooms + ' 个房间未展开）');
-        routeLines.forEach((l) => out.push(l));
-        if (moreRoutes) out.push('  - （还有 ' + moreRoutes + ' 条路径未展开）');
+        const out = ['  🗺 地图（网状图 · 节点 / 连线）' + (sceneName ? ('·' + sceneName) : '') + '：'];
+        out.push('    节点：' + nodeTxt.join('｜'));
+        if (moreNodes) out.push('    （还有 ' + moreNodes + ' 个空间单元未展开）');
+        if (routeLines.length) out.push('    连线：' + routeLines.join('｜'));
+        if (moreRoutes) out.push('    （还有 ' + moreRoutes + ' 条路径未展开）');
+        // 陈设：网状图里它们是房间的附属点（不单独画边），仍按房间逐条列出
+        tree.rooms.slice(0, MAP_INJECT_MAX_ROOMS).forEach((r) => {
+            const fs = (tree.fixturesOf[String(r.id)] || []).slice(0, MAP_INJECT_MAX_FIXTURES).map((f) => String(f.name || '')).filter(Boolean);
+            if (!fs.length) return;
+            out.push('    陈设：' + (label[String(r.id)] || '') + ' ' + String(r.name || '') + '：' + fs.join('、'));
+        });
         return out;
     } catch (e) { return []; }
 }
