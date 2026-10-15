@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.0",
+  "version": "3.50.1",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.1",
+      "date": "2026-10-15",
+      "title": "W4 数-16 体检四项（归属缺失 / 失锚关联 / 空壳条目 / 墓碑比）+ 补上「三处出口」",
+      "points": [
+        "登记：docs/D20 §3.4/§8（规格已存在，本轮为落地）｜ docs/D22 §4.5 W4（数-16 ✅）｜ docs/D17 U103 ｜ 批次档 docs/hist…",
+        "四项都落在 hygiene（info）而：不抬 level：卫生面要「清」不是「修」，level: ok 这个「体检干净」的可用信号不被污染（与 数-10～数-15 同款裁量；单…"
+      ]
+    },
     {
       "version": "3.50.0",
       "date": "2026-10-15",

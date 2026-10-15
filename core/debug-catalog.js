@@ -374,6 +374,8 @@ const BRIDGE_FTT = Object.freeze([
     'ftt.clockTraceInfo', 'ftt.clockTraceSummary', 'ftt.fileTransport', 'ftt.localDir', 'ftt.diskProbe', 'ftt.diskFiles',
     'ftt.chatMeta', 'ftt.memoryShape', 'ftt.memorySample', 'ftt.ledger', 'ftt.chatReady', 'ftt.pendingScan',
     'ftt.pendingFloors', 'ftt.floorDiag', 'ftt.plotScope', 'ftt.chunkPlan', 'ftt.dataHealth', 'ftt.dataHealthText',
+    // v3.50.1（`docs/D22` W4 `数-16`）：**卫生面**单列一行（体检四项：归属缺失 / 失锚关联 / 空壳 / 墓碑比）
+    'ftt.dataHealthHygiene',
     'ftt.writeStats', 'ftt.loadDiag', 'ftt.reads', 'ftt.readLedgerText', 'ftt.conflicts', 'ftt.conflictLog',
     // v3.45.4（`技-40` / `技-41` ⑥）：性能卡顿只读四件套 + 只读清单 / 口径汇总（同样**只读**）
     'ftt.perf', 'ftt.perfJank', 'ftt.perfTargets', 'ftt.perfBaseline', 'ftt.readonly', 'ftt.catalog',
