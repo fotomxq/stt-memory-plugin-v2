@@ -6,6 +6,8 @@
 // ============================================================
 import { VERSION, INJECT_ID } from '../core/constants.js';
 import { pushMemoryInject } from './inject.js';
+// v3.50.0（W22 `技-51`）：拦截器自己就是「权威构建」→ 先把楼层事件排下的延迟刷新**作废**，避免重复构建
+import { cancelInjectRefresh } from './inject-schedule.js';
 import { readInject } from './inject.js';
 import { cfg as kernelCfg } from '../core/model/runtime.js';
 
@@ -49,6 +51,7 @@ export async function fttGenerateInterceptor(chat, contextSize, abort, type) {
         try {
             const wasOn = !(kernelCfg && kernelCfg.interceptorEnabled === false);
             if (wasOn && !(kernelCfg && kernelCfg.injectEnabled === false)) {
+                try { cancelInjectRefresh('interceptor'); } catch (e) { /* 忽略 */ }   // v3.50.0（W22 技-51）
                 state.lastPush = await pushMemoryInject({ queryText: '' });
             }
             state.injectedLength = readInject().length;
