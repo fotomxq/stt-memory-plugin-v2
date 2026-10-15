@@ -10,6 +10,8 @@ import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
 import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
 import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight, readInject } from './host/inject.js';
+// v3.50.0（W22 `技-51`）：楼层事件的注入刷新改**延迟去抖**（高频路径 ≈16ms/次；发送前那份由拦截器权威构建）
+import { scheduleInjectRefresh, flushInjectRefresh, cancelInjectRefresh, injectScheduleState } from './host/inject-schedule.js';
 import { getSettings, setSetting } from './adapters/settings.js';
 // v2.90.0（用户要求）：管线状态的历史耗时（预估倒计时样本）落 ST 扩展设置 —— 不进数据模型 → DATA_VERSION 不变
 import { setPipelineHooks } from './core/pipeline.js';
@@ -890,8 +892,9 @@ export async function init() {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环
         const onFloorChanged = () => {
             try { runtime.chat = wireKernelChatHooks(); } catch (e) { /* 忽略 */ }
-            // P3：楼层/状态变化后刷新注入（失败静默；构建为空时保留上一次注入）
-            void pushMemoryInject({ queryText: '' }).catch(() => { });
+            // P3 + v3.50.0（W22 `技-51`）：楼层事件 → **延迟去抖**刷新注入（1.5s，窗口内合并为一次构建）。
+            //   可延迟的理由：发送前那份由 `host/interceptor.js` 在生成时刻权威构建，这里只为保持新鲜。
+            try { scheduleInjectRefresh('floor-changed'); } catch (e) { /* 忽略 */ }
             // B8-2：消息后自动提取剧情时钟（1.8s 防抖；`cfg.clockExtractEnabled`）
             try { scheduleClockExtract(); } catch (e) { /* 忽略 */ }
         };
@@ -922,7 +925,16 @@ export async function init() {
                 } catch (e) { /* 忽略 */ }
             });
         };
+        // v3.50.0（W22 `技-51`）：生成开始 → 待做的延迟刷新：拦截器开着则**作废**（它自己会权威构建，避免重复构建），
+        //   拦截器关着则**立刻补做**（那时事件路径是唯一刷新源，绝不让发送用上过期注入）
+        const onGenStarted = () => {
+            try {
+                if (!(cfgRef && cfgRef.interceptorEnabled === false)) cancelInjectRefresh('generation-started');
+                else void flushInjectRefresh('generation-started');
+            } catch (e) { /* 忽略 */ }
+        };
         runtime.bind = bindCoreEvents({
+            GENERATION_STARTED: onGenStarted,
             GENERATION_ENDED: onGenEnded,
             USER_MESSAGE_RENDERED: onUserRendered,
             CHARACTER_MESSAGE_RENDERED: onFloorChanged,
@@ -1410,6 +1422,7 @@ function bootstrapDiagnostics() {
             clockExtractOnce: (opts) => clockAutoExtractOnce(opts || {}),
             clockExtractState: () => clockExtractState(),
             clockExtractSchedule: () => scheduleClockExtract(),
+            injectSchedule: () => injectScheduleState(),      // v3.50.0（W22 技-51）：注入刷新的延迟读数（读数/合并/补做/作废）
             clockHeader: (text) => extractClockFromHeader(text),
             clockExtractText: (text, prev) => extractClockFromText(text, prev || {}),
             // B8-3 时钟域 AI 管线

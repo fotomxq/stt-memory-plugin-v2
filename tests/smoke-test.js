@@ -15,6 +15,9 @@ import { panelState, panelBodyHtml, setPanelHooks2 } from '../ui/panel.js';
 // v3.49.0（W21 `技-49`）：管道完成 → 弱化NSFW 计数信号（CN1 断言用）
 import * as nsfwTickMod from '../ui/nsfw-count-tick.js';
 import * as pipeMod from '../core/pipeline.js';
+// v3.50.0（W22 `技-51`）：注入刷新的延迟去抖读数（G2 断言用）
+import * as injectSchedMod from '../host/inject-schedule.js';
+import { cfg as cfgRefSmoke } from '../core/model/runtime.js';
 import * as fttPanelMod from '../ui/panel.js';   // v2.38.0：按钮 type 加固 / 滚动保持断言用（避免与既有 panelMod 重名）   // v2.34.0：子标签点击/异常区断言用
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -153,7 +156,8 @@ host.emit('APP_READY');
 await new Promise(r => setTimeout(r, 30));
 const st = entry.runtimeState();
 assert('B2 APP_READY 再入装配（幂等）：ready/探测/事件绑定/命令/宏', (() => {
-    const want = ['USER_MESSAGE_RENDERED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
+    // v3.50.0（W22 技-51）：新增 GENERATION_STARTED —— 生成开始时处理「待做的延迟注入刷新」
+    const want = ['USER_MESSAGE_RENDERED', 'GENERATION_STARTED', 'GENERATION_ENDED', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED'];
     const got = (st.bind.bound || []).slice().sort().join(',');
     // 装配可能由「加载期探针」或「APP_READY」触发（多触发设计）；两者都算通过
     const viaOk = st.settingsVia === 'overlay' || st.settingsVia === 'template' || st.settingsVia === 'already';
@@ -422,12 +426,25 @@ assert('G1 内核配置已同步：默认 217(V1)+3(V2 界面键) 进入内核�
 
 host.emit('CHARACTER_MESSAGE_RENDERED');
 await new Promise((r) => setTimeout(r, 20));
-assert('G2 楼层事件刷新注入：写入 ST 注入通道（结构头 + 正文 + 结束标记）', (() => {
+// v3.50.0（W22 `技-51`）：楼层事件的注入刷新改为**延迟去抖** ——
+//   ① 事件到达只**排一次**（不立即构建整份注入体）；② 生成开始且拦截器关着时**立刻补做**，通道内容与旧口径逐字一致。
+await assert('G2 楼层事件的注入刷新：事件到达只**排一次延迟**（不立即构建）；生成开始（拦截器关着）时**立刻补做**并写入 ST 注入通道（结构头 + 正文 + 结束标记）', (async () => {
+    const T = injectSchedMod;
+    const st0 = T.injectScheduleState();
+    const scheduledOk = st0.pending === true && st0.scheduled === true;      // ① 已排、未执行
+    const runs0 = st0.stats.runs;
+    const saved = cfgRefSmoke ? cfgRefSmoke.interceptorEnabled : undefined;
+    try { if (cfgRefSmoke) cfgRefSmoke.interceptorEnabled = false; } catch (e) { /* 忽略 */ }
+    const did = await T.flushInjectRefresh('generation-started');             // ② 补做
+    await new Promise((r) => setTimeout(r, 20));
+    try { if (cfgRefSmoke) cfgRefSmoke.interceptorEnabled = saved; } catch (e) { /* 忽略 */ }
     const p = host.ctx.extensionPrompts[INJECT_ID];
     const val = p ? String(p.value) : '';
-    return val.indexOf('# FTT 记忆注入') === 0 && val.indexOf('记忆结束。') > 0
+    const st1 = T.injectScheduleState();
+    return scheduledOk && did === true && st1.stats.runs === runs0 + 1
+        && val.indexOf('# FTT 记忆注入') === 0 && val.indexOf('记忆结束。') > 0
         && val.indexOf('发现一只木箱') > 0 && p.position === 0 && p.depth === 0;
-})(), String((host.ctx.extensionPrompts[INJECT_ID] || {}).value || '').slice(0, 60));
+})(), 'n/a');
 
 let smokeAborted = 0;
 const smokeChat = [{ is_user: true, mes: '你好' }, { is_user: false, mes: '晚上好' }];

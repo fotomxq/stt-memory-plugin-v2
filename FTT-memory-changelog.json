@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.49.3",
-  "updatedAt": "2026-10-13",
-  "generatedAt": "2026-10-13",
+  "version": "3.50.0",
+  "updatedAt": "2026-10-15",
+  "generatedAt": "2026-10-15",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.0",
+      "date": "2026-10-15",
+      "title": "高频路径延迟触发器：楼层事件的注入刷新改延迟去抖（docs/D22 §4.24 W24 技-51）",
+      "points": [
+        "登记：设计稿 docs/D44（技-51，含全仓高频路径审计表）｜ docs/D22 §4.24（W24）｜ docs/D17 U242 ｜ 批次档 docs/history/P…",
+        "结论：全仓只有一个真正的「高频 × 重负载」组合 —— 第 2 项。：二、本版改造（第 2 项）",
+        "问题：index.js#onFloorChanged() 绑在 CHARACTER_MESSAGE_RENDERED / USER_MESSAGE_RENDERED / GENE…"
+      ]
+    },
     {
       "version": "3.49.3",
       "date": "2026-10-13",
@@ -51,7 +61,7 @@
       "date": "2026-10-14",
       "title": "总览「🌶 弱化NSFW」计数改事件触发 + 10 秒延迟去抖（docs/D22 §4.21 W21 技-50）",
       "points": [
-        "登记：设计稿 docs/D41（技-50）｜ docs/D22 §4.21（W21）｜ docs/D17 U238 ｜ 批次档 docs/history/P10c105-弱化NS…",
+        "登记：设计稿 docs/D43（技-50）｜ docs/D22 §4.21（W21）｜ docs/D17 U238 ｜ 批次档 docs/history/P10c105-弱化NS…",
         "未上调任何体量基线：；core/ 保持零宿主依赖（内核只多一个默认 no-op 钩子）。### 五、测试与反向探针| 文件 | 断言 | 覆盖 || --- | --- | --…",
         "反向探针（实跑留档）：延迟改成 0 → 变红；允许窗口内重排 → 变红；忘了排除 弱化NSFW → 变红；渲染层回到「每次必扫」→ 变红。### 六、门禁与回归* npm run…"
       ]
