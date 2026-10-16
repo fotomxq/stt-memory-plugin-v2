@@ -293,22 +293,48 @@ function mergeRuntimeSlots(cur, src) {
             });
             cur[k] = dst; note(k, n);
         });
-        // ② 台账：楼层标记 `{f,h}` 并集（键为楼层号）
-        ['processedFloors', 'processedDropped'].forEach((k) => {
-            const dst = Object.assign({}, asObj(cur[k]));
-            const hasArr = Array.isArray(dst.list);
-            let n = 0;
-            const sObj = asObj(s[k]);
-            Object.keys(sObj).forEach((f) => {
-                if (dst[f] === undefined) { dst[f] = sObj[f]; n++; }
+        // ② 台账：**规范形态是数组**（`[{f,h,at?,ck?}]`，见 `core/migrate.js#healthSelfHeal`）；
+        //   旧版备份可能给「楼层号 → `{f,h}`」的映射对象 → 这里两种形态都接受并归一到数组，按 `(楼层:哈希)` 去重。
+        (() => {
+            const toArr = (v) => {
+                const out = [];
+                //   数组形态（规范）
+                if (Array.isArray(v)) {
+                    v.forEach((x) => {
+                        const obj = !!x && typeof x === 'object' && !Array.isArray(x);
+                        const f = Number(obj ? x.f : x);
+                        if (!Number.isInteger(f) || f < 0) return;
+                        const o = { f: f, h: String(obj ? (x.h || '') : '') };
+                        if (obj && Number(x.at) > 0) o.at = Number(x.at);
+                        if (obj && String(x.ck || '').trim()) o.ck = String(x.ck).trim();
+                        out.push(o);
+                    });
+                    return out;
+                }
+                //   映射形态（旧版兼容：`{ '3': {f:3,h:'ab'} }`）
+                if (v && typeof v === 'object') {
+                    Object.keys(v).forEach((k) => {
+                        const e = v[k];
+                        const f = Number((e && e.f !== undefined) ? e.f : k);
+                        if (!Number.isInteger(f) || f < 0) return;
+                        out.push({ f: f, h: String((e && e.h) || '') });
+                    });
+                }
+                return out;
+            };
+            ['processedFloors', 'processedDropped'].forEach((k) => {
+                const merged = toArr(cur[k]).slice();
+                const seen = Object.create(null);
+                merged.forEach((m) => { seen[m.f + ':' + m.h] = 1; });
+                let n = 0;
+                toArr(s[k]).forEach((m) => {
+                    const key = m.f + ':' + m.h;
+                    if (seen[key]) return;
+                    seen[key] = 1; merged.push(m); n++;
+                });
+                cur[k] = merged; note(k, n);
             });
-            if (hasArr && Array.isArray(sObj.list)) {
-                const seen = {};
-                dst.list.forEach((f) => { seen[String(f)] = true; });
-                sObj.list.forEach((f) => { if (!seen[String(f)]) { seen[String(f)] = true; dst.list.push(f); n++; } });
-            }
-            cur[k] = dst; note(k, n);
-        });
+        })();
         // ③ 提交账本：按 `sig` 去重，保留末 10 条（与 `core/plot-segment.js` 同口径）
         (() => {
             const dst = Array.isArray(cur.plotSegmentLog) ? cur.plotSegmentLog.slice() : [];

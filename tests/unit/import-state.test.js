@@ -53,8 +53,9 @@ function richState() {
     });
     st.vars = { weather: '阴', mood: '紧' };
     st.stats = { plansClosed: 3, suspenseResolved: 2 };
-    st.processedFloors = { 1: { f: 1, h: 'h1' }, 2: { f: 2, h: 'h2' } };
-    st.processedDropped = { 9: { f: 9, h: 'h9' } };
+    // 台账的**规范形态是数组**（`[{f,h,at?,ck?}]`；`core/migrate.js#healthSelfHeal` 会把非数组清空）
+    st.processedFloors = [{ f: 1, h: 'h1' }, { f: 2, h: 'h2', at: 123 }];
+    st.processedDropped = [{ f: 9, h: 'h9' }];
     st.lastKnownFloor = 42;
     st.processedVer = 3;
     st.plotSegmentLog = [{ at: 1, sig: 'b1-abc', n: 30, ok: true }, { at: 2, sig: 'b2-def', n: 30, ok: true }];
@@ -85,7 +86,7 @@ A('A2（回归）**运行时槽往返**：`processedFloors` / `processedDropped`
     return importStateJson(text).then((r) => {
         const s = state;
         return r.ok === true
-            && J(s.processedFloors) === J(src.processedFloors)
+            && J(s.processedFloors) === J(src.processedFloors)   // 规范数组形态逐项还原（含 at）
             && J(s.processedDropped) === J(src.processedDropped)
             && J(s.vars) === J(src.vars)
             && J(s.stats) === J(src.stats)
@@ -95,6 +96,19 @@ A('A2（回归）**运行时槽往返**：`processedFloors` / `processedDropped`
             && String(s.protagonist) === '角色甲' && Number(s.storyDay) === 12;
     });
 })(), () => J({ floors: state.processedFloors, vars: state.vars, stats: state.stats, log: (state.plotSegmentLog || []).length }));
+
+/**
+ * 旧版备份兼容：台账在早期版本里是「楼层号 → {f,h}」的**映射对象** —— 导入时必须**归一成规范数组**并入，
+ *   而不是被 `migrateState` 当脏数据清空（那正是「导入后台账归零」的原始形态）。
+ */
+A('A2b **旧版映射形态台账**也能并入（归一为规范数组）', (async () => {
+    const text = J({ format: 'ftt-memory-v2-export', state: { atoms: [{ id: 'a1', title: 'T', text: 'x', date: '1919-11-29', validity: 'active', tags: [] }], processedFloors: { '3': { f: 3, h: 'hh' } } } });
+    attachKernelState(emptyState());
+    const r = await importStateJson(text);
+    const arr = state.processedFloors;
+    return r.ok === true && Array.isArray(arr) && arr.length === 1 && arr[0].f === 3 && arr[0].h === 'hh'
+        && Number(r.slots.processedFloors) === 1;
+})(), () => J(state.processedFloors));
 
 A('A3 逐容器回报：`dims`（各维度新增）/ `slots`（槽并入）/ `tombstones`（墓碑）都在返回体里（用户能看出到底进了什么）', (() => {
     const src = richState();
