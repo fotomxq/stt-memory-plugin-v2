@@ -300,7 +300,10 @@ await (async () => {
         A('I1 点「⬆ 导入 JSON（合并）」→ **弹出文件选择器**并读取文件 → 调 importState 合并 → note 报文件名与新增条数',
             !!inputEl && inputEl.type === 'file' && String(inputEl.accept || '').indexOf('.json') >= 0
             && seen === '{"state":{"atoms":[{"id":"z1"}]}}'
-            && String(st.note || '').indexOf('已导入文件 备份.json') >= 0 && String(st.note || '').indexOf('新增 1 条') >= 0,
+            // v3.50.7（用户报告「导出后的数据无法导入」）：提示改为**逐容器明细**（旧口径只有「新增 N 条」）
+        && String(st.note || '').indexOf('已导入文件 备份.json') >= 0
+        && String(st.note || '').indexOf('条目新增 1 条') >= 0
+        && String(st.note || '').indexOf('未删除本地记忆') >= 0,
             J({ seen, note: st.note, accept: inputEl && inputEl.accept }));
     } finally { env.restore(); globalThis.setTimeout = prevTimeout; }
 })();

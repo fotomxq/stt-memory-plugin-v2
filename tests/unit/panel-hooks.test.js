@@ -109,7 +109,10 @@ const B1 = await (async () => {
     setKernelState(emptyState());
     const imp3 = await panelAction('importStateApply', { text: '   ' });
     return hasButtons && exp.ok === true && Number(exp.chars) > 100 && shown && viaParam && viaDom
-        && imp3.ok === false && String(imp3.reason) === 'empty' && String((imp2.state || {}).note).indexOf('已导入并合并：新增 2 条') >= 0;
+        // v3.50.7（用户报告「导出后的数据无法导入」）：提示改为**逐容器明细**（旧口径是「已导入并合并：新增 N 条」）
+        && imp3.ok === false && String(imp3.reason) === 'empty'
+        && String((imp2.state || {}).note).indexOf('已导入：条目新增 2 条') >= 0
+        && String((imp2.state || {}).note).indexOf('相同的跳过 / 变更覆盖，未删除本地记忆') >= 0;
 })();
 A('B1 数据管理导出/导入（面板动作路径）：导出返回文本并渲染文本框；导入按参数与**文本域**两条路径都真实合并（新增 2 条）；空文本域如实拒绝', B1, null);
 

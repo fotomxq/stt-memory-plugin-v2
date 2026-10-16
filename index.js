@@ -85,6 +85,8 @@ import {
     aboutClearCache, aboutCandidateUrls, aboutFallback, ABOUT_JSON_PATHS, aboutInfo, aboutDirUrl,
 } from './ui/about.js';
 import { importV1Data, mergeV1IntoCurrent } from './adapters/import-v1.js';
+// v3.50.7（`应-46` / U253）：JSON 存档导入的解析容错与逐容器回报落新模块（体量棘轮 + C11）
+import { importStatePayload } from './adapters/import-state.js';
 import { autoExtractLatest, analyzeFloors, analyzeFloor, extractSummary, extractStats, summaryDimsForPrompt, runAutoSummary, abortExtract, batchProgress, clearFloors, extractBusy, runSummarySeparate, summaryDimGroups, separateGroupingEnabled, lastExtractRecord, lastPreflightInfo } from './host/extract.js';
 import { calibrateBasics } from './host/preflight.js';
 import { listUnprocessedFloors, scanPendingFloors, collectFloorLinesInRange, buildFeedFloorText, hashFloorText, fixFloorJump, kernelStateReady, markFloorsProcessed } from './host/floors.js';   // v3.5.0：+fixFloorJump（自动修复的楼层突变步骤）；v3.24.1：+kernelStateReady（初始化顺序守卫）；v3.26.4：+markFloorsProcessed（用户登记未分析楼层为已分析）
@@ -1162,21 +1164,19 @@ function exportStateMeta() {
  *   **按 id 合并（append-only）**，同 id 以当前为准，绝不删除现有数据（与 V1 导入器同一口径）。
  * @returns {Promise<{ok:boolean, added?:number, reason?:string}>}
  */
+/**
+ * 导入一份 JSON 存档（面板「📥 导入存档」/ 调试入口）：按 id 合并、append-only，绝不删除本地数据。
+ * v3.50.7（用户报告「导出后的数据无法导入」）：解析容错（BOM / 空白 / 信封校验）、逐容器回报、
+ *   落盘失败如实回报 —— 逻辑落在 `adapters/import-state.js`（本文件在体量棘轮册内，只留接线）。
+ * @returns {Promise<{ok:boolean, added?:number, reason?:string, saved?:boolean, saveError?:string, dims?:object, slots?:object}>}
+ */
 export async function importStateJson(text) {
-    try {
-        let obj = null;
-        try { obj = JSON.parse(String(text || '')); } catch (e) { return { ok: false, reason: 'JSON 解析失败' }; }
-        const incoming = (obj && obj.state) ? obj.state : obj;
-        if (!incoming || typeof incoming !== 'object') return { ok: false, reason: '不是有效的记忆数据' };
-        const before = DIMENSIONS.reduce((n, d) => n + ((kernelState && Array.isArray(kernelState[d.kind])) ? kernelState[d.kind].length : 0), 0);
-        const { merged } = mergeV1IntoCurrent(kernelState, incoming);
-        attachKernelState(merged);
-        await saveStateNow({ reason: 'import-json', force: true }); // v3.0.15：同上
-        const after = DIMENSIONS.reduce((n, d) => n + ((merged && Array.isArray(merged[d.kind])) ? merged[d.kind].length : 0), 0);
-        return { ok: true, added: Math.max(0, after - before) };
-    } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+    return importStatePayload(text, {
+        getState: () => kernelState,
+        attach: (next) => attachKernelState(next),
+        save: () => saveStateNow({ reason: 'import-json', force: true }),   // v3.0.15：导入后立即落盘
+    });
 }
-
 /** 面板只读状态快照（作用域 / 注入字数 / 提取统计 / 待分析 / 存储来源） */
 function panelStatusSnapshot() {
     let injectChars = 0, pending = null;
