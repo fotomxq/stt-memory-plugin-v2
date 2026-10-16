@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.6",
+  "version": "3.50.7",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.7",
+      "date": "2026-10-15",
+      "title": "修复「导出后的数据无法导入」",
+      "points": [
+        "版本位：缺陷修复 → 守则 §3.1 的 patch 位，无偏离登记（导入是 V2 自有功能，与 V1 黄金样本无关）。### ① 先复现（真实代码路径的往返探针）| 容器 | …",
+        "带 BOM 的 JSON 直接「JSON 解析失败」：（Windows 记事本另存为 UTF-8 会写 \\uFEFF）。### ② 修法| # | 面 | 落地 || --- |…",
+        "合并语义不变：append-only —— 同 id 以本机为准（不覆盖）、本机独有条目不删除。### ③ 测试（新增 tests/unit/import-state.test.…"
+      ]
+    },
     {
       "version": "3.50.6",
       "date": "2026-10-15",

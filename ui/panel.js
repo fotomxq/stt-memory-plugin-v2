@@ -13,6 +13,8 @@
 // ============================================================
 import { VERSION, DIMENSIONS } from '../core/constants.js';
 import { fileStamp } from '../core/util.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
+// v3.50.7（用户报告「导出后的数据无法导入」）：导入结果的**逐容器明细**文案与结果同源（体量棘轮：逻辑不落在本文件）
+import { importResultNote } from '../adapters/import-state.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
 import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
@@ -3384,7 +3386,7 @@ export async function panelAction(action, payload) {
             }
             const r = await hooks.importState(picked.text);
             setNote(r && r.ok
-                ? ('已导入文件 ' + (picked.name || '（未命名）') + ' 并合并：新增 ' + (r.added || 0) + ' 条（相同的跳过 / 变更覆盖，未删除本地记忆）')
+                ? ('已导入文件 ' + (picked.name || '（未命名）') + '：' + importResultNote(r))
                 : ('导入失败（' + String((r && r.reason) || '未知') + '）：' + (picked.name || '')));
             result = Object.assign(result, r || {}, { fileName: picked.name, fileSize: picked.size });
         }
@@ -3408,7 +3410,7 @@ export async function panelAction(action, payload) {
             if (!text.trim()) { setNote('导入失败：文本框是空的 —— 请先粘贴导出的 JSON 内容'); return done({ ok: false, reason: 'empty' }); }
             const r = await hooks.importState(text);
             setNote(r && r.ok
-                ? ('已导入并合并：新增 ' + (r.added || 0) + ' 条（相同的跳过 / 变更覆盖，未删除本地记忆）')
+                ? ('已导入：' + importResultNote(r))
                 : ('导入失败：' + String((r && r.reason) || '未知')));
             result = Object.assign(result, r || {});
         }

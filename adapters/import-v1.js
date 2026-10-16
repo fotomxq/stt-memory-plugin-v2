@@ -254,8 +254,112 @@ export function buildImportReport(v1State, currentState) {
 function safeScope() { try { return String(scopeId()); } catch (e) { return ''; } }
 
 /**
+ * v3.50.7（用户报告「导出后的数据无法导入」）：**运行时槽的合并**（`mergeV1IntoCurrent` 第二步）。
+ *
+ * 缺陷（`docs/D17` `U253`）：导入（`index.js#importStateJson` → 本函数）此前**只并维度容器 + 墓碑 + `state` 三键**，
+ *   于是「导出 → 导入到新设备 / 恢复备份」之后：**已处理楼层台账 `processedFloors` 归零**
+ *   （→ 旧楼层全部重新变成「待分析」，用户看到的就是「导入没生效」）、**`vars` 变量清空**、
+ *   **`stats` 计数归零**、`varTemplates` / `plotSegmentLog` 等一并丢失。
+ *
+ * 口径（**并集 / 取较大值**，与维度容器同精神：「并入、不删除本地」；**当前值优先**）：
+ *   · 台账与并集类：`processedFloors` / `processedDropped` / `plotSegmentLog`（账本按 `sig` 去重、保留末 10 条）
+ *     / `varTemplates`（数组并集）；
+ *   · 计数器类：`stats`（逐键取较大值）/ `lastKnownFloor` / `processedVer` / `updatedAt`（取较大值）；
+ *   · 对象类：`vars`（**当前优先**，文件补空键）；
+ *   · 单值类：`protagonist` / `sceneFocus` / `storyDay` / `clockSrc` / `clockManual`（**当前为空才采用文件值**）。
+ *   · **不并入**：会话 / 时钟运行时游标（`chatKey` / `lastChatFloor` / `present` / `repairCursor` / `snapFp` /
+ *     `rumorTick` / 各类 `*Log` 运行日志）—— 它们描述的是**本机本次会话**，跨端并入会互相打架。
+ *
+ * @param {object} cur 已合并维度容器后的状态（**就地修改**）
+ * @param {object} src 文件里的状态
+ * @returns {{slots:Object, keys:string[]}} `slots` = 每个槽并入的数量（供导入提示逐条如实报出）
+ */
+function mergeRuntimeSlots(cur, src) {
+    const out = { slots: {}, keys: [] };
+    try {
+        const s = (src && typeof src === 'object') ? src : {};
+        const note = (k, n) => { if (n) { out.slots[k] = n; out.keys.push(k); } };
+        const asObj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+        // ① 数组并集（按 id / 原值去重）
+        ['varTemplates'].forEach((k) => {
+            const dst = Array.isArray(cur[k]) ? cur[k] : [];
+            const have = {};
+            dst.forEach((e) => { try { have[typeof e === 'string' ? e : JSON.stringify(e)] = true; } catch (x) { } });
+            let n = 0;
+            (Array.isArray(s[k]) ? s[k] : []).forEach((e) => {
+                const key = (typeof e === 'string') ? e : (() => { try { return JSON.stringify(e); } catch (x) { return ''; } })();
+                if (!key || have[key]) return;
+                have[key] = true; dst.push(e); n++;
+            });
+            cur[k] = dst; note(k, n);
+        });
+        // ② 台账：楼层标记 `{f,h}` 并集（键为楼层号）
+        ['processedFloors', 'processedDropped'].forEach((k) => {
+            const dst = Object.assign({}, asObj(cur[k]));
+            const hasArr = Array.isArray(dst.list);
+            let n = 0;
+            const sObj = asObj(s[k]);
+            Object.keys(sObj).forEach((f) => {
+                if (dst[f] === undefined) { dst[f] = sObj[f]; n++; }
+            });
+            if (hasArr && Array.isArray(sObj.list)) {
+                const seen = {};
+                dst.list.forEach((f) => { seen[String(f)] = true; });
+                sObj.list.forEach((f) => { if (!seen[String(f)]) { seen[String(f)] = true; dst.list.push(f); n++; } });
+            }
+            cur[k] = dst; note(k, n);
+        });
+        // ③ 提交账本：按 `sig` 去重，保留末 10 条（与 `core/plot-segment.js` 同口径）
+        (() => {
+            const dst = Array.isArray(cur.plotSegmentLog) ? cur.plotSegmentLog.slice() : [];
+            const seen = {};
+            dst.forEach((e) => { const g = e && e.sig; if (g) seen[String(g)] = true; });
+            let n = 0;
+            (Array.isArray(s.plotSegmentLog) ? s.plotSegmentLog : []).forEach((e) => {
+                const g = e && e.sig;
+                if (g && seen[String(g)]) return;
+                if (g) seen[String(g)] = true;
+                dst.push(e); n++;
+            });
+            cur.plotSegmentLog = dst.slice(-10);
+            note('plotSegmentLog', n);
+        })();
+        // ④ 计数器：逐键取较大值
+        (() => {
+            const dst = Object.assign({}, asObj(cur.stats));
+            const sObj = asObj(s.stats);
+            let n = 0;
+            Object.keys(sObj).forEach((k) => {
+                const a = Number(dst[k]) || 0, b = Number(sObj[k]) || 0;
+                if (b > a) { dst[k] = b; n++; }
+            });
+            cur.stats = dst; note('stats', n);
+        })();
+        ['lastKnownFloor', 'processedVer', 'updatedAt'].forEach((k) => {
+            const a = Number(cur[k]) || 0, b = Number(s[k]) || 0;
+            if (b > a) { cur[k] = b; note(k, 1); }
+        });
+        // ⑤ 对象：当前优先，文件补空键
+        (() => {
+            const dst = Object.assign({}, asObj(cur.vars));
+            const sObj = asObj(s.vars);
+            let n = 0;
+            Object.keys(sObj).forEach((k) => { if (dst[k] === undefined) { dst[k] = sObj[k]; n++; } });
+            cur.vars = dst; note('vars', n);
+        })();
+        // ⑥ 单值：当前为空才采用文件值
+        ['protagonist', 'sceneFocus', 'storyDay', 'clockSrc', 'clockManual'].forEach((k) => {
+            const empty = (cur[k] === undefined || cur[k] === null || cur[k] === '' || (typeof cur[k] === 'number' && !cur[k]));
+            if (empty && s[k] !== undefined && s[k] !== null && s[k] !== '') { cur[k] = s[k]; note(k, 1); }
+        });
+    } catch (e) { /* 单个槽异常不影响整体导入 */ }
+    return out;
+}
+
+/**
  * 合并（append-only）：按 id 并集 —— 当前容器为基准，V1 独有条目追加，**同 id 以当前为准**（不覆盖用户现有数据）；
  * 墓碑（deleted / deletedH）取并集（V1 的删除记录同样生效，避免「导入把删掉的东西唤醒」）。
+ * v3.50.7：**并集范围补上运行时槽**（见 `mergeRuntimeSlots`）—— 否则导入备份后台账 / 变量 / 统计全部归零。
  * @returns {{merged:object, summary:object}}
  */
 export function mergeV1IntoCurrent(currentState, v1State) {
@@ -296,9 +400,12 @@ export function mergeV1IntoCurrent(currentState, v1State) {
     const stKeys = ['time', 'date', 'location'];
     cur.state = Object.assign({}, v1.state || {}, cur.state || {});
     stKeys.forEach((k) => { if (!cur.state[k] && v1.state && v1.state[k]) cur.state[k] = v1.state[k]; });
+    // v3.50.7（用户报告「导出后的数据无法导入」）：**运行时槽并入**（台账 / 变量 / 统计 / 提交账本…）
+    const runtime = mergeRuntimeSlots(cur, v1);
+    summary.slots = runtime.slots;
     // 作用域归位到 V2 当前作用域（数据搬进本机作用域，源文件保持不动）
     cur.scope = safeScope();
-    return { merged: cur, summary };
+    return { merged: cur, summary: summary };
 }
 
 // ---------------- 宿主编排 ----------------

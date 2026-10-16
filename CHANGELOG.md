@@ -3,6 +3,52 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.50.7（2026-10-15）· 修复「**导出后的数据无法导入**」
+
+**用户要求**（原话）：「导出后的数据无法导入，请修复。」
+**版本位**：缺陷修复 → 守则 §3.1 的 patch 位，**无偏离登记**（导入是 V2 自有功能，与 V1 黄金样本无关）。
+
+### ① 先复现（真实代码路径的往返探针）
+
+| 容器 | 导出侧 | 导入后 | 结论 |
+| --- | --- | --- | --- |
+| 15 个维度容器 | 有内容 | 逐条还原 | 正常 |
+| **`processedFloors`（已处理楼层台账）** | `{1:{…},2:{…}}` | **`{}` 归零** | ✗ **导入备份后旧楼层全部重新变成「待分析」** —— 用户看到的就是「导入没生效」 |
+| **`vars` / `stats`** | `{weather:'阴'}` / `{plansClosed:3}` | `{}` / 归零 | ✗ |
+| `processedDropped` / `lastKnownFloor` / `processedVer` / `varTemplates` / `plotSegmentLog` | 有值 | 丢失 | ✗ |
+
+另两处真实成因：**信封缺 `state` 时「静默假成功」**（旧实现把信封本身当状态合并 → `added:0` 却报 `ok:true`）、
+**带 BOM 的 JSON 直接「JSON 解析失败」**（Windows 记事本另存为 UTF-8 会写 `\uFEFF`）。
+
+### ② 修法
+
+| # | 面 | 落地 |
+| --- | --- | --- |
+| ① | 运行时槽并入 | 新增 `adapters/import-v1.js#mergeRuntimeSlots`：台账 `processedFloors` / `processedDropped`（**并集**）· 账本 `plotSegmentLog`（按 `sig` 去重、末 10 条）· `varTemplates`（并集）· `stats` / `lastKnownFloor` / `processedVer` / `updatedAt`（**取较大值**）· `vars`（当前优先、文件补空键）· `protagonist` / `sceneFocus` / `storyDay` / `clockSrc` / `clockManual`（当前为空才采用）。**不并入**会话 / 时钟游标与运行日志（理由成文） |
+| ② | 导入主流程 | 新增 `adapters/import-state.js#importStatePayload`（`index.js` 只留**一行接线**，体量棘轮）：解析前**去 BOM + 去首尾空白** · **信封校验**（带 `format` 无 `state` → 如实失败） · **逐容器回报** `dims`/`slots`/`tombstones` · **落盘失败不吞结果**（`ok:true` + `saved:false` + `saveError`） |
+| ③ | 提示文案 | `importResultNote`（同模块）：从「新增 N 条」改为**逐容器明细** —— 「条目新增 N 条（atoms 3 · memories 2）；台账 / 变量等并入 M 项；删除墓碑并入 K 条；相同的跳过 / 变更覆盖，未删除本地记忆」＋落盘失败另行告警 |
+
+**合并语义不变**：append-only —— 同 id 以本机为准（不覆盖）、本机独有条目不删除。
+
+### ③ 测试（新增 `tests/unit/import-state.test.js`，**11 项**）
+
+`A1` 维度往返 · `A2` **运行时槽往返（本轮回归护栏）** · `A3` 逐容器回报 · `A4` 明细提示 + 落盘失败告警 · `A5` append-only 语义不变；
+`B1` **BOM 容错** · `B2` 空白容错与空内容拒绝 · `B3` **信封缺 `state` 如实失败** · `B4` 非法 JSON 与裸状态 · `B5` 落盘失败不吞结果 · `B6` 反向探针（裸 `JSON.parse` 对 BOM 确实抛错）。
+既有档同步：`panel-hooks` B1 / `file-io` I1 的导入提示断言按新明细口径更新。
+
+`npm run gate` 全绿：单测 **235 文件 / 3514 断言** · 冒烟 **224**。
+
+### ④ 如实登记（未做 / 限制）
+
+1. **不并入会话 / 时钟游标**（`chatKey` / `lastChatFloor` / `present` 等）—— 跨端并入会与本机会话互相打架；
+2. **`stats` 取较大值**（单调计数器语义）：同机重复导入不会把计数刷小；
+3. **未做导入预览 / 干跑**（V1 数据导入有干跑，本 JSON 导入是一步合并）—— 如需要可另立条目；
+4. **真机未人工试用**：建议刷新后在「设置 → 数据管理 → 📥 导入存档」实测（选文件 + 粘贴各一次）。
+
+**本轮文档**：`CHANGELOG.md` 本条 · `docs/D17`（**U253**）· `docs/README` v3.06 + §3 · `docs/history/P10c116-修复导出后无法导入.md`。
+
+**数字口径**：单测 **235 文件 / 3514 断言** · 冒烟 **224** · 其余不变（内核配置键 249 · 控件 185 · UI 类名 252/223 · 模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）。
+
 ## v3.50.6（2026-10-15）· 场景地图改为**网状图**（不是列表）
 
 **用户要求**（原话）：「场景地图是图，不是列表，请修正该问题。这个图建议采用网状图为主。」
