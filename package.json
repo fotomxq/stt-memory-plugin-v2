@@ -1,6 +1,6 @@
 {
   "name": "ftt-memory-v2",
-  "version": "3.50.9",
+  "version": "3.50.10",
   "private": true,
   "type": "module",
   "description": "FTT记忆组件 V2 · SillyTavern 原生扩展（无构建、源码即发布物）",
@@ -29,7 +29,9 @@
     "debug:coverage": "node scripts/check-debug-coverage.js",
     "debug:coverage:strict": "node scripts/check-debug-coverage.js --strict",
     "perf:baseline": "node scripts/check-perf-baseline.js",
-    "perf:baseline:write": "node scripts/perf-baseline.js --write"
+    "perf:baseline:write": "node scripts/perf-baseline.js --write",
+    "static": "node scripts/check-static.js",
+    "static:full": "node scripts/check-static.js --syntax"
   },
   "license": "AGPL-3.0",
   "author": "fotomxq"

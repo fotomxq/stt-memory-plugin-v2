@@ -919,7 +919,8 @@ function buildMemoryBodyForInject(queryText, opts) {
         const pushCat = (head, md, rowsThunk) => {
             let rows = [];
             try { rows = rowsThunk() || []; } catch (e) {
-                try { warn('注入区块构建失败（已丢该区块，其余照常）', { head: head, err: String((e && e.message) || e) }); } catch (e2) { }
+                // 忽略：告警本身失败也无所谓（真正的错误已由 `rows = []` 把该区块丢干净，不能反过来影响注入）
+                try { warn('注入区块构建失败（已丢该区块，其余照常）', { head: head, err: String((e && e.message) || e) }); } catch (e2) { /* 忽略 */ }
                 rows = [];
             }
             cats.push({ head: head, md: md, rows: rows });   // ⚠️ 此处必须直接 push（写成 pushCat 会自递归）

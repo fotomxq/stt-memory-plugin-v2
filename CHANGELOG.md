@@ -3,6 +3,46 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.50.10（2026-10-15）· 开发待办两项：`技-52` 调度粘滞态 + `技-53` `static:full`
+
+**用户要求**（原话）：「选取部分待开发内容进行开发。」
+**选取的一组** = `docs/D22` §4.25 里 `docs/D45` §3 推荐顺序的**第 3、4 位**（= 本稿 §4 的 **S3 阶段**：两项互不依赖、单点可还原）。
+**版本位**：技术缺陷修正 → 守则 §3.1 patch 位，**无偏离登记**。
+
+### ① `技-52`：延迟触发器「拿不到定时器」时不再永久 pending
+
+| 文件 | 变化 |
+| --- | --- |
+| `host/inject-schedule.js` | `const h = setT(...)`；**`h` 为假值 → 回滚 `pending`** + `stats.noTimer += 1` + 返回 `{accepted:false, reason:'no-timer'}` |
+| `ui/nsfw-count-tick.js` | `schedule()` 内部同样回滚；**`signalNsfwCountRefresh` 按 `schedule()` 返回值如实回报 `no-timer`**（此前即使没排上也恒报 `scheduled`） |
+
+缺陷（`docs/D45` §2.4 F3 实测）：`setT` 在受限宿主 / 空实现下返回 `null` 而不抛错 → `pending` 永久 `true`：① 读数说谎（`pending:true` / `scheduled:false`）；② 之后所有信号被判 `coalesced` 吞掉。
+修法与先例 `core/clock-extract.js#scheduleClockExtract` 对齐；**降级语义不变**（拿不到定时器 = 本轮不刷新），只是不留粘滞态。
+
+### ② `技-53`：补上 `static:full`（并**真的跑通**）
+
+- `package.json` 补 `static`（默认模式）与 `static:full`（`--syntax`）；`docs/05` §1 速查 + 检查项表补说明；**`gate` 故意不引用它**（25s 兜底不进常规门禁）；
+- **首次真正跑通即暴露存量问题**：告警 220 > 基线 218 —— 其中 **2 处是我自己**在 v3.50.5（`pushCat` 内层 catch）/ v3.50.7（`import-v1` 判重 catch）引入的空 catch ← 这条兜底此前**从未被执行过**，所以一直没被发现；已就地写明忽略原因，并顺手清 3 处旧空 catch（`技-55` 的小口），基线**收紧 218 → 217**，现为 **绿**。
+
+### ③ 测试
+
+- **新增** `tests/unit/schedule-sticky.test.js`（**9 项**）：A1–A3 注入刷新（如实 `no-timer` / 连续 3 次**不粘滞** / 有定时器时行为不变）· B1–B3 弱化 NSFW 同口径 · C1–C3 `static:full` 存在、`gate` 不引用、反向探针；
+- 既有档 `inject-schedule.test.js` 的 **E2** 断言**变严**（旧断言默认承认 `pending` 可能停在 `true`）。
+
+`npm run gate` 全绿 · `npm run static:full` **绿**（0 错误 · 告警 217 = 基线 217）：单测 **236 文件 / 3530 断言** · 冒烟 **224**。
+
+### ④ 如实登记（未做 / 限制）
+
+1. **只做了这一组**：`技-54`（台账头部机械判据）/ `技-55`（空 catch 正式清收，本轮只 5 处）/ `技-56`（体量棘轮额度）仍待开发；
+2. **`static:full` 仍不在 `gate` 里**（设计如此）→ 它可能再次悄悄变红，只能靠「发版流程手动跑一次」约束；
+3. 空 catch 基线只减到 217；
+4. **真机未人工试用**：`技-52` 的收益只在「受限宿主 / 无 `setTimeout`」时显现，正常宿主行为不变。
+
+**本轮文档**：`CHANGELOG.md` 本条 · `docs/D45` 附录 **v1.2** · `docs/D22` §4.25（`技-52` / `技-53` → ✅ 已开发）· `docs/D17`（`U244` / `U245` 补证据）· `docs/README` v3.09 + §3 · `docs/history/P10c119-技52调度粘滞与技53静态兜底.md`。
+
+**数字口径**：单测 **236 文件 / 3530 断言** · 冒烟 **224** · 静态告警基线 **218 → 217** · 其余不变（内核配置键 249 · 控件 185 · UI 类名 266/237 · 模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）。
+
+
 ## v3.50.9（2026-10-15）· 场景地图**美化**（展示样式 + 网状图样式）
 
 **用户要求**（原话）：「完善场景地图，优化展示样式和图展示样式，提高美化效果。」

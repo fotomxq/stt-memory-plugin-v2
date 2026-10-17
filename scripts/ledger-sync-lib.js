@@ -68,6 +68,32 @@ export function collectSpecIds(text, minCells) {
 }
 
 /**
+ * 实施规格行的**详情**：编号 → 行号 + 该行引用的全部 `U<n>`。
+ *   v2.0（`docs/D22` 改为「只列未完成」）：清单不再保留已完成行，
+ *   故「已落地」这一侧必须由 `docs/D17` 证明 —— 证据入口就是实施规格行的「台账」列
+ *   （`开发守则.md` §2.8 **R2**：实施规格条目号 ↔ `D22` 条目 ↔ `D17` 的 `U<n>`）。
+ * @param {string} text 文档全文
+ * @param {number} [minCells=9]
+ * @returns {Map<string, {line:number, cells:number, u:Set<string>}>}
+ */
+export function collectSpecDetails(text, minCells) {
+    const min = Number(minCells) || 9;
+    const out = new Map();
+    const lines = String(text == null ? '' : text).split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const cells = cellsOf(lines[i]);
+        if (!cells || cells.length < min) continue;
+        const id = leadingId(cells[0]);
+        if (!id) continue;
+        if (out.has(id)) continue;
+        const u = new Set();
+        for (const c of cells) for (const x of collectURefs(c)) u.add(x);
+        out.set(id, { line: i + 1, cells: cells.length, u: u });
+    }
+    return out;
+}
+
+/**
  * 收集**清单**里的编号（任何表格行的首个单元格；清单用反引号包裹编号，但同样容忍装饰）。
  * @param {string} text
  * @returns {Map<string, {line:number}>}
@@ -131,4 +157,62 @@ export function missingURefs(refs, registered) {
     const r = (refs instanceof Set) ? refs : new Set(refs || []);
     const g = (registered instanceof Set) ? registered : new Set(registered || []);
     return Array.from(r).filter((u) => !g.has(u)).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+}
+
+/**
+ * `docs/D17` 里**已落地**的 `U` 编号。
+ *   口径：以 `| U<数字> |` 开头的**整块**为单位 —— 台账行允许跨行续写
+ *   （例：`U215` 的 `✅` 写在第二行），只按单行匹配会把这类行误判成「未落地」。
+ *   块内出现 `✅` 即视为已落地；块在「下一条 `| U<n> |` / 表格其它行 / 空行」处结束。
+ * @param {string} text `docs/D17-未落实事项台账.md` 全文
+ * @returns {Set<string>}
+ */
+export function collectSettledUs(text) {
+    const out = new Set();
+    const lines = String(text == null ? '' : text).split('\n');
+    let cur = null;
+    const flush = () => {
+        if (cur && cur.settled) out.add(cur.u);
+        cur = null;
+    };
+    for (const line of lines) {
+        const m = /^\|\s*(U\d+)\s*\|/.exec(line);
+        if (m) {
+            flush();
+            cur = { u: m[1], settled: line.indexOf('✅') >= 0 };
+            continue;
+        }
+        if (!cur) continue;
+        const s = line.trim();
+        if (!s || s.charAt(0) === '|') { flush(); continue; }   // 空行 / 表格其它行 = 块结束
+        if (line.indexOf('✅') >= 0) cur.settled = true;
+    }
+    flush();
+    return out;
+}
+
+/**
+ * **未被任何一侧承接**的实施规格编号 = 「设计稿有实施规格、清单缺行、台账也没说它做完了」。
+ *
+ *   两态判据（v2.0，随 `docs/D22` 改为「只列未完成」）：
+ *     ① 清单（`docs/D22`）里有这一行 → 待办，承接；
+ *     ② 否则，该行「台账」列引用的 `U<n>` 里**只要有一个**在 `docs/D17` 标已落地 → 已交付并移出清单，承接。
+ *   两条都不满足 → 真遗漏（设计稿改了却没立待办，或清单行被误删）。
+ * @param {Map<string, {u:Set<string>}>} specDetails `collectSpecDetails` 的结果
+ * @param {Map<string, *>} ledgerById `collectLedgerIds` 的结果
+ * @param {Set<string>} settledUs `collectSettledUs` 的结果
+ * @returns {string[]} 编号升序
+ */
+export function unaccountedSpecIds(specDetails, ledgerById, settledUs) {
+    const specs = (specDetails instanceof Map) ? specDetails : new Map();
+    const ledger = (ledgerById instanceof Map) ? ledgerById : new Map();
+    const settled = (settledUs instanceof Set) ? settledUs : new Set(settledUs || []);
+    const out = [];
+    for (const [id, meta] of specs) {
+        if (ledger.has(id)) continue;
+        const u = (meta && meta.u instanceof Set) ? meta.u : new Set();
+        const done = Array.from(u).some((x) => settled.has(x));
+        if (!done) out.push(id);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
 }

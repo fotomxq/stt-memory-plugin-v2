@@ -125,18 +125,24 @@ A('E1 推送抛错 → 静默并计入 `failed`（绝不影响聊天与生成）
     pushThrows = false;
     return st.stats.runs === 1 && st.stats.failed === 1;
 })(), 'n/a');
-A('E2 无 `setTimeout`（受限宿主）→ 安全返回 `error`，不抛错、不留悬挂状态', (() => {
+/**
+ * v3.50.10（`docs/D22` §4.25 `技-52`）：受限宿主（`setTimeout` 返回空句柄）下的口径**变严了** ——
+ *   旧断言只要求「不抛错」（`accepted:true || reason:'error'`），并默认承认「`pending` 可能停在 true」；
+ *   现在必须：① 如实回报 `no-timer`；② **状态回滚**（`pending/scheduled` 都为 false，不留粘滞态）。
+ */
+A('E2 无 `setTimeout`（受限宿主）→ 如实回报 `no-timer`、不抛错、**不留悬挂状态**（`pending` 回滚）', (() => {
     resetInjectSchedule();
     const prevSet = globalThis.setTimeout;
     setInjectScheduleHooks({ setTimeout: undefined });
     // 注入一个「返回空句柄」的定时器实现，模拟受限宿主
     setInjectScheduleHooks({ setTimeout: () => null });
     const r = scheduleInjectRefresh('floor-changed');
+    const st = injectScheduleState();
     setInjectScheduleHooks({ setTimeout: (fn, ms) => { setCalls += 1; const t = { fn, ms, id: ++seq, alive: true }; timers.push(t); return t.id; } });
     void prevSet;
-    // `pending` 可能停在 true（句柄为空）→ 用 reset 收干净，确保后续用例不受影响
     resetInjectSchedule();
-    return r.accepted === true || r.reason === 'error';
+    return r.accepted === false && String(r.reason) === 'no-timer'
+        && st.pending === false && st.scheduled === false;
 })(), 'n/a');
 A('E3 原因环形留痕有上限（内存恒定，不随会话增长）', (() => {
     resetInjectSchedule();
