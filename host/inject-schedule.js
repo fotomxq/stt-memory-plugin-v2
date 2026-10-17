@@ -34,7 +34,8 @@ let timer = null;
 /** 窗口内是否已有待执行的刷新 */
 let pending = false;
 /** 读数（诊断 / 测试） */
-let stats = { signals: 0, coalesced: 0, runs: 0, flushed: 0, cancelled: 0, failed: 0, lastReason: '', lastAt: 0, lastMs: 0 };
+// v3.50.10（`技-52`）：+ `noTimer`（拿不到定时器 → 本轮静默跳过；读数里如实可见，不再靠 `pending` 假装在排）
+let stats = { signals: 0, coalesced: 0, runs: 0, flushed: 0, cancelled: 0, failed: 0, noTimer: 0, lastReason: '', lastAt: 0, lastMs: 0 };
 /** 最近若干次触发原因（环形，便于事后核对「是谁刷的」） */
 let reasons = [];
 
@@ -107,11 +108,24 @@ export function scheduleInjectRefresh(reason) {
         if (pending || timer) { stats.coalesced += 1; return { accepted: false, reason: 'coalesced' }; }
         pending = true;
         noteReason(r);
-        timer = setT(() => {
+        /**
+         * v3.50.10（`docs/D22` §4.25 `技-52` / `docs/D45` §2.4 F3）：**拿不到定时器时回滚 `pending`**。
+         *   缺陷：`setT` 在受限宿主（或测试注入的空实现）里**返回 `null` 而不抛错** → 旧写法把 `pending` 永久置 `true`：
+         *   ① 读数说谎（`pending:true` / `scheduled:false` 自相矛盾）；② 之后所有信号都被判 `coalesced` 吞掉，再也排不出刷新。
+         *   口径与先例 `core/clock-extract.js#scheduleClockExtract` 对齐：**句柄为假值 → 本轮静默跳过、状态回滚**
+         *   （「拿不到定时器 = 本轮不刷新」的降级语义不变，只是不再留下粘滞态）。
+         */
+        const h = setT(() => {
             timer = null;
             pending = false;
             void runRefresh(r);
         }, INJECT_REFRESH_DELAY_MS);
+        if (!h) {
+            pending = false;
+            stats.noTimer = (Number(stats.noTimer) || 0) + 1;
+            return { accepted: false, reason: 'no-timer' };
+        }
+        timer = h;
         return { accepted: true, reason: 'scheduled' };
     } catch (e) {
         clearPending();

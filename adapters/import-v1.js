@@ -284,7 +284,8 @@ function mergeRuntimeSlots(cur, src) {
         ['varTemplates'].forEach((k) => {
             const dst = Array.isArray(cur[k]) ? cur[k] : [];
             const have = {};
-            dst.forEach((e) => { try { have[typeof e === 'string' ? e : JSON.stringify(e)] = true; } catch (x) { } });
+            // 忽略：循环引用等无法序列化的元素 → 视为「无法判重」，不阻塞并入（后面同一元素也会被 JSON 序列化失败跳过）
+            dst.forEach((e) => { try { have[typeof e === 'string' ? e : JSON.stringify(e)] = true; } catch (x) { /* 忽略 */ } });
             let n = 0;
             (Array.isArray(s[k]) ? s[k] : []).forEach((e) => {
                 const key = (typeof e === 'string') ? e : (() => { try { return JSON.stringify(e); } catch (x) { return ''; } })();

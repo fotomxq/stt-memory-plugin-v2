@@ -37,7 +37,7 @@ let pending = false;
 /** 缓存：`{candidates, labels, at}`；`null` = 还没有算过 */
 let cache = null;
 /** 读数（诊断 / 测试） */
-let stats = { runs: 0, signals: 0, dropped: 0, excluded: 0, skipped: 0, inline: 0 };
+let stats = { runs: 0, signals: 0, dropped: 0, excluded: 0, skipped: 0, inline: 0, noTimer: 0 };
 
 /** 读数（只读快照） */
 export function nsfwCountTickState() {
@@ -129,10 +129,18 @@ export function updateNsfwCountDom(docOverride) {
 }
 
 /** 排一次延迟检查（**只排一次**：窗口内重复调用直接忽略 —— 用户要求「自动忽略多余信号」） */
+/**
+ * v3.50.10（`docs/D22` §4.25 `技-52` / `docs/D45` §2.4 F3）：**拿不到定时器时回滚 `pending`**。
+ *   缺陷：`setT` 在受限宿主 / 测试注入的空实现里返回 `null` 而不抛错 → 旧写法 `pending` 永久为 `true`：
+ *   ① `nsfwCountTickState()` 读数**说谎**（`pending:true` / `scheduled:false`）；
+ *   ② 之后所有信号都被判 `coalesced` 吞掉，再也排不出一次刷新。
+ *   口径与先例 `core/clock-extract.js#scheduleClockExtract` 对齐：句柄为假值 → 本轮静默跳过 + 状态回滚，
+ *   **降级语义不变**（拿不到定时器 = 本轮不刷新），只是不再留粘滞态。
+ */
 function schedule() {
     if (pending || timer) return false;
     pending = true;
-    timer = setT(() => {
+    const h = setT(() => {
         timer = null;
         pending = false;
         try {
@@ -141,6 +149,8 @@ function schedule() {
             refreshNsfwCount();
         } catch (e) { /* 检查失败不影响任何东西；下一轮再来 */ }
     }, NSFW_COUNT_DELAY_MS);
+    if (!h) { pending = false; stats.noTimer = (Number(stats.noTimer) || 0) + 1; return false; }
+    timer = h;
     return true;
 }
 
@@ -156,7 +166,8 @@ export function signalNsfwCountRefresh(label) {
         if (NSFW_COUNT_SKIP_LABELS.indexOf(lb) >= 0) { stats.excluded += 1; return { accepted: false, reason: 'excluded' }; }
         stats.signals += 1;
         if (pending || timer) { stats.dropped += 1; return { accepted: false, reason: 'coalesced' }; }
-        schedule();
+        // v3.50.10（`技-52`）：`schedule()` 拿不到定时器会返回 false → **如实回报 `no-timer`**（此前恒报 `scheduled`，读数说谎）
+        if (!schedule()) return { accepted: false, reason: 'no-timer' };
         return { accepted: true, reason: 'scheduled' };
     } catch (e) { return { accepted: false, reason: 'error' }; }
 }

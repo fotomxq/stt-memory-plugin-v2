@@ -70,7 +70,8 @@ const COMPACT_GROUPS_PER_CALL = 25;
  *  结构深度字段（如 `pathArr` / `steps` / `history` / `clues`）不逐层累加（粗估即可）。 */
 function atomBodyChars() {
     let n = 0;
-    const add = (v) => { try { const t = String(v || ''); if (t) n += t.length; } catch (e) { } };
+    // 忽略：个别字段字符串化失败（如循环引用）时按「没有正文」计 —— 只影响体量估算，不影响任何落库
+    const add = (v) => { try { const t = String(v || ''); if (t) n += t.length; } catch (e) { /* 忽略 */ } };
     for (const a of (state.atoms || [])) { add(a.title); add(a.text); }
     for (const s of (state.currentStates || [])) { add(s.subject); add(s.field); add(s.value); }
     for (const m of (state.memories || [])) { add(m.title); add(m.content); }
@@ -310,7 +311,8 @@ async function runAtomCompact(opts) {
             }
             if (summarizedTotal > 0) {
                 const after = activeAtoms().length;
-                try { dbgLog('发送记忆', { action: '情节总结（半自动）', before: plan.before, after, target: plan.target, summarized: summarizedTotal, hidden: hiddenTotal, stored: (state.atoms || []).length, grains: grainsUsed, chars: atomBodyChars() }); } catch (e) { }
+                // 忽略：调试日志写失败不影响总结结果（已经落库）
+                try { dbgLog('发送记忆', { action: '情节总结（半自动）', before: plan.before, after, target: plan.target, summarized: summarizedTotal, hidden: hiddenTotal, stored: (state.atoms || []).length, grains: grainsUsed, chars: atomBodyChars() }); } catch (e) { /* 忽略 */ }
                 toast(`🧷 情节总结（半自动）完成：聚合 ${summarizedTotal} 条总结 · 覆盖 ${hiddenTotal} 条原情节（参与运作 ${plan.before} → ${after}，目标 ≤ ${plan.target} · ${grainsUsed.join('→')} 粒度；原文保留并隐藏，可点 🧩 穿透查看）`, 'success');
                 return { ok: true, summarized: summarizedTotal, hidden: hiddenTotal, before: plan.before, after, target: plan.target, grains: grainsUsed };
             }
@@ -505,7 +507,8 @@ async function runAtomMergeSummary(ids, opts) {
             }
             saveState();
             notify('success', '情节总结完成（手动）', `新增 1 条情节总结「${r.label}」· 覆盖 ${r.merged} 条原情节（原文保留并隐藏，不参与注入与淘汰；可在总结上点 🧩 穿透查看）`);
-            try { dbgLog('摘要', { action: '情节合并总结（v1.203）', picked: picked.length, merged: r.merged, skipped: r.skipped, label: r.label, summaryId: r.summaryId, ms: Date.now() - t0 }); } catch (e) { }
+            // 忽略：同上（日志失败不影响合并结果）
+        try { dbgLog('摘要', { action: '情节合并总结（v1.203）', picked: picked.length, merged: r.merged, skipped: r.skipped, label: r.label, summaryId: r.summaryId, ms: Date.now() - t0 }); } catch (e) { /* 忽略 */ }
             return { made: 1, added: 1, merged: r.merged, hidden: r.hidden, skipped: r.skipped, summaryId: r.summaryId, label: r.label, total: usable.length };
         } catch (e) {
             warn('情节合并总结失败', e);
