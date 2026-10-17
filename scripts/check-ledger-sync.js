@@ -24,6 +24,9 @@ import {
     collectSettledUs, missingURefs, unaccountedSpecIds,
 } from './ledger-sync-lib.js';
 
+// v3.50.11（`docs/D22` §4.25 `技-54` / `docs/D45` §2.6 F5）：**台账头部机械判据**（区间 / 条数 / 事实基准）
+import { checkLedgerHeaders } from './ledger-header-lib.js';
+import { VERSION as PROGRAM_VERSION } from '../core/constants.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS = join(ROOT, 'docs');
 const LEDGER_FILE = 'D22-开发待办清单.md';
@@ -59,6 +62,14 @@ const missingU = missingURefs(collectURefs(ledgerText), collectRegisteredUs(trut
 const settledUs = collectSettledUs(truthText);
 const unaccounted = unaccountedSpecIds(specDetails, ledgerById, settledUs);
 
+// v3.50.11（`技-54`）：头部声明 vs 实测（区间 / 条数 / 事实基准）——措辞不匹配的项自动跳过（宁少不误报）
+const registeredUs = collectRegisteredUs(truthText);
+const actualUMax = Math.max(0, ...Array.from(registeredUs.keys()).map((x) => Number(String(x).replace('U', ''))).filter((n) => Number.isFinite(n)));
+const headerReport = checkLedgerHeaders({
+    truthText: truthText, ledgerText: ledgerText,
+    actualUMax: actualUMax, actualUCount: registeredUs.size, programVersion: PROGRAM_VERSION,
+});
+
 const dupIds = Array.from(specById.entries()).filter(([, m]) => m.dup).map(([id, m]) => id + '（' + m.from + ' / ' + m.dup + '）');
 
 const problems = [];
@@ -68,6 +79,10 @@ for (const id of unaccounted) {
 for (const x of onlyLedger) problems.push('清单有行、实施规格里没有定义：`' + x.id + '`');
 for (const u of missingU) problems.push('清单引用了未登记的台账条目：`' + u + '`（' + TRUTH_FILE + ' 里没有这一行）');
 for (const d of dupIds) problems.push('同一编号在两份设计稿里都有实施规格：' + d);
+// v3.50.11（`技-54`）：头部声明与实测不一致
+headerReport.checks.filter((x) => !x.ok).forEach((x) => {
+    problems.push('台账头部口径漂移：' + x.name + ' 声明 `' + x.declared + '`，实测 `' + x.actual + '`');
+});
 
 if (!QUIET) {
     console.log('台账一致性检查（C12）：设计稿 ' + designFiles.length + ' 份 · 实施规格编号 ' + specById.size
@@ -81,5 +96,5 @@ if (problems.length) {
         + ' 标已落地；清单行必须来自某份设计稿的实施规格，见 `docs/D17` §0）');
     process.exit(1);
 }
-if (!QUIET) console.log('✅ 台账一致性通过（实施规格 ↔ 清单 / 台账已落地 双向承接 · U 编号全部已登记）');
+if (!QUIET) console.log('✅ 台账一致性通过（实施规格 ↔ 清单 / 台账已落地 双向承接 · U 编号全部已登记 · 头部口径 ' + headerReport.checks.filter((x) => !x.skipped).length + ' 项已核）');
 process.exit(0);
