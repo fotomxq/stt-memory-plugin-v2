@@ -13,6 +13,8 @@
 // ============================================================
 import { cfg, state } from '../core/model/runtime.js';
 import { plotSegmentPlan, plotSegmentBusy } from '../core/plot-segment.js';
+// v3.50.12（`数-9`）：条数上限的唯一事实源（与 `core/ingest.js#applyStateBounds` 共用）
+import { PLOT_SEGMENT_MAX } from '../core/plot-segment-merge.js';
 import { sortPlotSegments } from '../core/model/segment.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -125,5 +127,8 @@ export function plotSegmentBodyListHtml() {
             + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="编辑该段（时间范围与剧情线）">✏️ 编辑</button>'
             + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="plotSegments" data-id="' + attr(String(s.id || '')) + '" title="删除该段（唯一的手动删除入口）">🗑 删除</button></div></div>';
     }).join('\n');
-    return body + '\n<div class="ftt-muted ftt-w-full">共 ' + segs.length + ' 段 · 该内容不注入、不参与遗忘，可随时编辑或删除。</div>';
+    const mergedN = segs.filter((x) => x && x.merged === true).length;
+    return body + '\n<div class="ftt-muted ftt-w-full">共 ' + segs.length + ' 段（上限 ' + PLOT_SEGMENT_MAX + '；超出时按<b>剧情时间</b>把最早的相邻两段<b>合并</b>，<b>不删除</b>归档）'
+        + (mergedN ? (' · 其中 <b>' + mergedN + '</b> 段是合并过的') : '')
+        + ' · 该内容不注入、不参与遗忘，可随时编辑或删除。</div>';
 }

@@ -25,6 +25,8 @@ import { clamp, normText, normalizeList } from './util.js';
 // v3.41.0（`docs/D22` `业-6` / `docs/D18` §4.1 P5）：时间衰退函数收敛为**单一实现**（叶子模块），
 //   本模块**再导出** `calcTimeDecay` —— `core/ingest.js#calcTimeDecay` 的既有引用形态与各调用方 import 均不变。
 import { calcTimeDecay } from './decay.js';
+// v3.50.12（`docs/D22` §4.5 W4 `数-9` / `docs/D20` §8）：分段总结**上限 + 按剧情时间合并**（`applyStateBounds` 内调）
+import { mergePlotSegmentsToCap, trimLegacySummaries, PLOT_SEGMENT_MAX, LEGACY_SUMMARY_MAX } from './plot-segment-merge.js';
 // v3.44.0（`docs/D22` **W4**）：`数-13` 空壳入库拦截 / `数-14` 保留字段上界
 import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
 import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
@@ -1752,7 +1754,20 @@ function applyStateBounds() {
             kept.push.apply(kept, list);
         }
         state.currentStates = kept.concat(inact);
-        return { cut };
+        /**
+         * v3.50.12（`docs/D22` §4.5 W4 `数-9`；`docs/D20` §8 验收「构造超量数据 → 触发合并且条数回落」）：
+         *   **分段总结**超上限 → 按剧情时间把**最早的相邻两段合并**（不删归档、atomIds 并集）；
+         *   **遗留摘要容器**（`summaries`，已被 plotSegments 取代、无写入点）→ 只裁不并。
+         *   两者都在这里做：它是「写入 / 合并后」的统一收口（函数注释已说明调用时机）。
+         */
+        let segReport = null;
+        try {
+            const ps = mergePlotSegmentsToCap(state.plotSegments, PLOT_SEGMENT_MAX);
+            if (ps.changed) { state.plotSegments = ps.list; segReport = ps; }
+            const su = trimLegacySummaries(state.summaries, LEGACY_SUMMARY_MAX);
+            if (su.changed) { state.summaries = su.list; if (segReport) segReport.summaries = su; }
+        } catch (e) { /* 忽略：收口失败不影响其它裁剪 */ }
+        return segReport ? { cut: cut, plotSegments: segReport } : { cut: cut };
     } catch (e) { return { cut: -1 }; }
 }
 // ==================== v1.142 物品修复重设计（标签/名称相关性聚类 → 打包交 AI 融合 + 低调用固定规则清理） ====================
