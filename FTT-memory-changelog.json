@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.11",
+  "version": "3.50.12",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.12",
+      "date": "2026-10-15",
+      "title": "W4 待开发：数-9 分段总结上限 + 按剧情时间合并",
+      "points": [
+        "选取：= docs/D22 §4.5 W4（数据维度主体，docs/D20）里裁决已定、可自足落地的一项：数-9（Q2 裁决「设上限 + 合并 + 裁剪可见」）。",
+        "版本位：新增上限 / 合并（行为增强但不删数据、无契约破坏）→ 守则 §3.1 patch 位，无偏离登记。### ① 缺陷（docs/D20 §8 数-9）state.plot…",
+        "「不删除」的口径：合并只做并集 —— 原 atomIds 一个不少、原始段 id 全在 mergedFrom 里；剧情线超量时截断并记 truncated / droppedLi…"
+      ]
+    },
     {
       "version": "3.50.11",
       "date": "2026-10-15",

@@ -958,13 +958,15 @@ const SETTINGS_CONTROLS_DEDUPED = true;
 //   B9-c 起：**投喂页**追加 V1 的「投喂标签自动分析」节与投喂白/黑名单两节
 //   （`ui/feed-scan.js`，对应 V1 `rxTagScanHtml()` 与 `rxScanTags`/`rxAddTag`/`rxScanClear` 三个动作）。
 // ============================================================
-import { cfg } from '../core/model/runtime.js';
+import { cfg, state } from '../core/model/runtime.js';
 import { clamp } from '../core/util.js';
 import { CN_KEY_MAP, defaultCfg } from '../core/config.js';
 import { saveKernelCfg } from '../adapters/config-store.js';
 import { worldbookNames } from '../host/worldbook.js';
 import { promptsPageHtml, promptAction } from './prompts.js';
 import { snapshotSectionHtml } from './snapshots.js';
+// v3.50.12（`数-9`）：分段总结 / 遗留摘要的条数上限（与 `core/ingest.js#applyStateBounds` 同一事实源）
+import { PLOT_SEGMENT_MAX, LEGACY_SUMMARY_MAX } from '../core/plot-segment-merge.js';
 import { hintDetailsHtml, paramListHtml, shortHintHtml } from './hints.js';
 import { extractPageHtml } from './extract-page.js';
 import { storagePageHtml } from './sync.js';
@@ -1689,6 +1691,24 @@ const DANGER_ZONE_BANNER = '<div class="ftt-item ftt-item--warn ftt-inline" data
     + '<span class="ftt-muted" style="flex:1 1 auto;min-width:0">以下两块都会写入不可逆的改动：'
     + '删聊天楼层会自动生成明文备份（可用导出的 JSON 还原）；删除插件数据则无法恢复 —— 建议先「📤 导出备份」。</span></div>';
 
+/**
+ * v3.50.12（`数-9`）：**分段总结 / 遗留摘要的条数上限**如实展示（含「超出时合并而不是删除」的口径）。
+ *   数据源：`state.plotSegments` / `state.summaries` 的实时条数 + `core/plot-segment-merge.js` 的上限常量。
+ */
+function dataSegmentCapHtml() {
+    let segs = 0, sums = 0, merged = 0;
+    try { segs = Array.isArray(state.plotSegments) ? state.plotSegments.length : 0; } catch (e) { segs = 0; }
+    try { sums = Array.isArray(state.summaries) ? state.summaries.length : 0; } catch (e) { sums = 0; }
+    try { merged = (Array.isArray(state.plotSegments) ? state.plotSegments : []).filter((x) => x && x.merged === true).length; } catch (e) { merged = 0; }
+    const over = segs > PLOT_SEGMENT_MAX;
+    return '<div class="ftt-section"><div class="ftt-sec-title">🗂 分段总结上限</div>'
+        + '<div class="ftt-hint">分段总结 <b>' + segs + '</b> / ' + PLOT_SEGMENT_MAX + ' 段'
+        + (merged ? ('（其中 <b>' + merged + '</b> 段是合并过的）') : '') + ' · 遗留摘要 <b>' + sums + '</b> / ' + LEGACY_SUMMARY_MAX + ' 条。'
+        + '超上限时按<b>剧情时间</b>把最早的相邻两段<b>合并</b>（保留归档与全部条目 id，<b>不删除</b>）；遗留摘要只裁不并。</div>'
+        + (over ? '<div class="ftt-hint ftt-note--err">当前已超上限：下次写入收口时自动合并到 ' + PLOT_SEGMENT_MAX + ' 段。</div>' : '')
+        + '</div>';
+}
+
 function pageExtraHtml(pid) {
     if (pid === 'data') {
         return [
@@ -1704,6 +1724,11 @@ function pageExtraHtml(pid) {
             + '<textarea data-ftt-import="1" rows="4" placeholder="{ ... }"></textarea></div>',
             '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="importStateApply" title="导入上方文本框中的 JSON（合并规则同上）">⬆ 导入粘贴内容</button></div>',
             '</div>',
+            /**
+             * v3.50.12（`docs/D22` §4.5 W4 `数-9`；`docs/D20` §8 验收「裁剪结果在数据管理页用户可见」）：
+             *   **分段总结 / 遗留摘要的条数上限与合并口径**在这里如实可见 —— 用户不必去猜「归档会不会无限长」。
+             */
+            (() => { try { return dataSegmentCapHtml(); } catch (e) { return ''; } })(),
             // ③ 快照链（只统计 + 动作，明细折叠在「高级」里）—— 安全（自动备份）
             '<div class="ftt-section"><div class="ftt-sec-title">🧬 快照链（自动备份）</div>', snapshotSectionHtml(), '</div>',
             // ④ 本地缓冲（统计 + 清理；v2.53.0 起从「关于」页迁来；v3.3.0 起补全本机副本 / 命名缓存 / 对账标记 / V1 遗留）
