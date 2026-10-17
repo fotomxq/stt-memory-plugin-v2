@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.8",
+  "version": "3.50.9",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.9",
+      "date": "2026-10-15",
+      "title": "场景地图美化（展示样式 + 网状图样式）",
+      "points": [
+        "版本位：纯展示层完善（无数据契约 / 无注入文案变更）→ 守则 §3.1 patch 位，无偏离登记。### ① 网状图样式（ui/scene-map-graph.js）| 面 …",
+        "本轮文档：CHANGELOG.md 本条 · docs/D27 附录 v1.2 · docs/D17（U254）· docs/README v3.08 + §3 · docs/h…",
+        "数字口径：单测 235 文件 / 3519 断言 · 冒烟 224 · UI 类名 266 / 237 · 其余不变（内核配置键 249 · 控件 185 · 模板 38 · 管…"
+      ]
+    },
     {
       "version": "3.50.8",
       "date": "2026-10-15",
