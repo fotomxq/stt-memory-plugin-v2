@@ -1,92 +1,183 @@
 // ============================================================
-// ui/scene-map-graph.js —— **场景地图的网状图渲染**（v3.50.6，用户报告 + `docs/D27` §8 `应-45`）
+// ui/scene-map-graph.js —— **场景地图的网状图渲染**（v3.50.6 落地 · v3.50.9 美化）
 //
-// 用户原话：「场景地图是图，不是列表，请修正该问题。这个图建议采用网状图为主。」
+// 来源：`docs/D27` §8 `应-45`（网状图；`应-20` 的「分层关联网图」目标）+
+//   用户 v3.50.9 要求「完善场景地图，优化展示样式和图展示样式，提高美化效果」。
 //
-// 口径（与 `docs/D27` §1.2 非目标 N2 不冲突 —— N2 禁的是**坐标图**）：
-//   · **网状图（network）**：空间单元 = 节点，路径 = **有向边**，另有「属」的**从属边**（虚线，细）；
-//   · **不是坐标地图**：没有瓦片 / 经纬 / 寻路几何 —— 布局只按「层级 + 序号」确定性地摆放（无物理引擎、无随机）；
-//   · 走过 / 未走过**视觉可区分**（实线 + 实心头 / 虚线 + 空心头），与列表徽标的 `data-ftt-map-edge` 同口径；
-//   · 节点可点：`<g data-ftt-map-node="id">` —— 复用面板既有动作分发（下钻 / 插入套话），**点击不写任何记忆数据**；
-//   · **纯函数**：`sceneMapGraphLayout()` 只吃数据 → 出坐标（可单测锁定）；`sceneMapGraphSvg()` 只把布局串成 SVG 串。
+// 设计（仍是**确定性纯函数**：无随机、无物理引擎、无时间依赖 → 可单测）：
+//   · **整齐树布局（tidy layering）**：按层级分列（场景 0 / 房间 1 / 陈设 2）；
+//     同一父节点的子节点**成组垂直居中**在其父节点旁 → 连线不交叉，不用力导向也好看；
+//   · **节点宽度随文字自适应**（夹在 MIN_W..MAX_W），过长名称截断加「…」，不再溢出；
+//   · **边 = 贝塞尔曲线**（水平出入、圆润转弯）+ **箭头 marker**（有向）；走过 = 绿实线，未走过 = 黄虚线；
+//   · **边标签带底色小片**（压在曲线上也不糊）；从属关系 = 浅色虚线（父右 → 子左）；
+//   · **层级配色**：场景 / 房间 / 陈设各有左侧色条 + 层级小标签；
+//   · 悬空边（指向未知单元）**如实标红**，不静默吞掉、不伪造节点。
 //
-// 落点理由（`docs/05` §5 C11 + 体量棘轮）：`ui/panel.js` 已贴上限 → 图形渲染整体落新模块。
+// 可点性保持不变：节点 `<g data-ftt-map-node="id">`、边 `data-ftt-map-edge="traversed|inferred"`
+//   —— 复用面板既有动作分发（下钻 / 插入套话），**点击不写任何记忆数据**。
+// 纯 `core/` 依赖（度量 / 状态文案单一事实源）+ 字符串拼接；不碰 DOM / 定时器（`ui/` 层）。
 // ============================================================
+import { mapRouteStatusText, mapRouteMeasureText } from '../core/model/map.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const num = (v) => Number(v) || 0;
 
-// 度量 / 状态文案**单一事实源**在核心（与列表行、注入子块共用，避免三处各写一套）
-import { mapRouteStatusText, mapRouteMeasureText } from '../core/model/map.js';
+/** 估算文本像素宽（中文按 1 字宽，其余按 0.55；SVG 里无测量 API → 用确定性估算法，测试可锁） */
+export function mapTextWidth(s, fontSize) {
+    const t = String(s == null ? '' : s);
+    let w = 0;
+    for (const ch of t) w += (ch.charCodeAt(0) > 0x2e80 ? 1.0 : 0.55);
+    return w * num(fontSize || 12);
+}
+
+/** 截断到指定像素宽（追加「…」） */
+function clipText(s, maxPx, fontSize) {
+    const t = String(s == null ? '' : s);
+    if (mapTextWidth(t, fontSize) <= maxPx) return t;
+    let out = '';
+    for (const ch of t) {
+        if (mapTextWidth(out + ch + '…', fontSize) > maxPx) break;
+        out += ch;
+    }
+    return out + '…';
+}
 
 /** 布局常量（确定性；单测直接断言这些几何） */
 export const MAP_GRAPH = Object.freeze({
-    nodeW: 118, nodeH: 30, gapY: 16, layerX: 190, padX: 16, padY: 14, labelH: 14,
+    minW: 96, maxW: 176, nodeH: 34, gapY: 12, layerX: 210, padX: 18, padY: 16,
+    labelH: 18, legendH: 22, fontSize: 12, labelFont: 10.5,
 });
 
-/** 层级深度：场景 0 / 房间 1 / 陈设 2（`parentId` 缺失时退化为按 level 推断，保证不越界） */
+/** 层级深度：场景 0 / 房间 1 / 陈设 2（缺 `level` 时退化为 1，保证不越界） */
 function depthOf(place) {
-    if (!place) return 0;
+    if (!place) return 1;
     if (place.level === 'scene') return 0;
-    if (place.level === 'room') return 1;
-    return 2;
+    if (place.level === 'fixture') return 2;
+    return 1;
+}
+
+/** 节点标签（层级中文） */
+function levelLabel(level) {
+    return level === 'scene' ? '场景' : (level === 'fixture' ? '陈设' : '房间');
 }
 
 /**
- * **纯布局**：空间单元 → 分层节点坐标；路径 → 有向边端点；`parentId` → 从属边。
+ * **纯布局 v2**（整齐分层 + 子节点成组居中 + 宽度自适应）。
  * @param {Array} places 空间单元（`kind==='place'`）
  * @param {Array} routes 路径（`kind==='route'`）
  * @returns {{nodes:Array,edges:Array,links:Array,width:number,height:number,byId:Object}}
  */
 export function sceneMapGraphLayout(places, routes) {
+    const G = MAP_GRAPH;
     const ps = (Array.isArray(places) ? places : []).filter((p) => p && p.id);
     const rs = (Array.isArray(routes) ? routes : []).filter((r) => r && r.id);
-    const G = MAP_GRAPH;
-    const nodes = [];
     const byId = {};
-    // 分层：每层的槽位按「父节点顺序 → 输入顺序」稳定排列（确定性：同数据必得同图）
+
+    // ① 节点（宽度随名称自适应；过长截断）
+    const raw = ps.map((p) => {
+        const name = String(p.name || '') || '（未命名）';
+        const tag = levelLabel(String(p.level || ''));
+        const wName = mapTextWidth(name, G.fontSize) + 30;
+        const wTag = mapTextWidth(tag, G.labelFont) + 40;
+        const w = Math.max(G.minW, Math.min(G.maxW, Math.ceil(Math.max(wName, wTag))));
+        const node = {
+            id: String(p.id), name: name, shownName: clipText(name, w - 42, G.fontSize), level: String(p.level || ''),
+            levelText: tag, parentId: String(p.parentId || ''), desc: String(p.desc || ''),
+            depth: depthOf(p), w: w, h: G.nodeH, x: 0, y: 0, subH: G.nodeH, subY: 0,
+        };
+        byId[node.id] = node;
+        return node;
+    });
+
+    // ② 分层 + 成组居中（按输入顺序 → 确定性）
     const layers = [[], [], []];
-    ps.forEach((p) => { layers[Math.min(2, Math.max(0, depthOf(p)))].push(p); });
-    layers.forEach((list, d) => {
-        list.forEach((p, i) => {
-            const node = {
-                id: String(p.id), name: String(p.name || '') || '（未命名）', level: String(p.level || ''),
-                parentId: String(p.parentId || ''), desc: String(p.desc || ''),
-                depth: d, x: G.padX + d * G.layerX, y: G.padY + i * (G.nodeH + G.gapY), w: G.nodeW, h: G.nodeH,
-            };
-            nodes.push(node);
-            byId[node.id] = node;
+    raw.forEach((n) => { layers[n.depth].push(n); });
+    const childrenOf = (id) => raw.filter((n) => n.parentId && String(n.parentId) === String(id) && n.depth > (byId[String(id)] ? byId[String(id)].depth : -1));
+    const roots = raw.filter((n) => !(n.parentId && byId[n.parentId]));
+
+    /** 递归算子树高度：叶子 = 自身高；父 = 子块总高（父在其中居中）——间隔加在**兄弟之间** */
+    const measure = (node) => {
+        const kids = childrenOf(node.id);
+        if (!kids.length) { node.subH = node.h; return node.h; }
+        let total = 0;
+        kids.forEach((k, i) => {
+            const h = measure(k);
+            k.subY = total;                       // 该子树的**块顶**相对父块
+            total += h;
+            if (i < kids.length - 1) total += G.gapY;
+        });
+        node.subH = Math.max(node.h, total);
+        return node.subH;
+    };
+    let cursorY = 0;
+    roots.forEach((r) => { const h = measure(r); r.subY = cursorY; cursorY += h + G.gapY * 2; });
+    const settle = (node) => {
+        const kids = childrenOf(node.id);
+        if (!kids.length) return;
+        const blockTop = node.y - (node.subH - node.h) / 2;
+        kids.forEach((k) => { k.y = blockTop + k.subY; settle(k); });
+    };
+    roots.forEach((r) => { r.y = r.subY; settle(r); });
+    // 未挂到任何根的（孤儿 / 环）按层兜底排布，绝不出图外
+    const placed = {};
+    const mark = (n) => { placed[n.id] = 1; childrenOf(n.id).forEach(mark); };
+    roots.forEach(mark);
+    let orphanY = cursorY;
+    layers.forEach((list) => {
+        list.forEach((n) => {
+            if (placed[n.id]) return;
+            n.y = orphanY; orphanY += n.h + G.gapY; placed[n.id] = 1;
         });
     });
-    const centerOf = (n) => ({ x: n.x + n.w / 2, y: n.y + n.h / 2 });
+    layers.forEach((list, d) => { list.forEach((n) => { n.x = G.padX + d * G.layerX; }); });
+    const minY = Math.min.apply(null, raw.map((n) => n.y).concat([0]));
+    raw.forEach((n) => { n.y = n.y - minY + G.padY; });
+
+    // ③ 边（贝塞尔；父右出 / 子左入；同层走上下弧）
+    const cx = (n) => n.x + n.w / 2, cy = (n) => n.y + n.h / 2;
     const edges = rs.map((r) => {
         const a = byId[String(r.fromId)] || null, b = byId[String(r.toId)] || null;
-        const ca = a ? centerOf(a) : null, cb = b ? centerOf(b) : null;
-        return {
+        const walked = r.traversed === true;
+        const e = {
             id: String(r.id), fromId: String(r.fromId), toId: String(r.toId),
             fromName: a ? a.name : '（未知）', toName: b ? b.name : '（未知）',
-            // 走过 = `traversed`（剧情实际走过）；未走过 = `inferred`（手填）—— 与列表徽标同口径
-            walked: r.traversed === true,
-            inferred: r.inferred === true,
-            statusText: mapRouteStatusText(r),
-            measure: mapRouteMeasureText(r),
-            drawable: !!(ca && cb), x1: ca ? ca.x : 0, y1: ca ? ca.y : 0, x2: cb ? cb.x : 0, y2: cb ? cb.y : 0,
+            walked: walked, inferred: r.inferred === true, statusText: mapRouteStatusText(r),
+            measure: mapRouteMeasureText(r), drawable: !!(a && b),
+            x1: 0, y1: 0, x2: 0, y2: 0, d: '', lx: 0, ly: 0, lw: 0,
+        };
+        if (a && b) {
+            const forward = (b.depth > a.depth) || (b.depth === a.depth && b.x >= a.x);
+            e.x1 = forward ? a.x + a.w : cx(a); e.y1 = forward ? cy(a) : a.y + a.h;
+            e.x2 = forward ? b.x : cx(b); e.y2 = forward ? cy(b) : b.y;
+            const dx = Math.max(24, Math.abs(e.x2 - e.x1) * 0.45);
+            e.d = forward
+                ? ('M ' + e.x1 + ' ' + e.y1 + ' C ' + (e.x1 + dx) + ' ' + e.y1 + ', ' + (e.x2 - dx) + ' ' + e.y2 + ', ' + e.x2 + ' ' + e.y2)
+                : ('M ' + e.x1 + ' ' + e.y1 + ' C ' + e.x1 + ' ' + (e.y1 + 30) + ', ' + e.x2 + ' ' + (e.y2 - 30) + ', ' + e.x2 + ' ' + e.y2);
+            e.lx = (e.x1 + e.x2) / 2; e.ly = (e.y1 + e.y2) / 2;
+            e.lw = Math.ceil(mapTextWidth(e.fromName + ' → ' + e.toName, G.labelFont)) + 14;
+        }
+        return e;
+    });
+    const links = raw.filter((n) => n.parentId && byId[n.parentId]).map((n) => {
+        const p = byId[n.parentId];
+        const dx = Math.max(16, (n.x - (p.x + p.w)) * 0.5);
+        return {
+            fromId: p.id, toId: n.id, x1: p.x + p.w, y1: cy(p), x2: n.x, y2: cy(n),
+            d: 'M ' + (p.x + p.w) + ' ' + cy(p) + ' C ' + (p.x + p.w + dx) + ' ' + cy(p) + ', ' + (n.x - dx) + ' ' + cy(n) + ', ' + n.x + ' ' + cy(n),
         };
     });
-    const links = nodes.filter((n) => n.parentId && byId[n.parentId]).map((n) => {
-        const p = byId[n.parentId];
-        return { fromId: p.id, toId: n.id, x1: p.x + p.w, y1: p.y + p.h / 2, x2: n.x, y2: n.y + n.h / 2 };
-    });
-    const width = G.padX * 2 + G.nodeW + 2 * G.layerX;
-    const maxRows = Math.max(1, layers[0].length, layers[1].length, layers[2].length);
-    const height = G.padY * 2 + maxRows * (G.nodeH + G.gapY) + G.labelH;
-    return { nodes: nodes, edges: edges, links: links, width: width, height: height, byId: byId };
+
+    const width = G.padX * 2 + G.maxW + 2 * G.layerX;
+    const maxY = Math.max.apply(null, raw.map((n) => n.y + n.h).concat([G.nodeH]));
+    const maxLabelY = Math.max.apply(null, edges.filter((e) => e.drawable).map((e) => e.ly + 30).concat([0]));
+    const height = Math.ceil(Math.max(maxY, maxLabelY) + G.padY + G.labelH + G.legendH);
+    return { nodes: raw, edges: edges, links: links, width: width, height: height, byId: byId };
 }
 
 /**
- * 网状图 SVG（**只读**；节点带 `data-ftt-map-node` 以便复用既有点击分发）。
+ * 网状图 SVG（**只读**；节点带 `data-ftt-map-node`、边带 `data-ftt-map-edge` 以便复用既有点击分发）。
  * @param {Array} places · @param {Array} routes
- * @param {{title?:string,emptyHint?:string}} [opts]
+ * @param {{title?:string, emptyHint?:string}} [opts]
  * @returns {string} 无节点时返回空串（由调用方给空态）
  */
 export function sceneMapGraphSvg(places, routes, opts) {
@@ -94,43 +185,54 @@ export function sceneMapGraphSvg(places, routes, opts) {
     const L = sceneMapGraphLayout(places, routes);
     if (!L.nodes.length) return '';
     const G = MAP_GRAPH;
+    // 确定性 id 前缀（同页多图不冲突；无随机 → 可单测/可复现）
+    const uid = 'mg' + Math.abs(L.nodes.length * 31 + L.edges.length * 7 + Math.round(L.width));
     const parts = [];
     parts.push('<svg class="ftt-map-svg" viewBox="0 0 ' + L.width + ' ' + L.height + '" width="100%" height="' + L.height
         + '" role="img" aria-label="' + esc((o.title || '场景地图') + '：节点 ' + L.nodes.length + ' · 路径 ' + L.edges.length) + '" data-ftt-map-graph="1">');
-    if (o.title) parts.push('<text class="ftt-map-svg-title" x="' + G.padX + '" y="' + (L.height - 4) + '">' + esc(o.title) + '</text>');
-    // 从属边（「属」——细虚线，先画，压在节点下）
+    parts.push('<defs>'
+        + '<marker id="' + uid + '-arrow-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ftt-map-arrow ftt-walked" d="M 0 0 L 10 5 L 0 10 z" /></marker>'
+        + '<marker id="' + uid + '-arrow-i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ftt-map-arrow ftt-inferred" d="M 0 0 L 10 5 L 0 10 z" /></marker>'
+        + '<filter id="' + uid + '-soft" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-opacity="0.35" /></filter>'
+        + '</defs>');
+    if (o.title) parts.push('<text class="ftt-map-svg-title" x="' + G.padX + '" y="' + (L.height - 6) + '">' + esc(o.title) + '</text>');
+    // 从属边（父右 → 子左；浅色虚线）
     L.links.forEach((l) => {
-        parts.push('<line class="ftt-map-svg-link" x1="' + l.x1 + '" y1="' + l.y1 + '" x2="' + l.x2 + '" y2="' + l.y2 + '" stroke-dasharray="2 3" />');
+        parts.push('<path class="ftt-map-svg-link" d="' + l.d + '" fill="none" stroke-dasharray="3 4" />');
     });
-    // 路径边（有向；走过实线、未走过虚线）+ 度量标签
+    // 路径边（贝塞尔 + 箭头）+ 标签片（名称 / 度量两行）
     L.edges.forEach((e) => {
-        const cls = 'ftt-map-svg-edge' + (e.walked ? ' ftt-walked' : ' ftt-inferred');
-        if (e.drawable) {
-            const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
-            parts.push('<line class="' + cls + '" data-ftt-map-edge="' + (e.walked ? 'traversed' : 'inferred') + '" data-ftt-map-route="' + esc(e.id)
-                + '" x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '"'
-                + (e.walked ? '' : ' stroke-dasharray="5 4"') + ' />');
-            const li = [e.fromName + ' → ' + e.toName, e.measure || '正文未给距离 / 耗时'].join(' · ');
-            parts.push('<text class="ftt-map-svg-elabel" x="' + mx + '" y="' + (my - 3) + '">' + esc(li) + '</text>');
-        } else {
-            // 端点缺失（数据脏）：如实画出为「悬空边」，不静默吞掉
-            parts.push('<text class="ftt-map-svg-elabel ftt-map-svg-dangling" x="' + G.padX + '" y="' + (L.height - 4) + '">⚠ 路径指向未知单元：'
+        if (!e.drawable) {
+            parts.push('<text class="ftt-map-svg-elabel ftt-map-svg-dangling" x="' + G.padX + '" y="' + (L.height - 6) + '">⚠ 路径指向未知单元：'
                 + esc(e.fromName) + ' → ' + esc(e.toName) + '</text>');
+            return;
         }
+        const cls = 'ftt-map-svg-edge' + (e.walked ? ' ftt-walked' : ' ftt-inferred');
+        parts.push('<path class="' + cls + '" data-ftt-map-edge="' + (e.walked ? 'traversed' : 'inferred') + '" data-ftt-map-route="' + esc(e.id)
+            + '" d="' + e.d + '" fill="none" marker-end="url(#' + uid + (e.walked ? '-arrow-w' : '-arrow-i') + ')"'
+            + (e.walked ? '' : ' stroke-dasharray="6 4"') + ' />');
+        parts.push('<g class="ftt-map-svg-chip">'
+            + '<rect x="' + (e.lx - e.lw / 2) + '" y="' + (e.ly + 2) + '" width="' + e.lw + '" height="' + (G.labelH + 12) + '" rx="6" />'
+            + '<text class="ftt-map-svg-elabel" x="' + e.lx + '" y="' + (e.ly + 14) + '">' + esc(e.fromName + ' → ' + e.toName) + '</text>'
+            + '<text class="ftt-map-svg-esub" x="' + e.lx + '" y="' + (e.ly + 26) + '">' + esc(e.measure || '正文未给距离 / 耗时') + '</text>'
+            + '</g>');
     });
-    // 节点
+    // 节点（卡片 + 左侧层级色条 + 名称 + 层级小标签；可点）
     L.nodes.forEach((n) => {
-        const lv = n.level === 'scene' ? '场景' : (n.level === 'fixture' ? '陈设' : '房间');
-        parts.push('<g class="ftt-map-svg-node ftt-lv-' + esc(n.level || 'room') + '" data-ftt-map-node="' + esc(n.id) + '">'
-            + '<rect x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="6" />'
-            + '<text class="ftt-map-svg-nlabel" x="' + (n.x + 10) + '" y="' + (n.y + 19) + '">' + esc(n.name) + '</text>'
-            + '<text class="ftt-map-svg-ntag" x="' + (n.x + n.w - 10) + '" y="' + (n.y + 19) + '" text-anchor="end">' + lv + '</text>'
+        parts.push('<g class="ftt-map-svg-node ftt-lv-' + esc(n.level || 'room') + '" data-ftt-map-node="' + esc(n.id) + '" filter="url(#' + uid + '-soft)">'
+            + '<rect class="ftt-map-card" x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="8" />'
+            + '<rect class="ftt-map-accent" x="' + n.x + '" y="' + (n.y + 5) + '" width="3" height="' + (n.h - 10) + '" rx="1.5" />'
+            + '<text class="ftt-map-svg-nlabel" x="' + (n.x + 12) + '" y="' + (n.y + 21) + '">' + esc(n.shownName) + '</text>'
+            + '<text class="ftt-map-svg-ntag" x="' + (n.x + n.w - 9) + '" y="' + (n.y + 21) + '" text-anchor="end">' + esc(n.levelText) + '</text>'
             + '</g>');
     });
     parts.push('</svg>');
-    // 图例（走过 / 未走过 / 从属）
-    parts.push('<div class="ftt-map-legend"><span class="ftt-map-lg ftt-walked">━</span> 剧情走过'
-        + '<span class="ftt-map-lg ftt-inferred ftt-ml-2">┄</span> 未走过（手填）'
-        + '<span class="ftt-map-lg ftt-map-svg-link ftt-ml-2">┈</span> 从属（属 Nx）</div>');
+    // 图例（走过 / 未走过 / 从属）+ 计数 + 操作提示
+    const walked = L.edges.filter((e) => e.walked).length;
+    parts.push('<div class="ftt-map-legend">'
+        + '<span class="ftt-map-lg ftt-walked">━▶</span> 剧情走过（' + walked + '）'
+        + '<span class="ftt-map-lg ftt-inferred ftt-ml-2">┄▶</span> 未走过（手填）（' + (L.edges.length - walked) + '）'
+        + '<span class="ftt-map-lg ftt-map-lg-link ftt-ml-2">┈</span> 从属（属 Nx）'
+        + '<span class="ftt-muted ftt-ml-2">· 点节点下钻 / 插入套话</span></div>');
     return parts.join('');
 }

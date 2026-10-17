@@ -93,9 +93,14 @@ A('A3 默认停在「🌳 场景」子页（地图块隐藏）', String(h0).inde
 // ---------- ② 分层网图 + 三级穿透 ----------
 await panelAction('mapSub', { sub: 'map' });
 const h1 = panelBodyHtml('scenes');
-A('B1 切到地图子页：场所列表（每个场所一行）+ 单元 / 路径计数 + 上限可见', (() => {
+/**
+ * v3.50.9（用户要求「优化展示样式」）：顶部计数由一行纯文本改为**统计胶囊**（单元 / 路径 / 剧情走过 / 上限）。
+ */
+A('B1 切到地图子页：场所列表（每个场所一行）+ **统计胶囊**（单元 / 路径 / 走过 / 上限）+ 网图卡片', (() => {
     const s = String(h1);
-    return s.indexOf('地图：单元 3 / 路径 2') >= 0 && s.indexOf('📍 码头') >= 0 && s.indexOf('存储上限') >= 0;
+    return s.indexOf('ftt-map-stats') >= 0 && s.indexOf('🏠 单元 <b>3</b>') >= 0 && s.indexOf('🧭 路径 <b>2</b>') >= 0
+        && s.indexOf('👣 剧情走过') >= 0 && s.indexOf('📦 上限') >= 0
+        && s.indexOf('📍 码头') >= 0 && s.indexOf('ftt-map-cardwrap') >= 0;
 })(), 'n/a');
 /**
  * v3.50.6（用户报告「场景地图是图，不是列表」+ `docs/D27` §8 `应-45`）：**网状图 SVG 成为主视图**。
@@ -224,7 +229,7 @@ A('F1 空数据：两段式空态（为什么空 + 下一步做什么），且�
 })(), 'n/a');
 A('F2 空态里也保留「单元 0 / 路径 0」与上限读数（上限可见口径）', (() => {
     const s = String(panelBodyHtml('scenes'));
-    return s.indexOf('地图：单元 0 / 路径 0') >= 0;
+    return s.indexOf('🏠 单元 <b>0</b>') >= 0 && s.indexOf('🧭 路径 <b>0</b>') >= 0 && s.indexOf('📦 上限') >= 0;
 })(), 'n/a');
 A('F3 房间数超上限时如实报「还有 N 个房间未展开」（只裁视图、不动数据）', (() => {
     const many = [];

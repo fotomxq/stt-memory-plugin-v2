@@ -107,11 +107,11 @@ function breadcrumbHtml() {
     const rooms = mapPlaces(state, { sceneRef: openScene }).filter((p) => p.level === 'room');
     const room = openRoom ? (rooms.filter((r) => String(r.id) === String(openRoom))[0] || null) : null;
     const crumb = (label, act, kind) => '<a href="javascript:void(0)" class="ftt-subtab" data-ftt-action="' + act + '" data-kind="' + esc(kind || '') + '">' + esc(label) + '</a>';
-    return '<div class="ftt-row ftt-filterbar">'
+    return '<div class="ftt-row ftt-filterbar ftt-map-crumbs">'
         + crumb('🗺 全部场所', 'mapRoot', '')
-        + '<span class="ftt-muted">›</span>'
-        + (room ? crumb(String(scene ? scene.name : '场所'), 'mapOpen', 'scene') : '<b>' + esc(String(scene ? scene.name : '场所')) + '</b>')
-        + (room ? ('<span class="ftt-muted">›</span><b>' + esc(String(room.name || '')) + '</b>') : '')
+        + '<span class="ftt-map-sep">›</span>'
+        + (room ? crumb(String(scene ? scene.name : '场所'), 'mapOpen', 'scene') : '<b class="ftt-map-cur">' + esc(String(scene ? scene.name : '场所')) + '</b>')
+        + (room ? ('<span class="ftt-map-sep">›</span><b class="ftt-map-cur">' + esc(String(room.name || '')) + '</b>') : '')
         + '<button class="ftt-btn ftt-sm" data-ftt-action="mapBack" title="回上一层">← 返回</button>'
         + '</div>';
 }
@@ -157,10 +157,18 @@ export function sceneMapBodyHtml() {
     let places = [], routes = [];
     try { places = mapsOf(state).filter((m) => m && m.kind === 'place'); routes = mapsOf(state).filter((m) => m && m.kind === 'route'); } catch (e) { places = []; routes = []; }
     const cap = mapCap();
-    const head = '<div class="ftt-cat-stat ftt-chip">地图：单元 ' + places.length + ' / 路径 ' + routes.length
-        + '（存储上限 ' + (cap.cap ? num(cap.cap) : '未设') + ' 条）</div>'
+    /**
+     * v3.50.9（用户要求「优化展示样式和图展示样式，提高美化效果」）：顶部改为**统计胶囊行** ——
+     *   单元 / 路径 / 走过 / 存储上限一眼可见（此前挤在一行纯文本里，数字不突出）。
+     */
+    const walkedN = routes.filter((r) => r && r.traversed === true).length;
+    const chip = (label, v, cls) => '<span class="ftt-chip ftt-map-chip' + (cls ? ' ' + cls : '') + '">' + esc(label) + ' <b>' + esc(String(v)) + '</b></span>';
+    const head = '<div class="ftt-map-stats">'
+        + chip('🏠 单元', places.length) + chip('🧭 路径', routes.length)
+        + chip('👣 剧情走过', walkedN, walkedN ? 'ftt-ok' : '') + chip('📦 上限', cap.cap ? num(cap.cap) : '未设')
+        + '</div>'
         + '<div class="ftt-hint">分层关联网图（<b>不是坐标地图</b>）：场所 → 房间 → 陈设三级；路径只记<b>剧情走过</b>的那些，'
-        + '未走过的只能是手填（标「未走过（手填）」）。</div>';
+        + '未走过的只能是手填（标「未走过（手填）」）。<b>点图中的节点</b>即可下钻或插入套话。</div>';
     let ins = '';
     if (lastInsert) {
         ins = '<div class="ftt-hint' + (lastInsert.ok ? '' : ' ftt-note--err') + '">' + esc(lastInsert.text) + '</div>';
@@ -184,7 +192,7 @@ export function sceneMapBodyHtml() {
         const rows = fs.length ? fs.map((f) => placeRowHtml(f, anchor, {})).join('\n') : '<div class="ftt-empty">这个房间里还没有记录任何陈设。正文提到具体物件时才会出现。</div>';
         const routesHere = routes.filter((r) => String(r.fromId) === String(openRoom) || String(r.toId) === String(openRoom));
         return head + ins + breadcrumbHtml()
-            + '<h4 class="ftt-h4-inline">🪑 ' + esc(String(room ? room.name : '房间')) + ' 的陈设（' + fs.length + '）</h4>' + rows
+            + '<h4 class="ftt-h4-inline ftt-map-h4">🪑 ' + esc(String(room ? room.name : '房间')) + ' 的陈设（' + fs.length + '）</h4>' + rows
             + (routesHere.length ? ('<h4 class="ftt-h4-inline">🧭 与这里的路径</h4>' + routesHere.map((r) => routeRowHtml(r, byId, anchor)).join('\n')) : '');
     }
 
@@ -196,7 +204,7 @@ export function sceneMapBodyHtml() {
         const routesHere = routes.filter((r) => ids.indexOf(String(r.fromId)) >= 0 && ids.indexOf(String(r.toId)) >= 0);
         const roomRows = tree.rooms.map((r) => placeRowHtml(r, anchor, { fixturesOf: tree.fixturesOf })).join('\n');
         return head + ins + breadcrumbHtml()
-            + '<h4 class="ftt-h4-inline">🚪 房间（' + tree.rooms.length + '）</h4>'
+            + '<h4 class="ftt-h4-inline ftt-map-h4">🚪 房间（' + tree.rooms.length + '）</h4>'
             + (roomRows || '<div class="ftt-empty">这个场所下还没有记录任何房间。正文提到具体房间时才会出现。</div>')
             + (tree.orphans ? ('<div class="ftt-hint">⚠ 有 ' + tree.orphans + ' 个陈设的「上层」指不到有效房间（已跳过，可在调试页查看入库读数）。</div>') : '')
             + '<h4 class="ftt-h4-inline">🧭 本场所内的路径（' + routesHere.length + '）</h4>'
@@ -226,8 +234,8 @@ export function sceneMapBodyHtml() {
      */
     const graph = sceneMapGraphSvg(places, routes, { title: '网状图：节点 ' + places.length + ' · 路径 ' + routes.length + '（实线 = 剧情走过 · 虚线 = 未走过）' });
     return head + ins
-        + (graph ? ('<h4 class="ftt-h4-inline">🕸 网状图</h4>' + graph) : '')
-        + '<h4 class="ftt-h4-inline">📍 场所有地图数据的（' + scenes.filter((s) => mapTreeOf(state, String(s.id)).total).length + ' / ' + scenes.length + '）</h4>'
+        + (graph ? ('<div class="ftt-map-cardwrap"><h4 class="ftt-h4-inline ftt-map-h4">🕸 网状图</h4>' + graph + '</div>') : '')
+        + '<h4 class="ftt-h4-inline ftt-map-h4">📍 场所有地图数据的（' + scenes.filter((s) => mapTreeOf(state, String(s.id)).total).length + ' / ' + scenes.length + '）</h4>'
         + (anchorRows || '<div class="ftt-empty">场景库还是空的。先在「🌳 场景」页或 AI 摘要里建立地点树。</div>')
         + (cross.length ? ('<h4 class="ftt-h4-inline">🧭 跨场所路径（' + cross.length + '）</h4>' + cross.map((r) => routeRowHtml(r, byId, null)).join('\n')) : '');
 }
