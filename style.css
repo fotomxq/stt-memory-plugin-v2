@@ -932,3 +932,22 @@ body.ftt-no-effects #toast-container *::before {
   user-select: none;
 }
 #ftt-panel [data-ftt-selrow].ftt-sel-on .ftt-selmark { color: var(--ftt-accent, #6aa9ff); }
+
+
+/* ============================================================
+   v3.50.17（用户要求）：货币「快速记一笔」——每行货币除「✏️ 编辑」外多两枚 ＋/－ 按钮，
+   点开只有「金额」一个输入框（不弹模态框）；确定后追加流水「收入XX元 修正」并**同步额度**。
+   ============================================================ */
+#ftt-panel .ftt-curquick {
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--ftt-bg-2, #1b1f26);
+  border: 1px dashed var(--ftt-line, #2a3038);
+  border-radius: 8px;
+}
+#ftt-panel .ftt-curquick-amount {
+  width: 9em;
+  min-width: 6em;
+}
