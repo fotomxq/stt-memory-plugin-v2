@@ -117,6 +117,11 @@ export const SETTINGS_CONTROLS = {
                 "label": "🔧 场景修复 · 候选上限（聚合路径只提交前 N 个场景节点）",
                 "type": "number", "min": 1, "max": 200
             },
+                {
+                    "key": "constraintCheckEnabled",
+                    "label": "🔍 约束机械校验（体检报告悬空依据 / 未来楼层 / 因果倒挂；关则一条不报）",
+                    "type": "checkbox"
+                },
             {
                 "key": "repairAggEnabled",
                 "label": "🔧 修复聚合（多域一次请求；关 → 各域单发）",
@@ -1472,7 +1477,7 @@ export function parallelsPageHtml(controls) {
  */
 const FEED_GROUPS = Object.freeze([
     { id: 'floor', title: '📥 投喂楼层', keys: ['feedFloors'], hint: '摘要与修复各用各自最近 N 楼；修复留空跟随摘要值（默认 10）。调大更全面，也更费 token。' },
-    { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains', 'sceneRepairMaxItems' ], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
+    { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains', 'sceneRepairMaxItems', 'constraintCheckEnabled' ], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
     { id: 'pick', title: '🎯 候选筛选（相关性阈值与抽查）', keys: ['repairTagSimHigh', 'repairTagSimLow', 'repairSampleRatio', 'repairMinCandidates'], hint: '候选按同维度标签组相关性排序：过高优先核对、过低不列入、中间带按比例抽查。' },
     // v3.46.1（`docs/D22` W11 数-35）：**三域联动（🔗 联动构建）**五键独立成组 ——
     //   本功能不读楼层、不新增/不删除条目，只建关联 + 推进受限字段（`docs/D32` §3.8）。

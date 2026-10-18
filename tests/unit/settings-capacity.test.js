@@ -118,7 +118,7 @@ A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **61**、总 185 → **190**
-    return info.totalControls === 190 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 61
+    return info.totalControls === 191 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
         && m.forget === 24 && m.rumors === 14;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 

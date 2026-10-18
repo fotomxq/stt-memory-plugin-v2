@@ -424,7 +424,8 @@ const defaultCfg = {
     repairAggEnabled: true,           // 聚合总开关（关 → 回退各域单发）
     repairAggMaxItems: 80,            // 每域候选上限
     repairAggMaxChars: 12000,          // 聚合提示词总字数上限
-    repairAggMaxDomains: 9,            // 参与域上限（9 = 全部）          // 每次最多交给 AI 的候选条目数（1-60；机械清理不受此限制）
+    repairAggMaxDomains: 9,            // 参与域上限（9 = 全部）
+    constraintCheckEnabled: true,      // v3.50.22（`业-2`）：约束机械校验（体检 finding + 入库前剔除幻觉依据）          // 每次最多交给 AI 的候选条目数（1-60；机械清理不受此限制）
     repairAutoAi: true,          // 自动触发时是否使用 AI 措辞修订（false = 自动修复只做 JS 机械清理，零 AI、秒级）
     // v1.138：候选筛选策略 —— 同维度标签组相关性 + 按比例随机抽查（轮询覆盖）
     repairTagSimHigh: 0.5,       // 相关性「过高」阈值：≥ 该值 → 优先列入核对（重点查是否重复）

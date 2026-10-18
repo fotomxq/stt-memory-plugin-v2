@@ -55,6 +55,7 @@
 //   ④ 载入期自愈的 `changed` 原先被丢弃（无留痕）→ 由 `core/migrate.js#lastHealInfo` 回传，`index.js` 记日志并按需落盘。
 // ============================================================
 import { ATOM_DIM_KEYS, DIM_CHAR_LIMITS, DIMENSIONS } from './constants.js';
+import { constraintFindings, constraintCheckOn } from './constraint-check.js';   // v3.50.22（`业-2`）
 import { cfg, state as kernelState } from './model/runtime.js';
 import { NSFW_LEVEL_FIELD, nsfwLevelNorm } from './nsfw-level.js';
 // v3.26.1：坏占位 token（`undefined` / `NaN` / `[object Object]`）只读体检
@@ -516,6 +517,18 @@ export function dataHealthReport(st, opts) {
     //   `error` 只可能来自结构类（容器类型 / 条目不是对象）。
     out.ok = worst < 3;
     out.level = worst >= 3 ? 'error' : (worst === 2 ? 'warn' : (worst === 1 ? 'info' : 'ok'));
+    /**
+     * v3.50.22（`docs/D22` W2 `业-2` / `docs/D2` §5.2·§6 S3）：**约束的机械校验**并入体检。
+     *   只报告、不改数据（`N4`）；finding 形态与既有完全一致（`{code, level, dim, id, field, value, detail}`），
+     *   因此报告 / 调试页 / 文本摘要三处出口**零改动**即可显示。总开关 `cfg.constraintCheckEnabled`。
+     */
+    try {
+        if (typeof constraintCheckOn === 'function' && constraintCheckOn()) {
+            const cf = constraintFindings(s, { maxFloor: Number(o.maxFloor) || 0, cap: cap });
+            for (const f of cf) add(f.code, f.level, { dim: f.dim, id: f.id, field: f.field, value: f.value, detail: f.detail });
+        }
+    } catch (e) { /* 忽略：校验失败不影响体检主体 */ }
+
     return out;
 }
 
