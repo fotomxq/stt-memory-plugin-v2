@@ -35,7 +35,14 @@ import { scenesUnionMergeAll } from './ingest.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 
 /** 用户提示（经宿主钩子；与 core/repair.js 既有写法一致） */
+// v3.50.19（`docs/D22` §4.13 W12 `技-49`）：**聚合路径的静默开关** —— 只抑制提示（toast），
+//   **不改任何落库逻辑**；单域手动入口不传 `opts.silent` 时行为与以前完全一致。
+let REPAIR_SILENT = false;
+/** 设置本模块的静默态（聚合编排调用；返回旧值便于嵌套恢复） */
+function setRepairSilentLocal(on) { const old = REPAIR_SILENT; REPAIR_SILENT = on === true; return old; }
+
 function notify(kind, title, text) {
+    if (REPAIR_SILENT) return;   // v3.50.19（`技-49`）：聚合路径只抑制提示
     try {
         const msg = [String(title || ''), String(text || '')].filter(Boolean).join(' ');
         if (msg) notifyHooks.toast(msg, String(kind || 'info'));
@@ -45,9 +52,18 @@ function notify(kind, title, text) {
 /** ① 窄契约提示词（V1 `buildSceneRepairPrompt`）：**整库**场景清单（与概念/记忆的「只发高相关组」不同）。
  *  模板取 `cfg.promptTemplates.sceneRepair` → 兜底 `defaultCfg.promptTemplates.sceneRepair` → 兜底内置一句话。
  *  V1 的 try/catch 兜底分支（内联两句固定文案）一并保留。 */
-function buildSceneRepairPrompt() {
+function buildSceneRepairPrompt(pick) {
     try {
-        const scenes = state.scenes || [];
+        /**
+         * v3.50.19（`docs/D33` §8 `技-49`）：**候选快照回灌** + **封顶**
+         *   · `pick` 给了就用它（聚合器在请求之前拍下的快照，保证「提示词里的编号」与「应用时的编号」一致）；
+         *   · 未给则取 `state.scenes` 全量（与今天的单域入口一致）；
+         *   · 两者都按 `cfg.sceneRepairMaxItems`（默认 12）截断 —— 这条上限是**提示词侧的提交量**，
+         *     应用侧仍按「全量替换分片」进行（不丢场景）。
+         */
+        const all = Array.isArray(pick) ? pick : (state.scenes || []);
+        const cap = Math.max(1, Number(cfg && cfg.sceneRepairMaxItems) || 12);
+        const scenes = all.slice(0, cap);
         const dump = scenes.length
             ? scenes.map(s => `- ${s.name || ''} ｜ 路径：${s.pathStr || ''} ｜ 描述：${s.desc || ''}`).join('\n')
             : '（无场景数据）';
@@ -109,6 +125,8 @@ function applySceneRebuild(rawEntries) {
  * @returns {Promise<object>} V1 同形返回结构
  */
 async function runSceneRepair(opts) {
+    // SILENT-IN:runSceneRepair
+    const __prevSilent = setRepairSilentLocal(opts && opts.silent === true);   // `技-49`
     const o = opts || {};
     try {
         const scenes = state.scenes || [];
@@ -119,7 +137,7 @@ async function runSceneRepair(opts) {
         const beforeCount = scenes.length;
         // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
         notify('warning', '开始修复场景结构/用词…', `当前 ${beforeCount} 个场景节点 · 与「立即修复」同一管道按序执行`);
-        const prompt = buildSceneRepairPrompt();
+        const prompt = buildSceneRepairPrompt(o.pick);   // v3.50.19（`技-49`）：pick 快照 + 封顶
         const resp = String(o.aiText != null ? o.aiText : await aiCallText(prompt, '场景修复'));
         // V1 此处**不兜底 `|| {}`**：`extractJsonObject` 失败即 delta 为空值 → 走 no-rebuild 分支
         const delta = normalizeDeltaKeys(extractJsonObject(resp));

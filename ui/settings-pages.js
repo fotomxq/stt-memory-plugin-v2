@@ -112,6 +112,31 @@ export const SETTINGS_CONTROLS = {
             "label": "每次交给 AI 的候选条目上限（1-60）",
             "type": "text"
         },
+            {
+                "key": "sceneRepairMaxItems",
+                "label": "🔧 场景修复 · 候选上限（聚合路径只提交前 N 个场景节点）",
+                "type": "number", "min": 1, "max": 200
+            },
+            {
+                "key": "repairAggEnabled",
+                "label": "🔧 修复聚合（多域一次请求；关 → 各域单发）",
+                "type": "checkbox"
+            },
+            {
+                "key": "repairAggMaxItems",
+                "label": "🔧 聚合 · 每域候选上限",
+                "type": "number", "min": 1, "max": 500
+            },
+            {
+                "key": "repairAggMaxChars",
+                "label": "🔧 聚合 · 提示词字数上限",
+                "type": "number", "min": 1000, "max": 200000
+            },
+            {
+                "key": "repairAggMaxDomains",
+                "label": "🔧 聚合 · 参与域上限（9 = 全部）",
+                "type": "number", "min": 1, "max": 9
+            },
         // v3.46.1（`docs/D22` W11 数-35 / `docs/D32` §3.4 · §3.3 · Q2）：**三域联动（🔗 联动构建）**的五个键
         //   —— 与 `core/config.js#defaultCfg` 同批（`scripts/check-config-decl.js` 要求「新增 cfg 键必须同批加控件」）。
         {
@@ -1447,7 +1472,7 @@ export function parallelsPageHtml(controls) {
  */
 const FEED_GROUPS = Object.freeze([
     { id: 'floor', title: '📥 投喂楼层', keys: ['feedFloors'], hint: '摘要与修复各用各自最近 N 楼；修复留空跟随摘要值（默认 10）。调大更全面，也更费 token。' },
-    { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems'], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
+    { id: 'repair', title: '🛠 自动修复（总开关与节奏）', keys: ['autoRepairOnMergeFail', 'repairAutoAi', 'repairFailDelaySec', 'maxAutoRepairRounds', 'autoRepairEveryOps', 'repairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains', 'sceneRepairMaxItems' ], hint: '提取合并失败后自动修复：机械清理零 AI 秒级完成，AI 修订只发不合规的少数条目。' },
     { id: 'pick', title: '🎯 候选筛选（相关性阈值与抽查）', keys: ['repairTagSimHigh', 'repairTagSimLow', 'repairSampleRatio', 'repairMinCandidates'], hint: '候选按同维度标签组相关性排序：过高优先核对、过低不列入、中间带按比例抽查。' },
     // v3.46.1（`docs/D22` W11 数-35）：**三域联动（🔗 联动构建）**五键独立成组 ——
     //   本功能不读楼层、不新增/不删除条目，只建关联 + 推进受限字段（`docs/D32` §3.8）。

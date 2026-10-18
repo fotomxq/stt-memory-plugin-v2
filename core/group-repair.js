@@ -343,7 +343,14 @@ function groupPick(spec) {
 function memoryOwnerKey(e) { return snapNameKey(e && e.owner) || '通用'; }
 
 /** 用户提示（经宿主钩子；与 core/repair.js 既有写法一致） */
+// v3.50.19（`docs/D22` §4.13 W12 `技-49`）：**聚合路径的静默开关** —— 只抑制提示（toast），
+//   **不改任何落库逻辑**；单域手动入口不传 `opts.silent` 时行为与以前完全一致。
+let REPAIR_SILENT = false;
+/** 设置本模块的静默态（聚合编排调用；返回旧值便于嵌套恢复） */
+function setRepairSilentLocal(on) { const old = REPAIR_SILENT; REPAIR_SILENT = on === true; return old; }
+
 function notify(kind, title, text) {
+    if (REPAIR_SILENT) return;   // v3.50.19（`技-49`）：聚合路径只抑制提示
     try {
         const msg = [String(title || ''), String(text || '')].filter(Boolean).join(' ');
         if (msg) notifyHooks.toast(msg, String(kind || 'info'));
@@ -585,6 +592,8 @@ function applyMemoryMergeGroups(delta, pick) {
  * @returns {Promise<object>} V1 同形返回结构（made / before / after / fused / removed / revised / deleted / skipped / merged / retargeted / relMaint / groups / groupsTotal / checked）
  */
 async function runMemoryRepair(opts) {
+    // SILENT-IN:runMemoryRepair
+    const __prevSilent = setRepairSilentLocal(opts && opts.silent === true);   // `技-49`
     const o = opts || {};
     try {
         let list = state.memories || [];

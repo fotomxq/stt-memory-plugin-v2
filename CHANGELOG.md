@@ -3,6 +3,61 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.50.19（2026-10-15）· W12 修复通道统一编排：`技-49` + `技-48` + `数-37` + `业-11`
+
+**用户要求**（原话）：「开发W12待开发的6项。」
+**实际范围**：W12 原始 6 项里 `技-47` 已在 **v3.50.14** 完成；本轮做剩下 5 项中的 **4 项**，**`应-29` 未做**（理由见 ⑤）。
+**裁决口径** = `docs/D33` §6 **建议默认**（用户本轮指令视为采纳）：单一 JSON / 结构先文本后 / 不做预览 / 货币与履历不并入 / 角色 strict 保留 / 两档互斥 / 不给逐域开关。
+**版本位**：新增编排能力（既有单域入口行为不变）→ 守则 §3.1 patch 位，**无偏离登记**。
+
+### ① `技-49`：聚合的两个硬前置
+
+- **六域 `silent`**：`group/item/plan/state/scene/character-repair` 各加模块级 `REPAIR_SILENT` + `setRepairSilentLocal()`，`notify()` 首行短路 → **只抑制提示、不改任何落库**；单域手动入口不传 `opts.silent` → 行为与以前完全一致；
+- **场景域候选封顶**：新增 `cfg.sceneRepairMaxItems`（默认 **12**）；`buildSceneRepairPrompt(pick)` 接候选快照并按上限截断（提示词侧提交量），应用侧仍全量替换分片（**不丢场景**）；
+- `opts.pick` 快照回灌：**场景域已接**；状态/角色域未做（如实登记）。
+
+### ② `技-48`：AI 聚合器（内核侧）
+
+新增 **`core/repair-aggregate.js`**：`buildAggregatePrompt`（逐域 pick → buildSection，拼 `## <中文名>（<aggKey>）` 分节 + 按域分键 JSON 契约，`maxChars` 截断）· `aggDomains`（**结构 → 混合 → 文本**）· `splitAggregateResult`（按 aggKey 拆回，缺席计 `missing`）· `applyAggregate`（结构先文本后 + **域级隔离**）· `runRepairAggregate`（一次请求 → 拆回 → 应用 → **坏 JSON 按域降级** → 仍失败**零写入**）· `parseAggJson` · `aggCounters`。
+`cfg.repairAggEnabled=false` → **不发请求**，返回 `{disabled:true}`（调用方回退各域单发）。
+
+### ③ `数-37`：预算键 + 日志收口
+
+- 4 个 `cfg` 键：`repairAggEnabled`(true) · `repairAggMaxItems`(80) · `repairAggMaxChars`(12000) · `repairAggMaxDomains`(9)；
+- 设定页 **5 项控件**（「🛠 自动修复」节）：上述 4 键 + `sceneRepairMaxItems`；
+- `state.repairLog` **收口为一条**：`{at, tier:'agg', domains[], agg:{chars,truncated,sections,applied}, counters:{truncated,missing,skipped,degraded}}`（截断/缺失/跳过/降级四项如实计数）。
+
+### ④ `业-11`：两档能力边界成文
+
+`docs/01` §2.2 补「修复（全面 / 单域）」能力域行（全面 = 跨域全库；单域 = 局限本域且**不得改它域数据**）· `docs/04` §2.2 补「覆盖域 + 请求数 1 + 与各页 🔧 的关系」· `docs/D25` §1.2 旧否定表述改为**指向 `docs/D33`**。
+
+### ⑤ `应-29` 未做（如实登记）
+
+「两档忙态互斥（全面修复中 9 个 🔧 置灰）+ 报告按域分列」要改 `ui/panel.js` 的按钮渲染，而该文件 **4023 行 = 基线 + 40（正好顶格）**；本轮已用尽余额。
+→ **下一轮第一步**：先给面板腾体量（抽模块），再落 `应-29`。
+
+### ⑥ 测试
+
+**新增** `tests/unit/repair-aggregate.test.js`（**14 个断言**）：A1 六域 silent 接线 · A2 场景封顶与 pick · B1 分节且结构在前 · B2 字数截断 · B3 按域拆回 · B4 **域级隔离 + 结构先文本后** · B5 坏 JSON 降级 · B6 **仍失败零写入** · B7 总开关关闭不发请求 · B8 宽松解析 · C1 4 键 + `aggBudget` · C2 四项计数 · C3 **日志收口一条** · C4 域序与 `maxDomains`。
+
+既有档同步：`config-clock-golden` 的 `V2_ONLY` +5 键；`settings-pages` P2 / `settings-capacity` C7 / `relation-layer` F1 / `constraint-page` / `feed-grouping` G4·G7 的控件计数按实测更新（总 **185 → 190**、feed **56 → 61**）。
+
+`npm run gate` 全绿：单测 **243 文件 / 3610 断言** · 冒烟 **224** · 静态 **0 告警** · 体量 `ui/panel.js` +40（顶格）· 配置声明通过。
+
+### ⑦ 如实登记（未做 / 限制）
+
+1. **`应-29` 未做**；
+2. `技-48` 只到**内核编排 + 测试**：未接 UI 入口、未接真实 `aiCallText`（都要动 `ui/panel.js` / `index.js`，体量同样顶格）；
+3. `opts.pick` 只接场景域；
+4. Q6「角色域 strict 重试」在聚合路径下未实现；
+5. 降级用的 `aiTextByDomain` 是调用方注入（无自动二次请求）；
+6. **真机未人工试用**。
+
+**本轮文档**：`CHANGELOG.md` 本条 · `docs/01` §2.2 · `docs/04` §2.2 · `docs/D25` §1.2 · `docs/D22` §4.13 · `docs/D17`（U220/U221/U222/U225 证据，v1.44）· `docs/README` v3.18 + §3 · `docs/history/P10c128-W12修复通道统一编排.md`。
+
+**数字口径**：单测 **243 文件 / 3610 断言** · 冒烟 **224** · 静态告警 **0** · 控件 **190** · 内核配置键 **254** · 其余不变（模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）。
+
+
 ## v3.50.18（2026-10-15）· 传言**按发酵度排序**（同度看发生日期）
 
 **用户要求**（原话）：「传言按照发酵度排序，发酵最高的排在前面；如果发酵度相同，则按照发生日期排列，最近发生的靠前。」

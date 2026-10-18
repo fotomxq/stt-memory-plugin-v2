@@ -32,7 +32,7 @@ R.assert('P1 子页同名同序：V1 的 14 组 + v2.80.0「约束」（用户�
     return J(got) === J(want) && settingsSubTabsHtml('base').indexOf('ftt-subtab ftt-on') >= 0;
 })(), SETTINGS_TABS.map((t) => t.id));
 
-R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 161（v3.44.0 入库卫生 +2）→ v3.45.5 履历 +6 / 总 167 → v3.46.1 三域联动 +5 / 总 172', (() => {
+R.assert('P2 控件表：共 179 项（v3.50.19 修复聚合 4 键 + 场景封顶 1 键）（v2.51.0 删除 10 个废弃时钟设定后），逐页数量与 V1 提取一致（时钟键除外）→ v3.16.0 本地文件模式 +1 / 总 161（v3.44.0 入库卫生 +2）→ v3.45.5 履历 +6 / 总 167 → v3.46.1 三域联动 +5 / 总 172', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
@@ -51,7 +51,8 @@ R.assert('P2 控件表：共 174 项（v2.51.0 删除 10 个废弃时钟设定�
     // v3.46.1（`docs/D22` W11 数-35）：''遗忘''页 +5（三域联动五键：triLinkEnabled / triLinkStateAdvance /
     //   triLinkMaxItems / triLinkPackMaxChars / triLinkMaxOps —— 与 `core/config.js#defaultCfg` 同批，
     //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172 → **v3.46.2 货币融合 +3 / 总 175**、feed 43 → 48 → **51**
-    return info.totalControls === 185 && m.base === 10 && m.feed === 56 && m.analyze === 25 && m.extract === 25
+    // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **61**、总 185 → **190**
+    return info.totalControls === 190 && m.base === 10 && m.feed === 61 && m.analyze === 25 && m.extract === 25
         && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
 })(), settingsPagesInfo());
 
