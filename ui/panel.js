@@ -130,6 +130,8 @@ import { atomIsHidden } from '../core/merge.js';
 import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
 // v3.50.16（用户要求）：多选模式**不再有勾选按钮** —— 点行即选（新模块承载交互；面板只留两个调用点 + 一个委托钩子）
 import { rowSelectMarkHtml, rowSelectAttrs, rowSelectClick, bindRowSelect } from './row-select.js';
+// v3.50.17（用户要求）：货币「快速记一笔」—— 界面件与动作处理都在新模块，面板 3 处最小接线
+import { curQuickButtonsHtml, curQuickFormHtml, handleCurQuick, QUICK_ACTIONS } from './currency-quick.js';
 // v3.48.0（`docs/D22` §4.19 W19 `应-35`）：列表行右侧按钮改**滑动 / 悬停**触发（标记 + 手势 + 实测宽度全在新模块）
 import { swipeRowHtml, applySwipeRows } from './swipe-rows.js';
 // v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
@@ -1286,14 +1288,14 @@ function dimBodyList(kind) {
         //   （CSS 22758：`flex-direction: column`），其余维度沿用横向 `.ftt-item-ops`。此处按 V1 口径对齐：
         //   平行行 = 一个**竖排操作列**（🚀 推进 / ⬆ 转正 / ✏️ 编辑 / 🗑 删除 + 选中态的多选由左侧方框承担），
         //   行主体仍占满剩余宽度（`.ftt-grow`），不再被按钮横向挤压。
-        const opsInner = (par ? par.ops : '') + peekBtn + editBtn + delBtn;
+        const opsInner = (par ? par.ops : '') + peekBtn + (kind === 'currencies' ? curQuickButtonsHtml(id) : '') + editBtn + delBtn;
         // v3.0.13：本次刚推演落库的平行事件 → 行上带定位锚点 + 「🆕 本次新增」标记（重绘后自动滚入视野）
         const flashed = (kind === 'parallels' && ps.flash && Array.isArray(ps.flash.ids) && ps.flash.ids.indexOf(id) >= 0);
         const flashAttr = flashed ? (' data-ftt-flash-id="' + attr(id) + '"') : '';
         const flashBadge = flashed ? '<b class="ftt-ok">🆕 本次新增</b>' : '';
         // v3.48.0（W19 应-35）：行 = 内容块 + 右侧按钮组（滑动 / 悬停展开；宽度实测后左移；按钮多则折行网格）
         return swipeRowHtml(
-            box + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + '</span>',
+            box + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + (kind === 'currencies' ? curQuickFormHtml(id, ps.curQuick) : '') + '</span>',
             opsInner,
             { attrs: flashAttr + (multi ? rowSelectAttrs(kind, id, sel.has(id)) : ''), opsCol: kind === 'parallels', count: (opsInner.match(/data-ftt-action=/g) || []).length }
         );
@@ -2275,6 +2277,7 @@ export async function panelAction(action, payload) {
             setNote(r.ok ? ('已保存 ' + (id || '（新增）')) : ('保存失败：' + String(r.reason || '')));
             result = Object.assign(result, r);
             ps.editing = null;
+        } else if (QUICK_ACTIONS.indexOf(a) >= 0) { handleCurQuick(a, p, { list: () => (state.currencies || []), save: consoleSave, ps: ps, note: setNote, render: renderPanel });
         } else if (a === 'delete') {
             const r = consoleDelete(dataKindOf(String(p.kind || '')), String(p.id || ''));
             setNote(r.ok ? '已删除 ' + String(p.id || '') + '（已留墓碑）' : '删除失败');
