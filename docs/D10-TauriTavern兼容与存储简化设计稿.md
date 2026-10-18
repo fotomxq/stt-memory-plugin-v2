@@ -36,18 +36,18 @@
 | 内核状态（记忆数据） | ① localStorage/IndexedDB 缓冲；② **状态文件**（明文 / gzip / 瘦身）；③ TauriTavern **原生 KV/blob**；④ **世界书镜像** | `adapters/store.js`（保存/载入编排）、`adapters/sync.js`（`stateFileWrite` / `stateFileReadAny` / `stateFileGzipOn` / `stateFileSlimOn` / `slimFileEnvelope`）、`adapters/tt-store.js`（`ttKvPut/TryGet/Del`、`ttBlob*`）、`adapters/worldbook.js` |
 | 快照链 | 独立快照文件（含 `atomsHashes` / `atoms` / `deleted` 账本） | `core/snapshots.js`、`adapters/sync.js#snapshotFile*` |
 | 跨端合并 | 自研「base / local / remote」三方合并 + 墓碑账本 | `core/cross-sync.js#dataAggHash` / `mergeData` / `mergeSnapshotStores` / `mergeProcessedFloors`、`core/sweep.js#applyDeletedToArray` |
-| TauriTavern 探测 | 原生 store ABI + KV JSON + blob | `adapters/tt-store.js:100-160`（`ttAbi` / `ttStoreApi` / `ttBlobApi` / `ttDetected` / `ttNativeActive` / `ttMirrorToFiles`）、就绪等待 `:162`、**命名归一** `:186`、**miss 缓存** `:191-210` |
+| TauriTavern 探测 | 原生 store ABI + KV JSON + blob | `adapters/tt-store.js#ttHostList`（`ttAbi` / `ttStoreApi` / `ttBlobApi` / `ttDetected` / `ttNativeActive` / `ttMirrorToFiles`）、就绪等待 `:162`、**命名归一** `:186`、**miss 缓存** `:191-210` |
 | 瘦身/压缩 | 写盘前瘦身（丢空值 + 同义收敛）+ gzip | `core/slim.js`、`adapters/gzip.js` |
 
 ### 1.2 「同步后情节丢失」的可疑路径（按可能性排序，均可验证）
 
 | # | 路径 | 机制 | 证据 |
 | --- | --- | --- | --- |
-| **R1** | **内容墓碑 + 墙钟未知 → 静默删除** | `applyDeletedToArray`：`deadByHash = !!th && (wall === 0 \|\| th >= wall)`。条目若**没有 `updatedAt` 毫秒墙钟**（跨端同步进来 / 旧存档 / 对端写入），只要其**身份指纹**与任一内容墓碑相同即被删除；而 v2.86.0 起身份指纹收窄为 7 槽（**不含 `time`/`entities`/`owner`**）→ 同一天、同题、同正文而仅时段/在场角色不同的两条情节会被判为「同一条」 | `core/sweep.js:133-155`（原口径）；`core/model/hashfields.js#IDENTITY_FIELDS`；**v2.91.0 已修正为「只删有明确墙钟且不晚于墓碑者」** |
+| **R1** | **内容墓碑 + 墙钟未知 → 静默删除** | `applyDeletedToArray`：`deadByHash = !!th && (wall === 0 \|\| th >= wall)`。条目若**没有 `updatedAt` 毫秒墙钟**（跨端同步进来 / 旧存档 / 对端写入），只要其**身份指纹**与任一内容墓碑相同即被删除；而 v2.86.0 起身份指纹收窄为 7 槽（**不含 `time`/`entities`/`owner`**）→ 同一天、同题、同正文而仅时段/在场角色不同的两条情节会被判为「同一条」 | `core/sweep.js#mergeTombMaps`（原口径）；`core/model/hashfields.js#IDENTITY_FIELDS`；**v2.91.0 已修正为「只删有明确墙钟且不晚于墓碑者」** |
 | **R2** | **快照链按 `atomsHashes` 去重** | `mergeSnapshotStores` 把双方快照按 `JSON.stringify(atomsHashes)` 去重；v2.86.0 起快照哈希取自**变更指纹**（口径未变，但与更早版本写入的快照不同）→ 旧快照与新快照**不被识别为同一份**，链变长；若随后触发 `trimSnapshots()` 上限（30）+ 根快照合并，**覆盖面缩小**，回滚时看不到早期情节 | `core/cross-sync.js#mergeSnapshotStores`、`core/snapshots.js`（`SNAP_CAP=30` / `SNAP_BATCH=15`） |
 | **R3** | **合并后触发上限裁剪** | 合并进来的远端情节若使 `atoms` 超过 `storeCapFor('atoms')`（默认 3000×23%≈690），下一次保存即裁剪（重要度→调用次数→新者优先）。若一端配置仍是**旧的逐维上限**（`storeTotalMax` 缺省 → 兼容口径），上限口径不同 → 一端裁得更狠 | `core/ingest.js#enforceDimCaps` / `capAtomsKeepingHidden` / `storeCapFor` |
 | **R4** | **id 墓碑误伤** | id 由 `atom_<hash(text+floorStart+floorEnd)>` 派生；两端楼层不同 → 同内容异 id。删除动作在 A 端留下 id 墓碑；B 端若**恰好**生成了同 id（同正文 + 同楼层档），会被删 | `core/model/atom.js`（id 派生）、`core/sweep.js`（`deadById`） |
-| **R5** | **原生通道与文件通道并存** | TauriTavern 下若同时启用「原生 KV」与「镜像到文件」，两条通道的**时间戳与写入顺序**可能交错；`stateFileReadCandidates()` 的选择顺序决定读哪一份，读错即「像丢数据」 | `adapters/tt-store.js:157-159`（`ttNativeActive` / `ttMirrorToFiles`）、`adapters/sync.js#stateFileReadCandidates` |
+| **R5** | **原生通道与文件通道并存** | TauriTavern 下若同时启用「原生 KV」与「镜像到文件」，两条通道的**时间戳与写入顺序**可能交错；`stateFileReadCandidates()` 的选择顺序决定读哪一份，读错即「像丢数据」 | `adapters/tt-store.js#ttNativeOn`（`ttNativeActive` / `ttMirrorToFiles`）、`adapters/sync.js#stateFileReadCandidates` |
 
 > v2.91.0 已修 **R1**（保守判据：墙钟未知的条目**只**由 id 墓碑删除；代价是极少数「同内容换 id 复活且无墙钟」会漏挡）。
 > **R2–R5 未修**，需按下节取证后处理。

@@ -38,11 +38,39 @@ export function declaredUCount(text) {
 }
 
 /**
+ * 挑「事实基准」的**声明行**：优先认规范头行（`事实基准…：程序 vX`）——
+ *   为什么不能直接取「第一行含事实基准」：变更块里常有「事实基准 `vA` → **`vB`**」这类**历史提及**，
+ *   且变更块可能排在头部声明**之前**（v3.50.13 实测踩到：解析到 3.50.9 而非 3.50.13）。
+ *   规则：① 只保留**含版本号**的行；② 打分 —— 含「：程序」+2、含「**事实基准**」（粗体头）+1、含「→」-1；③ 取最高分（同分取靠后 = 更靠近正文头部）。
+ * @param {string} text
+ * @returns {string} 命中行（没有则空串）
+ */
+function pickBaselineLine(text) {
+    const lines = String(text == null ? '' : text).split('\n');
+    let best = '', bestScore = -Infinity;
+    lines.forEach((line) => {
+        if (line.indexOf('事实基准') < 0) return;
+        if (!/v?\d+\.\d+(?:\.\d+)?/.test(line)) return;
+        // **变更块**（含「变更」字样）与**含箭头**的叙述行一律不当作声明（它们讲的是历史沿革）
+        if (line.indexOf('变更') >= 0 || line.indexOf('→') >= 0) return;
+        let score = 0;
+        if (/事实基准[\s\S]{0,12}?[：:]\s*程序/.test(line)) score += 3;   // 规范头行（允许 ** 包裹）
+        if (line.indexOf('**事实基准**') >= 0) score += 1;
+        if (score >= bestScore) { bestScore = score; best = line; }
+    });
+    return best;
+}
+
+/**
  * 头部声明：事实基准版本（「事实基准：程序 **v3.50.9**」「事实基准 = v3.50.9」等写法）
  * @returns {string|null}
  */
+export function pickBaselineLineForTest(text) { return pickBaselineLine(text); }
+
 export function declaredBaselineVersion(text) {
-    const m = grab(text, /事实基准[^\n]{0,60}?v(\d+\.\d+(?:\.\d+)?)/);
+    const line = pickBaselineLine(text);
+    if (!line) return null;
+    const m = /事实基准[\s\S]{0,60}?v(\d+\.\d+(?:\.\d+)?)/.exec(line);
     return m ? String(m[1]) : null;
 }
 
@@ -68,10 +96,10 @@ export function checkLedgerHeaders(ctx) {
     const granLine = String(c.ledgerText || '').split('\n').filter((l) => /事实条目/.test(l))[0] || '';
     push('D22「事实条目 N 条」', declaredUCount(granLine), Number(c.actualUCount) || 0);
     // ④ D22 头部「事实基准：程序 vX.Y.Z」
-    const baseLine = String(c.ledgerText || '').split('\n').filter((l) => /事实基准/.test(l))[0] || '';
+    const baseLine = pickBaselineLine(c.ledgerText);
     push('D22「事实基准」程序版本', declaredBaselineVersion(baseLine), String(c.programVersion || ''));
     // ⑤ D17 头部若有「事实基准」也核
-    const tBase = String(c.truthText || '').split('\n').filter((l) => /事实基准/.test(l)).slice(0, 1)[0] || '';
+    const tBase = pickBaselineLine(c.truthText);
     push('D17「事实基准」程序版本', declaredBaselineVersion(tBase), String(c.programVersion || ''));
     const ok = checks.every((x) => x.ok);
     return { ok: ok, checks: checks };

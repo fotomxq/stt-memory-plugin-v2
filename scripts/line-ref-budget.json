@@ -1,26 +1,31 @@
 {
-  "what": "C9 棘轮预算：本仓库源码「绝对行号引用」的只减不增上限（预算 = baseline + margin）",
-  "why": "行号会随任何一次代码改动漂移，文档不会自动跟着走；新引用一律写 `文件#符号`（由 C8 核对）",
-  "how": "改引用后运行 `node scripts/check-docs-facts.js --write-baseline` 把 baseline 落到本次实测值（棘轮只允许下调）",
-  "baseline": 101,
-  "margin": 0,
-  "updatedAt": "2026-10-11",
-  "updatedBy": "check-docs-facts.js --write-baseline（实测 101 处）",
-  "probeNote": "tests/unit/version-rule.test.js 的「C9 反向探针」会临时新增 12 条行号并要求门禁失败 —— 因此 margin 必须保持 0（有富余会让探针失效）",
-  "history": [
-    {
-      "baseline": 160,
-      "at": "v3.25.1（文档一致性修订轮）",
-      "note": "211 → 160，同步下调脚本内常量"
-    },
-    {
-      "baseline": 211,
-      "at": "v1.1",
-      "note": "301 → 211"
-    },
-    {
-      "baseline": 301,
-      "at": "初始登记"
-    }
-  ]
+    "what": "C9 棘轮预算：本仓库源码「绝对行号引用」的只减不增上限（预算 = baseline + margin）",
+    "why": "行号会随任何一次代码改动漂移，文档不会自动跟着走；新引用一律写 `文件#符号`（由 C8 核对）",
+    "how": "改引用后运行 `node scripts/check-docs-facts.js --write-baseline` 把 baseline 落到本次实测值（棘轮只允许下调）",
+    "baseline": 1,
+    "margin": 0,
+    "updatedAt": "2026-10-15",
+    "updatedBy": "check-docs-facts.js --write-baseline（实测 1 处）",
+    "probeNote": "tests/unit/version-rule.test.js 的「C9 反向探针」会临时新增 12 条行号并要求门禁失败 —— 因此 margin 必须保持 0（有富余会让探针失效）",
+    "history": [
+        {
+            "baseline": 1,
+            "at": "v3.50.13（`技-17`：存量绝对行号 101 → 1）",
+            "note": "D4/D7/D8/D9/D10/D12/D13 共 100 处改为 `文件#符号`（顶层声明定位）；余 1 处为 `host/extract.js` **头部注释**的引用，改符号会失真故保留"
+        },
+        {
+            "baseline": 160,
+            "at": "v3.25.1（文档一致性修订轮）",
+            "note": "211 → 160，同步下调脚本内常量"
+        },
+        {
+            "baseline": 211,
+            "at": "v1.1",
+            "note": "301 → 211"
+        },
+        {
+            "baseline": 301,
+            "at": "初始登记"
+        }
+    ]
 }
