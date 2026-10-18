@@ -52,7 +52,7 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio',
         'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill',
         // v3.50.19（`docs/D22` W12 `技-49` / `数-37`）：修复聚合预算 4 键 + 场景候选封顶 1 键（V2 专有；V1 无聚合）
-        'sceneRepairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains',
+        'sceneRepairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains', 'constraintCheckEnabled',   // v3.50.22（W2 业-2）：约束机械校验总开关（V2 专有）
     ];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip',
     // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储」）：本机缓冲的本地文件目录（空 = 不开启）

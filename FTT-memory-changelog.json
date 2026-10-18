@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.21",
+  "version": "3.50.22",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.22",
+      "date": "2026-10-15",
+      "title": "W2 待开发：业-2 约束可机械校验（防幻觉 + 体检 finding）",
+      "points": [
+        "选取：= docs/D22 §4.3 W2 里裁决已定、可自足落地的一项：业-2（docs/D2 §5.2 / §6 S3；Q3/Q4 已裁决 U116）。W2 其余：业-1（S…",
+        "版本位：新增校验器（不改数据模型、不动 DATA_VERSION）→ 守则 §3.1 patch 位，无偏离登记。### ① 新模块 core/constraint-check.…",
+        "filterInvalidRefs：（落库前：剔除悬空/未来楼层的依据，返回 kept/dropped）· constraintFindings（落库后：产出 finding，l…"
+      ]
+    },
     {
       "version": "3.50.21",
       "date": "2026-10-15",

@@ -3,6 +3,45 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.50.22（2026-10-15）· W2 待开发：`业-2` **约束可机械校验**（防幻觉 + 体检 finding）
+
+**用户要求**（原话）：「开发W2待开发事项。」
+**选取** = `docs/D22` §4.3 **W2** 里裁决已定、可自足落地的一项：**`业-2`**（`docs/D2` §5.2 / §6 **S3**；Q3/Q4 已裁决 U116）。
+W2 其余：`业-1`（S2 数据模型 + 迁移 + `DATA_VERSION+1`，契约级需单独一轮）· `业-3`（P1–P4 提升通道，需动 UI/命令）· `业-9`（待 `数-25`）。
+**版本位**：新增校验器（不改数据模型、不动 `DATA_VERSION`）→ 守则 §3.1 patch 位，**无偏离登记**。
+
+### ① 新模块 `core/constraint-check.js`（纯内核 · 只读）
+
+- `entryRefs` / `entryEvidence`（认 `sourceRefs`/`关联来源`/`来源` 与 `evidence` 的多种写法）· `buildConstraintIndex`（id 集 + 楼层表）·
+  **`filterInvalidRefs`**（落库前：剔除悬空/未来楼层的依据，返回 `kept`/`dropped`）· **`constraintFindings`**（落库后：产出 finding，`level` 恒 `warn`）· `constraintCheckOn`（总开关）；
+- 四个可机械判定的 code：`ref-orphan`（依据指向不存在的条目）· `ref-floor-missing`（引用未来楼层）· `causal-inverted`（因果倒挂）· `evidence-invalid`（evidence 不可解析）。
+
+### ② 接线（3 处）
+
+- **体检**（`core/data-health.js`）：返回前并入约束 finding —— 形态与既有完全一致 → 报告/调试页/文本摘要**三处出口零改动**；
+- **入库前**（`core/ingest.js` 的 `parallels.add`）：归一化后过滤幻觉依据，**剔除依据、保留条目**（一次幻觉不丢整条好数据），剔除数写调试日志；
+- **配置**：`cfg.constraintCheckEnabled`（默认 true）+ 设定页控件（投喂范围 → 🛠 自动修复节）—— 对应「关校验器开关」的回退口径。
+
+### ③ 测试
+
+**新增** `tests/unit/constraint-check.test.js`（**13 个断言**）：A1–A3 读取/索引 · B1–B3 落库前（剔除幻觉、未来楼层、只读不改入参）· C1 finding 形态 · C2 悬空点名 · C3 因果倒挂 · C4 两类同时报 · C5 **只读** · C6 **体检集成** · C7 **总开关**。
+既有档同步：新增控件 → `settings-pages` P2 / `settings-capacity` C7 / `relation-layer` F1 / `constraint-page` / `feed-grouping` G4·G7 计数（总 **190 → 191**、feed **61 → 62**）；`V2_ONLY` +1 键。
+
+`npm run gate` 全绿：单测 **245 文件 / 3633 断言** · 冒烟 **224** · 静态 **0 告警** · 配置声明通过。
+
+### ④ 如实登记（未做 / 限制）
+
+1. **`业-1`（S2）未做**：`relations`/`constraints` 容器 + 迁移 + 6 处接线 + `DATA_VERSION+1`（契约级）；
+2. 校验只覆盖**依据/证据类**；`D2` §5.3 的演化接线（S4）与「互斥/存在性」约束未做（要先有容器）；
+3. 入库前过滤**只接了 `parallels`**（`filterInvalidRefs` 通用，其它维度可逐维接）；
+4. finding 只进体检，未单独做约束面板（`D2` S5）；
+5. **真机未人工试用**。
+
+**本轮文档**：`CHANGELOG.md` 本条 · `docs/D22` §4.3（`业-2` 移出）· `docs/D17`（`U14` 证据，v1.45）· `docs/README` v3.21 + §3 · `docs/history/P10c131-约束机械校验.md`。
+
+**数字口径**：单测 **245 文件 / 3633 断言** · 冒烟 **224** · 控件 **191** · 内核配置键 **255** · 其余不变（模板 38 · 管道 25 · 桥 60 · `DATA_VERSION` 1）。
+
+
 ## v3.50.21（2026-10-15）· 修复「货币快速记账后**流水被清空**」（数据丢失级）
 
 **用户报告**（原话）：「货币的增减功能，新增记录，但可能存在问题，导致记录全部被清空了。请核对并修复。」

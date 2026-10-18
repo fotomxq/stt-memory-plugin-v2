@@ -257,7 +257,7 @@ A('F1 v2.83.0 设定入口补齐：关联层三项控件落在「分析记忆」
     const page = settingsPageHtml('analyze');
     return keys.indexOf('relLinkEnabled') >= 0 && keys.indexOf('relLinkMax') >= 0 && keys.indexOf('relOrphanAction') >= 0
         // v3.50.19（W12 技-49 / 数-37）：修复聚合 4 键 + 场景候选封顶 1 键 → 总 185 → **190**
-        && info.totalControls === 190 && analyze.controls === 25
+        && info.totalControls === 191 && analyze.controls === 25
         && page.indexOf('关联层（谁知道 / 谁相关）') >= 0
         && page.indexOf('data-ftt-cfg="relLinkEnabled"') >= 0 && page.indexOf('data-ftt-cfg="relOrphanAction"') >= 0
         && page.indexOf('自动清理（目标条目已不存在）') >= 0;             // select 选项

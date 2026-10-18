@@ -19,6 +19,8 @@ import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildI
 import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, persistNow, state, timerHooks, warn } from './model/runtime.js';
 import { applyMapDelta, mapDeltaText } from './map-ingest.js';   // v3.47.0（W16 数-23）：地图库的入库护栏
 import { mergeTags, scenePathArr } from './model/scalars.js';
+// v3.50.22（`docs/D22` W2 `业-2`）：入库前剔除**指向不存在目标**的依据（防 AI 幻觉）
+import { filterInvalidRefs, constraintCheckOn } from './constraint-check.js';
 import { normalizeSnapshot, refreshAllSnapshotAges, snapshotBodySig, stampNowForState, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
 import { injectNameCore, parallelExpired } from './recall.js';
 import { clamp, normText, normalizeList } from './util.js';
@@ -459,7 +461,21 @@ function mergeDelta(delta0, floorRange) {
         for (const id of delta.concepts?.remove || []) { state.concepts = (state.concepts || []).filter(x => x.id !== id && x.name !== id); }
         // v1.58 平行事件（交织管线产物）：新增/更新/删除
         for (const p of delta.parallels?.add || []) {
-            const n = preserveEntryMeta('parallels', p, normalizeParallel(p));
+            /**
+             * v3.50.22（`docs/D22` W2 `业-2` / `docs/D2` §5.2「落库前校验」）：
+             *   归一化后先过滤**指向不存在条目 / 未来楼层**的 `sourceRefs`（AI 幻觉最典型形态）。
+             *   口径：**剔除依据、保留条目**（一次幻觉不该把整条好数据丢掉）；剔除数量进调试日志。
+             *   总开关 `cfg.constraintCheckEnabled`（默认开）。
+             */
+            let pRaw = p;
+            try {
+                if (constraintCheckOn()) {
+                    const chk = filterInvalidRefs('parallels', p, { state: state, maxFloor: observedMaxFloor() });
+                    pRaw = chk.entry;
+                    if (chk.dropped.length) dbgLog('修复', { action: '平行事件依据被剔除（指向不存在的目标）', dropped: chk.dropped.length, id: String((pRaw && pRaw.id) || '').slice(0, 40) });
+                }
+            } catch (e) { pRaw = p; /* 忽略：校验失败按原样入库 */ }
+            const n = preserveEntryMeta('parallels', pRaw, normalizeParallel(pRaw));
             if (n) {
                 n.updatedAt = Date.now();
                 const i = state.parallels.findIndex(x => x.id === n.id);
