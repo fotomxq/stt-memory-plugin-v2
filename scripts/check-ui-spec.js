@@ -2,8 +2,9 @@
 // ============================================================
 // scripts/check-ui-spec.js —— **UI 规范一致性检查**（`docs/D9-UI统一规范设计稿.md` v0.2 的 U13 / §9 C1–C11）
 //
-// 口径（U13）：**S0 只读报告（不阻断）→ S4 接入门禁（先 warning）**。故默认 **warning 模式**（永远 exit 0），
-//   加 `--strict` 才在发现问题时 exit 1（供后续升级为 error 门禁用）。
+// 口径（U13 / `docs/D19` `应-6`）：**S0 只读报告 → S4 接入门禁 → v3.50.23 起升为「阻断」**。
+//   现在**默认就是阻断**：发现任何违规即 exit 1（`npm run gate` 因此会整体失败）。
+//   需要临时降级排查时用 `--warn`（只报告、exit 0）；`--strict` 保留为**同义**（兼容旧调用）。
 //
 // 检查方式是**静态源码扫描**（无 DOM、无宿主、零依赖）：
 //   · 覆盖的是「可机械判定」的规范条目；语义级检查（如某页空态文案是否得体）仍由人工走查（D9 §8 S2）；
@@ -15,7 +16,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const strict = process.argv.includes('--strict');
+// v3.50.23（`docs/D19` `应-6`）：**默认阻断** —— `--warn` 才是「只报告」的逃生阀；`--strict` 保留为同义
+const warnOnly = process.argv.includes('--warn') || process.env.UI_SPEC_WARN === '1';
+const strict = !warnOnly;
 const quiet = process.argv.includes('--quiet');
 const read = (p) => { try { return readFileSync(join(ROOT, p), 'utf8'); } catch (e) { return ''; } };
 const uiFiles = (() => { try { return readdirSync(join(ROOT, 'ui')).filter((f) => f.endsWith('.js')).map((f) => 'ui/' + f); } catch (e) { return []; } })();
@@ -226,12 +229,12 @@ const hit = (id, file, line, msg) => hits.push({ id, file, line, msg });
 // ---------- 输出 ----------
 const byId = {};
 for (const h of hits) byId[h.id] = (byId[h.id] || 0) + 1;
-console.log('UI 规范一致性检查（docs/D9 §9 C1–C11 + C12【U11 真表格额度】；' + (strict ? 'strict' : 'warning') + ' 模式）');
+console.log('UI 规范一致性检查（docs/D9 §9 C1–C11 + C12【U11 真表格额度】；' + (strict ? '阻断' : 'warning（--warn）') + ' 模式）');
 if (!hits.length) console.log('  ✅ 全部通过（0 命中）');
 else {
     if (!quiet) for (const h of hits.slice(0, 40)) console.log(`  ⚠️ ${h.id} ${h.file}${h.line ? ':' + h.line : ''} — ${h.msg}`);
     if (hits.length > 40) console.log(`  … 另有 ${hits.length - 40} 处`);
     console.log('  汇总：' + Object.keys(byId).sort().map((k) => k + '×' + byId[k]).join(' · '));
 }
-console.log('  ' + (hits.length ? '（warning 模式：不阻断；--strict 才失败）' : '（已满足当前规范）'));
+console.log('  ' + (hits.length ? (strict ? '（阻断模式：`npm run gate` 会因此失败；排查可用 --warn 临时降级）' : '（warning 模式：不阻断）') : '（已满足当前规范）'));
 process.exit(strict && hits.length ? 1 : 0);

@@ -239,7 +239,13 @@ function latestFloorHash() {
         return h || '(empty)';
     } catch (e) { return '(none)'; }
 }
-/** 频率闸门：每 N 次「提取记忆」才允许一次自动修复（0 = 不限制） */
+/**
+ * **频率闸门**（`docs/D22` W3 `应-17` / `docs/D25` Q2）：距**上次成功自动修复**已过 N 次「提取/摘要」才放行（0 = 不限制）。
+ *
+ * v3.50.23 修：此前只读 `a.lastAt` 却**全仓无写入点** → 判据退化为「累计 ops ≥ N」= 一旦达标**永久放行**，
+ *   与「距上次修复 N 次」的原意不符。现在由 `markAutoRepairDone()` 在**成功修复后**写入。
+ * 注意（`docs/D25` Q1 裁决）：自动修复的**唯一触发源是「提取合并失败」**，本闸门只做**限流**，不做周期触发。
+ */
 function autoRepairOpDue() {
     try {
         const N = Math.max(0, Number(cfg && cfg.autoRepairEveryOps) || 0);
@@ -247,6 +253,19 @@ function autoRepairOpDue() {
         const a = (state.autoRepair && typeof state.autoRepair === 'object') ? state.autoRepair : {};
         return (Number(a.ops) || 0) - (Number(a.lastAt) || 0) >= N;
     } catch (e) { return true; }
+}
+/**
+ * **记录一次成功自动修复**（`应-17` Q2 的「补写入点」）：把当前 `ops` 落到 `lastAt`，
+ *   于是下一次自动修复必须再走 N 次「提取/摘要」—— 恢复「距上次修复 N 次」的原意。
+ * @returns {boolean}
+ */
+function markAutoRepairDone() {
+    try {
+        const a = (state.autoRepair && typeof state.autoRepair === 'object') ? state.autoRepair : {};
+        a.lastAt = Number(a.ops) || 0;
+        state.autoRepair = a;
+        return true;
+    } catch (e) { return false; }
 }
 /** 记录一次「提取记忆/摘要」完成（频率闸门计数） */
 function bumpRepairOp() {
@@ -956,6 +975,8 @@ async function runRepair(opts) {
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
             + `；${report}`);
     }
+    // v3.50.23（`应-17` Q2）：成功修复 → 写入 lastAt（闸门恢复「距上次修复 N 次」语义）
+    try { if ((Number(made) || 0) > 0 || (ai && (ai.revised || ai.deleted))) markAutoRepairDone(); } catch (e) { /* 忽略 */ }
     return { made, ms, stage1, ai, cands, pickStat, mech, report, aiUsed: ai.used, relMaint, relCounts, planSusp: planSusp, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped,
         // v3.45.9（`docs/D22` W8 `技-37` / `docs/D17` U184）：**第 ① 段九步的逐步留痕透出**
         steps: (mech && mech.steps) || [], stepsSummary: (mech && mech.stepsSummary) || '' };
@@ -964,7 +985,9 @@ async function runRepair(opts) {
 let autoRepairFailTimer = null;
 function scheduleAutoRepairOnMergeFail() {
     try {
-        if (!cfg || cfg.autoRepairOnMergeFail !== true) return false;
+        // v3.50.23（`应-17` ①）：`cfg.autoRepair` 曾是**死键**（设定页渲染勾选框却无人读）——
+        //   现作为「合并失败自动修复」的**别名**：任一为 true 即生效（用户的既有勾选不再无效）。
+        if (!cfg || (cfg.autoRepairOnMergeFail !== true && cfg.autoRepair !== true)) return false;
         if (aiBusy()) return false;
         if (autoRepairFailTimer) return false;
         const delayMs = Math.max(1, Number(cfg.repairFailDelaySec) || 15) * 1000;
@@ -990,7 +1013,7 @@ export {
     REPAIR_DIM_SPEC, REPAIR_BANNED, REPAIR_PLACEHOLDER, REPAIR_GUARD,
     repairNameKey, repairIsGarbage, repairGarbageOf, repairBannedOf,
     repairMergeDedupe, repairMergeByName, repairDecayPass, repairPruneGarbage,
-    latestFloorHash, autoRepairOpDue, bumpRepairOp, autoRepairTake,
+    latestFloorHash, autoRepairOpDue, bumpRepairOp, markAutoRepairDone, autoRepairTake,
     repairBatchTags, repairReport, repairLogPush, repairTotalCount,
     runRepairMech,
 };
