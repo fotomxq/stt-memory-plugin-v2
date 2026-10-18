@@ -70,7 +70,7 @@
 | 面板分页 | 13 页：总览 / 情节 / 状态 / 角色 / 记忆 / 物品 / 货币 / 传言 / 计划悬念 / 场景 / 概念 / 平行 / 设置 | `ui/panel.js#PANEL_TABS`（`:125-129`，13 项）；分页→容器键映射 `ui/panel.js#TAB_DIM`（`:131`） |
 | 设定子页 | 15 个子页（base / feed / api / analyze / safety / extract / forget / rumors / parallels / **constraint** / prompts / storage / debug / data / about） | `ui/settings-pages.js#SETTINGS_TABS`、`settingsPagesInfo()` |
 | 顶栏 | 标题 + 统计胶囊（`.ftt-stat`）+ 分页条 + 关闭 | `style.css:123-125`（移动端 `.ftt-modal-head`）/ `:155`（基础规则）、`ui/panel.js#renderPanel` |
-| 内容区 | `.ftt-body` 内按页渲染；整页重渲染时**恢复滚动位置** | `ui/panel.js:1625-1648`（保存/恢复 `scrollTop`：面板 / 模态 / 内容区三处） |
+| 内容区 | `.ftt-body` 内按页渲染；整页重渲染时**恢复滚动位置** | `ui/panel.js#atomCompactSectionHtml`（保存/恢复 `scrollTop`：面板 / 模态 / 内容区三处） |
 | 弹窗 | 复用同一 `.ftt-modal` 节点，只替换内部 → **入场动画不重放**（v2.80.1「点击不闪一下」） | `style.css:118`（`.ftt-modal` 基础规则）/ `:145`（平板区间）、`ui/panel.js#renderPanel`（`#existingModalNode`） |
 
 ### 2.2 组件（`style.css` 的 `.ftt-*` 类名计数 **226**：**未登记口径 · 未验证** —— 无门禁统计类名，本轮按 `.ftt-[A-Za-z0-9_-]+` 去重实测约 **230**（剥离 `--modifier` 后约 **201**），**无法复现 226**，该数字**来源未记录**；如需长期引用，应在实现轮次把口径写进 `scripts/check-ui-spec.js`）
@@ -96,7 +96,7 @@
 | --- | --- | --- |
 | 动作分发 | 统一 `data-ftt-action` + 事件委托；未知动作如实失败（`ok:false`） | `ui/panel.js#panelAction` / 委托分支 |
 | 属性型控件 | 无 action 的控件（`data-ftt-subtab` / `data-ftt-cdim` / `data-ftt-asub`）在 `!act` 分支前置处理 | `ui/panel.js` 委托分支 |
-| 配置控件 | `data-ftt-cfg` → `applySettingsControl(key, raw)`（含夹取）→ 落盘 → 重绘 | `ui/settings-pages.js:913`、`ui/panel.js` 委托分支 |
+| 配置控件 | `data-ftt-cfg` → `applySettingsControl(key, raw)`（含夹取）→ 落盘 → 重绘 | `ui/settings-pages.js#SETTINGS_CONTROLS`、`ui/panel.js` 委托分支 |
 | 实时预览 vs 提交 | `input` = **只刷读数 / 联动预览**（不写配置）；`change` = 写配置 + 落盘 + 重绘 | v2.84.0（读数）/ v2.85.0（占比联动）；`ui/panel.js` input 分支 |
 | 危险操作 | 删除类走确认框（`ui/popup.js` 的 confirm 桥接，**await 而非当成已确认**——AR2 回归） | `ui/popup.js`、冒烟 AR2 |
 | 失败提示 | 内核 `warn` → 调试日志 + 节流 `⚠️` toast；面板动作异常 → **强制** toast；动作被拒绝 → 节流 toast | v2.87.0；`core/model/runtime.js#notifyError` |
@@ -235,7 +235,7 @@
 ### 5.2 重渲染纪律（v2.80.1 起）
 
 1. **复用同一 `.ftt-modal` 节点**，只替换内部 → 入场动画不重放（不「闪一下」）；
-2. 重渲染后**恢复滚动位置**（面板 / 模态 / 内容区三处，`ui/panel.js:1625-1648`）；
+2. 重渲染后**恢复滚动位置**（面板 / 模态 / 内容区三处，`ui/panel.js#atomCompactSectionHtml`）；
 3. 瞬时输入（分组名等）**不重绘**（`applySettingsControl` 的 `transient` 分支）；
 4. 纯 DOM 交互（如场景树折叠）**不触发重绘**；
 5. **依赖勾选的工具行按钮走局部同步**（v3.43.1，`ui/select-bar.js#syncSelectButtons`）：勾选框 `change` 后只改这些按钮的 `disabled` 与「（N）」计数，**不整页重绘**。
