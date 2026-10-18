@@ -19,7 +19,8 @@
 - **新增** `core/importance-migrate.js`：`migrateLegacyImportance()` = ① 窗内按新语义重算（复用 `recalcImportanceAfterExtract({force})`）② 窗外旧值 ×0.1（保留次序、`strength` 同步）③ `state.meta.importanceV2 = true` 打标（**幂等**）；
 - **`core/recall.js`**：`imp = recallImportance(e) * importanceWeight()` → 未迁移 `0.15` / 已迁移 **`1.6`**（均值贡献 0.075 vs 0.08，差 < 0.01 → **注入择优不变**）；
 - **迁移触发点只挂生产路径**：`host/preflight.js` 传 `migrateLegacy:true`；**不传的调用（全部单测 / 黄金样本）完全不受影响**（`migrateState` 与重算链被 V1 逐字符样本锁着，不能改语义）；
-- **`数-2`**：新增 `importancePctOrNull()` —— 无 `importance`/`strength` 的维度返回 **`null`（不适用）**；`importancePct` 保持原口径（V1 行正文依赖它）。
+- **`数-2`**：新增 `importancePctOrNull()` —— 无 `importance`/`strength` 的维度返回 **`null`（不适用）**；`importancePct` 保持原口径（V1 行正文依赖它）；
+  另：`importance === 0`（窗口内零调用）也判 `null` —— 那正是 `D20` 说的「场景 65% / 当前状态 100% 的**假 0%**」，现在显示「不适用」，真有信号的低占比（如 2%）照常显示。
 
 ### ③ 测试
 

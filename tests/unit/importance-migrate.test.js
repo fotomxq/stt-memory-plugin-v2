@@ -121,7 +121,9 @@ A('D1 `importancePctOrNull`：**没有** importance/strength 的条目 → `null
     const scene = { id: 's1', path: '甲/乙', summary: '场景概要足够长。' };
     const atom = { id: 'a1', text: '正文足够长。', importance: 0.42 };
     return importancePctOrNull(scene) === null && importancePctOrNull(atom) === 42
-        && importancePct(atom) === 42;
+        && importancePct(atom) === 42
+        && importancePctOrNull({ id: 'z', importance: 0 }) === null          // 无信号（0）也判「不适用」，不再显示假 0%
+        && importancePctOrNull({ id: 'y', importance: 0.02 }) === 2;          // 真正有信号的低占比照常显示
 })(), 'n/a');
 
 A('D2 `importancePct` **保持原口径**（数值；V1 行正文黄金样本依赖它），没有字段时才是 0（旧行为不变）', (() => {

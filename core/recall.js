@@ -1717,6 +1717,14 @@ function importancePctOrNull(item) {
         const raw = (item.importance !== undefined && item.importance !== null) ? item.importance : Number(item.strength) / 100;
         const v = Number(raw);
         if (!Number.isFinite(v)) return null;
+        /**
+         * v3.50.24（`docs/D20` `数-2` 补修）：**0 也判「不适用」**。
+         *   原因：`recalcImportanceAfterExtract` 对「窗口内一次调用都没有」的条目会写 `importance = 0`
+         *   （`D7` R23 口径），于是 **场景 / 名册 / 货币** 这类从不被注入的维度恒为 0 → 界面上就是那个
+         *   「**65% / 100% 的假 0%**」。这里把「无信号（0）」与「不参与」统一表达为 `null`，
+         *   让展示层显示「不适用」；真正有信号的低占比（如 2%）仍照常显示。
+         */
+        if (Math.round(Math.max(0, Math.min(1, v)) * 100) === 0) return null;
         return Math.round(Math.max(0, Math.min(1, v)) * 100);
     } catch (e) { return null; }
 }
