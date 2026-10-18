@@ -15,11 +15,11 @@
 // 运行：node tests/unit/swipe-rows.test.js
 // ============================================================
 import { makeReporter } from '../harness/st-mock.js';
-import {
-    swipeRowHtml, applySwipeRows, bindSwipeRow, openSwipeRow, closeSwipeRow, closeAllSwipeRows,
+import {swipeRowHtml, applySwipeRows, bindSwipeRow, openSwipeRow, closeSwipeRow, closeAllSwipeRows,
     measureSwipeRow, swipeRowInfo, openSwipeRowRef, swipeBindStats,
     SWIPE_ATTR, SWIPE_ROW_CLASS, SWIPE_OPEN_CLASS, SWIPE_WIDE_CLASS, SWIPE_DRAG_CLASS,
-    SWIPE_ROW_SELECTOR, SWIPE_MAX_RATIO, SWIPE_OPEN_THRESHOLD,
+    SWIPE_ROW_SELECTOR, SWIPE_MAX_RATIO, SWIPE_OPEN_THRESHOLD, setSwipeSuspended, swipeSuspended,
+    SWIPE_CLOSE_THRESHOLD, SWIPE_INTENT_PX,
 } from '../../ui/swipe-rows.js';
 
 const R = makeReporter('swipe-rows v3.48.0 行按钮滑动/悬停触发（D22 W19 应-35 / D9 §3.2）');
@@ -105,13 +105,23 @@ A('B4 **右滑** → 收起', (() => {
     row1.dispatch('touchend', { changedTouches: [{ clientX: 160, clientY: 12 }] });
     return row1.classList.contains(SWIPE_OPEN_CLASS) === false;
 })(), J(swipeRowInfo(row1)));
-A('B5 **PC 悬停** → 同一个展开态（`mouseenter` / `mouseleave`）', (() => {
-    row1.dispatch('mouseenter', {});
-    const on = row1.classList.contains(SWIPE_OPEN_CLASS) === true;
-    row1.dispatch('mouseleave', {});
-    const off = row1.classList.contains(SWIPE_OPEN_CLASS) === false;
-    return on && off;
-})(), J(swipeRowInfo(row1)));
+/** v3.50.20（用户报告）：PC **不再悬停展开**，改为**按住鼠标向左拖动**触发（两种兼容模式之一）。 */
+A('B5 **PC 鼠标拖动** → 展开（左拖超阈值）/ 收起（右拖）；**悬停不再展开**（v3.50.20 用户报告的「放上去就滑出、表单跟着走」）', (() => {
+    closeAllSwipeRows();
+    const row = makeRow({});
+    const root = makeRoot([row]);
+    applySwipeRows(root);
+    row.dispatch('mouseenter', {});
+    const onHover = row.classList.contains(SWIPE_OPEN_CLASS);
+    row.dispatch('mousedown', { clientX: 200, clientY: 40, button: 0 });
+    row.dispatch('mousemove', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 41 });
+    row.dispatch('mouseup', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 41 });
+    const onDrag = row.classList.contains(SWIPE_OPEN_CLASS);
+    row.dispatch('mousedown', { clientX: 100, clientY: 41, button: 0 });
+    row.dispatch('mousemove', { clientX: 100 + SWIPE_CLOSE_THRESHOLD + 10, clientY: 41 });
+    row.dispatch('mouseup', { clientX: 100 + SWIPE_CLOSE_THRESHOLD + 10, clientY: 41 });
+    return onHover === false && onDrag === true && row.classList.contains(SWIPE_OPEN_CLASS) === false;
+})(), 'n/a');
 A('B6 **键盘聚焦** → 同样展开（可达性不退化）', (() => {
     row1.dispatch('focusin', {});
     const on = row1.classList.contains(SWIPE_OPEN_CLASS) === true;
@@ -238,4 +248,38 @@ A('F3 常量契约：阈值/比例有界合理（防止把阈值调到「怎么�
     return SWIPE_OPEN_THRESHOLD < 0 && SWIPE_OPEN_THRESHOLD > -200 && SWIPE_MAX_RATIO > 0.4 && SWIPE_MAX_RATIO < 1;
 }, J({ open: SWIPE_OPEN_THRESHOLD, ratio: SWIPE_MAX_RATIO }));
 
+// ---------- E 组（v3.50.20）：暂停开关 + 行内小表单守卫 ----------
+A('E1 **暂停开关**：`setSwipeSuspended(true)` 后拖动/聚焦都不展开，恢复后正常', (() => {
+    closeAllSwipeRows();
+    const row = makeRow({});
+    applySwipeRows(makeRoot([row]));
+    setSwipeSuspended(true);
+    row.dispatch('mousedown', { clientX: 200, clientY: 40, button: 0 });
+    row.dispatch('mousemove', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    row.dispatch('mouseup', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    const suspendedOn = row.classList.contains(SWIPE_OPEN_CLASS);
+    setSwipeSuspended(false);
+    row.dispatch('mousedown', { clientX: 200, clientY: 40, button: 0 });
+    row.dispatch('mousemove', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    row.dispatch('mouseup', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    const after = row.classList.contains(SWIPE_OPEN_CLASS);
+    setSwipeSuspended(false);
+    return suspendedOn === false && after === true && swipeSuspended() === false;
+})(), 'n/a');
+
+A('E2 **行内小表单守卫**：行里有 `.ftt-curquick`（货币快速记账展开中）→ 拖动 / 聚焦都不展开，避免表单跟着走', (() => {
+    closeAllSwipeRows();
+    const row = makeRow({});
+    const form = { nodeType: 1 };
+    row.querySelector = (sel) => (String(sel).indexOf('ftt-curquick') >= 0 ? form : null);
+    applySwipeRows(makeRoot([row]));
+    row.dispatch('mousedown', { clientX: 200, clientY: 40, button: 0 });
+    row.dispatch('mousemove', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    row.dispatch('mouseup', { clientX: 200 + SWIPE_OPEN_THRESHOLD - 10, clientY: 40 });
+    const byDrag = row.classList.contains(SWIPE_OPEN_CLASS);
+    row.dispatch('focusin', {});
+    return byDrag === false && row.classList.contains(SWIPE_OPEN_CLASS) === false;
+})(), 'n/a');
+
+setSwipeSuspended(false);   // 恢复默认，避免影响其它用例
 R.done();
