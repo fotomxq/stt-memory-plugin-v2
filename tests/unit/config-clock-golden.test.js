@@ -50,7 +50,10 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         // v3.45.5（`docs/D22` W4 · `docs/D26` 履历链）：角色履历的 6 个口径键（V1 无「履历」概念）——
         //   总开关 / 条数上限（软阈值）/ 接近上限预警比例 / 重要性免疫阈值 / 凝练目标字数 / 原作人物预填开关。
         'snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio',
-        'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill'];
+        'snapshotResumeImmune', 'snapshotResumeSummaryMax', 'snapshotResumeCanonFill',
+        // v3.50.19（`docs/D22` W12 `技-49` / `数-37`）：修复聚合预算 4 键 + 场景候选封顶 1 键（V2 专有；V1 无聚合）
+        'sceneRepairMaxItems', 'repairAggEnabled', 'repairAggMaxItems', 'repairAggMaxChars', 'repairAggMaxDomains',
+    ];
     const V2_STORAGE_ONLY = ['stateFileSlim', 'stateFileGzip',
     // v3.16.0（用户要求「增加本地文件存储模式，用于替代变量存储」）：本机缓冲的本地文件目录（空 = 不开启）
     // v3.26.0（用户要求「增加选择目录，可手动选择目录」）：用过的目录清单（目录选择器的候选来源之一；

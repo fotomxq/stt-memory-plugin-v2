@@ -418,7 +418,13 @@ const defaultCfg = {
     maxAutoRepairRounds: 3,        // 最新楼层哈希未变动时，自动修复至多重复次数（可设）
     autoRepairEveryOps: 8,       // v1.90：自动修复频率闸门 —— 每 N 次 提取记忆/摘要 后最多自动修复 1 次（0=不限制，恢复旧行为）
     // v1.137：自动修复重设计（三段式：JS 机械清理 → 候选筛选 → 窄契约 AI 措辞修订）
-    repairMaxItems: 20,          // 每次最多交给 AI 的候选条目数（1-60；机械清理不受此限制）
+    repairMaxItems: 20,
+    // v3.50.19（`docs/D22` W12 `技-49` / `数-37`）：修复聚合的预算（`docs/D33` §6 Q8 默认值）
+    sceneRepairMaxItems: 12,          // 场景域候选封顶（聚合路径只提交前 N 个场景节点）
+    repairAggEnabled: true,           // 聚合总开关（关 → 回退各域单发）
+    repairAggMaxItems: 80,            // 每域候选上限
+    repairAggMaxChars: 12000,          // 聚合提示词总字数上限
+    repairAggMaxDomains: 9,            // 参与域上限（9 = 全部）          // 每次最多交给 AI 的候选条目数（1-60；机械清理不受此限制）
     repairAutoAi: true,          // 自动触发时是否使用 AI 措辞修订（false = 自动修复只做 JS 机械清理，零 AI、秒级）
     // v1.138：候选筛选策略 —— 同维度标签组相关性 + 按比例随机抽查（轮询覆盖）
     repairTagSimHigh: 0.5,       // 相关性「过高」阈值：≥ 该值 → 优先列入核对（重点查是否重复）
