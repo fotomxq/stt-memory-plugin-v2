@@ -10,6 +10,7 @@
 // ============================================================
 
 import { clockDateTrim, clockDateValid, clockDateLabel, clockMonthDay, storyDateMsFromStr } from './clock.js';
+import { importanceWeight } from './importance-migrate.js';   // v3.50.24（`数-1`）：C3 权重随迁移标志切换
 import { chatTier, currentChatKey, currentChatTail, plotDemoted } from './chat-scope.js';   // v3.20.0：情节的聊天归属/位置越界判据
 import { clamp } from './util.js';
 import { activeAtoms, atomIsHidden } from './merge.js';
@@ -642,10 +643,12 @@ function recallEntryScore(e, ctx) {
         }
         // 其它因素（在日期近度之后比较）：关键词命中度 / 重要度 / 调用次数
         const hits = Math.min(3, recallHits(e, q)) * 0.35;
-        // v2.86.0：权重**暂保持 0.15**（`docs/D7` §4.9 C3 的 0.15→1.6 需与「旧数据重要度迁移重算」同批发布，
-        //   否则在仍是 V1 语义值（≈0.5）的数据上会把重要度项放大约 10 倍、改变注入择优 → 破坏 V1 注入保真。
-        //   登记为待办：迁移重算落地后同批改为 1.6（批次档 `P10az` §未做）。）
-        const imp = recallImportance(e) * 0.15;
+
+
+
+// v3.50.24（`docs/D22` W4 `数-1` / `docs/D7` §4.9 C3）：权重随**旧数据迁移标志**切换 ——
+//   未迁移（V1 语义 ≈0.5）→ 0.15；已迁移（窗口占比 ≈0.048）→ **1.6**；两者均值贡献相当 → 注入择优不变。
+const imp = recallImportance(e) * importanceWeight();   // v3.50.24（`数-1`）：迁移前 0.15 / 迁移后 1.6
         const usesB = Math.min(1, (Number(e.uses) || 0) / 8) * 0.05;
         return Number((base + hits + imp + usesB).toFixed(4));
     } catch (e) { return 0; }
@@ -1692,11 +1695,32 @@ function calcImportance(item) {
     const per = Number(cfg.importancePerUse) || 0.06;
     return clamp(base + uses * per, 0, 1);
 }
+/**
+ * 重要度百分比（**存储值 × 100**，与遗忘 / 淘汰 / 打分同源）。
+ *
+ * v3.50.24（`数-2`）：本函数**保持原口径**（数值），因为 V1 行正文黄金样本逐字符锁着它；
+ *   「该维不参与重要度」的语义由 `importancePctOrNull()` 表达（返回 `null` = 不适用，避免**假 0%**）。
+ */
 function importancePct(item) {
     try { return Math.round(Math.max(0, Math.min(1, Number(item && item.importance) || 0)) * 100); } catch (e) { return 0; }
 }
-
-export { calcImportance, importancePct, latestTrustedPlot, trustedPlotList, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
+/**
+ * **重要度百分比（可空）** —— `docs/D20` `数-2`：没有 `importance` 字段的维度（场景 / 名册 / 货币 …）
+ *   返回 **`null`（不适用）** 而不是 `0`；界面 / 体检据此显示「不适用」，不再出现**假 0%**。
+ * @returns {number|null}
+ */
+function importancePctOrNull(item) {
+    try {
+        const has = item && ((item.importance !== undefined && item.importance !== null)
+            || (item.strength !== undefined && item.strength !== null));
+        if (!has) return null;
+        const raw = (item.importance !== undefined && item.importance !== null) ? item.importance : Number(item.strength) / 100;
+        const v = Number(raw);
+        if (!Number.isFinite(v)) return null;
+        return Math.round(Math.max(0, Math.min(1, v)) * 100);
+    } catch (e) { return null; }
+}
+export { calcImportance, importancePct, importancePctOrNull, latestTrustedPlot, trustedPlotList, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {

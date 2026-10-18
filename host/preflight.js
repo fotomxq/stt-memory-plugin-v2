@@ -135,7 +135,7 @@ export function recalibrateAfterExtract(sigBefore) {
         if (!cfg || cfg.enabled === false) { out.skipped = 'disabled'; out.note = '组件未启用'; return out; }
         // v2.86.0（`docs/D7` §4.5）：**每次提取记忆落库后**重算重要度（窗口调用占比）。
         //   与时钟开关无关（重要度与时钟是两件事），故放在这里、先于任何时钟分支；逐维独立、幂等。
-        try { out.imp = recalcImportanceAfterExtract(); } catch (e) { out.imp = null; }
+        try { out.imp = recalcImportanceAfterExtract({ migrateLegacy: true }); } catch (e) { out.imp = null; }   // v3.50.24（`数-1`）：生产路径顺带做旧尺度迁移
         if (cfg.clockExtractEnabled === false) { out.skipped = 'auto-off'; out.note = '「消息后自动同步时钟」已关闭 → 分析后不同步'; return out; }
         if (typeof sigBefore !== 'string' || !sigBefore) { out.skipped = 'no-baseline'; out.note = '无情节基线 → 跳过'; return out; }
         const sigNow = atomsSignature();
