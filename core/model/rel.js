@@ -174,7 +174,7 @@ function relOrphanStats() {
                 if (!has) { out.items++; out.itemDims[dim] = (out.itemDims[dim] || 0) + 1; }
             }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 // 关联维护（**修复管道零 AI 步骤**调用）—— 按 cfg.relOrphanAction 处置孤儿：

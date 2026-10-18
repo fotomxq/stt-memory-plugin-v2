@@ -32,7 +32,7 @@ import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
 import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
-function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { } }
+function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { /* 忽略：提示通道不可用：不影响数据与落库 */ } }
 
 /**
  * v3.44.0（`docs/D22` W4 **`数-13`**）：**上一次空壳入库拦截的留痕**。
@@ -193,11 +193,11 @@ function mergeDelta(delta0, floorRange) {
                 }
             }
         }
-        for (const id of delta.states?.remove || []) { try { tombSet('currentStates', id); } catch (e) { } state.currentStates = (state.currentStates || []).filter(x => x.id !== id && x.subject !== id); }
+        for (const id of delta.states?.remove || []) { try { tombSet('currentStates', id); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } state.currentStates = (state.currentStates || []).filter(x => x.id !== id && x.subject !== id); }
         // v1.62：状态增改删后顺带调度状态记录衰退（防抖；无剧情时钟时内部自动跳过）
-        try { scheduleStateDecay(); } catch (e) { }
+        try { scheduleStateDecay(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         // v1.63：记忆增改删（=「被想起」）后延迟堆叠调度记忆遗忘清扫（B8-5）
-        try { if (delta.memories && (delta.memories.add || delta.memories.update || delta.memories.remove)) scheduleMemoryForget(); } catch (e) { }
+        try { if (delta.memories && (delta.memories.add || delta.memories.update || delta.memories.remove)) scheduleMemoryForget(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         // v1.101 修复：快照 新增 与 更新 可能同时出现 —— 用 concat 合并处理（旧 `a || b` 在 add 非空时短路丢掉 update）
         for (const s of [].concat(delta.snapshots?.add || [], delta.snapshots?.update || [])) {
             const n = preserveEntryMeta('snapshots', s, normalizeSnapshot(s));
@@ -208,9 +208,9 @@ function mergeDelta(delta0, floorRange) {
                     n.uses = prev.uses || 0;
                     const merged = mergeSnapshotObjects(prev, n);
                     // v1.161：档案实质内容真的变了 → 记「最后一次更新时间」（剧情时间为基准）
-                    if (snapshotBodySig(merged) !== snapshotBodySig(prev)) { try { stampSnapshotTime(merged, 'update'); } catch (e) { } }
+                    if (snapshotBodySig(merged) !== snapshotBodySig(prev)) { try { stampSnapshotTime(merged, 'update'); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } }
                     state.snapshots[i] = merged;
-                } else { try { stampSnapshotTime(n, 'update'); } catch (e) { } state.snapshots.push(n); }
+                } else { try { stampSnapshotTime(n, 'update'); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } state.snapshots.push(n); }
             }
         }
         // v1.176：**每次更新角色 → 被动刷新年龄**（固定规则，零 AI）——
@@ -220,31 +220,31 @@ function mergeDelta(delta0, floorRange) {
             try {
                 const ageSync = refreshAllSnapshotAges();
                 if (ageSync.fixed || ageSync.cleared) {
-                    try { dbgLog('摘要', { action: '年龄被动刷新（每次更新角色）', fixed: ageSync.fixed, cleared: ageSync.cleared, items: (ageSync.items || []).slice(0, 8) }); } catch (e) { }
+                    try { dbgLog('摘要', { action: '年龄被动刷新（每次更新角色）', fixed: ageSync.fixed, cleared: ageSync.cleared, items: (ageSync.items || []).slice(0, 8) }); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
                 }
-            } catch (e) { }
+            } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         // v1.113：删除角色档案 → 联动清除该角色的状态记录（角色不在了其“当前状态”一并失效）
         if (Array.isArray(delta.snapshots?.remove) && delta.snapshots.remove.length) {
             const delSet = new Set(delta.snapshots.remove.map(x => String(x).trim()));
             const removedNames = (state.snapshots || []).filter(x => delSet.has(String(x.id)) || delSet.has(String(x.name))).map(x => x.name);
             state.snapshots = (state.snapshots || []).filter(x => !delSet.has(String(x.id)) && !delSet.has(String(x.name)));
-            try { tombMany('snapshots', delta.snapshots.remove); } catch (e) { }   // v1.117 墓碑
-            try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { }
+            try { tombMany('snapshots', delta.snapshots.remove); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }   // v1.117 墓碑
+            try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         for (const m of delta.memories?.add || []) {
             const n = preserveEntryMeta('memories', m, normalizeMemory(m));
             if (n) {
                 // v1.63：记忆写入/更新即「想起」—— 无日期时自动补剧情日期（遗忘引擎时间轴；AI 自带日期保留）
                 // v1.63 原意是「无日期时自动补**剧情日期**」；v2.39.0 起无剧情日期时**留空**（不再写现实日期）
-                if (!n.date) { try { const st = stampNowForState(); if (st.date) n.date = st.date; } catch (e) { } }
+                if (!n.date) { try { const st = stampNowForState(); if (st.date) n.date = st.date; } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
                 const i = state.memories.findIndex(x => x.id === n.id);
                 if (i >= 0) state.memories[i] = n; else state.memories.push(n);
             }
         }
-        for (const id of delta.memories?.remove || []) { try { tombSet('memories', id); } catch (e) { } try { dropRelLinks('memories', [id]); } catch (e) { } state.memories = (state.memories || []).filter(x => x.id !== id && x.title !== id); }
+        for (const id of delta.memories?.remove || []) { try { tombSet('memories', id); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } try { dropRelLinks('memories', [id]); } catch (e) { } state.memories = (state.memories || []).filter(x => x.id !== id && x.title !== id); }
         // v1.63：记忆增改删后顺带调度遗忘清扫（防抖；无剧情时钟时内部自动跳过）
-        try { scheduleMemoryForget(); } catch (e) { }
+        try { scheduleMemoryForget(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         // v1.104：物品新增/更新统一处理 —— 同名只更新不新增；数量为 0 自动删除
         for (const it of (delta.items?.add || []).concat(delta.items?.update || [])) {
             const n = preserveEntryMeta('items', it, normalizeItem(it));
@@ -275,7 +275,7 @@ function mergeDelta(delta0, floorRange) {
                 } else state.items.push(n);
             }
         }
-        for (const id of delta.items?.remove || []) { try { tombSet('items', id); } catch (e) { } state.items = (state.items || []).filter(x => x.id !== id && x.name !== id); }
+        for (const id of delta.items?.remove || []) { try { tombSet('items', id); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } state.items = (state.items || []).filter(x => x.id !== id && x.name !== id); }
         // v1.181：货币大类 —— 同一「归属 + 币种」只维护一条（额度覆盖、收支追加）；归属默认主角
         if (cfg.currencyEnabled !== false) {
             for (const cu of (delta.currencies?.add || []).concat(delta.currencies?.update || [])) {
@@ -304,19 +304,19 @@ function mergeDelta(delta0, floorRange) {
                 } else state.currencies.push(n);
             }
             for (const id of delta.currencies?.remove || []) {
-                try { tombSet('currencies', id); } catch (e) { }
+                try { tombSet('currencies', id); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                 state.currencies = (state.currencies || []).filter(x => x.id !== id && x.name !== id && String(x.owner || '') !== String(id));
             }
         }
         // v1.192：传言大类 —— 同一「主体」只维护一条（说法变化 = 更新）；AI 写「分裂自」或说法明显不同
         //   → 建立父子关联并**新增一个传言分支**（主体保持不变）；全部落库逻辑见 rumorApplyAiDelta()
         if (cfg.rumorEnabled !== false) {
-            for (const r of delta.rumors?.add || []) { try { rumorApplyAiDelta(r, { floor: fb, update: false }); } catch (e) { } }
-            for (const r of delta.rumors?.update || []) { try { rumorApplyAiDelta(r, { floor: fb, update: true }); } catch (e) { } }
+            for (const r of delta.rumors?.add || []) { try { rumorApplyAiDelta(r, { floor: fb, update: false }); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
+            for (const r of delta.rumors?.update || []) { try { rumorApplyAiDelta(r, { floor: fb, update: true }); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
             for (const id of delta.rumors?.remove || []) {
                 const gone = (state.rumors || []).filter(x => x && (x.id === id || String(x.subject || '') === String(id)));
-                try { tombSet('rumors', id); } catch (e) { }
-                try { tombEntries('rumors', gone); } catch (e) { }   // v1.192：id + 内容哈希 双墓碑
+                try { tombSet('rumors', id); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
+                try { tombEntries('rumors', gone); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }   // v1.192：id + 内容哈希 双墓碑
                 const goneIds = new Set(gone.map(x => x && x.id).filter(Boolean).map(String));
                 state.rumors = (state.rumors || []).filter(x => x.id !== id && String(x.subject || '') !== String(id) && !goneIds.has(String(x.id || '')));
             }
@@ -333,7 +333,7 @@ function mergeDelta(delta0, floorRange) {
                     state.stats = state.stats || { plansClosed: 0, suspenseResolved: 0 };
                     state.stats.plansClosed = Number(state.stats.plansClosed || 0) + 1;
                     const ci = state.plans.findIndex(x => x.id === n.id || String(x.content || '') === String(n.content || ''));
-                    if (ci >= 0) { try { tombSet('plans', n.id); tombSet('plans', state.plans[ci] && state.plans[ci].id); } catch (e) { } state.plans.splice(ci, 1); }
+                    if (ci >= 0) { try { tombSet('plans', n.id); tombSet('plans', state.plans[ci] && state.plans[ci].id); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } state.plans.splice(ci, 1); }
                     continue;
                 }
                 const i = state.plans.findIndex(x => x.id === n.id);
@@ -363,7 +363,7 @@ function mergeDelta(delta0, floorRange) {
                 state.plans.splice(i, 1);
             }
         }
-        for (const id of delta.plans?.remove || []) { try { dropRelLinks('plans', [id]); } catch (e) { } state.plans = (state.plans || []).filter(x => x.id !== id && x.content !== id); }
+        for (const id of delta.plans?.remove || []) { try { dropRelLinks('plans', [id]); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } state.plans = (state.plans || []).filter(x => x.id !== id && x.content !== id); }
         for (const s of delta.suspense?.add || []) {
             const n = preserveEntryMeta('suspense', s, normalizeSuspense(s));
             if (n) {
@@ -402,7 +402,7 @@ function mergeDelta(delta0, floorRange) {
                 state.suspense.splice(i, 1);
             }
         }
-        for (const id of delta.suspense?.remove || []) { try { dropRelLinks('suspense', [id]); } catch (e) { } state.suspense = (state.suspense || []).filter(x => x.id !== id && x.content !== id); }
+        for (const id of delta.suspense?.remove || []) { try { dropRelLinks('suspense', [id]); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } state.suspense = (state.suspense || []).filter(x => x.id !== id && x.content !== id); }
         for (const n of delta.npcs?.add || []) { const nn = preserveEntryMeta('npcs', n, normalizeNpc(n)); if (nn) { state.npcs = state.npcs || []; const i = state.npcs.findIndex(x => x.id === nn.id); if (i >= 0) state.npcs[i] = nn; else state.npcs.push(nn); } }
         for (const id of delta.npcs?.remove || []) { state.npcs = (state.npcs || []).filter(x => x.id !== id && x.name !== id); }
         for (const s of delta.scenes?.add || []) {
@@ -425,11 +425,11 @@ function mergeDelta(delta0, floorRange) {
         // v1.113：场景写入后做一次「重复地址并集」—— 同路径多记录合并为一个（如 不再出现第二个纽约层级）
         // v1.135：并集升级为「精确同路径 + 相似地名（纽约/纽约市）」两级归并（scenesUnionMergeAll）
         if ((delta.scenes && (delta.scenes.add || delta.scenes.update || delta.scenes.reparent || delta.scenes.remove)) && (state.scenes || []).length > 1) {
-            try { (typeof scenesUnionMergeAll === 'function' ? scenesUnionMergeAll : scenesUnionMerge)(); } catch (e) { }
+            try { (typeof scenesUnionMergeAll === 'function' ? scenesUnionMergeAll : scenesUnionMerge)(); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
         }
         // v1.135：状态记录主体归并（同一角色的全名/名被 AI 当成两个人各记一组时自动合并）
         if (((state.currentStates || []).length > 1) && delta.states) {
-            try { statesSubjectUnionMerge(); } catch (e) { }
+            try { statesSubjectUnionMerge(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
         for (const r of delta.scenes?.reparent || []) {
             const nm = normText(r?.name, 40) || normText(r?.id, 40);
@@ -503,7 +503,7 @@ function mergeDelta(delta0, floorRange) {
             if (raw.importance === undefined && raw['重要度'] === undefined && prev.importance !== undefined) n.importance = prev.importance;
             state.parallels[i] = n;
         }
-        for (const id of delta.parallels?.remove || []) { try { dropRelLinks('parallels', [id]); } catch (e) { } state.parallels = (state.parallels || []).filter(x => x.id !== id && x.title !== id); }
+        for (const id of delta.parallels?.remove || []) { try { dropRelLinks('parallels', [id]); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } state.parallels = (state.parallels || []).filter(x => x.id !== id && x.title !== id); }
         if (delta.state) {
             if (delta.state.date) state.state.date = clockDateTrim(delta.state.date);
             if (delta.state.time) state.state.time = String(delta.state.time).slice(0, 60);
@@ -513,7 +513,7 @@ function mergeDelta(delta0, floorRange) {
         if (delta.vars && typeof delta.vars === 'object') Object.assign(state.vars, delta.vars);
         // v1.165：把本轮「带关联的条目」（记忆 / 计划 / 悬念 / 平行事件）写入通用知情关联层
         //   （放在各维度均已落库之后：按 id / 标题 / 正文匹配目标条目，避免「先写关联后落库」空转）
-        try { if (typeof applyDeltaRelLinks === 'function') applyDeltaRelLinks(delta); } catch (e) { }
+        try { if (typeof applyDeltaRelLinks === 'function') applyDeltaRelLinks(delta); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         // v1.147：库存切片用「存储上限」（≥保底），不再用旧的 300/150/60 硬编码
         // v1.203：情节裁剪保留「已总结隐藏」条目（不参与淘汰 → 持久存储）
         state.atoms = capAtomsKeepingHidden(state.atoms, storeCapFor('atoms'));
@@ -521,11 +521,11 @@ function mergeDelta(delta0, floorRange) {
         state.snapshots = (state.snapshots || []).slice(-storeCapFor('snapshots'));
         // v1.59：平行事件上限走设定（maxParallels 默认 30，超出自动挤出最旧）
         state.parallels = (state.parallels || []).slice(-Math.max(1, Number(cfg && cfg.maxParallels) || 30));
-        try { scheduleParallelDecay(); } catch (e) { }
+        try { scheduleParallelDecay(); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
         // v1.101：状态固定模板的条数钳制 —— 每角色最多状态条数（超出裁掉最旧；最少为提示词要求）
-        try { applyStateBounds(); } catch (e) { }
+        try { applyStateBounds(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         // v1.143：各分类条数上限 JS 兜底（概念/场景/物品/计划/悬念/名册此前只有提示词约束）
-        try { enforceDimCaps(); } catch (e) { }
+        try { enforceDimCaps(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         saveState();
         // v3.0.3（用户要求）：「每次被动提取记忆及原子数据发生变化，后应该触发保存到服务器的操作。」
         //   `mergeDelta` 是**所有**原子数据变更的唯一漏斗（被动提取 / 推演 / 修复 / 导入…都经它落库），
@@ -559,7 +559,7 @@ function mergeDelta(delta0, floorRange) {
                 changed: dimAct,
                 excerpt: dbgExcerpt(JSON.stringify({ date: st.state && st.state.date, location: st.state && st.state.location }), 160),
             });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         return { ok: true, added, total: afterTotal };
     } catch (e) { warn('增量合并失败', e); return false; }
 }
@@ -587,7 +587,7 @@ function scheduleParallelDecay() {
             decayTimer = null;
             try { await runParallelDecay({}); } catch (e) { warn('平行事件衰退失败', e); }
         }, 3000);   // v1.60/1.61：更新延迟堆叠（3s 统一调度一次）
-    } catch (e) { }
+    } catch (e) { /* 忽略：告警/日志写失败不影响主流程 */ }
 }
 async function runParallelDecay(opts) {
     try {
@@ -607,10 +607,10 @@ async function runParallelDecay(opts) {
         }
         try {
             dbgLog('发送记忆', { action: '平行事件衰退', n, cap, overRatio, cutoff: Number(cfg.parallelDecayCutoff), removed: expired.length, titles: expired.slice(0, 6).map(x => x.title || x.id || '') });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         if (expired.length) {
             const remain = (state.parallels || []).length;
-            try { toast(`💀 平行事件衰退：${expired.length} 条已达衰退阈值自动移除（剩 ${remain}/${cap}）`, 'info'); } catch (e) { }
+            try { toast(`💀 平行事件衰退：${expired.length} 条已达衰退阈值自动移除（剩 ${remain}/${cap}）`, 'info'); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         return { removed: expired.length, triggered: overRatio || expired.length > 0, overRatio, n, cap, remain: (state.parallels || []).length };
     } catch (e) { return { removed: 0, triggered: false, error: String(e && e.message || e) }; }
@@ -686,7 +686,7 @@ function rumorAiHas(raw, keys) {
             if (Array.isArray(v) && !v.length) continue;
             return true;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return false;
 }
 // 「AI 增量 + 既有条目」合并：AI 明确的字段覆盖；未提供的字段保留旧值；集合类字段一律并集；
@@ -1017,7 +1017,7 @@ function scenesSimilarNameMerge() {
         const total = list.length - finalList.length;
         if (total > 0) {
             state.scenes = finalList;
-            try { log(`场景相似地名归并：合并 ${total} 个节点${renamed ? ` · 子级路径改名 ${renamed} 处` : ''}`); } catch (e) { }
+            try { log(`场景相似地名归并：合并 ${total} 个节点${renamed ? ` · 子级路径改名 ${renamed} 处` : ''}`); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
         return total;
     } catch (e) { return 0; }
@@ -1033,7 +1033,7 @@ function scheduleStateDecay() {
             stateDecayTimer = null;
             try { await runStateDecay({}); } catch (e) { warn('状态记录衰退失败', e); }
         }, 3000);
-    } catch (e) { }
+    } catch (e) { /* 忽略：告警/日志写失败不影响主流程 */ }
 }
 async function runStateDecay(opts) {
     try {
@@ -1058,17 +1058,17 @@ async function runStateDecay(opts) {
         const removed = n - kept.length;
         if (removed > 0) {
             // v1.117：衰退移除记墓碑（跨端不再复活已淘汰状态）
-            try { tombMany('currentStates', list.filter(x => kept.indexOf(x) < 0).map(x => x && (x.id || x.title || ''))); } catch (e) { }
+            try { tombMany('currentStates', list.filter(x => kept.indexOf(x) < 0).map(x => x && (x.id || x.title || ''))); } catch (e) { /* 忽略：不可序列化/不可解析的单个元素跳过，不影响其余 */ }
             state.currentStates = kept;
             saveState();
         }
         try {
             dbgLog('发送记忆', { action: '状态记录衰退', n, cap, overRatio, cutoff: Number(cfg.stateDecayCutoff), removed, subjects: removedSubjects.slice(0, 8), entryExpired: expired.length });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         if (removed > 0) {
             const remain = (state.currentStates || []).length;
             const subjNote = removedSubjects.length ? ` · 角色停更整组移除：${removedSubjects.slice(0, 4).join('、')}${removedSubjects.length > 4 ? ' 等' : ''}` : '';
-            try { toast(`💀 状态记录衰退：${removed} 条自动移除（剩 ${remain}）${subjNote}`, 'info'); } catch (e) { }
+            try { toast(`💀 状态记录衰退：${removed} 条自动移除（剩 ${remain}）${subjNote}`, 'info'); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         return { removed, triggered: overRatio || removed > 0, overRatio, n, cap, remain: (state.currentStates || []).length, removedSubjects };
     } catch (e) { return { removed: 0, triggered: false, error: String(e && e.message || e) }; }
@@ -1084,8 +1084,8 @@ async function runStateDecay(opts) {
 
 function scenesUnionMergeAll() {
     let n = 0;
-    try { n += scenesUnionMerge(); } catch (e) { }
-    try { n += scenesSimilarNameMerge(); } catch (e) { }
+    try { n += scenesUnionMerge(); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
+    try { n += scenesSimilarNameMerge(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return n;
 }
 // ==================== 状态主体「同一角色不同称呼」归并 ====================
@@ -1164,7 +1164,7 @@ function scheduleMemoryForget() {
             memoryForgetTimer = null;
             try { await runMemoryForget({}); } catch (e) { warn('记忆遗忘清扫失败', e); }
         }, 3000);
-    } catch (e) { }
+    } catch (e) { /* 忽略：告警/日志写失败不影响主流程 */ }
 }
 async function runMemoryForget(opts) {
     try {
@@ -1185,16 +1185,16 @@ async function runMemoryForget(opts) {
         if (expired.length) {
             const removeIds = new Set(expired.map(x => x.id || JSON.stringify(x).slice(0, 60)));
             // v1.117：遗忘移除记墓碑（跨端不再复活已遗忘记忆）
-            try { tombMany('memories', Array.from(removeIds)); } catch (e) { }
+            try { tombMany('memories', Array.from(removeIds)); } catch (e) { /* 忽略：不可序列化/不可解析的单个元素跳过，不影响其余 */ }
             state.memories = list.filter(x => !removeIds.has(x.id || JSON.stringify(x).slice(0, 60)));
             saveState();
         }
         try {
             dbgLog('发送记忆', { action: '记忆遗忘清扫', n, cap, overRatio, avg, cutoff: Number(cfg.memoryForgetCutoff), removed: expired.length, titles: expired.slice(0, 6).map(x => String(x.title || x.content || x.id || '').slice(0, 30)) });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         if (expired.length) {
             const remain = (state.memories || []).length;
-            try { toast(`🧠 记忆遗忘清扫：${expired.length} 条低重要度旧记忆自动遗忘（剩 ${remain}）`, 'info'); } catch (e) { }
+            try { toast(`🧠 记忆遗忘清扫：${expired.length} 条低重要度旧记忆自动遗忘（剩 ${remain}）`, 'info'); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         return { removed: expired.length, triggered: overRatio || expired.length > 0, overRatio, n, cap, avg, remain: (state.memories || []).length };
     } catch (e) { return { removed: 0, triggered: false, error: String(e && e.message || e) }; }
@@ -1277,7 +1277,7 @@ function statesSubjectUnionMerge() {
         if (!removed) return 0;
         const before = list.length;
         state.currentStates = out;
-        try { log(`状态记录主体归并：同一角色的不同称呼已合并（${before} → ${out.length} 条，删除 ${removed} 条重复）`); } catch (e) { }
+        try { log(`状态记录主体归并：同一角色的不同称呼已合并（${before} → ${out.length} 条，删除 ${removed} 条重复）`); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         return removed;
     } catch (e) { return 0; }
 }
@@ -1350,7 +1350,7 @@ function mergeSnapshotObjects(old, n, opts) {
     const mergedIdentity = ce ? fillCe(oldI, n.identity) : fill(oldI, n.identity);
     // v1.162/v1.171/v1.176：年龄为派生字段 —— 合并后统一走 syncSnapshotAge()（出生日期 + 剧情锚点重算，
     //   不采信外部传入的年龄；算不出时保留合理存档值、清掉不合理的历史污染值）
-    try { syncSnapshotAge({ identity: mergedIdentity }); } catch (e) { }
+    try { syncSnapshotAge({ identity: mergedIdentity }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return {
         ...old, ...n,
         lastUpdateDate: tUp.d, lastUpdateTime: tUp.t, lastSeenDate: tSeen.d, lastSeenTime: tSeen.t,
@@ -1418,7 +1418,7 @@ function sweepStatesForRemovedSnapshots(names) {
         try {
             const afterList = state.currentStates || [];
             tombMany('currentStates', beforeList.filter(s => afterList.indexOf(s) < 0).map(s => s && s.id));
-        } catch (e) { }
+        } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         return before - (state.currentStates || []).length;
     } catch (e) { return 0; }
 }
@@ -1444,8 +1444,8 @@ function dropRelLinks(dim, ids) {
         if (!gone.length) return 0;
         n = gone.length;
         state.links = arr.filter(x => !(x && String(x.dim) === d && set.has(String(x.refId))));
-        try { tombEntries('links', gone); } catch (e) { }
-    } catch (e) { }
+        try { tombEntries('links', gone); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return n;
 }
 // 引用重挂：条目合并（记忆 / 计划 / 悬念 / 平行事件）后把关联与引用指回主条
@@ -1485,7 +1485,7 @@ function applyDeltaRelLinks(delta) {
             (x, r) => String(x.id) === String(r.id || '') || (r.content && String(x.content) === String(r.content)));
         pick('parallels', list(delta.parallels && delta.parallels.add).concat(list(delta.parallels && delta.parallels.update)),
             (x, r) => String(x.id) === String(r.id || '') || (r.title && String(x.title) === String(r.title)));
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return n;
 }
 // 载入迁移（幂等）：容器归一 / 丢弃非法行 / how 合法子集 / 去重 / 每条目超限截断
@@ -1653,7 +1653,7 @@ function clampStoreFloors(shares) {
                 moved.push({ dim: dim, label: String(e[3]), key: String(e[0]), from: floor, to: cap });
             }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return moved;
 }
 
@@ -1720,12 +1720,12 @@ function enforceDimCaps() {
             const dropped = arr.filter((e, i) => !keepIdx.has(i));
             const keep = arr.filter((e, i) => keepIdx.has(i));
             const ids = dropped.map(e => e && e.id).filter(Boolean).map(String);
-            try { if (ids.length) tombMany(dim, ids); } catch (e) { }
+            try { if (ids.length) tombMany(dim, ids); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             state[dim] = keep;
             out.cut += dropped.length;
             out.dims[dim] = { label: label, removed: dropped.length };
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return out;
 }
 

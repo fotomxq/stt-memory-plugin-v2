@@ -367,7 +367,7 @@ function buildInjectConstraints(ctx) {
         for (const m of (st().memories || [])) {
             if (!m || !m.id) continue;
             let rows = [], anchor = null;
-            try { const all = relLinksOf('memories', m.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { }
+            try { const all = relLinksOf('memories', m.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
             if (anchor && anchor.public) continue;
             const title = String(m.title || m.content || '').slice(0, 24);
             if (inSet('memories', m.id)) {
@@ -378,7 +378,7 @@ function buildInjectConstraints(ctx) {
         for (const p of (st().plans || [])) {
             if (!p || !p.id || p.status === 'closed') continue;
             let rows = [], anchor = null;
-            try { const all = relLinksOf('plans', p.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { }
+            try { const all = relLinksOf('plans', p.id); rows = all.filter(x => x.who); anchor = all.find(x => !x.who) || null; } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
             if (anchor && anchor.public) continue;
             const title = String(p.title || p.content || '').slice(0, 24);
             if (inSet('plans', p.id)) {
@@ -389,7 +389,7 @@ function buildInjectConstraints(ctx) {
         for (const s of (st().suspense || [])) {
             if (!s || !s.id || s.status === 'closed') continue;
             let rows = [];
-            try { rows = relLinksOf('suspense', s.id).filter(x => x.who); } catch (e) { }
+            try { rows = relLinksOf('suspense', s.id).filter(x => x.who); } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
             const title = String(s.title || s.content || '').slice(0, 24);
             if (inSet('suspense', s.id)) {
                 const known = rows.length ? rows.map(x => `${relShortName(x.who)}（${relHowLabelOf(x.how)}）`).join('、') : '（未记录，按"当事人"保守处理）';
@@ -409,7 +409,7 @@ function buildInjectConstraints(ctx) {
         infoLines.push('2. 非公共信息（未列出者不得提及 / 暗示 / 配合 / 依据）：');
         if (nameAll) {
             const allNames = [];
-            for (const m of (st().memories || [])) { if (m && m.id) { try { const an = relLinksOf('memories', m.id).find(x => !x.who); if (an && an.public) continue; } catch (e) { } allNames.push(String(m.title || '').slice(0, 20)); } }
+            for (const m of (st().memories || [])) { if (m && m.id) { try { const an = relLinksOf('memories', m.id).find(x => !x.who); if (an && an.public) continue; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } allNames.push(String(m.title || '').slice(0, 20)); } }
             if (allNames.length) infoLines.push(`  - 记忆（共 ${allNames.length} 条）：${allNames.slice(0, 12).join('、')}`);
         }
         if (detail.length) infoLines.push(...detail);
@@ -460,7 +460,7 @@ function buildInjectConstraints(ctx) {
                         if (rows.length) return true;
                     }
                 }
-            } catch (e) { }
+            } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
             return false;
         })();
         if (hasDiff) lines.push('6. 差异分开处理：同一条记忆 / 计划的不同角色版本不得混用（各行「差异」只对该作者有效）。');
@@ -796,7 +796,7 @@ function injectPresentNames() {
                 const r2 = matchPresentNames(ents.join('、'));
                 if (r2.present.length) return r2.present;
             }
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         const stored = (() => { const s = stState(); return Array.isArray(s.present) ? s.present.filter(Boolean) : null; })();
         if (stored && stored.length) return stored;      // 用与存储同源的名单（总览/注入保持一致）
         return String(text || '').trim() ? [] : null;    // 有正文但都没命中 → 严格空；完全无正文 → 不限制
@@ -850,7 +850,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         const markCand = (dim, id) => {
             try {
                 if (dim && candIds[dim] && id !== undefined && id !== null && candIds[dim].indexOf(String(id)) < 0) candIds[dim].push(String(id));
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         };
         const maxAtoms = num(o.maxAtoms, cfg.maxAtoms || 16);
         const maxMemories = num(o.maxMemories, cfg.maxMemories || 8);
@@ -1168,7 +1168,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             // v1.166：已转正为情节的平行事件不再作为平行事件注入（内容已由情节承载）
             if (p && p.promotedTo) continue;
             let expired = false;
-            try { expired = !!parallelExpired(p); } catch (e) { }
+            try { expired = !!parallelExpired(p); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             if (expired) continue;
             const hay = `${p.title || ''} ${p.text || ''} ${p.type || ''} ${(p.characters || []).join(' ')} ${p.location || ''}`.toLowerCase();
             if (q && !(tagMatch(p.tags, q) || hay.includes(q))) continue;
@@ -1256,7 +1256,7 @@ function buildMemoryBodyForInject(queryText, opts) {
             try {
                 const ref = cat.rows[cat.ptr] && cat.rows[cat.ptr].ref;
                 if (ref && ref.dim && injectedIds[ref.dim] && injectedIds[ref.dim].indexOf(String(ref.id)) < 0) injectedIds[ref.dim].push(String(ref.id));
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             cat.ptr++;
             return true;
         };
@@ -1272,7 +1272,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         let allocGuard = 0;
         for (;;) {
             if (++allocGuard > allocCap) {
-                try { dbgLog('发送记忆', { action: '注入预算分配超限，已中止', guard: allocGuard, cap: allocCap }); } catch (e) { }
+                try { dbgLog('发送记忆', { action: '注入预算分配超限，已中止', guard: allocGuard, cap: allocCap }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                 break;
             }
             let bi = -1, best = -1;
@@ -1300,7 +1300,7 @@ function buildMemoryBodyForInject(queryText, opts) {
                     if (x && y) return atomTimeAsc(x, y);
                     return 0;                       // 缺少排序键 → 保持原相对顺序（sort 稳定）
                 });
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
         // v2.88.0：正文 = Markdown 小节（`## 名称` + 可选 `> 说明：…`） + 条目的 `- ` 列表，小节之间空行分隔
         const bodyText = parts.map(p => `${p.md || mdHeadOf(p.head)}\n${p.lines.map(l => (l && l.text != null ? l.text : String(l))).join('\n')}`).join('\n\n');
@@ -1342,7 +1342,7 @@ function buildMemoryBodyForInject(queryText, opts) {
         let totalText = `${bodyText}\n\n${constraintText}`;
         try {
             if (String((cfg && cfg.injectConstraintPosition) || 'tail') === 'head') totalText = `${constraintText}\n\n${bodyText}`;
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         if (o.diagnose) return diagOf(constraintText, clipped, totalText);
         return totalText;
     } catch (e) { warn('本地召回失败', e); return ''; }
@@ -1423,14 +1423,14 @@ function markUsed(kind, item) {
         useBuffer[kind] = useBuffer[kind] || new Set();
         useBuffer[kind].add(item.id);
         item.uses = (Number(item.uses) || 0) + 1;
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
 }
 
 function scheduleUseFlush() {
     if (useFlushTimer) return;
     useFlushTimer = setTimeout(() => {
         useFlushTimer = null;
-        try { saveState(); } catch (e) { }
+        try { saveState(); } catch (e) { /* 忽略：定时器不可用（受限宿主）：本轮静默跳过 */ }
     }, 3000);
 }
 
@@ -1630,7 +1630,7 @@ function atomLatestDated() {
 //   opts.text：显式正文（不传则内部取最新 AI 回复；再拿不到 → 最近楼层窗口，仅用于日期/时间/地点）
 
 function relConceptSuffix(anchor) {
-    try { if (anchor && anchor.conceptRef) return `｜概念：${anchor.conceptRef}`; } catch (e) { }
+    try { if (anchor && anchor.conceptRef) return `｜概念：${anchor.conceptRef}`; } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
     return '';
 }
 

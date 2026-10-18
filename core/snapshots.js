@@ -76,7 +76,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
                 const ids = Object.keys(target.atomsHashes).sort();
                 target.hash = storageHash(ids.map(id => `${id}:${target.atomsHashes[id] || ''}`).join('|'));
             }
-        } catch (e) { }
+        } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     }
     // 快照整理：
     //   R3 全局只允许一个根快照 —— 出现多个按 ts 合并为一个（后根内容覆盖先根，含 deleted 账本）；
@@ -196,7 +196,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     }
     function trimSnapshots() {
         // 不再「挤最旧增量」—— 上限 30，超出把最早 15 个增量并入根快照；多根自动合并为单根
-        try { snapshotConsolidate(); } catch (e) { }
+        try { snapshotConsolidate(); } catch (e) { /* 忽略：告警/日志写失败不影响主流程 */ }
     }
     // 兜底检测：存在无快照记录的原子（从未被任何快照覆盖）→ 若已有快照则立即增量补全；无任何快照 → 全量根快照
     function snapshotEnsureBase() {
@@ -219,9 +219,9 @@ function renderPanel() { /* no-op：UI 层负责 */ }
             if (snapTimer) return;
             snapTimer = timerHooks.set(() => {
                 snapTimer = null;
-                try { snapshotCreateIncr(); } catch (e) { }
+                try { snapshotCreateIncr(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             }, SNAP_INCR_DELAY);
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     }
     // 找到指定快照 id
     function snapshotFind(id) { return (state.snapStore || []).find(s => s.id === id) || null; }
@@ -277,7 +277,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
             tombstoneSweepPause();
             try { snapSaving = true; saveStateRaw(); } finally { snapSaving = false; tombstoneSweepResume(); }
             entryIndexInit();                            // 索引对齐还原后的数据态
-            try { if (typeof renderPanel === 'function') renderPanel(); } catch (e) { }
+            try { if (typeof renderPanel === 'function') renderPanel(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             notify('info', { title: '已还原到快照', text: `${String(id).slice(0, 14)}…（${added} 条原子；含该快照前增量补全）` });
             return { ok: true, added };
         } catch (e) { warn('快照还原失败', e); return { ok: false, error: String(e.message || e).slice(0, 120) }; }

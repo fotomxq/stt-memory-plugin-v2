@@ -200,7 +200,7 @@ function deconstructEntry(kind, flat) {
             let odds = [];
             if (typeof raw.goalOdds === 'string') {
                 const s = raw.goalOdds.trim();
-                try { const j = JSON.parse(s); if (Array.isArray(j)) odds = j; } catch (e) { }
+                try { const j = JSON.parse(s); if (Array.isArray(j)) odds = j; } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
                 if (!odds.length) {
                     // 宽松解析：每行「目标 … / 可能性 NN% 或 NN」
                     String(raw.goalOdds).split(/[\n;；]/).forEach(line => {

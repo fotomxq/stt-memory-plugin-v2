@@ -439,7 +439,7 @@ async function runPlotSegmentSummary(opts) {
                 // v3.50.3（用户要求「如发现已提交则避免重复提交」）：同一批（同一组 id）已提交过 → 跳过（含上次失败）
                 if (plotSegmentSubmitted(sig)) {
                     stat.skippedSubmitted++;
-                    try { dbgLog('摘要', { action: '情节分段总结：跳过已提交批次（v3.50.3）', sig: sig, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { }
+                    try { dbgLog('摘要', { action: '情节分段总结：跳过已提交批次（v3.50.3）', sig: sig, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
                     continue;
                 }
                 const prompt = buildPlotSegmentPrompt(b);
@@ -458,7 +458,7 @@ async function runPlotSegmentSummary(opts) {
                     state.plotSegmentLog = list.slice(-10);
                 } catch (e) { /* 忽略 */ }
                 saveState();
-                try { dbgLog('摘要', { action: `情节分段总结（第 ${i + 1}/${run.length} 批）`, added: r.added, dup: r.dup, empty: r.empty, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { }
+                try { dbgLog('摘要', { action: `情节分段总结（第 ${i + 1}/${run.length} 批）`, added: r.added, dup: r.dup, empty: r.empty, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             }
             const after = (state.plotSegments || []).length;
             const parts = [`新增 ${stat.added} 段`];
@@ -468,7 +468,7 @@ async function runPlotSegmentSummary(opts) {
             parts.push(`当前共 ${after} 段`);
             if (batches.length > run.length) parts.push(`本次只处理前 ${run.length}/${batches.length} 批（可再次点击继续）`);
             notify('success', '情节分段总结完成', `${parts.join(' · ')}。${(!stat.added && stat.dup) ? '（同时间范围段落已存在，未重复保存）' : ''}`);
-            try { dbgLog('摘要', { action: '情节分段总结完成（v1.182）', atoms: plan.total, batches: run.length, batchesTotal: batches.length, added: stat.added, dup: stat.dup, empty: stat.empty, segments: after, ms: Date.now() - t0 }); } catch (e) { }
+            try { dbgLog('摘要', { action: '情节分段总结完成（v1.182）', atoms: plan.total, batches: run.length, batchesTotal: batches.length, added: stat.added, dup: stat.dup, empty: stat.empty, segments: after, ms: Date.now() - t0 }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
             return { made: stat.added, added: stat.added, dup: stat.dup, empty: stat.empty, batches: run.length, total: plan.total, segments: after,
                 pending: plan.pending, threshold: threshold, skippedSubmitted: stat.skippedSubmitted };
         } catch (e) {
@@ -537,7 +537,7 @@ async function runPlotSegmentSummarySelected(ids, opts) {
                     state.plotSegmentLog = list.slice(-10);
                 } catch (e) { /* 忽略 */ }
                 saveState();
-                try { dbgLog('摘要', { action: `总结所选情节（第 ${i + 1}/${run.length} 批）`, selected: plan.selected, valid: plan.total, added: r.added, dup: r.dup, empty: r.empty, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { }
+                try { dbgLog('摘要', { action: `总结所选情节（第 ${i + 1}/${run.length} 批）`, selected: plan.selected, valid: plan.total, added: r.added, dup: r.dup, empty: r.empty, dates: [b.dateStart, b.dateEnd].filter(Boolean).join(' ~ ') }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             }
             const after = (state.plotSegments || []).length;
             const parts = [`新增 ${stat.added} 段`];
@@ -546,7 +546,7 @@ async function runPlotSegmentSummarySelected(ids, opts) {
             if (stat.skippedSubmitted) parts.push(`跳过已提交 ${stat.skippedSubmitted} 批（防重复提交）`);
             parts.push(`当前共 ${after} 段（见「🧩 分段总结」子页）`);
             notify('success', '总结所选情节完成', `${parts.join(' · ')}。`);
-            try { dbgLog('摘要', { action: '总结所选情节完成（v1.201）', selected: plan.selected, valid: plan.total, batches: run.length, added: stat.added, dup: stat.dup, empty: stat.empty, segments: after, ms: Date.now() - t0 }); } catch (e) { }
+            try { dbgLog('摘要', { action: '总结所选情节完成（v1.201）', selected: plan.selected, valid: plan.total, batches: run.length, added: stat.added, dup: stat.dup, empty: stat.empty, segments: after, ms: Date.now() - t0 }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
             return { made: stat.added, added: stat.added, dup: stat.dup, empty: stat.empty, batches: run.length, total: plan.total, selected: plan.selected, segments: after, skippedSubmitted: stat.skippedSubmitted };
         } catch (e) {
             warn('总结所选情节失败', e);

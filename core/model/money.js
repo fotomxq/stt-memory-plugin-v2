@@ -192,8 +192,8 @@ function defaultCurrencyOwner() {
             const tags = Array.isArray(s.tags) ? s.tags.map(String) : [];
             if (tags.some(t => /主角|玩家|我$/.test(t))) return String(s.name);
         }
-        try { const me = (typeof getCurrentCharacterName === 'function') ? String(getCurrentCharacterName() || '').trim() : ''; if (me) return me; } catch (e) { }
-    } catch (e) { }
+        try { const me = (typeof getCurrentCharacterName === 'function') ? String(getCurrentCharacterName() || '').trim() : ''; if (me) return me; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return '主角';
 }
 // ==================== v1.183：货币「标定角色」名单（用户指定跟踪的角色） ====================

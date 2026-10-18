@@ -129,12 +129,12 @@ function stateRepairRoster() {
         out.source[k] = src; out.names.push(t);
         if (strong) out.strong++;
     };
-    try { (state.snapshots || []).forEach(s => push(s && s.name, '档案', true)); } catch (e) { }
-    try { (state.npcs || []).forEach(n => push(n && n.name, '名册', true)); } catch (e) { }
-    try { push(state.protagonist && state.protagonist.name, '主角', true); } catch (e) { }
-    try { ((state.state && Array.isArray(state.state.present)) ? state.state.present : []).forEach(n => push(n, '在场', true)); } catch (e) { }
+    try { (state.snapshots || []).forEach(s => push(s && s.name, '档案', true)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    try { (state.npcs || []).forEach(n => push(n && n.name, '名册', true)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    try { push(state.protagonist && state.protagonist.name, '主角', true); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    try { ((state.state && Array.isArray(state.state.present)) ? state.state.present : []).forEach(n => push(n, '在场', true)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // V1：`push(getCurrentCharacterId(), '当前角色', false)` —— V2 由宿主身份视图注入当前角色名
-    try { push(identityView.characterName, '当前角色', false); } catch (e) { }
+    try { push(identityView.characterName, '当前角色', false); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 /** 单个主体 → 规范名（V1 `stateSubjectMatch`）：'' = 未匹配 */
@@ -147,7 +147,7 @@ function stateSubjectMatch(subject, roster, simMin) {
     try {
         const hit = (state.snapshots || []).find(s => snapNameKey(s && s.name) === k);
         if (hit) return repairNormText(hit.name);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     let best = '', bestSim = 0;
     for (const n of (roster && roster.names) || []) {
         if (stateSubjectSamePerson(n, raw)) return n;                  // 精确 / 姓名核一致
@@ -193,14 +193,14 @@ function stateRepairMatch(opts) {
         }
         if (drop.length) {
             const ids = drop.map(e => e && e.id).filter(Boolean);
-            try { tombMany('currentStates', ids); } catch (e) { }        // 维度名必须是 currentStates（V1 v1.205 修正）
-            try { tombEntries('currentStates', drop); } catch (e) { }   // 同时写内容哈希墓碑（同内容换 id 也不复活）
+            try { tombMany('currentStates', ids); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }        // 维度名必须是 currentStates（V1 v1.205 修正）
+            try { tombEntries('currentStates', drop); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }   // 同时写内容哈希墓碑（同内容换 id 也不复活）
             const kill = new Set(drop);          // 以对象引用判成员（普通对象做键会被转成同一字符串）
             state.currentStates = (state.currentStates || []).filter(e => !kill.has(e));
             out.removed = drop.length;
         }
-        if (out.removed || out.renamed || out.merged) { try { saveState(); } catch (e) { } }
-    } catch (e) { }
+        if (out.removed || out.renamed || out.merged) { try { saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
+    } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     return out;
 }
 
@@ -244,7 +244,7 @@ function stateRepairClean() {
             prev.uses = (Number(prev.uses) || 0) + (Number(e.uses) || 0);
             prev.floorEnd = Math.max(Number(prev.floorEnd) || 0, Number(e.floorEnd) || 0);
             if (!repairNormText(prev.value) && repairNormText(e.value)) prev.value = e.value;
-            try { prev.history = mergeStateHistory(prev.history, e.history); } catch (e0) { }
+            try { prev.history = mergeStateHistory(prev.history, e.history); } catch (e0) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             drop.add(e); out.merged++;
         }
         // 每角色条数上限（保调用次数高 → 楼层新）
@@ -257,11 +257,11 @@ function stateRepairClean() {
         }
         const dropList = list.filter(e => e && drop.has(e));
         if (dropList.length) {
-            try { tombMany('currentStates', dropList.map(e => e.id).filter(Boolean)); } catch (e) { }   // 维度名必须是 currentStates
-            try { tombEntries('currentStates', dropList); } catch (e) { }                              // 补内容哈希墓碑
+            try { tombMany('currentStates', dropList.map(e => e.id).filter(Boolean)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }   // 维度名必须是 currentStates
+            try { tombEntries('currentStates', dropList); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }                              // 补内容哈希墓碑
             state.currentStates = list.filter(e => !(e && drop.has(e)));
-            try { saveState(); } catch (e) { }
-        } else if (out.renamedField || out.trimmed) { try { saveState(); } catch (e) { } }
+            try { saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
+        } else if (out.renamedField || out.trimmed) { try { saveState(); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ } }
         out.after = (state.currentStates || []).length;
     } catch (e) { out.after = (state.currentStates || []).length; }
     return out;
@@ -278,7 +278,7 @@ function deceasedNameKeys() {
                 if (k) { keys.push(k); names.push(String(s.name)); }
             }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return { keys: keys, names: names };
 }
 /** ⓪ 固定规则（V1 v1.205 `removeStatesOfDeceased`）：已去世角色的状态记录**整组机械移除**（零 AI）。
@@ -304,14 +304,14 @@ function removeStatesOfDeceased(opts) {
         }
         if (!drop.length) return out;
         // 墓碑（id + 内容哈希，维度名 = currentStates）：与其他删除路径同口径，跨端不复活
-        try { tombEntries('currentStates', drop); } catch (e) { }
+        try { tombEntries('currentStates', drop); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         const kill = new Set(drop);            // 以对象引用判成员
         state.currentStates = list.filter(e => !kill.has(e));
         out.removed = drop.length;
         out.subjects = Array.from(new Set(drop.map(e => String((e && e.subject) || '')).filter(Boolean)));
-        try { if (o.save !== false) saveState(); } catch (e) { }
-        try { dbgLog('修复', { action: '移除已去世角色的状态记录（v1.205 固定规则）', deceased: dk.names.slice(0, 8), removed: out.removed, subjects: out.subjects.slice(0, 8) }); } catch (e) { }
-    } catch (e) { }
+        try { if (o.save !== false) saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
+        try { dbgLog('修复', { action: '移除已去世角色的状态记录（v1.205 固定规则）', deceased: dk.names.slice(0, 8), removed: out.removed, subjects: out.subjects.slice(0, 8) }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
+    } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
     return out;
 }
 
@@ -351,7 +351,7 @@ function pickStateRepairTargets(limit) {
         rows.sort((a, b) => a.filled - b.filled || String(a.lastAt || '').localeCompare(String(b.lastAt || '')) || a.uses - b.uses);
         out.total = rows.length;
         out.list = rows.slice(0, batch);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 
@@ -368,7 +368,7 @@ function stateRepairContext(names) {
             const hit = lines.filter(ln => set.some(n => ln.indexOf(n) >= 0)).join('\n').trim();
             if (hit.length >= 200) return hit.slice(-10000);
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return String(full).slice(-10000);
 }
 
@@ -449,7 +449,7 @@ function applyStateRepair(delta, pickIn) {
             if (target) {
                 if (repairNormText(target.value) === val) { out.unchanged++; continue; }
                 target.value = val;
-                try { target.updatedAt = target.updatedAt || getStoryNow() || ''; } catch (e) { }
+                try { target.updatedAt = target.updatedAt || getStoryNow() || ''; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                 out.changed++;
             } else {
                 const fresh = normalizeCurrentState({ subject: t.name, field: finalField, value: val, uses: 0, floorEnd: Number(t.last) || 0, updatedAt: getStoryNow() || '' });
@@ -479,16 +479,16 @@ function applyStateRepair(delta, pickIn) {
             if (!t) { out.unknownRole++; continue; }
             const kill = liveOf(t.name).filter(e => !fRaw || repairNormText(e.field).toLowerCase() === fRaw.toLowerCase() || (stateCanonField(e.field) || '') === (stateCanonField(fRaw) || ''));
             if (!kill.length) { out.invalid++; continue; }
-            try { tombMany('currentStates', kill.map(e => e && e.id).filter(Boolean)); } catch (e) { }   // 维度名必须是 currentStates
-            try { tombEntries('currentStates', kill); } catch (e) { }                                    // 补内容哈希墓碑
+            try { tombMany('currentStates', kill.map(e => e && e.id).filter(Boolean)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }   // 维度名必须是 currentStates
+            try { tombEntries('currentStates', kill); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }                                    // 补内容哈希墓碑
             const K = new Set(kill);      // 对象引用判成员
             state.currentStates = (state.currentStates || []).filter(e => !K.has(e));
             out.deleted += kill.length;
             out.changed++;
         }
         out.noBasis = Array.isArray(ops['无依据']) ? ops['无依据'].length : (Array.isArray(ops.noBasis) ? ops.noBasis.length : 0);
-        if (out.changed) { try { saveState(); } catch (e) { } }
-    } catch (e) { }
+        if (out.changed) { try { saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
+    } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     return out;
 }
 
@@ -553,7 +553,7 @@ async function runStateRepair(opts) {
         if (r.noBasis) aiNote.push(`AI 标注无依据 ${r.noBasis} 条`);
         const anyChange = (match.removed || clean.junk || clean.merged || clean.renamedField || r.changed);
         notify(anyChange ? 'success' : 'info', anyChange ? '状态修复完成' : '状态修复：本轮无实际变化', `${repairReport({ before: beforeCount, after: after, checked: pick.list.length, groups: pick.list.length, groupsTotal: pick.total, submittedNames: pick.list.map(t => t.name), revised: r.changed, deleted: r.deleted, merged: clean.merged, extra: mechNote.concat(aiNote).join(' · ') || '无改动' })}。`);
-        try { dbgLog('摘要', { action: '状态修复完成', before: beforeCount, mid: midCount, after: after, match, clean, ai: r, targets: pick.list.map(t => t.name) }); } catch (e) { }
+        try { dbgLog('摘要', { action: '状态修复完成', before: beforeCount, mid: midCount, after: after, match, clean, ai: r, targets: pick.list.map(t => t.name) }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         return { made: anyChange ? 1 : 0, before: beforeCount, after, match, clean, ai: r, targets: pick.list.length, queueLeft: Math.max(0, pick.total - pick.list.length) };
     } catch (e) {
         warn('状态修复失败', e);
