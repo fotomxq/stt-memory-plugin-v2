@@ -129,7 +129,7 @@ import { atomIsHidden } from '../core/merge.js';
 // v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」）—— 依赖勾选的工具行按钮的**唯一事实源**
 import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
 // v3.50.16（用户要求）：多选模式**不再有勾选按钮** —— 点行即选（新模块承载交互；面板只留两个调用点 + 一个委托钩子）
-import { rowSelectMarkHtml, rowSelectAttrs, bindRowSelect } from './row-select.js';
+import { rowSelectMarkHtml, rowSelectAttrs, rowSelectClick, bindRowSelect } from './row-select.js';
 // v3.48.0（`docs/D22` §4.19 W19 `应-35`）：列表行右侧按钮改**滑动 / 悬停**触发（标记 + 手势 + 实测宽度全在新模块）
 import { swipeRowHtml, applySwipeRows } from './swipe-rows.js';
 // v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
