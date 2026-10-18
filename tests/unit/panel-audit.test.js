@@ -234,6 +234,9 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'map-edge': '路径「走过 / 未走过」视觉标记（`traversed` / `inferred`；配色由 CSS 按该属性选择，测试锚点）',
         'map-copy': '地图套话的**手动复制**文本框（自动插入降级时渲染给用户复制，不需读者）',
         // v3.50.6（用户报告「场景地图是图，不是列表」+ `docs/D27` §8 `应-45`）：网状图 SVG 的结构 / 测试锚点
+        // v3.50.16：多选模式改「点行即选」—— 行上的 [data-ftt-selrow] 由 `ui/row-select.js#rowSelectFrom`
+        //   以**属性常量**（`ROW_SEL_ATTR`）读取，扫描器看不到字面量，故列入白名单（有真实读者）。
+        'selrow': '列表行的点选标记（`data-ftt-selrow=kind`；`ui/row-select.js` 以常量读取，点行即切换选择）',
         'map-graph': '网状图 SVG 容器（`data-ftt-map-graph="1"`；v3.50.6 起地图以网状图为主视图，重绘即更新）',
         // v3.45.5（`docs/D22` W4 `应-19`）：角色行「📜 履历」区块的**行锚点**（`data-ftt-resume="<档案 id>"`）——
         //   由 `ui/list-rows.js#resumeBlockHtml` 随角色行一起重绘，供「📜 补全 / 修复履历」定位与测试锚点，不需读者。
