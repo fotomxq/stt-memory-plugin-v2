@@ -12,6 +12,7 @@
 // 性质：纯计算（无 DOM / 无宿主 / 无时间依赖）；同一 state 连续两次调用结果一致（幂等）。
 // ============================================================
 import { state, cfg } from './model/runtime.js';
+import { migrateLegacyImportance } from './importance-migrate.js';   // v3.50.24（`数-1`）
 
 /** 参与重要度窗口的维度（R24：10 维中的 9 个独立容器 + 状态记录按主体分组） */
 export const IMP_DIMS = Object.freeze(['atoms', 'memories', 'snapshots', 'items', 'concepts', 'scenes', 'plans', 'suspense', 'rumors']);
@@ -81,6 +82,9 @@ function recalcList(list, opts) {
  */
 export function recalcImportanceAfterExtract(opts) {
     const o = opts || {};
+    // v3.50.24（`docs/D22` W4 `数-1`）：只有**生产调用方**显式传 `migrateLegacy:true` 时才做一次性迁移
+    //   （单测直接调本函数时不受影响 → importance 黄金样本保持逐字符一致）。
+    if (o.migrateLegacy === true) { try { migrateLegacyImportance(); } catch (e) { /* 忽略 */ } }
     const out = { dims: {}, updated: 0, frozen: 0 };
     try {
         if (!impRecalcEnabled() && !o.force) { out.skipped = 'disabled'; return out; }
