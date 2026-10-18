@@ -66,8 +66,42 @@ function normalizeMoneyFlow(raw) {
 function normalizeMoneyHistory(raw) {
     try {
         const arr = Array.isArray(raw) ? raw : (raw == null ? [] : [raw]);
+        /**
+         * v3.50.21（用户报告：货币**快速记账后流水全被清空**）：
+         *   入参有两种合法形态 ——
+         *     ① **AI 抽取形态**：`{增减:'收入'|'支出', 数额:50, 说明:'…', 日期:'…'}`（走 `normalizeMoneyFlow`）；
+         *     ② **已归一形态**：`{date, delta:±50, note}` —— `moneyNet` / `mergeMoneyHistory` / 快速记账写的都是这个。
+         *   旧实现把 ② 也丢给 `normalizeMoneyFlow`，它只认「数额」→ `Number(undefined)` = NaN → 判 null →
+         *   **整段流水被丢弃**（保存即清空，正是用户看到的现象）。
+         *   修法：`normalizeMoneyFlow` 保持 **V1 逐字**（黄金样本锁着它），在本容器级额外**认已归一形态**；
+         *   两者都认不出时再**抢救**一次（有数值的条目按最小形态保留）—— 宁可少一条说明，也绝不静默清空。
+         */
         const out = [];
-        for (const x of arr) { const f = normalizeMoneyFlow(x); if (f) out.push(f); }
+        const keepNormalized = (x) => {
+            try {
+                const d = Number(x && x.delta);
+                if (!Number.isFinite(d) || d === 0) return null;
+                return {
+                    date: normText(x.date !== undefined ? x.date : x['日期'], 10),
+                    delta: d,
+                    note: dimCap('currencies', normText(x.note !== undefined ? x.note : x['说明'], 80)),
+                };
+            } catch (e) { return null; }
+        };
+        for (const x of arr) {
+            const f = normalizeMoneyFlow(x) || keepNormalized(x);
+            if (f) out.push(f);
+        }
+        // 仍然一条都没有但输入非空 → 最后一道抢救（只有 数额/amount 的条目）
+        if (!out.length && arr.length) {
+            for (const x of arr) {
+                try {
+                    const d = Number(x && (x['数额'] !== undefined ? x['数额'] : x.amount));
+                    if (!Number.isFinite(d) || d === 0) continue;
+                    out.push({ date: normText(x.date || x['日期'], 10), delta: d, note: dimCap('currencies', normText(x.note || x['说明'], 80)) });
+                } catch (e) { /* 忽略：单条抢救失败不影响其余 */ }
+            }
+        }
         return out.slice(-12);   // 只留最近 12 笔（防条目无限膨胀）
     } catch (e) { return []; }
 }
