@@ -130,11 +130,11 @@ async function runSceneRepair(opts) {
         state.scenes = r.list;
         // v1.113：修复后再做一次重复地址并集（同路径多记录合并，杜绝 纽约 重复层级）
         // v1.135：并集升级为「精确同路径 + 相似地名」两级归并（V2 复用既有 `core/ingest.js#scenesUnionMergeAll`）
-        try { scenesUnionMergeAll(); } catch (e) { }
+        try { scenesUnionMergeAll(); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
         saveState();
         // 注意（V1 原样）：这里的条数用**并集前的** r.list.length，并集若再合并节点，提示里的数字不会随之更新
         notify('success', '场景修复完成', `节点 ${beforeCount} → ${r.list.length}；名称/路径/描述已按 AI 校正（原 id/使用统计在路径未变时保留）；${repairReport({ before: beforeCount, after: r.list.length, checked: r.list.length, extra: '提交内容＝全库场景重建列表' })}。`);
-        try { dbgLog('摘要', { action: '场景修复完成', before: beforeCount, after: r.list.length, nodes: r.list.map(x => x.pathStr) }); } catch (e) { }
+        try { dbgLog('摘要', { action: '场景修复完成', before: beforeCount, after: r.list.length, nodes: r.list.map(x => x.pathStr) }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         return { made: 1, before: beforeCount, after: r.list.length };
     } catch (e) {
         warn('场景修复失败', e);

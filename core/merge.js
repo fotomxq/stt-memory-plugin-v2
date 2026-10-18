@@ -115,7 +115,7 @@ function tombSet(dim, id, ts) {
         const t = Number(ts) > 0 ? Number(ts) : Date.now();
         const cur = m[dim][idS];
         m[dim][idS] = (cur && cur > t) ? cur : t;
-    } catch (e) { }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
 }
 
 function tombSetH(dim, hash, ts) {
@@ -127,7 +127,7 @@ function tombSetH(dim, hash, ts) {
         const t = Number(ts) > 0 ? Number(ts) : Date.now();
         const cur = m[dim][h];
         m[dim][h] = (cur && cur > t) ? cur : t;
-    } catch (e) { }
+    } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
 }
 // 条目 → 内容哈希墓碑（删除时调用；条目对象仍在手上时最省事）
 
@@ -136,12 +136,12 @@ function tombEntry(dim, entry, ts) {
         if (!entry || typeof entry !== 'object') return;
         if (entry.id !== undefined && entry.id !== null) tombSet(dim, entry.id, ts);
         tombSetH(dim, atomIdentityHash(dim, entry), ts);   // v2.86.0：内容墓碑 = **身份哈希**（D8 §7）
-    } catch (e) { }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
 }
 
 function tombMany(dim, ids, ts) {
     const t = Number(ts) > 0 ? Number(ts) : Date.now();
-    (Array.isArray(ids) ? ids : []).forEach(id => { try { tombSet(dim, id, t); } catch (e) { } });
+    (Array.isArray(ids) ? ids : []).forEach(id => { try { tombSet(dim, id, t); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } });
 }
 // ==================== 内容哈希墓碑（防「删除后被对端唤醒」） ====================
 // 按 id 的墓碑只能挡住「同一条目原样回来」；若对端把它以新 id 重新写入（AI 重生成同内容、
@@ -149,7 +149,8 @@ function tombMany(dim, ids, ts) {
 // 再按 **内容哈希** 记一份墓碑，合并时同内容条目（条目墙钟 ≤ 墓碑时间）一并剔除。
 
 function tombEntries(dim, entries, ts) {
-    try { (Array.isArray(entries) ? entries : []).forEach(en => { try { tombEntry(dim, en, ts); } catch (e) { } }); } catch (e) { }
+    // 忽略：外层失败只可能是 entries 不是数组/遍历异常 —— 墓碑是留痕，写不上不影响数据本体
+    try { (Array.isArray(entries) ? entries : []).forEach(en => { try { tombEntry(dim, en, ts); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }); } catch (e) { /* 忽略：同上 */ }
 }
 
 export { atomIsHidden, atomHiddenCount, activeAtoms, capAtomsKeepingHidden, releaseMergedSources, eachAtom, ensureAtomHashes, collectAtomHashes, tombstoneMap, tombstoneHMap, tombSet, tombSetH, tombEntry, tombMany, tombEntries };

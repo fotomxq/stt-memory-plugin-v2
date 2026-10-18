@@ -194,8 +194,8 @@ function deriveSnapshotTags(s, opts) {
                 if (String(m.owner || '') === name) (Array.isArray(m.tags) ? m.tags : []).forEach(bump);
             }
             Array.from(freq.entries()).sort((a, b) => b[1] - a[1]).forEach(e => pushAtom(e[0]));
-        } catch (e) { }
-    } catch (e) { }
+        } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // ① 身份词前 3 + ② 原子高频标签前 3 → ③ 其余补齐
     const out = identity.slice(0, 3).concat(atomTags.slice(0, 3));
     for (const t of identity.slice(3).concat(atomTags.slice(3))) {
@@ -213,10 +213,10 @@ function snapshotFallbackTags(s) {
             const a = guessAgeFromCues(s);
             const cue = a <= 10 ? '孩童' : (a <= 17 ? '少年' : (a <= 30 ? '青年' : (a <= 55 ? '中年' : '长者')));
             if (cue) out.push(cue);
-        } catch (e) { }
+        } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
         const g = String(id.gender || '').trim();
         if (g && out.indexOf(g) < 0) out.push(g);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     if (!out.length) out.push('角色');
     return out;
 }
@@ -237,7 +237,7 @@ function ensureSnapshotTags(s) {
         if (next.join('|') === cur.join('|')) return out;
         s.tags = next;
         out.changed = true; out.added = next.length - cur.length; out.tags = next;
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 /** 全局：为全部角色档案补充标签（零 AI，幂等；供修复角色的 AI 前机械阶段使用，V1 `ensureAllSnapshotTags`） */
@@ -251,7 +251,7 @@ function ensureAllSnapshotTags() {
             if (r.changed) { st.filled++; st.added += r.added; st.items.push({ name: String(s.name || ''), tags: (s.tags || []).slice(0, 6) }); }
             else st.already++;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     return st;
 }
 
@@ -321,7 +321,7 @@ function characterEvidencePack(name, opts) {
                 if (!txt) continue;
                 add(l.at || e.date, `关联·${l.how || 'knows'}`, txt);
             }
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         items.sort((a, b) => String(b.sort).localeCompare(String(a.sort)));
         out.total = items.length;
         for (const it of items.slice(0, max)) {
@@ -329,7 +329,7 @@ function characterEvidencePack(name, opts) {
             out.lines.push(line);
             out.chars += line.length;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 
@@ -344,7 +344,7 @@ function snapshotAtomSize(s) {
             if (txt) { out.filled++; out.size += txt.length; }
             else out.missing.push(f.p);
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 
@@ -703,7 +703,7 @@ function buildCharacterRepairQueue() {
             const m = snapshotAtomSize(s);
             // v1.172：出生日期异常（倒挂）与档案厚薄无关 —— 数据自相矛盾必须优先处置
             let anomaly = '';
-            try { anomaly = snapshotBirthAnomaly(s) || ''; } catch (e) { }
+            try { anomaly = snapshotBirthAnomaly(s) || ''; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             // v3.22.0：「超长年龄」研判依据（年龄 + 最后见面距今）—— 只读，供提示词与通知说明「长期未出场」
             const ageNum = (() => { try { const a = Number(snapshotAge(s)); return Number.isFinite(a) ? a : NaN; } catch (e) { return NaN; } })();
             const gap = (() => { try { return snapshotLastSeenGapYears(s); } catch (e) { return NaN; } })();
@@ -721,7 +721,7 @@ function buildCharacterRepairQueue() {
                 resumeCount: Array.isArray(s.resume) ? s.resume.length : 0,
             });
         });
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v3.45.5：把履历预填的准入结论补到每条目标上（需要 `cfg` 与剧情时钟，故在收集后统一算一次）
     try {
         const rcfg = resumeOptsFromCfg(cfg || {});
@@ -730,7 +730,7 @@ function buildCharacterRepairQueue() {
             x.canonFill = !!(x.canon && rcfg.enabled && rcfg.canonFill && clockDate);
             x.canonBlocked = (!x.canon || !rcfg.canonFill || !rcfg.enabled) ? '' : (clockDate ? '' : 'no-clock');
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v3.22.0：`age-extreme`（超长年龄待研判）排在其后 —— 它不是「数据自相矛盾」，而是「疑似长期未出场/误判长生」
     const anomalyRank = { future: 0, 'after-record': 1, overage: 2, 'age-extreme': 3, 'bad-format': 4 };
     const rankOf = (x) => (x && x.anomaly && anomalyRank[x.anomaly] !== undefined) ? anomalyRank[x.anomaly] : 9;
@@ -852,7 +852,7 @@ function setSnapshotByPath(s, path, val, opts) {
                 if (!s.identity) s.identity = {};
                 s.identity.birthSource = 'text';
                 s.identity.birthNote = `修复：依据正文修正为 ${v}（原值 ${cur}，曾判定为出生日期异常）`;
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
         return { ok: true, changed: true };
     } catch (e) { return { ok: false, changed: false }; }
@@ -870,7 +870,7 @@ function characterRepairContext(names) {
             const hit = lines.filter(ln => set.some(n => ln.indexOf(n) >= 0)).join('\n').trim();
             if (hit.length >= 200) return hit.slice(-10000);
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return String(full).slice(-10000);
 }
 
@@ -980,7 +980,7 @@ function buildCharacterRepairPrompt(targetsIn, opts) {
                 } else {
                     out.push('  相关记忆原子数据：（无命中）—— 依据退回到「近期正文 + 档案已有字段」保守推断。');
                 }
-            } catch (e) { }
+            } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
             return out.join('\n');
         });
         // v3.18.0（用户要求「针对已明显去世的角色进行标记已去世……实在无法确认的不做标记」）：
@@ -1130,14 +1130,14 @@ function applyCharacterRepairResult(delta, targets) {
             try {
                 const eb = ensureSnapshotBirthDate(s);
                 if (eb.changed) { roleChanged++; out.changed++; out.fields.push(s.name + '·身份.出生日期（推测）'); out.birthInferred = (out.birthInferred || 0) + 1; }
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             if (roleChanged > 0) {
-                try { stampSnapshotTime(s, 'update'); } catch (e) { }   // v1.161：档案被补全 → 记「最后一次更新」时刻
+                try { stampSnapshotTime(s, 'update'); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }   // v1.161：档案被补全 → 记「最后一次更新」时刻
                 // 出生日期变更 → 按 normalizeSnapshot 同口径重算年龄（v1.171：锚点 = 剧情日期 → 最近记录日期）
                 try {
                     const bd = String((s.identity && s.identity.birthDate) || '');
                     if (bd) { const a = calcAge(bd, ageAnchorDate()); if (a) s.identity.age = a; }
-                } catch (e) { }
+                } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
                 out.changed += roleChanged; out.rolesChanged++;
             }
         }
@@ -1152,12 +1152,12 @@ function applyCharacterRepairResult(delta, targets) {
             const removedNames = (state.snapshots || []).filter(x => delSet.has(String(x.id)) || delSet.has(String(x.name))).map(x => x.name);
             if (removedNames.length) {
                 state.snapshots = (state.snapshots || []).filter(x => !delSet.has(String(x.id)) && !delSet.has(String(x.name)));
-                try { tombMany('snapshots', dels); } catch (e) { }
-                try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { }
+                try { tombMany('snapshots', dels); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
+                try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
                 out.removed = removedNames.length;
             }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return out;
 }
 
@@ -1284,7 +1284,7 @@ async function runResumeRepair(name, opts) {
             }
         }
         // ④ 落盘 + 回报
-        if (changed) { try { stampSnapshotTime(s, 'update'); } catch (e) { } try { saveState(); } catch (e) { } }
+        if (changed) { try { stampSnapshotTime(s, 'update'); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } try { saveState(); } catch (e) { } }
         const after = resumeStats(Array.isArray(s.resume) ? s.resume : [], { max: rcfg.max, triggerRatio: rcfg.triggerRatio, immune: rcfg.immune, summaryMax: rcfg.summaryMax });
         out.after = after.total;
         out.total = after.total;
@@ -1328,7 +1328,7 @@ function correctSnapshotBirthDates(opts) {
             const r = ensureSnapshotBirthDate(s, opts);
             if (r.changed) { stat.corrected++; stat.items.push({ name: s.name, date: r.date, source: r.source }); }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return stat;
 }
 // ==================== v3.45.5：角色履历（`docs/D22` W4 `数-20` / `数-21` / `业-7`） ====================
@@ -1453,10 +1453,10 @@ function runCharacterMechanicalPass(opts) {
         // v3.18.0（用户要求）：**先做已去世研判**（机械零 AI）—— 标记后本轮的出生日期校正 / 标签 / 年龄与
         //   AI 待修复名单都会自动跳过这些角色（「避免反复调取处理」）。
         try { lastDeathMark = markDeceasedByEvidence(opts); } catch (e) { lastDeathMark = null; }
-        try { out.birth = correctSnapshotBirthDates(opts); } catch (e) { }
+        try { out.birth = correctSnapshotBirthDates(opts); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         // v1.177：关键词（标签）自动补充 —— 用户要求「除了补全信息，关键词也应该自动补充」
-        try { out.tags = ensureAllSnapshotTags(); } catch (e) { }
-        try { out.ages = refreshAllSnapshotAges(); } catch (e) { }
+        try { out.tags = ensureAllSnapshotTags(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+        try { out.ages = refreshAllSnapshotAges(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         // v3.45.5（`docs/D26` §3.3；`数-20`）：履历机械段（排序 / 去重 / 遗弃 / 凝练，零 AI）——
         //   放在年龄刷新之后：履历的留存判据用**剧情时间**，与年龄同源，此时锚点已是本轮最终值。
         try { out.resume = resumeMechanicalPass(); } catch (e) { out.resume = null; }
@@ -1467,8 +1467,8 @@ function runCharacterMechanicalPass(opts) {
         out.changed = !!((lastDeathMark && lastDeathMark.marked) || (out.birth && out.birth.corrected) || (out.tags && out.tags.filled)
             || (out.ages && (out.ages.fixed || out.ages.cleared))
             || (out.resume && out.resume.changed));   // v3.45.5：履历机械段（遗弃 / 凝练）也算「有改动」→ 需要落盘
-        if (out.changed) { try { saveState(); } catch (e) { } }
-        try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { }
+        if (out.changed) { try { saveState(); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } }
+        try { out.anomalies = list.filter(s => snapshotBirthAnomaly(s)).length; } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         // v3.49.1：把「已去世研判」的两类来源分列回报（文字证据 / 年龄高寿），面板据此写明"按年龄标记去世 N 名"
         try {
             if (lastDeathMark) {
@@ -1500,9 +1500,9 @@ function runCharacterMechanicalPass(opts) {
                     resumeDropped: out.resume ? out.resume.dropped : 0,
                     resumeCondensed: out.resume ? out.resume.condensed : 0,
                 });
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 
@@ -1587,7 +1587,7 @@ async function runCharacterRepair(opts) {
                 const eb = ensureSnapshotBirthDate(sn);
                 if (eb.changed) { birthFix++; r.changed++; r.fields.push(sn.name + '·身份.出生日期（推测）'); }
             }
-        } catch (e) { }
+        } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
         // v1.177：AI 之后标签仍不足 3 个 → 自动补充（零 AI 兜底；不改变「AI 是否给出补全」的判定口径）
         let tagFix = 0;
         try {
@@ -1596,30 +1596,30 @@ async function runCharacterRepair(opts) {
                 if (!sn) continue;
                 if (ensureSnapshotTags(sn).changed) { tagFix++; r.fields.push(sn.name + '·标签（自动补充）'); }
             }
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         // v1.176：AI 之后再跑一次**全局年龄固定规则**（含本轮目标之外的档案 —— 剧情日期可能已推进）
         let ageSync = { fixed: 0, cleared: 0, items: [] };
-        try { ageSync = refreshAllSnapshotAges(); } catch (e) { }
-        if (ageSync.fixed || ageSync.cleared) { try { saveState(); } catch (e) { } }
+        try { ageSync = refreshAllSnapshotAges(); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
+        if (ageSync.fixed || ageSync.cleared) { try { saveState(); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } }
         const ageSyncText = (ageSync.fixed || ageSync.cleared)
             ? ` · 全局年龄刷新 ${ageSync.fixed} 名${ageSync.cleared ? `（清无效值 ${ageSync.cleared}）` : ''}`
             : '';
         const after = (state.snapshots || []).length;
         if (!r.changed && !r.removed) {
             notify('warning', '角色修复：本轮未产生实际变化', `${mechText}${ageSyncText ? `AI 之后${ageSyncText.replace(' · ', '：')}；` : ''}本轮目标 ${targets.length} 名；AI ${attempts > 1 ? '连续两轮（含加强重试）' : '本轮'}均未给出可落库的补全（推断 ${r.rolesInferred || 0} · 无依据 ${r.rolesNoBasis} · 无效字段 ${r.invalid}${r.unknownRole ? ` · 姓名不匹配 ${r.unknownRole}` : ''}）。最常见原因：相关原子数据与最近 ${floors} 楼正文里确实没有这几名角色的信息 —— 可在 设定 调大「修复使用最近楼层数」后重试。`);
-            try { dbgLog('摘要', { action: '角色修复无变化', targets: targets.map(t => t.name), attempts: attempts, inferred: r.rolesInferred || 0, noBasis: r.rolesNoBasis, invalid: r.invalid, unknownRole: r.unknownRole, ageSync: { fixed: ageSync.fixed, cleared: ageSync.cleared } }); } catch (e) { }
+            try { dbgLog('摘要', { action: '角色修复无变化', targets: targets.map(t => t.name), attempts: attempts, inferred: r.rolesInferred || 0, noBasis: r.rolesNoBasis, invalid: r.invalid, unknownRole: r.unknownRole, ageSync: { fixed: ageSync.fixed, cleared: ageSync.cleared } }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             return { made: 0, noChange: true, targets: targets.length, attempts: attempts, noBasis: r.rolesNoBasis, inferred: r.rolesInferred || 0, invalid: r.invalid, unknownRole: r.unknownRole, queueLeft: Math.max(0, q.list.length - targets.length), mech: mech, ageSync: ageSync };
         }
         saveState();
         const rest = Math.max(0, q.list.length - targets.length);
         notify('success', '角色修复完成', `${repairReport({ before: targets.length, after: targets.length, checked: targets.length, submittedNames: targets.map(t => t.name), rolesChanged: r.rolesChanged, changed: r.changed, deleted: r.removed, queueLeft: rest })}；本轮目标 ${targets.length} 名${attempts > 1 ? `（AI 加强重试 ${attempts} 轮）` : ''} · 实际补全 ${r.rolesChanged} 名 / ${r.changed} 个字段${r.removed ? ` · 删除明显错误 ${r.removed} 条` : ''}${r.rolesInferred ? ` · 保守推断 ${r.rolesInferred} 名` : ''}${r.rolesNoBasis ? ` · 无依据 ${r.rolesNoBasis} 名` : ''}${r.invalid ? ` · 无效字段 ${r.invalid} 个` : ''}${(birthFix || r.birthInferred) ? ` · 推测出生日期 ${birthFix || r.birthInferred} 名` : ''}${tagFix ? ` · 标签自动补充 ${tagFix} 名` : ''}${r.birthFixed ? ` · 修正倒挂出生日期 ${r.birthFixed} 名` : ''}${immortalOutcomeText(r)}${ageSyncText}；角色 ${beforeCount} → ${after}；${rest ? `待修复名单剩余 ${rest} 名，可再次点击继续` : '待修复名单已清空'}。`);
-        if (r.birthFixed) { try { dbgLog('摘要', { action: '倒挂出生日期修正', names: r.birthFixedNames || [], count: r.birthFixed }); } catch (e) { } }
+        if (r.birthFixed) { try { dbgLog('摘要', { action: '倒挂出生日期修正', names: r.birthFixedNames || [], count: r.birthFixed }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ } }
         try { dbgLog('摘要', { action: '角色修复完成', targets: targets.map(t => t.name), attempts: attempts, fields: r.fields, changed: r.changed, rolesChanged: r.rolesChanged, inferred: r.rolesInferred || 0, removed: r.removed, noBasis: r.rolesNoBasis, invalid: r.invalid, queueLeft: rest, ageSync: { fixed: ageSync.fixed, cleared: ageSync.cleared },
             // v3.22.0：长生者判定与误判纠正的落地计数（可事后核对「谁被标成长生 / 谁被纠正为去世」）
             immortalSet: r.immortalSet || 0, immortalNames: (r.immortalNames || []).slice(0, 8),
             immortalCleared: r.immortalCleared || 0, immortalClearedNames: (r.immortalClearedNames || []).slice(0, 8),
             deceasedMarked: r.deceasedMarked || 0, deceasedMarkedNames: (r.deceasedMarkedNames || []).slice(0, 8),
-        }); } catch (e) { }
+        }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         return { made: 1, targets: targets.length, attempts: attempts, changed: r.changed, rolesChanged: r.rolesChanged, inferred: r.rolesInferred || 0, removed: r.removed, noBasis: r.rolesNoBasis, invalid: r.invalid, queueLeft: rest, mech: mech, ageSync: ageSync };
     } catch (e) {
         warn('角色修复失败', e);

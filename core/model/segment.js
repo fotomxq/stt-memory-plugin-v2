@@ -31,7 +31,7 @@ function plotSegmentRange(text) {
             const head = s.split(/\s*(?:~|～|至|—|–|--)\s*/).map(x => clockParseDateText(x, '')).filter(Boolean);
             if (head.length) { out.start = head[0]; out.end = head.length > 1 ? head[head.length - 1] : out.start; }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return out;
 }
 // 一行剧情线：`1. 感情线: 概述` / `- **感情线**：概述` → { label, text }

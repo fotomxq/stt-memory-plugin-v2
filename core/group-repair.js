@@ -313,10 +313,10 @@ function groupPick(spec) {
                     entries.push(spec.entryOf(arr[i], i, { n: entries.length + 1, group: picked.length + 2, sim: Number(rel.sims[i]) || 0, single: true }));
                     singleN++;
                 }
-                try { state.repairCursor = Object.assign({}, state.repairCursor || {}, { [ck]: (start + singleN) % pool.length }); } catch (e) { }
+                try { state.repairCursor = Object.assign({}, state.repairCursor || {}, { [ck]: (start + singleN) % pool.length }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             }
         }
-        try { state.repairCursor = Object.assign({}, state.repairCursor || {}, { [spec.cursorKey]: all.length ? (cur + picked.length) % all.length : 0 }); } catch (e) { }
+        try { state.repairCursor = Object.assign({}, state.repairCursor || {}, { [spec.cursorKey]: all.length ? (cur + picked.length) % all.length : 0 }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         return { entries, clusters: picked, picked: picked.length, defects: defectN, singles: singleN, total: all.length, cursor: cur };
     } catch (e) { return { entries: [], clusters: [], picked: 0, defects: 0, singles: 0, total: 0, cursor: 0 }; }
 }
@@ -420,11 +420,11 @@ function memoryMergeExact() {
             try {
                 const byTo = new Map();
                 for (const p of mergePairs) { if (!byTo.has(p.to)) byTo.set(p.to, []); byTo.get(p.to).push(p.from); }
-                for (const [to, froms] of byTo) { try { retargetRelRefs('memories', froms, to); } catch (e) { } }
+                for (const [to, froms] of byTo) { try { retargetRelRefs('memories', froms, to); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } }
                 st.retargeted = mergePairs.length;
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     return st;
 }
 
@@ -557,7 +557,7 @@ function applyMemoryMergeGroups(delta, pick) {
             }
         }
         if (deadIds.size) {
-            try { tombMany('memories', Array.from(deadIds)); } catch (e) { }
+            try { tombMany('memories', Array.from(deadIds)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             const before = (state.memories || []).length;
             state.memories = (state.memories || []).filter(x => !(x && deadIds.has(String(x.id))));
             out.deleted = before - (state.memories || []).length;
@@ -565,9 +565,9 @@ function applyMemoryMergeGroups(delta, pick) {
             try {
                 const byTo = new Map();
                 for (const p of mergeTargets) { if (!byTo.has(p.to)) byTo.set(p.to, []); byTo.get(p.to).push(p.from); }
-                for (const [to, froms] of byTo) { try { retargetRelRefs('memories', froms, to); } catch (e) { } }
+                for (const [to, froms] of byTo) { try { retargetRelRefs('memories', froms, to); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
                 if (mergeTargets.length) out.retargeted = mergeTargets.length;
-            } catch (e) { }
+            } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         }
         return out;
     } catch (e) { return out; }
@@ -602,9 +602,9 @@ async function runMemoryRepair(opts) {
             //   · 同 (条目, 角色) 去重合并 / 角色名按档案全名归一 / 悬空引用清理 / how·偏差归一
             //   · 剩 1 人回落私密、剩 0 人孤儿条目按 relOrphanAction 处置（默认只提示）
             let relMaint = null;
-            try { relMaint = relRepairMaint(); } catch (e) { }
+            try { relMaint = relRepairMaint(); } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
             if (mech.merged > 0 || (relMaint && relMaint.changed)) { saveState(); list = state.memories || []; }
-            try { logRelMaint('记忆修复', relMaint); } catch (e) { }
+            try { logRelMaint('记忆修复', relMaint); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             // ②③ 标签组聚类 + 选组（轮询 + 上限）
             const spec = GROUP_REPAIR_SPECS.memories;
             const pick = groupPick(spec);
@@ -614,7 +614,7 @@ async function runMemoryRepair(opts) {
                     ? `已合并同归属的重复记忆 ${mech.merged} 条；未发现达到相关性阈值（${spec.cfgSim()}）的记忆组，无需 AI 梳理。`
                     : `未发现达到相关性阈值（${spec.cfgSim()}）的记忆组（当前 ${beforeCount} 条记忆彼此相关度均较低，或分属不同归属），无需 AI 梳理。`) + relTxt1;
                 notify('info', '记忆修复完成', msg);
-                try { dbgLog('摘要', { action: '记忆修复：无高相关组', memories: beforeCount, merged: mech.merged, relMaint: relMaintCounts(relMaint), sim: spec.cfgSim(), ms: 0 }); } catch (e) { }
+                try { dbgLog('摘要', { action: '记忆修复：无高相关组', memories: beforeCount, merged: mech.merged, relMaint: relMaintCounts(relMaint), sim: spec.cfgSim(), ms: 0 }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
                 return { made: (mech.merged || (relMaint && relMaint.changed)) ? 1 : 0, skipped: true, merged: mech.merged, groups: 0, before: beforeCount, after: (state.memories || []).length, relMaint: relMaintCounts(relMaint) };
             }
             // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 的 notifyHooks 只认 info/success/warning/error，故取等价类型）
@@ -625,9 +625,9 @@ async function runMemoryRepair(opts) {
             const r = applyMemoryMergeGroups(delta, pick);
             // ①-c v1.168：AI 合并后**再跑一次**关系层维护（合并/删除可能产生新的孤儿行与悬空引用）
             let relMaint2 = null;
-            try { relMaint2 = relRepairMaint(); } catch (e) { }
+            try { relMaint2 = relRepairMaint(); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
             if (relMaint2 && relMaint2.changed) { relMaint = mergeRelMaint(relMaint, relMaint2); }
-            try { logRelMaint('记忆修复（AI 后）', relMaint2); } catch (e) { }
+            try { logRelMaint('记忆修复（AI 后）', relMaint2); } catch (e) { /* 忽略：提示通道不可用：不影响数据与落库 */ }
             const after = (state.memories || []).length;
             if (r.fused > 0 || r.revised > 0 || r.deleted > 0) saveState();
             const parts = [];
@@ -639,7 +639,7 @@ async function runMemoryRepair(opts) {
             if (relTxt) parts.push(relTxt.replace(/^（关联维护：/, '关联维护：').replace(/）$/, ''));
             if (parts.length) notify('success', '记忆修复完成', `${parts.join(' · ')}；标签/调用次数/楼层已按并集归并；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, merged: mech.merged, skipped: r.skipped })}。`);
             else notify('info', '记忆修复完成', `AI 认为本次无需合并或修订；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), skipped: r.skipped })}。`);
-            try { dbgLog('摘要', { action: '记忆修复完成（v1.140 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, retargeted: r.retargeted || 0, relMaint: relMaintCounts(relMaint), groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim(), ms: Date.now() - t0 }); } catch (e) { }
+            try { dbgLog('摘要', { action: '记忆修复完成（v1.140 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, retargeted: r.retargeted || 0, relMaint: relMaintCounts(relMaint), groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim(), ms: Date.now() - t0 }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             return { made: (r.fused || r.revised || r.deleted || mech.merged || (relMaint && relMaint.changed)) ? 1 : 0, before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, merged: mech.merged, retargeted: r.retargeted || 0, relMaint: relMaintCounts(relMaint), groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length };
         }
     } catch (e) {
@@ -676,7 +676,7 @@ function conceptMergeExact() {
         state.concepts = out;
         const n = repairMergeByName('concepts', (e) => e.name);
         if (n > 0) { st.merged += n; st.notes.push(`同名称 ${n}`); }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return st;
 }
 /** 概念相关度：转调通用引擎（v1.140 起概念/记忆/悬念同一实现） */
@@ -809,7 +809,7 @@ function applyConceptMergeGroups(delta, pick) {
             }
         }
         if (deadIds.size) {
-            try { tombMany('concepts', Array.from(deadIds)); } catch (e) { }
+            try { tombMany('concepts', Array.from(deadIds)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             const before = (state.concepts || []).length;
             state.concepts = (state.concepts || []).filter(x => !(x && deadIds.has(String(x.id))));
             out.deleted = before - (state.concepts || []).length;
@@ -848,7 +848,7 @@ async function runConceptRepair(opts) {
                 ? `已合并同名称/同内容重复 ${mech.merged} 条；未发现达到相关性阈值（${Number(cfg.conceptRepairSim)}）的概念组，无需 AI 梳理。`
                 : `未发现达到相关性阈值（${Number(cfg.conceptRepairSim)}）的概念组（当前 ${beforeCount} 条概念彼此相关度均较低），无需 AI 梳理。`;
             notify('info', '概念修复完成', msg);
-            try { dbgLog('摘要', { action: '概念修复：无高相关组', concepts: beforeCount, merged: mech.merged, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { }
+            try { dbgLog('摘要', { action: '概念修复：无高相关组', concepts: beforeCount, merged: mech.merged, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             return { made: mech.merged, skipped: true, merged: mech.merged, groups: 0, before: beforeCount, after: (state.concepts || []).length };
         }
         // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
@@ -866,7 +866,7 @@ async function runConceptRepair(opts) {
         if (mech.merged) parts.push(`机械去重 ${mech.merged} 条`);
         if (parts.length) notify('success', '概念修复完成', `${parts.join(' · ')}；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, merged: mech.merged, skipped: r.skipped })}。`);
         else notify('info', '概念修复完成', `AI 认为本次无需合并或修订；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), skipped: r.skipped })}。`);
-        try { dbgLog('摘要', { action: '概念修复完成（v1.139 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { }
+        try { dbgLog('摘要', { action: '概念修复完成（v1.139 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: Number(cfg.conceptRepairSim), ms: Date.now() - t0 }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         return { made: (r.fused || r.revised || r.deleted || mech.merged) ? 1 : 0, before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, merged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length };
     } catch (e) {
         warn('概念修复失败', e);

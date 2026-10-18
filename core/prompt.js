@@ -37,7 +37,7 @@ function applyFeedRegex(text) {
                     const rx = new RegExp('<' + escapeRegex(tag) + '>([\\s\\S]*?)<\\/' + escapeRegex(tag) + '>', 'gi');
                     let m;
                     while ((m = rx.exec(raw))) { const c = String(m[1] || '').trim(); if (c) extracted.push(c); }
-                } catch (e) { }
+                } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             }
             if (extracted.length) {
                 let body = extracted.join('\n');
@@ -285,10 +285,10 @@ async function buildSummaryPrompt(floorsText, dims) {        const pt = cfg.prom
         // v1.183：标定跟踪段（恒定追加 —— 用户指定的角色即使本轮未出场也要考虑其货币变化）
         const tracked = buildCurrencyTrackedSection();
         if (tracked) lines.push(tracked);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v1.195：内容弱化（NSFW）—— 开关开启（默认关）时把共用规则追加进系统提示词，
     //   让「读正文 → 分析成记忆」这一步就不产生露骨内容；关闭时**完全不追加**（既有行为不变）。
-    try { const nsfwRule = nsfwSoftenRuleText(); if (nsfwRule) lines.push(nsfwRule); } catch (e) { }
+    try { const nsfwRule = nsfwSoftenRuleText(); if (nsfwRule) lines.push(nsfwRule); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v3.44.0（`docs/D22` W4 `数-11` ①）：**关联锚点强制补丁**（开关 `relAnchorRuleEnabled`，**默认关**）。
     //   与上一条同形态：只有开关开启才追加 → **默认输出与 V1 逐字节相同**
     //   （`tests/unit/extract-prompt-flow.test.js` P1 的黄金样本因此不受影响）。
@@ -303,9 +303,9 @@ async function buildSummaryPrompt(floorsText, dims) {        const pt = cfg.prom
     const userParts = [];
     if (wbFeed) userParts.push(`【世界书参考】以下是从世界书中读取的设定信息，作为背景参考，可帮助校准时间线、地名与人物设定：\n${wbFeed}`);
     // v1.135：已有条目索引（防重复录入：场景同地异名 / 物品无意义重复 / 状态全名与名双记录）
-    try { const existIdx = buildExistingIndexText(); if (existIdx) userParts.push(existIdx); } catch (e) { }
+    try { const existIdx = buildExistingIndexText(); if (existIdx) userParts.push(existIdx); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v1.183：当前货币账本（主角 + 标定角色）—— 让 AI「同时考虑对应角色货币情况」（更新而非重复新增）
-    try { const ledger = buildCurrencyLedgerText(); if (ledger) userParts.push(ledger); } catch (e) { }
+    try { const ledger = buildCurrencyLedgerText(); if (ledger) userParts.push(ledger); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     userParts.push(`【本轮对话】\n${String(floorsText == null ? '' : floorsText).slice(-16000)}`);
     return [
         { role: 'system', content: lines.join('\n') },

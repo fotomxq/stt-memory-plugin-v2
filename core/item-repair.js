@@ -101,7 +101,7 @@ function itemMergeExact() {
             st.merged++;
         }
         if (st.merged > 0) state.items = out;
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return st;
 }
 
@@ -150,20 +150,20 @@ function itemLowUsesPurge() {
             const age = lastFloor - seen;
             if (age < minFloors) { out.protectedCount++; continue; }
             if (it.carried) { out.protectedCount++; continue; }
-            try { if (isCurrencyItemName(it.name, it.desc)) { out.protectedCount++; continue; } } catch (e) { }
+            try { if (isCurrencyItemName(it.name, it.desc)) { out.protectedCount++; continue; } } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             cands.push({ it, uses, age });
         }
         cands.sort((x, y) => (x.uses - y.uses) || (y.age - x.age));
         const del = cands.slice(0, Math.max(0, Math.min(maxDel, arr.length - itemFloor)));   // v1.147：不跌破保底
         if (!del.length) { lowUseSweepMark('item', lastFloor); out.skipped = 'too-recent'; out.every = everyFloors; return out; }
         const ids = new Set(del.map(d => String(d.it.id)));
-        try { tombMany('items', Array.from(ids)); } catch (e) { }
+        try { tombMany('items', Array.from(ids)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         state.items = arr.filter(x => !(x && ids.has(String(x.id))));
         out.removed = del.length;
         out.names = del.map(d => `${d.it.name}(${d.uses}次·${d.age}楼)`);
         lowUseSweepMark('item', lastFloor);   // v1.153：推进清扫间隔（缓慢滴灌）
         out.every = everyFloors;
-    } catch (e) { }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return out;
 }
 
@@ -258,14 +258,14 @@ function applyItemMergeGroups(delta, pick) {
                     pushTags(primary.tags);
                     let qtySum = Number(primary.qty);
                     let currency = false;
-                    try { currency = isCurrencyItemName(primary.name, primary.desc); } catch (e) { }
+                    try { currency = isCurrencyItemName(primary.name, primary.desc); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                     for (const m of members) {
                         const mi = findIdx(m.id);
                         if (mi < 0) continue;
                         const me = state.items[mi];
                         pushTags(me.tags);
                         primary.uses = (Number(primary.uses) || 0) + (Number(me.uses) || 0);
-                        try { if (isCurrencyItemName(me.name, me.desc)) currency = true; } catch (e) { }
+                        try { if (isCurrencyItemName(me.name, me.desc)) currency = true; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                         if (currency) { const q = Number(me.qty); if (Number.isFinite(q)) qtySum = (Number.isFinite(qtySum) ? qtySum : 0) + q; }
                         else if (!aiQty && (primary.qty === undefined || primary.qty === null) && me.qty !== undefined && me.qty !== null) primary.qty = me.qty;
                         if (!aiDesc && String(me.desc || '').length > String(primary.desc || '').length) primary.desc = me.desc;
@@ -320,7 +320,7 @@ function applyItemMergeGroups(delta, pick) {
             }
         }
         if (deadIds.size) {
-            try { tombMany('items', Array.from(deadIds)); } catch (e) { }
+            try { tombMany('items', Array.from(deadIds)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             const before = (state.items || []).length;
             state.items = (state.items || []).filter(x => !(x && deadIds.has(String(x.id))));
             out.deleted = before - (state.items || []).length;
@@ -374,7 +374,7 @@ async function runItemRepair(opts) {
             if (purgeNote) parts.push(purgeNote);
             parts.push(`未发现达到相关性阈值（${spec.cfgSim()}）的物品组，无需 AI 判断融合`);
             notify('info', '物品修复完成', parts.join('；') + '。');
-            try { dbgLog('摘要', { action: '物品修复：无高相关组', items: beforeCount, mechMerged: mech.merged, purge: purge.removed, purgeSkipped: purge.skipped, sim: spec.cfgSim() }); } catch (e) { }
+            try { dbgLog('摘要', { action: '物品修复：无高相关组', items: beforeCount, mechMerged: mech.merged, purge: purge.removed, purgeSkipped: purge.skipped, sim: spec.cfgSim() }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             return { made: (mech.merged || purge.removed) ? 1 : 0, skipped: true, merged: mech.merged, purged: purge.removed, groups: 0, before: beforeCount, after: (state.items || []).length };
         }
         // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
@@ -393,7 +393,7 @@ async function runItemRepair(opts) {
         if (purgeNote) parts.push(purgeNote);
         if (parts.length) notify('success', '物品修复完成', `${parts.join(' · ')}；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, merged: mech.merged, purged: purge.removed, skipped: r.skipped })}。`);
         else notify('info', '物品修复完成', `AI 认为本次无需融合或修订；${repairReport({ before: beforeCount, after: after, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), skipped: r.skipped })}。`);
-        try { dbgLog('摘要', { action: '物品修复完成（v1.142 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, purged: purge.removed, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim(), ms: Date.now() - t0 }); } catch (e) { }
+        try { dbgLog('摘要', { action: '物品修复完成（v1.142 聚类核对）', before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, mechMerged: mech.merged, purged: purge.removed, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim(), ms: Date.now() - t0 }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         return { made: (r.fused || r.revised || r.deleted || mech.merged || purge.removed) ? 1 : 0, before: beforeCount, after, fused: r.fused, removed: r.removed, revised: r.revised, deleted: r.deleted, skipped: r.skipped, merged: mech.merged, purged: purge.removed, groups: pick.clusters.length, checked: pick.entries.length };
     } catch (e) {
         warn('物品修复失败', e);

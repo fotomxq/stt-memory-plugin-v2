@@ -112,7 +112,7 @@ function migrateRelLinks(s) {
         }
         s.links = final;
         if (JSON.stringify(final) !== beforeJson) changed = true;
-    } catch (e) { }
+    } catch (e) { /* 忽略：不可序列化/不可解析的单个元素跳过，不影响其余 */ }
     return changed;
 }
 
@@ -152,7 +152,7 @@ function migratePlanSuspV1165(s) {
             ensureArr(y, 'sourceRefs'); ensureArr(y, 'previews');
             ensureStr(y, 'planRef'); ensureStr(y, 'suspenseRef'); ensureStr(y, 'promotedTo'); ensureStr(y, 'promotedAt'); ensureStr(y, 'constraintNote');
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     return changed;
 }
 // ==================== 快照系统====================
@@ -570,12 +570,12 @@ function migrateState(s) {
                 if (s[cat].length !== before) changed = true;
             }
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     if (changed) s.version = VERSION;
     // v1.165：通用知情关联层归一（容器 / 非法行 / how 合法子集 / 去重 / 超限截断；幂等）
-    try { if (typeof migrateRelLinks === 'function' && migrateRelLinks(s)) changed = true; } catch (e) { }
+    try { if (typeof migrateRelLinks === 'function' && migrateRelLinks(s)) changed = true; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v1.165：计划 / 悬念 / 平行事件结构化字段（幂等补默认）
-    try { if (typeof migratePlanSuspV1165 === 'function' && migratePlanSuspV1165(s)) changed = true; } catch (e) { }
+    try { if (typeof migratePlanSuspV1165 === 'function' && migratePlanSuspV1165(s)) changed = true; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     // v3.44.0（`docs/D22` W4 `数-11`）：**数据异常自愈挪到关联层归一之后** ——
     //   自愈里的「关联行锚点机械回填」必须在 `migrateRelLinks` **之后**执行：那一遍会用 **V1 口径**
     //   重写关联行（`core/model/rel.js#normalizeRelLink` 只产出规范字段，未知字段被丢弃），

@@ -31,8 +31,8 @@ function sweepOrphanRelLinks() {
         if (!gone.length) return 0;
         n = gone.length;
         state.links = arr.filter(x => x && exists(String(x.dim), String(x.refId)));
-        try { tombEntries('links', gone); } catch (e) { }
-    } catch (e) { }
+        try { tombEntries('links', gone); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return n;
 }
 // 从「条目输入」写关联（AI 抽取 / 编辑器保存共用）：接受 关联 / 知情者 / relLinks 数组
@@ -110,7 +110,7 @@ function deleteEntry(kind, id) {
         });
         km.set(kept);
         // 级联删除记墓碑（跨端不再复活被删场景及其子孙）
-        try { tombMany('scenes', removedIds); } catch (e) { }
+        try { tombMany('scenes', removedIds); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         saveState();
         return true;
     }
@@ -119,22 +119,22 @@ function deleteEntry(kind, id) {
         const removed = arr.filter(x => x.id === id);
         km.set(arr.filter(x => x.id !== id));
         // 档案删除记墓碑
-        try { tombSet('snapshots', id); } catch (e) { }
-        try { sweepStatesForRemovedSnapshots(removed.map(x => x.name)); } catch (e) { }
+        try { tombSet('snapshots', id); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
+        try { sweepStatesForRemovedSnapshots(removed.map(x => x.name)); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         // v1.165：角色删除 → 移除其关联行（不静默丢条目；剩 0 人的条目成为孤儿，按配置处置）
-        try { removed.forEach(x => { if (x && x.name) removeRelLinksForWho(x.name); }); } catch (e) { }
+        try { removed.forEach(x => { if (x && x.name) removeRelLinksForWho(x.name); }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         saveState();
         return true;
     }
     const target0 = arr.find(x => x && String(x.id) === String(id));
     km.set(arr.filter(x => x.id !== id));
     // 删除记墓碑（跨端删除同步）
-    try { tombSet(kind, id); } catch (e) { }
+    try { tombSet(kind, id); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     // v1.165：删除条目 → 级联删除其关联行（留墓碑，跨端不复活）
-    try { dropRelLinks(kind, [id]); } catch (e) { }
+    try { dropRelLinks(kind, [id]); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     // v1.203：删除的是「合并总结」情节 → 让被它总结的原情节恢复显示（数据始终保留，只是重新可见）
     if (kind === 'atoms' && target0 && target0.mergedSummary) {
-        try { const n = releaseMergedSources(target0); if (n) log(`合并总结已删除：恢复显示 ${n} 条被总结情节`); } catch (e) { }
+        try { const n = releaseMergedSources(target0); if (n) log(`合并总结已删除：恢复显示 ${n} 条被总结情节`); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     }
     saveState();
     return true;
@@ -152,8 +152,8 @@ function dropRelLinks(dim, ids) {
         if (!gone.length) return 0;
         n = gone.length;
         state.links = arr.filter(x => !(x && String(x.dim) === d && set.has(String(x.refId))));
-        try { tombEntries('links', gone); } catch (e) { }
-    } catch (e) { }
+        try { tombEntries('links', gone); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return n;
 }
 // 引用重挂：条目合并（记忆 / 计划 / 悬念 / 平行事件）后把关联与引用指回主条
@@ -181,7 +181,7 @@ function retargetRelRefs(dim, fromIds, toId) {
         // 去掉与主条已有行冲突的 who
         const merged = keep.filter(x => !(x && String(x.dim) === d && String(x.refId) === to && byWho.has(String(x.who))));
         state.links = merged.concat(Array.from(byWho.values()));
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return n;
 }
 
@@ -212,7 +212,7 @@ function sweepStatesForRemovedSnapshots(names) {
         try {
             const afterList = state.currentStates || [];
             tombMany('currentStates', beforeList.filter(s => afterList.indexOf(s) < 0).map(s => s && s.id));
-        } catch (e) { }
+        } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         return before - (state.currentStates || []).length;
     } catch (e) { return 0; }
 }
@@ -240,8 +240,8 @@ function removeRelLinksForWho(name) {
         if (!gone.length) return touched;
         for (const g of gone) touched.push({ dim: g.dim, refId: g.refId });
         state.links = before.filter(x => !(x && x.who && snapNameKey(x.who) === k));
-        try { tombEntries('links', gone); } catch (e) { }
-    } catch (e) { }
+        try { tombEntries('links', gone); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+    } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
     return touched;
 }
 // 孤儿关联（目标条目已不存在）：渲染忽略；**只在显式修复时**清理（载入/保存不动，避免误删「对端刚建、本端未拉到」的关联）
@@ -269,7 +269,7 @@ function upsertEntry(kind, raw, opts) {
         state.stats[key] = Number(state.stats[key] || 0) + 1;
         km.set((km.get() || []).filter(x => !(x.id === n.id || String(x.content || '') === String(n.content || ''))));
         // v1.165：了结即原文删除 → 级联删除其关联行（跨端同步删除）
-        try { dropRelLinks(kind, [n.id]); } catch (e) { }
+        try { dropRelLinks(kind, [n.id]); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         saveState();
         return true;
     }
@@ -280,11 +280,11 @@ function upsertEntry(kind, raw, opts) {
         if (kind === 'snapshots') {
             // v1.161：编辑器保存 = 一次真实更新 → 记「最后一次更新时间」（剧情时间为基准）
             const merged = mergeSnapshotObjects(arr[i], n, opts);
-            try { stampSnapshotTime(merged, 'update'); } catch (e) { }
+            try { stampSnapshotTime(merged, 'update'); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             arr[i] = merged;
         } else arr[i] = { ...arr[i], ...n };
     } else {
-        if (kind === 'snapshots') { try { stampSnapshotTime(n, 'update'); } catch (e) { } }
+        if (kind === 'snapshots') { try { stampSnapshotTime(n, 'update'); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ } }
         arr.push(n);
     }
     km.set(arr);
@@ -349,7 +349,7 @@ function mergeSnapshotObjects(old, n, opts) {
     const mergedIdentity = ce ? fillCe(oldI, n.identity) : fill(oldI, n.identity);
     // v1.162/v1.171/v1.176：年龄为派生字段 —— 合并后统一走 syncSnapshotAge()（出生日期 + 剧情锚点重算，
     //   不采信外部传入的年龄；算不出时保留合理存档值、清掉不合理的历史污染值）
-    try { syncSnapshotAge({ identity: mergedIdentity }); } catch (e) { }
+    try { syncSnapshotAge({ identity: mergedIdentity }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return {
         ...old, ...n,
         lastUpdateDate: tUp.d, lastUpdateTime: tUp.t, lastSeenDate: tSeen.d, lastSeenTime: tSeen.t,

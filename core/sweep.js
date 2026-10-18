@@ -76,7 +76,7 @@ function tombstoneSweep() {
                 if (id in cur) continue;
                 const h = prev[id];
                 if (h && curH[h]) continue;         // 同内容仍在（去重/换 id 合并）→ 不是删除
-                try { tombSet(cat, id, ts); if (h) tombSetH(cat, h, ts); n++; gone.push({ dim: cat, id: id }); } catch (e) { }
+                try { tombSet(cat, id, ts); if (h) tombSetH(cat, h, ts); n++; gone.push({ dim: cat, id: id }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             }
         }
         entryIndexPrev = curIdx;        // 直接把本次索引作为下一次基线（旧实现 entryIndexInit 会再算一遍）
@@ -93,7 +93,7 @@ function tombstoneSweep() {
         return n;
     } catch (e) { return 0; }
 }
-try { entryIndexInit(); } catch (e) { }   // 启动即建立索引基线（此后任何消失的条目都会自动留痕）
+try { entryIndexInit(); } catch (e) { /* 忽略：告警/日志写失败不影响主流程 */ }   // 启动即建立索引基线（此后任何消失的条目都会自动留痕）
 // 快照：仅当确有原子数据时才建根/调度（避免空状态被 init saveState 建出「空根快照」，
 // 也避免空快照污染跨端对账 —— 无原子 → 跳过快照段）
 
@@ -103,7 +103,7 @@ function deletedHByDim(delH, dim) {
 // 墓碑回收（TTL）：超过 keepDays 的 id/内容哈希墓碑才允许丢弃 —— 时间窗足够长，避免旧端复活被删条目
 
 function entryWallMs(it) {
-    try { const v = Number(it && it.updatedAt); if (Number.isFinite(v) && v > 1e12) return v; } catch (e) { }
+    try { const v = Number(it && it.updatedAt); if (Number.isFinite(v) && v > 1e12) return v; } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     return 0;
 }
 

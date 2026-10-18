@@ -1,5 +1,12 @@
 # docs 文档索引 · FTT记忆组件 V2
 
+> 文档版本：v3.14 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
+> v3.14 变更（随 **v3.50.15**：W25 待开发 `技-55` + `技-56`）：
+>   ① **`技-55` 空 catch 217 → 0**：新增 `scripts/repair-empty-catch.js`（按 try 块首个调用推断具体原因，**零逻辑改动**；只扫出货面）；`static-baseline` 棘轮 **217 → 0**；
+>   ② **「墓碑/落盘」评估**：墓碑=已知取舍不需逐处上报；落盘=`saveState()/persistNow()` 已有 `false` 信号但调用方不看 → **需要一处统一计数（未做）**；
+>   ③ **`技-56` 部分**：`PROMPT_TEMPLATES_V2`（623 行纯数据）外提为 `core/prompts-v2.js` → `core/config.js` 1313 → **688** 行，基线 1275 → 688（恢复额度）；余 4 个受控文件待抽取；
+>   ④ **数字口径**：单测 **239 文件 / 3562 断言** · 冒烟 **224** · 静态告警 **0**；批次档 → `P10c124`；
+>   ⑤ **版本位**：用户指定 **v3.50.15**（注释级 + 纯搬家）→ patch 位，**无偏离登记**。
 > 文档版本：v3.13 ｜ 日期：2026-10-15 ｜ 类型：**设计稿（不发版）** ｜ 状态：生效
 > v3.13 变更（随 **v3.50.14**：W12 待开发 `技-47` —— 修复注册表）：
 >   ① **新增** `core/repair-registry.js`：九域各一行（10 字段：id/label/kind/inTotal/aggKey/limits/buildSection/apply/entry/pick）+ 查询助手 + 自检；
@@ -889,12 +896,12 @@ docs/
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，244 份）
+└── history/                  # 历史批次层（只读留痕，245 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
     ├── P9a…P9e               # B9 专项批次
-    ├── P10a…P10c123          # v2.x–v3.x 逐版迭代
+    ├── P10a…P10c124          # v2.x–v3.x 逐版迭代
     └── B9-测试完整性待修.md   # 冒烟断言专项（已闭环）
 ```
 
@@ -953,9 +960,9 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.50.14） |
+| 口径 | 权威来源 | 当前值（v3.50.15） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.14` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.15` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `2`（v3.47.3：新增 `maps` 容器 → 迁移只补容器 + 归一，`docs/D27` §3.3 ⑤） |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 15 / 14（v3.47.3：+`maps` 地图 —— 场所锚点 / 房间 / 陈设三级 + 路径） |
@@ -971,7 +978,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 61 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **266 / 237**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` |  244 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` |  245 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

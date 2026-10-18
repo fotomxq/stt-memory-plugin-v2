@@ -103,7 +103,7 @@ function suspenseMergeExact() {
             st.merged++;
         }
         if (st.merged > 0) state.suspense = out;
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return st;
 }
 /** ④ 悬念修复提示词（V1 `buildPlanSuspRepairPrompt`）：打包「未解悬念·相关组」+ 进行中计划全量清单（仅供了结判定）。
@@ -296,7 +296,7 @@ function applySuspenseMergeGroups(delta, pick) {
         collect(dl, deadIds);
         const rm = (ids) => {
             if (!ids.size) return 0;
-            try { tombMany('suspense', Array.from(ids)); } catch (e) { }
+            try { tombMany('suspense', Array.from(ids)); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             const before = (state.suspense || []).length;
             state.suspense = (state.suspense || []).filter(x => !(x && ids.has(String(x.id))));
             return before - (state.suspense || []).length;
@@ -307,9 +307,9 @@ function applySuspenseMergeGroups(delta, pick) {
         try {
             const byTo = new Map();
             for (const p of mergeTargets) { if (!byTo.has(p.to)) byTo.set(p.to, []); byTo.get(p.to).push(p.from); }
-            for (const [to, froms] of byTo) { try { retargetRelRefs('suspense', froms, to); } catch (e) { } }
+            for (const [to, froms] of byTo) { try { retargetRelRefs('suspense', froms, to); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }
             if (mergeTargets.length) out.retargeted = mergeTargets.length;
-        } catch (e) { }
+        } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         if (out.closed) {
             state.stats = state.stats || { plansClosed: 0, suspenseResolved: 0 };
             state.stats.suspenseResolved = Number(state.stats.suspenseResolved || 0) + out.closed;
@@ -353,9 +353,9 @@ async function runPlanSuspRepairInner(o0) {
         // ①-b v1.168：关联层维护（零 AI）—— 与修复联动：**始终清理孤儿关联行** + 去重 / 角色名归一 /
         //   悬空引用清理 / how·偏差归一；孤儿条目按 relOrphanAction 处置（默认 keep 只提示）
         let relMaint = null;
-        try { relMaint = relRepairMaint(); } catch (e) { }
+        try { relMaint = relRepairMaint(); } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
         if (mech.merged > 0 || (relMaint && relMaint.changed)) saveState();
-        try { logRelMaint('计划/悬念修复', relMaint); } catch (e) { }
+        try { logRelMaint('计划/悬念修复', relMaint); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
         // ②③ 悬念标签组聚类 + 选组（轮询 + 上限）
         const spec = GROUP_REPAIR_SPECS.suspense;
         const pick = groupPick(spec);
@@ -363,7 +363,7 @@ async function runPlanSuspRepairInner(o0) {
         if (!pick.entries.length && !plans.length) {
             const relTxt0 = relMaintSummary(relMaint);
             notify('info', '计划/悬念修复完成', `${mech.merged ? `已合并同内容悬念 ${mech.merged} 条；` : ''}未发现达到相关性阈值（${spec.cfgSim()}）的悬念组，且没有进行中的计划，无需 AI 处理。${relTxt0}`);
-            try { dbgLog('摘要', { action: '计划/悬念修复：无高相关组', merged: mech.merged, relMaint: relMaintCounts(relMaint), plans: plans.length }); } catch (e) { }
+            try { dbgLog('摘要', { action: '计划/悬念修复：无高相关组', merged: mech.merged, relMaint: relMaintCounts(relMaint), plans: plans.length }); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
             return { made: mech.merged, skipped: true, merged: mech.merged, groups: 0, before: beforeS, after: (state.suspense || []).length, relMaint: relMaintCounts(relMaint) };
         }
         // V1 `notify('repair', …)` → TOAST_KINDS.repair.type === 'warning'（V2 notifyHooks 只认 info/success/warning/error）
@@ -379,7 +379,7 @@ async function runPlanSuspRepairInner(o0) {
         const changed = (sRes.fused || sRes.revised || sRes.closed || sRes.deleted || mergeRes.removed || closePCnt) ? 1 : 0;
         if (!changed) {
             notify('warning', '计划/悬念修复：无可了结/合并条目', `AI 判定本次核对的 ${pick.entries.length} 条悬念与 ${plans.length} 项计划均仍有效、无冗余重复（或未返回结果），未作改动。`);
-            try { dbgLog('摘要', { action: '计划/悬念修复无改动', groups: pick.clusters.length, checked: pick.entries.length, plans: plans.length }); } catch (e) { }
+            try { dbgLog('摘要', { action: '计划/悬念修复无改动', groups: pick.clusters.length, checked: pick.entries.length, plans: plans.length }); } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
             return { made: 0, skipped: true, groups: pick.clusters.length, checked: pick.entries.length, merged: mech.merged };
         }
         mergeDelta(plansDelta);
@@ -400,7 +400,7 @@ async function runPlanSuspRepairInner(o0) {
             if (relTxt) parts.push(relTxt.replace(/^（关联维护：/, '关联维护：').replace(/）$/, ''));
         }
         notify('success', '计划/悬念修复完成', `${parts.join(' · ') || '无改动'}；进行中计划 ${(state.plans || []).filter(x => x && x.status === 'open').length} · 未解悬念 ${(state.suspense || []).filter(x => x && x.status === 'open').length}；${repairReport({ before: beforeS, after: (state.suspense || []).filter(x => x && x.status === 'open').length, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, defects: pick.defects, submittedTags: repairBatchTags(pick.entries), fused: sRes.fused, removed: sRes.removed, revised: sRes.revised, deleted: sRes.deleted, merged: mech.merged, skipped: sRes.skipped, extra: ('已了结计划 ' + closedP + ' 项 / 已揭晓悬念 ' + sRes.closed + ' 项') })}。`);
-        try { dbgLog('摘要', { action: '计划/悬念修复完成（v1.140 悬念聚类核对）', closedP, closedS: sRes.closed, fusedS: sRes.fused, removedS: sRes.removed, revisedS: sRes.revised, deletedS: sRes.deleted, mergedP: mergeRes.mergedPlans, mechMerged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim() }); } catch (e) { }
+        try { dbgLog('摘要', { action: '计划/悬念修复完成（v1.140 悬念聚类核对）', closedP, closedS: sRes.closed, fusedS: sRes.fused, removedS: sRes.removed, revisedS: sRes.revised, deletedS: sRes.deleted, mergedP: mergeRes.mergedPlans, mechMerged: mech.merged, groups: pick.clusters.length, groupsTotal: pick.total, checked: pick.entries.length, sim: spec.cfgSim() }); } catch (e) { /* 忽略：关联层读写失败：关系行缺失不阻塞主数据 */ }
         return { made: 1, closedP, closedS: sRes.closed, mergedP: mergeRes.mergedPlans, mergedS: sRes.fused, removedDup: mergeRes.removed + sRes.removed, revised: sRes.revised, deleted: sRes.deleted, merged: mech.merged, groups: pick.clusters.length, checked: pick.entries.length };
     } catch (e) {
         warn('计划/悬念修复失败', e);

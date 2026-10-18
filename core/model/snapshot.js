@@ -110,7 +110,7 @@ function stampSnapshotsSeen(names) {
             const s = snapFindByName(nm);
             if (s && stampSnapshotTime(s, 'seen')) changed = true;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：归一化/刷新失败：下一轮会重新处理 */ }
     return changed;
 }
 // v1.164：出生日期合理性 —— 剧情日期之后出生的日期一律视为**未来时间**（修复管道据此拒写），
@@ -125,13 +125,13 @@ function ageAnchorDate(anchor) {
     try {
         const direct = clockDateTrim(getStoryNow());
         if (/^\d{4}/.test(direct)) return direct;
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     try {
         if (typeof storyAnchorDate === 'function') {
             const a = clockDateTrim(storyAnchorDate());
             if (/^-?\d{1,4}/.test(a)) return a;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return '';
 }
 
@@ -512,7 +512,7 @@ function snapshotAgeInfo(s, anchor) {
         if (derived) {
             out.age = derived;
             let now = '';
-            try { now = clockDateTrim(getStoryNow()); } catch (e) { }
+            try { now = clockDateTrim(getStoryNow()); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             out.basis = (anchorD2 && now && clockDateTrim(anchorD2) === clockDateTrim(now)) ? 'story' : 'timeline';
             return out;
         }
@@ -635,7 +635,7 @@ function refreshAllSnapshotAges() {
             else if (r.reason === 'no-birth' || r.reason === 'no-anchor' || r.reason === 'uncomputable') st.pending++;
             else st.unchanged++;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return st;
 }
 // 单个角色的「派生年龄 + 存档年龄」是否一致（诊断用，不写数据）
@@ -666,18 +666,18 @@ function migrateSnapshotV1162(s) {
             const note = String(s.identity.ageNote || '').trim();
             if (s.identity.ageNote !== undefined) { delete s.identity.ageNote; changed = true; }
             if (note && !String(s.identity.birthDate || '').trim()) {
-                try { const r = ensureSnapshotBirthDate(s, { ageHint: note }); if (r && r.changed) changed = true; } catch (e2) { }
+                try { const r = ensureSnapshotBirthDate(s, { ageHint: note }); if (r && r.changed) changed = true; } catch (e2) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             }
             // v1.171：年龄自愈 —— 派生值优先；无剧情锚点时清掉**不合理**的历史值
             //   （历史版本会在缺剧情日期时用现实年份算出 1xx 岁并落盘，读一次即修正/清空）
             // v1.176：统一走 syncSnapshotAge()（被动更新的固定规则唯一入口）
-            try { if (syncSnapshotAge(s).changed) changed = true; } catch (e3) { }
+            try { if (syncSnapshotAge(s).changed) changed = true; } catch (e3) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         } else if (s.identity === undefined) {
             s.identity = {};
             s.identity.age = '';
             changed = true;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return changed;
 }
 // 修复：SNAP_GROUP_MAP 必须在 loadState/migrateState 调用前初始化（TDZ）
@@ -928,7 +928,7 @@ function storyAnchorDate() {
         const mems = (state && state.memories) || [];
         const mdated = mems.filter(m => /^-?\d{1,4}/.test(String((m && m.date) || ''))).map(m => clockDateTrim(m.date)).sort((x, y) => dateStrCmp(x, y));
         if (mdated.length) return mdated[mdated.length - 1];
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return '';
 }
 // 从「年龄备注 / 年龄字段」解析岁数（支持「约 25 岁」「26岁」「二十五」这类只取数字的场景）
@@ -1004,10 +1004,10 @@ function ensureSnapshotBirthDate(snap, opts) {
                 snap.identity.birthDate = re;
                 snap.identity.birthSource = 'age';
                 snap.identity.birthNote = `推测：据年龄 ${keepAge} 岁与剧情日期 ${anchorNow.slice(0, 7)} 推算（原为无剧情日期时的现实年份占位，已按剧情日期校正）`;
-                try { const a = calcAge(re, anchorNow); if (a) snap.identity.age = a; } catch (e) { }
+                try { const a = calcAge(re, anchorNow); if (a) snap.identity.age = a; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                 out.changed = true; out.date = re; out.source = 'age'; out.note = snap.identity.birthNote;
                 out.fallbackFixed = true;
-                try { stampSnapshotTime(snap, 'update'); } catch (e) { }
+                try { stampSnapshotTime(snap, 'update'); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
                 return out;
             }
         }
@@ -1043,10 +1043,10 @@ function ensureSnapshotBirthDate(snap, opts) {
             + (curFuture ? '（原出生日期晚于剧情日期，已按剧情日期校正）' : (curBadFormat ? '（原出生日期格式非法，已重新推算）' : ''));
         // v1.162：不再写「年龄备注」（该字段已取消）—— 年龄统一由出生日期 + 剧情锚点计算
         //   v1.171：锚点用 ageAnchorDate()（无锚点时用现实年份占位的那一次不写年龄，避免落盘 1xx 岁）
-        try { const a = calcAge(date, anchorOk ? anchor : ''); if (a) snap.identity.age = a; else if (String(snap.identity.age || '').trim() && !anchorOk) snap.identity.age = ''; } catch (e) { }
+        try { const a = calcAge(date, anchorOk ? anchor : ''); if (a) snap.identity.age = a; else if (String(snap.identity.age || '').trim() && !anchorOk) snap.identity.age = ''; } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         out.changed = true; out.date = date; out.source = source; out.note = snap.identity.birthNote;
         out.futureFixed = curFuture;   // v1.164：本次是否修正了「未来出生日期」
-        try { stampSnapshotTime(snap, 'update'); } catch (e) { }   // v1.161：自动补全出生日期亦算一次档案更新
+        try { stampSnapshotTime(snap, 'update'); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }   // v1.161：自动补全出生日期亦算一次档案更新
         return out;
     } catch (e) { return out; }
 }

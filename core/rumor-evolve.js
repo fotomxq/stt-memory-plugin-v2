@@ -408,18 +408,18 @@ async function runRumorEvolve(opts) {
                 const today = rumorStoryDate();
                 if (today) r.date = today;
                 r.updatedAt = Date.now();
-            } catch (e) { }
+            } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }
         try { out.decay = await runRumorDecay({ force: false }); } catch (e) { out.decay = null; }
-        try { saveState(); } catch (e) { }
+        try { saveState(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         try {
             dbgLog('摘要', { action: '传言演化（机械 · 零 AI）', reason: out.reason, runs: tick.runs, list: out.list, aged: out.aged, ferment: out.ferment, fermentSkipped: out.fermentSkipped, links: out.links, changes: out.changes, committed: out.committed, fissions: out.fissions, decay: out.decay });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         if (!o.silent && (out.aged || out.links || out.changes || out.committed)) {
             try {
                 notify('success', '📢 传言演化完成',
                     `载体停用 ${out.aged} · 平行联动 ${out.links} · 酝酿变化 ${out.changes} · 完成变化 ${out.committed}（含裂变 ${out.fissions}）· 衰退移除 ${(out.decay && out.decay.removed) || 0}（共 ${(state.rumors || []).length} 条）`);
-            } catch (e) { }
+            } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         return out;
     } catch (e) { out.ok = false; out.error = String((e && e.message) || e); return out; }
@@ -440,7 +440,7 @@ function rumorTickAdvance(floor) {
         const every = rumorEveryRounds();
         if ((Number(t.round) || 0) < every) return { ok: true, round: t.round, every, triggered: false };
         t.round = 0;
-        try { Promise.resolve().then(() => runRumorEvolve({ reason: 'tick' })).catch(() => { }); } catch (e) { }
+        try { Promise.resolve().then(() => runRumorEvolve({ reason: 'tick' })).catch(() => { }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         return { ok: true, round: 0, every, triggered: true };
     } catch (e) { return { ok: false, triggered: false, error: String((e && e.message) || e) }; }
 }
@@ -450,7 +450,7 @@ function rumorMarkParallelChange(floor) {
         const t = rumorTickState();
         t.round = 0;
         t.parallelFloor = Number.isFinite(Number(floor)) ? Number(floor) : (Number(t.lastFloor) || -1);
-        try { dbgLog('摘要', { action: '平行世界发生变化 → 传言轮次重新计数', floor: t.parallelFloor, every: rumorEveryRounds() }); } catch (e) { }
+        try { dbgLog('摘要', { action: '平行世界发生变化 → 传言轮次重新计数', floor: t.parallelFloor, every: rumorEveryRounds() }); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         return t;
     } catch (e) { return null; }
 }
@@ -461,9 +461,9 @@ function scheduleRumorEvolve(reason) {
         if (rumorEvolveTimer) return;
         rumorEvolveTimer = timerHooks.set(() => {
             rumorEvolveTimer = null;
-            try { runRumorEvolve({ reason: reason || 'scheduled' }); } catch (e) { }
+            try { runRumorEvolve({ reason: reason || 'scheduled' }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }, 3000);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
 }
 // —— 传言衰退（复用 calcTimeDecay 通用多级时间衰退；参数与平行事件同款） ——
 // v2.70.0（用户要求）：「传言的衰退系数增加**时间判断**，如果**发生时间越久远，衰退速度越快**」。
@@ -547,9 +547,9 @@ function scheduleRumorDecay() {
         if (rumorDecayTimer) return;
         rumorDecayTimer = timerHooks.set(() => {
             rumorDecayTimer = null;
-            try { runRumorDecay({}); } catch (e) { }
+            try { runRumorDecay({}); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         }, 3000);
-    } catch (e) { }
+    } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
 }
 async function runRumorDecay(opts) {
     try {
@@ -564,11 +564,11 @@ async function runRumorDecay(opts) {
         if (!o.force && !overRatio && !expired.length) return { removed: 0, triggered: false, overRatio, n, cap };
         if (expired.length) {
             const ids = expired.map(x => x && x.id).filter(Boolean).map(String);
-            try { tombMany('rumors', ids); } catch (e) { }
-            try { tombEntries('rumors', expired); } catch (e) { }   // v1.192：同时留内容哈希墓碑（同内容换 id 也不复活）
+            try { tombMany('rumors', ids); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+            try { tombEntries('rumors', expired); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }   // v1.192：同时留内容哈希墓碑（同内容换 id 也不复活）
             const gone = new Set(ids);
             state.rumors = list.filter(x => !(x && gone.has(String(x.id || ''))));
-            try { saveState(); } catch (e) { }
+            try { saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         }
         try {
             dbgLog('摘要', {
@@ -577,10 +577,10 @@ async function runRumorDecay(opts) {
                 // v2.70.0：逐条给出「原系数 / 剧情时间久远度 / 加速后系数」，便于核对时间判断是否生效
                 detail: expired.slice(0, 6).map(x => { try { return Object.assign({ subject: String(x.subject || x.id || '') }, rumorDecayBreakdown(x)); } catch (e) { return null; } }).filter(Boolean),
             });
-        } catch (e) { }
+        } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         if (expired.length) {
             const remain = (state.rumors || []).length;
-            try { toast(`💀 传言消退：${expired.length} 条已达衰退阈值自动移除（剩 ${remain}/${cap}）`, 'info'); } catch (e) { }
+            try { toast(`💀 传言消退：${expired.length} 条已达衰退阈值自动移除（剩 ${remain}/${cap}）`, 'info'); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         return { removed: expired.length, triggered: overRatio || expired.length > 0, overRatio, n, cap, remain: (state.rumors || []).length };
     } catch (e) { return { removed: 0, triggered: false, error: String((e && e.message) || e) }; }
@@ -596,7 +596,7 @@ function rumorAiHas(raw, keys) {
             if (Array.isArray(v) && !v.length) continue;
             return true;
         }
-    } catch (e) { }
+    } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
     return false;
 }
 // 「AI 增量 + 既有条目」合并：AI 明确的字段覆盖；未提供的字段保留旧值；集合类字段一律并集；
@@ -720,9 +720,9 @@ function rumorApplyAiDelta(raw, opts) {
 function clearRumors() {
     try {
         const list = (state.rumors || []).slice();
-        try { tombEntries('rumors', list); } catch (e) { }
+        try { tombEntries('rumors', list); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
         state.rumors = [];
-        try { saveState(); } catch (e) { }
+        try { saveState(); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
         return list.length;
     } catch (e) { return 0; }
 }
