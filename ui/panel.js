@@ -94,7 +94,8 @@ import { debugAction, DEBUG_ACTIONS, updateBridgeStatusDom } from './debug.js';
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 // B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
 import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
-import { sortRecentByStoryDate } from '../core/clock.js';
+import {sortRecentByStoryDate} from '../core/clock.js';
+import { sortRumorsByFerment } from '../core/rumor-sort.js';
 // v2.47.0：场景页 = V1 的**聚合树**（虚节点 + 当前位置高亮 + 折叠），此前 V2 是平铺列表
 import { scenesTreeHtml } from './scene-tree.js';
 import { SCENE_MAP_ACTIONS, runSceneMapAction, scenePageBodyHtml, sceneMapSub } from './scene-map.js';   // v3.47.0（W16 应-20/应-21）：场景页「🗺 地图」子页全在新模块
@@ -434,7 +435,7 @@ function listOfInfo(kind, q, limit) {
         arr: arrOf, statusOf: listStatusFilter, extraOf: extraFilterOf, match: entryMatches,
         isShell: (x) => isShellEntry(dataKindOf(kind), x), isStale: (x) => staleFilterOn(kind, x),
         hidden: () => ((kind === 'atoms' && !ps.showHidden) ? hiddenRowFilter : null),
-        sort: (a) => { try { return sortRecentByStoryDate(a); } catch (e) { return a.slice().reverse(); } },   // 原实现的兜底逐字保留
+        sort: (a) => { try { return kind === 'rumors' ? sortRumorsByFerment(a) : sortRecentByStoryDate(a); } catch (e) { return a.slice().reverse(); } },   // v3.50.18（用户要求）：传言按发酵度降序、同度按发生日期降序
     }, kind, q === undefined ? (ps.q[kind] || '') : q, limit);
 }
 /** 情节页「已总结（隐藏）」过滤谓词（抽出来复用，避免每次渲染新建闭包） */

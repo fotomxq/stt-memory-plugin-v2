@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.17",
+  "version": "3.50.18",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.18",
+      "date": "2026-10-15",
+      "title": "传言按发酵度排序（同度看发生日期）",
+      "points": [
+        "版本位：排序口径调整（无数据结构变更）→ 守则 §3.1 patch 位，无偏离登记。### ① 现状与诉求传言列表此前与其它大类同一套排序（core/clock.js#sort…",
+        "新增：tests/unit/rumor-sort.test.js（10 个断言）：A1 发酵度最高在前 · A2 缺省/非法折 20（200→100 · -5→0）· B1 同度…",
+        "本轮文档：CHANGELOG.md 本条 · docs/README v3.17 + §3 · docs/history/P10c127-传言按发酵度排序.md。"
+      ]
+    },
     {
       "version": "3.50.17",
       "date": "2026-10-15",
