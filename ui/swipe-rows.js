@@ -6,7 +6,9 @@
 //
 // 口径（三端一致，一份状态机）：
 //   · **手机 / 触屏**：手指在行上**左滑** → 行内容左移、右侧按钮组滑出；右滑（或点别处）→ 收起；
-//   · **PC（悬停）**：鼠标移到行上即展开按钮组（同一套展开态，不引入第二套视觉）；
+//   · **PC（鼠标拖动）**：按住行**向左拖动**超过阈值即展开 / 向右拖回收起（与触屏同一套阈值与展开态）。
+//     **不再用悬停触发** —— 用户报告（v3.50.20）：「鼠标放上去滑出按钮组」会让行内容跟着位移，
+//     在行内展开小表单（如货币「快速记一笔」的金额输入框）时**无法正常编辑**。
 //   · **键盘**：行内控件获得焦点即展开（`:focus-within` 同款语义，保证可达性不退化）；
 //   · **同一时刻只展开一行**（打开新的即收起旧的），点页面其它地方全部收起；
 //   · **布局适配**：按钮组宽度**实测**（`--ftt-swipe-w`）后决定行内容左移多少；
@@ -30,6 +32,21 @@ export const SWIPE_DRAG_CLASS = 'ftt-drag';
 export const SWIPE_WIDE_CLASS = 'ftt-swipe-wide';
 /** 按钮组最多占行宽的百分比（超过即折行） */
 export const SWIPE_MAX_RATIO = 0.72;
+/**
+ * **全局暂停开关**（v3.50.20）：为 `true` 时**任何入口都不展开**（触屏滑动 / 鼠标拖动 / 聚焦）。
+ *   用途：行内展开「只填一个数字」的小表单（货币快速记账）时临时失效 —— 否则拖动/悬停会让表单跟着走。
+ */
+let SWIPE_SUSPENDED = false;
+
+/** 设置/读取暂停态（返回旧值，便于嵌套恢复） */
+export function setSwipeSuspended(on) { const old = SWIPE_SUSPENDED; SWIPE_SUSPENDED = on === true; if (SWIPE_SUSPENDED) { try { closeAllSwipeRows(); } catch (e) { /* 忽略 */ } } return old; }
+/** 当前是否暂停（诊断/测试用） */
+export function swipeSuspended() { return SWIPE_SUSPENDED; }
+
+/** 行内是否展开了行内小表单（有则不展开按钮组：两种交互会互相抢位移） */
+function hasInlineForm(row) {
+    try { return !!(row && typeof row.querySelector === 'function' && row.querySelector('.ftt-curquick')); } catch (e) { return false; }
+}
 /** 触发「展开」的水平位移阈值（px；负 = 左滑） */
 export const SWIPE_OPEN_THRESHOLD = -26;
 /** 触发「收起」的水平位移阈值（px） */
@@ -136,6 +153,7 @@ export function measureSwipeRow(row) {
 
 /** 展开一行（先收起旧行；宽度量不到也照样展开 —— CSS 有兜底） */
 export function openSwipeRow(row) {
+    if (SWIPE_SUSPENDED || hasInlineForm(row)) return false;   // v3.50.20：暂停态 / 行内有展开的小表单 → 一律不展开
     if (!row) return false;
     try {
         if (openRow && openRow !== row) closeSwipeRow(openRow);
@@ -209,9 +227,34 @@ export function bindSwipeRow(row) {
         else measureSwipeRow(row);                                   // 位移不够 → 回到原状（重新量一次宽度）
     }, { passive: true });
     on(row, 'touchcancel', () => { dragging = false; classOp(row, SWIPE_DRAG_CLASS, false); measureSwipeRow(row); }, { passive: true });
-    // PC：悬停即展开（用户要求「鼠标放上去也会显示按钮组」）；焦点进入同理（键盘可达性不退化）
-    on(row, 'mouseenter', () => { openSwipeRow(row); });
-    on(row, 'mouseleave', () => { if (!hasFocusInside(row)) closeSwipeRow(row); });
+    /**
+     * v3.50.20（用户要求）：**PC 不再「悬停即展开」**，改为**按住鼠标向左拖动**触发 ——
+     *   与触屏共用同一套阈值（`SWIPE_OPEN_THRESHOLD` / `SWIPE_CLOSE_THRESHOLD` / `SWIPE_INTENT_PX`）与同一展开态，
+     *   只是事件源从 `touch*` 换成 `mousedown/mousemove/mouseup`（鼠标指针事件在桌面端普遍可用）。
+     *   为什么必须改：悬停展开会让行内容整体左移 —— 行内展开的小表单（货币快速记账的金额框）跟着走，**无法编辑**。
+     */
+    let mx0 = 0, my0 = 0, mDown = false, mHoriz = false;
+    on(row, 'mousedown', (e) => {
+        if (SWIPE_SUSPENDED) return;
+        if (e && Number(e.button) > 0) return;                       // 只认左键
+        const p = evPoint(e); mx0 = p.x; my0 = p.y; mDown = true; mHoriz = false;
+    });
+    on(row, 'mousemove', (e) => {
+        if (!mDown || SWIPE_SUSPENDED) return;
+        const p = evPoint(e), dx = p.x - mx0, dy = p.y - my0;
+        if (!mHoriz) { if (Math.abs(dx) < SWIPE_INTENT_PX) return; if (Math.abs(dx) < Math.abs(dy)) { mDown = false; return; } mHoriz = true; classOp(row, SWIPE_DRAG_CLASS, true); }
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();   // 拖动时不要选中文本
+    });
+    on(row, 'mouseup', (e) => {
+        if (!mDown) { classOp(row, SWIPE_DRAG_CLASS, false); return; }
+        const p = evPoint(e), dx = p.x - mx0;
+        mDown = false; classOp(row, SWIPE_DRAG_CLASS, false);
+        if (!mHoriz) return;                                        // 没形成横向拖动 → 交给点击
+        if (dx <= SWIPE_OPEN_THRESHOLD) openSwipeRow(row);
+        else if (dx >= SWIPE_CLOSE_THRESHOLD) closeSwipeRow(row);
+        else measureSwipeRow(row);
+    });
+    on(row, 'mouseleave', () => { if (!mHoriz) classOp(row, SWIPE_DRAG_CLASS, false); });
     on(row, 'focusin', () => { openSwipeRow(row); });
     on(row, 'focusout', () => { setTimeout(() => { if (!hasFocusInside(row)) closeSwipeRow(row); }, 0); });
     measureSwipeRow(row);

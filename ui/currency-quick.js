@@ -16,6 +16,8 @@
 // 降级：拿不到 DOM 时不报错（表单不展开也不影响其它交互）。
 // ============================================================
 import { QUICK_DIRS, quickDirText, parseQuickAmount, applyQuickCurrencyFlow, quickReceiptText } from '../core/currency-quick.js';
+// v3.50.20（用户报告）：行内小表单展开期间**暂停滑动/拖动展开**，否则行内容左移、表单跟着走，输入框无法编辑
+import { setSwipeSuspended } from './swipe-rows.js';
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = (v) => String(v == null ? '' : v).replace(/"/g, '&quot;');
@@ -86,11 +88,13 @@ export function handleCurQuick(a, p, api) {
     const note = (s) => { try { if (api && typeof api.note === 'function') api.note(String(s)); } catch (e) { /* 忽略 */ } };
     const render = () => { try { if (api && typeof api.render === 'function') api.render(); } catch (e) { /* 忽略 */ } };
     if (act === 'curQuick') {
+        try { setSwipeSuspended(true); } catch (e) { /* 忽略：滑动模块不可用也不影响记账 */ }
         ps.curQuick = id ? { id: id, dir: dir } : null;
         render();
         return { ok: true, applied: false, note: '' };
     }
     if (act === 'curQuickCancel') {
+        try { setSwipeSuspended(false); } catch (e) { /* 忽略 */ }
         ps.curQuick = null;
         render();
         return { ok: true, applied: false, note: '' };
@@ -106,7 +110,11 @@ export function handleCurQuick(a, p, api) {
         return '';
     })();
     const checked = parseQuickAmount(raw);
-    if (!checked.ok) { note(checked.error); return { ok: false, applied: false, note: checked.error }; }
+    if (!checked.ok) {
+        try { setSwipeSuspended(false); } catch (e) { /* 忽略 */ }
+        note(checked.error);
+        return { ok: false, applied: false, note: checked.error };
+    }
     const list = (api && typeof api.list === 'function') ? (api.list() || []) : [];
     const cur = list.filter((x) => x && String(x.id) === id)[0] || null;
     const r = applyQuickCurrencyFlow(cur, dir, checked.amount, {});
@@ -114,6 +122,7 @@ export function handleCurQuick(a, p, api) {
     let saved = { ok: false };
     try { saved = (api && typeof api.save === 'function') ? api.save('currencies', id, r.currency) : { ok: false }; } catch (e) { saved = { ok: false }; }
     if (!saved || saved.ok === false) { note('记录失败：' + String((saved && saved.reason) || '保存通道不可用')); return { ok: false, applied: false, note: '记录失败' }; }
+    try { setSwipeSuspended(false); } catch (e) { /* 忽略 */ }   // v3.50.20：记账完成 → 恢复滑动
     ps.curQuick = null;
     const msg = quickReceiptText(dir, checked.amount, (cur && cur.unit) || '元', r.amountAfter) + '（流水已记「' + r.flow.note + '」）';
     note(msg);
