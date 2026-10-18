@@ -147,14 +147,18 @@ await A('P2 repairAutoAi 关闭：自动路径零 AI 调用（V1 语义：只做
     return auto.ai.used === false && autoCalls === 0 && manual.ai.used === true && manual.ai.revised === G.apply.revised && aiCalls === 1;
 }, '');
 
-await A('P3 频率与上限闸门在 runRepair 中生效：自动路径受 autoRepairEveryOps 与同楼层上限约束；手动路径重置计数', async () => {
+await A('P3 频率与上限闸门在 runRepair 中生效（v3.50.23 `应-17` 修正后的语义：**成功修复写 `lastAt`** → 之后必须再走 N 次提取/摘要）；手动路径重置计数', async () => {
     boot(G.inputs.scenario, { autoRepairEveryOps: 3, maxAutoRepairRounds: 1, repairAutoAi: false });
     const a1 = await runRepair({ silent: true, cause: '自动' });          // 首次：频率未到（ops=0 < 3）
     bumpRepairOp(); bumpRepairOp(); bumpRepairOp();
-    const a2 = await runRepair({ silent: true, cause: '自动' });          // 频率已到 → 放行（消耗 1/1）
-    const a3 = await runRepair({ silent: true, cause: '自动' });          // 同楼层已达上限 → 拒绝
+    const a2 = await runRepair({ silent: true, cause: '自动' });          // 频率已到 → 放行（消耗 1/1，并写 lastAt=3）
+    const a3 = await runRepair({ silent: true, cause: '自动' });          // 刚修过 → 闸门要求再走 3 次（frequency）
+    bumpRepairOp(); bumpRepairOp(); bumpRepairOp();
+    const a4 = await runRepair({ silent: true, cause: '自动' });          // 频率又到 → 撞「同楼层上限」
     const m1 = await runRepair({ cause: '手动' });                        // 手动 → 重置并放行
-    return a1.reason === 'auto-repair-frequency' && a2.blocked !== true && a3.reason && a3.reason.indexOf('auto-repair-limit') === 0
+    return a1.reason === 'auto-repair-frequency' && a2.blocked !== true
+        && a3.reason === 'auto-repair-frequency'
+        && a4.reason && a4.reason.indexOf('auto-repair-limit') === 0
         && m1.blocked !== true;
 }, '');
 

@@ -181,6 +181,9 @@ const defaultCfg = {
     // v1.96：及时分析（实时模式）—— 开启后发送前分析未摘要楼层(含最新楼)、强制 自动摘取/AI摘要/注入、
     //   分析与提取总基于最新楼层、最新楼层改动自动回滚重分析
     timelyAnalysis: false,
+    // v3.50.23（`docs/D22` W3 `应-17` / `docs/D25` Q1）：此键曾是**死键**（设定页渲染「生成后自动修复」却不被读取）——
+    //   现作为「提取合并失败后延迟自动修复」的**别名**（与 `autoRepairOnMergeFail` 任一为 true 即生效），
+    //   于是用户的既有勾选**真的有作用**；默认仍 `false`（不改变开箱行为，默认由 `autoRepairOnMergeFail` 决定）。
     autoRepair: false,
     parallelWeaveEnabled: true,  // v1.58：提取记忆后自动调度「交织管线」推演/更新平行事件
     parallelApiPreset: '',        // v1.92：平行事件（推演/推进）分析渠道预设；留空 = 主渠道
@@ -416,7 +419,9 @@ const defaultCfg = {
     autoRepairOnMergeFail: true,   // 提取记忆合并失败（JSON 错误/结构错乱等）时延迟自动修复一次
     repairFailDelaySec: 15,        // 上述延迟秒数
     maxAutoRepairRounds: 3,        // 最新楼层哈希未变动时，自动修复至多重复次数（可设）
-    autoRepairEveryOps: 8,       // v1.90：自动修复频率闸门 —— 每 N 次 提取记忆/摘要 后最多自动修复 1 次（0=不限制，恢复旧行为）
+    // v3.50.23（应-17 / docs/D25 Q1）：自动修复的**唯一触发源是「提取合并失败」**，本键是它的**限流**——
+    //   距**上次成功自动修复**已过 N 次「提取/摘要」才放行（0 = 不限制）。
+    autoRepairEveryOps: 8,
     // v1.137：自动修复重设计（三段式：JS 机械清理 → 候选筛选 → 窄契约 AI 措辞修订）
     repairMaxItems: 20,
     // v3.50.19（`docs/D22` W12 `技-49` / `数-37`）：修复聚合的预算（`docs/D33` §6 Q8 默认值）
