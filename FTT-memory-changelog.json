@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.15",
+  "version": "3.50.16",
   "updatedAt": "2026-10-15",
   "generatedAt": "2026-10-15",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.16",
+      "date": "2026-10-15",
+      "title": "多选模式改「点行即选」（去掉勾选框）",
+      "points": [
+        "版本位：交互调整（无数据契约变更）→ 守则 §3.1 patch 位，无偏离登记。### ① 缺陷各大类清单的多选模式此前每条行前放一个 <input type=\"checkbo…",
+        "新增：tests/unit/row-select.test.js（10 个断言）：A1 记号非 input · A2 源码级接线（含 capture 断言）· A3 行属性 · …",
+        "本轮文档：CHANGELOG.md 本条 · docs/README v3.15 + §3 · docs/history/P10c125-多选改点行即选.md。"
+      ]
+    },
     {
       "version": "3.50.15",
       "date": "2026-10-15",

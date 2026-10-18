@@ -128,6 +128,8 @@ import { constraintPageHtml, constraintDimState, setConstraintDim, setLinkQuery 
 import { atomIsHidden } from '../core/merge.js';
 // v3.43.1（用户报告「直接勾选后顶部按钮无效，必须全选才激活」）—— 依赖勾选的工具行按钮的**唯一事实源**
 import { selectDepButtonParts, syncSelectButtons } from './select-bar.js';
+// v3.50.16（用户要求）：多选模式**不再有勾选按钮** —— 点行即选（新模块承载交互；面板只留两个调用点 + 一个委托钩子）
+import { rowSelectMarkHtml, rowSelectAttrs, bindRowSelect } from './row-select.js';
 // v3.48.0（`docs/D22` §4.19 W19 `应-35`）：列表行右侧按钮改**滑动 / 悬停**触发（标记 + 手势 + 实测宽度全在新模块）
 import { swipeRowHtml, applySwipeRows } from './swipe-rows.js';
 // v3.44.0（`docs/D22` W4 `数-12` / `数-13`）：筛选视图 —— 长期未推进（按剧情时间分档）· 空壳（正文不足 12 字）
@@ -1269,7 +1271,8 @@ function dimBodyList(kind) {
         //   情节/记忆/角色/物品/货币/传言/计划/悬念/概念/平行 各用各自的行；现实墙钟仅以「现实更新 …」出现
         //   （由 parallels 行与内存行内统一处理，绝不与 📅 剧情日期混同）。
         const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
-        const box = multi ? ('<input type="checkbox" data-ftt-select="' + attr(kind) + '" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
+        // v3.50.16：多选模式下**行本身即选择控件**（不再渲染复选框；这里只放一个只读的 ☑/☐ 记号）
+        const box = multi ? rowSelectMarkHtml(sel.has(id)) : '';
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
         const par = (kind === 'parallels') ? parallelRowBits(e) : null;
         // 平行行的「相关角色 / 转正」备注在 V1 属**行内第 8 行** → 已并入 `listRowMainHtml('parallels')`，
@@ -1292,7 +1295,7 @@ function dimBodyList(kind) {
         return swipeRowHtml(
             box + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + '</span>',
             opsInner,
-            { attrs: flashAttr, opsCol: kind === 'parallels', count: (opsInner.match(/data-ftt-action=/g) || []).length }
+            { attrs: flashAttr + (multi ? rowSelectAttrs(kind, id, sel.has(id)) : ''), opsCol: kind === 'parallels', count: (opsInner.match(/data-ftt-action=/g) || []).length }
         );
     }).join('\n');
     // v3.47.2（用户要求）：**去掉**分类顶部的「NSFW 留档」统计行（每条末行的等级徽标保留）
@@ -1504,7 +1507,8 @@ function statesBody() {
         const items = groups.get(subj).slice().sort((a, b) => (Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0));
         const rows = items.map((e) => {
             const id = String(e.id || '');
-            const box = multi ? ('<input type="checkbox" data-ftt-select="states" data-ftt-id="' + attr(id) + '"' + (sel.has(id) ? ' checked' : '') + ' title="选中">') : '';
+            // v3.50.16：同「各大类清单」—— 点行即选，不再渲染复选框
+    const box = multi ? rowSelectMarkHtml(sel.has(id)) : '';
             // v3.48.0（W19 应-35）：状态行同款（内容块 + 右侧按钮组，滑动 / 悬停展开）
             return swipeRowHtml(box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>',
                 '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '" title="编辑这条状态记录">✏️</button>'
@@ -3599,6 +3603,8 @@ export function bindOverlay() {
                     site: traceSite(),
                 });
             } catch (err) { /* 追踪失败不影响交互 */ }
+            // v3.50.16：多选模式点行即选（点按钮/链接/输入不抢；命中即返回，不再进入动作分发）
+            try { if (rowSelectClick(e, { getSel: selOf, sync: () => syncSelectButtons(el, (kk) => selOf(kk).size) })) return; } catch (err) { /* 忽略 */ }
             // v2.38.0（对齐 V1 v1.206 26075~26078）：点在按钮/链接/动作元素上时阻止默认行为 ——
             //   `<a href="javascript:void(0)">` 的默认跳转与 form 内 `<button>` 的隐式提交都会让面板**跳顶**；
             //   仅对 `button, a, [data-ftt-action]` 生效，故不影响 `<label>` 内复选框等原生交互。
@@ -3606,6 +3612,8 @@ export function bindOverlay() {
                 const hit = tg && tg.closest ? tg.closest('button, a, [data-ftt-action]') : null;
                 if (hit) { if (typeof e.preventDefault === 'function') e.preventDefault(); if (typeof e.stopPropagation === 'function') e.stopPropagation(); }
             } catch (err) { /* 忽略 */ }
+        // v3.50.16（用户要求「多选模式点行即选」）：键盘等价点行由新模块挂 keydown；**click 复用下方既有入口**（不新增监听）
+        try { bindRowSelect(el, { getSel: selOf, sync: () => syncSelectButtons(el, (kk) => selOf(kk).size) }); } catch (e) { /* 忽略 */ }
             // 场景树折叠（V1 v1.206 26185 同款）：点 `▾` 纯 DOM 收起/展开其子树，**不触发重绘**
             try {
                 const caret = (tg && tg.dataset && tg.dataset.fttSceneCaret !== undefined) ? tg
@@ -3886,6 +3894,7 @@ export function bindOverlay() {
                     return;
                 }
                 if (tg.dataset.fttSelect !== undefined) {
+                    // v3.50.16：本分支仅**兼容旧标记**（多选模式已改用行点选，见 `ui/row-select.js`）
                     const k = String(tg.dataset.fttSelect);
                     const set = selOf(k);
                     if (tg.checked) set.add(String(tg.dataset.fttId || '')); else set.delete(String(tg.dataset.fttId || ''));

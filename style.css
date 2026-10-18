@@ -906,3 +906,29 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-map-svg-node { cursor: pointer; }
 #ftt-panel .ftt-map-lg-link { color: var(--ftt-line, #3a414b); }
 
+
+/* ============================================================
+   v3.50.16（用户要求）：**多选模式 = 点行即选**
+   用户原话：多选模式启动后「不需要勾选按钮，而是改为点击即加入选择，提高UI交互的便利性」。
+   结构（ui/row-select.js）：行上有 [data-ftt-selrow="kind"] + data-ftt-id + tabindex="0"；
+     · .ftt-selmark = 行首**只读**的 ☑ / ☐ 记号（不是 input，用户点的永远是整行）；
+     · .ftt-sel-on = 选中态（左侧色条 + 底色），一眼可见；
+     · 点在按钮 / 链接 / 输入上不切换选择（由 JS 判据保证），故行内操作按钮照旧可用。
+   ============================================================ */
+#ftt-panel [data-ftt-selrow] { cursor: pointer; }
+#ftt-panel [data-ftt-selrow]:hover { background: var(--ftt-bg-3, #20242b); }
+#ftt-panel [data-ftt-selrow]:focus-visible { outline: 2px solid var(--ftt-accent, #6aa9ff); outline-offset: -2px; }
+#ftt-panel [data-ftt-selrow].ftt-sel-on {
+  background: var(--ftt-bg-4, #262c35);
+  box-shadow: inset 3px 0 0 var(--ftt-accent, #6aa9ff);
+}
+#ftt-panel .ftt-selmark {
+  flex: 0 0 auto;
+  width: 1.1em;
+  margin-right: 2px;
+  color: var(--ftt-fg-3, #6b7480);
+  font-size: 14px;
+  line-height: 1.6;
+  user-select: none;
+}
+#ftt-panel [data-ftt-selrow].ftt-sel-on .ftt-selmark { color: var(--ftt-accent, #6aa9ff); }
