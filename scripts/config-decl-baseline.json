@@ -2,7 +2,7 @@
   "what": "配置声明一致性（`docs/D22` `技-15`）：defaultCfg 里「有键无控件」的**基线键集**（只减不增）",
   "why": "内部开关 / 派生值天然没有控件；基线把这些常驻噪声固化，只让**新增未覆盖键**与**基线该收窄**报出来",
   "how": "node scripts/check-config-decl.js --write-baseline（沿用只减不增纪律）",
-  "updatedAt": "2026-10-18",
+  "updatedAt": "2026-10-19",
   "uncovered": [
     "activeApiPreset",
     "apiChannel",
@@ -31,8 +31,6 @@
     "feedRegexBlacklist",
     "feedRegexWhitelist",
     "feedWorldbooks",
-    "importanceBase",
-    "importancePerUse",
     "injectConstraintBlock",
     "injectConstraintMaxChars",
     "injectConstraintNameAll",

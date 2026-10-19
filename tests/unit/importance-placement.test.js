@@ -12,7 +12,8 @@ import { makeReporter, makeHost, makeDocument, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { calcImportance, importancePct, recallImportance } from '../../core/recall.js';
+import { importancePct, recallImportance } from '../../core/recall.js';
+import * as RECALL from '../../core/recall.js';
 import {
     windowShare, recalcImportanceAfterExtract, importancePreview,
     impWindowRadius, impRecalcCount, impRecalcEnabled, IMP_DIMS,
@@ -139,10 +140,11 @@ A('B6 只读诊断：列出「当前值 / 重算值 / 是否冻结」，不写�
 // ---------- C 组：展示口径统一（Q5 方案 A） ----------
 A('C1 `importancePct` 读**存储值**（窗口占比），不再由 uses 现算；`recallImportance` 与之一致（同源）', (() => {
     const e = { uses: 100, importance: 0.18 };
-    const legacy = Math.round(calcImportance(e) * 100);          // V1 兼容函数仍在，但不再用于展示
+    // v3.50.29（`docs/D20` `数-3` Q3 裁决）：V1 兼容函数 `calcImportance` **已删除** —— 下面那条断言改为验「确实删干净」
+    const legacyGone = RECALL.calcImportance === undefined;
     return importancePct(e) === 18 && importancePct({ uses: 100 }) === 0
-        && recallImportance(e) === 0.18 && legacy === 100;
-})(), () => ({ pct: importancePct({ uses: 100, importance: 0.18 }), legacy: Math.round(calcImportance({ uses: 100, importance: 0.18 }) * 100) }));
+        && recallImportance(e) === 0.18 && legacyGone === true;
+})(), () => ({ pct: importancePct({ uses: 100, importance: 0.18 }), legacyGone: RECALL.calcImportance === undefined }));
 
 // ---------- D 组：设定落位与阈值重标定 ----------
 A('D1 提取记忆页：旧两项（`importanceBase` / `importancePerUse`）**已下线**，代之以 3 个窗口参数（计数类 → 文本输入，不进 RANGE_SPECS）', (() => {

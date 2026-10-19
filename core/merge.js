@@ -65,11 +65,28 @@ function ensureAtomHashes() {
         let changed = false;
         eachAtom((cat, it) => {
             const h = atomIdentityHash(cat, it);         // v2.86.0：`it.h` = **身份哈希**（去重 / 墓碑 / 复活防护）
-            if (h && it.h !== h) { it.h = h; changed = true; }
+            if (h && it.h !== h) {
+                // v3.50.29（`docs/D20` `数-3` ③）：**跨口径指纹登记** —— 已有 `it.h` 但与当前口径不一致 = 该条目
+                //   由**旧版本 / 对端口径**写入。这里只刷新（幂等），并计入只读读数供体检核对；
+                //   **绝不因此把条目判为删除**（删除判定只看 id 是否还在，见 `core/sweep.js#tombstoneSweep`）。
+                if (it.h) hashGuardForeign += 1;
+                it.h = h;
+                changed = true;
+            }
         });
+        if (changed) hashGuardLastAt = Date.now();
         return changed;
     } catch (e) { return false; }
 }
+/**
+ * v3.50.29（`docs/D20` `数-3` ③）：**跨口径指纹**只读读数。
+ *   `foreign` = 本次会话内「已有 h 但与当前口径不一致」的条目累计刷新次数；
+ *   `lastAt` = 最近一次刷新的时刻（Wall clock）。
+ *   用途：确认「旧版本 / 对端写入的指纹」已被收敛，且**没有**被误判成删除。
+ */
+let hashGuardForeign = 0;
+let hashGuardLastAt = 0;
+function hashGuardReadout() { return { foreign: hashGuardForeign, lastAt: hashGuardLastAt }; }
 /**
  * 收集当前全部原子的 `{id: {h, cat, item}}` 与聚合 hash。
  * v2.86.0（`docs/D8` R1=B）：`mode` 决定用哪种指纹 ——
@@ -153,4 +170,4 @@ function tombEntries(dim, entries, ts) {
     try { (Array.isArray(entries) ? entries : []).forEach(en => { try { tombEntry(dim, en, ts); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ } }); } catch (e) { /* 忽略：同上 */ }
 }
 
-export { atomIsHidden, atomHiddenCount, activeAtoms, capAtomsKeepingHidden, releaseMergedSources, eachAtom, ensureAtomHashes, collectAtomHashes, tombstoneMap, tombstoneHMap, tombSet, tombSetH, tombEntry, tombMany, tombEntries };
+export { atomIsHidden, atomHiddenCount, activeAtoms, capAtomsKeepingHidden, releaseMergedSources, eachAtom, ensureAtomHashes, hashGuardReadout, collectAtomHashes, tombstoneMap, tombstoneHMap, tombSet, tombSetH, tombEntry, tombMany, tombEntries };

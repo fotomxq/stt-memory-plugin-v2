@@ -73,6 +73,10 @@ function tombstoneSweep() {
             const curH = {};
             for (const id of Object.keys(cur)) { const h = cur[id]; if (h) curH[h] = 1; }
             for (const id of Object.keys(prev)) {
+                // v3.50.29（`docs/D20` `数-3` ①）：**「指纹变化」不得判为「删除」** —— 两条护栏：
+                //   ① **id 仍在** → 即使它的 `h` 变了（内容改写 / 本版哈希口径升级 / 对端用旧口径写入），也不是删除；
+                //   ② **同内容（任一哈希口径）仍在** → 去重 / 换 id 合并，不是删除。
+                //   历史口径差异只会让「内容比对」这一条失效，所以**不能**把内容比对当成删除的唯一依据。
                 if (id in cur) continue;
                 const h = prev[id];
                 if (h && curH[h]) continue;         // 同内容仍在（去重/换 id 合并）→ 不是删除

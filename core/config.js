@@ -411,8 +411,6 @@ const defaultCfg = {
     impRecalcEnabled: true,      // 是否启用重要度重算（关闭则保留历史值）
     impWindowRadius: 10,         // 窗口半径（前后各 R 条，含自身 → 窗口 2R+1 条）
     impRecalcCount: 20,          // 每次重算「最近 N 条」（第 N 条同样按真实 ±R 邻居算；更旧的冻结）
-    importanceBase: 0.12,
-    importancePerUse: 0.06,
     feedFloors: 2,
     repairFloors: 10,
     // v1.50：自动修复（提取记忆分支线）—— 失败自动触发与次数上限

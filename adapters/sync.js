@@ -720,6 +720,13 @@ export function applyRemoteMergeToState(remoteEnv) {
             // 冲突合计（`stat.conflict` 此前从未被赋值 → 该提示在本版之前**永不登记**，本次一并修正）
             if (Number(st.conflict) > 0) noteConflict({ kind: '跨端合并冲突', detail: '本地与远端同 id 不同内容 ' + Number(st.conflict) + ' 条（已按时间取新，必要时人工核对）', count: Number(st.conflict) });
             if (selfCheck.anomaly) noteConflict({ kind: '并集自检异常', detail: selfCheck.detail, count: Math.max(1, selfCheck.unexplained) });
+            // v3.50.29（`docs/D20` `数-4` 方案 A）：**「整侧取较新」留痕** —— 非原子容器一旦整侧取新，
+            //   对端对该容器的改动就被整体丢弃。这里把「本次哪些容器被整侧取新」记进 `state.meta.crossMerge`，
+            //   供体检（`core/data-health.js` → `cross-wholesale`）如实显示；**只记录事实，不改变合并口径**。
+            try {
+                state.meta = (state.meta && typeof state.meta === 'object') ? state.meta : {};
+                state.meta.crossMerge = { at: Date.now(), wholeSide: (st && st.wholeSide) || null, conflict: Number(st.conflict) || 0 };
+            } catch (e) { /* 忽略：留痕失败不影响合并 */ }
             try { debugLogPush('同步', { action: '合并自检', atomsBeforeLocal: beforeLocalAtoms, atomsBeforeRemote: beforeRemoteAtoms, atomsAfter: selfCheck.after, conflict: Number(st.conflict) || 0, unionMin: selfCheck.unionMin, lowerBound: selfCheck.lowerBound, reductions: selfCheck.reductions, anomaly: selfCheck.anomaly, unexplained: selfCheck.unexplained }); } catch (e) { /* 忽略 */ }
         } catch (e) { /* 自检失败不影响合并 */ }
         return { mode: 'merge', stat: merged.stat, diff: diffStat, snaps: (state.snapStore || []).length, selfCheck: selfCheck };
