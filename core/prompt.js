@@ -9,6 +9,12 @@ import { DIMENSIONS } from './constants.js';
 import { defaultCurrencyOwner, formatMoney, isTrackedCurrencyOwner, trackedCurrencyRoles } from './model/money.js';
 import { cfg, dbgLog, log, state, warn, worldbookHooks } from './model/runtime.js';
 import { nsfwSoftenRuleText } from './nsfw.js';
+// v3.50.30（用户报告「剧情提到资金变化、关键词也有，但货币完全没反应」）：**维度模板兜底** ——
+//   `cfg.promptTemplates.<维度>` 为空串 / 缺失（旧存档、用户误清空、迁移缺键）时，回落到
+//   `PROMPT_TEMPLATES_V2.<维度>` 默认全文，并留痕。此前 `else if (pt[d])` 会**静默跳过**整个维度说明，
+//   于是「货币」这一维在提示词里整段消失 → AI 根本收不到「记录货币」的指令（手动添加不受影响，故现象是
+//   「手动能加、AI 不自动改」）。其它维度同理受保护。
+import { PROMPT_TEMPLATES_V2 } from './prompts-v2.js';
 function compileRegexList(list) {
     const out = [];
     for (const item of list || []) {
@@ -272,11 +278,23 @@ async function buildSummaryPrompt(floorsText, dims) {        const pt = cfg.prom
         '以下各维度说明告诉你「这是什么、如何填写、填写格式、边界」：',
         pt.state || '',
     );
+    // v3.50.30：维度模板**兜底**（空串 / 缺失 → 默认模板；留痕一次），见上方 import 处注释
+    const tplOf = (key) => {
+        const cur = pt ? pt[key] : undefined;
+        const str = (typeof cur === 'string') ? cur : (Array.isArray(cur) ? cur.join('\n') : '');
+        if (str.trim()) return str;
+        const def = PROMPT_TEMPLATES_V2[key];
+        const defStr = (typeof def === 'string') ? def : (Array.isArray(def) ? def.join('\n') : '');
+        if (defStr) {
+            try { dbgLog('提示词', { action: '维度模板缺失 → 已回落默认模板', key: key }); } catch (e) { /* 忽略 */ }
+        }
+        return defStr;
+    };
     for (const d of dimList) {
-        if (d === 'plans') { lines.push(pt.plans || ''); }
-        else if (pt[d]) lines.push(pt[d]);
+        if (d === 'plans') { lines.push(tplOf('plans')); }
+        else if (tplOf(d)) lines.push(tplOf(d));
     }
-    lines.push(pt.vars || '');
+    lines.push(tplOf('vars'));
     // v1.181：货币维度 —— 通用模板已在维度列表里；再按**本轮正文发现的其他角色**追加「动态识别」说明
     //   （用户要求：提示词动态变化，根据发现的角色去识别需要 AI 识别哪一种货币）
     try {

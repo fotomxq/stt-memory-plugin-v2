@@ -112,9 +112,18 @@ await A('G1 分组构造与 V1 `runSummarySeparate` 一致：启用维度各自�
 await A('G2 每组提示词与 V1 真实请求体**逐字符**一致（system + user 两条；含 V1 的「统一」组把未启用维度并成一次）', async () => {
     boot(null, ORACLE_SEED);
     const bad = [];
+    /**
+     * v3.50.30（`开发守则.md` §2.4 有意偏离登记）：【货币】块新增一行「**触发（强制）**」规则
+     * （用户报告「AI 无法自动变更货币」，见 `docs/D22` §4.29 `数-41`）。V1 黄金样本**一字不改**；
+     * 这里把该行从「实测」侧剔除后再与 V1 逐字符比对 —— 其余内容仍须完全一致。
+     */
+    const NEW_RULE = '触发（**强制**）：正文出现**资金的收 / 支 / 转移 / 找零 / 报数 / 余额变化**';
+    const strip = (msgs) => (msgs || []).map((m) => Object.assign({}, m, {
+        content: String(m.content || '').split('\n').filter((l) => l.indexOf(NEW_RULE) < 0).join('\n'),
+    }));
     for (const g of G.run1.groups) {
         const grp = G.expectedGroups.filter((x) => x.dim === g.dim)[0];
-        const msgs = await buildSummaryPrompt(G.input.floorText, grp.dims);
+        const msgs = strip(await buildSummaryPrompt(G.input.floorText, grp.dims));
         if (J(msgs) !== J(g.messages)) bad.push(g.dim);
     }
     return bad.length === 0 && G.run1.groups.length === 4 && G.run1.groups[1].url.indexOf('preset-a.example') >= 0;

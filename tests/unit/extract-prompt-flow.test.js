@@ -59,10 +59,26 @@ await (async () => {
     setKernelState(Object.assign(emptyState(), clone(G.seed)));
     const msgs = await buildSummaryPrompt(G.floors, G.dims);
     R.assert('P1 buildSummaryPrompt 与 V1 逐字符一致（system + user 两条消息；含维度说明 / 已有索引 / 货币账本 / 本轮对话）', (() => {
-        return J(msgs) === J(G.messages) && msgs.length === 2
+        /**
+         * v3.50.30（用户报告「剧情提到资金变化、关键词也有，但货币完全没反应」）：**有意偏离登记**（`开发守则.md` §2.4）。
+         *   本轮在【货币】块新增一行「**触发（强制）**：资金变化时必须输出货币条目，没有精确总额也要记」——
+         *   用来治「AI 因说不出精确数字而整条不记」。V1 黄金样本**一字不改**；此处把该行从 V1 期望中**显式还原**
+         *   后再逐字符比对（其余内容仍必须与 V1 完全一致），并由 P1b 单独断言新规则确实存在。
+         */
+        const V1_CURRENCY_HEAD = '【货币】记录**当前主角持有**的货币（钱 / 资源 / 信物类资产）。本维度只管「谁现在有多少什么钱」，按币种 + 归属识别。';
+        const NEW_RULE_LINE = '触发（**强制**）：正文出现**资金的收 / 支 / 转移 / 找零 / 报数 / 余额变化**';
+        const stripNewRule = (txt) => String(txt || '').split('\n').filter((l) => l.indexOf(NEW_RULE_LINE) < 0).join('\n');
+        const want = G.messages.map((m) => Object.assign({}, m, { content: stripNewRule(m.content) }));
+        return J(msgs.map((m) => Object.assign({}, m, { content: stripNewRule(m.content) }))) === J(want) && msgs.length === 2
             && msgs[0].role === 'system' && msgs[1].role === 'user'
-            && msgs[1].content.indexOf('【本轮对话】') >= 0 && msgs[1].content.indexOf(G.floors.slice(-20)) > 0;
+            && msgs[1].content.indexOf('【本轮对话】') >= 0 && msgs[1].content.indexOf(G.floors.slice(-20)) > 0
+            && msgs[0].content.indexOf(V1_CURRENCY_HEAD) >= 0;
     })(), { gotLen: msgs[0].content.length, wantLen: G.messages[0].content.length });
+    R.assert('P1b（v3.50.30 新增 · 偏离登记）【货币】块含**资金变化触发规则**（强制输出 + 无精确总额也要记），且 V1 其余内容未改', (() => {
+        const sys = msgs[0].content;
+        return sys.indexOf('触发（**强制**）') >= 0 && sys.indexOf('没有精确总额也要记') >= 0
+            && sys.indexOf('记录什么：正文出现的持有货币信息') >= 0;
+    })(), 'n/a');
 
     R.assert('P2 promptToGenerateArgs：system 归 systemPrompt、其余并入 prompt；单条消息亦可', (() => {
         const a = promptToGenerateArgs(msgs);
