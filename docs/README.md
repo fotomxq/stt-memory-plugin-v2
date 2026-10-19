@@ -960,10 +960,11 @@ docs/
 ├── D46-大年份出生日期与年龄设计稿.md    # 设计层（**大年份**：出生日期 `[正负]年-月-日` **不设业务上限**（只受安全整数护栏 `1e13`）·整数日历 `days_from_civil` **不经 Date**（Date 只到 ±273,790 年）· **历史纪年无 0 年**（`-9999-01-01` = 公元前 9999 年，跨纪元年龄 -1 修正）·年龄按量级**单位简化**（岁/万岁/亿岁/万亿岁，`102万岁` / `3亿岁`）· 万岁级不再误报「疑长期未出场」· 毫秒域超范围明确降级；§8 实施规格 `数-38`）
 ├── D47-日期字段截断修复设计稿.md    # 设计层（**日期字段保存不被截断**：`-9999-01-01` 是 11 字符，而全仓日期字段此前统一 `normText(x, 10)`（按 `YYYY-MM-DD` 写死）→ 负 4 位年份与大年份**保存时被切**（`-9999-01-0`）→ 解析失败「存不进去」；修法 = `BIG_DATE_FIELD_MAX = 32` 常量（18 处）+ `bigDatePrefix` 取日期部分（8 处，**原文保留不补零**）；V1 黄金 `ageInfo[3]` 里就带着这个 bug，已按 §2.4 偏离归一；§8 实施规格 `数-39`）
 ├── D48-全量操作节流与删除口径对账设计稿.md    # 设计层（**技术**：`技-28` 全量操作**节流与可观测** —— 新模块 `core/scan-throttle.js`（最短/最大间隔 · 扫描条目/维度/耗时/命中/余量如实记账**不含正文** · 单次上限超限分批留痕 · 不阻塞注入）+ 四类操作接线 + 桥方法 `ftt.scanStats`；`技-29` 存量删除口径 **A 案十行逐条对账**（`docs/D28` §3.9.1，逐行给代码证据）；并**修正清单里 `技-28` ↔ `技-38` 的成环**）
+├── D49-W4哈希口径与整侧取新显式化设计稿.md    # 设计层（**数据**：W4 `数-3` 哈希口径三件 —— ①「指纹变化**不得**判为删除」两条护栏显式化 + 单测锁；② `validity` 纳入「只升不降 + 补空」（`active`<`uncertain`<`inactive`，修「旧副本把已失效条目降级复活」）；③ `hashGuardReadout()` 跨口径读数；并按 `D20` Q3 删 `calcImportance` 与两个旧配置键｜`数-4` 方案 A：7 个非原子容器「整侧取新」的**后果显式化** + `stat.wholeSide` → `meta.crossMerge` → 体检 `cross-wholesale`(info)）
 ├── 勘误-历史档过时条目.md      # 过时登记（只增；历史档不改）
 ├── 排障-面板不显示.md          # 专项层
 ├── 更新检查机制.md             # 专项层
-└── history/                  # 历史批次层（只读留痕，258 份）
+└── history/                  # 历史批次层（只读留痕，259 份）
     ├── README.md             # 历史层说明 + 命名规则 + 已失效条目前往勘误表
     ├── P0-… P1-… … P7-…      # 基础阶段
     ├── P8 P8b…P8z            # V1 功能对齐批次
@@ -1027,17 +1028,17 @@ docs/
 > 本表由 `scripts/check-docs-facts.js` **逐行实测核对**（表内声明值 ≠ 代码实测值 → 门禁失败）；
 > 单测/冒烟的**断言数与项数**由各自的 runner（`tests/unit/run.js` / `tests/smoke-test.js`）自查。
 
-| 口径 | 权威来源 | 当前值（v3.50.28） |
+| 口径 | 权威来源 | 当前值（v3.50.29） |
 | --- | --- | --- |
-| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.28` |
+| 版本号 | `manifest.json` / `package.json` / `core/constants.js` / `CHANGELOG.md` 首条（四处一致） | `3.50.29` |
 | 版本号规则 | `开发守则.md` §3.1（`scripts/check-version-sync.js` 强制） | 在 **`3.XX.XX`** 基础上**追加**：新增能力 → `3.<minor+1>.0`；纯修复 → `3.<minor>.<patch+1>`；**主版本固定 3**（改主版本须用户明确要求）；minor/patch **位数不限**（`3.25.9 → 3.25.10 → 3.100.0` 照常追加）；tag 与版本同名 |
 | 数据模型版本 | `core/constants.js#DATA_VERSION` | `2`（v3.47.3：新增 `maps` 容器 → 迁移只补容器 + 归一，`docs/D27` §3.3 ⑤） |
 | 维度数 / 原子层维度数 | `core/constants.js#DIMENSIONS` / `#ATOM_DIM_KEYS` | 15 / 14（v3.47.3：+`maps` 地图 —— 场所锚点 / 房间 / 陈设三级 + 路径） |
-| 内核配置键数 | `core/config.js#defaultCfg` | 255（v3.44.0：入库卫生两开关；v3.45.5：角色履历 6 键；v3.46.1：三域联动 5 键；v3.47.0：履历批量 4 键；v3.47.3：地图 3 键；**v3.50.19：修复聚合 4 键 + 场景候选封顶 1 键**） |
+| 内核配置键数 | `core/config.js#defaultCfg` | 253（v3.44.0：入库卫生两开关；v3.45.5：角色履历 6 键；v3.46.1：三域联动 5 键；v3.47.0：履历批量 4 键；v3.47.3：地图 3 键；**v3.50.19：修复聚合 4 键 + 场景候选封顶 1 键**；**v3.50.29：`数-3` 删 `importanceBase`/`importancePerUse` 两键**） |
 | 提示词模板数 | `core/config.js#PROMPT_TEMPLATES_V2` | 38（v3.45.5：+`resumeRepair`；v3.46.1：+`triLink`；v3.47.0：+`resumeBatch`；**v3.47.3：+`maps`** 地图抽取模板，全文在 `core/map-prompt.js`） |
 | 设定子页数 / 配置控件数 | `ui/settings-pages.js`（`settingsPagesInfo()`） | **15 / 191** |
 | 面板分页数 | `ui/panel.js#PANEL_TABS` | 13 |
-| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  251 文件 / 3716 断言 |
+| 单测规模 | `tests/unit/`（`node tests/unit/run.js`） |  252 文件 / 3724 断言 |
 | 冒烟规模 | `tests/smoke-test.js` | 224 项 |
 | 黄金样本 | `tests/fixtures/v1-golden*.json` | 54 份（oracle = 真实 V1 v1.206） |
 | 词条数 | `i18n/zh-cn.json` | 54 条 × 2 语言 |
@@ -1045,7 +1046,7 @@ docs/
 | NSFW 弱级信号词 | `core/nsfw-level.js#NSFW_WEAK_SIGNALS` | 78 条 |
 | 调试桥只读方法数 | `ui/debug.js#buildBridgeMethods` | 62 个（含 `ftt.dataHealth` / `ftt.dataHealthText`，v3.13.0；`ftt.writeStats`，v3.15.1；`ftt.plotScope`，v3.20.0；`ftt.chunkPlan`，v3.23.0；v3.25.0 追加日志/时间线/异常/条目/搜索/配置/楼层/同步日志/批量/探针 10 个；v3.26.0 追加 `ftt.localDir`；v3.42.0 追加 `ftt.tokenCost`；v3.45.1 追加 `ftt.conflicts` / `ftt.conflictLog`（只读：待确认项与记录）；**v3.45.4 追加 `ftt.perf` / `ftt.perfJank` / `ftt.perfTargets` / `ftt.perfBaseline`（性能四件套）+ `ftt.readonly` / `ftt.catalog`（只读清单与调试面口径）；v3.45.9 追加 `ftt.inputBox`（宿主输入框写入能力：探针 / 候选 DOM 事实 / 克隆体演练）；v3.46.0 追加 `ftt.writeLedger`（本次保存的物理写清单）—— 全部只读，写方法 0 个**） |
 | UI 类名数 | `style.css`（`scripts/check-docs-facts.js#uiClassNameCounts` 实测） | **270 / 241**（含 `--modifier` 的去重数 / 剥离 `--modifier` 后的基类数；口径见该函数注释。v3.43.0 `应-11` 起由门禁实测核对，取代 `docs/D9` 长期挂着的「226 · 未登记口径 · 未验证」） |
-| 历史批次档数 | `docs/history/*.md` |  258 份（不含本层 `README.md`） |
+| 历史批次档数 | `docs/history/*.md` |  259 份（不含本层 `README.md`） |
 | 每段正文数（分段口径） | `core/chunk.js#SUMMARY_CHUNK_DEFAULT` | **3**（`cfg.summaryChunkSize` 由它派生；批量摘要 / 多楼·全量提取 / 推演世界共用） |
 
 > `history/` 与仓库其它文档里的数字是**当时的快照**，不随版本更新 —— 与上表冲突时以上表为准；

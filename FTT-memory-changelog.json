@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.28",
-  "updatedAt": "2026-10-19",
-  "generatedAt": "2026-10-19",
+  "version": "3.50.29",
+  "updatedAt": "2026-10-20",
+  "generatedAt": "2026-10-20",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.29",
+      "date": "2026-10-20",
+      "title": "W4 数-3 哈希口径三件 + 数-4 整侧取新显式化（方案 A）",
+      "points": [
+        "登记：docs/D20 §3.2（数-3 / 数-4 规格）｜ 落地记录 docs/D49 ｜ docs/D17 U259 / U260 ｜ 批次档 docs/history/P…"
+      ]
+    },
     {
       "version": "3.50.28",
       "date": "2026-10-19",

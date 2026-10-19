@@ -547,6 +547,23 @@ export function dataHealthReport(st, opts) {
         }
     } catch (e) { /* 观测失败不影响体检 */ }
     out.scanThrottled = _scanGate.go ? '' : _scanGate.reason;
+    // v3.50.29（`docs/D20` `数-4` 方案 A）：**「整侧取较新」如实提示**（info）——
+    //   非原子容器的跨端合并是「整侧取较新」，对端对该容器的改动会被整体丢弃（`docs/02` §1.2 已显式说明）。
+    //   这里读 `state.meta.crossMerge`（上一次合并留痕），把「哪几个容器」与后果摆到体检里，不再静默。
+    try {
+        const cm = (s && s.meta && s.meta.crossMerge) || null;
+        const ws = cm && cm.wholeSide;
+        if (ws && Array.isArray(ws.dims) && ws.dims.length) {
+            add('cross-wholesale', 'info', {
+                field: 'meta.crossMerge',
+                value: ws.dims.length,
+                detail: '上一次跨端合并把 ' + ws.dims.join(' / ') + ' 整侧取新（' + (ws.side === 'remote' ? '远端' : '本地') + '胜出）：'
+                    + '这些容器**不做逐条保真**，对端对它们的改动会被**整体丢弃**（设计口径见 `docs/02` §1.2；'
+                    + '货币已改逐条并集，其余容器如确有需要可另立条目升级为逐条合并）',
+            });
+        }
+    } catch (e) { /* 忽略：提示失败不影响体检主体 */ }
+
     return out;
 }
 

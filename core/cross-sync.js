@@ -444,14 +444,20 @@ function mergeDataObjects(baseData, remoteData, opts) {
         } catch (e) { /* 忽略 */ }
         // 非原子维度：整体取较新一侧（时间相同保留本地）
         // v3.45.6：`currencies` **已移出本列表** —— 它在上面走逐条并集（整侧覆盖正是「货币不同步」的成因）
+        // v3.50.29（`docs/D20` `数-4` 方案 A）：**登记「哪些容器被整侧取新」**（只读事实，供体检显示），
+        //   并如实写清后果：对端对该容器的改动会被**整体丢弃**（`docs/02` §1.2 已显式说明）。
         if (remTs > baseTs && remoteData) {
+            const whole = [];
             for (const k of ['summaries', 'npcs', 'protagonist', 'vars', 'varTemplates', 'state']) {
-                if (remoteData[k] !== undefined) out[k] = copyVal(remoteData[k]);
+                if (remoteData[k] !== undefined) { out[k] = copyVal(remoteData[k]); whole.push(k); }
             }
+            stat.wholeSide = { side: 'remote', dims: whole, baseTs: baseTs, remTs: remTs };
         }
         out.updatedAt = Math.max(baseTs, remTs);
     } catch (e) { /* 忽略 */ }
-    stat.conflict = stat.conflictWinLocal + stat.conflictWinRemote;   // v3.45.1（W6 技-31）：冲突**合计**（旧代码在自检里读 `stat.conflict`，而它此前从未被赋值 → 「跨端合并冲突」永远不登记）
+    stat.conflict = stat.conflictWinLocal + stat.conflictWinRemote;
+    // v3.50.29（`docs/D20` `数-4` 方案 A）：`stat.wholeSide` = 本次合并**被整侧取新**的非原子容器（无则缺省）
+    if (!stat.wholeSide) stat.wholeSide = null;   // v3.45.1（W6 技-31）：冲突**合计**（旧代码在自检里读 `stat.conflict`，而它此前从未被赋值 → 「跨端合并冲突」永远不登记）
     return { data: out, stat };
 }
 

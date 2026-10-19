@@ -1061,11 +1061,8 @@ export function applySettingsControl(key, raw) {
             try { saveKernelCfg(); } catch (e) { /* 落盘失败不影响内存态 */ }
             return { ok: true, key: k, value: cfg.dimensionGrouping };
         }
-        // v2.78.0：V1 `settingsApplyAll` 的两项数值夹取**逐字对齐**（v1.206 26743/26744）——
-        //   `importanceBase` ∈ [0,1]、`importancePerUse` ∈ [0,0.5]；非法数值回落 0（V1 `Number(el.value) || 0`）。
-        //   这两项随「重要性计算」迁到「提取记忆」页后由用户直接编辑，夹取必须在写回处生效。
-        if (k === 'importanceBase') raw = clamp(Number(raw) || 0, 0, 1);
-        else if (k === 'importancePerUse') raw = clamp(Number(raw) || 0, 0, 0.5);
+        // v3.50.29（`docs/D20` `数-3` Q3 裁决）：`importanceBase` / `importancePerUse` 两个配置键**已删除**
+        //   （自 v2.86.0 起不再参与展示与判定）；旧存档里残留的同名键由配置归一化忽略，不再做夹取。
         if (k.indexOf('storage.') === 0) {
             cfg.storage = Object.assign({}, cfg.storage || {});
             cfg.storage[k.slice(8)] = raw;

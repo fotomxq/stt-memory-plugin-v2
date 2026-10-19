@@ -156,6 +156,20 @@ export function mergeEntryProvenance(target, other) {
         if (!target.floorNowHash && other.floorNowHash) { target.floorNowHash = String(other.floorNowHash); out.push('floorNowHash'); }
         // v3.22.0：聊天归属 —— 有归属总比「归属未知」强，但**不覆盖**已有归属
         if (!target.chatKey && other.chatKey) { target.chatKey = String(other.chatKey).slice(0, 80); out.push('chatKey'); }
+        /**
+         * v3.50.29（`docs/D20` `数-3` ②）：**`validity: 'inactive'` 纳入「只升不降 + 补空」**。
+         *   问题：胜出条目若是**较旧副本**，它的 `validity` 常是 `'active'`；若整对象替换，另一侧的
+         *   `'inactive'`（已失效 / 已被后续情节取代）就被静默**降级成 active** —— 失效的旧情节重新参与注入。
+         *   口径：`active` < `uncertain` < `inactive`（按「越靠后越保守」排序）；取**两者更保守的一侧**，
+         *   且 target 缺该字段时直接补 other 的值（补空）。
+         */
+        const VALIDITY_RANK = { active: 0, uncertain: 1, inactive: 2 };
+        if (!missing(other.validity)) {
+            const t = missing(target.validity) ? 'active' : String(target.validity);
+            const o = String(other.validity);
+            if (VALIDITY_RANK[o] !== undefined && VALIDITY_RANK[t] !== undefined
+                && VALIDITY_RANK[o] > VALIDITY_RANK[t]) { target.validity = o; out.push('validity'); }
+        }
     } catch (e) { /* 忽略 */ }
     return out;
 }

@@ -1687,15 +1687,12 @@ function vectorInjectionLines(ranked) {
 
 /**
  * 重要度展示口径（v2.86.0 改；`docs/D7` §4.8 Q5 方案 A「单轨替换」）：
- *   · `importancePct(item)` = **存储的重要度**（窗口调用占比，0–1）× 100 四舍五入 —— 与遗忘 / 淘汰 / 打分**同源**；
- *   · `calcImportance(item)` 保留为 V1 兼容函数（`base + uses × per`），**不再用于展示**（也不参与任何判定）。
+ *   · `importancePct(item)` = **存储的重要度**（窗口调用占比，0–1）× 100 四舍五入 —— 与遗忘 / 淘汰 / 打分**同源**。
+ *
+ * v3.50.29（`docs/D20` `数-3` Q3 裁决）：**已删除 V1 兼容函数 `calcImportance(item)` 与两个配置键**
+ *   （`importanceBase` / `importancePerUse`）—— 它们自 v2.86.0 起就不再用于展示、也不参与任何判定，
+ *   留着只会让「重要度到底按哪套算」在阅读与审计时产生歧义（`D15` 类别②，需登记）。
  */
-function calcImportance(item) {
-    const uses = Number(item && item.uses) || 0;
-    const base = Number(cfg.importanceBase) || 0.12;
-    const per = Number(cfg.importancePerUse) || 0.06;
-    return clamp(base + uses * per, 0, 1);
-}
 /**
  * 重要度百分比（**存储值 × 100**，与遗忘 / 淘汰 / 打分同源）。
  *
@@ -1729,7 +1726,7 @@ function importancePctOrNull(item) {
         return Math.round(Math.max(0, Math.min(1, v)) * 100);
     } catch (e) { return null; }
 }
-export { calcImportance, importancePct, importancePctOrNull, latestTrustedPlot, trustedPlotList, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
+export { importancePct, importancePctOrNull, latestTrustedPlot, trustedPlotList, atomTimeKey, atomTimeCmp, atomTimeAsc, atomTimeDesc, atomDateValid, recallEntryScore, recallImportance, recallHits, recallHay, recallQueryTokens, recallDateAnchor, recallMaxFloor, recallEntryVotes, markUsed, useBuffer, scheduleUseFlush, useFlushTimer, nameMatch, tagMatch, rawMatch, buildQueryText, matchPresentNames, injectPresentItems, injectNameCore, nameAliases, injectPresentHit, memInjectLines, planSuspRelPrefix, planSuspLine, planPhaseLabel, PLAN_PHASE_LABEL, relTag, relShortName, relWhoSummary, relRankOf, relDevLabel, relIsPresent, relPresentList, snapNameKey, rumorInjLine, parallelInjLine, parallelExpired, parallelDecayScore, buildSceneTreeLines, atomLatestDated, buildMemoryBodyForInject, buildInjectConstraints, injectPresentNames, latestPlotByFloor, relConceptSuffix, parallelRelPrefix, vectorInjectionLines };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
 function parallelRelPrefix(p) {

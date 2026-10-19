@@ -60,9 +60,14 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     //   放配置而不是 localStorage —— 目录模式下变量层整体停用，候选清单不能反过来依赖它）
     'localFilePath', 'localFileDirs', 'localDiskDir'];   // v3.28.0：本地磁盘目录（真磁盘路径，替代浏览器本地存储）
     // v2.51.0 时钟改版（用户要求）：V1 的这 10 个时钟设定**有意删除**（只取最新情节后全部失效，插件内不留废弃项）——
+    // v3.50.29（`数-3` Q3）：再删除 2 个重要度旧键（见下方注释）；合计 12 个删除项。
     //   删除项必须在 V2 中**不存在**且不落入「V2 专有键」白名单。
+    // v3.50.29（`docs/D20` `数-3` Q3 裁决）：`importanceBase` / `importancePerUse` 两键**有意删除**
+    //   （自 v2.86.0 起不再参与展示与判定；留着会让「重要度按哪套算」在阅读/审计时产生歧义）。
+    //   与上面 10 个时钟键同款登记：删除项必须在 V2 中**不存在**，且不落入「V2 专有键」白名单。
     const REMOVED_V1_KEYS = ['clockForceDegrade', 'clockAnomalyJumpYears', 'clockAutoPatrol', 'clockPatrolAutoFix',
-        'clockStoryDayEpoch', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative'];
+        'clockStoryDayEpoch', 'clockRegexPreset', 'clockDateRegex', 'clockTimeRegex', 'clockLocationRegex', 'clockRelative',
+        'importanceBase', 'importancePerUse'];
     // v2.76.0（用户要求）：「各大类支持的默认词条数量限制提高，整体控制在 2000-3000 原子数量支持即可」——
     //   以下 25 个**条数/存储上限**的默认值**有意提高**（V1 逐值相同的口径在此让位于该要求）：
     //   注入条数上限合计 2980（落在 2000-3000），存储上限合计 5600（承载 2-3k 条库存的任意分布）。

@@ -454,8 +454,6 @@
     "impRecalcCount",
     "impRecalcEnabled",
     "impWindowRadius",
-    "importanceBase",
-    "importancePerUse",
     "injectConstraintBlock",
     "injectConstraintMaxChars",
     "injectConstraintNameAll",
