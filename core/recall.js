@@ -1093,10 +1093,19 @@ function buildMemoryBodyForInject(queryText, opts) {
                 const isTracked = (typeof isTrackedCurrencyOwner === 'function') && !!owner && isTrackedCurrencyOwner(owner);
                 const isMine = !owner || owner === me || owner === '主角' || owner === '我' || isTracked;
                 if (!isMine) {
-                    // 其他角色：需在场或关键词命中（姓名/币种/标签/备注）
+                    /**
+                     * v3.50.30（用户报告「剧情提到资金变化、关键词也有，但货币完全没反应」）：**匹配方向修正**。
+                     *   旧实现用 `hay.includes(q)` —— 拿**整段正文**去比「归属+币种+备注」，永远不可能命中（方向反了），
+                     *   于是非主角货币即便正文明确提到「三枚银币」也**从不注入** → AI 没有账本参照，自然改不动货币。
+                     *   现值改为「**正文是否提到该货币**」：归属名 / 币种名 / 备注 / 标签 任一被正文提及即命中；
+                     *   另加「单位 + 资金变化词」一条（如「三枚银币」「花了五两银子」——币种写法未必与账本一致）。
+                     */
                     const hitPresent = presentSet ? presentSet.some(n => nameMatch(owner, n)) : false;
-                    const hay = `${owner} ${cu.name} ${cu.note || ''}`.toLowerCase();
-                    const hitKw = q ? (nameMatch(owner, q) || hay.includes(q) || tagMatch(cu.tags, q)) : false;
+                    const moneyWord = /钱|银|金|币|元|两|串|枚|铜|钞|票|资金|盘缠|积蓄|存款|债务|欠款|余额|买|卖|付|收|花|赚|亏|借|还|赏|罚|薪|账/.test(q);
+                    const unitHit = cu.unit && moneyWord && q.includes(String(cu.unit).toLowerCase());
+                    const nameHit = cu.name && q.includes(String(cu.name).toLowerCase());
+                    const noteHit = cu.note && String(cu.note).length >= 2 && q.includes(String(cu.note).toLowerCase());
+                    const hitKw = q ? (nameMatch(owner, q) || nameHit || noteHit || tagMatch(cu.tags, q) || unitHit) : false;
                     if (!hitPresent && !hitKw) continue;
                 }
                 curCands.push({ e: cu, score: rcScore('items')(cu), tracked: isTracked });

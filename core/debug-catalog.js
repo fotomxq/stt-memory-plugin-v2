@@ -60,6 +60,7 @@ export const DEBUG_KINDS = Object.freeze([
     // v3.46.1（`docs/D22` W11）：三域联动（🔗 联动构建）—— 打包 / 校验 / 应用 / 拒绝计数的运行留痕
     Object.freeze({ kind: '联动', note: '**三域联动**（传言 / 计划 / 悬念）：打包条数、通过与被拒的动作数、拒绝原因分布、应用计数与耗时' }),
     // v3.47.0（`docs/D22` W16 `数-23`）：地图入库（空间单元 / 路径的落库读数与护栏计数）
+    Object.freeze({ kind: '提示词', note: '**提示词模板兜底**：维度模板为空 / 缺失（旧存档、误清空、迁移缺键）→ 回落到默认模板时的留痕（`core/prompt.js#buildSummaryPrompt`）；用于解释「为什么某一维的说明突然不见了」' }),
     Object.freeze({ kind: '地图', note: '**地图库入库**的读数与护栏计数（空间单元 / 路径 / 锚点新增，未走过未建、端点或场所无法解析、上层无法解析、孤立陈设）——`core/map-ingest.js#applyMapDelta` 一处产生' }),
 ]);
 
