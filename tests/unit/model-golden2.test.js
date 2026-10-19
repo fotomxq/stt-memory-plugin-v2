@@ -91,10 +91,24 @@ R.assert('N6 出生日期解析与精度（年 / 年-月 / 年-月-日 / 公元�
     return J(got) === J(G.birthParts);
 })(), G.birthParts);
 R.assert('N7 年龄计算 calcAge（含跨生日 / 公元前 / 空锚点）', (() => {
+    // v3.50.26（`docs/D22` W25 `数-32`）：**跨纪元（公元前 → 公元后）年龄有意修正 1 年** ——
+    //   用户口径「`-9999-01-01` = 公元前 9999 年」意味着**历史纪年（无 0 年）**：`-1` 到 `1` 是 1 年而非 2 年。
+    //   V1 的朴素相减在跨纪元时多算 1 年。黄金样本一字不改，此处**显式归一**：跨纪元样本按 V1 值 +1 换算后比对，
+    //   修正值由 N7b 单独断言。
+    const isCrossEra = (b, a) => /^-\d/.test(String(b)) && /^\d/.test(String(a));
     const got = [['1900-05-20', '1920-03-15'], ['1900-05-20', '1920-06-01'], ['1890-01', '1920-03-15'], ['-0221-01-02', '1920-03-15'], ['1900-05-20', ''], ['', '1920-03-15'], ['1905-12-31', '1900-01-01']]
-        .map(([b, a]) => ({ b, a, age: calcAge(b, a) }));
+        .map(([b, a]) => {
+            const age = calcAge(b, a);
+            const v1Age = isCrossEra(b, a) && age !== '' ? String(Number(age) + 1) : age;
+            return { b, a, age: v1Age };
+        });
     return J(got) === J(G.calcAge);
 })(), G.calcAge);
+R.assert('N7b（v3.50.26 新增 · 偏离登记）跨纪元年龄按**历史纪年（无 0 年）**修正：公元前 221 年 → 1920 年 = **2140** 岁（V1 朴素相减得 2141）', (() => {
+    return calcAge('-0221-01-02', '1920-03-15') === '2140'
+        && calcAge('-9999-01-01', '2026-10-19') === '12024'
+        && calcAge('-1-12-31', '1-01-01') === '0';
+})(), J([calcAge('-0221-01-02', '1920-03-15'), calcAge('-9999-01-01', '2026-10-19')]));
 R.assert('N8 扁平字段折叠 foldSnapshotFlat（散字段 → 分组对象 + 列表拆分）', (() => {
     const lit = { name: '折叠', gender: '女', traits: 'a,b', todos: 'x;y' };
     return J(foldSnapshotFlat(lit)) === J(G.helpers.foldFlat);

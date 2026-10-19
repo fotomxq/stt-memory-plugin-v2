@@ -420,7 +420,7 @@ function migrateState(s) {
     }
     if (Array.isArray(s.atoms)) {
         for (const a of s.atoms) {
-            if (a && a.date === undefined) { a.date = a.eventTime && /^-?\d{1,4}-\d{2}-\d{2}/.test(a.eventTime) ? clockDateTrim(a.eventTime) : ''; a.time = a.eventTime || ''; changed = true; }
+            if (a && a.date === undefined) { a.date = a.eventTime && /^-?\d{1,13}-\d{2}-\d{2}/.test(a.eventTime) ? clockDateTrim(a.eventTime) : ''; a.time = a.eventTime || ''; changed = true; }
             if (a && typeof a.text === 'string' && /^(测试|test)[原子数据条目项目]*[:：]\s*/i.test(a.text.trim())) { a.text = a.text.replace(/^(测试|test)[原子数据条目项目]*[:：]\s*/i, '').trim(); changed = true; }
             if (a && a.uses === undefined) { a.uses = 0; changed = true; }
             if (a && a.tags === undefined) { a.tags = []; changed = true; }

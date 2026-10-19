@@ -7,6 +7,9 @@ import { clamp, hashText, normText, normalizeList, snapNameKey } from '../util.j
 import { cfg, state, getStoryNow } from './runtime.js';
 import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText, clockDateTrim, nsfwField } from './scalars.js';
 import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyDateMsFromStr } from '../clock.js';
+// v3.50.26（`docs/D22` W25 `数-32`）：**大年份出生日期与年龄** —— 年份不再卡 4 位 / ±9999（`bigdate` 走整数，
+//   百万 / 亿年 / 玄幻纪元均可解析与相减；溢出只受安全整数护栏约束）
+import { bigDateParse, bigAgeYears, bigAgeText, BIG_YEAR_MAX } from './bigdate.js';
 import { atomIsHidden } from '../merge.js';
 import { atomLatestDated } from '../recall.js';
 // v3.45.5（`docs/D22` W4 `数-19`，设计稿 `docs/D26` §3.2）：履历（`snapshots[].resume`）的**唯一算法源**
@@ -129,7 +132,7 @@ function ageAnchorDate(anchor) {
     try {
         if (typeof storyAnchorDate === 'function') {
             const a = clockDateTrim(storyAnchorDate());
-            if (/^-?\d{1,4}/.test(a)) return a;
+            if (/^-?\d{1,13}/.test(a)) return a;
         }
     } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return '';
@@ -192,7 +195,7 @@ function snapshotBirthAnomaly(s, anchor) {
                 const bdIso = clockDateStr(parts.y, parts.m, parts.d);   // v1.193：负年份同样规范（-0221-01-02）
                 for (const d of [s.lastSeenDate, s.lastUpdateDate]) {
                     const t = String(d || '').trim();
-                    if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(t) && storyDateMsFromStr(t) < storyDateMsFromStr(bdIso)) return 'after-record';   // v1.193：改用剧情日期数值比较（负年份下字符串比较会判错）
+                    if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(t) && storyDateMsFromStr(t) < storyDateMsFromStr(bdIso)) return 'after-record';   // v1.193：改用剧情日期数值比较（负年份下字符串比较会判错）
                 }
             }
         }
@@ -220,6 +223,7 @@ function snapshotBirthAnomaly(s, anchor) {
         //   ② 它不是「数据错误」而是「**待研判**」信号（正文支持长生时可标记「长生者」→ 此后永久豁免）。
         //   豁免：内容层长寿信号（`snapshotLongLived`）/ 已标记长生者 / 未来来客与穿越者（`traveler`，其生日本就在剧情之后或跨代）
         //   以及**公元前出生**（v1.193 用户明确要求支持的「跨公元前后的长寿角色」写法 —— 年龄上千岁属预期，不在本判据内）。
+        if (Number.isFinite(age) && age >= SNAP_AGE_MYTHIC_YEARS) return '';     // v3.50.26：神话尺度（≥1 万岁）不报「疑长期未出场」
         if (Number.isFinite(age) && age > SNAP_AGE_EXTREME_YEARS && !longLived && !traveler && !(parts.y < 0)) return 'age-extreme';
         return '';
     } catch (e) { return ''; }
@@ -250,7 +254,7 @@ function snapshotLongLived(s) {
 function snapshotLowEpochCalendar(anchor) {
     try {
         const t = String(anchor == null ? '' : anchor).trim();
-        const m = t.match(/^(-?\d{1,4})/);
+        const m = t.match(/^(-?\d{1,13})/);
         if (!m) return false;
         const y = Number(m[1]);
         if (!Number.isFinite(y)) return false;
@@ -350,7 +354,7 @@ function snapshotLastSeenGapYears(s, anchor) {
         let best = NaN;
         for (const d of [s && s.lastSeenDate, s && s.lastUpdateDate]) {
             const t = String(d || '').trim();
-            if (!/^-?\d{1,4}-\d{2}-\d{2}$/.test(t)) continue;
+            if (!/^-?\d{1,13}-\d{2}-\d{2}$/.test(t)) continue;
             const ms = storyDateMsFromStr(t);
             if (!Number.isFinite(ms)) continue;
             if (!Number.isFinite(best) || ms > best) best = ms;
@@ -368,38 +372,10 @@ function parseBirthDateParts(v) {
     try {
         const s = String(v == null ? '' : v).trim();
         if (!s) return null;
-        // v1.193：出生日期兼容**公元前**（年份为负）—— 支持文本写法（「公元前221年1月2日」「公元前九年」
-        //   「221 BC」）与 ISO 负年份写法（`-0221-01-02` / `-221-1-2`）；先归一为「前-<数字>年…」再解析。
+        // v1.193：兼容公元前文本写法（「公元前221年1月2日」「221 BC」）—— 先归一为「前-N年…」再交给 bigdate；
+        //   ISO 负年份（`-0221-01-02` / `-9999-01-01`）与万 / 亿年级（`3000000-05-01`）由 bigdate 直接解析。
         const norm = (typeof clockNormBcText === 'function') ? clockNormBcText(s) : s;
-        const bcM = norm.match(/^前\s*-?\s*(\d{1,4})\s*年(?:\s*(\d{1,2})\s*月(?:\s*(\d{1,2})\s*[日号]?)?)?\s*$/);
-        if (bcM) {
-            const y = -Math.abs(Number(bcM[1]));
-            const mo = bcM[2] === undefined ? 1 : Number(bcM[2]);
-            const d = bcM[3] === undefined ? 1 : Number(bcM[3]);
-            if (!Number.isFinite(y) || y === 0 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-            return { y, m: mo, d, precision: bcM[3] !== undefined ? 'day' : (bcM[2] !== undefined ? 'month' : 'year') };
-        }
-        let m = norm.match(/^(-?\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-        if (m) {
-            const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-            if (!Number.isFinite(y) || y === 0 || y < -9999 || y > 9999) return null;
-            if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-            return { y, m: mo, d, precision: 'day' };
-        }
-        m = norm.match(/^(-?\d{1,4})[-/.](\d{1,2})$/);
-        if (m) {
-            const y = Number(m[1]), mo = Number(m[2]);
-            if (!Number.isFinite(y) || y === 0 || y < -9999 || y > 9999) return null;
-            if (mo < 1 || mo > 12) return null;
-            return { y, m: mo, d: 1, precision: 'month' };
-        }
-        m = norm.match(/^(-?\d{1,4})$/);
-        if (m) {
-            const y = Number(m[1]);
-            if (!Number.isFinite(y) || y === 0 || y < -9999 || y > 9999) return null;
-            return { y, m: 1, d: 1, precision: 'year' };
-        }
-        return null;
+        return bigDateParse(norm) || bigDateParse(s);
     } catch (e) { return null; }
 }
 // 出生日期精度（'day' / 'month' / 'year' / '' = 不可解析）—— 用于界面标注「按出生年（月）估算」
@@ -413,28 +389,16 @@ function birthDatePrecision(v) { const p = parseBirthDateParts(v); return p ? p.
 //   只有年或年-月时按「当年/当月 1 日」估算（估算口径在界面注明「按出生年（月）估算」）。
 
 function calcAge(birthDate, storyNow) {
-    const b = parseBirthDateParts(birthDate);
-    if (!b) return '';
-    // 锚点容错：允许「1919-11-29 14:30」这类带时间/后缀的写法（取前导日期部分）
-    let n = parseBirthDateParts(storyNow);
-    if (!n) {
-        const m = String(storyNow == null ? '' : storyNow).match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-        if (m) n = { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]), precision: 'day' };
-        else {
-            const m2 = String(storyNow == null ? '' : storyNow).match(/^(\d{4})[-/.](\d{1,2})/);
-            if (m2) n = { y: Number(m2[1]), m: Number(m2[2]), d: 1, precision: 'month' };
-            else {
-                const m3 = String(storyNow == null ? '' : storyNow).match(/^(\d{4})/);
-                if (m3) n = { y: Number(m3[1]), m: 1, d: 1, precision: 'year' };
-            }
-        }
-    }
-    if (!n) return '';
-    let age = n.y - b.y;
-    if (b.precision === 'day') { if (n.m < b.m || (n.m === b.m && n.d < b.d)) age--; }
-    else if (b.precision === 'month') { if (n.m < b.m) age--; }
-    // precision === 'year'：只有出生年 → 不做月日修正（估算）
-    return age >= 0 ? String(age) : '';
+    // v3.50.26（`docs/D22` W25 `数-32`）：改由 `bigdate` 的**整数**实现计算 ——
+    //   · 不再经 `Date`（Date 上限 ±273,790 年 → 百万 / 亿年会算不出），因此玄幻纪元与公元前同样成立；
+    //   · 锚点容错（`1919-11-29 14:30` 这类带时间的写法）由 `bigDateParse` 自带；
+    //   · 精度规则与既有口径一致：day → 生日未到 -1；month → 月份未到 -1；year → 只做年份相减；
+    //   · 返回值契约不变（**数字字符串**；负数 / 不可算 → 空串），`identity.age` 的存储语义不变。
+    try {
+        const n = bigAgeYears(birthDate, storyNow);
+        if (!Number.isFinite(n)) return '';
+        return n >= 0 ? String(Math.trunc(n)) : '';
+    } catch (e) { return ''; }
 }
 // ==================== v1.162：角色档案 schema 收敛 ====================
 // 用户要求（原文）：角色信息里「情绪、当前目标、担忧、城市、区域、建筑、室内」等**高动态且没意义**的字段去掉；
@@ -875,7 +839,7 @@ function normalizeSnapshot(e0) {
 export { stampNowForState, storyTimeSample, stampSnapshotTime, snapshotBodySig, snapFindByName, stampSnapshotsSeen, ageAnchorDate, snapshotStoryAnchor, birthDateInFuture, snapshotFutureOrigin, snapshotBirthAnomaly, snapshotBirthAnomalyLabel, snapshotBirthAnomalyShort, snapshotLongLived, snapshotLowEpochCalendar, snapshotFlag, snapshotImmortalFlag, snapshotImmortal, snapshotCanonFlag, snapshotCanon, snapshotRepairSkip, snapshotLastSeenGapYears, SNAP_AGE_EXTREME_YEARS, parseBirthDateParts, birthDatePrecision, calcAge, snapshotAppearanceText, guessAgeFromCues, snapshotAgeIsLocked, snapshotAgeInfo, snapshotAge, snapshotAgeBasisText, snapshotSocialFutureLine, syncSnapshotAge, refreshAllSnapshotAges, snapshotAgeStale, migrateSnapshotV1162, foldSnapshotFlat, normalizeSnapshot, SNAP_APPEARANCE_LABELS, SNAP_APPEARANCE_LIMIT, SNAP_BIRTH_ANOMALY_LABEL, SNAP_BIRTH_ANOMALY_SHORT, SNAP_FUTURE_ORIGIN_RE, SNAP_LONG_LIVED_RE, ensureSnapshotBirthDate, storyAnchorDate, storyClockReference, resumeEntryLine };
 
 // ==================== 移植补全（内核标识符门禁发现缺失依赖） ====================
-const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,4}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
+const SNAP_FUTURE_ORIGIN_RE = /(未来|穿越|时空|平行世界|异世界|来自\s*(?:公元前|前)?\s*-?\d{1,13}\s*年|后世|转生|重生)/;   // v1.193：含「来自公元前221年」
 // v2.69.0：非人 / 长生设定的档案信号（供 `snapshotLongLived` 豁免「年龄 > 120 岁」判定）
 const SNAP_LONG_LIVED_RE = /(精灵|半精灵|暗精灵|龙裔|龙族|幼龙|古龙|神族|神明|半神|天使|恶魔|魔鬼|魔族|仙人|修士|道士|妖精|妖怪|魔物|不死|长生|永生|长寿|万岁|千年|万年|亡灵|死灵|巫妖|吸血鬼|血族|狼人|兽人|亚人|人偶|人造|傀儡|机械体|机器人|外星|星际|异种|元素生命|史莱姆|幽灵|魂魄|器灵|龙人|龙女)/;
 // 剧情时间锚点（剧情日期优先；缺失时退回剧情时间线里**最近记录的日期**（情节 → 记忆）；
@@ -906,6 +870,14 @@ const SNAP_BIRTH_ANOMALY_SHORT = {
  *   判定只**入优先档并交研判**，绝不自动改数据；研判成立（正文支持）→ 勾「长生者」即可永久豁免。
  */
 const SNAP_AGE_EXTREME_YEARS = 200;
+/**
+ * v3.50.26（`docs/D22` W25 `数-32`，用户要求「玄幻故事线，年月百万计」）：**神话尺度**阈值（万岁）。
+ *   达到 1 万岁以上的年龄**不再**按「超长年龄（疑长期未出场）」处置 —— 那是**凡人**长期未出场的启发式
+ *   （真机案例：628 年剧情里出现数百岁凡人）；玄幻 / 仙侠 / 神话纪元的百万年寿命是设定本身，不是数据错误。
+ *   处置：`age-extreme`（待研判）在 ≥ 该阈值时**不报**；界面按单位简化显示（`102万岁`），
+ *   真实的长寿 / 非人设定仍可用既有「长生者」标记（`snapshotLongLived` / `snapshotImmortal`）表达。
+ */
+const SNAP_AGE_MYTHIC_YEARS = 10000;
 
 const SNAP_APPEARANCE_LIMIT = 120;   // 外貌聚合文本上限（中文按字）
 // 旧分组字段 → 中文标签（拼聚合文本用；顺序即展示顺序）
@@ -919,14 +891,14 @@ const SNAP_APPEARANCE_LABELS = [
 function storyAnchorDate() {
     try {
         const direct = String(getStoryNow() || '').trim();
-        if (/^-?\d{1,4}/.test(direct)) return clockDateTrim(direct);
+        if (/^-?\d{1,13}/.test(direct)) return clockDateTrim(direct);
         const ref = (typeof storyClockReference === 'function') ? storyClockReference() : null;
-        if (ref && /^-?\d{1,4}/.test(String(ref.date || ''))) return clockDateTrim(ref.date);
+        if (ref && /^-?\d{1,13}/.test(String(ref.date || ''))) return clockDateTrim(ref.date);
         const atoms = (state && state.atoms) || [];
-        const dated = atoms.filter(a => a && !atomIsHidden(a) && /^-?\d{1,4}/.test(String((a && a.date) || ''))).map(a => clockDateTrim(a.date)).sort((x, y) => dateStrCmp(x, y));
+        const dated = atoms.filter(a => a && !atomIsHidden(a) && /^-?\d{1,13}/.test(String((a && a.date) || ''))).map(a => clockDateTrim(a.date)).sort((x, y) => dateStrCmp(x, y));
         if (dated.length) return dated[dated.length - 1];
         const mems = (state && state.memories) || [];
-        const mdated = mems.filter(m => /^-?\d{1,4}/.test(String((m && m.date) || ''))).map(m => clockDateTrim(m.date)).sort((x, y) => dateStrCmp(x, y));
+        const mdated = mems.filter(m => /^-?\d{1,13}/.test(String((m && m.date) || ''))).map(m => clockDateTrim(m.date)).sort((x, y) => dateStrCmp(x, y));
         if (mdated.length) return mdated[mdated.length - 1];
     } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
     return '';
@@ -997,7 +969,7 @@ function ensureSnapshotBirthDate(snap, opts) {
         //   避免把 1919 年的角色生到 2011 年（此后年龄永远对不上）。
         const curFallback = curOk && String(snap.identity.birthSource || '') === 'fallback';
         const anchorNow = ageAnchorDate();
-        if (curFallback && !curFuture && /^-?\d{1,4}/.test(anchorNow)) {
+        if (curFallback && !curFuture && /^-?\d{1,13}/.test(anchorNow)) {
             const keepAge = parseAgeYears(snap.identity.birthNote) || parseAgeYears(snap.identity.age) || 0;
             const re = keepAge ? birthDateFromAge(keepAge, anchorNow) : '';
             if (re) {
@@ -1024,7 +996,7 @@ function ensureSnapshotBirthDate(snap, opts) {
         // v1.162：年龄线索来源 —— ① 调用方显式给（如迁移时的旧「年龄备注」）；② 防御性兼容旧年龄备注字段；③ 档案里的年龄（仅缺出生日期时才有意义）
         const explicitAge = parseAgeYears(o.ageHint) || parseAgeYears(snap.identity.ageNote) || parseAgeYears(snap.identity.age);
         const anchor = String(o.anchor || ageAnchorDate() || '');
-        const anchorOk = /^-?\d{1,4}/.test(anchor);
+        const anchorOk = /^-?\d{1,13}/.test(anchor);
         const useAnchor = anchorOk ? anchor : `${new Date().getFullYear()}-01-01`;
         const age = explicitAge || guessAgeFromCues(snap);
         const date = birthDateFromAge(age, useAnchor);

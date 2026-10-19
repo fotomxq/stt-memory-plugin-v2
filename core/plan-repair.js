@@ -105,7 +105,7 @@ function suspenseMergeExact() {
             keep.uses = (Number(keep.uses) || 0) + (Number(s.uses) || 0);
             keep.importance = Math.max(Number(keep.importance) || 0, Number(s.importance) || 0);
             if (!keep.title && s.title) keep.title = s.title;
-            const ds = [keep.date, s.date].filter(d => /^-?\d{1,4}-\d{2}-\d{2}$/.test(String(d || '')));
+            const ds = [keep.date, s.date].filter(d => /^-?\d{1,13}-\d{2}-\d{2}$/.test(String(d || '')));
             if (ds.length) keep.date = ds.slice().sort(dateStrCmp)[0];   // v1.193：按剧情日期数值取最早
             st.merged++;
         }
@@ -241,7 +241,7 @@ function applySuspenseMergeGroups(delta, pick) {
                     const dt = clockDateTrim(repairNormText(g['日期'] !== undefined ? g['日期'] : g.date));
                     if (nm) primary.title = nm;
                     if (ct && !repairIsGarbage(ct, 4)) primary.content = ct;
-                    if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
+                    if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
                     applyTags(primary, g['标签'] !== undefined ? g['标签'] : g.tags);
                     const tagSet = [];
                     const pushTags = (src) => { (Array.isArray(src) ? src : []).forEach(x => { const v = repairNormText(x).replace(/^#/, ''); if (v && tagSet.indexOf(v) < 0) tagSet.push(v); }); };
@@ -253,7 +253,7 @@ function applySuspenseMergeGroups(delta, pick) {
                         pushTags(me.tags);
                         primary.uses = (Number(primary.uses) || 0) + (Number(me.uses) || 0);
                         primary.importance = Math.max(Number(primary.importance) || 0, Number(me.importance) || 0);
-                        const ds = [primary.date, me.date].filter(d => /^-?\d{1,4}-\d{2}-\d{2}$/.test(String(d || '')));
+                        const ds = [primary.date, me.date].filter(d => /^-?\d{1,13}-\d{2}-\d{2}$/.test(String(d || '')));
                         if (ds.length) primary.date = ds.slice().sort(dateStrCmp)[0];   // v1.193：按剧情日期数值取最早
                         deadIds.add(String(m.id));
                         // v1.168：记录「被并入 → 保留主条」，删除后用于关联重挂
@@ -282,7 +282,7 @@ function applySuspenseMergeGroups(delta, pick) {
                     if (field === '标签') { const before = JSON.stringify(e.tags || []); applyTags(e, val); if (JSON.stringify(e.tags || []) !== before) out.revised++; else out.skipped++; }
                     else if (field === '标题') { const v = repairNormText(val).slice(0, 60); if (v) { e.title = v; out.revised++; } else out.skipped++; }
                     else if (field === '内容') { const v = dimCap('suspense', repairNormText(val)); if (v && !repairIsGarbage(v, 4)) { e.content = v; out.revised++; } else out.skipped++; }
-                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
+                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
                     else out.skipped++;
                 } catch (e) { out.skipped++; }
             }

@@ -74,9 +74,24 @@ R.assert('S2 日期异常 clockDateAnomaly：invalid / jump / backward / 无锚�
 })(), G.anomaly.map((c) => [c.d, c.a, clockDateAnomaly(c.d, c.a), c.out]));
 
 R.assert('S3 换年份 clockReplaceYear：保留月日 / 越界与非法返回空串，与 V1 一致', (() => {
-    const bad = G.replaceYear.filter((c) => String(clockReplaceYear(c.d, c.y) || '') !== String(c.out));
+    // v3.50.26（`docs/D22` W25 `数-32`，用户要求「年份不应限制死范围」）：**V1 样本一字不改**，
+    //   但「|年份| > 9999 → 空串」这条**有意放宽**（大年份 / 玄幻纪元）。此处按口径**显式归一**：
+    //   · V1 期望空串且 |y| > 9999 的样本 → V2 应给出**合法日期**（不是空串），由 S3b 单独断言；
+    //   · 其余样本（含 y=0 / 非法日期 / 常规范畴）**仍须与 V1 逐字一致**。
+    const isBigYear = (y) => Number.isFinite(Number(y)) && Math.abs(Number(y)) > 9999;
+    const norm = (c) => (isBigYear(c.y) ? String(c.out) : String(clockReplaceYear(c.d, c.y) || ''));
+    const bad = G.replaceYear.filter((c) => norm(c) !== String(c.out));
     return bad.length === 0;
 })(), G.replaceYear.map((c) => [c.d, c.y, clockReplaceYear(c.d, c.y), c.out]));
+
+R.assert('S3b（v3.50.26 新增 · 偏离登记）大年份**不再返回空串**：`20000` / `-99999` / `3000000` 都能换年份并保留月日；`0` 与非法日期仍为空串', (() => {
+    const a = String(clockReplaceYear('2011-05-06', 20000) || '');
+    const b = String(clockReplaceYear('2011-05-06', -99999) || '');
+    const c = String(clockReplaceYear('2011-05-06', 3000000) || '');
+    const d = String(clockReplaceYear('2011-05-06', 0) || '');
+    const e = String(clockReplaceYear('坏值', 1919) || '');
+    return a === '20000-05-06' && b === '-99999-05-06' && c === '3000000-05-06' && d === '' && e === '';
+})(), 'n/a');
 
 // ============================================================
 // S4–S6 多数派与锚点（四来源 + 不可用 + 分歧）
