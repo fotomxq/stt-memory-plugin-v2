@@ -13,6 +13,7 @@
 // 一致性由 tests/unit/clock-extract-golden.test.js 的真实 V1 黄金样本强制校验。
 // ============================================================
 import { state, cfg, saveState, dbgLog, timerHooks, latestAiFloorText, getLastMessageId, warn } from './model/runtime.js';
+import { bigDatePrefix } from './model/bigdate.js';   // v3.50.27（数-39）：取日期部分（支持负年份 / 大年份）
 import {
     clockDateValid, clockDateParts, clockDateFromParts, clockParseDateText, clockNormTime, clockValNum,
     clockAddDays, clockMatchNotInline, clockNormBcText, clockYearOf, clockAnomalyJumpYears, clockDateAnomaly,
@@ -261,7 +262,7 @@ function extractClockFromText(text0, prevOpts) {
             if (!hits[field].length) continue;
             const sorted = hits[field].sort((a, b) => b.idx - a.idx || (a.src === 'regex' ? -1 : 0));
             const pick = sorted[0];
-            if (field === 'date') { const d = clockParseDateText(pick.val, prevYear) || pick.val; out.date = String(d).slice(0, 10); }
+            if (field === 'date') { const d = clockParseDateText(pick.val, prevYear) || pick.val; out.date = bigDatePrefix(d); }   // v3.50.27（数-39）：不再切坏负年份
             else if (field === 'time') { const t = clockNormTime(pick.val); out.time = (t || pick.val).slice(0, 20); }
             else out.location = cleanValue(pick.val, 60);
             out.source[field] = pick.src;
@@ -378,7 +379,7 @@ function resolveStoryClock(opts) {
         //   不同日的旧值一律跳过（宁可保持原值，也不拼出一个自相矛盾的时钟）。
         const sameDay = (it) => {
             if (!d) return true;
-            const dd = String(it && it.date ? it.date : '').slice(0, 10);
+            const dd = bigDatePrefix(it && it.date ? it.date : '');   // v3.50.27（数-39）
             return !dd || dd === String(d).slice(0, 10);
         };
         const skipCount = (get) => {

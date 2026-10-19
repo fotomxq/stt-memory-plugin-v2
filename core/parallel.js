@@ -77,6 +77,8 @@ import { aiCallText, aiBusy } from './ai-hooks.js';
 import { defaultCfg } from './config.js';
 // v3.23.0（用户要求「全部 AI 摘要需支持分段处理…避免一次性分析记忆」）：推演世界同样按「每段 ≤3 个正文」切片
 import { chunkFloorRange } from './chunk.js';
+// v3.50.27（`数-39`）：日期字段长度上限（不再按 `YYYY-MM-DD` 的 10 字符截断负年份 / 大年份）
+import { BIG_DATE_FIELD_MAX } from './model/bigdate.js';
 
 // ---------- 楼层取文钩子（宿主注入；内核默认空） ----------
 let textHooks = {
@@ -457,7 +459,7 @@ export function applyAdvanceUpdate(p, u) {
         if (title) p.title = title;
         if (text) p.text = text;
         if (o.type) p.type = normText(o.type, 20);
-        if (o.date) p.date = normText(o.date, 10);
+        if (o.date) p.date = normText(o.date, BIG_DATE_FIELD_MAX);
         if (o.time) p.time = normText(o.time, 20);
         if (o.卦象 || o.gua) p.gua = normText(o.卦象 || o.gua, 80);
         if (o.因果线 || o.causalLine) p.causalLine = normText(o.因果线 || o.causalLine, 600);

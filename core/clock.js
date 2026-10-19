@@ -6,7 +6,7 @@
 import { cfg } from './model/runtime.js';
 // v3.50.26（`docs/D22` W25 `数-32`）：**大年份**（正负 / 百万 / 亿级 / 玄幻纪元）。clock 的 V1 逐字行为在
 //   ≤4 位年份上**逐字不变**；这里只把「年份上界」与「格式化」换成整数实现（不经 Date），因此不再卡 9999。
-import { BIG_YEAR_MAX, bigDateParse, bigYearStr, bigYearOk } from './model/bigdate.js';
+import { BIG_YEAR_MAX, bigDateParse, bigYearStr, bigYearOk, bigDatePrefix } from './model/bigdate.js';
 
 function clockDateTrim(v) {
     try {
@@ -341,7 +341,8 @@ function clockDateAnomaly(dateStr, anchorDate) {
         if (!clockDateValid(d)) return { bad: true, reason: 'invalid', years: 0 };
         const win = clockAnomalyJumpYears();
         if (!win) return { bad: false, reason: '', years: 0 };
-        const anchor = clockDateValid(anchorDate) ? String(anchorDate).slice(0, 10) : '';
+        // v3.50.27（`数-39`）：取「日期部分」改用 `bigDatePrefix` —— `slice(0, 10)` 会把 `-9999-01-01`（11 字符）切成 `-9999-01-0`
+        const anchor = clockDateValid(anchorDate) ? bigDatePrefix(anchorDate) : '';
         if (!anchor) return { bad: false, reason: '', years: 0 };
         const dy = clockYearOf(d) - clockYearOf(anchor);   // v1.193：负年份
         if (dy > win) return { bad: true, reason: 'jump', years: dy };

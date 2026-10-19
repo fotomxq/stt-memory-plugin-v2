@@ -13,6 +13,7 @@
 // 适配：ESM 化 + 注入视图（cfg/state）；提示与日志经 `dbgLog`；条目删除一律走墓碑。
 // ============================================================
 import { state, cfg, dbgLog, identityView } from './model/runtime.js';
+import { bigDatePrefix } from './model/bigdate.js';   // v3.50.27（数-39）：取日期部分（支持负年份 / 大年份）
 import { tombEntries } from './merge.js';
 import { sweepOrphanRelLinks, upsertRelLinks } from './entries.js';
 import { snapFindByName } from './model/snapshot.js';
@@ -437,7 +438,7 @@ function entryDateOf(src, dim, refId) {
     try {
         const arr = (src && src[dim]) || [];
         const it = arr.find((x) => x && String(x.id) === String(refId));
-        return String((it && (it.date || it.time)) || '').trim().slice(0, 10);
+        return bigDatePrefix((it && (it.date || it.time)) || '');   // v3.50.27（数-39）：不再按 10 字符硬切（负年份 11 字符）
     } catch (e) { return ''; }
 }
 

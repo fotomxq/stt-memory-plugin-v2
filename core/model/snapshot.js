@@ -9,7 +9,7 @@ import { dimCap, atomTitle, mergeTags, makeExtra, SNAP_GROUP_MAP, splitListText,
 import { clockDateParts, clockDateStr, clockNormBcText, clockYearInRange, storyDateMsFromStr } from '../clock.js';
 // v3.50.26（`docs/D22` W25 `数-32`）：**大年份出生日期与年龄** —— 年份不再卡 4 位 / ±9999（`bigdate` 走整数，
 //   百万 / 亿年 / 玄幻纪元均可解析与相减；溢出只受安全整数护栏约束）
-import { bigDateParse, bigAgeYears, bigAgeText, BIG_YEAR_MAX } from './bigdate.js';
+import { bigDateParse, bigAgeYears, bigAgeText, BIG_YEAR_MAX, BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { atomIsHidden } from '../merge.js';
 import { atomLatestDated } from '../recall.js';
 // v3.45.5（`docs/D22` W4 `数-19`，设计稿 `docs/D26` §3.2）：履历（`snapshots[].resume`）的**唯一算法源**
@@ -743,7 +743,7 @@ function normalizeSnapshot(e0) {
     const fs = Number(e?.floorStart);
     const fe = Number(e?.floorEnd);
     const src = e?.profile || e?.identity || {};
-    const birthDate = normText(e?.birthDate || src?.birthDate || src?.birth_date, 10);
+    const birthDate = normText(e?.birthDate || src?.birthDate || src?.birth_date, BIG_DATE_FIELD_MAX);
     // v1.162：年龄**不是可填字段** —— 只由「出生日期 + 剧情时间锚点」自动计算（缺出生日期/缺锚点则为空；
     //   v1.171 起锚点 = 剧情日期 → 最近记录剧情日期，**不再用现实年份**，也不再落盘被污染的值）
     const age = calcAge(birthDate, ageAnchorDate());
@@ -812,9 +812,9 @@ function normalizeSnapshot(e0) {
         // v1.161：以**剧情时间**为基准采样的两个时刻（角色档案专属）——
         //   lastUpdate*：档案内容被新增/更新时的剧情时间；lastSeen*：角色最近一次在场的剧情时间。
         //   无剧情日期时不采样（不写现实时间，避免把墙钟混进剧情时间线）；详见 stampSnapshotTime()。
-        lastUpdateDate: normText(e?.lastUpdateDate, 10),
+        lastUpdateDate: normText(e?.lastUpdateDate, BIG_DATE_FIELD_MAX),
         lastUpdateTime: normText(e?.lastUpdateTime, 30),
-        lastSeenDate: normText(e?.lastSeenDate, 10),
+        lastSeenDate: normText(e?.lastSeenDate, BIG_DATE_FIELD_MAX),
         lastSeenTime: normText(e?.lastSeenTime, 30),
         // 原子层：标准化字段 + 可扩展插槽
         category: 'snapshots',

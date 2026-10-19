@@ -29,6 +29,7 @@
 //     情节提到最高档（比不打标更危险）。故本模块只**登记语义**，回填交给体检**如实报告**。
 // ============================================================
 import { normText } from './util.js';
+import { BIG_DATE_FIELD_MAX } from './model/bigdate.js';   // v3.50.27（数-39）：日期字段长度上限
 
 /** 「最后一次出现」的**日期形态**规范字段名（`YYYY-MM-DD`） */
 export const LAST_SEEN_DATE_FIELD = 'lastSeenDate';
@@ -59,7 +60,7 @@ const nonEmpty = (v) => v !== undefined && v !== null && String(v).trim() !== ''
 /** 读「最后一次出现（日期）」：**规范名优先**，回退旧别名（只读；不写） */
 export function seenDateOf(dim, it) {
     if (!isObj(it)) return '';
-    const own = normText(it[LAST_SEEN_DATE_FIELD], 10);
+    const own = normText(it[LAST_SEEN_DATE_FIELD], BIG_DATE_FIELD_MAX);
     if (own) return own;
     for (const k of (LEGACY_SEEN_DATE[String(dim)] || [])) {
         const v = normText(it[k], 10);

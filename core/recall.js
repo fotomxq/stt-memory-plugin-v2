@@ -25,6 +25,7 @@ import { normalizeList, snapNameKey } from './util.js';
 // v3.41.0（`docs/D22` `业-6` / `docs/D18` §4.1 P5）：本模块的**同名私有副本已删除**，
 //   时间衰退统一走单一实现 `core/decay.js#calcTimeDecay`（`core/ingest.js` 再导出同一件）。
 import { calcTimeDecay } from './decay.js';
+import { bigDatePrefix } from './model/bigdate.js';   // v3.50.27（数-39）：取日期部分（支持负年份 / 大年份）
 
 const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels', 'rumors'];   // v3.46.1（W11 数-33）：四处同批之一（+rumors）
 
@@ -1489,7 +1490,7 @@ function trustedPlotList() {
         //   一旦有一方**没有楼层信息**（手动新增/编辑的情节、导入的旧数据、被删楼标记为未知区间的情节…），
         //   楼层给不出位置 → 改用**剧情日期**判谁更新（都无日期时才回落到「有位置的在前」）。
         //   为什么必须这样：手动新增的情节没有 floor（=0）会被排到最后 → 它的日期/时间**永远取不到**。
-        const dateOf = (a) => (clockDateValid(a.date) ? String(a.date).slice(0, 10) : '');
+        const dateOf = (a) => (clockDateValid(a.date) ? bigDatePrefix(a.date) : '');   // v3.50.27（数-39）：大年份 / 负年份不切坏
         // v3.6.0（用户要求）：「注意最新的情节指根据**内置的天数**判断。」
         //   `storyDay` = 情节正文头「第 N 天」记录下来的**预留天数计数器**（`recordReservedStoryDay`，只记录不联动）。
         //   规则：**两边都有天数**（>0）时以天数大者为准（最贴近用户直觉的「谁更新」）；
@@ -1521,7 +1522,7 @@ function trustedPlotList() {
             const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
             return {
                 dim: 'atoms', node: a,
-                date: clockDateValid(a.date) ? String(a.date).slice(0, 10) : '',
+                date: clockDateValid(a.date) ? bigDatePrefix(a.date) : '',
                 time: String(a.time || '').slice(0, 20),
                 location: String(a.location || locs[0] || '').slice(0, 60),
             };
@@ -1576,7 +1577,7 @@ function latestPlotByFloor() {
             const locs = Array.isArray(a.locations) ? a.locations.filter(Boolean) : [];
             return {
                 dim: 'atoms', node: a,
-                date: clockDateValid(a.date) ? String(a.date).slice(0, 10) : '',
+                date: clockDateValid(a.date) ? bigDatePrefix(a.date) : '',
                 time: String(a.time || '').slice(0, 20),
                 location: String(locs.length ? locs[locs.length - 1] : '').slice(0, 60),
                 entities: normalizeList(a.entities),
@@ -1603,7 +1604,7 @@ function atomLatestDated() {
             for (const x of (arr || [])) {
                 if (!x || !clockDateValid(x.date)) continue;
                 if (dim === 'atoms' && x.validity === 'inactive') continue;
-                const d = String(x.date).slice(0, 10);
+                const d = bigDatePrefix(x.date);   // v3.50.27（数-39）
                 if (!best) { best = { dim, node: x, date: d }; continue; }
                 const tx = chatTier(x, chatKey2), tb = chatTier(best.node, chatKey2);
                 if (tx > tb) continue;
