@@ -127,7 +127,7 @@ function planSuspLine(e, kind) {
 function atomDateValid(d) {
     try {
         if (typeof clockDateValid === 'function') return clockDateValid(d);
-        return /^-?\d{1,4}-\d{2}-\d{2}$/.test(String(d == null ? '' : d).trim());
+        return /^-?\d{1,13}-\d{2}-\d{2}$/.test(String(d == null ? '' : d).trim());
     } catch (e) { return false; }
 }
 
@@ -145,7 +145,7 @@ function atomTimeKey(a, idx) {
 }
 
 function parseDate(s) {
-    const m = String(s || '').match(/^(-?\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    const m = String(s || '').match(/^(-?\d{1,13})[-/.](\d{1,2})[-/.](\d{1,2})/);
     if (!m) return null;
     const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
     if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return null;

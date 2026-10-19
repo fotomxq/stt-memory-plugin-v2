@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.25",
-  "updatedAt": "2026-10-15",
-  "generatedAt": "2026-10-15",
+  "version": "3.50.26",
+  "updatedAt": "2026-10-19",
+  "generatedAt": "2026-10-19",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.26",
+      "date": "2026-10-19",
+      "title": "大年份出生日期与年龄：正负年份 / 百万·亿年 + 年龄单位简化（docs/D46 数-38）",
+      "points": [
+        "登记：设计稿 docs/D46（数-38）｜ docs/D17 U255 ｜ 批次档 docs/history/P10c135-大年份出生日期与年龄.md### 一、根因（两处「…"
+      ]
+    },
     {
       "version": "3.50.25",
       "date": "2026-10-15",

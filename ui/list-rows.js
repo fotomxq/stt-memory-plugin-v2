@@ -31,6 +31,9 @@ import { floorPositionLabel } from '../core/floor-cover.js';   // v3.7.0：楼�
 import { nsfwLevelOf, nsfwLevelLabel, nsfwLevelHint } from '../core/nsfw.js';   // v3.8.0：NSFW 等级留档徽标；v3.9.0：+ 分类汇总与释义
 import { escHtml } from '../core/util.js';
 import { atomTitle, normPhase } from '../core/model/scalars.js';
+// v3.50.26（`docs/D22` W25 `数-32`）：年龄的**单位简化**（岁 / 万岁 / 亿岁 / 万亿岁）—— 大年份（玄幻纪元）不再显示成
+//   「1020000岁」这种读不出量级的数字串
+import { bigAgeText } from '../core/model/bigdate.js';
 import { atomIsHidden } from '../core/merge.js';
 import { formatMoney, defaultCurrencyOwner, isTrackedCurrencyOwner } from '../core/model/money.js';
 import { relLinksOf, relSummaryLine, relHowLabelOf, relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey } from '../core/model/rel.js';
@@ -380,7 +383,9 @@ function snapshotsRow(s, ctx) {
     if (ageNow) {
         let basis = '';
         try { basis = snapshotAgeBasisText(s, anchor) || ''; } catch (e) { basis = ''; }
-        parts.push('年龄：' + esc(ageNow) + '岁' + (basis ? ('（' + esc(basis) + '）') : ''));
+        // v3.50.26：单位简化 —— `< 1 万` 仍是「N岁」，万 / 亿 / 万亿级自动换单位（`102万岁` / `3亿岁`）
+        const ageTxt = (() => { try { return bigAgeText(ageNow) || (String(ageNow) + '岁'); } catch (e) { return String(ageNow) + '岁'; } })();
+        parts.push('年龄：' + esc(ageTxt) + (basis ? ('（' + esc(basis) + '）') : ''));
     } else if (s.identity && s.identity.birthDate) {
         parts.push('年龄：待算（缺剧情日期）');
     }

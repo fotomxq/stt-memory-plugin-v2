@@ -501,7 +501,7 @@ function applyMemoryMergeGroups(delta, pick) {
                     const cat = repairNormText(g['分类'] !== undefined ? g['分类'] : g.category).slice(0, 20);
                     if (nm) primary.title = nm;
                     if (ct && !repairIsGarbage(ct, 4)) primary.content = ct;
-                    if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
+                    if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
                     if (cat) primary.memCategory = cat;
                     applyTags(primary, g['标签'] !== undefined ? g['标签'] : g.tags);
                     const tagSet = [];
@@ -517,7 +517,7 @@ function applyMemoryMergeGroups(delta, pick) {
                         primary.floorStart = (fs0 && fs1) ? Math.min(fs0, fs1) : (fs0 || fs1);
                         primary.floorEnd = Math.max(Number(primary.floorEnd) || 0, Number(me.floorEnd) || 0);
                         primary.importance = Math.max(Number(primary.importance) || 0, Number(me.importance) || 0);
-                        const ds = [primary.date, me.date].filter(d => /^-?\d{1,4}-\d{2}-\d{2}$/.test(String(d || '')));
+                        const ds = [primary.date, me.date].filter(d => /^-?\d{1,13}-\d{2}-\d{2}$/.test(String(d || '')));
                         if (ds.length) primary.date = ds.slice().sort(dateStrCmp)[0];   // v1.193：按剧情日期数值取最早
                         deadIds.add(String(m.id));
                         // v1.168：记录「被并入 → 保留主条」，删除后用于关联重挂（合并后不产生孤儿关联）
@@ -546,7 +546,7 @@ function applyMemoryMergeGroups(delta, pick) {
                     if (field === '标签') { const before = JSON.stringify(e.tags || []); applyTags(e, val); if (JSON.stringify(e.tags || []) !== before) out.revised++; else out.skipped++; }
                     else if (field === '标题') { const v = repairNormText(val).slice(0, 60); if (v) { e.title = v; out.revised++; } else out.skipped++; }
                     else if (field === '正文') { const v = dimCap('memories', repairNormText(val)); if (v && !repairIsGarbage(v, 4)) { e.content = v; out.revised++; } else out.skipped++; }
-                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
+                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
                     else if (field === '分类') { const v = repairNormText(val).slice(0, 20); if (v) { e.memCategory = v; out.revised++; } else out.skipped++; }
                     else out.skipped++;
                 } catch (e) { out.skipped++; }
@@ -761,7 +761,7 @@ function applyConceptMergeGroups(delta, pick) {
                     if (nm) primary.name = nm;
                     if (ct) primary.content = ct;
                     if (src) primary.source = src;
-                    if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
+                    if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(dt)) primary.date = dt;
                     applyTags(primary, g['标签'] !== undefined ? g['标签'] : g.tags);
                     // 标签/uses 与被并入条目并集（只增不减，绝不丢信息）
                     const tagSet = [];
@@ -801,7 +801,7 @@ function applyConceptMergeGroups(delta, pick) {
                     else if (field === '名称') { const v = repairNormText(val).slice(0, 60); if (v) { e.name = v; out.revised++; } else out.skipped++; }
                     else if (field === '内容') { let v = repairNormText(val); if (v.length > hardCap) v = v.slice(0, hardCap); if (v && !repairIsGarbage(v, 4)) { e.content = v; out.revised++; } else out.skipped++; }
                     else if (field === '来源') { const v = repairNormText(val).slice(0, 40); if (v) { e.source = v; out.revised++; } else out.skipped++; }
-                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,4}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
+                    else if (field === '日期') { const v = clockDateTrim(repairNormText(val)); if (/^-?\d{1,13}-\d{2}-\d{2}$/.test(v)) { e.date = v; out.revised++; } else out.skipped++; }
                     else out.skipped++;
                 } catch (e) { out.skipped++; }
             }

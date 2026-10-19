@@ -4,12 +4,15 @@
 // 适配：ESM 化 + 注入视图（cfg）。一致性由 tests/unit/clock-golden.test.js 的黄金样本强制校验。
 // ============================================================
 import { cfg } from './model/runtime.js';
+// v3.50.26（`docs/D22` W25 `数-32`）：**大年份**（正负 / 百万 / 亿级 / 玄幻纪元）。clock 的 V1 逐字行为在
+//   ≤4 位年份上**逐字不变**；这里只把「年份上界」与「格式化」换成整数实现（不经 Date），因此不再卡 9999。
+import { BIG_YEAR_MAX, bigDateParse, bigYearStr, bigYearOk } from './model/bigdate.js';
 
 function clockDateTrim(v) {
     try {
         const t = String(v == null ? '' : v).trim();
         // v1.193：兼容 `/` 与 `.` 分隔符（AI/历史数据常见混用），统一规范化为 `-`；负年份同样处理
-        const m = t.match(/^(-?\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        const m = t.match(/^(-?\d{1,13})[-/.](\d{1,2})[-/.](\d{1,2})/);
         if (!m) return '';
         return clockYearStr(Number(m[1])) + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
     } catch (e) { return ''; }
@@ -18,16 +21,12 @@ function clockDateTrim(v) {
 
 function clockDateParts(s) {
     try {
-        const t = String(s == null ? '' : s).trim().slice(0, 10 + 1);
-        const m = t.match(/^(-?\d{1,4})-(\d{1,2})-(\d{1,2})$/);
-        if (!m) return null;
-        const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-        if (!clockYearInRange(y) || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-        const ms = storyDateMs(y, mo, d);
-        if (!Number.isFinite(ms)) return null;
-        const dt = new Date(ms);
-        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
-        return { y, m: mo, d };
+        // v3.50.26：整数校验（`bigDateParse` → `bigDayNumber`）—— 支持大年份与负年份；
+        //   「2 月 30 日」这类进位由 `bigDayNumber` 的按月天数检查拦下（与旧 Date 往返校验同结论）。
+        const t = String(s == null ? '' : s).trim();
+        const p = bigDateParse(t);
+        if (!p || p.precision !== 'day') return null;
+        return { y: p.y, m: p.m, d: p.d };
     } catch (e) { return null; }
 }
 // 换掉日期串的年份（保留月日；用于时间巡检的「年份校正」）
@@ -38,7 +37,7 @@ function clockDateValid(s) {
     try {
         const t = String(s == null ? '' : s).trim();
         // v1.193：年份可负（公元前）—— `-0221-01-02` / `0221-01-02` / `221-01-02` 均接受
-        if (!/^-?\d{1,4}-\d{2}-\d{2}$/.test(t)) return false;
+        if (!/^-?\d{1,13}-\d{2}-\d{2}$/.test(t)) return false;   // v3.50.26：年份位数放宽（大年份 / 玄幻纪元）
         const p = clockDateParts(t);
         return !!p;
     } catch (e) { return false; }
@@ -54,9 +53,9 @@ function clockDateValid(s) {
 function clockNormBcText(text) {
     try {
         let s = String(text == null ? '' : text);
-        if (!/公元前|西元前|纪元前|元前|\bBC\b|B\.C|BCE|-\s*\d{1,4}\s*[-/.]\s*\d{1,2}\s*[-/.]|(?:^|[^\u4e00-\u9fff])前\s*(?=\d|[一二三四五六七八九〇零两十])/i.test(s)) return s;
+        if (!/公元前|西元前|纪元前|元前|\bBC\b|B\.C|BCE|-\s*\d{1,13}\s*[-/.]\s*\d{1,2}\s*[-/.]|(?:^|[^\u4e00-\u9fff])前\s*(?=\d|[一二三四五六七八九〇零两十])/i.test(s)) return s;
         // ③ 直接写的负数 ISO 日期：`-221-01-02` → `前-221年1月2日`（前面不能紧跟数字，避免半截误匹配）
-        s = s.replace(/(^|[^\d])(-\d{1,4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/g, '$1前$2年$3月$4日');
+        s = s.replace(/(^|[^\d])(-\d{1,13})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/g, '$1前$2年$3月$4日');
         s = s.replace(CLOCK_BC_SUFFIX, (all, v) => {
             const arab = /^\d+$/.test(String(v)) ? Number(v) : clockCnInt(v);
             return Number.isInteger(arab) && arab > 0 ? `前-${arab}年` : all;
@@ -67,7 +66,7 @@ function clockNormBcText(text) {
         });
         s = s.replace(CLOCK_BC_PREFIX, '前-');
         // v1.193：公元前写法里的中文月/日统一换算为阿拉伯数字（如「公元前一九年三月」→「前-19年3月」）
-        s = s.replace(/(前-\d{1,4}\s*年)\s*([一二三四五六七八九〇零两十]{1,3})\s*月(?:\s*([一二三四五六七八九〇零两十]{1,3})\s*[日号]?)?/g,
+        s = s.replace(/(前-\d{1,13}\s*年)\s*([一二三四五六七八九〇零两十]{1,3})\s*月(?:\s*([一二三四五六七八九〇零两十]{1,3})\s*[日号]?)?/g,
             (all, head, moCn, dayCn) => {
                 const mo = clockCnInt(moCn), dd = dayCn === undefined ? null : clockCnInt(dayCn);
                 if (!Number.isInteger(mo)) return all;
@@ -82,10 +81,8 @@ function clockNormBcText(text) {
 //   v1.193：负数年份 → `-0221-01-02`（符号 + 4 位）
 
 function clockYearStr(y) {
-    const n = Number(y);
-    if (!Number.isFinite(n)) return '';
-    const v = Math.trunc(n);
-    return v < 0 ? '-' + String(Math.abs(v)).padStart(4, '0') : String(v).padStart(4, '0');
+    // v3.50.26：交给 bigdate 的整数实现（≤4 位与 V1 逐字一致：补零到 4 位、负数带 `-`；更长按实际位数）
+    return bigYearStr(y);
 }
 
 function storyDateMs(y, m, d) {
@@ -104,7 +101,7 @@ function storyDateMs(y, m, d) {
 
 function storyDateMsFromStr(s) {
     try {
-        const m = String(s || '').match(/^(-?\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})/);   // v1.193：支持负年份
+        const m = String(s || '').match(/^(-?\d{1,13})[-/.](\d{1,2})[-/.](\d{1,2})/);   // v1.193：支持负年份；v3.50.26：位数放宽
         if (!m) return NaN;
         return storyDateMs(m[1], m[2], m[3]);
     } catch (e) { return NaN; }
@@ -162,7 +159,7 @@ function clockValYear(v) {
 
 function clockYearOf(s) {
     try {
-        const m = String(s == null ? '' : s).trim().match(/^(-?\d{1,4})/);
+        const m = String(s == null ? '' : s).trim().match(/^(-?\d{1,13})/);
         if (!m) return NaN;
         const y = Number(m[1]);
         return clockYearInRange(y) ? y : NaN;
@@ -185,7 +182,7 @@ function clockDateLabel(s) {
 
 function clockMonthDay(v) {
     try {
-        const m = String(v == null ? '' : v).trim().match(/^-?\d{1,4}-(\d{2}-\d{2})/);
+        const m = String(v == null ? '' : v).trim().match(/^-?\d{1,13}-(\d{2}-\d{2})/);
         return m ? m[1] : String(v == null ? '' : v);
     } catch (e) { return ''; }
 }
@@ -199,7 +196,8 @@ function clockMonthDay(v) {
 const CLOCK_JUMP_YEARS_DEFAULT = 50;
 function clockAnomalyJumpYears() { return CLOCK_JUMP_YEARS_DEFAULT; }
 
-const CLOCK_YEAR_MIN = -9999, CLOCK_YEAR_MAX = 9999;
+// v3.50.26：年份上界由 bigdate 的**溢出护栏**决定（不再卡 9999）—— 百万 / 亿年均可解析与比较
+const CLOCK_YEAR_MIN = -BIG_YEAR_MAX, CLOCK_YEAR_MAX = BIG_YEAR_MAX;
 
 const CLOCK_CN_DIG = { '零': 0, '〇': 0, '○': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
 
@@ -210,11 +208,11 @@ const CLOCK_BC_PREFIX_CN = /(?:公元前|西元前|纪元前|元前)\s*([一二�
 const CLOCK_BC_SUFFIX = /([0-9]{1,4}|[一二三四五六七八九〇零两十]{1,4})\s*年?\s*(?:BCE|B\.C\.E\.?|BC|B\.C\.?)(?![A-Za-z])/gi;
 
 const CLOCK_DATE_SCAN = [
-    /(?:前)\s*(-\d{1,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/g,                       // v1.193：公元前221年1月2日（归一后为「前-221年1月2日」）
-    /(?:前)\s*(-\d{1,4})\s*年\s*(?:(\d{1,2})\s*月\s*(?:(\d{1,2})\s*[日号]?)?)?/g,          // v1.193：公元前221年 / 公元前221年1月
-    /(?:前)\s*(-\d{1,4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/g,                          // v1.193：前 221-01-02
+    /(?:前)\s*(-\d{1,13})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/g,                       // v1.193：公元前221年1月2日（归一后为「前-221年1月2日」）
+    /(?:前)\s*(-\d{1,13})\s*年\s*(?:(\d{1,2})\s*月\s*(?:(\d{1,2})\s*[日号]?)?)?/g,          // v1.193：公元前221年 / 公元前221年1月
+    /(?:前)\s*(-\d{1,13})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/g,                          // v1.193：前 221-01-02
     /(?:公元)?\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/g,                       // 1919年11月29日 / 公元1919年11月29日
-    /公元\s*(\d{1,4})\s*年\s*(?:(\d{1,2})\s*月\s*(?:(\d{1,2})\s*[日号]?)?)?/g,               // 公元9年 / 公元99年 / 公元618年6月 / 公元618年6月18日
+    /公元\s*(\d{1,13})\s*年\s*(?:(\d{1,2})\s*月\s*(?:(\d{1,2})\s*[日号]?)?)?/g,               // 公元9年 / 公元99年 / 公元618年6月 / 公元618年6月18日
     /(?:公元)?\s*(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/g,                          // 1919-11-29 / 公元1919-11-29
     /(?:公元)?\s*([一二三四五六七八九〇零两]{1,4})\s*年\s*([一二三四五六七八九〇零两十]{1,3})\s*月\s*([一二三四五六七八九〇零两十]{1,3})\s*[日号]?/g,   // 一九一九年三月一日
     /公元\s*([一二三四五六七八九〇零两十]{1,4})\s*年\s*(?:([一二三四五六七八九〇零两十]{1,3})\s*月\s*(?:([一二三四五六七八九〇零两十]{1,3})\s*[日号]?)?)?/g, // 公元九年 / 公元九九年 / 公元九年三月

@@ -845,7 +845,7 @@ function setSnapshotByPath(s, path, val, opts) {
         const cur = String(snapGetByPath(s, f.g) || '').trim();
         // v1.172：倒挂 / 异常的出生日期允许改写（唯一例外）—— 其余已填字段仍「只填空、不改写」
         const allowOverwrite = !!(o.allowOverwrite && f.p === '身份.出生日期');
-        if (allowOverwrite && !/^-?\d{1,4}-\d{2}-\d{2}$/.test(v)) return { ok: false, changed: false, reason: 'badFormatBirth' };   // v1.193：负年份（公元前）合法
+        if (allowOverwrite && !/^-?\d{1,13}-\d{2}-\d{2}$/.test(v)) return { ok: false, changed: false, reason: 'badFormatBirth' };   // v1.193：负年份（公元前）合法
         if (cur && !allowOverwrite) return { ok: true, changed: false };
         // v1.164：出生日期不得晚于当前剧情日期（未来人 / 穿越者除外）—— 命中即拒写，
         //   交由 applyCharacterRepairResult 之后的 ensureSnapshotBirthDate 按剧情日期重新推算
@@ -1352,9 +1352,9 @@ function correctSnapshotBirthDates(opts) {
 function resumeNowMs() {
     try {
         const direct = clockDateTrim(getStoryNow());
-        if (/^-?\d{1,4}/.test(direct)) { const ms = storyDateMsFromStr(direct); if (Number.isFinite(ms)) return ms; }
+        if (/^-?\d{1,13}/.test(direct)) { const ms = storyDateMsFromStr(direct); if (Number.isFinite(ms)) return ms; }
         const ref = ageAnchorDate();
-        if (/^-?\d{1,4}/.test(String(ref || ''))) { const ms = storyDateMsFromStr(ref); if (Number.isFinite(ms)) return ms; }
+        if (/^-?\d{1,13}/.test(String(ref || ''))) { const ms = storyDateMsFromStr(ref); if (Number.isFinite(ms)) return ms; }
     } catch (e) { /* 忽略 */ }
     return NaN;
 }
@@ -1362,9 +1362,9 @@ function resumeNowMs() {
 function resumeClockDate() {
     try {
         const direct = clockDateTrim(getStoryNow());
-        if (/^-?\d{1,4}/.test(direct)) return direct;
+        if (/^-?\d{1,13}/.test(direct)) return direct;
         const ref = String(ageAnchorDate() || '');
-        if (/^-?\d{1,4}/.test(ref)) return clockDateTrim(ref);
+        if (/^-?\d{1,13}/.test(ref)) return clockDateTrim(ref);
     } catch (e) { /* 忽略 */ }
     return '';
 }

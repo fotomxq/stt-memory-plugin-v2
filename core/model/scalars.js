@@ -185,7 +185,7 @@ function clockDateTrim(v) {
     try {
         const t = String(v == null ? '' : v).trim();
         // v1.193：兼容 `/` 与 `.` 分隔符（AI/历史数据常见混用），统一规范化为 `-`；负年份同样处理
-        const m = t.match(/^(-?\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        const m = t.match(/^(-?\d{1,13})[-/.](\d{1,2})[-/.](\d{1,2})/);
         if (!m) return '';
         return clockYearStr(Number(m[1])) + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
     } catch (e) { return ''; }

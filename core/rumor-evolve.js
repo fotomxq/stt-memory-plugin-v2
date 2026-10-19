@@ -105,7 +105,7 @@ function rumorRoll(seed) {
     } catch (e) { return 0; }
 }
 function rumorStoryDate() {
-    try { const n = getStoryNow(); return (n && /^-?\d{1,4}-\d{2}-\d{2}/.test(String(n))) ? clockDateTrim(n) : ''; } catch (e) { return ''; }
+    try { const n = getStoryNow(); return (n && /^-?\d{1,13}-\d{2}-\d{2}/.test(String(n))) ? clockDateTrim(n) : ''; } catch (e) { return ''; }
 }
 // 剧情天数差（用 v1.188 的剧情日期数学；日期不可解析时返回 0 = 不老化）
 function rumorDayDiff(from, to) {

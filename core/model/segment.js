@@ -21,7 +21,7 @@ function plotSegmentRange(text) {
     const out = { start: '', end: '' };
     try {
         const s = String(text || '');
-        const dates = s.match(/-?\d{1,4}[-/.]\d{1,2}[-/.]\d{1,2}/g);   // v1.193：负年份（公元前）
+        const dates = s.match(/-?\d{1,13}[-/.]\d{1,2}[-/.]\d{1,2}/g);   // v1.193：负年份（公元前）
         if (dates && dates.length) {
             const norm = (d) => { const p = clockDateParts(clockDateTrim(d)); return p ? clockDateStr(p.y, p.m, p.d) : ''; };
             out.start = norm(dates[0]);

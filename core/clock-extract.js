@@ -96,7 +96,7 @@ function extractClockFromHeader(text0) {
             if (!raw || !/[▷►▶▼▽»]/.test(raw)) continue;
             const line = raw.replace(CLOCK_HEADER_MARK, '').trim();
             if (!line) continue;
-            const dm = /(?:公元|前)?\s*(-?\d{1,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/.exec(line);
+            const dm = /(?:公元|前)?\s*(-?\d{1,13})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/.exec(line);
             const daym = /第\s*(\d+)\s*天/.exec(line);
             const rng = /(\d{1,2})\s*[:：]\s*(\d{1,2})\s*(?:->|→|~|～|—|–|至)\s*(\d{1,2})\s*[:：]\s*(\d{1,2})/.exec(line);
             const tm = /(\d{1,2})\s*[:：]\s*(\d{1,2})/.exec(line);

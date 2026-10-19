@@ -20,7 +20,7 @@ function normalizeAtom(e, fallbackFloor) {
         text,
         title: normText(e?.title || '', 40) || atomTitle({ text }),   // 独立标题字段（缺省取正文首段，原子层 title 保持非空）
         type: normText(e?.type || '事件', 20),
-        date: normText(e?.date || (typeof e?.eventTime === 'string' && /^-?\d{1,4}-\d{2}-\d{2}/.test(e.eventTime) ? clockDateTrim(e.eventTime) : ''), 10),
+        date: normText(e?.date || (typeof e?.eventTime === 'string' && /^-?\d{1,13}-\d{2}-\d{2}/.test(e.eventTime) ? clockDateTrim(e.eventTime) : ''), 10),
         time: normText(e?.time || e?.eventTime || '', 30),
         entities: normalizeList(e?.entities),
         locations: normalizeList(e?.locations),

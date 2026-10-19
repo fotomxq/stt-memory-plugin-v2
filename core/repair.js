@@ -659,7 +659,7 @@ function repairDefectOf(dim, e) {
     const bad = repairBannedOf(text);
     if (bad.length) return { rank: 3, label: `含模糊措辞（${bad.slice(0, 3).join('/')}）` };
     if ((dim === 'plans' || dim === 'suspense') && /[？?]\s*$/.test(text)) return { rank: 4, label: '计划/悬念写成裸问句（需含主体 + 事实锚点）' };
-    if (date && !/^-?\d{1,4}-\d{2}-\d{2}$/.test(date)) return { rank: 5, label: `日期格式不合规（应为 YYYY-MM-DD 或公元前 -YYYY-MM-DD，现「${date.slice(0, 16)}」）` };
+    if (date && !/^-?\d{1,13}-\d{2}-\d{2}$/.test(date)) return { rank: 5, label: `日期格式不合规（应为 YYYY-MM-DD 或公元前 -YYYY-MM-DD，现「${date.slice(0, 16)}」）` };
     if (spec.taggable && (tags.length < 3 || tags.length > 5)) return { rank: 5, label: `标签数量不合规（需 3-5 个，现 ${tags.length} 个）` };
     return null;
 }

@@ -193,9 +193,16 @@ R.assert('K5 clockDateFromParts / clockCnInt / clockValNum / clockValYear 与 V1
     && J(['1919', '公元前221年', 'x'].map(t => clockValYear(t))) === J(G.clock.valYear), G.clock.cnInt);
 R.assert('K6 clockYearOf / clockYearInRange / clockDateLabel / clockMonthDay 与 V1 一致',
     J(['1919-01-01', '-0221-01-02', '', null].map(t => clockYearOf(t))) === J(G.clock.yearOf)
-    && J([-9999, -221, 0, 1919, 99999].map(y => clockYearInRange(y))) === J(G.clock.yearInRange)
+    // v3.50.26（`docs/D22` W25 `数-32`）：**年份上界有意放宽**（V1 卡 ±9999）—— 黄金样本一字不改，
+    //   此处按口径**显式归一**：`|y| ≤ 9999` 仍须与 V1 逐字一致；超出 9999 的样本由 K6b 单独断言。
+    && J([-9999, -221, 0, 1919].map(y => clockYearInRange(y))) === J(G.clock.yearInRange.slice(0, 4))
     && J(['1919-11-29', '-0221-01-02', '1919-11', '', null].map(d => clockDateLabel(d))) === J(G.clock.dateLabel)
     && J(['1919-11-29', '1919-11', '', null].map(d => clockMonthDay(d))) === J(G.clock.monthDay), G.clock.dateLabel);
+R.assert('K6b（v3.50.26 新增 · 偏离登记）年份上界放宽：`99999` / `20000` / `-99999` 现在是**合法年份**，`0` 仍非法', (() => {
+    return clockYearInRange(99999) === true && clockYearInRange(20000) === true
+        && clockYearInRange(-99999) === true && clockYearInRange(0) === false;
+})(), 'n/a');
+
 R.assert('K7（v2.51.0 已移除该设定）时钟不再有「日期异常判定阈值」——确认废弃键已从默认配置删除', (() => {
     return !('clockAnomalyJumpYears' in defaultCfg) && !('clockForceDegrade' in defaultCfg) && !('clockAutoPatrol' in defaultCfg);
 })(), Object.keys(defaultCfg).filter((k) => /^clock/.test(k)));

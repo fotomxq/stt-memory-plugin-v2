@@ -255,7 +255,7 @@ function mergeDelta(delta0, floorRange) {
                 const fe0 = Number(fb && fb.end), fs0 = Number(fb && fb.start);
                 if (Number.isInteger(fe0) && fe0 >= 0) n.floorEnd = Math.max(Number(n.floorEnd) || 0, fe0);
                 if (Number.isInteger(fs0) && fs0 >= 0) n.floorStart = Math.max(Number(n.floorStart) || 0, fs0);
-                if (!n.seenDate && storyNow && /^-?\d{1,4}-\d{2}-\d{2}/.test(String(storyNow))) n.seenDate = clockDateTrim(storyNow);
+                if (!n.seenDate && storyNow && /^-?\d{1,13}-\d{2}-\d{2}/.test(String(storyNow))) n.seenDate = clockDateTrim(storyNow);
                 if (Number(n.qty) === 0) {
                     // v1.104：数量为 0 → 该物品自动删除（含历史遗留同名条目）
                     state.items = (state.items || []).filter(x => x.id !== n.id && x.name !== n.name);
@@ -286,7 +286,7 @@ function mergeDelta(delta0, floorRange) {
                 const fe0 = Number(fb && fb.end), fs0 = Number(fb && fb.start);
                 if (Number.isInteger(fe0) && fe0 >= 0) n.floorEnd = Math.max(Number(n.floorEnd) || 0, fe0);
                 if (Number.isInteger(fs0) && fs0 >= 0) n.floorStart = Math.max(Number(n.floorStart) || 0, fs0);
-                if (!n.date && storyNow && /^-?\d{1,4}-\d{2}-\d{2}/.test(String(storyNow))) n.date = clockDateTrim(storyNow);
+                if (!n.date && storyNow && /^-?\d{1,13}-\d{2}-\d{2}/.test(String(storyNow))) n.date = clockDateTrim(storyNow);
                 const key = (x) => `${String((x && x.owner) || '').replace(/\s+/g, '').toLowerCase()}|${String((x && x.name) || '').replace(/\s+/g, '').toLowerCase()}`;
                 let i = state.currencies.findIndex(x => x.id === n.id);
                 if (i < 0) i = state.currencies.findIndex(x => key(x) === key(n));
@@ -663,7 +663,7 @@ function rumorTickState() {
 // 确定性掷骰：同一 seed 恒返回同一 0~1（跨端一致；测试可复现）
 
 function rumorStoryDate() {
-    try { const n = getStoryNow(); return (n && /^-?\d{1,4}-\d{2}-\d{2}/.test(String(n))) ? clockDateTrim(n) : ''; } catch (e) { return ''; }
+    try { const n = getStoryNow(); return (n && /^-?\d{1,13}-\d{2}-\d{2}/.test(String(n))) ? clockDateTrim(n) : ''; } catch (e) { return ''; }
 }
 // 剧情天数差（用 v1.188 的剧情日期数学；日期不可解析时返回 0 = 不老化）
 
