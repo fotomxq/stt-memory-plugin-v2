@@ -74,6 +74,8 @@ import { ATTRIBUTION_FIELD, LAST_SEEN_DATE_FIELD, LAST_SEEN_FLOOR_FIELD, attribu
 import { isShellEntry, shellReport, SHELL_MIN_CHARS, DIM_FIELDS as SHELL_DIM_FIELDS } from './shell-guard.js';
 import { reservedRangeIssues } from './reserved-fields.js';
 import { stateSlotReport } from './state-slots.js';
+// v3.50.28（`docs/D22` §4.28 W28 `技-28`）：全量扫描节流与可观测（体检是一次全库扫描）
+import { scanBegin, scanEnd } from './scan-throttle.js';
 import { relAnchorGaps } from './rel-maint.js';
 import { planAgingReport, PLAN_AGING_STALE_DAYS } from './plan-aging.js';
 // v3.45.5（`docs/D22` W4 `技-25` ①，设计稿 `docs/D26` §8）：**履历**体检读数 ——
@@ -160,6 +162,9 @@ function getByPath(o, path) {
 export const TOMBSTONE_RATIO_SPIKE = 5;
 
 export function dataHealthReport(st, opts) {
+    // v3.50.28（W28 `技-28`）：体检 = 全库扫描 → 走同一套节流与读数（`force` 供面板显式「体检」动作放行）
+    const _scanGate = (() => { try { return scanBegin('dataHealth', { force: !!(opts && opts.force) }); } catch (e) { return { go: false, runId: 0, reason: 'error', conf: { capItems: 50000 } }; } })();
+    const _scanT0 = Date.now();
     const s = st || kernelState || {};
     const o = opts || {};
     const cap = Math.max(1, Math.min(Number(o.cap) || HEALTH_FINDINGS_CAP, 5000));
@@ -529,6 +534,19 @@ export function dataHealthReport(st, opts) {
         }
     } catch (e) { /* 忽略：校验失败不影响体检主体 */ }
 
+    // v3.50.28（W28 `技-28`）：如实落账（条目 / 维度 / 耗时 / 命中；不含正文）
+    try {
+        if (_scanGate.go) {
+            const scannedItems = Number((out.scanned && out.scanned.items) || 0);
+            const dimsN = Number((out.scanned && out.scanned.dims) || 0);
+            scanEnd('dataHealth', _scanGate.runId, {
+                items: scannedItems, dims: dimsN, ms: Date.now() - _scanT0,
+                hits: Object.keys(out.counts || {}).length,
+                remaining: Math.max(0, scannedItems - Number((_scanGate.conf && _scanGate.conf.capItems) || 50000)),
+            });
+        }
+    } catch (e) { /* 观测失败不影响体检 */ }
+    out.scanThrottled = _scanGate.go ? '' : _scanGate.reason;
     return out;
 }
 

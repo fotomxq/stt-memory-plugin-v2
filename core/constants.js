@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.50.27';   // v3.50.27（用户指定）：日期字段保存截断修复（负年份 11 字符被 normText(…,10) 切坏）
+export const VERSION = '3.50.28';   // v3.50.28（用户指定）：W5 技-28 全量操作节流与可观测 + 技-29 A案对账收口
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

@@ -27,6 +27,7 @@ import { relRepairMaint, relMaintSummary, relMaintCounts, relMaintTouched, logRe
 import { extractJsonObject } from './util.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 import { PROMPT_TEMPLATES_V2 } from './config.js';
+import { scanBegin, scanEnd } from './scan-throttle.js';   // v3.50.28（W28 技-28）：修复扫描的节流与读数
 
 // ---------- 注入钩子（宿主接线：楼层正文哈希） ----------
 // 内核不得直接读宿主聊天（`check-core-purity`）：楼层面板哈希经钩子注入，默认返回空串
@@ -445,6 +446,8 @@ export function repairStepsSummary(steps) {
 async function runRepairMech(opts) {
     const o = opts || {};
     const t0 = Date.now();
+    // v3.50.28（W28 `技-28`）：修复 = 全库扫描 → 同一套节流与读数（`force` 供用户显式「修复」动作放行）
+    const _scanGate = (() => { try { return scanBegin('repairScan', { force: !!o.force }); } catch (e) { return { go: false, runId: 0, reason: 'error', conf: { capItems: 50000 } }; } })();
     const before = repairTotalCount();
     // `技-37`（U184）：九步逐步留痕 —— 每步 `{step, ok, ms, err}`；抛错的步**不中断**后续步
     const steps = [];
@@ -589,7 +592,15 @@ async function runRepairMech(opts) {
         notify('success', '机械清理完成（零 AI）',
             `机械去重 ${stage1.merged} 条 · 垃圾/残留清理 ${stage1.deleted} 条 · 遗忘清扫 ${swept} 条 · 条数裁剪 ${cut} 条${relTxt}；${report}`);
     }
+    // v3.50.28（W28 `技-28`）：如实落账（扫描条目 / 跨维度数 / 耗时 / 修复命中；不含正文）
+    try {
+        if (_scanGate.go) {
+            const scanned = Number(after && after.total != null ? after.total : (before && before.total) || 0);
+            scanEnd('repairScan', _scanGate.runId, { items: scanned, dims: 0, ms: Date.now() - t0, hits: Number(fixed) || 0, remaining: 0 });
+        }
+    } catch (e) { /* 观测失败不影响修复 */ }
     return { before, after, stage1, sweep: sweepRes, caps: capRes, pruned, decay, relMaint, report, fixed, ms: Date.now() - t0,
+        scanThrottled: _scanGate.go ? '' : _scanGate.reason,
         // v3.45.9（`docs/D22` W8 `技-37` / `docs/D17` U184）：**九步逐步留痕**
         steps: steps, stepsSummary: repairStepsSummary(steps),
         // v3.43.0（`docs/D22` `应-18`）：第 ① 段第 8 / 9 步的**跳过原因**（`''` = 已接线）—— 与 `planSuspSkipped` 同款
