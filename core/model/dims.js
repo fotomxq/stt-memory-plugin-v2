@@ -8,6 +8,8 @@ import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { splitListText, dimCap, mergeTags, makeExtra, normStrList, normSteps, normHistory, normIdList, normPhase, normClues, scenePathArr, toChineseField, toChineseCategory, nsfwField } from './scalars.js';
 import { cfg } from './runtime.js';
 import { normalizeRelRefList } from './rel.js';
+// v3.50.27（`数-39`）：日期字段长度上限（`-9999-01-01` 是 11 字符，10 字符上限会截断末位）
+import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 
 function normalizeCurrentState(e) {
     const subject = normText(e?.subject, 40);
@@ -25,7 +27,7 @@ function normalizeCurrentState(e) {
         floorStart: Number.isInteger(fs) && fs >= 0 ? fs : 0,
         floorEnd: Number.isInteger(fe) && fe >= 0 ? fe : 0,
         // 最后更新日期/时间（剧情时间；缺失时用现实时间）
-        updatedAt: normText(e?.updatedAt, 10),
+        updatedAt: normText(e?.updatedAt, BIG_DATE_FIELD_MAX),
         updatedAtTime: normText(e?.updatedAtTime, 30),
         history: Array.isArray(e?.history) ? e.history.filter(h => h && h.value).map(h => ({ value: String(h.value).slice(0, 200), floorStart: Math.max(0, Number(h.floorStart) || 0), floorEnd: Math.max(0, Number(h.floorEnd) || 0) })) : [],
         uses: Number(e?.uses) || 0,
@@ -46,7 +48,7 @@ function normalizeMemory(e) {
     if (!title && !content) return null;
     return {
         id: String(e?.id || `mem_${hashText(owner + title + content)}`),
-        owner, date: normText(e?.date || '', 10), title, content,
+        owner, date: normText(e?.date || '', BIG_DATE_FIELD_MAX), title, content,
         tags: mergeTags(e?.tags, e?.keywords),   // tags 统一
         keywords: [],
         memCategory: toChineseCategory(normText(e?.category || '一般', 20)),   // 记忆分类中文兜底（原子层 category 已被类目占用）
@@ -72,7 +74,7 @@ function normalizeConcept(e) {
         id: String(e?.id || `con_${hashText(name + content)}`),
         name, content,
         source: normText(e?.source || e?.origin || '', 40),
-        date: normText(e?.date || '', 10),
+        date: normText(e?.date || '', BIG_DATE_FIELD_MAX),
         tags: mergeTags(e?.tags, e?.keywords),   // tags 统一
         keywords: [],
         importance: clamp(Number(e?.importance) || 0.5, 0, 1),
@@ -98,7 +100,7 @@ function normalizeParallel(e) {
         const text = dimCap('parallels', normText(e.text || e.content || e.正文 || e.内容 || e.desc || '', 2000));
         const title = normText(e.title || e.标题 || text.slice(0, 30) || '', 60);
         const type = normText(e.type || '', 20);
-        const date = normText(e.date || '', 10);
+        const date = normText(e.date || '', BIG_DATE_FIELD_MAX);
         const time = normText(e.time || '', 20);
         const gua = normText(e.gua || e.卦象 || '', 80);
         const causalLine = normText(e.causalLine || e.因果线 || '', 600);
@@ -154,7 +156,7 @@ function normalizeItem(e) {
         // 物品时间戳（同名单/多位置时取最新；由 AI 摘要落库时按楼层/剧情日期打标）
         floorStart: Number.isInteger(fs) && fs > 0 ? fs : 0,
         floorEnd: Number.isInteger(fe) && fe > 0 ? fe : 0,
-        seenDate: normText(e?.seenDate || e?.date, 10),
+        seenDate: normText(e?.seenDate || e?.date, BIG_DATE_FIELD_MAX),
         // 物品与记忆同规格携带 标签（触发关键词）
         tags: mergeTags(Array.isArray(e?.tags) ? e?.tags : splitListText(e?.tags), e?.keywords),   // 兼容数组与逗号文本
         keywords: [],
@@ -183,7 +185,7 @@ function normalizePlan(e) {
         content,
         // 计划补原子层字段 —— 标题/时间/角色 与情节同级（注入与清单显式展示；无标题留空由展示层兜底）
         title: normText(e?.title || '', 60),
-        date: normText(e?.date || '', 10),
+        date: normText(e?.date || '', BIG_DATE_FIELD_MAX),
         time: normText(e?.time || '', 20),
         characters: normalizeList(e?.characters || e?.entities || []),
         createdTime: normText(e?.createdTime, 40),
@@ -230,7 +232,7 @@ function normalizeSuspense(e) {
         content,
         // 悬念补原子层字段 —— 标题/时间/角色 与情节同级
         title: normText(e?.title || '', 60),
-        date: normText(e?.date || '', 10),
+        date: normText(e?.date || '', BIG_DATE_FIELD_MAX),
         time: normText(e?.time || '', 20),
         characters: normalizeList(e?.characters || e?.entities || []),
         createdTime: normText(e?.createdTime, 40),

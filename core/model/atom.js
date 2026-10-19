@@ -5,6 +5,7 @@
 // 一致性由 tests/unit/model-golden.test.js 使用 V1 源码切片产出的黄金样本强制校验。
 // ============================================================
 import { normText, normalizeList, clamp, hashText } from '../util.js';
+import { BIG_DATE_FIELD_MAX } from './bigdate.js';   // v3.50.27（数-39）：日期字段长度上限
 import { dimCap, atomTitle, mergeTags, makeExtra, clockDateTrim, nsfwField } from './scalars.js';
 
 function normalizeAtom(e, fallbackFloor) {
@@ -20,7 +21,7 @@ function normalizeAtom(e, fallbackFloor) {
         text,
         title: normText(e?.title || '', 40) || atomTitle({ text }),   // 独立标题字段（缺省取正文首段，原子层 title 保持非空）
         type: normText(e?.type || '事件', 20),
-        date: normText(e?.date || (typeof e?.eventTime === 'string' && /^-?\d{1,13}-\d{2}-\d{2}/.test(e.eventTime) ? clockDateTrim(e.eventTime) : ''), 10),
+        date: normText(e?.date || (typeof e?.eventTime === 'string' && /^-?\d{1,13}-\d{2}-\d{2}/.test(e.eventTime) ? clockDateTrim(e.eventTime) : ''), BIG_DATE_FIELD_MAX),
         time: normText(e?.time || e?.eventTime || '', 30),
         entities: normalizeList(e?.entities),
         locations: normalizeList(e?.locations),

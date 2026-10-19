@@ -79,12 +79,33 @@ R.assert('N1b v3.45.5 新增面确实存在（归一 ≠ 删字段）：有姓�
         && live.every((s) => Object.keys(s).indexOf('resume') >= 0);
 }, normRaw.map((s) => [s && s.name, s && Array.isArray(s.resume) ? s.resume.length : 'NOT-ARRAY', s && s.identity && s.identity.canon]));
 R.assert('N2 年龄信息 snapshotAgeInfo（出生日期精度 / 剧情日期锚点 / 已去世锁定）',
-    cmp(G.ageInfo, normSnaps.map(x => snapshotAgeInfo(x))).ok === true, cmp(G.ageInfo, normSnaps.map(x => snapshotAgeInfo(x))));
+    (() => {
+        // v3.50.27（`docs/D22` W27 `数-39`）：**V1 黄金样本里 `-0221-01-02` 被截成 `-0221-01-0`** ——
+        //   那正是本轮修复的「日期字段 `normText(…, 10)` 截断负年份」缺陷（11 字符 → 10 字符）。
+        //   黄金样本**一字不改**；这里把第 4 条（公元前）按修复后的正确口径**显式归一**，由 N2b 单独断言。
+        const want = JSON.parse(JSON.stringify(G.ageInfo));
+        want[3] = { age: '2140', birth: '-0221-01-02', anchor: '1920-03-15', basis: 'story', precision: 'day', locked: false };
+        return cmp(want, normSnaps.map(x => snapshotAgeInfo(x))).ok === true;
+    })(), cmp(G.ageInfo, normSnaps.map(x => snapshotAgeInfo(x))));
+R.assert('N2b（v3.50.27 新增 · 偏离登记）公元前出生日期**不再被截断**：`-0221-01-02` 完整保留并按历史纪年算出 2140 岁（V1 因截断而算不出）', (() => {
+    const info = normSnaps.map(x => snapshotAgeInfo(x))[3] || {};
+    return info.birth === '-0221-01-02' && info.age === '2140' && info.basis === 'story' && info.precision === 'day';
+})(), 'n/a');
 R.assert('N3 锁定判定 snapshotAgeIsLocked', J(normSnaps.map(x => snapshotAgeIsLocked(x))) === J(G.ageLocked), normSnaps.map(x => snapshotAgeIsLocked(x)));
 R.assert('N4 出生日期异常检测（含标签 / 短标签）', (() => {
+    // v3.50.27（`数-39`）：V1 之所以把公元前那条判成 `bad-format`，是因为它的日期被截成 `-0221-01-0`（非法）；
+    //   截断修复后该日期**合法**（公元前出生另有 `overage` / `age-extreme` 豁免）→ 第 4 条应为**无异常**。
+    //   黄金样本一字不改，此处按修复后口径显式归一（第 4 条），由 N4b 单独断言。
+    const want = JSON.parse(JSON.stringify(G.birthAnomaly));
+    want[3] = { a: '', label: '', short: '' };
     const got = normSnaps.map(x => ({ a: snapshotBirthAnomaly(x), label: snapshotBirthAnomalyLabel(x), short: snapshotBirthAnomalyShort(x) }));
-    return J(got) === J(G.birthAnomaly);
+    return J(got) === J(want);
 })(), normSnaps.map(x => snapshotBirthAnomaly(x)));
+R.assert('N4b（v3.50.27 新增 · 偏离登记）公元前日期不再误判 `bad-format`；真正的坏格式仍判 `bad-format`', (() => {
+    const bc = normSnaps.map(x => snapshotBirthAnomaly(x))[3];
+    const bad = snapshotBirthAnomaly({ id: 'x', name: 'x', identity: { birthDate: '约1890年' }, relations: [], resume: [] });
+    return bc === '' && bad === 'bad-format';
+})(), 'n/a');
 R.assert('N5 外貌聚合 snapshotAppearanceText', J(I.SNAPSHOTS.map(x => snapshotAppearanceText(x))) === J(G.appearanceText), I.SNAPSHOTS.map(x => snapshotAppearanceText(x)));
 R.assert('N6 出生日期解析与精度（年 / 年-月 / 年-月-日 / 公元前 / 空）', (() => {
     const got = ['1900-05-20', '1890-01', '1905-12-31', '-0221-01-02', '', null].map(x => ({ v: x, p: parseBirthDateParts(x), prec: birthDatePrecision(x) }));

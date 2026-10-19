@@ -6,6 +6,7 @@
 import { normText, normalizeList, clamp, hashText } from '../util.js';
 import { cfg, defaultCfg, identityView, saveCfg, state } from './runtime.js';
 import { dimCap, makeExtra, mergeTags, normalizeTrackedRoles, splitListText } from './scalars.js';
+import { BIG_DATE_FIELD_MAX } from './bigdate.js';   // v3.50.27（数-39）：日期字段长度上限
 
 const MONEY_TIERS = [
     { v: 1e20, s: '垓' }, { v: 1e16, s: '京' }, { v: 1e12, s: '兆' }, { v: 1e8, s: '亿' }, { v: 1e4, s: '万' },
@@ -58,7 +59,7 @@ function normalizeMoneyFlow(raw) {
         const sign = isExpense ? -1 : (isIncome ? 1 : (amt < 0 ? -1 : 1));
         const val = Math.abs(amt) * sign;
         const note = dimCap('currencies', normText(raw['说明'] !== undefined ? raw['说明'] : (raw.note !== undefined ? raw.note : raw.desc), 80));
-        const date = normText(raw['日期'] !== undefined ? raw['日期'] : raw.date, 10);
+        const date = normText(raw['日期'] !== undefined ? raw['日期'] : raw.date, BIG_DATE_FIELD_MAX);
         return { date, delta: val, note };
     } catch (e) { return null; }
 }
@@ -82,7 +83,7 @@ function normalizeMoneyHistory(raw) {
                 const d = Number(x && x.delta);
                 if (!Number.isFinite(d) || d === 0) return null;
                 return {
-                    date: normText(x.date !== undefined ? x.date : x['日期'], 10),
+                    date: normText(x.date !== undefined ? x.date : x['日期'], BIG_DATE_FIELD_MAX),
                     delta: d,
                     note: dimCap('currencies', normText(x.note !== undefined ? x.note : x['说明'], 80)),
                 };
@@ -98,7 +99,7 @@ function normalizeMoneyHistory(raw) {
                 try {
                     const d = Number(x && (x['数额'] !== undefined ? x['数额'] : x.amount));
                     if (!Number.isFinite(d) || d === 0) continue;
-                    out.push({ date: normText(x.date || x['日期'], 10), delta: d, note: dimCap('currencies', normText(x.note || x['说明'], 80)) });
+                    out.push({ date: normText(x.date || x['日期'], BIG_DATE_FIELD_MAX), delta: d, note: dimCap('currencies', normText(x.note || x['说明'], 80)) });
                 } catch (e) { /* 忽略：单条抢救失败不影响其余 */ }
             }
         }
@@ -126,7 +127,7 @@ function normalizeCurrency(e) {
         amount: Number.isFinite(Number(amtRaw)) ? Number(amtRaw) : 0,
         note: dimCap('currencies', normText(e?.note || e?.['备注'] || e?.desc, 200)),
         history: normalizeMoneyHistory(e?.history || e?.['收支'] || e?.flows),
-        date: normText(e?.date || e?.seenDate, 10),
+        date: normText(e?.date || e?.seenDate, BIG_DATE_FIELD_MAX),
         uses: Number(e?.uses) || 0,
         floorStart: Number.isInteger(fs) && fs > 0 ? fs : 0,
         floorEnd: Number.isInteger(fe) && fe > 0 ? fe : 0,
