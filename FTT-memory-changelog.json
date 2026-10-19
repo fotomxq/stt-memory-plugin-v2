@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.27",
+  "version": "3.50.28",
   "updatedAt": "2026-10-19",
   "generatedAt": "2026-10-19",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.28",
+      "date": "2026-10-19",
+      "title": "W5 技-28 全量操作节流与可观测 + 技-29 删除口径 A 案对账收口",
+      "points": [
+        "登记：设计稿 docs/D48（技-28 + 技-29，规格权威出处 docs/D28 §7）｜ docs/D17 U257 / U258 ｜ 批次档 docs/history/…",
+        "接线四处：nsfwScan（NSFW 全库扫描）· dataHealth（体检）· repairScan（修复）· relations（关系派生）。",
+        "只读出口：桥方法 ftt.scanStats（桥方法数 61 → 62），已登记 core/debug-catalog.js#BRIDGE_FTT 与 debug-bridge#…"
+      ]
+    },
     {
       "version": "3.50.27",
       "date": "2026-10-19",

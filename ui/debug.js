@@ -86,6 +86,7 @@ import { fileTransportReadAuto } from '../adapters/file-transport.js';
 import { storageHash } from '../core/envelope.js';
 // v3.0.23（用户要求「任何从服务端、本地、内存读取数据等的行为，都要详细记录统计、时间等信息到日志」）：读取台账区块
 import { readLedgerStats, readLedgerLines, readLedgerSummaryText, resetReadLedger, READ_SRC_LABEL } from '../core/read-ledger.js';
+import { scanStats } from '../core/scan-throttle.js';   // v3.50.28（W28 技-28）：全量操作节流与可观测的只读取数
 
 const esc = (v) => escHtml(v == null ? '' : v);
 /** v2.42.0：时间线类别中文名 */
@@ -757,6 +758,9 @@ export function buildBridgeMethods() {
     T['ftt.dataHealthText'] = safe(() => dataHealthText(dataHealthReport()));
     // v3.50.1（`docs/D22` W4 `数-16`）：卫生面单列一行（四项计数；没有卫生项时返回空串）
     T['ftt.dataHealthHygiene'] = safe(() => dataHealthHygieneText(dataHealthReport()));
+    // v3.50.28（`docs/D22` W28 `技-28`）：**全量操作节流与可观测**的只读取数 —— 逐操作的扫描条目数 / 跨维度数 /
+    //   耗时 / 命中 / 分批留痕 / 距上次多久 / 是否到期（**不含正文**；与 `数-31` 的只读读数同口径）
+    T['ftt.scanStats'] = safe(() => scanStats());
     // v3.15.1（闪退取证）：**原生写队列**诊断 —— 队列计数 / 历史峰值并发（应恒为 1）/ 最近一次原生写的标签与耗时。
     //   用途：真机核对「是否还有并发写」，以及崩溃前最后一次原生写是什么、花了多久。
     T['ftt.writeStats'] = safe(() => ttWriteStats());
@@ -1365,6 +1369,7 @@ const BRIDGE_METHOD_DOCS = Object.freeze({
     'ftt.dataHealth': { desc: '数据体检报告（逐条 finding）', params: '{cap?}' },
     'ftt.dataHealthText': { desc: '数据体检的人读文本', params: '' },
     'ftt.dataHealthHygiene': { desc: '数据**卫生面**的人读文本（`数-16` 四项：归属缺失 / 失锚关联 / 空壳 / 墓碑比；无卫生项时为空串）', params: '' },
+    'ftt.scanStats': { desc: '**全量操作节流与可观测**（`技-28`）：逐操作的扫描条目数 / 跨维度数 / 耗时 / 命中 / 分批留痕 / 距上次多久 / 是否到期（不含正文）', params: '' },
     'ftt.loadDiag': { desc: '载入链路诊断（内存/本机缓冲/服务端文件/日志并排 + 一致性读数 + 服务端载入基线）', params: '' },
     // v3.46.0（W9 数-31）：本次保存的物理写清单（通道/次数/字节/跳过原因；环形最近 5 次）
     'ftt.writeLedger': { desc: '本次保存的物理写清单（逐通道 次数 / 字节 / 跳过原因；只读）', params: '' },

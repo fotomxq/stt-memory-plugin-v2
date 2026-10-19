@@ -31,6 +31,7 @@
 import { state, cfg } from './model/runtime.js';
 import { DIMENSIONS } from './constants.js';
 import { relRef, relRefKey, relationId, relTypeSymmetric, REL_TYPES, relTypeKeys } from './model/relation.js';
+import { scanBegin, scanEnd } from './scan-throttle.js';   // v3.50.28（W28 技-28）：关系派生的节流与读数
 
 const arr = (v) => (Array.isArray(v) ? v : []);
 const str = (v) => String(v == null ? '' : v).trim();
@@ -94,6 +95,9 @@ function sceneIndex() {
  */
 export function deriveRelations(opts) {
     const o = opts || {};
+    // v3.50.28（W28 `技-28`）：关系派生 = 全库扫描 → 同一套节流与读数
+    const _scanGate = (() => { try { return scanBegin('relations', { force: !!o.force }); } catch (e) { return { go: false, runId: 0, reason: 'error', conf: { capItems: 20000 } }; } })();
+    const _scanT0 = Date.now();
     const max = Math.max(1, Number(o.max) || 2000);
     const linksOff = !relationLayerOn();
     const map = new Map();          // id → edge（去重：同一关系只留一条）
@@ -258,7 +262,13 @@ export function deriveRelations(opts) {
     });
     let truncated = false;
     if (edges.length > max) { edges = edges.slice(0, max); truncated = true; }
-    return { edges, truncated, linksOff, scanned: scan.n };
+    // v3.50.28（W28 `技-28`）：如实落账（扫描条目 / 耗时 / 派生边数；`truncated` 即「余量未处理」的事实）
+    try {
+        if (_scanGate.go) {
+            scanEnd('relations', _scanGate.runId, { items: scan.n, dims: 0, ms: Date.now() - _scanT0, hits: edges.length, remaining: truncated ? Math.max(0, scan.n) : 0 });
+        }
+    } catch (e) { /* 观测失败不影响派生 */ }
+    return { edges, truncated, linksOff, scanned: scan.n, throttled: _scanGate.go ? '' : _scanGate.reason };
 }
 /** 来源白名单（避免派生器造出词表外的 source） */
 const REL_SYNC = { mech: 'mech', manual: 'manual', ai: 'ai', inferred: 'inferred' };

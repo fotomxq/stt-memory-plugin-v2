@@ -270,6 +270,7 @@
     "feed:conceptRepairMaxClusters",
     "feed:conceptRepairMaxItems",
     "feed:conceptRepairSim",
+    "feed:constraintCheckEnabled",
     "feed:currencyMergeEnabled",
     "feed:currencyMergeMaxItems",
     "feed:currencyMergeSumAmount",
@@ -289,6 +290,10 @@
     "feed:memoryRepairMaxClusters",
     "feed:memoryRepairMaxItems",
     "feed:memoryRepairSim",
+    "feed:repairAggEnabled",
+    "feed:repairAggMaxChars",
+    "feed:repairAggMaxDomains",
+    "feed:repairAggMaxItems",
     "feed:repairAutoAi",
     "feed:repairCharacterBatch",
     "feed:repairCharacterMinSize",
@@ -303,6 +308,7 @@
     "feed:resumeBatchEnabled",
     "feed:resumeBatchMaxRoles",
     "feed:resumeBatchMemoryPerRole",
+    "feed:sceneRepairMaxItems",
     "feed:snapshotResumeCanonFill",
     "feed:snapshotResumeEnabled",
     "feed:snapshotResumeImmune",
@@ -419,6 +425,7 @@
     "conceptRepairMaxClusters",
     "conceptRepairMaxItems",
     "conceptRepairSim",
+    "constraintCheckEnabled",
     "currencyDynamicEnabled",
     "currencyEnabled",
     "currencyMergeEnabled",
@@ -535,6 +542,10 @@
     "relLinkPresenceInfer",
     "relLinkToWorldbook",
     "relOrphanAction",
+    "repairAggEnabled",
+    "repairAggMaxChars",
+    "repairAggMaxDomains",
+    "repairAggMaxItems",
     "repairAutoAi",
     "repairCharacterBatch",
     "repairCharacterMinSize",
@@ -566,6 +577,7 @@
     "rumorMediaLifeDays",
     "rumorParallelLinkChance",
     "rumorParallelLinkSim",
+    "sceneRepairMaxItems",
     "shellGuardEnabled",
     "snapshotResumeCanonFill",
     "snapshotResumeEnabled",
@@ -667,7 +679,7 @@
     "suspense"
   ],
   "bridge": [
-    "count:61"
+    "count:62"
   ],
   "i18n": [
     "FTT记忆组件 V2",

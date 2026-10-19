@@ -29,6 +29,8 @@ import { cfg, state, saveState, notifyHooks, dbgLog } from './model/runtime.js';
 import { PROMPT_TEMPLATES_V2, normalizeDeltaKeys, KIND_MAP } from './config.js';
 import { extractJsonObject } from './util.js';
 import { atomIsHidden } from './merge.js';
+// v3.50.28（`docs/D22` §4.28 W28 `技-28`）：**全量扫描节流 + 可观测**（最短/最大间隔、扫描量/耗时/命中/分批留痕）
+import { scanBegin, scanEnd } from './scan-throttle.js';
 import { aiCallText, aiBusy } from './ai-hooks.js';
 // v3.8.0（用户要求）：**NSFW 等级留档**（无/弱/强）—— 判级 / 打标（只升不降）/ 全库补档
 import {
@@ -816,6 +818,9 @@ function nsfwFixedReplace(opts) {
 function nsfwScan(opts) {
     const o = opts || {};
     const dims = (o.dims && o.dims.length) ? o.dims : Object.keys(NSFW_FIELD_MAP);
+    // v3.50.28（W28 `技-28`）：节流闸门 —— 用户显式弱化动作可 `force`；后台重复发起按最短间隔拒绝（调用方按「跳过」降级）
+    const gate = scanBegin('nsfwScan', { force: !!o.force });
+    const t0 = Date.now();
     const items = [];
     const byDim = {};
     let scannedItems = 0, scannedFields = 0;
@@ -841,7 +846,16 @@ function nsfwScan(opts) {
         }
         items.sort((a, b) => (b.hits.length - a.hits.length) || String(a.dim).localeCompare(String(b.dim)));
     } catch (e) { /* 忽略 */ }
-    return { items, total: items.length, byDim, scannedItems, scannedFields };
+    // v3.50.28（W28 `技-28`）：如实落账（条目 / 维度 / 耗时 / 命中；不含正文）；超单次上限 → 标「需分批」
+    try {
+        if (gate.go) {
+            scanEnd('nsfwScan', gate.runId, {
+                items: scannedItems, dims: dims.length, ms: Date.now() - t0, hits: items.length,
+                remaining: Math.max(0, Number(items.length) - Number(gate.conf.capItems)),
+            });
+        }
+    } catch (e) { /* 观测失败不影响扫描 */ }
+    return { items, total: items.length, byDim, scannedItems, scannedFields, throttled: gate.go ? '' : gate.reason };
 }
 /** 打包本批（默认 12 条；命中关键词多者优先） */
 function nsfwSoftenPack(opts) {

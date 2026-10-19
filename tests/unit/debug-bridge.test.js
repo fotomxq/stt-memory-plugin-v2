@@ -147,6 +147,7 @@ function useTauriTavern(withDev = true) {
                 'ftt.perf', 'ftt.perfBaseline', 'ftt.perfJank', 'ftt.perfTargets',
                 'ftt.plotScope', 'ftt.probe',
                 'ftt.readLedgerText', 'ftt.readonly', 'ftt.reads',                          // v3.45.4（W10 技-41 ⑥）：+只读清单（与白名单同源，清空型动作永不进桥）
+                'ftt.scanStats',                                             // v3.50.28（W28 技-28）：+全量操作节流与可观测
                 'ftt.search', 'ftt.snapshot', 'ftt.stateSize', 'ftt.syncLog',              // v3.25.0：+搜索 / 楼层窗口 / 同步日志
                 'ftt.tokenCost',                                             // v3.42.0：AI 用量与花费账本（只读；与设定 → API 同源）
                 'ftt.trace', 'ftt.traceStats',
