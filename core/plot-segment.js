@@ -92,6 +92,21 @@ function plotSegmentMaxBatchesDefault() {
  *   为什么：分段总结是**归档**动作，一旦把"刚发生的剧情"也归档掉，用户回头看不到最近发生了什么。
  * @returns {number} 至少 10，最多 200（超出则视为用户确有需要）
  */
+/**
+ * v3.50.31（用户要求「情节的前 10 条禁止被分段总结」）：**头部保留窗口** —— 剧情时间最早的前 N 条情节
+ *   一律不进分段总结（也不允许手动勾选强行纳入）。
+ *
+ *   为什么需要：分段总结会把多条情节**压成概述**，而开篇前几条往往承载「世界设定 / 主角来历 / 关键人物初登场」，
+ *   一旦被压缩成一句概述，后续注入与 AI 推理就再也拿不到原始细节（且分段段落**只增不减**、不回写情节本体）。
+ *   保留窗口 = 让开篇保持「逐条可见」，与尾部保留窗口（最新 N 条不进池，等后续情节凑满）对称。
+ *
+ *   口径：按 `plotSegmentAtomList()` 的**排序结果**取前 N 条（该排序 = 剧情时间升序；无日期的条目排在**最前**，
+ *   见 `core/recall.js#atomTimeCmp`）—— 与切批用的是同一个列表，故「前 10 条」没有第二套定义。
+ */
+const PLOT_SEGMENT_HEAD_N = 10;
+/** 头部保留条数（导出供界面预告 / 调试 / 测试读取） */
+function plotSegmentHeadReserve() { return PLOT_SEGMENT_HEAD_N; }
+
 function plotSegmentReserveRecent() {
     const n = Number(cfg && cfg.plotSegmentReserveRecent);
     return Math.max(10, Math.min(200, Number.isFinite(n) ? Math.round(n) : 10));
@@ -232,8 +247,27 @@ function plotSegmentPlan(planOpts) {
         ? Math.max(0, Math.min(200, Math.round(Number(po.reserveN))))
         : plotSegmentReserveRecent();
     const reserveKept = Math.min(reserveN, list.length);
-    const pool = list.slice(0, Math.max(0, list.length - reserveN));
-    const batches = plotSegmentBatchesFrom(pool, plotSegmentBatchSize());
+    /**
+     * v3.50.31（用户要求）：**头部保留窗口** —— 最早 `headN` 条不进池（理由见 `PLOT_SEGMENT_HEAD_N` 注释）。
+     *   `planOpts.headN` 仅供**内部核算 / 测试**显式覆盖（V1 平价校验用 0；生产永不传）。
+     */
+    const headN = (po.headN != null && Number.isFinite(Number(po.headN)))
+        ? Math.max(0, Math.min(200, Math.round(Number(po.headN))))
+        : PLOT_SEGMENT_HEAD_N;
+    const headKept = Math.min(headN, list.length);
+    const tailFrom = Math.max(0, list.length - reserveN);
+    const pool = list.slice(Math.min(headKept, tailFrom), tailFrom);
+    /**
+     * v3.50.31（**审查发现的缺陷**）：旧实现把**已覆盖**的情节也留在 `pool` 里 —— 只有当一批**整批**都被覆盖时
+     *   （`b.covered`）才跳过；**混合批次**（部分已覆盖 + 部分新增）会被**整批重新总结**：
+     *   · 浪费一次 AI 请求；
+     *   · 若重算出的时间范围与既有段落重叠 <50%（措辞漂移），`applyPlotSegmentResult` 会**新增一条重复段落**。
+     *   现在：自动计划的切批来源**只含未覆盖情节**（`pending` 的口径本来也是"未覆盖"，前后一致）。
+     *   `planOpts.includeCovered === true` 保留旧行为，仅供 **V1 平价校验 / 测试**。
+     */
+    const includeCovered = po.includeCovered === true;
+    const batchSrc = includeCovered ? pool : pool.filter(a => !covered.has(String(a.id || '')));
+    const batches = plotSegmentBatchesFrom(batchSrc, plotSegmentBatchSize());
     batches.forEach((b, i) => {
         b.index = i + 1;
         b.covered = b.ids.length > 0 && b.ids.every(id => covered.has(id));
@@ -252,6 +286,8 @@ function plotSegmentPlan(planOpts) {
     const pendingEligible = eligibleBatches.reduce((s, b) => s + b.atoms.length, 0);
     return {
         batches, total: list.length, covered: covered.size, chars: chars,
+        // v3.50.31：头部保留窗口读数（界面预告 / 调试核对用）
+        headN: headN, headKept: headKept,
         batchAtoms: plotSegmentBatchSize(), batchChars: plotSegmentMaxChars(),
         pending: pending, eligible: eligible, pendingEligible: pendingEligible,
         fullBatches: batches.filter(b => b.full === true).length,
@@ -262,13 +298,25 @@ function plotSegmentPlan(planOpts) {
 
 /** 手动勾选计划（V1 v1.201 `plotSegmentPlanForIds`）：只针对勾选 id 切批；
  *  不做增量覆盖判定（`covered` 恒 false）。 */
-function plotSegmentPlanForIds(ids) {
+function plotSegmentPlanForIds(ids, opts) {
+    const po = opts || {};
     const want = new Set((Array.isArray(ids) ? ids : []).map(x => String(x == null ? '' : x)).filter(Boolean));
-    const list = want.size ? plotSegmentAtomList().filter(a => want.has(String(a.id || ''))) : [];
+    /**
+     * v3.50.31（用户要求「前 10 条**禁止**被分段总结」）：手动勾选**也不能**越过头部保留窗口 ——
+     *   否则用户一次误勾就把开篇细节压成概述（分段段落只增不减、不可逆）。被剔除的条数如实回报 `skippedHead`。
+     */
+    const all = plotSegmentAtomList();
+    // v3.50.31：`opts.headN` 仅供内部/测试（V1 平价传 0）；生产不传 → 头部保留 10 条
+    const headN = (po.headN != null && Number.isFinite(Number(po.headN))) ? Math.max(0, Math.min(200, Math.round(Number(po.headN)))) : PLOT_SEGMENT_HEAD_N;
+    const headIds = new Set(all.slice(0, Math.min(headN, all.length)).map(a => String(a.id || '')));
+    const skippedHead = want.size ? Array.from(want).filter(id => headIds.has(id)).length : 0;
+    const list = want.size ? all.filter(a => want.has(String(a.id || '')) && !headIds.has(String(a.id || ''))) : [];
     const batches = plotSegmentBatchesFrom(list, plotSegmentBatchSize());
     batches.forEach((b, i) => { b.index = i + 1; b.covered = false; });
     const chars = batches.reduce((s, b) => s + (Number(b.chars) || 0), 0);
     return { batches, total: list.length, selected: want.size, chars: chars, batchAtoms: plotSegmentBatchSize(), batchChars: plotSegmentMaxChars(),
+        // v3.50.31：被头部保留窗口剔除的勾选条数（如实回报，界面据此提示「开篇情节不参与分段总结」）
+        skippedHead: skippedHead, headN: headN,
         // 所选路径**不受「凑满一批」限制**（用户显式指定）；但仍回报满批数供预告
         eligible: batches.length, fullBatches: batches.filter(b => b.full === true).length, pending: list.length, pendingEligible: list.length };
 }
@@ -390,7 +438,8 @@ async function runPlotSegmentSummary(opts) {
     } catch (e) { /* 忽略：互斥读不到就按不互斥 */ }
     plotSegmentInFlight = true;
     try {
-        const plan = plotSegmentPlan({ reserveN: o.reserveN });   // v3.50.4：`reserveN` 仅内部/测试用；生产不传 → 强制保留 10 条
+        const plan = plotSegmentPlan({ reserveN: o.reserveN, headN: o.headN });   // v3.50.4：`reserveN` 仅内部/测试用；生产不传 → 强制保留 10 条
+        // v3.50.31：`headN` 同理（V1 平价校验传 0；生产不传 → 头部保留 10 条）
         if (!plan.total) {
             notify('info', '情节分段总结：暂无可整理情节', '当前没有有效情节原子（或全部已失效）。请先运行「AI 摘要」生成情节。');
             return { made: 0, skipped: true, total: 0 };
@@ -462,6 +511,7 @@ async function runPlotSegmentSummary(opts) {
             }
             const after = (state.plotSegments || []).length;
             const parts = [`新增 ${stat.added} 段`];
+            if (plan.skippedHead) parts.push(`开篇前 ${plan.headN} 条不参与 ${plan.skippedHead} 条`);   // v3.50.31
             if (stat.dup) parts.push(`跳过已存在 ${stat.dup} 段`);
             if (stat.empty) parts.push(`忽略空段 ${stat.empty}`);
             if (stat.skippedSubmitted) parts.push(`跳过已提交 ${stat.skippedSubmitted} 批（防重复提交）`);
@@ -503,7 +553,7 @@ async function runPlotSegmentSummarySelected(ids, opts) {
     } catch (e) { /* 忽略 */ }
     plotSegmentInFlight = true;
     try {
-        const plan = plotSegmentPlanForIds(ids);
+        const plan = plotSegmentPlanForIds(ids, { headN: o.headN });
         if (!plan.total) {
             notify('info', '总结所选：没有可整理的情节', '勾选的情节为空、已失效或已被删除。请重新勾选后再试。');
             return { made: 0, skipped: true, total: 0, selected: plan.selected };
@@ -516,7 +566,9 @@ async function runPlotSegmentSummarySelected(ids, opts) {
         try {
             const stat = { added: 0, skipped: 0, dup: 0, empty: 0, batches: run.length, skippedSubmitted: 0 };
             const runChars = run.reduce((s, b) => s + (Number(b.chars) || 0), 0);
-            notify('warning', '开始总结所选情节…', `已勾选 ${plan.selected} 条 · 其中有效 ${plan.total} 条 → 本次 ${run.length} 批（每批 ≤ ${plotSegmentBatchSize()} 条）`);
+            // v3.50.31：开篇前 10 条**禁止**被分段总结 —— 被剔除时如实告知（否则用户会以为"勾了却没反应"）
+            const headTip = plan.skippedHead ? `（另有 ${plan.skippedHead} 条属于**开篇前 ${plan.headN} 条**，按设计不参与分段总结）` : '';
+            notify('warning', '开始总结所选情节…', `已勾选 ${plan.selected} 条 · 其中有效 ${plan.total} 条 → 本次 ${run.length} 批（每批 ≤ ${plotSegmentBatchSize()} 条）${headTip}`);
             try { dbgLog('摘要', { action: '总结所选情节：体量预告（v3.49.3）', 已勾选: plan.selected, 有效: plan.total, 共几批: plan.batches.length, 本次提交几批: run.length, 本次估算字符: runChars, 每批字符预算: plotSegmentMaxChars() }); } catch (e) { /* 忽略 */ }
             for (let i = 0; i < run.length; i++) {
                 const b = run[i];
@@ -547,7 +599,9 @@ async function runPlotSegmentSummarySelected(ids, opts) {
             parts.push(`当前共 ${after} 段（见「🧩 分段总结」子页）`);
             notify('success', '总结所选情节完成', `${parts.join(' · ')}。`);
             try { dbgLog('摘要', { action: '总结所选情节完成（v1.201）', selected: plan.selected, valid: plan.total, batches: run.length, added: stat.added, dup: stat.dup, empty: stat.empty, segments: after, ms: Date.now() - t0 }); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
-            return { made: stat.added, added: stat.added, dup: stat.dup, empty: stat.empty, batches: run.length, total: plan.total, selected: plan.selected, segments: after, skippedSubmitted: stat.skippedSubmitted };
+            const ret = { made: stat.added, added: stat.added, dup: stat.dup, empty: stat.empty, batches: run.length, total: plan.total, selected: plan.selected, segments: after, skippedSubmitted: stat.skippedSubmitted };
+            if (plan.skippedHead) ret.skippedHead = plan.skippedHead;   // v3.50.31：仅在有剔除时出现（V1 平价形状不变）
+            return ret;
         } catch (e) {
             warn('总结所选情节失败', e);
             notify('error', '总结所选情节失败', String((e && e.message) || e).slice(0, 100));
@@ -607,6 +661,8 @@ export {
     plotSegmentBusy, plotSegmentSubmitSig, plotSegmentLogList,
     // v3.50.4（用户要求「必须保留至少 10 条最近的情节」）：保留窗口读取器（强制下限 10）
     plotSegmentReserveRecent,
+    // v3.50.31（用户要求「情节的前 10 条禁止被分段总结」）：头部保留窗口常量与读取器
+    PLOT_SEGMENT_HEAD_N, plotSegmentHeadReserve,
     plotSegmentAtomList, plotSegmentCoveredIds, plotSegmentBatchesFrom,
     plotSegmentPlan, plotSegmentPlanForIds, buildPlotSegmentPrompt, plotSegmentSameRange,
     applyPlotSegmentResult, runPlotSegmentSummary, runPlotSegmentSummarySelected,

@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.30",
-  "updatedAt": "2026-10-20",
-  "generatedAt": "2026-10-20",
+  "version": "3.50.31",
+  "updatedAt": "2026-10-21",
+  "generatedAt": "2026-10-21",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.31",
+      "date": "2026-10-21",
+      "title": "情节分段总结：开篇前 10 条禁止参与 + 既有设计审查修复（docs/D51 数-41）",
+      "points": [
+        "登记：设计稿 docs/D51（数-41）｜ docs/D17 U262 ｜ 批次档 docs/history/P10c140-分段总结开篇保留与设计审查.md### 一、开篇前…"
+      ]
+    },
     {
       "version": "3.50.30",
       "date": "2026-10-20",

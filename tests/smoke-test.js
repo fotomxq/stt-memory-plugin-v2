@@ -2506,8 +2506,8 @@ await assert('AC3 分段总结端到端：面板「🧩 生成分段总结」（
             { id: 'smoke-ac-p3', title: 'P3', text: '丙在城外等待。', date: '1919-12-01', validity: 'active', tags: [], floorStart: 3, floorEnd: 3 },
             { id: 'smoke-ac-p4', title: 'P4', text: '丁在城里打听。', date: '', validity: 'active', tags: [], floorStart: 4, floorEnd: 4 },
             { id: 'smoke-ac-p5', title: 'P5', text: '戊已失效。', date: '1919-12-02', validity: 'inactive', tags: [], floorStart: 5, floorEnd: 5 },
-            // v3.50.4：自动路径**强制保留最新 10 条** → 夹具补 12 条更旧的情节，池内才有可提交的满批
-            ...Array.from({ length: 12 }, (_, k) => ({
+            // v3.50.4 / v3.50.31：自动路径**头尾各强制保留 10 条** → 夹具补 32 条更旧的情节，池内才有可提交的满批
+            ...Array.from({ length: 32 }, (_, k) => ({
                 id: 'smoke-ac-old' + k, title: 'O' + k, text: '旧情节 ' + (k + 1) + '。',
                 date: '1900-01-' + String(k + 1).padStart(2, '0'), validity: 'active', tags: [], floorStart: 100 + k, floorEnd: 100 + k,
             })),
