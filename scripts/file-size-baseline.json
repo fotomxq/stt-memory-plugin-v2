@@ -1,8 +1,8 @@
 {
- "note": "单体文件体量基线（`docs/D22` W5 `技-14` / `docs/D17` U134）。`margin` = 「必要接线」宽限（行）。只减不增：`--write` 在有文件变大时默认拒绝。（v3.50.15 `技-56`：core/config.js 因提示词表外提而变小 → 基线随之下调）（v3.51.0 W32 货币三子页：`ui/panel.js` 3983→3985 / `index.js` 2728→2739 —— 三子页接线与触发器挂载点为**必要接线**，逻辑均落在新模块 `ui/money-tabs.js` / `core/model/ledger.js` / `core/model/deal.js` / `core/deal-triggers.js`）（v3.51.4：`ui/panel.js` 3985→3988 —— 保存失败保留草稿（1 行）· `prefillEditor` 草稿回填（1 行）· `dealRepair` 动作接线（1 行），均为**必要接线**；修复算法落在新模块 `core/deal-repair.js`）",
+ "note": "单体文件体量基线（`docs/D22` W5 `技-14` / `docs/D17` U134）。`margin` = 「必要接线」宽限（行）。只减不增：`--write` 在有文件变大时默认拒绝。（v3.50.15 `技-56`：core/config.js 因提示词表外提而变小 → 基线随之下调）（v3.51.0 W32 货币三子页：`ui/panel.js` 3983→3985 / `index.js` 2728→2739 —— 三子页接线与触发器挂载点为**必要接线**，逻辑均落在新模块 `ui/money-tabs.js` / `core/model/ledger.js` / `core/model/deal.js` / `core/deal-triggers.js`）（v3.51.4：`ui/panel.js` 3985→3988 —— 保存失败保留草稿（1 行）· `prefillEditor` 草稿回填（1 行）· `dealRepair` 动作接线（1 行），均为**必要接线**；修复算法落在新模块 `core/deal-repair.js`）（v3.51.5：`ui/panel.js` 3988→3985 —— `flatFor` 外提到新模块 `ui/entry-flat.js`（新维度回填不再占面板行），基线随之下调）",
  "margin": 40,
  "files": {
-  "ui/panel.js": 3988,
+  "ui/panel.js": 3985,
   "index.js": 2739,
   "adapters/store.js": 1784,
   "ui/debug.js": 1827,

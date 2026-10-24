@@ -26,6 +26,7 @@ import { dataHealthReport } from '../../core/data-health.js';
 import { migrateState } from '../../core/migrate.js';
 import { moneyPageHtml, setMoneySub, ledgerPageHtml, dealsPageHtml } from '../../ui/money-tabs.js';
 import { kindFields, deconstructEntry } from '../../ui/fields.js';
+import { flatFor } from '../../ui/entry-flat.js';
 import { panelAction, setPanelHooks2, bindOverlay, panelBodyHtml } from '../../ui/panel.js';
 
 const R = makeReporter('money-ledger-deals v3.51.0 货币三子页（W32 数-43/44/45/46 · 应-46/47 · 技-57/58/59）');
@@ -397,6 +398,85 @@ A('I3 「🔧 修复（3 条/次）」按钮 → 面板动作调用修复管线�
     setMoneySub('overview');
     return r && r.ok === true && r.changed === 1 && String(r.note).indexOf('长期收支修复') >= 0
         && (state.deals[0].status === '稳定') && (state.deals[0].desc === '三成分成');
+})(), 'n/a');
+
+// ---------- J v3.51.5：触发器改为「抵达剧情日期即触发」+ 叠加执行 + 截止日期 ----------
+function mkDeal(extra) {
+    return Object.assign({
+        id: 'd1', name: '船厂分成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly',
+        outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 10, direction: 'increase', note: '', source: 'ai' } },
+    }, extra || {});
+}
+A('J1 **小步推进也触发**（旧口径要求跨度 ≥ 30 天 → 「只推进 1 天就到期」永远不兑现）', (() => {
+    boot({ deals: [mkDeal()] });
+    const r = runDealTriggers({ prevDate: '1919-01-31', curDate: '1919-02-01' });
+    return r.fired === 1 && state.ledger.length === 1 && state.ledger[0].date === '1919-02-01'
+        && state.deals[0].outlook.forecast.nextDate === '1919-03-03';   // 水位推进到下个周期
+})(), () => J(state.deals.map((d) => [d.outlook.forecast.nextDate, state.ledger.length])));
+A('J2 **叠加执行**：一次推进跨多个周期 → 连续兑现，直到水位 > 当前剧情日期', (() => {
+    boot({ deals: [mkDeal()] });
+    const r = runDealTriggers({ prevDate: '1919-01-01', curDate: '1919-06-01' });
+    const fc = state.deals[0].outlook.forecast;
+    return r.fired >= 3 && state.ledger.length === r.fired && String(fc.nextDate) > '1919-06-01'
+        && state.deals[0].outlook.nodes.length === r.fired;
+})(), () => J({ fired: state.ledger.length, fc: state.deals[0].outlook.forecast.nextDate }));
+A('J3 **截止日期**：越过 `endDate` 即停（不再生成），并把预测水位清空（本条自然结束）', (() => {
+    boot({ deals: [mkDeal({ endDate: '1919-03-31' })] });
+    const r = runDealTriggers({ prevDate: '1919-01-01', curDate: '1919-06-01' });
+    return r.fired === 2 && state.ledger.length === 2 && state.deals[0].outlook.forecast.nextDate === '';
+})(), () => J({ fired: state.ledger.length, fc: state.deals[0].outlook.forecast.nextDate }));
+A('J4 **首次运行**（prev 为空）也处置：受 `dealCatchUpMax` 上限并如实标 `catchUpTruncated`', (() => {
+    boot({ deals: [mkDeal()] });
+    cfg.dealCatchUpMax = 3;
+    const r = runDealTriggers({ prevDate: '', curDate: '1919-06-01' });
+    cfg.dealCatchUpMax = 24;
+    // 被上限截断时，水位停在**下一个待兑现节点**（仍 ≤ 当前剧情日期）→ 下次运行继续叠加
+    return r.fired === 3 && r.truncated === 1 && state.deals[0].trigger.catchUpTruncated === true
+        && state.deals[0].outlook.forecast.nextDate === '1919-05-02';
+})(), 'n/a');
+A('J5 **剧情日期回退** → 不处置（不生成历史流水）', (() => {
+    boot({ deals: [mkDeal()] });
+    const r = runDealTriggers({ prevDate: '1920-01-01', curDate: '1919-06-01' });
+    return r.fired === 0 && state.ledger.length === 0 && r.jump === 'backward';
+})(), 'n/a');
+
+// ---------- K v3.51.5：长期收支**编辑回填**（用户报告「信息没回填」） ----------
+A('K1 `flatFor(deals)`：三段 `outlook` 扁平化（文字 / 节点逐行 / 预测四字段），且与 `deconstructEntry` **互逆**', (() => {
+    const item = {
+        id: 'd1', name: '船厂分成', desc: '三成', kind: 'royalty', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', status: '稳定',
+        outlook: { text: '看好', nodes: [{ date: '1919-02-01', delta: 100, note: '首期' }, { date: '1919-03-03', delta: 50, note: '淡季' }], forecast: { nextDate: '1919-04-02', delta: -10, direction: 'decrease', note: '减半', source: 'manual' } },
+    };
+    const flat = flatFor('deals', item);
+    const back = deconstructEntry('deals', Object.assign({}, flat, { id: 'd1' }));
+    return flat.outlookText === '看好' && flat.nodesText === '1919-02-01|100|首期\n1919-03-03|50|淡季'
+        && flat.forecastNextDate === '1919-04-02' && flat.forecastDelta === -10 && flat.forecastDirection === 'decrease'
+        && flat.forecastNote === '减半' && flat.forecastSource === 'manual'
+        && back.outlook.text === '看好' && back.outlook.nodes.length === 2 && back.outlook.nodes[0].delta === 100
+        && back.outlook.forecast.nextDate === '1919-04-02' && back.outlook.forecast.direction === 'decrease';
+})(), 'n/a');
+A('K2 面板「✏ 编辑」长期收支 → **表单带原值**（标题 / 约定 / 现状 / 节点文本 / 预测日期都在）', (async () => {
+    boot({ deals: [{ id: 'd1', name: '船厂分成', desc: '三成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', status: '稳定',
+        outlook: { text: '看好', nodes: [{ date: '1919-02-01', delta: 100, note: '首期' }], forecast: { nextDate: '1919-03-03', delta: 10, direction: 'increase', note: '淡季', source: 'manual' } } }] });
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    setMoneySub('deals');
+    await panelAction('tab', { tab: 'currencies' });
+    await panelAction('edit', { kind: 'deals', id: 'd1' });
+    const html = String(panelBodyHtml('currencies') || '');
+    setMoneySub('overview');
+    return html.indexOf('value="船厂分成"') >= 0 && html.indexOf('value="稳定"') >= 0
+        && html.indexOf('1919-02-01|100|首期') >= 0 && html.indexOf('value="1919-03-03"') >= 0
+        && html.indexOf('value="看好"') >= 0 && html.indexOf('value="三成"') >= 0;
+})(), 'n/a');
+A('K3 编辑保存（未改内容）→ 不丢字段：节点/预测/现状原样保留（回填↔还原闭环）', (async () => {
+    boot({ deals: [{ id: 'd1', name: '船厂分成', desc: '三成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', status: '稳定',
+        outlook: { text: '看好', nodes: [{ date: '1919-02-01', delta: 100, note: '首期' }], forecast: { nextDate: '1919-03-03', delta: 10, direction: 'increase', note: '淡季', source: 'manual' } } }] });
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const flat = flatFor('deals', state.deals[0]);
+    const r = await panelAction('save', { kind: 'deals', id: 'd1', fields: flat });
+    const d = state.deals[0];
+    return r && r.ok === true && d.outlook.nodes.length === 1 && d.outlook.nodes[0].delta === 100
+        && d.outlook.forecast.nextDate === '1919-03-03' && d.outlook.forecast.source === 'manual'
+        && d.status === '稳定' && d.desc === '三成';
 })(), 'n/a');
 
 R.done();

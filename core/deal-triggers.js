@@ -8,12 +8,12 @@
 //      自动补齐下一个预测节点 —— **该内容不经过 AI**」
 //
 // 本模块**全程无 AI 调用**（`docs/D53` §3.9）：只做日期数学 + 写 `ledger` / `deals`。
-//   · 判据：剧情日期**跳动**（`reason==='jump'`，或跨度 ≥ `cfg.dealJumpMinDays`）；`backward`/`invalid` **不兑现**；
-//   · 普通处置：`forecast.nextDate ≤ 当前剧情日期` → 兑现一笔（`source:'deal'`、`dealId`），节点提升为**已发生**；
+//   · 判据（v3.51.5 用户要求「抵达剧情时间及之后日期自动触发」）：只要**剧情日期推进到/越过** `forecast.nextDate`
+//     就兑现 —— **不再要求「跨度 ≥ 30 天」**（旧口径会让「只推进 1 天就到期」的条目永远不兑现）；回退/脏日期不处置；
+//   · **叠加执行**（用户要求「超出多轮则自动叠加」）：兑现后按 `cycle` 推进水位，**直到**水位 > 当前剧情日期
+//     或 `nextDate > endDate`（截止日期）为止；受 `cfg.dealCatchUpMax` 上限（超限置 `trigger.catchUpTruncated` 如实回报）；
 //   · 货币丢失：**不生成**，写 `trigger.skippedReason='currency-missing'`，**不阻塞**其它标的物；
-//   · 猛烈跳动（跨度 ≥ `cfg.dealStrongJumpCycles` 个周期）：按 `cycle` **确定性补齐**，受 `cfg.dealCatchUpMax` 上限，
-//     超限置 `trigger.catchUpTruncated` 并如实回报「尚有 N 个周期未补齐」；
-//   · `cycle` 缺失（推断不出）：**不补齐**，只做「到期一笔」；
+//   · `cycle` 缺失（推断不出）：**只做一笔**（无法确定性推进，不猜周期）；
 //   · 幂等：以 `dealId + 节点日期` 去重（同一预测只兑现一次；重跑 / 多端都不重复）。
 // ============================================================
 import { cfg, dbgLog } from './model/runtime.js';
@@ -82,7 +82,9 @@ export function runDealTriggers(opts) {
         const prev = clockDateTrim(o.prevDate || '');
         const jump = dealJumpKind(prev, cur, conf);
         out.jump = jump;
-        if (jump !== 'jump') return out;                     // 无跳动 / 回退 / 脏日期 → 不处置（避免每楼都跑）
+        // v3.51.5：**回退不处置**（真跳到过去 → 不生成历史流水）；脏 prev 也不处置；prev 为空 = 首次运行 → 照常处置
+        if (jump === 'backward') return out;
+        if (jump === 'invalid' && prev) return Object.assign(out, { ok: false, warning: 'bad-prev-date' });
         const deals = dealList();
         out.deals = deals.length;
         const curDay = dayNum(cur);
@@ -99,16 +101,21 @@ export function runDealTriggers(opts) {
             const fc = (d.outlook && d.outlook.forecast) ? d.outlook.forecast : null;
             if (!fc || !clockDateValid(clockDateTrim(fc.nextDate))) continue;
             const cycleDays = Number(dealCycleDays(d.cycle)) || 0;
-            const gap = spanDays(prev, cur);
-            const strong = cycleDays > 0 && Number.isFinite(gap) && gap >= cycleDays * conf.strongJumpCycles;
+            const endDay = clockDateValid(clockDateTrim(d.endDate)) ? dayNum(clockDateTrim(d.endDate)) : null;
             // 已兑现节点集合（幂等：同一 `dealId + 节点日期` 只兑现一次）
             const fired = new Set(ledgerOf(d.currencyId).filter((x) => String(x.dealId || '') === String(d.id)).map((x) => String(x.date)));
             let nodeDate = clockDateTrim(fc.nextDate);
             let firedHere = 0;
             let guard = 0;
+            let truncatedHere = false;
             while (nodeDate && clockDateValid(nodeDate) && dayNum(nodeDate) <= curDay) {
                 if (guard++ > 10000) break;                    // 理论护栏（防死循环）
-                if (fired.has(String(nodeDate))) {             // 已兑现 → 推进到下一节点（不重复记账）
+                if (endDay != null && dayNum(nodeDate) > endDay) { nodeDate = ''; break; }   // 越过截止日期 → 本条结束
+                if (firedHere >= conf.catchUpMax) {            // 上限：如实标记，不静默丢弃
+                    truncatedHere = true;
+                    break;
+                }
+                if (fired.has(String(nodeDate))) {             // 已兑现 → 推进到下一节点（不重复记账、不占上限）
                     if (!cycleDays) { nodeDate = ''; break; }
                     nodeDate = addStoryDays(nodeDate, cycleDays);
                     continue;
@@ -120,23 +127,22 @@ export function runDealTriggers(opts) {
                 } else {
                     const r = applyLedgerEntry({ currencyId: d.currencyId, owner: (findCurrency(d.currencyId) || {}).owner || '', date: nodeDate, delta: delta, note: (fc.note || ('长期收支兑现：' + d.name)), source: 'deal', dealId: d.id }, { now: Number(o.now) || Date.now() });
                     if (!r || r.ok !== true) { out.skipped += 1; break; }
-                    out.fired += 1; firedHere += 1;
+                    out.fired += 1;
                     try { d.outlook.nodes = (Array.isArray(d.outlook.nodes) ? d.outlook.nodes : []).concat([{ date: nodeDate, delta: delta, note: String(fc.note || '') }]); } catch (e) { /* 忽略 */ }
-                    try { d.trigger.lastFiredNodeDate = nodeDate; d.trigger.lastFiredDate = cur; d.trigger.catchUpTruncated = false; } catch (e) { /* 忽略 */ }
+                    try { d.trigger.lastFiredNodeDate = nodeDate; d.trigger.lastFiredDate = cur; } catch (e) { /* 忽略 */ }
                 }
+                firedHere += 1;
                 fired.add(String(nodeDate));
                 if (!cycleDays) { nodeDate = ''; break; }      // 缺周期 → 只做这一笔
-                nodeDate = addStoryDays(nodeDate, cycleDays);
-                if (!strong) break;                            // 普通跳动：只兑现到期的那一笔
-                if (firedHere >= conf.catchUpMax) {            // 上限：如实标记，不静默丢弃
-                    try { d.trigger.catchUpTruncated = true; } catch (e) { /* 忽略 */ }
-                    out.truncated += 1;
-                    break;
-                }
+                nodeDate = addStoryDays(nodeDate, cycleDays);   // **叠加执行**：继续推进，直到水位 > 当前剧情日期
             }
             try {
                 d.lastChangeDate = lastNodeDate(d.outlook.nodes);
-                if (nodeDate && clockDateValid(nodeDate)) d.outlook.forecast = Object.assign({}, fc, { nextDate: nodeDate });
+                // 预测水位：还有下一节点且未越过截止日期 → 写回；否则清空（没有更多预测，触发器自然停）
+                const nextOk = nodeDate && clockDateValid(nodeDate) && (endDay == null || dayNum(nodeDate) <= endDay);
+                d.outlook.forecast = Object.assign({}, fc, { nextDate: nextOk ? nodeDate : '' });
+                d.trigger.catchUpTruncated = truncatedHere;
+                if (truncatedHere) out.truncated += 1;
                 d.updatedAt = Number(o.now) || Date.now();
             } catch (e) { /* 忽略 */ }
         }
