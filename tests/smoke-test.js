@@ -619,13 +619,16 @@ assert('J2 搜索与列表：按正文/标签命中过滤，未命中返回空�
         && con.entryMatches(all[0], '') === true;
 })(), (() => { try { return con.consoleList('atoms', '木箱').length; } catch (e) { return String(e.message); } })());
 
-assert('J3 编辑保存：走 upsertEntry 写回内核容器并落盘（信封含新值）', (() => {
+await assert('J3 编辑保存：走 upsertEntry 写回内核容器并落盘（信封含新值）', (async () => {
     const list = con.consoleList('atoms', '木箱');
     const id = String((list[0] || {}).id || '');
     con.consoleAction('open', { kind: 'atoms', id });
     const detail = con.consoleEntry('atoms', id);
     const r = con.consoleAction('save', { kind: 'atoms', id, fields: { title: '木箱（已核对）', text: '甲在码头发现木箱，断口整齐（正文足够长）。', date: '1919-11-29', tags: '码头、木箱', importance: '0.9' } });
     const after = con.consoleEntry('atoms', id);
+    // v3.50.32：保存流水线现在会**先做一次写前拉取**（`pullRemoteBeforeWrite`）再组装信封 → `consoleSave` 的
+    //   fire-and-forget 保存在这里多一个异步台阶；断言按「落盘最终会完成」等待一拍（生产路径不需要同步等待）
+    await new Promise((r) => setTimeout(r, 60));
     const env = memStore['ftt2_state_' + coreState.scopeId()] ? JSON.parse(memStore['ftt2_state_' + coreState.scopeId()]) : null;
     const persisted = env && env.payload && env.payload.data ? (env.payload.data.atoms || []).filter((x) => String(x.id) === id)[0] : null;
     return !!detail && !!detail.hash && r.ok === true && after.item.title === '木箱（已核对）'

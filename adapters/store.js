@@ -21,7 +21,7 @@ import { scopeId, emptyState } from '../core/state.js';
 import { stateFileName } from './user-file.js';
 // v2.77.0：文件通道统一走 `adapters/file-transport.js`（宿主原生存储 / 酒馆用户目录文件自动切换）
 import { fileTransportReadAuto, fileTransportDelete } from './file-transport.js';
-import { scheduleStorageSync, writeStateFileContent, stateFileReadCandidates } from './sync.js';
+import { scheduleStorageSync, writeStateFileContent, stateFileReadCandidates, pullRemoteBeforeWrite } from './sync.js';
 // v3.46.0（`docs/D22` W9 `数-31`）：物理写清单（新模块；本文件只留六处一行接线）
 import { saveLedgerBegin, saveLedgerNote, saveLedgerEnd, saveLedgerNoop } from './save-ledger.js';
 // v3.0.21（用户要求「每次数据变动立刻分片提交到服务端存储」）：按维度分片 + 分片清单
@@ -561,6 +561,9 @@ export async function saveStateNow(opts) {
 
 /** 实际保存（v3.0.0：外层 `saveStateNow` 只负责把它纳入管线状态） */
 async function saveStateNowInner(o) {
+    // v3.50.32（用户报告「货币跨端不同步金额、记录」）：写主文件之前先并集远端 —— 旧时序「先整份写回、3 秒后才拉」
+    //   会让本端旧内存覆盖对端刚写入的额度/流水（详见 `adapters/sync.js#pullRemoteBeforeWrite`）。失败一律不阻塞保存。
+    if (o.skipFile !== true && o.pullRemote !== false) { try { await pullRemoteBeforeWrite(String(o.reason || 'save')); } catch (e) { /* 忽略：拉取失败照常写 */ } }
     const st = kernelState();
     if (!st) return { ok: false, error: '无可保存的 state（未注入）' };
     // v3.46.0（`数-31`）：开本次保存的**物理写清单**账本（只读数；各通道在下面各自 `saveLedgerNote`）
@@ -1710,7 +1713,7 @@ export async function resetState() {
     let saved = null;
     try {
         setKernelState(emptyState());            // V1：state = emptyState()
-        saved = await saveStateNow({ reason: 'reset', force: true });        // v3.0.15：清空是直接写入 → 永不走「无变化」短路
+        saved = await saveStateNow({ reason: 'reset', force: true, pullRemote: false });        // v3.0.15：清空是直接写入 → 永不走「无变化」短路；v3.50.32：清空不写前拉取（否则对端旧数据会被并回来 = 清不掉）
         // V1 `saveState()` 收尾会 materialize `state.snapStore = state.snapStore || []`（无原子也执行，紧接 `saveStateRaw` 之后）；
         //   此处同款，使**复位后的内存态键集**与 V1 一致（黄金样本 tests/fixtures/v1-golden-reset.json#afterKeys 为 29 键）。
         if (state && !Array.isArray(state.snapStore)) state.snapStore = [];

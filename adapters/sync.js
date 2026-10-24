@@ -1000,6 +1000,181 @@ export function scheduleSyncLogServerPush() {
 }
 
 // ============================================================
+// v3.50.32：**自动对账（写前拉取 / 回到前台）** —— 货币等「非楼层数据」跨端不同步的根治
+//
+// 用户报告：「货币跨端不同步金额、记录」。
+// 代码取证（三条同源，缺任何一条都不会出现「两端各说各话」）：
+//   ① **保存先写后拉**：`adapters/store.js#saveStateNowInner` 每次保存都把**整份主文件**直接写回服务端，
+//      拉取合并只发生在 3 秒后的「保存后镜像」里 —— 等它去拉时，远端已经被本端刚写的旧内存覆盖了。
+//      于是「A 端开着旧会话 → B 端记了一笔 → A 端保存」= B 端那笔从服务端消失（B 端本地还在，两端各说各话）。
+//   ② **会话内读缓存**：`fileReadCache` 对同名的远端主文件 / 清单**整个会话只读一次**（无 TTL），
+//      自动路径又不绕开缓存 → 即使拉取，读到的也是本会话早先那一份（只有手动「刷新状态 / 立即同步」
+//      与首屏载入会 `fileCacheDropAll`），所以「自动同步」在本会话里实际上收不到对端的新数据。
+//   ③ **货币没有条目级时间戳**：冲突仲裁退化为整份信封时间（谁后保存谁赢），见 `core/model/money.js#normalizeCurrency`。
+// 本模块把 ①② 收敛为「**写前拉取**」+「**回到前台拉取**」两个入口，并与 ③ 配合：
+//   · `pullRemoteBeforeWrite`：保存流水线在**组装信封之前**调用 → 先把远端**货币**并进来再写；
+//   · `crossAutoPull`：页面回到可见时（`storage.crossPullOnVisible`）与写前路径共用同一实现；
+//   · 两者都**先绕开会话读缓存**，并用清单(meta)预判 —— 远端未变时**不下载大文件**（流量保护口径不变）。
+// **口径边界（有意收窄）**：自动对账只并集 **货币**（用户本轮报告的对象）。其余维度仍走既有的
+//   「保存后镜像 / 载入并集 / 手动同步」时序 —— 因为除货币外的条目的合并时钟只有 AI 写入路径在维护，
+//   把整份合并提前到写前，会让「手动编辑（面板 / 快速记账以外的直改）」被对端旧副本盖回去（属独立议题）。
+// ============================================================
+/** 写前探测的最短间隔（同一波连续保存不再重复探测清单；货币改动本身在内存里，不依赖这次探测） */
+const PRE_WRITE_PROBE_MIN_MS = 15000;
+/** 「回到前台」自动拉取的最短间隔（页面反复显隐不刷屏、不刷流量） */
+const AUTO_PULL_MIN_MS = 15000;
+let preWriteProbeAt = 0, autoPullAt = 0, autoPulling = null;
+let lastAutoPull = { at: 0, trigger: '', result: '', merged: false, changed: false, reason: '' };
+
+/** 该触发源对应的开关（`storage.crossPullOnVisible` = 回到前台；`storage.crossPullOnActivity` = 聊天活动 / 写前） */
+export function autoPullSwitchOn(trigger) {
+    try {
+        const t = String(trigger || '');
+        if (t === 'visible') return !(cfg && cfg.storage && cfg.storage.crossPullOnVisible === false);
+        return !(cfg && cfg.storage && cfg.storage.crossPullOnActivity === false);
+    } catch (e) { return true; }
+}
+/**
+ * 绕开会话内读缓存：远端主文件 / 备份 / 清单**下一步必须读真值**。
+ * 只删这几个名字的缓存（不丢后端路由缓存与清单「未命中」短期记忆，避免每次多探一轮）。
+ */
+function dropRemoteFileReadCache() {
+    try {
+        delete fileReadCache[stateFileName()];
+        delete fileReadCache[metaFileName()];
+        for (const n of bakReadCandidates()) delete fileReadCache[n];
+    } catch (e) { /* 忽略：缓存清理失败只会退化为「读到旧远端」，不影响保存 */ }
+}
+
+/**
+ * **只把远端货币逐条并集进本端**（自动对账口径）。
+ *
+ * 口径与「手动同步」里的货币合并完全一致（`core/cross-sync.js#mergeCurrencyArrays`：同「归属 + 币种」一条、
+ * 冲突按「条目 `updatedAt` → 信封时间」取新、收支流水并集），并过**同一套 id / 内容双墓碑**；
+ * 只是**不做**其它维度的合并 —— 见本节头注的边界说明。
+ * @param {object} remoteData 远端信封的数据体
+ * @returns {{changed:boolean, before:number, after:number}}
+ */
+function mergeRemoteCurrencies(remoteData) {
+    try {
+        if (!remoteData || typeof remoteData !== 'object') return { changed: false, before: 0, after: 0 };
+        const prev = Array.isArray(state.currencies) ? state.currencies : [];
+        const before = JSON.stringify(prev);
+        const preferRemote = Number(remoteData.updatedAt || 0) > Number((state && state.updatedAt) || 0);
+        const merged = mergeCurrencyArrays(prev, Array.isArray(remoteData.currencies) ? remoteData.currencies : [], { preferRemote: preferRemote });
+        const localDel = (state.deleted && typeof state.deleted === 'object') ? state.deleted : {};
+        const localDelH = (state.deletedH && typeof state.deletedH === 'object') ? state.deletedH : {};
+        const remDel = (remoteData.deleted && typeof remoteData.deleted === 'object') ? remoteData.deleted : {};
+        const remDelH = (remoteData.deletedH && typeof remoteData.deletedH === 'object') ? remoteData.deletedH : {};
+        const rc = applyDeletedToArray('currencies', merged, localDel, remDel, localDelH, remDelH, true);
+        state.currencies = rc.arr;
+        // 墓碑并集：远端删除随本轮一起生效，避免下一次保存把它复活
+        if (rc.del && Object.keys(rc.del).length) localDel.currencies = rc.del; else delete localDel.currencies;
+        if (rc.delH && Object.keys(rc.delH).length) localDelH.currencies = rc.delH; else delete localDelH.currencies;
+        state.deleted = localDel;
+        state.deletedH = localDelH;
+        const changed = before !== JSON.stringify(state.currencies);
+        return { changed: changed, before: prev.length, after: (state.currencies || []).length };
+    } catch (e) { return { changed: false, before: 0, after: 0 }; }
+}
+
+/**
+ * **自动对账**（纯读远端 → 把**货币**逐条并集进本端；失败静默）。
+ *
+ * 与「立即同步 / 刷新状态」的区别：这里**不做整体替换、不写备份、不写快照**，也不动货币以外的维度
+ * （口径边界见本节头注）；因此可以安全地在保存流水线与页面可见事件里调用。
+ *
+ * @param {'visible'|'activity'} [trigger] 触发源（决定用哪个开关与节流阈值）
+ * @param {{force?:boolean, skipSave?:boolean, from?:string}} [opts]
+ *   `skipSave` = 只合并不落盘（保存流水线内调用时：本次保存会把它一起写下去，避免嵌套保存）
+ * @returns {Promise<{ok:boolean, trigger:string, skipped?:string, merged?:boolean, changed?:boolean, mode?:string}>}
+ */
+export async function crossAutoPull(trigger, opts) {
+    const o = opts || {};
+    const t = String(trigger || 'activity');
+    if (!autoPullSwitchOn(t)) return { ok: false, trigger: t, skipped: 'off' };
+    if (!stateFileEnabled()) return { ok: false, trigger: t, skipped: 'state-file-off' };
+    if (!state || typeof state !== 'object') return { ok: false, trigger: t, skipped: 'no-state' };
+    if (writeGateClosed()) return { ok: false, trigger: t, skipped: 'load-gate' };
+    if (longTaskBusy()) return { ok: false, trigger: t, skipped: 'long-task' };
+    if (autoPulling && o.force !== true) return autoPulling;                 // 单飞
+    if (o.force !== true && t === 'visible' && autoPullAt && (Date.now() - autoPullAt) < AUTO_PULL_MIN_MS) {
+        return { ok: true, trigger: t, skipped: 'throttled' };
+    }
+    if (o.force !== true && !autoPulling && autoPullAt && t !== 'visible' && (Date.now() - autoPullAt) < PRE_WRITE_PROBE_MIN_MS) {
+        return { ok: true, trigger: t, skipped: 'throttled' };
+    }
+    const run = (async () => {
+        const t0 = Date.now();
+        dropRemoteFileReadCache();
+        // ① 清单预判：远端自上次已合入的哈希未变 → 不下载主文件（与「保存后镜像」同一口径）
+        let unchanged = false;
+        try { const mm = await metaFileRead(); unchanged = !!(mm && metaStateSkipOk(mm)); } catch (e) { unchanged = false; }
+        if (unchanged) return { ok: true, trigger: t, skipped: 'unchanged', ms: Date.now() - t0 };
+        // ② 读远端最新信封 → **只并集货币**（不动其它维度）
+        let rem = null;
+        try { rem = await crossFindRemoteEnv(); } catch (e) { rem = null; }
+        if (!rem) return { ok: true, trigger: t, skipped: 'no-remote', ms: Date.now() - t0 };
+        const r = mergeRemoteCurrencies(rem.payload && rem.payload.data);
+        const changed = !!r.changed;
+        // ③ 变更才落盘（`skipSave` 时交给调用方：保存流水线本次会写下去）
+        if (changed && o.skipSave !== true) { try { saveState(); } catch (e) { /* 忽略：下次保存会再写 */ } }
+        return {
+            ok: true, trigger: t, merged: changed, changed: changed, mode: 'currencies',
+            conflict: 0, before: r.before, after: r.after, ms: Date.now() - t0,
+        };
+    })();
+    autoPulling = run;
+    try {
+        const rep = await run;
+        autoPullAt = Date.now();
+        lastAutoPull = {
+            at: autoPullAt, trigger: t, result: String(rep.skipped || (rep.ok ? (rep.changed ? 'merged' : 'same') : 'failed')),
+            merged: !!rep.merged, changed: !!rep.changed, reason: String(o.from || ''),
+        };
+        try {
+            if (rep.ok && rep.changed) {
+                debugLogPush('对账', {
+                    action: '自动对账：已并入对端最新数据（' + (t === 'visible' ? '回到前台' : '聊天活动 / 写前') + '）',
+                    trigger: t, from: String(o.from || ''), mode: String(rep.mode || ''), conflict: Number(rep.conflict || 0),
+                    ms: Number(rep.ms || 0), note: '先并集合并再落盘：不再用本端旧内存整份覆盖对端',
+                });
+            }
+        } catch (e) { /* 忽略 */ }
+        return rep;
+    } finally {
+        if (autoPulling === run) autoPulling = null;
+    }
+}
+
+/**
+ * **写前拉取**（保存流水线专用）：在组装信封、写主文件**之前**把远端并进来。
+ * 节流：`PRE_WRITE_PROBE_MIN_MS` 内不重复探测（连续保存只探一次清单）。
+ * 失败一律静默（保存照旧 —— 宁可这次没并到远端，也不能让保存被网络拖住）。
+ */
+export async function pullRemoteBeforeWrite(reason) {
+    try {
+        if (!autoPullSwitchOn('activity')) return { ok: false, skipped: 'off' };
+        if (!stateFileEnabled() || writeGateClosed() || longTaskBusy()) return { ok: false, skipped: 'busy' };
+        if (autoPulling) return { ok: false, skipped: 'in-flight' };          // 不等待：避免与保存流水线互相等待
+        const now = Date.now();
+        if (preWriteProbeAt && (now - preWriteProbeAt) < PRE_WRITE_PROBE_MIN_MS) return { ok: false, skipped: 'throttled' };
+        preWriteProbeAt = now;
+        return await crossAutoPull('activity', { skipSave: true, from: String(reason || 'save'), force: true });
+    } catch (e) { return { ok: false, skipped: 'error', error: String((e && e.message) || e) }; }
+}
+
+/** 自动对账读数（诊断 / 状态行；只读） */
+export function autoPullInfo() {
+    return {
+        visibleOn: autoPullSwitchOn('visible'), activityOn: autoPullSwitchOn('activity'),
+        last: Object.assign({}, lastAutoPull), inFlight: !!autoPulling,
+        preWriteProbeAt: Number(preWriteProbeAt) || 0, visibleAt: Number(autoPullAt) || 0,
+        probeMinMs: PRE_WRITE_PROBE_MIN_MS, visibleMinMs: AUTO_PULL_MIN_MS,
+    };
+}
+
+// ============================================================
 // 双向同步（立即同步 / 刷新状态）
 // ============================================================
 /** 长任务（摘要/提取）在途 → 拒绝/推迟同步（避免并发读写同一份记忆数据） */
@@ -1429,6 +1604,8 @@ export function storageStatusInfo() {
         pending: crossPendingView(),
         lastRefresh: lastRefresh ? Object.assign({}, lastRefresh) : null,
         lastManual: lastManual ? { mode: lastManual.mode, side: lastManual.side || '' } : null,
+        // v3.50.32：自动对账读数（写前拉取 / 回到前台；含开关与最近一次结论，只读）
+        autoPull: autoPullInfo(),
     };
 }
 
@@ -1471,6 +1648,9 @@ export function resetSyncState() {
     storageSyncSkipRetries = 0;
     metaFileMissingAt = 0;
     fileReadCache = {};
+    // v3.50.32：自动对账的节流与单飞状态同样复位（测试隔离 / 组件卸载）
+    preWriteProbeAt = 0; autoPullAt = 0; autoPulling = null;
+    lastAutoPull = { at: 0, trigger: '', result: '', merged: false, changed: false, reason: '' };
     return true;
 }
 

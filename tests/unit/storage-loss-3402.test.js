@@ -222,7 +222,9 @@ await A('GZ-1 gzip 开启 + 盘上遗留**旧明文**：必须读回 `.json.gz` 
     boot({ disk: false, gzip: true, slim: true, atoms: [atomOf('new', '当前数据（.json.gz 里那份）')] });
     // 旧明文主文件（gzip 关闭时期写下的遗留物）
     files.set(stateFileName(), new Uint8Array(Buffer.from(JSON.stringify(fixedEnvelope(stOld, atOld)), 'utf8')));
-    await saveStateNow({ reason: 'test-gz1' });
+    // v3.50.32：本用例构造的是「盘上遗留旧明文 vs 本次写 .json.gz」的**候选取新**口径（同端单机遗留物，不是对端数据）
+    //   → 关掉写前拉取（`pullRemote:false`），否则会把遗留明文里的旧条目并进来，测不到候选顺序
+    await saveStateNow({ reason: 'test-gz1', pullRemote: false });
     const gzBytes = files.get(stateFileGzName());
     const gzWritten = !!gzBytes;
     // 本次真正写出的那份（`.json.gz`）的信封时间戳

@@ -119,7 +119,14 @@ function normalizeCurrency(e) {
     const nameKey = String(name).replace(/\s+/g, '').toLowerCase();
     const amtRaw = String(e?.amount ?? e?.['额度'] ?? e?.balance ?? '').replace(/[,，\s]/g, '');
     const fs = Number(e?.floorStart), fe = Number(e?.floorEnd);
-    return {
+    // v3.50.32（用户报告「货币跨端不同步金额、记录」）：**条目级修改时间**。
+    //   跨端冲突仲裁的顺序是「条目 `updatedAt` → 信封时间」，但货币写入路径此前**从不写这个字段** →
+    //   仲裁永远退化为「整份信封时间」（谁后保存谁赢），于是一端「只是保存了别的内容」就会把另一端
+    //   较新的额度覆盖回去、流水也对不上。这里只**保留**入参带来的值（缺省不写该键 → V1 黄金样本逐字不变），
+    //   打标由各写入路径负责（`core/ingest.js#mergeDelta` / `core/entries.js#upsertEntry` /
+    //   `core/currency-repair.js#runCurrencyRepair`）。
+    const upAt = Number(e && e.updatedAt);
+    const out = {
         id: String(e?.id || `cur_${hashText(ownerKey + '|' + nameKey)}`),
         owner,
         name,
@@ -140,6 +147,8 @@ function normalizeCurrency(e) {
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
         extra: makeExtra({ owner, unit: e?.unit, history: (e?.history || []).length, keywords: e?.keywords }),
     };
+    if (Number.isFinite(upAt) && upAt > 0) out.updatedAt = Math.floor(upAt);
+    return out;
 }
 // 货币「归属」默认值 = 当前主角名（主角档案 / 状态主体 / 主角设定；都没有则「主角」）
 
