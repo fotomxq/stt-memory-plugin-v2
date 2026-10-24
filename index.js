@@ -242,6 +242,7 @@ import { gzipToBase64, gunzipFromBytes, bytesToBase64, base64ToBytes, isGzipByte
 // v2.77.0：文件通道后端路由 + 宿主原生存储（官方契约）诊断入口
 import { fileTransportStatus, fileTransportListKeys, fileTransportKey, fileTransportDropCaches, resetFileTransportSession } from './adapters/file-transport.js';
 import { ttChannelInfo, ttMissStats, ttStoreOverview, ttWriteStats, TT_NS, TT_LEGACY_NS, TT_TABLE } from './adapters/tt-store.js';
+import { dealTriggersAfterExtract } from './core/deal-triggers.js';   // v3.51.0（W32 数-46/技-59）：长期收支触发器（确定性·无 AI）
 
 const runtime = {
     ready: false,
@@ -904,7 +905,12 @@ export async function init() {
             onFloorChanged();
             try { void saveStateNowQuiet('generation'); } catch (e) { /* 忽略 */ }
             // P4：生成结束 → 自动分析最后一楼（总开关 cfg.autoExtract；失败静默，绝不影响聊天）
-            void runAutoExtract().catch(() => { });
+            // v3.51.0（`docs/D53` §3.9 / W32 `技-59`）：**分析完成之后**处置长期收支触发器 ——
+            //   确定性代码（**全程无 AI**）：剧情日期跳动 → 按预测节点与周期**兑现 / 补齐**流水；
+            //   锚定货币丢失则不生成（留痕）。失败静默、**绝不阻塞聊天与注入**。
+            void runAutoExtract().catch(() => { }).then(() => {
+                try { void runDealTriggersAfterExtract(); } catch (e) { /* 忽略：触发器失败不影响聊天 */ }
+            });
         };
         const onUserRendered = () => { onFloorChanged(); };
         const onChatChanged = () => {
@@ -2407,6 +2413,11 @@ export async function runAutoExtract(opts) {
     const r = await autoExtractLatest(opts || {});
     runtime.extract = extractStats();
     return r;
+}
+
+/** v3.51.0（W32 技-59）：长期收支触发器接线（薄包装 → `core/deal-triggers.js#dealTriggersAfterExtract`；失败静默） */
+export async function runDealTriggersAfterExtract(opts) {
+    return dealTriggersAfterExtract(opts, { getStoryNow: getStoryNow, saveStateNowQuiet: saveStateNowQuiet, runtime: runtime });
 }
 
 /** 手动提取（命令 / 调试入口）：`{ floor }` 指定楼层，缺省分析未分析清单（可带 limit） */

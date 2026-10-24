@@ -113,13 +113,14 @@ A('C6 分析记忆页对应分节与短提示：货币记录（记录口径）+ 
         && h.indexOf('决定「分析记忆」时是否抽取货币') > 0 && h.indexOf('入库时的硬截断') > 0;
 })(), '见断言');
 
-A('C7 总量口径：v2.78.0 纯搬运 173 → v2.83.0 关联层 +3 = 176 → v2.84.0 存储上限改口径 −5 → 171 → v2.86.0 重要度口径改 +1 → v3.44.0 入库卫生 +2 → v3.45.5 角色履历 +6 = 175（base 9 / analyze 22 / extract 25 / forget 24 / rumors 13 / feed 51：v3.46.2 货币融合三键）', (() => {
+A('C7 总量口径：v2.78.0 纯搬运 173 → … → v3.50.19 修复聚合 +5 = 191 → **v3.51.0（W32）存储页 +10 = 201**', (() => {
     const info = settingsPagesInfo();
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **61**、总 185 → **190**
-    return info.totalControls === 191 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
-        && m.forget === 24 && m.rumors === 14;
+    // v3.51.0（W32）：存储页 +10 → 总 191 → 201（storage 13 → 23）
+    return info.totalControls === 201 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
+        && m.forget === 24 && m.rumors === 14 && m.storage === 23;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 
 A('C8 兜底口径（v2.84.0）：默认配置走**新口径**（总上限 3000 → 情节 3000×23% = 690）；把总上限置 0 或删掉该键则走旧的逐维 `storeMax*` 兼容口径（老存档 / V1 黄金样本可用）', (() => {

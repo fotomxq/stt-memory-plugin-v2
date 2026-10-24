@@ -12,6 +12,7 @@
 //   · 金额必须 > 0 且为有限数（填 0 / 负数 / 非数字一律拒绝并给理由 —— 方向由按钮决定，不由符号决定）。
 // ============================================================
 import { formatMoney, roundMoney } from './model/money.js';
+import { cfg } from './model/runtime.js';   // v3.51.0（W32）：摘要上限 `currencyHistoryMax` 读取
 
 /** 快速记账的说明后缀（用户指定口径：`收入XX元 修正`） */
 export const QUICK_NOTE_SUFFIX = '修正';
@@ -70,10 +71,17 @@ export function parseQuickAmount(raw) {
  * @param {{date:string,delta:number,note:string}} flow 新流水
  * @returns {Array}
  */
+/** v3.51.0：摘要上限（`cfg.currencyHistoryMax`，默认 60） */
+function historyMax() {
+    try {
+        const n = Number(cfg && cfg.currencyHistoryMax);
+        return Math.max(10, Math.min(200, Number.isFinite(n) ? Math.round(n) : 60));
+    } catch (e) { return 60; }
+}
 export function appendQuickFlow(history, flow) {
     const arr = Array.isArray(history) ? history.slice() : [];
     if (flow) arr.push({ date: String(flow.date || ''), delta: Number(flow.delta) || 0, note: String(flow.note || '') });
-    return arr.slice(-12);
+    return arr.slice(-historyMax());   // v3.51.0（`docs/D53`）：摘要上限可配（默认 60）
 }
 
 /**

@@ -213,6 +213,14 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'layer-preview': '「提取记忆」层命中预览容器（v2.58.0：`data-ftt-layer-preview` 由 `testLayer` 动作重绘）',
         'vector-cache': '向量缓存统计行（v2.58.0：清空动作后重绘即更新）',
         'search-count': '列表命中计数行（v2.62.0：筛选条右侧「共 N 条 · 命中 M」，重绘即更新）',
+        // v3.51.0（`docs/D53` W32 应-46/应-47）：货币三子页的结构 / 测试锚点（不参与动作分发）
+        'csub-tabs': '货币三子页子标签条（`data-ftt-csub-tabs` 结构锚点；切换由 `moneySub` 动作完成）',
+        'csub-body': '货币三子页内容容器（`data-ftt-csub-body="overview|ledger|deals"`，重绘即更新）',
+        'ledger': '收支记录行锚点（`data-ftt-ledger="<id>"`，测试与高亮用）',
+        'ledger-empty': '收支记录空态容器（`data-ftt-ledger-empty`，样式/测试锚点）',
+        'deal': '长期收支详情行锚点（`data-ftt-deal="<id>"`）',
+        'deals-empty': '长期收支空态容器（`data-ftt-deals-empty`）',
+        'forecast': '预测区块（`data-ftt-forecast`：与「已发生节点」**分区呈现**，样式/测试锚点）',
         // v3.9.0（用户要求：各分类均有 NSFW 标签提示）：**样式 / 测试锚点**，不参与动作分发
         //   v3.47.2：分类级汇总行（原 `nsfw-legend`）已按用户要求移除 → 白名单条目同步删除（避免留"已不存在的标记"）
         'nsfw-level': 'NSFW 等级留档标签（`strong` / `weak`；配色由 CSS 按该属性选择，测试锚点）',

@@ -83,6 +83,8 @@ import { planAgingReport, PLAN_AGING_STALE_DAYS } from './plan-aging.js';
 //   本文件**只做「读数 → 发现」的翻译**，不重复实现任何算法（`resumeHealthReport` 内部已含缺省回落：
 //   配置非法时自动取默认值，所以这里直接把 `cfg` 的六个键透传即可）。
 import { RESUME_DEFAULT_SUMMARY_MAX, resumeHealthReport, resumeLedgerState } from './resume.js';
+import { reconcileLedger, orphanLedgerEntries } from './model/ledger.js';   // v3.51.0（W32 技-57）：货币三子页的联动体检
+import { storyDateMsFromStr } from './clock.js';   // v3.51.0：预测节点到期判定
 
 /** 体检发现的等级：`error` 计入 `ok=false`；`warn` / `info` 只提示 */
 export const HEALTH_LEVELS = Object.freeze(['error', 'warn', 'info']);
@@ -509,6 +511,7 @@ export function dataHealthReport(st, opts) {
             for (const it of out.resume.items) {
                 const id = String(it.id || '');
                 if (it.over) add('resume-over-limit', 'info', { dim: 'snapshots', id: id, field: 'resume.total', value: it.total, detail: '履历 ' + it.total + ' 条超过上限 ' + out.resume.max + ' 条（超出 ' + (it.total - out.resume.max) + ' 条）—— **软阈值**：只有超过上限才清算，未超（≤ 上限）时一条都不动；下次履历维护会按「重要度 × 剧情时间新鲜度」遗弃超出的条目（达到免疫线的条目不参与遗弃，故实际遗弃数只会更少）' });
+
                 if (it.toCondense > 0) add('resume-needs-condense', 'info', { dim: 'snapshots', id: id, field: 'resume.toCondense', value: it.toCondense, detail: '有 ' + it.toCondense + ' 条简述超过凝练目标 ' + condenseMax + ' 字（最长 ' + it.longest + ' 字）待凝练；凝练只压简述，不动日期 / 时刻 / 重要度 / 关联' });
                 if (it.dupSuspects > 0) add('resume-suspect-dup', 'info', { dim: 'snapshots', id: id, field: 'resume.dupSuspects', value: it.dupSuspects, detail: '有 ' + it.dupSuspects + ' 条简述「前 12 字」与同角色其它条目相同（疑似重复）；**只提示，不改数据** —— 请在角色页核对后手工合并' });
                 if (it.dupWithHistory > 0) add('resume-dup-with-history', 'info', { dim: 'snapshots', id: id, field: 'resume.dupWithHistory', value: it.dupWithHistory, detail: '有 ' + it.dupWithHistory + ' 条与 `background.history` 疑似重复（简述前 8 字已见于历史正文）；按 `docs/D26` §3.1 的分工：历史写「剧情前生平」、履历写「剧情内大事记」，同一件事应只留一处' });
@@ -533,6 +536,70 @@ export function dataHealthReport(st, opts) {
             for (const f of cf) add(f.code, f.level, { dim: f.dim, id: f.id, field: f.field, value: f.value, detail: f.detail });
         }
     } catch (e) { /* 忽略：校验失败不影响体检主体 */ }
+
+    /**
+     * v3.51.0（`docs/D53` §3.6 / W32 `技-57`）：**货币三子页的四项体检**（全部只读、可解释）——
+     *   ① `ledger-amount-mismatch`：余额 vs 账本净额不符（**只报不改**：历史 `amount` 可能由 AI 直抽，与流水本不同源）；
+     *   ② `ledger-orphan`：孤儿流水（指向不存在的货币；正常情况下级联删除已清掉，出现即为真异常）；
+     *   ③ `deal-forecast-as-fact`：预测被当成已发生（`nodes` 里出现与 `forecast.nextDate` 同日期的记录，或 `direction` 与 `delta` 符号矛盾）；
+     *   ④ `deal-trigger-stalled`：触发器停摆（锚定货币失效 / 预测日期已过却未兑现 / 补齐被截断）。
+     */
+    try {
+        const L = s || {};
+        // ① 余额对账（只报不改）
+        try {
+            const rec = (typeof reconcileLedger === 'function') ? reconcileLedger() : [];
+            for (const r of rec) {
+                if (!r || !Number(r.diff)) continue;
+                add('ledger-amount-mismatch', 'info', {
+                    dim: 'currencies', id: r.currencyId, field: 'amount', value: r.diff,
+                    detail: (r.owner ? (r.owner + '·') : '') + r.name + '：余额 ' + r.amount + ' vs 账本净额 ' + r.sum + '（差 ' + r.diff + '）—— **只报不改**：余额可能来自 AI 直抽，与流水本不同源，请人工核对',
+                });
+            }
+        } catch (e) { /* 忽略 */ }
+        // ② 孤儿流水
+        try {
+            const orph = (typeof orphanLedgerEntries === 'function') ? orphanLedgerEntries() : [];
+            for (const x of orph) {
+                if (!x) continue;
+                add('ledger-orphan', 'warn', { dim: 'ledger', id: String(x.id), field: 'currencyId', value: String(x.currencyId || ''), detail: '流水的货币已不存在（应随货币级联删除；出现即为异常）' });
+            }
+        } catch (e) { /* 忽略 */ }
+        // ③ 预测被当真 + ④ 触发器停摆
+        try {
+            const cur = String((L.state && L.state.date) || '');
+            const curMs = (() => { try { return storyDateMsFromStr(cur); } catch (e) { return NaN; } })();
+            for (const d of (Array.isArray(L.deals) ? L.deals : [])) {
+                if (!d || !d.id) continue;
+                const ol = d.outlook || {};
+                const fc = ol.forecast || {};
+                const nodes = Array.isArray(ol.nodes) ? ol.nodes : [];
+                if (fc.nextDate && nodes.some((n) => n && String(n.date) === String(fc.nextDate))) {
+                    add('deal-forecast-as-fact', 'info', { dim: 'deals', id: String(d.id), field: 'outlook.forecast.nextDate', value: String(fc.nextDate), detail: '预测节点日期与已发生节点重合 —— 预测与事实**必须分字段**存放（`outlook.nodes` / `outlook.forecast`），请核对来源' });
+                }
+                const delta = Number(fc.delta) || 0;
+                if (delta !== 0) {
+                    const want = delta > 0 ? 'increase' : 'decrease';
+                    if (fc.direction && fc.direction !== want) {
+                        add('deal-forecast-as-fact', 'info', { dim: 'deals', id: String(d.id), field: 'outlook.forecast.direction', value: String(fc.direction), detail: '预测方向与金额符号矛盾（应自动纠正为 ' + want + '）' });
+                    }
+                }
+                const curOk = (d.currencyId && (L.currencies || []).some((c) => c && String(c.id) === String(d.currencyId)));
+                if (!curOk) {
+                    add('deal-trigger-stalled', 'warn', { dim: 'deals', id: String(d.id), field: 'currencyId', value: String(d.currencyId || ''), detail: '锚定货币已失效 → 触发器**停摆**（不会生成流水）；请重新指定货币或归档该标的物' });
+                } else if (fc.nextDate && Number.isFinite(curMs)) {
+                    let due = false;
+                    try { const fm = storyDateMsFromStr(fc.nextDate); due = Number.isFinite(fm) && fm <= curMs; } catch (e) { due = false; }
+                    if (due && !(d.trigger && d.trigger.lastFiredNodeDate === fc.nextDate)) {
+                        add('deal-trigger-stalled', 'info', { dim: 'deals', id: String(d.id), field: 'outlook.forecast.nextDate', value: String(fc.nextDate), detail: '预测节点已到期但尚未兑现（触发器在「总览自动分析完成」后执行；若长期未兑现请检查剧情日期是否推进）' });
+                    }
+                }
+                if (d.trigger && d.trigger.catchUpTruncated) {
+                    add('deal-trigger-stalled', 'info', { dim: 'deals', id: String(d.id), field: 'trigger.catchUpTruncated', value: true, detail: '上次猛烈跳动的补齐被上限截断（尚有周期未补齐）—— 如实标记，不静默丢弃' });
+                }
+            }
+        } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 忽略：联动体检失败不影响体检主体 */ }
 
     // v3.50.28（W28 `技-28`）：如实落账（条目 / 维度 / 耗时 / 命中；不含正文）
     try {

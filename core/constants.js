@@ -7,13 +7,13 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.50.32';   // v3.50.32（用户指定·小修复）：货币跨端「金额 / 记录」同步 —— 写前拉取 + 回到前台自动对账 + 账本时间戳
+export const VERSION = '3.51.0';   // v3.51.0（用户指定）：W32 货币三子页（ledger/deals + DATA_VERSION 3 + 触发器 + 三子页界面）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';
 
 /** 数据模型版本（与代码版本解耦：只在需要数据迁移时递增） */
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;   // v3.51.0（W32 数-43/数-44）：+ledger / +deals 两个原子容器（2 → 3）
 
 /** 注入键（setExtensionPrompt 的 key，禁用/关闭时必须显式置空避免残留） */
 export const INJECT_ID = 'ftt_memory_v2';
@@ -50,6 +50,10 @@ export const DIMENSIONS = Object.freeze([
     // v3.47.0（`docs/D22` W16 `数-22` / `docs/D27` §3.1）：**地图**（第 15 维）——
     //   在既有 `scenes`（场所）之上做空间结构化：场所锚点 → 房间 → 陈设，三级 `place` + `route` 路径。
     { kind: 'maps', part: 'maps', label: '地图' },
+    // v3.51.0（`docs/D53` / `docs/D22` W32）：**收支记录**与**长期收支**（维度 15 → 17）。
+    //   两者都是**原子容器**（逐条合并 + 逐条墓碑）—— 记账必须挂货币、流水长期只增；长期收支锚定货币并带预测节点。
+    { kind: 'ledger', part: 'ledger', label: '收支记录' },
+    { kind: 'deals', part: 'deals', label: '长期收支' },
 ]);
 
 /** 更新检查默认仓库地址（用户要求：以 GitHub 项目地址作为更新检查地址；可在设置里改） */
@@ -76,7 +80,7 @@ export const DIM_CHAR_LIMITS = Object.freeze({
 });
 
 /** 参与「原子层」内容哈希 / 快照链 / 跨端逐条合并的维度键（**逐字取自 V1**） */
-export const ATOM_DIM_KEYS = Object.freeze(['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors', 'maps']);   // v3.47.0（W16 数-22）：+maps（原子层 13 → 14）
+export const ATOM_DIM_KEYS = Object.freeze(['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'links', 'plotSegments', 'rumors', 'maps', 'ledger', 'deals']);   // v3.47.0（W16 数-22）：+maps（13→14）；v3.51.0（W32 数-43/44）：+ledger/+deals（14 → 16）
 
 /** 绑定到宿主的酒馆事件（与 V1 九事件对齐） */
 export const HOST_EVENTS = Object.freeze([

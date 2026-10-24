@@ -941,7 +941,18 @@ export const SETTINGS_CONTROLS = {
             "key": "storage.worldbookMaxBytes",
             "label": "词条内容上限(字节)",
             "type": "text"
-        }
+        },
+        // v3.51.0（`docs/D53` · W32 应-47）：货币三子页 —— 摘要上限与长期收支触发器阈值
+        { "key": "currencyHistoryMax", "label": "货币条目内收支摘要上限(笔,10-200)", "type": "text" },
+        { "key": "dealJumpMinDays", "label": "长期收支：判定「剧情时间跳动」的最少天数", "type": "text" },
+        { "key": "dealStrongJumpCycles", "label": "长期收支：猛烈跳动 = 跨度 ≥ N 个周期", "type": "text" },
+        { "key": "dealCatchUpMax", "label": "长期收支：单次补齐上限(节点数)", "type": "text" },
+        { "key": "storeMinLedger", "label": "收支记录保底条数", "type": "text" },
+        { "key": "storeMaxLedger", "label": "收支记录展示上限(条;不裁剪,超出进冷存)", "type": "text" },
+        { "key": "storeShare.ledger", "label": "收支记录占存储上限(%);其余维度自动补齐到 100", "type": "text" },
+        { "key": "storeMinDeals", "label": "长期收支保底条数", "type": "text" },
+        { "key": "storeMaxDeals", "label": "长期收支展示上限(条;不裁剪)", "type": "text" },
+        { "key": "storeShare.deals", "label": "长期收支占存储上限(%);其余维度自动补齐到 100", "type": "text" }
         ],
     "debug": [
         // v2.42.0：交互/宿主追踪的分级与分类开关（V1 只有 debugEnabled；本组为 V2 附加，调试页可见可关）
@@ -1143,6 +1154,11 @@ export const RANGE_SPECS = Object.freeze({
     'storage.worldbookProbability': { min: 0, max: 100, step: 1, unit: '%' },
     // 存储总上限（条）：计数但适合拖动粗调，右侧仍有精确读数
     storeTotalMax: { min: 300, max: 20000, step: 100, unit: '条' },
+    // v3.51.0（`docs/D53` · W32 应-47）：货币三子页相关（摘要上限可改；触发器阈值可调）
+    currencyHistoryMax: { min: 10, max: 200, step: 1, unit: '笔' },
+    dealJumpMinDays: { min: 1, max: 3650, step: 1, unit: '天' },
+    dealStrongJumpCycles: { min: 1, max: 60, step: 1, unit: '周期' },
+    dealCatchUpMax: { min: 1, max: 240, step: 1, unit: '节点' },
 });
 
 /** 读取某项的**默认值**（`defaultCfg`，支持 `storage.` / 点路径）；缺失 → null */

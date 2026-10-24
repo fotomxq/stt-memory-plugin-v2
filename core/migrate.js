@@ -525,6 +525,44 @@ function migrateState(s) {
     //   老存档读不到 `maps` → 补 `[]`（`DATA_VERSION` 1 → 2 的唯一迁移动作：**只补容器 + 归一，不解释旧数据**，见 R7）。
     //   注意：**不做 `maps` 的字段级回填**（本维度是新增的，老存档里不存在任何地图数据）。
     if (!Array.isArray(s.maps)) { s.maps = []; changed = true; }
+    /**
+     * v3.51.0（`docs/D53` §3.6 ⑤ / `docs/D22` W32 `数-43` + `数-44`）：**`DATA_VERSION` 3** ——
+     *   ① 新增原子容器 `ledger`（收支记录）与 `deals`（长期收支）→ 老存档补 `[]`；
+     *   ② `docs/D53` **Q2 裁决 = 回填**：把既有 `currencies[].history` 逐笔回填进 `ledger`
+     *      （`source:'migrate'`、`id` 幂等）—— 否则老存档的历史流水"看得见（摘要）查不到（账本）"。
+     *   回填失败不影响其它迁移（单条脏数据只跳过该条）。
+     */
+    if (!Array.isArray(s.ledger)) { s.ledger = []; changed = true; }
+    if (!Array.isArray(s.deals)) { s.deals = []; changed = true; }
+    try {
+        const before = (s.ledger || []).length;
+        const h = (s.currencies || []).map((c) => ({ id: c && c.id, owner: c && c.owner, history: Array.isArray(c && c.history) ? c.history : [] }));
+        if (h.some((x) => x.history.length)) {
+            // 延迟 import 以避免模块级循环（migrate 被 model 层使用）
+            const fill = (arr) => {
+                const have = new Set((arr || []).map((x) => String(x && x.id)));
+                let added = 0;
+                for (const c of h) {
+                    if (!c.id) continue;
+                    for (const f of c.history) {
+                        const delta = Math.round((Number(f && f.delta) || 0) * 10000) / 10000;
+                        if (!delta) continue;
+                        const date = String((f && f.date) || '').trim();
+                        if (!date) continue;
+                        const note = String((f && f.note) || '').trim().slice(0, 80);
+                        // 与 `core/model/ledger.js#ledgerIdOf` **同口径**（键串 + `util.hashText`），保证重复迁移幂等
+                        const id = 'led_' + hashText([String(c.id), date, delta, note].join('|'));
+                        if (have.has(id)) continue;
+                        arr.push({ id: id, currencyId: String(c.id), owner: String(c.owner || ''), date: date, delta: delta, note: note, source: 'migrate', dealId: '', floorSeen: 0, updatedAt: 0 });
+                        have.add(id); added += 1;
+                    }
+                }
+                return added;
+            };
+            changed = fill(s.ledger) > 0 || changed;
+            void before;
+        }
+    } catch (e) { /* 忽略：回填失败不影响其它迁移 */ }
     // tags 与 keywords 统一为 tags —— 历史条目 keywords 自动合并进 tags（去重，避免数据丢失）
     const mergeKwHist = (arr) => {
         if (!Array.isArray(arr)) return;

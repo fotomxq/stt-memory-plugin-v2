@@ -32,6 +32,7 @@ import { mergePlotSegmentsToCap, trimLegacySummaries, PLOT_SEGMENT_MAX, LEGACY_S
 // v3.44.0（`docs/D22` **W4**）：`数-13` 空壳入库拦截 / `数-14` 保留字段上界
 import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
 import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
+import { cascadeDeleteLedgerForCurrency } from './model/ledger.js';   // v3.51.0（W32 数-45）：货币消失 → 流水级联删除
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
 function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { /* 忽略：提示通道不可用：不影响数据与落库 */ } }
@@ -82,6 +83,10 @@ const STORE_LIMITS = {
     suspense:  ['storeMinSuspense', 'storeMaxSuspense', 300, '悬念', 6],
     npcs:      ['storeMinNpcs', 'storeMaxNpcs', 300, '名册', 6],
     rumors:    ['storeMinRumors', 'storeMaxRumors', 300, '传言', 6],   // v1.192：传言（存储上限；传言另有自己的时间衰退清扫）
+    // v3.51.0（`docs/D53` §3.6 附）：账本**长期只增**——上限只约束**热集**（首屏/扫描），超出按 `D28` 进冷存、不删除
+    //   占比 **0**：两者**不参与「总上限 × 占比」分配**（长期只增、不裁剪）—— 只登记表项以便面板显示与体检取标签
+    ledger:    ['storeMinLedger', 'storeMaxLedger', 4000, '收支记录', 0],
+    deals:     ['storeMinDeals', 'storeMaxDeals', 400, '长期收支', 0],
 };
 /** 存储总上限默认值（条）：涵盖**所有原子数据**的合计 */
 const STORE_TOTAL_MAX_DEFAULT = 3000;
@@ -311,6 +316,11 @@ function mergeDelta(delta0, floorRange) {
             }
             for (const id of delta.currencies?.remove || []) {
                 try { tombSet('currencies', id); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
+                // v3.51.0（`docs/D53` §3.5 · W32 数-45）：**货币消失 → 其流水级联删除**（不留孤儿；逐条写墓碑）
+                try {
+                    const gone = (state.currencies || []).filter(x => x.id === id || x.name === id || String(x.owner || '') === String(id));
+                    for (const g of gone) { try { cascadeDeleteLedgerForCurrency(String(g.id)); } catch (e) { /* 忽略 */ } }
+                } catch (e) { /* 忽略 */ }
                 state.currencies = (state.currencies || []).filter(x => x.id !== id && x.name !== id && String(x.owner || '') !== String(id));
             }
         }
@@ -1696,6 +1706,9 @@ function storeEffectiveCaps() {
         const shares = normStoreShares(cfg && cfg.storeShare);
         const out = { total: total, shares: shares, caps: {}, sum: 0 };
         for (const dim of STORE_SHARE_DIMS) {
+            // v3.51.0（`docs/D53` · W32）：占比 0 的维度**不参与「总上限 × 占比」分配**（账本 / 长期收支：长期只增、不裁剪）
+            //   → 有效上限记 **0**（而不是被 floor 成 1），否则「上限合计 = 总上限」的口径会凭空多出 2 条。
+            if (!(Number(shares[dim]) > 0)) { out.caps[dim] = 0; continue; }
             const cap = storeCapFor(dim);
             out.caps[dim] = cap;
             out.sum += cap;
@@ -1720,9 +1733,16 @@ function storeCapFor(dim) {
 function enforceDimCaps() {
     const out = { cut: 0, dims: {} };
     try {
+        /**
+         * v3.51.0（`docs/D53` §3.7 · W32）：**账本与长期收支不参与"按条数裁剪"** ——
+         *   账本长期只增（上限只约束热集/展示，超出按 `D28` 进冷存，**不删除**）；长期收支是人工资产，条数少且不可再生。
+         *   这是 `D28`「不删数据」的直接落地：**不把语义数据交给通用上限裁剪**。
+         */
+        const NO_CAP_DIMS = { ledger: 1, deals: 1 };
         const protectImp = repairClampNum(cfg && cfg.lowUseForgetProtectImportance, 0, 1, 0.8);
         for (const pair of DIM_CAP_KEYS) {
             const dim = pair[0], label = pair[1];
+            if (NO_CAP_DIMS[dim]) continue;                     // v3.51.0：账本 / 长期收支不裁剪
             const cap = storeCapFor(dim);                     // v1.147：存储上限（≥ 保底）
             const arr = Array.isArray(state[dim]) ? state[dim] : [];
             if (!cap || arr.length <= cap) continue;

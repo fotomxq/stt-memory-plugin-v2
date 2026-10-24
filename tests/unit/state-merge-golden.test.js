@@ -48,7 +48,7 @@ R.assert('S2 emptyState 容器与字段与 V1 完全一致（14 维 + 墓碑账�
     const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
     // v3.47.0（`docs/D22` W16 `数-22`）：**再新增一个 V2 专有容器** `maps`（V1 无此维度）—— 同款显式归一，
     //   并在下面单独断言它确实是数组（归一 ≠ 删字段）。
-    const V2_ONLY_CONTAINERS = ['maps'];
+    const V2_ONLY_CONTAINERS = ['maps', 'ledger', 'deals'];   // v3.51.0（W32）：+ledger/+deals
     const got = {
         keys: Object.keys(e).filter(k => V2_LEDGER_KEYS.indexOf(k) < 0 && V2_ONLY_CONTAINERS.indexOf(k) < 0), scope: e.scope,
         dims: ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'scenes', 'concepts', 'parallels', 'npcs', 'links', 'currencies', 'plotSegments', 'rumors'].map(k => Array.isArray(e[k]) ? k : k + ':' + typeof e[k]),

@@ -36,6 +36,7 @@ import { atomTitle, normPhase } from '../core/model/scalars.js';
 import { bigAgeText } from '../core/model/bigdate.js';
 import { atomIsHidden } from '../core/merge.js';
 import { formatMoney, defaultCurrencyOwner, isTrackedCurrencyOwner } from '../core/model/money.js';
+import { moneyPageHtml, setMoneySub } from './money-tabs.js';   // v3.51.0（W32 应-46）：货币三子页（面板经本模块透出，避免面板体量增长）
 import { relLinksOf, relSummaryLine, relHowLabelOf, relLinkIndex, relLinksOfIndexed, relSummaryLineIndexed, relWhoKey } from '../core/model/rel.js';
 import { snapshotAge, snapshotAgeBasisText, snapshotAppearanceText, snapshotBirthAnomaly, snapshotBirthAnomalyShort, storyAnchorDate } from '../core/model/snapshot.js';   // v3.1.0：+storyAnchorDate（渲染期锚点，一次算好复用）
 import { importancePct, planPhaseLabel, parallelExpired, parallelDecayScore, relTag } from '../core/recall.js';
@@ -617,3 +618,4 @@ export function stateRowMainHtml(s) {
 
 /** 该维度在列表里是否只显示「进行中」（V1 `plansHtml` 只列 `status==='open'`） */
 export function listStatusFilter(kind) { return (kind === 'plans' || kind === 'suspense') ? 'open' : ''; }
+export { moneyPageHtml, setMoneySub };

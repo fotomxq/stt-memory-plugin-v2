@@ -140,7 +140,7 @@ A('A11 干净状态：无异常 → `ok=true` / `level=ok` / 明细为空（不�
     const clean = { atoms: [{ id: 'a1', text: '甲在码头搬运木箱，登记入册。', title: 't', floorStart: 1, floorEnd: 2, nsfw: 'strong', uses: 2, importance: 0.5 }], processedFloors: [{ f: 1, h: 'h1' }], lastKnownFloor: 1, deleted: {} };
     const r = dataHealthReport(clean);
     return r.ok === true && r.level === 'ok' && r.findings.length === 0 && J(r.counts) === J({})
-        && dataHealthText(r) === '数据体检：未发现异常（扫描 1 条 / 16 维）';   // v3.13.1：维度去重后唯一维数；v3.47.0（W16 数-22）：15 → 16（+maps）
+        && dataHealthText(r) === '数据体检：未发现异常（扫描 1 条 / 18 维）';   // v3.13.1：维度去重后唯一维数；v3.47.0（W16 数-22）：15 → 16（+maps）；v3.51.0（W32）：16 → 18（+ledger/+deals）
 })(), '见断言');
 
 // ---------- B 组：载入期自愈 ----------
@@ -259,8 +259,8 @@ A('D1 维度**不重复扫描**：`plotSegments` 只算一维（`scanned.dims` =
     const segRows = r.findings.filter((f) => f.dim === 'plotSegments');
     const codes = segRows.map((f) => f.code).sort();
     const uniq = [...new Set(codes)];
-    return r.scanned.dims === 16                                  // v3.47.0（W16 数-22）：14(ATOM_DIM_KEYS，+maps) + currencies + npcs（plotSegments 已含）
-        && dataHealthReport({}).scanned.dims === 16
+    return r.scanned.dims === 18                                  // v3.51.0（W32）：16(ATOM_DIM_KEYS，+ledger/+deals) + currencies + npcs（plotSegments 已含）
+        && dataHealthReport({}).scanned.dims === 18
         && segRows.length === 3                                   // 3 处异常各一条（修复前是 6 条）
         && J(codes) === J(uniq)
         && r.counts['uses-invalid'] === 1 && r.counts['floor-inverted'] === 1 && r.counts['nsfw-invalid'] === 1;

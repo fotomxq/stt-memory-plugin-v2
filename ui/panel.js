@@ -108,7 +108,7 @@ import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities }
 import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../core/export.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
-import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, moneyPageHtml, setMoneySub } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
@@ -920,6 +920,7 @@ export function setAtomSub(v) {
 /** 维度分页正文（分发器）：情节页 = 双子标签（📜 情节列表 / 🧩 分段总结，V1 v1.182/v1.206） */
 function dimBody(kind) {
     if (kind === 'atoms') return atomsBody();
+    if (kind === 'currencies') return moneyPageHtml(dimBodyList('currencies'));   // v3.51.0（W32 应-46）：三子页（总览原样传入）
     return dimBodyList(kind);
 }
 
@@ -2311,6 +2312,7 @@ export async function panelAction(action, payload) {
                 result = Object.assign(result, { ok: Number(r.made || 0) > 0, action: a, atomMerge: r, made: Number(r.made || 0) });
             }
         }
+        else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
         else if (a === 'plotSegmentSummarySel') {
             // V1「🧩 分段总结（N）」（情节页多选）：只把勾选情节按剧情时间打包交 AI 分段，归档到「🧩 分段总结」子页
             const ids = Array.from(selOf('atoms'));

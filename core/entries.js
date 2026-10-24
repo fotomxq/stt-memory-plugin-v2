@@ -22,6 +22,8 @@ import { mergeTags, scenePathArr } from './model/scalars.js';
 import { normalizePlotSegment } from './model/segment.js';
 import { normalizeSnapshot, stampSnapshotTime, syncSnapshotAge } from './model/snapshot.js';
 import { normalizeList, snapNameKey } from './util.js';
+import { cascadeDeleteLedgerForCurrency, normalizeLedgerEntry } from './model/ledger.js';   // v3.51.0（W32 数-43/45）
+import { normalizeDeal } from './model/deal.js';   // v3.51.0（W32 数-44）
 function sweepOrphanRelLinks() {
     let n = 0;
     try {
@@ -132,6 +134,10 @@ function deleteEntry(kind, id) {
     try { tombSet(kind, id); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
     // v1.165：删除条目 → 级联删除其关联行（留墓碑，跨端不复活）
     try { dropRelLinks(kind, [id]); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
+    // v3.51.0（`docs/D53` §3.5 · W32 数-45）：**删除货币 → 其流水级联删除**（用户 v1.1 第 3 条：不做孤儿记录）
+    if (kind === 'currencies' && target0) {
+        try { cascadeDeleteLedgerForCurrency(String(target0.id)); } catch (e) { /* 忽略：级联失败不影响货币删除主体 */ }
+    }
     // v1.203：删除的是「合并总结」情节 → 让被它总结的原情节恢复显示（数据始终保留，只是重新可见）
     if (kind === 'atoms' && target0 && target0.mergedSummary) {
         try { const n = releaseMergedSources(target0); if (n) log(`合并总结已删除：恢复显示 ${n} 条被总结情节`); } catch (e) { /* 忽略：落盘失败：后续重试与下次写入会再落，本轮不中断 */ }
@@ -313,6 +319,8 @@ function kindNormalize(kind, raw, floor) {
         case 'plotSegments': return normalizePlotSegment(raw);   // v1.182：情节分段总结
         case 'rumors': return normalizeRumor(raw);   // v1.192：传言
         case 'maps': return normalizeMap(raw);   // v3.47.0（W16 数-22）：地图（place / route 两 kind）
+        case 'ledger': return normalizeLedgerEntry(raw);   // v3.51.0（W32 数-43）：收支记录（必挂货币 / 金额非 0）
+        case 'deals': return normalizeDeal(raw);           // v3.51.0（W32 数-44）：长期收支（锚定货币 + 预测日期必填）
         default: return null;
     }
 }

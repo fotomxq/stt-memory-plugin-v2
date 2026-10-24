@@ -79,7 +79,8 @@ A('A3 身份键：优先「归属 + 币种」（`id` 形态不一致的老数据
         && noKey.length === 2;
 })(), (() => ({ merged: mergeCurrencyArrays([cur('甲', '银元', 5, { id: 'cur_aaa' })], [cur('甲', '银元', 9, { id: 'c1' })], { preferRemote: true }), raw: currencyIdentityKey({ id: 'c1', who: '甲', kind: '银元' }) }))());
 
-A('A4 收支流水**并集**（同日期 + 同额 + 同说明去重；只留最近 12 笔）—— 只报收支的那一端流水不被覆盖', (() => {
+A('A4 收支流水**并集**（同日期 + 同额 + 同说明去重；只留最近 N 笔——本档设 12 复现原口径，v3.51.0 默认 60）—— 只报收支的那一端流水不被覆盖', (() => {
+    cfg.currencyHistoryMax = 12;   // v3.51.0：摘要上限可配
     const h1 = [{ date: '1919-11-29', delta: 50, note: '卖船板' }];
     const h2 = [{ date: '1919-11-30', delta: -20, note: '买药' }];
     const out = mergeCurrencyArrays([cur('甲', '银元', 5, { history: clone(h1) })], [cur('甲', '银元', 9, { history: clone(h2) })], { preferRemote: true })[0];

@@ -74,6 +74,21 @@ function atomContentHash(cat, a) {
             const M = (m) => (m && typeof m === 'object') ? (S(m.value) + '|' + S(m.unit) + '|' + S(m.raw)) : '';
             o.dist = M(a.distance); o.time = M(a.timeCost);
         }
+        // v3.51.0（`docs/D53` §3.6 ③ / W32）：**内容类进哈希、引用类不进**（`02` §2 I3）——
+        //   `ledger`：`currencyId` / `dealId` 是**引用**（货币融合会重指向）→ **不进**；否则融合一次全网抖动。
+        //   `deals`：`currencyId` 同上；`trigger` 是运行态（代码维护）→ **不进**；`outlook` 三段整体参与。
+        else if (cat === 'ledger') {
+            o.d = S(a.date); o.delta = N(a.delta); o.note = S(a.note); o.src = S(a.source);
+        }
+        else if (cat === 'deals') {
+            const ol = (a.outlook && typeof a.outlook === 'object') ? a.outlook : {};
+            const f = (ol.forecast && typeof ol.forecast === 'object') ? ol.forecast : {};
+            o.name = S(a.name); o.desc = S(a.desc); o.kind = S(a.kind); o.status = S(a.status);
+            o.sd = S(a.startDate); o.ed = S(a.endDate); o.cyc = S(a.cycle);
+            o.ot = S(ol.text);
+            o.on = A((ol.nodes || []).map((x) => S((x && x.date) || '') + ':' + N(x && x.delta) + ':' + S((x && x.note) || '')));
+            o.of = S(f.nextDate) + ':' + N(f.delta) + ':' + S(f.direction) + ':' + S(f.note) + ':' + S(f.source);
+        }
         else { return ''; }
         return storageHash(o);
     } catch (e) { return ''; }

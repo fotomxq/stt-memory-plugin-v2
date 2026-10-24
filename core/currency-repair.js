@@ -38,6 +38,7 @@
 import { state, saveState, notifyHooks, dbgLog, warn } from './model/runtime.js';
 import { roundMoney, moneyNet, mergeMoneyHistory, defaultCurrencyOwner, trackedCurrencyRoles } from './model/money.js';
 import { tombMany, tombEntries } from './merge.js';
+import { cascadeDeleteLedgerForCurrency } from './model/ledger.js';   // v3.51.0（W32 数-45）：货币消失 → 流水级联删除（不留孤儿）
 
 /** 用户提示（经宿主钩子；与 `core/item-repair.js` 既有写法一致） */
 function notify(kind, title, text) {
@@ -404,6 +405,38 @@ function runCurrencyRepair(opts) {
                 next.push(patched);
             } else next.push(c);
         }
+        /**
+         * v3.51.0（`docs/D53` §3.5 · `docs/D22` W32 `数-45`）：**双向联动与完整性** ——
+         *   ① **融合 = 重指向**：被并入主条的 id 上的 `ledger.currencyId` 改成 `keepId`
+         *      （不重指向就会留下指向"已消失货币"的孤儿流水）；
+         *   ② **真删除 = 级联删流水**（用户 v1.1 第 3 条）：`drop` 里**不属于任何融合组**的条目，
+         *      其流水**一并删除**并逐条写墓碑（跨端不复活）；`deals` 不删（锚定货币失效 → 触发器停摆）。
+         */
+        try {
+            const keepOf = new Map();
+            for (const m of (plan.merge || [])) {
+                for (const rid of (m.removedIds || [])) keepOf.set(String(rid), String(m.keepId));
+            }
+            const repointed = [];
+            for (const x of (Array.isArray(state.ledger) ? state.ledger : [])) {
+                const k = keepOf.get(String(x && x.currencyId));
+                if (k && String(x.currencyId) !== k) { x.currencyId = k; repointed.push(String(x.id)); }
+            }
+            if (repointed.length) {
+                try { dbgLog('摘要', { action: '货币融合：流水重指向主条', repointed: repointed.length }); } catch (e) { /* 忽略 */ }
+            }
+            let cascaded = 0;
+            for (const c of droppedEntries) {
+                if (keepOf.has(String(c && c.id))) continue;           // 被并入 → 已重指向，不删流水
+                try {
+                    const r = cascadeDeleteLedgerForCurrency(String(c && c.id));
+                    cascaded += r.removed;
+                } catch (e) { /* 忽略：单条失败不影响其余 */ }
+            }
+            if (cascaded) {
+                try { dbgLog('摘要', { action: '货币消失：流水级联删除（随货币，不留孤儿）', removed: cascaded }); } catch (e) { /* 忽略 */ }
+            }
+        } catch (e) { /* 忽略：联动失败不影响货币修正主体 */ }
         state.currencies = next;
         // 删除留痕：id 墓碑 + 内容哈希墓碑（跨端不会复活）
         try { tombMany('currencies', droppedEntries.map((x) => String((x && x.id) || '')).filter(Boolean)); } catch (e) { /* 忽略 */ }
