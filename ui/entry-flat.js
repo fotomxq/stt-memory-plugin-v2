@@ -41,6 +41,10 @@ export function flatFor(kind, item) {
         const ol = (it.outlook && typeof it.outlook === 'object') ? it.outlook : {};
         const fc = (ol.forecast && typeof ol.forecast === 'object') ? ol.forecast : {};
         out.outlookText = String(ol.text == null ? '' : ol.text);
+        out.nodes = (Array.isArray(ol.nodes) ? ol.nodes : []).map((n) => {
+            const x = (n && typeof n === 'object') ? n : {};
+            return { date: String(x.date == null ? '' : x.date), delta: Number(x.delta) || 0, note: String(x.note == null ? '' : x.note) };
+        });
         out.nodesText = (Array.isArray(ol.nodes) ? ol.nodes : []).map((n) => {
             const x = (n && typeof n === 'object') ? n : {};
             const delta = Number(x.delta) || 0;

@@ -464,7 +464,11 @@ A('K2 面板「✏ 编辑」长期收支 → **表单带原值**（标题 / 约�
     const html = String(panelBodyHtml('currencies') || '');
     setMoneySub('overview');
     return html.indexOf('value="船厂分成"') >= 0 && html.indexOf('value="稳定"') >= 0
-        && html.indexOf('1919-02-01|100|首期') >= 0 && html.indexOf('value="1919-03-03"') >= 0
+        // v3.51.7：已发生节点改为**结构性行编辑器**（日期/金额/说明 三列），不再是「日期|金额|说明」文本域
+        && html.indexOf('data-ftt-node-table="nodes"') >= 0 && html.indexOf('data-ftt-ed="node-0-date"') >= 0
+        && html.indexOf('value="1919-02-01"') >= 0 && html.indexOf('value="首期"') >= 0
+        && html.indexOf('data-ftt-ed="nodesText"') < 0
+        && html.indexOf('value="1919-03-03"') >= 0
         && html.indexOf('value="看好"') >= 0 && html.indexOf('value="三成"') >= 0;
 })(), 'n/a');
 A('K3 编辑保存（未改内容）→ 不丢字段：节点/预测/现状原样保留（回填↔还原闭环）', (async () => {
