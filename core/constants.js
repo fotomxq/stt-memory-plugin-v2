@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.51.1';   // v3.51.1（用户指定：核对并标记 W32）—— 核对发现并修复：编辑器记账不联动余额 + 缺字段表 + 业务口径未成文
+export const VERSION = '3.51.2';   // v3.51.2（用户指定：修货币子页面无法点击 + W32 未落地）—— 子标签点击修复 · 货币改下拉 · 节点结构化/报错 · 编辑入口
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

@@ -9,6 +9,14 @@ import { state } from '../core/model/runtime.js';
 import { normalizePlotSegmentLines, plotSegmentsToText } from '../core/model/segment.js';
 import { snapshotAppearanceText } from '../core/model/snapshot.js';
 import { splitListText } from '../core/util.js';
+/** v3.51.2（W32 未落地修复）：货币下拉选项 —— **当前现存货币**（记账/标的物必须挂在其中一条上 */
+function currencyPickOptions() {
+    try {
+        const list = Array.isArray(state.currencies) ? state.currencies : [];
+        const opts = list.filter((c) => c && c.id).map((c) => ({ value: String(c.id), label: (String(c.owner || '') ? (String(c.owner) + '·') : '') + String(c.name || c.id) + '（' + String(c.amount == null ? '' : c.amount) + (c.unit ? (' ' + String(c.unit)) : '') + '）' }));
+        return [{ value: '', label: opts.length ? '（请选择货币 —— 记账必须挂在一条现存货币上）' : '（当前没有货币，请先在「货币总览」新增）' }].concat(opts);
+    } catch (e) { return [{ value: '', label: '（请选择货币）' }]; }
+}
 function kindFields(kind) {
     const F = (key, label, type, extra) => ({ key, label, type: type || 'text', ...(extra || {}) });
     switch (kind) {
@@ -122,7 +130,7 @@ function kindFields(kind) {
         ];
         // v3.51.0（`docs/D53` W32 数-43 / 应-47）：**收支记录**（记账必须挂在一条现存货币上）
         case 'ledger': return [
-            F('currencyId', '货币 ID（必填：从「货币总览」某条货币复制 id；不存在的货币会被拒绝，不会自动新建）', 'text'),
+            F('currencyId', '货币（必选：记账必须挂在一条现存货币上；不存在的货币会被拒绝，不会自动新建）', 'select', { options: currencyPickOptions() }),
             F('date', '剧情日期(年-月-日，必填)', 'text'),
             F('delta', '金额（必填，正数=收入 / 负数=支出，不得为 0）', 'number'),
             F('note', '说明(≤80字)', 'text'),
@@ -141,7 +149,7 @@ function kindFields(kind) {
                 { value: 'investment', label: '投资' }, { value: 'royalty', label: '创作长期收益' },
                 { value: 'loan', label: '贷款长期支出' }, { value: 'other', label: '其它' },
             ] }),
-            F('currencyId', '锚定货币 ID（**必填**：触发器用它生成流水；该货币失效则触发器停摆）', 'text'),
+            F('currencyId', '锚定货币（**必选**：触发器用它生成流水；该货币失效则触发器停摆）', 'select', { options: currencyPickOptions() }),
             F('startDate', '最初确定的日期(年-月-日，必填)', 'text'),
             F('endDate', '截止日期(年-月-日；空 = 无固定期)', 'text'),
             F('cycle', '周期（weekly/monthly/quarterly/yearly/custom:<天数>；留空由节点间隔推断）', 'text'),
@@ -237,15 +245,30 @@ function deconstructEntry(kind, flat) {
         else if (raw.delta !== undefined) raw.delta = Number(raw.delta);
     } else if (kind === 'deals') {
         // v3.51.0（W32 数-44）：扁平表单 → 三段 `outlook`（**预测与事实分字段**，不混写）
-        const nodes = String(raw.nodesText == null ? '' : raw.nodesText).split('\n').map((line) => {
+        let nodes = [];
+        const nodesRaw = String(raw.nodesText == null ? '' : raw.nodesText).trim();
+        if (nodesRaw) {
+            if (nodesRaw.charAt(0) === '[') {
+                try {
+                    const arr = JSON.parse(nodesRaw);
+                    if (!Array.isArray(arr)) throw new Error('节点 JSON 必须是数组');
+                    nodes = arr.map((x) => ({ date: String((x && x.date) || ''), delta: Number(x && x.delta) || 0, note: String((x && x.note) || '') }));
+                } catch (e) { raw.__error = '变动节点 JSON 无法解析：' + String((e && e.message) || e); }
+            } else {
+                let badLine = 0;
+                nodes = nodesRaw.split('\n').map((line, li) => {
             const t = String(line || '').trim();
             if (!t) return null;
-            const parts = t.split('|').map((x) => x.trim());
-            const date = parts[0] || '';
-            if (!date) return null;
-            const delta = parts[1] === undefined || parts[1] === '' ? 0 : Number(parts[1]);
-            return { date: date, delta: Number.isFinite(delta) ? delta : 0, note: parts[2] || '' };
-        }).filter(Boolean);
+                    const parts = t.split('|').map((x) => x.trim());
+                    const date = parts[0] || '';
+                    if (!date) return null;
+                    const delta = parts[1] === undefined || parts[1] === '' ? 0 : Number(parts[1]);
+                    if (!Number.isFinite(delta)) badLine = li + 1;
+                    return { date: date, delta: Number.isFinite(delta) ? delta : 0, note: parts[2] || '' };
+                }).filter(Boolean);
+                if (badLine) raw.__error = '变动节点第 ' + badLine + ' 行的金额不是数字（格式：日期|金额|说明）';
+            }
+        }
         const forecast = {
             nextDate: String(raw.forecastNextDate == null ? '' : raw.forecastNextDate).trim(),
             delta: raw.forecastDelta === '' || raw.forecastDelta === undefined ? 0 : Number(raw.forecastDelta),

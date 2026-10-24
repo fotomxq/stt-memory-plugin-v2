@@ -142,6 +142,28 @@ export function consoleSave(kind, id, patch) {
             cs.open = null;
             return { ok: true, id: String((r.entry && r.entry.id) || id), duplicate: !!r.duplicate, amountAfter: r.amountAfter };
         }
+        /**
+         * v3.51.2（W32 未落地修复）：**具体失败原因**如实回报 ——
+         *   `deals` 缺锚定货币 / 缺预测日期、或变动节点文本解析失败时，旧版只给「必要字段缺失」这类笼统提示，
+         *   用户无法判断该改哪一项。这里按 `raw.__error` 与归一结果给出精确原因。
+         */
+        if (raw && raw.__error) {
+            const msg = String(raw.__error);
+            cs.note = '保存失败：' + msg;
+            return { ok: false, reason: 'field-invalid', error: msg };
+        }
+        if (String(kind) === 'deals') {
+            const miss = [];
+            if (!String(raw.name || '').trim()) miss.push('标的物名称');
+            if (!String(raw.currencyId || '').trim()) miss.push('锚定货币');
+            if (!raw.outlook || !String((raw.outlook.forecast || {}).nextDate || '').trim()) miss.push('下一节点预测日期');
+            if (!String(raw.startDate || '').trim()) miss.push('最初确定的日期');
+            if (miss.length) {
+                const msg = '缺少必填项：' + miss.join(' / ');
+                cs.note = '保存失败：' + msg;
+                return { ok: false, reason: 'field-required', error: msg };
+            }
+        }
         const ok = upsertEntry(kind, raw);
         if (!ok) { cs.note = '保存失败：必要字段缺失（如记忆需正文、情节需 ≥8 字正文）'; return { ok: false, reason: 'normalize-empty' }; }
         void saveStateNow({ reason: 'console-save', force: true });      // v3.0.15：控制台直接改写数据 → 不走「无变化」短路
