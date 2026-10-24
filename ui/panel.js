@@ -142,6 +142,7 @@ import { isShellEntry } from '../core/shell-guard.js';
 import { pageShowMore, pageReset } from './list-pager.js';
 import { listOfInfoWith } from './list-of.js';
 import { RECYCLE_BIN_ACTIONS, recycleBinAction } from './recycle-bin.js';
+import { runDealRepair } from '../core/deal-repair.js';   // v3.51.4：长期收支修复（结合剧情修订；每批 3 条）
 
 export const PANEL_ID = 'ftt-panel';
 /** `data-ftt-v2` 中属于**适配层设置**（而非内核 cfg）的键 */
@@ -1428,6 +1429,7 @@ function kindLabelOf(kind) {
 function prefillEditor(kind, out, item, preset) {
     const p = preset || {};
     if (!item) {
+        for (const k of Object.keys(p)) { if (k.charAt(0) === '_') continue; out.set(k, p[k]); }   // v3.51.4：失败后保留草稿
         if (kind === 'states' && p.subject) out.set('subject', String(p.subject));
         if (kind === 'scenes' && p.parentSceneId) out.set('parent', String(p.parentSceneId));
         if (kind === 'scenes' && p.name) out.set('name', String(p.name));
@@ -2278,7 +2280,7 @@ export async function panelAction(action, payload) {
             const r = consoleSave(dataKindOf(kind), id, raw);
             setNote(r.ok ? ('已保存 ' + (id || '（新增）')) : ('保存失败：' + String(r.reason || '')));
             result = Object.assign(result, r);
-            ps.editing = null;
+            ps.editing = r.ok ? null : { kind: kind, id: id, preset: fields };   // v3.51.4：失败**保留草稿**（关掉会重置用户已填内容）
         } else if (QUICK_ACTIONS.indexOf(a) >= 0) { handleCurQuick(a, p, { list: () => (state.currencies || []), save: consoleSave, ps: ps, note: setNote, render: renderPanel });
         } else if (a === 'delete') {
             const r = consoleDelete(dataKindOf(String(p.kind || '')), String(p.id || ''));
@@ -2313,6 +2315,7 @@ export async function panelAction(action, payload) {
             }
         }
         else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
+        else if (a === 'dealRepair') { const r = await runDealRepair(); setNote(r.note || ''); result = Object.assign(result, r); }   // v3.51.4：长期收支修复（3 条/次）
         else if (a === 'plotSegmentSummarySel') {
             // V1「🧩 分段总结（N）」（情节页多选）：只把勾选情节按剧情时间打包交 AI 分段，归档到「🧩 分段总结」子页
             const ids = Array.from(selOf('atoms'));
