@@ -6,7 +6,7 @@
 //
 // 口径（`core/currency-quick.js` 纯函数 + `ui/currency-quick.js` 界面件/动作处理）：
 //   · 只填金额；方向由「＋收入 / －支出」按钮决定；说明固定为 `收入XX元 修正` / `支出XX元 修正`；
-//   · 流水并入 `history`（去重 + 只留最近 12 笔）；**额度当场同步**（收入 +、支出 −）；
+//   · 流水并入 `history`（去重 + 只留最近 N 笔；v3.51.0：`cfg.currencyHistoryMax` 默认 60，原硬编码 12）；**额度当场同步**（收入 +、支出 −）；
 //   · 金额必须 > 0；非法输入给理由、不改任何数据。
 //
 // 运行：node tests/unit/currency-quick.test.js
@@ -72,13 +72,13 @@ A('B3 **非法金额不改数据**：`0` / 负数 / 文字 → `ok:false` + 理�
         && cur.amount === 100 && cur.history.length === 1;
 })(), 'n/a');
 
-A('B4 **人工记账不按内容去重**（连点两次同额 = 两笔真实记录）× 上限仍为最近 **12** 笔', (() => {
+A('B4 **人工记账不按内容去重**（连点两次同额 = 两笔真实记录）× 上限为最近 **60** 笔（v3.51.0 可配）', (() => {
     let cur = mkCur(0, '元', []);
     for (let i = 0; i < 20; i++) cur = applyQuickCurrencyFlow(cur, 'in', 10, {}).currency;
     const len = cur.history.length;
     // 再记一笔与最后一条**完全相同**的 → 也应当留下（人工动作，不去重）
     const again = applyQuickCurrencyFlow(cur, 'in', 10, {}).currency;
-    return len === 12 && again.history.length === 12
+    return len === 20 && again.history.length === 21
         && again.amount === 210                    // 20 笔 ×10 = 200，上限只截流水、不截额度；再来一笔 +10
         && again.history[again.history.length - 1].note === '收入10元 修正';
 })(), () => { let c = mkCur(0, '元', []); for (let i = 0; i < 20; i++) c = applyQuickCurrencyFlow(c, 'in', 10, {}).currency; return J({ len: c.history.length, amount: c.amount }); });

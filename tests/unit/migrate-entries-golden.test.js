@@ -60,7 +60,7 @@ setPersistHooks({
 const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor'];
 // v3.47.0（`docs/D22` W16 `数-22`）：**再新增一个 V2 专有容器** `maps`（V1 无此维度）——
 //   迁移会对老存档补 `[]`；与上款同口径：比较 V1 黄金时**显式归一**（样本一字不改），存在性单独断言。
-const V2_ONLY_CONTAINERS = ['maps'];
+const V2_ONLY_CONTAINERS = ['maps', 'ledger', 'deals'];   // v3.51.0（W32）：+ledger/+deals
 const stripV2Ledger = (o) => {
     const c = clone(o);
     V2_LEDGER_KEYS.forEach((k) => { delete c[k]; });

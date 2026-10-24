@@ -95,11 +95,12 @@ A('C2 完全相同语义的两笔不合并（人工记账是两笔）：条数�
     return out.length === 2;
 })(), 'n/a');
 
-A('C3 上限仍是最近 12 笔（不因抢救而膨胀），且 `normalizeCurrency` 全字段齐备', (() => {
+A('C3 上限为最近 **60** 笔（v3.51.0：`cfg.currencyHistoryMax`；原 12），不因抢救而膨胀，且 `normalizeCurrency` 全字段齐备', (() => {
     const many = [];
     for (let i = 0; i < 20; i++) many.push({ date: '', delta: 1, note: '第' + i + '笔' });
     const n = normalizeCurrency({ name: '铜钱', amount: 20, history: many });
-    return n.history.length === 12 && n.history[11].note === '第19笔' && n.amount === 20 && n.name === '铜钱';
+    // 输入 20 笔 < 上限 60 → 全保留（上限只在超出时截断）；末笔 = 第19笔
+    return n.history.length === 20 && n.history[19].note === '第19笔' && n.amount === 20 && n.name === '铜钱';
 })(), 'n/a');
 
 R.done();

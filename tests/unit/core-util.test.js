@@ -25,11 +25,11 @@ R.assert('U9 extractJsonObject 容忍字符串里的花括号', (() => {
     const r = extractJsonObject('{"t":"含 } 与 { 的说明","n":3}');
     return !!r && r.n === 3 && r.t.indexOf('}') >= 0;
 })(), '');
-R.assert('U10 emptyState 覆盖 14 类容器 + dataVersion', (() => {
+R.assert('U10 emptyState 覆盖 16 类容器 + dataVersion', (() => {
     const st = emptyState();
-    return st.dataVersion === 2 && STATE_KEYS.every(k => Array.isArray(st[k])) && STATE_KEYS.length === 15 && !!st.state && !!st.deleted && !!st.deletedH;   // v3.47.0（W16 数-22）：DATA_VERSION 1→2、容器 14→15（+maps）
+    return st.dataVersion === 3 && STATE_KEYS.every(k => Array.isArray(st[k])) && STATE_KEYS.length === 17 && !!st.state && !!st.deleted && !!st.deletedH;   // v3.47.0（W16 数-22）：1→2、容器 14→15（+maps）；v3.51.0（W32）：2→3、15→17（+ledger/+deals）
 })(), '');
-R.assert('U11 常量：维度 15 类且 kind 唯一', DIMENSIONS.length === 15 && new Set(DIMENSIONS.map(d => d.kind)).size === 15, DIMENSIONS.length);   // v3.47.0（W16 数-22）：+maps
+R.assert('U11 常量：维度 17 类且 kind 唯一', DIMENSIONS.length === 17 && new Set(DIMENSIONS.map(d => d.kind)).size === 17, DIMENSIONS.length);   // v3.47.0（+maps）；v3.51.0（W32）：+ledger/+deals
 R.assert('U12 常量：注入枚举与 ST 源码一致', PROMPT_POSITION.IN_PROMPT === 0 && PROMPT_POSITION.IN_CHAT === 1 && PROMPT_POSITION.BEFORE_PROMPT === 2 && PROMPT_ROLE.SYSTEM === 0 && PROMPT_ROLE.USER === 1 && PROMPT_ROLE.ASSISTANT === 2, '');
 R.assert('U13 常量：扩展目录名与九事件清单', EXTENSION_FOLDER === 'third-party/ftt-memory-v2' && HOST_EVENTS.length === 9 && HOST_EVENTS.indexOf('GENERATION_ENDED') >= 0, HOST_EVENTS.length);
 

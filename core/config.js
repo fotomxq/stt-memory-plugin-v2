@@ -22,6 +22,7 @@ const CN_KEY_MAP = {
     '记忆库': 'memories', '物品库': 'items', '计划库': 'plans', '悬念库': 'suspense',
     '概念库': 'concepts', '概念': 'concepts', '平行事件': 'parallels',
     '名册': 'npcs', '场景库': 'scenes', '变量': 'vars',
+    '收支记录': 'ledger', '记账': 'ledger', '账本': 'ledger', '长期收支': 'deals', '标的物': 'deals',   // 注：`流水` 是 V1 既有键（→ history），不得占用
     '地图库': 'maps', '地图': 'maps', '空间单元': 'place', '所属场所': 'sceneRef', '上层': 'parentId', '起点': 'fromId', '终点': 'toId', '距离': 'distance', '耗时': 'timeCost', '所需时间': 'timeCost', '走过': 'traversed', '方向': 'direction', '别名': 'aliases', '证据': 'evidence',   // v3.47.3（W18 数-22）：地图库键与字段名；`层级` 已在下方既有映射（→ level），不重复登记
     // v1.14 修复：SNAP_GROUP_MAP 必须在 loadState/migrateState 调用前初始化（TDZ），故置于此处
     '新增': 'add', '更新': 'update', '删除': 'remove', '重建': 'rebuild', '了结': 'close',
@@ -237,14 +238,20 @@ const defaultCfg = {
     //   · `storeShare`：各大类占该总上限的**百分比**（整数、合计恒为 100，由 UI 滚动条动态维持）；
     //     某维有效上限 = 四舍五入(总上限 × 占比 / 100)，且不低于该维保底（`storeMin*`）。
     //   · 旧的逐维 `storeMax*` 键**保留兼容**（仅在 `storeTotalMax` 缺失时作为回落口径），设定页不再暴露。
+    // v3.51.0（`docs/D53` · W32）：**货币三子页**相关配置
+    currencyHistoryMax: 60,             // 条目内收支摘要上限（10-200；取代原先硬编码的 12）
+    dealJumpMinDays: 30,                // 长期收支触发器：剧情日期跨度 ≥ 该天数视为「跳动」
+    dealStrongJumpCycles: 3,            // 猛烈跳动 = 跨度 ≥ N 个周期 → 按周期确定性补齐
+    dealCatchUpMax: 24,                 // 单次补齐上限（节点数）；超出置 catchUpTruncated 并如实提示
     storeTotalMax: 3000,             // 所有原子数据合计上限（条）
-    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 4, maps: 4, plans: 6, suspense: 6, npcs: 6, rumors: 6 },   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100
+    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 4, maps: 4, plans: 6, suspense: 6, npcs: 6, rumors: 6, ledger: 0, deals: 0 },   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100；v3.51.0（W32）：账本/长期收支占比 **0**（长期只增、不参与分配）
     storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100（上限见 storeTotalMax × storeShare.atoms）
     storeMinMemories: 200, storeMaxMemories: 800,    // 记忆：保底 200
     storeMinSnapshots: 100, storeMaxSnapshots: 400,  // 角色档案：保底 100
     storeMinItems: 150, storeMaxItems: 500,          // 物品：保底 150
     storeMinConcepts: 200, storeMaxConcepts: 700,    // 概念：保底 200
     storeMinScenes: 0, storeMaxScenes: 400,          // 场景（无硬保底）
+    storeMinLedger: 0, storeMaxLedger: 4000, storeMinDeals: 0, storeMaxDeals: 400,   // v3.51.0（W32 数-43/44）：账本 / 长期收支（不参与裁剪，仅展示上限）
     storeMinMaps: 0, storeMaxMaps: 400, mapTrailPhrase: '前往{path}',   // v3.47.3（W18 数-22/应-21）：地图（无硬保底，与场景同口径）+ 「前往」套话模板（{place}/{room}/{path}；设定 → 基础 → 地图套话 可改）
     storeMinPlans: 0, storeMaxPlans: 300,            // 计划
     storeMinSuspense: 0, storeMaxSuspense: 300,      // 悬念
@@ -675,6 +682,8 @@ const KIND_MAP = {
     plotSegments: { get: () => state.plotSegments, set: (v) => { state.plotSegments = v; } },   // v1.182：情节分段总结（只归档，不注入）
     rumors: { get: () => state.rumors, set: (v) => { state.rumors = v; } },   // v1.192：传言（记录 + 机械演化 + 注入）
     maps: { get: () => state.maps, set: (v) => { state.maps = v; } },   // v3.47.3（W18 数-22）：地图（空间单元 + 路径）
+    ledger: { get: () => state.ledger, set: (v) => { state.ledger = v; } },   // v3.51.0（W32 数-43）：收支记录
+    deals: { get: () => state.deals, set: (v) => { state.deals = v; } },      // v3.51.0（W32 数-44）：长期收支
 };
 
 function normalizeDeltaKeys(delta) {

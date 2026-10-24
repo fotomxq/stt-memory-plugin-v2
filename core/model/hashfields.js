@@ -69,6 +69,11 @@ export const HASH_FIELDS = Object.freeze({
     //   **引用类不进**（`sceneRef` / `parentId` / `fromId` / `toId` / `evidence`）—— 否则场景改名 / 重挂父级
     //   会引发跨端抖动（`02` §2 I3）。`traversed` / `inferred` 亦**不在**本表（见 `core/model/map.js` 头部口径③）。
     maps: ['kind', 'level', 'name', 'desc', 'distance', 'timeCost', 'direction'],
+    // v3.51.0（`docs/D53` §3.6 ③）：**内容类进哈希、引用类不进** ——
+    //   `ledger`：`date`/`delta`/`note`/`source` 进；`currencyId`（引用）/ `dealId`（引用）**不进**；
+    //   `deals`：`name`/`desc`/`kind`/`status`/`startDate`/`endDate`/`cycle`/`outlook` 进；`currencyId` **不进**。
+    ledger: ['date', 'delta', 'note', 'source'],
+    deals: ['name', 'desc', 'kind', 'status', 'startDate', 'endDate', 'cycle', 'outlook'],
 });
 
 /**

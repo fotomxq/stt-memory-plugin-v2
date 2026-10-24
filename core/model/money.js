@@ -39,6 +39,11 @@ function formatMoney(n) {
 }
 // 金额取整（避免浮点尾差）与收支净额
 
+/** v3.51.0（`docs/D53` §3.3 / 用户 v1.1 第 1 条）：摘要上限可配（`cfg.currencyHistoryMax`，默认 60，夹 10–200）*/
+function currencyHistoryMaxOf() {
+    const n = Number(cfg && cfg.currencyHistoryMax);
+    return Math.max(10, Math.min(200, Number.isFinite(n) ? Math.round(n) : 60));
+}
 function roundMoney(n) { const v = Number(n); return Number.isFinite(v) ? Math.round(v * 10000) / 10000 : 0; }
 
 function moneyNet(history) {
@@ -103,7 +108,7 @@ function normalizeMoneyHistory(raw) {
                 } catch (e) { /* 忽略：单条抢救失败不影响其余 */ }
             }
         }
-        return out.slice(-12);   // 只留最近 12 笔（防条目无限膨胀）
+        return out.slice(-currencyHistoryMaxOf());   // v3.51.0：最近 N 笔（`cfg.currencyHistoryMax`，默认 60；原硬编码 12）
     } catch (e) { return []; }
 }
 // 货币条目归一化：归属（默认主角）/ 币种 / 额度（数字）/ 单位 / 收支 / 备注
@@ -213,7 +218,7 @@ function mergeMoneyHistory(oldArr, newArr) {
         seen.add(k);
         out.push({ date: String(f.date || ''), delta: Number(f.delta) || 0, note: String(f.note || '') });
     }
-    return out.slice(-12);
+    return out.slice(-currencyHistoryMaxOf());   // v3.51.0：同口径
 }
 // ==================== v1.182：情节分段总结（情节页「🧩 分段总结」专用） ====================
 // 用户要求：把情节打包给 AI 拆成**多段总结**；每段以 `### 时间范围` 为头（Markdown 三级标题），

@@ -58,6 +58,9 @@ export const STATE_SLOTS = Object.freeze({
     // v3.47.0（`docs/D22` W16 `数-22` / `docs/D27` §3.1）：地图（空间单元三级 + 路径）——
     //   出口：归一（`core/model/map.js`）· 从属注入（`core/recall.js` 的 `[场景地点]` 子块）· 网图与点击（`ui/scene-map.js`）
     maps: { label: '地图', semantics: '空间单元（场所锚点 / 房间 / 陈设）+ 路径（距离 / 耗时 / 是否走过）；从属注入，禁止单独注入', wired: true, outlets: ['core/model/map.js', 'core/recall.js', 'ui/scene-map.js'], disposition: 'wired' },
+    // v3.51.0（`docs/D53` · W32）：货币三子页的两个新容器
+    ledger: { label: '收支记录（账本）', semantics: '记账流水（必挂现存货币；权威账本，长期只增不裁剪，摘要视图写回 currencies[].history）', wired: true, outlets: ['core/model/ledger.js', 'core/currency-quick.js', 'core/deal-triggers.js', 'ui/money-tabs.js'], disposition: 'wired' },
+    deals: { label: '长期收支（标的物）', semantics: '标的物 + 锚定货币 + 前景预判三段（已发生节点 / 预测下一节点）；不参与正文提取与注入', wired: true, outlets: ['core/model/deal.js', 'core/deal-triggers.js', 'ui/money-tabs.js'], disposition: 'wired' },
     vars: { label: '变量', semantics: '作用域变量（global/char/chat）', wired: true, outlets: ['core/model/scalars.js', 'ui/panel.js'], disposition: 'wired' },
     varTemplates: { label: '变量模板', semantics: '**保留未启用**：只有 `emptyState` 与跨端容器名单提到它，全仓无写入点、无渲染点', wired: false, outlets: ['core/cross-sync.js（整侧取较新名单）'], disposition: 'reserved' },
     summaries: { label: '摘要（旧）', semantics: '**遗留容器**：被 `plotSegments` 取代；仅供 `core/sync.js` 判「对端是否有数据」与跨端签名使用', wired: false, outlets: ['core/cross-sync.js（签名/容器名单）', 'core/sync.js（对端非空判定）'], disposition: 'legacy' },

@@ -263,7 +263,7 @@ const localKey = () => 'ftt2_state_' + scopeId();
         const after = snap(kernelState());
         // v3.11.1：V2 专有台账辅助字段（V1 无）—— 比较 V1 黄金键集时显式归一，并单独断言存在性
         const V2_LEDGER_KEYS = ['processedDropped', 'lastChatFloor', 'chatKey'];
-        const V2_ONLY_CONTAINERS = ['maps'];   // v3.47.0（W16 数-22）
+        const V2_ONLY_CONTAINERS = ['maps', 'ledger', 'deals'];   // v3.47.0（+maps）；v3.51.0（W32）：+ledger/+deals
         const afterKeys = Object.keys(kernelState()).filter((k) => V2_LEDGER_KEYS.indexOf(k) < 0 && V2_ONLY_CONTAINERS.indexOf(k) < 0).sort();
 
         R.assert('S8 resetState 前置状态与 oracle 种子逐项一致（计数 / 双墓碑 / 台账 / 时钟 / 游标）',
@@ -280,8 +280,8 @@ const localKey = () => 'ftt2_state_' + scopeId();
             && V2_ONLY_CONTAINERS.every((k) => Array.isArray(kernelState()[k])),   // v3.47.0：新容器确实存在
             { keys: afterKeys, want: G.afterKeys });
 
-        R.assert('S11 resetState 复位后的内存态（version/scope 归一为占位符）与 V1 `emptyState()` 深比较一致',
-            J(norm(kernelState())) === J(G.stateNormalized), (() => { try { return norm(kernelState()); } catch (e) { return String(e.message); } })());
+        R.assert('S11 resetState 复位后的内存态（version/scope 归一为占位符）与 V1 `emptyState()` 深比较一致（v3.51.0：剔除 V2 新容器 ledger/deals）',
+            J((() => { const c = Object.assign({}, norm(kernelState())); delete c.ledger; delete c.deals; return c; })()) === J(G.stateNormalized), (() => { try { return norm(kernelState()); } catch (e) { return String(e.message); } })());
 
         R.assert('S12 resetState 返回值（V2 扩展）：ok=true / 落盘通道 / 清空前条目计数可回报（V1 无返回值）',
             ret && ret.ok === true && String(ret.via).indexOf('localStorage') >= 0

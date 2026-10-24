@@ -43,10 +43,10 @@ const J = (v) => JSON.stringify(v === undefined ? null : v);
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
 
 // ---------- ① 六处接线 ----------
-A('A1 常量：`DIMENSIONS` 15 维含 maps · `ATOM_DIM_KEYS` 14 含 maps · `DATA_VERSION` = 2（`docs/D27` §3.3 第 1/5 项）', (() => {
-    return DIMENSIONS.some((d) => d.kind === 'maps') && DIMENSIONS.length === 15
-        && ATOM_DIM_KEYS.indexOf('maps') >= 0 && ATOM_DIM_KEYS.length === 14
-        && DATA_VERSION === 2;
+A('A1 常量：`DIMENSIONS` 17 维含 maps/ledger/deals · `ATOM_DIM_KEYS` 16 · `DATA_VERSION` = 3（`docs/D27` §3.3 第 1/5 项；v3.51.0 W32 再 +2）', (() => {
+    return DIMENSIONS.some((d) => d.kind === 'maps') && DIMENSIONS.length === 17
+        && ATOM_DIM_KEYS.indexOf('maps') >= 0 && ATOM_DIM_KEYS.length === 16
+        && DATA_VERSION === 3;
 })(), J({ dims: DIMENSIONS.length, atom: ATOM_DIM_KEYS.length, dv: DATA_VERSION }));
 
 A('A2 哈希表：`HASH_FIELDS.maps` = 内容类六项 + kind；**引用类不在表内**（§3.3 ③ / `02` §2 I3）', (() => {
@@ -79,7 +79,7 @@ A('A5 跨端：`maps` 进**逐条合并**（`dataAggHash` 计入）—— 两端
     return h1 !== h2 && !!h1 && !!h2 && ((merged.data || {}).maps || []).length === 1;
 })(), 'n/a');
 
-A('A6 上限：`maps` 在 `STORE_LIMITS` 与占比表内（否则「总上限 × 占比」派生会漏它）；占比合计仍 100', (() => {
+A('A6 上限：`maps` 在 `STORE_LIMITS` 与占比表内（否则「总上限 × 占比」派生会漏它）；账本/长期收支占比 0（不参与分配）；占比合计仍 100', (() => {
     const sum = STORE_SHARE_DIMS.reduce((n, d) => n + Number(defaultCfg.storeShare[d] || 0), 0);
     const cap = storeCapFor('maps');
     return !!STORE_LIMITS.maps && STORE_SHARE_DIMS.indexOf('maps') >= 0

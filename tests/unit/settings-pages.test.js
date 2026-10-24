@@ -52,8 +52,9 @@ R.assert('P2 控件表：共 191 项（v3.50.19 修复聚合 4 键 + 场景封�
     //   triLinkMaxItems / triLinkPackMaxChars / triLinkMaxOps —— 与 `core/config.js#defaultCfg` 同批，
     //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172 → **v3.46.2 货币融合 +3 / 总 175**、feed 43 → 48 → **51**
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **62**、总 185 → **191**
-    return info.totalControls === 191 && m.base === 10 && m.feed === 62 && m.analyze === 25 && m.extract === 25
-        && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 13 && m.debug === 5;
+    // v3.51.0（`docs/D53` W32）：存储页 +10（货币摘要上限 / 长期收支三阈值 / 账本与长期收支的 4 个存储键 + 2 个占比）→ 191 → 201、storage 13 → 23
+    return info.totalControls === 201 && m.base === 10 && m.feed === 62 && m.analyze === 25 && m.extract === 25
+        && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 23 && m.debug === 5;
 })(), settingsPagesInfo());
 
 R.assert('P2d v2.80.0「约束」子页：无控件表 + 正文由 constraintPageHtml() 提供（维度切换条 / 角色筛选 / 关联总览 / 约束自查四处齐备）', (() => {
@@ -69,11 +70,14 @@ R.assert('P2b v2.94.0（D11 §3.4/§3.5）存储页只留世界书 12 项 + v3.1
     const want = ['storage.worldbookName', 'storage.worldbookMode',
         'storage.worldbookScanDepth', 'storage.worldbookPosition', 'storage.worldbookDepth', 'storage.worldbookProbability',
         'storage.worldbookSticky', 'storage.worldbookCooldown', 'storage.worldbookDelay', 'storage.worldbookMaxBytes',
-        'storage.localFilePath'];
+        'storage.localFilePath',
+        // v3.51.0（W32）：货币三子页的 10 个控件
+        'currencyHistoryMax', 'dealJumpMinDays', 'dealStrongJumpCycles', 'dealCatchUpMax',
+        'storeMinLedger', 'storeMaxLedger', 'storeShare.ledger', 'storeMinDeals', 'storeMaxDeals', 'storeShare.deals'];
     const gone = ['storage.deletedKeepDays', 'storage.tauriNative', 'storage.tauriMirror', 'storage.syncOnSave',
         'storage.verifyOnLoad', 'storage.settingsMirror', 'storage.syncMetaProbe', 'storage.syncTrafficGuard',
         'storage.stateFile', 'storage.snapshotFile', 'storage.syncLogServer', 'syncTrafficGuard'];
-    return keys.length === 13 && want.every((k) => keys.indexOf(k) >= 0)
+    return keys.length === 23 && want.every((k) => keys.indexOf(k) >= 0)
         && gone.every((k) => keys.indexOf(k) < 0)
         && settingsControlHtml(SETTINGS_CONTROLS.storage.find((c) => c.key === 'storage.worldbookMode')).indexOf('<select') >= 0;
 })(), () => SETTINGS_CONTROLS.storage.map((c) => c.key));

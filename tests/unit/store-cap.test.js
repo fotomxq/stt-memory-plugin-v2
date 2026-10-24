@@ -96,11 +96,13 @@ A('B1 拖动一条 → 其余按**原比例**补齐，四舍五入后合计恒 1
 
 A('B2 边界：拖到 100 → 其余归 0；拖到 0 → 其余按比例占满 100；原本全 0 时按均分补齐', (() => {
     boot();
-    cfg.storeShare = { atoms: 0, memories: 0, snapshots: 0, items: 0, concepts: 0, scenes: 0, plans: 0, suspense: 0, npcs: 0, rumors: 0, maps: 0 };   // v3.47.0：+maps
+    cfg.storeShare = { atoms: 0, memories: 0, snapshots: 0, items: 0, concepts: 0, scenes: 0, plans: 0, suspense: 0, npcs: 0, rumors: 0, maps: 0, ledger: 0, deals: 0 };   // v3.47.0：+maps；v3.51.0（W32）：+ledger/+deals（占比 0，不参与分配）
     const full = setStoreShare('atoms', 100);
     const zero = setStoreShare('atoms', 0);
-    const evenOk = STORE_SHARE_DIMS.filter((d) => d !== 'atoms').every((d) => even_d(d) === 1);
-    function even_d(d) { return zero[d] === 10 ? 1 : 0; }   // v3.47.0：维度数 10 → 11，`100/10 = 10` 整除了（原 100/9 ≈ 11 的余数项不再存在）
+    // v3.51.0（W32）：参与者仍是 11 维（账本/长期收支占比恒 0，不参与均分）；其余 11 维均分 100/11 ≈ 9
+    const evenOk = STORE_SHARE_DIMS.filter((d) => d !== 'atoms' && d !== 'ledger' && d !== 'deals').every((d) => zero[d] >= 8);
+    // v3.51.0（W32）：账本/长期收支占比恒为 0（不参与分配）→ 参与均分的维度仍是 11 个（100/11 ≈ 9，余数给最大项）
+
     return full.atoms === 100 && sumOf(full) === 100 && STORE_SHARE_DIMS.filter((d) => d !== 'atoms').every((d) => full[d] === 0)
         && zero.atoms === 0 && sumOf(zero) === 100 && evenOk;
 })(), () => ({ full: setStoreShare('atoms', 100), zero: setStoreShare('atoms', 0) }));
@@ -118,7 +120,8 @@ A('C1 有效上限 = 四舍五入(总上限 × 占比 ÷ 100)（占比推导即�
     boot();
     cfg.storeTotalMax = 3000;
     const eff = storeEffectiveCaps();
-    const exact = STORE_SHARE_DIMS.every((d) => eff.caps[d] === Math.max(1, Math.round(3000 * eff.shares[d] / 100)));
+    // v3.51.0（W32）：占比 0 的维度（账本/长期收支）有效上限记 0（不参与分配）
+    const exact = STORE_SHARE_DIMS.every((d) => (Number(eff.shares[d]) > 0) ? (eff.caps[d] === Math.max(1, Math.round(3000 * eff.shares[d] / 100))) : (eff.caps[d] === 0));
     return eff.total === 3000 && sumOf(eff.shares) === 100 && eff.sum === 3000
         && eff.caps.atoms === Math.round(3000 * eff.shares.atoms / 100) && exact
         && storeCapFor('atoms') === eff.caps.atoms;

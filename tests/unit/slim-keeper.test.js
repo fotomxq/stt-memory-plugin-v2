@@ -57,7 +57,7 @@ A('A1 白名单 = 派生结果（变更字段 ∪ 身份字段）；每个维度
         for (const f of (HASH_FIELDS[cat] || [])) if (set.indexOf(f) < 0) drift.push(cat + '.' + f);
         if (set.indexOf('stepsText') >= 0 || set.indexOf('cluesText') >= 0 || set.indexOf('linesText') >= 0) drift.push(cat + ':变换泄漏');
     }
-    return drift.length === 0 && dims.length === 14;   // v3.47.0（W16 数-22）：HASH_FIELDS 新增 maps（13 → 14）
+    return drift.length === 0 && dims.length === 16;   // v3.47.0（+maps）；v3.51.0（W32）：+ledger/+deals（14 → 16）
 })(), () => dims);
 
 A('A2 每个同义组的 keeper 都在白名单内（R3 的不变量之一）；组内字段名都在该维语料里', (() => {

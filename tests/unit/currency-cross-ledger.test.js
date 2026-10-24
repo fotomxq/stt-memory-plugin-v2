@@ -177,7 +177,8 @@ await A('B2 `mergeDataObjects`：远端信封较新、但本端账本较新 → 
         && notes.indexOf('卖船板') >= 0 && notes.indexOf('买药') >= 0;
 }, () => mergeDataObjects(clone({ updatedAt: 1000, currencies: [cur(150, [flow('1919-11-29', 50, '卖船板')], 2000)] }), clone({ updatedAt: 9000, currencies: [cur(100, [flow('1919-11-30', -20, '买药')], 1000)] }), {}).data.currencies);
 
-await A('B3 流水 12 笔上限：两端各 12 笔时，**较新账本的 12 笔被完整保留**（旧实现把「对端」的 12 笔留下、本端较新记录被挤掉）', () => {
+await A('B3 流水摘要上限（v3.51.0 可配，本档设 12 复现原口径）：两端各 12 笔时，**较新账本的 12 笔被完整保留**（旧实现把「对端」的 12 笔留下、本端较新记录被挤掉）', () => {
+    cfg.currencyHistoryMax = 12;   // v3.51.0：上限可配（默认 60）；本档保留原 12 笔口径
     const older = [];
     const newer = [];
     for (let i = 1; i <= 12; i++) older.push(flow('1919-11-' + String(i).padStart(2, '0'), i, '旧' + i));

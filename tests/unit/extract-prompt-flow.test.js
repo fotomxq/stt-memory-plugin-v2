@@ -88,12 +88,12 @@ await (async () => {
             && promptToGenerateArgs([{ role: 'user', content: 'u' }, { role: 'system', content: 's' }]).prompt === 'u';
     })(), {});
 
-    R.assert('P3 enabledDims：未配置=全部 15 维；关掉两维后只返回其余', (() => {
+    R.assert('P3 enabledDims：未配置=全部 17 维；关掉两维后只返回其余', (() => {
         cfg.dimensionEnabled = {};
         const all = enabledDims();
         cfg.dimensionEnabled = { atoms: false, rumors: false };
         const some = enabledDims();
-        return all.length === 15 /* v3.47.0（W16 数-22）：+maps */ && some.length === 13 && some.indexOf('atoms') < 0 && some.indexOf('rumors') < 0;
+        return all.length === 17 /* v3.47.0（+maps）；v3.51.0（W32）：+ledger/+deals */ && some.length === 15 && some.indexOf('atoms') < 0 && some.indexOf('rumors') < 0;
     })(), {});
 })();
 

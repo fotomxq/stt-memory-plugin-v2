@@ -25,7 +25,10 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     // B9-d 例外（显式白名单）：`storage.stateFileSlim` / `storage.stateFileGzip` 为 V2 专有开关
     //   （V1 恒「瘦身 + gzip」、无对应开关），默认 false（默认安全）；V1 `storage` 的其余键仍逐值一致。
     // V2 专有键（V1 无）：界面形态 3 项 + API 三通道 2 项（v2.35.0 起；`''` = 未显式选择，按旧数据迁移推断）
+    // v3.51.0（`docs/D53` W32）：+ 货币三子页的 4 个配置键与账本/长期收支的存储键（全部 V2 专有）
     const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'rumorFermentWindowDays', 'apiChannel', 'apiProfileId',
+        'currencyHistoryMax', 'dealJumpMinDays', 'dealStrongJumpCycles', 'dealCatchUpMax',
+        'storeMinLedger', 'storeMaxLedger', 'storeMinDeals', 'storeMaxDeals',
         // v2.86.0（`docs/D7` v0.5）：重要度改「窗口调用占比」→ 三个 V2 专有参数（V1 只有 importanceBase/importancePerUse，键保留兼容）
         'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount',
         // v3.46.1（`docs/D22` W11 数-35）：三域联动五键（V2 专有；V1 无此功能）
@@ -121,7 +124,7 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
 // v3.47.0（`docs/D22` W16 `数-22`）：**V2 专有中文键**（V1 无地图维度）—— 与 V1 黄金逐项比对时显式剔除，
 //   并**单独断言**这些键确实在册（归一 ≠ 删键）。样本一字未改（`开发守则.md` §4）。
 // v3.50.5（`应-41`）：+「合并」（计划修复合同的中文键；V1 的 `CN_KEY_MAP` 里没有它 → 应用器永不命中）
-const V2_CN_ONLY = ['地图库', '地图', '空间单元', '所属场所', '上层', '起点', '终点', '距离', '耗时', '所需时间', '走过', '方向', '别名', '证据', '合并'];
+const V2_CN_ONLY = ['地图库', '地图', '空间单元', '所属场所', '上层', '起点', '终点', '距离', '耗时', '所需时间', '走过', '方向', '别名', '证据', '合并', '收支记录', '记账', '账本', '长期收支', '标的物'];
 R.assert('C2 CN_KEY_MAP 中文键映射与 V1 一致（V1 的 174 项逐项相同；V2 专有键另列白名单）', (() => {
     const got = {};
     Object.keys(CN_KEY_MAP).forEach((k) => { if (V2_CN_ONLY.indexOf(k) < 0) got[k] = CN_KEY_MAP[k]; });
@@ -165,7 +168,7 @@ R.assert('C7 KIND_MAP 维度键：V1 的 14 键齐全且 get/set 读写注入 st
     //   V2 追加 `currentStates` 别名（与 'states' 同容器，用于以规范维度键写墓碑）→ 白名单内允许。
     const V1_KEYS = ['atoms', 'states', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'npcs', 'scenes', 'concepts', 'parallels', 'currencies', 'plotSegments', 'rumors'];
     // v3.47.0（`docs/D22` W16 `数-22`）：V2 新增的**维度键**（V1 无 `maps` 维度）—— 与 `currentStates` 别名同列白名单
-    const V2_ALIAS = ['currentStates', 'maps'];
+    const V2_ALIAS = ['currentStates', 'maps', 'ledger', 'deals'];   // v3.51.0（W32）：+收支记录 / +长期收支
     const keys = Object.keys(KIND_MAP);
     const missing = V1_KEYS.filter((x) => keys.indexOf(x) < 0);
     const extra = keys.filter((x) => V1_KEYS.indexOf(x) < 0);
