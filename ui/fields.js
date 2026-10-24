@@ -120,6 +120,44 @@ function kindFields(kind) {
             F('tags', '标签(逗号分隔，含语境词与内容关键词)', 'text'),
             F('relLinks', '相关角色（相关 ≠ 知情：角色一律不知情）', 'relTable'),   // v1.166
         ];
+        // v3.51.0（`docs/D53` W32 数-43 / 应-47）：**收支记录**（记账必须挂在一条现存货币上）
+        case 'ledger': return [
+            F('currencyId', '货币 ID（必填：从「货币总览」某条货币复制 id；不存在的货币会被拒绝，不会自动新建）', 'text'),
+            F('date', '剧情日期(年-月-日，必填)', 'text'),
+            F('delta', '金额（必填，正数=收入 / 负数=支出，不得为 0）', 'number'),
+            F('note', '说明(≤80字)', 'text'),
+            F('source', '来源', 'select', { options: [
+                { value: 'manual', label: '手动' }, { value: 'quick', label: '快速记账' },
+                { value: 'ai', label: 'AI' }, { value: 'deal', label: '长期收支兑现' },
+                { value: 'repair', label: '修复' }, { value: 'migrate', label: '迁移回填' },
+            ] }),
+            F('dealId', '来源标的物 ID（由触发器生成时自动填；手填可留空）', 'text'),
+        ];
+        // v3.51.0（`docs/D53` W32 数-44 / 应-47）：**长期收支**（标的物 + 前景预判三段）
+        case 'deals': return [
+            F('name', '标的物名称(必填)', 'text'),
+            F('desc', '描述 / 约定内容（分成比例 / 利率 / 期限 / 结算方式等实质条款）', 'textarea'),
+            F('kind', '类型', 'select', { options: [
+                { value: 'investment', label: '投资' }, { value: 'royalty', label: '创作长期收益' },
+                { value: 'loan', label: '贷款长期支出' }, { value: 'other', label: '其它' },
+            ] }),
+            F('currencyId', '锚定货币 ID（**必填**：触发器用它生成流水；该货币失效则触发器停摆）', 'text'),
+            F('startDate', '最初确定的日期(年-月-日，必填)', 'text'),
+            F('endDate', '截止日期(年-月-日；空 = 无固定期)', 'text'),
+            F('cycle', '周期（weekly/monthly/quarterly/yearly/custom:<天数>；留空由节点间隔推断）', 'text'),
+            F('status', '标的物现状（一段文字）', 'text'),
+            F('outlookText', '前景预判① 文字说明', 'textarea'),
+            F('nodesText', '前景预判② 已发生的变动节点（每行「日期|金额（可空）|说明」；只写**已发生**）', 'textarea'),
+            F('forecastNextDate', '前景预判③ 下一节点预测日期(年-月-日，**必填**)', 'text'),
+            F('forecastDelta', '预测金额变动（可空；正=增加、负=减少）', 'number'),
+            F('forecastDirection', '预测方向', 'select', { options: [
+                { value: 'increase', label: '增加' }, { value: 'decrease', label: '减少' },
+            ] }),
+            F('forecastNote', '预测说明(≤80字)', 'text'),
+            F('forecastSource', '预测来源', 'select', { options: [
+                { value: 'ai', label: 'AI 建议' }, { value: 'manual', label: '手动' },
+            ] }),
+        ];
         default: return [];
     }
 }
@@ -193,6 +231,32 @@ function deconstructEntry(kind, flat) {
         raw.lines = arr;
         raw.manual = true;                       // 手动编辑过 → 后续 AI 运行不覆盖该段落
         raw.raw = plotSegmentsToText([{ header: raw.header, lines: normalizePlotSegmentLines(arr, 12) }]);
+    } else if (kind === 'ledger') {
+        // v3.51.0（W32 数-43）：金额/日期来自输入框 → 交给 `normalizeLedgerEntry` 做最终校验（无主流水拒绝）
+        if (raw.delta === '') raw.delta = undefined;
+        else if (raw.delta !== undefined) raw.delta = Number(raw.delta);
+    } else if (kind === 'deals') {
+        // v3.51.0（W32 数-44）：扁平表单 → 三段 `outlook`（**预测与事实分字段**，不混写）
+        const nodes = String(raw.nodesText == null ? '' : raw.nodesText).split('\n').map((line) => {
+            const t = String(line || '').trim();
+            if (!t) return null;
+            const parts = t.split('|').map((x) => x.trim());
+            const date = parts[0] || '';
+            if (!date) return null;
+            const delta = parts[1] === undefined || parts[1] === '' ? 0 : Number(parts[1]);
+            return { date: date, delta: Number.isFinite(delta) ? delta : 0, note: parts[2] || '' };
+        }).filter(Boolean);
+        const forecast = {
+            nextDate: String(raw.forecastNextDate == null ? '' : raw.forecastNextDate).trim(),
+            delta: raw.forecastDelta === '' || raw.forecastDelta === undefined ? 0 : Number(raw.forecastDelta),
+            direction: String(raw.forecastDirection || '').trim(),
+            note: String(raw.forecastNote == null ? '' : raw.forecastNote).trim(),
+            source: String(raw.forecastSource || 'manual').trim() || 'manual',
+        };
+        raw.outlook = { text: String(raw.outlookText == null ? '' : raw.outlookText).trim(), nodes: nodes, forecast: forecast };
+        delete raw.outlookText; delete raw.nodesText; delete raw.forecastNextDate;
+        delete raw.forecastDelta; delete raw.forecastDirection; delete raw.forecastNote; delete raw.forecastSource;
+        if (raw.forecastDelta !== undefined) delete raw.forecastDelta;
     } else if (kind === 'parallels') {
         if (raw.characters) raw.characters = splitListText(raw.characters);
         if (raw.tags) raw.tags = splitListText(raw.tags);

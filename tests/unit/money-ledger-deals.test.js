@@ -25,6 +25,8 @@ import { runDealTriggers, dealJumpKind, dealTriggerConf, addStoryDays } from '..
 import { dataHealthReport } from '../../core/data-health.js';
 import { migrateState } from '../../core/migrate.js';
 import { moneyPageHtml, setMoneySub, ledgerPageHtml, dealsPageHtml } from '../../ui/money-tabs.js';
+import { kindFields, deconstructEntry } from '../../ui/fields.js';
+import { panelAction, setPanelHooks2 } from '../../ui/panel.js';
 
 const R = makeReporter('money-ledger-deals v3.51.0 货币三子页（W32 数-43/44/45/46 · 应-46/47 · 技-57/58/59）');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -230,6 +232,35 @@ A('F3 收支记录页：空态引导 + 合计/笔数读数（只增不删；删�
     const html = ledgerPageHtml();
     return empty.indexOf('data-ftt-ledger-empty') >= 0 && html.indexOf('账本共 <b>2</b>') >= 0
         && html.indexOf('净额') >= 0 && html.indexOf('data-ftt-action="delete" data-kind="ledger"') >= 0;
+})(), 'n/a');
+
+// ---------- G 编辑器（应-47）：字段表 + 保存走记账入口 ----------
+A('G1 编辑器字段表：`ledger` 6 项 / `deals` 15 项，且 `deconstructEntry` 把扁平表单还原为**三段 `outlook`**（预测与事实分字段）', (() => {
+    const lf = kindFields('ledger'), df = kindFields('deals');
+    const raw = deconstructEntry('deals', {
+        name: '船厂分成', desc: '三成', currencyId: 'c1', startDate: '1919-01-01', cycle: 'monthly',
+        outlookText: '看好', nodesText: '1919-02-01|100|首期', forecastNextDate: '1919-03-01',
+        forecastDelta: '-5', forecastDirection: 'decrease', forecastNote: '淡季', forecastSource: 'ai',
+    });
+    return lf.length === 6 && df.length === 15
+        && raw.outlook && Array.isArray(raw.outlook.nodes) && raw.outlook.nodes.length === 1
+        && raw.outlook.nodes[0].date === '1919-02-01' && raw.outlook.nodes[0].delta === 100
+        && raw.outlook.forecast.nextDate === '1919-03-01' && raw.outlook.forecast.delta === -5 && raw.outlook.forecast.source === 'ai'
+        && raw.outlookText === undefined && raw.nodesText === undefined && raw.forecastNextDate === undefined;
+})(), 'n/a');
+A('G2 **面板「保存」一条流水 → 走记账入口**（余额联动 + 幂等）：编辑器保存不能只写账本、不动余额', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const r = await panelAction('save', { kind: 'ledger', id: '', fields: { currencyId: 'c1', date: '1919-01-02', delta: '-30', note: '买面', source: 'manual' } });
+    const r2 = await panelAction('save', { kind: 'ledger', id: '', fields: { currencyId: 'c1', date: '1919-01-02', delta: '-30', note: '买面', source: 'manual' } });
+    return r && r.ok === true && state.ledger.length === 1 && Number(state.currencies[0].amount) === 70
+        && (state.currencies[0].history || []).length === 1 && r2 && r2.ok === true && r2.duplicate === true && state.ledger.length === 1;
+})(), 'n/a');
+A('G3 面板「保存」一条流水但**货币不存在** → 拒绝（不写账本、不新建货币）', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const r = await panelAction('save', { kind: 'ledger', id: '', fields: { currencyId: 'nope', date: '1919-01-02', delta: '10', note: '', source: 'manual' } });
+    return r && r.ok === false && String(r.reason) === 'ledger-rejected' && state.ledger.length === 0 && state.currencies.length === 1;
 })(), 'n/a');
 
 R.done();

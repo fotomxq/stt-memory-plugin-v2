@@ -17,6 +17,7 @@ import { relLinksOf } from '../core/model/rel.js';
 import { atomIdentityHash } from '../core/model/hash.js';
 import { readInject } from '../host/inject.js';
 import { saveStateNow } from '../adapters/store.js';
+import { applyLedgerEntry } from '../core/model/ledger.js';   // v3.51.0（W32 数-45）：流水保存必须走记账入口（联动余额）
 
 const CONSOLE_ID = 'ftt_v2_console';
 /** 数据台交互状态（单一来源，渲染与动作共用） */
@@ -128,6 +129,19 @@ export function consoleSave(kind, id, patch) {
         if (raw.id === undefined) raw.id = id;
         if (typeof raw.tags === 'string') raw.tags = raw.tags.split(/[,，、;；]/).map((x) => x.trim()).filter(Boolean);
         if (raw.importance !== undefined && raw.importance !== '') raw.importance = Number(raw.importance);
+        /**
+         * v3.51.0（`docs/D53` §3.5 · W32 `数-45`）：**流水必须走记账入口** —— 编辑器保存一条收支记录时，
+         *   不能只写 `ledger` 了事（那样余额与摘要都不动，等于「记了账但钱没变」）。
+         *   这里改走 `applyLedgerEntry`：校验货币存在 → 写账本 → 联动余额 → 刷新摘要 → 幂等去重。
+         */
+        if (String(kind) === 'ledger') {
+            const r = applyLedgerEntry(raw);
+            if (!r || r.ok !== true) { cs.note = '记账失败：' + String((r && r.error) || '未知原因'); return { ok: false, reason: 'ledger-rejected', error: String((r && r.error) || '') }; }
+            void saveStateNow({ reason: 'console-save', force: true });
+            cs.note = '已记账 ' + (r.duplicate ? '（重复提交已忽略）' : '') + '· 余额 ' + Number(r.amountAfter) + ' · ' + String((r.entry && r.entry.id) || id);
+            cs.open = null;
+            return { ok: true, id: String((r.entry && r.entry.id) || id), duplicate: !!r.duplicate, amountAfter: r.amountAfter };
+        }
         const ok = upsertEntry(kind, raw);
         if (!ok) { cs.note = '保存失败：必要字段缺失（如记忆需正文、情节需 ≥8 字正文）'; return { ok: false, reason: 'normalize-empty' }; }
         void saveStateNow({ reason: 'console-save', force: true });      // v3.0.15：控制台直接改写数据 → 不走「无变化」短路
