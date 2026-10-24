@@ -209,8 +209,8 @@ A('F1 **三子页可切换**：货币总览（原样传入、一字不改）/ �
     const dl = moneyPageHtml('<div data-ftt-overview>原样总览</div>');
     setMoneySub('overview');
     return ov.indexOf('原样总览') >= 0 && ov.indexOf('data-ftt-csub-tabs') >= 0
-        && lg.indexOf('📒 收支记录') >= 0 && lg.indexOf('账本共 <b>1</b>') >= 0 && lg.indexOf('原样总览') < 0
-        && dl.indexOf('📈 长期收支') >= 0 && dl.indexOf('＋新建标的物') >= 0;
+        && lg.indexOf('📒 收支记录') >= 0 && lg.indexOf('ftt-money-summary') >= 0 && lg.indexOf('ftt-money-row') >= 0 && lg.indexOf('原样总览') < 0
+        && dl.indexOf('📈 长期收支') >= 0 && dl.indexOf('＋ 新建标的物') >= 0;
 })(), 'n/a');
 A('F2 详情**预测与事实分区**：已发生节点与预测区块分别呈现、预测标来源；触发器的停摆/截断状态可见', (() => {
     boot({
@@ -221,17 +221,18 @@ A('F2 详情**预测与事实分区**：已发生节点与预测区块分别呈�
         }],
     });
     const html = dealsPageHtml();
-    return html.indexOf('**已发生（节点）**') >= 0 && html.indexOf('data-ftt-forecast') >= 0
+    return html.indexOf('前景预判 ② 已发生的变动节点') >= 0 && html.indexOf('data-ftt-forecast') >= 0
         && html.indexOf('手动') >= 0 && html.indexOf('长期收益稳定') >= 0
-        && html.indexOf('补齐被上限截断') >= 0 && html.indexOf('三成分成') >= 0;
+        && html.indexOf('补齐被截断') >= 0 && html.indexOf('三成分成') >= 0 && html.indexOf('ftt-deal-card') >= 0;
 })(), 'n/a');
 A('F3 收支记录页：空态引导 + 合计/笔数读数（只增不删；删除走危险动作确认）', (() => {
     boot({ ledger: [] });
     const empty = ledgerPageHtml();
     boot({ ledger: [{ id: 'l1', currencyId: 'c1', date: '1919-01-01', delta: 20, note: '卖鱼', source: 'manual' }, { id: 'l2', currencyId: 'c1', date: '1919-01-02', delta: -5, note: '买面', source: 'manual' }] });
     const html = ledgerPageHtml();
-    return empty.indexOf('data-ftt-ledger-empty') >= 0 && html.indexOf('账本共 <b>2</b>') >= 0
-        && html.indexOf('净额') >= 0 && html.indexOf('data-ftt-action="delete" data-kind="ledger"') >= 0;
+    return empty.indexOf('data-ftt-ledger-empty') >= 0 && html.indexOf('笔数</span><b>2</b>') >= 0
+        && html.indexOf('净额') >= 0 && html.indexOf('data-ftt-action="delete" data-kind="ledger"') >= 0
+        && html.indexOf('＋ 记一笔') >= 0;
 })(), 'n/a');
 
 // ---------- G 编辑器（应-47）：字段表 + 保存走记账入口 ----------
@@ -287,8 +288,8 @@ A('H1 **真实点击**「📒 收支记录」子标签 → 面板切到收支记
     // ③ 点回「货币总览」
     await fire({ fttCsub: 'overview' });
     const onOverview = String(panelBodyHtml('currencies') || '');
-    return onLedger.indexOf('账本共 <b>1</b>') >= 0 && onLedger.indexOf('📒 收支记录') >= 0
-        && onDeals.indexOf('＋新建标的物') >= 0 && onDeals.indexOf('账本共') < 0
+    return onLedger.indexOf('ftt-money-summary') >= 0 && onLedger.indexOf('📒 收支记录') >= 0 && onLedger.indexOf('ftt-money-row') >= 0
+        && onDeals.indexOf('＋ 新建标的物') >= 0 && onDeals.indexOf('ftt-money-row') < 0
         && onOverview.indexOf('原样') < 0 && onOverview.indexOf('data-ftt-csub="ledger"') >= 0;
 })(), 'n/a');
 A('H2 货币下拉：记账/标的物的货币字段是**下拉选择**（选项来自当前货币列表，含「请选择」占位）', (() => {
@@ -318,6 +319,47 @@ A('H4 保存失败**给出具体原因**：缺锚定货币 / 缺预测日期 / �
     return r1 && r1.ok === false && String(r1.error).indexOf('锚定货币') >= 0
         && r2 && r2.ok === false && String(r2.error).indexOf('预测日期') >= 0
         && r3 && r3.ok === false && String(r3.error).indexOf('JSON') >= 0;
+})(), 'n/a');
+A('H6 **点「＋ 记一笔」→ 编辑器出现**（修复「顶部按钮全部错误/无法点击」）：表单含货币下拉与保存按钮', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    setMoneySub('ledger');
+    await panelAction('tab', { tab: 'currencies' });
+    await panelAction('add', { kind: 'ledger' });
+    const html = String(panelBodyHtml('currencies') || '');
+    return html.indexOf('data-ftt-action="save" data-kind="ledger"') >= 0
+        && html.indexOf('data-ftt-ed="currencyId"') >= 0 && html.indexOf('<select data-ftt-ed="currencyId"') >= 0
+        && html.indexOf('data-ftt-ed="delta"') >= 0 && html.indexOf('ftt-money-summary') >= 0;
+})(), 'n/a');
+A('H7 **点「✏」→ 编辑器带该条数据**（收支记录 / 长期收支都可用）；取消后回到列表', (async () => {
+    boot({ ledger: [{ id: 'l1', currencyId: 'c1', date: '1919-01-02', delta: -30, note: '买面', source: 'manual' }], deals: [{ id: 'd1', name: '船厂分成', desc: '三成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '看好', nodes: [], forecast: { nextDate: '1919-02-01', delta: 10, direction: 'increase', note: '', source: 'ai' } } }] });
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    setMoneySub('ledger');
+    await panelAction('tab', { tab: 'currencies' });
+    await panelAction('edit', { kind: 'ledger', id: 'l1' });
+    const lg = String(panelBodyHtml('currencies') || '');
+    setMoneySub('deals');
+    await panelAction('edit', { kind: 'deals', id: 'd1' });
+    const dl = String(panelBodyHtml('currencies') || '');
+    await panelAction('closeEntry', { kind: 'deals' });
+    const back = String(panelBodyHtml('currencies') || '');
+    setMoneySub('overview');
+    return lg.indexOf('data-ftt-action="save" data-kind="ledger"') >= 0 && lg.indexOf('value="买面"') >= 0
+        && dl.indexOf('data-ftt-action="save" data-kind="deals"') >= 0 && dl.indexOf('value="船厂分成"') >= 0
+        && back.indexOf('data-ftt-action="save" data-kind="deals"') < 0 && back.indexOf('ftt-deal-card') >= 0;
+})(), 'n/a');
+A('H8 「＋ 新建标的物」→ 长期收支编辑器出现（锚定货币为下拉、三段预判字段齐全）', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    setMoneySub('deals');
+    await panelAction('tab', { tab: 'currencies' });
+    await panelAction('add', { kind: 'deals' });
+    const html = String(panelBodyHtml('currencies') || '');
+    setMoneySub('overview');
+    return html.indexOf('data-ftt-action="save" data-kind="deals"') >= 0
+        && html.indexOf('<select data-ftt-ed="currencyId"') >= 0
+        && html.indexOf('data-ftt-ed="forecastNextDate"') >= 0 && html.indexOf('data-ftt-ed="nodesText"') >= 0
+        && html.indexOf('data-ftt-ed="outlookText"') >= 0;
 })(), 'n/a');
 A('H5 收支记录与长期收支行都有「✏ 编辑」入口（编辑走既有编辑器，不新增动作）', (() => {
     boot({ ledger: [{ id: 'l1', currencyId: 'c1', date: '1919-01-01', delta: 5, note: '', source: 'manual' }], deals: [{ id: 'd1', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 1, direction: 'increase', source: 'ai' } } }] });
