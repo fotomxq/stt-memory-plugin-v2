@@ -18,7 +18,7 @@ import { importResultNote } from '../adapters/import-state.js';   // v3.0.17：�
 import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
-import { kindFields, flattenSnapshot, deconstructEntry } from './fields.js';
+import { kindFields, deconstructEntry } from './fields.js';
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS, findSettingsControls, setCfgFlashKey, cfgFlashKeyNow } from './settings-pages.js';
 import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.0 折叠说明；v2.60.0 统一富文本（`**x**` → 粗体）
 import { promptAction } from './prompts.js';
@@ -108,7 +108,8 @@ import { downloadTextFile, downloadTextParts, pickTextFile, fileIoCapabilities }
 import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../core/export.js';
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
-import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, moneyPageHtml, setMoneySub } from './list-rows.js';   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, moneyPageHtml, setMoneySub } from './list-rows.js';
+import { flatFor } from './entry-flat.js';   // v3.51.5：编辑器回填（含长期收支三段 outlook 的扁平化）外提到独立模块   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
@@ -1317,23 +1318,6 @@ function peekHtml(id) {
 }
 
 /** 表单值：数组/结构化字段 → 文本（V1 编辑器的展示口径） */
-function flatFor(kind, item) {
-    const it = item || {};
-    if (kind === 'snapshots') return flattenSnapshot(it);
-    const out = Object.assign({}, it);
-    ['tags', 'keywords', 'entities', 'locations', 'characters', 'traits', 'quirks', 'values', 'todos', 'commitments'].forEach((k) => {
-        if (Array.isArray(out[k])) out[k] = out[k].join('，');
-    });
-    if (kind === 'rumors') {
-        out.carriersText = (Array.isArray(it.carriers) ? it.carriers : []).map((c) => String(c && c.who || '') + (c && c.role && c.role !== '传播者' ? ':' + c.role : '')).filter(Boolean).join('\n');
-        out.mediaText = (Array.isArray(it.media) ? it.media : []).map((m) => [m && m.type, m && m.name, m && m.date, m && m.durability].filter((x) => x !== undefined && x !== null && x !== '').join('|')).join('\n');
-    }
-    if (kind === 'plotSegments') {
-        out.linesText = (Array.isArray(it.lines) ? it.lines : []).map((l) => String(l && l.label || '') + ': ' + String(l && l.text || '')).join('\n');
-    }
-    if (kind === 'parallels' && Array.isArray(it.goalOdds)) out.goalOdds = JSON.stringify(it.goalOdds);
-    return out;
-}
 
 /**
  * 某场景的**父级场景 id**（V1 `findSceneParentId` 23352 逐字）：
