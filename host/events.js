@@ -4,6 +4,7 @@ import { debugLogPush } from '../adapters/debug-log.js';
 // ============================================================
 import { HOST_EVENTS } from '../core/constants.js';
 import { getCtx } from './st-api.js';
+import { crossAutoPull } from '../adapters/sync.js';   // v3.50.32：回到前台自动对账（只并集合并；见文件末尾绑定）
 
 /**
  * 绑定核心事件。
@@ -168,3 +169,52 @@ export function uninstallErrorCapture() {
 
 /** 异常捕捉是否已安装（诊断） */
 export function errorCaptureState() { return { installed: errBound }; }
+
+// ============================================================
+// v3.50.32（用户报告「货币跨端不同步金额、记录」）：**页面回到前台 → 自动对账**
+//
+// 为什么需要（代码取证）：会话内远端主文件 / 清单**整个会话只读一次**（`adapters/sync.js#filesReadContentCached`
+//   无 TTL），自动路径又不绕开缓存；而唯一的自动拉取（保存后镜像）在**写完之后**才跑 ——
+//   于是「另一端刚记的货币金额 / 流水」既读不到、还会被本端旧内存整份覆盖。
+// 口径：只做**并集合并**（`adapters/sync.js#crossAutoPull` → `applyRemoteMergeToState`，不整体替换、
+//   不写备份、不写快照），有变化才落盘；开关 `storage.crossPullOnVisible`（默认开）关闭即不动作；
+//   失败静默，绝不阻塞界面。回调 `onMerged` 由调用方注入（界面层用它刷新面板，宿主层不依赖 ui）。
+// ============================================================
+let autoPullBound = false;
+let autoPullOff = null;
+let autoPullHook = null;
+/**
+ * 绑定「回到前台自动对账」（幂等；无 `document` 的环境返回 false，如 Node 测试）。
+ * @param {{onMerged?:Function}} [hooks] `onMerged(report)` = 合并有变化时回调（界面重绘用）
+ */
+export function bindAutoPullVisible(hooks) {
+    try {
+        autoPullHook = (hooks && typeof hooks.onMerged === 'function') ? hooks.onMerged : null;
+        if (autoPullBound) return true;
+        const doc = globalThis.document;
+        if (!doc || typeof doc.addEventListener !== 'function') return false;
+        const onVis = () => {
+            try {
+                if (doc.visibilityState !== 'visible') return;
+                let p = null;
+                try { p = crossAutoPull('visible', { from: 'visibility' }); } catch (e) { p = null; }
+                if (!p || typeof p.then !== 'function') return;
+                void p.then((rep) => {
+                    try { if (rep && rep.changed && autoPullHook) autoPullHook(rep); } catch (e) { /* 忽略：回调失败不影响同步 */ }
+                }).catch(() => { /* 忽略：自动对账失败不影响界面 */ });
+            } catch (e) { /* 忽略 */ }
+        };
+        doc.addEventListener('visibilitychange', onVis);
+        autoPullOff = () => { try { doc.removeEventListener('visibilitychange', onVis); } catch (e) { /* noop */ } };
+        autoPullBound = true;
+        return true;
+    } catch (e) { return false; }
+}
+/** 解绑（teardown；幂等） */
+export function unbindAutoPullVisible() {
+    try { if (autoPullOff) autoPullOff(); } catch (e) { /* noop */ }
+    autoPullOff = null; autoPullBound = false; autoPullHook = null;
+    return true;
+}
+/** 自动对账绑定状态（诊断） */
+export function autoPullBindState() { return { bound: autoPullBound }; }

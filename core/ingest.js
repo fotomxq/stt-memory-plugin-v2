@@ -283,6 +283,10 @@ function mergeDelta(delta0, floorRange) {
             for (const cu of (delta.currencies?.add || []).concat(delta.currencies?.update || [])) {
                 const n = preserveEntryMeta('currencies', cu, normalizeCurrency(cu));
                 if (!n) continue;
+                // v3.50.32（用户报告「货币跨端不同步金额、记录」）：**AI 改动账本即记条目级修改时间** ——
+                //   跨端冲突按「账本何时被改」取新，而不是「哪个设备后保存」。缺了它，另一端只是保存了别的内容
+                //   就能把本端较新的额度/流水判定为「旧的」并覆盖回去（详见 `core/model/money.js#normalizeCurrency`）。
+                n.updatedAt = Date.now();
                 const fe0 = Number(fb && fb.end), fs0 = Number(fb && fb.start);
                 if (Number.isInteger(fe0) && fe0 >= 0) n.floorEnd = Math.max(Number(n.floorEnd) || 0, fe0);
                 if (Number.isInteger(fs0) && fs0 >= 0) n.floorStart = Math.max(Number(n.floorStart) || 0, fs0);

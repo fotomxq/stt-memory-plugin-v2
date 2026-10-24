@@ -47,7 +47,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fire = (bag, type) => { for (const fn of (bag[type] || []).slice()) { try { fn(); } catch (e) { /* 忽略 */ } } };
 
 R.assert('E0 装配就绪（宿主 + 内核状态 + 退出落盘监听已挂上）',
-    typeof entry.runtimeState === 'function' && RT.state && (dl.doc.visibilitychange || []).length === 1
+    // v3.50.32：`visibilitychange` 上现在挂**两条**监听 —— ① 退出/切后台立即落盘（本用例主体）；② 回到前台自动对账（host/events.js#bindAutoPullVisible）
+    typeof entry.runtimeState === 'function' && RT.state && (dl.doc.visibilitychange || []).length === 2
     && (dl.win.pagehide || []).length === 1 && (dl.win.beforeunload || []).length === 1,
     { doc: Object.keys(dl.doc), win: Object.keys(dl.win) });
 

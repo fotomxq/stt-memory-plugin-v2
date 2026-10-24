@@ -3,6 +3,50 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.50.32（2026-10-24）· **修复「货币跨端不同步金额、记录」**：写前拉取 + 回到前台自动对账 + 货币账本时间戳（`docs/D52` `数-42`）
+
+**用户要求**（原话）：「新版本v3.50.32 修复货币跨端不同步金额、记录的问题。」
+
+**登记**：设计稿 `docs/D52`（**`数-42`**）｜ `docs/D17` **U263** ｜ 批次档 `docs/history/P10c141-货币跨端金额记录同步.md`
+
+### 一、缺陷：不是"货币没被合并"，而是合并的**时点 / 副本 / 时钟**都不对
+
+v3.45.6 起货币已按「归属 + 币种」**逐条并集**（`P10c86`）——所以本轮不是"货币没被合并"。三处同源（+ 两处放大器）：
+
+| # | 缺陷 | 代码取证 | 用户可见后果 |
+| --- | --- | --- | --- |
+| ① | **保存先写后拉** | `adapters/store.js#saveStateNowInner` 先整份写回主文件；拉取合并由 `adapters/sync.js#scheduleStorageSync` **3 秒后**才跑 | 等它去拉时远端已被本端刚写的旧内存覆盖 → 另一端刚记的额度/流水在服务端消失；两端各说各话 |
+| ② | **会话读缓存无 TTL** | `adapters/sync.js#filesReadContentCached` 命中即返回；自动路径不绕开缓存 | 即使自动拉取跑了，读到的也是本会话早先那份 → "自动同步"形同虚设 |
+| ③ | **货币没有条目级时间戳** | `core/model/money.js#normalizeCurrency` 与三条写入路径都不写 `updatedAt` | 冲突仲裁退化为「**谁后保存谁赢**」→ 只是保存了别的内容的一端，会把另一端较新的额度盖回去 |
+| ④ | **流水并集固定本端在前** | `core/cross-sync.js#mergeCurrencyEntry` → `mergeMoneyHistory(本端, 对端)` 再 `slice(-12)` | 两端各 12 笔时被裁掉的是本端较新的几笔 → "记录少了" |
+| ⑤ | **两个开关是死键** | `storage.crossPullOnVisible` / `crossPullOnActivity` 只有默认值与控件、**没有读取点** | 用户以为"回到页面会自动对账"，实际不会 |
+
+### 二、修复
+
+1. **写前拉取**（`adapters/sync.js#pullRemoteBeforeWrite`）：保存**组装信封之前**先把远端**货币**逐条并集（`mergeRemoteCurrencies`）再写主文件；清单命中不下载主文件；失败静默、15 秒节流、长任务 / 载入未完成跳过；**清空 / 导入 / 退出前落盘显式 `pullRemote:false`**（否则清不掉、导不进、退出被网络拖住）；
+2. **回到前台自动对账**（`host/events.js#bindAutoPullVisible` + `adapters/sync.js#crossAutoPull('visible')`）：`visibilitychange → visible`（开关 `storage.crossPullOnVisible`，默认开）→ **绕开会话读缓存** + 清单预判 + **只并集货币**；**有变化才落盘**并经 `onMerged` 回调重绘已打开的面板；15 秒内不重复拉取。`storage.crossPullOnActivity` = 写前拉取开关（默认开）——两个死键真正生效；
+3. **账本时间戳**：`normalizeCurrency` **只保留**入参 `updatedAt`（缺省不写该键）；四条写入路径打标 —— AI 落库（`core/ingest.js#mergeDelta`）· 面板编辑 / 快速记账（`core/entries.js#upsertEntry`）· 机械修正 / AI 融合应用（`core/currency-repair.js#runCurrencyRepair`）；
+4. **流水上限取较新账本**：`mergeCurrencyEntry` 改为 `mergeMoneyHistory(落败方, 胜出方)` —— 12 笔上限保留**胜出方**的最近记录。
+
+### 三、V1 偏离登记（守则 §2.4 三件套，黄金样本一字未改）
+
+* `tests/fixtures/v1-golden-ingest.json` **一字未改**；`normalizeCurrency` 缺省不写 `updatedAt` → V1 归一输出逐字不变；
+* `ingest-golden` **M2** 对货币 `updatedAt` **显式归一**后再逐字符比对，并新增 **M2c** 正面断言（归一 ≠ 删字段）；
+* `storage-loss-3402` GZ-1（同端遗留明文 vs 本次 gz 的"候选取新"用例）关掉写前拉取；`exit-flush` E0 的 `visibilitychange` 监听数 1 → 2（退出落盘 + 回到前台自动对账）。
+
+### 四、测试与门禁
+
+* 新增 `tests/unit/currency-cross-ledger.test.js`（**16 项**）：条目级时间戳（归一保留 / AI 落库 / 面板与快速记账）· 合并仲裁（账本时间优先于信封时间 / 流水并集 / 两端各 12 笔保留较新账本）· 自动对账（并集额度+流水 / 清单预判零大文件 GET / 开关关闭不动作 / 节流与 `force` / **会话读缓存绕过反锁** / 写前拉取可用）· 保存流水线（写前先并集、写出的主文件已是合并结果 / `pullRemote:false` 不并回来 / 幂等 / 无远端兜底）；
+* `npm run gate` 全绿；单测 **255 文件 / 3763 断言**；冒烟 224 项。
+
+### 五、边界（如实登记）
+
+1. **不改「非原子容器整侧取新」**（`summaries` / `npcs` / `protagonist` / `vars` / `varTemplates` / `state`；`docs/D20` `数-4` 方案 A 保持）；
+2. **不改** `dataAggHash` / `atomEntryCount` / `diffAtomData` 三个 V1 锁定口径（货币仍不在 `ATOM_DIM_KEYS`）；
+3. **不改 `DATA_VERSION`**：`updatedAt` 是**可选**字段，老存档与 V1 黄金样本逐字可读；
+4. 自动拉取**只并集货币**（不整体替换、不写备份、不写快照、不动其它维度），与「立即同步 / 刷新状态」的分工不变；其余维度仍走原时序（除货币外的条目合并时钟只有 AI 写入路径在维护，整份提前会让手动编辑被对端旧副本盖回去 —— 独立议题）；
+5. **未取证**：本机无双端真机环境，端到端时序由单测（文件系统桩 + 会话重启）覆盖，真机读数待用户复核。
+
 ## v3.50.31（2026-10-21）· **情节分段总结：开篇前 10 条禁止参与** + 既有设计审查修复（`docs/D51` `数-41`）
 
 **用户要求**（原话）：「新版本，小修复 1. 情节的前10条禁止被分段总结。2. 之前设计的情节分段总结，也需核对是否存在问题。」

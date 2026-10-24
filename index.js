@@ -7,7 +7,7 @@ import { VERSION, DATA_VERSION, MODULE_NAME, DIMENSIONS, ATOM_DIM_KEYS } from '.
 // v3.45.7（用户报告「数据导出功能会直接卡死」）：导出改为**分段组装**（不深拷贝 / 不大存档美化 / 不拼一整串）
 import { EXPORT_FORMAT, EXPORT_PRETTY_MAX, exportChunks, exportParts, exportSectionKeys, exportEnvelopeValue } from './core/export.js';
 import { hasHost, probeCapabilities, getCtx } from './host/st-api.js';
-import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState } from './host/events.js';
+import { bindCoreEvents, eventTypeAvailability, installErrorCapture, uninstallErrorCapture, errorCaptureState, bindAutoPullVisible, unbindAutoPullVisible } from './host/events.js';
 import { installGlobalInterceptor, uninstallGlobalInterceptor, interceptorStats, resetInterceptorStats } from './host/interceptor.js';
 import { clearInject, injectAvailable, pushMemoryInject, pushStats, setInjectRuntime, injectInFlight, readInject } from './host/inject.js';
 // v3.50.0（W22 `技-51`）：楼层事件的注入刷新改**延迟去抖**（高频路径 ≈16ms/次；发送前那份由拦截器权威构建）
@@ -753,7 +753,7 @@ export async function init() {
     try { runtime.probe = probeCapabilities(); } catch (e) { runtime.lastError = String((e && e.message) || e); }
     try { getSettings(); } catch (e) { /* 配置失败不阻塞 */ }
     // v2.34.0（强化调试）：安装全局异常捕捉 —— 未捕获错误 / 未处理 Promise 拒绝自动写入调试日志（`kind='异常'`）
-    try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; }
+    try { runtime.errCapture = installErrorCapture(); } catch (e) { runtime.errCapture = false; } try { runtime.autoPull = bindAutoPullVisible({ onMerged: () => { try { if (panelOpen()) renderPanel(); } catch (e) { /* 忽略：面板未挂载 */ } } }); } catch (e) { runtime.autoPull = false; }   // v3.50.32：回到前台自动对账（只并集合并；有变化才重绘面板）
     try { runtime.cfg = loadKernelCfg(); } catch (e) { runtime.cfg = null; }
     // v3.27.0（用户要求「快照、日志等信息也应该主动跟随本地存储变动」）：**目录模式下**先把辅助数据
     //   （调试日志 / 交互时间线 / 同步与对账标记 / 版本清单缓存）从目录读进内存，并把浏览器里遗留的旧键
@@ -1094,7 +1094,7 @@ export async function runV1Import(opts) {
         current: kernelState,
         apply: apply ? async (merged) => {
             attachKernelState(merged);
-            await saveStateNow({ reason: 'import-v1', force: true });     // v3.0.15：导入是直接写入 → 不走「无变化」短路
+            await saveStateNow({ reason: 'import-v1', force: true, pullRemote: false });   // v3.0.15：导入是直接写入；v3.50.32：导入不写前拉取
         } : null,
     });
     const t = (res.report && res.report.totals) || { v1Entries: 0, add: 0, exist: 0, conflict: 0 };
@@ -1174,7 +1174,7 @@ export async function importStateJson(text) {
     return importStatePayload(text, {
         getState: () => kernelState,
         attach: (next) => attachKernelState(next),
-        save: () => saveStateNow({ reason: 'import-json', force: true }),   // v3.0.15：导入后立即落盘
+        save: () => saveStateNow({ reason: 'import-json', force: true, pullRemote: false }),   // v3.0.15：导入后立即落盘；v3.50.32：导入不写前拉取
     });
 }
 /** 面板只读状态快照（作用域 / 注入字数 / 提取统计 / 待分析 / 存储来源） */
@@ -2626,7 +2626,7 @@ export function teardown() {
     try { stopReadyProbe(); } catch (e) { /* noop */ }
     try { uninstallAllEntries(); } catch (e) { /* noop */ }
     try { closePanel(); } catch (e) { /* noop */ }
-    try { uninstallErrorCapture(); } catch (e) { /* noop */ }
+    try { uninstallErrorCapture(); unbindAutoPullVisible(); } catch (e) { /* noop */ }
     try { uninstallDevtools(); } catch (e) { /* noop */ }
     try { resetSyncState(); } catch (e) { /* noop */ }
     try { cancelForgetTimers(); } catch (e) { /* noop */ }
@@ -2691,7 +2691,7 @@ function bindExitFlush() {
         const win = globalThis.window;
         // 退出/切后台是**最后一次**写主文件的机会 → 强制完整落盘（`force` 绕开「无变化短路」）
         // v3.27.0：退出/切后台时把**辅助数据**（调试日志 / 时间线 / 同步标记 / 版本清单）也强制落盘到目录
-        const fire = (why) => { try { void flushStateNow(why, { force: true }); } catch (e) { /* 忽略 */ } try { void auxStoreFlush(); } catch (e) { /* 忽略 */ } };
+        const fire = (why) => { try { void flushStateNow(why, { force: true, pullRemote: false }); } catch (e) { /* 忽略 */ } try { void auxStoreFlush(); } catch (e) { /* 忽略 */ } };
         if (doc && typeof doc.addEventListener === 'function') {
             const onVis = () => { try { if (doc.visibilityState === 'hidden') fire('应用切到后台'); } catch (e) { /* 忽略 */ } };
             doc.addEventListener('visibilitychange', onVis);

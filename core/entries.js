@@ -254,6 +254,9 @@ function upsertEntry(kind, raw, opts) {
     const floor = { start: getLastMessageId(), end: getLastMessageId() };
     const n = kindNormalize(kind, raw, floor);
     if (!n) return false;
+    // v3.50.32（用户报告「货币跨端不同步金额、记录」）：**手动编辑 / 快速记账也是一次账本修改** →
+    //   记条目级修改时间（跨端合并按它取新；缺了它就只能按整份信封时间猜，谁后保存谁赢）。
+    try { if (String(kind) === 'currencies') n.updatedAt = Date.now(); } catch (e) { /* 忽略：打标失败不影响保存 */ }
     // v3.8.0：手动新增/编辑也走同一套元字段补齐（楼层溯源 + NSFW 等级留档；同 id 既有留档只升不降）
     preserveEntryMeta(String(kind) === 'currentStates' ? 'states' : String(kind), raw, n);
     // 手动把物品数量设为 0 → 该条目自动删除（不保留空条目）

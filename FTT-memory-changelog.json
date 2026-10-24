@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.50.31",
-  "updatedAt": "2026-10-21",
-  "generatedAt": "2026-10-21",
+  "version": "3.50.32",
+  "updatedAt": "2026-10-24",
+  "generatedAt": "2026-10-24",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.50.32",
+      "date": "2026-10-24",
+      "title": "修复「货币跨端不同步金额、记录」：写前拉取 + 回到前台自动对账 + 货币账本时间戳（docs/D52 数-42）",
+      "points": [
+        "登记：设计稿 docs/D52（数-42）｜ docs/D17 U263 ｜ 批次档 docs/history/P10c141-货币跨端金额记录同步.md### 一、缺陷：不是\"…"
+      ]
+    },
     {
       "version": "3.50.31",
       "date": "2026-10-21",

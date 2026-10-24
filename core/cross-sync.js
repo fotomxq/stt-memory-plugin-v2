@@ -239,13 +239,20 @@ function mergeCurrencyEntry(l, r, preferRemote) {
     try { nsfwMergeLevel(win, lose); } catch (e) { /* 忽略 */ }
     try { mergeEntryProvenance(win, lose); } catch (e) { /* 忽略 */ }
     try {
-        const lh = Array.isArray(l && l.history) ? l.history : [];
-        const rh = Array.isArray(r && r.history) ? r.history : [];
-        if (lh.length || rh.length) {
-            const merged = mergeMoneyHistory(lh, rh);
-            const cur = Array.isArray(win.history) ? win.history : [];
+        const winH = Array.isArray(win && win.history) ? win.history : [];
+        const loseH = Array.isArray(lose && lose.history) ? lose.history : [];
+        if (winH.length || loseH.length) {
+            /**
+             * v3.50.32（用户报告「货币跨端不同步金额、记录」）：**落败方在前、胜出方在后**。
+             *   `mergeMoneyHistory` 的语义是「旧在前、新在后 + 只留最近 12 笔」——
+             *   而旧实现固定 `mergeMoneyHistory(l.history, r.history)`（本端在前、对端在后）：
+             *   当两端各有 12 笔（各自离线记过账）时，裁剪只留下**「对端」的 12 笔**，本端最近记的几笔被当旧记录丢掉
+             *   （用户看到的正是「记录不同步 / 少了」）。胜出方的条目 `updatedAt` 更新 ⇒ 它的流水才是较新的那一截，
+             *   因此把胜出方放末尾，裁剪后保留的是**较新账本的最近记录**。
+             */
+            const merged = mergeMoneyHistory(loseH, winH);
             // 只有真的并入/变化才写回 `history` —— 让「无收支」的条目与 V1 结果**逐字段一致**
-            if (JSON.stringify(merged) !== JSON.stringify(cur)) win.history = merged;
+            if (JSON.stringify(merged) !== JSON.stringify(winH)) win.history = merged;
         }
     } catch (e) { /* 忽略 */ }
     return win;

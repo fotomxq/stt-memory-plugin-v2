@@ -338,6 +338,9 @@ function runCurrencyRepair(opts) {
     if (o.dryRun === true || !plan.counts.total) return empty;
     try {
         const dropIds = new Set(plan.drop.map((d) => d.id));
+        // v3.50.32（用户报告「货币跨端不同步金额、记录」）：**修正 / 融合也是一次账本修改** →
+        //   受影响条目记条目级修改时间（跨端合并按它取新）。否则对端的旧副本只要信封时间更新就会把修正盖回去。
+        const stampAt = Date.now();
         // 同一条目可能**同时**有单位归一与额度补齐两条修正 → 键必须是 `id|字段`（按 id 建 Map 会互相覆盖）
         const fixOf = new Map(plan.fix.map((f) => [f.id + '|' + f.field, f]));
         const mergeKeep = new Map(plan.merge.map((m) => [m.keepId, m]));
@@ -370,6 +373,8 @@ function runCurrencyRepair(opts) {
                 const ends = members.map((x) => Number((x && x.floorEnd) || 0) || 0).filter((n) => n > 0);
                 const dates = members.map((x) => String((x && x.date) || '')).filter(Boolean).sort();
                 next.push(Object.assign({}, c, {
+                    // v3.50.32：合并后的条目 = 一次账本修改 → 记条目级修改时间（跨端按它取新）
+                    updatedAt: stampAt,
                     // v3.46.2（W13 货币融合）：`m.amount` 由 plan 给出（机械档 = 保留最新额度，与本版之前逐字相同；
                     //   AI 档默认给出**求和**）。未给则原样保留本条目额度。
                     amount: (m.amount != null && Number.isFinite(Number(m.amount))) ? roundMoney(m.amount) : c.amount,
@@ -392,6 +397,8 @@ function runCurrencyRepair(opts) {
             const fAmt = fixOf.get(id + '|amount');
             if (fUnit || fAmt) {
                 const patched = Object.assign({}, c);
+                // v3.50.32：修正后的条目同样记条目级修改时间（跨端按它取新）
+                patched.updatedAt = stampAt;
                 if (fUnit) patched.unit = fUnit.to;
                 if (fAmt) patched.amount = Number(fAmt.to) || 0;
                 next.push(patched);
