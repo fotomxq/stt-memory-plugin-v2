@@ -45,7 +45,9 @@ function ledgerRowHtml(x) {
         + (x.note ? (' · ' + esc(cut(x.note, 40))) : '') + '</div>'
         + '<div class="ftt-sub">来源：' + esc(SOURCE_TEXT[str0(x.source)] || str0(x.source) || '手动')
         + (x.dealId ? (' · 标的物 ' + esc(str0(x.dealId))) : '') + '</div></div>'
-        + '<div class="ftt-actions"><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="ledger" data-id="' + esc(x.id) + '" title="删除这笔流水（会反向冲正余额；留删除记录，跨端不复活）">🗑</button></div>'
+        + '<div class="ftt-actions">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="ledger" data-id="' + esc(x.id) + '" title="编辑这笔流水（金额/日期/说明；不改变来源与幂等 id）">✏</button>'
+        + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="ledger" data-id="' + esc(x.id) + '" title="删除这笔流水（会反向冲正余额；留删除记录，跨端不复活）">🗑</button></div>'
         + '</div>';
 }
 
@@ -96,7 +98,9 @@ export function dealDetailHtml(d) {
         + '<div class="ftt-sub">触发器：' + (trigErr ? '**停摆**（锚定货币已失效，不生成流水）'
             : (str0(trig.lastFiredDate) ? ('上次处置 ' + esc(str0(trig.lastFiredDate)) + (trig.lastFiredNodeDate ? (' · 兑现节点 ' + esc(str0(trig.lastFiredNodeDate))) : '')) : '尚未处置'))
         + (trig.catchUpTruncated ? ' · **补齐被上限截断**（尚有周期未补齐）' : '') + '</div>'
-        + '</div><div class="ftt-actions"><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="deals" data-id="' + esc(d.id) + '" title="删除这条长期收支（不删其它数据）">🗑</button></div></div>';
+        + '</div><div class="ftt-actions">'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="deals" data-id="' + esc(d.id) + '" title="编辑该标的物（约定 / 现状 / 锚定货币 / 三段预判）">✏</button>'
+        + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="deals" data-id="' + esc(d.id) + '" title="删除这条长期收支（不删其它数据）">🗑</button></div></div>';
 }
 
 /** 长期收支子页 */
@@ -116,7 +120,7 @@ export function moneyPageHtml(overviewHtml) {
     const cur = moneySub;
     const nL = ledgerList().length, nD = dealList().length;
     const tab = (key, label) => '<a href="javascript:void(0)" class="ftt-subtab' + (cur === key ? ' ftt-on' : '')
-        + '" data-ftt-action="moneySub" data-sub="' + key + '">' + label + '</a>';
+        + '" data-ftt-action="moneySub" data-ftt-csub="' + key + '">' + label + '</a>';
     const tabs = '<div class="ftt-row ftt-subtabs" data-ftt-csub-tabs>'
         + tab('overview', '💰 货币总览')
         + tab('ledger', '📒 收支记录（' + nL + '）')

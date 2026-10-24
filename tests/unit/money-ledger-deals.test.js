@@ -26,7 +26,7 @@ import { dataHealthReport } from '../../core/data-health.js';
 import { migrateState } from '../../core/migrate.js';
 import { moneyPageHtml, setMoneySub, ledgerPageHtml, dealsPageHtml } from '../../ui/money-tabs.js';
 import { kindFields, deconstructEntry } from '../../ui/fields.js';
-import { panelAction, setPanelHooks2 } from '../../ui/panel.js';
+import { panelAction, setPanelHooks2, bindOverlay, panelBodyHtml } from '../../ui/panel.js';
 
 const R = makeReporter('money-ledger-deals v3.51.0 货币三子页（W32 数-43/44/45/46 · 应-46/47 · 技-57/58/59）');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -261,6 +261,69 @@ A('G3 面板「保存」一条流水但**货币不存在** → 拒绝（不写�
     setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
     const r = await panelAction('save', { kind: 'ledger', id: '', fields: { currencyId: 'nope', date: '1919-01-02', delta: '10', note: '', source: 'manual' } });
     return r && r.ok === false && String(r.reason) === 'ledger-rejected' && state.ledger.length === 0 && state.currencies.length === 1;
+})(), 'n/a');
+
+// ---------- H 真实点击委托（v3.51.2 用户报告「货币子页面无法点击」的回归锁） ----------
+A('H1 **真实点击**「📒 收支记录」子标签 → 面板切到收支记录页（不再是「点了没反应」）', (async () => {
+    boot({ ledger: [{ id: 'l1', currencyId: 'c1', date: '1919-01-01', delta: 5, note: '卖鱼', source: 'manual' }], deals: [] });
+    setMoneySub('overview');
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    await panelAction('tab', { tab: 'currencies' });
+    bindOverlay();
+    const doc = globalThis.document;
+    const el = doc.getElementById('ftt-panel');
+    const click = (el && el.listeners && el.listeners.click) || [];
+    const fire = (ds) => {
+        const tg = { dataset: ds, closest: (sel) => (String(sel).indexOf('data-ftt-action') >= 0 || String(sel).indexOf('button') >= 0 ? tg : null) };
+        click.forEach((fn) => fn({ target: tg, preventDefault() { }, stopPropagation() { } }));
+        return new Promise((r) => setTimeout(r, 5));
+    };
+    // ① 点「收支记录」子标签（属性 = data-ftt-csub）
+    await fire({ fttCsub: 'ledger' });
+    const onLedger = String(panelBodyHtml('currencies') || '');
+    // ② 点「长期收支」
+    await fire({ fttCsub: 'deals' });
+    const onDeals = String(panelBodyHtml('currencies') || '');
+    // ③ 点回「货币总览」
+    await fire({ fttCsub: 'overview' });
+    const onOverview = String(panelBodyHtml('currencies') || '');
+    return onLedger.indexOf('账本共 <b>1</b>') >= 0 && onLedger.indexOf('📒 收支记录') >= 0
+        && onDeals.indexOf('＋新建标的物') >= 0 && onDeals.indexOf('账本共') < 0
+        && onOverview.indexOf('原样') < 0 && onOverview.indexOf('data-ftt-csub="ledger"') >= 0;
+})(), 'n/a');
+A('H2 货币下拉：记账/标的物的货币字段是**下拉选择**（选项来自当前货币列表，含「请选择」占位）', (() => {
+    boot({ currencies: [{ id: 'c1', owner: '主角', name: '银元', amount: 100, unit: '枚' }, { id: 'c2', owner: '甲', name: '铜钱', amount: 3, unit: '枚' }] });
+    const lf = kindFields('ledger').filter((f) => f.key === 'currencyId')[0] || {};
+    const df = kindFields('deals').filter((f) => f.key === 'currencyId')[0] || {};
+    const opts = (lf.options || []).map((o) => String(o.value));
+    return lf.type === 'select' && df.type === 'select' && opts.indexOf('') === 0
+        && opts.indexOf('c1') > 0 && opts.indexOf('c2') > 0
+        && String((lf.options || [])[1].label).indexOf('银元') >= 0;
+})(), 'n/a');
+A('H3 变动节点支持 **JSON**（结构化）或逐行；解析失败如实报错（不再静默丢弃）', (() => {
+    const okJson = deconstructEntry('deals', { name: 'A', currencyId: 'c1', startDate: '1919-01-01', nodesText: '[{"date":"1919-02-01","delta":100,"note":"首期"}]', forecastNextDate: '1919-03-01', forecastSource: 'ai' });
+    const okLine = deconstructEntry('deals', { name: 'A', currencyId: 'c1', startDate: '1919-01-01', nodesText: '1919-02-01|100|首期', forecastNextDate: '1919-03-01', forecastSource: 'ai' });
+    const badJson = deconstructEntry('deals', { name: 'A', currencyId: 'c1', startDate: '1919-01-01', nodesText: '[{oops', forecastNextDate: '1919-03-01' });
+    const badLine = deconstructEntry('deals', { name: 'A', currencyId: 'c1', startDate: '1919-01-01', nodesText: '1919-02-01|abc|首期', forecastNextDate: '1919-03-01' });
+    return okJson.outlook.nodes.length === 1 && okJson.outlook.nodes[0].delta === 100
+        && okLine.outlook.nodes.length === 1 && okLine.outlook.nodes[0].date === '1919-02-01'
+        && String(badJson.__error || '').indexOf('JSON') >= 0 && String(badLine.__error || '').indexOf('第 1 行') >= 0;
+})(), 'n/a');
+A('H4 保存失败**给出具体原因**：缺锚定货币 / 缺预测日期 / 节点解析失败，都不再只说「必要字段缺失」', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const r1 = await panelAction('save', { kind: 'deals', id: '', fields: { name: 'A', currencyId: '', startDate: '1919-01-01', forecastNextDate: '1919-03-01', forecastSource: 'ai' } });
+    const r2 = await panelAction('save', { kind: 'deals', id: '', fields: { name: 'A', currencyId: 'c1', startDate: '1919-01-01', forecastNextDate: '', forecastSource: 'ai' } });
+    const r3 = await panelAction('save', { kind: 'deals', id: '', fields: { name: 'A', currencyId: 'c1', startDate: '1919-01-01', nodesText: '[{oops', forecastNextDate: '1919-03-01', forecastSource: 'ai' } });
+    return r1 && r1.ok === false && String(r1.error).indexOf('锚定货币') >= 0
+        && r2 && r2.ok === false && String(r2.error).indexOf('预测日期') >= 0
+        && r3 && r3.ok === false && String(r3.error).indexOf('JSON') >= 0;
+})(), 'n/a');
+A('H5 收支记录与长期收支行都有「✏ 编辑」入口（编辑走既有编辑器，不新增动作）', (() => {
+    boot({ ledger: [{ id: 'l1', currencyId: 'c1', date: '1919-01-01', delta: 5, note: '', source: 'manual' }], deals: [{ id: 'd1', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 1, direction: 'increase', source: 'ai' } } }] });
+    const lg = ledgerPageHtml(), dl = dealsPageHtml();
+    return lg.indexOf('data-ftt-action="edit" data-kind="ledger" data-id="l1"') >= 0
+        && dl.indexOf('data-ftt-action="edit" data-kind="deals" data-id="d1"') >= 0;
 })(), 'n/a');
 
 R.done();

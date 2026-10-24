@@ -3674,7 +3674,7 @@ export function bindOverlay() {
                     if (ds.fttSubtab !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSubtab || '') }); return; }
                     if (ds.fttCdim !== undefined) { void panelAction('constraintDim', { dim: String(ds.fttCdim || '') }); return; }
                     if (ds.fttAsub !== undefined) { void panelAction('atomSub', { sub: String(ds.fttAsub || '') }); return; }
-                    if (ds.fttMapsub !== undefined) { void panelAction('mapSub', { sub: String(ds.fttMapsub || '') }); return; }   // v3.47.0（应-20）
+                    if (ds.fttMapsub !== undefined || ds.fttCsub !== undefined) { const isMoney = ds.fttCsub !== undefined; void panelAction(isMoney ? 'moneySub' : 'mapSub', { sub: String(isMoney ? ds.fttCsub : (ds.fttMapsub || '')) }); return; }
                     if (ds.fttSettings !== undefined) { void panelAction('settingsSub', { sub: String(ds.fttSettings || '') }); return; }   // 旧标记兼容
                 }
                 if (tg === el) void panelAction('close', {});
@@ -3756,7 +3756,7 @@ export function bindOverlay() {
                 // v3.43.0（`docs/D22` `应-7`）：设定页控件定位器的结果项
                 //   （`data-ftt-page` = 目标子页；`data-ftt-cfg-goto` = 目标控件键）
                 page: ds.fttPage || '',
-                cfgGoto: ds.fttCfgGoto || '',
+                cfgGoto: ds.fttCfgGoto || '', sub: ds.sub || ds.fttSub || ds.fttCsub || '',   // v3.51.2：子标签参数（此前未透传 → 点了没反应）
             });
         });
         if (typeof el.addEventListener === 'function') {
