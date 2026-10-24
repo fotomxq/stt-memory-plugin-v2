@@ -1087,3 +1087,31 @@ body.ftt-no-effects #toast-container *::before {
   #ftt-panel .ftt-editor .ftt-field { flex-direction: column; gap: 4px; }
   #ftt-panel .ftt-editor .ftt-field > label { flex-basis: auto; padding-top: 0; }
 }
+
+/* ============================================================
+   v3.51.7（用户要求）：**已发生节点的结构性编辑器**（日期 / 金额 / 说明 三列 + 行删除 + 加一行）
+   —— 不再用「日期|金额|说明」分隔符文本域；窄屏时三列自动收成两行。
+   ============================================================ */
+#ftt-panel .ftt-node-table {
+  display: flex; flex-direction: column; gap: 4px; width: 100%;
+}
+#ftt-panel .ftt-node-head,
+#ftt-panel .ftt-node-row {
+  display: grid; grid-template-columns: 1.1fr 0.9fr 2fr auto; gap: 6px; align-items: center;
+}
+#ftt-panel .ftt-node-head span {
+  font-size: 11px; color: var(--ftt-text-2, #9aa4b2);
+}
+#ftt-panel .ftt-node-row input {
+  padding: 6px 8px; border-radius: 8px; font-size: 12px;
+  background: var(--ftt-bg-1, #14181e); color: var(--ftt-text, #e6e9ee);
+  border: 1px solid var(--ftt-line, #2a3038); min-width: 0;
+}
+#ftt-panel .ftt-node-row input:focus { outline: none; border-color: #6aa9ff; box-shadow: 0 0 0 2px rgba(106, 169, 255, .16); }
+#ftt-panel .ftt-node-del { padding: 2px 8px; line-height: 1.2; }
+#ftt-panel .ftt-node-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
+@media (max-width: 560px) {
+  #ftt-panel .ftt-node-head { display: none; }
+  #ftt-panel .ftt-node-row { grid-template-columns: 1fr 1fr; }
+  #ftt-panel .ftt-node-row input[data-ftt-ed$="-note"] { grid-column: 1 / -1; }
+}

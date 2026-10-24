@@ -221,6 +221,11 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'deal': '长期收支详情行锚点（`data-ftt-deal="<id>"`）',
         'deals-empty': '长期收支空态容器（`data-ftt-deals-empty`）',
         'forecast': '预测区块（`data-ftt-forecast`：与「已发生节点」**分区呈现**，样式/测试锚点）',
+        // v3.51.7（用户要求）：已发生节点改为**结构性行编辑**（日期/金额/说明 三列）—— 结构 / 测试锚点，不参与动作分发
+        'node-table': '已发生节点的结构性编辑器容器（`data-ftt-node-table`，样式/测试锚点）',
+        'node-row': '节点行（`data-ftt-node-row="<行号>"`；行内三个 `data-ftt-ed` 输入由 `collectEditorFields` 收集）',
+        'node-del': '节点行删除按钮（`data-ftt-node-del="<行号>"`；纯 DOM 行操作）',
+        'node-add': '节点「＋加一行」按钮（`data-ftt-node-add="1"`；纯 DOM 行操作）',
         // v3.9.0（用户要求：各分类均有 NSFW 标签提示）：**样式 / 测试锚点**，不参与动作分发
         //   v3.47.2：分类级汇总行（原 `nsfw-legend`）已按用户要求移除 → 白名单条目同步删除（避免留"已不存在的标记"）
         'nsfw-level': 'NSFW 等级留档标签（`strong` / `weak`；配色由 CSS 按该属性选择，测试锚点）',

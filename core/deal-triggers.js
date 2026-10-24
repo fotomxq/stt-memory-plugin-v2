@@ -19,7 +19,7 @@
 import { cfg, dbgLog } from './model/runtime.js';
 import { clockDateTrim, clockDateValid } from './clock.js';
 import { bigDayNumber, bigDateFromDayNumber, bigYearStr } from './model/bigdate.js';
-import { dealCycleDays, dealList, findDeal, lastNodeDate, storyDayNumOf } from './model/deal.js';
+import { dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, storyDayNumOf } from './model/deal.js';
 import { applyLedgerEntry, findCurrency, ledgerOf } from './model/ledger.js';
 
 /** 触发器阈值（可被配置覆盖；缺省按 `docs/D53` Q10 裁决：30 天 / 3 周期 / 24 节点） */
@@ -138,9 +138,28 @@ export function runDealTriggers(opts) {
             }
             try {
                 d.lastChangeDate = lastNodeDate(d.outlook.nodes);
-                // 预测水位：还有下一节点且未越过截止日期 → 写回；否则清空（没有更多预测，触发器自然停）
+                /**
+                 * 预测水位：还有下一节点且未越过截止日期 → 写回；
+                 * v3.51.7（用户要求「轮动 1 轮后，根据周期推测到下一轮」+「兜底设计」）：
+                 *   · 已兑现后**没有**下一节点（AI 没给 / 被截止清空）→ 用**趋势 + 周期**兜底补一个（`source:'auto'`）；
+                 *   · 预测本来就是自动推算（`source:'auto'`）→ 兑现后用**新趋势**刷新金额（前几轮收益变化会影响下一轮）；
+                 *   · 越过 `endDate` → 不兜底（本条已结束）。
+                 */
                 const nextOk = nodeDate && clockDateValid(nodeDate) && (endDay == null || dayNum(nodeDate) <= endDay);
-                d.outlook.forecast = Object.assign({}, fc, { nextDate: nextOk ? nodeDate : '' });
+                if (nextOk) {
+                    const nextFc = Object.assign({}, fc, { nextDate: nodeDate });
+                    if (String(fc.source || '') === 'auto') {
+                        const fb = inferForecastFallback(d.outlook.nodes, d.cycle, d.startDate);
+                        if (fb.nextDate && clockDateValid(fb.nextDate)) { nextFc.delta = fb.delta; nextFc.direction = fb.direction; nextFc.source = 'auto'; }
+                    }
+                    d.outlook.forecast = nextFc;
+                } else {
+                    const fb = inferForecastFallback(d.outlook.nodes, d.cycle, d.startDate);
+                    const fbOk = fb.nextDate && clockDateValid(fb.nextDate) && (endDay == null || dayNum(fb.nextDate) <= endDay);
+                    d.outlook.forecast = fbOk
+                        ? Object.assign({}, fc, { nextDate: fb.nextDate, delta: fb.delta, direction: fb.direction, note: '', source: 'auto' })
+                        : Object.assign({}, fc, { nextDate: '' });
+                }
                 d.trigger.catchUpTruncated = truncatedHere;
                 if (truncatedHere) out.truncated += 1;
                 d.updatedAt = Number(o.now) || Date.now();

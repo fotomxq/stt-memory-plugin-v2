@@ -143,27 +143,29 @@ function kindFields(kind) {
         ];
         // v3.51.0（`docs/D53` W32 数-44 / 应-47）：**长期收支**（标的物 + 前景预判三段）
         case 'deals': return [
-            F('name', '标的物名称(必填)', 'text'),
-            F('desc', '描述 / 约定内容（分成比例 / 利率 / 期限 / 结算方式等实质条款）', 'textarea'),
+            // v3.51.7（用户要求「优化编辑面板，多余提示没意义」）：标签只留**字段名**，解释放进字段下方 hint（按需）
+            F('name', '标的物名称', 'text'),
+            F('desc', '约定内容', 'textarea'),
             F('kind', '类型', 'select', { options: [
                 { value: 'investment', label: '投资' }, { value: 'royalty', label: '创作长期收益' },
                 { value: 'loan', label: '贷款长期支出' }, { value: 'other', label: '其它' },
             ] }),
-            F('currencyId', '锚定货币（**必选**：触发器用它生成流水；该货币失效则触发器停摆）', 'select', { options: currencyPickOptions() }),
-            F('startDate', '最初确定的日期(年-月-日，必填)', 'text'),
-            F('endDate', '截止日期(年-月-日；空 = 无固定期)', 'text'),
-            F('cycle', '周期（weekly/monthly/quarterly/yearly/custom:<天数>；留空由节点间隔推断）', 'text'),
-            F('status', '标的物现状（一段文字）', 'text'),
-            F('outlookText', '前景预判① 文字说明', 'textarea'),
-            F('nodesText', '前景预判② 已发生的变动节点（每行「日期|金额（可空）|说明」；只写**已发生**）', 'textarea'),
-            F('forecastNextDate', '前景预判③ 下一节点预测日期(年-月-日，**必填**)', 'text'),
-            F('forecastDelta', '预测金额变动（可空；正=增加、负=减少）', 'number'),
+            F('currencyId', '锚定货币', 'select', { options: currencyPickOptions() }),
+            F('startDate', '最初确定日期', 'text'),
+            F('endDate', '截止日期', 'text'),
+            F('cycle', '周期', 'text', { placeholder: 'weekly / monthly / quarterly / yearly / custom:天数（留空=由节点推断）' }),
+            F('status', '标的物现状', 'text'),
+            F('outlookText', '前景说明', 'textarea'),
+            // ② 已发生的变动节点：**结构性行编辑器**（日期 / 金额 / 说明 三列 + 增删），不再用「日期|金额|说明」文本
+            F('nodes', '已发生节点', 'nodeTable'),
+            F('forecastNextDate', '预测下一节点日期', 'text'),
+            F('forecastDelta', '预测金额', 'number'),
             F('forecastDirection', '预测方向', 'select', { options: [
                 { value: 'increase', label: '增加' }, { value: 'decrease', label: '减少' },
             ] }),
-            F('forecastNote', '预测说明(≤80字)', 'text'),
+            F('forecastNote', '预测说明', 'text'),
             F('forecastSource', '预测来源', 'select', { options: [
-                { value: 'ai', label: 'AI 建议' }, { value: 'manual', label: '手动' },
+                { value: 'ai', label: 'AI 建议' }, { value: 'manual', label: '手动' }, { value: 'auto', label: '自动推算' },
             ] }),
         ];
         default: return [];
@@ -245,9 +247,30 @@ function deconstructEntry(kind, flat) {
         else if (raw.delta !== undefined) raw.delta = Number(raw.delta);
     } else if (kind === 'deals') {
         // v3.51.0（W32 数-44）：扁平表单 → 三段 `outlook`（**预测与事实分字段**，不混写）
+        // v3.51.7：**结构性节点行**优先（`node-<i>-date|delta|note`）；旧 `nodesText` 仅作兼容（程序化调用 / 旧测试）
         let nodes = [];
+        const rowKeys = Object.keys(raw).filter((k) => /^node-\d+-(date|delta|note)$/.test(k));
+        if (rowKeys.length) {
+            const rows = new Map();
+            for (const k of rowKeys) {
+                const m = /^node-(\d+)-(date|delta|note)$/.exec(k);
+                const i = Number(m[1]);
+                if (!rows.has(i)) rows.set(i, {});
+                rows.get(i)[m[2]] = raw[k];
+                delete raw[k];
+            }
+            const bad = [];
+            nodes = [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([i, r]) => {
+                const date = String(r.date == null ? '' : r.date).trim();
+                if (!date) return null;
+                const delta = r.delta === '' || r.delta === undefined ? 0 : Number(r.delta);
+                if (!Number.isFinite(delta)) { bad.push(i + 1); return null; }
+                return { date: date, delta: delta, note: String(r.note == null ? '' : r.note).trim().slice(0, 80) };
+            }).filter(Boolean);
+            if (bad.length) raw.__error = '已发生节点第 ' + bad.join(' / ') + ' 行的金额不是数字';
+        }
         const nodesRaw = String(raw.nodesText == null ? '' : raw.nodesText).trim();
-        if (nodesRaw) {
+        if (!nodes.length && nodesRaw) {
             if (nodesRaw.charAt(0) === '[') {
                 try {
                     const arr = JSON.parse(nodesRaw);
@@ -302,6 +325,40 @@ function deconstructEntry(kind, flat) {
     return raw;
 }
 
+/** 节点行数上限（编辑态展示上限；超出只读） */
+const NODE_TABLE_ROWS = 12;
+/**
+ * v3.51.7：**已发生节点的结构性编辑器**（用户要求：不要用分隔符设计）。
+ *   每行三列 `日期 / 金额 / 说明` + 行级删除；末尾「＋ 加一行」。
+ *   键名 `node-<行号>-date|delta|note`（`deconstructEntry` 负责收集；空日期行自动忽略）。
+ * @param {object} f 字段定义（{key:'nodes', label}）
+ * @param {Array} val 现有节点
+ */
+export function nodeTableHtml(f, val) {
+    const rows = Array.isArray(val) ? val.slice(0, NODE_TABLE_ROWS) : [];
+    const total = Array.isArray(val) ? val.length : 0;
+    const cells = (i, n) => {
+        const x = n || {};
+        return '<div class="ftt-node-row" data-ftt-node-row="' + i + '">'
+            + '<input type="text" data-ftt-ed="node-' + i + '-date" value="' + attr2(x.date) + '" placeholder="年-月-日" title="发生日期（年-月-日）">'
+            + '<input type="number" data-ftt-ed="node-' + i + '-delta" value="' + attr2(Number(x.delta) || 0) + '" placeholder="金额" title="金额（正=收入 / 负=支出）">'
+            + '<input type="text" data-ftt-ed="node-' + i + '-note" value="' + attr2(x.note) + '" placeholder="说明" title="说明（≤80 字）">'
+            + '<button type="button" class="ftt-btn ftt-sm ftt-node-del" data-ftt-node-del="' + i + '" title="删除这一行">✕</button>'
+            + '</div>';
+    };
+    const shown = Math.max(rows.length, 1);
+    let html = '<div class="ftt-node-table" data-ftt-node-table="' + attr2(f && f.key) + '">'
+        + '<div class="ftt-node-head"><span>日期</span><span>金额</span><span>说明</span><span></span></div>';
+    for (let i = 0; i < shown; i++) html += cells(i, rows[i]);
+    // 额外留 2 个空行便于直接添加（不预填）
+    for (let i = shown; i < Math.min(NODE_TABLE_ROWS, shown + 2); i++) html += cells(i, null);
+    html += '<div class="ftt-node-foot"><button type="button" class="ftt-btn ftt-sm" data-ftt-node-add="1">＋ 加一行</button>'
+        + '<span class="ftt-hint">只记**已发生**的收支；预测请写在下方「预测」三项里' + (total > NODE_TABLE_ROWS ? ('（共 ' + total + ' 条，此处只显示前 ' + NODE_TABLE_ROWS + ' 条）') : '') + '</span></div></div>';
+    return html;
+}
+function attr2(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 export { kindFields, deconstructEntry };
 
 /** 角色档案：分组字段展开为表单字段（**逐字移植自 V1** `flattenSnapshot`） */

@@ -9,7 +9,8 @@
 //
 // 本模块口径（`docs/D53` §3.4 / §3.8）：
 //   · `currencyId` **必填**（锚定货币；触发器用它生成流水，丢失则不生成）；
-//   · `forecast.nextDate` **必填** —— 预测**没有日期就没有意义**，归一直接拒绝（`null`）并留痕；
+//   · `forecast.nextDate`：**AI 给了就以 AI 为准**；AI **留空**时按**前几轮收益趋势 + 周期**自动推算（`source:'auto'`，
+//     v3.51.7 用户要求的「兜底设计」）—— 只有连「周期」都推断不出、又没有任何已发生节点时才拒绝（无法预测）；
 //   · `outlook` 三段**分字段存放**（`text` / `nodes` / `forecast`），**禁止**把预测混进 `nodes`（「预测 ≠ 事实」护栏）；
 //   · `lastChangeDate` 由 `outlook.nodes` 最大日期**自动维护**（界面只读）；
 //   · `trigger` 由代码维护（`lastFiredDate` / `lastFiredNodeDate` / `catchUpTruncated` / `skippedReason`），**用户不可编辑**；
@@ -90,7 +91,7 @@ export function lastNodeDate(nodes) {
 function normForecast(raw) {
     const f = (raw && typeof raw === 'object') ? raw : {};
     const nextDate = clockDateTrim(normText(f.nextDate !== undefined ? f.nextDate : (f['预测日期'] || f.date), BIG_DATE_FIELD_MAX));
-    if (!nextDate) return null;                                  // v1.1 第 6 条：预测日期必填
+    // v3.51.7：预测日期**可以留空**（由 `normalizeDeal` 用趋势兜底补上）；这里只做归一，不做必填拒绝
     let delta = roundMoney(Number(f.delta !== undefined ? f.delta : f['数额']));
     if (!Number.isFinite(delta)) delta = 0;
     const dirRaw = String(f.direction || f['方向'] || '').trim().toLowerCase();
@@ -107,12 +108,60 @@ function normForecast(raw) {
         delta: delta,
         direction: direction,
         note: normText(f.note !== undefined ? f.note : f['说明'], 80),
-        source: (String(f.source || '') === 'manual') ? 'manual' : 'ai',
+        source: (String(f.source || '') === 'manual') ? 'manual' : (String(f.source || '') === 'auto' ? 'auto' : 'ai'),
         corrected: corrected,
     };
 }
 
-/** 归一化标的物（`docs/D53` §3.4）；缺 `name` / `currencyId` / `forecast.nextDate` → `null` */
+/**
+ * v3.51.7（用户要求「下一个预测阶段增加兜底设计」）：**趋势外推**——
+ *   根据前几轮已发生节点的金额，判定「预计收益点 / 预计收益费用」：
+ *   · 金额（delta）：取最近 ≤3 个节点的**线性趋势**（最小二乘斜率）外推一步；不足 2 个节点 → 取最后一个节点金额；
+ *     全无节点 → 0（只给日期，金额未知）；
+ *   · 日期（nextDate）：最后变动日期（无则起始日期）`+ cycleDays`；周期未知 → 空（无法横推）。
+ * 纯函数、可复现，**不读 AI**。
+ * @param {Array} nodes 已发生节点
+ * @param {string} cycle 周期（weekly/monthly/quarterly/yearly/custom:N）
+ * @param {string} startDate 起始日期（无节点时的基准）
+ * @returns {{nextDate:string, delta:number, direction:string, note:string, source:string, basis:string}}
+ */
+export function inferForecastFallback(nodes, cycle, startDate) {
+    const list = (Array.isArray(nodes) ? nodes : []).filter((n) => n && clockDateTrim(n.date));
+    const last = list.length ? list[list.length - 1] : null;
+    const base = last ? clockDateTrim(last.date) : clockDateTrim(startDate);
+    const days = dealCycleDays(cycle);
+    const nextDate = (base && days > 0) ? addDays(base, days) : '';
+    // 线性趋势（最近 ≤3 个节点）：x = 0,1,2…；斜率 = Σ(x-x̄)(y-ȳ)/Σ(x-x̄)²；预测 = ȳ + 斜率·(n-1 处的下一步)
+    let delta = 0;
+    let basis = 'none';
+    const ys = list.slice(-3).map((n) => roundMoney(Number(n.delta) || 0));
+    if (ys.length === 1) { delta = ys[0]; basis = 'last'; }
+    else if (ys.length >= 2) {
+        const n = ys.length;
+        const xm = (n - 1) / 2;
+        const ym = ys.reduce((a, b) => a + b, 0) / n;
+        let num = 0, den = 0;
+        for (let i = 0; i < n; i++) { num += (i - xm) * (ys[i] - ym); den += (i - xm) * (i - xm); }
+        const slope = den > 0 ? (num / den) : 0;
+        delta = roundMoney(ym + slope * (n - xm));   // 下一节点（x = n）
+        basis = 'trend';
+    }
+    const direction = delta > 0 ? 'increase' : (delta < 0 ? 'decrease' : 'increase');
+    return { nextDate: nextDate, delta: delta, direction: direction, note: '', source: 'auto', basis: basis };
+}
+
+/** 日期 + N 天（本模块内的确定性实现，避免与触发器模块循环依赖） */
+function addDays(dateStr, n) {
+    try {
+        const ms = storyDateMsFromStr(clockDateTrim(dateStr));
+        if (!Number.isFinite(ms)) return '';
+        const d = new Date(ms + Math.round(Number(n) || 0) * 86400000);
+        const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1, dd = d.getUTCDate();
+        return String(y) + '-' + String(m).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+    } catch (e) { return ''; }
+}
+
+/** 归一化标的物（`docs/D53` §3.4）；缺 `name` / `currencyId` → `null`；预测可留空（→ 兜底推算） */
 export function normalizeDeal(e) {
     try {
         const src = (e && typeof e === 'object') ? e : {};
@@ -133,9 +182,22 @@ export function normalizeDeal(e) {
                 note: normText(x.note !== undefined ? x.note : x['说明'], 80),
             };
         }).filter(Boolean).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-        const forecast = normForecast(outlookRaw.forecast || src.forecast);
-        if (!forecast) return null;                               // v1.1 第 6 条：预测日期必填
         const cycle = normDealCycle(src.cycle) || inferCycleFromNodes(nodes);
+        const forecastRaw = normForecast(outlookRaw.forecast || src.forecast);
+        /**
+         * v3.51.7（用户要求「如果 AI 明确，则以 AI 为准；如果制空，则采用该设计」）：
+         *   AI 给了完整预测 → **以 AI 为准**；预测日期留空 → 用**趋势 + 周期**兜底（`source:'auto'`）；
+         *   兜底也推不出日期（周期未知且无节点/起始日期）→ **拒绝**（没有日期就没有意义，`D53` 原口径）。
+         */
+        const fallback = inferForecastFallback(nodes, cycle, startDate);
+        const forecast = (forecastRaw && forecastRaw.nextDate)
+            ? forecastRaw
+            : (fallback.nextDate
+                ? { nextDate: fallback.nextDate, delta: (forecastRaw && forecastRaw.delta) || fallback.delta, direction: '', note: (forecastRaw && forecastRaw.note) || '', source: 'auto', corrected: false }
+                : null);
+        if (!forecast) return null;
+        if (!forecast.direction && forecast.delta !== 0) forecast.direction = forecast.delta > 0 ? 'increase' : 'decrease';
+        if (forecast.direction === '' && forecast.delta === 0) forecast.direction = fallback.direction;
         const out = {
             id: String(src.id || ('deal_' + hashText(name + '|' + startDate))),
             name: name,

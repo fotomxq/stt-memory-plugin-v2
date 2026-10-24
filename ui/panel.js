@@ -18,7 +18,7 @@ import { importResultNote } from '../adapters/import-state.js';   // v3.0.17：�
 import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
-import { kindFields, deconstructEntry } from './fields.js';
+import { kindFields, deconstructEntry, nodeTableHtml } from './fields.js';   // v3.51.7：结构性节点表
 import { settingsPageHtml, settingsSubTabsHtml, applySettingsControl, SETTINGS_TABS, findSettingsControls, setCfgFlashKey, cfgFlashKeyNow } from './settings-pages.js';
 import { hintDetailsHtml, shortHintHtml, mdBold } from './hints.js';   // v2.59.0 折叠说明；v2.60.0 统一富文本（`**x**` → 粗体）
 import { promptAction } from './prompts.js';
@@ -109,7 +109,8 @@ import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../c
 // v2.47.0（用户报告：「情节等大类面板列表显示内容不全，请参照 V1 展示对应内容，注意展示顺序」）：
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
 import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, moneyPageHtml, setMoneySub } from './list-rows.js';
-import { flatFor } from './entry-flat.js';   // v3.51.5：编辑器回填（含长期收支三段 outlook 的扁平化）外提到独立模块   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { flatFor } from './entry-flat.js';   // v3.51.5：编辑器回填（含长期收支三段 outlook 的扁平化）外提到独立模块
+import { nodeTableClick } from './node-table-dom.js';   // v3.51.7：已发生节点的结构性行操作（加一行 / 删一行）   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
@@ -1380,6 +1381,8 @@ function editorHtml(kind, id, preset) {
         if (f.type === 'textarea') {
             return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label><textarea data-ftt-ed="' + attr(f.key) + '" rows="4">' + esc(val) + '</textarea></div>';
         }
+        if (f.type === 'nodeTable') return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label>' + nodeTableHtml(f, val) + '</div>';   // v3.51.7：结构性节点编辑
+
         return '<div class="ftt-field"><label>' + esc(f.label) + '</label><div class="ftt-grow"><input type="' + attr(f.type || 'text') + '" data-ftt-ed="' + attr(f.key) + '" value="' + attr(val) + '"></div></div>';
     }).join('\n');
     // v3.9.0（用户要求）：「均有标签提示」——编辑器里也给出该条目的 NSFW 等级留档（只读；永久留档，不随弱化改变）
@@ -3624,6 +3627,7 @@ export function bindOverlay() {
                     return;
                 }
             } catch (err) { /* 折叠失败不影响其它交互 */ }
+            try { if (nodeTableClick(tg)) return; } catch (e) { /* 忽略：节点行操作失败不影响其它交互 */ }   // v3.51.7
             const tabEl = tg && tg.closest ? tg.closest('[data-ftt-tab]') : null;
             if (tabEl) { void panelAction('tab', { tab: tabEl.getAttribute('data-ftt-tab') }); return; }
             // 动作元素解析：点在内层元素（如按钮里的 <span>/<b>）时回退到最近的 `[data-ftt-action]` 宿主
