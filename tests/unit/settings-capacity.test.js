@@ -119,8 +119,8 @@ A('C7 总量口径：v2.78.0 纯搬运 173 → … → v3.50.19 修复聚合 +5 
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **61**、总 185 → **190**
     // v3.51.0（W32）：存储页 +10 → 总 191 → 201（storage 13 → 23）
-    return info.totalControls === 201 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
-        && m.forget === 24 && m.rumors === 14 && m.storage === 23;
+    return info.totalControls === 202 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
+        && m.forget === 24 && m.rumors === 14 && m.storage === 24;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 
 A('C8 兜底口径（v2.84.0）：默认配置走**新口径**（总上限 3000 → 情节 3000×23% = 690）；把总上限置 0 或删掉该键则走旧的逐维 `storeMax*` 兼容口径（老存档 / V1 黄金样本可用）', (() => {

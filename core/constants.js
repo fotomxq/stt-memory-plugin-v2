@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.51.5';   // v3.51.5（用户指定）：长期收支编辑回填修复 + 触发器改为「抵达日期即触发/叠加执行/截止停止」
+export const VERSION = '3.51.6';   // v3.51.6（用户指定）：货币归属漏斗 —— AI 抽取的货币，主体不在主角/指定人员时直接舍弃
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

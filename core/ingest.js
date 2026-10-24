@@ -14,7 +14,7 @@ import { atomIsHidden, capAtomsKeepingHidden, tombEntries, tombMany, tombSet } f
 import { normalizeAtom } from './model/atom.js';
 import { preserveEntryMeta } from './entry-meta.js';   // v3.7.0 楼层溯源 + v3.8.0 NSFW 等级留档：归一化后统一补齐
 import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory, normalizeNpc, normalizeParallel, normalizePlan, normalizeScene, normalizeSuspense } from './model/dims.js';
-import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney } from './model/money.js';
+import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney, currencyOwnerAllowed, currencyFunnelArmed, trackedCurrencyRoles, defaultCurrencyOwner } from './model/money.js';   // v3.51.6：+货币归属漏斗（未配置主角/指定人员时 fail-open）
 import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildId, rumorStageByFerment, rumorSubjectKey } from './model/rumor.js';
 import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, persistNow, state, timerHooks, warn } from './model/runtime.js';
 import { applyMapDelta, mapDeltaText } from './map-ingest.js';   // v3.47.0（W16 数-23）：地图库的入库护栏
@@ -284,10 +284,22 @@ function mergeDelta(delta0, floorRange) {
         }
         for (const id of delta.items?.remove || []) { try { tombSet('items', id); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ } state.items = (state.items || []).filter(x => x.id !== id && x.name !== id); }
         // v1.181：货币大类 —— 同一「归属 + 币种」只维护一条（额度覆盖、收支追加）；归属默认主角
+        let funnelDropped = 0;   // v3.51.6：被货币归属漏斗舍弃的条数（只报不改）
         if (cfg.currencyEnabled !== false) {
             for (const cu of (delta.currencies?.add || []).concat(delta.currencies?.update || [])) {
                 const n = preserveEntryMeta('currencies', cu, normalizeCurrency(cu));
                 if (!n) continue;
+                /**
+                 * v3.51.6（用户要求）：「货币需支持程序化的漏斗」—— AI 抽取可能把**其他人**的货币也分析进来；
+                 *   凡主体既不是主角、也不在「指定人员」名单（`cfg.currencyTrackedRoles`）的，**直接舍弃**（不入库、不合并）。
+                 *   · 只作用于 **AI 增量入库**（本处）；面板 / 快速记账 / 编辑器的手工写入不受影响；
+                 *   · 已有存档里"其他人"的货币**不清理**（漏斗管新数据，不替用户删旧数据 —— `D28` 口径）；
+                 *   · `cfg.currencyFunnel === false` 可整体关掉（老存档兼容 / 用户想保留全部）。
+                 */
+                if (cfg.currencyFunnel !== false && currencyFunnelArmed() && !currencyOwnerAllowed(n.owner)) {
+                    funnelDropped += 1;
+                    continue;
+                }
                 // v3.50.32（用户报告「货币跨端不同步金额、记录」）：**AI 改动账本即记条目级修改时间** ——
                 //   跨端冲突按「账本何时被改」取新，而不是「哪个设备后保存」。缺了它，另一端只是保存了别的内容
                 //   就能把本端较新的额度/流水判定为「旧的」并覆盖回去（详见 `core/model/money.js#normalizeCurrency`）。
@@ -322,6 +334,10 @@ function mergeDelta(delta0, floorRange) {
                     for (const g of gone) { try { cascadeDeleteLedgerForCurrency(String(g.id)); } catch (e) { /* 忽略 */ } }
                 } catch (e) { /* 忽略 */ }
                 state.currencies = (state.currencies || []).filter(x => x.id !== id && x.name !== id && String(x.owner || '') !== String(id));
+            }
+            // v3.51.6：漏斗留痕（只报不改）—— 被舍弃的条数与名单一起进调试摘要，便于核对「AI 又把谁分析进来了」
+            if (funnelDropped) {
+                try { dbgLog('摘要', { action: '货币归属漏斗：主体不在主角/指定人员 → 舍弃', dropped: funnelDropped, tracked: trackedCurrencyRoles().slice(0, 6), protagonist: defaultCurrencyOwner() }); } catch (e) { /* 忽略 */ }
             }
         }
         // v1.192：传言大类 —— 同一「主体」只维护一条（说法变化 = 更新）；AI 写「分裂自」或说法明显不同

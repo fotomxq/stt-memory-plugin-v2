@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.51.5",
+  "version": "3.51.6",
   "updatedAt": "2026-10-24",
   "generatedAt": "2026-10-24",
   "intro": {
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.51.6",
+      "date": "2026-10-24",
+      "title": "货币归属漏斗：AI 抽取的货币，主体不在主角 / 指定人员时直接舍弃",
+      "points": [
+        "登记：批次档 docs/history/P10c147-货币归属漏斗.md ｜ core/model/money.js#currencyOwnerAllowed · core/i…",
+        "接入点：core/ingest.js 的 AI 货币增量（add 与 update 都过）—— 不合规者直接 continue（不入库、不合并），并汇总一条调试摘要（舍弃条数 /…"
+      ]
+    },
     {
       "version": "3.51.5",
       "date": "2026-10-24",

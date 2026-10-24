@@ -943,6 +943,7 @@ export const SETTINGS_CONTROLS = {
             "type": "text"
         },
         // v3.51.0（`docs/D53` · W32 应-47）：货币三子页 —— 摘要上限与长期收支触发器阈值
+        { "key": "currencyFunnel", "label": "货币归属漏斗：AI 抽取的货币若主体不是主角/指定人员则直接舍弃", "type": "checkbox" },
         { "key": "currencyHistoryMax", "label": "货币条目内收支摘要上限(笔,10-200)", "type": "text" },
         { "key": "dealJumpMinDays", "label": "长期收支：判定「剧情时间跳动」的最少天数", "type": "text" },
         { "key": "dealStrongJumpCycles", "label": "长期收支：猛烈跳动 = 跨度 ≥ N 个周期", "type": "text" },

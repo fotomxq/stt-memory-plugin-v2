@@ -176,6 +176,42 @@ function isTrackedCurrencyOwner(owner) {
         });
     } catch (e) { return false; }
 }
+/**
+ * v3.51.6（用户要求）：**货币归属漏斗**（程序化，不经 AI）——
+ *   AI 抽取可能把「路人 / 敌方 / 群众」的货币也分析进来；凡主体（`owner`）**既不是主角、也不在指定人员名单**的，
+ *   一律**直接舍弃**（不入库、不参与合并）。
+ *
+ * 判据（全部去空白 + 忽略大小写）：
+ *   ① `owner` 与 `defaultCurrencyOwner()` 相等或互相包含（主角可能有「林某 / 林某·主角」这类写法）；
+ *   ② `owner` 命中 `cfg.currencyTrackedRoles`（货币页「👥 指定角色」标定名单）。
+ * 空 `owner` 不算命中（`normalizeCurrency` 已把空归属回落成主角名，所以能走到这里的空串属于脏数据）。
+ * @param {string} owner 归属名
+ * @returns {boolean} 是否允许入库
+ */
+/**
+ * 漏斗是否**已武装**（有可对照的目标）：
+ *   · 有「指定人员」名单（`cfg.currencyTrackedRoles` 非空），或
+ *   · 有**真实主角名**（`state.protagonist.name` / 带「主角」标签的档案）。
+ * 都没配时**不放行任何舍弃**（fail-open）—— 否则新用户第一次分析就把所有货币丢光；同时 debug 留痕提示去设定。
+ */
+export function currencyFunnelArmed() {
+    try {
+        if (trackedCurrencyRoles().length > 0) return true;
+        const nm = String((state && state.protagonist && state.protagonist.name) || '').trim();
+        if (nm) return true;
+        const snaps = (state && state.snapshots) || [];
+        return snaps.some((x) => x && x.name && (Array.isArray(x.tags) ? x.tags : []).some((t) => /主角|玩家|我$/.test(String(t))));
+    } catch (e) { return false; }
+}
+export function currencyOwnerAllowed(owner) {
+    try {
+        const o = String(owner == null ? '' : owner).replace(/\s+/g, '').toLowerCase();
+        if (!o) return false;
+        const me = String(defaultCurrencyOwner() || '').replace(/\s+/g, '').toLowerCase();
+        if (me && (me === o || me.indexOf(o) >= 0 || o.indexOf(me) >= 0)) return true;
+        return isTrackedCurrencyOwner(o);
+    } catch (e) { return false; }
+}
 // 增 / 删 / 清空标定（UI 按钮与调试共用；返回最新名单）
 
 function addTrackedCurrencyRole(name) {
