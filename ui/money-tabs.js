@@ -48,12 +48,12 @@ function curText(id) {
     return c ? (str0(c.owner) + '·' + str0(c.name)) : ('（货币已失效：' + cut(str0(id), 12) + '）');
 }
 
-/** 顶部动作条（＋记一笔 / ＋新建标的物 / ✏ 编辑由各页给） */
-function actBtns() {
-    return '<div class="ftt-money-actions">'
-        + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="ledger" title="新建一笔收支（必须先选择货币；金额正数=收入、负数=支出）">＋ 记一笔</button>'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="add" data-kind="deals" title="新建一条长期收支（标的物 + 锚定货币 + 预测节点）">＋ 新建标的物</button>'
-        + '</div>';
+/** 顶部动作条（v3.51.4：按页给 —— 收支记录只放「记一笔」；长期收支只放「新建标的物 + 修复」） */
+function actBtns(which) {
+    const addLedger = '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="ledger" title="新建一笔收支（必须先选择货币；金额正数=收入、负数=支出）">＋ 记一笔</button>';
+    const addDeal = '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="deals" title="新建一条长期收支（标的物 + 锚定货币 + 预测节点）">＋ 新建标的物</button>';
+    const repair = '<button class="ftt-btn ftt-sm" data-ftt-action="dealRepair" title="结合剧情节选修订/更正长期收支（每次只取 3 条交 AI，机械校验后落库；失败不改任何数据）">🔧 修复（3 条/次）</button>';
+    return '<div class="ftt-money-actions">' + (which === 'deals' ? (addDeal + repair) : addLedger) + '</div>';
 }
 
 /** 一行流水（v3.51.3 美化：日期块 / 方向色 / 金额 / 来源徽标 / 说明） */
@@ -97,7 +97,7 @@ export function ledgerPageHtml(opts) {
     const body = all.length
         ? all.map(ledgerRowHtml).join('')
         : '<div class="ftt-empty ftt-money-empty" data-ftt-ledger-empty>还没有收支记录。<br>点上方「＋ 记一笔」（先选择它属于哪条货币），或从「货币总览」的货币记录开始记账。</div>';
-    return editor + head + '<div class="ftt-row ftt-money-toolbar">' + actBtns() + '</div>' + hint + body;
+    return editor + head + '<div class="ftt-row ftt-money-toolbar">' + actBtns('ledger') + '</div>' + hint + body;
 }
 
 /** 长期收支：详情卡（v3.51.3 美化：徽标 / 三段分区 / 触发器状态） */
@@ -164,7 +164,7 @@ export function dealsPageHtml(opts) {
     const body = all.length
         ? all.map(dealDetailHtml).join('')
         : '<div class="ftt-empty ftt-money-empty" data-ftt-deals-empty>还没有长期收支。<br>点「＋ 新建标的物」：填名称、锚定货币、起始日期，以及**预测节点**（下一节点的日期 + 预计金额与方向）。</div>';
-    return editor + head + '<div class="ftt-row ftt-money-toolbar">' + actBtns() + '</div>' + hint + body;
+    return editor + head + '<div class="ftt-row ftt-money-toolbar">' + actBtns('deals') + '</div>' + hint + body;
 }
 
 /**

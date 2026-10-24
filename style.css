@@ -1030,3 +1030,60 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-forecast-k { font-size: 11px; color: #8fbaff; margin-bottom: 3px; }
 #ftt-panel .ftt-forecast-line { font-size: 13px; }
 #ftt-panel .ftt-forecast-none { background: none; border-color: var(--ftt-line, #2a3038); font-size: 12px; color: var(--ftt-text-2, #9aa4b2); }
+
+/* ============================================================
+   v3.51.4（用户要求）：「长期收支添加窗口的输入需基于设计要求进行美化」
+   货币三子页的**编辑器表单**（`data-ftt-ed` 字段）—— 统一间距 / 标签层级 / 控件观感 / 长文本域。
+   ============================================================ */
+#ftt-panel .ftt-editor {
+  margin: 8px 0 12px; padding: 12px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(106, 169, 255, .07), rgba(106, 169, 255, .02));
+  border: 1px solid rgba(106, 169, 255, .35);
+}
+#ftt-panel .ftt-editor .ftt-editor-title {
+  font-size: 14px; font-weight: 700; margin-bottom: 8px; letter-spacing: .01em;
+}
+#ftt-panel .ftt-editor .ftt-field {
+  display: flex; align-items: flex-start; gap: 10px; padding: 5px 0;
+  border-bottom: 1px dashed rgba(42, 48, 56, .8);
+}
+#ftt-panel .ftt-editor .ftt-field:last-of-type { border-bottom: 0; }
+#ftt-panel .ftt-editor .ftt-field > label {
+  flex: 0 0 34%; min-width: 110px; padding-top: 6px;
+  font-size: 12px; line-height: 1.5; color: var(--ftt-text-2, #9aa4b2);
+}
+#ftt-panel .ftt-editor .ftt-field .ftt-grow,
+#ftt-panel .ftt-editor .ftt-field > textarea,
+#ftt-panel .ftt-editor .ftt-field > select,
+#ftt-panel .ftt-editor .ftt-field > input {
+  flex: 1 1 auto; min-width: 0;
+}
+#ftt-panel .ftt-editor .ftt-field input[type="text"],
+#ftt-panel .ftt-editor .ftt-field input[type="number"],
+#ftt-panel .ftt-editor .ftt-field select,
+#ftt-panel .ftt-editor .ftt-field textarea {
+  width: 100%; box-sizing: border-box;
+  padding: 7px 10px; border-radius: 8px;
+  background: var(--ftt-bg-1, #14181e); color: var(--ftt-text, #e6e9ee);
+  border: 1px solid var(--ftt-line, #2a3038); font-size: 13px; line-height: 1.5;
+}
+#ftt-panel .ftt-editor .ftt-field input:focus,
+#ftt-panel .ftt-editor .ftt-field select:focus,
+#ftt-panel .ftt-editor .ftt-field textarea:focus {
+  outline: none; border-color: #6aa9ff; box-shadow: 0 0 0 2px rgba(106, 169, 255, .18);
+}
+#ftt-panel .ftt-editor .ftt-field textarea { min-height: 76px; resize: vertical; }
+#ftt-panel .ftt-editor .ftt-field input[type="checkbox"] { width: 18px; height: 18px; margin-top: 4px; }
+/* 长期收支：三段预判与长文本更宽松；节点文本域用等宽字体（每行 日期|金额|说明） */
+#ftt-panel .ftt-editor textarea[data-ftt-ed="outlookText"],
+#ftt-panel .ftt-editor textarea[data-ftt-ed="desc"] { min-height: 92px; }
+#ftt-panel .ftt-editor textarea[data-ftt-ed="nodesText"] {
+  min-height: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+}
+#ftt-panel .ftt-editor .ftt-row { margin-top: 10px; gap: 8px; }
+#ftt-panel .ftt-editor .ftt-hint { font-size: 11px; color: var(--ftt-text-2, #9aa4b2); }
+/* 窄屏（手机）：标签独占一行，控件铺满 */
+@media (max-width: 560px) {
+  #ftt-panel .ftt-editor .ftt-field { flex-direction: column; gap: 4px; }
+  #ftt-panel .ftt-editor .ftt-field > label { flex-basis: auto; padding-top: 0; }
+}

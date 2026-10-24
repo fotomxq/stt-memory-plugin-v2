@@ -368,4 +368,35 @@ A('H5 收支记录与长期收支行都有「✏ 编辑」入口（编辑走既�
         && dl.indexOf('data-ftt-action="edit" data-kind="deals" data-id="d1"') >= 0;
 })(), 'n/a');
 
+// ---------- I v3.51.4：失败保留草稿 + 分页按钮 + 修复按钮 ----------
+A('I1 **保存失败 → 编辑器不关闭、草稿原样保留**（用户报告「失败后关闭会重置所有信息」）', (async () => {
+    boot();
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    setMoneySub('deals');
+    await panelAction('tab', { tab: 'currencies' });
+    // 故意缺锚定货币 → 保存失败
+    const r = await panelAction('save', { kind: 'deals', id: '', fields: { name: '船厂分成', desc: '三成', currencyId: '', startDate: '1919-01-01', cycle: 'monthly', status: '稳定', outlookText: '看好', nodesText: '1919-02-01|100|首期', forecastNextDate: '1919-03-01', forecastNote: '淡季', forecastSource: 'ai' } });
+    const html = String(panelBodyHtml('currencies') || '');
+    setMoneySub('overview');
+    return r && r.ok === false && r.reason === 'field-required'
+        && html.indexOf('data-ftt-action="save" data-kind="deals"') >= 0          // 编辑器仍在
+        && html.indexOf('value="船厂分成"') >= 0 && html.indexOf('value="稳定"') >= 0;   // 已填内容仍在
+})(), 'n/a');
+A('I2 分页按钮不再错位：收支记录只有「记一笔」；长期收支只有「新建标的物 + 修复」', (() => {
+    boot({ ledger: [], deals: [] });
+    const lg = ledgerPageHtml(), dl = dealsPageHtml();
+    return lg.indexOf('＋ 记一笔') >= 0 && lg.indexOf('＋ 新建标的物') < 0 && lg.indexOf('data-ftt-action="dealRepair"') < 0
+        && dl.indexOf('＋ 新建标的物') >= 0 && dl.indexOf('＋ 记一笔') < 0 && dl.indexOf('data-ftt-action="dealRepair"') >= 0;
+})(), 'n/a');
+A('I3 「🔧 修复（3 条/次）」按钮 → 面板动作调用修复管线并回报摘要（注入 AI 文本，不触网）', (async () => {
+    boot({ deals: [{ id: 'd1', name: '船厂分成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', desc: '', status: '', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 10, direction: 'increase', note: '', source: 'ai' } } }] });
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const { setAiHooks } = await import('../../core/ai-hooks.js');
+    setAiHooks({ callAi: async () => ({ ok: true, text: JSON.stringify({ items: [{ id: 'd1', status: '稳定', desc: '三成分成', forecast: { nextDate: '1919-04-01', delta: 10, direction: 'increase', note: '' } }] }) }), feedText: () => '正文', busy: () => false });
+    const r = await panelAction('dealRepair', {});
+    setMoneySub('overview');
+    return r && r.ok === true && r.changed === 1 && String(r.note).indexOf('长期收支修复') >= 0
+        && (state.deals[0].status === '稳定') && (state.deals[0].desc === '三成分成');
+})(), 'n/a');
+
 R.done();
