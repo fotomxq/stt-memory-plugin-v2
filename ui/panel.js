@@ -920,7 +920,7 @@ export function setAtomSub(v) {
 /** 维度分页正文（分发器）：情节页 = 双子标签（📜 情节列表 / 🧩 分段总结，V1 v1.182/v1.206） */
 function dimBody(kind) {
     if (kind === 'atoms') return atomsBody();
-    if (kind === 'currencies') return moneyPageHtml(dimBodyList('currencies'));   // v3.51.0（W32 应-46）：三子页（总览原样传入）
+    if (kind === 'currencies') return moneyPageHtml(dimBodyList('currencies'), { editing: ps.editing, editorHtml: editorHtml });   // v3.51.0（W32 应-46）：三子页（总览原样传入）；v3.51.3：把编辑态与编辑器渲染器传进去（否则「＋记一笔 / ✏ 编辑」点了不出表单）
     return dimBodyList(kind);
 }
 
