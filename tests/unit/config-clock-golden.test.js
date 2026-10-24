@@ -28,7 +28,7 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
     // v3.51.0（`docs/D53` W32）：+ 货币三子页的 4 个配置键与账本/长期收支的存储键（全部 V2 专有）
     const V2_ONLY = ['uiShowDrawer', 'uiShowFloating', 'uiFirstTab', 'rumorFermentWindowDays', 'apiChannel', 'apiProfileId',
         'currencyHistoryMax', 'dealJumpMinDays', 'dealStrongJumpCycles', 'dealCatchUpMax',
-        'storeMinLedger', 'storeMaxLedger', 'storeMinDeals', 'storeMaxDeals',
+        'storeMinLedger', 'storeMaxLedger', 'storeMinDeals', 'storeMaxDeals', 'currencyFunnel',   // v3.51.6：货币归属漏斗开关
         // v2.86.0（`docs/D7` v0.5）：重要度改「窗口调用占比」→ 三个 V2 专有参数（V1 只有 importanceBase/importancePerUse，键保留兼容）
         'impRecalcEnabled', 'impWindowRadius', 'impRecalcCount',
         // v3.46.1（`docs/D22` W11 数-35）：三域联动五键（V2 专有；V1 无此功能）

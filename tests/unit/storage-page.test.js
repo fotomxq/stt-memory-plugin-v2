@@ -123,8 +123,8 @@ A('L1 v2.94.0（D11 §3.4/§3.5）：存储页只留「纯偏好」世界书参�
     const goneKeys = ['deletedKeepDays', 'verifyOnLoad', 'syncOnSave', 'settingsMirror', 'syncMetaProbe', 'syncTrafficGuard'];
     const goneLabels = ['已删除条目的保留天数', '载入时校验数据完整性', '保存时同步到服务端', '同步前先比对清单（省流量·推荐开启）', '仅变化时同步（省流量·推荐开启）', '删除墓碑保留（天）', '楼层哈希差异门控（省流量·推荐开启）'];
     // v3.51.0（W32）：存储页追加 10 项（货币三子页）→ 13 → 23；其余仍须是世界书前缀或本地文件目录
-    const extra = ['currencyHistoryMax', 'dealJumpMinDays', 'dealStrongJumpCycles', 'dealCatchUpMax', 'storeMinLedger', 'storeMaxLedger', 'storeShare.ledger', 'storeMinDeals', 'storeMaxDeals', 'storeShare.deals'];
-    return keys.length === 23 && keys.filter((k) => k !== 'storage.localFilePath' && extra.indexOf(k) < 0).every((k) => k.indexOf('storage.worldbook') === 0)
+    const extra = ['currencyFunnel', 'currencyHistoryMax', 'dealJumpMinDays', 'dealStrongJumpCycles', 'dealCatchUpMax', 'storeMinLedger', 'storeMaxLedger', 'storeShare.ledger', 'storeMinDeals', 'storeMaxDeals', 'storeShare.deals'];
+    return keys.length === 24 && keys.filter((k) => k !== 'storage.localFilePath' && extra.indexOf(k) < 0).every((k) => k.indexOf('storage.worldbook') === 0)
         && goneKeys.every((k) => keys.indexOf('storage.' + k) < 0)
         && goneLabels.every((l) => labels.indexOf(l) < 0);
 })(), '见断言');
