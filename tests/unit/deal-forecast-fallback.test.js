@@ -18,11 +18,12 @@ import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { inferForecastFallback, normalizeDeal, resolveForecastDelta } from '../../core/model/deal.js';
+import { DEAL_NODES_MAX, capDealNodes, inferForecastFallback, normalizeDeal, resolveForecastDelta } from '../../core/model/deal.js';
 import { runDealTriggers } from '../../core/deal-triggers.js';
 import { kindFields, deconstructEntry } from '../../ui/fields.js';
 import { flatFor } from '../../ui/entry-flat.js';
 import { nodeTableClick } from '../../ui/node-table-dom.js';
+import { ledgerPageHtml } from '../../ui/money-tabs.js';
 
 const R = makeReporter('deal-forecast-fallback v3.51.7 兜底预测 / 轮动推测 / 结构性节点');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -194,5 +195,32 @@ A('G5 归一：预测留空 + 无节点 + 记录里给了费用 → 兜底把费
     return d && d.outlook.forecast.nextDate === '1919-01-31' && Number(d.outlook.forecast.delta) === 25
         && d.outlook.forecast.source === 'auto';
 })(), () => normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1919-01-01', cycle: 'monthly', outlook: { nodes: [], forecast: { nextDate: '', delta: 25 } } }));
+
+// ---------- H v3.51.10：内存核查（节点保留上限 / 账本页渲染上限） ----------
+A('H1 节点保留上限：归一后只留最近 `DEAL_NODES_MAX`(240) 条；`lastChangeDate` 取保留段最后一条', (() => {
+    const nodes = [];
+    for (let i = 0; i < 300; i++) nodes.push({ date: '19' + String(10 + Math.floor(i / 12)).padStart(1, '0') + '-' + String((i % 12) + 1).padStart(2, '0') + '-01', delta: 1 });
+    const d = normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1910-01-01', cycle: 'monthly', outlook: { nodes: nodes, forecast: { nextDate: '1930-01-01', delta: 1, direction: 'increase', source: 'ai' } } });
+    return DEAL_NODES_MAX === 240 && d.outlook.nodes.length === 240
+        && d.lastChangeDate === nodes[nodes.length - 1].date
+        && capDealNodes(nodes).length === 240 && capDealNodes(nodes)[239].date === nodes[299].date;
+})(), () => normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1910-01-01', cycle: 'monthly', outlook: { nodes: Array.from({ length: 300 }, (_, i) => ({ date: '1910-01-01', delta: 1 })), forecast: { nextDate: '1930-01-01', delta: 1, source: 'ai' } } }).outlook.nodes.length);
+A('H2 触发器长跑：推进 300 个周期 → 节点仍 ≤ 240（不再无限增长），而**账本按权威口径全量记录**', (() => {
+    boot({ deals: [{ id: 'd1', name: 'A', startDate: '1900-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1900-02-01', delta: 1, direction: 'increase', note: '', source: 'ai' } } }] });
+    // 每次最多 24 轮 → 反复推进（每次跨 26 个月）模拟长跑；累计 > 240 个周期
+    cfg.dealCatchUpMax = 24;
+    for (let k = 1; k <= 15; k++) {
+        const y = 1900 + Math.floor((k * 26) / 12), m = ((k * 26) % 12) + 1;
+        runDealTriggers({ prevDate: '', curDate: y + '-' + String(m).padStart(2, '0') + '-15' });
+    }
+    return state.deals[0].outlook.nodes.length === DEAL_NODES_MAX && state.ledger.length > DEAL_NODES_MAX;
+})(), () => J({ nodes: state.deals[0].outlook.nodes.length, ledger: state.ledger.length }));
+A('H3 收支记录页：**只渲染最近 200 笔**并标注总条数（合计仍按全量算），避免长跑后 HTML 无限膨胀', (() => {
+    boot({ ledger: Array.from({ length: 260 }, (_, i) => ({ id: 'l' + i, currencyId: 'c1', date: '1920-01-' + String((i % 28) + 1).padStart(2, '0'), delta: 1, note: 'n' + i, source: 'manual' })) });
+    const html = ledgerPageHtml();
+    const rows = (html.match(/data-ftt-ledger="/g) || []).length;
+    return rows === 200 && html.indexOf('data-ftt-ledger-more') >= 0
+        && html.indexOf('共 <b>260</b> 笔') >= 0 && html.indexOf('笔数</span><b>260</b>') >= 0;
+})(), () => { const h = ledgerPageHtml(); return J({ rows: (h.match(/data-ftt-ledger="/g) || []).length }); });
 
 R.done();

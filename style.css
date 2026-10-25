@@ -1115,3 +1115,6 @@ body.ftt-no-effects #toast-container *::before {
   #ftt-panel .ftt-node-row { grid-template-columns: 1fr 1fr; }
   #ftt-panel .ftt-node-row input[data-ftt-ed$="-note"] { grid-column: 1 / -1; }
 }
+
+/* v3.51.10（内存核查）：收支记录「只渲染最近 N 笔」的页脚提示 */
+#ftt-panel .ftt-money-more { font-size: 12px; color: var(--ftt-text-2, #9aa4b2); padding: 6px 4px; }

@@ -36,6 +36,9 @@ export function setMoneySub(sub) {
 }
 
 const SOURCE_TEXT = { manual: '手动', quick: '快速记账', ai: 'AI', deal: '长期收支', repair: '修复', migrate: '迁移回填' };
+/** 收支记录**单页渲染上限**（v3.51.10 内存核查：账本长期只增，长跑后一次性渲染全部条目会让 HTML/内存无限膨胀；
+ *   合计始终按**全量**算，列表只渲染最近 N 笔并在页脚如实标注总条数） */
+const LEDGER_RENDER_MAX = 200;
 const KIND_TEXT = { investment: '投资', royalty: '创作长期收益', loan: '贷款长期支出', other: '其它' };
 
 /** 货币查找（渲染期只读） */
@@ -94,8 +97,11 @@ export function ledgerPageHtml(opts) {
         + '</div>';
     const hint = '<div class="ftt-money-hint">记账**必须挂在一条现存货币**上（货币不存在 → 拒绝，不会自动新建）；'
         + '删除一笔会**反向冲正**余额；货币被删除时其流水随之级联删除（跨端不复活）。</div>';
+    const shownRows = all.slice(0, LEDGER_RENDER_MAX);
     const body = all.length
-        ? all.map(ledgerRowHtml).join('')
+        ? shownRows.map(ledgerRowHtml).join('') + (all.length > LEDGER_RENDER_MAX
+            ? ('<div class="ftt-money-more" data-ftt-ledger-more>共 <b>' + all.length + '</b> 笔，此处显示最近 <b>' + LEDGER_RENDER_MAX + '</b> 笔（更早的仍在账本里，可用「修复」或导出查看）</div>')
+            : '')
         : '<div class="ftt-empty ftt-money-empty" data-ftt-ledger-empty>还没有收支记录。<br>点上方「＋ 记一笔」（先选择它属于哪条货币），或从「货币总览」的货币记录开始记账。</div>';
     return editor + head + '<div class="ftt-row ftt-money-toolbar">' + actBtns('ledger') + '</div>' + hint + body;
 }
