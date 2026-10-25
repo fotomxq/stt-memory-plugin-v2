@@ -19,7 +19,7 @@
 import { cfg, dbgLog } from './model/runtime.js';
 import { clockDateTrim, clockDateValid } from './clock.js';
 import { bigDayNumber, bigDateFromDayNumber, bigYearStr } from './model/bigdate.js';
-import { dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, resolveForecastDelta, storyDayNumOf } from './model/deal.js';
+import { capDealNodes, dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, resolveForecastDelta, storyDayNumOf } from './model/deal.js';
 import { applyLedgerEntry, findCurrency, ledgerOf } from './model/ledger.js';
 
 /** 触发器阈值（可被配置覆盖；缺省按 `docs/D53` Q10 裁决：30 天 / 3 周期 / 24 节点） */
@@ -134,10 +134,12 @@ export function runDealTriggers(opts) {
                 }
                 firedHere += 1;
                 fired.add(String(nodeDate));
+                try { d.outlook.nodes = capDealNodes(d.outlook.nodes); } catch (e) { /* 忽略 */ }   // v3.51.10：节点保留上限
                 if (!cycleDays) { nodeDate = ''; break; }      // 缺周期 → 只做这一笔
                 nodeDate = addStoryDays(nodeDate, cycleDays);   // **叠加执行**：继续推进，直到水位 > 当前剧情日期
             }
             try {
+                d.outlook.nodes = capDealNodes(d.outlook.nodes);   // v3.51.10：收尾再裁一次（覆盖零金额推进的节点）
                 d.lastChangeDate = lastNodeDate(d.outlook.nodes);
                 /**
                  * 预测水位：还有下一节点且未越过截止日期 → 写回；

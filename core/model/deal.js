@@ -22,6 +22,16 @@ import { clockDateTrim, storyDateMsFromStr } from '../clock.js';
 import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { roundMoney } from './money.js';
 
+/** 已发生节点的**保留上限**（v3.51.10 内存核查）：节点是「展示 / 派生」用的，权威流水在 `ledger`；
+ *   早期版本在每次日期推进时追加节点且**不设上限** → 长跑后 `deals[].outlook.nodes` 无限增长（体积 + 渲染变慢）。
+ *   保留最近 240 条（约 20 年 x 月度周期），`lastChangeDate` 由保留段的最后一条维护。 */
+export const DEAL_NODES_MAX = 240;
+/** 节点裁剪：按日期排序后只留最近 `DEAL_NODES_MAX` 条（不改内容，只砍最早的） */
+export function capDealNodes(nodes) {
+    const arr = Array.isArray(nodes) ? nodes.filter((n) => n && n.date) : [];
+    if (arr.length <= DEAL_NODES_MAX) return arr;
+    return arr.slice(arr.length - DEAL_NODES_MAX);
+}
 /** 标的物类型（`other` 兜底） */
 export const DEAL_KINDS = Object.freeze(['investment', 'royalty', 'loan', 'other']);
 /** 周期取值域：`monthly` / `quarterly` / `yearly` / `weekly` / `custom:<天数>` */
@@ -210,6 +220,7 @@ export function normalizeDeal(e) {
                 note: normText(x.note !== undefined ? x.note : x['说明'], 80),
             };
         }).filter(Boolean).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const nodesCap = capDealNodes(nodes);   // v3.51.10：节点展示上限（权威流水在 ledger）
         const cycle = normDealCycle(src.cycle) || inferCycleFromNodes(nodes);
         const forecastRaw = normForecast(outlookRaw.forecast || src.forecast);
         /**
@@ -232,7 +243,7 @@ export function normalizeDeal(e) {
             desc: normText(src.desc !== undefined ? src.desc : (src['描述'] || src['约定']), 400),
             kind: DEAL_KINDS.indexOf(String(src.kind || '')) >= 0 ? String(src.kind) : 'other',
             startDate: startDate,
-            lastChangeDate: lastNodeDate(nodes),
+            lastChangeDate: lastNodeDate(nodesCap),
             endDate: clockDateTrim(normText(src.endDate !== undefined ? src.endDate : src['截止日期'], BIG_DATE_FIELD_MAX)),
             status: normText(src.status !== undefined ? src.status : src['现状'], 200),
             currencyId: currencyId,
@@ -241,7 +252,7 @@ export function normalizeDeal(e) {
             floorStart: Number.isInteger(Number(src.floorStart)) && Number(src.floorStart) > 0 ? Number(src.floorStart) : 0,
             floorEnd: Number.isInteger(Number(src.floorEnd)) && Number(src.floorEnd) > 0 ? Number(src.floorEnd) : 0,
             updatedAt: Number(src.updatedAt) || 0,
-            outlook: { text: normText(outlookRaw.text !== undefined ? outlookRaw.text : (src['前景预判'] || ''), 400), nodes: nodes, forecast: forecast },
+            outlook: { text: normText(outlookRaw.text !== undefined ? outlookRaw.text : (src['前景预判'] || ''), 400), nodes: nodesCap, forecast: forecast },
         };
         // `trigger` 由代码维护（只读；不信任外部传入的任何运行态之外的字段）
         const t = (src.trigger && typeof src.trigger === 'object') ? src.trigger : {};

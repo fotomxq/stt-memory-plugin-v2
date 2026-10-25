@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.51.9';   // v3.51.9（用户指定）：预计收益费用多层兜底（AI→趋势→末节点→记录费用）
+export const VERSION = '3.51.10';   // v3.51.10（用户指定）：内存核查 —— 节点保留上限 240 · 账本页只渲染最近 200 笔（不再无限膨胀）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';
