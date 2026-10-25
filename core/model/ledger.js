@@ -104,6 +104,35 @@ export function applyLedgerEntry(raw, opts) {
         const cur = findCurrency(entry.currencyId);
         if (!cur) return { ok: false, error: '找不到对应的货币记录 —— 记账必须挂在一个现存货币上（不会自动新建货币）' };
         state.ledger = Array.isArray(state.ledger) ? state.ledger : [];
+        /**
+         * v3.51.11（用户报告「编辑流水不生效」）：**带既有 id 的提交 = 编辑，不是重复提交**。
+         *   旧实现：`normalizeLedgerEntry` 保留传入 id → 与新内容不匹配也按 id 判「重复」→ **静默忽略编辑**（数据没变、也没提示）。
+         *   现口径：同 id 且内容相同 → `duplicate`；同 id 但内容变了 → **原位替换**（余额反向旧额 + 应用新额、摘要同步、id 保留）。
+         */
+        const providedId = String((raw && raw.id) || '').trim();
+        const existing = providedId ? state.ledger.filter((x) => x && String(x.id) === providedId)[0] : null;
+        if (existing) {
+            const same = String(existing.date) === String(entry.date) && roundMoney(Number(existing.delta) || 0) === roundMoney(Number(entry.delta) || 0)
+                && String(existing.note || '') === String(entry.note || '') && String(existing.currencyId) === String(entry.currencyId);
+            const amountBefore0 = roundMoney(Number(cur.amount) || 0);
+            if (same) return { ok: true, duplicate: true, entry: existing, amountBefore: amountBefore0, amountAfter: amountBefore0 };
+            const amountAfter0 = roundMoney(amountBefore0 - (Number(existing.delta) || 0) + (Number(entry.delta) || 0));
+            const oldDate = String(existing.date), oldDelta = roundMoney(Number(existing.delta) || 0);   // 先快照旧值（供摘要撤旧）
+            existing.date = entry.date;
+            existing.delta = entry.delta;
+            existing.note = entry.note;
+            existing.source = entry.source;
+            existing.dealId = entry.dealId;
+            existing.updatedAt = entry.updatedAt;
+            cur.amount = amountAfter0;
+            cur.updatedAt = entry.updatedAt;
+            // 摘要：先撤掉旧的一笔（同 日期/金额/说明 的首个匹配），再按新值追加（仍受 `currencyHistoryMax` 上限）
+            const hist = (Array.isArray(cur.history) ? cur.history : []).slice();
+            const oi = hist.findIndex((h) => String(h.date) === oldDate && roundMoney(Number(h.delta) || 0) === oldDelta);
+            if (oi >= 0) hist.splice(oi, 1);
+            cur.history = normalizeMoneyHistory(hist.concat([{ date: entry.date, delta: entry.delta, note: entry.note }]));
+            return { ok: true, replaced: true, entry: existing, amountBefore: amountBefore0, amountAfter: amountAfter0 };
+        }
         const dup = state.ledger.filter((x) => x && String(x.id) === entry.id)[0];
         if (dup) return { ok: true, duplicate: true, entry: dup, amountBefore: Number(cur.amount) || 0, amountAfter: Number(cur.amount) || 0 };
         const amountBefore = roundMoney(Number(cur.amount) || 0);
@@ -185,6 +214,36 @@ export function orphanLedgerEntries() {
 }
 
 /** 老存档 `history` → `ledger` 回填（`D53` Q2 裁决：**回填**，`source:'migrate'`，按 id 幂等）*/
+/**
+ * v3.51.11（用户要求「核对三个分页是否正常同步」）：**纯函数版回填** —— 把 `currencies[].history` 增量并入给定 `ledger`。
+ *   场景：对端是旧版本（只有摘要 `history`、没有账本 `ledger`）→ 跨端合并后 `ledger` 会缺这些流水，
+ *   导致「货币总览有这几笔、收支记录却没有」（三页不同源）。本函数幂等（按 `ledgerIdOf` 去重）。
+ * @param {Array} ledger 现有账本
+ * @param {Array} currencies 货币数组
+ * @param {{source?:string, now?:number}} [opts]
+ * @returns {{ledger:Array, added:number}}
+ */
+export function mergeHistoryIntoLedger(ledger, currencies, opts) {
+    const o = opts || {};
+    const have = new Set((Array.isArray(ledger) ? ledger : []).map((x) => String(x && x.id)));
+    const out = Array.isArray(ledger) ? ledger.slice() : [];
+    let added = 0;
+    for (const c of (Array.isArray(currencies) ? currencies : [])) {
+        if (!c || !c.id) continue;
+        for (const f of (Array.isArray(c.history) ? c.history : [])) {
+            const delta = Math.round(Number(f && f.delta) || 0);
+            const date = String((f && f.date) || '').trim();
+            if (!delta || !date) continue;
+            const note = String((f && f.note) || '').trim().slice(0, 80);
+            const id = ledgerIdOf(String(c.id), date, delta, note);
+            if (have.has(id)) continue;
+            out.push({ id: id, currencyId: String(c.id), owner: String(c.owner || ''), date: date, delta: delta, note: note, source: String(o.source || 'migrate'), dealId: '', floorSeen: 0, updatedAt: Number(o.now) || 0 });
+            have.add(id); added += 1;
+        }
+    }
+    return { ledger: out, added: added };
+}
+
 export function backfillLedgerFromHistory() {
     const out = { added: 0, scanned: 0 };
     try {
