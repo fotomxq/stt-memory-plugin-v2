@@ -12,6 +12,7 @@
 import { cfg, state, saveState, dbgLog } from './model/runtime.js';
 import { aiCallText, aiBusy, aiFeedText } from './ai-hooks.js';
 import { dealList, normalizeDeal } from './model/deal.js';
+import { runDealTriggers } from './deal-triggers.js';   // v3.51.8：先跑内置触发器（全量判定），再走 AI 修复
 import { storyDateMsFromStr } from './clock.js';
 import { roundMoney } from './model/money.js';
 
@@ -200,28 +201,52 @@ export function dealRepairApply(validated, opts) {
 }
 
 /**
- * 跑一轮：挑 3 条 → 打包 → 一次 AI → 校验 → 落库（**不自动重试**；失败不动任何数据）。
- * @param {{aiText?:string, max?:number, now?:number}} [opts] `aiText` 供测试/离线注入
+ * 跑一轮（v3.51.8 起**两段式**）：
+ *   ① **内置模块**先做**全量**判定：所有 `forecast.nextDate ≤ 当前剧情日期` 的条目 → 记账 + 轮动到下一轮
+ *      （`core/deal-triggers.js`，确定性、无 AI、幂等、受 `cfg.dealCatchUpMax` 上限）；
+ *   ② 再把**仍需修订**的条目挑 **≤3 条** 打包 → 一次 AI → 机械校验 → 落库（**不自动重试**；失败不动任何数据）。
+ * @param {{aiText?:string, max?:number, now?:number, curDate?:string, skipTriggers?:boolean, skipAi?:boolean}} [opts]
+ *   `aiText` 供测试/离线注入；`skipTriggers` 只测 AI 段；`skipAi` 只跑内置段
  */
 export async function runDealRepair(opts) {
     const o = opts || {};
     try {
-        if (aiBusy()) return { ok: false, reason: 'busy', note: '长期收支修复：分析管道占用中，稍后再试' };
+        /**
+         * 第一段：**内置记账**（用户要求「优先全量判定预测日期抵达或超出的，通过内置模块计算记账、轮动到下一轮」）。
+         *   `prevDate:''` → 不要求"跳动"，只要到期就兑现（触发器自身幂等，重跑不重复）；
+         *   失败静默（不影响后面的 AI 段）。
+         */
+        let trig = { ok: true, fired: 0, skipped: 0, truncated: 0, deals: 0 };
+        if (o.skipTriggers !== true) {
+            try {
+                const curDate = str(o.curDate || (state.state && state.state.date) || '');
+                if (curDate) trig = runDealTriggers({ prevDate: '', curDate: curDate, now: o.now }) || trig;
+            } catch (e) { /* 忽略：内置段失败不阻塞 AI 段 */ }
+        }
+        const trigText = trig.fired ? ('内置记账 ' + trig.fired + ' 笔（轮动到下一轮）') : '';
+        if (o.skipAi === true) {
+            return { ok: true, trigger: trig, changed: 0, applied: [], skipped: [], note: '长期收支修复：' + (trigText || '没有到期的条目（无需记账）') + '；AI 段已跳过' };
+        }
+        if (aiBusy()) {
+            return { ok: true, trigger: trig, changed: 0, applied: [], skipped: [], reason: 'busy', note: '长期收支修复：' + (trigText ? (trigText + '；') : '') + 'AI 修复跳过（分析管道占用中，稍后再试）' };
+        }
         const pick = dealRepairPick(o.max);
         if (!pick.rows.length) {
-            return { ok: false, reason: 'empty', note: '长期收支修复：没有可修的条目' + (pick.stalled ? ('（另有 ' + pick.stalled + ' 条锚定货币失效，需先重指货币）') : ''), pick: pick };
+            return { ok: true, trigger: trig, changed: 0, applied: [], skipped: [], reason: 'empty', pick: pick,
+                note: '长期收支修复：' + (trigText ? (trigText + '；') : '') + '没有需要 AI 修订的条目' + (pick.stalled ? ('（另有 ' + pick.stalled + ' 条锚定货币失效，需先重指货币）') : '') };
         }
         const pack = dealRepairPack({ pick: pick });
         let resp = '';
         if (o.aiText != null) resp = String(o.aiText);
         else { try { resp = String(await aiCallText(dealRepairPrompt(pack), '长期收支修复') || ''); } catch (e) { resp = ''; } }
         const ai = dealRepairParse(resp);
-        if (!ai) return { ok: false, reason: 'no-ai', note: '长期收支修复：AI 未返回可用结果，本次未改动任何数据', pack: pack };
+        if (!ai) return { ok: false, reason: 'no-ai', trigger: trig, changed: 0, applied: [], skipped: [], pack: pack,
+            note: '长期收支修复：' + (trigText ? (trigText + '；') : '') + 'AI 未返回可用结果（AI 段未改动任何数据）' };
         const validated = dealRepairValidate(ai, pack);
         const r = dealRepairApply(validated, { now: o.now });
         const sk = (r.skipped || []).length;
-        return Object.assign({ ok: true, batch: pack.counts, validated: validated.items.length, skipped: sk }, r, {
-            note: '长期收支修复：本批 ' + pack.counts.entries + ' 条（共 ' + pack.counts.total + ' 条）→ 已更正 ' + r.changed + ' 条'
+        return Object.assign({ ok: true, batch: pack.counts, validated: validated.items.length, skipped: sk, trigger: trig }, r, {
+            note: '长期收支修复：' + (trigText ? (trigText + '；') : '') + 'AI 本批 ' + pack.counts.entries + ' 条（共 ' + pack.counts.total + ' 条）→ 已更正 ' + r.changed + ' 条'
                 + (sk ? (' · 跳过 ' + sk + ' 处（' + (r.skipped || []).slice(0, 3).map((x) => x.reason).join(' / ') + '）') : '')
                 + (pack.counts.stalled ? (' · 另有 ' + pack.counts.stalled + ' 条停摆待重指货币') : ''),
         });
