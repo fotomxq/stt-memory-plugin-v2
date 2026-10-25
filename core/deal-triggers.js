@@ -19,7 +19,7 @@
 import { cfg, dbgLog } from './model/runtime.js';
 import { clockDateTrim, clockDateValid } from './clock.js';
 import { bigDayNumber, bigDateFromDayNumber, bigYearStr } from './model/bigdate.js';
-import { dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, storyDayNumOf } from './model/deal.js';
+import { dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, resolveForecastDelta, storyDayNumOf } from './model/deal.js';
 import { applyLedgerEntry, findCurrency, ledgerOf } from './model/ledger.js';
 
 /** 触发器阈值（可被配置覆盖；缺省按 `docs/D53` Q10 裁决：30 天 / 3 周期 / 24 节点） */
@@ -120,7 +120,8 @@ export function runDealTriggers(opts) {
                     nodeDate = addStoryDays(nodeDate, cycleDays);
                     continue;
                 }
-                const delta = Number(fc.delta) || 0;
+                // v3.51.9（多层兜底）：AI 明确 → 趋势 → 无记录时采信记录里的「下一个费用」
+                const delta = resolveForecastDelta(d).delta;
                 if (delta === 0) {                             // 无金额预测：只推进水位，不生成流水
                     try { d.outlook.nodes = (Array.isArray(d.outlook.nodes) ? d.outlook.nodes : []).concat([{ date: nodeDate, delta: 0, note: String(fc.note || '') }]); } catch (e) { /* 忽略 */ }
                     try { d.trigger.lastFiredNodeDate = nodeDate; d.trigger.lastFiredDate = cur; } catch (e) { /* 忽略 */ }

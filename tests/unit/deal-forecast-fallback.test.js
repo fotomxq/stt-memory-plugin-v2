@@ -18,7 +18,7 @@ import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { inferForecastFallback, normalizeDeal } from '../../core/model/deal.js';
+import { inferForecastFallback, normalizeDeal, resolveForecastDelta } from '../../core/model/deal.js';
 import { runDealTriggers } from '../../core/deal-triggers.js';
 import { kindFields, deconstructEntry } from '../../ui/fields.js';
 import { flatFor } from '../../ui/entry-flat.js';
@@ -160,5 +160,39 @@ A('F2 「✕」→ 从父节点移除该行；命中返回 true（不再进动�
 A('F3 非节点表点击 → 返回 false（不影响其它按钮）', (() => {
     return nodeTableClick({ closest: () => null }) === false && nodeTableClick(null) === false;
 })(), 'n/a');
+
+// ---------- G v3.51.9：预计收益费用的**多层兜底** ----------
+A('G1 **没有任何记录**（无节点）→ 采信记录里的「下一个费用」来轮动（不再一律 0）', (() => {
+    const fb = inferForecastFallback([], 'monthly', '1919-01-01', 17);
+    return fb.delta === 17 && fb.basis === 'forecast' && fb.nextDate === '1919-01-31' && fb.source === 'auto';
+})(), () => inferForecastFallback([], 'monthly', '1919-01-01', 17));
+A('G2 分层顺序：`forecast.delta`（AI 明确）→ 节点趋势 → 最后节点 → 无记录采信记录费用 → 都没有则 0', (() => {
+    const r1 = resolveForecastDelta({ cycle: 'monthly', startDate: '1919-01-01', outlook: { nodes: [{ date: '1919-01-01', delta: 9 }], forecast: { delta: -8 } } });
+    const r2 = resolveForecastDelta({ cycle: 'monthly', startDate: '1919-01-01', outlook: { nodes: [{ date: '1919-01-01', delta: 10 }, { date: '1919-02-01', delta: 20 }], forecast: {} } });
+    const r3 = resolveForecastDelta({ cycle: 'monthly', startDate: '1919-01-01', outlook: { nodes: [{ date: '1919-01-01', delta: 5 }], forecast: {} } });
+    const r4 = resolveForecastDelta({ cycle: 'monthly', startDate: '1919-01-01', outlook: { nodes: [], forecast: { delta: 33 } } });
+    const r5 = resolveForecastDelta({ cycle: 'monthly', startDate: '1919-01-01', outlook: { nodes: [], forecast: {} } });
+    return r1.delta === -8 && r1.basis === 'forecast'
+        && r2.delta === 30 && r2.basis === 'trend'
+        && r3.delta === 5 && r3.basis === 'last'
+        && r4.delta === 33 && r4.basis === 'forecast'
+        && r5.delta === 0 && r5.basis === 'none';
+})(), 'n/a');
+A('G3 触发器：**零记录**（无节点）+ 记录里有周期/日期/费用 → 按费用逐轮记账（不再因为"没历史"而 0 记账）', (() => {
+    boot({ deals: [{ id: 'd1', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 10, direction: 'increase', note: '', source: 'ai' } } }] });
+    const r = runDealTriggers({ prevDate: '1919-01-01', curDate: '1919-04-05' });
+    const amounts = state.ledger.map((x) => Number(x.delta));
+    return r.fired === 3 && amounts.every((a) => a === 10) && state.deals[0].outlook.nodes.length === 3;
+})(), () => J(state.ledger.map((x) => x.delta)));
+A('G4 触发器：`forecast.delta` 为 0 但**有历史节点** → 用趋势金额记账（旧实现会 0 记账 = 只推进不记账）', (() => {
+    boot({ deals: [{ id: 'd1', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [{ date: '1919-01-01', delta: 10 }, { date: '1919-02-01', delta: 20 }], forecast: { nextDate: '1919-03-01', delta: 0, direction: '', note: '', source: 'ai' } } }] });
+    const r = runDealTriggers({ prevDate: '1919-02-05', curDate: '1919-04-05' });
+    return r.fired >= 1 && state.ledger.length === r.fired && Number(state.ledger[0].delta) === 30;
+})(), () => J(state.ledger.map((x) => x.delta)));
+A('G5 归一：预测留空 + 无节点 + 记录里给了费用 → 兜底把费用带进预测（basis forecast）', (() => {
+    const d = normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1919-01-01', cycle: 'monthly', outlook: { nodes: [], forecast: { nextDate: '', delta: 25, direction: '' } } });
+    return d && d.outlook.forecast.nextDate === '1919-01-31' && Number(d.outlook.forecast.delta) === 25
+        && d.outlook.forecast.source === 'auto';
+})(), () => normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1919-01-01', cycle: 'monthly', outlook: { nodes: [], forecast: { nextDate: '', delta: 25 } } }));
 
 R.done();
