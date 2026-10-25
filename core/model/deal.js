@@ -125,7 +125,7 @@ function normForecast(raw) {
  * @param {string} startDate 起始日期（无节点时的基准）
  * @returns {{nextDate:string, delta:number, direction:string, note:string, source:string, basis:string}}
  */
-export function inferForecastFallback(nodes, cycle, startDate) {
+export function inferForecastFallback(nodes, cycle, startDate, forecastDelta) {
     const list = (Array.isArray(nodes) ? nodes : []).filter((n) => n && clockDateTrim(n.date));
     const last = list.length ? list[list.length - 1] : null;
     const base = last ? clockDateTrim(last.date) : clockDateTrim(startDate);
@@ -135,6 +135,12 @@ export function inferForecastFallback(nodes, cycle, startDate) {
     let delta = 0;
     let basis = 'none';
     const ys = list.slice(-3).map((n) => roundMoney(Number(n.delta) || 0));
+    if (!ys.length) {
+        // v3.51.9（用户要求）：「**没有任何记录**时，直接采信记录的周期 / 预测下一个日期 / 下一个费用来轮动」
+        //   → 无节点时不再一律给 0；记录里已声明的「下一个费用」（`forecast.delta`）就是这一层的兜底。
+        const fd = roundMoney(Number(forecastDelta) || 0);
+        if (fd !== 0) { delta = fd; basis = 'forecast'; }
+    }
     if (ys.length === 1) { delta = ys[0]; basis = 'last'; }
     else if (ys.length >= 2) {
         const n = ys.length;
@@ -159,6 +165,28 @@ function addDays(dateStr, n) {
         const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1, dd = d.getUTCDate();
         return String(y) + '-' + String(m).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
     } catch (e) { return ''; }
+}
+
+/**
+ * v3.51.9（用户要求「多层兜底」）：**预计收益费用**的取值顺序（确定性，逐层降级）：
+ *   ① `forecast.delta`（AI / 手动明确给出）——**最优先**；
+ *   ② 已成节点：最近 ≤3 个节点的**趋势外推**（不足 2 个 → 最后一个节点的金额）；
+ *   ③ **没有任何记录**：采信记录里声明的「下一个费用」（`forecast.delta`），并按记录的
+ *      **周期 / 预测日期**轮动；若这一层也没有（费用为 0）→ 0（只推进水位、不生成流水，如实留痕）。
+ * @param {object} deal 标的物
+ * @returns {{delta:number, basis:string}} `basis` ∈ forecast / trend / last / forecast-record / none
+ */
+export function resolveForecastDelta(deal) {
+    const d = (deal && typeof deal === 'object') ? deal : {};
+    const ol = (d.outlook && typeof d.outlook === 'object') ? d.outlook : {};
+    const fc = (ol.forecast && typeof ol.forecast === 'object') ? ol.forecast : {};
+    const nodes = Array.isArray(ol.nodes) ? ol.nodes : [];
+    const fcDelta = roundMoney(Number(fc.delta) || 0);
+    if (fcDelta !== 0) return { delta: fcDelta, basis: 'forecast' };
+    const fb = inferForecastFallback(nodes, d.cycle, d.startDate, fcDelta);
+    if (fb.basis === 'trend' || fb.basis === 'last') return { delta: fb.delta, basis: fb.basis };
+    if (fb.basis === 'forecast') return { delta: fb.delta, basis: 'forecast-record' };
+    return { delta: 0, basis: 'none' };
 }
 
 /** 归一化标的物（`docs/D53` §3.4）；缺 `name` / `currencyId` → `null`；预测可留空（→ 兜底推算） */
@@ -189,7 +217,7 @@ export function normalizeDeal(e) {
          *   AI 给了完整预测 → **以 AI 为准**；预测日期留空 → 用**趋势 + 周期**兜底（`source:'auto'`）；
          *   兜底也推不出日期（周期未知且无节点/起始日期）→ **拒绝**（没有日期就没有意义，`D53` 原口径）。
          */
-        const fallback = inferForecastFallback(nodes, cycle, startDate);
+        const fallback = inferForecastFallback(nodes, cycle, startDate, (forecastRaw && forecastRaw.delta) || 0);
         const forecast = (forecastRaw && forecastRaw.nextDate)
             ? forecastRaw
             : (fallback.nextDate
