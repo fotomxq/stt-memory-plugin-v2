@@ -75,6 +75,7 @@ import { isLocalGzRecord, inflateLocalGzRecord } from './store.js';
 import { localFileEnabled, localFileRead } from './local-file.js';
 // v3.0.0（用户要求「有请求、同步等各类动作时自动出现」）：同步 / 持久化动作纳入管线状态
 import { trackPipeline } from '../core/pipeline.js';
+import { mergeHistoryIntoLedger } from '../core/model/ledger.js';   // v3.51.11：采纳远端后补账本
 
 // ---------- 常量（V1 同名口径） ----------
 const BAK_PREFIX = 'ftt2-bak-';
@@ -676,6 +677,8 @@ export function adoptRemoteEnvelope(env) {
         setKernelState(next);
         applyTombstonesToState(true);            // 采纳进来的条目按并集墓碑过滤（删除保持删除）
         ensureAtomHashes();
+        // v3.51.11：对端旧版本只有 `history` 摘要 → 采纳后把摘要补进账本（幂等；否则三页不同源）
+        try { const bf = mergeHistoryIntoLedger(state.ledger, state.currencies, { source: 'migrate' }); if (bf.added) state.ledger = bf.ledger; } catch (e) { /* 忽略 */ }
         return true;
     } catch (e) { warn('采用远端版本失败', e); return false; }
 }

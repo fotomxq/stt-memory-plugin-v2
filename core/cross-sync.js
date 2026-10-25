@@ -28,6 +28,7 @@ import { storageHash } from './envelope.js';
 import { hashText } from './util.js';
 import { contentDedupeArray } from './migrate.js';
 import { applyDeletedToArray } from './sweep.js';
+import { mergeHistoryIntoLedger } from './model/ledger.js';   // v3.51.11：合并后把旧端的摘要 history 补进账本（三页同源）
 import { mergeRumorObjects } from './model/rumor.js';
 // v3.45.6：货币收支流水并集（同日期 + 同额 + 同说明视为同一笔，保留最近 12 笔）—— 与入库路径同一个函数
 import { mergeMoneyHistory } from './model/money.js';
@@ -437,6 +438,12 @@ function mergeDataObjects(baseData, remoteData, opts) {
                     out.currencies = rc.arr;
                     if (rc.del && Object.keys(rc.del).length) delOut.currencies = rc.del;
                     if (rc.delH && Object.keys(rc.delH).length) delHOut.currencies = rc.delH;
+                    // v3.51.11（用户要求「核对三个分页是否正常同步」）：对端可能是旧版本（只有 `history` 摘要、没有 `ledger`）
+                    //   → 合并后把摘要增量补进账本（纯函数 + 幂等），否则「总览有这几笔、收支记录却没有」。
+                    try {
+                        const bf = mergeHistoryIntoLedger(Array.isArray(out.ledger) ? out.ledger : [], out.currencies, { source: 'migrate' });
+                        if (bf.added) out.ledger = bf.ledger;
+                    } catch (e) { /* 忽略：回填失败不影响合并主体 */ }
                 }
             } catch (e) { /* 忽略 */ }
             const hadAny = ((delBase && Object.keys(delBase).length) || (delRem && Object.keys(delRem).length));

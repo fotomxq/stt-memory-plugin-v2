@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.51.10",
-  "updatedAt": "2026-10-25",
-  "generatedAt": "2026-10-25",
+  "version": "3.51.11",
+  "updatedAt": "2026-10-26",
+  "generatedAt": "2026-10-26",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.51.11",
+      "date": "2026-10-26",
+      "title": "货币三页同步核对：修复「编辑流水不生效」+「跨端合并后三页不同源」",
+      "points": [
+        "登记：批次档 docs/history/P10c152-货币三页同步核对.md### 一、核对口径三页（总览 currencies / 收支记录 ledger / 长期收支 de…",
+        "修复：同 id 同内容 → duplicate；同 id 内容变了 → 原位替换（余额 −旧delta +新delta、条目字段更新、id 保留、摘要撤旧换新、updatedAt…",
+        "修复：新增纯函数 mergeHistoryIntoLedger(ledger, currencies)（幂等，id 与迁移回填同规则）——core/cross-sync.js#m…"
+      ]
+    },
     {
       "version": "3.51.10",
       "date": "2026-10-25",

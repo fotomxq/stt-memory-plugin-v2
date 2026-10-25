@@ -3,6 +3,39 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.51.11（2026-10-26）· **货币三页同步核对**：修复「编辑流水不生效」+「跨端合并后三页不同源」
+
+**用户要求**（原话）：「核对货币的三个分页内容是否正常同步，如存在问题需修复。」
+
+**登记**：批次档 `docs/history/P10c152-货币三页同步核对.md`
+
+### 一、核对口径
+
+三页（总览 `currencies` / 收支记录 `ledger` / 长期收支 `deals`）在**同一次渲染**里读同一个 `state`，页内切换无需刷新；
+真正的同步风险在**写入端**与**跨端合并端**。逐项核对后修两处真缺陷：
+
+### 二、缺陷一：编辑流水**静默不生效**
+
+`consoleSave(kind=ledger)` → `applyLedgerEntry(raw)`，`raw.id` 是既有 id → `normalizeLedgerEntry` 保留 id →
+`dup` 判定命中 → **直接返回 `duplicate`**：余额/账本/摘要都不动，**也没有提示**（用户看到「编辑了没反应」）。
+
+**修复**：同 id 同内容 → `duplicate`；**同 id 内容变了 → 原位替换**（余额 −旧delta +新delta、条目字段更新、**id 保留**、
+摘要**撤旧换新**、`updatedAt` 刷新）；无 id → 追加（原幂等逻辑）。
+
+### 三、缺陷二：跨端合并后三页不同源
+
+对端旧版本只有 `currencies[].history`（摘要）、没有 `ledger` → 合并后账本缺这些流水（**总览有、收支记录没有**）。
+
+**修复**：新增纯函数 `mergeHistoryIntoLedger(ledger, currencies)`（幂等，id 与迁移回填同规则）——
+`core/cross-sync.js#mergeDataObjects`（货币逐条并集之后）与 `adapters/sync.js#adoptRemoteVersion`（整份采用远端后）各补一次；
+迁移路径口径不变。
+
+### 四、测试与门禁
+
+新增 `tests/unit/money-three-pages-sync.test.js`（**8 项**）：编辑生效/摘要撤旧换新/面板编辑后三页同源/删除仍冲正；
+回填幂等/跨端合并补齐账本/长期收支合并不丢/三页渲染同源。
+全量单测 **260 文件 / 3864 断言**；冒烟 224 项；`npm run gate` 全绿。
+
 ## v3.51.10（2026-10-25）· **内存核查**：修复两处无界增长（标的物节点 / 收支记录页渲染）
 
 **用户要求**（原话）：「最近5轮更新可能引入了内存泄漏BUG，请核对修复。」
