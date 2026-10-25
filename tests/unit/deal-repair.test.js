@@ -62,8 +62,8 @@ A('A3 空池：没有可修条目 → `runDealRepair` 如实说「没有可修�
     boot({ deals: [] });
     let called = 0;
     setAiHooks({ callAi: async () => { called += 1; return { ok: true, text: '{}' }; }, feedText: () => '', busy: () => false });
-    const r = await runDealRepair();
-    return r.ok === false && r.reason === 'empty' && called === 0 && String(r.note).indexOf('没有可修') >= 0;
+    const r = await runDealRepair({ skipTriggers: true });
+    return r.ok === true && r.reason === 'empty' && called === 0 && String(r.note).indexOf('没有需要 AI 修订') >= 0;
 })(), 'n/a');
 
 // ---------- B 打包 / 提示词 ----------
@@ -132,7 +132,7 @@ A('E1 端到端（注入 aiText）：挑 3 条 → 校验 → 落库；摘要如
     boot();
     const pick = dealRepairPick();
     const aiText = JSON.stringify({ items: pick.rows.map((d, i) => ({ id: d.id, status: '已更正' + (i + 1), forecast: { nextDate: '1920-09-01', delta: 10 + i, direction: 'increase', note: '按剧情' } })) });
-    const r = await runDealRepair({ aiText: aiText, now: 999 });
+    const r = await runDealRepair({ aiText: aiText, now: 999, skipTriggers: true });
     return r.ok === true && r.batch.entries === 3 && r.batch.total === 5 && r.changed === 3
         && state.deals.filter((d) => /已更正/.test(d.status)).length === 3
         && String(r.note).indexOf('本批 3 条') >= 0 && String(r.note).indexOf('已更正 3 条') >= 0;
@@ -140,15 +140,48 @@ A('E1 端到端（注入 aiText）：挑 3 条 → 校验 → 落库；摘要如
 A('E2 **失败不动数据**：AI 未返回可用结果 → 不改任何条目，且明确告知', (async () => {
     boot();
     const before = J(state.deals.map((d) => [d.id, d.desc, d.status, d.updatedAt]));
-    const r = await runDealRepair({ aiText: '抱歉，我无法完成' });
+    const r = await runDealRepair({ aiText: '抱歉，我无法完成', skipTriggers: true });
     return r.ok === false && r.reason === 'no-ai' && J(state.deals.map((d) => [d.id, d.desc, d.status, d.updatedAt])) === before;
 })(), 'n/a');
 A('E3 占用中（`aiBusy`）→ 直接拒绝且不调 AI', (async () => {
     boot();
     let called = 0;
     setAiHooks({ callAi: async () => { called += 1; return { ok: true, text: '{}' }; }, feedText: () => '', busy: () => true });
-    const r = await runDealRepair();
-    return r.ok === false && r.reason === 'busy' && called === 0;
+    const r = await runDealRepair({ skipTriggers: true });
+    return r.ok === true && r.reason === 'busy' && called === 0 && String(r.note).indexOf('AI 修复跳过') >= 0;
 })(), 'n/a');
+
+// ---------- F v3.51.8：两段式（内置记账优先 → 再 AI 修复） ----------
+A('F1 **内置段先跑**：到期/超前条目先由触发器记账 + 轮动到下一轮（不再等 AI），AI 段只处理剩余条目', async () => {
+    boot({
+        deals: [
+            // 到期条目：nextDate 早已过去 → 内置段应兑现并轮动
+            { id: 'due', name: '船厂分成', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', desc: '', status: '', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 10, direction: 'increase', note: '', source: 'ai' } } },
+            // 未到期 + 缺内容：交给 AI 段
+            { id: 'soon', name: '地租', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', desc: '', status: '', outlook: { text: '', nodes: [], forecast: { nextDate: '1920-09-01', delta: 5, direction: 'increase', note: '', source: 'ai' } } },
+        ],
+    });
+    const r = await runDealRepair({ aiText: JSON.stringify({ items: [{ id: 'soon', status: '稳定' }] }), skipAi: false });
+    return r.ok === true && r.trigger && r.trigger.fired >= 1 && state.ledger.length === r.trigger.fired
+        && state.deals[0].outlook.forecast.nextDate > '1920-06-01'   // 已轮动到下一轮
+        && String(r.note).indexOf('内置记账') >= 0 && String(r.note).indexOf('AI 本批') >= 0;
+}, 'n/a');
+A('F2 `skipAi` 只跑内置段：如实回报「没有到期的条目 / 已记账 N 笔」', async () => {
+    boot({ deals: [{ id: 'due2', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1919-02-01', delta: 7, direction: 'increase', note: '', source: 'ai' } } }] });
+    const r = await runDealRepair({ skipAi: true });
+    return r.ok === true && r.trigger.fired >= 1 && r.changed === 0 && String(r.note).indexOf('AI 段已跳过') >= 0;
+}, 'n/a');
+A('F3 面板：点「🔧 修复」**先有中间提示**（处理中），结束后**有结果提示**（不再静默）', async () => {
+    boot({ deals: [{ id: 'd1', name: 'A', startDate: '1919-01-01', currencyId: 'c1', cycle: 'monthly', desc: '', status: '', outlook: { text: '', nodes: [], forecast: { nextDate: '1920-09-01', delta: 5, direction: 'increase', note: '', source: 'ai' } } }] });
+    const { setPanelHooks2, panelAction, panelState } = await import('../../ui/panel.js');
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    const { setAiHooks } = await import('../../core/ai-hooks.js');
+    setAiHooks({ callAi: async () => ({ ok: true, text: JSON.stringify({ items: [{ id: 'd1', status: '稳定' }] }) }), feedText: () => '正文', busy: () => false });
+    let mid = '';
+    const r = await panelAction('dealRepair', {});
+    mid = String((panelState() || {}).note || '');
+    return r && r.ok === true && mid.indexOf('长期收支修复') >= 0 && mid.indexOf('处理中') < 0
+        && (mid.indexOf('内置记账') >= 0 || mid.indexOf('AI') >= 0) && state.deals[0].status === '稳定';
+}, 'n/a');
 
 R.done();

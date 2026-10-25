@@ -2302,7 +2302,14 @@ export async function panelAction(action, payload) {
             }
         }
         else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
-        else if (a === 'dealRepair') { const r = await runDealRepair(); setNote(r.note || ''); result = Object.assign(result, r); }   // v3.51.4：长期收支修复（3 条/次）
+        else if (a === 'dealRepair') {
+            // v3.51.8（用户报告「修复按钮触发后没通知」）：**先落一条「处理中」并立刻重绘**（AI 段要等几秒，不能静默）
+            setNote('长期收支修复：处理中…（先用内置模块结算到期记账，再把最多 3 条交 AI 修订）');
+            try { renderPanel(); } catch (e) { /* 忽略 */ }
+            const r = await runDealRepair();
+            setNote(String((r && r.note) || '长期收支修复：已完成（无变更）'));
+            result = Object.assign(result, r || {});
+        }
         else if (a === 'plotSegmentSummarySel') {
             // V1「🧩 分段总结（N）」（情节页多选）：只把勾选情节按剧情时间打包交 AI 分段，归档到「🧩 分段总结」子页
             const ids = Array.from(selOf('atoms'));
