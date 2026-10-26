@@ -39,6 +39,41 @@ function rowHtml(i) {
  * @param {Element} target 被点击的元素（或其宿主）
  * @returns {boolean} 是否已处理（true = 调用方直接 return）
  */
+/** 「目标 / 可能性」行 HTML（与 `ui/fields.js#oddsTableHtml` 同结构） */
+function oddsRowHtml(i) {
+    const a = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return '<div class="ftt-node-row ftt-odds-row" data-ftt-odds-row="' + i + '">'
+        + '<input type="text" data-ftt-ed="odds-' + i + '-target" value="" placeholder="目标" title="目标">'
+        + '<input type="number" min="0" max="100" data-ftt-ed="odds-' + i + '-likelihood" value="0" placeholder="%" title="可能性（0-100）">'
+        + '<button type="button" class="ftt-btn ftt-sm ftt-node-del" data-ftt-odds-del="' + i + '" title="删除这一行">✕</button>'
+        + '</div>';
+}
+/** 目标可能性行操作（加/删；与节点表同款，键名不同） */
+function oddsTableClick(el) {
+    try {
+        const add = el.closest('[data-ftt-odds-add]');
+        if (add) {
+            const table = add.closest('.ftt-odds-table');
+            if (!table) return true;
+            let max = -1;
+            for (const r of (table.querySelectorAll('.ftt-odds-row') || [])) {
+                const v = Number(r.getAttribute('data-ftt-odds-row'));
+                if (Number.isFinite(v) && v > max) max = v;
+            }
+            const foot = table.querySelector('.ftt-node-foot');
+            if (foot && typeof foot.insertAdjacentHTML === 'function') foot.insertAdjacentHTML('beforebegin', oddsRowHtml(max + 1));
+            return true;
+        }
+        const del = el.closest('[data-ftt-odds-del]');
+        if (del) {
+            const row = del.closest('.ftt-odds-row');
+            if (row && row.parentNode && typeof row.parentNode.removeChild === 'function') row.parentNode.removeChild(row);
+            return true;
+        }
+        return false;
+    } catch (e) { return false; }
+}
+
 export function nodeTableClick(target) {
     try {
         const el = target || null;
@@ -52,6 +87,7 @@ export function nodeTableClick(target) {
             if (foot && typeof foot.insertAdjacentHTML === 'function') foot.insertAdjacentHTML('beforebegin', rowHtml(i));
             return true;
         }
+        if (oddsTableClick(el)) return true;
         const del = el.closest('[data-ftt-node-del]');
         if (del) {
             const row = del.closest(ROW_SEL);
@@ -59,5 +95,28 @@ export function nodeTableClick(target) {
             return true;
         }
         return false;
+    } catch (e) { return false; }
+}
+
+/**
+ * v3.52.0（W33 `应-50`）：状态页**角色组折叠**（纯 DOM：切三角 + 正文 display；不落盘、不重绘）。
+ * @param {Element} target 被点击元素
+ * @returns {boolean} 是否已处理
+ */
+export function stateGroupClick(target) {
+    try {
+        const el = target || null;
+        if (!el || typeof el.closest !== 'function') return false;
+        const btn = el.closest('[data-ftt-stategroup-toggle]');
+        if (!btn) return false;
+        const key = String(btn.getAttribute('data-ftt-stategroup-toggle') || '');
+        const group = btn.closest('[data-ftt-stategroup]');
+        const body = group && group.querySelector ? group.querySelector('[data-ftt-stategroup-body="' + key + '"]') : null;
+        if (body && body.style) {
+            const hidden = body.style.display === 'none';
+            body.style.display = hidden ? '' : 'none';
+            try { btn.textContent = hidden ? '▾' : '▸'; } catch (e) { /* 忽略 */ }
+        }
+        return true;
     } catch (e) { return false; }
 }

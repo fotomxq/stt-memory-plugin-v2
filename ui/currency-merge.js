@@ -102,7 +102,7 @@ export function currencyMergePanelHtml() {
         + '（可在设定里改为「保留最新额度、不累加」）。应用前会自动落一次快照，可整轮回退。</div>'
         + '<div class="ftt-hint">点角色右侧 <b>🔧</b> 出方案（会等一次 AI 返回；点击后该条目转圈并禁用，避免重复点击）。</div>'
         + '<div>' + (owners.length ? rows : '<div class="ftt-empty">还没有任何角色的货币记录。</div>') + '</div>';
-    if (!pending) return '<div class="ftt-editor">' + head
+    if (!pending) return '<div class="ftt-editor ftt-preview-card">' + head
         + '<div class="ftt-row"><button class="ftt-btn" data-ftt-action="currencyMergeClose">取消</button></div></div>';
     const groups = (pending.merge || []).filter((m) => m.ai === true);
     const body = groups.map((m) => {
@@ -121,7 +121,7 @@ export function currencyMergePanelHtml() {
         ? ('<div class="ftt-muted">AI 提了但被拒 ' + rejected.length + ' 组（' + esc(Object.keys(reasons).map((k) => k + '×' + reasons[k]).join(' · ')) + '）</div>')
         : '';
     const counts = pending.counts || {};
-    return '<div class="ftt-editor">' + head
+    return '<div class="ftt-editor ftt-preview-card">' + head
         + '<div class="ftt-editor-title">方案（' + esc(pending.owner) + '）：待确认合并 ' + groups.length + ' 组 · 机械档另有 ' + Math.max(0, num(counts.mergeGroups) - groups.length) + ' 组</div>'
         + body + rej
         + '<div class="ftt-row">'

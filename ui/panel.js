@@ -110,7 +110,10 @@ import { EXPORT_INLINE_MAX, EXPORT_YIELD_CHARS, exportInlineAllowed } from '../c
 //   各「大类」列表行按 V1 的字段集合与**先后顺序**渲染；排序用 V1 `sortRecent`（剧情日期倒序 → floorEnd 倒序）
 import { listRowMainHtml, stateRowMainHtml, listStatusFilter, buildRowCtx, moneyPageHtml, setMoneySub } from './list-rows.js';
 import { flatFor } from './entry-flat.js';   // v3.51.5：编辑器回填（含长期收支三段 outlook 的扁平化）外提到独立模块
-import { nodeTableClick } from './node-table-dom.js';   // v3.51.7：已发生节点的结构性行操作（加一行 / 删一行）   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
+import { editorHtml, prefillEditor, collectEditorFields, kindLabelOf } from './editor.js';   // v3.52.0（W33 技-61）：编辑器装配外提
+import { setCurrencyPanelDeps, currencyTopHtml, currencyStatText, currencyTrackButtons, currencyRepairPanelHtml, currencyRepairState, setCurrencyRepairOpen, setCurrencyRepairUntracked } from './currency-repair-panel.js';   // v3.52.0（技-61）：货币页顶部与修正预览外提
+import { setStatesPageDeps, renderStatesPage } from './states-page.js';   // v3.52.0（技-61/应-50）：状态页外提（角色组折叠）
+import { nodeTableClick, stateGroupClick } from './node-table-dom.js';   // v3.51.7 结构化行操作；v3.52.0 状态组折叠   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
 // v3.47.0：货币页「👥 指定跟踪角色」选择器面板外移（体量棘轮腾位；功能与文案逐字不变）
@@ -255,6 +258,7 @@ export function singleFloorBusyState() { return Array.from(singleFloorBusy).sort
 
 /** 注入动作钩子（index.js：提取 / 清单 / 更新 / 清空注入） */
 export function setPanelHooks2(next) { hooks = Object.assign({}, hooks, next || {}); return hooks; }
+export { currencyRepairState };
 
 /**
  * v3.45.7：**分段组装导出内容**（面板专用；与 `hooks.exportState({stream:true})` 单钩子对接）。
@@ -454,6 +458,9 @@ export function panelTabs() { return PANEL_TABS.map((t) => ({ id: t[0], label: t
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attr = (v) => esc(v);
+// v3.52.0（W33 技-61）：货币页/修正预览外提模块的依赖注入（esc/attr 定义之后才能注入）
+setCurrencyPanelDeps({ arrOf, trackedCurrencyRoles, defaultCurrencyOwner, trackPickState, currencyMergeButton, currencyRepairPlan, esc, attr });
+setStatesPageDeps({ psOf: () => ps, listFilterOf, arrOf, fieldHayOf, extraMatchOf, listSortOf, selOf, listFilterBarHtml, selectDepButtonParts, editorHtml, rowSelectMarkHtml, swipeRowHtml, stateRowMainHtml, esc, attr });
 function docEl() { try { return globalThis.document || null; } catch (e) { return null; } }
 const J = (v) => { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return null; } };
 
@@ -685,8 +692,16 @@ export function conflictBannerHtml() {
 /** 总览：剧情时钟 / 在场 / 计数 / 已处理与未摘要楼层 / 快捷动作（V1 总览的可见子集；其余见 docs/P8 批次表） */
 function overviewBody() {
     const lines = [];
-    // ① 剧情时钟（日期/时间/地点 + 🔒手工徽标 + 手工改写面板 + 时钟来源）
-    try { lines.push(clockSectionHtml()); } catch (e) { /* 忽略 */ }
+    // ① 剧情时钟 + 记忆类目 → **双栏仪表盘**（v3.52.0 W33 应-48）
+    const sumDash = (() => { try { return consoleSummary(); } catch (e) { return { total: 0, dims: [] }; } })();
+    try {
+        const catItems = (sumDash.dims || []).map((d) => '<span class="ftt-cat-stat" data-ftt-cat="' + attr(d.kind) + '">' + esc(d.label) + ' <b>' + Number(d.count) + '</b></span>');
+        const catGrid = '<div class="ftt-cat-grid" data-ftt-cat-grid>' + catItems.join('') + '</div>';
+        lines.push('<div class="ftt-dash-top" data-ftt-dash>'
+            + '<div class="ftt-dash-card" data-ftt-dash-clock>' + (() => { try { return clockSectionHtml(); } catch (e) { return ''; } })() + '</div>'
+            + '<div class="ftt-dash-card" data-ftt-dash-stats><div class="ftt-dash-card-title">📚 记忆类目 · 共 ' + Number(sumDash.total || 0) + ' 条</div>' + catGrid + '</div>'
+            + '</div>');
+    } catch (e) { /* 忽略 */ }
     // ② 管线状态（v2.52.0 缺失修复 + v2.63.0 动态读秒）——进行中给出任务/进度/读秒；空闲明确写「空闲」
     //   读秒计时器由 `renderPanel()` 在**写入 DOM 之后**启停（此刻那一行才真的存在，见 `syncPipelineTick`）
     //   v3.0.0（用户要求「管线状态默认不显示，有请求/同步等各类动作时自动出现，并行时出现两个或两个以上」）：
@@ -779,27 +794,24 @@ function overviewBody() {
         + ' title="' + attr(summaryBtnTitle) + '">'
         + (summaryBusy ? ('⚡ 分析中…' + (() => { const bp = (typeof hooks.batchProgress === 'function') ? (hooks.batchProgress() || {}) : {}; const t = Number(bp.segTotal) || 0, d = Number(bp.segDone) || 0; return t ? ('（分段 ' + d + '/' + t + '）') : ''; })()) : '⚡ 立即 AI 摘要')
         + '</button>';
-    lines.push('<div class="ftt-row">'
-        + summaryBtn
+    // ⑤ 工具行：按 `docs/D23` §3.2 的 **B / C / D / E** 四区视觉分组（v3.52.0 W33 应-48）
+    lines.push('<div class="ftt-dash-tools" data-ftt-dash-tools>'
+        + '<div class="ftt-dash-zone" data-zone="B"><span class="ftt-dash-zone-k">写库</span>' + summaryBtn + '</div>'
+        + '<div class="ftt-dash-zone" data-zone="C"><span class="ftt-dash-zone-k">读库</span>'
         + '<button class="ftt-btn" data-ftt-action="repair" id="ftt-repair-btn" title="三段式修复：① JS 机械清理 → ② 候选筛选 → ③ 窄契约 AI 修订">🛠 自动修复</button>'
-        // v3.43.0（`docs/D22` `应-14` / `docs/D23` §3.1）：**「📤 提取记忆」按钮已删除**（用户裁决：写库只有
-        //   「⚡ 立即 AI 摘要」、读库只有「📤 立即注入」）；它的召回 + 刷新注入能力由右侧「立即注入」承担
-        //   （`extractNow` 动作名保留为同义入口，供命令 / 调试导出调用）。
+        + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn" title="召回相关记忆并刷新提示词注入（向量 / JS / AI 三层，按「提取记忆」页开关；零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 立即注入</button></div>'
+        + '<div class="ftt-dash-zone" data-zone="D"><span class="ftt-dash-zone-k">维护</span>'
         + '<button class="ftt-btn" data-ftt-action="parallelWeaveNow" id="ftt-weave-btn" title="手动触发平行事件推演（独立交织管线）">🧭 推演世界</button>'
-        + nsfwBtn
-        // v3.43.0（`docs/D23` §3.3 **C5**）：原「📤 提取记忆」的 title 说明**迁移到本按钮** ——
-        //   「不占分析管道、可与长任务并行、发送前也会自动刷新」这三条语义仍成立（同一个 `pushMemoryInject`）。
-        + '<button class="ftt-btn" data-ftt-action="inject" id="ftt-inject-btn" title="召回相关记忆并刷新提示词注入（向量 / JS / AI 三层，按「提取记忆」页开关；零 AI 为主，不占用分析管道，可与 AI 摘要并行；发送前也会自动刷新一次）">📤 立即注入</button>'
-        // v3.0.22（用户要求）：「总览新增保存按钮，可对齐已开启的所有存储，包括内存、浏览器本地变量、服务端等，全部对齐数据。」
+        + nsfwBtn + '</div>'
+        + '<div class="ftt-dash-zone" data-zone="E"><span class="ftt-dash-zone-k">存取</span>'
         + '<button class="ftt-btn' + (saveAllBusy ? ' ftt-loading' : '') + '" type="button"'
         + ' data-ftt-action="saveAll" id="ftt-saveall-btn"' + (saveAllBusy ? ' disabled' : '')
-        + ' title="把当前内存数据写到所有已开启的存储并逐层回报：本机缓冲（浏览器本地变量）+ IndexedDB + 服务端记忆文件 + 分片 + 快照与清单文件 + 世界书镜像 + 跨端镜像（按开关）">'
-        + (saveAllBusy ? '💾 对齐中…' : '💾 保存（对齐所有存储）') + '</button>'
+        + ' title="把当前内存数据写到所有已开启的存储并逐层回报">'
+        + (saveAllBusy ? '💾 对齐中…' : '💾 保存（对齐所有存储）') + '</button></div>'
         + '</div>');
     // ⑥ 类目统计（一行胶囊）
-    const sum = consoleSummary();
-    lines.push('<div class="ftt-row"><span class="ftt-muted">📚 共 ' + sum.total + ' 条</span>'
-        + sum.dims.map((d) => '<span class="ftt-badge">' + esc(d.label) + ' ' + d.count + '</span>').join(' ') + '</div>');
+    // ⑥ 类目统计已并入仪表盘（应-48）；此处只留一行「可下钻」提示（点击左侧分页查看）
+    lines.push('<div class="ftt-hint" data-ftt-cat-hint>📚 共 ' + Number(sumDash.total || 0) + ' 条记忆条目 —— 点上方分页可下钻查看。</div>');
     // ⑦ 未摘要楼层（可点单楼分析）；已处理楼层只留一行计数（区间过长的历史信息不再平铺）
     //   v2.64.0（用户报告：「未摘要楼层…很多无法分析或不应该分析的会被展示出来…当原子数据对应的楼层存在时，
     //   则不需要分析」）：清单由 `hooks.pending` 给出，已在宿主侧按「已有记忆数据的楼层」跳过；
@@ -1070,108 +1082,6 @@ function parallelRowBits(e) {
 // ============================================================
 
 /** 货币页顶部统计胶囊（V1 `catStat('currencies')` + `tracked.length` 角标，逐字文案） */
-function currencyStatText() {
-    const list = arrOf('currencies');
-    const owners = {};
-    for (const x of list) { const k = String((x && x.owner) || ''); if (k) owners[k] = (owners[k] || 0) + 1; }
-    const names = Object.keys(owners);
-    const tracked = trackedCurrencyRoles();
-    const base = '共 ' + list.length + ' 条货币' + (names.length
-        ? (' · ' + names.length + ' 个归属（' + names.slice(0, 3).map((n) => n + ' ' + owners[n]).join(' / ') + (names.length > 3 ? ' …' : '') + '）')
-        : '');
-    return base + (tracked.length ? (' · 已标定 ' + tracked.length + ' 名') : '');
-}
-
-/** 货币页顶部（统计胶囊 + 说明 + 已标定胶囊；V1 `currenciesHtml` 的 `head` + `trackChips` 逐字） */
-function currencyTopHtml() {
-    const me = String(defaultCurrencyOwner() || '主角');
-    const tracked = trackedCurrencyRoles();
-    const head = '<div class="ftt-cat-stat ftt-chip">' + esc(currencyStatText()) + '</div>'
-        + '<div class="ftt-note ftt-note-info">💰 默认只记<b>主角</b>（当前判定：' + esc(me) + '）持有的货币；其他角色的货币需在正文/编辑器里明确指定归属。额度按 万 / 亿 / 兆 / 京 动态显示，收支保留最近 12 笔。</div>';
-    const trackChips = tracked.length
-        ? '<div class="ftt-note ftt-note-info" data-ftt-track-chips>⭐ 已标定跟踪：' + tracked.map((n) => '<span class="ftt-badge ftt-badge--fact">' + esc(n) + '<span class="ftt-rel-jump" data-ftt-action="curTrackToggle" data-name="' + attr(n) + '" title="取消标定该角色"> ✖</span></span>').join(' ') + ' <span class="ftt-muted">被标定后：分析记忆会<b>恒定</b>考虑这些角色的货币（提示词 + 当前账本参照），注入时与主角一样恒定列出。</span></div>'
-        : '';
-    return head + trackChips;
-}
-
-/** 货币页工具行里的两个标定按钮（V1 `addBtn` 的 `curTrackPick` / `curTrackClear` 两支，文案与 title 逐字） */
-function currencyTrackButtons() {
-    const tracked = trackedCurrencyRoles();
-    return '<button class="ftt-btn' + (trackPickState() ? ' ftt-primary' : '') + '" data-ftt-action="curTrackPick" title="从「角色」大类里指定要跟踪货币的角色（可多选；被标定后分析记忆会同时考虑其货币情况）">👥 指定角色' + (tracked.length ? '（' + tracked.length + '）' : '') + '</button>'
-        + (tracked.length ? '<button class="ftt-btn ftt-err" data-ftt-action="curTrackClear" title="取消全部标定角色">✖ 清空标定</button>' : '')
-        // v3.15.0（用户要求「货币增加修正按钮，剔除不应该被记录的角色，以及修正错乱的单位计价和冗余的数据合并问题」）
-        + '<button class="ftt-btn ftt-sm' + (currencyRepairOpen ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepair" title="修正货币数据（纯机械、零 AI、可预览）：① 剔除不应该被记录的角色（幽灵角色 / 未标定角色 / 币种名写成单位词的提取错误 / 空壳）；② 修正错乱的单位计价（单位写法归一、额度缺省用流水净额补齐）；③ 合并冗余条目（同归属同币种的别名合并，如 金子/赤金→黄金）。删除与合并都会留墓碑，跨端不会复活。">🧹 修正货币</button>'
-        // v3.46.2（`docs/D22` §4.14 W13 应-30）：AI 档「🔀 AI 融合货币」—— 与机械档**并列**（实现在 `ui/currency-merge.js`）
-        + currencyMergeButton();
-}
-
-/**
- * v3.15.0：**货币修正预览面板**（纯机械修正的计划，逐条列出后才允许应用）。
- * 计划由 `core/currency-repair.js#currencyRepairPlan()` 生成；勾选「未标定角色」会重算计划。
- */
-function currencyRepairRow(d) {
-    const parts = [];
-    if (d.owner) parts.push(esc(String(d.owner)));
-    if (d.name) parts.push('<b>' + esc(String(d.name)) + '</b>');
-    if (d.unit) parts.push('单位 ' + esc(String(d.unit)));
-    if (d.amount !== undefined && d.amount !== null && d.amount !== 0) parts.push('额度 ' + esc(String(d.amount)));
-    return '<div class="ftt-muted">· ' + parts.join(' · ') + ' — ' + esc(String(d.detail || d.reason || '')) + '</div>';
-}
-function currencyRepairSection(title, arr, cap) {
-    if (!arr || !arr.length) return '';
-    const n = Math.max(1, Number(cap) || 8);
-    return '<div class="ftt-muted ftt-w-full"><b>' + esc(title) + '（' + arr.length + '）</b></div>'
-        + arr.slice(0, n).map(currencyRepairRow).join('')
-        + (arr.length > n ? '<div class="ftt-muted">…还有 ' + (arr.length - n) + ' 条</div>' : '');
-}
-function currencyRepairPanelHtml() {
-    if (!currencyRepairOpen) return '';
-    let plan;
-    try { plan = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); } catch (e) { return '<div class="ftt-empty">修正计划不可用：' + esc(String((e && e.message) || e)) + '</div>'; }
-    const counts = plan.counts || {};
-    const canUntracked = plan.untrackedAvailable === true;
-    const toggle = '<button class="ftt-btn ftt-sm' + (currencyRepairUntracked ? ' ftt-primary' : '') + '" data-ftt-action="currencyRepairToggleUntracked"'
-        + (canUntracked ? '' : ' disabled')
-        + ' title="' + (canUntracked
-            ? '勾选后：既不是默认归属（主角）也没有被「👥 指定角色」标定的角色，其货币一并剔除'
-            : '不可用：默认归属是兜底值「主角」（主角身份未确证）→ 勾选会把全部货币误删，故只报告不剔除') + '">'
-        + (currencyRepairUntracked ? '☑' : '☐') + ' 同时剔除未标定角色的货币</button>';
-    const head = '<div class="ftt-editor-title">🧹 货币修正计划 · 共 ' + (Number(counts.total) || 0) + ' 项'
-        + '（剔除 ' + (Number(counts.drop) || 0) + ' · 合并 ' + (Number(counts.mergeGroups) || 0) + ' 组 · 修正 ' + (Number(counts.fix) || 0) + ' · 只报告 ' + (Number(counts.report) || 0) + '）</div>';
-    const intro = '<div class="ftt-muted ftt-w-full">纯机械修正（<b>零 AI</b>、确定性）：页面逐条列出将删除 / 合并 / 修正的内容，确认后才落库；'
-        + '删除与合并都会留删除墓碑（按条目 id；货币 id 由「归属 + 币种」派生 → 跨端同一条会得到同一 id，不会被复活），条目<b>只减不增</b>。'
-        + '默认归属（主角）判定：<b>' + esc(String(plan.me || '')) + '</b>'
-        + (plan.meConfirmed ? '' : '（兜底值，未确证）') + ' · 名册 ' + (plan.roster || []).length + ' 名 · 标定 ' + (plan.tracked || []).length + ' 名。'
-        + '建议先「⬇ 导出 JSON 文件」备份。</div>';
-    const empty = (Number(counts.total) || 0) === 0;
-    const body = (empty ? '<div class="ftt-empty">未发现需要修正的条目（剔除 / 合并 / 计价修正都是空的）。</div>' : '')
-        + currencyRepairSection('① 将剔除的条目', plan.drop, 10)
-        + currencyRepairSection('② 将合并的冗余条目', (plan.merge || []).map((m) => ({
-            owner: m.owner, name: m.canonical, unit: m.unit, amount: m.amount,
-            detail: m.detail + ' ← ' + m.members.map((x) => x.name + '/' + (x.unit || '—') + '/' + x.amount).join('，'),
-        })), 6)
-        + currencyRepairSection('③ 将修正的计价', plan.fix, 10)
-        + currencyRepairSection('④ 只报告不改（需人工判断）', plan.report, 8);
-    const ops = '<div class="ftt-row">'
-        + (empty ? '' : '<button class="ftt-btn ftt-primary" data-ftt-action="currencyRepairApply" title="按上面的计划落库（会再次弹确认框）">✅ 应用修正</button>')
-        + '<button class="ftt-btn" data-ftt-action="currencyRepairClose">取消</button></div>';
-    return '<div class="ftt-editor" data-ftt-cur-repair>' + head + intro
-        + '<div class="ftt-row">' + toggle + '</div>' + body + ops + '</div>';
-}
-
-
-
-/** 货币页专属顶部（统计/说明/标定胶囊）—— 选择器另经 `currencyPickPanelHtml()` 渲染在工具行之后 */
-function currenciesTopHtml() {
-    try { return currencyTopHtml(); } catch (e) { return ''; }
-}
-
-// v3.15.0：货币修正预览的开关与「同时剔除未标定角色」勾选态（模块内状态，同 `customWeaveOpen` 口径）
-let currencyRepairOpen = false;
-let currencyRepairUntracked = false;
-/** 货币修正面板状态（测试 / 调试用） */
-export function currencyRepairState() { return { open: currencyRepairOpen, includeUntracked: currencyRepairUntracked }; }
-
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     // v3.46.7（`docs/D22` §4.4 W15 `应-1` / `docs/D9` §10 **U1**）：**渐进展示** —— 一屏 `pageLimitOf()` 条（首屏 50），
@@ -1255,7 +1165,7 @@ function dimBodyList(kind) {
     const ptb = (kind === 'parallels') ? parallelTopBar() : '';
     // B9-c：货币页顶部（统计胶囊 + 说明 + 已标定胶囊）与「👥 指定跟踪角色」选择器
     //   位置：胶囊在工具行之前（V1 `currenciesHtml` 的 head/trackChips），选择器在工具行之后（V1 的 addBtn 之后）
-    const curTop = (kind === 'currencies') ? currenciesTopHtml() : '';
+    const curTop = (kind === 'currencies') ? currencyTopHtml() : '';
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml(ps.q.currencyTrackPick) : '';   // 搜索词走页面槽（v3.47.0 外移后作为入参）
     const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
     // v3.46.2（W13 应-30）：货币融合（🔀）的**只读预览区**（选角色 → 出方案 → 确认 / 取消；未确认零写入）
@@ -1320,203 +1230,8 @@ function peekHtml(id) {
 
 /** 表单值：数组/结构化字段 → 文本（V1 编辑器的展示口径） */
 
-/**
- * 某场景的**父级场景 id**（V1 `findSceneParentId` 23352 逐字）：
- * 路径去掉末段即为父级路径，在场景库里按路径找到该父级记录并返回其 id；顶层或无父级记录 → ''。
- * v2.50.0（用户报告「场景收纳能力异常」）：此前 V2 **没有**这一步 —— 编辑一条嵌套场景时父级下拉恒为「（顶层）」，
- *   用户直接点保存就会把该场景**拍平成顶层**（`pathArr` 退化为 `[name]`），层级被悄悄丢掉。
- */
-function findSceneParentId(scene) {
-    try {
-        const arr = Array.isArray(scene && scene.pathArr) ? scene.pathArr.slice() : [];
-        if (arr.length <= 1) return '';
-        const parentKey = arr.slice(0, -1).join('>');
-        const p = (arrOf('scenes') || []).find((x) => ((Array.isArray(x.pathArr) ? x.pathArr.join('>') : String(x.pathStr || '')) === parentKey));
-        return p ? String(p.id || '') : '';
-    } catch (e) { return ''; }
-}
-
-/** 编辑器（V1 `ftt-editor` 结构；字段表来自 `kindFields(kind)`，保存经 `deconstructEntry` 还原为入库 raw） */
-function editorHtml(kind, id, preset) {
-    const isNew = !id;
-    const d = isNew ? null : consoleEntry(dataKindOf(kind), id);
-    if (!isNew && !d) return '<div class="ftt-empty">（条目已不存在）</div>';
-    const base = new Map();
-    try { prefillEditor(kind, base, isNew ? null : d.item, preset); } catch (e) { /* 忽略 */ }
-    const rows = kindFields(kind).map((f) => {
-        const val = base.has(f.key) ? base.get(f.key) : '';
-        if (f.type === 'relTable') {
-            const rels = (!isNew && d && d.rels) ? d.rels : [];
-            return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label><div class="ftt-hint">'
-                + (rels.length ? esc(rels.map((r) => (r.who || '公共') + (r.how ? '(' + r.how + ')' : '')).join('、')) : '（无关联 · 关系表编辑见批次 B5）') + '</div></div>';
-        }
-        if (f.type === 'checkbox') {
-            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><input type="checkbox" data-ftt-ed="' + attr(f.key) + '"' + (val === true ? ' checked' : '') + '></div>';
-        }
-        if (f.type === 'select') {
-            const opts = (f.options || []).map((o) => {
-                const ov = (o && typeof o === 'object') ? o.value : o;
-                const ol = (o && typeof o === 'object') ? o.label : o;
-                return '<option value="' + attr(ov) + '"' + (String(val) === String(ov) ? ' selected' : '') + '>' + esc(ol) + '</option>';
-            }).join('');
-            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
-        }
-        if (f.type === 'sceneParent') {
-            // v2.50.0（对齐 V1 23300~23313）：父级下拉 = 顶层 + **全部场景按完整路径排序**，
-            //   标签带层级缩进与完整路径（`　　name（A>B>name）`），选中项 = 预设父级 或 **该条自身的父级**。
-            const item = (!isNew && d) ? d.item : null;
-            const selId = String((preset && preset.parentSceneId) || (item ? findSceneParentId(item) : '') || '');
-            const all = arrOf('scenes').slice().sort((a, b) => {
-                const pa = (Array.isArray(a.pathArr) ? a.pathArr.join('/') : String(a.pathStr || a.name || ''));
-                const pb = (Array.isArray(b.pathArr) ? b.pathArr.join('/') : String(b.pathStr || b.name || ''));
-                return pa.localeCompare(pb);
-            });
-            const opts = ['<option value="">（顶层）</option>'].concat(all.map((sc) => {
-                const depth = Math.max(0, (Array.isArray(sc.pathArr) ? sc.pathArr.length : 1) - 1);
-                const label = '　'.repeat(depth) + String(sc.name || '') + '（' + (Array.isArray(sc.pathArr) ? sc.pathArr.join('>') : String(sc.name || '')) + '）';
-                return '<option value="' + attr(sc.id) + '"' + (String(sc.id) === selId ? ' selected' : '') + '>' + esc(label) + '</option>';
-            })).join('');
-            return '<div class="ftt-field"><label>' + esc(f.label) + '</label><select data-ftt-ed="' + attr(f.key) + '">' + opts + '</select></div>';
-        }
-        if (f.type === 'textarea') {
-            return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label><textarea data-ftt-ed="' + attr(f.key) + '" rows="4">' + esc(val) + '</textarea></div>';
-        }
-        if (f.type === 'nodeTable') return '<div class="ftt-field ftt-field-col"><label>' + esc(f.label) + '</label>' + nodeTableHtml(f, val) + '</div>';   // v3.51.7：结构性节点编辑
-
-        return '<div class="ftt-field"><label>' + esc(f.label) + '</label><div class="ftt-grow"><input type="' + attr(f.type || 'text') + '" data-ftt-ed="' + attr(f.key) + '" value="' + attr(val) + '"></div></div>';
-    }).join('\n');
-    // v3.9.0（用户要求）：「均有标签提示」——编辑器里也给出该条目的 NSFW 等级留档（只读；永久留档，不随弱化改变）
-    const nsfwRow = (() => {
-        try {
-            const it = (!isNew && d) ? d.item : null;
-            const l = it ? nsfwLevelOf(it) : 'none';
-            if (l === 'none') return '';
-            return '<div class="ftt-field"><label>NSFW 等级留档</label><div class="ftt-grow">'
-                + '<span class="ftt-tags-inline ftt-nsfw-tag" data-ftt-nsfw-level="' + l + '">NSFW·' + esc(nsfwLevelLabel(l)) + '</span>'
-                + ' <span class="ftt-muted">' + esc(nsfwLevelHint(l)) + '（永久留档：弱化内容不会改变它）</span></div></div>';
-        } catch (x) { return ''; }
-    })();
-    return '<div class="ftt-editor">'
-        + '<div class="ftt-editor-title">' + (isNew ? '➕ 新增' : '✏️ 编辑') + ' · ' + esc(kindLabelOf(kind)) + (id ? (' · ' + esc(id) + ' · 内容哈希 ' + esc((d && d.hash) || '')) : '') + '</div>'
-        + nsfwRow
-        + rows
-        + '<div class="ftt-row"><button class="ftt-btn ftt-primary" data-ftt-action="save" data-kind="' + attr(kind) + '" data-id="' + attr(id || '') + '">💾 保存</button>'
-        + '<button class="ftt-btn" data-ftt-action="closeEntry" data-kind="' + attr(kind) + '">取消</button></div>'
-        + '</div>';
-}
-
-function kindLabelOf(kind) {
-    const d = DIMENSIONS.filter((x) => x.kind === kind)[0];
-    if (d) return d.label;
-    if (kind === 'suspense') return '悬念';
-    return String(kind);
-}
-
-/** 编辑器初值（字段 key → 值）；preset 用于「新增」路径（状态主体 / 父级场景） */
-function prefillEditor(kind, out, item, preset) {
-    const p = preset || {};
-    if (!item) {
-        for (const k of Object.keys(p)) { if (k.charAt(0) === '_') continue; out.set(k, p[k]); }   // v3.51.4：失败后保留草稿
-        if (kind === 'states' && p.subject) out.set('subject', String(p.subject));
-        if (kind === 'scenes' && p.parentSceneId) out.set('parent', String(p.parentSceneId));
-        if (kind === 'scenes' && p.name) out.set('name', String(p.name));
-        if (kind === 'plans' || kind === 'suspense') { out.set('status', kind === 'plans' ? 'open' : 'open'); out.set('phase', ''); }
-        if (kind === 'items') out.set('carried', false);
-        if (kind === 'snapshots') { out.set('deceased', false); out.set('immortal', false); }   // v3.22.0：长生者开关同款默认未勾选
-        return out;
-    }
-    const flat = flatFor(kind, item);
-    for (const f of kindFields(kind)) {
-        const v = flat[f.key];
-        if (v === undefined || v === null) { out.set(f.key, f.type === 'checkbox' ? false : ''); continue; }
-        out.set(f.key, f.type === 'checkbox' ? (v === true) : v);
-    }
-    return out;
-}
-
-/** 从 DOM 读取编辑器表单（真实 DOM 路径；桩 DOM 由调用方直接传 fields） */
-function collectEditorFields(el) {
-    const fields = {};
-    try {
-        if (!el || typeof el.querySelectorAll !== 'function') return fields;
-        for (const node of el.querySelectorAll('[data-ftt-ed]')) {
-            const key = node.getAttribute('data-ftt-ed');
-            if (!key) continue;
-            fields[key] = (node.type === 'checkbox') ? !!node.checked : String(node.value == null ? '' : node.value);
-        }
-    } catch (e) { /* 忽略 */ }
-    return fields;
-}
-
-/** 状态页：按主体分组（V1 同款：每组标题带「➕ 添加」「🗑 删除分组」） */
-function statesBody() {
-    // v2.62.0（用户要求：核对状态大类的提示词等细节，确保对齐 V1）—— 状态页按 V1 `statesHtml()`（v1.206 23988~24027）对齐：
-    //   ① 分组键：`String(subject||'').trim() || '（无主体）'`（V1 对空白主体同样归到「（无主体）」）；
-    //   ② 主体排序：`subjects.sort((a,b)=>a.localeCompare(b))`（V1 原文；此前 V2 用列表顺序，组序与 V1 不一致）；
-    //   ③ 检索：`fieldHay(s, 字段范围).includes(q) || subject.includes(q)`（V1 语义：命中角色名也保留）；
-    //   ④ 额外条件：全部状态 / 仅已失效（V1 `pageExtraOptions('states')`）；
-    //   ⑤ 排序：默认 / 最新在前 / 最早在前 / 重要度 / 调用次数（V1 `pageSortItems`）；
-    //   ⑥ 文案：占位符与空态、无匹配文案逐字对齐 V1。
-    const q = String(ps.q.states || '');
-    const qs = q.trim().toLowerCase();
-    const f = listFilterOf('states');
-    const all = arrOf('currentStates');
-    const byQ = qs
-        ? all.filter((it) => fieldHayOf(it, f.field).includes(qs) || String((it && it.subject) || '').toLowerCase().includes(qs))
-        : all.slice();
-    const byE = byQ.filter((it) => { try { return extraMatchOf('states', it, f.extra); } catch (e) { return true; } });
-    const matched = listSortOf('states', byE);
-    const groups = new Map();
-    for (const e of matched) {
-        const k = String((e && e.subject) || '').trim() || '（无主体）';
-        if (!groups.has(k)) groups.set(k, []);
-        groups.get(k).push(e);
-    }
-    const subjects = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
-    const multi = ps.multi.states === true;
-    const sel = selOf('states');
-    const repBtn = all.length
-        ? '<button class="ftt-btn ftt-sm" data-ftt-action="stateRepair" title="匹配角色 → 机械清理与字段规范化 → 交 AI 整理">🔧 修复状态</button>'
-        : '';
-    const filterBar = listFilterBarHtml('states', {
-        placeholder: '搜索：角色 / 字段 / 值 / 关键词…',
-        extraOpts: [['all', '全部状态'], ['inactive', '仅已失效']],
-        countText: '共 ' + all.length + ' 条 · 命中 ' + matched.length,
-    });
-    const toolbar = '<div class="ftt-addbar ftt-toolbar">'
-        + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="states">➕ 新增</button>'
-        + '<button class="ftt-btn ftt-sm" data-ftt-action="multiToggle" data-kind="states" title="切换单选 / 多选">' + (multi ? '☑ 多选模式' : '☐ 单选模式') + '</button>'
-        + (multi ? ('<button class="ftt-btn ftt-sm" data-ftt-action="selectAll" data-kind="states">全选</button>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="selectNone" data-kind="states">清空选择</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="bulkDelete" data-kind="states"' + selectDepButtonParts('bulkDelete', sel.size).attr + '>' + selectDepButtonParts('bulkDelete', sel.size).text + '</button>') : '')
-        + repBtn + '</div>';
-    const ed = ps.editing && ps.editing.kind === 'states' ? editorHtml('states', ps.editing.id, ps.editing.preset) : '';
-    const head = '<div class="ftt-cat-stat ftt-chip">共 ' + all.length + ' 条状态（有效 ' + all.filter((x) => String((x && x.status) || 'active') !== 'inactive').length + '）· ' + groups.size + ' 个角色组</div>'
-        + filterBar + toolbar + ed;   // v3.47.2：状态分类同样不再显示 NSFW 留档统计行
-    // 文案与 V1 逐字一致（空库 / 有库但筛选无命中）
-    if (!all.length) return head + '<div class="ftt-empty">暂无状态记录。运行「AI 摘要」或点「添加状态」创建。</div>';
-    if (!matched.length) return head + '<div class="ftt-empty">无匹配结果（搜索/筛选：' + esc(String(q)) + '）</div>';
-    const blocks = subjects.map((subj) => {
-        const items = groups.get(subj).slice().sort((a, b) => (Number(b.floorEnd) || 0) - (Number(a.floorEnd) || 0));
-        const rows = items.map((e) => {
-            const id = String(e.id || '');
-            // v3.50.16：同「各大类清单」—— 点行即选，不再渲染复选框
-    const box = multi ? rowSelectMarkHtml(sel.has(id)) : '';
-            // v3.48.0（W19 应-35）：状态行同款（内容块 + 右侧按钮组，滑动 / 悬停展开）
-            return swipeRowHtml(box + '<span class="ftt-grow">' + stateRowMainHtml(e) + '</span>',
-                '<button class="ftt-btn ftt-sm" data-ftt-action="edit" data-kind="states" data-id="' + attr(id) + '" title="编辑这条状态记录">✏️</button>'
-                + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delete" data-kind="states" data-id="' + attr(id) + '" title="删除这条状态记录">🗑</button>',
-                { count: 2 });
-        }).join('\n');
-        return '<h4 class="ftt-h4-inline ftt-mt-6">👤 ' + esc(subj) + ' <span class="ftt-muted">(' + groups.get(subj).length + ')</span>'
-            + '<button class="ftt-btn ftt-sm" data-ftt-action="addStateFor" data-ftt-subject="' + attr(subj) + '">➕ 添加</button>'
-            + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="delStateGroup" data-ftt-subject="' + attr(subj) + '" title="删除该角色全部状态">🗑 删除分组</button></h4>'
-            + rows;
-    }).join('\n');
-    return head + blocks;
-}
-
-/** 设置分页：V1 的 **14 组子页**（子标签条 + 当前页控件；写回内核 cfg 并持久化） */
+// v3.52.0（W33 技-61）：状态页外提为 `ui/states-page.js`（角色组折叠在模块内实现）
+function statesBody() { return renderStatesPage(); }
 function settingsBody() {
     const cur = SETTINGS_TABS.some((t) => t.id === ps.settingsSub) ? ps.settingsSub : SETTINGS_TABS[0].id;
     const label = (SETTINGS_TABS.filter((t) => t.id === cur)[0] || {}).label || cur;
@@ -3115,27 +2830,27 @@ export async function panelAction(action, payload) {
         }
         else if (a === 'currencyRepair') {
             // v3.15.0（用户要求「货币增加修正按钮…」）：**先出计划、后应用** —— 本动作只打开预览面板（零副作用）
-            currencyRepairOpen = true;
+            setCurrencyRepairOpen(true);
             let n = 0;
-            try { const p0 = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); n = p0.counts.total; } catch (e) { n = 0; }
+            try { const p0 = currencyRepairPlan({ includeUntracked: currencyRepairState().includeUntracked }); n = p0.counts.total; } catch (e) { n = 0; }
             setNote(n ? ('货币修正：已生成计划（' + n + ' 项）—— 核对下方明细后点「✅ 应用修正」') : '货币修正：未发现需要修正的条目');
             result = Object.assign(result, { ok: true, action: a, planned: n });
         }
         else if (a === 'currencyRepairToggleUntracked') {
-            currencyRepairUntracked = !currencyRepairUntracked;
+            setCurrencyRepairUntracked(!currencyRepairState().includeUntracked);
             let p1 = null;
-            try { p1 = currencyRepairPlan({ includeUntracked: currencyRepairUntracked }); } catch (e) { p1 = null; }
-            setNote('货币修正：' + (currencyRepairUntracked ? '已勾选' : '已取消') + '「同时剔除未标定角色的货币」'
+            try { p1 = currencyRepairPlan({ includeUntracked: currencyRepairState().includeUntracked }); } catch (e) { p1 = null; }
+            setNote('货币修正：' + (currencyRepairState().includeUntracked ? '已勾选' : '已取消') + '「同时剔除未标定角色的货币」'
                 + (p1 ? ('（计划 ' + p1.counts.total + ' 项：剔除 ' + p1.counts.drop + '）') : '')
                 + (p1 && p1.untrackedAvailable === false ? ' —— 主角身份未确证，此项不可用（已按只报告处理）' : ''));
-            result = Object.assign(result, { ok: true, action: a, includeUntracked: currencyRepairUntracked, untrackedAvailable: p1 ? p1.untrackedAvailable : null });
+            result = Object.assign(result, { ok: true, action: a, includeUntracked: currencyRepairState().includeUntracked, untrackedAvailable: p1 ? p1.untrackedAvailable : null });
         }
-        else if (a === 'currencyRepairClose') { currencyRepairOpen = false; setNote('货币修正：已取消（数据未改动）'); }
+        else if (a === 'currencyRepairClose') { setCurrencyRepairOpen(false); setNote('货币修正：已取消（数据未改动）'); }
         else if (a === 'currencyRepairApply') {
             // 真正落库：机械剔除 / 合并 / 修正（删除与合并留墓碑）；确认由危险动作闸（`DANGER_ACTION_PROMPTS`）承担
-            const r = runCurrencyRepair({ includeUntracked: currencyRepairUntracked });
-            currencyRepairOpen = false;
-            currencyRepairUntracked = false;
+            const r = runCurrencyRepair({ includeUntracked: currencyRepairState().includeUntracked });
+            setCurrencyRepairOpen(false);
+            setCurrencyRepairUntracked(false);
             const parts = [r.summary];
             if (r.changed) parts.push('已留删除墓碑（跨端不会复活）');
             else parts.push('（无需改动）');
@@ -3634,7 +3349,7 @@ export function bindOverlay() {
                     return;
                 }
             } catch (err) { /* 折叠失败不影响其它交互 */ }
-            try { if (nodeTableClick(tg)) return; } catch (e) { /* 忽略：节点行操作失败不影响其它交互 */ }   // v3.51.7
+            try { if (nodeTableClick(tg) || stateGroupClick(tg)) return; } catch (e) { /* 忽略：行/组操作失败不影响其它交互 */ }   // v3.51.7 / v3.52.0
             const tabEl = tg && tg.closest ? tg.closest('[data-ftt-tab]') : null;
             if (tabEl) { void panelAction('tab', { tab: tabEl.getAttribute('data-ftt-tab') }); return; }
             // 动作元素解析：点在内层元素（如按钮里的 <span>/<b>）时回退到最近的 `[data-ftt-action]` 宿主

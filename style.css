@@ -106,10 +106,12 @@
    取值与替换前的硬编码**完全一致**（视觉零变化），此后整体调色只需改这里。 */
 #ftt-panel {
   --ftt-panel-max-w: 1280px;
-  --ftt-panel-bg: #1a1d24;        /* 面板底色 */
-  --ftt-panel-head-bg: #22262f;   /* 顶栏底色 */
-  --ftt-border: #3a4048;          /* 分隔线 / 弱边框 */
-  --ftt-border-strong: #4a4f5c;   /* 控件边框 */
+  /* v3.52.0（W33 `技-60`）：旧令牌名统一改为**新令牌的别名**（两套 `#ftt-panel` 变量块合并为一套语义：
+     新名 `--ftt-bg-*` / `--ftt-line*` / `--ftt-text-*` 为唯一真源；旧名只做向后兼容映射，不再重复字面量）。 */
+  --ftt-panel-bg: var(--ftt-bg-1);        /* 面板底色 */
+  --ftt-panel-head-bg: var(--ftt-bg-2);   /* 顶栏底色 */
+  --ftt-border: var(--ftt-line);          /* 分隔线 / 弱边框 */
+  --ftt-border-strong: var(--ftt-line-2); /* 控件边框 */
   /* v3.24.0：此处原为 `--ftt-danger: var(--ftt-danger)` / `--ftt-success: var(--ftt-success)`
      —— **自引用变量是死声明**（CSS 变量自引用解析为无效值），危险/成功两色实际上一直由下方
      「视觉体系 v2」的 `#ftt-panel` 令牌块提供。删掉死声明，避免误以为这里能改色。 */
@@ -201,6 +203,15 @@
   --ftt-line: #3a4048; --ftt-line-2: #4a4f5c;
   --ftt-text-1: #e8e4df; --ftt-text-2: #b8b3ac; --ftt-text-3: #8a857d;
   --ftt-accent: #e0b06a; --ftt-accent-2: #8a6534; --ftt-danger: #b05555; --ftt-ok: #55a05f;
+  /* v3.52.0（W33 `技-60`）：此前被引用但**从未定义**的令牌 —— 全部补齐（值取各处的 fallback 字面量，视觉零变化） */
+  --ftt-text: var(--ftt-text-1);
+  --ftt-fg: var(--ftt-text-1); --ftt-fg-2: var(--ftt-text-2); --ftt-fg-3: var(--ftt-text-3);
+  --ftt-err: var(--ftt-danger);
+  /* 收支方向 / 预测 / 徽标色（货币三子页与状态徽标共用；v3.51.x 起散落的硬编码色值收敛到这里） */
+  --ftt-in: var(--ftt-in); --ftt-out: var(--ftt-out);
+  --ftt-warn: var(--ftt-warn); --ftt-warn-line: var(--ftt-warn-line);
+  --ftt-ok-line: var(--ftt-ok-line);
+  --ftt-info-line: var(--ftt-info-line); --ftt-info-soft: var(--ftt-info-soft);
   --ftt-radius: 8px; --ftt-radius-sm: 6px; --ftt-toolbar-gap: 8px;
 }
 /* 卡片：设置分区 / 内容卡片 统一背景、边框、圆角、内边距 */
@@ -878,12 +889,12 @@ body.ftt-no-effects #toast-container *::before {
   stroke-width: 1;
   transition: fill .12s ease, stroke .12s ease;
 }
-#ftt-panel .ftt-map-svg-node:hover .ftt-map-card { fill: var(--ftt-bg-4, #262c35); stroke: var(--ftt-accent, #6aa9ff); }
+#ftt-panel .ftt-map-svg-node:hover .ftt-map-card { fill: var(--ftt-bg-4, #262c35); stroke: var(--ftt-accent, var(--ftt-info-line)); }
 /* 层级色条：场景（蓝）/ 房间（中性）/ 陈设（青） */
 #ftt-panel .ftt-map-accent { fill: var(--ftt-fg-3, #6b7480); }
-#ftt-panel .ftt-map-svg-node.ftt-lv-scene .ftt-map-accent { fill: var(--ftt-accent, #6aa9ff); }
+#ftt-panel .ftt-map-svg-node.ftt-lv-scene .ftt-map-accent { fill: var(--ftt-accent, var(--ftt-info-line)); }
 #ftt-panel .ftt-map-svg-node.ftt-lv-fixture .ftt-map-accent { fill: var(--ftt-ok, #4caf7d); }
-#ftt-panel .ftt-map-svg-node.ftt-lv-scene .ftt-map-card { stroke: var(--ftt-accent, #6aa9ff); stroke-opacity: .55; }
+#ftt-panel .ftt-map-svg-node.ftt-lv-scene .ftt-map-card { stroke: var(--ftt-accent, var(--ftt-info-line)); stroke-opacity: .55; }
 /* 边：贝塞尔 + 箭头 */
 #ftt-panel .ftt-map-svg-edge { stroke-width: 2; stroke-linecap: round; }
 #ftt-panel .ftt-map-svg-edge.ftt-walked { stroke: var(--ftt-ok, #4caf7d); }
@@ -917,10 +928,10 @@ body.ftt-no-effects #toast-container *::before {
    ============================================================ */
 #ftt-panel [data-ftt-selrow] { cursor: pointer; }
 #ftt-panel [data-ftt-selrow]:hover { background: var(--ftt-bg-3, #20242b); }
-#ftt-panel [data-ftt-selrow]:focus-visible { outline: 2px solid var(--ftt-accent, #6aa9ff); outline-offset: -2px; }
+#ftt-panel [data-ftt-selrow]:focus-visible { outline: 2px solid var(--ftt-accent, var(--ftt-info-line)); outline-offset: -2px; }
 #ftt-panel [data-ftt-selrow].ftt-sel-on {
   background: var(--ftt-bg-4, #262c35);
-  box-shadow: inset 3px 0 0 var(--ftt-accent, #6aa9ff);
+  box-shadow: inset 3px 0 0 var(--ftt-accent, var(--ftt-info-line));
 }
 #ftt-panel .ftt-selmark {
   flex: 0 0 auto;
@@ -931,7 +942,7 @@ body.ftt-no-effects #toast-container *::before {
   line-height: 1.6;
   user-select: none;
 }
-#ftt-panel [data-ftt-selrow].ftt-sel-on .ftt-selmark { color: var(--ftt-accent, #6aa9ff); }
+#ftt-panel [data-ftt-selrow].ftt-sel-on .ftt-selmark { color: var(--ftt-accent, var(--ftt-info-line)); }
 
 
 /* ============================================================
@@ -969,8 +980,8 @@ body.ftt-no-effects #toast-container *::before {
 }
 #ftt-panel .ftt-money-k { font-size: 11px; color: var(--ftt-text-2, #9aa4b2); }
 #ftt-panel .ftt-money-stat b { font-size: 16px; }
-#ftt-panel .ftt-money-in { color: #57c98a; }
-#ftt-panel .ftt-money-out { color: #e8705f; }
+#ftt-panel .ftt-money-in { color: var(--ftt-in); }
+#ftt-panel .ftt-money-out { color: var(--ftt-out); }
 #ftt-panel .ftt-money-toolbar { gap: 8px; margin: 2px 0 6px; }
 #ftt-panel .ftt-money-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 #ftt-panel .ftt-money-hint { font-size: 12px; line-height: 1.6; color: var(--ftt-text-2, #9aa4b2); margin: 2px 0 10px; }
@@ -982,8 +993,8 @@ body.ftt-no-effects #toast-container *::before {
   background: var(--ftt-bg-2, #1b1f26); border: 1px solid var(--ftt-line, #2a3038);
   border-left: 3px solid transparent;
 }
-#ftt-panel .ftt-flow-in { border-left-color: #57c98a; }
-#ftt-panel .ftt-flow-out { border-left-color: #e8705f; }
+#ftt-panel .ftt-flow-in { border-left-color: var(--ftt-in); }
+#ftt-panel .ftt-flow-out { border-left-color: var(--ftt-out); }
 #ftt-panel .ftt-flow-date {
   flex: 0 0 auto; min-width: 62px; padding-top: 2px;
   font-size: 12px; color: var(--ftt-text-2, #9aa4b2);
@@ -995,12 +1006,12 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-flow-cur { font-weight: 600; }
 #ftt-panel .ftt-flow-note { font-size: 12px; color: var(--ftt-text-2, #9aa4b2); margin-top: 2px; word-break: break-word; }
 #ftt-panel .ftt-flow-amt { flex: 0 0 auto; align-self: center; font-size: 15px; font-weight: 700; white-space: nowrap; }
-#ftt-panel .ftt-flow-in .ftt-flow-amt { color: #57c98a; }
-#ftt-panel .ftt-flow-out .ftt-flow-amt { color: #e8705f; }
+#ftt-panel .ftt-flow-in .ftt-flow-amt { color: var(--ftt-in); }
+#ftt-panel .ftt-flow-out .ftt-flow-amt { color: var(--ftt-out); }
 #ftt-panel .ftt-flow-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
 #ftt-panel .ftt-chip-src { font-size: 11px; }
-#ftt-panel .ftt-chip-ok { border-color: #3f7d5c; color: #7fd6a5; }
-#ftt-panel .ftt-chip-warn { border-color: #8a6b2f; color: #e2b455; }
+#ftt-panel .ftt-chip-ok { border-color: var(--ftt-ok-line); color: var(--ftt-in); }
+#ftt-panel .ftt-chip-warn { border-color: var(--ftt-warn-line); color: var(--ftt-warn); }
 
 #ftt-panel .ftt-deal-card {
   margin: 10px 0; padding: 10px 12px; border-radius: 12px;
@@ -1025,7 +1036,7 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-deal-empty-line { font-size: 12px; color: var(--ftt-text-2, #9aa4b2); }
 #ftt-panel .ftt-forecast {
   margin-top: 2px; padding: 6px 8px; border-radius: 8px;
-  background: rgba(106, 169, 255, .08); border: 1px dashed rgba(106, 169, 255, .45);
+  background: var(--ftt-info-soft); border: 1px dashed rgba(106, 169, 255, .45);
 }
 #ftt-panel .ftt-forecast-k { font-size: 11px; color: #8fbaff; margin-bottom: 3px; }
 #ftt-panel .ftt-forecast-line { font-size: 13px; }
@@ -1070,7 +1081,7 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-editor .ftt-field input:focus,
 #ftt-panel .ftt-editor .ftt-field select:focus,
 #ftt-panel .ftt-editor .ftt-field textarea:focus {
-  outline: none; border-color: #6aa9ff; box-shadow: 0 0 0 2px rgba(106, 169, 255, .18);
+  outline: none; border-color: var(--ftt-info-line); box-shadow: 0 0 0 2px rgba(106, 169, 255, .18);
 }
 #ftt-panel .ftt-editor .ftt-field textarea { min-height: 76px; resize: vertical; }
 #ftt-panel .ftt-editor .ftt-field input[type="checkbox"] { width: 18px; height: 18px; margin-top: 4px; }
@@ -1107,7 +1118,7 @@ body.ftt-no-effects #toast-container *::before {
   background: var(--ftt-bg-1, #14181e); color: var(--ftt-text, #e6e9ee);
   border: 1px solid var(--ftt-line, #2a3038); min-width: 0;
 }
-#ftt-panel .ftt-node-row input:focus { outline: none; border-color: #6aa9ff; box-shadow: 0 0 0 2px rgba(106, 169, 255, .16); }
+#ftt-panel .ftt-node-row input:focus { outline: none; border-color: var(--ftt-info-line); box-shadow: 0 0 0 2px rgba(106, 169, 255, .16); }
 #ftt-panel .ftt-node-del { padding: 2px 8px; line-height: 1.2; }
 #ftt-panel .ftt-node-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
 @media (max-width: 560px) {
@@ -1118,3 +1129,103 @@ body.ftt-no-effects #toast-container *::before {
 
 /* v3.51.10（内存核查）：收支记录「只渲染最近 N 笔」的页脚提示 */
 #ftt-panel .ftt-money-more { font-size: 12px; color: var(--ftt-text-2, #9aa4b2); padding: 6px 4px; }
+
+/* ============================================================
+   v3.52.0（W33 界面美化提升，`docs/D55`）
+   ① 子标签统一为「分段胶囊」+ 横向滚动边缘渐隐（应-49）
+   ② 列表行三段式卡片与场景树层级（应-50）
+   ③ 总览仪表盘栅格（应-48）
+   ④ 公共预览卡片（应-51）· 编辑器分组与必填星标（应-52）
+   ============================================================ */
+/* ① 子标签：分段胶囊（5 处统一；DOM 契约仍为 .ftt-subtab） */
+#ftt-panel .ftt-subtabs, #ftt-panel .ftt-subtabs-settings {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px; margin: 4px 0 10px;
+  background: var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: 999px;
+}
+#ftt-panel .ftt-subtab {
+  display: inline-block; padding: 5px 12px; border-radius: 999px;
+  color: var(--ftt-text-2); font-size: 12px; text-decoration: none;
+  border: 1px solid transparent; transition: background-color .15s ease, color .15s ease;
+}
+#ftt-panel .ftt-subtab:hover { color: var(--ftt-text-1); background: var(--ftt-bg-3); }
+#ftt-panel .ftt-subtab.ftt-on { color: var(--ftt-bg-1); background: var(--ftt-accent); font-weight: 600; }
+#ftt-panel .ftt-subtabs-grouped { flex-wrap: wrap; }
+#ftt-panel .ftt-subtab-group {
+  flex: 0 0 100%; font-size: 11px; letter-spacing: .04em; color: var(--ftt-text-3);
+  margin: 6px 2px 0; padding-left: 2px;
+}
+#ftt-panel .ftt-subtabs-grouped { border-radius: var(--ftt-radius); }
+/* 窄屏：横滚 + 两端渐隐（提示还有更多子页） */
+@media (max-width: 700px) {
+  #ftt-panel .ftt-subtabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%); }
+  #ftt-panel .ftt-subtab { white-space: nowrap; flex: 0 0 auto; }
+}
+
+/* ② 列表行三段式卡片：首行标题/徽标 · 中段正文 · 底栏弱化元信息 */
+#ftt-panel .ftt-item {
+  border-radius: var(--ftt-radius); border: 1px solid var(--ftt-line);
+  background: var(--ftt-bg-2); padding: 8px 10px; margin: 6px 0;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+#ftt-panel .ftt-item:hover { border-color: var(--ftt-line-2); }
+#ftt-panel .ftt-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+#ftt-panel .ftt-item .ftt-sub { line-height: 1.65; word-break: break-word; }
+#ftt-panel .ftt-meta { font-size: 11px; color: var(--ftt-text-3); margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--ftt-line); }
+#ftt-panel .ftt-badge { border-radius: 999px; padding: 1px 8px; font-size: 11px; border: 1px solid var(--ftt-line); color: var(--ftt-text-2); }
+#ftt-panel .ftt-badge--fact { border-color: var(--ftt-accent-2); color: var(--ftt-accent); }
+
+/* 场景树：层级靠类（不再内联样式） */
+#ftt-panel .ftt-scene-row { display: flex; align-items: flex-start; gap: 6px; }
+#ftt-panel .ftt-scene-main { display: flex; align-items: flex-start; gap: 4px; flex: 1 1 auto; min-width: 0; }
+#ftt-panel .ftt-scene-body { flex: 1; min-width: 0; }
+#ftt-panel .ftt-scene-badge { padding: 0 6px 4px; }
+#ftt-panel .ftt-scene-d0 { margin-left: 0; } #ftt-panel .ftt-scene-d1 { margin-left: 18px; }
+#ftt-panel .ftt-scene-d2 { margin-left: 36px; } #ftt-panel .ftt-scene-d3 { margin-left: 54px; }
+#ftt-panel .ftt-scene-d4 { margin-left: 72px; } #ftt-panel .ftt-scene-d5 { margin-left: 90px; }
+#ftt-panel .ftt-scene-d6 { margin-left: 108px; } #ftt-panel .ftt-scene-d7 { margin-left: 126px; }
+#ftt-panel .ftt-scene-d8 { margin-left: 144px; }
+#ftt-panel .ftt-scene-hit-row { background: var(--ftt-warn-soft, rgba(240,192,96,.15)); border-color: var(--ftt-accent-2); }
+#ftt-panel .ftt-scene-name { font-weight: 600; }
+#ftt-panel .ftt-scene-cur-leaf .ftt-scene-name, #ftt-panel .ftt-scene-name.ftt-scene-cur-leaf { color: var(--ftt-accent); }
+
+/* 状态页角色组：折叠头 + 组卡 */
+#ftt-panel .ftt-stategroup { border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius); background: var(--ftt-bg-1); padding: 6px 8px; margin: 8px 0; }
+#ftt-panel .ftt-stategroup-head { display: flex; justify-content: flex-end; }
+#ftt-panel .ftt-stategroup-head .ftt-caret { background: none; border: 0; color: var(--ftt-text-2); cursor: pointer; padding: 0 4px; }
+#ftt-panel .ftt-stategroup-body { margin-top: 2px; }
+
+/* ③ 总览仪表盘：双栏状态卡 + 分区工具栏 + 类目统计网格 */
+#ftt-panel .ftt-dash-top { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; margin: 6px 0 10px; }
+#ftt-panel .ftt-dash-card { background: var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius); padding: 10px 12px; }
+#ftt-panel .ftt-dash-card-title { color: var(--ftt-accent); font-weight: 600; font-size: 12px; margin-bottom: 6px; }
+#ftt-panel .ftt-dash-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+#ftt-panel .ftt-dash-zone { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border: 1px dashed var(--ftt-line); border-radius: var(--ftt-radius); }
+#ftt-panel .ftt-dash-zone-k { font-size: 11px; color: var(--ftt-text-3); margin-right: 2px; }
+#ftt-panel .ftt-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin: 6px 0; }
+@media (max-width: 700px) { #ftt-panel .ftt-dash-top { grid-template-columns: 1fr; } }
+
+/* ④ 公共预览卡片（AI 方案 / 修正预览） */
+#ftt-panel .ftt-preview-card { border: 1px solid var(--ftt-line-2); border-radius: var(--ftt-radius); background: var(--ftt-bg-2); padding: 10px 12px; margin: 8px 0; }
+#ftt-panel .ftt-preview-title { font-weight: 600; color: var(--ftt-accent); font-size: 13px; margin-bottom: 6px; }
+#ftt-panel .ftt-preview-summary { font-size: 12px; color: var(--ftt-text-2); margin-bottom: 8px; }
+#ftt-panel .ftt-preview-sec { margin-top: 8px; }
+#ftt-panel .ftt-preview-sec-k { font-size: 11px; color: var(--ftt-text-3); margin-bottom: 4px; letter-spacing: .02em; }
+#ftt-panel .ftt-preview-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 4px 6px; border-bottom: 1px dashed var(--ftt-line); font-size: 12px; }
+#ftt-panel .ftt-preview-op { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--ftt-line); color: var(--ftt-text-2); }
+#ftt-panel .ftt-preview-op--add { border-color: var(--ftt-ok-line); color: var(--ftt-in); }
+#ftt-panel .ftt-preview-op--del { border-color: var(--ftt-warn-line); color: var(--ftt-warn); }
+#ftt-panel .ftt-preview-op--mod { border-color: var(--ftt-info-line); color: var(--ftt-info-line); }
+#ftt-panel .ftt-preview-before { color: var(--ftt-text-3); text-decoration: line-through; }
+#ftt-panel .ftt-preview-arrow { color: var(--ftt-text-3); margin: 0 4px; }
+#ftt-panel .ftt-preview-after { color: var(--ftt-text-1); }
+
+/* ⑤ 编辑器：分组折叠 + 必填星标 */
+#ftt-panel .ftt-edgroup { border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius); margin: 6px 0; background: var(--ftt-bg-1); }
+#ftt-panel .ftt-edgroup-head { width: 100%; text-align: left; background: none; border: 0; color: var(--ftt-text-1); padding: 8px 10px; font-size: 12px; cursor: pointer; }
+#ftt-panel .ftt-edgroup-head:hover { color: var(--ftt-accent); }
+#ftt-panel .ftt-edgroup-body { padding: 0 10px 6px; }
+#ftt-panel .ftt-req { color: var(--ftt-out); margin-left: 2px; font-weight: 700; }
+#ftt-panel .ftt-odds-head { grid-template-columns: 2fr 0.8fr auto !important; }

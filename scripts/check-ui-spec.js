@@ -226,6 +226,24 @@ const hit = (id, file, line, msg) => hits.push({ id, file, line, msg });
     if (total < allowTotal) hit('C12', 'ui/rel-table.js', 0, `真表格已消失但额度仍登记在册（应把 ${allowTotal} 收紧为 0）`);
 }
 
+// ---------- C13（W33 `技-60`）：CSS 设计令牌**未定义即报** ----------
+// 口径：`style.css` 内 `var(--ftt-*)` 引用的令牌必须在同文件 `--ftt-*:` 定义过（或在运行态由脚本下发）；
+//   否则实际全是 fallback 字面量 —— 调色会「改了没效果」，且新增令牌无人把关。
+//   运行态注入的白名单（由 JS 在元素上 setProperty，天然不可能在 CSS 里声明）：
+const RUNTIME_TOKENS = ['--ftt-range-def', '--ftt-swipe-w', '--ftt-swipe-open'];   // 运行时注入（滚动条默认刻度 / 滑动位移）
+{
+    const css = read('style.css');
+    const used = new Set();
+    const reUse = /var\((--ftt-[a-z0-9-]+)/g;
+    let m;
+    while ((m = reUse.exec(css))) used.add(m[1]);
+    const defined = new Set();
+    const reDef = /(--ftt-[a-z0-9-]+)\s*:/g;
+    while ((m = reDef.exec(css))) defined.add(m[1]);
+    const missing = [...used].filter((t) => !defined.has(t) && RUNTIME_TOKENS.indexOf(t) < 0).sort();
+    if (missing.length) hit('C13', 'style.css', 0, `引用了未定义的设计令牌（必须先定义再使用）：${missing.join('、')}`);
+}
+
 // ---------- 输出 ----------
 const byId = {};
 for (const h of hits) byId[h.id] = (byId[h.id] || 0) + 1;

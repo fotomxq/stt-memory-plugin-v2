@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.51.11",
-  "updatedAt": "2026-10-26",
-  "generatedAt": "2026-10-26",
+  "version": "3.52.0",
+  "updatedAt": "2026-10-27",
+  "generatedAt": "2026-10-27",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.0",
+      "date": "2026-10-27",
+      "title": "W33 界面设计梳理与美化提升（令牌收敛 · 面板外提 · 仪表盘 · 子标签统一 · 卡片化 · 预览卡 · 长表单分组）",
+      "points": [
+        "设计稿：docs/D55（10 块 + 实施规格 8 条）｜ 台账 docs/D17 U274–U281 ｜ 批次档 docs/history/P10c153-W33界面美化提升…"
+      ]
+    },
     {
       "version": "3.51.11",
       "date": "2026-10-26",

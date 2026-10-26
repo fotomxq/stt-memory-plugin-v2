@@ -226,6 +226,25 @@ A('L5 委托属性完整：markup 的每个 `data-ftt-*` 属性（除 action/cfg
         'node-row': '节点行（`data-ftt-node-row="<行号>"`；行内三个 `data-ftt-ed` 输入由 `collectEditorFields` 收集）',
         'node-del': '节点行删除按钮（`data-ftt-node-del="<行号>"`；纯 DOM 行操作）',
         'node-add': '节点「＋加一行」按钮（`data-ftt-node-add="1"`；纯 DOM 行操作）',
+        // v3.52.0（W33 应-52）：编辑器长表单分组 / 目标可能性结构化行（结构 / 测试锚点，不参与动作分发）
+        'edgroup': '编辑器分组容器（`data-ftt-edgroup="<组 id>"`；折叠为纯 DOM）',
+        'edgroup-toggle': '分组折叠按钮（`data-ftt-edgroup-toggle="<组 id>"`）',
+        'edgroup-body': '分组正文容器（`data-ftt-edgroup-body="<组 id>"`；折叠切 display）',
+        'odds-table': '目标可能性结构化容器（`data-ftt-odds-table="goalOdds"`）',
+        'odds-row': '目标可能性行（`data-ftt-odds-row="<行号>"`；行内 `data-ftt-ed` 由 collectEditorFields 收集）',
+        'odds-add': '目标可能性「＋加一行」（`data-ftt-odds-add="1"`；纯 DOM 行操作）',
+        'odds-del': '目标可能性行删除（`data-ftt-odds-del="<行号>"`）',
+        // v3.52.0（W33 应-48/应-49/应-50）：总览仪表盘 / 类目网格 / 状态组容器 —— 结构 / 测试锚点
+        'dash': '总览仪表盘容器（`data-ftt-dash`，双栏栅格）',
+        'dash-clock': '仪表盘「剧情时钟」卡（`data-ftt-dash-clock`）',
+        'dash-stats': '仪表盘「记忆类目」卡（`data-ftt-dash-stats`）',
+        'dash-tools': '总览工具行（`data-ftt-dash-tools`；按 D23 B/C/D/E 分区）',
+        'cat-grid': '类目统计网格（`data-ftt-cat-grid`）',
+        'cat': '类目统计项（`data-ftt-cat="<kind>"`）',
+        'cat-hint': '类目「可下钻」提示行（`data-ftt-cat-hint`）',
+        'stategroup': '状态页角色组容器（`data-ftt-stategroup`；折叠为纯 DOM）',
+        'stategroup-body': '角色组正文容器（`data-ftt-stategroup-body="<主体>"`）',
+        'stategroup-toggle': '角色组折叠三角（`data-ftt-stategroup-toggle="<主体>"`）',
         // v3.9.0（用户要求：各分类均有 NSFW 标签提示）：**样式 / 测试锚点**，不参与动作分发
         //   v3.47.2：分类级汇总行（原 `nsfw-legend`）已按用户要求移除 → 白名单条目同步删除（避免留"已不存在的标记"）
         'nsfw-level': 'NSFW 等级留档标签（`strong` / `weak`；配色由 CSS 按该属性选择，测试锚点）',
