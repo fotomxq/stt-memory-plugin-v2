@@ -1030,6 +1030,7 @@ import { apiPageHtml, dimPresetRowsHtml, parallelChannelFieldHtml } from './api-
 import { floorTrimStatus, floorTrimPrecheck, FLOOR_TRIM_PRESETS } from '../host/floor-trim.js';
 // v3.46.7（`docs/D22` §4.4 W15 `应-8`）：数据管理页的「🕳 最近删除 + ♻ 恢复」区块（实现全在 `ui/recycle-bin.js`）
 import { recycleBinSectionHtml } from './recycle-bin.js';
+import { groupedSubTabsHtml } from './subtabs.js';   // v3.52.0（W33 应-49）：子标签分段胶囊 + 设定四分组
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -1823,7 +1824,8 @@ export function settingsSubTabsHtml(current) {
     // V1 v1.206 L25988 逐字结构：`<a href="javascript:void(0)" class="ftt-subtab[ ftt-on]" data-ftt-subtab="<id>">`
     //   —— 修复（v2.34.0）：V2 此前用 `<button data-ftt-settings>`，**属性名与 V1 不一致**，且因面板点击分发
     //   「无 data-ftt-action 即 return」而**点击无效**。现按 V1 同款标记 + 分发前置处理修复。
-    return SETTINGS_TABS.map((t) => '<a href="javascript:void(0)" class="ftt-subtab' + (t.id === cur ? ' ftt-on' : '') + '" data-ftt-subtab="' + esc(t.id) + '">' + esc(t.label) + '</a>').join('');
+    // v3.52.0（W33 应-49）：四分组聚类（DOM 契约不变：仍是 ftt-subtab + data-ftt-subtab）
+    return groupedSubTabsHtml(SETTINGS_TABS, cur);
 }
 
 /** 设置页诊断（页/控件统计；测试与排障用） */

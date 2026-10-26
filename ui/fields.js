@@ -123,7 +123,7 @@ function kindFields(kind) {
             F('causalLine', '因果线(源起→中间推力→指向的果)', 'textarea'),
             F('characters', '涉及角色姓名(逗号分隔，无则留空)', 'text'),
             F('location', '发生地点', 'text'),
-            F('goalOdds', '演化目标可能性 JSON，如 [{"目标":"…","可能性":60}]（或按行「目标…/可能性 NN」）', 'textarea'),
+            F('goalOdds', '演化目标与可能性', 'oddsTable'),   // v3.52.0（W33 应-52）：结构化行控件（目标 / 可能性）
             F('importance', '重要度(0-1)', 'number'),
             F('tags', '标签(逗号分隔，含语境词与内容关键词)', 'text'),
             F('relLinks', '相关角色（相关 ≠ 知情：角色一律不知情）', 'relTable'),   // v1.166
@@ -304,6 +304,25 @@ function deconstructEntry(kind, flat) {
         delete raw.forecastDelta; delete raw.forecastDirection; delete raw.forecastNote; delete raw.forecastSource;
         if (raw.forecastDelta !== undefined) delete raw.forecastDelta;
     } else if (kind === 'parallels') {
+        // v3.52.0（W33 应-52）：结构化「目标 / 可能性」行优先；旧 `goalOdds`（JSON / 分隔符文本）仅兼容
+        const oddsKeys = Object.keys(raw).filter((k) => /^odds-\d+-(target|likelihood)$/.test(k));
+        if (oddsKeys.length) {
+            const rowsM = new Map();
+            for (const k of oddsKeys) {
+                const m = /^odds-(\d+)-(target|likelihood)$/.exec(k);
+                const i = Number(m[1]);
+                if (!rowsM.has(i)) rowsM.set(i, {});
+                rowsM.get(i)[m[2]] = raw[k];
+                delete raw[k];
+            }
+            const odds = [...rowsM.entries()].sort((a, b) => a[0] - b[0]).map(([, r]) => {
+                const target = String(r.target == null ? '' : r.target).trim();
+                if (!target) return null;
+                const n = Number(r.likelihood);
+                return { target: target, likelihood: Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0 };
+            }).filter(Boolean);
+            raw.goalOdds = odds.slice(0, 8);
+        }
         if (raw.characters) raw.characters = splitListText(raw.characters);
         if (raw.tags) raw.tags = splitListText(raw.tags);
         if (raw.goalOdds) {
@@ -323,6 +342,32 @@ function deconstructEntry(kind, flat) {
         }
     }
     return raw;
+}
+
+/** 目标可能性行数上限 */
+const ODDS_ROWS = 8;
+/**
+ * v3.52.0（W33 `应-52` / `docs/D55` §3.6）：平行事件「演化目标与可能性」的**结构化行控件**
+ *   （替换「分隔符 / JSON 文本」手填）。键名 `odds-<i>-target|likelihood`；空目标行忽略。
+ */
+export function oddsTableHtml(f, val) {
+    const rows = Array.isArray(val) ? val.slice(0, ODDS_ROWS) : [];
+    const shown = Math.max(rows.length, 1);
+    const cells = (i, n) => {
+        const x = n || {};
+        return '<div class="ftt-node-row ftt-odds-row" data-ftt-odds-row="' + i + '">'
+            + '<input type="text" data-ftt-ed="odds-' + i + '-target" value="' + attr2(x.target) + '" placeholder="目标（如：与教团达成停战）" title="目标">'
+            + '<input type="number" min="0" max="100" data-ftt-ed="odds-' + i + '-likelihood" value="' + attr2(Number(x.likelihood) || 0) + '" placeholder="%" title="可能性（0-100）">'
+            + '<button type="button" class="ftt-btn ftt-sm ftt-node-del" data-ftt-odds-del="' + i + '" title="删除这一行">✕</button>'
+            + '</div>';
+    };
+    let html = '<div class="ftt-node-table ftt-odds-table" data-ftt-odds-table="' + attr2(f && f.key) + '">'
+        + '<div class="ftt-node-head ftt-odds-head"><span>目标</span><span>可能性(%)</span><span></span></div>';
+    for (let i = 0; i < shown; i++) html += cells(i, rows[i]);
+    for (let i = shown; i < Math.min(ODDS_ROWS, shown + 1); i++) html += cells(i, null);
+    html += '<div class="ftt-node-foot"><button type="button" class="ftt-btn ftt-sm" data-ftt-odds-add="1">＋ 加一行</button>'
+        + '<span class="ftt-hint">目标 = 可能演化的去向；可能性 0-100（只影响展示，不落库为事实）</span></div></div>';
+    return html;
 }
 
 /** 节点行数上限（编辑态展示上限；超出只读） */

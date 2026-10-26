@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.51.11';   // v3.51.11（用户指定）：三页同步核对 —— 编辑流水原位替换（不再被当重复吞掉）· 跨端合并/采纳后摘要回填账本
+export const VERSION = '3.52.0';   // v3.52.0（用户指定）：W33 界面美化提升 —— 令牌收敛 · 面板外提 · 总览仪表盘 · 子标签统一 · 列表卡片 · 预览卡片 · 长表单分组
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

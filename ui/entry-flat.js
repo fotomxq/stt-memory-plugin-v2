@@ -30,7 +30,11 @@ export function flatFor(kind, item) {
     if (kind === 'plotSegments') {
         out.linesText = (Array.isArray(it.lines) ? it.lines : []).map((l) => String(l && l.label || '') + ': ' + String(l && l.text || '')).join('\n');
     }
-    if (kind === 'parallels' && Array.isArray(it.goalOdds)) out.goalOdds = JSON.stringify(it.goalOdds);
+    if (kind === 'parallels') {
+        // v3.52.0（W33 应-52）：结构化行控件回填（目标 / 可能性）
+        out.odds = (Array.isArray(it.goalOdds) ? it.goalOdds : []).map((o) => ({ target: String((o && o.target) || ''), likelihood: Number(o && o.likelihood) || 0 }));
+        if (Array.isArray(it.goalOdds)) out.goalOdds = JSON.stringify(it.goalOdds);
+    }
     /**
      * v3.51.5（W32 `应-47` 续 · 用户报告「长期收支编辑信息没回填」）：**三段 `outlook` → 扁平字段**。
      *   · 已发生节点按「日期|金额|说明」逐行展开（与 `ui/fields.js#deconstructEntry` 的解析互逆）；

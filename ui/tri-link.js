@@ -72,7 +72,7 @@ export function triLinkPanelHtml() {
     const rejected = (p.rejected || []).length
         ? ('<div class="ftt-muted">被拒 ' + p.rejected.length + ' 条（' + esc(Object.keys(p.reasons || {}).map((k) => k + '×' + p.reasons[k]).join(' · ')) + '）</div>')
         : '';
-    return '<div class="ftt-editor" data-ftt-tri-link>'
+    return '<div class="ftt-editor ftt-preview-card" data-ftt-tri-link>'
         + '<div class="ftt-editor-title">🔗 联动构建方案 · 共 ' + (p.accepted || []).length + ' 条待确认</div>'
         + '<div class="ftt-muted ftt-w-full">本次只做三件事：<b>建关联 / 追加留痕 / 推进受限字段</b> —— 不新增、不删除、不改正文；'
         + '打包 ' + (p.pack && p.pack.counts ? (['rumors', 'plans', 'suspense'].map((d) => TRI_DIM_LABEL[d] + ' ' + (p.pack.counts[d] || 0)).join(' · ')) : '')

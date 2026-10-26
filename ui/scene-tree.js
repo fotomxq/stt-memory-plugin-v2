@@ -128,24 +128,25 @@ export function scenesTreeHtml(opts) {
         for (const k of Object.keys(nd.children)) calcPath(nd.children[k], cur);
     })(root, '');
     const curLocNote = locRaw
-        ? ('<div class="ftt-muted" style="margin:6px 0 2px">📍 当前：' + esc(locRaw) + (hitLeafKeys.size ? '（亮色分支 = 当前位置）' : '（未匹配到场景路径）') + '</div>')
+        ? ('<div class="ftt-muted ftt-mt-2">📍 当前：' + esc(locRaw) + (hitLeafKeys.size ? '（亮色分支 = 当前位置）' : '（未匹配到场景路径）') + '</div>')
         : '';
-    const hint = '<div class="ftt-muted" style="margin:6px 0 2px">场景树按全部路径聚合：灰色 = 中间层级（仅展示）；▾ 折叠/展开；亮色 = 当前位置。</div>';
+    const hint = '<div class="ftt-muted ftt-mt-2">场景树按全部路径聚合：灰色 = 中间层级（仅展示）；▾ 折叠/展开；亮色 = 当前位置。</div>';
     const renderNode = (nd, depth) => {
         const kids = Object.keys(nd.children).sort((a, b) => a.localeCompare(b));
         const hasKids = kids.length > 0;
         const nodePath = nd._path || '';
         const hit = nodePath && (hitLeafKeys.has(nodePath) || hitAncestorKeys.has(nodePath));
         const isCurrentLeaf = !!nd.isLeaf && !!nd.scene && hitLeafKeys.has(nodePath);
-        const indent = depth * 18;
-        const styleBg = hit ? 'background:rgba(240,192,96,0.15);border:1px solid rgba(240,192,96,0.45);border-radius:6px;' : '';
-        const leafColor = isCurrentLeaf ? '#f0c060' : '';
+        // v3.52.0（W33 应-50）：层级缩进 / 命中高亮 / 当前叶 由**类**表达（不再拼内联样式）
+        const dCls = 'ftt-scene-d' + Math.min(8, Math.max(0, Number(depth) || 0));
+        const styleBg = hit ? ' ftt-scene-hit-row' : '';
+        const leafCls = isCurrentLeaf ? ' ftt-scene-cur-leaf' : '';
         const badge = isCurrentLeaf ? '<span class="ftt-badge ftt-badge--fact">📍 当前</span>' : (hit && nd.scene ? '<span class="ftt-scene-hit">◈</span>' : '');
         let head = '';
         if (nd.name) {
             const scene = nd.scene;
             const titleHtml = scene
-                ? ('<b style="color:' + (leafColor || 'inherit') + '">' + esc(nd.name) + '</b>'
+                ? ('<b class="ftt-scene-name' + leafCls + '">' + esc(nd.name) + '</b>'
                     + (scene.desc ? ('<div class="ftt-sub">' + esc(scene.desc) + '</div>') : '')
                     + ((Array.isArray(scene.tags) && scene.tags.length) ? ('<div class="ftt-tags">#' + esc(scene.tags.join(' #')) + '</div>') : ''))
                 : ('<span class="ftt-sub">' + esc(nd.name) + '</span>');
@@ -164,9 +165,9 @@ export function scenesTreeHtml(opts) {
             const toggle = hasKids
                 ? ('<span class="ftt-scene-caret" data-ftt-scene-caret="1" data-ftt-scene-caret-for="' + esc(nodePath) + '" title="折叠/展开">▾</span>')
                 : '<span class="ftt-scene-caret-gap"></span>';
-            head = '<div class="ftt-item' + (scene ? ' ftt-inline' : '') + '"' + rowAttr + ' data-ftt-scene-node="' + esc(nodePath) + '" style="margin-left:' + indent + 'px;' + styleBg + '">'
-                + '<div style="display:flex;align-items:flex-start;gap:4px;flex:1 1 auto;min-width:0">' + toggle + '<div style="flex:1;min-width:0">' + titleHtml + meta + '</div></div>'
-                + ops + (badge ? ('<div style="padding:0 6px 4px">' + badge + '</div>') : '') + '</div>';
+            head = '<div class="ftt-item ftt-scene-row ' + dCls + (scene ? ' ftt-inline' : '') + styleBg + '"' + rowAttr + ' data-ftt-scene-node="' + esc(nodePath) + '">'
+                + '<div class="ftt-scene-main">' + toggle + '<div class="ftt-scene-body">' + titleHtml + meta + '</div></div>'
+                + ops + (badge ? ('<div class="ftt-scene-badge">' + badge + '</div>') : '') + '</div>';
         }
         if (!hasKids) return head;
         const childHtml = kids.map((k) => renderNode(nd.children[k], depth + (nd.name ? 1 : 0))).join('\n');

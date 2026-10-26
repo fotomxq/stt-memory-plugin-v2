@@ -261,7 +261,8 @@ A('T2 当前位置高亮：`state.state.location` 与路径匹配 → 「📍 �
     const html = pageOf('scenes');
     return html.indexOf('📍 当前：城市甲·码头（亮色分支 = 当前位置）') >= 0
         && html.indexOf('📍 当前</span>') >= 0
-        && html.indexOf('rgba(240,192,96,0.15)') >= 0;
+        // v3.52.0（W33 应-50）：命中高亮由内联样式改为**类**（`ftt-scene-hit-row`），DOM 契约（data-ftt-scene-node）不变
+        && html.indexOf('ftt-scene-hit-row') >= 0;
 })(), (() => { boot(); state.state.location = '城市甲·码头'; state.scenes = [{ id: 'sc1', name: '码头', pathArr: ['城市甲', '码头'], desc: '', tags: [], uses: 0 }]; const h = pageOf('scenes'); return J({ note: h.indexOf('亮色分支') >= 0, badge: h.indexOf('📍 当前</span>') >= 0 }); })());
 
 A('T3 折叠入口存在（`data-ftt-scene-caret-for` + `data-ftt-scene-children` 成对）；搜索命中保留祖先路径', (() => {
