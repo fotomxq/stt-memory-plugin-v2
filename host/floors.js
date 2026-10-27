@@ -7,7 +7,7 @@
 // ============================================================
 import { hashText } from '../core/util.js';
 import { applyFeedRegex } from '../core/prompt.js';
-import { state, cfg, saveState, log, warn, notifyError, getLastMessageId } from '../core/model/runtime.js';
+import { state, cfg, dbgLog, saveState, log, warn, notifyError, getLastMessageId } from '../core/model/runtime.js';
 import { floorCoverage, originFloorRange, markOriginGone, shiftFloorNow } from '../core/floor-cover.js';   // v3.7.0：来源楼层 / 当前位置 / 原文已移除
 import { getCtx } from './st-api.js';
 import { DIMENSIONS } from '../core/constants.js';   // v2.93.0：楼层收缩时逐维修正陈旧区间
@@ -149,13 +149,46 @@ export function floorAnalyzableText(i) {
     try {
         const f = Number(i);
         if (!Number.isFinite(f) || f < 0) return '';
+        const src = collectFloorLinesInRange(f, f).join('\n');
         // 同样「先按标签过滤、再去标签」：过滤需要标签，投喂给 AI 的文本不能带标签
-        const raw = String(cleanText(applyFeedRegex(collectFloorLinesInRange(f, f).join('\n'))) || '').trim();
+        const bodyOf = (t) => String(t || '').replace(/^\[第\d+楼[^\]]*\]\s*/, '').trim();
+        let raw = String(cleanText(applyFeedRegex(src)) || '').trim();
+        let body = bodyOf(raw);
+        /**
+         * v3.52.1（用户报告「换存档后不分析新存档楼层」）——**投喂过滤把整楼清空 / 只剩楼层前缀时回退原文**。
+         *   真机取证：白名单是旧存档的标签名（如 `content`），换存档后正文把它当属性名（`<q content="…">`），
+         *   过滤后只剩纯标记行（去标签后连正文都不剩；若该行恰好带 `[第N楼 …]` 前缀，则「有字但没正文」）
+         *   → 该楼被判 `noText`，新存档的楼层从此**既不进待分析清单、也不会被自动提取**（用户看到的就是「无法分析」）。
+         *   口径与 `core/prompt.js#applyFeedRegex` 既有的「白名单未命中 → 回退原文」完全一致：
+         *   **宁可投喂原文，也不把整楼判成无正文**；只在「原文本身有正文」时才回退。
+         */
+        if (!body) {
+            const unfiltered = String(cleanText(src) || '').trim();
+            const unfBody = bodyOf(unfiltered);
+            if (unfBody) {
+                try { dbgLog('摘要', { action: '投喂过滤把整楼清空 → 回退原文', floor: f, filter: 'feedRegex', whitelist: ((cfg && cfg.feedRegexWhitelist) || []).slice(), chars: unfiltered.length }); } catch (e) { /* 忽略 */ }
+                raw = unfiltered;
+                body = unfBody;
+            }
+        }
         if (!raw) return '';
-        const body = raw.replace(/^\[第\d+楼[^\]]*\]\s*/, '').trim();
         if (!body || /^(?:\.{2,}|…+|—+|-+|·+)$/.test(body)) return '';
         return raw;
     } catch (e) { return ''; }
+}
+
+/**
+ * v3.52.1：**「有正文、但被投喂过滤清空」判定**（只读诊断；供未摘要扫描把该楼单列 `filtered` 计数）。
+ *   `true` = 原文有正文却过滤成空（配置问题：白名单/黑名单与正文格式不匹配）→ 不应静默算作「无可分析正文」。
+ * @param {number} i 楼层号
+ * @returns {boolean}
+ */
+export function floorTextFilteredOut(i) {
+    try {
+        const src = collectFloorLinesInRange(Number(i), Number(i)).join('\n');
+        if (!String(cleanText(src) || '').trim()) return false;                 // 原文本身空 → 不是「过滤清空」
+        return !String(cleanText(applyFeedRegex(src)) || '').trim();            // 过滤后空 → 是
+    } catch (e) { return false; }
 }
 
 /** 楼层内容哈希（V1 `hashFloorText`：稳定正文 → hashText） */
@@ -1098,7 +1131,7 @@ export function scanPendingFloors(opts) {
     const end = Number.isFinite(Number(o.endFloor)) ? Number(o.endFloor) : tail;
     const lastIdStale = Number.isFinite(lastId) && lastId >= 0 && lastId !== tail;
     const startFloor = Math.max(0, Number(o.startFloor) || 0);
-    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, processed: 0, covered: 0, chatNotReady: 0, stateNotReady: 0 };
+    const skipped = { user: 0, hidden: 0, missing: 0, noText: 0, filtered: 0, processed: 0, covered: 0, chatNotReady: 0, stateNotReady: 0 };
     let changedFromDropped = 0;      // v3.11.1：因「正文改写 + 标记已丢」重新入队的楼层数（诊断）
     const out = [];
     try {
@@ -1151,7 +1184,9 @@ export function scanPendingFloors(opts) {
             if (!m) { skipped.missing++; continue; }
             if (m.is_hidden) { skipped.hidden++; continue; }
             if (m.is_user) { skipped.user++; continue; }
-            if (!floorAnalyzableText(i)) { skipped.noText++; continue; }
+            // v3.52.1：把「有正文但被投喂过滤清空」与「原文本身无正文」分开计数 —— 前者是**配置不匹配**
+            //   （白名单/黑名单与正文格式对不上，常见于换存档），静默混进 `noText` 会让用户查不出原因。
+            if (!floorAnalyzableText(i)) { if (floorTextFilteredOut(i)) skipped.filtered++; else skipped.noText++; continue; }
             // 台账优先（V1 语义）：① 在册且哈希一致 → 已处理，跳过；
             //   ② **在册但哈希不符 = 该楼正文被改写过** → 必须重新分析（此时「已有记忆数据」不构成跳过理由，
             //      否则编辑过的楼层会被旧数据永久压住）；③ 不在册（台账缺失/迁移丢失/导入未带）才用覆盖判据兜底。

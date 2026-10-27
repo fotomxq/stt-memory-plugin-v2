@@ -15,6 +15,9 @@ import { nsfwSoftenRuleText } from './nsfw.js';
 //   于是「货币」这一维在提示词里整段消失 → AI 根本收不到「记录货币」的指令（手动添加不受影响，故现象是
 //   「手动能加、AI 不自动改」）。其它维度同理受保护。
 import { PROMPT_TEMPLATES_V2 } from './prompts-v2.js';
+// v3.52.1（用户报告「换存档 + 清数据 + 删楼后不分析新存档楼层」）：投喂白名单的「命中行清理后为空」判定
+//   需要去标签能力（纯内核 `core/html-text.js`，无宿主依赖、无循环 import）。
+import { stripHtmlTags } from './html-text.js';
 function compileRegexList(list) {
     const out = [];
     for (const item of list || []) {
@@ -55,18 +58,36 @@ function applyFeedRegex(text) {
         const lines = raw.split('\n');
         const out = [];
         let kept = 0;
+        let markupOnly = 0;
         for (const line of lines) {
             // 修复：空行不再无条件保留（此前白名单过滤后留下大量空行 → "一大堆换行符"）。
             // 空行作为结构分隔在过滤后统一压缩；统计 kept 只计非空命中行。
             if (!line.trim()) continue;
             if (black.length && black.some(rx => rx.test(line))) continue;
             if (white.length && !white.some(rx => rx.test(line))) continue;
+            /**
+             * v3.52.1（用户报告「换存档后不分析新存档楼层」）——**命中行是纯标记时不算命中**。
+             *   真机取证实例：白名单是标签名 `content`（旧存档正文用 `<content>…</content>`），
+             *   换存档后正文改用 `<q content="…">`（`content` 变成**属性名**）→ 行内匹配把
+             *   `<q content="…">` 这类**纯标记行**算作命中；这些行去标签后是空串，
+             *   于是「可分析正文」= 空 → 该楼被判 `noText` → 既不进待分析清单、也不会被自动提取，
+             *   整条新存档的楼层全部「无法分析」（用户看到的就是这个）。
+             *   口径：命中的行若**去标签后没有任何文字**，它不构成「可投喂内容」——
+             *   不计入 kept、也不写进结果；若最终一行都不剩，沿用下面的「回退原文」兜底。
+             */
+            if (white.length && !stripHtmlTags(line).trim()) { markupOnly++; continue; }
             kept++;
             out.push(line);
         }
-        // 白名单存在但没有任何行命中 → 回退原文（避免把正文投喂成空白），并记录调试日志
+        // 白名单存在但没有任何**有文字**的行命中 → 回退原文（避免把正文投喂成空白），并记录调试日志
         if (white.length && kept === 0 && lines.some(l => l.trim())) {
-            dbgLog('摘要', { action: '白名单未命中已回退原文', whitelist: (cfg.feedRegexWhitelist || []).slice(), note: '没有任何行包含这些标签；请检查标签名与正文是否匹配（匹配不区分大小写）' });
+            dbgLog('摘要', {
+                action: markupOnly ? '白名单只命中纯标记行已回退原文' : '白名单未命中已回退原文',
+                whitelist: (cfg.feedRegexWhitelist || []).slice(), markupOnly: markupOnly,
+                note: markupOnly
+                    ? '命中的行去掉 HTML 标签后没有任何文字（常见：白名单还是旧存档的标签名，而新正文把它当成了属性名，如 <q content="…">）；为避免把整楼判成「无正文」，本次回退原文'
+                    : '没有任何行包含这些标签；请检查标签名与正文是否匹配（匹配不区分大小写）',
+            });
             return text;
         }
         // 修复：过滤后压缩连续空行、清理首尾空行，避免输出堆叠换行符

@@ -3,6 +3,36 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.52.1（2026-10-27）· **W34 投喂白名单与正文格式不匹配 → 新存档楼层整批判「无正文」修复**（纯修复）
+
+**用户报告**（原话）：「通过本地调试接口，核对数据异常并修复该问题。当前存档出现过一次更换，更换后数据进行了清理、楼层也进行过一次删除，但是不分析新存档的楼层。最开始只能分析0层，后面就再也无法分析了。」
+
+**真机取证**（本地调试接口 `ftt.*` 只读方法 + 只读扫描宿主数据）：
+
+| 取证 | 读数 | 结论 |
+| --- | --- | --- |
+| `ftt.config` | `feedRegexWhitelist: ["content"]`（旧存档标签名） | 白名单与**新正文格式**错位 |
+| `fft.floors` / `ftt.floorDiag` | 非用户楼层 `stableChars` 1800–2500、`analyzableChars: 0` | 正文在，**可分析正文为空** |
+| `ftt.pendingScan` | `skipped.noText: 20`、`pending` 仅 0–1 楼 | 清单被 `noText` 吃空 |
+| `ftt.ledger` | `verMatches: true`、`marksCrossChat: 0`、`lastChatFloor: 42` | 台账/聊天归属/版本签名均正常（**不是**换存档后台账错乱） |
+
+**根因**：`core/prompt.js#applyFeedRegex` 的「行内包含」兜底把正文里的 `<q content="…">`（`content` 是**属性名**）当成白名单命中 → 去标签后为空 → `floorAnalyzableText` = `''` → `scanPendingFloors` 计 `noText` → `pending = []` → 自动提取 `nothing-pending`、单楼分析 `empty-floor`。第 0 层因不含 `content` 子串走「未命中 → 回退原文」而可分析，故表现为「最开始只能分析 0 层」。附带缺陷：`analyzeSegment` 对「过滤后为空」直接记为已处理且**不调 AI**。
+
+**修复**（见 `docs/D56` · 台账 `docs/D17` U282 · 清单 `docs/D22` §4.34 W34 `数-47`）：
+
+* `core/prompt.js#applyFeedRegex`：命中的行若**去标签后无文字** → 不算命中；全部只剩纯标记行 → 回退原文并留痕（原因区分「未命中」/「只命中纯标记行」）；
+* `host/floors.js#floorAnalyzableText`：过滤清空或**只剩楼层前缀**而原文有正文 → 回退原文（+ `摘要` 调试日志）；新增只读 `floorTextFilteredOut`；
+* `host/floors.js#scanPendingFloors`：新增 `skipped.filtered`（有正文但不可分析），与真·空正文的 `noText` 分开计数；
+* `host/extract.js#analyzeSegment`：同口径回退并回 `filterFallback`；**只有原文也空**才记该段已处理。
+
+**保留语义**：真 `<content>…</content>` 仍只取内部内容；真·空正文楼仍计 `noText`、`analyzeSegment` 仍 `empty:true` 且不调 AI；台账 / 聊天归属 / 版本签名 / V1 取文口径 / `DATA_VERSION` 全部未动（**零迁移**）。
+
+**测试**：新增 `tests/unit/feed-filter-stale.test.js`（10 项，含反向探针）；全量单元 **261 文件 / 3874 断言** 全绿 · 冒烟 **224 通过** · `npm run gate` 全绿。真实宿主数据只读回放：修复前 `pending` 仅 1 楼、`noText` 20；修复后 `pending` = `[2,4,…,30,32,36,38,40,42]`、`noText` 0、AI 楼可分析正文 1700–2500 字。
+
+**边界**：不自动改用户的投喂配置（白名单/黑名单是用户设定）；不改聊天归属 / 删楼 / 台账维护逻辑。
+
+---
+
 ## v3.52.0（2026-10-27）· **W33 界面设计梳理与美化提升**（令牌收敛 · 面板外提 · 仪表盘 · 子标签统一 · 卡片化 · 预览卡 · 长表单分组）
 
 **用户要求**（原话）：「开发待开发的W33，本次开发为界面美化提升，请参考相关设计稿要求执行。」
