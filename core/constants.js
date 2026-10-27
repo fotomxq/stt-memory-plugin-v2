@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.0';   // v3.52.0（用户指定）：W33 界面美化提升 —— 令牌收敛 · 面板外提 · 总览仪表盘 · 子标签统一 · 列表卡片 · 预览卡片 · 长表单分组
+export const VERSION = '3.52.1';   // v3.52.1（纯修复）：投喂白名单与正文格式不匹配 → 纯标记行不算命中 · 过滤清空回退原文 · 分段不再静默记已处理（docs/D56）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

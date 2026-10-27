@@ -469,7 +469,22 @@ export async function analyzeSegment(start, end, opts) {
     extractState.activeSeg = { start: s0, end: e0 };
     try {
         // v2.44.0：先按投喂标签过滤（需标签），再去 HTML 交 AI（顺序不可颠倒，见 host/floors.js 头注）
-        const text = String(cleanText(applyFeedRegex(collectFloorLinesInRange(s0, e0).join('\n'))) || '').trim();
+        // v3.52.1（用户报告「换存档后不分析新存档楼层」）：**投喂过滤把整段清空时回退原文** ——
+        //   旧口径直接把整段记为「已处理」且不调 AI（`empty: true`），一旦投喂白名单与正文格式不匹配
+        //   （真机：白名单是旧存档的 `content` 标签名，新正文把它当属性名 `<q content="…">`），
+        //   整个批次会**逐段静默登记为已处理却没有任何分析**。现在只有「原文本身也是空」才沿用该语义。
+        const segSrc = collectFloorLinesInRange(s0, e0).join('\n');
+        const segBody = (t) => String(t || '').replace(/\[第\d+楼[^\]]*\]/g, '').trim();
+        let text = String(cleanText(applyFeedRegex(segSrc)) || '').trim();
+        let filterFallback = false;
+        if (!segBody(text)) {
+            const unfiltered = String(cleanText(segSrc) || '').trim();
+            if (segBody(unfiltered)) {
+                text = unfiltered;
+                filterFallback = true;
+                try { dbgLog('摘要', { action: '投喂过滤把整段清空 → 回退原文', range: s0 + '-' + e0, whitelist: ((cfg && cfg.feedRegexWhitelist) || []).slice(), chars: unfiltered.length }); } catch (e) { /* 忽略 */ }
+            }
+        }
         if (!text) { recordProcessedFloors(s0, e0); return { ok: true, empty: true, added: 0, floorStart: s0, floorEnd: e0 }; }
         const gen = o.ai || rawGenerate;
         if (!o.ai && !generationAvailability().generateRaw) return { ok: false, reason: 'no-generate', floorStart: s0, floorEnd: e0 };
@@ -534,7 +549,7 @@ export async function analyzeSegment(start, end, opts) {
             dims: Object.keys(delta).slice(0, 12), keywords: (() => { try { return jsExtractKeywords(text); } catch (e2) { return []; } })(),
             text: lastSegmentText,
         });
-        return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta), postCalib: postCalib };
+        return { ok: true, added: mr.added, total: mr.total, chars: text.length, ms, floorStart: s0, floorEnd: e0, deltaKeys: Object.keys(delta), postCalib: postCalib, filterFallback: filterFallback };
     } finally {
         extractState.activeSeg = null;
     }
