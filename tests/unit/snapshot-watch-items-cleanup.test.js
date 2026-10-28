@@ -27,6 +27,9 @@ import { ledgerList } from '../../core/model/ledger.js';
 import { panelAction, setPanelHooks2, panelBodyHtml } from '../../ui/panel.js';
 import { dangerActionPromptOf } from '../../ui/panel.js';
 import { itemsCleanupState, itemsCleanupBarHtml, itemsCleanupPanelHtml } from '../../ui/items-cleanup-panel.js';
+import { PROMPT_TEMPLATES_V2 } from '../../core/config.js';
+const PROMO_TEMPLATES_NOOP = '';
+import { listRowMainHtml } from '../../ui/list-rows.js';
 
 const R = makeReporter('snapshot-watch-items-cleanup v3.52.2 W34 关注标记 / 物品清理');
 const A = (n, c, e) => R.assert(n, !!c, e);
@@ -173,6 +176,45 @@ A('F4 关注切换动作：点击后落库（watch 变化 + 提示），并持�
     const r = await panelAction('watchToggle', { kind: 'snapshots', id: 'sn2' });
     const s2 = state.snapshots.filter((x) => x.id === 'sn2')[0];
     return r && r.ok === true && s2.watch === true && String(r.note).indexOf('已关注') >= 0;
+})(), 'n/a');
+
+// ---------- G v3.52.4：老数据「归属缺失」导致的漏列/0 计数（真机报告） ----------
+A('G1 **位置是角色名 + 随身** → 推断归属：其他人的物品能进清单；显式 owner 优先于推断', (() => {
+    boot({
+        snapshots: [{ id: 'w', name: '甲', watch: true }, { id: 'o', name: '乙' }],
+        items: [
+            { id: 'a', name: '乙的包裹', location: '乙', carried: true },        // 无 owner → 推断「乙」→ 未关注 → 候选
+            { id: 'b', name: '甲的剑', location: '甲', carried: true },          // 无 owner → 推断「甲」→ 关注 → 保留
+            { id: 'c', name: '库房钥匙', location: '库房', carried: false },     // 位置是地点 → 未归属 → 不动
+            { id: 'd', name: '丙的信', owner: '丙', location: '甲', carried: true }, // 显式 owner 优先 → 候选（丙）
+        ],
+    });
+    const p = itemsCleanupPlan();
+    const ids = p.items.map((x) => x.id).sort();
+    return J(ids) === J(['a', 'd']) && p.total === 2 && p.kept === 1 && p.unowned === 1
+        && p.inferred >= 1 && p.items.filter((x) => x.id === 'a')[0].inferred === true
+        && p.items.filter((x) => x.id === 'd')[0].inferred === false
+        && String(p.note).indexOf('推断归属') >= 0;
+})(), () => { boot({ snapshots: [{ id: 'w', name: '甲', watch: true }, { id: 'o', name: '乙' }], items: [{ id: 'a', name: '乙的包裹', location: '乙', carried: true }, { id: 'b', name: '甲的剑', location: '甲', carried: true }] }); const p = itemsCleanupPlan(); return J({ ids: p.items.map((x) => x.id), kept: p.kept, inferred: p.inferred }); });
+A('G2 **关注角色的物品不再显示 0 件**：关注角色名下物品计入「保留」；未携带的物品不按位置推断', (() => {
+    boot({
+        snapshots: [{ id: 'w', name: '乙', watch: true }],
+        items: [
+            { id: 'x', name: '乙之剑', location: '乙', carried: true },
+            { id: 'y', name: '乙的旧信', location: '乙', carried: false },
+            { id: 'z', name: '路边石子', location: '街道', carried: true },
+        ],
+    });
+    const p = itemsCleanupPlan();
+    return p.total === 0 && p.kept === 1 && p.unowned === 2;
+})(), () => { boot({ snapshots: [{ id: 'w', name: '乙', watch: true }], items: [{ id: 'x', name: '乙之剑', location: '乙', carried: true }] }); return J(itemsCleanupPlan()); });
+A('G3 物品清单行显示归属（便于核对清理依据）', (() => {
+    boot({ snapshots: [{ id: 'o', name: '乙' }], items: [{ id: 'i', name: '银怀表', owner: '乙', location: '乙' }] });
+    return listRowMainHtml('items', state.items[0], null).indexOf('归属：乙') >= 0;
+})(), 'n/a');
+A('G4 **V1 提示词逐字符不变**（归属不靠改提示词；由清理时的「位置 + 随身」确定性推断承担，避免黄金样本漂移）', (() => {
+    const tpl = Array.isArray(PROMPT_TEMPLATES_V2.items) ? PROMO_TEMPLATES_NOOP : String(PROMPT_TEMPLATES_V2.items || '');
+    return tpl.indexOf('- 归属：') < 0 && tpl.indexOf('- 携带：') >= 0;
 })(), 'n/a');
 
 R.done();

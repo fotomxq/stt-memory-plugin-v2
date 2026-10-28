@@ -38,7 +38,7 @@ export function itemsCleanupPanelHtml() {
     }
     const rows = plan.items.map((it) => ({
         op: 'del',
-        before: it.name + (it.owner ? ('（' + it.owner + '）') : ''),
+        before: it.name + (it.owner ? ('（' + it.owner + (it.inferred ? '·推断' : '') + '）') : ''),
         after: '',
         note: [it.qty ? ('×' + it.qty) : '', it.location ? ('@' + it.location) : '', it.carried ? '' : '未携带'].filter(Boolean).join(' '),
     }));
@@ -46,7 +46,8 @@ export function itemsCleanupPanelHtml() {
     return '<div data-ftt-items-cleanup>'
         + previewCardHtml({
             title: '🧹 清理未关注角色的物品',
-            summary: '将删除 ' + plan.total + ' 件（' + groups + '）；属于关注角色 / 主角的 ' + plan.kept + ' 件保留，未归属的 ' + plan.unowned + ' 件不动。',
+            summary: '将删除 ' + plan.total + ' 件（' + groups + '）；属于关注角色 / 主角的 ' + plan.kept + ' 件保留，未归属的 ' + plan.unowned + ' 件不动'
+                + (plan.inferred ? ('；其中 ' + plan.inferred + ' 件按「位置是角色名且随身携带」推断归属（标「推断」）') : '') + '。',
             badge: '预览 · 未删除',
             sections: [{ label: '① 将清理的物品清单', rows: rows }],
             footer: '确认后会逐条写入删除记录（跨端不会复活）；建议先导出备份。',
