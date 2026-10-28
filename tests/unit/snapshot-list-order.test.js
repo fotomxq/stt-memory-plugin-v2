@@ -95,4 +95,32 @@ A('A5 排序下拉出现「见面时间（近→远）」选项（默认项文�
     return html.indexOf('见面时间（近→远）') >= 0 && html.indexOf('默认（见面时间近→远）') >= 0;
 })(), 'n/a');
 
+
+// ---------- v3.52.5：排序真正生效 + 「最近提及」优先 ----------
+await (async () => {
+    A('A6 **排序选项真正生效**（旧实现只有状态页调用 listSortOf → 角色页下拉全部无效）', async () => {
+        boot([
+            mk('s1', '甲', { lastSeenDate: '1919-01-01', importance: 0.1 }),
+            mk('s2', '乙', { lastSeenDate: '1920-01-01', importance: 0.9 }),
+        ]);
+        setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+        await panelAction('tab', { tab: 'snapshots' });
+        const def = orderOf(panelBodyHtml('snapshots'));
+        await panelAction('filter', { kind: 'snapshots', key: 'sort', value: 'importance' });
+        const imp = orderOf(panelBodyHtml('snapshots'));
+        await panelAction('filter', { kind: 'snapshots', key: 'sort', value: 'old' });
+        const old = orderOf(panelBodyHtml('snapshots'));
+        return J(def) === J(['s2', 's1']) && J(imp) === J(['s2', 's1']) && J(old) === J(['s1', 's2']);
+    }, 'n/a');
+    A('A7 **最近提及的在前**：`lastUpdateDate` 比 `lastSeenDate` 新 → 以更新时间为准（档案刚更新就顶到前面）', async () => {
+        boot([
+            mk('s1', '甲', { lastSeenDate: '1919-01-01', lastUpdateDate: '1921-06-01' }),
+            mk('s2', '乙', { lastSeenDate: '1920-01-01' }),
+        ]);
+        setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+        await panelAction('tab', { tab: 'snapshots' });
+        return J(orderOf(panelBodyHtml('snapshots'))) === J(['s1', 's2']);
+    }, 'n/a');
+})();
+
 R.done();
