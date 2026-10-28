@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.2';   // v3.52.2（用户指定）：角色关注标记（免自动清理）+ 清理未关注角色的物品（先清单后确认）
+export const VERSION = '3.52.3';   // v3.52.3（用户指定）：角色清单默认按「见面时间」倒序
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

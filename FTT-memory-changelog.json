@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.2",
+  "version": "3.52.3",
   "updatedAt": "2026-10-28",
   "generatedAt": "2026-10-28",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.3",
+      "date": "2026-10-28",
+      "title": "角色清单默认按「见面时间」倒序",
+      "points": [
+        "登记：批次档 docs/history/P10c156-角色清单见面时间倒序.md### 一、排序口径* 默认（角色页未显式选择时）= 按「最近一次见面」倒序：lastSeenD…"
+      ]
+    },
     {
       "version": "3.52.2",
       "date": "2026-10-28",

@@ -408,9 +408,43 @@ function extraMatchOf(kind, it, extra) {
     return true;
 }
 /** 排序（V1 `pageSortItems` 的 V2 等价物：默认 / 最新在前 / 最早在前 / 重要度 / 调用次数） */
+/**
+ * v3.52.3（用户要求）：「角色清单，默认按**见面的时间**倒序排列」。
+ *   口径：`snapshots` 的**默认排序**（未显式选择排序时）= 按「最近一次见面」倒序 ——
+ *   `lastSeenDate`（角色最近一次在场的剧情日期）+ `lastSeenTime`；没有见面记录的回落到 `lastUpdateDate`（档案最近更新）；
+ *   两者都没有 → 排最后（按姓名稳定排序）。显式选择其它排序（最新/最早/重要度/调用次数）时行为不变。
+ *   另提供显式选项 `seen`（「见面时间（近→远）」）便于用户从其它排序切回。
+ */
+function snapshotSeenKey(s) {
+    const day = String((s && (s.lastSeenDate || s.lastUpdateDate)) || '').trim();
+    const time = String((s && (s.lastSeenTime || s.lastUpdateTime)) || '').trim();
+    // 时间只取 HH:mm(:ss) 的先后（同一天内可比）；其余文本不参与（避免"傍晚"这类文案影响排序稳定性）
+    const m = /^(\d{1,2}):(\d{2})/.exec(time);
+    const hhmm = m ? (String(m[1]).padStart(2, '0') + String(m[2])) : '';
+    return { day: day, hhmm: hhmm };
+}
+function sortSnapshotsBySeen(arr) {
+    return (Array.isArray(arr) ? arr.slice() : []).sort((a, b) => {
+        const ka = snapshotSeenKey(a), kb = snapshotSeenKey(b);
+        if (ka.day !== kb.day) {
+            if (!ka.day && kb.day) return 1;                 // 无见面记录 → 最后
+            if (ka.day && !kb.day) return -1;
+            return ka.day < kb.day ? 1 : -1;                 // 日期倒序
+        }
+        if (ka.hhmm !== kb.hhmm) {
+            if (!ka.hhmm && kb.hhmm) return 1;
+            if (ka.hhmm && !kb.hhmm) return -1;
+            return ka.hhmm < kb.hhmm ? 1 : -1;               // 同日按时刻倒序
+        }
+        const na = String((a && a.name) || ''), nb = String((b && b.name) || '');
+        return na.localeCompare(nb);                          // 稳定兜底：姓名
+    });
+}
 function listSortOf(kind, arr) {
     const s = listFilterOf(kind).sort;
     const a = Array.isArray(arr) ? arr.slice() : [];
+    // v3.52.3：角色清单**默认按见面时间倒序**（显式 `seen` 同口径；其余排序选项不变）
+    if (kind === 'snapshots' && (s === 'default' || s === 'seen' || !s)) { try { return sortSnapshotsBySeen(a); } catch (e) { return a; } }
     if (s === 'new') { try { return sortRecentByStoryDate(a); } catch (e) { return a; } }
     if (s === 'old') { try { return sortRecentByStoryDate(a).reverse(); } catch (e) { return a.reverse(); } }
     if (s === 'importance') { return a.sort((x, y) => (Number(importancePct(y)) || 0) - (Number(importancePct(x)) || 0)); }
@@ -424,7 +458,9 @@ function listFilterBarHtml(kind, opts) {
     const q = ps.q[kind] || '';
     const sel = (attr0, list, cur) => '<select class="ftt-select-sm" ' + attr0 + '>' + list.map(([v, l]) => '<option value="' + attr(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>';
     const fieldOpts = [['all', '全部字段'], ['title', '标题'], ['desc', '描述'], ['tags', '标签'], ['name', '名称']];
-    const sortOpts = [['default', '默认排序'], ['new', '最新在前'], ['old', '最早在前'], ['importance', '重要度'], ['uses', '调用次数']];
+    const sortOpts = (kind === 'snapshots')
+        ? [['default', '默认（见面时间近→远）'], ['seen', '见面时间（近→远）'], ['new', '最新在前'], ['old', '最早在前'], ['importance', '重要度'], ['uses', '调用次数']]
+        : [['default', '默认排序'], ['new', '最新在前'], ['old', '最早在前'], ['importance', '重要度'], ['uses', '调用次数']];
     const extraOpts = Array.isArray(o.extraOpts) ? o.extraOpts : null;
     return '<div class="ftt-row ftt-filterbar ftt-toolbar ftt-filter-tight">'
         + '<input type="text" class="ftt-input" data-ftt-search="' + attr(kind) + '" value="' + attr(q) + '" placeholder="' + attr(o.placeholder || '搜索：标题 / 描述 / 关键词…') + '">'
