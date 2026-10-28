@@ -36,6 +36,53 @@ export function watchedRoleNames() {
     } catch (e) { return []; }
 }
 
+/** 该名字/ id 是否被关注（按 id 或姓名精确匹配） */
+export function isWatchedSnapshotKey(key) {
+    try {
+        const k = String(key == null ? '' : key).trim();
+        if (!k) return false;
+        const list = Array.isArray(state.snapshots) ? state.snapshots : [];
+        return list.some((s) => s && s.watch === true && (String(s.id) === k || String(s.name) === k));
+    } catch (e) { return false; }
+}
+
+/**
+ * v3.52.6（用户报告「关注后仍被自动删除」）：**关注档案保活** —— 从一批待删除的 id / 姓名里剔除被关注者。
+ *   用于 AI 删除、修复删除、上限裁剪等**自动**路径；用户手动删除（`core/entries.js`）不经过这里。
+ * @param {Array<string>} keys 待删除的 id / 姓名
+ * @returns {{keep:Array<string>, blocked:number}} `keep` = 实际允许删除的键；`blocked` = 被关注而拦下的条数
+ */
+export function dropWatchedKeys(keys) {
+    const out = [];
+    let blocked = 0;
+    for (const k of (Array.isArray(keys) ? keys : [])) {
+        if (isWatchedSnapshotKey(k)) { blocked += 1; continue; }
+        out.push(String(k == null ? '' : k).trim());
+    }
+    return { keep: out.filter(Boolean), blocked: blocked };
+}
+
+/**
+ * v3.52.6：**上限裁剪保活** —— 按「保留最近 N 条」裁 `snapshots` 时，被关注的档案**永不裁掉**
+ *   （旧实现 `slice(-cap)` 按容器顺序一刀切，被关注但排在前面/条目多时会被静默删除）。
+ *   `cap` 为软上限：被关注者超出时允许超出（用户意志优先，`docs/D28` B13②）。
+ * @param {Array} arr snapshots
+ * @param {number} cap 上限（≤0 视为不裁）
+ */
+export function capSnapshotsKeepingWatched(arr, cap) {
+    const list = Array.isArray(arr) ? arr : [];
+    const n = Math.max(0, Math.floor(Number(cap) || 0));
+    if (!n || list.length <= n) return list.slice();
+    const watched = list.filter((s) => s && s.watch === true);
+    if (!watched.length) return list.slice(-n);
+    const watchedSet = new Set(watched);
+    const rest = list.filter((s) => !watchedSet.has(s));
+    const room = Math.max(0, n - watched.length);
+    const keepRest = room > 0 ? rest.slice(-room) : [];
+    const keepSet = new Set(keepRest.concat(watched));
+    return list.filter((s) => keepSet.has(s));   // 保持原容器顺序（跨端并集/去重口径不变）
+}
+
 /**
  * 该角色名是否**受保护**（关注 或 主角）。
  * @param {string} name

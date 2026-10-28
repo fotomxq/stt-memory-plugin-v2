@@ -33,6 +33,7 @@ import { mergePlotSegmentsToCap, trimLegacySummaries, PLOT_SEGMENT_MAX, LEGACY_S
 import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
 import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
 import { cascadeDeleteLedgerForCurrency } from './model/ledger.js';   // v3.51.0（W32 数-45）：货币消失 → 流水级联删除
+import { capSnapshotsKeepingWatched, dropWatchedKeys } from './snapshot-watch.js';   // v3.52.6：关注档案保活（AI 删除 / 上限裁剪）
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
 function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { /* 忽略：提示通道不可用：不影响数据与落库 */ } }
@@ -233,10 +234,13 @@ function mergeDelta(delta0, floorRange) {
         }
         // v1.113：删除角色档案 → 联动清除该角色的状态记录（角色不在了其“当前状态”一并失效）
         if (Array.isArray(delta.snapshots?.remove) && delta.snapshots.remove.length) {
-            const delSet = new Set(delta.snapshots.remove.map(x => String(x).trim()));
+            // v3.52.6（用户报告「关注后仍被自动删除」）：**AI 的删除指令对「已关注」档案不生效**（用户意志优先）
+            const gated = dropWatchedKeys(delta.snapshots.remove.map(x => String(x).trim()));
+            if (gated.blocked) { try { dbgLog('摘要', { action: '关注档案保活：拦下 AI 删除', blocked: gated.blocked, keys: delta.snapshots.remove.slice(0, 6) }); } catch (e) { /* 忽略 */ } }
+            const delSet = new Set(gated.keep);
             const removedNames = (state.snapshots || []).filter(x => delSet.has(String(x.id)) || delSet.has(String(x.name))).map(x => x.name);
             state.snapshots = (state.snapshots || []).filter(x => !delSet.has(String(x.id)) && !delSet.has(String(x.name)));
-            try { tombMany('snapshots', delta.snapshots.remove); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }   // v1.117 墓碑
+            try { tombMany('snapshots', gated.keep); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }   // v1.117 墓碑
             try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { /* 忽略：调试日志写失败不影响主流程（日志丢失可接受） */ }
         }
         for (const m of delta.memories?.add || []) {
@@ -564,7 +568,8 @@ function mergeDelta(delta0, floorRange) {
         // v1.203：情节裁剪保留「已总结隐藏」条目（不参与淘汰 → 持久存储）
         state.atoms = capAtomsKeepingHidden(state.atoms, storeCapFor('atoms'));
         state.memories = (state.memories || []).slice(-storeCapFor('memories'));
-        state.snapshots = (state.snapshots || []).slice(-storeCapFor('snapshots'));
+        // v3.52.6：上限裁剪**保活关注档案**（旧 slice(-cap) 会按容器顺序误删被关注者）
+        state.snapshots = capSnapshotsKeepingWatched(state.snapshots, storeCapFor('snapshots'));
         // v1.59：平行事件上限走设定（maxParallels 默认 30，超出自动挤出最旧）
         state.parallels = (state.parallels || []).slice(-Math.max(1, Number(cfg && cfg.maxParallels) || 30));
         try { scheduleParallelDecay(); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }

@@ -20,9 +20,9 @@ import { emptyState } from '../../core/state.js';
 import { normalizeSnapshot } from '../../core/model/snapshot.js';
 import { normalizeItem } from '../../core/model/dims.js';
 import { atomContentHash } from '../../core/model/hash.js';
-import { snapshotWatched, watchedRoleNames, roleProtected, toggleSnapshotWatch } from '../../core/snapshot-watch.js';
+import { snapshotWatched, watchedRoleNames, roleProtected, toggleSnapshotWatch, dropWatchedKeys, capSnapshotsKeepingWatched } from '../../core/snapshot-watch.js';
 import { itemsCleanupPlan, applyItemsCleanup } from '../../core/items-cleanup.js';
-import { enforceDimCaps } from '../../core/ingest.js';
+import { enforceDimCaps, mergeDelta } from '../../core/ingest.js';
 import { ledgerList } from '../../core/model/ledger.js';
 import { panelAction, setPanelHooks2, panelBodyHtml } from '../../ui/panel.js';
 import { dangerActionPromptOf } from '../../ui/panel.js';
@@ -215,6 +215,42 @@ A('G3 物品清单行显示归属（便于核对清理依据）', (() => {
 A('G4 **V1 提示词逐字符不变**（归属不靠改提示词；由清理时的「位置 + 随身」确定性推断承担，避免黄金样本漂移）', (() => {
     const tpl = Array.isArray(PROMPT_TEMPLATES_V2.items) ? PROMO_TEMPLATES_NOOP : String(PROMPT_TEMPLATES_V2.items || '');
     return tpl.indexOf('- 归属：') < 0 && tpl.indexOf('- 携带：') >= 0;
+})(), 'n/a');
+
+// ---------- H v3.52.6：关注档案「不被自动删除」+ 置顶 ----------
+A('H1 **AI 删除指令对关注档案不生效**：`snapshots.remove` 命中的关注角色被拦下（其余照删），留墓碑只针对实际删除者', (() => {
+    boot({ snapshots: [{ id: 'w1', name: '甲', watch: true }, { id: 'o1', name: '乙' }] });
+    mergeDelta({ snapshots: { remove: ['甲', '乙'] } }, { floors: [1, 1] });
+    const names = state.snapshots.map((x) => String(x.name));
+    const tombs = Object.keys((state.deleted || {}).snapshots || {});
+    return names.indexOf('甲') >= 0 && names.indexOf('乙') < 0 && tombs.indexOf('乙') >= 0 && tombs.indexOf('甲') < 0;
+})(), () => J({ names: state.snapshots.map((x) => x.name), tombs: Object.keys((state.deleted || {}).snapshots || {}) }));
+A('H2 **上限裁剪保活**：超过上限时关注档案不被裁掉（即使排在容器最前面 / 超上限也保留）', (() => {
+    const list = Array.from({ length: 10 }, (_, i) => ({ id: 's' + i, name: '角色' + i, watch: i === 0 }));
+    const out = capSnapshotsKeepingWatched(list, 4);
+    const ids = out.map((x) => x.id);
+    return ids.indexOf('s0') >= 0 && ids.length === 4 && ids.indexOf('s9') >= 0 && ids.indexOf('s8') >= 0 && ids.indexOf('s7') >= 0;
+})(), () => J(capSnapshotsKeepingWatched(Array.from({ length: 10 }, (_, i) => ({ id: 's' + i, name: '角色' + i, watch: i === 0 })), 4).map((x) => x.id)));
+A('H3 **角色修复删除**同样跳过关注档案（`dropWatchedKeys` 门禁）', (() => {
+    boot({ snapshots: [{ id: 'w1', name: '甲', watch: true }, { id: 'o1', name: '乙' }] });
+    const g = dropWatchedKeys(['甲', '乙']);
+    return J(g.keep) === J(['乙']) && g.blocked === 1;
+})(), 'n/a');
+A('H4 **关注置顶**：默认排序里关注角色恒在最前（段内仍按最近提及倒序）', (async () => {
+    boot({ snapshots: [
+        { id: 'a', name: '甲', lastSeenDate: '1919-01-01' },
+        { id: 'b', name: '乙', lastSeenDate: '1920-01-01' },
+        { id: 'c', name: '丙', lastSeenDate: '1921-01-01', watch: true },
+        { id: 'd', name: '丁', lastSeenDate: '1922-01-01', watch: true },
+    ] });
+    setPanelHooks2({ busy: () => false, batchProgress: () => ({}), pending: () => [], lastExtract: () => null });
+    await panelAction('tab', { tab: 'snapshots' });
+    const html = String(panelBodyHtml('snapshots') || '');
+    const order = [];
+    const re = /data-ftt-action="edit" data-kind="snapshots" data-id="([^"]+)"/g;
+    let m;
+    while ((m = re.exec(html))) order.push(m[1]);
+    return J(order) === J(['d', 'c', 'b', 'a']);
 })(), 'n/a');
 
 R.done();
