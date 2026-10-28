@@ -105,10 +105,16 @@ const stripV2Canon = (v) => {
  *   在此显式归一后再逐字符比对；新字段的存在性由 M2c 正面断言（归一 ≠ 删字段）。
  */
 const stripV2CurrencyAt = (v) => (Array.isArray(v) ? v.map((x) => { const o = Object.assign({}, x); delete o.updatedAt; return o; }) : v);
+/**
+ * v3.52.2（W34）：**有意偏离 V1** —— 物品条目新增「归属角色」`owner`（供「清理未关注角色的物品」判定）。
+ *   黄金样本 `v1-golden-ingest.json` **一字未改**，在此显式归一后再逐字符比对；
+ *   新字段的**存在性**由 M2d 正面断言（归一 ≠ 删字段）。
+ */
+const stripV2ItemOwner = (v) => (Array.isArray(v) ? v.map((x) => { const o = Object.assign({}, x); delete o.owner; return o; }) : v);
 const diff = [];
 dims.forEach((k) => {
     const want = W[k] === undefined ? [] : W[k];
-    const got = (k === 'snapshots') ? stripV2Canon(stripV2Resume(res[k])) : (k === 'currencies' ? stripV2CurrencyAt(res[k]) : res[k]);
+    const got = (k === 'snapshots') ? stripV2Canon(stripV2Resume(res[k])) : (k === 'currencies' ? stripV2CurrencyAt(res[k]) : (k === 'items' ? stripV2ItemOwner(res[k]) : res[k]));
     if (JT(got) !== JT(want)) diff.push(k);
 });
 R.assert('M2 十三类维度落库结果与 V1 逐字符一致（' + dims.join(' / ') + '）', (() => {
@@ -122,6 +128,11 @@ R.assert('M2c v3.50.32 新增面确实存在（归一 ≠ 删字段）：入库�
     const cur = res.currencies || [];
     return cur.length > 0 && cur.every((x) => Number(x.updatedAt) > 1e12);
 })(), ((res.currencies || [])[0] || {}).updatedAt);
+R.assert('M2d v3.52.2 新增面确实存在（归一 ≠ 删字段）：AI 给的「归属角色」`owner` 原样入库（空则不写键）', (() => {
+    const its = res.items || [];
+    const withOwner = its.filter((x) => x && x.owner);
+    return withOwner.length > 0 && withOwner.every((x) => typeof x.owner === 'string' && x.owner.length > 0);
+})(), ((res.items || []).filter((x) => x && x.owner)[0] || {}).owner);
 R.assert('M2b v3.45.5 新增面确实存在（归一 ≠ 删字段）：入库后的角色档案 `resume` 一律为数组（缺省 `[]`）；未标记的档案不写 `identity.canon`', (() => {
     const snap = res.snapshots || [];
     return snap.length > 0 && snap.every((s) => Array.isArray(s.resume))

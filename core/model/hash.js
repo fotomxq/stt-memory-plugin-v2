@@ -31,6 +31,8 @@ function atomContentHash(cat, a) {
         // v1.165：通用知情关联层 —— 参与内容哈希的字段（**引用类字段不进哈希**：概念改名 / 情节修订 / 计划合并不引发跨端抖动）
         else if (cat === 'links') { o.dim = S(a.dim); o.ref = S(a.refId); o.who = S(a.who); o.how = S(a.how); o.from = S(a.from); o.at = S(a.at); o.view = S(a.view); o.dev = S(a.deviation); o.note = S(a.note); o.kind = S(a.kind); o.pub = B(a.public); }
         else if (cat === 'memories') { o.owner = S(a.owner); o.d = S(a.date); o.title = S(a.title); o.content = S(a.content); o.cat = S(a.memCategory); o.tags = A(a.tags); }
+        // v3.52.2（W34）边界：`owner`（归属角色）**不进内容哈希** —— V1 黄金样本锁定哈希（`model-golden` H1），
+        //   且 owner 是归属元信息（改名/换手不该让同一条物品变成"新内容"）；跨端仍按 id + `updatedAt` 合并。
         else if (cat === 'items') { o.name = S(a.name); o.qty = N(a.qty); o.desc = S(a.desc); o.loc = S(a.location); o.carried = B(a.carried); o.tags = A(a.tags); }   // 标签参与内容哈希（标签变更 → 快照/同步识别为更新）
         else if (cat === 'plans' || cat === 'suspense') {
             o.content = S(a.content); o.tags = A(a.tags); o.st = S(a.status);

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D58 · 报告 HTML 化约定 — 报告</title>
+<style>
+  :root{--ink:#1c2430;--ink2:#3d4b5c;--ink3:#6b7a8d;--line:#e3e8ef;--line2:#eef2f7;--bg:#f6f8fb;--card:#fff;--ac:#2f6fed;--acs:#eaf1ff;--ok:#1f9d55;--oks:#e8f7ee;--wn:#8a6d1f;--wns:#fdf5e3;--dg:#c0392b;--dgs:#fdecea;--r:12px;--rs:8px;--sh:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06)}
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  a{color:var(--ac);text-decoration:none}a:hover{text-decoration:underline}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 64px}
+  header.rep{background:linear-gradient(180deg,#fff,#fbfcfe);border:1px solid var(--line);border-radius:var(--r);padding:22px 24px;box-shadow:var(--sh)}
+  header.rep h1{margin:0 0 6px;font-size:23px}
+  .sub{color:var(--ink3);font-size:13px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;border-radius:999px;background:var(--acs);color:#1f4fc4;border:1px solid #d7e3ff}
+  .pill.g{background:#f3f5f9;color:var(--ink2);border-color:var(--line)}
+  nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 0}
+  nav.toc a{font-size:13px;padding:5px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink2)}
+  section{margin-top:26px}
+  h2{font-size:17px;margin:0 0 12px;padding-left:10px;border-left:4px solid var(--ac);line-height:1.3}
+  h3{font-size:14.5px;margin:18px 0 8px;color:var(--ink2)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--sh)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid var(--line);border-radius:var(--rs);overflow:hidden}
+  th,td{padding:9px 11px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}
+  th{background:#f8fafd;font-weight:600;color:var(--ink2);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#f3f5f9;padding:1px 5px;border-radius:5px;border:1px solid var(--line)}
+  .note{border-left:3px solid #cdd8e6;background:#fbfcfe;padding:10px 14px;border-radius:0 var(--rs) var(--rs) 0;color:var(--ink2);font-size:13.5px}
+  .warn{border-left:3px solid #f0b429;background:#fffdf5;padding:10px 14px;border-radius:0 var(--rs) var(--rs) 0;font-size:13.5px}
+  .dang{border-left:3px solid #e05b4a;background:#fff7f6;padding:10px 14px;border-radius:0 var(--rs) var(--rs) 0;font-size:13.5px}
+  .lane{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.lane{grid-template-columns:1fr}}
+  .lane .box{border:1px solid var(--line);border-radius:var(--rs);padding:13px 15px;background:#fff}
+  .lane .box h4{margin:0 0 8px;font-size:13.5px}
+  .lane .box.md{border-top:3px solid var(--ac)}
+  .lane .box.html{border-top:3px solid var(--ok)}
+  .yes{color:var(--ok);font-weight:700}.no{color:var(--dg);font-weight:700}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--ink3);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="rep">
+  <h1>D58 · 报告 HTML 化约定 <span style="font-weight:400;color:var(--ink3);font-size:15px">报告</span></h1>
+  <div class="sub">报告类产出改为<b>双轨</b>：<b>MD 是契约与门禁载体</b>，<b>HTML 是阅读与效果预览版</b>；同名同前缀、自包含、<b>同轮一起更新</b>。</div>
+  <div class="meta">
+    <span class="pill">来源 MD：D58-报告HTML化约定设计稿.md · v1.0</span>
+    <span class="pill g">本 HTML：v1.0</span>
+    <span class="pill g">2026-10-27</span>
+    <span class="pill g">事实基准 v3.52.0</span>
+    <span class="pill g">维度归属：技术（优先序 4）</span>
+    <span class="pill g">状态：生效（约定已立）</span>
+  </div>
+  <nav class="toc">
+    <a href="#why">① 为什么不能只留 HTML</a>
+    <a href="#lane">② 双轨分工</a>
+    <a href="#rule">③ 硬规则</a>
+    <a href="#mock">④ 效果模拟要求</a>
+    <a href="#flow">⑤ 更新与迁移</a>
+    <a href="#check">⑥ 校验口径</a>
+    <a href="#q">⑦ 待裁决</a>
+  </nav>
+</header>
+
+<section id="why">
+  <h2>① 为什么不能只留 HTML</h2>
+  <div class="card">
+    <p>仓库的门禁与台账体系<b>只解析 Markdown</b>：</p>
+    <table>
+      <tr><th style="width:180px">机制</th><th>依赖</th><th>若改成纯 HTML</th></tr>
+      <tr><td><b>C12 台账双向一致</b>（<code>check-ledger-sync.js</code>）</td><td>只从 <code>docs/D*.md</code> 的「实施规格」收集条目号</td><td class="no">失守：设计稿条目无法被承接</td></tr>
+      <tr><td><b>C5 引用存在性</b>（<code>check-docs-facts.js</code>）</td><td>只扫 <code>.md</code> 里的反引号路径</td><td class="no">失守：引用不再被检查</td></tr>
+      <tr><td><b>C6 目录树等式</b></td><td>只比对 <code>docs/*.md</code> 顶层</td><td class="no">失守：目录树与磁盘不再可比</td></tr>
+      <tr><td><b>D17/D22 台账</b></td><td><code>U</code> 编号与条目行寄生在 MD</td><td class="no">失守：销账链断裂</td></tr>
+    </table>
+    <div class="dang" style="margin-top:12px"><b>结论</b>：本约定<b>不是用 HTML 替换 MD</b>，而是<b>增加一条阅读轨</b>。</div>
+  </div>
+</section>
+
+<section id="lane">
+  <h2>② 双轨分工</h2>
+  <div class="lane">
+    <div class="box md">
+      <h4>契约轨 · <code>docs/*.md</code></h4>
+      <table>
+        <tr><td>实施规格（<code>业-/应-/数-/技-&lt;n&gt;</code>）</td><td class="yes">必须</td></tr>
+        <tr><td><code>U</code> 编号</td><td class="yes">必须</td></tr>
+        <tr><td>门禁解析（C5/C6/C8/C12）</td><td class="yes">唯一可解析</td></tr>
+        <tr><td>排版 / 效果模拟</td><td>有限</td></tr>
+      </table>
+    </div>
+    <div class="box html">
+      <h4>阅读轨 · <code>docs/reports/*.html</code></h4>
+      <table>
+        <tr><td>分层排版 / 锚点导航 / 打印友好</td><td class="yes">主战场</td></tr>
+        <tr><td>界面效果模拟（mockup）</td><td class="yes">界面类必须</td></tr>
+        <tr><td>重复定义实施规格</td><td class="no">禁止</td></tr>
+        <tr><td>参与门禁</td><td class="no">不参与</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="note" style="margin-top:12px"><b>一句话</b>：<b>改契约改 MD，给人看改 HTML；两者同一轮一起动。</b></div>
+</section>
+
+<section id="rule">
+  <h2>③ 硬规则</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:120px">项</th><th>规则</th></tr>
+      <tr><td>目录</td><td><code>docs/reports/</code>（唯一报告目录，不散落在 <code>docs/</code> 顶层）</td></tr>
+      <tr><td>命名</td><td><code>docs/reports/&lt;来源 MD 同名&gt;.html</code> —— 例：<code>docs/D57-城镇发展设计稿.md</code> → <code>docs/reports/D57-城镇发展设计稿.html</code></td></tr>
+      <tr><td>首页元信息</td><td><b>必须</b>含：来源 MD 路径、MD 版本、本 HTML 版本、日期、状态</td></tr>
+      <tr><td>自包含</td><td>样式内联；<b>禁止</b> <code>&lt;script src&gt;</code> / <code>&lt;link rel="stylesheet" href&gt;</code> / CDN / 外链图片（判据见 ⑥ R-3/R-4，按<b>属性</b>判）</td></tr>
+      <tr><td>可达性</td><td>语义标签、<code>lang="zh-CN"</code>、<b>无 JS 也能读全</b></td></tr>
+      <tr><td>打印</td><td>纯 CSS 即可打印（<code>@media print</code> 可选）</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="mock">
+  <h2>④ 效果模拟（界面类报告的最低要求）</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">必须示意</h3>
+      <table>
+        <tr><td>页面<b>落点</b></td><td>哪个分页 / 子标签 / 侧栏</td></tr>
+        <tr><td><b>信息层级</b></td><td>首行标题+徽标 / 中段信息 / 尾段操作（沿用 <code>D55</code>）</td></tr>
+        <tr><td><b>状态差异</b></td><td>至少两种（有数据/空态，或 正常/异常徽标）</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">建议与边界</h3>
+      <p><b>建议</b>：窄屏折叠形态；边界情况（超上限、缺字段）。</p>
+      <p style="margin-bottom:0"><b>边界</b>：mockup 为<b>静态示意</b> —— 不承诺像素级一致、不含真实交互、数据为<b>虚构样例</b>并标注"示意数据"。</p>
+    </div>
+  </div>
+</section>
+
+<section id="flow">
+  <h2>⑤ 更新与迁移节奏</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:230px">场景</th><th>动作</th></tr>
+      <tr><td>新报告类设计稿</td><td>同轮产出 MD（契约）+ HTML（阅读）</td></tr>
+      <tr><td>既有 MD 被更新</td><td><b>同一轮</b>更新其 HTML；HTML 首页版本随 MD 递增</td></tr>
+      <tr><td>既有 MD 无 HTML</td><td><b>不追溯批量</b>：在该 MD <b>下一次更新</b>时补出（触及即合规）</td></tr>
+      <tr><td>MD 删除 / 更名</td><td>同步删除 / 更名 HTML，并更新 <code>docs/README.md</code> 的 <code>reports/</code> 行</td></tr>
+    </table>
+    <div class="warn" style="margin-top:12px"><b>例外</b>：<code>docs/history/**</code>、<code>CHANGELOG.md</code>、<code>docs/D17</code>·<code>D22</code> 两个台账<b>不要求</b> HTML（快照 / 机读 / 逐条记录）。</div>
+  </div>
+</section>
+
+<section id="check">
+  <h2>⑥ 校验口径（可机检）</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:70px">编号</th><th>判据</th><th style="width:130px">强度</th></tr>
+      <tr><td><b>R-1</b></td><td><code>docs/reports/*.html</code> 文件名必须对应到一份<b>存在的</b> <code>docs/*.md</code></td><td>可机检 · <b>阻断</b></td></tr>
+      <tr><td><b>R-2</b></td><td>报告首页必须出现其来源 MD 文件名</td><td>可机检 · <b>阻断</b></td></tr>
+      <tr><td><b>R-3</b></td><td>不得含<b>真正的外链引用</b>：按<b>链接属性</b>判定（<code>href="http…"</code> / <code>src="http…"</code> / <code>url(http…</code>）；<b>正文提到协议字样不算</b></td><td>可机检 · <b>阻断</b></td></tr>
+      <tr><td><b>R-4</b></td><td>不得含 <code>&lt;script src=</code> / <code>&lt;link rel="stylesheet"</code></td><td>可机检 · <b>阻断</b></td></tr>
+      <tr><td><b>R-5</b></td><td>MD 比 HTML 新时给出<b>提示</b>（不阻断）</td><td>弱判据 · 提示</td></tr>
+    </table>
+    <div class="note" style="margin-top:12px">落地建议：R-1～R-4 做成拟建脚本 scripts/check-reports.js 并入 <code>npm run gate</code>（阻断）；R-5 只提示。</div>
+  </div>
+</section>
+
+<section id="q">
+  <h2>⑦ 待裁决（5 项）</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:52px">#</th><th>问题</th><th>建议默认</th></tr>
+      <tr><td><b>Q1</b></td><td>报告目录 <code>docs/reports/</code> 还是 <code>docs/html/</code>？</td><td><b><code>docs/reports/</code></b>（语义直白，现存仅 1 份，改名成本极低）</td></tr>
+      <tr><td><b>Q2</b></td><td>校验脚本<b>阻断</b>还是先 observe？</td><td><b>R-1～R-4 阻断</b>（自包含与命名是硬规则，现存量零风险）；R-5 提示</td></tr>
+      <tr><td><b>Q3</b></td><td>两个<b>台账</b>是否也要 HTML？</td><td><b>不要</b>（逐条记录 + 机读，HTML 收益低、维护成本高）</td></tr>
+      <tr><td><b>Q4</b></td><td>mockup 是否允许<b>虚构样例数据</b>？</td><td><b>允许</b>，但必须标注"示意数据"</td></tr>
+      <tr><td><b>Q5</b></td><td>是否要求报告内嵌来源 MD 版本号并随之递增？</td><td><b>要求</b>（否则无法判断 HTML 是否过期）</td></tr>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <p>本页为 <code>docs/D58-报告HTML化约定设计稿.md</code> 的 <b>HTML 报告（阅读版）</b>；<b>MD 仍是契约与门禁载体</b>。</p>
+  <p>规范正文：<code>开发守则.md</code> §2.9（R1–R6）。首个实例：<code>docs/reports/D57-城镇发展设计稿.html</code>。</p>
+</footer>
+
+</div>
+</body>
+</html>

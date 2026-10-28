@@ -29,7 +29,10 @@ function kindFields(kind) {
             F('subject', '主体', 'text'), F('field', '字段', 'text'), F('value', '值', 'textarea'), F('importance', '重要度(0-1)', 'number'), F('status', '状态', 'select', { options: ['active', 'inactive'] }),
         ];
         case 'snapshots': return [
-            F('name', '姓名', 'text'), F('gender', '性别', 'text'),
+            F('name', '姓名', 'text'),
+            // v3.52.2（W34）：关注标记 —— 被关注的档案不被自动清理（上限裁剪 / 低使用遗忘均豁免）
+            F('watch', '关注（标记后不被自动清理；主角无需标记）', 'checkbox'),
+            F('gender', '性别', 'text'),
             // v1.162：年龄不再是可填字段 —— 由出生日期 + 当前剧情日期自动计算（编辑器内只读展示）
             F('birthDate', '出生日期(年-月-日；年龄自动计算)', 'text'),
             F('occupation', '职业', 'text'), F('title', '称号', 'text'), F('species', '种族', 'text'), F('family', '家族', 'text'),
@@ -64,7 +67,8 @@ function kindFields(kind) {
         ];
         case 'items': return [
             // 物品支持填写 标签组（触发关键词，与记忆一致）
-            F('name', '名称', 'text'), F('qty', '数量', 'number'), F('desc', '说明', 'textarea'), F('location', '位置', 'text'), F('carried', '携带中', 'checkbox'), F('tags', '标签(逗号分隔，如 关键道具/钥匙/武器)', 'text'),
+            F('name', '名称', 'text'), F('qty', '数量', 'number'),
+            F('owner', '归属角色（用于「清理未关注角色的物品」；留空 = 未归属，不参与清理）', 'text'), F('desc', '说明', 'textarea'), F('location', '位置', 'text'), F('carried', '携带中', 'checkbox'), F('tags', '标签(逗号分隔，如 关键道具/钥匙/武器)', 'text'),
         ];
         case 'currencies': return [
             // v1.181：货币 —— 归属（默认主角；其他角色需明确指定）/ 币种 / 额度（数字）/ 单位 / 收支

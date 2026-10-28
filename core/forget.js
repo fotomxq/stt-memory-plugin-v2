@@ -195,6 +195,8 @@ function sweepLowUseForget(opts) {
                 const uses = Number(e.uses) || 0;
                 if (uses > thr) continue;
                 if (spec.zeroOnly && uses !== 0) continue;
+                // v3.52.2（W34）：**被「关注」的角色档案不参与自动清理**（与高重要度同档豁免）
+                if (spec.dim === 'snapshots' && e.watch === true) continue;
                 if (Number(e.importance) >= protectImp) continue;
                 const seen = Math.max(Number(e.floorEnd) || 0, Number(e.floorStart) || 0);
                 if (!seen) continue;                       // 无楼层信息 → 来历不明，不删

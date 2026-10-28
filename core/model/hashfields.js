@@ -56,7 +56,7 @@ export const HASH_FIELDS = Object.freeze({
     currentStates: ['subject', 'field', 'value', 'status'],
     snapshots: ['name', 'identity', 'appearance', 'personality', 'background', 'relationships', 'mind', 'social', 'future', 'location'],
     memories: ['owner', 'date', 'title', 'content', 'memCategory', 'tags'],
-    items: ['name', 'qty', 'desc', 'location', 'carried', 'tags'],
+    items: ['name', 'qty', 'desc', 'location', 'owner', 'carried', 'tags'],   // v3.52.2：+owner（归属角色，供未关注角色物品清理）
     plans: ['content', 'tags', 'status', 'title', 'targetTime', 'resolveTime', 'planner', 'participants', 'progress', 'steps', 'prereq', 'blockers', 'history', 'phase', 'statusNote'],
     suspense: ['content', 'tags', 'status', 'title', 'targetTime', 'resolveTime', 'planner', 'participants', 'progress', 'clues', 'resolveCondition', 'level', 'history', 'phase', 'statusNote'],
     scenes: ['name', 'pathArr', 'desc'],

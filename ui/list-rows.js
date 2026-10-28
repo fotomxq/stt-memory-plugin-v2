@@ -409,6 +409,9 @@ function snapshotsRow(s, ctx) {
     const body = parts.length ? parts.join('，') : '（暂无详细信息）';
     const deadTag = (s.identity && s.identity.deceased === true) ? '<span class="ftt-badge ftt-badge--abandoned">🪦 已去世</span>' : '';
     // v3.22.0（用户要求）：长生者标记（按剧情确认的超长寿命者）—— 显示徽标；他们不再被角色修复分析
+    // v3.52.2（W34）：关注标记徽标（不被自动清理）
+    const watchTag = (s.watch === true)
+        ? '<span class="ftt-badge ftt-badge--fact" title="已关注：不会被自动清理（存档上限裁剪 / 低使用遗忘均豁免）">⭐ 关注</span>' : '';
     const immortalTag = (s.identity && s.identity.immortal === true)
         ? '<span class="ftt-badge ftt-badge--immortal" title="已按剧情标记为长生者：不再被「🔧 修复角色」分析（可在编辑里取消勾选）">🧬 长生者</span>' : '';
     let birthTag = '';
@@ -429,7 +432,7 @@ function snapshotsRow(s, ctx) {
     const stamp = (icon, label, d, t) => (d ? (icon + ' ' + label + ' ' + esc(d) + (t ? (' ' + esc(t)) : '')) : '');
     const times = [stamp('🕒', '更新', s.lastUpdateDate, s.lastUpdateTime), stamp('👁', '见面', s.lastSeenDate, s.lastSeenTime)].filter(Boolean);
     const drill = characterDrillHtml(s.name, ctx);
-    return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + deadTag + immortalTag + birthTag + '</div>'
+    return '<div class="ftt-title-row"><b>' + esc(s.name) + '</b>' + watchTag + deadTag + immortalTag + birthTag + '</div>'
         + '<div class="ftt-snap-desc">' + body + '</div>' + drill + tags
         + '<div class="ftt-meta">调用' + (s.uses || 0) + '次 · 重要度' + importancePct(s) + '%' + (times.length ? (' · ' + times.join(' · ')) : '') + '</div>'
         // v3.45.5（`docs/D26` §3.5）：履历区块追加在**标签行 / 调用统计行之后**（角色行末尾）
