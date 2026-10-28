@@ -447,7 +447,9 @@ function itemsRow(i) {
     return '<div class="ftt-title-row"><b>' + esc(i.name) + '</b>'
         + (i.qty != null ? (' ×' + esc(i.qty)) : '')
         + (i.location ? ('（' + esc(i.location) + '）') : '')
-        + (i.carried ? ' 携带中' : '') + '</div>'
+        + (i.carried ? ' 携带中' : '')
+        // v3.52.4：显示归属（清理未关注角色物品的判定依据；空缺则不显示）
+        + (String(i.owner || '').trim() ? (' · 归属：' + esc(String(i.owner).trim())) : '') + '</div>'
         + (i.desc ? '<div class="ftt-desc">' + esc(i.desc) + '</div>' : '')
         + tagLine
         + '<div class="ftt-meta">调用' + (i.uses || 0) + '次 · 重要度' + importancePct(i) + '%</div>';
