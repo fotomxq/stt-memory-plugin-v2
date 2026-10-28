@@ -416,8 +416,14 @@ function extraMatchOf(kind, it, extra) {
  *   另提供显式选项 `seen`（「见面时间（近→远）」）便于用户从其它排序切回。
  */
 function snapshotSeenKey(s) {
-    const day = String((s && (s.lastSeenDate || s.lastUpdateDate)) || '').trim();
-    const time = String((s && (s.lastSeenTime || s.lastUpdateTime)) || '').trim();
+    // v3.52.5（用户要求「最近提及的在前面」）：取 **lastSeen 与 lastUpdate 中较晚者** ——
+    //   「见面」与「被提及/档案更新」任一更新，都应把该角色顶到前面（旧实现只看 lastSeen，档案刚更新也不动）。
+    const seenDay = String((s && s.lastSeenDate) || '').trim();
+    const upDay = String((s && s.lastUpdateDate) || '').trim();
+    const day = (seenDay && upDay) ? (seenDay >= upDay ? seenDay : upDay) : (seenDay || upDay);
+    const seenT = String((s && s.lastSeenTime) || '').trim();
+    const upT = String((s && s.lastUpdateTime) || '').trim();
+    const time = (day === seenDay && seenT) ? seenT : ((day === upDay && upT) ? upT : (seenT || upT));
     // 时间只取 HH:mm(:ss) 的先后（同一天内可比）；其余文本不参与（避免"傍晚"这类文案影响排序稳定性）
     const m = /^(\d{1,2}):(\d{2})/.exec(time);
     const hhmm = m ? (String(m[1]).padStart(2, '0') + String(m[2])) : '';
@@ -1131,7 +1137,11 @@ function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     // v3.46.7（`docs/D22` §4.4 W15 `应-1` / `docs/D9` §10 **U1**）：**渐进展示** —— 一屏 `pageLimitOf()` 条（首屏 50），
     //   超出由「显示更多」按屏追加；搜索 / 筛选变更即重置首屏（见 `ui/list-pager.js`）。外框仍是 `LIST_PAGE_MAX`。
-    const info = listOfInfo(kind, q), list = info.list, pager = info.pager, total = arrOf(kind).length, sel = selOf(kind), multi = ps.multi[kind] === true;
+    const info = listOfInfo(kind, q);
+    // v3.52.5（用户报告「倒序搞反了」）：**列表排序选项必须真正生效** —— 旧实现只在状态页调用 `listSortOf`，
+    //   其它列表（含角色页）的「默认/最新/最早/重要度/调用次数」全都不生效，角色页实际按 `floorEnd` 兜底排序
+    //   → 多数档案没有楼层信息时退化为**入库顺序（最早的在前）**，看起来就是「倒过来了」。
+    const list = listSortOf(kind, info.list), pager = info.pager, total = arrOf(kind).length, sel = selOf(kind), multi = ps.multi[kind] === true;
     const hiddenN = kind === 'atoms' ? hiddenCount() : 0;
     const toolbar = '<div class="ftt-addbar ftt-toolbar">'
         + '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="add" data-kind="' + attr(kind) + '">➕ 新增</button>'
