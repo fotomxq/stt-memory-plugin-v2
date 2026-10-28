@@ -1766,7 +1766,9 @@ function enforceDimCaps() {
             idx.sort((a, b) => {
                 const ia = Number(arr[a] && arr[a].importance) || 0;
                 const ib = Number(arr[b] && arr[b].importance) || 0;
-                const pa = ia >= protectImp ? 1 : 0, pb = ib >= protectImp ? 1 : 0;
+                // v3.52.2（W34）：**被「关注」的角色档案豁免上限裁剪**（与高重要度同档保护）
+                const pa = (ia >= protectImp || (arr[a] && arr[a].watch === true)) ? 1 : 0;
+                const pb = (ib >= protectImp || (arr[b] && arr[b].watch === true)) ? 1 : 0;
                 if (pa !== pb) return pb - pa;
                 const ua = Number(arr[a] && arr[a].uses) || 0, ub = Number(arr[b] && arr[b].uses) || 0;
                 if (ua !== ub) return ub - ua;

@@ -76,6 +76,9 @@
     "importV1Dry",
     "inject",
     "itemRepair",
+    "itemsCleanup",
+    "itemsCleanupApply",
+    "itemsCleanupClose",
     "linkQuery",
     "localCopyClearOthers",
     "localDiskBrowserDir",
@@ -196,6 +199,7 @@
     "triLinkBuild",
     "triLinkClose",
     "vectorCacheClear",
+    "watchToggle",
     "worldbookRefresh"
   ],
   "controls": [
@@ -377,6 +381,7 @@
     "rumors:rumorParallelLinkChance",
     "rumors:rumorParallelLinkSim",
     "rumors:storeMinRumors",
+    "storage:currencyFunnel",
     "storage:currencyHistoryMax",
     "storage:dealCatchUpMax",
     "storage:dealJumpMinDays",
@@ -440,6 +445,7 @@
     "constraintCheckEnabled",
     "currencyDynamicEnabled",
     "currencyEnabled",
+    "currencyFunnel",
     "currencyHistoryMax",
     "currencyMergeEnabled",
     "currencyMergeMaxItems",

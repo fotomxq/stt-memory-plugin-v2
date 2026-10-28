@@ -825,6 +825,8 @@ function normalizeSnapshot(e0) {
 
         ...nsfwField(e),
     };
+    // v3.52.2（W34）：**关注标记** —— 只在 true 时写（false 与缺省等价；不进内容哈希、不进内容副本）
+    if (e?.watch === true || e?.关注 === true) out.watch = true;
     // v2.86.0（D8 §4.4）：内容副本 = 全部结构化字段的确定性拼接（字段仍是权威，副本只供哈希 / 检索）
     out.content = snapshotContentCopy(out);
     return out;

@@ -113,6 +113,8 @@ import { flatFor } from './entry-flat.js';   // v3.51.5：编辑器回填（含�
 import { editorHtml, prefillEditor, collectEditorFields, kindLabelOf } from './editor.js';   // v3.52.0（W33 技-61）：编辑器装配外提
 import { setCurrencyPanelDeps, currencyTopHtml, currencyStatText, currencyTrackButtons, currencyRepairPanelHtml, currencyRepairState, setCurrencyRepairOpen, setCurrencyRepairUntracked } from './currency-repair-panel.js';   // v3.52.0（技-61）：货币页顶部与修正预览外提
 import { setStatesPageDeps, renderStatesPage } from './states-page.js';   // v3.52.0（技-61/应-50）：状态页外提（角色组折叠）
+import { itemsCleanupBarHtml, itemsCleanupPanelHtml, itemsCleanupAction, itemsCleanupState } from './items-cleanup-panel.js';   // v3.52.2（W34 应-54）
+import { toggleSnapshotWatch } from '../core/snapshot-watch.js';   // v3.52.2（W34 数-47）
 import { nodeTableClick, stateGroupClick } from './node-table-dom.js';   // v3.51.7 结构化行操作；v3.52.0 状态组折叠   // v3.1.0：+buildRowCtx（关联行索引，渲染热路径）
 // v2.35.0（B10-a）：API 子页（V1 同名动作 presetSave/presetLoad/presetDelete/apiTest/apiModels + V2 的 dimPreset）
 import { apiAction, API_ACTIONS, setApiPageHooks } from './api-page.js';
@@ -1082,6 +1084,13 @@ function parallelRowBits(e) {
 // ============================================================
 
 /** 货币页顶部统计胶囊（V1 `catStat('currencies')` + `tracked.length` 角标，逐字文案） */
+/** v3.52.2（W34）：角色关注切换按钮（行内） */
+function watchBtnOf(e) {
+    const on = !!(e && e.watch === true);
+    return '<button class="ftt-btn ftt-sm' + (on ? ' ftt-primary' : '') + '" data-ftt-action="watchToggle" data-kind="snapshots" data-id="' + attr(String((e && e.id) || '')) + '"'
+        + ' title="' + (on ? '取消关注（之后可能被自动清理）' : '关注该角色：不被自动清理') + '">' + (on ? '⭐ 已关注' : '☆ 关注') + '</button>';
+}
+
 function dimBodyList(kind) {
     const q = ps.q[kind] || '';
     // v3.46.7（`docs/D22` §4.4 W15 `应-1` / `docs/D9` §10 **U1**）：**渐进展示** —— 一屏 `pageLimitOf()` 条（首屏 50），
@@ -1166,6 +1175,7 @@ function dimBodyList(kind) {
     // B9-c：货币页顶部（统计胶囊 + 说明 + 已标定胶囊）与「👥 指定跟踪角色」选择器
     //   位置：胶囊在工具行之前（V1 `currenciesHtml` 的 head/trackChips），选择器在工具行之后（V1 的 addBtn 之后）
     const curTop = (kind === 'currencies') ? currencyTopHtml() : '';
+    const itemsExtra = (kind === 'items') ? (itemsCleanupBarHtml() + itemsCleanupPanelHtml()) : '';   // v3.52.2（W34）：清理未关注角色物品（先预览后确认）
     const curPick = (kind === 'currencies') ? currencyPickPanelHtml(ps.q.currencyTrackPick) : '';   // 搜索词走页面槽（v3.47.0 外移后作为入参）
     const curRepair = (kind === 'currencies') ? currencyRepairPanelHtml() : '';
     // v3.46.2（W13 应-30）：货币融合（🔀）的**只读预览区**（选角色 → 出方案 → 确认 / 取消；未确认零写入）
@@ -1177,7 +1187,7 @@ function dimBodyList(kind) {
         const emptyTxt = q
             ? '没有匹配的条目。换个关键词，或点「✕ 清除」重置筛选条件。'
             : '该类目暂无条目。点上方「⚡ 立即 AI 摘要」从楼层提取，或用「添加」手动创建。';
-        return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
+        return curTop + toolbar + itemsExtra + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + '<div class="ftt-empty">' + emptyTxt + '</div>';
     }
     // v3.1.0（性能，docs/D13 R3）：**每次渲染现建一次**渲染期上下文（关联行索引 + 条目索引），
     //   行渲染改走索引 → 角色页下钻从 O(行 ×(记忆+计划+悬念)×关联行) 降为 O(关联行 + 行 × 命中数)。
@@ -1203,7 +1213,7 @@ function dimBodyList(kind) {
         //   （CSS 22758：`flex-direction: column`），其余维度沿用横向 `.ftt-item-ops`。此处按 V1 口径对齐：
         //   平行行 = 一个**竖排操作列**（🚀 推进 / ⬆ 转正 / ✏️ 编辑 / 🗑 删除 + 选中态的多选由左侧方框承担），
         //   行主体仍占满剩余宽度（`.ftt-grow`），不再被按钮横向挤压。
-        const opsInner = (par ? par.ops : '') + peekBtn + (kind === 'currencies' ? curQuickButtonsHtml(id) : '') + editBtn + delBtn;
+        const opsInner = (par ? par.ops : '') + peekBtn + (kind === 'currencies' ? curQuickButtonsHtml(id) : '') + (kind === 'snapshots' ? watchBtnOf(e) : '') + editBtn + delBtn;
         // v3.0.13：本次刚推演落库的平行事件 → 行上带定位锚点 + 「🆕 本次新增」标记（重绘后自动滚入视野）
         const flashed = (kind === 'parallels' && ps.flash && Array.isArray(ps.flash.ids) && ps.flash.ids.indexOf(id) >= 0);
         const flashAttr = flashed ? (' data-ftt-flash-id="' + attr(id) + '"') : '';
@@ -1216,7 +1226,7 @@ function dimBodyList(kind) {
         );
     }).join('\n');
     // v3.47.2（用户要求）：**去掉**分类顶部的「NSFW 留档」统计行（每条末行的等级徽标保留）
-    return curTop + toolbar + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + rows;
+    return curTop + toolbar + itemsExtra + curPick + curRepair + curMerge + ((kind === 'snapshots') ? resumeBatchPanelHtml() : '') + ptb + head + ed + peek + rows;
 }
 
 /** 情节速览（V1 atomPeek 的只读穿透视图） */
@@ -1808,7 +1818,12 @@ function setNote(text, level) {
  * 键 = `data-ftt-action`，值 = 确认文案（讲清「删什么 + 能不能恢复 + 有无备份」）。
  * 只作用于**用户真实点击**路径（见点击委托的最前面那道闸）；取消 → 直接 return，零副作用。
  */
+// v3.52.2（W34）：危险动作提示的只读查询（测试 / 调试用；避免为了断言把整张表导出）
+export function dangerActionPromptOf(action) { try { return String(DANGER_ACTION_PROMPTS[String(action || '')] || ''); } catch (e) { return ''; } }
+
 const DANGER_ACTION_PROMPTS = {
+    // v3.52.2（W34 应-54）：物品清理是**删除**动作 —— 预览已列清单，这里再二次确认（取消不产生任何副作用）
+    'itemsCleanupApply': '确认清理清单里的物品？\n\n将删除「未关注角色」名下的物品（列表已在预览里逐条列出），删除会留记录、跨端不复活；属于关注角色 / 主角 / 未归属的物品不受影响。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'delete': '删除这一条记忆？\n\n删除会留下记录，跨端同步时不会把它复活；但本机该条内容将不再注入。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'bulkDelete': '删除勾选的全部记忆条目？\n\n删除会留下记录（跨端不复活），但本机这些内容将不再注入。此操作不可撤销，建议先备份。',
     'dbgClear': '清空调试日志？\n\n只清除本机的调试与交互日志，**不影响任何记忆数据**。',
@@ -2017,6 +2032,9 @@ export async function panelAction(action, payload) {
             }
         }
         else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
+        // v3.52.2（W34）：角色关注切换 + 物品清理（预览/确认/关闭）
+        else if (a === 'watchToggle') { const r = toggleSnapshotWatch(String(p.id || '')); setNote(r.note || ''); result = Object.assign(result, r); if (r.ok) { try { saveState(); } catch (e) { /* 忽略 */ } } }
+        else if (a === 'itemsCleanup' || a === 'itemsCleanupApply' || a === 'itemsCleanupClose') { const r = itemsCleanupAction(a); setNote(r.note || ''); result = Object.assign(result, r); }
         else if (a === 'dealRepair') {
             // v3.51.8（用户报告「修复按钮触发后没通知」）：**先落一条「处理中」并立刻重绘**（AI 段要等几秒，不能静默）
             setNote('长期收支修复：处理中…（先用内置模块结算到期记账，再把最多 3 条交 AI 修订）');

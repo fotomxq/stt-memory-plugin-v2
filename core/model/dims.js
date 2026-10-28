@@ -145,7 +145,9 @@ function normalizeItem(e) {
     const name = normText(e?.name, 40);
     if (!name) return null;
     const fs = Number(e?.floorStart), fe = Number(e?.floorEnd);
-    return {
+    // v3.52.2（W34）：归属角色 —— **只在非空时写**（空归属不占字段：V1 黄金样本零漂移）
+    const ownerV = normText(e?.owner !== undefined ? e?.owner : e?.['归属'], 40);
+    const out = {
         id: String(e?.id || `item_${hashText(name)}`),
         name,
         qty: Number.isFinite(Number(e?.qty)) ? Number(e.qty) : undefined,
@@ -166,7 +168,9 @@ function normalizeItem(e) {
         content: dimCap('items', normText(e?.desc, 2000)),
         strength: Math.round(clamp(Number(e?.importance) || 0.5, 0, 1) * 100),
         extra: makeExtra({ qty: e?.qty, location: e?.location, carried: e?.carried !== false, keywords: e?.keywords }),        ...nsfwField(e),
-        extra: makeExtra({ qty: e?.qty, location: e?.location, carried: e?.carried !== false, keywords: e?.keywords }),        };
+    };
+    if (ownerV) out.owner = ownerV;   // v3.52.2（W34）：非空才写
+    return out;
 }
 
 function normalizePlan(e) {

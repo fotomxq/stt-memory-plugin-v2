@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.1",
-  "updatedAt": "2026-10-27",
-  "generatedAt": "2026-10-27",
+  "version": "3.52.2",
+  "updatedAt": "2026-10-28",
+  "generatedAt": "2026-10-28",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.2",
+      "date": "2026-10-28",
+      "title": "角色关注标记（免自动清理）+ 清理未关注角色的物品（先清单后确认）",
+      "points": [
+        "登记：设计稿 docs/D59 ｜ 台账 docs/D17 U292–U296 ｜ 清单 docs/D22 §4.37（W37）｜ 批次档 docs/history/P10c15…"
+      ]
+    },
     {
       "version": "3.52.1",
       "date": "2026-10-27",
