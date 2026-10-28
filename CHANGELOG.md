@@ -3,6 +3,33 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.52.6（2026-10-28）· **关注档案保活**（不被自动删除）+ **关注置顶**
+
+**用户报告**（原话）：「角色加关注后，不应该被删除，当前存在BUG会自动删除。其次加关注后的角色应该置顶。」
+
+**登记**：批次档 `docs/history/P10c159-关注档案保活与置顶.md`
+
+### 一、根因：v3.52.2 只堵了两条清理路径
+
+已豁免：① 存档上限裁剪（`enforceDimCaps`）② 低使用遗忘（`forget.js`）。
+**未堵的三条自动删除**：③ `mergeDelta` 末尾的 `snapshots.slice(-cap)`（按容器顺序一刀切，最隐蔽）·
+④ AI 的 `snapshots.remove`（摘要里 AI 一句话就删）· ⑤ 角色修复的 `remove`（合并清理顺带删）。
+
+### 二、修复：统一保活门禁（用户意志优先，`docs/D28` B13②）
+
+`core/snapshot-watch.js` 新增 `dropWatchedKeys(keys)`（从待删键里剔除关注者）与
+`capSnapshotsKeepingWatched(arr, cap)`（上限裁剪保活，cap 变软上限）；
+接入 AI 删除、角色修复删除、`mergeDelta` 裁剪。**手动删除不受影响**（`deleteEntry` 不经门禁）。
+
+### 三、置顶
+
+`sortSnapshotsBySeen`：**关注档案恒排最前**；置顶段内部仍按「最近提及」（`lastSeen`/`lastUpdate` 取较晚）倒序。
+
+### 四、测试与门禁
+
+`snapshot-watch-items-cleanup` 17 → **21 项**（H1 AI 删除被拦 · H2 裁剪保活 · H3 修复删除门禁 · H4 置顶顺序）；
+全量单测 **263 文件 / 3903 断言**；冒烟 224 项；`npm run gate` 全绿；体量基线 `ui/panel.js` 3762 → **3765**。
+
 ## v3.52.5（2026-10-28）· **修复角色清单排序**：排序选项真正生效 + 「最近提及」优先
 
 **用户报告**（原话）：「角色清单倒序，是最近提及的在前面，搞反了。」

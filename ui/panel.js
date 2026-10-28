@@ -431,6 +431,9 @@ function snapshotSeenKey(s) {
 }
 function sortSnapshotsBySeen(arr) {
     return (Array.isArray(arr) ? arr.slice() : []).sort((a, b) => {
+        // v3.52.6（用户要求「加关注后的角色应该置顶」）：**关注置顶**（置顶段内仍按最近提及倒序）
+        const wa = a && a.watch === true, wb = b && b.watch === true;
+        if (wa !== wb) return wa ? -1 : 1;
         const ka = snapshotSeenKey(a), kb = snapshotSeenKey(b);
         if (ka.day !== kb.day) {
             if (!ka.day && kb.day) return 1;                 // 无见面记录 → 最后

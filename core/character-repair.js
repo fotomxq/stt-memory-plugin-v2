@@ -62,6 +62,7 @@ import {
     // v3.45.5：履历机械段的**运行账本**（会话内计数；体检的「遗弃计数」读数源）—— 归属 `core/resume.js`
     resumeLedgerRecord, resumeLedgerState, resumeLedgerReset,
 } from './resume.js';
+import { dropWatchedKeys } from './snapshot-watch.js';   // v3.52.6：关注档案保活（修复删除）
 
 /** 用户提示（经宿主钩子；与 core/repair.js / core/group-repair.js 既有写法一致） */
 // v3.50.19（`docs/D22` §4.13 W12 `技-49`）：**聚合路径的静默开关** —— 只抑制提示（toast），
@@ -1155,11 +1156,14 @@ function applyCharacterRepairResult(delta, targets) {
         out.rolesInferred = inf.length;
         const dels = Array.isArray(ops && ops.remove) ? ops.remove : [];
         if (dels.length) {
-            const delSet = new Set(dels.map(x => String(x).trim()).filter(Boolean));
+            // v3.52.6（用户报告「关注后仍被自动删除」）：修复动作的「删除」同样**对已关注档案不生效**
+            const gated = dropWatchedKeys(dels.map(x => String(x).trim()).filter(Boolean));
+            if (gated.blocked) { try { dbgLog('摘要', { action: '关注档案保活：拦下角色修复的删除', blocked: gated.blocked }); } catch (e) { /* 忽略 */ } }
+            const delSet = new Set(gated.keep);
             const removedNames = (state.snapshots || []).filter(x => delSet.has(String(x.id)) || delSet.has(String(x.name))).map(x => x.name);
             if (removedNames.length) {
                 state.snapshots = (state.snapshots || []).filter(x => !delSet.has(String(x.id)) && !delSet.has(String(x.name)));
-                try { tombMany('snapshots', dels); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
+                try { tombMany('snapshots', gated.keep); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
                 try { sweepStatesForRemovedSnapshots(removedNames); } catch (e) { /* 忽略：墓碑写失败：只是留痕缺失，数据本体已处理 */ }
                 out.removed = removedNames.length;
             }

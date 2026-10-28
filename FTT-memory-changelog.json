@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.5",
+  "version": "3.52.6",
   "updatedAt": "2026-10-28",
   "generatedAt": "2026-10-28",
   "intro": {
@@ -16,6 +16,16 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.6",
+      "date": "2026-10-28",
+      "title": "关注档案保活（不被自动删除）+ 关注置顶",
+      "points": [
+        "用户报告：（原话）：「角色加关注后，不应该被删除，当前存在BUG会自动删除。其次加关注后的角色应该置顶。」",
+        "登记：批次档 docs/history/P10c159-关注档案保活与置顶.md### 一、根因：v3.52.2 只堵了两条清理路径已豁免：① 存档上限裁剪（enforceDim…",
+        "未堵的三条自动删除：③ mergeDelta 末尾的 snapshots.slice(-cap)（按容器顺序一刀切，最隐蔽）·④ AI 的 snapshots.remove（摘要…"
+      ]
+    },
     {
       "version": "3.52.5",
       "date": "2026-10-28",
