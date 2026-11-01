@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.6';   // v3.52.6（用户报告）：关注档案不被自动删除（AI 删除/上限裁剪/修复删除保活）+ 关注置顶
+export const VERSION = '3.52.7';   // v3.52.7（用户要求）：存档（聊天）分区 —— 不同存档数据区分，避免混淆
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

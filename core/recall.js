@@ -26,6 +26,7 @@ import { normalizeList, snapNameKey } from './util.js';
 //   时间衰退统一走单一实现 `core/decay.js#calcTimeDecay`（`core/ingest.js` 再导出同一件）。
 import { calcTimeDecay } from './decay.js';
 import { bigDatePrefix } from './model/bigdate.js';   // v3.50.27（数-39）：取日期部分（支持负年份 / 大年份）
+import { filterArchiveVisible } from './archive-scope.js';   // v3.52.7：存档分区（注入侧）
 
 const REL_LINK_DIMS = ['memories', 'plans', 'suspense', 'parallels', 'rumors'];   // v3.46.1（W11 数-33）：四处同批之一（+rumors）
 
@@ -910,7 +911,8 @@ function buildMemoryBodyForInject(queryText, opts) {
             try {
                 for (const k of Object.keys(s || {})) {
                     const v = s[k];
-                    if (INJECT_ARR_KEYS.indexOf(k) >= 0) out[k] = Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : [];
+                    // v3.52.7（存档分区）：**注入只取当前存档 + 历史遗留**，别的存档不参与召回（避免跨档混淆）
+                    if (INJECT_ARR_KEYS.indexOf(k) >= 0) out[k] = Array.isArray(v) ? filterArchiveVisible(v.filter(x => x !== null && x !== undefined)) : [];
                     else out[k] = Array.isArray(v) ? v.filter(x => x !== null && x !== undefined) : v;
                 }
             } catch (e) { return s || {}; }        // 清洗失败 → 交回原对象（下面的区块边界仍会兜住）

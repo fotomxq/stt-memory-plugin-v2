@@ -16,6 +16,8 @@ import { fileStamp } from '../core/util.js';   // v3.0.17：导出文件名带�
 // v3.50.7（用户报告「导出后的数据无法导入」）：导入结果的**逐容器明细**文案与结果同源（体量棘轮：逻辑不落在本文件）
 import { importResultNote } from '../adapters/import-state.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
 import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
+import { filterArchiveVisible, archiveStats, adoptLegacyEntries, archiveTierOf } from '../core/archive-scope.js';   // v3.52.7：存档分区
+import { archiveBannerHtml } from './archive-banner.js';   // v3.52.7：存档横幅
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
 import { kindFields, deconstructEntry, nodeTableHtml } from './fields.js';   // v3.51.7：结构性节点表
@@ -519,7 +521,9 @@ const J = (v) => { try { return JSON.parse(JSON.stringify(v)); } catch (e) { ret
 function arrOf(kind) {
     try {
         const k = dataKindOf(kind);
-        return Array.isArray(state[k]) ? state[k] : [];
+        const arr = Array.isArray(state[k]) ? state[k] : [];
+        // v3.52.7（存档分区）：列表 / 计数只看「当前存档 + 历史遗留」，**别的存档隐藏**
+        return filterArchiveVisible(arr);
     } catch (e) { return []; }
 }
 function totalMemory() {
@@ -1249,6 +1253,7 @@ function dimBodyList(kind) {
         const hidden = kind === 'atoms' && (() => { try { return atomIsHidden(e); } catch (x) { return false; } })();
         // v3.50.16：多选模式下**行本身即选择控件**（不再渲染复选框；这里只放一个只读的 ☑/☐ 记号）
         const box = multi ? rowSelectMarkHtml(sel.has(id)) : '';
+        const legacyTag = (archiveTierOf(e) === 'legacy') ? '<span class="ftt-badge ftt-badge--warn" data-ftt-archive-legacy title="升级前的历史数据：无存档归属（可一键归入当前存档）">旧存档</span>' : '';
         const peekBtn = (kind === 'atoms' && hidden) ? ('<button class="ftt-op" data-ftt-action="atomPeek" data-ftt-id="' + attr(id) + '" title="穿透查看被总结的原文">🔍</button>') : '';
         const par = (kind === 'parallels') ? parallelRowBits(e) : null;
         // 平行行的「相关角色 / 转正」备注在 V1 属**行内第 8 行** → 已并入 `listRowMainHtml('parallels')`，
@@ -1269,7 +1274,7 @@ function dimBodyList(kind) {
         const flashBadge = flashed ? '<b class="ftt-ok">🆕 本次新增</b>' : '';
         // v3.48.0（W19 应-35）：行 = 内容块 + 右侧按钮组（滑动 / 悬停展开；宽度实测后左移；按钮多则折行网格）
         return swipeRowHtml(
-            box + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + (kind === 'currencies' ? curQuickFormHtml(id, ps.curQuick) : '') + '</span>',
+            box + legacyTag + '<span class="ftt-grow">' + listRowMainHtml(kind, e, rowCtx) + relJump + flashBadge + (kind === 'currencies' ? curQuickFormHtml(id, ps.curQuick) : '') + '</span>',
             opsInner,
             { attrs: flashAttr + (multi ? rowSelectAttrs(kind, id, sel.has(id)) : ''), opsCol: kind === 'parallels', count: (opsInner.match(/data-ftt-action=/g) || []).length }
         );
@@ -1477,7 +1482,8 @@ export function panelModalInnerHtml(opts) {
     // v3.46.3：提示行移到**面板外壳**（原先只在 `overviewBody()` 里 → 其它 12 页看不见动作结果；三条用户报告同源）
     const noteLine = ps.note ? ('<div class="ftt-hint ftt-note ftt-note-line' + (ps.noteLevel ? (' ftt-note--' + ps.noteLevel) : '')
         + '" role="status" aria-live="polite" data-ftt-note>' + esc(ps.note) + '</div>') : '';
-    return pipeDisableInFlightHtml(head + noteLine + tabs + bodies);
+    // v3.52.7（存档分区）：横幅放在外壳（所有分页可见）—— 当前存档 / 本档 / 旧存档遗留 / 其它存档
+    return pipeDisableInFlightHtml(head + archiveBannerHtml() + noteLine + tabs + bodies);
 }
 
 /**
@@ -1872,6 +1878,8 @@ export function dangerActionPromptOf(action) { try { return String(DANGER_ACTION
 
 const DANGER_ACTION_PROMPTS = {
     // v3.52.2（W34 应-54）：物品清理是**删除**动作 —— 预览已列清单，这里再二次确认（取消不产生任何副作用）
+    // v3.52.7（存档分区）：归档会改写一批历史条目的归属字段（不可撤销，但可再导出备份）
+    'archiveAdopt': '把这些「旧存档遗留」数据归入当前存档？\n\n只补齐**没有**归属的历史条目；已有归属（别的存档）一律不动。归档后这些条目会归入当前存档视图、并参与本档的注入与自动清理。建议先「⬇ 导出 JSON 文件」备份。',
     'itemsCleanupApply': '确认清理清单里的物品？\n\n将删除「未关注角色」名下的物品（列表已在预览里逐条列出），删除会留记录、跨端不复活；属于关注角色 / 主角 / 未归属的物品不受影响。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'delete': '删除这一条记忆？\n\n删除会留下记录，跨端同步时不会把它复活；但本机该条内容将不再注入。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'bulkDelete': '删除勾选的全部记忆条目？\n\n删除会留下记录（跨端不复活），但本机这些内容将不再注入。此操作不可撤销，建议先备份。',
@@ -2081,6 +2089,8 @@ export async function panelAction(action, payload) {
             }
         }
         else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
+        // v3.52.7（存档分区）：把升级前的历史数据归入当前存档（危险动作二次确认）
+        else if (a === 'archiveAdopt') { const r = adoptLegacyEntries(); setNote(r.note || ''); result = Object.assign(result, r); if (r.ok && r.adopted) { try { saveState(); } catch (e) { /* 忽略 */ } } }
         // v3.52.2（W34）：角色关注切换 + 物品清理（预览/确认/关闭）
         else if (a === 'watchToggle') { const r = toggleSnapshotWatch(String(p.id || '')); setNote(r.note || ''); result = Object.assign(result, r); if (r.ok) { try { saveState(); } catch (e) { /* 忽略 */ } } }
         else if (a === 'itemsCleanup' || a === 'itemsCleanupApply' || a === 'itemsCleanupClose') { const r = itemsCleanupAction(a); setNote(r.note || ''); result = Object.assign(result, r); }
