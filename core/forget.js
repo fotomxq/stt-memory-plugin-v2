@@ -19,6 +19,7 @@
 import { cfg, state, saveState, notifyHooks, dbgLog, timerHooks, getLastMessageId } from './model/runtime.js';
 import { storyDateMsFromStr } from './clock.js';
 import { tombMany } from './merge.js';
+import { archiveVisible } from './archive-scope.js';   // v3.52.7：存档分区
 import {
     storeMinFor, storeCapFor, repairClampNum, memoryImportance, calcTimeDecay, runStateDecay, enforceDimCaps,
 } from './ingest.js';
@@ -192,6 +193,8 @@ function sweepLowUseForget(opts) {
             for (let i = 0; i < arr.length; i++) {
                 const e = arr[i];
                 if (!e || typeof e !== 'object') continue;
+                // v3.52.7（存档分区）：**别的存档的条目不参与本存档的自动遗忘**
+                if (!archiveVisible(e)) continue;
                 const uses = Number(e.uses) || 0;
                 if (uses > thr) continue;
                 if (spec.zeroOnly && uses !== 0) continue;

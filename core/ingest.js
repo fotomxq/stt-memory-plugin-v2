@@ -34,6 +34,7 @@ import { SHELL_MIN_CHARS, filterShellAdds } from './shell-guard.js';
 import { checkFloorRange, observedMaxFloor } from './reserved-fields.js';
 import { cascadeDeleteLedgerForCurrency } from './model/ledger.js';   // v3.51.0（W32 数-45）：货币消失 → 流水级联删除
 import { capSnapshotsKeepingWatched, dropWatchedKeys } from './snapshot-watch.js';   // v3.52.6：关注档案保活（AI 删除 / 上限裁剪）
+import { archiveVisible, capVisibleKeepingOthers } from './archive-scope.js';   // v3.52.7：存档分区（裁剪/遗忘只动本档）
 
 // V1 的 `toast/sendToast` 是宿主弹窗：V2 内核经宿主通知钩子发出（缺失即静默，不影响落库）
 function toast(text, kind) { try { notifyHooks.toast(String(text == null ? '' : text), String(kind || 'info')); } catch (e) { /* 忽略：提示通道不可用：不影响数据与落库 */ } }
@@ -567,11 +568,12 @@ function mergeDelta(delta0, floorRange) {
         // v1.147：库存切片用「存储上限」（≥保底），不再用旧的 300/150/60 硬编码
         // v1.203：情节裁剪保留「已总结隐藏」条目（不参与淘汰 → 持久存储）
         state.atoms = capAtomsKeepingHidden(state.atoms, storeCapFor('atoms'));
-        state.memories = (state.memories || []).slice(-storeCapFor('memories'));
-        // v3.52.6：上限裁剪**保活关注档案**（旧 slice(-cap) 会按容器顺序误删被关注者）
-        state.snapshots = capSnapshotsKeepingWatched(state.snapshots, storeCapFor('snapshots'));
+        // v3.52.7（存档分区）：上限只裁「当前存档 + 历史遗留」，**别的存档原样保留**
+        state.memories = capVisibleKeepingOthers(state.memories, storeCapFor('memories'));
+        // v3.52.6：上限裁剪**保活关注档案**（旧 slice(-cap) 会按容器顺序误删被关注者）→ v3.52.7 再叠分区保活
+        state.snapshots = capSnapshotsKeepingWatched(capVisibleKeepingOthers(state.snapshots, storeCapFor('snapshots')), storeCapFor('snapshots'));
         // v1.59：平行事件上限走设定（maxParallels 默认 30，超出自动挤出最旧）
-        state.parallels = (state.parallels || []).slice(-Math.max(1, Number(cfg && cfg.maxParallels) || 30));
+        state.parallels = capVisibleKeepingOthers(state.parallels, Math.max(1, Number(cfg && cfg.maxParallels) || 30));
         try { scheduleParallelDecay(); } catch (e) { /* 忽略：空操作（仅占位）：无实际副作用 */ }
         // v1.101：状态固定模板的条数钳制 —— 每角色最多状态条数（超出裁掉最旧；最少为提示词要求）
         try { applyStateBounds(); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
@@ -1767,7 +1769,9 @@ function enforceDimCaps() {
             const cap = storeCapFor(dim);                     // v1.147：存储上限（≥ 保底）
             const arr = Array.isArray(state[dim]) ? state[dim] : [];
             if (!cap || arr.length <= cap) continue;
-            const idx = arr.map((e, i) => i);
+            // v3.52.7（存档分区）：**只裁「当前存档 + 历史遗留」**；别的存档条目一律保留（不进候选、不改顺序）
+            const idx = arr.map((e, i) => i).filter((i) => archiveVisible(arr[i]));
+            if (idx.length <= cap) continue;
             idx.sort((a, b) => {
                 const ia = Number(arr[a] && arr[a].importance) || 0;
                 const ib = Number(arr[b] && arr[b].importance) || 0;
@@ -1780,8 +1784,8 @@ function enforceDimCaps() {
                 return b - a;
             });
             const keepIdx = new Set(idx.slice(0, cap));
-            const dropped = arr.filter((e, i) => !keepIdx.has(i));
-            const keep = arr.filter((e, i) => keepIdx.has(i));
+            const dropped = arr.filter((e, i) => archiveVisible(e) && !keepIdx.has(i));
+            const keep = arr.filter((e, i) => !archiveVisible(e) || keepIdx.has(i));
             const ids = dropped.map(e => e && e.id).filter(Boolean).map(String);
             try { if (ids.length) tombMany(dim, ids); } catch (e) { /* 忽略：忽略：非关键路径失败，不中断主流程（详见 `docs/D22` `技-55` 的评估口径） */ }
             state[dim] = keep;

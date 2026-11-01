@@ -1229,3 +1229,15 @@ body.ftt-no-effects #toast-container *::before {
 #ftt-panel .ftt-edgroup-body { padding: 0 10px 6px; }
 #ftt-panel .ftt-req { color: var(--ftt-out); margin-left: 2px; font-weight: 700; }
 #ftt-panel .ftt-odds-head { grid-template-columns: 2fr 0.8fr auto !important; }
+
+/* v3.52.7（存档分区）：横幅 + 旧存档徽标 */
+#ftt-panel .ftt-archive-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; margin: 6px 0 0;
+  background: var(--ftt-bg-2); border: 1px solid var(--ftt-line); border-radius: var(--ftt-radius-sm);
+  font-size: 12px; color: var(--ftt-text-2);
+}
+#ftt-panel .ftt-archive-bar b { color: var(--ftt-accent); font-weight: 600; }
+#ftt-panel .ftt-archive-bar .ftt-warn { color: var(--ftt-warn); }
+#ftt-panel .ftt-archive-txt { min-width: 0; word-break: break-word; }
+#ftt-panel .ftt-badge--warn { border-color: var(--ftt-warn-line); color: var(--ftt-warn); }

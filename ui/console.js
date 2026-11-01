@@ -18,6 +18,7 @@ import { atomIdentityHash } from '../core/model/hash.js';
 import { readInject } from '../host/inject.js';
 import { saveStateNow } from '../adapters/store.js';
 import { applyLedgerEntry } from '../core/model/ledger.js';   // v3.51.0（W32 数-45）：流水保存必须走记账入口（联动余额）
+import { filterArchiveVisible } from '../core/archive-scope.js';   // v3.52.7：存档分区
 
 const CONSOLE_ID = 'ftt_v2_console';
 /** 数据台交互状态（单一来源，渲染与动作共用） */
@@ -42,7 +43,8 @@ function arrOf(kind) {
     try {
         if (kind === 'links') return Array.isArray(state.links) ? state.links : [];
         const k = dataKeyOf(kind);
-        return Array.isArray(state[k]) ? state[k] : [];
+        const arr = Array.isArray(state[k]) ? state[k] : [];
+        return filterArchiveVisible(arr);   // v3.52.7：存档分区（列表 / 统计同口径）
     } catch (e) { return []; }
 }
 
