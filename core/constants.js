@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.8';   // v3.52.8（用户报告）：修复数据未切分存档 + 切档后已分析楼层复现（楼层台账按档切分）
+export const VERSION = '3.52.9';   // v3.52.9（用户报告）：修复「旧存档合并提示反复出现」—— 归一化保留归属 + 归档记忆 + 载入自动收敛
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

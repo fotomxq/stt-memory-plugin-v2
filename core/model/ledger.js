@@ -51,7 +51,7 @@ export function normalizeLedgerEntry(e) {
         const note = normText(src.note !== undefined ? src.note : (src['说明'] || src.desc), 80);
         const source = LEDGER_SOURCES.indexOf(String(src.source || '')) >= 0 ? String(src.source) : 'manual';
         const owner = normText(src.owner !== undefined ? src.owner : src['归属'], 40);
-        return {
+        const out = {
             id: String(src.id || ledgerIdOf(currencyId, date, delta, note)),
             currencyId: currencyId,
             owner: owner,
@@ -64,6 +64,9 @@ export function normalizeLedgerEntry(e) {
             floorSeen: Number.isInteger(Number(src.floorSeen)) && Number(src.floorSeen) > 0 ? Number(src.floorSeen) : 0,
             updatedAt: Number(src.updatedAt) || 0,
         };
+        // v3.52.9：归一化保留存档归属（否则每次载入后账本又变「无归属」→ 顶部横幅反复提示）
+        try { const ck = String((src.chatKey !== undefined ? src.chatKey : src.ck) || '').trim(); if (ck) out.chatKey = ck; } catch (x) { /* 忽略 */ }
+        return out;
     } catch (e) { return null; }
 }
 

@@ -18,7 +18,10 @@ import { emptyState } from '../../core/state.js';
 import { currentArchiveKey, entryArchiveKey, archiveTierOf, archiveVisible, filterArchiveVisible, archiveStats, adoptLegacyEntries, capVisibleKeepingOthers } from '../../core/archive-scope.js';
 import { panelAction, setPanelHooks2, panelBodyHtml } from '../../ui/panel.js';
 import { recordProcessedFloors, isFloorProcessed, reconcileProcessedFloors, hashFloorText } from '../../host/floors.js';
-import { stampEntryArchive } from '../../core/archive-scope.js';
+import { stampEntryArchive, autoAdoptOnLoad } from '../../core/archive-scope.js';
+import { normalizeRelLink } from '../../core/model/rel.js';
+import { normalizeLedgerEntry } from '../../core/model/ledger.js';
+import { migrateState } from '../../core/migrate.js';
 import { consoleSummary } from '../../ui/console.js';
 
 const R = makeReporter('archive-scope v3.52.7 存档分区');
@@ -185,5 +188,34 @@ A('D4 关联行 / 账本 / 分段总结：**新建即打存档键**（切档后�
     return link.chatKey === 'chat:A' && led.chatKey === 'chat:A' && seg.chatKey === 'chat:A'
         && entryArchiveKey({ chatKey: 'chat:B' }) === 'chat:B';
 })(), 'n/a');
+
+// ---------- E v3.52.9：归档不再反复提示（归一化保归属 + 归档记忆 + 载入自动收敛） ----------
+A('E1 **归一化保留存档归属**（关联行 / 账本）：旧实现重建对象时丢 `chatKey` → 每次载入后横幅又提示', (() => {
+    const link = normalizeRelLink({ dim: 'memories', refId: 'm1', who: '甲', how: 'participant', chatKey: 'chat:A' });
+    const led = normalizeLedgerEntry({ id: 'l1', currencyId: 'c1', date: '1920-01-01', delta: -5, chatKey: 'chat:A' });
+    const link2 = normalizeRelLink({ dim: 'memories', refId: 'm2', who: '乙', how: 'witness', ck: 'chat:B' });
+    return link && link.chatKey === 'chat:A' && led && led.chatKey === 'chat:A' && link2 && link2.chatKey === 'chat:B';
+})(), 'n/a');
+A('E2 **归档记忆**：`adoptLegacyEntries` 成功后写 `archiveAdoptAuto`；`autoAdoptOnLoad` 在已确认且存档键已知时自动归入（幂等）', (() => {
+    boot({}, 'chat:A');
+    const r1 = adoptLegacyEntries();
+    const auto = autoAdoptOnLoad();
+    const again = autoAdoptOnLoad();
+    return r1.adopted === 2 && state.archiveAdoptAuto === true && auto.adopted === 0
+        && again.adopted === 0 && archiveStats(['memories']).legacy === 0;
+})(), () => J({ adoptedFlag: state.archiveAdoptAuto }));
+A('E3 `autoAdoptOnLoad` **未确认过就不动**（不把历史数据悄悄认领）', (() => {
+    boot({}, 'chat:A');
+    const auto = autoAdoptOnLoad();
+    return auto.adopted === 0 && state.archiveAdoptAuto !== true && archiveStats(['memories']).legacy === 1;
+})(), 'n/a');
+A('E4 载入期收敛：`migrateState` 在用户已确认归档后，把新出现的无归属条目自动归入本档（横幅不再复现）', (() => {
+    boot({}, 'chat:A');
+    state.archiveAdoptAuto = true;
+    state.memories.push({ id: 'm-new-legacy', owner: '甲', title: '新遗留', content: 'x' });
+    const before = archiveStats(['memories']).legacy;
+    migrateState(state);
+    return before === 2 && archiveStats(['memories']).legacy === 0 && state.memories.filter((x) => x.id === 'm-new-legacy')[0].chatKey === 'chat:A';
+})(), () => J(archiveStats(['memories'])));
 
 R.done();

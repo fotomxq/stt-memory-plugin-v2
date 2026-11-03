@@ -134,8 +134,26 @@ export function adoptLegacyEntries() {
                 adopted += 1;
             }
         }
+        // v3.52.9（用户报告「点击生效后过一段时间又出现」）：**记住用户的归档选择** ——
+        //   之后每次载入只要当前存档键已知，就自动把仍无归属的历史数据归入本档（幂等），
+        //   避免「点一次 → 载入/同步又冒出新的遗留 → 再提示」的循环。
+        if (adopted) { try { state.archiveAdoptAuto = true; } catch (e) { /* 忽略 */ } }
         return { ok: true, adopted: adopted, note: adopted ? ('已把 ' + adopted + ' 条历史数据归入当前存档') : '没有需要归档的历史数据' };
     } catch (e) { return { ok: false, adopted: 0, note: '归档失败：' + String((e && e.message) || e) }; }
+}
+
+/**
+ * v3.52.9：**载入期自动归档**（仅在用户已确认过一次后生效）——
+ *   `state.archiveAdoptAuto === true` 且当前存档键已知 → 把仍无归属的历史条目归入本档（幂等、只补空值）。
+ *   用 `migrateState` 末尾调用一次即可；不满足条件时零副作用（不改任何数据）。
+ * @returns {{ok:boolean, adopted:number}}
+ */
+export function autoAdoptOnLoad() {
+    try {
+        if (!state || state.archiveAdoptAuto !== true) return { ok: false, adopted: 0 };
+        if (!currentArchiveKey()) return { ok: false, adopted: 0 };
+        return adoptLegacyEntries();
+    } catch (e) { return { ok: false, adopted: 0 }; }
 }
 
 /**
