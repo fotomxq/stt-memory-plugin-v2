@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.7",
-  "updatedAt": "2026-11-02",
-  "generatedAt": "2026-11-02",
+  "version": "3.52.8",
+  "updatedAt": "2026-11-03",
+  "generatedAt": "2026-11-03",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,15 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.8",
+      "date": "2026-11-03",
+      "title": "存档切分补全 + 楼层台账按存档切分（修复数据未切分 / 切档后已分析楼层复现）",
+      "points": [
+        "用户报告：（原话）：「有些数据没有同步被切分存档，需修复；额外还有切换存档后，很多分析过的楼层会莫名其妙的出现。」",
+        "登记：批次档 docs/history/P10c161-存档切分补全与楼层台账分区.md### 一、根因1. 切分不全：v3.52.7 只覆盖经 preserveEntryMet…"
+      ]
+    },
     {
       "version": "3.52.7",
       "date": "2026-11-02",

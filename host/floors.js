@@ -49,6 +49,28 @@ function markBelongsToCurrentChat(mark, ck) {
 /** 写标记时的公共字段（归属 + 时刻） */
 function markMeta() { return { at: Date.now(), ck: currentChatMarkKey() }; }
 
+/**
+ * v3.52.8（用户报告「切换存档后已分析楼层又冒出来 / 有些数据没被切分」）：
+ *   台账标记的**存档档位** —— `current` 本档 / `legacy` 无归属（升级前历史）/ `other` 别的存档。
+ *   旧实现里 `reconcile` / `migrate` / `driftGuard` 会拿**整本台账**按当前聊天正文重算哈希，
+ *   于是切到另一条存档时把原存档的标记整批「丢失 + 重写」，切回来就全变成未摘要（本 bug 的根因）。
+ *   现在：**别的存档的标记一律原样保留**（不参与判定、不刷新、不丢弃）。
+ */
+function markArchiveRelation(mark) {
+    const mck = markChatKey(mark);
+    const cur = currentChatMarkKey();
+    if (!mck) return 'legacy';
+    if (!cur) return 'current';
+    return mck === cur ? 'current' : 'other';
+}
+function splitMarksByArchive(list) {
+    const arr = Array.isArray(list) ? list : [];
+    const mine = [], others = [];
+    for (const m of arr) { if (markArchiveRelation(m) === 'other') others.push(m); else mine.push(m); }
+    return { mine: mine, others: others };
+}
+function sortMarksByFloor(list) { return (Array.isArray(list) ? list : []).slice().sort((a, b) => Number(a && a.f) - Number(b && b.f)); }
+
 /** V1 台账版本与哈希自检签名（签名 = hashText(固定样本)，故与 V1 逐字符同值） */
 export const PROCESSED_VER = 'v1.174';
 export const PROCESSED_SIG = (() => {
@@ -208,7 +230,10 @@ function processedMarkOf(i) {
     try {
         const pf = state.processedFloors || [];
         const n = Number(i);
-        return pf.find((x) => markFloor(x) === n);
+        const hits = pf.filter((x) => markFloor(x) === n);
+        if (!hits.length) return undefined;
+        // v3.52.8：同楼多档标记时**优先本档**（否则别的存档的标记可能抢先被判「内容不符」）
+        return hits.find((x) => markArchiveRelation(x) !== 'other') || hits[0];
     } catch (e) { return undefined; }
 }
 
@@ -317,6 +342,7 @@ export function migrateProcessedFloorsV170() {
         const next = [];
         const droppedMarks = [];
         for (const x of pf) {
+            if (markArchiveRelation(x) === 'other') { next.push(x); continue; }   // v3.52.8：别的存档的标记原样保留
             const f = markFloor(x);
             if (!Number.isFinite(f) || f < 0) { dropped++; droppedMarks.push(x); continue; }
             if (Number.isFinite(lastId) && lastId >= 0 && f > lastId) { dropped++; droppedMarks.push(x); continue; }   // 楼层已不存在（删除/回滚）
@@ -353,10 +379,17 @@ export function recordProcessedFloors(start, end) {
         if (!kernelStateReady()) return { ok: false, reason: 'state-not-ready' };
         state.processedFloors = state.processedFloors || [];
         const map = new Map();
-        for (const x of state.processedFloors) { const f = markFloor(x); if (Number.isFinite(f)) map.set(f, x); }
+        // v3.52.8（用户报告「有些数据没同步切分 / 切档后楼层混乱」）：**同楼层号不同存档的标记必须共存** ——
+        //   旧实现用楼层号当唯一键，在 B 档分析第 3 楼会**覆盖 A 档的 3 楼标记**（切回去就变未摘要）。
+        for (const x of state.processedFloors) {
+            const f = markFloor(x);
+            if (!Number.isFinite(f)) continue;
+            const rel = markArchiveRelation(x);
+            map.set(rel === 'other' ? ('o|' + markChatKey(x) + '|' + f) : ('c|' + f), x);
+        }
         const meta = markMeta();   // v3.40.0：归属 + 时刻
-        for (let i = Math.max(0, Number(start) || 0); i <= (Number(end) || 0); i++) map.set(i, Object.assign({ f: i, h: hashFloorText(i) }, meta));
-        state.processedFloors = Array.from(map.values()).slice(-5000);
+        for (let i = Math.max(0, Number(start) || 0); i <= (Number(end) || 0); i++) map.set('c|' + i, Object.assign({ f: i, h: hashFloorText(i) }, meta));
+        state.processedFloors = sortMarksByFloor(Array.from(map.values())).slice(-5000);
         state.processedVer = processedVerTag();
         const endN = Number(end) || 0;
         if (endN > (Number(state.lastKnownFloor) || -1)) state.lastKnownFloor = endN;
@@ -410,7 +443,7 @@ export function forgetDroppedMarks(start, end) {
         const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
         if (!arr.length) return 0;
         const s = Math.max(0, Number(start) || 0), e = Number(end) || 0;
-        const next = arr.filter((x) => { const f = markFloor(x); return !(Number.isFinite(f) && f >= s && f <= e); });
+        const next = arr.filter((x) => { if (markArchiveRelation(x) === 'other') return true; const f = markFloor(x); return !(Number.isFinite(f) && f >= s && f <= e); });   // v3.52.8：别的存档留痕保留
         const removed = arr.length - next.length;
         if (removed) state.processedDropped = next;
         return removed;
@@ -504,10 +537,13 @@ export function processedDriftGuard(notify, force) {
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
         const known = shrinkBaseline();          // v3.11.1：与拆楼检测同一基线（含最近见到的末楼）
         if (Number.isFinite(known) && known >= 0 && lastId < known - 5) return { skipped: 'floor-shrunk' };   // 真删楼 → 交给断裂检测
+        // v3.52.8：只对**本档**标记做漂移判定/刷新（别的存档原样保留，绝不被当前聊天正文改写）
+        const split = splitMarksByArchive(pf);
+        if (!split.mine.length) return { skipped: 'no-local-marks' };
         const now = Date.now();
         // 节流：完整判定要逐楼算哈希。节流期内先用**抽样**兜底 —— 末尾 5 个标记全部失配即认定漂移，立刻升级为完整判定
         if (!force && (now - lastDriftTs) < DRIFT_MS) {
-            const sample = pf.slice(-5);
+            const sample = split.mine.slice(-5);
             let sChecked = 0, sMismatch = 0;
             for (const m of sample) {
                 const f = Number(m && m.f);
@@ -521,7 +557,7 @@ export function processedDriftGuard(notify, force) {
         }
         lastDriftTs = now;
         let checked = 0, mismatch = 0;
-        for (const m of pf) {
+        for (const m of split.mine) {
             const f = Number(m && m.f);
             if (!Number.isFinite(f) || f < 0 || f > lastId) continue;
             const h = hashFloorText(f);
@@ -536,7 +572,7 @@ export function processedDriftGuard(notify, force) {
         const out = [];
         let dropped = 0, keptNoText = 0;
         const droppedMarks = [];
-        for (const m of pf) {
+        for (const m of split.mine) {
             const f = Number(m && m.f);
             if (!Number.isFinite(f) || f < 0 || f > lastId) { dropped++; droppedMarks.push(m); continue; }
             const h = hashFloorText(f);
@@ -550,7 +586,7 @@ export function processedDriftGuard(notify, force) {
             out.push({ f: f, h: h, at: markAt(m), ck: markChatKey(m) });   // v3.40.0（A1）：刷新哈希保留归属/时刻
         }
         try { if (droppedMarks.length) rememberDroppedMarks(droppedMarks); } catch (e) { /* 忽略 */ }
-        state.processedFloors = out;
+        state.processedFloors = sortMarksByFloor(split.others.concat(out));   // v3.52.8：别的存档台账原样保留
         state.processedVer = processedVerTag();
         state.lastKnownFloor = Math.max(Number.isFinite(known) ? known : -1, lastId);
         saveState();
@@ -581,16 +617,20 @@ export function reconcileProcessedFloors(notify) {
         if ((state.processedVer || '') !== processedVerTag()) return { skipped: 'pre-upgrade' };   // 升级期由 isFloorProcessed 逐楼刷新
         const lastId = Number(getLastMessageId());
         if (!Number.isFinite(lastId) || lastId < 0 || lastId > 5000) return { skipped: 'no-chat-or-too-large' };
+        // v3.52.8：只对本档标记做归位对账（别的存档的标记/留痕原样保留，不被当前聊天正文改写）
+        const split = splitMarksByArchive(pf);
+        const mine = split.mine;
         const oldHashes = new Set();
-        for (const m of pf) { const h = m && m.h; if (h) oldHashes.add(h); }
-        const droppedBefore = Array.isArray(state.processedDropped) ? state.processedDropped.slice() : [];
+        for (const m of mine) { const h = m && m.h; if (h) oldHashes.add(h); }
+        const droppedSplit = splitMarksByArchive(Array.isArray(state.processedDropped) ? state.processedDropped : []);
+        const droppedBefore = droppedSplit.mine.slice();
         for (const x of droppedBefore) { const h = x && x.h; if (h) oldHashes.add(String(h)); }   // v3.26.4：留痕也算在册证据
         if (!oldHashes.size) return { kept: 0, dropped: 0 };
         const keep = [];
         const found = new Set();          // 在当前聊天里找到的历史哈希（含来自留痕的）
         // v3.40.0（A1）：归位时按**哈希**继承原标记的归属 / 时刻（改的是楼层号，不是「哪个聊天分析的」）
         const metaByHash = new Map();
-        for (const m of pf) { const h = String((m && m.h) || ''); if (h && !metaByHash.has(h)) metaByHash.set(h, { at: markAt(m), ck: markChatKey(m) }); }
+        for (const m of mine) { const h = String((m && m.h) || ''); if (h && !metaByHash.has(h)) metaByHash.set(h, { at: markAt(m), ck: markChatKey(m) }); }
         for (let f = 0; f <= lastId; f++) {
             const h = hashFloorText(f);
             if (h && oldHashes.has(h)) {
@@ -601,7 +641,7 @@ export function reconcileProcessedFloors(notify) {
         }
         const before = pf.length;
         // 「真的丢了」= 台账标记的哈希在当前聊天里**找不到**（留痕救回的不算丢弃 → dropped 可能小于 0？不，这里按标记算）
-        const lostList = pf.filter((m) => { const h = String((m && m.h) || ''); return !h || !found.has(h); });
+        const lostList = mine.filter((m) => { const h = String((m && m.h) || ''); return !h || !found.has(h); });
         const dropped = lostList.length;
         if (before >= 10 && dropped / before >= 0.5) {
             log('摘要', { action: '已处理楼层对账跳过（整体失配）', before: before, wouldDrop: dropped });
@@ -613,7 +653,7 @@ export function reconcileProcessedFloors(notify) {
         try {
             rememberDroppedMarks(lostList);
             const arr = Array.isArray(state.processedDropped) ? state.processedDropped : [];
-            const keepDropped = arr.filter((x) => { const h = String((x && x.h) || ''); return !(h && found.has(h)); });
+            const keepDropped = arr.filter((x) => { if (markArchiveRelation(x) === 'other') return true; const h = String((x && x.h) || ''); return !(h && found.has(h)); });   // v3.52.8：其它存档留痕保留
             if (keepDropped.length !== arr.length) state.processedDropped = keepDropped;
         } catch (e) { /* 忽略 */ }
         // v2.64.0（V1 缺陷修复）：V1 只在 `dropped !== 0` 时写回 —— 于是「条数不变、只是楼层号整体挪位」
@@ -692,9 +732,12 @@ export function healLedgerFromDropped() {
         const ck = currentChatMarkKey();   // v3.40.0：只回填**属于本聊天**的留痕（别的聊天的留痕不作数）
         const meta = markMeta();
         const marks = new Map();
+        const otherMarks = [];
         for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
             const f = markFloor(x);
-            if (Number.isFinite(f) && f >= 0) marks.set(f, { f: f, h: String((x && x.h) || ''), at: markAt(x), ck: markChatKey(x) });
+            if (!Number.isFinite(f) || f < 0) continue;
+            if (markArchiveRelation(x) === 'other') { otherMarks.push(x); continue; }   // v3.52.8：别的存档原样保留
+            marks.set(f, { f: f, h: String((x && x.h) || ''), at: markAt(x), ck: markChatKey(x) });
         }
         const keep = [];
         const floors = [];
@@ -707,7 +750,7 @@ export function healLedgerFromDropped() {
         }
         const restored = floors.length;
         if (restored) {
-            state.processedFloors = Array.from(marks.values()).sort((a, b) => a.f - b.f).slice(-5000);
+            state.processedFloors = sortMarksByFloor(otherMarks.concat(Array.from(marks.values()))).slice(-5000);   // v3.52.8：其它存档台账原样保留
             state.processedVer = processedVerTag();
             state.lastKnownFloor = Math.max(Number(state.lastKnownFloor) || -1, Math.max.apply(null, floors));
         }
@@ -1250,7 +1293,9 @@ export function clearProcessedFloors() {
         // v3.24.1：状态未注入 → 不清（清空是**写**操作，绝不能建在空状态上）
         if (!kernelStateReady()) return { ok: false, reason: 'state-not-ready', cleared: 0 };
         const before = (state.processedFloors || []).length;
-        state.processedFloors = [];
+        // v3.52.8：只清**本档**（含无归属历史）—— 别的存档的台账保留（切回去不该丢）
+        state.processedFloors = (state.processedFloors || []).filter((x) => markArchiveRelation(x) === 'other');
+        const clearedNow = before - state.processedFloors.length;
         state.lastKnownFloor = -1;
         state.processedVer = processedVerTag();
         /**
@@ -1266,7 +1311,7 @@ export function clearProcessedFloors() {
         const upTo = (() => { try { return Number(liveLastFloorId()); } catch (e) { return -1; } })();
         state.coverReset = { at: Date.now(), upTo: Number.isFinite(upTo) ? upTo : -1 };
         saveState();
-        return { ok: true, cleared: before, coverUpTo: state.coverReset.upTo };
+        return { ok: true, cleared: clearedNow, coverUpTo: state.coverReset.upTo, keptOtherArchive: state.processedFloors.length };
     } catch (e) { return { ok: false, cleared: 0 }; }
 }
 

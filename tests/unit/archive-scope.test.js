@@ -17,6 +17,8 @@ import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
 import { currentArchiveKey, entryArchiveKey, archiveTierOf, archiveVisible, filterArchiveVisible, archiveStats, adoptLegacyEntries, capVisibleKeepingOthers } from '../../core/archive-scope.js';
 import { panelAction, setPanelHooks2, panelBodyHtml } from '../../ui/panel.js';
+import { recordProcessedFloors, isFloorProcessed, reconcileProcessedFloors, hashFloorText } from '../../host/floors.js';
+import { stampEntryArchive } from '../../core/archive-scope.js';
 import { consoleSummary } from '../../ui/console.js';
 
 const R = makeReporter('archive-scope v3.52.7 存档分区');
@@ -132,5 +134,56 @@ A('C4 上限裁剪**不裁别的存档**：只在本档 + 遗留里按尾裁', (
     const out = capVisibleKeepingOthers(arr, 2).map((x) => x.id);
     return J(out) === J(['b1', 'lg', 'a3']) && out.indexOf('b1') >= 0;
 })(), () => { boot({}, 'chat:A'); return J(capVisibleKeepingOthers([{ id: 'a1', chatKey: 'chat:A' }, { id: 'b1', chatKey: 'chat:B' }, { id: 'a2', chatKey: 'chat:A' }, { id: 'lg' }, { id: 'a3', chatKey: 'chat:A' }], 2).map((x) => x.id)); });
+
+// ---------- D v3.52.8：楼层台账按存档切分（切档后已分析楼层不再「神秘复现」） ----------
+A('D1 已分析楼层标记**按存档写**：`recordProcessedFloors` 写入本档 ck；同楼层号在另一档的标记**不被覆盖**', (() => {
+    const chat = [
+        { is_user: false, mes: 'a0' }, { is_user: true, mes: 'u1' }, { is_user: false, mes: 'a2' },
+        { is_user: false, mes: 'a3' }, { is_user: false, mes: 'a4' }, { is_user: false, mes: 'a5' },
+    ];
+    boot({ chatKey: 'chat:A' }, 'chat:A');
+    globalThis.__fttChat = chat;
+    setLastMessageId(5);
+    recordProcessedFloors(2, 3);
+    const mine = (state.processedFloors || []).filter((m) => m && m.ck === 'chat:A').map((m) => m.f);
+    // 切到 B 档，再分析同一楼号 → A 档标记必须还在
+    state.chatKey = 'chat:B';
+    recordProcessedFloors(2, 2);
+    const aMarks = (state.processedFloors || []).filter((m) => m && m.ck === 'chat:A').map((m) => m.f);
+    const bMarks = (state.processedFloors || []).filter((m) => m && m.ck === 'chat:B').map((m) => m.f);
+    return mine.indexOf(2) >= 0 && mine.indexOf(3) >= 0
+        && aMarks.join(',') === '2,3' && bMarks.indexOf(2) >= 0 && bMarks.length === 1;
+})(), () => J(state.processedFloors));
+A('D2 `isFloorProcessed` 只认**本档**标记：A 档已分析的第 3 楼，在 B 档（正文不同）不算已分析', (() => {
+    const st = boot({ chatKey: 'chat:B' }, 'chat:B');
+    st.processedFloors = [{ f: 3, h: 'hash-of-A-text', ck: 'chat:A' }];
+    globalThis.__fttChat = [{ is_user: false, mes: 'x0' }, { is_user: true, mes: 'u1' }, { is_user: false, mes: 'b2' }, { is_user: false, mes: 'b3' }];
+    setLastMessageId(3);
+    return isFloorProcessed(3) === false;
+})(), 'n/a');
+A('D3 归位对账**不丢弃别的存档的标记**（切回 A 档时台账仍在 → 楼层不复现）', (() => {
+    const st = boot({ chatKey: 'chat:B' }, 'chat:B');
+    globalThis.__fttChat = [{ is_user: false, mes: 'b0' }, { is_user: true, mes: 'u1' }, { is_user: false, mes: 'b2' }];
+    setLastMessageId(2);
+    st.processedVer = '';   // 跳过升级期短路
+    st.processedFloors = [
+        { f: 1, h: 'hash-A1', ck: 'chat:A' },
+        { f: 2, h: hashFloorText(2), ck: 'chat:B' },
+    ];
+    const r = reconcileProcessedFloors(false);
+    const kept = (state.processedFloors || []).filter((m) => m && m.ck === 'chat:A');
+    return kept.length === 1 && kept[0].f === 1;
+})(), () => J(state.processedFloors));
+A('D4 关联行 / 账本 / 分段总结：**新建即打存档键**（切档后不再整份可见）', (() => {
+    boot({ chatKey: 'chat:A' }, 'chat:A');
+    const link = { dim: 'memories', refId: 'm1', who: '甲', how: 'participant' };
+    stampEntryArchive(link);
+    const led = { id: 'l1', currency: '银币', date: '1920-01-01', amount: -5 };
+    stampEntryArchive(led);
+    const seg = { id: 's1', header: '一', lines: ['a'] };
+    stampEntryArchive(seg);
+    return link.chatKey === 'chat:A' && led.chatKey === 'chat:A' && seg.chatKey === 'chat:A'
+        && entryArchiveKey({ chatKey: 'chat:B' }) === 'chat:B';
+})(), 'n/a');
 
 R.done();

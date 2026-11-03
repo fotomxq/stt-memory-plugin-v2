@@ -30,6 +30,23 @@ export function normalizeArchiveKey(v) {
     return String(v == null ? '' : v).replace(/\s+/g, '').slice(0, 80);
 }
 
+/**
+ * v3.52.8：给**任何**新建数据打当前存档键（无键才写；只补空值，幂等）。
+ *   用于不在 `preserveEntryMeta` 漏斗里的容器（关联行 / 货币账本 / 分段总结 等）——
+ *   用户报告「有些数据没有同步被切分存档」正是这些容器缺 `chatKey`，切档后仍整份可见。
+ * @param {object} obj 数据对象（就地修改）
+ * @returns {object} 同一个对象
+ */
+export function stampEntryArchive(obj) {
+    try {
+        if (!obj || typeof obj !== 'object') return obj;
+        const cur = currentArchiveKey();
+        if (!cur) return obj;
+        if (!entryArchiveKey(obj)) obj[ARCHIVE_FIELD] = cur;
+        return obj;
+    } catch (e) { return obj; }
+}
+
 /** 当前存档键（`state.chatKey`；读不到 → ''） */
 export function currentArchiveKey() {
     try { return normalizeArchiveKey(state && state.chatKey); } catch (e) { return ''; }
@@ -74,7 +91,7 @@ export function filterArchiveVisible(list) {
  * @returns {{current:number, legacy:number, other:number, total:number, currentKey:string, known:boolean, dims:object}}
  */
 export function archiveStats(dims) {
-    const keys = Array.isArray(dims) && dims.length ? dims : ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'concepts', 'scenes', 'npcs', 'rumors', 'parallels', 'currencies', 'maps'];
+    const keys = Array.isArray(dims) && dims.length ? dims : ['atoms', 'currentStates', 'snapshots', 'memories', 'items', 'plans', 'suspense', 'concepts', 'scenes', 'npcs', 'rumors', 'parallels', 'currencies', 'maps', 'links', 'ledger', 'deals', 'plotSegments'];
     const out = { current: 0, legacy: 0, other: 0, total: 0, currentKey: currentArchiveKey(), known: !!currentArchiveKey(), dims: {} };
     try {
         for (const k of keys) {
