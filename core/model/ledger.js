@@ -23,6 +23,7 @@ import { roundMoney, normalizeMoneyHistory } from './money.js';
 import { clockDateTrim } from '../clock.js';
 import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { tombSet } from '../merge.js';
+import { stampEntryArchive } from '../archive-scope.js';   // v3.52.8：存档分区（账本）
 
 /** 流水来源（冻结枚举；`deal` = 长期收支触发器兑现，`migrate` = 老 `history` 回填） */
 export const LEDGER_SOURCES = Object.freeze(['manual', 'quick', 'ai', 'deal', 'repair', 'migrate']);
@@ -101,6 +102,7 @@ export function applyLedgerEntry(raw, opts) {
             updatedAt: Number(o.now) || Date.now(),
         }));
         if (!entry) return { ok: false, error: '流水不完整（需要货币 / 日期 / 金额且金额不为 0）' };
+        try { stampEntryArchive(entry); } catch (e) { /* 忽略 */ }   // v3.52.8：账本按存档切分
         const cur = findCurrency(entry.currencyId);
         if (!cur) return { ok: false, error: '找不到对应的货币记录 —— 记账必须挂在一个现存货币上（不会自动新建货币）' };
         state.ledger = Array.isArray(state.ledger) ? state.ledger : [];

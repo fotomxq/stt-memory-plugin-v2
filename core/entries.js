@@ -24,6 +24,7 @@ import { normalizeSnapshot, stampSnapshotTime, syncSnapshotAge } from './model/s
 import { normalizeList, snapNameKey } from './util.js';
 import { cascadeDeleteLedgerForCurrency, normalizeLedgerEntry } from './model/ledger.js';   // v3.51.0（W32 数-43/45）
 import { normalizeDeal } from './model/deal.js';   // v3.51.0（W32 数-44）
+import { stampEntryArchive } from './archive-scope.js';   // v3.52.8：存档分区（关联行）
 function sweepOrphanRelLinks() {
     let n = 0;
     try {
@@ -54,6 +55,7 @@ function upsertRelLinks(dim, refId, list, opts) {
             const n = normalizeRelLink(Object.assign({ dim: d, refId: r }, raw || {}), d);
             if (!n) continue;
             n.updatedAt = Number(n.updatedAt) || Date.now();
+            try { stampEntryArchive(n); } catch (e) { /* 忽略 */ }   // v3.52.8：关联行也按存档切分
             const i = incoming.findIndex(x => x.who === n.who);
             if (i >= 0) incoming[i] = n; else incoming.push(n);
         }

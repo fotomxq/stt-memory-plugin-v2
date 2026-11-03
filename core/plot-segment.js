@@ -50,6 +50,7 @@ import { aiCallText, aiBusy } from './ai-hooks.js';
 //   （`core/atom-compact.js`，由提取成功后 4s 定时触发）**互斥** —— 两者都会发 AI 请求，同时跑就是用户看到的「并行」。
 //   循环导入是安全的：这里只在**运行期函数内**调用（模块初始化期不触碰）。
 import { atomCompactBusy } from './atom-compact.js';
+import { stampEntryArchive } from './archive-scope.js';   // v3.52.8：存档分区（分段总结）
 
 /** 用户提示（V1 `notify(kind, {title, text})` 的 V2 等价；与 core/repair.js 既有写法一致） */
 function notify(kind, title, text) {
@@ -408,6 +409,7 @@ function applyPlotSegmentResult(batch, segments) {
                 manual: false, createdAt: Date.now(), updatedAt: Date.now(),
             });
             if (!item) { out.empty++; continue; }
+            try { stampEntryArchive(item); } catch (e) { /* 忽略 */ }   // v3.52.8：分段总结按存档切分
             list.push(item);
             out.added++;
             out.ids.push(String(item.id));
