@@ -3,6 +3,29 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.52.9（2026-11-03）· **修复「旧存档合并提示反复出现」**（归一化保归属 + 归档记忆 + 载入自动收敛）
+
+**用户报告**（原话）：「在剧情发生变化后，顶部会不间断出现把旧存档合并到当前提示，且点击生效后，过一段时间又会出现其他的，请修复。」
+**登记**：批次档 `docs/history/P10c162-归档提示反复出现修复.md`
+
+### 一、根因（两处叠加）
+
+1. **归一化丢掉存档归属**：`chatKey` 是自维护字段，而 normalizer 显式重建对象 → 每次载入 `migrateRelLinks` 一跑，
+   关联行 / 账本又变「无归属」；`mergeHistoryIntoLedger` 生成的流水也从没打过归属 → `legacy` 计数每次载入重新长回来。
+2. **归档选择没被记住**：`adoptLegacyEntries` 只处理当下遗留，不记忆「用户已确认」→ 下一轮又提示。
+
+### 二、修复
+
+* `normalizeRelLink` / `normalizeLedgerEntry` 重建时携带 `chatKey`；`mergeHistoryIntoLedger` 新流水打当前存档；
+* `adoptLegacyEntries` 成功时写 `state.archiveAdoptAuto = true`；
+* `migrateState` 末尾 `autoAdoptOnLoad()`：**仅当已确认过 + 存档键已知**时，把仍无归属的历史数据归入本档（幂等、只补空值）；
+  未确认过则零副作用。
+
+### 三、测试与门禁
+
+`archive-scope.test.js` 14 → **18 项**（E1 归一化保归属 · E2 归档记忆/幂等 · E3 未确认不动 · E4 载入期收敛）；
+全量单测 **264 文件 / 3921 断言**；冒烟 224 项；`npm run gate` 全绿。
+
 ## v3.52.8（2026-11-03）· **存档切分补全 + 楼层台账按存档切分**（修复数据未切分 / 切档后已分析楼层复现）
 
 **用户报告**（原话）：「有些数据没有同步被切分存档，需修复；额外还有切换存档后，很多分析过的楼层会莫名其妙的出现。」

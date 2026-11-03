@@ -37,6 +37,9 @@ function normalizeRelLink(raw, dimHint) {
             floorEnd: Math.max(0, Number(raw.floorEnd) || 0),
             updatedAt: Number(raw.updatedAt) || 0,
         };
+        // v3.52.9（用户报告「顶部不断提示把旧存档合并 / 点了又出现」）：**归一化必须保留存档归属** ——
+        //   旧实现重建对象时把 `chatKey` 丢弃 → 每次载入 `migrateRelLinks` 都让关联行变回「无归属」→ 横幅反复提示。
+        try { const ck = String((raw.chatKey !== undefined ? raw.chatKey : raw.ck) || '').trim(); if (ck) out.chatKey = ck; } catch (e) { /* 忽略 */ }
         // 条目级属性：仅锚行保留（非锚行强制清空，避免冗余分叉）
         if (anchor) {
             const kind = String(raw.kind || '').trim();

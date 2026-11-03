@@ -31,6 +31,7 @@ import { backfillChatAttribution } from './chat-scope.js';
 // v3.45.1（`数-29`）：楼层正文哈希解析器的**既有注入出口** —— `index.js#installHostBridges()` 装配时
 //   已 `setRepairHooks({ floorHash: host/floors.js#hashFloorText })`，内核不直接读宿主聊天（`check-core-purity`）。
 import { repairHookState } from './repair.js';
+import { autoAdoptOnLoad } from './archive-scope.js';   // v3.52.9：载入期自动归档（用户已确认过时）
 function recallDateNum(s) {
     try {
         const p = clockDateParts(clockDateTrim(s));   // v1.193：负年份（公元前）→ 带符号数值
@@ -621,6 +622,9 @@ function migrateState(s) {
     //   这个证据会丢。其余自愈步骤（台账 / 条目字段 / 文本卫生 / 楼层基线 / 字段名）都在**条目与容器**上，
     //   与关联层归一、内容去重互不影响，挪后不改变它们的结果。
     try { if (healthSelfHeal(s)) changed = true; } catch (e) { /* 忽略 */ }
+    // v3.52.9（用户报告「顶部不断提示把旧存档合并 / 点了后过一会儿又出现」）：
+    //   用户**已确认过**归档（`archiveAdoptAuto`）→ 载入期自动把仍无归属的历史数据归入当前存档（幂等、只补空值）。
+    try { if (typeof autoAdoptOnLoad === 'function' && autoAdoptOnLoad().adopted) changed = true; } catch (e) { /* 忽略 */ }
     if (changed) s.version = VERSION;
     return s;
 }
