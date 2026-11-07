@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.11",
+  "version": "3.52.12",
   "updatedAt": "2026-11-07",
   "generatedAt": "2026-11-07",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.12",
+      "date": "2026-11-07",
+      "title": "长期收支「变更节点」存储上限：每笔只留最新 10 条",
+      "points": [
+        "登记：批次档 docs/history/P10c165-长期收支节点上限.md### 一、改动* core/model/deal.js#DEAL_NODES_MAX：240 → …"
+      ]
+    },
     {
       "version": "3.52.11",
       "date": "2026-11-07",

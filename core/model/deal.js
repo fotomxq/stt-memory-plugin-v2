@@ -22,15 +22,22 @@ import { clockDateTrim, storyDateMsFromStr } from '../clock.js';
 import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { roundMoney } from './money.js';
 
-/** 已发生节点的**保留上限**（v3.51.10 内存核查）：节点是「展示 / 派生」用的，权威流水在 `ledger`；
- *   早期版本在每次日期推进时追加节点且**不设上限** → 长跑后 `deals[].outlook.nodes` 无限增长（体积 + 渲染变慢）。
- *   保留最近 240 条（约 20 年 x 月度周期），`lastChangeDate` 由保留段的最后一条维护。 */
-export const DEAL_NODES_MAX = 240;
-/** 节点裁剪：按日期排序后只留最近 `DEAL_NODES_MAX` 条（不改内容，只砍最早的） */
+/** 每个长期收支（标的物）的**变更节点保留上限**：
+ *   v3.51.10 首次设上限（240）；**v3.52.12（用户要求）收紧为每笔 10 条** ——
+ *   「货币中的长期收支，变更节点建立存储上限，避免大量信息挤占。每个最多保留最新的 10 条即可。」
+ *   节点只是「展示 / 派生」用的（权威流水仍在 `ledger`，不丢账），只保留最新 10 条即可把体积与渲染压住。
+ *   `lastChangeDate` 由保留段的最后一条维护（不因裁剪丢「最近变更」）。 */
+export const DEAL_NODES_MAX = 10;
+/**
+ * 节点裁剪：**按日期升序取最新 `DEAL_NODES_MAX` 条**（不改内容，只砍最早的）。
+ *   无日期的节点不参与保留（历史口径：节点必须有日期才能参与排序 / 预测）。
+ *   v3.52.12：显式排序（旧实现假定入参已有序）—— 保证「最新 10 条」在任何调用路径下都成立。
+ */
 export function capDealNodes(nodes) {
-    const arr = Array.isArray(nodes) ? nodes.filter((n) => n && n.date) : [];
+    const arr = (Array.isArray(nodes) ? nodes : []).filter((n) => n && n.date);
     if (arr.length <= DEAL_NODES_MAX) return arr;
-    return arr.slice(arr.length - DEAL_NODES_MAX);
+    const sorted = arr.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));   // 稳定：同日期保留原相对顺序
+    return sorted.slice(sorted.length - DEAL_NODES_MAX);
 }
 /** 标的物类型（`other` 兜底） */
 export const DEAL_KINDS = Object.freeze(['investment', 'royalty', 'loan', 'other']);
