@@ -2784,6 +2784,14 @@ export async function panelAction(action, payload) {
                     parts.push('计划悬念老化：了结 ' + (Number(age.closedP || 0) + Number(age.closedS || 0))
                         + ' 条 · 老化档 ' + (Number(age.agingP || 0) + Number(age.agingS || 0)) + ' 条（仅提示）');
                 }
+                const ru = r.rumor || {};
+                if (Number(ru.aged || 0) + Number(ru.links || 0) + Number(ru.changes || 0) + Number(ru.committed || 0)) {
+                    parts.push('传言立即推进：载体停用 ' + Number(ru.aged || 0) + ' · 联动 ' + Number(ru.links || 0)
+                        + ' · 酝酿 ' + Number(ru.changes || 0) + ' · 完成 ' + Number(ru.committed || 0)
+                        + (Number(ru.fissions || 0) ? ('（裂变 ' + Number(ru.fissions || 0) + '）') : ''));
+                } else if (r.rumorSkipped === 'no-hook') {
+                    parts.push('传言立即推进：跳过（宿主未接线）');
+                }
                 const ai = r.ai || {};
                 parts.push(ai.used
                     ? ('AI 修订 ' + Number(ai.revised || 0) + ' 条 · 删除 ' + Number(ai.deleted || 0) + ' 条 · 丢弃 ' + Number(ai.skipped || 0) + ' 条' + (ai.error ? '（' + ai.error + '）' : ''))

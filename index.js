@@ -2525,6 +2525,8 @@ function installHostBridges() {
         //   ② 计划/悬念修复（**与「设定 → 计划悬念 → 🔧 修复计划/悬念」同一条处理**，静默调用）
         floorJump: () => fixFloorJump(),
         planSuspRepair: (opts) => runPlanSuspRepair(Object.assign({ silent: true }, opts || {})),
+        //   v3.52.11（用户要求）：概览「立即修复」增加**传言立即推进**（与传言页「🧪 立即演化」同一条零 AI 机械推进）
+        rumorEvolve: (opts) => runRumorEvolveNow(Object.assign({ silent: true, reason: 'repair' }, opts || {})),
         //   ③ v3.6.0（用户要求）：按**最新情节**（内置天数判断）刷新时间 / 地点 / 人物 —— 与 v2.81.0
         //      「分析后按最新情节同步剧情时钟」同一条处理（`clockAutoExtractOnce({force:true})`，零 AI）
         clockSync: () => {
