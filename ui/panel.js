@@ -2779,12 +2779,18 @@ export async function panelAction(action, payload) {
                     + ' · 条数裁剪 ' + Number((r.mech && r.mech.caps ? r.mech.caps.cut : 0) || 0));
                 parts.push('候选 ' + Number((r.cands || []).length) + ' 条（缺陷 ' + Number(pick.defects || 0) + ' · 高相关 ' + Number(pick.corrHigh || 0)
                     + ' · 抽查 ' + Number(pick.sampled || 0) + ' · 补足 ' + Number(pick.topped || 0) + '）');
+                const age = (r.ageClean || (r.mech && r.mech.ageClean) || {});
+                if (Number(age.closedP || 0) + Number(age.closedS || 0) || Number(age.agingP || 0) + Number(age.agingS || 0)) {
+                    parts.push('计划悬念老化：了结 ' + (Number(age.closedP || 0) + Number(age.closedS || 0))
+                        + ' 条 · 老化档 ' + (Number(age.agingP || 0) + Number(age.agingS || 0)) + ' 条（仅提示）');
+                }
                 const ai = r.ai || {};
                 parts.push(ai.used
                     ? ('AI 修订 ' + Number(ai.revised || 0) + ' 条 · 删除 ' + Number(ai.deleted || 0) + ' 条 · 丢弃 ' + Number(ai.skipped || 0) + ' 条' + (ai.error ? '（' + ai.error + '）' : ''))
                     : '未调用 AI' + (cfg.repairAutoAi === false ? '（「AI 修订措辞」已关闭 → 只做机械清理）' : '（无候选或 AI 不可用）'));
             }
-            setNote('自动修复：' + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
+            // v3.52.10（用户要求）：先给**合计**（修了多少处），再给分段明细；报告已内嵌合计文案
+            setNote('自动修复：' + (r.totalsText ? (r.totalsText + '；') : '') + parts.join('；') + (r.report ? '；' + String(r.report) : ''));
             result = Object.assign(result, { ok: true, action: a, repair: r, made: r.made || 0 });
         }
         else if (a === 'clearPlans' || a === 'clearSuspense') {

@@ -132,8 +132,12 @@ await A('P1 runRepairMech：第 1 段五步编排（机械合并 → 遗忘清�
         '剧情时钟刷新：跳过原因 —— 钩子未接线（无宿主时钟同步能力）',
     ];
     const allNotes = (r.stage1.notes || []).slice();
-    const notes = allNotes.filter((n) => SKIP_NOTES.indexOf(n) < 0);
-    const skipNotesOk = SKIP_NOTES.every((n) => allNotes.indexOf(n) >= 0) && (allNotes.length - notes.length) === SKIP_NOTES.length;
+    // v3.52.10（用户要求）：新增第 10 步「计划悬念老化清理」→ 有一条自己的 note（黄金样本不变，显式剥离 + 单独断言）
+    const AGE_PREFIX = '计划/悬念老化清理：';
+    const ageNotes = allNotes.filter((n) => String(n).indexOf(AGE_PREFIX) === 0);
+    const notes = allNotes.filter((n) => SKIP_NOTES.indexOf(n) < 0 && String(n).indexOf(AGE_PREFIX) !== 0);
+    const skipNotesOk = SKIP_NOTES.every((n) => allNotes.indexOf(n) >= 0) && (allNotes.length - notes.length - ageNotes.length) === SKIP_NOTES.length
+        && ageNotes.length === 1 && !!r.ageClean && (Number(r.ageClean.closedP) + Number(r.ageClean.closedS)) === 0;
     const got = {
         before: r.before, after: r.after,
         merged: r.stage1.merged, sweepSwept: Number((r.sweep || {}).swept) || 0, capCut: Number((r.caps || {}).cut) || 0,
@@ -217,7 +221,8 @@ await A('U2 面板动作 repair：三段式编排（机械清理 → 候选筛�
     const st = panelState();
     const r3 = await panelAction('repair', {});      // 手动路径每次都重置 → 恒放行
     return r1.ok === true && r1.repair && r1.repair.stage1 && r1.aiPending === undefined
-        && String(st.note).indexOf('自动修复：机械清理') >= 0
+        && String(st.note).indexOf('自动修复：合计修复 ') >= 0   // v3.52.10：合计统计在最前
+        && String(st.note).indexOf('机械清理：合并') >= 0
         && String(st.note).indexOf('候选 ') >= 0
         && r3.repair && J(r1.repair.stage1.merged) === J(G.mechFlow.merged);
 }, '');
