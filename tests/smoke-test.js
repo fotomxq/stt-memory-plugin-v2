@@ -1373,7 +1373,8 @@ await assert('T2 点击「自动修复」：机械清理生效（同内容合并
         && Number(r.repair.stage1 && r.repair.stage1.merged) >= 1        // 同内容合并
         && n1 < n0 && tombs.indexOf('smoke-rp-3') >= 0
         && String(r.repair.report).indexOf('修复前') >= 0
-        && note.indexOf('自动修复：机械清理：') >= 0
+        // v3.52.10：面板提示改为「合计在最前」——先给合计统计，再给机械段明细
+        && note.indexOf('自动修复：合计修复 ') >= 0 && note.indexOf('机械清理：合并') >= 0
         && (note.indexOf('AI 修订') >= 0 || note.indexOf('未调用 AI') >= 0);   // 第 2/3 段如实回报（用了 / 未用）
 })(), '');
 

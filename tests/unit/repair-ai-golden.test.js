@@ -202,7 +202,8 @@ await A('U1 面板动作 repair（三段式）：提示含「机械清理」「�
     const st = panelState();
     const note = String(st.note || '');
     return r.ok === true && r.repair && r.made >= 3
-        && note.indexOf('自动修复：机械清理：合并') >= 0 && note.indexOf('候选 ') >= 0
+        && note.indexOf('自动修复：合计修复 ') >= 0   // v3.52.10：合计统计在最前
+        && note.indexOf('机械清理：合并') >= 0 && note.indexOf('候选 ') >= 0
         && note.indexOf('AI 修订 ' + G.apply.revised + ' 条') >= 0
         && note.indexOf('高相关 4') >= 0 && note.indexOf('缺陷 3') >= 0;
 }, (() => ({ u1: 'see U1' })));
