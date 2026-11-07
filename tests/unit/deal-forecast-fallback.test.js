@@ -197,15 +197,16 @@ A('G5 归一：预测留空 + 无节点 + 记录里给了费用 → 兜底把费
 })(), () => normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1919-01-01', cycle: 'monthly', outlook: { nodes: [], forecast: { nextDate: '', delta: 25 } } }));
 
 // ---------- H v3.51.10：内存核查（节点保留上限 / 账本页渲染上限） ----------
-A('H1 节点保留上限：归一后只留最近 `DEAL_NODES_MAX`(240) 条；`lastChangeDate` 取保留段最后一条', (() => {
+A('H1 节点保留上限：归一后每个长期收支只留最近 `DEAL_NODES_MAX`(**10**) 条；`lastChangeDate` 取保留段最后一条', (() => {
     const nodes = [];
     for (let i = 0; i < 300; i++) nodes.push({ date: '19' + String(10 + Math.floor(i / 12)).padStart(1, '0') + '-' + String((i % 12) + 1).padStart(2, '0') + '-01', delta: 1 });
     const d = normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1910-01-01', cycle: 'monthly', outlook: { nodes: nodes, forecast: { nextDate: '1930-01-01', delta: 1, direction: 'increase', source: 'ai' } } });
-    return DEAL_NODES_MAX === 240 && d.outlook.nodes.length === 240
+    return DEAL_NODES_MAX === 10 && d.outlook.nodes.length === 10
         && d.lastChangeDate === nodes[nodes.length - 1].date
-        && capDealNodes(nodes).length === 240 && capDealNodes(nodes)[239].date === nodes[299].date;
+        && capDealNodes(nodes).length === 10 && capDealNodes(nodes)[9].date === nodes[299].date
+        && capDealNodes(nodes)[0].date === nodes[290].date;
 })(), () => normalizeDeal({ name: 'A', currencyId: 'c1', startDate: '1910-01-01', cycle: 'monthly', outlook: { nodes: Array.from({ length: 300 }, (_, i) => ({ date: '1910-01-01', delta: 1 })), forecast: { nextDate: '1930-01-01', delta: 1, source: 'ai' } } }).outlook.nodes.length);
-A('H2 触发器长跑：推进 300 个周期 → 节点仍 ≤ 240（不再无限增长），而**账本按权威口径全量记录**', (() => {
+A('H2 触发器长跑：推进 300 个周期 → 节点仍 ≤ 10（每笔只留最新 10 条），而**账本按权威口径全量记录**', (() => {
     boot({ deals: [{ id: 'd1', name: 'A', startDate: '1900-01-01', currencyId: 'c1', cycle: 'monthly', outlook: { text: '', nodes: [], forecast: { nextDate: '1900-02-01', delta: 1, direction: 'increase', note: '', source: 'ai' } } }] });
     // 每次最多 24 轮 → 反复推进（每次跨 26 个月）模拟长跑；累计 > 240 个周期
     cfg.dealCatchUpMax = 24;
