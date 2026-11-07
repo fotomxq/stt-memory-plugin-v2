@@ -350,7 +350,7 @@ function repairReport(o) {
  * @param {object} r `runRepair` 的返回值（或同形对象）
  */
 export function repairTotals(r) {
-    const out = { merged: 0, deleted: 0, swept: 0, cut: 0, pruned: 0, decay: 0, rel: 0, closedP: 0, closedS: 0, mergedP: 0, mergedS: 0, removedDup: 0, aiRevised: 0, aiDeleted: 0, ageClosedP: 0, ageClosedS: 0, ageAging: 0, total: 0 };
+    const out = { merged: 0, deleted: 0, swept: 0, cut: 0, pruned: 0, decay: 0, rel: 0, closedP: 0, closedS: 0, mergedP: 0, mergedS: 0, removedDup: 0, aiRevised: 0, aiDeleted: 0, ageClosedP: 0, ageClosedS: 0, ageAging: 0, rumor: 0, rumorAged: 0, rumorLinks: 0, rumorChanges: 0, rumorCommitted: 0, rumorFissions: 0, total: 0 };
     try {
         const m = (r && r.mech) || {};
         const st = (r && r.stage1) || {};
@@ -375,9 +375,17 @@ export function repairTotals(r) {
         out.ageClosedP = Number(ac.closedP || 0);
         out.ageClosedS = Number(ac.closedS || 0);
         out.ageAging = Number(ac.agingP || 0) + Number(ac.agingS || 0);
+        // v3.52.11（用户要求）：「传言立即推进」也计入合计（载体停用 + 平行联动 + 酝酿变化 + 完成变化）
+        const ru = (r && r.rumor) || {};
+        out.rumorAged = Number(ru.aged || 0);
+        out.rumorLinks = Number(ru.links || 0);
+        out.rumorChanges = Number(ru.changes || 0);
+        out.rumorCommitted = Number(ru.committed || 0);
+        out.rumorFissions = Number(ru.fissions || 0);
+        out.rumor = out.rumorAged + out.rumorLinks + out.rumorChanges + out.rumorCommitted;
         out.total = out.merged + out.deleted + out.swept + out.cut + out.pruned + out.decay + out.rel
             + out.closedP + out.closedS + out.mergedP + out.mergedS + out.removedDup
-            + out.aiRevised + out.aiDeleted + out.ageClosedP + out.ageClosedS;
+            + out.aiRevised + out.aiDeleted + out.ageClosedP + out.ageClosedS + out.rumor;
         return out;
     } catch (e) { return out; }
 }
@@ -397,6 +405,7 @@ export function repairTotalsText(r) {
     if (t.closedP + t.closedS) bits.push('计划悬念了结 ' + (t.closedP + t.closedS));
     if (t.mergedP + t.mergedS) bits.push('计划悬念合并 ' + (t.mergedP + t.mergedS));
     if (t.aiRevised + t.aiDeleted) bits.push('AI 修订 ' + (t.aiRevised + t.aiDeleted));
+    if (t.rumor) bits.push('传言推进 ' + t.rumor);
     return '合计修复 ' + t.total + ' 处' + (bits.length ? ('（' + bits.join(' · ') + '）') : '（无改动）')
         + (t.ageAging ? ('；另有 ' + t.ageAging + ' 条计划/悬念进入老化档（仅提示，未改动）') : '');
 }
@@ -1014,9 +1023,36 @@ async function runRepair(opts) {
             }
         } catch (e) { /* 忽略 */ }
     }
+    // ③-d v3.52.11（用户要求）：「概览的立即修复」增加**传言立即推进**流程 ——
+    //   与传言页「🧪 立即演化」同一条**零 AI 机械推进**（载体老化 / 发酵消退 / 平行联动 / 裂变）。
+    //   零 AI → 不受 `cfg.repairAutoAi` 约束（该开关的语义只是「自动模式是否允许 AI 段」）；
+    //   `opts.rumor === false` 可跳过（测试 / 特殊场景）；钩子未接线时如实记 `no-hook`。
+    let rumor = null;
+    const rumorSkipWhy = (o.rumor === false) ? 'disabled'
+        : ((typeof repairHooks.rumorEvolve !== 'function') ? 'no-hook' : '');
+    if (!rumorSkipWhy) {
+        try {
+            rumor = await repairHooks.rumorEvolve({ silent: true, reason: 'repair' });
+        } catch (e) { rumor = { ok: false, error: String((e && e.message) || e) }; }
+        try {
+            if (rumor && rumor.ok && !rumor.disabled) {
+                const bits = [];
+                if (Number(rumor.aged)) bits.push('载体停用 ' + Number(rumor.aged));
+                if (Number(rumor.links)) bits.push('平行联动 ' + Number(rumor.links));
+                if (Number(rumor.changes)) bits.push('酝酿变化 ' + Number(rumor.changes));
+                if (Number(rumor.committed)) bits.push('完成变化 ' + Number(rumor.committed) + (Number(rumor.fissions) ? ('（裂变 ' + Number(rumor.fissions) + '）') : ''));
+                if (Number(rumor.ferment)) bits.push('发酵度更新 ' + Number(rumor.ferment));
+                stage1.notes.push('传言立即推进：' + (bits.length ? bits.join(' · ') : (rumor.list ? '无变化（' + Number(rumor.list) + ' 条已扫描）' : '当前没有传言')));
+            } else if (rumor && rumor.disabled) {
+                stage1.notes.push('传言立即推进：已关闭（设定「传言演化」关闭）');
+            } else if (rumor && rumor.error) {
+                stage1.notes.push('传言立即推进：失败（' + String(rumor.error).slice(0, 60) + '）');
+            }
+        } catch (e) { /* 忽略 */ }
+    }
     const relCounts = relMaintCounts(relMaint);
     // v3.52.10：合计口径（含老化了结）—— `made` 与提示/报告共用同一份统计
-    const totals = repairTotals({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, ageClean: (mech && mech.ageClean) || null, relCounts: relCounts });
+    const totals = repairTotals({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, ageClean: (mech && mech.ageClean) || null, relCounts: relCounts, rumor: rumor });
     const made = Math.max(0, Number(totals.total) || 0);
     const ms = Date.now() - t0;
     try {
@@ -1035,7 +1071,7 @@ async function runRepair(opts) {
         submittedTags: repairBatchTags(cands), merged: stage1.merged, deleted: stage1.deleted,
         revised: ai.revised, skipped: ai.skipped, swept: Number((mech.sweep || {}).swept) || 0,
         purged: Number((mech.caps || {}).cut) || 0,
-        extra: [repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts }), stage1.notes.slice(0, 6).join(' · ')].filter(Boolean).join(' · '),
+        extra: [repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts, rumor: rumor }), stage1.notes.slice(0, 6).join(' · ')].filter(Boolean).join(' · '),
     });
     try {
         dbgLog('修复', {
@@ -1055,7 +1091,7 @@ async function runRepair(opts) {
     } catch (e) { /* 忽略 */ }
     if (o.silent !== true) {
         notify(ai.revised || ai.deleted || made > 0 ? 'success' : 'info', isAuto ? '自动修复完成' : '修复完成',
-            repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts }) + '；'
+            repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts, rumor: rumor }) + '；'
             + `机械清理：合并 ${stage1.merged} · 清理 ${stage1.deleted} · 遗忘清扫 ${Number((mech.sweep || {}).swept) || 0} · 条数裁剪 ${Number((mech.caps || {}).cut) || 0}；`
             + `候选 ${cands.length} 条（缺陷 ${pickStat.defects || 0} · 高相关 ${pickStat.corrHigh || 0} · 抽查 ${pickStat.sampled || 0} · 补足 ${pickStat.topped || 0}）；`
             + (ai.used ? `AI 修订 ${ai.revised} 条 · 删除 ${ai.deleted} 条 · 丢弃 ${ai.skipped} 条${ai.error ? `（${ai.error}）` : ''}` : '未调用 AI')
@@ -1063,7 +1099,7 @@ async function runRepair(opts) {
     }
     // v3.50.23（`应-17` Q2）：成功修复 → 写入 lastAt（闸门恢复「距上次修复 N 次」语义）
     try { if ((Number(made) || 0) > 0 || (ai && (ai.revised || ai.deleted))) markAutoRepairDone(); } catch (e) { /* 忽略 */ }
-    return { made, ms, stage1, ai, cands, pickStat, mech, report, totals: totals, totalsText: repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts }), planSusp: planSusp, aiUsed: ai.used, relMaint, relCounts, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped,
+    return { made, ms, stage1, ai, cands, pickStat, mech, report, totals: totals, totalsText: repairTotalsText({ mech: mech, stage1: stage1, ai: ai, planSusp: planSusp, relCounts: relCounts, rumor: rumor }), rumor: rumor, rumorSkipped: rumorSkipWhy, planSusp: planSusp, aiUsed: ai.used, relMaint, relCounts, planSuspSkipped: psSkipWhy, floorJump: stage1.floorJump, floorJumpSkipped: stage1.floorJumpSkipped, clockSync: stage1.clockSync, clockSyncSkipped: stage1.clockSyncSkipped,
         // v3.45.9（`docs/D22` W8 `技-37` / `docs/D17` U184）：**第 ① 段九步的逐步留痕透出**
         steps: (mech && mech.steps) || [], stepsSummary: (mech && mech.stepsSummary) || '' };
 }
