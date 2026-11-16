@@ -34,6 +34,7 @@ import { localKeyStats, localCopyStats, idbCopyStats, localLayerInfo } from '../
 import { auxStoreInfo } from '../adapters/aux-store.js';   // v3.27.0：辅助数据（日志/时间线/标记/版本清单）落点   // v3.26.2：+localLayerInfo（状态副本的压缩留存与停滞标记）
 // v3.40.0（`docs/D16` A2）：无效关联行的只读统计（孤儿 / 幽灵角色 / 空行）—— 清理动作与关系表页共用同一实现
 import { relInvalidStats } from '../core/rel-maint.js';
+import { cacheBulkStats } from './cache-bulk.js';   // v3.52.13：缓存与日志聚合清理（统计共用，内部清理方法不变）
 
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -285,21 +286,24 @@ export function bufferSectionHtml(copy) {
                 + ' <button class="ftt-btn ftt-sm ftt-err" data-ftt-action="relCleanInvalid" title="删掉指向已不存在条目 / 幽灵角色 / 空行的关联行（写删除墓碑，跨端不会复活；幂等）">🧹 清理无效关联</button></div>');
         }
     }
-    rows.push(rowHtml('调试日志', dStat, 'dbgClear', '清空调试日志（记忆数据不受影响）', d.count === 0));
-    rows.push(rowHtml('交互追踪简报', tStat, 'dbgTraceClear', '清空交互/宿主调用简报（调试日志与记忆数据不受影响）', t.count === 0));
-    const lg = G.ledger || { count: 0, cap: 0 };
-    rows.push(rowHtml('读取台账', lg.count + (lg.cap ? (' / ' + lg.cap) : '') + ' 次读取 · 内存（不落盘）', 'readLedgerClear', '清空读取台账（每次服务端/本地/内存读取的统计；内存环形，不影响数据）', !lg.count));
-    const ck = G.clock || { count: 0 };
-    rows.push(rowHtml('时钟取值追踪', ck.count + ' 组 · 内存（不落盘）', 'clockTraceClear', '清空时钟取值追踪（只清内存缓冲，不影响时钟数据与记忆）', !ck.count));
-    const vc = G.vector || { count: 0, cap: 0, bytes: 0, indexedDb: false };
-    rows.push(rowHtml('向量缓存', vc.count + (vc.cap ? (' / ' + vc.cap) : '') + ' 条 · 约 ' + fmtBytes(vc.bytes) + (vc.indexedDb ? ' · IndexedDB 可用' : ' · 仅内存'), 'vectorCacheClear', '清空向量缓存（下次提取记忆会重新嵌入；不影响记忆数据）', !(vc.count || vc.indexedDb)));
-    rows.push(rowHtml('版本清单缓存', vStat, 'aboutClearCache', '清除后下次打开「关于」页会重新从代码库获取', !v.cached));
-    const nm = G.names || { count: 0, bytes: 0 };
-    rows.push(rowHtml('命名缓存（文件名 / 归档名）', nm.count + ' 个键 · 约 ' + fmtBytes(nm.bytes), 'nameCacheClear', '清除文件名与归档名解析缓存（下次会自动重新解析；不影响服务端文件）', !nm.count));
-    const mk = G.marks || { count: 0, bytes: 0 };
-    rows.push(rowHtml('同步与对账标记', mk.count + ' 个键 · 约 ' + fmtBytes(mk.bytes), 'syncMarkClear', '清除对账门控标记（远端哈希 / 快照签名 / 上次推送签名 / 同步门控）；下次同步会重新判定，不影响记忆', !mk.count));
-    const sl = G.syncLog || { count: 0, bytes: 0 };
-    rows.push(rowHtml('同步日志（本机）', sl.count + ' 条 · 约 ' + fmtBytes(sl.bytes), 'syncLogClear', '清空本机与服务端的同步日志（不影响记忆数据）', !sl.count));
+    // v3.52.13（用户要求）：「缓存与日志」改为**聚合清理** —— 不再散落 9 个按钮，
+    //   统一为「合计 条数/大小 + 一个『🧹 全部清理』按钮 + 明细折叠（无按钮）」；
+    //   内部清理方法完全不变（由 `ui/cache-bulk.js#cacheBulkClear` 逐个调用既有入口）。
+    {
+        const bulk = (() => { try { return cacheBulkStats(); } catch (e) { return { items: [], count: 0, bytes: 0 }; } })();
+        const items = Array.isArray(bulk.items) ? bulk.items : [];
+        if (Number(bulk.count) > 0 || Number(bulk.bytes) > 0) {
+            rows.push('<div class="ftt-muted" data-ftt-cache-bulk><b>缓存与日志合计</b>：'
+                + esc(String(bulk.count)) + ' 项 · 约 ' + esc(fmtBytes(bulk.bytes))
+                + ' <button class="ftt-btn ftt-sm ftt-err" data-ftt-action="cacheClearAll" title="一次清理全部缓存与日志（调试日志 / 时间线 / 读取台账 / 时钟追踪 / 向量 / 版本清单 / 命名缓存 / 对账标记 / 同步日志）；不影响记忆数据">🧹 全部清理</button>'
+                + '</div>');
+            rows.push('<details class="ftt-details" data-ftt-cache-detail><summary>明细（' + items.length + ' 类 · 只读统计）</summary>'
+                + '<div class="ftt-muted">' + items.map((x) => esc(x.label) + '：' + esc(String(x.count || 0)) + ' 条 / 约 ' + esc(fmtBytes(x.bytes)))
+                    .join(' · ') + '</div></details>');
+        } else {
+            rows.push('<div class="ftt-muted" data-ftt-cache-bulk><b>缓存与日志合计</b>：0 项 · 约 0 B（已清理）</div>');
+        }
+    }
     // ── ③ V1 遗留（导入源，单独警示）──
     const v1 = G.v1Legacy || { count: 0, bytes: 0 };
     if (Number(v1.count || 0) > 0) {

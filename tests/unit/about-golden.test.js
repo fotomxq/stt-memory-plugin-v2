@@ -291,9 +291,10 @@ A('B2 数据管理页含「本地缓冲」统计与清除按钮；关于页不�
     aboutWriteCache(DOC);
     const dataHtml = settingsPageHtml('data', '');
     const aboutPage = settingsPageHtml('about', '');
-    return dataHtml.indexOf('🗂 本地缓冲') >= 0 && dataHtml.indexOf('版本清单缓存：已缓存 3 个版本') >= 0
-        && dataHtml.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dataHtml.indexOf('🧹 清除') >= 0
-        && dataHtml.indexOf('调试日志：') >= 0 && dataHtml.indexOf('交互追踪简报：') >= 0
+    // v3.52.13：缓存与日志 → 聚合行 + 一个按钮（明细折叠只读）
+    return dataHtml.indexOf('🗂 本地缓冲') >= 0 && dataHtml.indexOf('缓存与日志合计') >= 0
+        && dataHtml.indexOf('data-ftt-action="cacheClearAll"') >= 0 && dataHtml.indexOf('🧹 清除') >= 0
+        && dataHtml.indexOf('版本清单缓存：') >= 0 && dataHtml.indexOf('交互追踪简报：') >= 0
         && dataHtml.indexOf('不影响记忆数据') >= 0
         && aboutPage.indexOf('本地缓冲') < 0 && aboutPage.indexOf('V2 附加信息') < 0 && aboutPage.indexOf('内核配置键') < 0;
 })(), '见断言');
@@ -301,8 +302,9 @@ A('B2 数据管理页含「本地缓冲」统计与清除按钮；关于页不�
 A('B3 无缓存时数据页清除按钮禁用（不误导用户点空操作）', (() => {
     aboutClearCache();
     const h = settingsPageHtml('data', '');
-    return h.indexOf('版本清单缓存：（无缓存）') >= 0 && /data-ftt-action="aboutClearCache"[^>]*disabled/.test(h)
-        && /data-ftt-action="dbgClear"[^>]*disabled/.test(h) && /data-ftt-action="dbgTraceClear"[^>]*disabled/.test(h);
+    // v3.52.13：无缓存时聚合行显示「0 项 · 约 0 B（已清理）」，不再有可点的散落按钮
+    return h.indexOf('缓存与日志合计') >= 0 && h.indexOf('（已清理）') >= 0
+        && h.indexOf('data-ftt-action="aboutClearCache"') < 0 && h.indexOf('data-ftt-action="dbgClear"') < 0;
 })(), '见断言');
 
 // ---- D 组：与「真实随发布的清单」契约（防文档/代码各写一套，也证明成功态不是只能靠桩） ----

@@ -21,9 +21,10 @@ const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</
 const num = (v) => Number(v) || 0;
 
 /** 本模块接管的动作（`ui/panel.js` 只按这张表分发，不在面板里散落分支） */
-export const RECYCLE_BIN_ACTIONS = Object.freeze(['rbToggle', 'rbAll', 'rbNone', 'rbRestore']);
+// v3.52.13（用户要求）：「最近删除」支持**手动删除**记录（单条 / 清空全部）—— 与恢复同一条清墓碑路径
+export const RECYCLE_BIN_ACTIONS = Object.freeze(['rbToggle', 'rbAll', 'rbNone', 'rbRestore', 'rbPurge', 'rbPurgeAll']);
 /** 需要二次确认的动作（中央危险动作闸用；清墓碑是对端可见的破坏性操作） */
-export const RECYCLE_BIN_DANGER = Object.freeze({ rbRestore: true });
+export const RECYCLE_BIN_DANGER = Object.freeze({ rbRestore: true, rbPurge: true, rbPurgeAll: true });
 
 /** 勾选集合：`dim\u0000id`（维度内 id 唯一，跨维度必须带维度） */
 let picked = new Set();
@@ -85,6 +86,9 @@ function rowHtml(it) {
         + '<span class="ftt-grow"><b>' + esc(it.label) + '</b>'
         + ' <span class="ftt-muted">' + esc(shortId(it.id)) + '</span>'
         + ' <span class="ftt-muted">· 删除于 ' + esc(agoText(it.ts)) + '</span></span>'
+        // v3.52.13（用户要求）：单条「删除记录」= 清除这条墓碑（危险动作，弹确认）
+        + '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="rbPurge" data-ftt-rb-dim="' + esc(it.dim) + '" data-ftt-rb-id="' + esc(it.id) + '"'
+        + ' title="删除这条记录（清除该墓碑；此后对端可再次写入同一内容）">🗑 删除</button>'
         + '</div>';
 }
 
@@ -117,12 +121,13 @@ export function recycleBinSectionHtml() {
         + '<div class="ftt-hint">删除条目会同时写入**两处**记录（按条目 id 与按内容哈希），用来<b>防止它从其它设备复活</b>。'
         + '「恢复」= <b>只在本机清除这些墓碑记录</b>；条目正文早在删除时移除了，这里不会把它搬回来 —— '
         + '此后它可以从备份导入或 AI 提取重新写入。<b>对端仍以墓碑为准</b>：换 id 写回的同内容可能在合并后再次消失。</div>'
-        + '<div class="ftt-row"><button class="ftt-btn ftt-sm" data-ftt-action="rbAll" title="勾选下面全部记录">全选</button>'
+        + '<div class="ftt-row"><button class="ftt-btn ftt-sm ftt-err" data-ftt-action="rbPurgeAll" title="清空全部墓碑记录（危险：清掉后对端可再次写入同一内容）">🗑 清空全部记录</button>'
+        + '<button class="ftt-btn ftt-sm" data-ftt-action="rbAll" title="勾选下面全部记录">全选</button>'
         + '<button class="ftt-btn ftt-sm" data-ftt-action="rbNone" title="取消全部勾选">清空勾选</button>'
         + '<button class="ftt-btn ftt-sm' + (selN ? ' ftt-err' : '') + '" data-ftt-action="rbRestore"' + (selN ? '' : ' disabled') + ' title="清除选中条目的墓碑记录（需二次确认；不改任何条目）">♻ 恢复选中（' + selN + '）</button></div>'
         + (last ? ('<div class="ftt-hint">' + esc(last.text) + '</div>') : '')
         + '<div>' + rows + '</div>'
-        + (trunc ? ('<div class="ftt-hint">仅列出最近 ' + items.length + ' 条（共 ' + num(data.total) + ' 条）；更早的墓碑记录仍在，只是不在本视图渲染。</div>') : '')
+        + (trunc ? ('<div class="ftt-hint">仅列出最近 ' + items.length + ' 条（共 ' + num(data.total) + ' 条）；**仅列最近 10 条**，更早的墓碑记录仍在，只是不在本视图渲染。</div>') : '')
         + '</div>';
 }
 
@@ -151,6 +156,24 @@ export function runRecycleBinAction(a, p) {
         if (act === 'rbNone') {
             picked = new Set();
             return { ok: true, action: act, picked: 0 };
+        }
+        if (act === 'rbPurge') {
+            const dim = String(par.rbDim || '');
+            const id = String(par.rbId || '');
+            if (!dim || !id) return { ok: false, action: act, reason: 'bad-ref' };
+            const r = recycleBinRestore([{ dim: dim, id: id }]);
+            if (r.ok && r.restored > 0) { try { saveState(); } catch (e) { /* 忽略 */ } }
+            lastRestore = { at: Date.now(), restored: num(r.restored), hashes: num(r.hashes), skipped: num(r.skipped), text: '已删除 1 条记录（清除墓碑 ' + num(r.restored) + ' 条' + (num(r.hashes) ? (' · 内容墓碑 ' + num(r.hashes) + ' 条') : '') + '）。' };
+            return Object.assign({ ok: !!r.ok, action: act, note: lastRestore.text }, r, { reason: r.reason || '' });
+        }
+        if (act === 'rbPurgeAll') {
+            const refs = recycleBinList({ max: 1e6 }).items.map((it) => ({ dim: it.dim, id: it.id }));
+            if (!refs.length) return { ok: true, action: act, restored: 0, note: '没有可删除的记录' };
+            const r = recycleBinRestore(refs);
+            picked = new Set();
+            if (r.ok && r.restored > 0) { try { saveState(); } catch (e) { /* 忽略 */ } }
+            lastRestore = { at: Date.now(), restored: num(r.restored), hashes: num(r.hashes), skipped: num(r.skipped), text: '已清空最近删除记录（清除墓碑 ' + num(r.restored) + ' 条' + (num(r.hashes) ? (' · 内容墓碑 ' + num(r.hashes) + ' 条') : '') + '）。' };
+            return Object.assign({ ok: !!r.ok, action: act, note: lastRestore.text }, r, { reason: r.reason || '' });
         }
         if (act === 'rbRestore') {
             refreshRecycleBinSelection();
@@ -185,9 +208,11 @@ export function runRecycleBinAction(a, p) {
  */
 export function recycleBinAction(a, p) {
     const r = runRecycleBinAction(a, p);
-    const note = (String(a) === 'rbRestore')
+    // v3.52.13：恢复 / 手动删除都给出明确提示（删除记录 = 清墓碑，语义同恢复，但文案分开）
+    const act = String(a || '');
+    const note = (act === 'rbRestore')
         ? (r.ok ? ('已恢复 ' + num(r.restored) + ' 条（已清除对应墓碑记录）') : ('恢复未执行：' + String(r.reason || '无可恢复项')))
-        : '';
+        : ((act === 'rbPurge' || act === 'rbPurgeAll') ? (r.note || (r.ok ? ('已删除 ' + num(r.restored) + ' 条记录') : ('删除未执行：' + String(r.reason || '未知')))) : '');
     return {
         action: String(a || ''),
         result: Object.assign({ ok: r.ok !== false, action: a, recycleBin: r, reason: r.reason || '', restored: num(r.restored) }, { note: note }),

@@ -222,7 +222,7 @@ await A('P6 面板接线：settingsSub 切页只影响设定页；数据管理�
         && page.indexOf('data-ftt-action="clearFloors"') >= 0
         && r2.ok === true && about.indexOf('设定 · 关于') >= 0 && about.indexOf('关于 · FTT记忆组件') >= 0
         && about.indexOf('内核配置键：') < 0 && about.indexOf('V2 附加信息') < 0   // v2.53.0：关于页不再附开发/历史块
-        && page.indexOf('本地缓冲') >= 0 && page.indexOf('data-ftt-action="aboutClearCache"') >= 0  // v2.53.0：缓冲清理在数据管理
+        && page.indexOf('本地缓冲') >= 0 && page.indexOf('缓存与日志合计') >= 0  // v3.52.13：缓存与日志聚合（无数据时无按钮）
         // v2.54.0：数据管理页按用途分块 + 危险动作隔离 + 快照只出统计 + 缓冲三项可清
         && page.indexOf('📤 导出备份') >= 0 && page.indexOf('📥 导入存档（合并）') >= 0
         // v2.96.0（用户要求「危险操作放到最后」）：危险区分块名与区块顺序 —— 先「危险操作」横幅，
@@ -233,7 +233,8 @@ await A('P6 面板接线：settingsSub 切页只影响设定页；数据管理�
         && page.indexOf('⚠️ 危险操作（不可恢复）') > page.indexOf('🗂 本地缓冲')
         && page.indexOf('✂️ 删除聊天楼层') > page.indexOf('⚠️ 危险操作（不可恢复）')
         && page.indexOf('🗑 删除数据（不可恢复）') > page.indexOf('✂️ 删除聊天楼层')
-        && page.indexOf('data-ftt-action="dbgClear"') >= 0 && page.indexOf('data-ftt-action="dbgTraceClear"') >= 0
+        // v3.52.13：缓存与日志聚合为一个按钮（不再散落 dbgClear / dbgTraceClear）
+        && page.indexOf('data-ftt-cache-bulk') >= 0
         && page.indexOf('不会删除') >= 0 && page.indexOf('不可恢复') >= 0
         && exp.ok === true && exp.chars > 10 && st.exportChars > 10
         && imp.ok === true && st.settingsSub === 'data';

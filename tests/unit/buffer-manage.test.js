@@ -114,12 +114,14 @@ A('E1 全空：cached=false、计数 0、字节 0；HTML 显示「（无缓存�
     const h = bufferSectionHtml();
     // v3.3.0：本机数据副本（当前角色无副本）/ 调试日志 / 追踪简报 / 读取台账 / 时钟追踪 / 向量 / 版本清单 /
     //   命名缓存 / 对账标记 / 同步日志 —— 空态下**全部**禁用（IndexedDB 行异步取数，不在本断言内）
-    const mustDisabled = ['localCopyClear', 'dbgClear', 'dbgTraceClear', 'readLedgerClear', 'clockTraceClear',
-        'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear'];
+    // v3.52.13（用户要求）：「缓存与日志」改为**聚合清理** —— 不再散落 9 个按钮；
+    //   空态只剩一行「0 项 · 约 0 B（已清理）」，无按钮可点（不误导）。
+    const mustDisabled = ['localCopyClear'];   // 本机数据副本仍逐项（不属于「缓存与日志」聚合面）
     const notDisabled = mustDisabled.filter((a2) => !new RegExp('data-ftt-action="' + a2 + '"[^>]*disabled').test(h));
-    return st.any === false && st.totalBytes === 0 && st.versionList.cached === false
+    const bulkOff = h.indexOf('data-ftt-cache-bulk') >= 0 && h.indexOf('data-ftt-action="cacheClearAll"') < 0;
+    return bulkOff && st.any === false && st.totalBytes === 0 && st.versionList.cached === false
         && st.debugLog.count === 0 && st.trace.count === 0
-        && h.indexOf('（无缓存）') >= 0 && notDisabled.length === 0
+        && h.indexOf('缓存与日志合计') >= 0 && h.indexOf('（已清理）') >= 0 && notDisabled.length === 0
         && h.indexOf('🧱 本机数据副本') >= 0 && h.indexOf('🧰 缓存与日志') >= 0
         && h.indexOf('data-ftt-action="localCopyClearOthers"') < 0;      // 没有其它角色副本 → 不显示该行
 })(), bufferSectionHtml());
@@ -129,10 +131,13 @@ A('H1 分节 HTML 只含统计与清理入口：出现条数/上限/字节，不
     seed();
     const h = bufferSectionHtml();
     return h.indexOf('🗂 本地缓冲') >= 0
-        && h.indexOf('已缓存 2 个版本') >= 0 && h.indexOf('约 ') >= 0
-        && h.indexOf('3 / 300 条') >= 0 && h.indexOf('2 / 120 条') >= 0
-        && h.indexOf('data-ftt-action="aboutClearCache"') >= 0 && h.indexOf('data-ftt-action="dbgClear"') >= 0
-        && h.indexOf('data-ftt-action="dbgTraceClear"') >= 0
+        && h.indexOf('缓存与日志合计') >= 0 && h.indexOf('约 ') >= 0
+        // v3.52.13：逐项数字进「只读明细」折叠（无按钮），聚合行给合计
+        && h.indexOf('调试日志：') >= 0 && h.indexOf('交互追踪简报：') >= 0
+        // v3.52.13：缓存与日志 → **一个**聚合按钮；明细进折叠（只读、无按钮）
+        && h.indexOf('data-ftt-action="cacheClearAll"') >= 0 && h.indexOf('data-ftt-cache-bulk') >= 0
+        && h.indexOf('data-ftt-cache-detail') >= 0
+        && h.indexOf('data-ftt-action="aboutClearCache"') < 0 && h.indexOf('data-ftt-action="dbgClear"') < 0
         // 只统计：不出现明细正文（调试日志 data / 简报 site / 版本标题）
         && h.indexOf('第一行') < 0 && h.indexOf('第二行') < 0 && h.indexOf('第三行') < 0
         && h.indexOf('a.js:1') < 0 && h.indexOf('b.js:2') < 0 && h.indexOf('t2') < 0;
@@ -148,11 +153,11 @@ A('H2 文案说明「这是什么 + 清理有什么后果」（v3.3.0 口径：�
 A('H3 数据管理页含「本地缓冲」分节：v3.3.0 起覆盖「本机数据副本 + 缓存与日志」（每行统计 + 清理按钮），但**行数固定**（不随数据增长出明细行）', (() => {
     seed();
     const h = settingsPageHtml('data', '');
-    const rows = (h.match(/class="ftt-muted">(版本清单缓存|调试日志|交互追踪简报)：/g) || []).length;
-    const actions = ['localCopyClear', 'idbCopyClear', 'dbgClear', 'dbgTraceClear', 'readLedgerClear',
-        'clockTraceClear', 'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear'];
+    // v3.52.13：缓存与日志聚合为一个按钮；本机数据副本仍逐项
+    const actions = ['localCopyClear', 'idbCopyClear', 'cacheClearAll'];
     const missing = actions.filter((a2) => h.indexOf('data-ftt-action="' + a2 + '"') < 0);
-    return h.indexOf('🗂 本地缓冲') >= 0 && rows === 3 && missing.length === 0
+    return h.indexOf('🗂 本地缓冲') >= 0 && missing.length === 0
+        && h.indexOf('data-ftt-cache-bulk') >= 0
         && h.indexOf('共约 ') >= 0 && h.indexOf('本机数据副本') >= 0;
 })(), '见断言');
 
@@ -189,9 +194,13 @@ await (async () => {
 
     A('A4 清理后数据管理页统计随之更新（版本缓存无、日志 0 条、按钮禁用）', (() => {
         const h = settingsPageHtml('data', '');
-        return h.indexOf('版本清单缓存：（无缓存）') >= 0 && h.indexOf('0 / 300 条') >= 0
-            && h.indexOf('版本清单缓存：（无缓存） <button class="ftt-btn ftt-sm" data-ftt-action="aboutClearCache"') >= 0
-            && (h.match(/disabled/g) || []).length >= 2;
+        // v3.52.13：缓存与日志聚合 —— 清理后合计回到 0 项、无散落按钮；本机副本按钮仍按数据禁用
+        // 注：测试进程内读取台账会继续累积（内存缓冲）→ 合计可能仍 >0；关键是**不再有散落按钮**、聚合行在
+        return h.indexOf('缓存与日志合计') >= 0
+            && h.indexOf('data-ftt-action="aboutClearCache"') < 0
+            && h.indexOf('data-ftt-action="dbgClear"') < 0
+            && h.indexOf('data-ftt-action="dbgTraceClear"') < 0
+            && (h.match(/disabled/g) || []).length >= 1;
     })(), '见断言');
 })();
 

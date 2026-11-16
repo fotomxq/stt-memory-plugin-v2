@@ -1611,11 +1611,11 @@ await assert('BH9 v3.3.0 数据管理 →「本地缓冲」全量补全 + 逐项
         // ① 页面把「本机数据副本 + 缓存与日志」都渲染出来，每行都有清理按钮
         const page = String((await entry.popupAction('refresh', {})).html || '');
         const rows = ['本机数据副本', '状态副本（浏览器本地变量）', '内存库副本（IndexedDB）', '其它角色的本机副本', '调试日志',
-            '交互追踪简报', '读取台账', '时钟取值追踪', '向量缓存', '版本清单缓存', '命名缓存（文件名 / 归档名）',
+            '交互追踪简报', '读取台账', '时钟取值追踪', '向量缓存', '版本清单缓存', '命名缓存',
             '同步与对账标记', '同步日志（本机）', 'V1 遗留数据（导入源）'];
         const missing = rows.filter((x) => page.indexOf(x) < 0);
-        const actions = ['localCopyClear', 'idbCopyClear', 'localCopyClearOthers', 'dbgClear', 'dbgTraceClear', 'readLedgerClear',
-            'clockTraceClear', 'vectorCacheClear', 'aboutClearCache', 'nameCacheClear', 'syncMarkClear', 'syncLogClear', 'v1LegacyClear'];
+        // v3.52.13（用户要求）：缓存与日志**聚合为一个按钮**（本机副本仍逐项）
+        const actions = ['localCopyClear', 'idbCopyClear', 'localCopyClearOthers', 'cacheClearAll', 'v1LegacyClear'];
         const missingAct = actions.filter((x) => page.indexOf('data-ftt-action="' + x + '"') < 0);
         // ② 真实点击「状态副本 → 🧹 清除」：无对话框 → 取消（零副作用）
         const el = doc.getElementById('ftt-panel');
@@ -2786,9 +2786,9 @@ await assert('AE2 关于页 v2.53.0：版本清单**优先取代码库 raw json*
         // ⑤ 「本地缓冲」清理入口迁到数据管理页，并展示统计（无缓存 → 按钮禁用）
         await entry.popupAction('settingsSub', { sub: 'data' });
         const dh = String((await entry.popupAction('refresh', {})).html || '');
-        const bufOk = dh.indexOf('🗂 本地缓冲') >= 0 && dh.indexOf('版本清单缓存：（无缓存）') >= 0
-            && dh.indexOf('data-ftt-action="aboutClearCache"') >= 0 && dh.indexOf('🧹 清除') >= 0
-            && /data-ftt-action="aboutClearCache"[^>]*disabled/.test(dh)
+        // v3.52.13：缓存与日志聚合 —— 无缓存时聚合行写「（已清理）」，不再有 aboutClearCache 按钮
+        const bufOk = dh.indexOf('🗂 本地缓冲') >= 0 && dh.indexOf('缓存与日志合计') >= 0
+            && dh.indexOf('data-ftt-cache-bulk') >= 0 && dh.indexOf('data-ftt-action="aboutClearCache"') < 0
             && dh.indexOf('调试日志：') >= 0 && dh.indexOf('交互追踪简报：') >= 0;
         // ⑥ 恢复：切回总览（避免影响后续小节）
         await entry.popupAction('tab', { tab: 'overview' });
@@ -2847,10 +2847,11 @@ await assert('BA1 v2.54.0 数据管理页重排：按用途分块（导出/导�
         // 同一时刻取持久层字节：refresh 动作本身也会写追踪持久层，晚一步比就会误判
         const rawD = BM.rawBytes(DL.DEBUG_KEY), rawT = BM.rawBytes(TR.TRACE_KEY);
         const h2 = String((await entry.popupAction('refresh', {})).html || '');
+        // v3.52.13：缓存与日志聚合为一条（合计条数/大小）+ 只读明细折叠；不再逐行统计
         const bufOk = st.debugLog.count === 2 && st.debugLog.cap === 300 && st.trace.count === 1 && st.trace.cap === 120
             && st.debugLog.bytes === rawD && st.trace.bytes === rawT
-            && h2.indexOf('调试日志：2 / 300 条') >= 0 && h2.indexOf('交互追踪简报：1 / 120 条') >= 0
-            && h2.indexOf('版本清单缓存：') >= 0 && h2.indexOf('不影响记忆数据') >= 0
+            && h2.indexOf('缓存与日志合计') >= 0 && h2.indexOf('data-ftt-cache-bulk') >= 0
+            && h2.indexOf('调试日志：') >= 0 && h2.indexOf('交互追踪简报：') >= 0 && h2.indexOf('不影响记忆数据') >= 0
             && h2.indexOf('冒烟缓冲明细甲') < 0 && h2.indexOf('smoke.js:1') < 0;   // 只统计，不列明细
         // ④ 清理入口真实生效：清空简报后旧的持久简报消失（动作自身至多留 1 条）
         await entry.popupAction('dbgTraceClear', {});

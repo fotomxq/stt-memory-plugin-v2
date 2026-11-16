@@ -207,14 +207,13 @@ await (async () => {
     const h = settingsPageHtml('data', '');
     const cached = localCopyCache();
     const rows = ['本机数据副本', '状态副本（浏览器本地变量）', '内存库副本（IndexedDB）', '其它角色的本机副本',
+        // v3.52.13：缓存与日志聚合为一条合计 + 只读明细折叠（标签仍逐项列出，但不再各带按钮）
         '调试日志', '交互追踪简报', '读取台账', '时钟取值追踪', '向量缓存', '版本清单缓存',
-        '命名缓存（文件名 / 归档名）', '同步与对账标记', '同步日志（本机）', 'V1 遗留数据（导入源）'];
+        '命名缓存', '同步与对账标记', '同步日志（本机）', 'V1 遗留数据（导入源）'];
     const missing = rows.filter((x) => h.indexOf(x) < 0);
-    const actions = ['localCopyClear', 'idbCopyClear', 'localCopyClearOthers', 'dbgClear', 'dbgTraceClear',
-        'readLedgerClear', 'clockTraceClear', 'vectorCacheClear', 'aboutClearCache', 'nameCacheClear',
-        'syncMarkClear', 'syncLogClear', 'v1LegacyClear'];
+    const actions = ['localCopyClear', 'idbCopyClear', 'localCopyClearOthers', 'cacheClearAll', 'v1LegacyClear'];
     const missingAct = actions.filter((x) => h.indexOf('data-ftt-action="' + x + '"') < 0);
-    A('D1 数据管理页把**全部本机缓冲**都渲染出来（本机数据副本：当前状态副本 / 内存库副本 / 其它角色副本；缓存与日志：调试日志 · 追踪简报 · 读取台账 · 时钟追踪 · 向量 · 版本清单 · 命名缓存 · 对账标记 · 同步日志；V1 遗留），且**每一行都有对应清理按钮**',
+    A('D1 数据管理页把**全部本机缓冲**都渲染出来（本机数据副本：当前状态副本 / 内存库副本 / 其它角色副本；缓存与日志：调试日志 · 追踪简报 · 读取台账 · 时钟追踪 · 向量 · 版本清单 · 命名缓存 · 对账标记 · 同步日志；V1 遗留），且本机副本逐项按钮在、缓存与日志为**一个聚合按钮**',
         missing.length === 0 && missingAct.length === 0 && !!cached && cached.local.present === true && cached.others.count === 2
         && h.indexOf('共约 ') >= 0,
         J({ missing, missingAct, cached: cached && { local: cached.local, others: cached.others } }));

@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.12",
-  "updatedAt": "2026-11-07",
-  "generatedAt": "2026-11-07",
+  "version": "3.52.13",
+  "updatedAt": "2026-11-16",
+  "generatedAt": "2026-11-16",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.13",
+      "date": "2026-11-16",
+      "title": "最近删除只列最近 10 条 + 手动删除；缓存与日志聚合清理",
+      "points": [
+        "登记：批次档 docs/history/P10c166-最近删除与缓存聚合清理.md### 一、最近删除* RECYCLE_BIN_MAX 200 → 10：列表只列最近 10 …"
+      ]
+    },
     {
       "version": "3.52.12",
       "date": "2026-11-07",

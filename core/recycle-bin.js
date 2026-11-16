@@ -18,8 +18,8 @@ import { state } from './model/runtime.js';
 import { DIMENSIONS } from './constants.js';
 import { atomIdentityHash } from './model/hash.js';
 
-/** 列表最多返回多少条（只读视图的性能上限；超出按时间倒序截断——截断只影响**本视图**，不动数据） */
-export const RECYCLE_BIN_MAX = 200;
+/** 列表最多返回多少条（v3.52.13 用户要求：「最近删除只保留最近 10 条」——**只影响本视图**，不动墓碑数据） */
+export const RECYCLE_BIN_MAX = 10;
 
 /** 维度数据显示键 → 中文标签（取自 `core/constants.js#DIMENSIONS`，不另立一份口径） */
 const DIM_LABEL = (() => {
