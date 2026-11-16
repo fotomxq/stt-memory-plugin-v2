@@ -210,10 +210,19 @@ export function contentFingerprintOf(dim, entry) {
 export function floorFingerprintHit(entry, hashFloor) {
     try {
         if (typeof hashFloor !== 'function') return false;
-        const h = String((entry && entry.floorNowHash) || '');
+        if (!entry || typeof entry !== 'object') return false;
+        /**
+         * v3.52.14（用户报告「不同存档的内容出现了交叉」）：**证据②必须排除「不可辨位」的情形**，
+         *   否则会把别条存档的条目误认领成本档：
+         *   · 当前位置是第 0 楼 → 各条聊天存档的第 0 楼都是同一张开场白（哈希必然相同），
+         *     用它作证据等于「凡在 0 楼都可算本档」；真机就因此把 773 条旧档条目的位置钉到本档 0 楼。
+         *   · 位置未知（`floorNow*` 缺失 / 0/0 占位）→ 没有可复核的位置，判不出归属。
+         *   真实位置（> 0 楼）且指纹一致时**仍然认**（不因本加固而收紧正常路径）。
+         */
+        const h = String(entry.floorNowHash || '');
         if (!h) return false;
         const pos = plotPositionOf(entry);
-        if (!Number.isInteger(pos) || pos < 0) return false;
+        if (!Number.isInteger(pos) || pos <= 0) return false;
         return String(hashFloor(pos) || '') === h;
     } catch (e) { return false; }
 }

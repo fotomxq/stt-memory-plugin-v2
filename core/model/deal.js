@@ -21,6 +21,7 @@ import { hashText, normText } from '../util.js';
 import { clockDateTrim, storyDateMsFromStr } from '../clock.js';
 import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { roundMoney } from './money.js';
+import { filterArchiveVisible } from '../archive-scope.js';   // v3.52.14：读侧按存档过滤（长期收支）
 
 /** 每个长期收支（标的物）的**变更节点保留上限**：
  *   v3.51.10 首次设上限（240）；**v3.52.12（用户要求）收紧为每笔 10 条** ——
@@ -277,8 +278,16 @@ export function normalizeDeal(e) {
 export function dealList() {
     try { return Array.isArray(state.deals) ? state.deals : []; } catch (e) { return []; }
 }
-/** 找标的物 */
+/**
+ * v3.52.14（用户报告「不同存档的内容出现了交叉」）：**当前存档可见的长期收支**（只读副本）。
+ *   真机取证：同角色 `deals` 5 条全部属于另一条聊天存档 → 新建的空存档里「长期收支」页却列出别档的标的物。
+ *   口径：与列表/注入一致（只看当前存档；旧版遗留默认隐藏）。写路径仍用 `dealList()`。
+ */
+export function dealVisible() {
+    try { return filterArchiveVisible(dealList()); } catch (e) { return []; }
+}
+/** 找标的物（v3.52.14：只在当前存档可见范围内找 —— 别的存档的标的不许在本存档里被编辑/触发） */
 export function findDeal(id) {
     const key = String(id || '');
-    return dealList().filter((d) => d && String(d.id) === key)[0] || null;
+    return dealVisible().filter((d) => d && String(d.id) === key)[0] || null;
 }

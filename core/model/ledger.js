@@ -23,7 +23,7 @@ import { roundMoney, normalizeMoneyHistory } from './money.js';
 import { clockDateTrim } from '../clock.js';
 import { BIG_DATE_FIELD_MAX } from './bigdate.js';
 import { tombSet } from '../merge.js';
-import { stampEntryArchive } from '../archive-scope.js';   // v3.52.8：存档分区（账本）
+import { stampEntryArchive, filterArchiveVisible, archiveVisible } from '../archive-scope.js';   // v3.52.8：存档分区（账本）；v3.52.14：读侧按存档过滤
 
 /** 流水来源（冻结枚举；`deal` = 长期收支触发器兑现，`migrate` = 老 `history` 回填） */
 export const LEDGER_SOURCES = Object.freeze(['manual', 'quick', 'ai', 'deal', 'repair', 'migrate']);
@@ -74,10 +74,21 @@ export function normalizeLedgerEntry(e) {
 export function ledgerList() {
     try { return Array.isArray(state.ledger) ? state.ledger : []; } catch (e) { return []; }
 }
-/** 某货币的流水（按日期升序） */
+/**
+ * v3.52.14（用户报告「不同存档的内容出现了交叉」）：**当前存档可见的账本**（只读副本）。
+ *   真机取证：同角色 `ledger` 912 条里 623 条属于另一条聊天存档、289 条无归属（旧版遗留），
+ *   而「货币 → 收支记录」页与注入摘要都直接读 `ledgerList()` → 新建的空存档里一打开就是别档的几百笔流水。
+ *   口径：与列表/注入一致 —— 只看当前存档（旧版遗留默认隐藏，见 `core/archive-scope.js`）；
+ *   写路径仍用 `ledgerList()`（身份语义，不能替换成过滤后的副本）。
+ * @returns {Array<object>}
+ */
+export function ledgerVisible() {
+    try { return filterArchiveVisible(ledgerList()); } catch (e) { return []; }
+}
+/** 某货币的流水（按日期升序；v3.52.14：只算当前存档可见的流水） */
 export function ledgerOf(currencyId) {
     const id = String(currencyId || '');
-    return ledgerList().filter((x) => x && String(x.currencyId) === id).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return ledgerVisible().filter((x) => x && String(x.currencyId) === id).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 /** 某货币的流水净额 */
 export function ledgerSum(currencyId) {
@@ -159,6 +170,8 @@ export function deleteLedgerEntry(id) {
         const idx = list.findIndex((x) => x && String(x.id) === key);
         if (idx < 0) return { ok: false, error: '找不到这笔流水' };
         const entry = list[idx];
+        // v3.52.14：**别的存档 / 默认隐藏的旧档流水不允许在这里删**（否则会动到别档的数据）
+        if (!archiveVisible(entry)) return { ok: false, error: '这笔流水属于别的存档（已隐藏），不能在本存档里删除' };
         const cur = findCurrency(entry.currencyId);
         list.splice(idx, 1);
         state.ledger = list;
@@ -197,11 +210,11 @@ export function cascadeDeleteLedgerForCurrency(currencyId) {
     return out;
 }
 
-/** 对账（**只报不改**）：余额 vs 流水净额 */
+/** 对账（**只报不改**）：余额 vs 流水净额（v3.52.14：只对当前存档可见的货币与流水对账） */
 export function reconcileLedger() {
     const rows = [];
     try {
-        for (const c of (state.currencies || [])) {
+        for (const c of filterArchiveVisible(state.currencies || [])) {
             if (!c || !c.id) continue;
             const sum = ledgerSum(c.id);
             const amount = roundMoney(Number(c.amount) || 0);
@@ -212,10 +225,10 @@ export function reconcileLedger() {
     return rows;
 }
 
-/** 孤儿流水（指向不存在的货币；正常应由级联删除清掉，这里只报）*/
+/** 孤儿流水（指向不存在的货币；正常应由级联删除清掉，这里只报；v3.52.14：只看当前存档可见的流水）*/
 export function orphanLedgerEntries() {
     const ids = new Set(((state.currencies) || []).map((c) => String(c && c.id)).filter(Boolean));
-    return ledgerList().filter((x) => x && !ids.has(String(x.currencyId)));
+    return ledgerVisible().filter((x) => x && !ids.has(String(x.currencyId)));
 }
 
 /** 老存档 `history` → `ledger` 回填（`D53` Q2 裁决：**回填**，`source:'migrate'`，按 id 幂等）*/

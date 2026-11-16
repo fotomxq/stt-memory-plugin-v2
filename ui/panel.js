@@ -16,7 +16,7 @@ import { fileStamp } from '../core/util.js';   // v3.0.17：导出文件名带�
 // v3.50.7（用户报告「导出后的数据无法导入」）：导入结果的**逐容器明细**文案与结果同源（体量棘轮：逻辑不落在本文件）
 import { importResultNote } from '../adapters/import-state.js';   // v3.0.17：导出文件名带日期+时间（与宿主 `exportFileName` 同口径）
 import { state, cfg, getScopeKey, getLastMessageId, saveState, loadBlocked, loadGateInfo } from '../core/model/runtime.js';
-import { filterArchiveVisible, archiveStats, adoptLegacyEntries, archiveTierOf } from '../core/archive-scope.js';   // v3.52.7：存档分区
+import { filterArchiveVisible, archiveStats, adoptLegacyEntries, archiveTierOf, toggleLegacyVisible } from '../core/archive-scope.js';   // v3.52.7：存档分区；v3.52.14：旧存档默认隐藏 + 显示开关
 import { archiveBannerHtml } from './archive-banner.js';   // v3.52.7：存档横幅
 import { consoleList, entryMatches, consoleEntry, consoleSave, consoleDelete, injectAudit, consoleSummary } from './console.js';
 import { fallbackPanelHtml, panelData, setPanelHooks as setPanelFormHooks, bindPanelEvents } from './settings-panel.js';
@@ -2094,6 +2094,8 @@ export async function panelAction(action, payload) {
         }
         else if (a === 'moneySub') { setMoneySub(p.sub); setNote(''); result = Object.assign(result, { sub: p.sub }); }
         // v3.52.7（存档分区）：把升级前的历史数据归入当前存档（危险动作二次确认）
+        // v3.52.14（用户报告「不同存档的内容出现了交叉」）：旧存档遗留默认隐藏 —— 本动作只切换「本次会话」显示开关（不改数据；统一收尾会重绘）
+        else if (a === 'archiveReveal') { const rv = toggleLegacyVisible(); setNote(rv.note); result = Object.assign(result, { ok: true, action: a, legacyVisible: rv.on }); }
         else if (a === 'archiveAdopt') { const r = adoptLegacyEntries(); setNote(r.note || ''); result = Object.assign(result, r); if (r.ok && r.adopted) { try { saveState(); } catch (e) { /* 忽略 */ } } }
         // v3.52.2（W34）：角色关注切换 + 物品清理（预览/确认/关闭）
         else if (a === 'watchToggle') { const r = toggleSnapshotWatch(String(p.id || '')); setNote(r.note || ''); result = Object.assign(result, r); if (r.ok) { try { saveState(); } catch (e) { /* 忽略 */ } } }

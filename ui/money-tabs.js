@@ -17,8 +17,8 @@
 import { state } from '../core/model/runtime.js';
 import { escHtml } from '../core/util.js';
 import { formatMoney } from '../core/model/money.js';
-import { ledgerList, currencyHistoryMaxOf } from '../core/model/ledger.js';
-import { dealList } from '../core/model/deal.js';
+import { ledgerVisible, currencyHistoryMaxOf } from '../core/model/ledger.js';
+import { dealVisible } from '../core/model/deal.js';
 
 const esc = (v) => { try { return escHtml(v); } catch (e) { return String(v == null ? '' : v); } };
 const str0 = (v) => String(v == null ? '' : v);
@@ -82,7 +82,7 @@ function ledgerRowHtml(x) {
 /** 收支记录子页（编辑器由面板注入 → `opts.editorHtml`） */
 export function ledgerPageHtml(opts) {
     const o = opts || {};
-    const all = ledgerList().slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const all = ledgerVisible().slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const sum = all.reduce((s, x) => s + (Number(x.delta) || 0), 0);
     const income = all.filter((x) => Number(x.delta) >= 0).reduce((s, x) => s + (Number(x.delta) || 0), 0);
     const outgo = all.filter((x) => Number(x.delta) < 0).reduce((s, x) => s + (Number(x.delta) || 0), 0);
@@ -156,7 +156,7 @@ export function dealDetailHtml(d) {
 /** 长期收支子页 */
 export function dealsPageHtml(opts) {
     const o = opts || {};
-    const all = dealList();
+    const all = dealVisible();
     const editor = (o.editing && String(o.editing.kind) === 'deals' && typeof o.editorHtml === 'function')
         ? o.editorHtml('deals', o.editing.id, o.editing.preset) : '';
     const stalled = all.filter((d) => d && d.trigger && String(d.trigger.skippedReason) === 'currency-missing').length;
@@ -182,7 +182,7 @@ export function dealsPageHtml(opts) {
 export function moneyPageHtml(overviewHtml, opts) {
     const o = opts || {};
     const cur = moneySub;
-    const nL = ledgerList().length, nD = dealList().length;
+    const nL = ledgerVisible().length, nD = dealVisible().length;
     const tab = (key, label) => '<a href="javascript:void(0)" class="ftt-subtab' + (cur === key ? ' ftt-on' : '')
         + '" data-ftt-action="moneySub" data-ftt-csub="' + key + '">' + label + '</a>';
     const tabs = '<div class="ftt-row ftt-subtabs" data-ftt-csub-tabs>'

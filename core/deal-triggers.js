@@ -19,7 +19,7 @@
 import { cfg, dbgLog } from './model/runtime.js';
 import { clockDateTrim, clockDateValid } from './clock.js';
 import { bigDayNumber, bigDateFromDayNumber, bigYearStr } from './model/bigdate.js';
-import { capDealNodes, dealCycleDays, dealList, findDeal, inferForecastFallback, lastNodeDate, resolveForecastDelta, storyDayNumOf } from './model/deal.js';
+import { capDealNodes, dealCycleDays, dealVisible, findDeal, inferForecastFallback, lastNodeDate, resolveForecastDelta, storyDayNumOf } from './model/deal.js';
 import { applyLedgerEntry, findCurrency, ledgerOf } from './model/ledger.js';
 
 /** 触发器阈值（可被配置覆盖；缺省按 `docs/D53` Q10 裁决：30 天 / 3 周期 / 24 节点） */
@@ -85,7 +85,7 @@ export function runDealTriggers(opts) {
         // v3.51.5：**回退不处置**（真跳到过去 → 不生成历史流水）；脏 prev 也不处置；prev 为空 = 首次运行 → 照常处置
         if (jump === 'backward') return out;
         if (jump === 'invalid' && prev) return Object.assign(out, { ok: false, warning: 'bad-prev-date' });
-        const deals = dealList();
+        const deals = dealVisible();
         out.deals = deals.length;
         const curDay = dayNum(cur);
         for (const d0 of deals) {

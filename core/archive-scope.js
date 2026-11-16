@@ -11,19 +11,67 @@
 // 本版口径（**读侧分区，写侧不动骨架**）：
 //   ① 分区键 = 条目自带的 `chatKey`（缺省 = 升级前历史数据，记为 `legacy`）；
 //   ② 当前存档 = `state.chatKey`（宿主从聊天文件元数据读，见 `host/chat.js#currentChatKey`）；
-//   ③ **列表 / 计数 / 注入 / 自动裁剪**只针对「当前存档 + legacy」，**其它存档的条目一律隐藏且不动**；
-//   ④ `legacy` 条目**保留可见并打「旧存档」徽标**（宁可显式标出来，也不静默藏数据）；
-//      用户可一键「归入当前存档」（`adoptLegacyEntries`，幂等、需确认）；
+//   ③ **列表 / 计数 / 注入 / 自动裁剪**只针对「当前存档」，**别条存档一律隐藏且不动**；
+//   ④ v3.52.14：`legacy`（无归属历史数据）**默认也隐藏** —— 真机取证它会在**每条**聊天存档里可见
+//      （539 条旧故事内容塞进新存档 = 用户报告的「不同存档内容交叉」）；横幅如实计数并给
+//      「👁 显示旧存档数据」开关（仅会话内）+「↪ 归入当前」（显式确认），既不静默藏数据、也不默认串档；
 //   ⑤ 当前存档键**读不到**（`state.chatKey` 为空）→ **fail-open**：不过滤任何条目（与 V1 行为一致，
 //      也保证单元测试 / 冷启动不误伤数据）。
 //
 // ❗ 物理存储仍是「每个角色一份」（`char:<角色>`）：本版只在**逻辑视图**上隔离 —— 不改 `scope`、
 //   不迁移服务端文件、不改 `DATA_VERSION`（见 `docs/D59` / `docs/D60` 的边界登记）。
 // ============================================================
+// ============================================================
+// v3.52.14（用户报告「存档混乱，不同存档的内容出现了交叉」）——**旧存档遗留默认隐藏**。
+//
+// 上一版（v3.52.7）把 `legacy`（无 `chatKey` 的升级前历史数据）**保留可见并打标**，
+//   理由是「宁可显式标出来，也不静默藏数据」。真机复核（`ftt.*` 只读取证）暴露了它的副作用：
+//   真机状态里 `atoms` 229 条中 `legacy` 26 条、`snapshots` 89 条中 71 条、`ledger` 912 条中 289 条…
+//   **539 条无归属历史数据**在**每一条**聊天存档里都可见（打「旧存档」徽标），
+//   于是新建的空存档一打开就塞满旧故事的情节/角色/收支 —— 这正是用户说的「不同存档的内容出现了交叉」。
+//
+// 口径修正（仍**不删任何数据**）：
+//   · `legacy` 默认**隐藏**（与 `other` 同档不可见：不进列表、不进注入、不参与上限裁剪与低使用遗忘）；
+//   · 横幅仍如实显示「旧存档遗留 N 条（默认隐藏）」，并提供**显式**「👁 显示旧存档数据」开关
+//     （仅本次页面会话有效、不落盘）—— 需要查看/归档时再打开，避免静默藏数据；
+//   · 归档（`adoptLegacyEntries`）仍是显式动作（二次确认），只在用户确认后把无归属条目归入当前存档。
+//
+// 「当前存档键读不到」时**依然 fail-open**（不过滤任何条目），保证冷启动 / 单测不误伤。
+// ============================================================
 import { state } from './model/runtime.js';
 
 /** 条目上的分区字段（与 `core/entry-meta.js#stampChatScope` 同一事实源） */
 export const ARCHIVE_FIELD = 'chatKey';
+
+/**
+ * v3.52.14：旧存档遗留（`legacy`）是否可见（**默认隐藏**；只在本次页面会话有效，不落盘）。
+ *   由面板横幅的「👁 显示旧存档数据 / 🙈 隐藏旧存档数据」切换。
+ */
+let legacyVisible = false;
+
+/** 设置「旧存档遗留是否可见」（返回生效值） */
+export function setLegacyVisible(v) {
+    legacyVisible = (v === true);
+    return legacyVisible;
+}
+
+/** 当前是否允许显示旧存档遗留 */
+export function legacyVisibleOn() { return legacyVisible === true; }
+
+/**
+ * v3.52.14：**切换「显示旧存档数据」**（面板动作 `archiveReveal` 与横幅共用；返回 `{on, note}`）。
+ *   只改本次页面会话的显示开关，**不改任何数据**（不需要二次确认；刷新后恢复默认隐藏）。
+ * @returns {{on:boolean, note:string}}
+ */
+export function toggleLegacyVisible() {
+    const on = setLegacyVisible(!legacyVisibleOn());
+    return {
+        on: on,
+        note: on
+            ? '已临时显示「旧存档遗留」数据（打「旧存档」标；仅本次会话，刷新后恢复默认隐藏）'
+            : '已重新隐藏「旧存档遗留」数据（本档视图恢复干净）',
+    };
+}
 
 /** 规范化分区键（去空白；空串 = 未归属） */
 export function normalizeArchiveKey(v) {
@@ -76,8 +124,18 @@ export function archiveTierOf(x) {
     return k === cur ? 'current' : 'other';
 }
 
-/** 是否在当前存档视图里可见（`all` / `current` / `legacy` 可见；`other` 隐藏） */
-export function archiveVisible(x) { return archiveTierOf(x) !== 'other'; }
+/**
+ * 是否在当前存档视图里可见：
+ *   · `all` / `current` → 可见；
+ *   · `legacy` → **默认隐藏**（v3.52.14；横幅「👁 显示旧存档数据」打开后可见）；
+ *   · `other` → 一律隐藏。
+ */
+export function archiveVisible(x) {
+    const t = archiveTierOf(x);
+    if (t === 'other') return false;
+    if (t === 'legacy') return legacyVisible;
+    return true;
+}
 
 /** 过滤出可见条目（不修改入参） */
 export function filterArchiveVisible(list) {

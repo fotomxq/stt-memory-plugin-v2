@@ -937,11 +937,25 @@ export function handleFloorShrink(opts) {
         const shrunk = Number.isFinite(known) && known >= 0 && lastId < known - TOL;
         noteChatFloor(lastId);                    // v3.11.1：无论是否收缩，都刷新「最近见到的末楼」基线
         if (!shrunk && !o.force) return { ok: true, skipped: 'no-shrink', lastId: lastId };
+        /**
+         * v3.52.14（用户报告「不同存档的内容出现了交叉」）：**楼层收缩只维护「本档」** ——
+         *   本函数此前把**整个 `processedFloors` / 所有维度条目**都按当前聊天重算：
+         *   于是切到新存档（聊天骤减）时，别条存档的台账标记被整批重建（
+         *   切回原存档时「已分析楼层」成片复现）、条目被重新钉到本档楼层甚至判「原文已移除」。
+         *   现在：`ck` 已知且 ≠ 本档的标记 / 条目**一律不动**；本档未知（`''`）时保持旧行为（fail-open）。
+         */
+        const curKey = currentChatMarkKey();
+        const isOtherArchiveMark = (x) => { const k = markChatKey(x); return !!(curKey && k && k !== curKey); };
+        /** v3.52.14：条目的存档归属键（`chatKey` / 兼容短键 `ck`） */
+        const entryArchiveKeyOf = (it) => {
+            try { return String((it && (it.chatKey !== undefined ? it.chatKey : it.ck)) || '').trim(); } catch (e) { return ''; }
+        };
         // ①-0 v3.7.0：**先快照突变前的台账**（`f → h`，f = 突变**前**的楼层号）。第 ① 步会把台账整体重建成
         //   「当前聊天里还能对上的楼层」，之后再也读不到原始楼层号 —— 而「当前位置」正是要靠这份快照才能算出来。
         const preLedger = (() => {
             try {
                 return (Array.isArray(state.processedFloors) ? state.processedFloors : [])
+                    .filter((x) => !(curKey && markChatKey(x) && markChatKey(x) !== curKey))   // v3.52.14：只取本档标记
                     .map((x) => ({ f: Number(x && x.f), h: String((x && x.h) || '') }))
                     .filter((x) => Number.isFinite(x.f) && x.f >= 0 && !!x.h);
             } catch (e) { return []; }
@@ -951,11 +965,13 @@ export function handleFloorShrink(opts) {
         try {
             const pf = Array.isArray(state.processedFloors) ? state.processedFloors : [];
             const hist = new Set(extraHashes);                          // v3.0.19：历史已处理哈希（含重映射前被丢掉的）
-            for (const x of pf) { const h = String((x && x.h) || ''); if (h) hist.add(h); }
-            const keep = [];
+            // v3.52.14：别条存档的标记哈希不参与本档归位（否则会把本档正文哈希到别档的内容上）
+            for (const x of pf) { if (isOtherArchiveMark(x)) continue; const h = String((x && x.h) || ''); if (h) hist.add(h); }
+            // v3.52.14：别条存档的标记**原样保留**（只重建「本档」部分）
+            const keep = curKey ? pf.filter((x) => isOtherArchiveMark(x)) : [];
             // v3.40.0（A1）：拆楼归位同样按哈希继承归属 / 时刻
             const metaByHash2 = new Map();
-            for (const x of pf) { const h = String((x && x.h) || ''); if (h && !metaByHash2.has(h)) metaByHash2.set(h, { at: markAt(x), ck: markChatKey(x) }); }
+            for (const x of pf) { if (isOtherArchiveMark(x)) continue; const h = String((x && x.h) || ''); if (h && !metaByHash2.has(h)) metaByHash2.set(h, { at: markAt(x), ck: markChatKey(x) }); }
             for (let f = 0; f <= lastId; f++) {
                 const h = hashFloorText(f);
                 if (!h) continue;
@@ -970,7 +986,8 @@ export function handleFloorShrink(opts) {
             // v3.11.1：拆楼归位同样**丢弃前留痕**（旧哈希），供覆盖判据识别「正文已改写」
             try {
                 const keptFloors = new Set(keep.map((x) => Number(x.f)));
-                rememberDroppedMarks(pf.filter((x) => !keptFloors.has(markFloor(x))));
+                // v3.52.14：留痕只记**本档**被丢弃的标记（别档标记不参与重建，也不算被丢弃）
+                rememberDroppedMarks(pf.filter((x) => !isOtherArchiveMark(x) && !keptFloors.has(markFloor(x))));
             } catch (e) { /* 忽略 */ }
         } catch (e) { /* 归位失败不阻塞后续 */ }
         // ② v3.7.0（用户要求）：**来源楼层（floorStart/floorEnd）永不变动**；改为维护「当前位置」与「原文已移除」标记。
@@ -989,8 +1006,11 @@ export function handleFloorShrink(opts) {
         } catch (e) { /* 忽略 */ }
         try {
             // v3.7.0：**突变前的台账是权威**（原始楼层号 → 内容哈希）；重建后的台账只作兜底补空。
+            // v3.52.14：`preLedger` 已按「本档」取（见上方重建块）—— 别档标记的楼层→哈希绝不能当代理，
+            //   否则「第 0 楼」这种各档共享的开头文本会把别档条目的位置算到本档来（真机 773 条被钉到 0 楼）。
             for (const x of preLedger) oldHashAt[x.f] = x.h;
             for (const x of (Array.isArray(state.processedFloors) ? state.processedFloors : [])) {
+                if (isOtherArchiveMark(x)) continue;
                 const f = Number(x && x.f), h = String((x && x.h) || '');
                 if (Number.isFinite(f) && h && oldHashAt[f] === undefined) oldHashAt[f] = h;
             }
@@ -1018,8 +1038,17 @@ export function handleFloorShrink(opts) {
         const mapEntry = (it) => {
             try {
                 if (!it || typeof it !== 'object') return 0;
+                // v3.52.14：**楼层维护只处理「本档」条目** —— 别条存档的条目楼层/指纹属于那条聊天的尺度，
+                //   在本档里重算（平移到本档楼层 / 判「原文已移除」）就是「不同存档内容交叉」的根源；
+                //   无归属（legacy，升级前历史数据）同样**判不出来就不改行为**（不臆断、不写指纹、不判移除）。
+                if (curKey && entryArchiveKeyOf(it) !== curKey) return 0;
                 const r = originFloorRange(it);
                 if (!r) return 0;
+                // v3.52.14：**0/0 = 区间未知**（沿用 core/floor-cover.js#meaningfulFloorRange 的口径）——
+                //   真机取证：773 条 floorStart/End = 0/0 的条目被台账代理哈希钉到本档第 0 楼
+                //   （各档聊天的第 0 楼都是同一张开场白，哈希必然相同）→ 位置/指纹被「洗白」。
+                //   区间未知的条目不得参与哈希定位，保持原样（不臆断、不写指纹）。
+                if (r[0] === 0 && r[1] === 0) return 0;
                 const ns0 = Number(it.floorNowStart), ne0 = Number(it.floorNowEnd);
                 const hasNow = Number.isInteger(ns0) && Number.isInteger(ne0) && ns0 >= 0 && ne0 >= ns0;
                 const h = oldHashAt[r[0]] || '';
@@ -1050,6 +1079,9 @@ export function handleFloorShrink(opts) {
                     return 1;
                 }
                 if (hasNow) {                                         // ④ 精确前移写入的位置：在册则补记指纹，否则保守保留
+                    // v3.52.14：当前位置是 0/0（旧版「位置未知」占位）时同样不写指纹 —— 第 0 楼是各档共享的开场白，
+                    //   写上去就等于「声称这条属于本档」。
+                    if (ns0 === 0 && ne0 === 0) return 0;
                     const mark = ledgerAt[ns0];
                     if (mark) { it.floorNowHash = mark; clearGone(it); }
                     return 0;

@@ -15,7 +15,7 @@ import { makeReporter, makeDocument, makeHost, installGlobalHost } from '../harn
 import { cfg, state, setKernelState, setScopeKey, setPersistHooks, setLastMessageId, setLoadPhase } from '../../core/model/runtime.js';
 import { defaultCfg } from '../../core/config.js';
 import { emptyState } from '../../core/state.js';
-import { currentArchiveKey, entryArchiveKey, archiveTierOf, archiveVisible, filterArchiveVisible, archiveStats, adoptLegacyEntries, capVisibleKeepingOthers } from '../../core/archive-scope.js';
+import { currentArchiveKey, entryArchiveKey, archiveTierOf, archiveVisible, filterArchiveVisible, archiveStats, adoptLegacyEntries, capVisibleKeepingOthers, setLegacyVisible, legacyVisibleOn } from '../../core/archive-scope.js';
 import { panelAction, setPanelHooks2, panelBodyHtml } from '../../ui/panel.js';
 import { recordProcessedFloors, isFloorProcessed, reconcileProcessedFloors, hashFloorText } from '../../host/floors.js';
 import { stampEntryArchive, autoAdoptOnLoad } from '../../core/archive-scope.js';
@@ -34,6 +34,7 @@ function boot(seed, chatKey) {
     setScopeKey('char:archive');
     setPersistHooks({ saveState: () => true, saveCfg: () => true, log: () => undefined, warn: () => undefined });
     setLastMessageId(1);
+    setLegacyVisible(false);            // v3.52.14：每个用例都从「旧存档默认隐藏」开始
     const st = emptyState();
     st.protagonist = { name: '主角' };
     st.chatKey = chatKey || '';
@@ -65,14 +66,19 @@ A('A1 **fail-open**：当前存档键未知 → 一律可见、不分档（旧�
     return currentArchiveKey() === '' && archiveTierOf(state.memories[0]) === 'all'
         && state.memories.every((x) => archiveVisible(x));
 })(), 'n/a');
-A('A2 已知存档：current / legacy / other 三档判定（`ck` 短键也认）', (() => {
+A('A2 已知存档：current / legacy / other 三档判定（`ck` 短键也认）；**v3.52.14：legacy 默认隐藏、显式显示**', (() => {
     boot({}, 'chat:A');
+    const hiddenByDefault = archiveVisible({}) === false && filterArchiveVisible(state.memories).length === 1;
+    const on = setLegacyVisible(true);
+    const shown = filterArchiveVisible(state.memories).length === 2;
+    setLegacyVisible(false);
     return archiveTierOf({ chatKey: 'chat:A' }) === 'current'
         && archiveTierOf({}) === 'legacy'
         && archiveTierOf({ chatKey: 'chat:B' }) === 'other'
         && archiveTierOf({ ck: 'chat:A' }) === 'current'
         && archiveVisible({ chatKey: 'chat:B' }) === false
-        && filterArchiveVisible(state.memories).length === 2;
+        && hiddenByDefault && on === true && shown
+        && filterArchiveVisible(state.memories).length === 1;
 })(), 'n/a');
 A('A3 `archiveStats`：分类计数（本档 / 旧存档 / 其它），当前键与 known 标记', (() => {
     boot({}, 'chat:A');
@@ -89,10 +95,10 @@ A('B1 列表页**只显示当前档 + 旧存档**（别的存档隐藏）；旧�
     const ids = titles(html, 'memories');
     return J(ids) === J(['m-legacy', 'm-cur']) && html.indexOf('data-ftt-archive-legacy') >= 0 && ids.indexOf('m-other') < 0;
 })(), 'n/a');
-A('B2 总记忆数（面板统计口径）**不含别的存档**', (() => {
+A('B2 总记忆数（面板统计口径）**只算本档**（v3.52.14：旧存档遗留默认隐藏，也不计入）', (() => {
     boot({}, 'chat:A');
     const s = consoleSummary();
-    return s.dims.filter((d) => d.kind === 'memories')[0].count === 2 && s.dims.filter((d) => d.kind === 'items')[0].count === 2;
+    return s.dims.filter((d) => d.kind === 'memories')[0].count === 1 && s.dims.filter((d) => d.kind === 'items')[0].count === 1;
 })(), () => J(consoleSummary().dims.filter((d) => d.kind === 'memories')));
 A('B3 横幅：存档短键 / 本档数 / 旧存档数 / 其它存档数；有遗留时给「归入当前」入口', (async () => {
     boot({}, 'chat:A');
@@ -127,15 +133,16 @@ A('C3 面板动作 `archiveAdopt`：归档 + 落盘 + 提示条数', (async () =
     return r && r.ok === true && r.adopted === 2 && String(r.note).indexOf('归入当前存档') >= 0
         && state.memories.every((x) => x.chatKey);
 })(), 'n/a');
-A('C4 上限裁剪**不裁别的存档**：只在本档 + 遗留里按尾裁', (() => {
-    const arr = [
+A('C4 上限裁剪**不裁别的存档**：v3.52.14 只裁「本档可见」（别的存档 + 默认隐藏的遗留原样保留）', (() => {
+    const arr = () => ([
         { id: 'a1', chatKey: 'chat:A' }, { id: 'b1', chatKey: 'chat:B' },
         { id: 'a2', chatKey: 'chat:A' }, { id: 'lg' },
         { id: 'a3', chatKey: 'chat:A' },
-    ];
+    ]);
     boot({}, 'chat:A');
-    const out = capVisibleKeepingOthers(arr, 2).map((x) => x.id);
-    return J(out) === J(['b1', 'lg', 'a3']) && out.indexOf('b1') >= 0;
+    const out = capVisibleKeepingOthers(arr(), 2).map((x) => x.id);
+    // 可见 = a1/a2/a3 → 只留尾部 a2/a3；b1（别档）与 lg（默认隐藏的遗留）都被**原样保留**
+    return J(out) === J(['b1', 'a2', 'lg', 'a3']) && out.indexOf('a1') < 0;
 })(), () => { boot({}, 'chat:A'); return J(capVisibleKeepingOthers([{ id: 'a1', chatKey: 'chat:A' }, { id: 'b1', chatKey: 'chat:B' }, { id: 'a2', chatKey: 'chat:A' }, { id: 'lg' }, { id: 'a3', chatKey: 'chat:A' }], 2).map((x) => x.id)); });
 
 // ---------- D v3.52.8：楼层台账按存档切分（切档后已分析楼层不再「神秘复现」） ----------

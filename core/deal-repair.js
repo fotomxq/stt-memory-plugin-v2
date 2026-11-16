@@ -11,7 +11,7 @@
 // ============================================================
 import { cfg, state, saveState, dbgLog } from './model/runtime.js';
 import { aiCallText, aiBusy, aiFeedText } from './ai-hooks.js';
-import { dealList, normalizeDeal } from './model/deal.js';
+import { dealVisible, normalizeDeal } from './model/deal.js';
 import { runDealTriggers } from './deal-triggers.js';   // v3.51.8：先跑内置触发器（全量判定），再走 AI 修复
 import { storyDateMsFromStr } from './clock.js';
 import { roundMoney } from './model/money.js';
@@ -39,7 +39,7 @@ export function dealRepairPick(max) {
     const cap = Math.max(1, Math.min(9, Number(max) || DEAL_REPAIR_BATCH));
     const today = str(state.state && state.state.date);
     const nowMs = curMs(today);
-    const all = dealList();
+    const all = dealVisible();
     const stalled = all.filter((d) => d && d.trigger && str(d.trigger.skippedReason) === 'currency-missing').length;
     const scored = all.filter((d) => d && !(d.trigger && str(d.trigger.skippedReason) === 'currency-missing')).map((d) => {
         let score = 0;
