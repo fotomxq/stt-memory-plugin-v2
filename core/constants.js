@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.14';   // v3.52.14（纯修复）：存档（聊天）隔离补全 —— 旧存档遗留默认隐藏 · 货币流水/长期收支分档 · 楼层收缩只维护本档（docs/D61）
+export const VERSION = '3.52.15';   // v3.52.15（用户要求）：快照链只保留 5 条；删楼备份只保留 3 个（名单兜底，槽位记录丢失也能收敛）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

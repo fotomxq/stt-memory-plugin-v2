@@ -15,6 +15,38 @@ import { fileStampCompact } from '../core/util.js';
 
 export const FLOOR_BACKUP_PREFIX = 'ftt2-floor-backup-';
 export const FLOOR_BACKUP_SLOTS = 3;
+/** v3.52.15（用户要求）：**备份文件总量上限** —— 目录里只保留最近 3 份（与 3 槽轮转同数，双保险：
+ *   槽位轮转靠「上一份文件名」，若该记录丢失（旧存档 / 换设备）就可能多留；这里再按**名单**兜底清到 3 份）。 */
+export const FLOOR_BACKUP_KEEP = 3;
+
+/** 某作用域的备份文件名前缀（用于判定「这是不是本作用域的备份」） */
+export function floorBackupScopePrefix(scope) { return FLOOR_BACKUP_PREFIX + slugify(scope) + '-'; }
+
+/**
+ * 从「已知备份文件名 + 时间」名单里挑出**应删除**的（保留最新 `keep` 份，其余删）。
+ *   · 只认本作用域前缀（绝不碰别的角色 / 别的插件文件）；
+ *   · 非法项 / 重复名忽略；`keep` ≤0 视为不清理（返回空）。
+ * @param {Array<{name:string, at?:number}>} list
+ * @param {string} scope
+ * @param {number} [keep]
+ * @returns {string[]} 待删除文件名（最旧的在前）
+ */
+export function selectFloorBackupPrune(list, scope, keep) {
+    const k = Math.max(0, Math.floor(Number(keep === undefined ? FLOOR_BACKUP_KEEP : keep) || 0));
+    if (!k) return [];
+    const pre = floorBackupScopePrefix(scope);
+    const seen = new Set();
+    const rows = [];
+    for (const it of (Array.isArray(list) ? list : [])) {
+        const name = String((it && it.name) || '');
+        if (!name || name.indexOf(pre) !== 0 || seen.has(name)) continue;
+        seen.add(name);
+        rows.push({ name: name, at: Number((it && it.at) || 0) });
+    }
+    if (rows.length <= k) return [];
+    rows.sort((a, b) => (b.at - a.at) || (a.name < b.name ? 1 : (a.name > b.name ? -1 : 0)));   // 最新在前（同时刻按名倒序，稳定）
+    return rows.slice(k).sort((a, b) => (a.at - b.at) || (a.name < b.name ? -1 : (a.name > b.name ? 1 : 0))).map((x) => x.name);   // 最旧的在前（便于日志阅读）
+}
 
 /**
  * 备份文件名（槽位 0..2）。

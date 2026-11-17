@@ -52,10 +52,10 @@ function bootWith(snaps) {
     return st;
 }
 
-A('A1 常量与 UI 说明：`SNAP_RETAIN_DAYS` = 30（保留窗由内核常量给出）；快照区块**如实写明可回滚范围**（含「并入根：档位变少，内容不丢」）', (() => {
+A('A1 常量与 UI 说明：`SNAP_RETAIN_DAYS` = 30（保留窗）/ `SNAP_CAP` = **5**（v3.52.15 用户要求：快照只保留 5 条）；快照区块**如实写明可回滚范围**（含「并入根：档位变少，内容不丢」）', (() => {
     bootWith([mkSnap('root_1', 'root', 1, { a: '1' })]);        // 渲染统计行需要内核态（否则 state 为 null）
     const html = String(snapshotSectionHtml() || '');
-    return SNAP_RETAIN_DAYS === 30 && SNAP_CAP === 30
+    return SNAP_RETAIN_DAYS === 30 && SNAP_CAP === 5
         && html.indexOf('可回滚范围') >= 0 && html.indexOf('最近 30 天') >= 0
         && html.indexOf('并入根') >= 0 && html.indexOf('内容不丢') >= 0;
 })(), (() => { try { bootWith([mkSnap('root_1', 'root', 1, { a: '1' })]); return String(snapshotSectionHtml()).slice(0, 220); } catch (e) { return String(e.message); } })());

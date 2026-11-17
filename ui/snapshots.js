@@ -122,7 +122,7 @@ export function snapshotSectionHtml() {
         '<div class="ftt-hint">可回滚范围 = <b>最近 ' + snapRetainDays() + ' 天</b>内的快照点 + 根快照（超窗的增量会被<b>并入根</b>：档位变少，内容不丢）。</div>',
         '<div class="ftt-row">',
         '<button class="ftt-btn ftt-sm ftt-primary" data-ftt-action="snapCreate" title="立即把当前全部原子备份成一份全量快照">📸 立即建根快照</button>',
-        '<button class="ftt-btn ftt-sm" data-ftt-action="snapConsolidate" title="多个根合并为一个；总量超上限时把最早 15 个增量并入根">🧹 整理快照链</button>',
+        '<button class="ftt-btn ftt-sm" data-ftt-action="snapConsolidate" title="多个根合并为一个；总量超上限（5 条）时把最早的增量并入根（每次 2 个）">🧹 整理快照链</button>',
         '<button class="ftt-btn ftt-sm ftt-err" data-ftt-action="snapshotClear" title="删除全部快照（不删除任何记忆条目）">🗑 清空快照</button>',
         '</div>',
         list.length ? '' : '<div class="ftt-empty">（暂无快照；首次保存会建立根快照）</div>',

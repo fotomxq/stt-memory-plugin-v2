@@ -18,8 +18,10 @@ import { storageHash } from './envelope.js';
 import { entryIndexInit, tombstoneSweepPause, tombstoneSweepResume } from './sweep.js';
 
 /** V1 常量：快照总数上限与「并入根的批次」、增量防抖延迟 */
-const SNAP_CAP = 30;
-const SNAP_BATCH = 15;
+// v3.52.15（用户要求）：「快照只保留 5 条」—— 总量上限 30 → **5**（根 + 增量合计，含根）。
+//   整理时每次把最早的 `SNAP_BATCH` 个增量并入根快照（可多轮至 ≤5）；内容不丢，只是不再作为独立可回滚档位。
+const SNAP_CAP = 5;
+const SNAP_BATCH = 2;
 const SNAP_INCR_DELAY = 400;
 /**
  * **保留窗**（天）—— v3.46.0（`docs/D22` W9 `数-32` / U189）：超窗的增量在整理时**并入根快照**
@@ -80,7 +82,7 @@ function renderPanel() { /* no-op：UI 层负责 */ }
     }
     // 快照整理：
     //   R3 全局只允许一个根快照 —— 出现多个按 ts 合并为一个（后根内容覆盖先根，含 deleted 账本）；
-    //   R2 总量 > SNAP_CAP(30) —— 每次把「最早 15 个增量」并入根快照（可多轮至 ≤30 或仅剩根）；
+    //   R2 总量 > SNAP_CAP(5) —— 每次把「最早 2 个增量」并入根快照（可多轮至 ≤5 或仅剩根）；
     //   **R2b v3.46.0（`docs/D22` W9 `数-32` / U189）：保留窗** —— 超窗（`SNAP_RETAIN_DAYS`）的增量也并入根。
     //     语义：**只减少"能回滚到哪些历史点"的档位数，不删任何数据**（内容被并进根，回滚到根仍完好）；
     //     UI 与文档如实说明「可回滚范围 = 保留窗内的快照点 + 根」。

@@ -48,7 +48,7 @@ import {
 import { getCtx } from './st-api.js';
 import { wireKernelChatHooks } from './chat.js';   // v3.0.16：删楼后立刻把「聊天视图 / 末楼快照」刷新为活值
 import { hashFloorText, handleFloorShrink, rememberDroppedMarks } from './floors.js';
-import { nextFloorBackupSlot } from '../adapters/floor-backup.js';
+import { nextFloorBackupSlot, selectFloorBackupPrune, FLOOR_BACKUP_KEEP } from '../adapters/floor-backup.js';
 
 export { FLOOR_TRIM_PRESETS, FLOOR_TRIM_SLOW_MAX };
 
@@ -344,6 +344,15 @@ export async function floorTrimApply(opts) {
             return { ok: false, reason: 'backup-failed', backup: wr || null, error: String((wr && wr.error) || ''), summary: pre.summary };
         }
         backup = { ok: true, slot: slot, name: String(wr.name || ''), chars: Number(wr.chars) || 0 };
+        // v3.52.15（用户要求）：「如果存在备份，备份只保留 3 个」——按**名单**兜底（槽位记录丢失 / 换设备时也能收敛）
+        try {
+            const lg0 = readLog();
+            const recent = (Array.isArray(lg0 && lg0.recent) ? lg0.recent : []).concat([{ name: String(backup.name), at: now(), scope: String(state.scope || '') }]).slice(-24);
+            const del = selectFloorBackupPrune(recent, String(state.scope || ''), FLOOR_BACKUP_KEEP);
+            for (const nm of del) { try { if (typeof hooks.deleteBackup === 'function') await hooks.deleteBackup(nm); } catch (e) { /* 忽略：删旧失败只影响目录整洁 */ } }
+            const delSet = new Set(del);
+            writeLog(Object.assign({}, lg0, { recent: recent.filter((x) => x && !delSet.has(String(x.name))) }));
+        } catch (e) { /* 忽略 */ }
     }
 
     // ⑤ 删除：**首选一次性批量截断**；批量不可用且层数 ≤ 上限时才逐层回退
