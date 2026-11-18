@@ -94,6 +94,7 @@ import { nsfwCountSnapshot, invalidateNsfwCount } from './nsfw-count-tick.js';
 import { clockSectionHtml, clockAction, CLOCK_ACTIONS } from './clock.js';
 import { debugAction, DEBUG_ACTIONS, updateBridgeStatusDom } from './debug.js';
 import { cacheBulkClear } from './cache-bulk.js';   // v3.52.13：缓存与日志聚合清理
+import { purgeOtherArchives } from '../core/archive-purge.js';   // v3.52.16：删除其它存档数据
 import { aboutAction, ABOUT_ACTIONS, setAboutHooks } from './about.js';
 // B9-c：投喂标签自动分析（扫描/收录/清空；V1 `rxScanTags`/`rxAddTag`/`rxScanClear` 同名能力）
 import { feedScanAction, FEED_SCAN_ACTIONS, rxDedupeTagList, isFeedTagKey } from './feed-scan.js';
@@ -1921,6 +1922,8 @@ const DANGER_ACTION_PROMPTS = {
     'markPending': '把当前未分析清单登记为「已分析」？\n\n只写**楼层记账**：不调用 AI、不删除也不修改任何记忆条目、不改聊天正文。\n用途：这些楼层当初确实分析过、只是「已处理」记账丢了（删楼 / 部分载入会把低楼层标记丢掉），登记后它们不会再被列入待分析、也不会被重复分析（重复分析会重复落库、白花 token）。\n撤销：数据管理页「🧹 清除已处理楼层记录」。',
     // v3.46.7（`应-8`）：恢复 = **清墓碑**（对端可见），**不是**「把条目搬回来」→ 二次确认里先说清这件事
     // v3.52.13：手动删除「最近删除」里的墓碑记录（单条 / 全部）——与恢复同一后果（对端可再次写入），文案分开
+    // v3.52.16（用户要求）：删除其它存档数据 —— 只删非当前存档，写双墓碑、跨端不复活
+    'purgeOtherArchives': '删除「其它存档」的全部数据？\n\n将删除**非当前存档**（同一角色的其它聊天存档）的全部条目、关联行与楼层台账；当前存档与「旧存档遗留」不受影响。删除会写记录（跨端不复活），此操作不可恢复，建议先「⬇ 导出 JSON 文件」备份。',
     'rbPurge': '删除这条「最近删除」记录？\n\n将清除该条目的墓碑记录；条目正文早已移除，这里不会把它搬回来。清除后**对端可再次写入同一内容**（恢复也正是这个语义）。此操作不可撤销。',
     'rbPurgeAll': '清空全部「最近删除」记录？\n\n将清除本机该作用域的全部墓碑记录（含内容墓碑）。清掉后对端可再次写入这些内容。此操作不可撤销，建议先「⬇ 导出 JSON 文件」备份。',
     'rbRestore': '清除选中条目的墓碑记录？\n\n「最近删除」里列出的是**墓碑记录**（按条目 id 与按内容哈希两处）。清除它们 = 解除「这条不许在跨端同步里复活」的约束。\n条目正文在删除时就已经移除了，**这里不会把它搬回来**；此后它可以从备份导入或 AI 提取重新写入。\n注意：其它设备仍保留自己的墓碑记录；换 id 写回的同内容条目在合并后可能再次消失。',
@@ -2374,6 +2377,11 @@ export async function panelAction(action, payload) {
                     : ('登记失败：' + String((r && r.reason) || '未知原因')));
                 result = Object.assign(result, r || {}, { action: a, ok: !!(r && r.ok), pending: left });
             }
+        } else if (a === 'purgeOtherArchives') {
+            // v3.52.16（用户要求）：删除**非当前存档**的全部数据（危险动作二次确认由中央闸负责）
+            const pr = purgeOtherArchives();
+            setNote(pr.note || (pr.ok ? '已删除其它存档数据' : '删除未执行'));
+            result = Object.assign(result, pr, { action: a });
         } else if (a === 'reset') {
             // V1 `case 'reset'`（数据管理页「🗑 清空当前角色记忆」）：确认文案**逐字一致**
             //   （V1 原文：`confirm('确认清空当前角色的 FTT 记忆？此操作不可恢复，建议先导出备份。')` → `resetState()` → `toast('已清空','info')`）。

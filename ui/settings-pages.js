@@ -1031,6 +1031,7 @@ import { floorTrimStatus, floorTrimPrecheck, FLOOR_TRIM_PRESETS } from '../host/
 // v3.46.7（`docs/D22` §4.4 W15 `应-8`）：数据管理页的「🕳 最近删除 + ♻ 恢复」区块（实现全在 `ui/recycle-bin.js`）
 import { recycleBinSectionHtml } from './recycle-bin.js';
 import { groupedSubTabsHtml } from './subtabs.js';   // v3.52.0（W33 应-49）：子标签分段胶囊 + 设定四分组
+import { archiveStats } from '../core/archive-scope.js';   // v3.52.16：删除其它存档数据（条数展示）
 
 /** 键 → 中文名（反向使用 CN_KEY_MAP，用于补充 V1 未提取到标签的键） */
 function cnLabel(key) {
@@ -1737,6 +1738,16 @@ const DANGER_ZONE_BANNER = '<div class="ftt-item ftt-item--warn ftt-inline" data
     + '删聊天楼层会自动生成明文备份（可用导出的 JSON 还原）；删除插件数据则无法恢复 —— 建议先「📤 导出备份」。</span></div>';
 
 /**
+ * v3.52.16（用户要求）：「删除其它存档数据」按钮 —— 条数来自 `core/archive-scope.js#archiveStats().other`；
+ *   没有其它存档数据 → **禁用**（不误导用户点空操作）。危险动作二次确认由中央闸负责。
+ */
+function otherArchivePurgeButtonHtml() {
+    let n = 0;
+    try { const st = archiveStats(); n = Number(st && st.other) || 0; } catch (e) { n = 0; }
+    return '<button class="ftt-btn ftt-err" data-ftt-action="purgeOtherArchives" title="删除**非当前存档**的全部数据（其它聊天存档的条目 / 关联行 / 楼层台账）；不可恢复，建议先导出备份"' + (n ? '' : ' disabled') + '>🗑 删除其它存档数据（' + n + ' 条）</button>';
+}
+
+/**
  * v3.50.12（`数-9`）：**分段总结 / 遗留摘要的条数上限**如实展示（含「超出时合并而不是删除」的口径）。
  *   数据源：`state.plotSegments` / `state.summaries` 的实时条数 + `core/plot-segment-merge.js` 的上限常量。
  */
@@ -1804,9 +1815,12 @@ function pageExtraHtml(pid) {
             //   V1 原始标记是 `<button class="ftt-btn" data-ftt-action="reset" class="ftt-hint-err">` —— **重复 class 属性**会被浏览器忽略后者，
             //   即 V1 实际拿不到 `ftt-hint-err` 的红色样式（原生标记缺陷）；V2 用既有 `ftt-err` 等价呈现并补上 title。
             '<button class="ftt-btn ftt-err" data-ftt-action="reset" title="删除当前角色的全部记忆（不可恢复）">🗑 清空当前角色记忆</button>',
+            // v3.52.16（用户要求）：新增「删除其它存档数据」—— 只清**非当前存档**（其它聊天存档）的数据，不可恢复
+            otherArchivePurgeButtonHtml(),
             '</div>',
             '<div class="ftt-hint ftt-mb-0">· 清除已处理楼层记录：只重置「哪些楼层已摘要」，记忆条目一条不删；</div>',
             '<div class="ftt-hint">· 清空当前角色记忆：删除该角色的全部记忆条目，其它角色不受影响。</div>',
+            '<div class="ftt-hint">· 删除其它存档数据：只删<b>非当前存档</b>（同一角色的其它聊天存档）的条目与楼层台账，当前存档与「旧存档遗留」不动。</div>',
             '</div>',
         ].join('\n');
     }

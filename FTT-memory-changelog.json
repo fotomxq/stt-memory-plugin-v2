@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.15",
-  "updatedAt": "2026-11-17",
-  "generatedAt": "2026-11-17",
+  "version": "3.52.16",
+  "updatedAt": "2026-11-18",
+  "generatedAt": "2026-11-18",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.16",
+      "date": "2026-11-18",
+      "title": "数据管理新增「删除其它存档数据」（非当前存档的全部数据）",
+      "points": [
+        "登记：批次档 docs/history/P10c169-删除其它存档数据.md### 一、新增入口设定 → 数据管理 → ⚠️ 危险操作 → 「🗑 删除其它存档数据（N 条）」…"
+      ]
+    },
     {
       "version": "3.52.15",
       "date": "2026-11-17",
