@@ -50,6 +50,8 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         // v3.44.0（`docs/D22` W4）：入库卫生两开关（`数-11` ① 关联锚点强制补丁 · `数-13` ① 空壳入库拦截）——
         //   两者**默认关**（默认值即「不改任何既有行为」），开启后才改变提示词 / 入库结果。
         'relAnchorRuleEnabled', 'shellGuardEnabled',
+        // v3.52.17（用户报告 AI 分析失控）：段字符预算 / 失败标记阈值 / 自动提取冷却（V2 专有）
+        'summarySegMaxChars', 'summaryFailMarkAfter', 'autoExtractGapMs',
         // v3.45.5（`docs/D22` W4 · `docs/D26` 履历链）：角色履历的 6 个口径键（V1 无「履历」概念）——
         //   总开关 / 条数上限（软阈值）/ 接近上限预警比例 / 重要性免疫阈值 / 凝练目标字数 / 原作人物预填开关。
         'snapshotResumeEnabled', 'snapshotResumeMax', 'snapshotResumeTriggerRatio',

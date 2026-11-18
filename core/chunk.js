@@ -110,6 +110,40 @@ export function chunkFloorIds(ids, size, fallback) {
 }
 
 /**
+ * v3.52.17（用户报告「AI 分析行为失控，可能提交超长上下文」）：**段内再加一道「字符预算」** ——
+ *   在 `chunkFloorIds`（段内正文数上界）之上，按**累计正文字符数**提前收口：
+ *   若把下一楼拼进来会超过 `maxChars` → 就在上一楼处断段（**单楼本身超长时**仍独占一段，
+ *   由 `analyzeSegment` 的硬上限兜底，绝不因此静默丢楼）。
+ *   · `maxChars` ≤0 / 非法 → 只按楼层数切（等价 `chunkFloorIds`）；
+ *   · `lenOf(id)` 返回该楼正文长度（无正文 → 0）；缺省按 0（不分段）。
+ * @param {number[]} ids 楼层号清单
+ * @param {*} [size] 段长（楼层数上界）
+ * @param {*} [fallback] 段长次级回落
+ * @param {*} [maxChars] 每段正文字符预算（0/非法 = 不限）
+ * @param {Function} [lenOf] （可选）楼层号 → 正文长度
+ * @returns {Array<{start:number,end:number,ids:number[]}>}
+ */
+export function chunkFloorIdsByChars(ids, size, fallback, maxChars, lenOf) {
+    const base = chunkFloorIds(ids, size, fallback);
+    const cap = Math.max(0, Math.trunc(Number(maxChars) || 0));
+    if (!cap || typeof lenOf !== 'function') return base;
+    const out = [];
+    for (const seg of base) {
+        let cur = null;
+        let chars = 0;
+        for (const id of seg.ids) {
+            let n = 0;
+            try { n = Math.max(0, Number(lenOf(id)) || 0); } catch (e) { n = 0; }
+            if (cur && (chars + n) > cap) { out.push(cur); cur = null; chars = 0; }
+            if (!cur) { cur = { start: id, end: id, ids: [id] }; chars = n; }
+            else { cur.ids.push(id); cur.end = id; chars += n; }
+        }
+        if (cur) out.push(cur);
+    }
+    return out;
+}
+
+/**
  * 分段摘要的**一页摘要**（诊断 / 调试桥 / 面板文案共用；不含任何正文）。
  * 段数按**实际切片**算（连续段才合并），因此与 `chunkFloorIds(ids).length` 逐字一致。
  * @param {number[]} ids 参与的楼层号清单

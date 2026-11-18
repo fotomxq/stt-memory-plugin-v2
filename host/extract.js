@@ -17,7 +17,7 @@ import { cfg, state, dbgLog, log, warn, getLastMessageId } from '../core/model/r
 import { buildSummaryPrompt } from '../core/prompt.js';
 // v2.61.0（用户要求：「提取记忆优化，第一步先校对时钟等基本信息，然后再去提取」）
 import { calibrateBasics, withBasics, atomsSignature, recalibrateAfterExtract } from './preflight.js';
-import { extractJsonObject } from '../core/util.js';
+import { extractJsonObject, hashText } from '../core/util.js';
 import { mergeDelta } from '../core/ingest.js';
 import { scheduleAutoRepairOnMergeFail, bumpRepairOp } from '../core/repair.js';
 import { scheduleParallelWeave, jsExtractKeywords, setParallelLastKeywords, parallelLastKeywords } from '../core/parallel.js';
@@ -41,7 +41,7 @@ import { cleanText } from '../core/html-text.js';
 import { beginPipeline, endPipeline, addStreamChunk, noteResponseText, setPipelinePhase, setPipelineKeys, summarizeResponseKeys } from '../core/pipeline.js';
 // v3.23.0（用户要求）：「全部 AI 摘要需支持分段处理，且默认采用 3 个正文进行切片，分批进行处理。避免一次性分析记忆。」
 //   → 段长口径收敛到内核纯函数（默认 3、段内必连续、段长只作上界），批量摘要 / 多楼（全量）提取共用同一实现。
-import { SUMMARY_CHUNK_DEFAULT, normalizeChunkSize, chunkFloorRange, chunkFloorIds } from '../core/chunk.js';
+import { SUMMARY_CHUNK_DEFAULT, normalizeChunkSize, chunkFloorRange, chunkFloorIds, chunkFloorIdsByChars } from '../core/chunk.js';
 // v3.0.3（用户要求）：「每次被动提取记忆…应该触发保存到服务器的操作」—— 提取结束后**立即**落一次服务端
 import { persistNow } from '../core/model/runtime.js';
 
@@ -105,6 +105,67 @@ function recordLastExtract(rec) {
     } catch (e) { /* 记录失败不影响主流程 */ }
     return lastExtract;
 }
+/** 单段正文**硬上限**（v3.52.17）：即使单楼超长，也绝不把超过该字符数的正文塞进一次请求 */
+export const SUMMARY_SEG_HARD_MAX = 30000;
+/** 失败记录上限与保留期（防无限增长） */
+const EXTRACT_FAIL_KEEP = 200;
+const EXTRACT_FAIL_TTL_MS = 7 * 24 * 3600 * 1000;
+/** 自动提取冷却时间戳（v3.52.17：防高频次分析） */
+let lastAutoExtractAt = 0;
+
+/** 失败记录表（`state.extractFailures`；懒建、有界） */
+function failMap() {
+    try {
+        if (!state.extractFailures || typeof state.extractFailures !== 'object' || Array.isArray(state.extractFailures)) state.extractFailures = {};
+        return state.extractFailures;
+    } catch (e) { return {}; }
+}
+function failKey(start, end) { return String(start) + '-' + String(end); }
+/**
+ * v3.52.17（用户报告「提交后没标记 → 重复提交」）：**同段连续失败记账**。
+ *   · 同一段「内容哈希」不变才累加次数；内容变化 → 从 1 重新算（改过的楼值得重试）；
+ *   · 达到 `cfg.summaryFailMarkAfter`（默认 3）→ **记为已处理**（停止自动重投；手动清台账可重来）；
+ *   · 表有界（≤200 条）并按 7 天过期清理。
+ * @returns {{n:number, marked:boolean}}
+ */
+function noteExtractFail(start, end, reason, text) {
+    try {
+        const map = failMap();
+        const k = failKey(start, end);
+        const prev = map[k];
+        const h = (() => { try { return String(hashText(String(text || ''))); } catch (e) { return ''; } })();
+        const n = (prev && prev.h === h ? Number(prev.n) || 0 : 0) + 1;
+        map[k] = { n: n, at: Date.now(), h: h, reason: String(reason || '') };
+        // 有界 + 过期清理
+        const now = Date.now();
+        const keys = Object.keys(map);
+        if (keys.length > EXTRACT_FAIL_KEEP || keys.some((x) => now - (Number(map[x] && map[x].at) || 0) > EXTRACT_FAIL_TTL_MS)) {
+            const keep = keys.filter((x) => now - (Number(map[x] && map[x].at) || 0) <= EXTRACT_FAIL_TTL_MS)
+                .sort((a, b) => (Number(map[b].at) || 0) - (Number(map[a].at) || 0))
+                .slice(0, EXTRACT_FAIL_KEEP);
+            const next = {};
+            for (const x of keep) next[x] = map[x];
+            state.extractFailures = next;
+        }
+        const cap = Math.max(1, Number(cfg && cfg.summaryFailMarkAfter) || 3);
+        if (n >= cap) {
+            try { recordProcessedFloors(start, end); } catch (e) { /* 忽略 */ }
+            try { state.extractFailures[k].markedAt = Date.now(); } catch (e) { /* 忽略 */ }
+            try { dbgLog('摘要', { action: '同段连续失败达阈值 → 标记已处理（停止自动重投）', range: start + '-' + end, tries: n, reason: String(reason || '') }); } catch (e) { /* 忽略 */ }
+            return { n: n, marked: true };
+        }
+        return { n: n, marked: false };
+    } catch (e) { return { n: 0, marked: false }; }
+}
+/** 成功后清掉该段的失败记账 */
+function clearExtractFail(start, end) {
+    try { const map = failMap(); delete map[failKey(start, end)]; } catch (e) { /* 忽略 */ }
+}
+/** 失败记账快照（诊断 / 测试；只读） */
+export function extractFailuresSnapshot() {
+    try { return JSON.parse(JSON.stringify(state.extractFailures || {})); } catch (e) { return {}; }
+}
+
 export function extractBusy() { return extractState.busy; }
 
 /**
@@ -364,11 +425,13 @@ export async function analyzeFloor(floorId, opts) {
         const resp = await genTracked(gen, args, '单楼分析', '请求 AI（第 ' + Number(floorId) + ' 楼）');
         if (!resp || resp.ok === false) {
             extractState.fail += 1; extractState.lastReason = 'ai-error';
+            noteExtractFail(Number(floorId), Number(floorId), 'ai-error', text);   // v3.52.17：失败记账（达阈值标记已处理）
             return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '' };
         }
         const delta = extractJsonObject(resp.text);
         if (!delta) {
             extractState.fail += 1; extractState.lastReason = 'no-json';
+            noteExtractFail(Number(floorId), Number(floorId), 'no-json', text);
             try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
             return { ok: false, reason: 'no-json', chars: String(resp.text || '').length };
         }
@@ -379,10 +442,11 @@ export async function analyzeFloor(floorId, opts) {
         //   紧随其后**无条件**做一次情节总结检查点（V1 该行在 `if (mr && mr.ok)` 之外）
         if (mr && mr.ok) { try { scheduleParallelWeave({ start: Number(floorId), end: Number(floorId) }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ } }
         try { scheduleAtomCompact(); } catch (e) { /* 忽略 */ }
-        if (!mr || !mr.ok) { extractState.fail += 1; extractState.lastReason = 'merge-fail'; return { ok: false, reason: 'merge-fail' }; }
+        if (!mr || !mr.ok) { extractState.fail += 1; extractState.lastReason = 'merge-fail'; noteExtractFail(Number(floorId), Number(floorId), 'merge-fail', text); return { ok: false, reason: 'merge-fail' }; }
         // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
         const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
         recordProcessedFloors(Number(floorId), Number(floorId));
+        clearExtractFail(Number(floorId), Number(floorId));   // v3.52.17：成功 → 清失败记账
         // v3.0.3：单楼（也是**被动自动提取**走的路径）落库后立即写服务端（台账 / 重要度 / 时钟一并落盘）
         try { persistNow('提取记忆（单楼）'); } catch (e) { /* 忽略 */ }
         const ms = Date.now() - t0;
@@ -438,7 +502,10 @@ export async function analyzeFloors(opts) {
             return { ok: r.ok === true, floors: ids, results, segments: 1, done: r.ok ? 1 : 0, failed: r.ok ? 0 : 1 };
         }
         // 多楼 / 全量：按「连续段 + 段长」切片，逐段分析（一次 AI = 一段）
-        const chunks = chunkFloorIds(ids, o.chunkSize, cfg.summaryChunkSize);
+        // v3.52.17（用户报告「超长上下文」）：段内再加**字符预算**（`cfg.summarySegMaxChars`），
+        //   按「累计正文字符数」提前收口；单楼本身超长时仍独占一段（由 analyzeSegment 硬上限兜底）。
+        const chunkLenOf = (id) => { try { return String(floorAnalyzableText(id) || '').length; } catch (e) { return 0; } };
+        const chunks = chunkFloorIdsByChars(ids, o.chunkSize, cfg.summaryChunkSize, cfg.summarySegMaxChars, chunkLenOf);
         extractState.segTotal = chunks.length;
         extractState.segDone = 0;
         extractState.segRange = chunks.length ? (chunks[0].start + '-' + chunks[chunks.length - 1].end) : '';
@@ -486,6 +553,13 @@ export async function analyzeSegment(start, end, opts) {
             }
         }
         if (!text) { recordProcessedFloors(s0, e0); return { ok: true, empty: true, added: 0, floorStart: s0, floorEnd: e0 }; }
+        // v3.52.17（用户报告「超长上下文」）：单段**硬上限**兜底 —— 即便单楼超长，也绝不整段塞给 AI
+        let segTruncated = 0;
+        if (text.length > SUMMARY_SEG_HARD_MAX) {
+            segTruncated = text.length - SUMMARY_SEG_HARD_MAX;
+            text = text.slice(0, SUMMARY_SEG_HARD_MAX) + '\n…（正文超长，已截断 ' + segTruncated + ' 字）';
+            try { dbgLog('摘要', { action: '单段正文超长 → 截断后提交', range: s0 + '-' + e0, truncated: segTruncated, cap: SUMMARY_SEG_HARD_MAX }); } catch (e) { /* 忽略 */ }
+        }
         const gen = o.ai || rawGenerate;
         if (!o.ai && !generationAvailability().generateRaw) return { ok: false, reason: 'no-generate', floorStart: s0, floorEnd: e0 };
         // V1 v1.206 15477~15485：**独立分组分支**（`cfg.dimensionGrouping === 'separate'` → `runSummarySeparate`）。
@@ -496,6 +570,7 @@ export async function analyzeSegment(start, end, opts) {
             const okN = results.filter((r) => r && r.ok).length;
             // V1 原样：独立分组下**无论成败**都记该段已处理（与统一模式一致）
             recordProcessedFloors(s0, e0);
+            if (okN > 0) clearExtractFail(s0, e0);   // v3.52.17：有成功组才清失败记账
             const ms = Date.now() - t0;
             // V1 原样怪癖：独立分组分支**不累加** `totalAdded`（V1 通知里的「本次提取 N 条」在独立分组下恒为 0）→ 这里 `added: 0`
             // v2.81.0：各组的「分析后同步」汇总（每组各自新增的情节都应被反映；任一组同步即算同步）
@@ -521,9 +596,13 @@ export async function analyzeSegment(start, end, opts) {
         // v2.35.0：主路径 target（V1 `overrideMain = { preset: cfg.activeApiPreset || undefined, ... }`，v1.206 14789）
         const args = Object.assign(promptToGenerateArgs(messages), { target: resolveApiTarget({ purpose: 'main' }) });
         const resp = await genTracked(gen, args, '批量摘要', '请求 AI（第 ' + s0 + '-' + e0 + ' 楼）');
-        if (!resp || resp.ok === false) return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
+        if (!resp || resp.ok === false) {
+            noteExtractFail(s0, e0, 'ai-error', text);   // v3.52.17：失败记账（达阈值标记已处理，防反复提交）
+            return { ok: false, reason: 'ai-error', error: (resp && resp.error) || '', floorStart: s0, floorEnd: e0 };
+        }
         const delta = extractJsonObject(resp.text);
         if (!delta) {
+            noteExtractFail(s0, e0, 'no-json', text);
             try { scheduleAutoRepairOnMergeFail(); } catch (e) { /* 忽略 */ }
             return { ok: false, reason: 'no-json', chars: String(resp.text || '').length, floorStart: s0, floorEnd: e0 };
         }
@@ -532,13 +611,14 @@ export async function analyzeSegment(start, end, opts) {
         try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         // v3.0.3：分段（批量摘要）落库后立即写服务端
         if (mr && mr.ok) { try { persistNow('提取记忆（分段）'); } catch (e) { /* 忽略 */ } }
-        if (!mr || !mr.ok) return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 };
+        if (!mr || !mr.ok) { noteExtractFail(s0, e0, 'merge-fail', text); return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 }; }
         // v2.81.0（用户要求）：**情节发生更新 → 按最新的一条更新日期/时间/地点/在场角色**
         const postCalib = (() => { try { return recalibrateAfterExtract(atomSig); } catch (e) { return null; } })();
         // V1 v1.206 15490（分段分析）：合并成功 → 被动调度推演（关键词取**段文本**）
         try { scheduleParallelWeave({ start: s0, end: e0 }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ }
         // V1 口径：**无论合并是否新增**都记该段为已处理（失败/无 JSON 则不记，下次重试）
         recordProcessedFloors(s0, e0);
+        clearExtractFail(s0, e0);   // v3.52.17：本段成功 → 清失败记账（下次内容变化重新计）
         const ms = Date.now() - t0;
         lastSegmentText = String(resp.text || '').slice(0, LAST_EXTRACT_TEXT_CAP);
         recordLastExtract({
@@ -671,6 +751,15 @@ export async function autoExtractLatest(opts) {
     try {
         if (cfg && cfg.autoExtract === false) return { ok: false, reason: 'off' };
         if (extractState.busy) return { ok: false, reason: 'busy' };
+        // v3.52.17（用户报告「不要高频次分析 / 反复提交」）：**最小间隔冷却** ——
+        //   生成结束等事件可能连续多次触发（重 roll / 编辑 / 多事件），间隔内一律跳过；
+        //   冷却只作用于**自动**路径；手动「⚡ 立即 AI 摘要」不受影响。
+        const gap = Math.max(0, Number(cfg && cfg.autoExtractGapMs) || 0);
+        if (gap > 0 && (Date.now() - lastAutoExtractAt) < gap) {
+            try { dbgLog('摘要', { action: '自动提取冷却中，本次跳过', gapMs: gap, sinceMs: Date.now() - lastAutoExtractAt }); } catch (e) { /* 忽略 */ }
+            return { ok: false, reason: 'cooldown' };
+        }
+        lastAutoExtractAt = Date.now();
         // 取**最后一个**未分析楼层（V1 自动摘要是「按未分析清单推进」，这里先取全集尾项，避免 limit 先截断取到最旧一楼）
         const ids = listUnprocessedFloors({});
         const id = ids.length ? ids[ids.length - 1] : -1;

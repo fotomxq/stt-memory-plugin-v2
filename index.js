@@ -909,9 +909,9 @@ export async function init() {
             // v3.51.0（`docs/D53` §3.9 / W32 `技-59`）：**分析完成之后**处置长期收支触发器 ——
             //   确定性代码（**全程无 AI**）：剧情日期跳动 → 按预测节点与周期**兑现 / 补齐**流水；
             //   锚定货币丢失则不生成（留痕）。失败静默、**绝不阻塞聊天与注入**。
-            void runAutoExtract().catch(() => { }).then(() => {
-                try { void runDealTriggersAfterExtract(); } catch (e) { /* 忽略：触发器失败不影响聊天 */ }
-            });
+            // v3.52.17（用户报告「反复提交 / 高频次分析」）：生成结束事件可能连续多次 →
+            //   **合并为一次延迟执行**（1.2s 去抖；内核另有 autoExtractGapMs 冷却兜底）。
+            try { scheduleGenEndedExtract(); } catch (e) { /* 忽略 */ }
         };
         const onUserRendered = () => { onFloorChanged(); };
         const onChatChanged = () => {
@@ -2416,6 +2416,20 @@ export async function runAutoExtract(opts) {
     const r = await autoExtractLatest(opts || {});
     runtime.extract = extractStats();
     return r;
+}
+
+/** v3.52.17：生成结束自动提取的**去抖合并**（窗口内多次事件只跑一次；失败静默） */
+let genEndedExtractTimer = null;
+function scheduleGenEndedExtract() {
+    try {
+        if (genEndedExtractTimer) { clearTimeout(genEndedExtractTimer); genEndedExtractTimer = null; }
+        genEndedExtractTimer = setTimeout(() => {
+            genEndedExtractTimer = null;
+            void runAutoExtract().catch(() => { }).then(() => {
+                try { void runDealTriggersAfterExtract(); } catch (e) { /* 忽略：触发器失败不影响聊天 */ }
+            });
+        }, 1200);
+    } catch (e) { /* 忽略 */ }
 }
 
 /** v3.51.0（W32 技-59）：长期收支触发器接线（薄包装 → `core/deal-triggers.js#dealTriggersAfterExtract`；失败静默） */

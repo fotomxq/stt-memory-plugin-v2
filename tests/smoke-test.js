@@ -517,7 +517,8 @@ await assert('H5 GENERATION_ENDED 自动提取：新增 AI 楼后事件触发即
     host.ctx.generateRaw = async () => aiDelta;
     try {
         host.emit('GENERATION_ENDED');
-        await new Promise((r) => setTimeout(r, 30));
+        // v3.52.17：生成结束自动提取改为**去抖合并**（1.2s）→ 等待窗口结束
+        await new Promise((r) => setTimeout(r, 1500));
         const stCmd = (host.ctx.commands || []).filter((c) => c.name === 'ftt')[0] || {};
         const stOut = String(typeof stCmd.callback === 'function' ? await stCmd.callback() : '');
         return floorsMod.isFloorProcessed(newFloor) === true && stOut.indexOf('提取：') >= 0;

@@ -62,17 +62,17 @@ A('A2 最底部一组已归位：「分析范围」只含分段读取楼层数�
     return iScope > 0 && iChunk > iScope && iChunk < iSeg
         && segKeys.every((v) => v > iSeg)
         // 「分析范围」之后到「情节分段总结」之前只有 summaryChunkSize 一个控件
-        && cfgKeys(HTML.slice(iScope, iSeg)).join(',') === 'summaryChunkSize'
+        && cfgKeys(HTML.slice(iScope, iSeg)).join(',') === 'summaryChunkSize,summarySegMaxChars,summaryFailMarkAfter,autoExtractGapMs'
         // 只切到下一节（货币记录）之前 —— 该节内恰好 7 个 plotSegment* 控件
         && cfgKeys(HTML.slice(iSeg, at(HTML, '货币记录'))).join(',') === 'plotSegmentBatchAtoms,plotSegmentMaxChars,plotSegmentMaxBatches,plotSegmentReserveRecent,plotSegmentProtectManual,plotSegmentIncremental,plotSegmentTextLimit';
 })(), J({ scope: cfgKeys(HTML.slice(at(HTML, '分析范围'), at(HTML, TITLES[3]))) }));
 
-A('A3 控件一个不少：25 个控件 + 代理键 `dimensionSeparate` = 26，且各出现一次（v2.83.0 关联层 +3；v3.44.0 入库卫生 +2；v3.49.3 +2；v3.50.4 +1）', (() => {
+A('A3 控件一个不少：28 个控件 + 代理键 `dimensionSeparate` = 29（v3.52.17 分析防失控 +3），且各出现一次（v2.83.0 关联层 +3；v3.44.0 入库卫生 +2；v3.49.3 +2；v3.50.4 +1）', (() => {
     const need = SETTINGS_CONTROLS.analyze.map((c) => String(c.key));
     const got = cfgKeys(HTML);
     const miss = need.filter((k) => got.indexOf(k) < 0);
     const dup = need.filter((k) => got.filter((x) => x === k).length !== 1);
-    return need.length === 25 && miss.length === 0 && dup.length === 0 && got.length === 26
+    return need.length === 28 && miss.length === 0 && dup.length === 0 && got.length === 29
         && got.indexOf('dimensionSeparate') === 0;
 })(), J({ need: SETTINGS_CONTROLS.analyze.length, got: cfgKeys(HTML).length }));
 
@@ -121,14 +121,16 @@ A('A8 控件表仍是 V1 原标签（渲染层未改文案）：V1 来源的 5 �
     // v3.44.0：新增的两项（入库卫生）排在控件表最前 → 先滤掉再取前 5 项，保持本断言「V1 原标签未被动过」的原意
     const V2_ONLY = ['relAnchorRuleEnabled', 'shellGuardEnabled',
         // v3.49.3：情节分段的体量上界两项也是 V2 专有（V1 无此口径）
-        'plotSegmentMaxChars', 'plotSegmentMaxBatches', 'plotSegmentReserveRecent'];
+        'plotSegmentMaxChars', 'plotSegmentMaxBatches', 'plotSegmentReserveRecent',
+        // v3.52.17：分析防失控三项（段字符预算 / 失败标记阈值 / 自动提取冷却）也是 V2 专有
+        'summarySegMaxChars', 'summaryFailMarkAfter', 'autoExtractGapMs'];
     const v1Controls = SETTINGS_CONTROLS.analyze.filter((c) => V2_ONLY.indexOf(String(c.key)) < 0);
     const labels = v1Controls.slice(0, 5).map((c) => String(c.label));
     const want = ['分段读取楼层数（每段分析量）', '每次打包给 AI 的情节条数（默认 30）',
         '保护已存在的时间范围（不覆盖）', '只整理未覆盖的情节（增量）', '单条剧情线概述字数上限（默认 400）'];
     return J(v1Controls.slice(0, 5).map((c) => String(c.label))) === J(want)
         && want.every((l) => HTML.indexOf(l) > 0)
-        && SETTINGS_CONTROLS.analyze.filter((c) => V2_ONLY.indexOf(String(c.key)) >= 0).length === 5;
+        && SETTINGS_CONTROLS.analyze.filter((c) => V2_ONLY.indexOf(String(c.key)) >= 0).length === 8;
 })(), J(SETTINGS_CONTROLS.analyze.map((c) => c.label)));
 
 A('A9 节容器完整：八个 `.ftt-section` 都闭合，且每节内至少一个控件或内容块', (() => {
@@ -152,7 +154,7 @@ A('A10 v2.76.0 归纳：货币记录与「各大类单条字数上限」两组�
     return moved.every((k) => an.indexOf(k) >= 0 && ex.indexOf(k) < 0)
         && an.indexOf('currencyEnabled') < an.indexOf('dimCharLimits.atoms')
         && ex.every((k) => k.indexOf('dimCharLimits.') < 0) && SETTINGS_CONTROLS.extract.length === 25
-        && SETTINGS_CONTROLS.analyze.length === 25;      // v2.83.0：关联层 +3；v3.44.0：入库卫生 +2；v3.49.3：+2；v3.50.4：保留窗口 +1
+        && SETTINGS_CONTROLS.analyze.length === 28;      // v2.83.0：关联层 +3；v3.44.0：入库卫生 +2；v3.49.3：+2；v3.50.4：+1；v3.52.17：+3
 })(), J({ analyze: SETTINGS_CONTROLS.analyze.length, extract: SETTINGS_CONTROLS.extract.length }));
 
 R.done();

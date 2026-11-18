@@ -53,7 +53,8 @@ R.assert('P2 控件表：共 191 项（v3.50.19 修复聚合 4 键 + 场景封�
     //   插在「每次交给 AI 的候选条目上限」之后）→ 167 → 172 → **v3.46.2 货币融合 +3 / 总 175**、feed 43 → 48 → **51**
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **62**、总 185 → **191**
     // v3.51.0（`docs/D53` W32）：存储页 +10（货币摘要上限 / 长期收支三阈值 / 账本与长期收支的 4 个存储键 + 2 个占比）→ 191 → 201、storage 13 → 23
-    return info.totalControls === 202 && m.base === 10 && m.feed === 62 && m.analyze === 25 && m.extract === 25
+    // v3.52.17：分析页 +3（段字符预算 / 失败标记阈值 / 自动提取冷却）→ 总 202 → 205、analyze 25 → 28
+    return info.totalControls === 205 && m.base === 10 && m.feed === 62 && m.analyze === 28 && m.extract === 25
         && m.forget === 24 && m.rumors === 14 && m.parallels === 7 && m.constraint === 0 && m.prompts === 6 && m.storage === 24 && m.debug === 5;
 })(), settingsPagesInfo());
 

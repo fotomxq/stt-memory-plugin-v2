@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.16';   // v3.52.16（用户要求）：数据管理危险区新增「删除其它存档数据」（非当前存档的全部数据）
+export const VERSION = '3.52.17';   // v3.52.17（用户报告）：AI 分析防失控（段字符预算 / 单段硬上限 / 失败标记 / 自动提取冷却与去抖）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

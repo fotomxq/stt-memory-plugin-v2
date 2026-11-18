@@ -171,6 +171,13 @@ const ARMOR_PRESET_V1178_DEFAULT = [
 const defaultCfg = {
     enabled: true,
     autoExtract: true,
+    // v3.52.17（用户报告「AI 分析行为失控：超长上下文 / 反复提交」）：
+    //   · summarySegMaxChars：**每段请求的正文字符预算**（0 = 不限；超预算时提前收口成更小的段）
+    //   · summaryFailMarkAfter：同一段连续失败 N 次 → **标记已处理**（停止自动重投；内容变化会自动重试）
+    //   · autoExtractGapMs：自动提取的**最小间隔**（同一批事件合并；避免高频次反复分析）
+    summarySegMaxChars: 8000,
+    summaryFailMarkAfter: 3,
+    autoExtractGapMs: 8000,
     // 界面形态（用户要求：对齐 V1 的**弹窗**主界面；抽屉卡片默认不再显示，需要时可打开）
     uiShowDrawer: false,          // 是否同时在扩展设置抽屉里渲染面板卡片（默认否 = 只用弹窗）
     uiShowFloating: true,         // 扩展菜单入口不可用时，是否在右下角显示悬浮「FTT」按钮

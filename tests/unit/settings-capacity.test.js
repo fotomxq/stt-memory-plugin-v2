@@ -118,8 +118,9 @@ A('C7 总量口径：v2.78.0 纯搬运 173 → … → v3.50.19 修复聚合 +5 
     const m = {};
     info.pages.forEach((p) => { m[p.id] = p.controls; });
     // v3.50.19（W12 `技-49` / `数-37`）：修复聚合 4 键 + 场景候选封顶 1 键 → feed 56 → **61**、总 185 → **190**
-    // v3.51.0（W32）：存储页 +10 → 总 191 → 201（storage 13 → 23）
-    return info.totalControls === 202 && m.analyze === 25 && m.extract === 25 && m.base === 10 && m.feed === 62
+    // v3.51.0（W32）：存储页 +10 → 总 191 → 204（storage 13 → 23）
+    // v3.52.17：分析页 +3（段字符预算 / 失败标记阈值 / 自动提取冷却）→ 总 202 → 205、analyze 25 → 28
+    return info.totalControls === 205 && m.analyze === 28 && m.extract === 25 && m.base === 10 && m.feed === 62
         && m.forget === 24 && m.rumors === 14 && m.storage === 24;
 })(), J(settingsPagesInfo().pages.map((p) => p.id + ':' + p.controls)));
 

@@ -1,7 +1,7 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.16",
+  "version": "3.52.17",
   "updatedAt": "2026-11-18",
   "generatedAt": "2026-11-18",
   "intro": {
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.17",
+      "date": "2026-11-18",
+      "title": "AI 分析防失控（超长上下文 / 反复提交 / 高频次）+ 批量分析优化",
+      "points": [
+        "登记：批次档 docs/history/P10c170-AI分析防失控.md### 一、超长上下文（两道闸）chunkFloorIdsByChars 按 cfg.summaryS…"
+      ]
+    },
     {
       "version": "3.52.16",
       "date": "2026-11-18",

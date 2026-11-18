@@ -328,6 +328,25 @@ export const SETTINGS_CONTROLS = {
             "label": "分段读取楼层数（每段分析量）",
             "type": "text"
         },
+        // v3.52.17（用户报告「AI 分析行为失控：超长上下文 / 反复提交」）：分析防失控三键
+        {
+            "key": "summarySegMaxChars",
+            "label": "每段正文字符预算（超出自动收口成更小的段；0 = 不限）",
+            "type": "text",
+            "hint": "避免一次提交超长上下文：按累计正文字符数提前断段；单楼本身超长时仍独占一段（并由硬上限兜底）。"
+        },
+        {
+            "key": "summaryFailMarkAfter",
+            "label": "同段连续失败几次后标记已处理（停止自动重投）",
+            "type": "text",
+            "hint": "防止反复提交：连续失败达到该次数后把该段记为已处理（内容变化会自动重试；手动「清空已处理楼层记录」可重来）。"
+        },
+        {
+            "key": "autoExtractGapMs",
+            "label": "自动提取最小间隔（毫秒，防高频次分析）",
+            "type": "text",
+            "hint": "生成结束的自动提取会被合并/冷却；间隔内的重复触发直接跳过。"
+        },
         {
             "key": "plotSegmentBatchAtoms",
             "label": "每次打包给 AI 的情节条数（默认 30）",
@@ -1370,7 +1389,8 @@ export function analyzePageHtml(controls) {
     for (const c of list) byKey[String(c.key)] = c;
     const used = {};
     const row = (k) => { const c = byKey[k]; if (!c) return ''; used[k] = true; return settingsControlHtml(c); };
-    const scope = ['summaryChunkSize'].map(row).filter(Boolean).join('\n');
+    // v3.52.17（用户报告 AI 分析失控）：三项防失控参数与「分段读取楼层数」同归「分析范围」
+    const scope = ['summaryChunkSize', 'summarySegMaxChars', 'summaryFailMarkAfter', 'autoExtractGapMs'].map(row).filter(Boolean).join('\n');
     // v3.49.3（用户报告「情节的自动分段统计…会提交巨量数据」）：本组新增两项**体量上界**（每批字符预算 / 一次最多几批）
     const segKeys = ['plotSegmentBatchAtoms', 'plotSegmentMaxChars', 'plotSegmentMaxBatches', 'plotSegmentReserveRecent', 'plotSegmentProtectManual', 'plotSegmentIncremental', 'plotSegmentTextLimit'];   // v3.50.4：+ 保留最近 N 条
     const seg = segKeys.map(row).filter(Boolean).join('\n');
