@@ -212,7 +212,9 @@ const defaultCfg = {
     atomCompactEnabled: true,    // v1.67：早期情节半自动总结（走提取记忆 AI 管道；体量达标触发）
     atomCompactChars: 30000,     // 触发体量阈值：全部原子正文合计字符 ≥ 该值触发检查
     atomCompactTarget: 0.3,      // 聚合目标：参与运作（未隐藏）的情节数 ≤ 当前 ×该比例（默认 30%）
-    atomCompactRecent: 20,       // 保护窗口：最近 N 条情节（楼层/日期最新）不参与聚合
+    // v3.52.18（用户要求）：保留最近 **30** 条情节（默认），**超出的部分**才进入总结；
+    //   旧口径「聚合目标 = 当前条数 × 30%」会让每加 1 条就再次总结（高频反复总结的根因），已改为「目标 = 保留窗口」。
+    atomCompactRecent: 30,       // 保护窗口：最近 N 条情节（楼层/日期最新）不参与聚合（默认 30）
     atomCompactRatio: 0.6,       // 可融合占比门槛：低于该值（默认 60%）日期粒度降级月份→年份
     atomCompactBatch: 40,        // 单轮批次数上限（防单次 API 调用过多）
     injectCurrentPrompt: true,

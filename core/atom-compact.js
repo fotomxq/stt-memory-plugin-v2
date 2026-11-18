@@ -127,7 +127,14 @@ function atomCompactPlan(planOpts) {
     const pool = all.filter(x => x && x.id && !recentIds.has(x.id));
     const before = all.length;
     const floor = storeMinFor('atoms');                 // v1.147：情节保底（默认 100）
-    const target = Math.max(recentN, Math.ceil(before * (Number(c.atomCompactTarget) != null ? Math.min(1, Math.max(0, Number(c.atomCompactTarget))) : 0.3)), floor);
+    // v3.52.18（用户要求「保留 N 条（默认 30）情节外，超出去的部分进行总结」）：
+    //   **聚合目标 = 保留最近 N 条**（不再用「当前条数 × 30%」—— 旧口径每加 1 条就会再次触发总结，造成高频反复总结）。
+    // 生产路径（无 `recentN` 覆盖）：**目标 = 保留最近 N 条**（其余进入总结）——
+    //   旧口径「当前条数 × 比例」会让每加 1 条就再次触发（高频反复总结根因）。
+    // 内部/测试显式覆盖 `recentN` 时保留 V1 的「比例目标」口径（黄金样本可比；不用于界面配置）。
+    const target = (po.recentN != null)
+        ? Math.max(recentN, Math.ceil(before * (Number(c.atomCompactTarget) != null ? Math.min(1, Math.max(0, Number(c.atomCompactTarget))) : 0.3)))
+        : recentN;
     return { totalChars: atomBodyChars(), threshold: Number(c.atomCompactChars) != null ? Number(c.atomCompactChars) : 30000, before, recentN, target, floor, pool };
 }
 
@@ -229,6 +236,12 @@ let compactWaitDeadline = 0;
  *   「手动点了分段总结 / 半自动到期」这类**跨入口**同时发两条请求。
  */
 let atomCompactInFlight = false;
+/** v3.52.18：**自动总结的最小批量**（超出保留窗口至少这么多条才值得总结；防「多 1 条就总结」） */
+const ATOM_COMPACT_MIN_BATCH = 10;
+/** v3.52.18：**自动总结冷却**（两次自动总结之间至少间隔；防高频触发） */
+const ATOM_COMPACT_AUTO_COOLDOWN_MS = 120000;
+/** 上次自动总结完成时刻（模块级；手动 force 不更新） */
+let lastAutoCompactAt = 0;
 /** 是否正在跑半自动情节总结（互斥读数 / 界面禁用 / 调试 / 测试用） */
 function atomCompactBusy() { return atomCompactInFlight; }
 
@@ -242,7 +255,7 @@ function scheduleAtomCompact() {
         compactWaitDeadline = Date.now() + 120000;   // v1.75（B1）：长任务互斥下情节总结自动重试窗口 2 分钟
         compactTimer = timerHooks.set(() => {
             compactTimer = null;
-            try { runAtomCompact({}); } catch (e) { warn('情节总结（半自动）失败', e); }
+            try { runAtomCompact({ auto: true }); } catch (e) { warn('情节总结（半自动）失败', e); }
         }, 4000);
     } catch (e) { /* 忽略 */ }
 }
@@ -268,13 +281,21 @@ async function runAtomCompact(opts) {
             if (!o.force && Date.now() < compactWaitDeadline && !compactTimer) {
                 compactTimer = timerHooks.set(() => {
                     compactTimer = null;
-                    try { runAtomCompact({}); } catch (e) { warn('情节总结（半自动）失败', e); }
+                    try { runAtomCompact({ auto: true }); } catch (e) { warn('情节总结（半自动）失败', e); }
                 }, 4000);
             }
             return { ok: true, skipped: 'busy' };
         }
         const plan = atomCompactPlan({ recentN: o.recentN });   // v3.50.4：`recentN` 仅内部/测试用；生产强制保留 ≥10 条
         if (activeAtoms().length <= storeMinFor('atoms')) return { ok: true, skipped: 'floor', before: plan.before, floor: plan.floor };   // v1.147：已达保底 → 不聚合
+        // v3.52.18（用户报告「频繁总结」）：**自动路径**才有的两道闸 ——
+        //   ① 冷却：两次自动总结间隔 < `ATOM_COMPACT_AUTO_COOLDOWN_MS` → 跳过；
+        //   ② 最小批量：超出保留窗口不足 `ATOM_COMPACT_MIN_BATCH` 条 → 跳过（防「每加 1-2 条就总结」）。
+        //   手动 force / 单测直接调用（无 `auto`）保持 V1 行为不变。
+        if (o.auto === true && !o.force) {
+            if (Date.now() - lastAutoCompactAt < ATOM_COMPACT_AUTO_COOLDOWN_MS) return { ok: true, skipped: 'cooldown', sinceMs: Date.now() - lastAutoCompactAt };
+            if (plan.pool.length < ATOM_COMPACT_MIN_BATCH) return { ok: true, skipped: 'below-batch', poolLen: plan.pool.length, minBatch: ATOM_COMPACT_MIN_BATCH };
+        }
         if (!o.force && plan.totalChars < plan.threshold) return { ok: true, skipped: 'below-threshold', totalChars: plan.totalChars, threshold: plan.threshold };
         if (plan.pool.length < 2 || activeAtoms().length <= plan.target) return { ok: true, skipped: 'nothing-early', before: plan.before, target: plan.target };
         try {
@@ -313,6 +334,7 @@ async function runAtomCompact(opts) {
                 const after = activeAtoms().length;
                 // 忽略：调试日志写失败不影响总结结果（已经落库）
                 try { dbgLog('发送记忆', { action: '情节总结（半自动）', before: plan.before, after, target: plan.target, summarized: summarizedTotal, hidden: hiddenTotal, stored: (state.atoms || []).length, grains: grainsUsed, chars: atomBodyChars() }); } catch (e) { /* 忽略 */ }
+                if (o.auto === true && !o.force) lastAutoCompactAt = Date.now();   // v3.52.18：自动总结完成 → 进入冷却期
                 toast(`🧷 情节总结（半自动）完成：聚合 ${summarizedTotal} 条总结 · 覆盖 ${hiddenTotal} 条原情节（参与运作 ${plan.before} → ${after}，目标 ≤ ${plan.target} · ${grainsUsed.join('→')} 粒度；原文保留并隐藏，可点 🧩 穿透查看）`, 'success');
                 return { ok: true, summarized: summarizedTotal, hidden: hiddenTotal, before: plan.before, after, target: plan.target, grains: grainsUsed };
             }

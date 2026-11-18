@@ -841,28 +841,33 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "atomCompactChars",
-            "label": "触发体量（全库正文字符，默认 30000）",
-            "type": "text"
-        },
-        {
-            "key": "atomCompactTarget",
-            "label": "聚合目标（默认压到当前 30%）",
-            "type": "text"
+            "label": "token / 字符上限（提交给 AI 的正文预算，默认 30000）",
+            "type": "text",
+            "hint": "全库情节正文合计达到该字符数后，才考虑总结（与「保留 N 条」共同决定是否触发）。"
         },
         {
             "key": "atomCompactRecent",
-            "label": "保护窗口（最近 N 条，默认 20）",
-            "type": "text"
+            "label": "保留最近 N 条情节（默认 30）",
+            "type": "text",
+            "hint": "最近 N 条永不总结；**超出部分**才进入总结（目标 = 压回 N 条）。"
+        },
+        {
+            "key": "atomCompactTarget",
+            "label": "聚合目标（旧口径；v3.52.18 起改为「保留窗口」语义，保留仅兼容）",
+            "type": "text",
+            "advanced": true
         },
         {
             "key": "atomCompactRatio",
             "label": "可聚合占比（低于则降级月→年，默认 0.6）",
-            "type": "text"
+            "type": "text",
+            "advanced": true
         },
         {
             "key": "atomCompactBatch",
             "label": "单轮批次数上限（默认 40）",
-            "type": "text"
+            "type": "text",
+            "advanced": true
         },
     
     ],
@@ -1642,7 +1647,11 @@ export function settingsPageHtml(pageId, extrasHtml) {
     //   控件表同名同序；扫描 / 一键收录入口为 B9-c 新增（V1 约 25513~25527 同段落）
     // v2.72.0：投喂范围页按用途分组渲染（楼层 / 标签范围 / 自动修复 / 候选筛选 / 角色修复 / 各域修复 / 低调用清理）
     if (pid === 'feed') return feedPageHtml(list, { tagSections: () => feedScanSectionHtml() + feedTagListSectionsHtml() });
-    const rows = list.map((c) => settingsControlHtml(c)).join('\n');
+    // v3.52.18（用户要求「简化设定」）：情节总结页只把**开关 / token 上限 / 保留 N 条**摆在明面，
+    //   其余调参收进「高级」折叠（不删控件表 —— 配置声明与旧存档兼容不变）。
+    const mainRows = list.filter((c) => c && c.advanced !== true).map((c) => settingsControlHtml(c)).join('\n');
+    const advRows = list.filter((c) => c && c.advanced === true).map((c) => settingsControlHtml(c)).join('\n');
+    const rows = mainRows + (advRows ? ('<details class="ftt-details"><summary>高级（一般不用改）</summary>' + advRows + '</details>') : '');
     const extra = (pid === 'prompts' ? promptsPageHtml() : '') + pageExtraHtml(pid);
     return rows + extra + (list.length || extra ? '' : '<div class="ftt-empty">（本页为动作页，见上述按钮）</div>');
 }

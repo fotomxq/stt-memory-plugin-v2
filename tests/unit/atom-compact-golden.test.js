@@ -79,6 +79,9 @@ function boot(stateLike, cfgPatch) {
     Object.assign(cfg, clone(defaultCfg));
     if (cfgPatch) Object.assign(cfg, clone(cfgPatch));
     cfg.storeMinAtoms = 0;
+    // v3.52.18（用户要求）：生产默认「保留 30 条」且聚合目标 = 保留窗口；
+    //   本黄金样本的 oracle 是 V1（默认 20 / 目标 20）→ **显式固定 20** 保持逐字段可比（样本一字未改）。
+    cfg.atomCompactRecent = 20;
     setScopeKey('甲');
     setLastMessageId(400);
     setKernelState(Object.assign(emptyState(), clone(stateLike || {})));
