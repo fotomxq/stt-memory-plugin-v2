@@ -287,7 +287,8 @@ export const V1_SUMMARY_DIM_KEYS = ['atoms', 'states', 'snapshots', 'memories', 
  *   与 `V1_SUMMARY_DIM_KEYS` 分开列出：前者是「与 V1 逐字对齐」的清单（P1 黄金样本据此保护），
  *   本表是 V2 增量。`summaryDimsForPrompt()` 把启用的 V2 维度**追加在 V1 清单之后**（V1 顺序与内容不变）。
  */
-export const V2_SUMMARY_DIM_KEYS = ['maps'];
+// v3.52.19（用户要求）：地图设计下线 → 抽取维度**不再包含 maps**（模板保留但不再请求；存量数据下一版清理）
+export const V2_SUMMARY_DIM_KEYS = [];
 /** V2 容器键 → 摘要维度键（仅 `currentStates` 是 V1 `states` 的别名；其余同名；`links`/`plotSegments`/`parallels`/`suspense` 不参与分组） */
 const KIND_TO_SUMMARY_DIM = { currentStates: 'states' };
 

@@ -297,42 +297,30 @@ A('F3 「按层限量」只裁**本次注入**、不动数据（节点上限）'
         && st.maps.length === before;                     // 数据未变
 })(), 'n/a');
 
-A('G1 注入体：**不新增 `[地图]` 小节**（地图只作为 `[场景地点]` 的子块出现），自查如实报出块数与行数', (() => {
+// ---------- G 组（v3.52.19 用户要求「移除场景地图的设计」）：**注入侧地图已移除** ----------
+A('G1 注入体**不再含地图子块**（设计下线）：正文无「地图」字样、无 `[地图]` 小节，场景整块照常', (() => {
     bootInject(MAPS_FULL);
     let d = null;
     try { d = buildMemoryBodyForInject('码头', { budget: 8000, diagnose: true }); } catch (e) { d = null; }
     const body = String((d && d.bodyText) || '');
-    const mi = (d && d.mapInject) || null;
-    return body.indexOf('地图') >= 0 && body.indexOf('[地图]') < 0 && body.indexOf('码头') >= 0
-        && !!mi && mi.blocks >= 1 && mi.lines >= 3 && !mi.reason
-        && (d.catHeads || []).indexOf('[场景地点]') >= 0
-        && (d.catHeads || []).every((h) => h.indexOf('[地图]') < 0);
+    return body.indexOf('地图') < 0 && body.indexOf('[地图]') < 0 && body.indexOf('码头') >= 0
+        && !(d && d.mapInject)                                     // 自查读数也不再产出地图字段
+        && (d.catHeads || []).indexOf('[场景地点]') >= 0;
 })(), 'n/a');
-A('G2 场景**未入选**时地图也完全不出现（「禁止单独注入」的语义）+ 自查如实给出原因', (() => {
-    bootInject(MAPS_FULL);
-    let d = null;
-    try { d = buildMemoryBodyForInject('这个查询词匹配不到任何场景', { budget: 8000, diagnose: true }); } catch (e) { d = null; }
-    const body = String((d && d.bodyText) || '');
-    const mi = (d && d.mapInject) || null;
-    return body.indexOf('地图') < 0 && !!mi && mi.blocks === 0
-        && String(mi.reason || '').indexOf('场景未入选') >= 0
-        && (mi.units || 0) === 2;                       // 数据在，只是**不单独注入**
-})(), 'n/a');
-A('G3 注入自查读数如实带原因（`mapInjectStats`：单位数 / 路径数 / 命中场景数）', (() => {
+A('G2 采集侧 `mapInjectStats` 仍在（数据层保留供下一版清理核对），但**不再被注入调用**', (() => {
     const st = bootInject(MAPS_FULL);
-    const s = mapInjectStats(st, ['sc-1', 'sc-不存在']);
-    return s.units === 2 && s.routes === 1 && s.scenes === 1 && s.lines >= 3;
-})(), J(mapInjectStats(bootInject(MAPS_FULL), ['sc-1'])));
-A('G4 预算紧张时**先丢地图、场景保留**（同一大类内地图行排在场景整块**之后**）', (() => {
-    bootInject(MAPS_FULL);
-    try {
-        const src = readFileSync(join(ROOT, 'core', 'recall.js'), 'utf8');
-        // v3.50.5（`应-40`）：该区块的行构建被包进 pushCat 的 thunk → 源码形态变为
-        //   `() => ((sceneText ? [{ text: sceneText }] : []).concat(mapRows))`；语义（场景整块在前、地图行随后）不变。
-        const i = src.indexOf('(sceneText ? [{ text: sceneText }] : []).concat(mapRows)');
-        const after = src.indexOf('mapRows.push');
-        return i > 0 && after > 0 && src.indexOf('pushCat(\'[场景地点]\'') > 0;
-    } catch (e) { return false; }
+    const s0 = mapInjectStats(st, ['sc-1', 'sc-不存在']);
+    let src = '';
+    try { src = readFileSync(join(ROOT, 'core', 'recall.js'), 'utf8'); } catch (e) { src = ''; }
+    return s0.units === 2 && s0.routes === 1 && s0.scenes === 1 && s0.lines >= 3
+        && src.indexOf('mapInjectLines') < 0 && src.indexOf('mapInjectStats') < 0;   // 注入侧已彻底断开
+})(), 'n/a');
+A('G3 `core/ingest.js` **不再触发地图入库**；`core/extract` 的抽取维度不含 maps（模板保留但不再请求）', (() => {
+    let ing = '', ext = '';
+    try { ing = readFileSync(join(ROOT, 'core', 'ingest.js'), 'utf8'); } catch (e) { ing = ''; }
+    try { ext = readFileSync(join(ROOT, 'host', 'extract.js'), 'utf8'); } catch (e) { ext = ''; }
+    return ing.indexOf('applyMapDelta(') < 0 && ing.indexOf('地图设计已下线') >= 0
+        && /V2_SUMMARY_DIM_KEYS = \[\];/.test(ext);
 })(), 'n/a');
 
 un();

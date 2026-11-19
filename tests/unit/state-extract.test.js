@@ -68,15 +68,14 @@ const STATES_DELTA = (value) => J({ states: { add: [{ subject: '角色甲·姓�
 const stateRows = () => (state.currentStates || []).map((s) => ({ subject: s.subject, field: s.field, value: s.value }));
 
 // ---------- R 组：提示词维度键 ----------
-A('R1 维度键投影：V2 kind → V1 摘要键（含 states），按 V1 顺序去重，剔除 parallels/links/plotSegments；**V2 增量维度（maps）追加在 V1 清单之后**', (() => {
+A('R1 维度键投影：V2 kind → V1 摘要键（含 states），按 V1 顺序去重，剔除 parallels/links/plotSegments；**v3.52.19 起 V2 增量维度（maps）已移除**单之后**', (() => {
     boot();
     cfg.dimensionEnabled = {};
     const def = summaryDimsForPrompt();
     const subset = summaryDimsForPrompt(['currentStates', 'atoms', 'memories']);
     const none = summaryDimsForPrompt(['parallels', 'links', 'plotSegments']);   // 无摘要模板 → 回落全 10 维
-    // v3.47.0（`docs/D22` W16 数-22）：默认全开时，`maps`（V2 增量）**追加在 V1 十维之后**；
-    //   显式给 V1 子集时不追加；只给「无模板维度」时回落 V1 全表（与既有口径一致）。
-    return J(def) === J(V1_DIMS.concat(['maps']))
+    // v3.52.19（用户要求）：地图设计下线 → V2 增量维度清空；默认全开时**不再追加 maps**。
+    return J(def) === J(V1_DIMS)
         && J(subset) === J(['atoms', 'states', 'memories'])
         && J(none) === J(V1_DIMS)
         && summaryDimGroups(['currentStates', 'atoms']).enabled.join(',') === 'atoms,states';
@@ -185,7 +184,7 @@ A('U4 状态页能看到该条（用户报告的「没数据」在界面上被�
 A('U5 诊断出口：`extractSummary().promptDims` 如实列出会请求的维度（状态在其中）', (() => {
     boot();
     const s = extractSummary();
-    return J(s.promptDims) === J(V1_DIMS.concat(['maps'])) && s.promptDims.indexOf('states') >= 0;   // v3.47.0：+maps
+    return J(s.promptDims) === J(V1_DIMS) && s.promptDims.indexOf('states') >= 0;   // v3.52.19：maps 已移除
 })(), J(extractSummary().promptDims));
 
 A('U6 独立分组口径同源：`summaryDimGroups` 把 `currentStates` 归到 `states` 组，其余进「统一」组', (() => {

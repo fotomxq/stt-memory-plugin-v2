@@ -3,6 +3,28 @@
 > 本文件为 V2（SillyTavern 原生扩展）的版本史；V1（酒馆助手 iframe 脚本）版本史见 V1 仓库 `CHANGELOG.md`。
 > 版本号与 git tag 同名（`vX.Y.Z`），由 `scripts/check-version-sync.js` 校验。
 
+## v3.52.19（2026-11-19）· **移除场景地图设计**（UI/注入/抽取/入库下线）+ 下一版数据清理例程预备
+
+**用户要求**（原话）：「移除场景地图的设计，注意补充下一个版本删除相关数据的代码，确保清理干净。」
+**登记**：批次档 `docs/history/P10c172-移除场景地图设计.md`
+
+### 一、本版：设计下线（不删存量数据）
+
+* 场景页恢复单一场景树（删除「场景｜地图」子标签与地图动作；`ui/scene-map.js` / `scene-map-graph.js` 删除）；
+* `core/recall.js` 不再注入地图子块；`host/extract.js` 抽取维度不再含 `maps`；`core/ingest.js` 忽略一切 `maps` 增量；
+* 存量 `state.maps` / 墓碑 / 配置**原样保留**（避免误删）。
+
+### 二、下一版：清理例程已备好（`MAP_PURGE_VERSION = 3.52.20`）
+
+新模块 `core/map-purge.js`：`mapLegacyStats()` / `purgeMapData({force})` / `applyPlannedMapPurge()`（版本闸，
+当前版返回 `not-yet`）。清理范围：地图条目（写墓碑后清空）· `links(dim=maps)` · `deleted.maps` / `deletedH.maps` ·
+`mapTrailPhrase` / `storeMinMaps` / `storeMaxMaps` / `storeShare.maps`。下一版初始化调用一次即可（幂等）。
+
+### 三、测试与门禁
+
+新增 `map-purge.test.js`（4 项）；`map-model` G 组改为「注入侧已移除」；`state-extract` R1/U5 同步；
+删除已下线模块的 2 个单测；`feature-inventory` 基线收紧。全量单测 **271 文件**；冒烟 224 项；`npm run gate` 全绿。
+
 ## v3.52.18（2026-11-18）· **情节总结防高频触发 + 设定简化**（保留 N 条默认 30 / token 上限）
 
 **用户要求**（原话）：「经过排查可能是分段总结出问题了，前几次改版升级导致的异常，频繁总结引发。请优化总结的机制，避免高频次触发。其次简化设定，主要是控制token上限和保留N条（默认30）情节外，超出去的部分进行总结。」

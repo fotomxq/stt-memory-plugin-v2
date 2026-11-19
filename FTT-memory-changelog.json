@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.18",
-  "updatedAt": "2026-11-18",
-  "generatedAt": "2026-11-18",
+  "version": "3.52.19",
+  "updatedAt": "2026-11-19",
+  "generatedAt": "2026-11-19",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.19",
+      "date": "2026-11-19",
+      "title": "移除场景地图设计（UI/注入/抽取/入库下线）+ 下一版数据清理例程预备",
+      "points": [
+        "登记：批次档 docs/history/P10c172-移除场景地图设计.md### 一、本版：设计下线（不删存量数据）* 场景页恢复单一场景树（删除「场景｜地图」子标签与地图动…"
+      ]
+    },
     {
       "version": "3.52.18",
       "date": "2026-11-18",

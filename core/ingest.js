@@ -17,7 +17,6 @@ import { normalizeConcept, normalizeCurrentState, normalizeItem, normalizeMemory
 import { mergeMoneyHistory, moneyNet, normalizeCurrency, roundMoney, currencyOwnerAllowed, currencyFunnelArmed, trackedCurrencyRoles, defaultCurrencyOwner } from './model/money.js';   // v3.51.6：+货币归属漏斗（未配置主角/指定人员时 fail-open）
 import { normalizeRumor, normalizeRumorChain, normalizeRumorLineage, rumorChildId, rumorStageByFerment, rumorSubjectKey } from './model/rumor.js';
 import { cfg, dbgLog, getStoryNow, log, notifyHooks, saveState, persistNow, state, timerHooks, warn } from './model/runtime.js';
-import { applyMapDelta, mapDeltaText } from './map-ingest.js';   // v3.47.0（W16 数-23）：地图库的入库护栏
 import { mergeTags, scenePathArr } from './model/scalars.js';
 // v3.50.22（`docs/D22` W2 `业-2`）：入库前剔除**指向不存在目标**的依据（防 AI 幻觉）
 import { filterInvalidRefs, constraintCheckOn } from './constraint-check.js';
@@ -475,20 +474,9 @@ function mergeDelta(delta0, floorRange) {
             if (node) { const pa = scenePathArr(r); if (pa.length) { node.pathArr = pa; node.pathStr = pa.join('>'); } }
         }
         for (const id of delta.scenes?.remove || []) { state.scenes = (state.scenes || []).filter(x => x.id !== id && x.name !== id); }
-        // ==================== v3.47.0（`docs/D22` W16 `数-22` / `数-23`）：地图库 ====================
-        // 「空间单元 + 路径」的统一落点与**全部护栏**在 `core/map-ingest.js`（纯函数，可单测）：
-        //   ① 只在剧情走过时建路径；② 自动分析必带 evidence；③ 同对地点只一条、重复走过只更新不累加；
-        //   ④ 抽不到就留空不估算；⑤ 场所 / 上层 / 端点解析不到就跳过并计数（绝不凭空造场景）。
-        // 放在 `scenes` 之后：场所锚点要靠本批刚写入的场景解析出 id。
-        if (delta.maps) {
-            try {
-                const ms = applyMapDelta(state, delta, { floorStart: fb.start, floorEnd: fb.end });
-                if (ms.places || ms.routes || ms.anchors || ms.untraversed || ms.noEnds || ms.unknownScene || ms.unknownParent) {
-                    try { dbgLog('地图', { action: '入库', ...ms }); } catch (e) { /* 忽略 */ }
-                    try { log(mapDeltaText(ms)); } catch (e) { /* 忽略 */ }
-                }
-            } catch (e) { /* 地图入库失败不影响其它维度 */ }
-        }
+        // v3.52.19（用户要求「移除场景地图的设计」）：**不再入库地图** —— AI 即便仍返回 `maps` 也一律忽略
+        //   （存量 `state.maps` 数据保留不动；由下一个版本的地图数据清理例程统一删除，见 `core/map-purge.js`）。
+        if (delta.maps) { try { dbgLog('地图', { action: '地图设计已下线：忽略本次地图增量', keys: Object.keys(delta.maps || {}).slice(0, 6) }); } catch (e) { /* 忽略 */ } }
         for (const c of delta.concepts?.add || []) {
             const n = preserveEntryMeta('concepts', c, normalizeConcept(c));
             if (n) { const i = state.concepts.findIndex(x => x.id === n.id); if (i >= 0) state.concepts[i] = n; else state.concepts.push(n); }
