@@ -1,9 +1,9 @@
 {
   "name": "FTT记忆组件",
   "title": "SillyTavern 长期记忆扩展（V2 原生扩展）",
-  "version": "3.52.19",
-  "updatedAt": "2026-11-19",
-  "generatedAt": "2026-11-19",
+  "version": "3.52.20",
+  "updatedAt": "2026-11-20",
+  "generatedAt": "2026-11-20",
   "intro": {
     "what": "SillyTavern 长期记忆扩展：自动提取 / 注入 / 维护剧情记忆。",
     "highlights": [
@@ -16,6 +16,14 @@
     "notes": ""
   },
   "changelog": [
+    {
+      "version": "3.52.20",
+      "date": "2026-11-20",
+      "title": "自动修复频率闸门：分析 10 次才触发 1 次",
+      "points": [
+        "登记：批次档 docs/history/P10c173-自动修复频率闸门.md### 一、事实核对（改前）闸门存在但默认 8；bumpRepairOp 只在合并成功后计数（AI …"
+      ]
+    },
     {
       "version": "3.52.19",
       "date": "2026-11-19",

@@ -104,7 +104,7 @@ export const SETTINGS_CONTROLS = {
         },
         {
             "key": "autoRepairEveryOps",
-            "label": "每 N 次提取后最多 1 次（0＝不限）",
+            "label": "每 N 次分析后最多 1 次自动修复（默认 10；0＝不限）",
             "type": "text"
         },
         {
@@ -1356,13 +1356,6 @@ export function basePageHtml(controls, extrasHtml) {
         '<div class="ftt-section"><div class="ftt-sec-title">界面特效</div>',
         rows(['uiEffects']),
         '<div class="ftt-muted">关闭后面板与消息弹窗不再播放动画/过渡（适合低配设备）；系统「减少动态效果」自动按关闭处理。</div></div>',
-
-        // v3.47.0（`docs/D22` W16 `应-21` / `docs/D27` §3.6 ④）：地图子页「点节点 → 输入框尾部插套话」的**文案模板**（可改）
-        '<div class="ftt-section"><div class="ftt-sec-title">地图套话</div>',
-        rows(['mapTrailPhrase']),
-        '<div class="ftt-muted">在「场景 → 🗺 地图」里点任意节点，就把这句插到<b>用户输入框尾部</b>（只追加、绝不覆盖既有输入）。</div>',
-        hintDetailsHtml('说明', '<div>' + esc('占位符：{place} = 场所名；{room} = 房间或陈设名；{path} = 完整路径（场所 > 房间 > 陈设）。宿主输入框不可写时自动降级：先复制到剪贴板，再退化为「面板内可复制文本」，并如实说明原因 —— 绝不静默失败。点击只插文本，不写任何记忆数据。') + '</div>'),
-        '</div>',
 
         // v2.43.0：V2 独有分节（更新检查 / V1 数据导入 / 维度开关 / 面板宽度）生在**基础页内**，
         //   由调用方注入（本模块不得反向依赖 ui/panel.js，避免循环依赖）。

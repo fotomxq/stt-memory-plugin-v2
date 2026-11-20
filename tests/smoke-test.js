@@ -419,7 +419,9 @@ rt.cfg.charBudget = 8000;
 
 assert('G1 内核配置已同步：默认 217(V1)+3(V2 界面键) 进入内核视图并落盘 ST 配置容器', (() => {
     const store = host.ctx.extensionSettings.ftt_memory_v2;
-    return Object.keys(rt.cfg).length === DEF_CFG_KEYS && rt.cfg.charBudget === 8000
+    // v3.52.20：地图数据清理只在「确有存量地图数据」时执行；本用例无地图数据 → 配置键完整
+    const n = Object.keys(rt.cfg).length;
+    return n === DEF_CFG_KEYS && rt.cfg.charBudget === 8000
         && !!store && !!store.cfg && store.cfg.maxAtoms === coreCfg.defaultCfg.maxAtoms
         && String(rt.cfg.promptTemplates.injectGuide).length > 100;
 })(), { keys: Object.keys(rt.cfg).length });

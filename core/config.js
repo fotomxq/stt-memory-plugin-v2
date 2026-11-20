@@ -253,7 +253,7 @@ const defaultCfg = {
     dealStrongJumpCycles: 3,            // 猛烈跳动 = 跨度 ≥ N 个周期 → 按周期确定性补齐
     dealCatchUpMax: 24,                 // 单次补齐上限（节点数）；超出置 catchUpTruncated 并如实提示
     storeTotalMax: 3000,             // 所有原子数据合计上限（条）
-    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 4, maps: 4, plans: 6, suspense: 6, npcs: 6, rumors: 6, ledger: 0, deals: 0 },   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100；v3.51.0（W32）：账本/长期收支占比 **0**（长期只增、不参与分配）
+    storeShare: { atoms: 23, memories: 15, snapshots: 8, items: 9, concepts: 13, scenes: 4, maps: 4, plans: 6, suspense: 6, npcs: 6, rumors: 6, ledger: 0, deals: 0 },   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100；v3.51.0（W32）：账本/长期收支占比 **0**（长期只增、不参与分配）   // v3.47.3（W18 数-22）：`maps` 占比从 `scenes` 拆 4 点，合计仍恒为 100；v3.51.0（W32）：账本/长期收支占比 **0**（长期只增、不参与分配）
     storeMinAtoms: 100, storeMaxAtoms: 1200,          // 情节：保底 100（上限见 storeTotalMax × storeShare.atoms）
     storeMinMemories: 200, storeMaxMemories: 800,    // 记忆：保底 200
     storeMinSnapshots: 100, storeMaxSnapshots: 400,  // 角色档案：保底 100
@@ -261,7 +261,7 @@ const defaultCfg = {
     storeMinConcepts: 200, storeMaxConcepts: 700,    // 概念：保底 200
     storeMinScenes: 0, storeMaxScenes: 400,          // 场景（无硬保底）
     storeMinLedger: 0, storeMaxLedger: 4000, storeMinDeals: 0, storeMaxDeals: 400,   // v3.51.0（W32 数-43/44）：账本 / 长期收支（不参与裁剪，仅展示上限）
-    storeMinMaps: 0, storeMaxMaps: 400, mapTrailPhrase: '前往{path}',   // v3.47.3（W18 数-22/应-21）：地图（无硬保底，与场景同口径）+ 「前往」套话模板（{place}/{room}/{path}；设定 → 基础 → 地图套话 可改）
+    storeMinMaps: 0, storeMaxMaps: 400, mapTrailPhrase: '前往{path}',   // v3.47.3（W18 数-22/应-21）：地图（无硬保底）
     storeMinPlans: 0, storeMaxPlans: 300,            // 计划
     storeMinSuspense: 0, storeMaxSuspense: 300,      // 悬念
     storeMinNpcs: 0, storeMaxNpcs: 300,              // 名册
@@ -437,7 +437,9 @@ const defaultCfg = {
     maxAutoRepairRounds: 3,        // 最新楼层哈希未变动时，自动修复至多重复次数（可设）
     // v3.50.23（应-17 / docs/D25 Q1）：自动修复的**唯一触发源是「提取合并失败」**，本键是它的**限流**——
     //   距**上次成功自动修复**已过 N 次「提取/摘要」才放行（0 = 不限制）。
-    autoRepairEveryOps: 8,
+    // v3.52.20（用户要求「避免高频触发自动修复，尤其是非手动形式；必须分析 10 次及以上才触发 1 次」）：
+    //   默认 8 → **10**；闸门对**所有非手动触发**生效（`runRepair({silent:true})`，含无 cause 的静默路径）。
+    autoRepairEveryOps: 10,
     // v1.137：自动修复重设计（三段式：JS 机械清理 → 候选筛选 → 窄契约 AI 措辞修订）
     repairMaxItems: 20,
     // v3.50.19（`docs/D22` W12 `技-49` / `数-37`）：修复聚合的预算（`docs/D33` §6 Q8 默认值）

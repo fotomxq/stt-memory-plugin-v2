@@ -7,7 +7,7 @@
 export const MODULE_NAME = 'ftt_memory_v2';
 
 /** 代码版本（与 manifest.json 的 version 必须一致，由 scripts/check-version-sync.js 校验） */
-export const VERSION = '3.52.19';   // v3.52.19（用户要求）：移除场景地图设计（UI/注入/抽取/入库下线）；地图数据清理例程预备（下一版执行）
+export const VERSION = '3.52.20';   // v3.52.20（用户要求）：自动修复频率闸门（每次分析计数；静默触发一律受限；默认 10 次分析才触发 1 次）
 
 /** 扩展目录名（ST 挂载路径：/scripts/extensions/third-party/<folder>；用于模板渲染与自检） */
 export const EXTENSION_FOLDER = 'third-party/ftt-memory-v2';

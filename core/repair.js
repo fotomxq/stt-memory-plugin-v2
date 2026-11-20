@@ -931,12 +931,17 @@ function repairApplyAiResult(delta, cands) {
  */
 async function runRepair(opts) {
     const o = opts || {};
-    const isAuto = o.silent === true && !!o.cause;
+    // v3.52.20（用户要求「尤其是非手动形式的触发」）：**所有静默触发**都算自动，必须过频率闸门；
+    //   手动（不带 silent）不受限；`force` 仅内部/测试显式跳过。
+    const isAuto = o.silent === true;
     if (aiBusy()) {
         if (o.silent !== true || o.cause) notify('warning', isAuto ? '自动修复被占用，已跳过' : '修复进行中', '已有修复/摘要/同步任务在运行，请稍候。');
         return { made: 0, blocked: true };
     }
     if (isAuto && !o.force && !autoRepairOpDue()) return { made: 0, blocked: true, reason: 'auto-repair-frequency' };
+    // v3.52.20：自动路径**放行即消耗配额**（本次无论是否产生变更都算「触发过 1 次」），
+    //   否则「跑了但 made=0」会让闸门始终停在放行状态 → 下次分析又触发（高频）。
+    if (isAuto && !o.force) { try { markAutoRepairDone(); } catch (e) { /* 忽略 */ } }
     if (o.force !== true) {
         const tk = o.silent === true ? autoRepairTake(false) : autoRepairTake(true);
         if (!tk.allowed) {

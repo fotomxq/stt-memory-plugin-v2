@@ -408,6 +408,8 @@ export async function analyzeFloor(floorId, opts) {
     extractState.runs += 1;
     extractState.lastAt = t0;
     extractState.lastFloor = Number(floorId);
+    // v3.52.20（用户要求）：**每一次分析**都计入自动修复闸门（含失败/无 JSON —— 闸门看的是「分析了几次」）
+    try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
     try {
         const text = floorAnalyzableText(floorId);
         if (!text) { extractState.fail += 1; extractState.lastReason = 'empty-floor'; return { ok: false, reason: 'empty-floor' }; }
@@ -438,7 +440,6 @@ export async function analyzeFloor(floorId, opts) {
         }
         const atomSig = atomsSignature();      // v2.81.0：分析前的情节基线
         const mr = mergeDelta(delta, { start: Number(floorId), end: Number(floorId) });
-        try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         // V1 v1.206 15240~15242（单楼分析 `runSummaryFloor`）：合并成功 → 被动调度推演（关键词取该楼正文）；
         //   紧随其后**无条件**做一次情节总结检查点（V1 该行在 `if (mr && mr.ok)` 之外）
         if (mr && mr.ok) { try { scheduleParallelWeave({ start: Number(floorId), end: Number(floorId) }, jsExtractKeywords(text)); } catch (e) { /* 忽略 */ } }
@@ -535,6 +536,8 @@ export async function analyzeSegment(start, end, opts) {
     const e0 = Math.max(s0, Number(end) || s0);
     const t0 = Date.now();
     extractState.activeSeg = { start: s0, end: e0 };
+    // v3.52.20（用户要求）：分段分析同样按「一次分析」计数（含失败）；闸门只放行「距上次自动修复 ≥ N 次分析」
+    try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
     try {
         // v2.44.0：先按投喂标签过滤（需标签），再去 HTML 交 AI（顺序不可颠倒，见 host/floors.js 头注）
         // v3.52.1（用户报告「换存档后不分析新存档楼层」）：**投喂过滤把整段清空时回退原文** ——
@@ -609,7 +612,6 @@ export async function analyzeSegment(start, end, opts) {
         }
         const atomSig = atomsSignature();      // v2.81.0：分析前的情节基线
         const mr = mergeDelta(delta, { start: s0, end: e0 });
-        try { bumpRepairOp(); } catch (e) { /* 忽略 */ }
         // v3.0.3：分段（批量摘要）落库后立即写服务端
         if (mr && mr.ok) { try { persistNow('提取记忆（分段）'); } catch (e) { /* 忽略 */ } }
         if (!mr || !mr.ok) { noteExtractFail(s0, e0, 'merge-fail', text); return { ok: false, reason: 'merge-fail', floorStart: s0, floorEnd: e0 }; }

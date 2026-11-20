@@ -29,6 +29,7 @@ import { noteConflict } from './core/conflicts.js';
 import { setFloorTrimHooks, floorTrimStatus, floorTrimPrecheck, floorTrimApply, floorRecalibrate, floorTrimBusy } from './host/floor-trim.js';
 import { writeFloorBackup } from './adapters/floor-backup.js';
 import { deleteStateFile } from './adapters/user-file.js';   // v3.52.15：备份只保留 3 个（兜底清理）
+import { applyPlannedMapPurge, mapLegacyStats } from './core/map-purge.js';   // v3.52.20：地图设计下线的数据清理（到点执行）
 import { notifyHooks } from './core/model/runtime.js';
 import { mountSettingsPanel, unmountSettingsPanel, panelMountInfo, setPanelStatus, refreshPanelStatus } from './ui/settings-panel.js';
 import { installMenuEntry, ensureMenuEntry, uninstallMenuEntry, unbindMenuWatch, menuInfo } from './ui/menu.js';
@@ -891,6 +892,16 @@ export async function init() {
     // B7-2：启动对账（纯被动）—— 读服务端最新 → 原子合并 → 快照链并集 → 同步日志交叉合并；
     //   清单命中时零大文件下载；失败静默（绝不阻塞初始化与发送）。
     try { void storageBootstrap(); } catch (e) { /* 忽略 */ }
+    // v3.52.20（`docs/history/P10c172` 的下一版动作）：**地图数据清理到点执行** ——
+    //   v3.52.19 已下线场景地图设计（存量数据保留）；本版（= `MAP_PURGE_VERSION`）按计划把地图数据清干净。
+    //   幂等：清干净后再跑为 0 条；失败静默，绝不影响启动。
+    try {
+        const mp = (mapLegacyStats().entries || mapLegacyStats().links || mapLegacyStats().tombstones || mapLegacyStats().hashTombstones) ? applyPlannedMapPurge() : { ok: false, reason: 'nothing' };
+        if (mp && mp.ok && (mp.removed || mp.links || mp.tombstones || mp.hashTombstones)) {
+            try { debugLogPush('载入', { action: '地图数据清理（设计下线的下一版动作）', removed: mp.removed, links: mp.links, tombstones: mp.tombstones, note: mp.note }); } catch (e2) { /* 忽略 */ }
+            try { renderPanel(); } catch (e2) { /* 忽略 */ }
+        }
+    } catch (e) { /* 忽略：清理失败不影响启动 */ }
     // v2.51.0：载入后自动时间巡检已随「时间巡检修复」功能一并移除（时钟只取最新情节，无需巡检）
     try {
         // P2：楼层变化即刷新内核视图（只读映射，不写数据）；P3 在此接入提取/注入闭环

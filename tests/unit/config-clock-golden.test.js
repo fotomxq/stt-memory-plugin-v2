@@ -98,7 +98,9 @@ R.assert('C1 defaultCfg：V1 的 217 键逐值一致（v2.51.0 删除的 10 个�
         'conceptRepairMaxClusters', 'memoryRepairMaxClusters', 'suspenseRepairMaxClusters', 'itemRepairMaxClusters',
         'plotSegmentIncremental',
         // v3.52.18（用户要求）：情节总结「保留最近 N 条」默认 20 → 30（保留窗口即聚合目标）
-        'atomCompactRecent'];
+        'atomCompactRecent',
+        // v3.52.20（用户要求）：自动修复频率「分析 10 次才触发 1 次」→ 默认 8 → 10
+        'autoRepairEveryOps'];
     const v1 = G.defaultCfg || {};
     const diff = Object.keys(v1).filter((k) => k !== 'storage' && k !== 'promptTemplates' && REMOVED_V1_KEYS.indexOf(k) < 0
         && RAISED_CAP_KEYS.indexOf(k) < 0 && DEVIATED_KEYS.indexOf(k) < 0 && J(v1[k]) !== J(defaultCfg[k]));

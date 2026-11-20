@@ -39,11 +39,14 @@ export function mapLegacyStats() {
         out.links = (Array.isArray(state.links) ? state.links : []).filter((x) => x && String(x.dim) === 'maps').length;
         out.tombstones = state.deleted && state.deleted.maps ? Object.keys(state.deleted.maps).length : 0;
         out.hashTombstones = state.deletedH && state.deletedH.maps ? Object.keys(state.deletedH.maps).length : 0;
+        // v3.52.20：三个配置键已从默认配置静态删除；这里只报「旧存档里是否还残留」
         const keys = [];
-        if (cfg && cfg.mapTrailPhrase !== undefined) keys.push('mapTrailPhrase');
-        if (cfg && cfg.storeShare && Object.prototype.hasOwnProperty.call(cfg.storeShare, 'maps')) keys.push('storeShare.maps');
-        if (cfg && cfg.storeMinMaps !== undefined) keys.push('storeMinMaps');
-        if (cfg && cfg.storeMaxMaps !== undefined) keys.push('storeMaxMaps');
+        try {
+            if (cfg && cfg.mapTrailPhrase !== undefined) keys.push('mapTrailPhrase');
+            if (cfg && cfg.storeShare && Object.prototype.hasOwnProperty.call(cfg.storeShare, 'maps')) keys.push('storeShare.maps');
+            if (cfg && cfg.storeMinMaps !== undefined) keys.push('storeMinMaps');
+            if (cfg && cfg.storeMaxMaps !== undefined) keys.push('storeMaxMaps');
+        } catch (e) { /* 忽略 */ }
         out.configKeys = keys;
     } catch (e) { /* 只读统计失败 → 返回已收集部分 */ }
     return out;
@@ -78,10 +81,10 @@ export function purgeMapData(opts) {
             if (state.deleted && state.deleted.maps) delete state.deleted.maps;
             if (state.deletedH && state.deletedH.maps) delete state.deletedH.maps;
         } catch (e) { /* 忽略 */ }
-        // ④ 配置
+        // ④ 配置：v3.52.20 起三个地图配置键**已从 `defaultCfg` 静态删除**（不再有运行期改动）；
+        //   这里只做兜底清理（旧存档里可能仍带着这些键，属幂等操作）。
         try {
             if (cfg) {
-                // 下一版会从 `defaultCfg` 删除这些键；本版先在这里**删除运行期键**（不再回填/归零）
                 if (Object.prototype.hasOwnProperty.call(cfg, 'mapTrailPhrase')) delete cfg.mapTrailPhrase;
                 if (cfg.storeShare && Object.prototype.hasOwnProperty.call(cfg.storeShare, 'maps')) delete cfg.storeShare.maps;
                 if (Object.prototype.hasOwnProperty.call(cfg, 'storeMinMaps')) delete cfg.storeMinMaps;

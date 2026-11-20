@@ -51,11 +51,13 @@ A('A1 存量统计：条目 / 关联行 / 墓碑 / 内容墓碑 / 配置键 逐�
     return s.entries === 2 && s.links === 1 && s.tombstones === 1 && s.hashTombstones === 1
         && J(s.configKeys.sort()) === J(['mapTrailPhrase', 'storeMaxMaps', 'storeMinMaps', 'storeShare.maps']);
 })(), () => { boot(); return J(mapLegacyStats()); });
-A('A2 本版**只预备不执行**：`applyPlannedMapPurge()` 在 3.52.19 → `not-yet`，存量一条不动', (() => {
+A('A2 **到点执行**：v3.52.20 ≥ `MAP_PURGE_VERSION` → `applyPlannedMapPurge()` 自动清理；版本闸前（更低版本）只回报 not-yet', (() => {
     boot();
     const r = applyPlannedMapPurge();
-    return r.ok === false && r.reason === 'not-yet' && r.stats.entries === 2
-        && state.maps.length === 2 && state.links.length === 2 && VERSION === '3.52.19' && MAP_PURGE_VERSION === '3.52.20';
+    const pre = versionAtLeast('3.52.19', MAP_PURGE_VERSION);        // 更低版本 → false（本版之前只预备）
+    const now = versionAtLeast(VERSION, MAP_PURGE_VERSION);
+    return r.ok === true && r.removed === 2 && now === true && pre === false
+        && state.maps.length === 0 && VERSION === '3.52.20' && MAP_PURGE_VERSION === '3.52.20';
 })(), 'n/a');
 A('A3 清理例程（下一版执行）：条目/关联行/墓碑/内容墓碑/配置键全部清干净，其它维度不受影响', (() => {
     boot();
